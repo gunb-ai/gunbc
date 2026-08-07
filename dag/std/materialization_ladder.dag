@@ -6,6 +6,16 @@ import std.realization {
   Placement, LocalInProcess, LocalFilesystem, RemoteNetwork
 }
 import std.disposition { Disposition, Terminal }
+import std.cache_interface {
+  ProviderRetention,
+  CapacityPolicy,
+  ReleasedAtProviderScopeExit,
+  ReleasedNever,
+  ReleasedManually,
+  CapacityUnbounded,
+  CapacityBounded,
+  CapacityUnobserved,
+}
 
 data materialization_ladder_frame_path_predicate_contract: Disposition = Terminal {
   reason: "Structural coproduct/path readers over Frame/FrameKind (frame_eq, frame_path_*, declared_emergent_prefix, string_list_contains) — closed by the ladder's declared frame variants; discriminating corpus: dag/test/claim/materialization_ladder_witness_test.dag."
@@ -25,7 +35,7 @@ data materialization_ladder_value_binding_predicate_contract: Disposition = Term
 
 data materialization_ladder_ownership_convergence_note: String = "Section-3 convergence thread (like the fnv1a64 dual-surface row in DESIGN): v1.compiler.ownership (src/v1/ownership.dag, generated twin v1_compiler_ownership.rs) is the EVAL-FRAME INSTANCE of this ladder, built very early as the emitter's materialization decision. The mapping is exact: BindingUsage.consumers = FrameDemand sites at binding grain; binding_fan_out (Threaded excluded) = demand plurality — Threaded IS the iteration-carry/reduce-spine edge, excluded from plurality exactly as the spine's critical path is excluded from independence width; OwnershipDecision.SoleOwner = single-demand move (AcceptedSingleRecompute at value grain); fan_out>1 inside one function body (a shared-state frame) = the Share/clone decision; SharedError with consumer_count+sites = plurality refused in an affine-uniqueness context (a context-requirement refinement this std ladder does not yet model — the residue that keeps the v1 instance load-bearing); the v3-era zero arm (fan_out==0 and pure = dead code; ==0 with effect = valid, the effect IS the use) is DeadComputation / AcceptedEffectIsTheUse here. Two surfaces, one concept, tracked so the fork does not widen. Dissolution: when the emit stage migrates onto the v2/std spine, ownership decisions ground on this ladder (demand plurality per frame) and v1.compiler.ownership retires with the seed."
 
-data materialization_ladder_note: String = "The state x decision law for redundant computation (operator, 2026-07-09). One axis decides everything: WHEN the redundancy is knowable, and whether what was knowable was prepared for. Plurality is the primitive throughout: 0 demands of a pure computation = authored waste (DeadComputation, the degenerate rule-1); 0 demands of an effect = valid, the effect is the use; 1 undeclared demand = Recompute; >=2 demands = the rewire-vs-obligate split below. (1) Redundancy visible in the graph whose LCA frame is shared-state (one workspace/process — rewireable) = AUTHORED duplication = error; the fix is rewire/Share, never a cache. (2) Redundancy whose LCA is an isolation boundary (siblings execute apart by construction) cannot be rewired = a materialization obligation at the LCA — it MUST be discharged by a covering provider. (3) EXPECTED-emergent redundancy — a single demand today, but an enclosing frame declares re-demand (ReplayedFrame attempts>1 = retry/restart replay; UnboundedSiblingsFrame = server loop / recurring CI invocations over time) — obligates UP FRONT: prepare-before-demand, so checkpointing and cross-run caches are derived, not bolted on after the incident. (4) UNEXPECTED-emergent redundancy (discoverable only by measurement, e.g. the interpreter recompute-trace) is ACCEPTED — unavoidable by definition — but its finding converts it to state 2/3 for the next run; acceptance is typed, never silent. (5) A single undeclared pure demand is AcceptedSingleRecompute: a cache there is dead weight. Nature gates ride on top: FreshEffect (measurement/deploy/mutation) is never memoized and its duplication is intentional (ExemptFreshEffect); WorldRead is memoizable ONLY with a declared staleness envelope — a TTL is always one of two confessions, an unmodeled dependency (fix: put it in the key) or a tolerated staleness (fix: declare the envelope), and without the declaration a redundant WorldRead is RefusedUnmodeledWorldRead. Rule 3 (eviction) is by construction, not by check: CacheProvider cannot be written without an EvictionClass (the REQUIRED eviction class - distinct from std.cache_interface.EvictionPolicy, the cited upstream mechanism; distinct concepts carry distinct names, DESIGN 3) — ScopeExit for scoped carriers (eviction = frame exit, derived) or SpacePacked for the persistent tier (dropping pure facts is always sound, only ever costs recompute). Rule 4 keying wall: an ExistenceKeyed provider is refused even when it covers — existence is not identity (receipt: the build-if-absent stale-binary red, #6352). Relation to peers (DESIGN section 3, one concept per authority): std.realization.Materialization is the verdict vocabulary this ladder prescribes into; v2.std.materialize is the within-graph (shared-state) content-hash detector feeding state 1; v2.lens.duplicate_computation is the within-script command-grain demand extractor feeding the same groups. Mutable keyed state is a database, not a materialization — writable caches are out of scope by construction."
+data materialization_ladder_note: String = "The state x decision law for redundant computation (operator, 2026-07-09). One axis decides everything: WHEN the redundancy is knowable, and whether what was knowable was prepared for. Plurality is the primitive throughout: 0 demands of a pure computation = authored waste (DeadComputation, the degenerate rule-1); 0 demands of an effect = valid, the effect is the use; 1 undeclared demand = Recompute; >=2 demands = the rewire-vs-obligate split below. (1) Redundancy visible in the graph whose LCA frame is shared-state (one workspace/process — rewireable) = AUTHORED duplication = error; the fix is rewire/Share, never a cache. (2) Redundancy whose LCA is an isolation boundary (siblings execute apart by construction) cannot be rewired = a materialization obligation at the LCA — it MUST be discharged by a covering provider. (3) EXPECTED-emergent redundancy — a single demand today, but an enclosing frame declares re-demand (ReplayedFrame attempts>1 = retry/restart replay; UnboundedSiblingsFrame = server loop / recurring CI invocations over time) — obligates UP FRONT: prepare-before-demand, so checkpointing and cross-run caches are derived, not bolted on after the incident. (4) UNEXPECTED-emergent redundancy (discoverable only by measurement, e.g. the interpreter recompute-trace) is ACCEPTED — unavoidable by definition — but its finding converts it to state 2/3 for the next run; acceptance is typed, never silent. (5) A single undeclared pure demand is AcceptedSingleRecompute: a cache there is dead weight. Nature gates ride on top: FreshEffect (measurement/deploy/mutation) is never memoized and its duplication is intentional (ExemptFreshEffect); WorldRead is memoizable ONLY with a declared staleness envelope — a TTL is always one of two confessions, an unmodeled dependency (fix: put it in the key) or a tolerated staleness (fix: declare the envelope), and without the declaration a redundant WorldRead is RefusedUnmodeledWorldRead. Rule 3 (retention) splits across two rungs and the earlier wording claimed only the higher one. RETENTION FACTS are by construction: CacheProvider cannot be written without a ProviderRetention, so a provider with no declared lifetime or capacity is unwritable. ELIGIBILITY is mechanically adjudicated, not structural: an unbounded provider is deliberately representable — a scoped witness memo is legitimately unbounded — so discharge_verdict ADMITS providers through retention_admission (a total fold over release_policy x capacity) and refuses when none qualifies. Requiring the field does not make its value eligible, and conflating the two is the rung inflation DESIGN section 4b names. The former EvictionClass forced a choice between those two and carried its budget as free text; a scoped carrier and a byte-bounded one are now the same product with different fields, and TTL or LRU alone reach neither arm (freshness is InvalidationTrigger, and a replacement ORDER is not a ceiling). Rule 4 keying wall: an ExistenceKeyed provider is refused even when it covers — existence is not identity (receipt: the build-if-absent stale-binary red, #6352). Relation to peers (DESIGN section 3, one concept per authority): std.realization.Materialization is the verdict vocabulary this ladder prescribes into; v2.std.materialize is the within-graph (shared-state) content-hash detector feeding state 1; v2.lens.duplicate_computation is the within-script command-grain demand extractor feeding the same groups. Mutable keyed state is a database, not a materialization — writable caches are out of scope by construction."
 
 type FrameKind
   = SharedStateFrame
@@ -52,9 +62,15 @@ type FrameDemand {
 
 type CacheKeying = ContentKeyed | ExistenceKeyed
 
-type EvictionClass
-  = ScopeExit
-  | SpacePacked { budget: String }
+// The former EvictionClass (ScopeExit | SpacePacked { budget: String }) made
+// lifetime and capacity MUTUALLY EXCLUSIVE, so "released at entry-scope exit
+// AND bounded by retained bytes AND refuses new stores at capacity" — the
+// exact shape of a promoted in-process memo — was unstateable. Its budget was
+// free text, which is not a capacity authority. Both are replaced by
+// std.cache_interface.ProviderRetention, and with the axes separated the
+// "required class" is a total FOLD over retention (retention_admission), not
+// a second vocabulary — so the EvictionClass/EvictionPolicy homonym the
+// cross-parent ambiguity wall once found is dissolved rather than renamed.
 
 type CacheCoverage
   = CoversAllComputations
@@ -72,7 +88,7 @@ type CacheProvider {
   scope: List<Frame>
   coverage: CacheCoverage
   tier: ProviderTier
-  eviction: EvictionClass
+  retention: ProviderRetention
 }
 
 data vacuity_lens_design_doc_provenance: String = "docs/plans/vacuity-lens-design.md (reachable via the registered gunbc.plans.inert_layer_lens carrier's link): its load-bearing review correction is about THIS file's AuthoredDuplication verdict — share f(x) in f(x)==f(x) makes the test MORE tautological; vacuity needs its own VacuityEvidence, not LadderVerdict. Migrates to the vacuity lens .dag carrier when it lands."
@@ -132,12 +148,16 @@ fn addressing_spans_isolation(a: ProviderAddressing) -> Bool {
   }
 }
 
-fn scope_exit_eviction() -> EvictionClass {
-  ScopeExit
+// Scope-release with capacity left as observed. A scoped carrier bounds growth
+// by its frame, but that is NOT a general peak-memory guarantee for the frame's
+// interior — the 2026-07-10 20GiB incident happened inside a live scope — so
+// the capacity fact travels beside it rather than being implied away.
+fn scope_released_retention(capacity: CapacityPolicy) -> ProviderRetention {
+  ProviderRetention { release_policy: ReleasedAtProviderScopeExit, capacity: capacity }
 }
 
-fn space_packed_eviction(budget: String) -> EvictionClass {
-  SpacePacked { budget: budget }
+fn persistent_retention(capacity: CapacityPolicy) -> ProviderRetention {
+  ProviderRetention { release_policy: ReleasedNever, capacity: capacity }
 }
 
 fn provider_row(
@@ -145,9 +165,9 @@ fn provider_row(
   scope: List<Frame>,
   coverage: CacheCoverage,
   tier: ProviderTier,
-  eviction: EvictionClass
+  retention: ProviderRetention
 ) -> CacheProvider {
-  CacheProvider { id: id, scope: scope, coverage: coverage, tier: tier, eviction: eviction }
+  CacheProvider { id: id, scope: scope, coverage: coverage, tier: tier, retention: retention }
 }
 
 type LadderVerdict
@@ -157,6 +177,8 @@ type LadderVerdict
   | RefusedNoProvider { identity: String, lca: List<Frame> }
   | RefusedScopeTooNarrow { identity: String, lca: List<Frame>, provider_id: String }
   | RefusedExistenceKeyed { identity: String, lca: List<Frame>, provider_id: String }
+  | RefusedRetentionUnbounded { identity: String, lca: List<Frame>, provider_id: String }
+  | RefusedRetentionUnobserved { identity: String, lca: List<Frame>, provider_id: String }
   | RefusedUnmodeledWorldRead { identity: String, lca: List<Frame> }
   | ExemptFreshEffect { identity: String }
   | AcceptedBelowCostFloor { identity: String }
@@ -402,6 +424,88 @@ fn group_has_nature_conflict(group: List<FrameDemand>) -> Bool {
   group |> fold(init: false, f: (acc, d) => acc || !nature_eq(a: d.nature, b: head_nature))
 }
 
+// RULE 3 IS READ HERE, not merely carried. Until 2026-08-06 CacheProvider had a
+// retention field that discharge_verdict never consulted: a persistent,
+// content-keyed, scope-covering provider with CapacityUnobserved returned
+// Discharged, so the standing note's "cannot discharge unless bounded" was a
+// claim no consumer enforced. The refusal keeps the provider_id and separates
+// KNOWN-unbounded from NOT-ESTABLISHED, because the remedies differ (declare a
+// ceiling vs cite one). Filtering the provider out instead would have reported
+// RefusedNoProvider - a false cause, since a provider is present and covering.
+// ADMISSION IS DERIVED FROM THE WHOLE PRODUCT, so every arm's cause is true by
+// construction rather than by an argument about which caller can reach it. The
+// former shape asked retention_growth_is_bounded for a Bool and then re-derived
+// the CAUSE from capacity alone in a second function — which needed a
+// CapacityBounded arm it could never reach, and filled it with
+// RefusedRetentionUnobserved: a false label kept alive only by the reachability
+// argument. Folding the two into one total value deletes the arm rather than
+// commenting on it, and the Bool disappears because it was the lossy projection
+// that forced the cause to be reconstructed downstream.
+// The refusal CARRIES its reason instead of a later function re-deriving it
+// from the provider. That is what removes the impossible arm rather than
+// relabelling it: a RefusedProvider can only be built by the fold below, and
+// the fold builds one only on a capacity state that genuinely refuses, so
+// there is no admitted-but-refused value to write a false cause for.
+type RetentionRefusalReason = RetentionUnbounded | RetentionUnobserved
+
+type RetentionAdmission
+  = RetentionAdmitted
+  | RetentionRefused { reason: RetentionRefusalReason }
+
+type RefusedProvider {
+  provider_id: String
+  reason: RetentionRefusalReason
+}
+
+fn retention_admission(r: ProviderRetention) -> RetentionAdmission {
+  match r.release_policy {
+    ReleasedAtProviderScopeExit => RetentionAdmitted
+    ReleasedNever => capacity_admission(c: r.capacity)
+    ReleasedManually => capacity_admission(c: r.capacity)
+  }
+}
+
+fn capacity_admission(c: CapacityPolicy) -> RetentionAdmission {
+  match c {
+    CapacityUnbounded => RetentionRefused { reason: RetentionUnbounded }
+    CapacityBounded { limit: _, at_capacity: _ } => RetentionAdmitted
+    CapacityUnobserved => RetentionRefused { reason: RetentionUnobserved }
+  }
+}
+
+fn retention_is_admitted(r: ProviderRetention) -> Bool {
+  match retention_admission(r: r) {
+    RetentionAdmitted => true
+    RetentionRefused { reason: _ } => false
+  }
+}
+
+fn provider_refusals(ps: List<CacheProvider>) -> List<RefusedProvider> {
+  ps |> flat_map(p => match retention_admission(r: p.retention) {
+    RetentionAdmitted => []
+    RetentionRefused { reason: why } => [RefusedProvider { provider_id: p.id, reason: why }]
+  })
+}
+
+fn retention_refusal_verdict(
+  identity: String,
+  lca: List<Frame>,
+  refused: RefusedProvider
+) -> LadderVerdict {
+  match refused.reason {
+    RetentionUnbounded =>
+      RefusedRetentionUnbounded { identity: identity, lca: lca, provider_id: refused.provider_id }
+    RetentionUnobserved =>
+      RefusedRetentionUnobserved { identity: identity, lca: lca, provider_id: refused.provider_id }
+  }
+}
+
+// ADMIT BEFORE SELECTING. The former shape took content_covering.first() and
+// then asked whether THAT provider's retention was bounded, so a covering but
+// ineligible provider standing earlier in the list refused the whole group and
+// masked a perfectly good provider behind it — list ORDER was deciding
+// eligibility. Filtering first makes the choice a function of the facts, and
+// the reversed-order controls in the retention-axes witness pin it.
 fn discharge_verdict(identity: String, lca: List<Frame>, providers: List<CacheProvider>) -> LadderVerdict {
   let content_covering = providers |> filter(p =>
     provider_is_store_tier(p: p)
@@ -409,25 +513,31 @@ fn discharge_verdict(identity: String, lca: List<Frame>, providers: List<CachePr
       && frame_path_is_prefix(prefix: p.scope, path: lca)
       && provider_is_content_keyed(p: p)
   )
-  match content_covering.first() {
-    Present { value: chosen } => Discharged { identity: identity, lca: lca, provider_id: chosen.id }
-    Absent => {
-      let scope_covering = providers |> filter(p =>
-        provider_is_store_tier(p: p)
-          && provider_covers_identity(p: p, identity: identity)
-          && frame_path_is_prefix(prefix: p.scope, path: lca)
-      )
-      match scope_covering.first() {
-        Present { value: existence_one } =>
-          RefusedExistenceKeyed { identity: identity, lca: lca, provider_id: existence_one.id }
-        Absent => {
-          let narrow = providers |> filter(p =>
-            provider_is_store_tier(p: p) && provider_covers_identity(p: p, identity: identity)
-          )
-          match narrow.first() {
-            Present { value: narrow_one } =>
-              RefusedScopeTooNarrow { identity: identity, lca: lca, provider_id: narrow_one.id }
-            Absent => RefusedNoProvider { identity: identity, lca: lca }
+  let admitted = content_covering |> filter(p => retention_is_admitted(r: p.retention))
+  match admitted.first() {
+    Present { value: chosen } =>
+      Discharged { identity: identity, lca: lca, provider_id: chosen.id }
+    Absent => match provider_refusals(ps: content_covering).first() {
+      Present { value: refused_one } =>
+        retention_refusal_verdict(identity: identity, lca: lca, refused: refused_one)
+      Absent => {
+        let scope_covering = providers |> filter(p =>
+          provider_is_store_tier(p: p)
+            && provider_covers_identity(p: p, identity: identity)
+            && frame_path_is_prefix(prefix: p.scope, path: lca)
+        )
+        match scope_covering.first() {
+          Present { value: existence_one } =>
+            RefusedExistenceKeyed { identity: identity, lca: lca, provider_id: existence_one.id }
+          Absent => {
+            let narrow = providers |> filter(p =>
+              provider_is_store_tier(p: p) && provider_covers_identity(p: p, identity: identity)
+            )
+            match narrow.first() {
+              Present { value: narrow_one } =>
+                RefusedScopeTooNarrow { identity: identity, lca: lca, provider_id: narrow_one.id }
+              Absent => RefusedNoProvider { identity: identity, lca: lca }
+            }
           }
         }
       }
@@ -510,6 +620,8 @@ fn ladder_verdict_is_green(v: LadderVerdict) -> Bool {
     RefusedNoProvider { identity: _, lca: _ } => false
     RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
     RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnbounded { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnobserved { identity: _, lca: _, provider_id: _ } => false
     RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
     ExemptFreshEffect { identity: _ } => true
     AcceptedBelowCostFloor { identity: _ } => true
@@ -527,6 +639,8 @@ fn ladder_verdict_prescribes(v: LadderVerdict) -> Materialization {
     RefusedNoProvider { identity: _, lca: _ } => Memoize
     RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => Memoize
     RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => Memoize
+    RefusedRetentionUnbounded { identity: _, lca: _, provider_id: _ } => Memoize
+    RefusedRetentionUnobserved { identity: _, lca: _, provider_id: _ } => Memoize
     RefusedUnmodeledWorldRead { identity: _, lca: _ } => Recompute
     ExemptFreshEffect { identity: _ } => Recompute
     AcceptedBelowCostFloor { identity: _ } => Recompute
@@ -553,6 +667,8 @@ fn verdict_is_refused_nature_conflict(v: LadderVerdict, identity: String) -> Boo
     RefusedNoProvider { identity: _, lca: _ } => false
     RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
     RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnbounded { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnobserved { identity: _, lca: _, provider_id: _ } => false
     RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
     ExemptFreshEffect { identity: _ } => false
     AcceptedBelowCostFloor { identity: _ } => false
@@ -568,6 +684,8 @@ fn verdict_is_authored_duplication(v: LadderVerdict, identity: String, site_coun
     RefusedNoProvider { identity: _, lca: _ } => false
     RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
     RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnbounded { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnobserved { identity: _, lca: _, provider_id: _ } => false
     RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
     ExemptFreshEffect { identity: _ } => false
     AcceptedBelowCostFloor { identity: _ } => false
@@ -585,6 +703,46 @@ fn verdict_is_discharged_by(v: LadderVerdict, identity: String, provider_id: Str
     RefusedNoProvider { identity: _, lca: _ } => false
     RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
     RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnbounded { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnobserved { identity: _, lca: _, provider_id: _ } => false
+    RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
+    ExemptFreshEffect { identity: _ } => false
+    AcceptedBelowCostFloor { identity: _ } => false
+    AcceptedSingleRecompute { identity: _ } => false
+    DeadComputation { identity: _ } => false
+    AcceptedEffectIsTheUse { identity: _ } => false
+  }
+}
+
+fn verdict_is_refused_retention_unbounded(v: LadderVerdict, provider_id: String) -> Bool {
+  match v {
+    RefusedNatureConflict { identity: _ } => false
+    AuthoredDuplication { identity: _, lca: _, site_count: _ } => false
+    Discharged { identity: _, lca: _, provider_id: _ } => false
+    RefusedNoProvider { identity: _, lca: _ } => false
+    RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
+    RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnbounded { identity: _, lca: _, provider_id: p } => p == provider_id
+    RefusedRetentionUnobserved { identity: _, lca: _, provider_id: _ } => false
+    RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
+    ExemptFreshEffect { identity: _ } => false
+    AcceptedBelowCostFloor { identity: _ } => false
+    AcceptedSingleRecompute { identity: _ } => false
+    DeadComputation { identity: _ } => false
+    AcceptedEffectIsTheUse { identity: _ } => false
+  }
+}
+
+fn verdict_is_refused_retention_unobserved(v: LadderVerdict, provider_id: String) -> Bool {
+  match v {
+    RefusedNatureConflict { identity: _ } => false
+    AuthoredDuplication { identity: _, lca: _, site_count: _ } => false
+    Discharged { identity: _, lca: _, provider_id: _ } => false
+    RefusedNoProvider { identity: _, lca: _ } => false
+    RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
+    RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnbounded { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnobserved { identity: _, lca: _, provider_id: p } => p == provider_id
     RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
     ExemptFreshEffect { identity: _ } => false
     AcceptedBelowCostFloor { identity: _ } => false
@@ -602,6 +760,8 @@ fn verdict_is_refused_no_provider(v: LadderVerdict, identity: String) -> Bool {
     RefusedNoProvider { identity: i, lca: _ } => i == identity
     RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
     RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnbounded { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnobserved { identity: _, lca: _, provider_id: _ } => false
     RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
     ExemptFreshEffect { identity: _ } => false
     AcceptedBelowCostFloor { identity: _ } => false
@@ -619,6 +779,8 @@ fn verdict_is_refused_scope_too_narrow(v: LadderVerdict, provider_id: String) ->
     RefusedNoProvider { identity: _, lca: _ } => false
     RefusedScopeTooNarrow { identity: _, lca: _, provider_id: p } => p == provider_id
     RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnbounded { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnobserved { identity: _, lca: _, provider_id: _ } => false
     RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
     ExemptFreshEffect { identity: _ } => false
     AcceptedBelowCostFloor { identity: _ } => false
@@ -636,6 +798,8 @@ fn verdict_is_refused_existence_keyed(v: LadderVerdict, provider_id: String) -> 
     RefusedNoProvider { identity: _, lca: _ } => false
     RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
     RefusedExistenceKeyed { identity: _, lca: _, provider_id: p } => p == provider_id
+    RefusedRetentionUnbounded { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnobserved { identity: _, lca: _, provider_id: _ } => false
     RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
     ExemptFreshEffect { identity: _ } => false
     AcceptedBelowCostFloor { identity: _ } => false
@@ -653,6 +817,8 @@ fn verdict_is_refused_unmodeled_world_read(v: LadderVerdict, identity: String) -
     RefusedNoProvider { identity: _, lca: _ } => false
     RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
     RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnbounded { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnobserved { identity: _, lca: _, provider_id: _ } => false
     RefusedUnmodeledWorldRead { identity: i, lca: _ } => i == identity
     ExemptFreshEffect { identity: _ } => false
     AcceptedBelowCostFloor { identity: _ } => false
@@ -670,6 +836,8 @@ fn verdict_is_exempt_fresh(v: LadderVerdict, identity: String) -> Bool {
     RefusedNoProvider { identity: _, lca: _ } => false
     RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
     RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnbounded { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnobserved { identity: _, lca: _, provider_id: _ } => false
     RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
     ExemptFreshEffect { identity: i } => i == identity
     AcceptedBelowCostFloor { identity: _ } => false
@@ -687,6 +855,8 @@ fn verdict_is_accepted_below_cost_floor(v: LadderVerdict, identity: String) -> B
     RefusedNoProvider { identity: _, lca: _ } => false
     RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
     RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnbounded { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnobserved { identity: _, lca: _, provider_id: _ } => false
     RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
     ExemptFreshEffect { identity: _ } => false
     AcceptedBelowCostFloor { identity: i } => i == identity
@@ -704,6 +874,8 @@ fn verdict_is_accepted_single_recompute(v: LadderVerdict, identity: String) -> B
     RefusedNoProvider { identity: _, lca: _ } => false
     RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
     RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnbounded { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnobserved { identity: _, lca: _, provider_id: _ } => false
     RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
     ExemptFreshEffect { identity: _ } => false
     AcceptedBelowCostFloor { identity: _ } => false
@@ -743,6 +915,8 @@ fn verdict_is_dead_computation(v: LadderVerdict, identity: String) -> Bool {
     RefusedNoProvider { identity: _, lca: _ } => false
     RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
     RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnbounded { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnobserved { identity: _, lca: _, provider_id: _ } => false
     RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
     ExemptFreshEffect { identity: _ } => false
     AcceptedBelowCostFloor { identity: _ } => false
@@ -972,6 +1146,8 @@ fn verdict_is_accepted_effect_is_the_use(v: LadderVerdict, identity: String) -> 
     RefusedNoProvider { identity: _, lca: _ } => false
     RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
     RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnbounded { identity: _, lca: _, provider_id: _ } => false
+    RefusedRetentionUnobserved { identity: _, lca: _, provider_id: _ } => false
     RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
     ExemptFreshEffect { identity: _ } => false
     AcceptedBelowCostFloor { identity: _ } => false

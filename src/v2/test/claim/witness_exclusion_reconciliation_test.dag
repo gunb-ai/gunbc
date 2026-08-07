@@ -12,11 +12,12 @@ import gunbc.ci_layer_roots {
   falsifier_self_host_wet_dark_lane_unclassified_rows,
   falsifier_self_host_wet_dark_lane_population,
   falsifier_self_host_wet_dark_lane_waiting_rows,
-  dispatch_bijection_real_roster_red_falsifier_self_host_wet_dark_note,
+  falsifier_self_host_wet_dark_lane_waiting_patterns,
   witness_exclusion_row_mentions_wet_lane_dark_state,
   witness_exclusion_row_waits_on_wet_lane_undarken
 }
 import v2.compiler.self_host.wet_receipt_enrollment {
+  falsifier_self_host_wet_cadence_is_active,
   dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet
 }
 import v2.workflow.witness_admission {
@@ -150,6 +151,31 @@ test fn falsifier_self_host_wet_dark_lane_population_matches_waiting_rows_holds(
 
 test fn dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet_holds() -> Bool {
   dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet()
+}
+
+// Re-homed here from gunbc.ci_layer_roots (this file is its only consumer, and it already
+// reaches both authorities the note joins). Keeping it in ci_layer_roots forced that module
+// to import v2.compiler.self_host.wet_receipt_enrollment, and since gunbc.ci_spec imports
+// ci_layer_roots, that edge widened ~63 witness entries' import closures into the self_host
+// subtree and its two live-read carrier homes — which permanently disabled affected-set
+// skipping for them. A status projection must not decide selection for the corpus.
+fn dispatch_bijection_real_roster_red_falsifier_self_host_wet_dark_note() -> String {
+  concat(
+    "R1 real-crate bijection enrollment (Lane D, gunbc#7825): falsifier_self_host_wet_cadence_active=",
+    concat(
+      falsifier_self_host_wet_cadence_is_active() as String,
+      concat(
+        " template_enrolled=",
+        concat(
+          dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet() as String,
+          concat(
+            " witness_identity=dag/test/claim/interpreter_dispatch_bijection_real_roster_witness_test.dag::interpreter_dispatch_bijection_real_roster_red_holds dark_lane_waiting_patterns=",
+            join(falsifier_self_host_wet_dark_lane_waiting_patterns(), ", ")
+          )
+        )
+      )
+    )
+  )
 }
 
 test fn dispatch_bijection_real_roster_red_falsifier_self_host_wet_note_names_witness_identity_holds() -> Bool {
