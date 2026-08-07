@@ -46,6 +46,7 @@ import gunbc.floor_component_receipt_document {
   ReceiptComponentCountMismatch, ReceiptUnsuccessfulComponentIdentityNotUnique,
   ReceiptUnsuccessfulPopulationMismatch,
   ComponentAlertSummary,
+  ComponentOutcomeRead, ComponentConcluded, ComponentNotConcluded,
   FloorComponentFailureMode, floor_component_failure_mode_tag,
   summary_outcome_is_unsuccessful,
   floor_component_receipt_decode_with,
@@ -65,6 +66,7 @@ import extdeps.github.issues {
   IssueStateRead, IssueStateFound, IssueStateUnmodelledWire,
   parse_issue_state
 }
+import std.observation { ObservationOutcome, Failed }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -506,7 +508,7 @@ fn receipt_with(component_count: String, components: String, unsuccessful: Strin
     unsuccessful), concat(",\"components\":", concat(components, "}")))
 }
 
-data one_component: String = "{\"index\":6,\"label\":\"witness discovery\",\"outcome\":\"failed\",\"error\":\"claim is false\",\"failure_mode\":\"WitnessRed\"}"
+data one_component: String = "{\"index\":6,\"label\":\"witness discovery\",\"outcome\":\"failed\",\"error\":\"claim is false\",\"output\":\"\",\"failure_mode\":\"WitnessRed\"}"
 
 data one_done_component: String = "{\"index\":6,\"label\":\"witness discovery\",\"outcome\":\"done\",\"failure_mode\":\"none\"}"
 
@@ -680,7 +682,7 @@ test fn a_failure_mode_outside_the_modelled_vocabulary_refuses() -> Bool {
 }
 
 test fn a_failed_outcome_without_its_error_payload_refuses_rather_than_defaulting() -> Bool {
-  match decode_receipt_with_component(component: "{\"index\":6,\"label\":\"x\",\"outcome\":\"failed\",\"failure_mode\":\"WitnessRed\"}") {
+  match decode_receipt_with_component(component: "{\"index\":6,\"label\":\"x\",\"outcome\":\"failed\",\"output\":\"\",\"failure_mode\":\"WitnessRed\"}") {
     ReceiptMemberMalformed { member: m, detail: _ } => m == "outcome"
     _ => false
   }
@@ -709,7 +711,7 @@ test fn a_successful_component_listed_as_unsuccessful_refuses() -> Bool {
 }
 
 test fn an_unsuccessful_row_naming_an_absent_component_refuses() -> Bool {
-  let ghost = "{\"index\":99,\"label\":\"never ran\",\"outcome\":\"failed\",\"error\":\"e\",\"failure_mode\":\"WitnessRed\"}"
+  let ghost = "{\"index\":99,\"label\":\"never ran\",\"outcome\":\"failed\",\"error\":\"e\",\"output\":\"\",\"failure_mode\":\"WitnessRed\"}"
   match floor_component_receipt_decode_with(
     text: receipt_with(component_count: "1", components: concat(concat("[", one_component), "]"), unsuccessful: concat(concat("[", ghost), "]")),
     expected_schema: alert_expected_schema
@@ -742,6 +744,99 @@ test fn a_string_component_count_refuses_rather_than_comparing_as_text() -> Bool
 test fn the_unrecorded_failure_mode_the_writer_emits_decodes() -> Bool {
   match decode_receipt_with_component(component: "{\"index\":6,\"label\":\"x\",\"outcome\":\"done\",\"failure_mode\":\"unrecorded\"}") {
     ReceiptDecoded { document: _ } => true
+    _ => false
+  }
+}
+
+data pair_and_strict_number_claims_note: String = "The operator's live-head items B and C. Every fixture below carries two individually VALID typed values, or a numeric lexeme JSON is happy to call a number — so each one decoded cleanly under the previous revision and would have flowed into routing and incident identity."
+
+test fn an_impossible_outcome_and_mode_pair_refuses_even_though_both_are_typed() -> Bool {
+  match decode_receipt_with_component(component: "{\"index\":6,\"label\":\"x\",\"outcome\":\"done\",\"failure_mode\":\"WitnessRed\"}") {
+    ReceiptMemberMalformed { member: m, detail: _ } => m == "outcome"
+    _ => false
+  }
+}
+
+test fn a_failed_outcome_claiming_no_failure_mode_refuses() -> Bool {
+  match decode_receipt_with_component(component: "{\"index\":6,\"label\":\"x\",\"outcome\":\"failed\",\"error\":\"e\",\"output\":\"\",\"failure_mode\":\"none\"}") {
+    ReceiptMemberMalformed { member: m, detail: _ } => m == "outcome"
+    _ => false
+  }
+}
+
+test fn the_unrecorded_mode_keeps_its_broader_relationship() -> Bool {
+  let c = "{\"index\":6,\"label\":\"x\",\"outcome\":\"failed\",\"error\":\"e\",\"output\":\"\",\"failure_mode\":\"unrecorded\"}"
+  match floor_component_receipt_decode_with(
+    text: receipt_with(component_count: "1", components: concat(concat("[", c), "]"), unsuccessful: concat(concat("[", c), "]")),
+    expected_schema: alert_expected_schema
+  ) {
+    ReceiptDecoded { document: _ } => true
+    _ => false
+  }
+}
+
+test fn a_failed_outcome_output_is_read_rather_than_fabricated() -> Bool {
+  match floor_component_receipt_decode_with(
+    text: receipt_with(
+      component_count: "1",
+      components: "[{\"index\":6,\"label\":\"x\",\"outcome\":\"failed\",\"error\":\"e\",\"output\":\"the real captured output\",\"failure_mode\":\"WitnessRed\"}]",
+      unsuccessful: "[{\"index\":6,\"label\":\"x\",\"outcome\":\"failed\",\"error\":\"e\",\"output\":\"the real captured output\",\"failure_mode\":\"WitnessRed\"}]"
+    ),
+    expected_schema: alert_expected_schema
+  ) {
+    ReceiptDecoded { document: doc } =>
+      match doc.unsuccessful_summaries.first() {
+        Present { value: sm } =>
+          match sm.outcome {
+            ComponentConcluded { outcome: o } =>
+              match o {
+                Failed { error: _, output: out } => out == "the real captured output"
+                _ => false
+              }
+            ComponentNotConcluded => false
+          }
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+test fn a_failed_outcome_missing_its_output_member_refuses() -> Bool {
+  match decode_receipt_with_component(component: "{\"index\":6,\"label\":\"x\",\"outcome\":\"failed\",\"error\":\"e\",\"failure_mode\":\"WitnessRed\"}") {
+    ReceiptMemberMalformed { member: m, detail: _ } => m == "outcome"
+    _ => false
+  }
+}
+
+data strict_natural_claims_note: String = "Four lexemes JSON calls numbers and a cardinal index cannot be. Under parse_int each produced a value — a truncation, a wrong magnitude, or a negative position — with nothing marking the input as outside what the field means."
+
+test fn a_negative_component_index_refuses() -> Bool {
+  match decode_receipt_with_component(component: "{\"index\":-1,\"label\":\"x\",\"outcome\":\"done\",\"failure_mode\":\"none\"}") {
+    ReceiptMemberMalformed { member: m, detail: _ } => m == "index"
+    _ => false
+  }
+}
+
+test fn a_fractional_component_index_refuses() -> Bool {
+  match decode_receipt_with_component(component: "{\"index\":6.5,\"label\":\"x\",\"outcome\":\"done\",\"failure_mode\":\"none\"}") {
+    ReceiptMemberMalformed { member: m, detail: _ } => m == "index"
+    _ => false
+  }
+}
+
+test fn an_exponent_component_index_refuses() -> Bool {
+  match decode_receipt_with_component(component: "{\"index\":6e3,\"label\":\"x\",\"outcome\":\"done\",\"failure_mode\":\"none\"}") {
+    ReceiptMemberMalformed { member: m, detail: _ } => m == "index"
+    _ => false
+  }
+}
+
+test fn a_negative_component_count_refuses() -> Bool {
+  match floor_component_receipt_decode_with(
+    text: receipt_with(component_count: "-1", components: "[]", unsuccessful: "[]"),
+    expected_schema: alert_expected_schema
+  ) {
+    ReceiptMemberMalformed { member: m, detail: _ } => m == "component_count"
     _ => false
   }
 }
