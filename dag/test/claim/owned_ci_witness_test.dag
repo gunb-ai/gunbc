@@ -18,7 +18,7 @@ import gunbc.owned_ci {
   CheckPublicationState,
   CheckPublicationCompleted, CheckPublicationPending,
   CheckPublicationNotStarted, CheckPublicationQueued, CheckPublicationInProgress,
-  CiRunQueueState, QueueCompleted,
+  CiRunQueueState, QueueCompleted, QueueRefused,
   queue_lease_reclaim_decision,
   queue_lease_validity,
   ReclaimExpiredLease,
@@ -229,6 +229,17 @@ test fn witness_unpublished_completed_run_has_no_check_conclusion() -> Bool {
     }
 }
 
+test fn witness_queue_refused_maps_to_failure() -> Bool {
+  match owned_ci_check_conclusion_for_queue(
+    state: QueueRefused { cause: "fork PR refused in v0" },
+    publication: CheckPublicationNotStarted,
+  ) {
+    Present { value: Failure } => true
+    Present { value: Success } => false
+    Absent => false
+  }
+}
+
 test fn witness_publication_pending_is_not_github_success() -> Bool {
   let pending = CheckPublicationPending {
     local_conclusion: Success,
@@ -303,6 +314,7 @@ test fn witness_owned_ci_witness_bundle() -> Bool {
     && witness_same_repo_pr_admits()
     && witness_expired_lease_is_reclaimed()
     && witness_queue_lease_expiry()
+    && witness_queue_refused_maps_to_failure()
     && witness_fractional_lease_clock_refuses()
     && witness_publication_pending_is_not_github_success()
     && witness_publication_completed_is_github_success()

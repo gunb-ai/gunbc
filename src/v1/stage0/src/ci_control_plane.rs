@@ -1236,7 +1236,8 @@ impl CiControlPlane {
         let path = self
             .config
             .workspace_root
-            .join("target/owned-ci-run-receipt.txt");
+            .join("target/owned-ci-run-receipts")
+            .join(format!("{run_id}.txt"));
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|e| format!("mkdir target: {e}"))?;
         }

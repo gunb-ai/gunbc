@@ -69,4 +69,4 @@ Shadow before cutover is not optional.
 - **Consumer:** `ci_control_plane` bin on a host with a git mirror, `GITHUB_TOKEN` with `checks:write`, and `gunbc serve` for `/ci` UI. Operator rerun: `--enqueue-rerun-sha <40-hex>` (or `OWNED_CI_ENQUEUE_RERUN_SHA`).
 - **Green:** poll discovers head SHA; run record claimed by atomic rename under expiring lease; one executor runs `build → regen → floor` in one exact-SHA worktree; append-only receipts; `/ci/run/{id}` renders; one Check Run transitions `queued → in_progress → completed`.
 - **RED controls:** expired lease is reclaimed (not stranded); GitHub API failure at publication yields `LocalVerdictPersisted + CheckPublicationPending` (never "failed", never "published"); poll without GitHub read refuses rather than inferring no PR subjects changed (`owned_ci_pr_poll_github_read_admission`, witnessed by `witness_poll_without_github_read_refuses`); fork PRs refuse.
-- **Receipt location:** `.gunbc/owned-ci/runs/{id}/`, `receipts/{id}/{stage}.json`, `target/owned-ci-run-receipt.txt`.
+- **Receipt location:** `.gunbc/owned-ci/runs/{id}/`, `receipts/{id}/{stage}.json`, `target/owned-ci-run-receipts/{id}.txt`.

@@ -43,6 +43,7 @@ type CiRunQueueState
   | QueueClaimed { lease: QueueLease }
   | QueueCompleted
   | QueueFailed { detail: String }
+  | QueueRefused { cause: String }
 
 type CheckPublicationState
   = CheckPublicationNotStarted
@@ -262,6 +263,7 @@ fn owned_ci_check_status_for_queue(state: CiRunQueueState) -> CheckStatus {
     QueueClaimed { lease: _ } => InProgress
     QueueCompleted => Completed
     QueueFailed { detail: _ } => Completed
+    QueueRefused { cause: _ } => Completed
   }
 }
 
@@ -279,5 +281,6 @@ fn owned_ci_check_conclusion_for_queue(state: CiRunQueueState, publication: Chec
         CheckPublicationInProgress { check_run_id: _ } => none
       }
     QueueFailed { detail: _ } => Present { value: Failure }
+    QueueRefused { cause: _ } => Present { value: Failure }
   }
 }
