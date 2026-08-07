@@ -1,0 +1,16 @@
+module test.claim.long.qualified_declaration_reference_emit_cross_module_witness_test
+
+data qualified_declaration_reference_emit_cross_module_witness_note: String = "Cross-module half of qualified_declaration_reference_emit_witness_test.dag — re-homed to test/claim/long/ after falsifier discovery batch 3 BudgetExceeded kills (5436ms thread-CPU vs 5000ms fast-lane cap on srv_fleet_arm64; chronic on main, unrelated to decl_facts work). Exercises a genuine cross-module qualified data reference (std.unicode.types.unicode_scalar_max_code_point — minimal std closure, not the heavy std.emit_on_demand roster the prior fixture dragged in) that must resolve to its declaring module and render as a call, not a plain fn-item value. Same-module control stays per-PR in dag/test/claim/qualified_declaration_reference_emit_witness_test.dag. dissolve-on: eval under gunbc_ci_fast_lane_witness_eval_budget on fleet hardware, then row re-enrolls per-PR and this file deletes."
+
+fn w_cross_module_qualified_reference_emits_call() -> Bool {
+  compile_dag_rust_emit_check(
+    "module qdref_cross\n\nimport std.unicode.types { unicode_scalar_max_code_point }\nimport std.types { Int }\n\ndata qdref_cross_derived: Int = std.unicode.types.unicode_scalar_max_code_point\n",
+    "src/qdref_cross.rs",
+    ["unicode_scalar_max_code_point()"],
+    []
+  )
+}
+
+test fn cross_module_qualified_reference_emits_call_from_correct_module() -> Bool {
+  w_cross_module_qualified_reference_emits_call()
+}

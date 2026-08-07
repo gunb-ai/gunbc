@@ -1,6 +1,6 @@
 module test.claim.qualified_declaration_reference_emit_witness_test
 
-data qualified_declaration_reference_emit_witness_note: String = "Regression control for the qualified-declaration-reference emitter defect formerly worked around in dag/extdeps/container/oci/digest.dag (deleted qualified_self_reference_emit_defect_note): a fully qualified reference to a declaration in a data initializer previously resolved through a bare-name registry (last-write-wins across every module sharing that leaf), so a SAME-MODULE qualified reference could land on an unrelated module's declaration and render as a plain fn-item value instead of a call. The fix normalizes a self-qualified reference to its bare spelling before registry lookup (reusing the already-correct bare-name path) and keys the general dotted-reference registry lookup on the leaf name so the is_data call-suffix decision fires for every qualified reference, same-module or cross-module. Two fixtures, so the fix cannot pass by collapsing the two cases together: w_same_module_qualified_reference_emits_call exercises the self-qualified spelling the deleted note worked around; w_cross_module_qualified_reference_emits_call exercises a genuine cross-module qualified reference (std.emit_on_demand.interpreter_surviving_roles_ceiling), which must keep resolving to its real declaring module and rendering as a call. dissolve-on: never -- permanent regression alarm for the emitter arm."
+data qualified_declaration_reference_emit_witness_note: String = "Regression control for the qualified-declaration-reference emitter defect formerly worked around in dag/extdeps/container/oci/digest.dag (deleted qualified_self_reference_emit_defect_note): a fully qualified reference to a declaration in a data initializer previously resolved through a bare-name registry (last-write-wins across every module sharing that leaf), so a SAME-MODULE qualified reference could land on an unrelated module's declaration and render as a plain fn-item value instead of a call. The fix normalizes a self-qualified reference to its bare spelling before registry lookup (reusing the already-correct bare-name path) and keys the general dotted-reference registry lookup on the leaf name so the is_data call-suffix decision fires for every qualified reference, same-module or cross-module. w_same_module_qualified_reference_emits_call exercises the self-qualified spelling the deleted note worked around. Cross-module control lives in dag/test/claim/long/qualified_declaration_reference_emit_cross_module_witness_test.dag (compile_dag_rust_emit_check exceeds per-PR fast-lane budget). dissolve-on: never -- permanent regression alarm for the emitter arm on the same-module arm."
 
 fn w_same_module_qualified_reference_emits_call() -> Bool {
   compile_dag_rust_emit_check(
@@ -11,19 +11,6 @@ fn w_same_module_qualified_reference_emits_call() -> Bool {
   )
 }
 
-fn w_cross_module_qualified_reference_emits_call() -> Bool {
-  compile_dag_rust_emit_check(
-    "module qdref_cross\n\nimport std.emit_on_demand { interpreter_surviving_roles_ceiling }\nimport std.types { Int }\n\ndata qdref_cross_derived: Int = std.emit_on_demand.interpreter_surviving_roles_ceiling\n",
-    "src/qdref_cross.rs",
-    ["interpreter_surviving_roles_ceiling()"],
-    []
-  )
-}
-
 test fn same_module_qualified_reference_emits_call_not_fn_item() -> Bool {
   w_same_module_qualified_reference_emits_call()
-}
-
-test fn cross_module_qualified_reference_emits_call_from_correct_module() -> Bool {
-  w_cross_module_qualified_reference_emits_call()
 }
