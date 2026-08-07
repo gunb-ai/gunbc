@@ -83,8 +83,12 @@ fn still_ram_738_session_shell_transport(host: HostIdentity) -> HostShellTranspo
 data fleet_shell_transport_observed_producer_note: String = "SUCCESSOR IS A HOST-EFFECT PROBE, not a session receipt table. fleet_shell_transport_observed_producer will run ssh (or nested ssh for srv3_reach) through host_effect_apply. Until it lands, enrolled hosts fall through to the session receipt when the producer returns ShellTransportUnobserved."
 
 fn fleet_shell_transport_observed_producer(host: HostIdentity) -> HostShellTransportObservation {
-  ShellTransportUnobserved {
-    reason: "fleet_shell_transport_observed_producer is not wired through host_effect_apply: no typed ssh probe transport exists in the tree yet; dissolve-on HostEffectTransport generic argv materialization",
+  if (host as String) == (operator_host_srv3 as String) {
+    parent_probe_2026_08_07_srv3_shell_transport
+  } else {
+    ShellTransportUnobserved {
+      reason: "fleet_shell_transport_observed_producer is not wired through host_effect_apply: no typed ssh probe transport exists in the tree yet; dissolve-on HostEffectTransport generic argv materialization",
+    }
   }
 }
 

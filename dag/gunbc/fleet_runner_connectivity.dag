@@ -57,9 +57,9 @@ type FleetRunnerCapacityWidthSnapshot {
   achieved: FleetAchievedRunnerWidths
 }
 
-data incident_2026_08_06_roster_note: String = "PINNED ACCEPTANCE CORPUS from the live GitHub org runners API during the 2026-08-06 broker-session incident (15 of 16 registrations offline; 1 functional runner). srv1 registered 01-05 with only 01 online+busy; srv2 registered 01,02,05 all offline with 03,04 absent; srv3 registered 01,02,04,05 all offline with 03 absent; srv4 registered 01,02,04,05 all offline with 03 absent. desired_width stays 22 while connected is 1 (pinned at incident_fleet_desired_width_total — live fleet_desired_width_total is 24 after srv4 commits 7 at the memory axis)."
+data incident_2026_08_06_roster_note: String = "PINNED ACCEPTANCE CORPUS from the live GitHub org runners API during the 2026-08-06 broker-session incident (15 of 16 registrations offline; 1 functional runner). srv1 registered 01-05 with only 01 online+busy; srv2 registered 01,02,05 all offline with 03,04 absent; srv3 registered 01,02,04,05 all offline with 03 absent; srv4 registered 01,02,04,05 all offline with 03 absent. desired_width stays 22 while connected is 1 — derived at incident_fleet_desired_width_at_outage (srv4 still carried the five-slot disk row-pin on 2026-08-06; live fleet_desired_width_total is 24 after srv4 commits 7 at the memory axis)."
 
-data incident_fleet_desired_width_total: Int = 22
+data incident_srv4_committed_width_at_outage: Int = 5
 
 data incident_runner_version: NonEmptyStr = "2.334.0"
 
@@ -420,6 +420,19 @@ fn fleet_hosts() -> List<HostIdentity> {
   [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4]
 }
 
+fn incident_fleet_desired_width_at_outage() -> Int {
+  fold(
+    fleet_hosts(),
+    init: 0,
+    f: (n, h) =>
+      if (h as String) == (operator_host_srv4 as String) {
+        n + incident_srv4_committed_width_at_outage
+      } else {
+        n + gunbc_runner_slots_per_host(host: h)
+      },
+  )
+}
+
 fn fleet_desired_width_total() -> Int {
   fold(
     fleet_hosts(),
@@ -463,7 +476,7 @@ fn fleet_runner_capacity_width_snapshot_from_roster(
   roster: OrganizationRunnerRosterEvidence,
 ) -> FleetRunnerCapacityWidthSnapshot {
   FleetRunnerCapacityWidthSnapshot {
-    desired_width: incident_fleet_desired_width_total,
+    desired_width: incident_fleet_desired_width_at_outage(),
     materialized_width: fleet_materialized_width_total(),
     unit_active_width: fleet_unit_active_width_total(),
     achieved: fleet_achieved_runner_widths_from_roster(roster: roster),

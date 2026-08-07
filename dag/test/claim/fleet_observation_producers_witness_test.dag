@@ -44,22 +44,35 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn producer_unobserved_all_enrolled_hosts_not_stale_reach_refused() -> Bool {
-  fleet_shell_transport_unobserved_count() == fleet_subsumption_hosts.length()
+  fleet_shell_transport_unobserved_count() == fleet_subsumption_hosts.length() - 1
     && fleet_subsumption_hosts.length() > 0
+    && match fleet_shell_transport_observation(host: operator_host_srv3) {
+      ShellTransportSucceeded { observed_on: _, principal: _, detail: _ } => true
+      ShellTransportUnobserved { reason: _ } => false
+      ShellTransportReachRefused { observed_on: _, principal: _, detail: _, gap: _ } => false
+    }
 }
 
-test fn srv3_observation_stays_unobserved_with_dated_receipt_provenance() -> Bool {
+test fn srv3_shell_transport_observed_srv4_stays_unobserved_discriminates_grade() -> Bool {
   match fleet_shell_transport_observation(host: operator_host_srv3) {
-    ShellTransportUnobserved { reason: r } =>
-      string_contains(s: r, pattern: "dated session receipt")
-        && string_contains(s: r, pattern: "2026-08-06")
-        && string_contains(s: r, pattern: "Permission denied")
+    ShellTransportSucceeded { observed_on: o, principal: p, detail: d } =>
+      (o as String) == "2026-08-07"
+        && string_contains(s: p as String, pattern: "ubuntu@192.168.1.221")
+        && string_contains(s: d as String, pattern: "vivid-eagle-131")
+    ShellTransportUnobserved { reason: _ } => false
     ShellTransportReachRefused { observed_on: _, principal: _, detail: _, gap: _ } => false
-    ShellTransportSucceeded { observed_on: _, principal: _, detail: _ } => false
   }
+    && match fleet_shell_transport_observation(host: operator_host_srv4) {
+      ShellTransportSucceeded { observed_on: _, principal: _, detail: _ } => false
+      ShellTransportReachRefused { observed_on: _, principal: _, detail: _, gap: _ } => false
+      ShellTransportUnobserved { reason: r } =>
+        string_contains(s: r, pattern: "dated session receipt")
+          && string_contains(s: r, pattern: "2026-08-06")
+          && string_contains(s: r, pattern: "Permission denied")
+    }
     && string_contains(
-      s: still_ram_738_session_shell_transport_receipt_note(host: operator_host_srv3),
-      pattern: "B2",
+      s: still_ram_738_session_shell_transport_receipt_note(host: operator_host_srv4),
+      pattern: "A1",
     )
 }
 
