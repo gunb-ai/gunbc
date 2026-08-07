@@ -343,8 +343,8 @@ fn selection_projection_over(decls: List<FnArrowDecl>) -> LiveReadSelectionProje
 
 fn projection_is_refused(p: LiveReadSelectionProjection) -> Bool {
   match p {
-    LiveReadSelectionClassified { classification: _ } => false
-    _ => true
+    LiveReadSelectionClassified { classification: k } => classification_is_local(classification: k) == false && true == false
+    LiveReadSelectionRefused { cause: c } => string_is_empty(s: c) == false
   }
 }
 
