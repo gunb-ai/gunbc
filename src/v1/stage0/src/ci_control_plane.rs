@@ -2,6 +2,9 @@
 //! one local executor, GitHub Checks projection.
 //!
 //! Authority: `docs/plans/owned-ci-control-plane-design.md`
+//!
+//! SCAFFOLD — seed-retained host transport; projection authority `gunbc.owned_ci_seed`.
+//! dissolve-on: REST calls fold into extdeps.github.checks / pulls interpreter bridge.
 
 use std::fs;
 use std::io::Write;
@@ -10,16 +13,81 @@ use std::process::{Command, ExitStatus, Stdio};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use crate::cli_run::{
+    make_eval_context, resolve_entry_graph_shared, run_value, witness_layer_roots,
+};
+use crate::v1_interpreter::{ExecutionMode, Value};
 use serde::{Deserialize, Serialize};
 
 pub const STATE_ROOT_REL: &str = ".gunbc/owned-ci";
-pub const CHECK_NAME: &str = "gunbc-ci";
 pub const DEFAULT_LEASE_SECS: u64 = 3600;
 pub const DEFAULT_POLL_INTERVAL_SECS: u64 = 60;
 
-const REPO_OWNER: &str = "gunb-ai";
-const REPO_NAME: &str = "gunbc";
-const REPO_FULL_NAME: &str = "gunb-ai/gunbc";
+/// Receipt marker for scaffold census (`rg OWNED_CI_CONTROL_PLANE_SEED_SCAFFOLD_MARKER`).
+pub const OWNED_CI_CONTROL_PLANE_SEED_SCAFFOLD_MARKER: &str =
+    "OWNED_CI_CONTROL_PLANE_SEED_SCAFFOLD_MARKER";
+
+const OWNED_CI_SEED_ENTRY: &str = "dag/gunbc/owned_ci_seed.dag";
+
+#[derive(Debug, Clone)]
+pub struct SeedAuthority {
+    pub repo_owner: String,
+    pub repo_name: String,
+    pub repo_full_name: String,
+    pub check_name: String,
+    pub stage_labels: Vec<String>,
+    pub floor_plan_entry: String,
+    pub floor_plan_function: String,
+}
+
+impl SeedAuthority {
+    pub fn load() -> Result<Self, String> {
+        let roots = witness_layer_roots();
+        let (graph, si) = resolve_entry_graph_shared(&roots, OWNED_CI_SEED_ENTRY)?;
+        let ctx = make_eval_context(&graph, si, ExecutionMode::Wet);
+        Ok(Self {
+            repo_owner: eval_string(&ctx, "owned_ci_seed_repo_owner")?,
+            repo_name: eval_string(&ctx, "owned_ci_seed_repo_name")?,
+            repo_full_name: eval_string(&ctx, "owned_ci_seed_repo_full_name")?,
+            check_name: eval_string(&ctx, "owned_ci_seed_check_name")?,
+            stage_labels: eval_string_list(&ctx, "owned_ci_seed_stage_labels")?,
+            floor_plan_entry: eval_string(&ctx, "owned_ci_seed_floor_plan_entry")?,
+            floor_plan_function: eval_string(&ctx, "owned_ci_seed_floor_plan_function")?,
+        })
+    }
+}
+
+fn eval_string(
+    ctx: &crate::v1_interpreter::InterpContext,
+    function: &str,
+) -> Result<String, String> {
+    match run_value(ctx, function)? {
+        Value::Str(s) => Ok(s),
+        other => Err(format!(
+            "{function} must return String, got {other:?} (fail-closed)"
+        )),
+    }
+}
+
+fn eval_string_list(
+    ctx: &crate::v1_interpreter::InterpContext,
+    function: &str,
+) -> Result<Vec<String>, String> {
+    match run_value(ctx, function)? {
+        Value::List(items) => items
+            .iter()
+            .map(|item| match item {
+                Value::Str(s) => Ok(s.clone()),
+                other => Err(format!(
+                    "{function} list items must be String, got {other:?} (fail-closed)"
+                )),
+            })
+            .collect(),
+        other => Err(format!(
+            "{function} must return List, got {other:?} (fail-closed)"
+        )),
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -142,11 +210,15 @@ pub struct DiscoveredSubject {
 
 pub struct CiControlPlane {
     pub config: Config,
+    pub authority: SeedAuthority,
 }
 
 impl CiControlPlane {
-    pub fn new(config: Config) -> Self {
-        Self { config }
+    pub fn new(config: Config) -> Result<Self, String> {
+        Ok(Self {
+            config,
+            authority: SeedAuthority::load()?,
+        })
     }
 
     pub fn ensure_layout(&self) -> Result<(), String> {
@@ -169,7 +241,10 @@ impl CiControlPlane {
                 Command::new("git")
                     .arg("clone")
                     .arg("--bare")
-                    .arg(format!("https://github.com/{REPO_FULL_NAME}.git"))
+                    .arg(format!(
+                        "https://github.com/{}.git",
+                        self.authority.repo_full_name
+                    ))
                     .arg(&self.config.mirror_path),
             )?;
         }
@@ -299,7 +374,10 @@ impl CiControlPlane {
     }
 
     fn discover_open_prs(&self, token: &str) -> Result<Vec<DiscoveredSubject>, String> {
-        let url = format!("https://api.github.com/repos/{REPO_FULL_NAME}/pulls?state=open");
+        let url = format!(
+            "https://api.github.com/repos/{}/pulls?state=open",
+            self.authority.repo_full_name
+        );
         let response = ureq::get(&url)
             .set("Authorization", &format!("Bearer {token}"))
             .set("Accept", "application/vnd.github+json")
@@ -326,7 +404,7 @@ impl CiControlPlane {
             let (Some(number), Some(head_sha)) = (number, head_sha) else {
                 continue;
             };
-            if head_repo != REPO_FULL_NAME {
+            if head_repo != self.authority.repo_full_name {
                 eprintln!(
                     "owned-ci: refusing fork PR #{number} from {head_repo} (v0 same-repo only)"
                 );
@@ -372,7 +450,7 @@ impl CiControlPlane {
                     details_url: Some(details_url.clone()),
                     cause: None,
                 },
-                stages: default_stages(),
+                stages: default_stages(&self.authority.stage_labels),
                 details_url,
                 lease: None,
                 created_at_unix: now,
@@ -394,17 +472,17 @@ impl CiControlPlane {
                 head_sha: subject.head_sha.clone(),
                 kind: subject.kind.clone(),
                 pr_number: subject.pr_number,
-                last_enqueued_run_id: Some(run_id),
+                last_enqueued_run_id: Some(run_id.clone()),
             });
             if subject.kind == "main_push" {
                 ledger.main_head_sha = Some(subject.head_sha.clone());
             }
+            self.write_index(&index)?;
+            self.write_ledger(&ledger)?;
             if !self.config.dry_run {
-                self.try_create_check(&record)?;
+                self.create_check_or_mark_pending(&record)?;
             }
         }
-        self.write_index(&index)?;
-        self.write_ledger(&ledger)?;
         Ok(())
     }
 
@@ -440,7 +518,9 @@ impl CiControlPlane {
         self.write_run(&record)?;
         self.update_index_row(&run_id, "claimed", None)?;
         if !self.config.dry_run {
-            self.try_update_check(&record, "in_progress", None)?;
+            if let Err(cause) = self.try_update_check(&record, "in_progress", None) {
+                self.mark_publication_pending(&record, None, &cause)?;
+            }
         }
         Ok(Some(run_id))
     }
@@ -468,16 +548,18 @@ impl CiControlPlane {
                 ]),
         )?;
 
-        let stages = ["build", "regen", "floor"];
+        let stages = self.authority.stage_labels.clone();
         let mut failed = false;
-        for stage in stages {
+        for stage in &stages {
             set_stage_running(&mut record, stage);
             self.write_run(&record)?;
-            let result = match stage {
+            let result = match stage.as_str() {
                 "build" => self.stage_build(&worktree),
                 "regen" => self.stage_regen(&worktree),
                 "floor" => self.stage_floor(&worktree),
-                _ => unreachable!(),
+                other => Err(format!(
+                    "unknown execution stage {other} from CiExecutionPlan"
+                )),
             };
             match result {
                 Ok(()) => set_stage_succeeded(&mut record, stage),
@@ -487,7 +569,7 @@ impl CiControlPlane {
                     break;
                 }
             }
-            self.append_stage_receipt(run_id, stage, &record)?;
+            self.append_stage_receipt(run_id, stage.as_str(), &record)?;
             self.write_run(&record)?;
         }
 
@@ -511,16 +593,35 @@ impl CiControlPlane {
             .try_update_check(&record, "completed", Some(conclusion))
             .is_err()
         {
-            record.publication_state = PublicationState {
-                kind: "pending".to_string(),
-                check_run_id: record.publication_state.check_run_id,
-                local_conclusion: Some(conclusion.to_string()),
-                details_url: Some(record.details_url.clone()),
-                cause: Some("GitHub Checks API unavailable at completion".to_string()),
-            };
-            self.write_run(&record)?;
+            let cause = "GitHub Checks API unavailable at completion".to_string();
+            self.mark_publication_pending(&record, Some(conclusion), &cause)?;
         }
         Ok(())
+    }
+
+    fn create_check_or_mark_pending(&self, record: &RunRecord) -> Result<(), String> {
+        if let Err(cause) = self.try_create_check(record) {
+            self.mark_publication_pending(record, None, &cause)?;
+        }
+        Ok(())
+    }
+
+    fn mark_publication_pending(
+        &self,
+        record: &RunRecord,
+        local_conclusion: Option<&str>,
+        cause: &str,
+    ) -> Result<(), String> {
+        let mut updated = record.clone();
+        updated.publication_state = PublicationState {
+            kind: "pending".to_string(),
+            check_run_id: record.publication_state.check_run_id,
+            local_conclusion: local_conclusion.map(str::to_string),
+            details_url: Some(record.details_url.clone()),
+            cause: Some(cause.to_string()),
+        };
+        updated.updated_at_unix = now_unix();
+        self.write_run(&updated)
     }
 
     fn stage_build(&self, worktree: &Path) -> Result<(), String> {
@@ -562,9 +663,9 @@ impl CiControlPlane {
                 "--source-root",
                 "src/v2",
                 "--plan-entry",
-                "src/v2/workflow/ci_floor_plan.dag",
+                &self.authority.floor_plan_entry,
                 "--plan-function",
-                "gunbc_ci_floor_plan",
+                &self.authority.floor_plan_function,
                 "--notice-title",
                 "owned-ci",
             ])
@@ -583,13 +684,16 @@ impl CiControlPlane {
             return Err("GITHUB_TOKEN empty".to_string());
         }
         let body = serde_json::json!({
-            "name": CHECK_NAME,
+            "name": self.authority.check_name,
             "head_sha": record.head_sha,
             "status": "queued",
             "details_url": record.details_url,
             "external_id": record.run_id,
         });
-        let url = format!("https://api.github.com/repos/{REPO_FULL_NAME}/check-runs");
+        let url = format!(
+            "https://api.github.com/repos/{}/check-runs",
+            self.authority.repo_full_name
+        );
         let response = ureq::post(&url)
             .set("Authorization", &format!("Bearer {token}"))
             .set("Accept", "application/vnd.github+json")
@@ -643,8 +747,10 @@ impl CiControlPlane {
                 "summary": format!("run {} subject {}", record.run_id, record.subject_key),
             });
         }
-        let url =
-            format!("https://api.github.com/repos/{REPO_FULL_NAME}/check-runs/{check_run_id}");
+        let url = format!(
+            "https://api.github.com/repos/{}/check-runs/{check_run_id}",
+            self.authority.repo_full_name
+        );
         let response = ureq::patch(&url)
             .set("Authorization", &format!("Bearer {token}"))
             .set("Accept", "application/vnd.github+json")
@@ -787,11 +893,11 @@ impl CiControlPlane {
     }
 }
 
-fn default_stages() -> Vec<StageRecord> {
-    ["build", "regen", "floor"]
-        .into_iter()
+fn default_stages(labels: &[String]) -> Vec<StageRecord> {
+    labels
+        .iter()
         .map(|stage| StageRecord {
-            stage: stage.to_string(),
+            stage: stage.clone(),
             status: "pending".to_string(),
             detail: None,
             started_at_unix: None,

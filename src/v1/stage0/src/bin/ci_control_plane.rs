@@ -68,7 +68,13 @@ fn main() -> ExitCode {
         return ExitCode::from(2);
     }
 
-    let mut plane = CiControlPlane::new(config);
+    let mut plane = match CiControlPlane::new(config) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("ci_control_plane: authority load refused: {e}");
+            return ExitCode::from(2);
+        }
+    };
     match plane.run_loop() {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {

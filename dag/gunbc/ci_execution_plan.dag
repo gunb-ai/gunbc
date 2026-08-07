@@ -40,6 +40,18 @@ fn ci_execution_default_stages() -> List<CiExecutionStage> {
   [CiBuildStage, CiRegenStage, CiFloorStage]
 }
 
+fn ci_execution_stage_wire(stage: CiExecutionStage) -> String {
+  match stage {
+    CiBuildStage => "build"
+    CiRegenStage => "regen"
+    CiFloorStage => "floor"
+  }
+}
+
+fn owned_ci_executor_stage_labels() -> List<String> {
+  map(ci_execution_default_stages(), stage => ci_execution_stage_wire(stage: stage))
+}
+
 fn ci_execution_plan_for_subject(subject: CiExecutionSubject) -> CiExecutionPlan {
   CiExecutionPlan {
     subject: subject,
