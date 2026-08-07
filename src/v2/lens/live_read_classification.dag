@@ -506,6 +506,68 @@ fn live_read_classification_g2_from_facts(
   }
 }
 
+data live_read_selection_projection_law: String = "THE SELECTION SEAM, and the state the classification type cannot express. LiveReadClassification answers what an entry reads; it has no arm for we could not establish what this entry reads. That third state is not cosmetic: an unavailable G2 producer that silently answered LocalRead would be observationally identical to the G1-only defect this lane repairs, except failing in the opposite and more dangerous direction — under-selection, which looks like a faster green floor rather than a failure. So the seam carries a projection around the existing authority rather than a second classification type (DESIGN section 3: no parallel representation of one fact).
+
+WHAT COMPLETE MEANS, concretely, and why carrier homes decide it. G2 concludes LocalRead by finding no reachable carrier invocation. That conclusion is only sound when the facts actually contain the bodies where such an invocation would appear. If the import closure reaches a carrier home whose declarations are absent from the supplied fn-arrow facts, then no-call-found is indistinguishable from nothing-to-look-at, and answering LocalRead would assert the stronger of the two. Carrier-home reachability is therefore G1 used as EVIDENCE about coverage — never as an answer, which is precisely the conflation the completed-G2 recut removed."
+
+fn carrier_home_decls_present(decls: List<FnArrowDecl>, home: LiveReadCarrierHome) -> Bool {
+  length(xs: decls_in_module(decls: decls, mod_path: carrier_home_module(home: home))) > 0
+}
+
+fn g2_facts_cover_reachable_carrier_homes(
+  closure_modules: List<String>,
+  carrier_homes: List<LiveReadCarrierHome>,
+  decls: List<FnArrowDecl>
+) -> Bool {
+  fold_list(
+    xs: carrier_homes_in_closure(closure_modules: closure_modules, carrier_homes: carrier_homes),
+    empty: true,
+    cons: fn(acc, home) { acc && carrier_home_decls_present(decls: decls, home: home) }
+  )
+}
+
+fn live_read_selection_projection_from_facts(
+  entry_module: String,
+  facts: List<ModuleImportFact>,
+  decls: List<FnArrowDecl>,
+  carrier_homes: List<LiveReadCarrierHome>
+) -> LiveReadSelectionProjection {
+  let closure_modules = witness_import_closure(root: entry_module, facts: facts)
+  if g2_facts_cover_reachable_carrier_homes(
+    closure_modules: closure_modules,
+    carrier_homes: carrier_homes,
+    decls: decls
+  ) {
+    LiveReadSelectionClassified {
+      classification: live_read_classification_g2_from_facts(
+        entry_module: entry_module,
+        facts: facts,
+        decls: decls,
+        carrier_homes: carrier_homes
+      )
+    }
+  } else {
+    LiveReadSelectionRefused {
+      cause: concat(
+        "G2 fn-arrow facts do not cover a reachable carrier home for entry ",
+        entry_module
+      )
+    }
+  }
+}
+
+fn live_read_selection_projection_from_facts_v0(
+  entry_module: String,
+  facts: List<ModuleImportFact>
+) -> LiveReadSelectionProjection {
+  live_read_selection_projection_from_facts(
+    entry_module: entry_module,
+    facts: facts,
+    decls: fn_arrow_decl_facts_live(),
+    carrier_homes: live_read_carrier_homes_v0
+  )
+}
+
 fn live_read_classification_g2_from_facts_v0(
   entry_module: String,
   facts: List<ModuleImportFact>

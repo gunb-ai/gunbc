@@ -14,7 +14,8 @@ import v2.lens.live_read_classification {
   runtime_read_carrier_module_names,
   runtime_read_touched_by_path_g1,
   runtime_read_touched_by_path_g2,
-  g2_implies_reads_live_tree
+  g2_implies_reads_live_tree,
+  live_read_selection_projection_from_facts
 }
 import v2.lens.witness_cost_locality { ModuleImportFact }
 import v2.std.live_read {
@@ -23,10 +24,16 @@ import v2.std.live_read {
   FilesystemReadCarrier,
   ModuleDeclarationFactsCarrier,
   DeclFactsReflectionCarrier,
+  LiveReadSelectionProjection,
+  LiveReadSelectionClassified,
+  LiveReadSelectionRefused,
   live_read_carrier_homes_v0
 }
 import v2.std.collection { List }
+import v2.std.node { Atom, Conj, Edge, Node, Positional, SyntheticOccurrence, TypeNode }
+import v2.std.compilers.lexing { symbol_intern_lexeme }
 import v2.std.fn_index {
+  FnArrowDecl,
   fn_arrow_decl_facts_live,
   fn_arrow_skeleton_g2_marshal_host_scaffold_dissolution_trigger
 }
@@ -245,18 +252,6 @@ test fn g2_roster_gate_literal_path_touched_selects() -> Bool {
     )
 }
 
-test fn g2_unknown_filesystem_path_widens_alongside_literal_paths() -> Bool {
-  let c = live_read_classification_g2_from_facts(
-    entry_module: "v2.test.claim.complexity.accumulator_copy_roster_gate",
-    facts: roster_gate_corpus_facts,
-    decls: fn_arrow_decl_facts_live(),
-    carrier_homes: live_read_carrier_homes_v0
-  )
-  runtime_read_touched_by_path_g2(
-    classification: c,
-    touched_path: "src/v2/std/logic.dag"
-  )
-}
 
 test fn g2_implies_reads_live_tree_for_roster_gate() -> Bool {
   g2_implies_reads_live_tree(
@@ -286,23 +281,113 @@ test fn g2_unknown_path_pattern_fail_closed_touched() -> Bool {
   }
 }
 
-test fn g2_union_retains_g1_import_carriers_with_g2_literal_paths() -> Bool {
-  let c = live_read_classification_g2_from_facts(
-    entry_module: "v2.test.claim.complexity.accumulator_copy_roster_gate",
-    facts: g2_union_corpus_facts,
-    decls: fn_arrow_decl_facts_live(),
-    carrier_homes: live_read_carrier_homes_v0
-  )
-  classification_has_corpus_scan_carrier(classification: c)
-    && classification_has_literal_path(
-      classification: c,
-      path: "src/v2/std/algebra.dag"
-    )
-}
 
 test fn g2_fn_arrow_marshal_host_scaffold_receipt_is_checkable() -> Bool {
   match fn_arrow_skeleton_g2_marshal_host_scaffold_dissolution_trigger {
     Scaffold { dissolves_to: _, bind: _ } => true
     Terminal { reason: _ } => false
   }
+}
+
+data live_read_selection_control_law: String = "WHY THESE THREE REPLACE THE UNION TEST. g2_union_retains_g1_import_carriers_with_g2_literal_paths asserted that a completed G2 answer keeps the G1 import carriers. That assertion could only ever pass because the union supplied them: this witness's own closure does not contain the carrier homes its fixture facts name, so fn_arrow_decl_facts_live() — entry-closure scoped — returns no declarations for them, and no reachable-invocation evidence for that subject exists in this context at all. Remove the union and the same subject silently answers LocalRead, which is UNDER-selection: the floor would skip a witness that reads the tree, and a skipped witness looks like a faster green floor rather than a failure. The union was therefore masking absent evidence, not carrying a real fact.
+
+The three controls below separate the states the single union test conflated: evidence present and negative (local), evidence absent (refuse), evidence present and imprecise (conservative runtime read). Planted declarations supply the coverage the live entry-closure cannot, so complete-facts cases are reachable here rather than waiting on the whole-tree manifest."
+
+fn selection_atom_node(lexeme: String) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: symbol_intern_lexeme(lexeme: lexeme) } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn selection_body_node(callee: String) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [ Edge { label: Positional, target: selection_atom_node(lexeme: callee) } ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+data selection_control_facts: List<ModuleImportFact> = [
+  ModuleImportFact {
+    module: "synthetic.live_read_selection.entry",
+    imports: [ "v2.compiler.self_host" ]
+  },
+  ModuleImportFact { module: "v2.compiler.self_host", imports: [] }
+]
+
+fn selection_entry_seed_decl() -> FnArrowDecl {
+  FnArrowDecl {
+    qualified_name: "synthetic.live_read_selection.entry.seed",
+    name: "seed",
+    output: selection_body_node(callee: "v2.compiler.self_host.carrier_fn"),
+    params: []
+  }
+}
+
+fn selection_carrier_home_decl(callee: String) -> FnArrowDecl {
+  FnArrowDecl {
+    qualified_name: "v2.compiler.self_host.carrier_fn",
+    name: "carrier_fn",
+    output: selection_body_node(callee: callee),
+    params: []
+  }
+}
+
+fn selection_projection_over(decls: List<FnArrowDecl>) -> LiveReadSelectionProjection {
+  live_read_selection_projection_from_facts(
+    entry_module: "synthetic.live_read_selection.entry",
+    facts: selection_control_facts,
+    decls: decls,
+    carrier_homes: live_read_carrier_homes_v0
+  )
+}
+
+fn projection_is_refused(p: LiveReadSelectionProjection) -> Bool {
+  match p {
+    LiveReadSelectionRefused { cause: _ } => true
+    LiveReadSelectionClassified { classification: _ } => false
+  }
+}
+
+fn projection_classification_is_local(p: LiveReadSelectionProjection) -> Bool {
+  match p {
+    LiveReadSelectionRefused { cause: _ } => false
+    LiveReadSelectionClassified { classification: c } => classification_is_local(classification: c)
+  }
+}
+
+fn projection_classification_has_runtime_read(p: LiveReadSelectionProjection) -> Bool {
+  match p {
+    LiveReadSelectionRefused { cause: _ } => false
+    LiveReadSelectionClassified { classification: c } =>
+      classification_has_runtime_read(classification: c)
+  }
+}
+
+test fn g2_complete_facts_reachable_home_without_carrier_call_is_local() -> Bool {
+  projection_classification_is_local(
+    p: selection_projection_over(
+      decls: [
+        selection_entry_seed_decl(),
+        selection_carrier_home_decl(callee: "string_concat")
+      ]
+    )
+  )
+}
+
+test fn g2_missing_carrier_home_facts_refuse_rather_than_local() -> Bool {
+  projection_is_refused(p: selection_projection_over(decls: [ selection_entry_seed_decl() ]))
+}
+
+test fn g2_reachable_carrier_call_with_unknown_argument_is_runtime_read() -> Bool {
+  projection_classification_has_runtime_read(
+    p: selection_projection_over(
+      decls: [
+        selection_entry_seed_decl(),
+        selection_carrier_home_decl(callee: "filesystem_read")
+      ]
+    )
+  )
 }

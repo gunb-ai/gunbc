@@ -30,6 +30,10 @@ type LiveReadClassification
       carriers: List<LiveReadCarrier>
     }
 
+type LiveReadSelectionProjection
+  = LiveReadSelectionClassified { classification: LiveReadClassification }
+  | LiveReadSelectionRefused { cause: String }
+
 data live_read_carrier_homes_v0: List<LiveReadCarrierHome> = [
   LiveReadCarrierHome { module: "v2.lens.enforcement.cost_coverage", kind: FilesystemReadCarrier },
   LiveReadCarrierHome { module: "v2.lens.enforcement.grammar_coverage", kind: FilesystemReadCarrier },
