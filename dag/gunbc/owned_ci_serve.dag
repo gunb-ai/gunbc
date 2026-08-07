@@ -1,27 +1,42 @@
 module gunbc.owned_ci_serve
 
-import std.types { String }
+import std.types { String, HttpStatus, List }
 import v2.std.collection { Absent, Present }
+import std.markup { Fragment }
 import extdeps.http.server {
   ServeHttpResponse,
+  MediaType,
   text_html_utf8,
   text_plain_utf8,
   application_json_utf8,
 }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
-import gunbc.roadmap_serve { serve_text_response, serve_page_response }
-import gunbc.roadmap_static_site { page_render_refusal_body }
 import gunbc.owned_ci {
   owned_ci_index_rel_path,
   owned_ci_run_record_rel_path,
   owned_ci_run_id_admits,
 }
 import gunbc.owned_ci_page { owned_ci_runs_page, owned_ci_run_detail_page }
-import std.http_path { path_param_value }
-import std.types { List }
-import std.http_path { PathParamBinding }
+import std.http_path { path_param_value, PathParamBinding }
 
 data owned_ci_serve_note: String = "Serve projection for owned CI v0: reads index.json and per-run run.json maintained by ci_control_plane. Missing files answer 503 with a located reason — never an empty success page."
+
+fn owned_ci_serve_text_response(status: HttpStatus, content_type: MediaType, body: String) -> ServeHttpResponse {
+  ServeHttpResponse { status: status, content_type: content_type, body: body }
+}
+
+fn owned_ci_serve_page_response(page: Fragment) -> ServeHttpResponse {
+  match try_serialize_html_source(node: page) {
+    EmitOk { html: h } =>
+      owned_ci_serve_text_response(status: 200, content_type: text_html_utf8, body: h)
+    EmitRejected { reason: r } =>
+      owned_ci_serve_text_response(
+        status: 500,
+        content_type: text_plain_utf8,
+        body: concat(concat("page render refused: ", r), "\n"),
+      )
+  }
+}
 
 fn owned_ci_read_text_or_refuse(path: String) -> String? {
   let content = filesystem_read(path: path).content
@@ -35,9 +50,9 @@ fn owned_ci_read_text_or_refuse(path: String) -> String? {
 fn serve_ci_runs_page_response() -> ServeHttpResponse {
   match owned_ci_read_text_or_refuse(path: owned_ci_index_rel_path()) {
     Present { value: body } =>
-      serve_page_response(page: owned_ci_runs_page(body_json: body))
+      owned_ci_serve_page_response(page: owned_ci_runs_page(body_json: body))
     Absent =>
-      serve_text_response(
+      owned_ci_serve_text_response(
         status: 503,
         content_type: text_plain_utf8,
         body: "owned-ci index unavailable: .gunbc/owned-ci/index.json missing or empty (fail-closed)\n",
@@ -48,13 +63,13 @@ fn serve_ci_runs_page_response() -> ServeHttpResponse {
 fn serve_ci_run_detail_response(params: List<PathParamBinding>) -> ServeHttpResponse {
   let run_id = path_param_value(params: params, name: "run_id")
   if run_id == "" {
-    serve_text_response(
+    owned_ci_serve_text_response(
       status: 400,
       content_type: text_plain_utf8,
       body: "run detail requires run_id path segment (fail-closed)\n",
     )
   } else if !owned_ci_run_id_admits(run_id: run_id) {
-    serve_text_response(
+    owned_ci_serve_text_response(
       status: 400,
       content_type: text_plain_utf8,
       body: "owned-ci run_id refused: must be a safe path segment matching produced grammar {unix}-{8hex} (fail-closed)\n",
@@ -62,9 +77,9 @@ fn serve_ci_run_detail_response(params: List<PathParamBinding>) -> ServeHttpResp
   } else {
     match owned_ci_read_text_or_refuse(path: owned_ci_run_record_rel_path(run_id: run_id)) {
       Present { value: body } =>
-        serve_page_response(page: owned_ci_run_detail_page(run_id: run_id, body_json: body))
+        owned_ci_serve_page_response(page: owned_ci_run_detail_page(run_id: run_id, body_json: body))
       Absent =>
-        serve_text_response(
+        owned_ci_serve_text_response(
           status: 404,
           content_type: text_plain_utf8,
           body: concat(concat("owned-ci run record missing for ", run_id), " (fail-closed)\n"),
@@ -76,9 +91,9 @@ fn serve_ci_run_detail_response(params: List<PathParamBinding>) -> ServeHttpResp
 fn serve_ci_runs_json_response() -> ServeHttpResponse {
   match owned_ci_read_text_or_refuse(path: owned_ci_index_rel_path()) {
     Present { value: body } =>
-      serve_text_response(status: 200, content_type: application_json_utf8, body: body)
+      owned_ci_serve_text_response(status: 200, content_type: application_json_utf8, body: body)
     Absent =>
-      serve_text_response(
+      owned_ci_serve_text_response(
         status: 503,
         content_type: text_plain_utf8,
         body: "owned-ci index unavailable\n",
