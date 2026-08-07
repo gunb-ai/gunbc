@@ -17797,51 +17797,243 @@ pub fn collect_stale_frozen_path_deferrals() -> Vec<(String, String, &'static st
 /// states. The one non-refusing arm is the base ref resolving while the roster file is ABSENT from
 /// it — that is the change introducing the freeze, where "may only shrink" has nothing to shrink
 /// from; it is decidable, it is reachable exactly once, and every later PR sees the file at base.
+///
+/// WHAT THIS GATE CONSUMES, and the two forks it took to get here. `gunbc.diff_baseline` is the
+/// single authority for what a run compares against — it exists as "the de-fork of the origin/main
+/// policy-as-literal". This gate originally hardcoded `origin/main`, which is that fork at the
+/// SOURCE. The first repair deleted the literal but then imposed `merge-base(base, HEAD)` on every
+/// arm, which is the same fork one member over — at the RELATION. Both are the same underlying
+/// defect: consuming an untyped baseline STRING where the authority resolves a comparison WINDOW.
+/// So the carrier that crosses the seam is `FloorDiffComparisonReadout`: resolved base, resolved
+/// head, and the relation between them, with the mode as the discriminator so no consumer can pick
+/// a relation for itself.
 pub fn collect_frozen_path_deferral_additions() -> Result<Vec<String>, String> {
-    let base = std::env::var("GUNBC_CI_DIFF_BASE").unwrap_or_else(|_| "origin/main".to_string());
-    collect_frozen_path_deferral_additions_against(&base)
+    let comparison = floor_diff_comparison_readout().map_err(|reason| {
+        format!(
+            "WITNESS ADMISSION REFUSAL cause=FreezeBaselineUnresolved — the frozen path-deferral \
+             roster is a monotone debt contract and gunbc.diff_baseline could not resolve the \
+             comparison window this run is taken over, so growth cannot be ruled out. \
+             Could-not-resolve and permits-this are different states and this arm refuses rather \
+             than conflating them (it does NOT fall back to a constant ref — that fork is what \
+             this gate was repaired to delete). Resolver reason: {reason}"
+        )
+    })?;
+    collect_frozen_path_deferral_additions_for(&workspace_root(), &comparison)
 }
 
-/// The same gate against an explicit baseline — the grain the controls execute, so proving the
-/// git read path needs no environment mutation and no cross-test lock.
-pub fn collect_frozen_path_deferral_additions_against(base: &str) -> Result<Vec<String>, String> {
-    let root = workspace_root();
+/// THE COMPARISON WINDOW, as the seed sees it. Mirrors `FloorDiffComparisonReadout` arm for arm;
+/// the mode is a variant rather than a flag because it selects which commit the base side is read
+/// at, and a bool would let a caller forget to ask.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FreezeBaselineComparison {
+    /// Two-dot: the endpoints are compared directly. `PushBefore` and `ExactReplayBoundary` are
+    /// this, and for them the base is EXACT — imposing a merge base here is what passes real
+    /// growth on a rewritten push.
+    Direct {
+        base: String,
+        head: String,
+        kind: String,
+    },
+    /// Three-dot: the comparison is against the point the head departed the base from, so a base
+    /// that moves after the subject is fixed does not change the verdict.
+    MergeBase {
+        base: String,
+        head: String,
+        kind: String,
+    },
+}
+
+impl FreezeBaselineComparison {
+    fn base(&self) -> &str {
+        match self {
+            Self::Direct { base, .. } | Self::MergeBase { base, .. } => base,
+        }
+    }
+
+    fn head(&self) -> &str {
+        match self {
+            Self::Direct { head, .. } | Self::MergeBase { head, .. } => head,
+        }
+    }
+
+    fn kind(&self) -> &str {
+        match self {
+            Self::Direct { kind, .. } | Self::MergeBase { kind, .. } => kind,
+        }
+    }
+}
+
+/// The gate against an explicit repository root and an explicit comparison — the grain the controls
+/// execute, so every arm can be proven against a hermetic git history instead of being asserted
+/// about the live tree, whose history no test may author.
+pub fn collect_frozen_path_deferral_additions_for(
+    root: &std::path::Path,
+    comparison: &FreezeBaselineComparison,
+) -> Result<Vec<String>, String> {
     let run = |args: &[&str]| -> Result<std::process::Output, String> {
         std::process::Command::new("git")
             .args(args)
-            .current_dir(&root)
+            .current_dir(root)
             .output()
             .map_err(|e| format!("git {args:?}: {e}"))
     };
-    let commit = format!("{base}^{{commit}}");
-    let resolved = run(&["rev-parse", "--verify", "--quiet", &commit])?;
-    if !resolved.status.success() {
-        return Err(format!(
-            "WITNESS ADMISSION REFUSAL cause=FreezeBaselineUnobservable base={base} — the frozen \
-             path-deferral roster is a monotone debt contract and its baseline could not be read, \
-             so growth cannot be ruled out. Could-not-read and permits-this are different states \
-             and this arm refuses rather than conflating them. Fetch the base ref (git fetch \
-             origin main) or set GUNBC_CI_DIFF_BASE to a resolvable rev."
-        ));
+    let located = |msg: String| -> String {
+        format!(
+            "{msg} (comparison base={} head={} kind={} mode={})",
+            comparison.base(),
+            comparison.head(),
+            comparison.kind(),
+            match comparison {
+                FreezeBaselineComparison::Direct { .. } => "two-dot",
+                FreezeBaselineComparison::MergeBase { .. } => "merge-base",
+            }
+        )
+    };
+    let base = comparison.base();
+    let resolve = |rev: &str, role: &str| -> Result<String, String> {
+        let out = run(&[
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            &format!("{rev}^{{commit}}"),
+        ])?;
+        if !out.status.success() {
+            return Err(located(format!(
+                "WITNESS ADMISSION REFUSAL cause=FreezeBaselineUnobservable {role}={rev} — the \
+                 frozen path-deferral roster is a monotone debt contract and one endpoint of its \
+                 comparison could not be read, so growth cannot be ruled out. Could-not-read and \
+                 permits-this are different states and this arm refuses rather than conflating \
+                 them. Fetch the ref, or set GUNBC_CI_DIFF_BASE to a resolvable rev."
+            )));
+        }
+        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+    };
+    let base_commit = resolve(base, "base")?;
+    let head_commit = resolve(comparison.head(), "head")?;
+
+    // THE BASELINE COMMIT, and the whole content of the relation half: two-dot compares the exact
+    // base, merge-base compares the departure point. Choosing one for both is a fork of the
+    // authority's own decision, and the direction it fails matters — imposing merge-base on a
+    // two-dot arm passes growth (a fail-open), so this match may never grow a default.
+    let baseline_commit = match comparison {
+        FreezeBaselineComparison::Direct { .. } => base_commit,
+        FreezeBaselineComparison::MergeBase { .. } => {
+            let merge_base = run(&["merge-base", &base_commit, &head_commit])?;
+            if !merge_base.status.success() {
+                return Err(located(format!(
+                    "WITNESS ADMISSION REFUSAL cause=FreezeBaselineUnrelatedHistory base={base} — \
+                     this comparison is merge-base mode, so the roster is monotone against the \
+                     commit the head DEPARTED from, and git merge-base found no common ancestor. \
+                     No-common-ancestor and permits-this are different states and this arm refuses \
+                     rather than conflating them. (Under two-dot mode the same history is directly \
+                     comparable and does NOT reach here.)"
+                )));
+            }
+            let fork_point = String::from_utf8_lossy(&merge_base.stdout)
+                .trim()
+                .to_string();
+            if fork_point.is_empty() {
+                return Err(located(format!(
+                    "WITNESS ADMISSION REFUSAL cause=FreezeBaselineUnrelatedHistory base={base} — \
+                     git merge-base succeeded but named no commit, so the baseline is unobservable \
+                     and growth cannot be ruled out."
+                )));
+            }
+            fork_point
+        }
+    };
+
+    let base_keys = match read_frozen_roster_at_commit(&run, &baseline_commit).map_err(located)? {
+        Some(source) => frozen_path_deferral_keys_from_source(&source),
+        None => {
+            // CONFIRMED absent at a valid commit — not a failed read. This is the change that
+            // introduces the freeze, the one arm with no baseline to shrink from. Counted, never
+            // silent, and unreachable once the roster is on the base branch.
+            eprintln!(
+                "{} [freeze-monotonicity] {WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL} is confirmed \
+                 absent at baseline_commit={baseline_commit} (base={base}) — treating this change \
+                 as the freeze point",
+                floor_ts()
+            );
+            return Ok(Vec::new());
+        }
+    };
+
+    // THE CURRENT SIDE IS THE SELECTED HEAD, not an ambient one. Reading the live filesystem keeps
+    // an uncommitted local roster edit in scope (the check must catch a row added but not yet
+    // committed), so the coherence is established rather than assumed: the workspace must BE at the
+    // resolved head. An exact replay whose head is some other commit therefore refuses instead of
+    // silently answering about whatever happens to be checked out.
+    let checkout = run(&["rev-parse", "--verify", "--quiet", "HEAD^{commit}"])?;
+    let checkout_commit = String::from_utf8_lossy(&checkout.stdout).trim().to_string();
+    if !checkout.status.success() || checkout_commit != head_commit {
+        return Err(located(format!(
+            "WITNESS ADMISSION REFUSAL cause=FreezeHeadEndpointMismatch resolved_head={head_commit} \
+             checkout={checkout_commit} — the current side of this comparison is read from the \
+             working tree, and the working tree is not at the head the authority selected, so the \
+             roster it reports is not the roster of the subject under check. Answering about the \
+             checkout anyway would substitute one endpoint for another."
+        )));
     }
-    let spec = format!("{base}:{WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL}");
-    let shown = run(&["show", &spec])?;
-    if !shown.status.success() {
-        // Base resolves, path absent at base: the introducing change. Counted, never silent.
-        eprintln!(
-            "{} [freeze-monotonicity] {WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL} is absent at \
-             base={base} — treating this change as the freeze point (the only arm with no \
-             baseline to shrink from; unreachable once the roster is on the base branch)",
-            floor_ts()
-        );
-        return Ok(Vec::new());
-    }
-    let base_keys =
-        frozen_path_deferral_keys_from_source(&String::from_utf8_lossy(&shown.stdout).into_owned());
+    let current_source = std::fs::read_to_string(root.join(WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL))
+        .map_err(|e| {
+            located(format!(
+                "WITNESS ADMISSION REFUSAL cause=FreezeRosterUnreadable — the frozen path-deferral \
+                 roster {WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL} could not be read from the \
+                 repository under check, so growth cannot be ruled out: {e}"
+            ))
+        })?;
     Ok(frozen_path_deferral_additions_in(
-        frozen_path_deferral_keys(),
+        &frozen_path_deferral_keys_from_source(&current_source),
         &base_keys,
     ))
+}
+
+/// Read the roster at a commit, distinguishing CONFIRMED ABSENCE from FAILURE TO OBSERVE.
+///
+/// `git show <commit>:<path>` cannot tell those apart — it exits nonzero for a path that is not in
+/// the tree AND for an unreadable object, a broken repository, or an I/O failure — so treating its
+/// nonzero exit as "absent, therefore the introducing change" converts ignorance into permission
+/// and admits the entire current roster. `ls-tree` separates them: the command either succeeds (and
+/// its emptiness is a positive fact about the tree) or it does not (and that is ignorance).
+///
+/// `Ok(None)` therefore means "this commit is valid and does not contain the path". Every other
+/// unhappy path is an `Err`.
+fn read_frozen_roster_at_commit(
+    run: &dyn Fn(&[&str]) -> Result<std::process::Output, String>,
+    commit: &str,
+) -> Result<Option<String>, String> {
+    let listed = run(&[
+        "ls-tree",
+        "-z",
+        commit,
+        "--",
+        WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL,
+    ])?;
+    if !listed.status.success() {
+        return Err(format!(
+            "WITNESS ADMISSION REFUSAL cause=FreezeBaselineUnobservable commit={commit} — \
+             `git ls-tree` could not observe whether {WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL} \
+             exists at the baseline, so neither its presence nor its absence is established and \
+             growth cannot be ruled out: {}",
+            String::from_utf8_lossy(&listed.stderr).trim()
+        ));
+    }
+    if String::from_utf8_lossy(&listed.stdout).trim().is_empty() {
+        return Ok(None);
+    }
+    let spec = format!("{commit}:{WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL}");
+    let shown = run(&["show", &spec])?;
+    if !shown.status.success() {
+        // ls-tree says the path IS there, so a failed blob read is a real failure, never absence.
+        return Err(format!(
+            "WITNESS ADMISSION REFUSAL cause=FreezeBaselineUnobservable commit={commit} — \
+             {WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL} is present at the baseline per ls-tree but \
+             its blob could not be read, so the baseline population is unknown: {}",
+            String::from_utf8_lossy(&shown.stderr).trim()
+        ));
+    }
+    Ok(Some(String::from_utf8_lossy(&shown.stdout).into_owned()))
 }
 
 /// The pure fold the gate is built from — the grain the fixture controls plant into.
@@ -19257,6 +19449,92 @@ fn floor_git_diff_range() -> Result<String, String> {
 /// interesting case is precisely a base that names the head commit itself. Failure to
 /// read it is not fatal here — the diagnostic degrades to an unnamed baseline and says
 /// so, rather than suppressing the state.
+/// Read the resolved COMPARISON WINDOW — base, head and relation — from
+/// `v2.workflow.floor_diff_observe` `floor_observe_diff_comparison_readout_for_ci`. A projection of
+/// `resolve_diff_baseline`, never a second derivation.
+///
+/// Distinct from `floor_diff_baseline_readout` beside it, and the distinction is the point: that one
+/// answers "which ref" for a diagnostic, and a DECIDING consumer that takes it has to invent the
+/// missing head and relation. Inventing them is what shipped the merge-base-on-every-arm fail-open,
+/// so the deciding consumers read this one and a `ComparisonReadoutRefused` propagates.
+fn floor_diff_comparison_readout() -> Result<FreezeBaselineComparison, String> {
+    use v1_interpreter::Value;
+    let roots = default_source_roots();
+    let entry = "src/v2/workflow/floor_diff_observe.dag";
+    let (graph, indices) = resolve_entry_graph_shared(&roots, entry)
+        .map_err(|e| format!("floor_diff_observe resolve: {e}"))?;
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+    let result =
+        v1_interpreter::run_in_context(&ctx, "floor_observe_diff_comparison_readout_for_ci", false)
+            .map_err(|e| format!("floor_observe_diff_comparison_readout_for_ci: {e}"))?;
+    let str_field = |fields: &_, name: &str| -> Result<String, String> {
+        match ctx.field(fields, name) {
+            Some(Value::Str(s)) => Ok(s.clone()),
+            _ => Err(format!("comparison readout missing `{name}`")),
+        }
+    };
+    // The baseline KIND is a closed coproduct in `gunbc.diff_baseline`, so an unrecognized arm is an
+    // unmodeled state rather than a formatting question: it refuses instead of rendering a guess.
+    let kind_name = |fields: &_| -> Result<String, String> {
+        match ctx.field(fields, "kind") {
+            Some(Value::Variant { variant_name, .. }) => {
+                for name in [
+                    "MergeTargetBaseline",
+                    "ExactReplayBaseline",
+                    "PushBeforeBaseline",
+                    "PushParentBaseline",
+                    "OperatorOverrideBaseline",
+                ] {
+                    if ctx.sym_eq(*variant_name, name) {
+                        return Ok(name.to_string());
+                    }
+                }
+                Err("comparison readout carries an unmodeled DiffBaselineKind arm".to_string())
+            }
+            _ => Err("comparison readout missing `kind`".to_string()),
+        }
+    };
+    match &result {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "DirectComparison") => {
+            Ok(FreezeBaselineComparison::Direct {
+                base: str_field(fields, "base")?,
+                head: str_field(fields, "head")?,
+                kind: kind_name(fields)?,
+            })
+        }
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "MergeBaseComparison") => {
+            Ok(FreezeBaselineComparison::MergeBase {
+                base: str_field(fields, "base")?,
+                head: str_field(fields, "head")?,
+                kind: kind_name(fields)?,
+            })
+        }
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "ComparisonReadoutRefused") => {
+            match ctx.field(fields, "reason") {
+                Some(Value::Str(r)) => Err(r.clone()),
+                _ => Err("comparison readout refused (no reason)".to_string()),
+            }
+        }
+        other => Err(format!(
+            "floor_observe_diff_comparison_readout_for_ci returned `{}`, expected \
+             FloorDiffComparisonReadout",
+            ctx.format_value(other)
+        )),
+    }
+}
+
 fn floor_diff_baseline_readout() -> Result<(String, String), String> {
     use v1_interpreter::Value;
     let roots = default_source_roots();
@@ -24732,8 +25010,15 @@ mod node_frontier_plumbing_controls {
     fn frozen_roster_monotonicity_reads_a_real_baseline() {
         let ws = workspace_root();
         std::env::set_current_dir(&ws).expect("chdir workspace");
-        let additions = super::collect_frozen_path_deferral_additions_against("HEAD")
-            .expect("HEAD baseline is readable");
+        let additions = super::collect_frozen_path_deferral_additions_for(
+            &ws,
+            &super::FreezeBaselineComparison::Direct {
+                base: "HEAD".to_string(),
+                head: "HEAD".to_string(),
+                kind: "PushBeforeBaseline".to_string(),
+            },
+        )
+        .expect("HEAD baseline is readable");
         assert!(
             additions.is_empty(),
             "the roster cannot have grown against itself: {additions:?}"
@@ -24858,11 +25143,467 @@ mod node_frontier_plumbing_controls {
     fn frozen_roster_monotonicity_refuses_an_unresolvable_baseline() {
         let ws = workspace_root();
         std::env::set_current_dir(&ws).expect("chdir workspace");
-        let err = super::collect_frozen_path_deferral_additions_against(
-            "refs/heads/no-such-baseline-for-freeze",
+        let err = super::collect_frozen_path_deferral_additions_for(
+            &ws,
+            &super::FreezeBaselineComparison::Direct {
+                base: "refs/heads/no-such-baseline-for-freeze".to_string(),
+                head: "HEAD".to_string(),
+                kind: "PushBeforeBaseline".to_string(),
+            },
         )
         .expect_err("an unresolvable baseline must refuse");
-        assert!(err.contains("FreezeBaselineUnobservable"));
+        assert!(err.contains("FreezeBaselineUnobservable"), "{err}");
+    }
+
+    // ONE HISTORY BUILDER for every comparison-window control below. Each case needs a real git
+    // history — the defects being walled are about WHICH COMMIT gets read, which no pure fixture
+    // can reach — so the shape is authored once and each test plants its own topology into it.
+    struct FreezeRepo {
+        dir: std::path::PathBuf,
+    }
+
+    impl Drop for FreezeRepo {
+        fn drop(&mut self) {
+            std::fs::remove_dir_all(&self.dir).ok();
+        }
+    }
+
+    impl FreezeRepo {
+        fn new(tag: &str) -> Self {
+            let dir = std::env::temp_dir().join(format!(
+                "gunbc-freeze-{tag}-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .expect("clock")
+                    .as_nanos()
+            ));
+            std::fs::create_dir_all(
+                dir.join(super::WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL)
+                    .parent()
+                    .expect("roster parent"),
+            )
+            .expect("mkdir fixture");
+            let repo = FreezeRepo { dir };
+            repo.git(&["init", "--quiet", "--initial-branch", "main", "."]);
+            repo.git(&["config", "user.email", "fixture@gunbc.invalid"]);
+            repo.git(&["config", "user.name", "fixture"]);
+            repo
+        }
+
+        fn git(&self, args: &[&str]) -> String {
+            let out = std::process::Command::new("git")
+                .args(args)
+                .current_dir(&self.dir)
+                .output()
+                .unwrap_or_else(|e| panic!("git {args:?}: {e}"));
+            assert!(
+                out.status.success(),
+                "git {args:?}: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        }
+
+        /// Write the roster carrying exactly these identities. Absent-roster states are modelled by
+        /// deleting the file, never by writing an empty one — the gate distinguishes them.
+        fn write_roster(&self, rows: &[&str]) {
+            let body: String = rows
+                .iter()
+                .map(|r| {
+                    format!(
+                        "  FrozenPathDeferral {{ entry: \"{r}_test.dag\", functions: \
+                         [\"{r}_holds\"] }},\n"
+                    )
+                })
+                .collect();
+            std::fs::write(
+                self.dir.join(super::WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL),
+                format!(
+                    "module gunbc.witness_deferral_freeze\n\n\
+                     data frozen_path_deferrals: List<FrozenPathDeferral> = [\n{body}]\n"
+                ),
+            )
+            .expect("write roster");
+        }
+
+        fn commit(&self, message: &str) -> String {
+            self.git(&["add", "-A"]);
+            self.git(&["commit", "--quiet", "--allow-empty", "-m", message]);
+            self.git(&["rev-parse", "HEAD"])
+        }
+
+        fn direct(&self, base: &str, head: &str) -> super::FreezeBaselineComparison {
+            super::FreezeBaselineComparison::Direct {
+                base: base.to_string(),
+                head: head.to_string(),
+                kind: "PushBeforeBaseline".to_string(),
+            }
+        }
+
+        fn merge_base(&self, base: &str, head: &str) -> super::FreezeBaselineComparison {
+            super::FreezeBaselineComparison::MergeBase {
+                base: base.to_string(),
+                head: head.to_string(),
+                kind: "MergeTargetBaseline".to_string(),
+            }
+        }
+
+        fn collect(
+            &self,
+            comparison: &super::FreezeBaselineComparison,
+        ) -> Result<Vec<String>, String> {
+            super::collect_frozen_path_deferral_additions_for(&self.dir, comparison)
+        }
+    }
+
+    // CONTROL 1 — ordinary push whose `before` IS an ancestor. Two-dot reads the exact base, so a
+    // row this push adds is caught and an unchanged roster passes. This is the common case and it
+    // must not depend on the base being anywhere in particular relative to head.
+    #[test]
+    fn frozen_roster_direct_push_uses_the_exact_base() {
+        let repo = FreezeRepo::new("direct-ancestor");
+        repo.write_roster(&["inherited"]);
+        let before = repo.commit("push before");
+        repo.write_roster(&["inherited"]);
+        repo.commit("pushed head: roster untouched");
+        assert!(
+            repo.collect(&repo.direct(&before, "HEAD"))
+                .expect("readable")
+                .is_empty(),
+            "an unchanged roster must not read as growth"
+        );
+
+        repo.write_roster(&["inherited", "added_by_this_push"]);
+        repo.commit("pushed head: adds a row");
+        assert_eq!(
+            repo.collect(&repo.direct(&before, "HEAD"))
+                .expect("readable"),
+            vec!["added_by_this_push_test.dag::added_by_this_push_holds".to_string()],
+            "a row this push adds must be caught against the exact before SHA"
+        );
+    }
+
+    // CONTROL 2 — THE BLOCKING FALSE NEGATIVE the first cut of this repair shipped. A rewritten
+    // (non-fast-forward) push: `before` is NOT an ancestor of the pushed head, and the push
+    // REINTRODUCES a frozen row that `before` had removed.
+    //
+    //   A: roster = {X}
+    //   ├── B: push.before, roster = {}
+    //   └── H: pushed head, roster = {X}
+    //
+    // The repository's push-baseline law is `before .. head`, two-dot, and it explicitly holds for
+    // non-ancestor force pushes: the endpoint trees stay directly comparable. So the true answer is
+    // roster(H) - roster(B) = {X} and this must REFUSE. Imposing merge-base computes
+    // roster(H) - roster(A) = {} and passes real growth — a fail-open strictly worse than the
+    // false refusal the repair set out to fix. Both are asserted, so a regression in either
+    // direction is red.
+    #[test]
+    fn frozen_roster_non_fast_forward_push_refuses_reintroduced_row() {
+        let repo = FreezeRepo::new("force-push");
+        repo.write_roster(&["reintroduced"]);
+        let ancestor = repo.commit("A: row present");
+
+        repo.write_roster(&[]);
+        let before = repo.commit("B: push before — row removed");
+
+        repo.git(&["checkout", "--quiet", "-b", "rewritten", &ancestor]);
+        repo.write_roster(&["reintroduced"]);
+        let head = repo.commit("H: rewritten push reintroduces the row");
+
+        assert_eq!(
+            repo.git(&["merge-base", &before, &head]),
+            ancestor,
+            "the fixture must actually be non-fast-forward: before is not an ancestor of head"
+        );
+
+        let additions = repo
+            .collect(&repo.direct(&before, "HEAD"))
+            .expect("readable");
+        assert_eq!(
+            additions,
+            vec!["reintroduced_test.dag::reintroduced_holds".to_string()],
+            "a two-dot push comparison must read the EXACT before SHA; reading the common ancestor \
+             instead passes a genuinely reintroduced frozen row"
+        );
+        super::refuse_frozen_path_deferral_additions(&additions)
+            .expect_err("reintroduced growth must refuse");
+
+        // The merge-base reading of the same history is the fail-open, asserted so the contrast is
+        // executed rather than argued: it reports nothing added.
+        assert!(
+            repo.collect(&repo.merge_base(&before, "HEAD"))
+                .expect("readable")
+                .is_empty(),
+            "this is the state the blanket merge-base rule produced — kept as the executed contrast"
+        );
+    }
+
+    // CONTROL 3 — THE INCIDENT, and the case merge-base mode exists for. gunbc main went red on
+    // 2026-08-06 because the gate read the roster at a MOVING BASE TIP: `177e0725` merged carrying
+    // a row, `82914f2` removed it from main four minutes later, and the floor run — queued behind
+    // ~6h of runner backlog — compared the older commit's unchanged roster against a tip that no
+    // longer had the row, reporting `FrozenPathDeferralGrew` for a change that added nothing.
+    //
+    // Under merge-base mode the moved tip does not change the verdict, and a row the subject
+    // genuinely adds is still caught. Both are asserted.
+    #[test]
+    fn frozen_roster_merge_base_mode_survives_a_moved_base_tip() {
+        let repo = FreezeRepo::new("moved-tip");
+        repo.write_roster(&["inherited", "other"]);
+        let fork_point = repo.commit("fork point: row present");
+
+        repo.git(&["checkout", "--quiet", "-b", "under-check"]);
+        repo.commit("under check: roster untouched");
+
+        repo.git(&["checkout", "--quiet", "main"]);
+        repo.write_roster(&["other"]);
+        let moved_tip = repo.commit("base advances: row removed");
+        repo.git(&["checkout", "--quiet", "under-check"]);
+        assert_ne!(
+            fork_point, moved_tip,
+            "the base tip must actually have moved"
+        );
+
+        assert!(
+            repo.collect(&repo.merge_base(&moved_tip, "HEAD"))
+                .expect("readable")
+                .is_empty(),
+            "a subject that added no freeze row must not refuse because the base tip moved past it"
+        );
+
+        // Reading that same base directly IS the incident, asserted so this fixture keeps modelling
+        // it: the inherited row reads as an addition.
+        assert_eq!(
+            repo.collect(&repo.direct(&moved_tip, "HEAD"))
+                .expect("readable"),
+            vec!["inherited_test.dag::inherited_holds".to_string()],
+            "the fixture must still reproduce the incident under a direct read of the moved tip"
+        );
+
+        repo.write_roster(&["inherited", "other", "genuinely_new"]);
+        repo.commit("under check: adds a row");
+        assert_eq!(
+            repo.collect(&repo.merge_base(&moved_tip, "HEAD"))
+                .expect("readable"),
+            vec!["genuinely_new_test.dag::genuinely_new_holds".to_string()],
+            "merge-base mode must still catch a real addition"
+        );
+    }
+
+    // CONTROL 4 — the same moved-tip topology in the shape a `pull_request` run actually presents:
+    // the checkout is a synthetic merge commit joining the PR head to the base tip, not the raw
+    // branch head. The merge commit descends BOTH parents, so the fork point is the base tip
+    // itself and an inherited row cannot read as an addition.
+    #[test]
+    fn frozen_roster_merge_base_mode_handles_the_pr_merge_commit_topology() {
+        let repo = FreezeRepo::new("pr-merge-commit");
+        repo.write_roster(&["inherited"]);
+        repo.commit("fork point");
+
+        repo.git(&["checkout", "--quiet", "-b", "pr-head"]);
+        repo.commit("pr work");
+
+        repo.git(&["checkout", "--quiet", "main"]);
+        repo.write_roster(&[]);
+        let base_tip = repo.commit("base advances: row removed");
+
+        // GitHub's `github.sha` for a pull_request event is this merge commit, not `pr-head`.
+        repo.git(&["checkout", "--quiet", "-b", "pr-merge", "pr-head"]);
+        repo.git(&["merge", "--quiet", "--no-edit", &base_tip]);
+        let merged = repo.git(&["rev-parse", "HEAD"]);
+        assert_eq!(
+            repo.git(&["merge-base", &base_tip, &merged]),
+            base_tip,
+            "the merge commit must descend the base tip"
+        );
+
+        // The merge resolved the roster to the base tip's version (row removed), so nothing was
+        // added; the subject's own additions are what must still be caught.
+        assert!(
+            repo.collect(&repo.merge_base(&base_tip, "HEAD"))
+                .expect("readable")
+                .is_empty(),
+            "the merge-commit topology must not manufacture an addition"
+        );
+
+        repo.write_roster(&["added_on_the_pr"]);
+        repo.commit("pr adds a frozen row");
+        assert_eq!(
+            repo.collect(&repo.merge_base(&base_tip, "HEAD"))
+                .expect("readable"),
+            vec!["added_on_the_pr_test.dag::added_on_the_pr_holds".to_string()],
+            "a row added on the PR must be caught against the merge-commit topology"
+        );
+    }
+
+    // CONTROL 5/6 — unrelated histories are ignorance under MERGE-BASE mode (no departure point
+    // exists, so refuse) and are perfectly comparable under DIRECT mode (two trees, two rosters, a
+    // set difference). One history, both modes, opposite verdicts — which is the whole content of
+    // "the rule is per comparison mode, not universal".
+    #[test]
+    fn frozen_roster_unrelated_history_refuses_only_under_merge_base_mode() {
+        let repo = FreezeRepo::new("unrelated");
+        // `main` must carry a commit before an orphan branch is cut, or there is no branch to
+        // return to — a fresh repository has no `main` until something lands on it.
+        repo.write_roster(&["only_on_main"]);
+        repo.commit("main root");
+
+        repo.git(&["checkout", "--quiet", "--orphan", "orphan"]);
+        repo.write_roster(&["only_on_the_orphan"]);
+        let orphan_root = repo.commit("orphan root");
+        repo.git(&["checkout", "--quiet", "main"]);
+        assert!(
+            std::process::Command::new("git")
+                .args(["merge-base", &orphan_root, "HEAD"])
+                .current_dir(&repo.dir)
+                .output()
+                .expect("git merge-base")
+                .stdout
+                .is_empty(),
+            "the fixture must actually be two unrelated histories"
+        );
+
+        let err = repo
+            .collect(&repo.merge_base(&orphan_root, "HEAD"))
+            .expect_err("merge-base mode has no departure point here and must refuse");
+        assert!(err.contains("FreezeBaselineUnrelatedHistory"), "{err}");
+
+        let additions = repo
+            .collect(&repo.direct(&orphan_root, "HEAD"))
+            .expect("direct mode compares the endpoint trees and needs no common ancestor");
+        assert_eq!(
+            additions,
+            vec!["only_on_main_test.dag::only_on_main_holds".to_string()],
+            "direct mode must compare the exact endpoints rather than refusing"
+        );
+    }
+
+    // CONTROL 7 — the freeze-introduction arm. CONFIRMED absence of the roster at a valid commit is
+    // the one permitting arm, because a change that introduces the freeze has nothing to shrink
+    // from. Paired with control 7b below, which holds the permitting arm fixed and moves only the
+    // reason the roster could not be read.
+    #[test]
+    fn frozen_roster_confirmed_absence_is_the_freeze_introduction_arm() {
+        let repo = FreezeRepo::new("introduction");
+        std::fs::write(repo.dir.join("unrelated.txt"), "no roster yet\n").expect("write");
+        let before_the_freeze = repo.commit("a commit with no roster at all");
+
+        repo.write_roster(&["first_frozen_row"]);
+        repo.commit("the change that introduces the freeze");
+
+        assert!(
+            repo.collect(&repo.direct(&before_the_freeze, "HEAD"))
+                .expect("confirmed absence is readable")
+                .is_empty(),
+            "the introducing change has no baseline to shrink from and must pass"
+        );
+
+        // A baseline that does not resolve at all is ignorance, not the introducing change. This
+        // arm is caught by the endpoint resolve, one guard earlier than the roster read — stated
+        // so the two are not confused for each other.
+        let err = repo
+            .collect(&repo.direct("0000000000000000000000000000000000000000", "HEAD"))
+            .expect_err("an unresolvable baseline must refuse, never read as absence");
+        assert!(err.contains("FreezeBaselineUnobservable"), "{err}");
+    }
+
+    // CONTROL 7b — THE ABSENCE/IGNORANCE SPLIT, at the only grain that actually discriminates it.
+    //
+    // This control exists because its first version did not. That version asked the question with
+    // an all-zero SHA, which `rev-parse` rejects one guard earlier, so it proved the endpoint
+    // resolve while its name claimed it proved the roster read: reverting the `ls-tree` split left
+    // it GREEN. A control whose name outruns its evidence is the same defect as a status row
+    // claiming a rung it does not occupy, and the sweep that reverts each wall in turn is what
+    // caught it.
+    //
+    // The discriminating state is a commit that RESOLVES, whose tree LISTS the roster, and whose
+    // blob cannot be read. `git show` exits nonzero there — identically to a path that is genuinely
+    // absent — so deciding absence from that exit code permits, and permitting means admitting the
+    // ENTIRE current roster on an unreadable repository. `ls-tree` separates them: it answers about
+    // the tree, so its success plus an empty result is a positive fact, and a failed blob read
+    // afterwards is unambiguously a failure rather than an absence.
+    #[test]
+    fn frozen_roster_unreadable_baseline_blob_refuses_instead_of_reading_as_absence() {
+        let repo = FreezeRepo::new("unreadable-blob");
+        repo.write_roster(&["already_frozen"]);
+        let baseline = repo.commit("baseline carrying the roster");
+        repo.write_roster(&["already_frozen", "added_here"]);
+        repo.commit("head adds a row");
+
+        // Destroy only the baseline's roster BLOB. The commit and tree objects survive, so the
+        // repository still resolves the endpoint and still lists the path.
+        let blob = repo.git(&[
+            "rev-parse",
+            &format!(
+                "{baseline}:{}",
+                super::WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL
+            ),
+        ]);
+        let object = repo
+            .dir
+            .join(".git/objects")
+            .join(&blob[..2])
+            .join(&blob[2..]);
+        std::fs::remove_file(&object).expect("remove the baseline roster blob");
+
+        // The fixture must actually reach the wall: endpoint resolves, tree lists the path, blob
+        // read fails. Asserted, so this cannot quietly degrade into testing an earlier guard the
+        // way its predecessor did.
+        assert!(
+            std::process::Command::new("git")
+                .args([
+                    "ls-tree",
+                    "-z",
+                    &baseline,
+                    "--",
+                    super::WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL
+                ])
+                .current_dir(&repo.dir)
+                .output()
+                .expect("git ls-tree")
+                .status
+                .success(),
+            "the fixture must still LIST the path at the baseline"
+        );
+        assert!(
+            !std::process::Command::new("git")
+                .args([
+                    "show",
+                    &format!(
+                        "{baseline}:{}",
+                        super::WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL
+                    )
+                ])
+                .current_dir(&repo.dir)
+                .output()
+                .expect("git show")
+                .status
+                .success(),
+            "the fixture must make the blob unreadable, else this control proves nothing"
+        );
+
+        let err = repo
+            .collect(&repo.direct(&baseline, "HEAD"))
+            .expect_err("an unreadable baseline roster is ignorance and must refuse");
+        assert!(err.contains("FreezeBaselineUnobservable"), "{err}");
+    }
+
+    // The current side is the SELECTED head, not whatever is checked out. An exact replay whose
+    // head is a different commit cannot be answered from this working tree, so it refuses rather
+    // than silently substituting one endpoint for another.
+    #[test]
+    fn frozen_roster_refuses_when_the_checkout_is_not_the_selected_head() {
+        let repo = FreezeRepo::new("endpoint-mismatch");
+        repo.write_roster(&["row"]);
+        let first = repo.commit("first");
+        repo.write_roster(&["row"]);
+        repo.commit("second — the checkout");
+
+        let err = repo
+            .collect(&repo.direct(&first, &first))
+            .expect_err("a head that is not the checkout must refuse");
+        assert!(err.contains("FreezeHeadEndpointMismatch"), "{err}");
     }
 
     #[test]
@@ -34759,6 +35500,34 @@ mod witness_layer_roots_compile_clean_tests {
     use std::sync::Mutex;
 
     static ENV_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    // THE PUBLIC ENTRY POINT, which every planted-history control deliberately bypasses in order
+    // to reach a topology it authored. This one enters through
+    // `collect_frozen_path_deferral_additions()` so the modeled seam — resolve
+    // `floor_observe_diff_comparison_readout_for_ci`, project base/head/mode/kind, cross into the
+    // seed — is proven to execute end to end, which is the half no fixture can establish. It lives
+    // in this module because it mutates the environment the resolver reads, and this is where that
+    // mutation is serialized against other tests.
+    //
+    // `GUNBC_CI_DIFF_BASE` selects the OperatorOverride arm whatever the ambient CI event is, so the
+    // control is deterministic on a runner and on a laptop alike; pointed at HEAD, the live roster
+    // is compared against itself and cannot have grown.
+    #[test]
+    fn frozen_roster_public_entry_resolves_the_modeled_comparison() {
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                let _base = EnvGuard::set("GUNBC_CI_DIFF_BASE", "HEAD");
+                let _window = EnvGuard::remove("GUNBC_DIFF_WINDOW_PATH");
+                let additions = crate::cli_run::collect_frozen_path_deferral_additions()
+                    .expect("the modeled comparison readout must resolve and the gate must run");
+                assert!(
+                    additions.is_empty(),
+                    "the live roster cannot have grown against itself through the public entry: \
+                     {additions:?}"
+                );
+            });
+        });
+    }
 
     fn with_env_test_lock<F: FnOnce()>(f: F) {
         let _guard = ENV_TEST_LOCK

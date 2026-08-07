@@ -76,6 +76,8 @@ data ci_heal_skew_conflicts_var: String = "CONFLICTS"
 
 data ci_heal_skew_authored_conflicts_var: String = "AUTHORED_CONFLICTS"
 
+data ci_heal_skew_still_unmerged_var: String = "STILL_UNMERGED"
+
 data ci_heal_skew_commit_author_name: String = "gunbc-ci-auto-heal"
 
 data ci_heal_skew_commit_author_email: String = "gunbc-ci-auto-heal@users.noreply.github.com"
@@ -302,6 +304,52 @@ fn ci_heal_skew_authored_conflict_refusal() -> Pipeline {
   }
 }
 
+data ci_heal_skew_unmerged_index_refusal_note: String = "THE COMMIT STEP IS GATED ON A FRESH POST-RESOLVE UNMERGED READ, NOT ON THE PRE-RESOLVE CONFLICTS BINDING. gunbc#7821 committed a real merge with <<<<<<< markers still in the tree; gunbc#7870 committed provisional ours bytes through an index the merge=generated-artifact driver had deliberately left unmerged. Both are the same class: a writer that reaches `git commit` without independently confirming the index it is about to commit carries zero unmerged stages. `ci_heal_skew_conflicts_bind` and the resolve steps above already narrow to exactly the registered-generated-artifact conflicts and refuse loudly if a checkout/add fails (ci_heal_skew_resolve_note), so this re-check is deliberately redundant with them rather than a replacement — CONFLICTS is a snapshot taken before resolution ran, and the ONLY fact `git commit` may trust is `git diff --diff-filter=U` read again, immediately before the write. Nonempty here means the resolve steps did not actually clear every unmerged stage — for any reason, including one this module does not yet know to name — and the writer refuses rather than committing whatever the index happens to hold, per gunbc.commit_workflow commit_writer_unmerged_index_refusals_at, DESIGN §5."
+
+data ci_heal_skew_admission_check_note: String = "THE COMMIT WRITER ADMISSION AUTHORITY RUNS BEFORE THIS JOB WRITES, NOT AFTER. gunbc.commit_workflow admit_commit_writer is the one refusal authority for every commit writer (commit_writer_admission_note); ci_heal_skew_conflict_arm is the CommitWriterHealSkewConflictArm binding site named in commit_writer_binding_work. This step invokes it through the same explicit actuator DESIGN.md documents (`gunbc run --entry <file> --function <fn>`) rather than a bespoke subcommand — the fold decodes the real staged index, reads each blob, classifies it against module_storage, and calls admit_commit_writer; a nonzero exit here fails the pipeline closed (FailFast) before the commit step below ever runs, so a HealAutocommit write can no longer reach `git commit` past a refusal admit_commit_writer would have raised."
+
+fn ci_heal_skew_admission_check_argv() -> List<String> {
+  [
+    "\"$(git rev-parse --show-toplevel 2>/dev/null || pwd)/target/release/gunbc\"", "run",
+    "--source-root", "dag",
+    "--source-root", "src/v2",
+    "--entry", "dag/gunbc/commit_workflow.dag",
+    "--function", "heal_admit"
+  ]
+}
+
+fn ci_heal_skew_admission_check_step() -> PipelineStep {
+  Do {
+    run: Run {
+      command: ci_heal_skew_shell_line(argv: ci_heal_skew_admission_check_argv()),
+      env: [],
+      redirect: Absent,
+      capture: Absent
+    }
+  }
+}
+
+fn ci_heal_skew_still_unmerged_bind() -> PipelineStep {
+  ci_heal_skew_git_cmdsubst_bind(
+    var_name: ci_heal_skew_still_unmerged_var,
+    args: shape_git_diff_unmerged_args()
+  )
+}
+
+fn ci_heal_skew_unmerged_index_refusal() -> Pipeline {
+  Pipeline {
+    steps: [
+      ci_heal_skew_diag(text: "heal refused: the index still carries unmerged stages after resolution; refusing to commit"),
+      ci_heal_skew_diag(text: "  still-unmerged paths:"),
+      ci_heal_skew_diag_list(var_name: ci_heal_skew_still_unmerged_var),
+      ci_heal_skew_diag(text: "  a commit over an unmerged index is never fabricated; this job will not guess."),
+      ci_heal_skew_git_step(argv: shape_git_merge_abort_argv()),
+      Exit { status: "1" }
+    ],
+    on_failure: FailFast
+  }
+}
+
 fn ci_heal_skew_conflict_arm() -> Pipeline {
   Pipeline {
     steps: [
@@ -316,6 +364,14 @@ fn ci_heal_skew_conflict_arm() -> Pipeline {
       ci_heal_skew_diag_list(var_name: ci_heal_skew_conflicts_var),
       ci_heal_skew_resolve_step(sink_argv: shape_git_checkout_ours_argv()),
       ci_heal_skew_resolve_step(sink_argv: shape_git_add_argv()),
+      ci_heal_skew_still_unmerged_bind(),
+      If {
+        cond: StrNonempty { operand: concat("\"$", concat(ci_heal_skew_still_unmerged_var, "\"")) },
+        then_: ci_heal_skew_unmerged_index_refusal(),
+        else_: Absent
+      },
+      ci_heal_skew_diag(text: "heal: admitting the staged commit writer via gunbc.commit_workflow admit_commit_writer before writing"),
+      ci_heal_skew_admission_check_step(),
       Do {
         run: ci_heal_skew_git_run_redirected(
           argv: shape_git_commit_no_verify_no_edit_argv(),

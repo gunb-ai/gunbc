@@ -1,0 +1,208 @@
+module gunbc.compile_pool_ensure
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.measure { ByteSize, byte_size_count }
+import std.disposition { Disposition, SingleAuthority }
+import gunbc.host_layout { gunbc_managed_compile_pool_slice }
+import gunbc.build_cache_unit { render_compile_pool_slice }
+import gunbc.host_compile_pool {
+  CompilePoolObservation,
+  CompilePoolSliceObserved,
+  CompilePoolSliceAbsent,
+  CompilePoolObservationUnavailable,
+}
+import gunbc.fleet_host_budget {
+  CompilePoolPlacement,
+  CompilePoolSliceDeclared,
+  CompilePoolInRunnerSlots,
+  CompilePoolResolution,
+  CompilePoolDerived,
+  CompilePoolUnresolved,
+}
+import gunbc.build_cache_instance {
+  BuildCacheServerPlacement,
+  ServerManagedUnitOwned,
+  ServerRunnerOwned,
+  ServerUnsupervised,
+  ServerPlacementAbsent,
+  ServerPlacementUnknown,
+  CgroupMemoryLimits,
+  EndpointObservationUnavailableReason,
+  unavailable_reason_detail,
+}
+
+data compile_pool_ensure_scope_disposition: Disposition = SingleAuthority
+
+data ensure_is_idempotent_note: String = "THE COMPILE-POOL SLICE IS A RECONCILE TARGET, NOT AN INSTALL-ON-EVERY-PASS MUTATION. A slice whose memory.max and memory.high already match the derived pool size is EnsureAlreadyConverged — writing the unit again would churn systemd and risk a brief cgroup reset while cache-miss compilers are the slice's children. The admission therefore compares OBSERVED limits against the sizing authority before emitting lines, exactly as build_cache_ensure consults placement before rendering a cache unit."
+
+type CompilePoolEnsureRefusal
+  = EnsurePoolTopologyUndeclared { detail: NonEmptyStr }
+  | EnsurePoolSizingUnresolved { detail: NonEmptyStr }
+  | EnsureCachePlacementUnknown { detail: NonEmptyStr }
+  | EnsurePoolSliceUnobservable { detail: NonEmptyStr }
+  | EnsurePoolSliceNamedDoesNotMatch { declared: NonEmptyStr, observed: NonEmptyStr }
+
+type EnsureCompilePoolAdmission
+  = EnsureCompilePoolAlreadyConverged { slice_unit: NonEmptyStr, sized_bytes: ByteSize }
+  | EnsureCompilePoolAdmitted { slice_unit: NonEmptyStr, sized_bytes: ByteSize, slice_lines: List<String> }
+  | EnsureCompilePoolRefused { reason: CompilePoolEnsureRefusal }
+
+data cache_placement_unknown_refuses_note: String = "A SERVER WHOSE PLACEMENT CANNOT BE ESTABLISHED IS NOT A CONVERGED SERVER, and ensuring a compile pool beside it would be deciding to parent every cache-miss compiler under a slice whose sibling cache endpoint may still be runner-owned or unread. ServerPlacementUnknown therefore refuses BEFORE slice observation is consulted — the same ordering build_cache_ensure uses for placement-unknown before path state, and for the same reason: unknown is not a positive reading that permits host mutation."
+
+type EnsureCompilePoolAdmissionFold<R> {
+  already_converged: fn(NonEmptyStr, ByteSize) -> R
+  admitted: fn(NonEmptyStr, ByteSize, List<String>) -> R
+  refused: fn(CompilePoolEnsureRefusal) -> R
+}
+
+fn ensure_compile_pool_admission_fold<R>(
+  admission: EnsureCompilePoolAdmission,
+  fold: EnsureCompilePoolAdmissionFold<R>,
+) -> R {
+  match admission {
+    EnsureCompilePoolAlreadyConverged { slice_unit: u, sized_bytes: b } =>
+      fold.already_converged(u, b)
+    EnsureCompilePoolAdmitted { slice_unit: u, sized_bytes: b, slice_lines: lines } =>
+      fold.admitted(u, b, lines)
+    EnsureCompilePoolRefused { reason: r } => fold.refused(r)
+  }
+}
+
+fn slice_limits_match_declared(limits: CgroupMemoryLimits, required: ByteSize) -> Bool {
+  (byte_size_count(b: limits.memory_max) == byte_size_count(b: required))
+    && (byte_size_count(b: limits.memory_high) == byte_size_count(b: required))
+}
+
+fn slice_already_converged(
+  observed: CompilePoolObservation,
+  declared: NonEmptyStr,
+  required: ByteSize,
+) -> Bool {
+  match observed {
+    CompilePoolSliceObserved { slice_unit: u, limits: lim } =>
+      ((u as String) == (declared as String)) && slice_limits_match_declared(limits: lim, required: required)
+    CompilePoolSliceAbsent { slice_unit: _ } => false
+    CompilePoolObservationUnavailable { reason: _ } => false
+  }
+}
+
+fn ensure_compile_pool_slice_from_observation(
+  declared: String,
+  sized: ByteSize,
+  observed: CompilePoolObservation,
+) -> EnsureCompilePoolAdmission {
+  match slice_already_converged(observed: observed, declared: declared as NonEmptyStr, required: sized) {
+    true =>
+      EnsureCompilePoolAlreadyConverged {
+        slice_unit: declared as NonEmptyStr,
+        sized_bytes: sized,
+      }
+    false =>
+      match observed {
+        CompilePoolObservationUnavailable { reason: r } =>
+          EnsureCompilePoolRefused {
+            reason: EnsurePoolSliceUnobservable {
+              detail: unavailable_reason_detail(reason: r),
+            },
+          }
+        CompilePoolSliceAbsent { slice_unit: _ } =>
+          EnsureCompilePoolAdmitted {
+            slice_unit: declared as NonEmptyStr,
+            sized_bytes: sized,
+            slice_lines: render_compile_pool_slice(slice_unit: declared as NonEmptyStr, sized: sized),
+          }
+        CompilePoolSliceObserved { slice_unit: obs, limits: _ } =>
+          match (obs as String) == declared {
+            false =>
+              EnsureCompilePoolRefused {
+                reason: EnsurePoolSliceNamedDoesNotMatch {
+                  declared: declared as NonEmptyStr,
+                  observed: obs,
+                },
+              }
+            true =>
+              EnsureCompilePoolAdmitted {
+                slice_unit: declared as NonEmptyStr,
+                sized_bytes: sized,
+                slice_lines: render_compile_pool_slice(slice_unit: declared as NonEmptyStr, sized: sized),
+              }
+          }
+      }
+  }
+}
+
+fn admit_ensure_compile_pool_slice(
+  topology: CompilePoolPlacement,
+  sizing: CompilePoolResolution,
+  cache_placement: BuildCacheServerPlacement,
+  observed: CompilePoolObservation,
+) -> EnsureCompilePoolAdmission {
+  match topology {
+    CompilePoolInRunnerSlots =>
+      EnsureCompilePoolRefused {
+        reason: EnsurePoolTopologyUndeclared {
+          detail: "gunbc_compile_pool_placement is CompilePoolInRunnerSlots: no managed compile-pool slice is declared, so there is no pool unit to ensure" as NonEmptyStr,
+        },
+      }
+    CompilePoolSliceDeclared { slice_unit: declared } =>
+      match sizing {
+        CompilePoolUnresolved { reason: sr } =>
+          EnsureCompilePoolRefused {
+            reason: EnsurePoolSizingUnresolved { detail: sr as NonEmptyStr },
+          }
+        CompilePoolDerived { bytes: b } =>
+          match cache_placement {
+            ServerPlacementUnknown { detail: d } =>
+              EnsureCompilePoolRefused {
+                reason: EnsureCachePlacementUnknown { detail: d },
+              }
+            ServerManagedUnitOwned { unit: _ } =>
+              ensure_compile_pool_slice_from_observation(
+                declared: declared,
+                sized: b,
+                observed: observed,
+              )
+            ServerRunnerOwned { slot: _, lifecycle: _ } =>
+              ensure_compile_pool_slice_from_observation(
+                declared: declared,
+                sized: b,
+                observed: observed,
+              )
+            ServerUnsupervised { cgroup: _ } =>
+              ensure_compile_pool_slice_from_observation(
+                declared: declared,
+                sized: b,
+                observed: observed,
+              )
+            ServerPlacementAbsent =>
+              ensure_compile_pool_slice_from_observation(
+                declared: declared,
+                sized: b,
+                observed: observed,
+              )
+          }
+      }
+  }
+}
+
+fn ensure_yields_slice(admission: EnsureCompilePoolAdmission) -> Bool {
+  ensure_compile_pool_admission_fold(
+    admission: admission,
+    fold: EnsureCompilePoolAdmissionFold {
+      already_converged: fn(_, _) { false },
+      admitted: fn(_, _, _) { true },
+      refused: fn(_) { false },
+    },
+  )
+}
+
+fn ensure_is_converged(admission: EnsureCompilePoolAdmission) -> Bool {
+  ensure_compile_pool_admission_fold(
+    admission: admission,
+    fold: EnsureCompilePoolAdmissionFold {
+      already_converged: fn(_, _) { true },
+      admitted: fn(_, _, _) { false },
+      refused: fn(_) { false },
+    },
+  )
+}
