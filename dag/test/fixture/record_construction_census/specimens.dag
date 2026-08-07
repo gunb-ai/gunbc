@@ -22,3 +22,11 @@ fn census_probe_matches_subject_only(s: CensusProbeSubject) -> Int {
 fn census_probe_string_literal_same_lexeme() -> String {
   "CensusProbeSubject"
 }
+
+data record_construction_census_nullary_note: String = "Nullary-invisibility specimen: a fieldless variant constructed bare is NOT an ExprRecordLit — it is a bare atom in expression position and rides a POSITIONAL edge, so the record_construction_spelling edge never fires for it. The census counts 0 for CensusNullaryProbeMode despite the construction below; nullary_variant_construction_invisible_at_this_edge executes that limit so it is measured, not asserted. Consequence: the emptiness soundness of a spelling census holds only for declarations with at least one field; a zero over a fieldless declaration is VACUOUS and must never ground a deletion."
+
+type CensusProbeMode = CensusNullaryProbeMode | CensusOtherProbeMode
+
+fn census_probe_constructs_nullary() -> CensusProbeMode {
+  CensusNullaryProbeMode
+}

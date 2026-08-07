@@ -676,7 +676,10 @@ fn marshal_generic(
         // the AST node's authored lexeme (no qualified name, no parent-enum identity),
         // so a spelling census over this edge is a conservative over-approximation —
         // two same-spelled record types in different modules are indistinguishable
-        // here. The NAMED edge only discriminates a construction occurrence from a
+        // here. It also fires ONLY for record literals: a fieldless variant
+        // constructed bare is not an ExprRecordLit and stays invisible, so a
+        // zero count over a fieldless declaration is vacuous, never evidence.
+        // The NAMED edge only discriminates a construction occurrence from a
         // string literal or callee atom spelling the same lexeme (those ride
         // positional edges). Resolved constructor identity (qualified declaration +
         // parent identity for variants) is separate future work.
