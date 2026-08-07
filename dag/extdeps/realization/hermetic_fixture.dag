@@ -25,6 +25,10 @@ import std.cache_interface {
   TtlExpiry,
   ManualPurge,
   Repo,
+  CapacityUnbounded,
+  CapacityUnobserved,
+  ReleasedAtProviderScopeExit,
+  ReleasedNever,
 }
 import std.measure { second }
 

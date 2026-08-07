@@ -27,6 +27,7 @@ import gunbc.roadmap_belt_actuate {
   DispatchDisabled, DispatchNodeAlreadyDone, DispatchObserveRefused, DispatchAuthorityRefused, DispatchSpawnFailed,
 }
 import gunbc.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
+import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
 import gunbc.roadmap_component { instrument_tuner_asset_path }
 import gunbc.roadmap_component { instrument_motion_asset_path, instrument_motion_page_path }
 import gunbc.roadmap_component { instrument_lab_links }
@@ -92,6 +93,7 @@ test fn witness_asset_route_serves_modeled_js() -> Bool {
     handler: DispatchAssetHandler,
     params: [],
     request: fixture_request(method: GET, path: roadmap_dispatch_asset_path),
+    release_revision: deploy_witness_release_revision,
   )
   r.status == 200
     && media_type_wire_label(m: r.content_type) == "text/javascript; charset=utf-8"
@@ -144,26 +146,26 @@ fn fixture_request(method: HttpMethod, path: String) -> ServeHttpRequest {
 }
 
 test fn witness_unknown_path_folds_404_response() -> Bool {
-  let r = roadmap_serve_selection_response(sel: NoRouteMatched, request: fixture_request(method: GET, path: "/nope"))
+  let r = roadmap_serve_selection_response(sel: NoRouteMatched, request: fixture_request(method: GET, path: "/nope"), release_revision: deploy_witness_release_revision)
   r.status == 404
 }
 
 test fn witness_405_response_carries_allowed() -> Bool {
-  let r = roadmap_serve_selection_response(sel: MethodNotAllowed { allowed: [POST] }, request: fixture_request(method: GET, path: "/dispatch/x"))
+  let r = roadmap_serve_selection_response(sel: MethodNotAllowed { allowed: [POST] }, request: fixture_request(method: GET, path: "/dispatch/x"), release_revision: deploy_witness_release_revision)
   r.status == 405 && string_contains(s: r.body, pattern: "POST")
 }
 
 data status_map_red_note: String = "The 404/409/503/502 rows are the REDs a lazy 200-or-500 collapse would fail (parent review 2026-07-20): each refusal variant must map to ITS status, so a collapse of any arm reds exactly one witness row below."
 
 test fn witness_dispatch_status_total() -> Bool {
-  belt_dispatch_status(r: DispatchSpawned { node_id: "n", session_name: "s" }) == 200
+  belt_dispatch_status(r: DispatchSpawned { node_id: "n", session_name: "s", provider: "codex" }) == 200
     && belt_dispatch_status(r: DispatchAlreadyLive { node_id: "n", session_name: "s" }) == 200
     && belt_dispatch_status(r: DispatchDisabled { node_id: "n", instance_id: "i", reason: "r" }) == 403
     && belt_dispatch_status(r: DispatchNodeNotFound { node_id: "n" }) == 404
     && belt_dispatch_status(r: DispatchNodeAlreadyDone { node_id: "n" }) == 409
     && belt_dispatch_status(r: DispatchObserveRefused { node_id: "n", reason: "r" }) == 503
     && belt_dispatch_status(r: DispatchAuthorityRefused { node_id: "n", detail: "d" }) == 503
-    && belt_dispatch_status(r: DispatchSpawnFailed { node_id: "n", step: "git", detail: "d" }) == 502
+    && belt_dispatch_status(r: DispatchSpawnFailed { node_id: "n", step: "git", detail: "d", provider: "codex" }) == 502
 }
 
 test fn witness_preview_dispatch_refuses_before_effects() -> Bool {
@@ -172,6 +174,7 @@ test fn witness_preview_dispatch_refuses_before_effects() -> Bool {
     method_label: "POST",
     path: "/dispatch/ts-dispatch-provider-events",
     body: "",
+    release_revision: deploy_witness_release_revision,
   )
   r.status == 403
     && string_contains(s: r.body, pattern: "\"status\": \"disabled\"")
@@ -186,6 +189,7 @@ test fn witness_instance_route_names_posture_and_paths() -> Bool {
     method_label: "GET",
     path: "/instance.json",
     body: "",
+    release_revision: deploy_witness_release_revision,
   )
   r.status == 200
     && string_contains(s: r.body, pattern: "\"instance_id\": \"srv2-preview-codex-feedback-v0\"")
@@ -233,7 +237,7 @@ test fn witness_unknown_method_refuses() -> Bool {
 data unknown_method_501_note: String = "review 40359: an unrecognized method label is 501 Not Implemented (RFC 9110 section 15.6.2 — the server does not implement the method at all), NEVER 405 (405 means the ROUTE exists but this method is not in its allowed set, and carries the allowed set — the MethodNotAllowed arm). The two arms must stay distinct statuses; collapsing them reds this row."
 
 test fn witness_unknown_method_folds_501_response() -> Bool {
-  let r = roadmap_serve_respond(method_label: "BREW", path: "/", body: "")
+  let r = roadmap_serve_respond(method_label: "BREW", path: "/", body: "", release_revision: deploy_witness_release_revision)
   r.status == 501 && string_contains(s: r.body, pattern: "BREW")
 }
 

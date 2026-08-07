@@ -52,9 +52,6 @@ import gunbc.merge_admission_produce {
 import v2.workflow.ci_regen_rustfmt_path_emit {
   ci_regen_ensure_rustfmt_path_script,
 }
-import v2.workflow.ci_v1_compiler_tests_compile_gate_emit {
-  ci_v1_compiler_tests_compile_gate_script,
-}
 import v2.workflow.ci_heal_skew_guard_emit {
   ci_heal_binary_source_skew_guard_script,
 }
@@ -451,16 +448,6 @@ fn ci_regen_floor_skip_shortcut_script() -> String {
           concat("      exit 0\n", concat("  fi\n", "fi\n"))
         )
       )
-    )
-  )
-}
-
-fn ci_v1_compiler_tests_compile_gate_run_script() -> String {
-  concat(
-    "set -e\n",
-    concat(
-      concat("ROOT=", ci_repo_root_shell(), "\n"),
-      ci_v1_compiler_tests_compile_gate_script()
     )
   )
 }

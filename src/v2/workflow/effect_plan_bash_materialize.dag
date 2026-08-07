@@ -19,7 +19,6 @@ import v2.std.algebra {
 import v2.std.collection { List, list_at_optional }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected }
 import v2.std.effect_plan {
-  BoundedPoll,
   Call,
   Do,
   EffectPlan,
@@ -100,7 +99,6 @@ type EffectPlanBashUnsupportedStep
   = UnsupportedIf
   | UnsupportedFor
   | UnsupportedWhile
-  | UnsupportedBoundedPoll
   | UnsupportedRetry
   | UnsupportedLet
   | UnsupportedCall
@@ -255,14 +253,6 @@ fn effect_plan_bash_encode_step(
           kind: UnsupportedWhile
         }
       )
-    BoundedPoll { max_attempts: _, body: _, success: _ } =>
-      effect_plan_bash_refuse(
-        step_index: step_index,
-        operation: Absent,
-        cause: UnsupportedEffectPlanStep {
-          kind: UnsupportedBoundedPoll
-        }
-      )
     Retry { body: _, escalations: _, on_exhausted: _ } =>
       effect_plan_bash_refuse(
         step_index: step_index,
@@ -367,7 +357,6 @@ fn effect_plan_bash_unsupported_step_label(
     UnsupportedIf => "If"
     UnsupportedFor => "For"
     UnsupportedWhile => "While"
-    UnsupportedBoundedPoll => "BoundedPoll"
     UnsupportedRetry => "Retry"
     UnsupportedLet => "Let"
     UnsupportedCall => "Call"

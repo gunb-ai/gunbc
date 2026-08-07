@@ -6,12 +6,28 @@ import extdeps.uri { Uri, Https }
 import std.types { Bool, Int, List, String }
 import std.cache_identity { CacheInterfaceId }
 import std.cache_interface {
-  ProviderRetention, CapacityPolicy,
-  CapacityUnbounded, CapacityBounded, CapacityUnobserved,
-  CapacityLimit, ByteCapacity, EntryCountCapacity,
-  ExactLimit, RuntimeDerivedLimit, EffectiveLimitUnobserved,
-  retention_growth_is_bounded, retention_has_capacity_bound, retention_has_exact_byte_bound,
-  PersistenceLocality, InProcess, PerRunnerFilesystem, PerHostFilesystem, CrossHostNetwork
+  ProviderRetention,
+  CapacityPolicy,
+  CapacityUnbounded,
+  CapacityBounded,
+  CapacityUnobserved,
+  CapacityLimit,
+  ByteCapacity,
+  EntryCountCapacity,
+  ExactLimit,
+  RuntimeDerivedLimit,
+  EffectiveLimitUnobserved,
+  retention_growth_is_bounded,
+  retention_has_capacity_bound,
+  retention_has_exact_byte_bound,
+  PersistenceLocality,
+  InProcess,
+  PerRunnerFilesystem,
+  PerHostFilesystem,
+  CrossHostNetwork,
+  ReleasedAtProviderScopeExit,
+  ReleasedManually,
+  ReleasedNever,
 }
 import std.materialization_ladder {
   CacheProvider, CacheCoverage, Frame,
