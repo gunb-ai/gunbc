@@ -24,7 +24,7 @@ import gunbc.host_disk_observation { host_disk_observation }
 import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
 import product.placement_supply { HostIdentity }
 
-data runner_capacity_realize_authority_note: String = "PR C last mile: wires gunbc.apply mode=apply to runner_capacity_plan + disk preflight + ADD dispatch seam. Depends on PR A (#7939) for plan/roster and PR B (#7946) for HostEffect arms and runner_lifecycle ADD ordering. Convergence receipt is org-roster + slot lifecycle facts (host_runner_capacity_converged), never systemctl exit alone. Per-slot HostEffect realize remains scaffold until wet host_effect_apply transport lands; disk unobservable REFUSES at apply (never width-5 fallback)."
+data runner_capacity_realize_authority_note: String = "PR C seam: wires gunbc.apply mode=apply to runner_capacity_plan + disk preflight + ADD dispatch. Does NOT provision runners — all nine runner_lifecycle_realize_* arms return NotConverged (honest scaffold; dissolve-on runner_lifecycle_realize_wet_transport_dissolve_on: srv3/srv4 SSH reach + HostEffectTransport). When adds > 0, apply refuses RunnerCapacityApplyScaffold after disk preflight. Depends on PR A (#7939) plan/roster and PR B (#7946) HostEffect vocabulary. Convergence receipt is org-roster + slot lifecycle facts (host_runner_capacity_converged), never systemctl exit alone. Disk unobservable REFUSES at apply (never width-5 fallback)."
 
 type RunnerCapacityApplyOutcome
   = RunnerCapacityApplySucceeded { add_actions_executed: Int }
@@ -131,7 +131,7 @@ fn runner_capacity_apply_ready_plan(plan: RunnerCapacityPlan) -> RunnerCapacityA
     RunnerCapacityApplyRefused {
       reason: concat(
         concat("RunnerCapacityApplyScaffold: ", to_string(adds)),
-        " RunnerSlotAdd actions planned; per-slot HostEffect realize scaffold awaits wet transport wiring (PR B arms bound in host_effect_apply)",
+        " RunnerSlotAdd actions planned; per-slot HostEffect realize scaffold refuses (dissolve-on runner_lifecycle_realize_wet_transport_dissolve_on: srv3/srv4 SSH reach + HostEffectTransport)",
       ),
     }
   } else {

@@ -9,6 +9,26 @@ import std.realization_reconcile { Reconciliation, NotConverged }
 import gunbc.runner_lifecycle { RunnerSlotIdentity }
 import extdeps.github.actions_runner { ActionsRunnerBinaryArtifact }
 import std.types { NonEmptyStr, String }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// All nine runner_lifecycle HostEffect realize arms delegate here until wet transport lands.
+// Honest scaffold: typed, located NotConverged — not an absorbing fallback and not a converged receipt.
+// Dissolves when fleet-automation SSH reach is authorized on srv3/srv4 (B2 in
+// gunbc.plans.fleet_subsumption_manual_gaps) AND host_effect_apply routes each arm through
+// HostEffectTransport with independent read-back (org-roster for registration observe; local
+// unit/process facts for ObserveRunnerLocalState; release digest before extract for ADD arms).
+
+data runner_lifecycle_realize_wet_transport_dissolve_on: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_effect",
+    decl_name: "HostEffectTransport",
+    field: WholeDeclaration,
+  }
+}
+
+data runner_lifecycle_realize_scaffold_dissolution_note: String = "DISSOLUTION TRIGGER (§6): each runner_lifecycle_realize_* arm retires when (1) srv3/srv4 fleet-automation SSH reach is authorized for the executing principal (B2 fleet_subsumption_manual_gaps — today ShellTransportReachRefused), (2) host_effect_apply binds the arm through HostEffectTransport instead of this scaffold, and (3) the bound handler performs independent read-back before claiming Converged (org-roster for ObserveGitHubRunnerRegistration; local unit/process for ObserveRunnerLocalState; digest-verified release before extract for EnsureActionsRunnerRelease). Until then every arm returns NotConverged citing runner_lifecycle_realize_wet_transport_dissolve_on — provisions nothing."
 
 fn runner_lifecycle_realize_scaffold(
   effect_label: String,
@@ -19,7 +39,7 @@ fn runner_lifecycle_realize_scaffold(
       [
         "host_effect_apply: ",
         effect_label,
-        " realization scaffold — gunbc.runner_lifecycle PR B (still-ram-738); ctrl is dead, no script delegation",
+        " realization scaffold (NotConverged) — dissolve-on runner_lifecycle_realize_wet_transport_dissolve_on: srv3/srv4 SSH reach + HostEffectTransport binding; ctrl is dead, no script delegation",
       ],
       "",
     ),

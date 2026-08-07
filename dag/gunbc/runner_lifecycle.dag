@@ -205,7 +205,7 @@ data runner_lifecycle_effects_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
     module_path: "gunbc.runner_lifecycle_realize",
-    decl_name: "runner_lifecycle_realize",
+    decl_name: "runner_lifecycle_realize_wet_transport_dissolve_on",
     field: WholeDeclaration,
   }
 }
