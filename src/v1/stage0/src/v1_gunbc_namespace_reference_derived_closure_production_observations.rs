@@ -48,6 +48,15 @@ pub fn namespace_reference_derived_closure_production_observations_note() -> Str
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn namespace_reference_derived_closure_filesystem_import_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "The extdeps.filesystem.filesystem_io import above brings no named symbol into scope — filesystem_read itself is a v1 host builtin (registered in 04_method.dag), not an export of this module. The import exists solely for its grounding side effect: it puts the declared service Filesystem { operation Read } into this file's reachable graph.modules, which is what makes Filesystem.Read appear in the compiled program's service_ops so hermetic execution admits the filesystem_read call below instead of refusing it.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn namespace_reference_derived_closure_production_specimen_note() -> String {
     thread_local! {
         static CACHED: String = {

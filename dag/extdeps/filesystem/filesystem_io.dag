@@ -3,6 +3,8 @@ module extdeps.filesystem.filesystem_io
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
+data filesystem_service_sketch_note: String = "The Filesystem service below is an unmodeled sketch, not a real transport: the generated Write/Read/Delete/List bodies read/write the OPERATION NAME as a literal path (e.g. base_path + \"/write\") rather than the input path argument, and the dry-run arm panics. It exists so a module can declare service Filesystem { operation Read } and thereby ground the filesystem_read v1 builtin's Hermetic-mode reachability check (see extdeps.filesystem.filesystem_io usage in v1.gunbc.namespace_reference_derived_closure_production_observations) — it is not wired as a real Filesystem realization anywhere and must not be treated as one until this service is properly modeled against a real transport."
+
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https

@@ -11,6 +11,15 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
+pub fn filesystem_service_sketch_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "The Filesystem service below is an unmodeled sketch, not a real transport: the generated Write/Read/Delete/List bodies read/write the OPERATION NAME as a literal path (e.g. base_path + \"/write\") rather than the input path argument, and the dry-run arm panics. It exists so a module can declare service Filesystem { operation Read } and thereby ground the filesystem_read v1 builtin's Hermetic-mode reachability check (see extdeps.filesystem.filesystem_io usage in v1.gunbc.namespace_reference_derived_closure_production_observations) — it is not wired as a real Filesystem realization anywhere and must not be treated as one until this service is properly modeled against a real transport.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
