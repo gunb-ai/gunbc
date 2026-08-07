@@ -45,6 +45,7 @@ pub enum Quantity {
     TemperatureDifference,
     RotationalSpeed,
     ElectricPotential,
+    ElectricPotentialDifference,
     ElectricCurrent,
     Resistance,
     Capacitance,
@@ -298,6 +299,14 @@ pub type Millicore = Rc<Measure<(), (), i64>>;
 
 pub type Watt = Rc<Measure<(), (), i64>>;
 
+pub type Milliwatt = Rc<Measure<(), (), i64>>;
+
+pub type Volt = Rc<Measure<(), (), i64>>;
+
+pub type Ampere = Rc<Measure<(), (), i64>>;
+
+pub type Millimeter = Rc<Measure<(), (), i64>>;
+
 pub type Joule = Rc<Measure<(), (), i64>>;
 
 pub type Celsius = Rc<Measure<(), (), i64>>;
@@ -388,6 +397,50 @@ pub fn watt(count: Nat) -> Watt {
 
 pub fn watt_count(w: Watt) -> Nat {
     measure_count(w.clone())
+}
+
+pub fn milliwatt(count: Nat) -> Milliwatt {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn milliwatt_count(w: Milliwatt) -> Nat {
+    measure_count(w.clone())
+}
+
+pub fn volt(count: Nat) -> Volt {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn volt_count(v: Volt) -> Nat {
+    measure_count(v.clone())
+}
+
+pub fn ampere(count: Nat) -> Ampere {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn ampere_count(a: Ampere) -> Nat {
+    measure_count(a.clone())
+}
+
+pub fn millimeter(count: Nat) -> Millimeter {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn millimeter_count(m: Millimeter) -> Nat {
+    measure_count(m.clone())
 }
 
 pub fn joule(count: Nat) -> Joule {
@@ -996,6 +1049,8 @@ pub struct TemperatureDifference;
 pub struct RotationalSpeed;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ElectricPotential;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ElectricPotentialDifference;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ElectricCurrent;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
