@@ -278,8 +278,6 @@ fn read_unified_cgroup_membership_drift_sketch(content: String) -> ProcPidCgroup
 
 data proc_self_cgroup_cross_realization_law_note: String = "PERMANENT CROSS-REALIZATION FIXTURE LAW: unified_membership_outcome_tag_from_content is the parser-side projection; bash_proc_self_cgroup classifies executed shell results into the same tag. proc_self_cgroup_is_unified_v2_line_drift_sketch and read_unified_cgroup_membership_drift_sketch are mutation sketches ONLY — they omit the empty-controller guard so a witness can prove drift in that branch reds without shipping the defect."
 
-data proc_self_cgroup_default_source: String = "/proc/self/cgroup"
-
 fn proc_self_cgroup_mount_root_text(mount_root: FilePathParts) -> String {
   fold(mount_root.segments, init: "", f: fn(acc, seg) {
     let seg_text = seg as String

@@ -601,4 +601,3 @@ jobs:
           compression-level: 0
         if: always() && steps.heal_commit_push.outputs.heal_author_commit_required == '1'
         timeout-minutes: 10
-

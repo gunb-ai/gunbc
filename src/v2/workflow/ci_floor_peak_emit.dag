@@ -120,6 +120,19 @@ data ci_floor_phase_journal_roadmap_citation_note: String = "The symbolic ROADMA
 
 data ci_floor_phase_journal_runner_scaffold_comment: String = concat("# ", ci_floor_phase_journal_shell_emit_dissolution_trigger)
 
+data ci_floor_peak_cgroup_locate_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.workflow.ci_floor_peak_emit",
+    decl_name: "ci_cgroup_peak_locate_shell",
+    field: WholeDeclaration
+  }
+}
+
+data ci_floor_peak_cgroup_locate_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_cgroup_peak_locate_shell — foreign-executor (GitHub Actions run:) shell transport composing extdeps.linux.proc_self_cgroup unified-hierarchy membership (v2.extdeps.languages.bash_proc_self_cgroup) with std.path_intent NearestAncestorContaining dirname ascent (bash_orch_if). Procfs path is extdeps.linux.procfs ProcSelfCgroup. DISSOLVES WHEN shell→intent Phase 2 realizes cgroup membership plus path ascent on host_effect_apply / orchestration path arms without medium-as-string Run.command concat."
+
+data ci_floor_peak_cgroup_locate_runner_scaffold_comment: String = concat("# ", ci_floor_peak_cgroup_locate_shell_emit_dissolution_trigger)
+
 fn ci_floor_peak_run(command: String) -> Run {
   Run {
     command: command,
@@ -148,7 +161,7 @@ fn ci_floor_peak_emit_pipeline(p: Pipeline) -> String {
   }
 }
 
-data ci_floor_peak_path_leaf_residue_note: String = "🟡 dissolve-on: v2.std.orchestration gains a path arm — Predicate carries PathPredicate and PipelineStep carries DirnameAscent — so the cgroup ascent is a typed node in the pipeline instead of derived text at a String seam. TODAY'S EXACT STATE, which is what makes the trigger checkable rather than aspirational: Predicate is ExitZero | LogMatches | StrEq | StrEmpty | StrNonempty | IntNe | Not | And | Or and PipelineStep is Do | Comment | Exit | If | For | While | Retry | Let | Call — neither coproduct has a path member, which is precisely why this module must lower to text HERE and hand a String to Run.command. When those arms exist, ci_floor_peak_while_cond_command and ci_floor_peak_while_body_command delete outright and orch_emit_step lowers the model at emission time, one layer down, where the medium already lives; ci_floor_peak_nearest_ancestor_spec survives as the arm payload. Membership assign derives from v2.extdeps.languages.bash_proc_self_cgroup lowering extdeps.linux.proc_self_cgroup semantics. The third leaf, ci_floor_peak_assign_cgroup_dir_command, does NOT dissolve on that trigger and is deliberately not counted against it: parsing the cgroup path out of a /proc/self/cgroup line is a procfs field read that std.path_intent does not model at all, so it is separately owed to the shell -> intent Phase 2 typed-observation work (host_effect_apply), the same trigger ci_floor_phase_journal_shell_emit_dissolution_trigger names. Peak reset/cat/echo calibration leaves remain raw String — Phase 2 typed filesystem observation."
+data ci_floor_peak_path_leaf_residue_note: String = "🟡 dissolve-on: v2.std.orchestration gains a path arm — Predicate carries PathPredicate and PipelineStep carries DirnameAscent — so the cgroup ascent while-loop is a typed node in the pipeline instead of derived text at a String seam. TODAY'S EXACT STATE: Predicate is ExitZero | LogMatches | StrEq | StrEmpty | StrNonempty | IntNe | Not | And | Or and PipelineStep is Do | Comment | Exit | If | For | While | Retry | Let | Call — neither coproduct has a path member, which is why ci_floor_peak_while_cond_command and ci_floor_peak_while_body_command lower to text HERE. When those arms exist they delete outright and orch_emit_step lowers the model at emission time; ci_floor_peak_nearest_ancestor_spec survives as the arm payload. LANDED IN THIS VERTICAL (not Phase 2 residue): unified-hierarchy membership decode is extdeps.linux.proc_self_cgroup; ci_floor_peak_assign_cgroup_dir_command composes v2.extdeps.languages.bash_proc_self_cgroup membership lowering with that path policy via bash_orch_if; procfs path is extdeps.linux.procfs ProcSelfCgroup. REMAINING Phase 2: the foreign-executor runtime-scan transport in bash_membership_assign_from_source (host_effect_apply typed observation) and peak reset/cat/echo calibration leaves (raw String — typed filesystem observation)."
 
 fn ci_floor_peak_cgroup_locate_while() -> PipelineStep {
   While {
@@ -169,9 +182,16 @@ fn ci_floor_peak_cgroup_locate_steps() -> List<PipelineStep> {
   ]
 }
 
+fn ci_floor_peak_cgroup_locate_with_scaffold_steps() -> List<PipelineStep> {
+  concat(
+    [ci_floor_peak_do(command: ci_floor_peak_cgroup_locate_runner_scaffold_comment)],
+    ci_floor_peak_cgroup_locate_steps()
+  )
+}
+
 fn ci_floor_peak_cgroup_locate_pipeline() -> Pipeline {
   Pipeline {
-    steps: ci_floor_peak_cgroup_locate_steps(),
+    steps: ci_floor_peak_cgroup_locate_with_scaffold_steps(),
     on_failure: FailFast
   }
 }
@@ -210,7 +230,7 @@ fn ci_floor_peak_pre_peak_if() -> PipelineStep {
 
 fn ci_floor_peak_pre_pipeline() -> Pipeline {
   Pipeline {
-    steps: concat(ci_floor_peak_cgroup_locate_steps(), [ci_floor_peak_pre_peak_if()]),
+    steps: concat(ci_floor_peak_cgroup_locate_with_scaffold_steps(), [ci_floor_peak_pre_peak_if()]),
     on_failure: FailFast
   }
 }
@@ -278,7 +298,7 @@ fn ci_floor_peak_post_pipeline() -> Pipeline {
         ci_floor_peak_do(command: ci_floor_wet_witness_row_outcome_receipt_runner_scaffold_comment),
         ci_floor_wet_witness_row_outcome_receipt_if()
       ],
-      concat(ci_floor_peak_cgroup_locate_steps(), [ci_floor_peak_post_peak_if()])
+      concat(ci_floor_peak_cgroup_locate_with_scaffold_steps(), [ci_floor_peak_post_peak_if()])
     ),
     on_failure: FailFast
   }

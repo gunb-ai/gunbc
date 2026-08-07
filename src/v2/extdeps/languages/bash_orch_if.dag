@@ -23,7 +23,7 @@ import v2.std.diagnostic {
 import std.filesystem.types { EntryKind }
 import v2.std.node { Node, Symbol }
 import std.path_intent { PathIntent, PathPredicate, DirnameAscent, PathRef, PathLiteral, PathJoin, PathNonempty, PathNotEq, PathEntryKind, Not, And, Or, NearestAncestorContaining, nearest_ancestor_while_predicate, nearest_ancestor_while_ascent, nearest_ancestor_walk_target }
-import extdeps.linux.proc_self_cgroup { proc_self_cgroup_default_source }
+import extdeps.linux.procfs { ProcSelfCgroup, procfs_path_literal }
 import v2.extdeps.languages.bash_proc_self_cgroup { bash_membership_assign_from_source }
 import std.types { FilePathParts }
 import v2.std.text { String }
@@ -997,7 +997,7 @@ fn bash_nearest_ancestor_locate_assign_command_from_source(
 fn bash_nearest_ancestor_locate_assign_command(spec: NearestAncestorContaining) -> String {
   bash_nearest_ancestor_locate_assign_command_from_source(
     spec: spec,
-    cgroup_source: proc_self_cgroup_default_source,
+    cgroup_source: procfs_path_literal(p: ProcSelfCgroup) as String,
   )
 }
 

@@ -226,4 +226,3 @@ jobs:
           GUNBC_FLOOR_PHASE_JOURNAL: target/floor-phase-journal.tsv
         if: always()
         timeout-minutes: 5
-
