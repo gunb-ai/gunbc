@@ -91,7 +91,7 @@ fn ci_nested_match_6777_reproducer_receipt_line() -> String {
     concat(
       ci_nested_match_6777_reproducer_receipt_prefix,
       concat(
-        " repository=${GITHUB_REPOSITORY:-local} head=${GITHUB_SHA:-unknown}",
+        " repository=$\{GITHUB_REPOSITORY:-local} head=$\{GITHUB_SHA:-unknown}",
         concat(
           " test=nested_match_6777_emitted_matches_interpreted",
           concat(
