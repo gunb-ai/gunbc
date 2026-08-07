@@ -13,7 +13,36 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-type TransportScript = String where brand("TransportScript")
+// THE TRANSPORT-SCRIPT CONSTRUCTION WALL. TransportScript was `= String where brand(...)` — a
+// TRANSPARENT brand, so every module could produce one, by cast or by simply passing a String into the
+// `script:` position, and the class was guarded by a lens rather than by construction (DESIGN 5:
+// construction over validation). It is now a sole_constructor RECORD: only this file may build one, and
+// `transport_script_seal` below is the single admitted route in, caller-sealed to the production
+// bridges by name. A String has no route to a shell invocation that does not pass through one of them.
+//
+// The transport reads `script.body` rather than the value itself — a record cannot be handed to a
+// process, only its text can. That projection is what the wall costs, and it is proven by execution
+// rather than assumed: a service transport may project a record field into stdin and into an argv
+// interpolation slot.
+type TransportScript sole_constructor {
+  body: String
+}
+
+// The ONE mint. It takes a bare String — this is extdeps, which owns the transport's interface shape
+// and must not know the product's policy carriers — and gates WHO may call it, so the policy that a
+// script body carries a reason and a dissolve-on target stays in the product layer where it belongs
+// (DESIGN 3: interface shape here, business policy in the workflow layer).
+//
+// admit_callers is the whole wall's load: adding a caller is an edit to THIS list in the dependency's
+// own module, which is a conspicuous, counted review event rather than an import someone can write in
+// their own file. No test declaration is admitted; a test obtains a TransportScript through a
+// production bridge, the same way production does.
+fn transport_script_seal(body: String) -> TransportScript
+  admit_callers: [
+    decl_ref(module_path: "gunbc.retained_shell_script", decl_name: "retained_shell_script_to_transport"),
+    decl_ref(module_path: "gunbc.bash_materialized_transport", decl_name: "bash_materialized_transport"),
+  ]
+  = TransportScript { body: body }
 
 data shell_exec_run_stdin_route_note: String = "shell.Exec.Run transport: argv is fixed [bash, -s]; the script input is routed through the transport stdin field. Large payloads belong here — they never become a single argv token, so they do not encounter the Linux per-argument exec ceiling modeled in extdeps.exec.exec_arg_limit.host_exec_arg_max_strlen (deploy Part A / #6711)."
 
@@ -34,7 +63,7 @@ service shell.Exec {
 
     transport shell {
       argv: ["bash", "-s"]
-      stdin: script
+      stdin: script.body
     }
     exit {
       0 => Unit
@@ -50,7 +79,7 @@ service shell.Exec {
     output { exists: Bool from "exit_success" }
     readonly
 
-    transport shell { argv: ["sh", "-c", "{command}"] }
+    transport shell { argv: ["sh", "-c", "{command.body}"] }
     exit {
       0 => Unit
       nonzero => String "Command failed"
