@@ -8,7 +8,7 @@ import extdeps.github.actions {
   WorkflowTrigger, Schedule, WorkflowDispatch,
   WorkflowPermissions, PermRead,
   ConcurrencyMappingQueueNotMax, CancelInProgressBool,
-  upload_artifact_action
+  upload_artifact_action, download_artifact_action
 }
 import gunbc.ci_workflow {
   ci_prelude_steps, ci_release_build_step,
@@ -27,7 +27,8 @@ import v2.workflow.ci_floor_peak_emit {
 }
 import gunbc.floor_component_receipt {
   floor_component_receipt_path,
-  floor_component_receipt_artifact_name
+  floor_component_receipt_artifact_name,
+  floor_component_receipt_schema,
 }
 import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
 import gunbc.falsifier_run_control {
@@ -162,7 +163,25 @@ fn gunbc_falsifier_cold_corpus_job_backstop_timeout_minutes() -> Int {
 }
 
 fn gunbc_falsifier_aggregate_verdict_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+  gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+}
+
+fn falsifier_floor_component_receipt_download_step() -> Step {
+  UsesStep {
+    name: Present { value: "Download floor component receipt (cold-corpus execution witness)" },
+    id: Present { value: "floor_component_receipt_download" },
+    uses: download_artifact_action,
+    with: Present {
+      value: [
+        kv(key: "name", value: yaml_string(s: floor_component_receipt_artifact_name)),
+        kv(key: "path", value: yaml_string(s: "target"))
+      ]
+    },
+    env: none,
+    if_condition: none,
+    continue_on_error: Present { value: true },
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
 }
 
 fn gunbc_falsifier_job_backstop_timeout_minutes() -> Int {
@@ -178,7 +197,7 @@ data gunbc_falsifier_selection_control_relocation_note: String = "The affected-s
 
 data falsifier_aggregate_verdict_if: String = "always() && !cancelled()"
 
-data falsifier_aggregate_verdict_shell: String = "set -euo pipefail\nmkdir -p target\nBUILD_RESULT=\"${{ needs.falsifier-build.result }}\"\nSELECTION_RESULT=\"${{ needs.selection-control.result }}\"\nCOLD_RESULT=\"${{ needs.cold-corpus.result }}\"\nif [ \"${BUILD_RESULT}\" != \"success\" ]; then\n  printf '%s\\n' '{\"schema\":\"falsifier-cold-corpus-execution/v1\",\"execution\":\"corpus-not-run\",\"cause\":\"build-job-failed\"}' > target/falsifier-cold-corpus-execution.json\n  printf '%s\\n' \"::error::Cold corpus did not run — build unavailable (${BUILD_RESULT}); infrastructure, not a falsifier regression finding\"\n  exit 1\nfi\nif [ \"${COLD_RESULT}\" = \"skipped\" ]; then\n  printf '%s\\n' '{\"schema\":\"falsifier-cold-corpus-execution/v1\",\"execution\":\"corpus-not-run\",\"cause\":\"cold-corpus-job-skipped\",\"blocking_job\":\"cold-corpus\"}' > target/falsifier-cold-corpus-execution.json\n  printf '%s\\n' \"::error::Cold corpus skipped despite successful build — topology violation\"\n  exit 1\nfi\nif [ \"${COLD_RESULT}\" = \"cancelled\" ]; then\n  printf '%s\\n' '{\"schema\":\"falsifier-cold-corpus-execution/v1\",\"execution\":\"corpus-not-run\",\"cause\":\"cold-corpus-job-cancelled\"}' > target/falsifier-cold-corpus-execution.json\n  printf '%s\\n' \"::error::Cold corpus cancelled — environment unavailability\"\n  exit 1\nfi\nprintf '%s\\n' '{\"schema\":\"falsifier-cold-corpus-execution/v1\",\"execution\":\"corpus-executed\",\"receipt_path\":\"target/floor-component-receipt.json\"}' > target/falsifier-cold-corpus-execution.json\nif [ \"${SELECTION_RESULT}\" != \"success\" ] || [ \"${COLD_RESULT}\" != \"success\" ]; then\n  printf '%s\\n' \"::error::Falsifier cadence red — selection=${SELECTION_RESULT} cold=${COLD_RESULT} (corpus executed; see target/falsifier-cold-corpus-execution.json)\"\n  exit 1\nfi\nprintf '%s\\n' \"FalsifierCadenceVerdict: cadence-green\"\n"
+data falsifier_aggregate_verdict_shell: String = "set -euo pipefail\nmkdir -p target\nBUILD_RESULT=\"${{ needs.falsifier-build.result }}\"\nSELECTION_RESULT=\"${{ needs.selection-control.result }}\"\nCOLD_RESULT=\"${{ needs.cold-corpus.result }}\"\nif [ \"${BUILD_RESULT}\" != \"success\" ]; then\n  printf '%s\\n' '{\"schema\":\"falsifier-cold-corpus-execution/v1\",\"execution\":\"corpus-not-run\",\"cause\":\"build-job-failed\"}' > target/falsifier-cold-corpus-execution.json\n  printf '%s\\n' \"::error::Cold corpus did not run — build unavailable (${BUILD_RESULT}); infrastructure, not a falsifier regression finding\"\n  exit 1\nfi\nif [ \"${COLD_RESULT}\" = \"skipped\" ]; then\n  printf '%s\\n' '{\"schema\":\"falsifier-cold-corpus-execution/v1\",\"execution\":\"corpus-not-run\",\"cause\":\"cold-corpus-job-skipped\",\"blocking_job\":\"cold-corpus\"}' > target/falsifier-cold-corpus-execution.json\n  printf '%s\\n' \"::error::Cold corpus skipped despite successful build — topology violation\"\n  exit 1\nfi\nif [ \"${COLD_RESULT}\" = \"cancelled\" ]; then\n  printf '%s\\n' '{\"schema\":\"falsifier-cold-corpus-execution/v1\",\"execution\":\"corpus-not-run\",\"cause\":\"cold-corpus-job-cancelled\"}' > target/falsifier-cold-corpus-execution.json\n  printf '%s\\n' \"::error::Cold corpus cancelled — environment unavailability\"\n  exit 1\nfi\nFLOOR_RECEIPT_PRESENT=false\nif [ -f target/floor-component-receipt.json ] && grep -q floor-component-receipt/v1 target/floor-component-receipt.json; then\n  FLOOR_RECEIPT_PRESENT=true\nfi\nif [ \"${FLOOR_RECEIPT_PRESENT}\" != true ]; then\n  printf '%s\\n' '{\"schema\":\"falsifier-cold-corpus-execution/v1\",\"execution\":\"corpus-not-run\",\"cause\":\"cold-corpus-failed-before-receipt\"}' > target/falsifier-cold-corpus-execution.json\n  printf '%s\\n' \"::error::Cold corpus did not produce floor-component receipt (cold=${COLD_RESULT}) — infrastructure, not a falsifier regression finding\"\n  exit 1\nfi\nprintf '%s\\n' '{\"schema\":\"falsifier-cold-corpus-execution/v1\",\"execution\":\"corpus-executed\",\"receipt_path\":\"target/floor-component-receipt.json\"}' > target/falsifier-cold-corpus-execution.json\nif [ \"${SELECTION_RESULT}\" != \"success\" ] || [ \"${COLD_RESULT}\" != \"success\" ]; then\n  printf '%s\\n' \"::error::Falsifier cadence red — selection=${SELECTION_RESULT} cold=${COLD_RESULT} (corpus executed; see target/falsifier-cold-corpus-execution.json)\"\n  exit 1\nfi\nprintf '%s\\n' \"FalsifierCadenceVerdict: cadence-green\"\n"
 
 fn falsifier_aggregate_verdict_shell_body() -> String {
   falsifier_aggregate_verdict_shell
@@ -254,7 +273,7 @@ fn falsifier_aggregate_verdict_job() -> Job {
     id: "aggregate-verdict",
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
-    steps: [falsifier_aggregate_verdict_step()],
+    steps: [falsifier_floor_component_receipt_download_step(), falsifier_aggregate_verdict_step()],
     needs: ["falsifier-build", "selection-control", "cold-corpus"],
     env: none,
     outputs: none,

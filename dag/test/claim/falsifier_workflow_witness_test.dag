@@ -28,6 +28,7 @@ import gunbc.falsifier_cold_corpus_execution {
   cold_corpus_execution_receipt_json,
   cold_corpus_execution_tag,
   corpus_not_run_build_failed_tag,
+  corpus_not_run_cold_failed_before_receipt_tag,
   corpus_executed_tag,
   corpus_not_run_tag,
   cadence_verdict_should_fail,
@@ -35,10 +36,15 @@ import gunbc.falsifier_cold_corpus_execution {
   JobOutcomeFailure,
   JobOutcomeSkipped,
   BuildJobFailed,
+  ColdCorpusFailedBeforeReceipt,
   CorpusExecuted,
   CorpusNotRun,
 }
-import gunbc.floor_component_receipt { floor_component_receipt_path }
+import gunbc.floor_component_receipt {
+  floor_component_receipt_path,
+  floor_component_receipt_artifact_name,
+  floor_component_receipt_schema,
+}
 import gunbc.ci_workflow { gunbc_ci_selection_control_step_timeout_minutes }
 import extdeps.github.actions { ConcurrencyMappingQueueNotMax, CancelInProgressBool }
 import gunbc.ci_workflow {
@@ -105,6 +111,7 @@ test fn falsifier_backstop_is_step_sum_plus_prelude() -> Bool {
       + gunbc_falsifier_native_cache_cold_control_timeout_minutes
       + gunbc_ci_aux_step_timeout_minutes
       + gunbc_ci_prelude_allowance_minutes
+      + gunbc_ci_artifact_transfer_step_timeout_minutes
       + gunbc_ci_aux_step_timeout_minutes
       + gunbc_ci_prelude_allowance_minutes
   )
@@ -261,15 +268,45 @@ test fn cold_corpus_job_id_is_not_legacy_falsifier_job() -> Bool {
   !any(falsifier_workflow.jobs, j => j.id == "falsifier")
 }
 
+test fn aggregate_verdict_downloads_floor_component_receipt() -> Bool {
+  string_contains(s: expected_falsifier_yml(), pattern: "Download floor component receipt (cold-corpus execution witness)")
+    && string_contains(s: expected_falsifier_yml(), pattern: floor_component_receipt_artifact_name)
+    && string_contains(s: expected_falsifier_yml(), pattern: "continue-on-error: true")
+}
+
+test fn aggregate_verdict_shell_checks_floor_receipt_schema() -> Bool {
+  string_contains(s: expected_falsifier_yml(), pattern: floor_component_receipt_schema)
+    && string_contains(s: expected_falsifier_yml(), pattern: corpus_not_run_cold_failed_before_receipt_tag)
+}
+
 test fn cold_corpus_executed_when_cold_job_ran_even_if_red() -> Bool {
-  match classify_cold_corpus_execution(build: JobOutcomeSuccess, cold: JobOutcomeFailure) {
+  match classify_cold_corpus_execution(build: JobOutcomeSuccess, cold: JobOutcomeFailure, floor_receipt_present: true) {
     CorpusExecuted { receipt_path: path } => path == floor_component_receipt_path
     _ => false
   }
 }
 
+test fn cold_corpus_not_run_when_failed_before_receipt() -> Bool {
+  match classify_cold_corpus_execution(build: JobOutcomeSuccess, cold: JobOutcomeFailure, floor_receipt_present: false) {
+    CorpusNotRun { cause: ColdCorpusFailedBeforeReceipt } => true
+    _ => false
+  }
+}
+
+test fn cold_failure_without_receipt_is_not_corpus_executed() -> Bool {
+  !cold_corpus_execution_is_executed(
+    c: classify_cold_corpus_execution(build: JobOutcomeSuccess, cold: JobOutcomeFailure, floor_receipt_present: false)
+  )
+}
+
+test fn cold_failure_with_receipt_is_corpus_executed_even_when_red() -> Bool {
+  cold_corpus_execution_is_executed(
+    c: classify_cold_corpus_execution(build: JobOutcomeSuccess, cold: JobOutcomeFailure, floor_receipt_present: true)
+  )
+}
+
 test fn cold_corpus_not_run_when_build_failed() -> Bool {
-  match classify_cold_corpus_execution(build: JobOutcomeFailure, cold: JobOutcomeSkipped) {
+  match classify_cold_corpus_execution(build: JobOutcomeFailure, cold: JobOutcomeSkipped, floor_receipt_present: false) {
     CorpusNotRun { cause: BuildJobFailed } => true
     _ => false
   }
@@ -277,31 +314,50 @@ test fn cold_corpus_not_run_when_build_failed() -> Bool {
 
 test fn cold_corpus_not_run_is_not_regression_evidence() -> Bool {
   !cold_corpus_execution_is_executed(
-    c: classify_cold_corpus_execution(build: JobOutcomeFailure, cold: JobOutcomeSkipped)
+    c: classify_cold_corpus_execution(build: JobOutcomeFailure, cold: JobOutcomeSkipped, floor_receipt_present: false)
   )
 }
 
 test fn selection_red_with_corpus_executed_still_counts_as_executed() -> Bool {
   cold_corpus_execution_is_executed(
-    c: classify_cold_corpus_execution(build: JobOutcomeSuccess, cold: JobOutcomeFailure)
+    c: classify_cold_corpus_execution(build: JobOutcomeSuccess, cold: JobOutcomeFailure, floor_receipt_present: true)
   )
     && cadence_verdict_should_fail(
       build: JobOutcomeSuccess,
       selection: JobOutcomeFailure,
-      cold: JobOutcomeFailure
+      cold: JobOutcomeFailure,
+      floor_receipt_present: true
     )
+}
+
+test fn failed_before_receipt_still_fails_cadence() -> Bool {
+  cadence_verdict_should_fail(
+    build: JobOutcomeSuccess,
+    selection: JobOutcomeSuccess,
+    cold: JobOutcomeFailure,
+    floor_receipt_present: false
+  )
 }
 
 test fn cold_corpus_execution_receipt_json_discriminates_build_failed() -> Bool {
   string_contains(
     s: cold_corpus_execution_receipt_json(
-      c: classify_cold_corpus_execution(build: JobOutcomeFailure, cold: JobOutcomeSkipped)
+      c: classify_cold_corpus_execution(build: JobOutcomeFailure, cold: JobOutcomeSkipped, floor_receipt_present: false)
     ),
     pattern: corpus_not_run_build_failed_tag
   )
     && cold_corpus_execution_tag(
-      c: classify_cold_corpus_execution(build: JobOutcomeFailure, cold: JobOutcomeSkipped)
+      c: classify_cold_corpus_execution(build: JobOutcomeFailure, cold: JobOutcomeSkipped, floor_receipt_present: false)
     ) == corpus_not_run_tag
+}
+
+test fn cold_corpus_execution_receipt_json_discriminates_failed_before_receipt() -> Bool {
+  string_contains(
+    s: cold_corpus_execution_receipt_json(
+      c: classify_cold_corpus_execution(build: JobOutcomeSuccess, cold: JobOutcomeFailure, floor_receipt_present: false)
+    ),
+    pattern: corpus_not_run_cold_failed_before_receipt_tag
+  )
 }
 
 fn length_of(s: String) -> Int {

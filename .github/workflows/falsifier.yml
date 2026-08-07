@@ -276,8 +276,16 @@ jobs:
     runs-on: [self-hosted, linux, arm64]
     needs: [falsifier-build, selection-control, cold-corpus]
     if: always() && !cancelled()
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
+      - name: Download floor component receipt (cold-corpus execution witness)
+        id: floor_component_receipt_download
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: floor-component-receipt
+          path: target
+        timeout-minutes: 10
       - name: Aggregate falsifier cadence verdict (typed cold-corpus execution)
         id: aggregate_verdict
         run: |
@@ -299,6 +307,15 @@ jobs:
           if [ "${COLD_RESULT}" = "cancelled" ]; then
             printf '%s\n' '{"schema":"falsifier-cold-corpus-execution/v1","execution":"corpus-not-run","cause":"cold-corpus-job-cancelled"}' > target/falsifier-cold-corpus-execution.json
             printf '%s\n' "::error::Cold corpus cancelled — environment unavailability"
+            exit 1
+          fi
+          FLOOR_RECEIPT_PRESENT=false
+          if [ -f target/floor-component-receipt.json ] && grep -q floor-component-receipt/v1 target/floor-component-receipt.json; then
+            FLOOR_RECEIPT_PRESENT=true
+          fi
+          if [ "${FLOOR_RECEIPT_PRESENT}" != true ]; then
+            printf '%s\n' '{"schema":"falsifier-cold-corpus-execution/v1","execution":"corpus-not-run","cause":"cold-corpus-failed-before-receipt"}' > target/falsifier-cold-corpus-execution.json
+            printf '%s\n' "::error::Cold corpus did not produce floor-component receipt (cold=${COLD_RESULT}) — infrastructure, not a falsifier regression finding"
             exit 1
           fi
           printf '%s\n' '{"schema":"falsifier-cold-corpus-execution/v1","execution":"corpus-executed","receipt_path":"target/floor-component-receipt.json"}' > target/falsifier-cold-corpus-execution.json
