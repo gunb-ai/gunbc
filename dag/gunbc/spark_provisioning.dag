@@ -16,6 +16,7 @@ import std.human_intervention {
   NoDischargeSiteModeled,
 }
 import product.placement_supply { HostIdentity }
+import gunbc.dgx_spark_procurement { srv5_reserved, srv6_reserved }
 import extdeps.access.posix { PosixUser }
 import extdeps.dns.domain_name { DnsLabel }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
@@ -33,7 +34,7 @@ import gunbc.spark_bootstrap_credential {
   SparkFactoryBootstrap,
   BootstrapNetworkStickerUnread,
   spark_admin_password_ref,
-  spark_secret_ref,
+  spark_bootstrap_password_ref,
 }
 
 // SPARK-PROVISION-0 (2026-08-06). ONE provisioning INTERFACE for the two DGX Spark units
@@ -370,13 +371,13 @@ fn spark_hostname_residue_instruction(allocation: SparkHostnameAllocation) -> No
 
 data srv5_spark_bootstrap: SparkFactoryBootstrap = SparkFactoryBootstrap {
   access_point_identity: BootstrapNetworkStickerUnread,
-  access_point_password_ref: spark_secret_ref(name: "spark-srv5-bootstrap-hotspot-password"),
+  access_point_password_ref: spark_bootstrap_password_ref(host: srv5_reserved),
   documented_surface: dgx_spark_oobe_surface,
 }
 
 data srv6_spark_bootstrap: SparkFactoryBootstrap = SparkFactoryBootstrap {
   access_point_identity: BootstrapNetworkStickerUnread,
-  access_point_password_ref: spark_secret_ref(name: "spark-srv6-bootstrap-hotspot-password"),
+  access_point_password_ref: spark_bootstrap_password_ref(host: srv6_reserved),
   documented_surface: dgx_spark_oobe_surface,
 }
 
@@ -405,14 +406,14 @@ fn spark_provisioning_intent(
 }
 
 data srv5_spark_intent: SparkProvisioningIntent = spark_provisioning_intent(
-  host: "srv5",
+  host: srv5_reserved,
   hostname: HostnameAllocationPending,
   address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 222),
   strategy: FactoryOobe { bootstrap: srv5_spark_bootstrap },
 )
 
 data srv6_spark_intent: SparkProvisioningIntent = spark_provisioning_intent(
-  host: "srv6",
+  host: srv6_reserved,
   hostname: HostnameAllocationPending,
   address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 223),
   strategy: FactoryOobe { bootstrap: srv6_spark_bootstrap },

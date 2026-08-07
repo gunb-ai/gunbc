@@ -167,9 +167,11 @@ test fn spark_bootstrap_credential_is_a_reference() -> Bool {
   bootstrap_network_tag(standing: srv5_spark_bootstrap.access_point_identity) == "unread"
     && bootstrap_network_tag(standing: srv6_spark_bootstrap.access_point_identity) == "unread"
     && srv5_spark_bootstrap.access_point_password_ref.secret == "spark-srv5-bootstrap-hotspot-password"
+    && srv5_spark_intent.host == srv5_reserved
+    && srv6_spark_intent.host == srv6_reserved
     && srv5_spark_bootstrap.access_point_password_ref.version == "latest"
-    && spark_admin_password_secret_name(host: "srv5") == "spark-srv5-admin-password"
-    && spark_admin_password_secret_name(host: "srv6") == "spark-srv6-admin-password"
+    && spark_admin_password_secret_name(host: srv5_reserved) == "spark-srv5-admin-password"
+    && spark_admin_password_secret_name(host: srv6_reserved) == "spark-srv6-admin-password"
 }
 
 data clean_sensitive_run: SensitiveRunObservation = SensitiveRunObservation {
@@ -290,7 +292,7 @@ fn allocation_tag(a: SparkHostnameAllocation) -> String {
 // hostname: the field cannot hold a HostIdentity at all.
 test fn spark_hostname_is_allocated_never_derived_from_slot() -> Bool {
   let allocated = spark_provisioning_intent(
-    host: "srv5",
+    host: srv5_reserved,
     hostname: HostnameAllocated { label: "patient-ibis-7k2m4p8q" },
     address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 222),
     strategy: FactoryOobe { bootstrap: srv5_spark_bootstrap },
