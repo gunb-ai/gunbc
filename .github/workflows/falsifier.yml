@@ -12,7 +12,7 @@ env:
   CARGO_TERM_COLOR: always
 jobs:
   falsifier-build:
-    runs-on: [self-hosted, linux, arm64, ci-fleet-admit]
+    runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 80
     steps:
       - name: Checkout
@@ -115,7 +115,7 @@ jobs:
           compression-level: 0
         timeout-minutes: 10
   falsifier:
-    runs-on: [self-hosted, linux, arm64, ci-fleet-admit]
+    runs-on: [self-hosted, linux, arm64]
     needs: [falsifier-build]
     timeout-minutes: 270
     steps:
