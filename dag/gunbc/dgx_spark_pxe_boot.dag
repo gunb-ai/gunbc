@@ -110,6 +110,45 @@ fn pxe_network_authority_gaps(
   )
 }
 
+type PxeNetworkPresentAuthorities {
+  dhcp_authority: DeclarationRef,
+  tftp_endpoint: DeclarationRef,
+  http_endpoint: DeclarationRef,
+  isolation: PxeNetworkIsolation,
+}
+
+fn pxe_network_present_authorities(
+  dhcp_authority: DeclarationRef?,
+  tftp_endpoint: DeclarationRef?,
+  http_endpoint: DeclarationRef?,
+  isolation: PxeNetworkIsolation?,
+) -> PxeNetworkPresentAuthorities? {
+  match dhcp_authority {
+    Absent => Absent
+    Present { value: dhcp } =>
+      match tftp_endpoint {
+        Absent => Absent
+        Present { value: tftp } =>
+          match http_endpoint {
+            Absent => Absent
+            Present { value: http } =>
+              match isolation {
+                Absent => Absent
+                Present { value: iso } =>
+                  Present {
+                    value: PxeNetworkPresentAuthorities {
+                      dhcp_authority: dhcp,
+                      tftp_endpoint: tftp,
+                      http_endpoint: http,
+                      isolation: iso,
+                    }
+                  }
+              }
+          }
+      }
+  }
+}
+
 fn pxe_network_ready_standing(
   dhcp_authority: DeclarationRef,
   tftp_endpoint: DeclarationRef,
@@ -151,47 +190,42 @@ fn evaluate_pxe_network_standing(
 ) -> PxeNetworkStanding {
   match observation {
     Absent => PxeNetworkUnobserved
-    Present { value: o } =>
-      if list_length(items: pxe_network_all_gaps(
+    Present { value: o } => {
+      let gaps = pxe_network_all_gaps(
         observation: o,
         dhcp_authority: dhcp_authority,
         tftp_endpoint: tftp_endpoint,
         http_endpoint: http_endpoint,
         isolation: isolation,
-      )) == 0 {
-        match dhcp_authority {
-          Absent => PxeNetworkGapped { gaps: [DhcpAuthorityUnobserved] }
-          Present { value: dhcp } =>
-            match tftp_endpoint {
-              Absent => PxeNetworkGapped { gaps: [TftpEndpointUnobserved] }
-              Present { value: tftp } =>
-                match http_endpoint {
-                  Absent => PxeNetworkGapped { gaps: [HttpEndpointUnobserved] }
-                  Present { value: http } =>
-                    match isolation {
-                      Absent => PxeNetworkGapped { gaps: [DhcpIsolationUnobserved] }
-                      Present { value: iso } =>
-                        pxe_network_ready_standing(
-                          dhcp_authority: dhcp,
-                          tftp_endpoint: tftp,
-                          http_endpoint: http,
-                          isolation: iso,
-                        )
-                    }
-                }
+      )
+      if list_length(items: gaps) != 0 {
+        PxeNetworkGapped { gaps: gaps }
+      } else {
+        match pxe_network_present_authorities(
+          dhcp_authority: dhcp_authority,
+          tftp_endpoint: tftp_endpoint,
+          http_endpoint: http_endpoint,
+          isolation: isolation,
+        ) {
+          Present { value: auth } =>
+            pxe_network_ready_standing(
+              dhcp_authority: auth.dhcp_authority,
+              tftp_endpoint: auth.tftp_endpoint,
+              http_endpoint: auth.http_endpoint,
+              isolation: auth.isolation,
+            )
+          Absent =>
+            PxeNetworkGapped {
+              gaps: pxe_network_authority_gaps(
+                dhcp_authority: dhcp_authority,
+                tftp_endpoint: tftp_endpoint,
+                http_endpoint: http_endpoint,
+                isolation: isolation,
+              )
             }
         }
-      } else {
-        PxeNetworkGapped {
-          gaps: pxe_network_all_gaps(
-            observation: o,
-            dhcp_authority: dhcp_authority,
-            tftp_endpoint: tftp_endpoint,
-            http_endpoint: http_endpoint,
-            isolation: isolation,
-          )
-        }
       }
+    }
   }
 }
 
