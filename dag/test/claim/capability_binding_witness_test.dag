@@ -26,7 +26,10 @@ import gunbc.capability_binding {
   NoiseFloorObservation, NoiseFloorObserved, NoiseFloorUnobserved,
   AxisCountObservation, AxisCountObserved, AxisCountUnobserved,
   GravityNormalization, GravityNormalized, GravityNotNormalized, GravityNormalizationUnobserved,
-  NegativeControl, NegativeControlPassed, NegativeControlFailed, NegativeControlNotRun,
+  NegativeControl, NegativeControlObserved, NegativeControlNotRun,
+  LatencyObservation, LatencyObserved, LatencyUnobserved,
+  CapabilityQualifiedAgainstProvisionalRequirement,
+  RequirementSigned, AuditionProvisional, PhysicalImpulseRequirement, GravityExcluded,
   SampleReceipt,
   TapQualificationCause, MagnitudeBelowFloor, LatencyAboveBudget, InsufficientAxes,
   SampleRateBelowMinimum, GravityNotHandledAsRequired, NegativeControlNotSatisfied,
@@ -61,7 +64,7 @@ fn a_host(container: ApplicationContainerKind, renderer: RendererKind) -> HostRe
     platform: ExternalSubjectRef {
       declaration: DeclarationRef {
         module_path: "extdeps.os.macos",
-        decl_name: "macos",
+        decl_name: "sequoia_15_catalog",
         field: WholeDeclaration
       }
     },
@@ -118,13 +121,13 @@ fn witness_continuity_is_a_capability_not_a_container_property() -> Bool {
       preserve_local_camera: true,
       preserve_last_projection: true,
       preserve_preferences: true,
-      replay_cold_start: true,
+      avoid_cold_start_replay: true,
     })
     && !continuity_is_complete(c: InstrumentContinuity {
       preserve_local_camera: true,
       preserve_last_projection: true,
       preserve_preferences: true,
-      replay_cold_start: false,
+      avoid_cold_start_replay: false,
     })
 }
 
@@ -141,7 +144,7 @@ fn witness_the_browser_product_is_not_its_engine() -> Bool {
 
 fn witness_unresolved_identity_keeps_its_cause() -> Bool {
   ref_is_resolved(r: RefResolved {
-      declaration: DeclarationRef { module_path: "extdeps.os.macos", decl_name: "macos", field: WholeDeclaration }
+      declaration: DeclarationRef { module_path: "extdeps.os.macos", decl_name: "sequoia_15_catalog", field: WholeDeclaration }
     })
     && !ref_is_resolved(r: RefReducedByPolicy { reported: "Mac OS X 10_15_7" })
     && !ref_is_resolved(r: RefNotProbed)
@@ -158,8 +161,8 @@ fn a_receipt(peak: Nat, latency: Milliseconds) -> SampleReceipt {
     observed_axes: AxisCountObserved { n: 3 },
     gravity: GravityNormalized,
     peak_magnitude_milli: peak,
-    detection_latency_ms: latency,
-    negative_control: NegativeControlPassed { idle_peak_milli: 300 },
+    detection_latency_ms: LatencyObserved { ms: latency },
+    negative_control: NegativeControlObserved { idle_peak_milli: 300 },
   }
 }
 
@@ -233,8 +236,8 @@ fn witness_red_too_few_axes_cannot_qualify() -> Bool {
     observed_axes: AxisCountObserved { n: 1 },
     gravity: GravityNormalized,
     peak_magnitude_milli: 3100,
-    detection_latency_ms: 40,
-    negative_control: NegativeControlPassed { idle_peak_milli: 300 },
+    detection_latency_ms: LatencyObserved { ms: 40 },
+    negative_control: NegativeControlObserved { idle_peak_milli: 300 },
   }
   !qualifies(r: flat) && causes_contain(cs: rejection_causes(r: flat), c: InsufficientAxes)
 }
@@ -247,8 +250,8 @@ fn witness_red_a_slow_stream_cannot_qualify() -> Bool {
     observed_axes: AxisCountObserved { n: 3 },
     gravity: GravityNormalized,
     peak_magnitude_milli: 3100,
-    detection_latency_ms: 40,
-    negative_control: NegativeControlPassed { idle_peak_milli: 300 },
+    detection_latency_ms: LatencyObserved { ms: 40 },
+    negative_control: NegativeControlObserved { idle_peak_milli: 300 },
   }
   !qualifies(r: slow) && causes_contain(cs: rejection_causes(r: slow), c: SampleRateBelowMinimum)
 }
@@ -261,8 +264,8 @@ fn witness_red_gravity_left_in_cannot_qualify() -> Bool {
     observed_axes: AxisCountObserved { n: 3 },
     gravity: GravityNotNormalized,
     peak_magnitude_milli: 3100,
-    detection_latency_ms: 40,
-    negative_control: NegativeControlPassed { idle_peak_milli: 300 },
+    detection_latency_ms: LatencyObserved { ms: 40 },
+    negative_control: NegativeControlObserved { idle_peak_milli: 300 },
   }
   !qualifies(r: heavy) && causes_contain(cs: rejection_causes(r: heavy), c: GravityNotHandledAsRequired)
 }
@@ -277,8 +280,8 @@ fn witness_red_an_unobserved_dimension_refuses_rather_than_passing() -> Bool {
     observed_axes: AxisCountUnobserved,
     gravity: GravityNormalizationUnobserved,
     peak_magnitude_milli: 9000,
-    detection_latency_ms: 10,
-    negative_control: NegativeControlPassed { idle_peak_milli: 300 },
+    detection_latency_ms: LatencyObserved { ms: 10 },
+    negative_control: NegativeControlObserved { idle_peak_milli: 300 },
   }
   !qualifies(r: partial)
     && causes_contain(cs: rejection_causes(r: partial), c: RequirementDimensionUnobserved)
@@ -294,7 +297,7 @@ fn witness_red_a_missing_negative_control_refuses() -> Bool {
     observed_axes: AxisCountObserved { n: 3 },
     gravity: GravityNormalized,
     peak_magnitude_milli: 3100,
-    detection_latency_ms: 40,
+    detection_latency_ms: LatencyObserved { ms: 40 },
     negative_control: NegativeControlNotRun,
   }
   let failed = SampleReceipt {
@@ -304,19 +307,36 @@ fn witness_red_a_missing_negative_control_refuses() -> Bool {
     observed_axes: AxisCountObserved { n: 3 },
     gravity: GravityNormalized,
     peak_magnitude_milli: 3100,
-    detection_latency_ms: 40,
-    negative_control: NegativeControlFailed { idle_peak_milli: 2500 },
+    detection_latency_ms: LatencyObserved { ms: 40 },
+    negative_control: NegativeControlObserved { idle_peak_milli: 2500 },
   }
   !qualifies(r: unrun)
     && causes_contain(cs: rejection_causes(r: unrun), c: NegativeControlNotSatisfied)
     && !qualifies(r: failed)
 }
 
-data supported_needs_a_receipt_note: String = "The seam claim: only a qualified outcome reaches supported, and a rejected one degrades with its typed causes carried through rather than flattened to a sentence."
+data signed_requirement_note: String = "A signed twin of the candidate requirement, identical in every threshold, differing only in standing. It exists so the two verdicts can be compared on ONE variable: the same receipt against the same numbers reaches supported when the thresholds are signed and qualified-against-provisional when they are not."
 
-fn witness_only_a_minted_qualification_reaches_supported() -> Bool {
-  verdict_of(s: TapOutcome { qualification: qualify_tap(r: bob_impulse_requirement_candidate, s: a_receipt(peak: 3100, latency: 40)) }) == "supported"
-    && verdict_of(s: TapOutcome { qualification: qualify_tap(r: bob_impulse_requirement_candidate, s: a_receipt(peak: 1900, latency: 40)) }) == "degraded"
+data a_signed_requirement: PhysicalImpulseRequirement = PhysicalImpulseRequirement {
+  axis_count: 3,
+  minimum_sample_rate_hz: 50,
+  maximum_detection_latency_ms: 120,
+  gravity_handling: GravityExcluded,
+  minimum_discriminating_magnitude_milli_m_per_s2: 2000,
+  standing: RequirementSigned {
+    audition_receipt: DeclarationRef {
+      module_path: "test.claim.capability_binding_witness",
+      decl_name: "a_signed_requirement",
+      field: WholeDeclaration
+    },
+  },
+}
+
+data supported_needs_a_receipt_note: String = "The seam claim, and it is now a claim about DERIVATION rather than about routing: the stream hands the verdict a raw requirement and a raw receipt, the verdict qualifies them itself, and there is no qualified value anyone could have authored instead. A rejected measurement degrades with its typed causes carried through rather than flattened to a sentence."
+
+fn witness_only_a_derived_qualification_reaches_supported() -> Bool {
+  verdict_of(s: TapOutcome { requirement: a_signed_requirement, receipt: a_receipt(peak: 3100, latency: 40) }) == "supported"
+    && verdict_of(s: TapOutcome { requirement: a_signed_requirement, receipt: a_receipt(peak: 1900, latency: 40) }) == "degraded"
     && verdict_of(s: SamplesObserved { receipt: a_receipt(peak: 2600, latency: 40) }) == "degraded"
     && verdict_of(s: HollowSamplesObserved { count: 12, window_ms: 4000 }) == "degraded"
     && verdict_of(s: NoSamplesObserved { lifecycle: LifecycleActivated, window_ms: 4000 }) == "degraded"
@@ -324,7 +344,7 @@ fn witness_only_a_minted_qualification_reaches_supported() -> Bool {
 
 fn witness_a_rejected_tap_carries_its_typed_causes() -> Bool {
   match derive_capability_verdict(o: an_observation(s: TapOutcome {
-      qualification: qualify_tap(r: bob_impulse_requirement_candidate, s: a_receipt(peak: 1900, latency: 400))
+      requirement: a_signed_requirement, receipt: a_receipt(peak: 1900, latency: 400)
     })) {
     CapabilityDegraded { missing, alternative } => match missing {
       DegradedTapRejected { causes } =>
@@ -335,9 +355,54 @@ fn witness_a_rejected_tap_carries_its_typed_causes() -> Bool {
       DegradedNoSamplesInWindow { lifecycle } => false
     }
     CapabilitySupported { receipt } => false
+    CapabilityQualifiedAgainstProvisionalRequirement { receipt, pending } => false
     CapabilityUnavailable { obstacle } => false
     CapabilityUnobserved => false
   }
+}
+
+data provisional_cannot_authorize_note: String = "The two blocking bypasses this file previously could not see, planted as the RED they need. A negative control whose observed idle peak sits ABOVE the discriminating floor must reject — under the old shape it passed because it was named Passed. And the live candidate requirement, whose own standing says its numbers are unproven, must NOT reach supported no matter how good the measurement is: the same receipt that reaches supported against signed thresholds lands on the provisional arm against unsigned ones, and its key is not the one the durable-claim gate reads."
+
+fn witness_red_a_negative_control_above_the_floor_rejects() -> Bool {
+  let noisy = SampleReceipt {
+    count: 240,
+    frequency: FrequencyObserved { hz: 60 },
+    noise_floor: NoiseFloorObserved { magnitude_milli: 40 },
+    observed_axes: AxisCountObserved { n: 3 },
+    gravity: GravityNormalized,
+    peak_magnitude_milli: 3100,
+    detection_latency_ms: LatencyObserved { ms: 40 },
+    negative_control: NegativeControlObserved { idle_peak_milli: 9000 },
+  }
+  !qualifies(r: noisy)
+    && causes_contain(cs: rejection_causes(r: noisy), c: NegativeControlNotSatisfied)
+    && qualifies(r: a_receipt(peak: 3100, latency: 40))
+}
+
+fn witness_red_provisional_thresholds_cannot_authorize_support() -> Bool {
+  let good = a_receipt(peak: 3100, latency: 40)
+  verdict_of(s: TapOutcome { requirement: bob_impulse_requirement_candidate, receipt: good }) ==
+      "qualified-against-provisional-requirement"
+    && verdict_of(s: TapOutcome { requirement: a_signed_requirement, receipt: good }) == "supported"
+    && !row_supports_a_durable_claim(r: CapabilityVerdictRow {
+         binding: an_observation(s: TapOutcome { requirement: bob_impulse_requirement_candidate, receipt: good }).binding,
+         verdict: derive_capability_verdict(o: an_observation(s: TapOutcome {
+           requirement: bob_impulse_requirement_candidate, receipt: good })),
+       })
+}
+
+fn witness_red_an_unobserved_latency_refuses_rather_than_passing() -> Bool {
+  let no_latency = SampleReceipt {
+    count: 240,
+    frequency: FrequencyObserved { hz: 60 },
+    noise_floor: NoiseFloorObserved { magnitude_milli: 40 },
+    observed_axes: AxisCountObserved { n: 3 },
+    gravity: GravityNormalized,
+    peak_magnitude_milli: 3100,
+    detection_latency_ms: LatencyUnobserved,
+    negative_control: NegativeControlObserved { idle_peak_milli: 300 },
+  }
+  !qualifies(r: no_latency)
 }
 
 fn witness_every_obstacle_reaches_unavailable_with_its_own_typed_cause() -> Bool {
@@ -348,6 +413,7 @@ fn witness_every_obstacle_reaches_unavailable_with_its_own_typed_cause() -> Bool
     && match derive_capability_verdict(o: an_observation(s: BackendConnectionRefused { error_name: "NotReadableError" })) {
          CapabilityUnavailable { obstacle } => obstacle_key(o: obstacle) == "backend-connection-refused"
          CapabilitySupported { receipt } => false
+         CapabilityQualifiedAgainstProvisionalRequirement { receipt, pending } => false
          CapabilityDegraded { missing, alternative } => false
          CapabilityUnobserved => false
        }
@@ -374,6 +440,7 @@ fn degraded_alternative_module(s: BindingStreamState) -> String {
   match derive_capability_verdict(o: an_observation(s: s)) {
     CapabilityDegraded { missing, alternative } => alternative.decl_name
     CapabilitySupported { receipt } => ""
+    CapabilityQualifiedAgainstProvisionalRequirement { receipt, pending } => ""
     CapabilityUnavailable { obstacle } => ""
     CapabilityUnobserved => ""
   }
@@ -393,7 +460,7 @@ data verdict_row_note: String = "A verdict keeps its binding, so one supported r
 
 fn witness_verdict_rows_retain_their_binding_identity() -> Bool {
   let rows = verdict_rows(rows: [
-    an_observation(s: TapOutcome { qualification: qualify_tap(r: bob_impulse_requirement_candidate, s: a_receipt(peak: 3100, latency: 40)) }),
+    an_observation(s: TapOutcome { requirement: a_signed_requirement, receipt: a_receipt(peak: 3100, latency: 40) }),
     an_observation(s: InterfaceUnavailable),
   ])
   rows.length() == 2
@@ -404,7 +471,7 @@ fn witness_verdict_rows_retain_their_binding_identity() -> Bool {
 
 fn witness_red_a_reduced_host_cannot_carry_a_durable_support_claim() -> Bool {
   let rows = verdict_rows(rows: [
-    an_observation(s: TapOutcome { qualification: qualify_tap(r: bob_impulse_requirement_candidate, s: a_receipt(peak: 3100, latency: 40)) }),
+    an_observation(s: TapOutcome { requirement: a_signed_requirement, receipt: a_receipt(peak: 3100, latency: 40) }),
   ])
   fold(rows, init: true, f: (acc, r) => acc && !row_supports_a_durable_claim(r: r))
     && fold(rows, init: false, f: (acc, r) => acc || capability_verdict_key(v: r.verdict) == "supported")
@@ -478,7 +545,10 @@ test fn capability_binding_keystone_holds() -> Bool {
     && witness_red_gravity_left_in_cannot_qualify()
     && witness_red_an_unobserved_dimension_refuses_rather_than_passing()
     && witness_red_a_missing_negative_control_refuses()
-    && witness_only_a_minted_qualification_reaches_supported()
+    && witness_only_a_derived_qualification_reaches_supported()
+    && witness_red_a_negative_control_above_the_floor_rejects()
+    && witness_red_provisional_thresholds_cannot_authorize_support()
+    && witness_red_an_unobserved_latency_refuses_rather_than_passing()
     && witness_a_rejected_tap_carries_its_typed_causes()
     && witness_every_obstacle_reaches_unavailable_with_its_own_typed_cause()
     && witness_red_an_unexercised_binding_is_not_a_failure()

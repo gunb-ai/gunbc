@@ -42,15 +42,22 @@ fn host_role_key(r: HostRole) -> String {
 
 data process_lifetime_boolean_removed_note: String = "A PROCESS-LIFETIME BOOLEAN DERIVED FROM CONTAINER TYPE WAS WRONG TWICE OVER (review finding, 2026-08-06), and it is deleted rather than corrected. It claimed a native mobile application owns its process lifetime, which no mobile application does — the operating system suspends and kills it on its own policy. And it answered the wrong question: what the product actually needs is CONTINUITY of the instrument and its state, which is a capability with several independent parts, not a property assigned to a container by type. A native shell makes some of those parts easier to realize; it does not make them different requirements."
 
+data continuity_polarity_note: String = "THE FOURTH FIELD WAS NAMED FOR THE FAILURE AND REQUIRED TO BE TRUE (review finding, 2026-08-06). The accepted law is that internal navigation PRESERVES the instrument and does not replay a cold start — three fields named the preservation and the fourth named the thing to avoid, and completeness then demanded all four be true, so the law read as 'preserve everything, and also throw it away'. A witness pinned false as incomplete, which made the inversion load-bearing rather than a slip someone would notice.
+
+Renaming is the repair rather than flipping the required value, because a field whose name says one thing and whose required value says the opposite is a trap that reads correctly at every call site and is wrong. All four fields now name a property the instrument HAS, so completeness is the conjunction of four trues and no reader has to hold a negation in their head."
+
 type InstrumentContinuity {
   preserve_local_camera: Bool
   preserve_last_projection: Bool
   preserve_preferences: Bool
-  replay_cold_start: Bool
+  avoid_cold_start_replay: Bool
 }
 
 fn continuity_is_complete(c: InstrumentContinuity) -> Bool {
-  c.preserve_local_camera && c.preserve_last_projection && c.preserve_preferences && c.replay_cold_start
+  c.preserve_local_camera
+    && c.preserve_last_projection
+    && c.preserve_preferences
+    && c.avoid_cold_start_replay
 }
 
 data renderer_kind_note: String = "HOW A DECIDED PROJECTION BECOMES PIXELS AND ACCESSIBILITY STRUCTURE, and the product model must not know which one was chosen. This is a structural axis rather than a product one — there is no vendor here to enumerate — and it is orthogonal to the container above it: a native desktop process may render DOM inside a web view, and a browser document may render a WebGPU scene. Keeping the two apart is what leaves the route open from today's generated DOM instrument to a native or engine realization of the SAME projection, without touching roadmap semantics."

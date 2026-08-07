@@ -16,6 +16,7 @@ import gunbc.capability_binding {
   NoiseFloorObservation, NoiseFloorObserved, NoiseFloorUnobserved,
   AxisCountObservation, AxisCountObserved, AxisCountUnobserved,
   GravityNormalization, GravityNormalized, GravityNotNormalized, GravityNormalizationUnobserved,
+  LatencyObservation, LatencyObserved, LatencyUnobserved,
   NegativeControl, NegativeControlNotRun,
 }
 import extdeps.w3c.device_orientation_and_motion {
@@ -204,7 +205,20 @@ fn motion_reachability_key(r: MotionReachability) -> String {
   }
 }
 
+data admission_is_on_the_path_note: String = "ADMISSION SITS INSIDE THE DERIVATION, NOT BESIDE IT (review finding, 2026-08-06). The contradiction check existed, was correct, and was OPTIONAL: derive_reachability and project_binding_stream both matched on the stream arm alone, so a caller who skipped admit_web_observation could still turn an insecure context with a blocked policy, a denied permission and arriving readings into a reachable verdict. A witness proved the checker noticed the contradiction; nothing proved a contradicted observation had no route to a verdict, which is the claim that matters.
+
+Both consumers now run the check FIRST. That is deliberately stronger than routing an AdmittedWebObservation wrapper between them: this substrate has no opaque construction, so a wrapper would have been another publicly writable value asserting it had been checked — the same forgery this module just closed one level down at TapQualified. Re-deriving the contradictions costs a fold over eight fields and cannot be bypassed by authoring anything."
+
 fn derive_reachability(o: WebMotionObservation) -> MotionReachability {
+  let contradictions = observation_contradictions(o: o)
+  if contradictions.length() > 0 {
+    MotionReachabilityUnresolved {
+      pending: join([
+        "observation refused as incoherent — ",
+        join(map(contradictions, c => contradiction_key(c: c)), ", "),
+      ], ""),
+    }
+  } else {
   match o.stream {
     StreamReadingsObserved { count, peak_milli_m_per_s2, sample_interval_ms } =>
       MotionReachable { peak_milli_m_per_s2: peak_milli_m_per_s2 }
@@ -223,6 +237,7 @@ fn derive_reachability(o: WebMotionObservation) -> MotionReachability {
       MotionReachabilityUnresolved { pending: "events arrived carrying null motion fields; the spec's advisory hint for a never-providing implementation, which is not a determination" }
     StreamUnobserved =>
       MotionReachabilityUnresolved { pending: "this path was never exercised" }
+  }
   }
 }
 
@@ -323,6 +338,32 @@ fn stream_unread(s: MotionStreamState) -> Int {
   }
 }
 
+data required_axes_are_per_provider_note: String = "COMPLETENESS IS A QUESTION ABOUT ONE PROVIDER'S CONTRACT, NOT A UNIVERSAL CENSUS (review finding, 2026-08-06). The earlier count demanded a gyroscope-policy reading and a requestPermission exposure from every provider — but those two axes belong to the Device Orientation and Motion contract specifically: devicemotion needs both named permissions and, on the platform that gates it, a static requestPermission on the event interface. A Generic Sensor construction has neither; it is admitted by its own permissions-policy feature and reports refusal through a named lifecycle error.
+
+Demanding them anyway made every LinearAccelerationSensor observation permanently indecisive on two axes it can never answer, which is the mirror of fabricating a value: an obligation nobody can discharge is as useless as an answer nobody measured. The required set is now derived from the provider, so adding a provider adds its own contract's axes rather than widening one shared list."
+
+fn provider_requires_gyroscope_policy(p: WebMotionProvider) -> Bool {
+  match p {
+    DeviceMotionEventProvider => true
+    AccelerometerProvider => false
+    LinearAccelerationSensorProvider => false
+    GravitySensorProvider => false
+  }
+}
+
+fn provider_requires_permission_method(p: WebMotionProvider) -> Bool {
+  match p {
+    DeviceMotionEventProvider => true
+    AccelerometerProvider => false
+    LinearAccelerationSensorProvider => false
+    GravitySensorProvider => false
+  }
+}
+
+fn when_required(required: Bool, unread: Int) -> Int {
+  if required { unread } else { 0 }
+}
+
 fn unobserved_axis_count(o: WebMotionObservation) -> Int {
   browsing_context_unread(c: o.browsing_context) +
     secure_context_unread(s: o.secure_context) +
@@ -330,9 +371,13 @@ fn unobserved_axis_count(o: WebMotionObservation) -> Int {
     focus_unread(f: o.focus) +
     exposure_unread(e: o.interface_exposure) +
     policy_unread(p: o.accelerometer_policy) +
-    policy_unread(p: o.gyroscope_policy) +
+    when_required(
+      required: provider_requires_gyroscope_policy(p: o.provider),
+      unread: policy_unread(p: o.gyroscope_policy)) +
     permission_unread(p: o.permission) +
-    permission_method_unread(e: o.permission_method) +
+    when_required(
+      required: provider_requires_permission_method(p: o.provider),
+      unread: permission_method_unread(e: o.permission_method)) +
     stream_unread(s: o.stream)
 }
 
@@ -354,6 +399,8 @@ fn frequency_from_interval(sample_interval_ms: Milliseconds) -> FrequencyObserva
   }
 }
 
+data latency_is_not_zero_note: String = "A WEB PROBE DOES NOT MEASURE DETECTION LATENCY, AND ZERO WAS THE WORST AVAILABLE ANSWER (review finding, 2026-08-06). Counting events over a window says nothing about how long after a physical knock the first sample carrying it arrived — that needs a known stimulus time, which no passive listener has. Writing zero did not merely omit the fact: zero is the BEST possible latency, so an unmeasured dimension was reported as a perfect score, and the requirement's latency budget passed on it every time. It joins the four dimensions already carrying an observed-or-not coproduct for exactly this reason."
+
 fn web_sample_receipt(count: Int, peak_milli: Int, sample_interval_ms: Milliseconds) -> SampleReceipt {
   SampleReceipt {
     count: count,
@@ -362,12 +409,15 @@ fn web_sample_receipt(count: Int, peak_milli: Int, sample_interval_ms: Milliseco
     observed_axes: AxisCountUnobserved,
     gravity: GravityNormalizationUnobserved,
     peak_magnitude_milli: peak_milli,
-    detection_latency_ms: 0,
+    detection_latency_ms: LatencyUnobserved,
     negative_control: NegativeControlNotRun,
   }
 }
 
 fn project_binding_stream(o: WebMotionObservation) -> BindingStreamState {
+  if observation_contradictions(o: o).length() > 0 {
+    BindingStreamUnobserved
+  } else {
   match o.stream {
     StreamInterfaceNotExposed => InterfaceUnavailable
     StreamPolicyBlocked => PolicyRefused
@@ -388,6 +438,7 @@ fn project_binding_stream(o: WebMotionObservation) -> BindingStreamState {
       }
     StreamUnobserved => BindingStreamUnobserved
   }
+  }
 }
 
 data silence_carries_its_lifecycle_note: String = "THE TWO WEB SILENCES STAY DISTINGUISHABLE DOWNSTREAM, AND AN EARLIER REVISION MERGED THEM WHILE CALLING IT A LOSS RATHER THAN A FABRICATION (review finding, 2026-08-06). No events at all and an activated sensor that never read are different facts: the first says the dispatch path never ran, the second says it ran and produced nothing, and only the second involves a sensor object that reached the activated lifecycle state. Projecting the first into an arm named ActivatedNoSamples asserted an activation that never happened — and a witness pinned it, which made the invention load-bearing. The neutral arm now carries the lifecycle, so the merge is a real widening of the remedy rather than a claim about what occurred."
@@ -396,16 +447,24 @@ data coherence_admission_note: String = "AN OBSERVATION CAN BE COMPLETE AND STIL
 
 The three contradictions are named individually rather than folded into one because their remedies differ: an insecure origin is fixed by serving over HTTPS, a blocked policy by delegating the feature, and a denied permission by asking again."
 
+data both_permissions_are_required_note: String = "DEVICEMOTION NEEDS BOTH NAMED POLICIES, AND THE CHECK READ ONLY ONE (review finding, 2026-08-06). The cited Device Orientation and Motion contract dispatches the event only when the accelerometer AND gyroscope permissions are both granted, and gunbc already models that as devicemotion_may_be_dispatched — but the coherence check consulted the accelerometer policy alone, so readings under a blocked GYROSCOPE policy passed as coherent. The contradiction is per-feature so the refusal names which one, because the remedies differ: a document delegates each feature separately.
+
+PROMPT IS NOT A GRANT. The third permission state means the user has been asked nothing yet, so readings arriving under it are as impossible as readings under a denial — and treating prompt as merely 'not denied' let exactly that combination through. Its contradiction is named separately from a denial because what a reader should conclude differs: a denial is a decision, a prompt is a question nobody answered."
+
 type ObservationContradiction
   = ReadingsUnderInsecureContext
   | ReadingsUnderBlockedPolicy
+  | ReadingsUnderBlockedGyroscopePolicy
   | ReadingsUnderDeniedPermission
+  | ReadingsUnderUnansweredPermissionPrompt
 
 fn contradiction_key(c: ObservationContradiction) -> String {
   match c {
     ReadingsUnderInsecureContext => "readings-under-insecure-context"
-    ReadingsUnderBlockedPolicy => "readings-under-blocked-policy"
+    ReadingsUnderBlockedPolicy => "readings-under-blocked-accelerometer-policy"
+    ReadingsUnderBlockedGyroscopePolicy => "readings-under-blocked-gyroscope-policy"
     ReadingsUnderDeniedPermission => "readings-under-denied-permission"
+    ReadingsUnderUnansweredPermissionPrompt => "readings-under-unanswered-permission-prompt"
   }
 }
 
@@ -440,13 +499,26 @@ fn insecure_contradiction(o: WebMotionObservation) -> List<ObservationContradict
   }
 }
 
-fn policy_contradiction(o: WebMotionObservation) -> List<ObservationContradiction> {
-  match o.accelerometer_policy {
-    PolicyBlocksFeature =>
-      contradiction_when(holds: stream_carries_readings(s: o.stream), c: ReadingsUnderBlockedPolicy)
+fn one_policy_contradiction(
+  p: PolicyAdmission,
+  s: MotionStreamState,
+  c: ObservationContradiction,
+) -> List<ObservationContradiction> {
+  match p {
+    PolicyBlocksFeature => contradiction_when(holds: stream_carries_readings(s: s), c: c)
     PolicyAllowsFeature => []
     PolicyAdmissionUnobserved => []
   }
+}
+
+fn policy_contradiction(o: WebMotionObservation) -> List<ObservationContradiction> {
+  concat(
+    one_policy_contradiction(p: o.accelerometer_policy, s: o.stream, c: ReadingsUnderBlockedPolicy),
+    if provider_requires_gyroscope_policy(p: o.provider) {
+      one_policy_contradiction(p: o.gyroscope_policy, s: o.stream, c: ReadingsUnderBlockedGyroscopePolicy)
+    } else {
+      []
+    })
 }
 
 fn permission_state_contradiction(state: PermissionState, s: MotionStreamState) -> List<ObservationContradiction> {
@@ -454,7 +526,8 @@ fn permission_state_contradiction(state: PermissionState, s: MotionStreamState) 
     PermissionDenied =>
       contradiction_when(holds: stream_carries_readings(s: s), c: ReadingsUnderDeniedPermission)
     PermissionGranted => []
-    PermissionPrompt => []
+    PermissionPrompt =>
+      contradiction_when(holds: stream_carries_readings(s: s), c: ReadingsUnderUnansweredPermissionPrompt)
   }
 }
 

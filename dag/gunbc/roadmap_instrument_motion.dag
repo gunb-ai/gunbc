@@ -16,6 +16,7 @@ import gunbc.roadmap_component {
   motion_plate_class, motion_tap_btn_class, motion_receipt_class,
   motion_frame_data_attr, motion_reduced_frame_data_attr, motion_frame_interval_attr,
   motion_plate_id, motion_receipt_id, motion_probe_run_id,
+  instrument_sandbox_page_path, instrument_tuner_page_path,
 }
 import gunbc.capability_binding {
   SyntheticTapStrength, SyntheticTapLight, SyntheticTapFirm, SyntheticTapKnock,
@@ -26,7 +27,9 @@ import gunbc.capability_binding {
   CoverageProvider, ProviderModelled, ProviderNotYetModelled,
 }
 import gunbc.design.instrument_bob {
-  BobFrame, bob_frames, MotionPreference, MotionFull, MotionReduced,
+  BobFrame, MotionPreference, MotionFull, MotionReduced,
+  BobSequence, BobSequenceSettled, BobSequenceRefused, bob_sequence, bob_sequence_refusal_key,
+  BobSequenceRefusal,
   bob_max_travel_px, bob_half_life_ms, max_settle_time_ms,
 }
 import extdeps.w3c.device_orientation_and_motion {
@@ -50,22 +53,29 @@ data frames_are_emitted_not_computed_note: String = "The client receives a decid
 
 data motion_frame_interval_ms: Milliseconds = 16
 
-fn frames_for(t: SyntheticTapStrength, m: MotionPreference) -> List<BobFrame> {
-  bob_frames(
+fn sequence_for(t: SyntheticTapStrength, m: MotionPreference) -> BobSequence {
+  bob_sequence(
     i: synthetic_tap_impulse(t: t, at_ms: 0),
     m: m,
     interval_ms: motion_frame_interval_ms)
+}
+
+fn frames_for(t: SyntheticTapStrength, m: MotionPreference) -> List<BobFrame> {
+  match sequence_for(t: t, m: m) {
+    BobSequenceSettled { frames: fs } => fs
+    BobSequenceRefused { cause: _, frames_emitted: _, budget: _ } => []
+  }
 }
 
 fn frame_wire(f: BobFrame) -> String {
   to_string(f.displacement_px)
 }
 
+data refusal_removes_the_attribute_note: String = "A REFUSED SEQUENCE SHIPS NO WIRE AT ALL. The button is not rendered as a button: the tap becomes a visible line naming the refusal, its cause, how many frames it managed and the budget it was given. The client binds taps by the presence of the frames attribute, so a refusal cannot be clicked and there is no attribute for a renderer to parse — never a plausible-looking list, and never a control whose press does nothing without saying why. A page cannot render motion the model refused to decide."
+
 fn frames_wire(t: SyntheticTapStrength, m: MotionPreference) -> String {
   join(map(frames_for(t: t, m: m), f => frame_wire(f: f)), ",")
 }
-
-data both_preferences_are_shipped_note: String = "Both sequences travel with the button, and the client picks by matchMedia. The reduced wire is not an empty string or a missing attribute — it is the at-rest frame gunbc.design.instrument_bob decides for MotionReduced, so a reduced-motion viewer gets a model answer rather than a renderer opting out. The receipt, the magnitudes and the straddle are identical under both."
 
 fn cls(name: String) -> SelectorSubject {
   ClassSelector { name: name }
@@ -120,19 +130,44 @@ fn note(s: String) -> Fragment {
   el_class("p", "instrument-note", [ txt(s) ])
 }
 
-fn tap_button(t: SyntheticTapStrength) -> Fragment {
-  el_attrs("button", [
-    attr(name: "class", value: motion_tap_btn_class),
-    attr(name: "type", value: "button"),
-    attr(name: "data-strength", value: synthetic_tap_strength_key(t: t)),
-    attr(name: motion_frame_data_attr, value: frames_wire(t: t, m: MotionFull)),
-    attr(name: motion_reduced_frame_data_attr, value: frames_wire(t: t, m: MotionReduced)),
-  ], [
+fn tap_label(t: SyntheticTapStrength) -> String {
+  join([
+    "synthetic tap · ", synthetic_tap_strength_key(t: t),
+    " · ", to_string(synthetic_tap_magnitude_milli(t: t)), " milli-m/s²",
+  ], "")
+}
+
+fn tap_refused_fragment(t: SyntheticTapStrength, c: BobSequenceRefusal, n: Int, b: Int) -> Fragment {
+  el_class("div", "motion-tap-refused", [
     txt(join([
-      "synthetic tap · ", synthetic_tap_strength_key(t: t),
-      " · ", to_string(synthetic_tap_magnitude_milli(t: t)), " milli-m/s²",
+      tap_label(t: t), " — sequence refused · ", bob_sequence_refusal_key(r: c),
+      " · ", to_string(n), " frames emitted against a budget of ", to_string(b),
     ], "")),
   ])
+}
+
+fn tap_button_with(t: SyntheticTapStrength, full: String) -> Fragment {
+  match sequence_for(t: t, m: MotionReduced) {
+    BobSequenceRefused { cause: c, frames_emitted: n, budget: b } =>
+      tap_refused_fragment(t: t, c: c, n: n, b: b)
+    BobSequenceSettled { frames: rs } =>
+      el_attrs("button", [
+        attr(name: "class", value: motion_tap_btn_class),
+        attr(name: "type", value: "button"),
+        attr(name: "data-strength", value: synthetic_tap_strength_key(t: t)),
+        attr(name: motion_frame_data_attr, value: full),
+        attr(name: motion_reduced_frame_data_attr, value: join(map(rs, f => frame_wire(f: f)), ",")),
+      ], [ txt(tap_label(t: t)) ])
+  }
+}
+
+fn tap_button(t: SyntheticTapStrength) -> Fragment {
+  match sequence_for(t: t, m: MotionFull) {
+    BobSequenceRefused { cause: c, frames_emitted: n, budget: b } =>
+      tap_refused_fragment(t: t, c: c, n: n, b: b)
+    BobSequenceSettled { frames: fs } =>
+      tap_button_with(t: t, full: join(map(fs, f => frame_wire(f: f)), ","))
+  }
 }
 
 data straddle_is_shown_note: String = "The three buttons are labelled with their magnitudes and with whether each clears the discriminating floor, because the straddle is the argument: a light tap is below the threshold a real knock would have to clear, and showing that is what stops the control from reading as a volume knob."
@@ -276,8 +311,8 @@ fn instrument_motion_page() -> Fragment {
           el_class("div", "header-inner", [
             el_class("span", "wordmark", [ txt("gunbc") ]),
             el("h1", [ txt("instrument motion lab") ]),
-            el_attrs("a", [ attr(name: "href", value: "/sandbox/instrument") ], [ txt("← instrument") ]),
-            el_attrs("a", [ attr(name: "href", value: "/sandbox/instrument/tuner") ], [ txt("tuner") ]),
+            el_attrs("a", [ attr(name: "href", value: instrument_sandbox_page_path) ], [ txt("← instrument") ]),
+            el_attrs("a", [ attr(name: "href", value: instrument_tuner_page_path) ], [ txt("tuner") ]),
           ]),
         ]),
         motion_main(),

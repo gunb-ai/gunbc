@@ -36,6 +36,8 @@ import gunbc.web_motion_binding {
   PermissionMethodExposure, PermissionMethodExposed, PermissionMethodAbsent,
   PermissionMethodExposureUnobserved, permission_method_exposure_key,
   ObservationContradiction, ReadingsUnderInsecureContext, ReadingsUnderBlockedPolicy,
+  ReadingsUnderBlockedGyroscopePolicy, ReadingsUnderUnansweredPermissionPrompt,
+  provider_requires_gyroscope_policy, provider_requires_permission_method,
   ReadingsUnderDeniedPermission, contradiction_key,
   WebMotionObservationAdmission, ObservationAdmitted, ObservationContradicted,
   admit_web_observation, observation_contradictions, observation_is_coherent,
@@ -82,7 +84,7 @@ fn probe_subject() -> HostRealization {
     platform: ExternalSubjectRef {
       declaration: DeclarationRef {
         module_path: "extdeps.os.macos",
-        decl_name: "macos",
+        decl_name: "sequoia_15_catalog",
         field: WholeDeclaration
       }
     },
@@ -331,6 +333,22 @@ fn contradicted_observation(c: ObservationContradiction) -> WebMotionObservation
       permission: base.permission, stream: base.stream,
       observation_window_ms: base.observation_window_ms,
     }
+    ReadingsUnderBlockedGyroscopePolicy => WebMotionObservation {
+      host: base.host, provider: DeviceMotionEventProvider, browsing_context: base.browsing_context,
+      secure_context: base.secure_context, visibility: base.visibility, focus: base.focus,
+      interface_exposure: base.interface_exposure, accelerometer_policy: base.accelerometer_policy,
+      gyroscope_policy: PolicyBlocksFeature, permission_method: base.permission_method,
+      permission: base.permission, stream: base.stream,
+      observation_window_ms: base.observation_window_ms,
+    }
+    ReadingsUnderUnansweredPermissionPrompt => WebMotionObservation {
+      host: base.host, provider: base.provider, browsing_context: base.browsing_context,
+      secure_context: base.secure_context, visibility: base.visibility, focus: base.focus,
+      interface_exposure: base.interface_exposure, accelerometer_policy: base.accelerometer_policy,
+      gyroscope_policy: base.gyroscope_policy, permission_method: base.permission_method,
+      permission: PermissionObservedAs { state: PermissionPrompt }, stream: base.stream,
+      observation_window_ms: base.observation_window_ms,
+    }
     ReadingsUnderDeniedPermission => WebMotionObservation {
       host: base.host, provider: base.provider, browsing_context: base.browsing_context,
       secure_context: base.secure_context, visibility: base.visibility, focus: base.focus,
@@ -349,9 +367,50 @@ fn is_contradicted(o: WebMotionObservation) -> Bool {
   }
 }
 
+data admission_on_path_note: String = "THE CLAIM THAT WAS MISSING. The old control proved admit_web_observation NOTICES a contradiction; nothing proved a contradicted observation could not reach a verdict, and both consumers matched the stream arm alone. So this asserts the consumers directly: a contradicted record derives unresolved rather than reachable, and projects to unobserved rather than to samples — the two routes a caller who never called admission would have taken."
+
+fn reachability_of_observation(o: WebMotionObservation) -> String {
+  motion_reachability_key(r: derive_reachability(o: o))
+}
+
+data gyroscope_is_per_provider_note: String = "THE SAME BLOCKED POLICY IS A CONTRADICTION FOR ONE PROVIDER AND SILENCE FOR ANOTHER, which is what makes the per-provider derivation a real distinction rather than a widened check. devicemotion dispatches only when both named permissions are granted, so readings under a blocked gyroscope policy are impossible there; a LinearAccelerationSensor is admitted by its own feature and a gyroscope policy says nothing about it. The fixture for the gyroscope contradiction therefore switches the provider, and this control asserts BOTH directions — otherwise the check would pass by being applied everywhere."
+
+fn readings_with_blocked_gyroscope(p: WebMotionProvider) -> WebMotionObservation {
+  let base = observation_with_stream(s: StreamReadingsObserved { count: 10, peak_milli_m_per_s2: 3000, sample_interval_ms: 16 })
+  WebMotionObservation {
+    host: base.host, provider: p, browsing_context: base.browsing_context,
+    secure_context: base.secure_context, visibility: base.visibility, focus: base.focus,
+    interface_exposure: base.interface_exposure, accelerometer_policy: base.accelerometer_policy,
+    gyroscope_policy: PolicyBlocksFeature, permission_method: base.permission_method,
+    permission: base.permission, stream: base.stream,
+    observation_window_ms: base.observation_window_ms,
+  }
+}
+
+fn witness_a_blocked_gyroscope_contradicts_only_the_provider_that_needs_it() -> Bool {
+  is_contradicted(o: readings_with_blocked_gyroscope(p: DeviceMotionEventProvider))
+    && !is_contradicted(o: readings_with_blocked_gyroscope(p: LinearAccelerationSensorProvider))
+    && provider_requires_gyroscope_policy(p: DeviceMotionEventProvider)
+    && !provider_requires_gyroscope_policy(p: LinearAccelerationSensorProvider)
+    && provider_requires_permission_method(p: DeviceMotionEventProvider)
+    && !provider_requires_permission_method(p: LinearAccelerationSensorProvider)
+}
+
+fn witness_red_a_contradicted_observation_has_no_route_to_a_verdict() -> Bool {
+  reachability_of_observation(o: contradicted_observation(c: ReadingsUnderInsecureContext)) == "unresolved"
+    && reachability_of_observation(o: contradicted_observation(c: ReadingsUnderBlockedPolicy)) == "unresolved"
+    && reachability_of_observation(o: contradicted_observation(c: ReadingsUnderBlockedGyroscopePolicy)) == "unresolved"
+    && reachability_of_observation(o: contradicted_observation(c: ReadingsUnderUnansweredPermissionPrompt)) == "unresolved"
+    && reachability_of_observation(o: contradicted_observation(c: ReadingsUnderDeniedPermission)) == "unresolved"
+    && reachability_of_observation(o: observation_with_stream(s: StreamReadingsObserved { count: 10, peak_milli_m_per_s2: 3000, sample_interval_ms: 16 })) == "reachable"
+    && binding_stream_key(s: project_binding_stream(o: contradicted_observation(c: ReadingsUnderBlockedGyroscopePolicy))) == "unobserved"
+}
+
 fn witness_red_a_contradictory_observation_refuses_rather_than_deriving() -> Bool {
   is_contradicted(o: contradicted_observation(c: ReadingsUnderInsecureContext))
     && is_contradicted(o: contradicted_observation(c: ReadingsUnderBlockedPolicy))
+    && is_contradicted(o: contradicted_observation(c: ReadingsUnderBlockedGyroscopePolicy))
+    && is_contradicted(o: contradicted_observation(c: ReadingsUnderUnansweredPermissionPrompt))
     && is_contradicted(o: contradicted_observation(c: ReadingsUnderDeniedPermission))
     && !is_contradicted(o: observation_with_stream(s: StreamReadingsObserved { count: 10, peak_milli_m_per_s2: 3000, sample_interval_ms: 16 }))
     && !observation_is_coherent(o: contradicted_observation(c: ReadingsUnderInsecureContext))
@@ -378,9 +437,11 @@ fn witness_the_reduced_values_are_the_cited_frozen_tokens() -> Bool {
     && frozen_macos_platform_token == "MacIntel"
 }
 
+data keystone_conjunction_note: String = "ONE RETURNED EXPRESSION, after the same defect was found here as in the bob witness (review finding, 2026-08-06). The frozen-identity control sat on its own line above the conjunction — evaluated, discarded, and with no bearing on whether the keystone was green. Two files carried this shape, which is what makes it a class rather than a typo: a claim that is called but not joined looks exactly like a claim that is enforced."
+
 test fn web_motion_binding_keystone_holds() -> Bool {
   witness_the_reduced_values_are_the_cited_frozen_tokens()
-  witness_the_discredited_probe_resolves_nothing()
+    && witness_the_discredited_probe_resolves_nothing()
     && witness_the_probe_left_six_axes_unread_and_no_window()
     && witness_red_silence_never_projects_to_an_absent_sensor()
     && witness_only_named_obstacles_are_unreachable()
@@ -397,5 +458,7 @@ test fn web_motion_binding_keystone_holds() -> Bool {
     && witness_red_an_unmeasured_frequency_is_not_zero_hertz()
     && witness_red_no_web_arm_can_project_to_a_qualified_tap()
     && witness_red_a_contradictory_observation_refuses_rather_than_deriving()
+    && witness_a_blocked_gyroscope_contradicts_only_the_provider_that_needs_it()
+    && witness_red_a_contradicted_observation_has_no_route_to_a_verdict()
     && witness_decisiveness_requires_coherence_too()
 }

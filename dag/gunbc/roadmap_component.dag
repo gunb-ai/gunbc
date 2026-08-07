@@ -3811,6 +3811,8 @@ data motion_probe_run_id: String = "motion-probe-run"
 
 data motion_probe_window_ms: Int = 2000
 
+data client_manufactures_no_final_zero_note: String = "THE CLIENT DOES NOT RESET THE PLATE WHEN THE LIST RUNS OUT, and removing that line is half the repair for a real defect. It used to set translateY(0) after consuming the frames, which meant a sequence that never settled still LOOKED settled — the renderer supplied the ending the model had failed to reach, and the failure had no way to become visible. The sequence now ends at zero because gunbc.design.instrument_bob proved it does, and a sequence that cannot reach rest is refused before it is ever shipped, so there is nothing left for a fallback to paper over."
+
 data motion_reduced_sequence_is_emitted_not_suppressed_note: String = "REDUCED MOTION IS A SECOND DECIDED SEQUENCE, NOT A SUPPRESSED FIRST ONE. The page ships both wires and the client selects by matchMedia, so under a reduced-motion preference the model still answers 'what does the plate do' — it answers with the at-rest frame gunbc.design.instrument_bob returns for MotionReduced. The receipt, the straddle and the magnitudes are untouched. Suppressing playback in the client instead would put a second motion policy in the renderer, disagreeing silently with the one the witness asserts."
 
 data js_motion_plate_var: String = "gunbcMotionPlate"
@@ -3988,10 +3990,7 @@ fn motion_play_fn_statement() -> TsStmt {
                 ),
                 then: ts_block(stmts: concat(
                   js_motion_clear_timer_statements(),
-                  [
-                    js_motion_set_translate(px: ts_lit_num(text: "0")),
-                    ts_return(expr: none),
-                  ],
+                  [ ts_return(expr: none) ],
                 )),
                 else_stmt: none,
               ),

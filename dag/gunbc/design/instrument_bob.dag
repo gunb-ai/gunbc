@@ -42,14 +42,18 @@ fn bob_phase_key(p: BobPhase) -> String {
   }
 }
 
+data amplitude_is_derived_not_accumulated_note: String = "THE STATE CARRIES THE INITIAL AMPLITUDE AND A CLOCK, NEVER A RUNNING AMPLITUDE, AND THAT IS THE REPAIR FOR A REAL DEFECT. The previous shape stored the current amplitude and decayed it by each STEP's duration, so a sixteen-millisecond frame against a one-hundred-and-eighty-millisecond half-life computed zero half-lives and multiplied by one — the envelope never fell. The bob rang at full reach until the frame budget ran out and the renderer snapped it to zero, which is exactly the fabricated plausible output DESIGN forbids: a model that does not settle, rendered as though it had.
+
+Deriving the amplitude from CUMULATIVE elapsed time makes the step size irrelevant. The envelope is a function of time rather than an accumulator, so no choice of frame interval can lose decay, and a caller cannot advance in a way that disagrees with a caller who advanced differently to the same instant."
+
 type BobState {
-  amplitude_milli_px: Int
+  initial_milli_px: Int
   elapsed_ms: Milliseconds
   phase: BobPhase
 }
 
 data bob_at_rest: BobState = BobState {
-  amplitude_milli_px: 0,
+  initial_milli_px: 0,
   elapsed_ms: 0,
   phase: BobAtRest,
 }
@@ -89,7 +93,7 @@ fn apply_impulse(i: PhysicalImpulse, m: MotionPreference) -> BobState {
   match m {
     MotionReduced => bob_at_rest
     MotionFull => BobState {
-      amplitude_milli_px: amplitude_for_impulse(magnitude_milli_m_per_s2: i.magnitude_milli_m_per_s2),
+      initial_milli_px: amplitude_for_impulse(magnitude_milli_m_per_s2: i.magnitude_milli_m_per_s2),
       elapsed_ms: 0,
       phase: BobRinging,
     }
@@ -106,32 +110,53 @@ fn halve_n_times(milli: Int, n: Int) -> Int {
   }
 }
 
-fn amplitude_after(initial_milli: Int, elapsed_ms: Milliseconds) -> Int {
-  halve_n_times(milli: initial_milli, n: elapsed_ms / bob_half_life_ms)
+data interpolation_note: String = "BETWEEN TWO HALF-LIFE BOUNDARIES THE ENVELOPE FALLS LINEARLY, because halving alone is a staircase. At a sixteen-millisecond frame and a one-hundred-and-eighty-millisecond half-life, pure halving holds the amplitude flat for eleven frames and then drops it by half in one — a step, not a decay, and a viewer would see a plate that rings at one reach and then jumps. Interpolating inside the segment costs one multiply and makes every frame carry a different, smaller envelope than the frame before it.
+
+It stays MONOTONE by construction rather than by tuning: the subtrahend is a non-decreasing function of the offset into the segment, and at the segment's end it has removed exactly half, which is the value the next boundary independently produces. So the interpolated curve and the halving lattice agree at every boundary and the sequence cannot rise between them."
+
+fn amplitude_at(initial_milli: Int, elapsed_ms: Milliseconds) -> Int {
+  let whole = halve_n_times(milli: initial_milli, n: elapsed_ms / bob_half_life_ms)
+  let into_segment = elapsed_ms % bob_half_life_ms
+  whole - ((whole * into_segment) / (bob_half_life_ms * 2))
+}
+
+fn bob_amplitude_milli(s: BobState) -> Int {
+  match s.phase {
+    BobAtRest => 0
+    BobSettled => 0
+    BobRinging => amplitude_at(initial_milli: s.initial_milli_px, elapsed_ms: s.elapsed_ms)
+  }
 }
 
 fn advance(s: BobState, dt_ms: Milliseconds) -> BobState {
   let next_elapsed = s.elapsed_ms + dt_ms
-  let next_amp = amplitude_after(initial_milli: s.amplitude_milli_px, elapsed_ms: dt_ms)
+  let next_amp = amplitude_at(initial_milli: s.initial_milli_px, elapsed_ms: next_elapsed)
   if next_amp < bob_visibility_floor_milli_px {
-    BobState { amplitude_milli_px: 0, elapsed_ms: next_elapsed, phase: BobSettled }
+    BobState { initial_milli_px: s.initial_milli_px, elapsed_ms: next_elapsed, phase: BobSettled }
   } else {
-    BobState { amplitude_milli_px: next_amp, elapsed_ms: next_elapsed, phase: BobRinging }
+    BobState { initial_milli_px: s.initial_milli_px, elapsed_ms: next_elapsed, phase: BobRinging }
   }
 }
 
-data descent_note: String = "The settle claim, carried as evidence rather than as prose. Advancing a ringing bob by any positive interval STRICTLY decreases its amplitude, because a positive interval is at least one half-life's worth of halving once it crosses the half-life and is otherwise carried at equality — so the honest evidence is Strict for an advance that crosses a half-life and NonIncreasing for a shorter one, and never Unknown. A bob at rest is already settled and descends no further, which is the base case rather than a failure."
+data descent_note: String = "The settle claim, carried as evidence rather than as prose — and MEASURED rather than inferred from the step size. The previous version read the evidence off dt alone: any advance shorter than a half-life was declared NonIncreasing without ever comparing two amplitudes. That is a claim about the envelope derived from something other than the envelope, and it stayed green through the whole period in which the envelope did not fall at all.
+
+Comparing the two amplitudes makes the evidence a fact about what happened. Strict when the envelope actually decreased, NonIncreasing when integer arithmetic left it equal near the floor, and DescentUnknown — which is the fail-closed bottom of the lattice — if it ever GREW. A model that started growing would surface here as lost evidence rather than as a bob that looked wrong."
 
 fn advance_descent_evidence(s: BobState, dt_ms: Milliseconds) -> DescentEvidence {
   match s.phase {
     BobAtRest => Strict
     BobSettled => Strict
-    BobRinging =>
-      if dt_ms >= bob_half_life_ms {
+    BobRinging => {
+      let before = bob_amplitude_milli(s: s)
+      let after = bob_amplitude_milli(s: advance(s: s, dt_ms: dt_ms))
+      if after < before {
         Strict
-      } else {
+      } else if after == before {
         NonIncreasing
+      } else {
+        DescentUnknown
       }
+    }
   }
 }
 
@@ -156,7 +181,8 @@ fn max_settle_time_ms() -> Milliseconds {
 data boundedness_note: String = "The bound stated as a predicate over every reachable state rather than as a property of the constructor alone, so it also covers states produced by advancing. It is the claim the register's own displacement law needs: instrument character never travels as far as a real response."
 
 fn bob_is_within_register_bound(s: BobState) -> Bool {
-  s.amplitude_milli_px <= bob_max_travel_px * 1000
+  bob_amplitude_milli(s: s) <= bob_max_travel_px * 1000
+    && s.initial_milli_px <= bob_max_travel_px * 1000
     && bob_max_travel_px < attraction_travel_max_px
     && bob_max_travel_px <= instrument_displacement_max_px
 }
@@ -170,25 +196,46 @@ fn bob_carries_no_domain_fact() -> Bool {
 data displacement_projection_note: String = "The renderer receives whole pixels; the model keeps milli-pixels so the decay does not quantise to zero prematurely. Rounding happens once, at the boundary, which is where the target's own units demand it."
 
 fn bob_displacement_px(s: BobState) -> Int {
-  s.amplitude_milli_px / 1000
+  bob_amplitude_milli(s: s) / 1000
 }
 
-data oscillation_note: String = "A BOBBER CROSSES THE WATERLINE, WHICH IS WHAT MAKES IT A BOB RATHER THAN A SAG. The envelope above says how far the plate may travel at a given moment; this says which side of rest it is on. The sign flips every half-period, so the plate rides down, back up through rest, and down again with less reach each time — the shape a float actually makes. Period and half-life are independent constants on purpose: the half-life decides how long the ringing lasts, the period decides how quickly it oscillates within that, and tying them together would have made one of the two unadjustable."
+data oscillation_note: String = "A BOBBER CROSSES THE WATERLINE, WHICH IS WHAT MAKES IT A BOB RATHER THAN A SAG — AND IT PASSES THROUGH THE WATERLINE RATHER THAN TELEPORTING ACROSS IT. The envelope above says how far the plate may travel at a given moment; this says where between the two extremes it currently is. The previous version answered only -1 or +1, which is a square wave: every frame sat at an extreme and the crossing happened between two frames, so the plate jumped from full-down to full-up and never occupied any position in between. It satisfied a claim that the sequence contains values on both sides of rest while showing a motion nobody would call a bob.
+
+A triangle answers the same question with the intermediate positions present. It starts AT REST and travels down, because a knock pushes the plate away from the hand rather than toward it, reaches full reach a quarter-period in, returns through rest, rises to the opposite extreme, and comes back — the shape a float actually makes, sampled at whatever interval the renderer asks for. Period and half-life stay independent constants on purpose: the half-life decides how long the ringing lasts, the period how quickly it oscillates within that."
 
 data bob_half_period_ms: Milliseconds = 90
 
-fn oscillation_sign(elapsed_ms: Milliseconds) -> Int {
-  if (elapsed_ms / bob_half_period_ms) % 2 == 0 {
-    0 - 1
+data oscillation_unit_milli: Int = 1000
+
+fn bob_quarter_period_ms() -> Milliseconds {
+  bob_half_period_ms / 2
+}
+
+data quarter_leg_note: String = "Four legs make one full period, and each is a straight line between a zero and an extreme. Leg 0 falls from rest to full down, leg 1 returns to rest, leg 2 rises to full up, leg 3 returns. Naming the legs rather than writing one closed form keeps each endpoint checkable by inspection, and the endpoints are what the crossing claim depends on."
+
+fn oscillation_leg_milli(leg: Int, into_leg: Milliseconds) -> Int {
+  let travelled = (oscillation_unit_milli * into_leg) / bob_quarter_period_ms()
+  if leg == 0 {
+    0 - travelled
+  } else if leg == 1 {
+    travelled - oscillation_unit_milli
+  } else if leg == 2 {
+    travelled
   } else {
-    1
+    oscillation_unit_milli - travelled
   }
 }
 
-data first_excursion_is_downward_note: String = "The first half-period is negative because a knock on a chassis pushes the plate DOWN before it rebounds. Starting upward would read as the screen jumping toward the hand that hit it."
+fn oscillation_milli(elapsed_ms: Milliseconds) -> Int {
+  oscillation_leg_milli(
+    leg: (elapsed_ms / bob_quarter_period_ms()) % 4,
+    into_leg: elapsed_ms % bob_quarter_period_ms())
+}
+
+data first_excursion_is_downward_note: String = "The first leg is negative because a knock on a chassis pushes the plate DOWN before it rebounds. Starting upward would read as the screen jumping toward the hand that hit it. It begins at exactly zero, so the sequence starts at rest rather than starting already displaced."
 
 fn signed_displacement_milli(s: BobState) -> Int {
-  s.amplitude_milli_px * oscillation_sign(elapsed_ms: s.elapsed_ms)
+  (bob_amplitude_milli(s: s) * oscillation_milli(elapsed_ms: s.elapsed_ms)) / oscillation_unit_milli
 }
 
 fn signed_displacement_px(s: BobState) -> Int {
@@ -221,31 +268,77 @@ fn max_frame_count(interval_ms: Milliseconds) -> Int {
   frame_budget(settle_ms: max_settle_time_ms(), interval: interval_ms)
 }
 
-fn bob_frames_from(s: BobState, interval_ms: Milliseconds, budget: Int) -> List<BobFrame> {
+data budget_exhaustion_is_a_refusal_note: String = "A TRUNCATED SEQUENCE IS NOT A SHORTER SUCCESS. The previous shape returned the empty list when the frame budget ran out, so a sequence that never reached rest was indistinguishable from one that did — and the renderer, having consumed the list, set the plate back to zero on its own. Between them they manufactured a settled bob out of a model that had not settled: the deficit's frequency was zero by construction and nothing could ever rank it for fixing (DESIGN §5, the absorbing fallback).
+
+So exhaustion REFUSES, typed and located, carrying how many frames it managed and what budget it was given. The consumer cannot render a refusal as motion because a refusal is not a list, and the page has no arm that turns one into a plausible wire. That is also why the wire ships displacement only: the alternative the review offered — shipping time and phase so a consumer could check settling itself — is unnecessary once the sequence a consumer receives is, by construction, one that reached BobSettled."
+
+type BobSequenceRefusal
+  = BudgetExhaustedBeforeSettling
+  | NonPositiveFrameInterval
+
+fn bob_sequence_refusal_key(r: BobSequenceRefusal) -> String {
+  match r {
+    BudgetExhaustedBeforeSettling => "budget-exhausted-before-settling"
+    NonPositiveFrameInterval => "non-positive-frame-interval"
+  }
+}
+
+type BobSequence
+  = BobSequenceSettled { frames: List<BobFrame> }
+  | BobSequenceRefused { cause: BobSequenceRefusal, frames_emitted: Int, budget: Int }
+
+fn bob_frame_of(s: BobState) -> BobFrame {
+  BobFrame {
+    at_ms: s.elapsed_ms,
+    displacement_px: signed_displacement_px(s: s),
+    phase: s.phase,
+  }
+}
+
+fn bob_frames_from(s: BobState, interval_ms: Milliseconds, budget: Int) -> BobSequence {
   if budget <= 0 {
-    []
+    BobSequenceRefused { cause: BudgetExhaustedBeforeSettling, frames_emitted: 0, budget: budget }
   } else {
     let next = advance(s: s, dt_ms: interval_ms)
-    let frame = BobFrame {
-      at_ms: next.elapsed_ms,
-      displacement_px: signed_displacement_px(s: next),
-      phase: next.phase,
-    }
+    let frame = bob_frame_of(s: next)
     match next.phase {
-      BobSettled => [frame]
-      BobAtRest => [frame]
-      BobRinging => concat([frame], bob_frames_from(s: next, interval_ms: interval_ms, budget: budget - 1))
+      BobSettled => BobSequenceSettled { frames: [frame] }
+      BobAtRest => BobSequenceSettled { frames: [frame] }
+      BobRinging =>
+        match bob_frames_from(s: next, interval_ms: interval_ms, budget: budget - 1) {
+          BobSequenceSettled { frames: rest } => BobSequenceSettled { frames: concat([frame], rest) }
+          BobSequenceRefused { cause: c, frames_emitted: n, budget: b } =>
+            BobSequenceRefused { cause: c, frames_emitted: n + 1, budget: b }
+        }
     }
   }
 }
 
-fn bob_frames(i: PhysicalImpulse, m: MotionPreference, interval_ms: Milliseconds) -> List<BobFrame> {
-  let start = apply_impulse(i: i, m: m)
-  match start.phase {
-    BobAtRest => [BobFrame { at_ms: 0, displacement_px: 0, phase: BobAtRest }]
-    BobSettled => [BobFrame { at_ms: 0, displacement_px: 0, phase: BobSettled }]
-    BobRinging =>
-      bob_frames_from(s: start, interval_ms: interval_ms, budget: max_frame_count(interval_ms: interval_ms))
+fn bob_sequence(i: PhysicalImpulse, m: MotionPreference, interval_ms: Milliseconds) -> BobSequence {
+  if interval_ms <= 0 {
+    BobSequenceRefused { cause: NonPositiveFrameInterval, frames_emitted: 0, budget: 0 }
+  } else {
+    let start = apply_impulse(i: i, m: m)
+    match start.phase {
+      BobAtRest => BobSequenceSettled { frames: [bob_frame_of(s: start)] }
+      BobSettled => BobSequenceSettled { frames: [bob_frame_of(s: start)] }
+      BobRinging =>
+        match bob_frames_from(s: start, interval_ms: interval_ms, budget: max_frame_count(interval_ms: interval_ms)) {
+          BobSequenceSettled { frames: fs } =>
+            BobSequenceSettled { frames: concat([bob_frame_of(s: start)], fs) }
+          BobSequenceRefused { cause: c, frames_emitted: n, budget: b } =>
+            BobSequenceRefused { cause: c, frames_emitted: n, budget: b }
+        }
+    }
+  }
+}
+
+data starts_at_rest_note: String = "The start state is emitted as its own frame, so the sequence literally begins at rest at time zero rather than beginning already displaced one interval in. It costs one frame and it is what makes 'starts at rest, travels downward' a property of the shipped wire rather than of the reader's charity."
+
+fn bob_sequence_frames_or_empty(q: BobSequence) -> List<BobFrame> {
+  match q {
+    BobSequenceSettled { frames: fs } => fs
+    BobSequenceRefused { cause: _, frames_emitted: _, budget: _ } => []
   }
 }
 
@@ -273,3 +366,26 @@ fn frames_cross_rest(fs: List<BobFrame>) -> Bool {
   fold(fs, init: false, f: (acc, x) => acc || x.displacement_px < 0)
     && fold(fs, init: false, f: (acc, x) => acc || x.displacement_px > 0)
 }
+
+data intermediate_positions_note: String = "A square wave contains values on both sides of rest and is still not a bob. This is the claim that separates them: the sequence must contain a displacement that is neither rest nor either extreme — a position the plate actually occupies on its way — which a two-valued waveform cannot satisfy no matter how long it runs."
+
+fn frames_visit_an_intermediate_position(fs: List<BobFrame>) -> Bool {
+  fold(fs, init: false, f: (acc, x) =>
+    acc || (x.displacement_px != 0
+      && x.displacement_px != bob_max_travel_px
+      && x.displacement_px != (0 - bob_max_travel_px)))
+}
+
+data envelope_falls_note: String = "The reach actually diminishes over the sequence: the largest displacement in the first third is strictly greater than the largest in the last third. It is stated over the SHIPPED frames rather than over the envelope function, because the defect this replaces was one where the envelope function was fine in isolation and the sequence it produced never fell."
+
+fn frames_max_abs_between(fs: List<BobFrame>, from_ms: Int, to_ms: Int) -> Int {
+  fold(fs, init: 0, f: (acc, x) => {
+    let mag = if x.displacement_px < 0 { 0 - x.displacement_px } else { x.displacement_px }
+    if x.at_ms >= from_ms && x.at_ms < to_ms && mag > acc { mag } else { acc }
+  })
+}
+
+fn frames_last_displacement(fs: List<BobFrame>) -> Int {
+  fold(fs, init: 0, f: (acc, x) => x.displacement_px)
+}
+

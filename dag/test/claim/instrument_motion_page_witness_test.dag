@@ -12,13 +12,16 @@ import gunbc.roadmap_component {
   motion_plate_id, motion_receipt_id, motion_probe_run_id,
 }
 import gunbc.roadmap_instrument_motion {
-  frames_for, frames_wire, motion_frame_interval_ms,
+  frames_for, frames_wire, sequence_for, motion_frame_interval_ms,
 }
 import gunbc.capability_binding {
   SyntheticTapLight, SyntheticTapFirm, SyntheticTapKnock,
 }
 import gunbc.design.instrument_bob {
-  BobFrame, MotionFull, MotionReduced, bob_max_travel_px,
+  BobFrame, MotionFull, MotionReduced, bob_max_travel_px, max_settle_time_ms,
+  BobSequence, BobSequenceSettled, BobSequenceRefused,
+  frames_visit_an_intermediate_position, frames_max_abs_between, frames_last_displacement,
+  frames_cross_rest, frames_terminate_exactly_once, bob_phase_key,
 }
 import extdeps.http.server { ServeHttpRequest, ServeHttpResponse }
 import std.types { String, Int, Bool, List, HttpMethod, GET }
@@ -89,6 +92,34 @@ test fn witness_shipped_sequence_respects_the_modelled_bound() -> Bool {
   all(fs, f => f.displacement_px <= bob_max_travel_px && f.displacement_px >= (0 - bob_max_travel_px))
 }
 
+data shipped_sequence_control_note: String = "THE ROUTE-LEVEL CONTROL ON THE ACTUAL PRODUCTION SEQUENCE (review requirement, 2026-08-06). Every property here is asserted over the sixteen-millisecond wire the page really ships, not over the physics in isolation — which is the whole point, because the defect this replaces left the envelope function correct while the emitted sequence rang at full reach for about a second and then had a zero supplied for it by the renderer.
+
+Seven conjuncts, one per property the review named: the sequence is ADMITTED rather than truncated; it starts at rest; its first movement is downward; it occupies positions that are neither rest nor an extreme; it appears on both sides of rest; its reach falls between the first third and the last; it contains exactly one settled frame; and it ends at zero on its own, which the client no longer manufactures."
+
+test fn witness_the_shipped_sequence_moves_decays_and_settles() -> Bool {
+  match sequence_for(t: SyntheticTapKnock, m: MotionFull) {
+    BobSequenceRefused { cause: _, frames_emitted: _, budget: _ } => false
+    BobSequenceSettled { frames: fs } => {
+      let settle = max_settle_time_ms()
+      fs.length() > 8
+        && frames_max_abs_between(fs: fs, from_ms: 0, to_ms: 1) == 0
+        && frames_first_movement_is_downward(fs: fs)
+        && frames_visit_an_intermediate_position(fs: fs)
+        && frames_cross_rest(fs: fs)
+        && frames_max_abs_between(fs: fs, from_ms: 0, to_ms: settle / 3) >
+             frames_max_abs_between(fs: fs, from_ms: (settle * 2) / 3, to_ms: settle * 4)
+        && frames_terminate_exactly_once(fs: fs)
+        && frames_last_displacement(fs: fs) == 0
+    }
+  }
+}
+
+data first_movement_note: String = "The first NON-ZERO displacement in the sequence, because a knock pushes the plate away from the hand. Reading the first non-zero rather than the second frame keeps the claim about the physics rather than about how many frames precede the first visible pixel."
+
+fn frames_first_movement_is_downward(fs: List<BobFrame>) -> Bool {
+  fold(fs, init: 0, f: (acc, x) => if acc == 0 { x.displacement_px } else { acc }) < 0
+}
+
 test fn witness_asset_route_serves_the_modeled_client() -> Bool {
   let js = motion_asset_body()
   js == instrument_motion_client_js_source()
@@ -100,12 +131,15 @@ test fn witness_asset_route_serves_the_modeled_client() -> Bool {
     && string_contains(s: js, pattern: "construction refused")
 }
 
-test fn witness_client_computes_no_physics() -> Bool {
+data client_manufactures_no_zero_note: String = "The renderer used to set translateY(0) after consuming the frames, which supplied the ending a non-settling model had failed to reach. That line is gone, and this asserts its absence directly rather than trusting the diff: the client contains no translateY built from a literal zero, and the sequence it replays ends at zero because the model proved it does."
+
+test fn witness_client_computes_no_physics_and_manufactures_no_ending() -> Bool {
   let js = motion_asset_body()
   !string_contains(s: js, pattern: "Math.")
     && !string_contains(s: js, pattern: "exp(")
     && !string_contains(s: js, pattern: "sin(")
     && string_contains(s: js, pattern: "split(',')")
+    && !string_contains(s: js, pattern: "'translateY(' + 0 + 'px)'")
 }
 
 test fn witness_receipt_starts_unanswered() -> Bool {

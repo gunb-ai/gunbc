@@ -102,16 +102,21 @@ type AxisCountObservation
   = AxisCountObserved { n: Nat }
   | AxisCountUnobserved
 
+type LatencyObservation
+  = LatencyObserved { ms: Milliseconds }
+  | LatencyUnobserved
+
 type GravityNormalization
   = GravityNormalized
   | GravityNotNormalized
   | GravityNormalizationUnobserved
 
-data negative_control_note: String = "THE CONTROL THAT MAKES A THRESHOLD A DISCRIMINATOR RATHER THAN A TRIPWIRE. A magnitude floor only separates a knock from typing if someone has actually typed underneath it and watched the peak stay below. Without that, the floor is a number chosen from intuition and the qualification proves only that SOME motion exceeded it. NegativeControlNotRun is therefore a rejection cause and not a neutral state: a qualification with no negative control has not established discrimination, it has established sensitivity."
+data negative_control_note: String = "THE CONTROL THAT MAKES A THRESHOLD A DISCRIMINATOR RATHER THAN A TRIPWIRE. A magnitude floor only separates a knock from typing if someone has actually typed underneath it and watched the peak stay below. Without that, the floor is a number chosen from intuition and the qualification proves only that SOME motion exceeded it. NegativeControlNotRun is therefore a rejection cause and not a neutral state: a qualification with no negative control has not established discrimination, it has established sensitivity.
+
+IT CARRIES AN OBSERVATION, NOT A VERDICT (review finding, 2026-08-06). The earlier shape had Passed and Failed arms each carrying an idle peak, and qualification trusted the arm's NAME — so a control recording an idle peak far above the discriminating floor still passed, because someone had written Passed. That is the same defect as the qualified arm one level down: a judgement supplied by the author where a comparison was available. There is one arm now, it carries what was measured, and pass or fail is DERIVED by comparing that peak with the floor the requirement declares."
 
 type NegativeControl
-  = NegativeControlPassed { idle_peak_milli: Nat }
-  | NegativeControlFailed { idle_peak_milli: Nat }
+  = NegativeControlObserved { idle_peak_milli: Nat }
   | NegativeControlNotRun
 
 type SampleReceipt {
@@ -121,13 +126,15 @@ type SampleReceipt {
   observed_axes: AxisCountObservation
   gravity: GravityNormalization
   peak_magnitude_milli: Nat
-  detection_latency_ms: Milliseconds
+  detection_latency_ms: LatencyObservation
   negative_control: NegativeControl
 }
 
 data qualification_is_minted_note: String = "THE DEFECT THIS TYPE EXISTS TO CLOSE, STATED PLAINLY BECAUSE IT WAS MINE. An earlier revision of this module carried a free coproduct arm named TapDiscriminatorQualified whose fields a caller filled in, and derive_capability_verdict mapped it straight to CapabilitySupported. A separate function stream_meets_requirement existed, checked two of the requirement's five declared dimensions, and was NEVER CALLED by the verdict. So 'qualified' was a caller's assertion and 'supported' was reachable by writing the word — in a module whose entire subject is refusing unearned claims (DESIGN §5: the tell that a check was validation standing where construction was available).
 
-It is now a construction. TapQualified has exactly one minter, qualify_tap, which is total over all five requirement dimensions plus the negative control and cannot produce the qualified arm while any cause stands. CapabilitySupported consumes that receipt. There is no path from an authored value to a supported verdict."
+THE FIRST REPAIR WAS STILL A CONVENTION, and the second review caught it. Naming qualify_tap the sole minter does not make it one: TapQualified is a public constructor like every other coproduct arm in this substrate, and while the stream carried an already-qualified value a caller could author that arm around a failing receipt and reach CapabilitySupported without the minter ever running. A wall that depends on nobody writing the other thing is a convention with a wall's name.
+
+What closes it is removing the qualified value from the seam entirely. The stream carries the raw requirement and the raw receipt; every consumer that wants a fitness answer calls qualify_tap itself. This type is still worth having — it is how a rejection carries its typed causes — but it is a RESULT that consumers produce, never an input they accept."
 
 type TapQualificationCause
   = MagnitudeBelowFloor
@@ -192,11 +199,20 @@ fn gravity_cause(r: PhysicalImpulseRequirement, s: SampleReceipt) -> List<TapQua
   }
 }
 
-fn negative_control_cause(s: SampleReceipt) -> List<TapQualificationCause> {
+fn negative_control_cause(r: PhysicalImpulseRequirement, s: SampleReceipt) -> List<TapQualificationCause> {
   match s.negative_control {
-    NegativeControlPassed { idle_peak_milli } => []
-    NegativeControlFailed { idle_peak_milli } => [NegativeControlNotSatisfied]
+    NegativeControlObserved { idle_peak_milli } =>
+      cause_when(
+        holds: idle_peak_milli >= r.minimum_discriminating_magnitude_milli_m_per_s2,
+        c: NegativeControlNotSatisfied)
     NegativeControlNotRun => [NegativeControlNotSatisfied]
+  }
+}
+
+fn latency_cause(r: PhysicalImpulseRequirement, s: SampleReceipt) -> List<TapQualificationCause> {
+  match s.detection_latency_ms {
+    LatencyObserved { ms } => cause_when(holds: ms > r.maximum_detection_latency_ms, c: LatencyAboveBudget)
+    LatencyUnobserved => [RequirementDimensionUnobserved]
   }
 }
 
@@ -208,12 +224,10 @@ fn tap_rejection_causes(r: PhysicalImpulseRequirement, s: SampleReceipt) -> List
           cause_when(
             holds: s.peak_magnitude_milli < r.minimum_discriminating_magnitude_milli_m_per_s2,
             c: MagnitudeBelowFloor),
-          cause_when(
-            holds: s.detection_latency_ms > r.maximum_detection_latency_ms,
-            c: LatencyAboveBudget)),
+          latency_cause(r: r, s: s)),
         axes_cause(r: r, s: s)),
       rate_cause(r: r, s: s)),
-    concat(gravity_cause(r: r, s: s), negative_control_cause(s: s)))
+    concat(gravity_cause(r: r, s: s), negative_control_cause(r: r, s: s)))
 }
 
 fn qualify_tap(r: PhysicalImpulseRequirement, s: SampleReceipt) -> TapQualification {
@@ -257,7 +271,7 @@ type BindingStreamState
   | NoSamplesObserved { lifecycle: SampleLifecycle, window_ms: Milliseconds }
   | HollowSamplesObserved { count: Nat, window_ms: Milliseconds }
   | SamplesObserved { receipt: SampleReceipt }
-  | TapOutcome { qualification: TapQualification }
+  | TapOutcome { requirement: PhysicalImpulseRequirement, receipt: SampleReceipt }
   | BindingStreamUnobserved
 
 fn binding_stream_key(s: BindingStreamState) -> String {
@@ -270,9 +284,9 @@ fn binding_stream_key(s: BindingStreamState) -> String {
     NoSamplesObserved { lifecycle, window_ms } => concat("no-samples-observed-", sample_lifecycle_key(l: lifecycle))
     HollowSamplesObserved { count, window_ms } => "hollow-samples-observed"
     SamplesObserved { receipt } => "samples-observed"
-    TapOutcome { qualification } => match qualification {
-      TapQualified { receipt } => "tap-qualified"
-      TapRejected { receipt, causes } => "tap-rejected"
+    TapOutcome { requirement, receipt } => match qualify_tap(r: requirement, s: receipt) {
+      TapQualified { receipt: _ } => "tap-qualified"
+      TapRejected { receipt: _, causes: _ } => "tap-rejected"
     }
     BindingStreamUnobserved => "unobserved"
   }
@@ -322,8 +336,13 @@ data capability_verdict_note: String = "THE DERIVED VERDICT, PER CAPABILITY AND 
 
 A synthetic impulse may be the explicit alternative and may never masquerade as a hardware reading: it is named in the verdict by reference, named on the impulse through source_binding, and the predicate that says so derives from the producing binding rather than from a flag."
 
+data provisional_thresholds_cannot_authorize_support_note: String = "A MEASUREMENT THAT CLEARS UNSIGNED THRESHOLDS HAS NOT ESTABLISHED SUPPORT (review finding, 2026-08-06). The requirement's own standing says its numbers are audition candidates rather than a signed contract, and an earlier revision let a receipt that cleared them produce CapabilitySupported anyway — so the module simultaneously declared its thresholds unproven and issued durable claims against them.
+
+The qualified-but-provisional case is a real, useful state and it gets its own arm rather than being collapsed into either neighbour. It is not degraded: nothing about the stream fell short. It is not supported: the bar it cleared is not yet a bar. It carries the receipt so the measurement is not lost, and the pending text so a reader knows exactly which auditions would turn it into support. Its key is not 'supported', which is the only thing the durable-claim gate reads, so it cannot become a durable claim by any path."
+
 type TargetCapabilityVerdict
   = CapabilitySupported { receipt: SampleReceipt }
+  | CapabilityQualifiedAgainstProvisionalRequirement { receipt: SampleReceipt, pending: String }
   | CapabilityDegraded { missing: DegradationCause, alternative: DeclarationRef }
   | CapabilityUnavailable { obstacle: CapabilityObstacle }
   | CapabilityUnobserved
@@ -331,6 +350,8 @@ type TargetCapabilityVerdict
 fn capability_verdict_key(v: TargetCapabilityVerdict) -> String {
   match v {
     CapabilitySupported { receipt } => "supported"
+    CapabilityQualifiedAgainstProvisionalRequirement { receipt, pending } =>
+      "qualified-against-provisional-requirement"
     CapabilityDegraded { missing, alternative } => "degraded"
     CapabilityUnavailable { obstacle } => "unavailable"
     CapabilityUnobserved => "unobserved"
@@ -343,11 +364,19 @@ data synthetic_tap_binding: DeclarationRef = DeclarationRef {
   field: WholeDeclaration
 }
 
+data verdict_qualifies_its_own_receipt_note: String = "THE VERDICT CALLS qualify_tap ITSELF, and that is what makes the wall real (review finding, 2026-08-06). Naming qualify_tap the sole minter was not enough while the stream carried an already-qualified value: TapQualified is a public constructor, so a caller could author the qualified arm around a receipt that fails the requirement and reach CapabilitySupported without the minter ever running. The claimed construction was a convention.
+
+The stream now carries the RAW ingredients — the requirement the measurement was taken against, and the receipt of what was measured — and every consumer that wants a fitness answer derives it. There is no qualified value to hand in, so there is nothing to forge. The requirement travels ON the observation rather than being looked up, because a receipt is only meaningful against the thresholds it was measured against, and a later retune of the requirement must not silently re-decide an old measurement."
+
 fn derive_capability_verdict(o: CapabilityBindingObservation) -> TargetCapabilityVerdict {
   match o.stream {
-    TapOutcome { qualification } => match qualification {
-      TapQualified { receipt } => CapabilitySupported { receipt: receipt }
-      TapRejected { receipt, causes } =>
+    TapOutcome { requirement, receipt } => match qualify_tap(r: requirement, s: receipt) {
+      TapQualified { receipt: q } => match requirement.standing {
+        RequirementSigned { audition_receipt } => CapabilitySupported { receipt: q }
+        AuditionProvisional { pending } =>
+          CapabilityQualifiedAgainstProvisionalRequirement { receipt: q, pending: pending }
+      }
+      TapRejected { receipt: _, causes: causes } =>
         CapabilityDegraded {
           missing: DegradedTapRejected { causes: causes },
           alternative: synthetic_tap_binding,
