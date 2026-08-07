@@ -4871,30 +4871,36 @@ fn extract_field(
 }
 
 /// Build the `Value::Map` a keyed-collection literal denotes. Keys are the
-/// authored field names; a non-string key type is a typed, located refusal
-/// rather than a silently coerced key, because the interpreter cannot peel a
-/// declared key type down to its kernel scalar and guessing would fabricate a
-/// map whose keys are not the ones the source names (DESIGN §5).
+/// authored field names, and string-likeness must be POSITIVELY established
+/// before they may be: the test is `map_literal_key_is_string`, the very
+/// function `05_emit_rust` asks about the same literal when it decides whether
+/// to render the key quoted-and-owned or bare, so the interpreter and the
+/// emitter cannot disagree about one literal's keys. Anything it does not
+/// establish is a typed, located refusal rather than a guessed key — a
+/// deny-list of known-bad key types would let every unlisted one through, which
+/// is the partial refusal that later fails open (DESIGN §5, and codex review
+/// 50168 which caught exactly that shape here).
 fn eval_map_lit(
     node: &Rc<Node>,
     map_type: &Rc<Node>,
     env: &Rc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
-    if let Some(key_type) = map_type.children.iter().next() {
-        let key_name = authored_name_at(
-            ctx.si(),
-            crate::v1_compiler_infer_types::normalize_access_type_node(key_type.clone()),
-        );
-        if matches!(key_name.as_str(), "Int" | "Bool" | "Float" | "Bytes") {
-            return Err(InterpError::TypeError {
-                msg: format!(
-                    "map literal with non-string key type '{}' is not modeled by the interpreter \
-                     (only authored-name string keys are); declared at {}:{}",
-                    key_name, node.span.file, node.span.start
-                ),
-            });
-        }
+    if !crate::v1_compiler_emit_rust::map_literal_key_is_string(map_type.clone(), ctx.si()) {
+        let key_name = match map_type.children.iter().next() {
+            Some(key_type) => authored_name_at(
+                ctx.si(),
+                crate::v1_compiler_infer_types::normalize_access_type_node(key_type.clone()),
+            ),
+            None => String::new(),
+        };
+        return Err(InterpError::TypeError {
+            msg: format!(
+                "map literal key type '{}' is not established as string-like, so the authored \
+                 field names cannot be its keys; declared at {}:{}",
+                key_name, node.span.file, node.span.start
+            ),
+        });
     }
     let mut entries = HamtMap::new();
     for child in node.children.iter() {
