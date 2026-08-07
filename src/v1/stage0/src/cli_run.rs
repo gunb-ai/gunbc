@@ -8002,6 +8002,206 @@ pub fn reset_pool_qualified_fill_for_test(index: &MultiEntryIndex) {
     *index.pool_qualified_fill.borrow_mut() = None;
 }
 
+// ---------------------------------------------------------------------------
+// Private-footprint decomposition instrumentation (work item
+// node://adhoc-2a689db3-964). Read/force/drop handles on the per-worker index
+// terms so `measure_worker_private_memory` can stage construction and then
+// attribute retained heap by EXCLUSIVE DROP (clear one term, measure the live-heap
+// release) instead of by shallow shell sizing, which the Rc→Arc spike receipt
+// (`docs/plans/rc-to-arc-share-spike.md` §2.2) records as an under-count that must
+// not be summed. Feature-gated and additive: no production path calls these, and
+// none of them changes any semantic behaviour of the index.
+//
+// Every field below is PER WORKER. `typed_module_cache` is the sole term the
+// cross-worker store can serve (`shared_typecheck_store.rs`); it is included so the
+// decomposition can state what sharing already covers versus what it leaves behind.
+
+/// Force the lazily-built pool terms, one at a time, in dependency order. Each
+/// returns after populating exactly one field so a caller can snapshot between them.
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn force_pool_parse_for_test(index: &MultiEntryIndex) -> Result<(), String> {
+    pool_parse(index).map(|_| ())
+}
+
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn force_pool_qualified_fill_for_test(index: &MultiEntryIndex) -> Result<(), String> {
+    pool_qualified_fill(index).map(|_| ())
+}
+
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn force_tree_bare_census_for_test(
+    index: &MultiEntryIndex,
+    source_root: &str,
+) -> Result<(), String> {
+    tree_bare_census_for_root(index, source_root).map(|_| ())
+}
+
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn force_pool_bare_census_for_test(index: &MultiEntryIndex) -> Result<(), String> {
+    pool_bare_census(index).map(|_| ())
+}
+
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn force_both_closure_edges_for_test(index: &MultiEntryIndex) -> Result<(), String> {
+    both_closure_edge_index(index).map(|_| ())
+}
+
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn index_source_roots_for_test(index: &MultiEntryIndex) -> Vec<String> {
+    index.source_roots.clone()
+}
+
+/// Population counts per term — reported beside the byte deltas so a term's size
+/// can be read per entry, never to derive bytes from counts.
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn private_term_entry_counts_for_test(index: &MultiEntryIndex) -> Vec<(&'static str, usize)> {
+    vec![
+        ("source_files", index.source_files.len()),
+        (
+            "typed_module_cache",
+            index.typed_module_cache.borrow().len(),
+        ),
+        (
+            "source_hash_by_file",
+            index.source_hash_by_file.borrow().len(),
+        ),
+        (
+            "module_source_identity",
+            index.module_source_identity.borrow().len(),
+        ),
+        ("parse_cache", index.parse_cache.borrow().len()),
+        (
+            "normalize_diag_cache",
+            index.normalize_diag_cache.borrow().len(),
+        ),
+        (
+            "ownership_diag_cache",
+            index.ownership_diag_cache.borrow().len(),
+        ),
+        (
+            "intern_table_strings",
+            index.intern_table.borrow().strings.len(),
+        ),
+        (
+            "pool_parse_nodes",
+            index
+                .pool_parse
+                .borrow()
+                .as_ref()
+                .map(|p| p.nodes_by_file.len())
+                .unwrap_or(0),
+        ),
+        ("tree_bare_census", index.tree_bare_census.borrow().len()),
+        (
+            "entry_closure_sources",
+            index.entry_closure_sources.borrow().len(),
+        ),
+        (
+            "both_closure_edge_rows",
+            index
+                .both_closure_edges
+                .borrow()
+                .as_ref()
+                .map(|e| e.bare_out.len() + e.ref_out.len())
+                .unwrap_or(0),
+        ),
+        (
+            "resolved_graph_memo",
+            index.resolved_graph_memo.borrow().len(),
+        ),
+    ]
+}
+
+/// Drop exactly one term. The live-heap release measured across a call is that
+/// term's EXCLUSIVE retention: bytes still reachable from another field (Rc-shared
+/// structure) are NOT released here and therefore are not attributed — which is the
+/// intended honest behaviour. `source_files` has no clear arm: it is the root every
+/// other term borrows from, so dropping it is not expressible as a term release.
+/// Returns false for an unknown name so a caller cannot silently mis-drop.
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn drop_private_term_for_test(index: &MultiEntryIndex, term: &str) -> bool {
+    match term {
+        "typed_module_cache" => index.typed_module_cache.borrow_mut().clear(),
+        "source_hash_by_file" => index.source_hash_by_file.borrow_mut().clear(),
+        "module_source_identity" => index.module_source_identity.borrow_mut().clear(),
+        "parse_cache" => index.parse_cache.borrow_mut().clear(),
+        "normalize_diag_cache" => index.normalize_diag_cache.borrow_mut().clear(),
+        "ownership_diag_cache" => index.ownership_diag_cache.borrow_mut().clear(),
+        "pool_parse" => *index.pool_parse.borrow_mut() = None,
+        "pool_qualified_fill" => *index.pool_qualified_fill.borrow_mut() = None,
+        "tree_bare_census" => index.tree_bare_census.borrow_mut().clear(),
+        "pool_bare_census" => *index.pool_bare_census.borrow_mut() = None,
+        "entry_closure_sources" => index.entry_closure_sources.borrow_mut().clear(),
+        "both_closure_edges" => *index.both_closure_edges.borrow_mut() = None,
+        "resolved_graph_memo" => index.resolved_graph_memo.borrow_mut().clear(),
+        "intern_table" => {
+            *index.intern_table.borrow_mut() = crate::v1_std_core::empty_intern_table();
+        }
+        _ => return false,
+    }
+    true
+}
+
+/// The loader's EXACT closure for one entry, in the `workspace_relative_repo_path` form
+/// `index_arm_schedule_retention` arms from — so the decomposition harness can arm
+/// schedule retention over its cohort through the same closure authority production uses,
+/// rather than reconstructing a second adjacency (the D0.3 / #6985 Class-B root).
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn entry_closure_paths_for_test(
+    index: &MultiEntryIndex,
+    entry: &str,
+) -> Result<Vec<String>, String> {
+    load_sources_for_entry_with_pool(index, entry).map(|sources| {
+        sources
+            .iter()
+            .map(|sf| workspace_relative_repo_path(&sf.path))
+            .collect()
+    })
+}
+
+/// Keys currently in `resolved_graph_memo`. The harness diffs this across one resolve to
+/// recover that entry's subject key, which is what `index_schedule_entry_completed` needs
+/// to drop the entry's assembled graph — recovered by observation rather than by
+/// re-deriving the subject digest in a second place.
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn resolved_graph_memo_keys_for_test(index: &MultiEntryIndex) -> Vec<String> {
+    index.resolved_graph_memo.borrow().keys().cloned().collect()
+}
+
+/// Drive one entry-completion of the armed schedule — the production drain step
+/// (`index_schedule_entry_completed`), so an armed measurement releases exactly what a
+/// real worker releases.
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn schedule_entry_completed_for_test(
+    index: &MultiEntryIndex,
+    entry: &str,
+    subject: Option<&str>,
+) -> Result<(), String> {
+    index_schedule_entry_completed(index, entry, subject)
+}
+
+/// The drop-attributable term names, in the order the decomposition reports them.
+/// `source_files` is deliberately absent (see `drop_private_term_for_test`).
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn drop_attributable_terms_for_test() -> &'static [&'static str] {
+    &[
+        "resolved_graph_memo",
+        "typed_module_cache",
+        "parse_cache",
+        "pool_parse",
+        "both_closure_edges",
+        "pool_bare_census",
+        "tree_bare_census",
+        "pool_qualified_fill",
+        "entry_closure_sources",
+        "intern_table",
+        "normalize_diag_cache",
+        "ownership_diag_cache",
+        "source_hash_by_file",
+        "module_source_identity",
+    ]
+}
+
 fn new_multi_entry_index_shell(
     source_files: ModuleSourceIndex,
     source_roots: &[String],

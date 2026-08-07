@@ -13,6 +13,7 @@ import extdeps.cache.types {
   CatalogOpaqueStringEncoding,
 }
 import std.cache_identity { CacheInterfaceId }
+import std.decl_ref { WholeDeclaration }
 import std.cache_interface {
   ExactKeyOnly,
   OverwriteAllowed,
@@ -28,6 +29,13 @@ import std.cache_interface {
   DependencyChange,
   ToolchainChange,
   Repo,
+  CapacityBounded,
+  CapacityUnbounded,
+  EntryCountCapacity,
+  ProviderNativeReplacement,
+  ReleasedAtProviderScopeExit,
+  ReplaceExisting,
+  RuntimeDerivedLimit,
 }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {

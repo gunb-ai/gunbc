@@ -18,6 +18,8 @@ import std.cache_interface {
   OperatorObserved,
   ManualPurge,
   Repo,
+  CapacityUnbounded,
+  ReleasedAtProviderScopeExit,
 }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
