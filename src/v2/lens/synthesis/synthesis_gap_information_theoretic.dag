@@ -1,6 +1,6 @@
 module v2.test.lens_synthesis.synthesis_gap_information_theoretic
 
-import v2.lens.complexity { ComplexityBound, UnknownComplexity, complexity_lens }
+import v2.lens.complexity { ComplexityBound, ConstantComplexity, SizedComplexity, UnknownComplexity, complexity_lens }
 import v2.lens.synthesis {
   InformationTheoretic,
   SynthesisGap,
@@ -91,20 +91,24 @@ data claim_synthesis_gap_information_theoretic: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
+fn synthesis_gap_it_known_reason_node(realization: ComplexityBound) -> Node {
+  match assess_information_theoretic(n: synthesis_gap_it_input, realization: realization) {
+    SynthesisGap { realization_cost: _, lower_bound: _, report: r } =>
+      match r.reason {
+        SynthesisGapDecisionTree => synthesis_gap_it_sentinel
+        SynthesisGapInformationTheoretic => synthesis_gap_it_input
+      }
+    SynthesisOptimal { realization_cost: _, lower_bound: _ } => synthesis_gap_it_sentinel
+    SynthesisNoTechnique { diagnostic: _ } => synthesis_gap_it_sentinel
+  }
+}
+
 fn synthesis_gap_it_first_reason_node() -> Node {
   let realization = complexity_lens(n: synthesis_gap_it_input)
   match realization {
     UnknownComplexity { diagnostic: _ } => synthesis_gap_it_sentinel
-    _ =>
-      match assess_information_theoretic(n: synthesis_gap_it_input, realization: realization) {
-        SynthesisGap { realization_cost: _, lower_bound: _, report: r } =>
-          match r.reason {
-            SynthesisGapDecisionTree => synthesis_gap_it_sentinel
-            SynthesisGapInformationTheoretic => synthesis_gap_it_input
-          }
-        SynthesisOptimal { realization_cost: _, lower_bound: _ } => synthesis_gap_it_sentinel
-        SynthesisNoTechnique { diagnostic: _ } => synthesis_gap_it_sentinel
-      }
+    ConstantComplexity => synthesis_gap_it_known_reason_node(realization: realization)
+    SizedComplexity { class: _, variables: _ } => synthesis_gap_it_known_reason_node(realization: realization)
   }
 }
 

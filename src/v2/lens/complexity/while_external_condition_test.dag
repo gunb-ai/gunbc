@@ -58,6 +58,7 @@ test fn while_external_condition_cost_fails_closed_holds() -> Bool {
 test fn while_external_condition_complexity_fails_closed_holds() -> Bool {
   match while_external_condition_actual_complexity() {
     UnknownComplexity { diagnostic: _ } => true
-    _ => false
+    ConstantComplexity => false
+    SizedComplexity { class: _, variables: _ } => false
   }
 }

@@ -39251,6 +39251,9 @@ pub struct ExtdepsExternalAuthorityModuleFacts {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ExternalAuthorityAnchorProjection {
     Absent,
+    Refused {
+        cause: String,
+    },
     Present {
         scheme_identity: String,
         locator: String,
@@ -39347,14 +39350,24 @@ fn external_authority_anchor_from_data_body(
     if let Some(uri_node) =
         external_authority_uri_record_from_anchor_body(body, variant.as_str(), source_indices)
     {
-        let scheme = extdeps_record_field_value(&uri_node, "scheme", source_indices)
+        let Some(scheme) = extdeps_record_field_value(&uri_node, "scheme", source_indices)
             .map(|n| external_authority_scheme_identity_from_value_node(&n, source_indices))
-            .unwrap_or_default();
-        let locator = extdeps_record_field_value(&uri_node, "locator", source_indices)
+        else {
+            return ExternalAuthorityAnchorProjection::Refused {
+                cause: format!("anchor uri record has no `scheme` field in {variant}"),
+            };
+        };
+        let Some(locator) = extdeps_record_field_value(&uri_node, "locator", source_indices)
             .and_then(|n| extdeps_literal_string_value(&n))
-            .unwrap_or_default();
+        else {
+            return ExternalAuthorityAnchorProjection::Refused {
+                cause: format!("anchor uri record has no `locator` field in {variant}"),
+            };
+        };
         if scheme.is_empty() {
-            return ExternalAuthorityAnchorProjection::Absent;
+            return ExternalAuthorityAnchorProjection::Refused {
+                cause: format!("anchor uri record has an empty `scheme` in {variant}"),
+            };
         }
         return ExternalAuthorityAnchorProjection::Present {
             scheme_identity: scheme,
@@ -39366,7 +39379,9 @@ fn external_authority_anchor_from_data_body(
     };
     if let Some(home) = extdeps_import_home_for_symbol(module, symbol.as_str(), source_indices) {
         if !visited.insert(home.clone()) {
-            return ExternalAuthorityAnchorProjection::Absent;
+            return ExternalAuthorityAnchorProjection::Refused {
+                cause: format!("alias cycle revisiting {home} for symbol {symbol}"),
+            };
         }
         return project_external_authority_named_data(&home, symbol.as_str(), visited);
     }
@@ -39451,6 +39466,9 @@ pub fn extdeps_external_authority_module_facts(
             ExternalAuthorityAnchorProjection::Absent => {
                 ("absent".to_string(), String::new(), String::new())
             }
+            ExternalAuthorityAnchorProjection::Refused { cause } => {
+                ("refused".to_string(), String::new(), cause)
+            }
             ExternalAuthorityAnchorProjection::Present {
                 scheme_identity,
                 locator,
@@ -39474,6 +39492,9 @@ fn external_authority_live_violation_module_paths() -> Vec<String> {
         }
         match project_external_authority_anchor(&path) {
             ExternalAuthorityAnchorProjection::Absent => violations.push(format!("missing:{path}")),
+            ExternalAuthorityAnchorProjection::Refused { cause } => {
+                violations.push(format!("refused:{path}:{cause}"))
+            }
             ExternalAuthorityAnchorProjection::Present {
                 scheme_identity, ..
             } if scheme_identity != "Http" && scheme_identity != "Https" => {
