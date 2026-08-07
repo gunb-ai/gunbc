@@ -19,7 +19,7 @@ import extdeps.dns.domain_name { DnsLabel, DomainNameParseError, parse_dns_label
 // corpus, so growing the vocabulary is a new version rather than an edit to an
 // existing one, and a name already allocated under an older version keeps
 // re-deriving.
-data mnemonic_scheme_version_note: String = "Versioned mnemonic name scheme (adjective-animal-suffix). The version selects the word corpora AND the index derivation; both together are what makes a projection reproducible. Editing MnemonicNameV1's corpora in place is a silent re-derivation of every V1 name and is the one change this carrier exists to prevent — add MnemonicNameV2 instead. Consumers: gunbc.host_name_allocation, see that module's host_name_allocation_adoption_standing for its adoption state rather than reading this line as evidence of it."
+data mnemonic_scheme_version_note: String = "Versioned mnemonic name scheme (adjective-animal-suffix). The version selects the word corpora AND the index derivation; both together are what makes a projection reproducible. Editing MnemonicNameV1's corpora in place is a silent re-derivation of every V1 name and is the one change this carrier exists to prevent — add MnemonicNameV2 instead. Consumers: gunbc.host_name_allocation, which has NO production consumer and is off the critical path by operator ruling — see its host_name_allocation_adoption_standing. This line names a module edge, never adoption."
 
 type MnemonicSchemeVersion =
   | MnemonicNameV1
