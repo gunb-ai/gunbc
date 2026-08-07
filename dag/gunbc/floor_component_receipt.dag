@@ -90,6 +90,8 @@ type FloorComponentFailureMode
   | ModeInfra
   | ModeWitnessRed
   | ModeNotReached
+  | ModeRunIncomplete
+  | ModeDeadlineReached
   | ModeUnrecorded
 
 fn floor_component_failure_mode_of(mode: NonEmptyStr) -> FloorComponentFailureMode? {
@@ -98,6 +100,8 @@ fn floor_component_failure_mode_of(mode: NonEmptyStr) -> FloorComponentFailureMo
   else if (mode as String) == "Infra" { Present { value: ModeInfra } }
   else if (mode as String) == "WitnessRed" { Present { value: ModeWitnessRed } }
   else if (mode as String) == "not_reached" { Present { value: ModeNotReached } }
+  else if (mode as String) == "run_incomplete" { Present { value: ModeRunIncomplete } }
+  else if (mode as String) == "deadline_reached" { Present { value: ModeDeadlineReached } }
   else { none }
 }
 
@@ -108,6 +112,8 @@ fn floor_component_failure_mode_tag(m: FloorComponentFailureMode) -> String {
     ModeInfra => "Infra"
     ModeWitnessRed => "WitnessRed"
     ModeNotReached => "not_reached"
+    ModeRunIncomplete => "run_incomplete"
+    ModeDeadlineReached => "deadline_reached"
     ModeUnrecorded => "unrecorded"
   }
 }
@@ -169,6 +175,10 @@ fn floor_component_outcome_of_tag(
 
 data floor_component_failure_mode_note: String = "The seed's failure-mode vocabulary (claim_executor falsifier_failure_mode: BudgetExceeded | Infra | WitnessRed, plus the no-failures case) mapped onto ObservationOutcome HERE rather than in Rust, so the classification sits under a witness and the seed transport carries no judgment of its own. BudgetExceeded becomes Refused, not Failed: a kill at a declared ceiling is the deliberate, located stop observation_refused_distinct_note defines Refused to mean, and its remedy (re-basis the dated ceiling, or fix the row's cost) differs from a broken witness's. UNKNOWN MODE REFUSES. The first version of this mapping lived in the seed with a `_ => failed` catch-all, which would have absorbed a newly added mode into `failed` silently — a widen with no diagnostic, exactly the absorbing fallback DESIGN section 5 forbids. Here an unmodelled mode returns absent, the row cannot be built, and the walk fails closed with the mode named."
 
+data floor_component_run_incomplete_note: String = "ModeRunIncomplete and ModeNotReached BOTH collapse to Skipped, and that is the edge note's shape working as designed rather than a duplicate: the outcome records that the component produced no verdict, the MODE records why it produced none, and the two whys route to different people. ModeNotReached means the plan concluded and an earlier batch stopped the line under the stop policy — the run finished, this component was deliberately not run, and the remedy is the earlier component's failure. ModeRunIncomplete means the receipt was written while the run was STILL IN PROGRESS, so the component's fate is unknown at write time and the remedy is to find out why the run never concluded. Collapsing them would recreate exactly the state-space conflation the unreached-component padding was written to prevent (claim_executor's `for bi in batch_records.len()..total_batches` loop and the note above it): a reader could not distinguish a component the plan deliberately skipped from a component whose run was killed underneath it, and those have opposite triage. WHY IT EXISTS AT ALL: the falsifier's floor step carries a foreign 170-minute SIGKILL (gunbc.falsifier_workflow gunbc_falsifier_step_timeout_minutes) and the receipt was written once, after every batch, so a run that crossed the wall produced NO file — the alert reported ENOENT and every completed component's real state was destroyed by the one failure mode most in need of evidence. The receipt is now checkpointed after each completed batch, and a checkpoint's not-yet-run tail is this mode. A checkpoint is therefore never mistakable for a conclusion: the final write, and only the final write, carries not_reached."
+
+data floor_component_deadline_reached_note: String = "ModeDeadlineReached is the THIRD unadmitted-component cause and the only one of the three that is Refused rather than Skipped — the split is deliberate and is the whole reason it is not folded into its neighbours. Skipped says the component produced no verdict and the walk is not claiming responsibility for that; Refused says THE LINE STOPPED DELIBERATELY, LOCATED, AT A DECLARED CEILING, which observation_refused_distinct_note defines as the stopped line an operator is meant to analyse. That is exactly what the internal soft deadline is (gunbc.falsifier_workflow gunbc_falsifier_soft_deadline_minutes), so this mode routes with ModeBudgetExceeded — same remedy family, re-basis the ceiling or reduce the cost — rather than with the two Skipped causes whose remedies are 'fix the earlier component' and 'find out why the run never finished'. WHY IT IS NOT ModeBudgetExceeded ITSELF: that mode means THIS component crossed ITS OWN budget and was killed. A deadline-reached component was never STARTED — the walk declined to admit it because the RUN was out of time — so reusing BudgetExceeded would attribute a whole-run cost problem to whichever component happened to be next in the plan, which is a wrong location on a receipt whose entire purpose is locating things. WHAT REACHING IT MEANS: the corpus did not fit in the lane's time. Every unadmitted component is counted and the run is red. The deadline measures that; it does not fix it, and it is not licence to raise the cap (DESIGN's five-minute-CI-gate lane: do not raise the CI step cap first)."
+
 data floor_component_outcome_of_mode_single_authority_note: String = "ONE tag table, not two. An earlier revision of the failure-mode edge parsed the seed's tag twice — once to a FloorComponentFailureMode and once, separately, to an ObservationOutcome — so the tag vocabulary was written out in two parallel string tables that had to be edited together (caught by review 48341 on gunbc#7827, non-blocking; fixed here rather than left, because two representations of one vocabulary is the second-representation DESIGN 3 forbids and the fact that today's only caller invokes them back-to-back makes the drift local, not impossible). The outcome is now derived FROM THE MODE rather than from the tag, so the tag appears exactly once (floor_component_failure_mode_of) and the mode-to-outcome collapse appears exactly once here. A newly added mode is a compile error in this match instead of a silently unmapped string, which is the construction form of the fail-closed property the note above states. ModeUnrecorded REFUSES rather than being given an outcome: it is not a failure mode at all, it is the absence of a recorded one, so inventing an outcome for it would be the fabricated-plausible-output DESIGN 5 forbids. It is unreachable from the tag path by construction — floor_component_failure_mode_of never returns it — so the refusal is a total-match obligation, not a live arm."
 
 fn floor_component_outcome_of_mode(m: FloorComponentFailureMode, detail: NonEmptyStr) -> ObservationOutcome? {
@@ -178,6 +188,8 @@ fn floor_component_outcome_of_mode(m: FloorComponentFailureMode, detail: NonEmpt
     ModeInfra => Present { value: Failed { error: detail, output: "" } }
     ModeWitnessRed => Present { value: Failed { error: detail, output: "" } }
     ModeNotReached => Present { value: Skipped { reason: detail } }
+    ModeRunIncomplete => Present { value: Skipped { reason: detail } }
+    ModeDeadlineReached => Present { value: Refused { diagnostic: detail } }
     ModeUnrecorded => none
   }
 }

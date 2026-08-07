@@ -278,6 +278,28 @@ test fn fcr_not_reached_mode_is_skipped_not_failed() -> Bool {
   fcr_mode_outcome_is(mode: "not_reached" as NonEmptyStr, expected_outcome: "skipped")
 }
 
+data fcr_run_incomplete_note: String = "run_incomplete and not_reached share the Skipped outcome and MUST NOT share a mode — the same both-halves discipline fcr_failure_mode_edge_note states for Infra/WitnessRed, applied to the pair the checkpoint introduced. The outcomes agreeing is the record staying correct (neither produced a verdict); the modes differing is what lets a reader tell a run that was KILLED mid-flight from a plan that CONCLUDED and deliberately skipped the tail. Those route to different owners — one is 'find out why the run never finished', the other is 'fix the earlier component' — and the receipt is the only evidence a SIGKILLed run leaves, so getting this pair wrong tells a wrong causal story about precisely the incident the checkpoint exists to explain. Either half alone is satisfiable by a broken projection, so both are asserted."
+
+test fn fcr_run_incomplete_mode_is_skipped_like_not_reached() -> Bool {
+  fcr_mode_outcome_is(mode: "run_incomplete" as NonEmptyStr, expected_outcome: "skipped")
+}
+
+test fn fcr_deadline_reached_is_refused_not_skipped() -> Bool {
+  fcr_mode_outcome_is(mode: "deadline_reached" as NonEmptyStr, expected_outcome: "refused")
+    && !fcr_mode_outcome_is(mode: "deadline_reached" as NonEmptyStr, expected_outcome: "skipped")
+}
+
+test fn fcr_deadline_reached_is_distinct_from_both_skipped_causes() -> Bool {
+  fcr_mode_of(mode: "deadline_reached" as NonEmptyStr) == "deadline_reached"
+    && !(fcr_mode_of(mode: "deadline_reached" as NonEmptyStr) == fcr_mode_of(mode: "not_reached" as NonEmptyStr))
+    && !(fcr_mode_of(mode: "deadline_reached" as NonEmptyStr) == fcr_mode_of(mode: "run_incomplete" as NonEmptyStr))
+}
+
+test fn fcr_run_incomplete_is_a_distinct_mode_from_not_reached() -> Bool {
+  fcr_mode_of(mode: "run_incomplete" as NonEmptyStr) == "run_incomplete"
+    && !(fcr_mode_of(mode: "run_incomplete" as NonEmptyStr) == fcr_mode_of(mode: "not_reached" as NonEmptyStr))
+}
+
 test fn fcr_red_control_unmodelled_failure_mode_refuses_never_widens() -> Bool {
   let unknown = fcr_mode_row(mode: "SomeNewModeAddedLater" as NonEmptyStr)
   let budget = fcr_mode_row(mode: "BudgetExceeded" as NonEmptyStr)
