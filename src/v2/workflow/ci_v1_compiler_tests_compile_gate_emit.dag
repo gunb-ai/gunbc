@@ -44,7 +44,7 @@ data ci_v1_compiler_tests_compile_gate_shell_emit_scaffold: Disposition = Scaffo
   }
 }
 
-data ci_v1_compiler_tests_compile_gate_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_v1_compiler_tests_compile_gate_script — foreign-executor (GitHub Actions run:) shell transport for extdeps.cargo_build cargo.Build.Test(extra_args: ci_v1_compiler_tests_compile_gate_extra_args); DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the build-job step to orchestration emit over the typed cargo operation — the same de-fork ci_fmt_gate_line and ci_release_build_script await"
+data ci_v1_compiler_tests_compile_gate_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_v1_compiler_tests_compile_gate_script — foreign-executor (GitHub Actions run:) shell transport for extdeps.cargo_build cargo.Build.Test(extra_args: ci_v1_compiler_tests_compile_gate_extra_args); the EAGAIN retry wrapper lives in gunbc.ci_workflow ci_v1_compiler_tests_compile_gate_run_script (same seam as ci_release_build_script); DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the build-job step to orchestration emit over the typed cargo operation — the same de-fork ci_fmt_gate_line and ci_release_build_script await"
 
 fn ci_v1_compiler_tests_compile_gate_check_step() -> BashBoundOperationInvocation {
   bash_bind_operation_invocation_host_env_executable(
@@ -83,9 +83,13 @@ fn ci_v1_compiler_tests_compile_gate_render(
   }
 }
 
+fn ci_v1_compiler_tests_compile_gate_command() -> String {
+  ci_v1_compiler_tests_compile_gate_render(plan: ci_v1_compiler_tests_compile_gate_intent())
+}
+
 fn ci_v1_compiler_tests_compile_gate_script() -> String {
   concat(
     concat("# ", concat(ci_v1_compiler_tests_compile_gate_shell_emit_dissolution_trigger, "\n")),
-    concat(ci_v1_compiler_tests_compile_gate_render(plan: ci_v1_compiler_tests_compile_gate_intent()), "\n")
+    concat(ci_v1_compiler_tests_compile_gate_command(), "\n")
   )
 }

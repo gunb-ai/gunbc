@@ -676,6 +676,13 @@ fn marshal_generic(
         // authored name — not resolved parent-variant identity; see
         // `v2.std.decl_facts_skeleton` `decl_facts_outer_record_constructor_lexeme_authority_note`.
         edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
+        // Named edge discriminates construction from string-literal/callee atoms spelling the
+        // same lexeme (record_construction_census_witness_test).
+        edges.push(edge_named(
+            ctx,
+            "record_construction_spelling",
+            atom_identity_node(ctx, &name),
+        ));
     } else if node_references_param(node, &name, param_names) {
         edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
     } else if matches!(node.expr_data.as_ref(), ExprData::ExprCall { .. }) && !name.is_empty() {
