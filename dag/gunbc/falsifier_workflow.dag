@@ -237,7 +237,7 @@ fn falsifier_aggregate_verdict_script() -> String {
               "COLD_RESULT=\"${{ needs.cold-corpus.result }}\"\n",
               concat(
                 concat(
-                  "if [ \"${BUILD_RESULT}\" = \"cancelled\" ]; then\n",
+                  "if [ \"$\{BUILD_RESULT}\" = \"cancelled\" ]; then\n",
                   concat(
                     falsifier_aggregate_verdict_write_receipt(json: aggregate_shell_receipt_build_cancelled()),
                     concat(
@@ -248,7 +248,7 @@ fn falsifier_aggregate_verdict_script() -> String {
                           "fi\n",
                           concat(
                             concat(
-                              "if [ \"${BUILD_RESULT}\" = \"skipped\" ]; then\n",
+                              "if [ \"$\{BUILD_RESULT}\" = \"skipped\" ]; then\n",
                               concat(
                                 falsifier_aggregate_verdict_write_receipt(json: aggregate_shell_receipt_build_skipped()),
                                 concat(
@@ -259,18 +259,18 @@ fn falsifier_aggregate_verdict_script() -> String {
                                       "fi\n",
                                       concat(
                                         concat(
-                                          "if [ \"${BUILD_RESULT}\" != \"success\" ]; then\n",
+                                          "if [ \"$\{BUILD_RESULT}\" != \"success\" ]; then\n",
                                           concat(
                                             falsifier_aggregate_verdict_write_receipt(json: aggregate_shell_receipt_build_failed()),
                                             concat(
-                                              "  printf '%s\\n' \"::error::Cold corpus did not run — build unavailable (${BUILD_RESULT}); infrastructure, not a falsifier regression finding\"\n",
+                                              "  printf '%s\\n' \"::error::Cold corpus did not run — build unavailable ($\{BUILD_RESULT}); infrastructure, not a falsifier regression finding\"\n",
                                               concat(
                                                 "  exit 1\n",
                                                 concat(
                                                   "fi\n",
                                                   concat(
                                                     concat(
-                                                      "if [ \"${COLD_RESULT}\" = \"skipped\" ]; then\n",
+                                                      "if [ \"$\{COLD_RESULT}\" = \"skipped\" ]; then\n",
                                                       concat(
                                                         falsifier_aggregate_verdict_write_receipt(json: aggregate_shell_receipt_cold_skipped()),
                                                         concat(
@@ -281,7 +281,7 @@ fn falsifier_aggregate_verdict_script() -> String {
                                                               "fi\n",
                                                               concat(
                                                                 concat(
-                                                                  "if [ \"${COLD_RESULT}\" = \"cancelled\" ]; then\n",
+                                                                  "if [ \"$\{COLD_RESULT}\" = \"cancelled\" ]; then\n",
                                                                   concat(
                                                                     falsifier_aggregate_verdict_write_receipt(json: aggregate_shell_receipt_cold_cancelled()),
                                                                     concat(
@@ -306,14 +306,14 @@ fn falsifier_aggregate_verdict_script() -> String {
                                                                                           "fi\n",
                                                                                           concat(
                                                                                             concat(
-                                                                                              "if [ \"${FLOOR_RECEIPT_PRESENT}\" != true ]; then\n",
+                                                                                              "if [ \"$\{FLOOR_RECEIPT_PRESENT}\" != true ]; then\n",
                                                                                               concat(
                                                                                                 concat(
                                                                                                   "  ",
                                                                                                   concat(
                                                                                                     falsifier_aggregate_verdict_write_receipt(json: aggregate_shell_receipt_cold_failed_before_receipt()),
                                                                                                     concat(
-                                                                                                      "  printf '%s\\n' \"::error::Cold corpus did not produce floor-component receipt (cold=${COLD_RESULT}) — infrastructure, not a falsifier regression finding\"\n",
+                                                                                                      "  printf '%s\\n' \"::error::Cold corpus did not produce floor-component receipt (cold=$\{COLD_RESULT}) — infrastructure, not a falsifier regression finding\"\n",
                                                                                                       concat(
                                                                                                         "  exit 1\n",
                                                                                                         concat(
@@ -324,9 +324,9 @@ fn falsifier_aggregate_verdict_script() -> String {
                                                                                                               concat(
                                                                                                                 falsifier_aggregate_verdict_write_receipt(json: aggregate_shell_receipt_corpus_executed()),
                                                                                                                 concat(
-                                                                                                                  "if [ \"${SELECTION_RESULT}\" != \"success\" ] || [ \"${COLD_RESULT}\" != \"success\" ]; then\n",
+                                                                                                                  "if [ \"$\{SELECTION_RESULT}\" != \"success\" ] || [ \"$\{COLD_RESULT}\" != \"success\" ]; then\n",
                                                                                                                   concat(
-                                                                                                                    "  printf '%s\\n' \"::error::Falsifier cadence red — selection=${SELECTION_RESULT} cold=${COLD_RESULT} (corpus executed; see target/falsifier-cold-corpus-execution.json)\"\n",
+                                                                                                                    "  printf '%s\\n' \"::error::Falsifier cadence red — selection=$\{SELECTION_RESULT} cold=$\{COLD_RESULT} (corpus executed; see target/falsifier-cold-corpus-execution.json)\"\n",
                                                                                                                     concat(
                                                                                                                       "  exit 1\n",
                                                                                                                       concat(

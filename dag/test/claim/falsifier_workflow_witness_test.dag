@@ -45,6 +45,7 @@ import gunbc.falsifier_cold_corpus_execution {
   JobOutcomeSuccess,
   JobOutcomeFailure,
   JobOutcomeSkipped,
+  JobOutcomeCancelled,
   BuildJobFailed,
   ColdCorpusFailedBeforeReceipt,
   CorpusExecuted,
@@ -257,6 +258,30 @@ test fn aggregate_verdict_shell_receipt_literals_match_model() -> Bool {
     && string_contains(s: yml, pattern: aggregate_shell_receipt_cold_cancelled())
     && string_contains(s: yml, pattern: aggregate_shell_receipt_cold_failed_before_receipt())
     && string_contains(s: yml, pattern: aggregate_shell_receipt_corpus_executed())
+}
+
+test fn aggregate_shell_receipt_builders_are_receipt_json_authority() -> Bool {
+  aggregate_shell_receipt_build_failed() == cold_corpus_execution_receipt_json(
+    c: classify_cold_corpus_execution(build: JobOutcomeFailure, cold: JobOutcomeSkipped, floor_receipt_present: false)
+  )
+    && aggregate_shell_receipt_build_cancelled() == cold_corpus_execution_receipt_json(
+      c: classify_cold_corpus_execution(build: JobOutcomeCancelled, cold: JobOutcomeSkipped, floor_receipt_present: false)
+    )
+    && aggregate_shell_receipt_build_skipped() == cold_corpus_execution_receipt_json(
+      c: classify_cold_corpus_execution(build: JobOutcomeSkipped, cold: JobOutcomeSkipped, floor_receipt_present: false)
+    )
+    && aggregate_shell_receipt_cold_skipped() == cold_corpus_execution_receipt_json(
+      c: classify_cold_corpus_execution(build: JobOutcomeSuccess, cold: JobOutcomeSkipped, floor_receipt_present: false)
+    )
+    && aggregate_shell_receipt_cold_cancelled() == cold_corpus_execution_receipt_json(
+      c: classify_cold_corpus_execution(build: JobOutcomeSuccess, cold: JobOutcomeCancelled, floor_receipt_present: false)
+    )
+    && aggregate_shell_receipt_cold_failed_before_receipt() == cold_corpus_execution_receipt_json(
+      c: classify_cold_corpus_execution(build: JobOutcomeSuccess, cold: JobOutcomeFailure, floor_receipt_present: false)
+    )
+    && aggregate_shell_receipt_corpus_executed() == cold_corpus_execution_receipt_json(
+      c: classify_cold_corpus_execution(build: JobOutcomeSuccess, cold: JobOutcomeFailure, floor_receipt_present: true)
+    )
 }
 
 test fn aggregate_verdict_shell_distinguishes_build_cancelled_from_failed() -> Bool {
