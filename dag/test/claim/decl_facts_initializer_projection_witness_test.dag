@@ -1,6 +1,7 @@
 module test.claim.decl_facts_initializer_projection_witness_test
 
 import test.fixture.decl_facts_reflection.ambiguous_shared_a
+import test.fixture.decl_facts_reflection.ambiguous_shared_b { OtherTwo }
 import test.fixture.decl_facts_reflection.ambiguous_specimen
 import test.claim.decl_facts_reflection_witness_support {
   decl_facts_reflection_constructor_parent,
