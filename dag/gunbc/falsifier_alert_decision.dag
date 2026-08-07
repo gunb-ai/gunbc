@@ -19,6 +19,7 @@ import gunbc.falsifier_alert_admission {
   AlertRefusedEventUnreadable
 }
 import gunbc.falsifier_alert_state {
+  FirstRedStanding, FirstRedObserved, FirstRedUnknownBeforeTracking,
   FalsifierAlertState,
   FalsifierAlertStateDecoding,
   CurrentState, LegacyStateWithoutLastNotification, StateAbsent, StateMalformed,
@@ -267,12 +268,6 @@ fn notification_has_unowned_routing(n: AlertNotification) -> Bool {
 }
 
 data issue_observation_note: String = "NO OPEN ISSUE AND NO STATE MARKER ARE DIFFERENT FACTS, AND FUSING THEM PRODUCED TWO LIVE DEFECTS. The first revision took only the state decoding, so StateAbsent — which means `the issue body carried no marker` — was read as `there is no incident`. Against an issue that predates the marker format, or one a human opened by hand, that meant a red run OPENED A SECOND ISSUE for an incident already tracked, and a green run reported GreenWithNoOpenIncident and never closed the first one. Both are silent; both look like the alert working.\\n\\nThe observation therefore comes first and the marker is a property of a body that exists. MultipleOpenAlertIssues is its own arm rather than `take the first`: two open alert issues means the alert already lost track of itself, and picking one would compound that by writing to an arbitrary half of a split incident. AlertIssueLookupRefused is its own arm because a failed lookup is not an absence — answering `no issue` when the search could not be performed is the empty-observation narrow, and it would open a duplicate on every red until the lookup recovered."
-
-data first_red_standing_note: String = "AN ADOPTED ISSUE'S FIRST RED IS NOT KNOWN, AND NOW SAYS SO. The previous revision adopted an existing marker-less issue by writing first_red = now, which is a fabricated observation wearing the name of a measurement: the issue may predate state tracking entirely, or have been opened by hand hours after the run that prompted it. Recording `now` makes the incident look like it just started, and the number then appears on the issue as though someone had watched it happen.\\n\\nFirstRedStanding carries the distinction instead. FirstRedObserved is a real instant this alert recorded; FirstRedUnknownBeforeTracking says the incident predates what we can know. The rendered issue can then say `red since 09:14` or `red since before tracking began`, which are different sentences and both true, rather than one confident sentence that is sometimes false.\\n\\nISSUE CREATION TIME IS DELIBERATELY NOT SUBSTITUTED. It is available and it is tempting, and it would be the same error one layer removed: when the issue was FILED is not when the falsifier went RED, and relabelling one as the other is exactly what this carrier exists to stop. If a future model wants to carry it, it must carry it as a creation observation under its own name."
-
-type FirstRedStanding
-  = FirstRedObserved { at: EpochMs }
-  | FirstRedUnknownBeforeTracking
 
 type AlertIssueObservation
   = NoOpenAlertIssue
