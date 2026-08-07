@@ -12,7 +12,9 @@
 ## 1. The question, and the answer
 
 A runner slot is `MemoryHigh` 13 GiB / `MemoryMax` 14 GiB and a successful serial floor measures
-10.3–11.0 GiB, so a second worker has roughly **2–3 GiB** of headroom. The cross-worker store
+10.3–11.0 GiB, so a second worker has roughly **2–3 GiB** of headroom. **That headroom band is an
+inherited premise, not something this note establishes or verifies** — see §6.1, which states what it
+would take to invalidate it and what survives if it does. The cross-worker store
 (`shared_typecheck_store.rs` `SharedTypecheckCaches`) shares **only** `typed_module_cache`. Everything
 else on `MultiEntryIndex` is per worker. So: what is that per-worker remainder made of?
 
