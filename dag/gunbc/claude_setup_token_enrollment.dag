@@ -307,7 +307,7 @@ data claude_enrollment_secret_manager_add_version_scaffold: Disposition = Scaffo
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
     module_path: "extdeps.cloud.gcp.secret_manager",
-    decl_name: "AccessVersion",
+    decl_name: "AddVersion",
     field: WholeDeclaration,
   }
 }
