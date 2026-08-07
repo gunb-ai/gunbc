@@ -19,12 +19,7 @@ import v2.std.optional { Optional }
 // promise about what will be.
 //
 // A PATH IN SCOPE IS NOT A PATH WITH NO PROSE LEFT, and the distinction is load-bearing rather than
-// pedantic. `dag/extdeps/auth/` is enrolled by the batch that migrated five rows out of jwt.dag, and six
-// legacy rows still stand under it — two in jwt.dag whose subjects this batch could not reach, four in
-// oidc.dag. They stay editable in place, because introduction is keyed on the declaration NAME and an
-// edit removes and re-adds the same name. What enrollment buys is exactly one property: no NEW prose row
-// lands here. Waiting for a directory to be prose-free before defending it would let fresh debt
-// accumulate in the very files being cleaned, at the pace the cleanup runs.
+// pedantic. `dag/extdeps/auth/` is enrolled by the batch that migrated five rows out of jwt.dag; M1C-1 migrated the two deferred jwt.dag rows (registered claims above JwtRegisteredClaims and the verification boundary as a module annotation). Four legacy rows still stand in oidc.dag. They stay editable in place, because introduction is keyed on the declaration NAME and an edit removes and re-adds the same name. What enrollment buys is exactly one property: no NEW prose row lands here. Waiting for a directory to be prose-free before defending it would let fresh debt accumulate in the very files being cleaned, at the pace the cleanup runs.
 //
 // (An earlier revision of this paragraph said a path enters scope `only once its prose actually left`.
 // That was false of the first entry the same change enrolled — a claim in the authority contradicted by

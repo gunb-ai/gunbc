@@ -1,9 +1,9 @@
 # `.dag` annotation prose — the representation defect
 
-**Status: audit complete; source-annotation policy ruled; implementation and reconciliation unstarted.**
-Measured at `64aed6007e`, 2026-08-04. **Nothing deleted, migrated, or reconciled.** The canonical policy
+**Status: audit complete; source-annotation policy ruled; M1C-1 implementation landed on jwt.dag and the annotation carrier modules; corpus reconciliation ongoing.**
+Measured at `64aed6007e`, 2026-08-04. **M1C-1 (session quick-tern-444) migrated the two deferred jwt.dag prose rows, self-applied the feature to `dag/std/source_annotation.dag`, `src/v1/annotation_bind.dag`, and `src/v1/tests/claim/v1_annotation_round_trip_test.dag`, and left oidc.dag's four legacy rows for a follow-on.** The canonical policy
 landed in DESIGN.md §4c through `gunbc.design_document` (operator ruling, 2026-08-04); §5 records the
-D-A–D-D rulings and the four structural corrections that shaped them. No slice below is started.
+D-A–D-D rulings and the four structural corrections that shaped them. Remaining slices below are not all started.
 
 **Instrument:** a scratchpad Python extractor (three tiers, ≥200 B decoded string values, matching
 [dag-note-prose-census.md](dag-note-prose-census.md) §6's grain). **Not committed** — see §8. Verified
@@ -232,8 +232,8 @@ load-bearing — why a predicate is deliberately concrete rather than generic an
 about a required executable (`gunbc.roadmap_dashboard_instance_apply` `executable_survey_note`); why a
 stale-socket host differs from a never-provisioned one, at a measured cost of a week's silent uncaching
 (`gunbc.build_cache_endpoint_path` `endpoint_path_state_authority_note`); why RFC 7519's registered claims
-are all optional, including that the first cut got it backwards (`extdeps.auth.jwt`
-`jwt_registered_claims_note`).
+are all optional, including that the first cut got it backwards (`extdeps.auth.jwt` module annotation on
+`JwtRegisteredClaims`).
 
 **The crucial reading: valuable and irreducible does not mean correctly represented.** Every one of those
 notes is worth keeping *and* wrong as `data Foo: String`. Value and representation are independent axes,
