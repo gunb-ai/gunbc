@@ -411,7 +411,10 @@ impl CiControlPlane {
             Command::new("git")
                 .arg("-C")
                 .arg(&self.config.mirror_path)
-                .args(["fetch", "--prune", "origin", "main"]),
+                .arg("fetch")
+                .arg("--prune")
+                .arg("origin")
+                .arg(&self.authority.merge_target_branch),
         )?;
         run_cmd(
             &self.config.workspace_root,
@@ -429,11 +432,15 @@ impl CiControlPlane {
 
     fn discover_subjects(&self) -> Result<DiscoverOutcome, String> {
         let mut admitted = Vec::new();
-        let main_sha = rev_parse(&self.config.mirror_path, "refs/remotes/origin/main")
-            .or_else(|_| rev_parse(&self.config.mirror_path, "refs/heads/main"))?;
+        let branch = &self.authority.merge_target_branch;
+        let merge_target_sha = rev_parse(
+            &self.config.mirror_path,
+            &format!("refs/remotes/origin/{branch}"),
+        )
+        .or_else(|_| rev_parse(&self.config.mirror_path, &format!("refs/heads/{branch}")))?;
         admitted.push(DiscoveredSubject {
-            subject_key: format!("main:{main_sha}"),
-            head_sha: main_sha,
+            subject_key: format!("{branch}:{merge_target_sha}"),
+            head_sha: merge_target_sha,
             kind: "main_push".to_string(),
             pr_number: None,
         });

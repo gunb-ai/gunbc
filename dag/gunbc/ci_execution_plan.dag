@@ -78,7 +78,8 @@ fn ci_subject_head_sha(subject: CiExecutionSubject) -> CommitSha? {
 
 fn ci_subject_identity_key(subject: CiExecutionSubject) -> String {
   match subject {
-    PushToMain { head_sha: sha, base_tree_hash: _ } => concat("main:", sha)
+    PushToMain { head_sha: sha, base_tree_hash: _ } =>
+      concat(concat(gunbc_default_branch_name, ":"), sha)
     PullRequestToMain { pr_number: _, head_sha: sha, base_ref: _, base_tree_hash: _, head_repo_full_name: _ } =>
       concat("pr:", sha)
     OperatorRerun { head_sha: sha, base_ref: _, base_tree_hash: _ } => concat("rerun:", sha)
