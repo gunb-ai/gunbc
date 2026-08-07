@@ -1,0 +1,30 @@
+module gunbc.live_deploy.deployed_tree_scope
+
+import std.types { Bool, String, List }
+
+// WHAT THE DEPLOY ACTUALLY INSTALLS, DECLARED ONCE BECAUSE TWO THINGS NEED IT AND THEY MUST NOT DISAGREE.
+// The working-tree leg of the source sync rsyncs the runner checkout wholesale except these prefixes, so
+// the deployed source is the WORKING TREE, not the commit. Two consumers read that fact:
+//
+//   gunbc.live_deploy.emit       renders `--exclude /<p>` per prefix into the tree-sync ExecStart
+//   gunbc.live_deploy.candidate  decides whether an untracked path would actually be shipped
+//
+// Spelling it in both would let them drift, and the drift is the dangerous direction: admission would pass
+// on a path the sync then installs. Same fact, one home (DESIGN §3).
+//
+// IT LIVES IN ITS OWN LEAF MODULE FOR A STRUCTURAL REASON, not for tidiness. Putting it beside the emitter
+// and importing that from candidate closes a real cycle — candidate is reached from gunbc.hostname_read,
+// which gunbc.host_effect reaches, which the emitter's own closure reaches — and acyclicity is the import
+// graph's one structural law (DESIGN §3). A fact needed by two modules on opposite sides of a dependency
+// chain belongs beneath both, not inside either.
+data deployed_tree_excluded_prefixes: List<String> = ["target", ".git"]
+
+fn deployed_tree_rsync_exclude_flags() -> String {
+  join(map(deployed_tree_excluded_prefixes, p => concat("--exclude /", p)), " ")
+}
+
+// Segment-wise, never a character run: `targetish/x` starts with `target` but is not under it, and treating
+// it as excluded would hide from admission a path rsync goes on to ship.
+fn path_is_deployed(path: String) -> Bool {
+  !any(deployed_tree_excluded_prefixes, p => path == p || starts_with(s: path, prefix: concat(p, "/")))
+}

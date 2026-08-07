@@ -23,6 +23,13 @@ data git_inspect_mock_case_merge_base: PublishedMockCase = PublishedMockCase {
   case_id: 0
 }
 
+data git_inspect_mock_case_working_tree_status: PublishedMockCase = PublishedMockCase {
+  operation_key: "git.Inspect.WorkingTreeStatus",
+  service: "git.Inspect",
+  operation: "WorkingTreeStatus",
+  case_id: 0
+}
+
 data git_inspect_mock_case_list_tree_paths_at_revision: PublishedMockCase = PublishedMockCase {
   operation_key: "git.Inspect.ListTreePathsAtRevision",
   service: "git.Inspect",
@@ -134,6 +141,7 @@ data git_published_mock_corpus: List<PublishedMockCase> = [
   git_core_mock_case_remote_branches,
   git_inspect_mock_case_merge_base,
   git_inspect_mock_case_list_tree_paths_at_revision,
+  git_inspect_mock_case_working_tree_status,
   git_core_mock_case_ls_files,
   git_core_mock_case_diff,
   git_core_mock_case_diff_unified0,

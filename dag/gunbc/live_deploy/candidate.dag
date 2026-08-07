@@ -2,7 +2,8 @@ module gunbc.live_deploy.candidate
 
 import extdeps.git
 import gunbc.output_policy { ExpectSuccess }
-import std.types { Bool, CommitSha, String }
+import std.types { Bool, CommitSha, String, List, Int }
+import gunbc.live_deploy.deployed_tree_scope { path_is_deployed }
 import std.content_hash { Fnv1a64Structural }
 import gunbc.roadmap_site_surface_observe { materialize_live_roadmap_site_surface_bundle }
 import gunbc.running_release_identity {
@@ -21,16 +22,160 @@ type CandidateRelease {
   expected_surface_identity: Fnv1a64Structural
 }
 
+// A REVISION NAMES A COMMIT; THE DEPLOY SHIPS A WORKING TREE. Those are the same bytes only when the
+// checkout is clean, and nothing above established that. The sync's working-tree leg rsyncs the runner
+// checkout wholesale except gunbc.live_deploy.deployed_tree_scope deployed_tree_excluded_prefixes, so an edit
+// or an untracked file is DEPLOYED while HEAD does not name it — and the resulting candidate
+// { revision: A, surface: B } is self-consistent all the way down: the emitter writes A into ExecStart, the
+// process reports A, readiness compares A against A and greens, and the ancestry decision downstream
+// orders the deployment as A. Nothing in the chain can see that the bytes were never A's, because every
+// party is reading the same wrong answer. This is the one class the identity channel cannot catch by
+// construction, which is why it is refused at admission instead.
+//
+// THE UNTRACKED ARM IS NOT A COURTESY. `--delete` on the working-tree leg means a stray file in the
+// checkout is copied to the host and then persists there; the deployment's own source sync is the transport
+// that makes an untracked path load-bearing. It is scoped to DEPLOYED paths for the same reason: a file
+// under target/ or .git/ is excluded by the sync, so refusing on it would be refusing on bytes that never
+// leave the runner — a fail-closed arm that fires on a state which is not the invalid one is just noise,
+// and noise is what gets suppressed later.
+//
+// THREE SEPARATE PATH LISTS, NOT A COUNT OR A BOOL. Staged, unstaged-tracked and untracked-deployed have
+// different remedies — commit the index, commit or discard the edit, add or clean the file — and a deploy
+// operator reading the refusal needs to know which, on which path. A `dirty: Bool` would be the same
+// refusal with the locating information deleted.
+type CandidateCheckoutObservation
+  = CandidateCheckoutClean
+  | CandidateCheckoutDirty {
+      tracked_changes: List<String>,
+      staged_changes: List<String>,
+      untracked_deployed_paths: List<String>,
+    }
+  | CandidateCheckoutUnobservable { detail: String }
+
 type CandidateUnobservableCause
   = CandidateHeadCommitRefused
   | CandidateRevisionEmpty
   | CandidateRevisionMalformed { text: String }
+  | CandidateCheckoutNotClean {
+      tracked_changes: List<String>,
+      staged_changes: List<String>,
+      untracked_deployed_paths: List<String>,
+    }
+  | CandidateCheckoutStatusRefused { detail: String }
 
 type CandidateObservation
   = CandidateObserved { candidate: CandidateRelease }
   | CandidateUnobservable { cause: CandidateUnobservableCause }
 
 data candidate_unobservable_causes_note: String = "THREE CAUSES, ALL REFUSALS, NONE OF THEM A DEFAULT. A deploy that cannot name the candidate it is installing has nothing to emit into ExecStart and nothing to verify the routed process against, so there is no arm here that proceeds with a placeholder, an abbreviated sha, or the string that happened to arrive. Refused means the probe itself did not answer (not a repository, git unavailable); Empty means it answered with nothing, which a bare success flag would have read as success; Malformed means it answered with something that is not a 40-digit lowercase object name — a tag, a branch, an abbreviated sha — which is the case a length-free check accepts and an ancestry probe then silently mis-answers.\\n\\nEmpty is kept distinct from Malformed rather than folded into it because their remedies differ: an empty stdout means the observation seam is broken, while a non-sha text means the seam works and the repository is in a state (detached, unborn, or a ref that does not resolve) the deploy must not paper over."
+
+// The scan carries `expect_rename_source` because porcelain v1 with -z emits a rename or copy as TWO
+// NUL-separated fields — the record, then the source path — and the source path is a bare filename. There is
+// no shape test that separates it from a record: "ab cdef" is a legal path and would pass any
+// "third character is a space" check. Only the previous record's status letter says a continuation follows,
+// so the parse is stateful by necessity rather than by preference. Reading it shape-first would attribute a
+// rename's source path to a phantom status and, worse, do so only for paths that happen to look like records.
+//
+// `malformed` refuses rather than skipping. A field that is neither a continuation nor a well-formed record
+// means this is not the format we think it is, and silently dropping it would turn an unreadable status into
+// a clean one — the empty-observation narrow DESIGN §5 names, where ⊥-as-ignorance is rendered as
+// ⊥-as-answer and the deploy proceeds because nothing was found.
+type CheckoutStatusScan {
+  staged: List<String>
+  tracked: List<String>
+  untracked: List<String>
+  expect_rename_source: Bool
+  malformed: Bool
+}
+
+fn scan_checkout_status_field(acc: CheckoutStatusScan, field: String) -> CheckoutStatusScan {
+  if field == "" {
+    acc
+  } else if acc.expect_rename_source {
+    CheckoutStatusScan {
+      staged: acc.staged,
+      tracked: acc.tracked,
+      untracked: acc.untracked,
+      expect_rename_source: false,
+      malformed: acc.malformed,
+    }
+  } else if string_length(s: field) < 4 || substring(s: field, start: 2, end: 3) != " " {
+    CheckoutStatusScan {
+      staged: acc.staged,
+      tracked: acc.tracked,
+      untracked: acc.untracked,
+      expect_rename_source: false,
+      malformed: true,
+    }
+  } else {
+    let x = substring(s: field, start: 0, end: 1)
+    let y = substring(s: field, start: 1, end: 2)
+    let path = substring(s: field, start: 3, end: string_length(s: field))
+    if x == "?" && y == "?" {
+      CheckoutStatusScan {
+        staged: acc.staged,
+        tracked: acc.tracked,
+        untracked: if path_is_deployed(path: path) {
+          list_append(acc.untracked, [path])
+        } else {
+          acc.untracked
+        },
+        expect_rename_source: false,
+        malformed: acc.malformed,
+      }
+    } else {
+      CheckoutStatusScan {
+        staged: if x != " " { list_append(acc.staged, [path]) } else { acc.staged },
+        tracked: if y != " " { list_append(acc.tracked, [path]) } else { acc.tracked },
+        untracked: acc.untracked,
+        expect_rename_source: x == "R" || x == "C",
+        malformed: acc.malformed,
+      }
+    }
+  }
+}
+
+fn scan_checkout_status(entries_nul: String) -> CheckoutStatusScan {
+  fold(
+    split(s: entries_nul, delimiter: from_code_point(0)),
+    init: CheckoutStatusScan {
+      staged: [],
+      tracked: [],
+      untracked: [],
+      expect_rename_source: false,
+      malformed: false,
+    },
+    f: (acc, field) => scan_checkout_status_field(acc: acc, field: field),
+  )
+}
+
+fn observe_candidate_checkout() -> CandidateCheckoutObservation {
+  let status = git.Inspect.WorkingTreeStatus(expect: ExpectSuccess)
+  if !status.success {
+    CandidateCheckoutUnobservable {
+      detail: join(["git status did not answer for the deploying checkout: ", status.stderr], ""),
+    }
+  } else {
+    let scan = scan_checkout_status(entries_nul: status.entries_nul)
+    if scan.malformed {
+      CandidateCheckoutUnobservable {
+        detail: "git status --porcelain=v1 -z produced a field that is neither a well-formed record nor a rename source; the working tree state is not readable and is not assumed clean",
+      }
+    } else if scan.expect_rename_source {
+      CandidateCheckoutUnobservable {
+        detail: "git status --porcelain=v1 -z ended on a rename or copy record with no source field; the entry list is truncated and is not assumed clean",
+      }
+    } else if length(scan.staged) == 0 && length(scan.tracked) == 0 && length(scan.untracked) == 0 {
+      CandidateCheckoutClean
+    } else {
+      CandidateCheckoutDirty {
+        tracked_changes: scan.tracked,
+        staged_changes: scan.staged,
+        untracked_deployed_paths: scan.untracked,
+      }
+    }
+  }
+}
 
 fn observe_candidate_release() -> CandidateObservation {
   let head = git.Inspect.HeadCommit(expect: ExpectSuccess)
@@ -41,14 +186,37 @@ fn observe_candidate_release() -> CandidateObservation {
   } else if !release_revision_text_valid(text: head.sha as String) {
     CandidateUnobservable { cause: CandidateRevisionMalformed { text: head.sha as String } }
   } else {
-    CandidateObserved {
-      candidate: CandidateRelease {
-        revision: head.sha,
-        expected_surface_identity: materialize_live_roadmap_site_surface_bundle().bundle_identity,
-      },
+    match observe_candidate_checkout() {
+      CandidateCheckoutUnobservable { detail: d } =>
+        CandidateUnobservable { cause: CandidateCheckoutStatusRefused { detail: d } }
+      CandidateCheckoutDirty {
+        tracked_changes: t,
+        staged_changes: s,
+        untracked_deployed_paths: u,
+      } =>
+        CandidateUnobservable {
+          cause: CandidateCheckoutNotClean {
+            tracked_changes: t,
+            staged_changes: s,
+            untracked_deployed_paths: u,
+          }
+        }
+      CandidateCheckoutClean =>
+        CandidateObserved {
+          candidate: CandidateRelease {
+            revision: head.sha,
+            expected_surface_identity: materialize_live_roadmap_site_surface_bundle().bundle_identity,
+          },
+        }
     }
   }
 }
+
+// The cleanliness read comes AFTER the revision read and BEFORE the surface is rendered, and the order is
+// the point. The surface identity is a fingerprint of the working tree; computing it first and then
+// discovering the tree is dirty would mean the refusal was constructed from bytes we had already decided not
+// to trust. Reading the status first means a dirty tree never reaches the renderer at all — nothing derived
+// from untrusted bytes is built, so there is no intermediate value a later arm could mistakenly use.
 
 data observe_candidate_release_is_a_function_note: String = "A FUNCTION AND NOT A TOP-LEVEL data, FOR THE REASON gunbc.stage0_rust_host_observation ALREADY PAID FOR. A top-level data declaration is evaluated by IMPORTING it, so a module that merely named this symbol in an import list would perform Git I/O as a consequence of loading — and that is not hypothetical: a dead import of exactly that shape reached git.Inspect.HeadCommit under the hermetic envelope and took down a 105-row discovery batch. As a function the effect is reachable only by CALLING it, so every witness in this lane may import CandidateRelease, the cause coproduct, and the comparison predicates without observing any host."
 
@@ -60,7 +228,25 @@ fn candidate_unobservable_detail(cause: CandidateUnobservableCause) -> String {
       "CandidateRevisionEmpty: git.Inspect.HeadCommit succeeded with an empty revision"
     CandidateRevisionMalformed { text: t } =>
       join(["CandidateRevisionMalformed: the deploying checkout reported '", t, "', which is not a 40-digit lowercase object name"], "")
+    CandidateCheckoutStatusRefused { detail: d } =>
+      join(["CandidateCheckoutStatusRefused: ", d], "")
+    CandidateCheckoutNotClean {
+      tracked_changes: t,
+      staged_changes: s,
+      untracked_deployed_paths: u,
+    } =>
+      join([
+        "CandidateCheckoutNotClean: the deploying checkout's working tree does not equal HEAD, and the",
+        " source sync ships the working tree — so this deploy would install bytes the revision does not",
+        " name and every later comparison would agree with itself. staged=", render_candidate_paths(paths: s),
+        " tracked=", render_candidate_paths(paths: t),
+        " untracked-deployed=", render_candidate_paths(paths: u),
+      ], "")
   }
+}
+
+fn render_candidate_paths(paths: List<String>) -> String {
+  if length(paths) == 0 { "(none)" } else { join(paths, ", ") }
 }
 
 fn candidate_release_matches_identity(

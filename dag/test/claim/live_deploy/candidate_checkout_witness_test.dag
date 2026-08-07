@@ -1,0 +1,222 @@
+module test.claim.live_deploy.candidate_checkout_witness_test
+
+import std.types { Bool, String, List, Int }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.live_deploy.deployed_tree_scope {
+  deployed_tree_excluded_prefixes,
+  deployed_tree_rsync_exclude_flags,
+  path_is_deployed,
+}
+import gunbc.live_deploy.candidate {
+  CandidateCheckoutObservation,
+  CheckoutStatusScan,
+  CandidateCheckoutClean,
+  CandidateCheckoutDirty,
+  CandidateCheckoutUnobservable,
+  CandidateUnobservableCause,
+  CandidateCheckoutNotClean,
+  CandidateCheckoutStatusRefused,
+  CandidateHeadCommitRefused,
+  candidate_unobservable_detail,
+  scan_checkout_status,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT IS `{ revision: A, bytes: B } MUST NOT BE CONSTRUCTIBLE`. Every claim here varies one axis of
+// a `git status --porcelain=v1 -z` reading and asserts what candidate admission does with it. The scan is
+// exercised directly rather than through a mocked service call because the property under test is the
+// PARSE — which fields are records, which are rename sources, and which paths the deploy would actually
+// ship — and a mock that returned a hand-made verdict would be asserting the fixture, not the fold.
+//
+// The pairs are what make these discriminating. `a dirty tree refuses` alone is satisfied by a rule that
+// refuses everything, and `a clean tree admits` alone by a rule that refuses nothing; the two together pin
+// the boundary. The same holds for the scope filter: the untracked-in-target claim and the
+// untracked-in-dag claim differ in exactly the prefix.
+
+fn nul() -> String {
+  from_code_point(0)
+}
+
+fn status_of(fields: List<String>) -> String {
+  join(map(fields, f => concat(f, nul())), "")
+}
+
+fn scan_of(fields: List<String>) -> String {
+  status_of(fields: fields)
+}
+
+// ---------------------------------------------------------------- the clean pole
+
+test fn empty_status_scans_clean() -> Bool {
+  let s = scan_checkout_status(entries_nul: "")
+  length(s.staged) == 0
+    && length(s.tracked) == 0
+    && length(s.untracked) == 0
+    && !s.malformed
+    && !s.expect_rename_source
+}
+
+// ---------------------------------------------------------------- the three dirty axes, separated
+
+test fn an_unstaged_tracked_edit_lands_on_the_tracked_axis_only() -> Bool {
+  let s = scan_checkout_status(entries_nul: scan_of(fields: [" M dag/gunbc/roadmap_component.dag"]))
+  length(s.tracked) == 1
+    && join(s.tracked, ",") == "dag/gunbc/roadmap_component.dag"
+    && length(s.staged) == 0
+    && length(s.untracked) == 0
+    && !s.malformed
+}
+
+test fn a_staged_edit_lands_on_the_staged_axis_only() -> Bool {
+  let s = scan_checkout_status(entries_nul: scan_of(fields: ["M  dag/gunbc/roadmap_component.dag"]))
+  length(s.staged) == 1
+    && join(s.staged, ",") == "dag/gunbc/roadmap_component.dag"
+    && length(s.tracked) == 0
+    && length(s.untracked) == 0
+    && !s.malformed
+}
+
+// The both-columns case is the one a single `dirty: Bool` would erase: the index and the working tree
+// disagree with HEAD in different ways, and the operator needs both remedies, not one bit.
+test fn a_file_staged_and_then_edited_again_lands_on_both_axes() -> Bool {
+  let s = scan_checkout_status(entries_nul: scan_of(fields: ["MM dag/gunbc/roadmap_component.dag"]))
+  length(s.staged) == 1
+    && length(s.tracked) == 1
+    && join(s.staged, ",") == "dag/gunbc/roadmap_component.dag"
+    && join(s.tracked, ",") == "dag/gunbc/roadmap_component.dag"
+    && !s.malformed
+}
+
+test fn an_untracked_deployed_file_lands_on_the_untracked_axis() -> Bool {
+  let s = scan_checkout_status(entries_nul: scan_of(fields: ["?? dag/gunbc/stowaway.dag"]))
+  length(s.untracked) == 1
+    && join(s.untracked, ",") == "dag/gunbc/stowaway.dag"
+    && length(s.staged) == 0
+    && length(s.tracked) == 0
+    && !s.malformed
+}
+
+// ---------------------------------------------------------------- the scope filter, both directions
+
+// An untracked file the sync EXCLUDES is not a candidate defect: those bytes never leave the runner. A
+// refusal that fired here would fire on nearly every real build (target/ is enormous and always untracked),
+// and an arm that reds on the safe state is the one that gets suppressed.
+test fn an_untracked_file_under_an_excluded_prefix_is_not_a_deployed_path() -> Bool {
+  let s = scan_checkout_status(entries_nul: scan_of(fields: [
+    "?? target/release/gunbc",
+    "?? .git/COMMIT_EDITMSG",
+  ]))
+  length(s.untracked) == 0 && !s.malformed
+}
+
+// The RED for the line above: same status shape, path outside the excluded prefixes. If the scope filter
+// were widened to swallow everything, this claim reds.
+test fn an_untracked_file_outside_the_excluded_prefixes_is_a_deployed_path() -> Bool {
+  let s = scan_checkout_status(entries_nul: scan_of(fields: ["?? targets_of_opportunity.dag"]))
+  length(s.untracked) == 1 && join(s.untracked, ",") == "targets_of_opportunity.dag"
+}
+
+// A prefix must match a path SEGMENT, not a character run. `targetish/` starts with `target` but is not
+// under it, and a naive starts_with would have excluded it from the deploy's view while rsync shipped it.
+test fn the_prefix_filter_matches_segments_not_character_runs() -> Bool {
+  path_is_deployed(path: "targetish/x.dag")
+    && path_is_deployed(path: "dag/target/x.dag")
+    && !path_is_deployed(path: "target/x.dag")
+    && !path_is_deployed(path: "target")
+    && !path_is_deployed(path: ".git/config")
+}
+
+// ---------------------------------------------------------------- renames, the stateful half of the parse
+
+// A rename emits TWO fields and the second is a bare path. Reading it as a record would invent a status.
+test fn a_rename_consumes_its_source_field_without_inventing_a_record() -> Bool {
+  let s = scan_checkout_status(entries_nul: scan_of(fields: [
+    "R  dag/gunbc/new_name.dag",
+    "dag/gunbc/old_name.dag",
+  ]))
+  length(s.staged) == 1
+    && join(s.staged, ",") == "dag/gunbc/new_name.dag"
+    && length(s.tracked) == 0
+    && length(s.untracked) == 0
+    && !s.malformed
+    && !s.expect_rename_source
+}
+
+// The discriminating case for the stateful parse specifically: a rename SOURCE whose own text would pass
+// the "third character is a space" record test. A shape-first parser reads `ab cdef` as a record with
+// status `ab` and files a phantom path; the state machine consumes it as the source it is.
+test fn a_rename_source_that_looks_like_a_record_is_still_consumed_as_a_source() -> Bool {
+  let s = scan_checkout_status(entries_nul: scan_of(fields: [
+    "R  dag/gunbc/new_name.dag",
+    "ab cdef",
+  ]))
+  length(s.staged) == 1
+    && join(s.staged, ",") == "dag/gunbc/new_name.dag"
+    && length(s.tracked) == 0
+    && !s.malformed
+}
+
+// A truncated rename record is not clean and is not dirty — it is unreadable, and saying so is the whole
+// point. Dropping the dangling state would report the tree as clean on a status we could not finish parsing.
+test fn a_rename_record_with_no_source_field_leaves_the_scan_expecting_one() -> Bool {
+  let s = scan_checkout_status(entries_nul: scan_of(fields: ["R  dag/gunbc/new_name.dag"]))
+  s.expect_rename_source
+}
+
+// ---------------------------------------------------------------- unreadable, which is neither pole
+
+test fn a_field_that_is_neither_record_nor_source_is_malformed() -> Bool {
+  let s = scan_checkout_status(entries_nul: scan_of(fields: ["nonsense"]))
+  s.malformed
+}
+
+// ---------------------------------------------------------------- the refusal carries the location
+
+test fn the_not_clean_refusal_names_every_axis_and_its_paths() -> Bool {
+  let d = candidate_unobservable_detail(cause: CandidateCheckoutNotClean {
+    tracked_changes: ["dag/a.dag"],
+    staged_changes: ["dag/b.dag"],
+    untracked_deployed_paths: ["dag/c.dag"],
+  })
+  string_contains(s: d, pattern: "CandidateCheckoutNotClean")
+    && string_contains(s: d, pattern: "dag/a.dag")
+    && string_contains(s: d, pattern: "dag/b.dag")
+    && string_contains(s: d, pattern: "dag/c.dag")
+    && string_contains(s: d, pattern: "staged=")
+    && string_contains(s: d, pattern: "tracked=")
+    && string_contains(s: d, pattern: "untracked-deployed=")
+}
+
+// An empty axis renders as (none) rather than as nothing at all, so a reader can tell "no staged changes"
+// from "the staged list was omitted".
+test fn an_empty_axis_is_named_rather_than_dropped() -> Bool {
+  let d = candidate_unobservable_detail(cause: CandidateCheckoutNotClean {
+    tracked_changes: [],
+    staged_changes: ["dag/b.dag"],
+    untracked_deployed_paths: [],
+  })
+  string_contains(s: d, pattern: "staged=dag/b.dag")
+    && string_contains(s: d, pattern: "tracked=(none)")
+    && string_contains(s: d, pattern: "untracked-deployed=(none)")
+}
+
+test fn the_status_refusal_is_distinct_from_the_not_clean_refusal() -> Bool {
+  let refused = candidate_unobservable_detail(cause: CandidateCheckoutStatusRefused { detail: "boom" })
+  let head = candidate_unobservable_detail(cause: CandidateHeadCommitRefused)
+  string_contains(s: refused, pattern: "CandidateCheckoutStatusRefused")
+    && string_contains(s: refused, pattern: "boom")
+    && !string_contains(s: refused, pattern: "CandidateCheckoutNotClean")
+    && !string_contains(s: head, pattern: "CandidateCheckoutStatusRefused")
+}
+
+// ---------------------------------------------------------------- the exclusion set has one home
+
+// The emitter's rsync flags and the admission's scope filter read the SAME list. If someone respells either
+// side, this reds — which is the only mechanical thing standing between the two readings drifting into
+// disagreeing about which bytes the deploy installs.
+test fn the_rsync_flags_derive_from_the_same_exclusion_set_the_filter_reads() -> Bool {
+  deployed_tree_rsync_exclude_flags() == "--exclude /target --exclude /.git"
+    && length(deployed_tree_excluded_prefixes) == 2
+    && join(deployed_tree_excluded_prefixes, ",") == "target,.git"
+}
