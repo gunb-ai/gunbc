@@ -78,7 +78,7 @@ fn cache_interface_facts_from_catalog(row: CacheInterfaceCatalogFacts) -> CacheI
     miss_semantics: row.io.miss_semantics
     value_shape: row.placement.value_shape
     locality: row.placement.locality
-    eviction: row.placement.eviction
+    retention: row.placement.retention
     atomicity: row.placement.atomicity
     auth: row.placement.auth
     read_latency: row.placement.read_latency
