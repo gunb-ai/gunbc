@@ -317,7 +317,7 @@ test fn colliding_raw_ids_assemble_to_distinct_closure_ids_with_joins_intact_hol
         && (transport.references |> count) == 1
         && (transport.index.entries |> count) == 3
         && (inputs.module_paths |> count) == 3
-        && (inputs.exposure_rows |> count) == 1
+        && (inputs.exposure_rows |> count) == 2
         && (inputs.authored_order_rows |> count) == 3
         && consumer_joined
         && provider_decl_joined
