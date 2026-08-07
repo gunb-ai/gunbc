@@ -434,27 +434,55 @@ impl CiControlPlane {
         &self,
         token: &str,
     ) -> Result<(Vec<DiscoveredSubject>, Vec<ForkRefusal>), String> {
-        let url = format!(
-            "https://api.github.com/repos/{}/pulls?state=open",
-            self.authority.repo_full_name
-        );
-        let response = ureq::get(&url)
-            .set("Authorization", &format!("Bearer {token}"))
-            .set("Accept", "application/vnd.github+json")
-            .set("User-Agent", "gunbc-owned-ci")
-            .call()
-            .map_err(|e| format!("list pulls failed: {e}"))?;
-        let status = response.status();
-        let body = response
-            .into_string()
-            .map_err(|e| format!("read pulls body: {e}"))?;
-        if status != 200 {
-            return Err(format!("list pulls HTTP {status}: {body}"));
-        }
-        let pulls: Vec<serde_json::Value> =
-            serde_json::from_str(&body).map_err(|e| format!("parse pulls json: {e}"))?;
         let mut admitted = Vec::new();
         let mut fork_refusals = Vec::new();
+        let mut url = format!(
+            "https://api.github.com/repos/{}/pulls?state=open&per_page=100",
+            self.authority.repo_full_name
+        );
+
+        loop {
+            let response = ureq::get(&url)
+                .set("Authorization", &format!("Bearer {token}"))
+                .set("Accept", "application/vnd.github+json")
+                .set("User-Agent", "gunbc-owned-ci")
+                .call()
+                .map_err(|e| format!("list pulls failed: {e}"))?;
+            let status = response.status();
+            let link_header = response.header("Link").unwrap_or_default().to_string();
+            let body = response
+                .into_string()
+                .map_err(|e| format!("read pulls body: {e}"))?;
+            if status != 200 {
+                return Err(format!("list pulls HTTP {status}: {body}"));
+            }
+            let pulls: Vec<serde_json::Value> =
+                serde_json::from_str(&body).map_err(|e| format!("parse pulls json: {e}"))?;
+            self.extend_open_pull_subjects(&pulls, &mut admitted, &mut fork_refusals)?;
+
+            match parse_github_link_rel_next(&link_header) {
+                Some(next_url) => url = next_url,
+                None => {
+                    if link_header.contains("rel=\"next\"") || link_header.contains("rel=next") {
+                        return Err(
+                            "list pulls pagination truncated: Link header advertises rel=next but next URL could not be parsed"
+                                .to_string(),
+                        );
+                    }
+                    break;
+                }
+            }
+        }
+
+        Ok((admitted, fork_refusals))
+    }
+
+    fn extend_open_pull_subjects(
+        &self,
+        pulls: &[serde_json::Value],
+        admitted: &mut Vec<DiscoveredSubject>,
+        fork_refusals: &mut Vec<ForkRefusal>,
+    ) -> Result<(), String> {
         for pull in pulls {
             let number = pull["number"].as_u64();
             let head_sha = pull["head"]["sha"].as_str().map(str::to_string);
@@ -480,7 +508,7 @@ impl CiControlPlane {
                 pr_number: Some(number),
             });
         }
-        Ok((admitted, fork_refusals))
+        Ok(())
     }
 
     fn reconcile_subjects(&mut self, discovered: &[DiscoveredSubject]) -> Result<(), String> {
@@ -721,11 +749,7 @@ impl CiControlPlane {
         self.move_queue_file(run_id, "claimed", "completed")?;
         self.write_run_summary_receipt(run_id, &record)?;
 
-        if self
-            .try_update_check(&record, "completed", Some(conclusion))
-            .is_err()
-        {
-            let cause = "GitHub Checks API unavailable at completion".to_string();
+        if let Err(cause) = self.try_update_check(&record, "completed", Some(conclusion)) {
             self.mark_publication_pending(&record, Some(conclusion), &cause)?;
         }
         Ok(())
@@ -1077,6 +1101,22 @@ fn hostname() -> String {
     std::env::var("HOSTNAME").unwrap_or_else(|_| "local".to_string())
 }
 
+fn parse_github_link_rel_next(link_header: &str) -> Option<String> {
+    for part in link_header.split(',') {
+        let part = part.trim();
+        if !part.contains("rel=\"next\"") && !part.contains("rel=next") {
+            continue;
+        }
+        let start = part.find('<')?;
+        let end = part.find('>')?;
+        if end <= start {
+            continue;
+        }
+        return Some(part[start + 1..end].to_string());
+    }
+    None
+}
+
 fn rev_parse(repo: &Path, reference: &str) -> Result<String, String> {
     let output = Command::new("git")
         .arg("-C")
@@ -1138,5 +1178,20 @@ mod tests {
     fn new_run_id_includes_sha_prefix() {
         let id = new_run_id("deadbeef01234567").expect("run id");
         assert!(id.contains("deadbeef"));
+    }
+
+    #[test]
+    fn parse_github_link_rel_next_extracts_next_url() {
+        let link = "<https://api.github.com/repos/gunb-ai/gunbc/pulls?state=open&per_page=100&page=2>; rel=\"next\", <https://api.github.com/repos/gunb-ai/gunbc/pulls?state=open&per_page=100&page=3>; rel=\"last\"";
+        let next = parse_github_link_rel_next(link).expect("next url");
+        assert_eq!(
+            next,
+            "https://api.github.com/repos/gunb-ai/gunbc/pulls?state=open&per_page=100&page=2"
+        );
+    }
+
+    #[test]
+    fn parse_github_link_rel_next_none_when_absent() {
+        assert!(parse_github_link_rel_next("").is_none());
     }
 }
