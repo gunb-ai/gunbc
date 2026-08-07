@@ -4,6 +4,10 @@ import std.types { String, NonEmptyStr, Int }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.probes.provider_interface_acquisition {
+  provider_interface_acquisition_cursor_sdk_closure_receipt,
+  provider_interface_acquisition_cursor_sdk_package_name,
+}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -33,19 +37,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 
 data cursor_sdk_authority_note: String = "Slice-E modeling only (provider-control-interface-audit §6, §12). Package closure and usage-capability facts without SecretRef so witnesses compile in isolation. Credential binding lives in extdeps.llm.cursor_sdk."
 
-data cursor_sdk_package_name: NonEmptyStr = "@cursor/sdk" as NonEmptyStr
-data cursor_sdk_package_version: NonEmptyStr = "1.0.26" as NonEmptyStr
-data cursor_sdk_module_export: NonEmptyStr = "@cursor/sdk" as NonEmptyStr
-
-data cursor_sdk_probe_lockfile_sha256: String = "d45372139f3b3cfec9b32728a1e6994d4a212d9d286854e795ad67ed12ee2d70"
-data cursor_sdk_probe_root_integrity: NonEmptyStr = "sha512-dU3WpJwrxv8yoMjs0DxBgZr5btAJEO+NrvFutl08b6l2+jcuemfFWUlSPBQ2xZAH7zIZun+sqfHvjT5NxW8woQ==" as NonEmptyStr
-data cursor_sdk_probe_lock_entry_count: Int = 124
-data cursor_sdk_probe_platform_gated_entry_count: Int = 13
-data cursor_sdk_probe_node_version: NonEmptyStr = "v22.23.2" as NonEmptyStr
-data cursor_sdk_probe_npm_version: NonEmptyStr = "10.9.8" as NonEmptyStr
-data cursor_sdk_probe_install_script_count: Int = 0
-
-data cursor_sdk_package_closure_note: String = "Exact-lock facts from provider_interface_acquisition_2026-08-03.json — requirement versus exact selection, archive integrity, zero install scripts. Dissolves into gunbc.package_delivery when slice B lands; this module owns only the Cursor @cursor/sdk closure facts the delivery spine will consume. No acquisition on a deployed host in this slice."
+data cursor_sdk_package_closure_note: String = "Exact-lock facts from provider_interface_acquisition_2026-08-03.json via extdeps.probes.provider_interface_acquisition — requirement versus exact selection, archive integrity, zero install scripts. Dissolves into gunbc.package_delivery when slice B lands; this module owns only the Cursor @cursor/sdk closure projection the delivery spine will consume. No acquisition on a deployed host in this slice."
 
 type CursorSdkPackageClosure {
   package_name: NonEmptyStr
@@ -61,17 +53,18 @@ type CursorSdkPackageClosure {
 }
 
 fn cursor_sdk_local_package_closure() -> CursorSdkPackageClosure {
+  let receipt = provider_interface_acquisition_cursor_sdk_closure_receipt()
   CursorSdkPackageClosure {
-    package_name: cursor_sdk_package_name,
-    exact_version: cursor_sdk_package_version,
-    lockfile_sha256: cursor_sdk_probe_lockfile_sha256,
-    root_integrity: cursor_sdk_probe_root_integrity,
-    lock_entry_count: cursor_sdk_probe_lock_entry_count,
-    platform_gated_entry_count: cursor_sdk_probe_platform_gated_entry_count,
-    install_script_count: cursor_sdk_probe_install_script_count,
-    node_toolchain_version: cursor_sdk_probe_node_version,
-    npm_toolchain_version: cursor_sdk_probe_npm_version,
-    module_export: cursor_sdk_module_export,
+    package_name: receipt.package_name,
+    exact_version: receipt.exact_version,
+    lockfile_sha256: receipt.lockfile_sha256,
+    root_integrity: receipt.root_integrity,
+    lock_entry_count: receipt.lock_entry_count,
+    platform_gated_entry_count: receipt.platform_gated_entry_count,
+    install_script_count: receipt.install_script_count,
+    node_toolchain_version: receipt.node_toolchain_version,
+    npm_toolchain_version: receipt.npm_toolchain_version,
+    module_export: provider_interface_acquisition_cursor_sdk_package_name,
   }
 }
 

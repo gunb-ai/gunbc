@@ -7,13 +7,9 @@ import extdeps.llm.cursor_sdk_facts {
   cursor_sdk_local_usage_missing_capability,
   cursor_sdk_local_package_unprovisioned_on_deployed_host,
   cursor_sdk_local_provision_missing_capability,
-  cursor_sdk_package_name,
-  cursor_sdk_package_version,
-  cursor_sdk_probe_install_script_count,
-  cursor_sdk_probe_lock_entry_count,
-  cursor_sdk_probe_platform_gated_entry_count,
-  cursor_sdk_probe_lockfile_sha256,
-  cursor_sdk_probe_root_integrity,
+}
+import extdeps.probes.provider_interface_acquisition {
+  provider_interface_acquisition_cursor_sdk_closure_receipt,
 }
 
 test fn local_usage_standing_is_typed_capability_gap() -> Bool {
@@ -24,13 +20,17 @@ test fn local_usage_standing_is_typed_capability_gap() -> Bool {
 
 test fn package_closure_matches_probe_receipt() -> Bool {
   let closure = cursor_sdk_local_package_closure()
-  closure.package_name == cursor_sdk_package_name
-    && closure.exact_version == cursor_sdk_package_version
-    && closure.install_script_count == cursor_sdk_probe_install_script_count
-    && closure.lock_entry_count == cursor_sdk_probe_lock_entry_count
-    && closure.platform_gated_entry_count == cursor_sdk_probe_platform_gated_entry_count
-    && closure.lockfile_sha256 == cursor_sdk_probe_lockfile_sha256
-    && closure.root_integrity == cursor_sdk_probe_root_integrity
+  let receipt = provider_interface_acquisition_cursor_sdk_closure_receipt()
+  closure.package_name == receipt.package_name
+    && closure.exact_version == receipt.exact_version
+    && closure.lockfile_sha256 == receipt.lockfile_sha256
+    && closure.root_integrity == receipt.root_integrity
+    && closure.lock_entry_count == receipt.lock_entry_count
+    && closure.platform_gated_entry_count == receipt.platform_gated_entry_count
+    && closure.install_script_count == receipt.install_script_count
+    && closure.node_toolchain_version == receipt.node_toolchain_version
+    && closure.npm_toolchain_version == receipt.npm_toolchain_version
+    && closure.module_export == receipt.package_name
 }
 
 test fn srv1_package_provision_is_typed_gap() -> Bool {
