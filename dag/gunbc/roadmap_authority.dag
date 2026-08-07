@@ -1770,7 +1770,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_QT0V9LFN5S8XA2GEW6HD4JRK1C",
       id: "observation-verification-integrity",
       owner: "ci-observation",
-      path: "docs/plans/five-minute-ci-gate-design.md",
+      path: "docs/plans/ci-merge-freshness.md",
       t: fields(
         headline: "Stop the build from reporting a result it did not actually get",
         boundary: "Every verification names the exact source and the exact binary it used. A remote build that produces no local output refuses instead of exiting zero, a re-run compares against the current state of the branch rather than replaying an old combination, and having no checks at all is an unobserved state rather than a satisfied one.",
@@ -1785,7 +1785,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_8NRW1YJC6PZQ3MTB5FKX0GDAV2",
       id: "ci-gate-threshold-grounding",
       owner: "ci-observation",
-      path: "docs/plans/witness-realization-plan.md",
+      path: "docs/plans/ci-performance-tanking-evidence.md",
       t: fields(
         headline: "Stop a merge gate whose answer is set by how busy the machine is",
         boundary: "A check that blocks merging decides on something about the change. A time limit that one check sits under on a quiet machine and over on a busy one is measuring the machine, so either the work it measures gets cheaper or the check stops blocking merges.",
