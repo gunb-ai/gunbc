@@ -9785,6 +9785,56 @@ fn p1_cohort_receipt_enabled() -> bool {
         .unwrap_or(false)
 }
 
+/// P1 cohort / 2×2 matrix experiment is active — gates optional shared-store arms on Serial
+/// and private-store arms on ControlledWidthTwo without affecting production defaults.
+fn p1_cohort_experiment_active() -> bool {
+    p1_cohort_receipt_enabled()
+        || std::env::var("GUNBC_P1_MATRIX_CELL").is_ok()
+        || std::env::var("GUNBC_P1_SHARED_TYPED_STORE").is_ok()
+}
+
+fn p1_matrix_cell() -> Option<char> {
+    let raw = std::env::var("GUNBC_P1_MATRIX_CELL")
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_uppercase();
+    if raw.is_empty() {
+        return None;
+    }
+    let cell = raw.chars().next()?;
+    if matches!(cell, 'A' | 'B' | 'C' | 'D') {
+        Some(cell)
+    } else {
+        None
+    }
+}
+
+/// Whether the cross-worker JSON byte store arms typed-module sharing for this run.
+/// Production: ControlledWidthTwo always shares; Serial never shares on the pump index.
+/// Experiment (`p1_cohort_experiment_active`): matrix cell or `GUNBC_P1_SHARED_TYPED_STORE`.
+pub fn p1_experimental_arm_shared_typed_store(scheduled_width: usize) -> bool {
+    if let Some(cell) = p1_matrix_cell() {
+        return matches!(cell, 'B' | 'D');
+    }
+    let raw = std::env::var("GUNBC_P1_SHARED_TYPED_STORE")
+        .unwrap_or_else(|_| "auto".to_string())
+        .trim()
+        .to_ascii_lowercase();
+    match raw.as_str() {
+        "1" | "true" | "shared" => true,
+        "0" | "false" | "private" => false,
+        _ => scheduled_width > 1,
+    }
+}
+
+fn discovery_scheduled_width(width_policy: &DiscoveryWidthPolicy) -> usize {
+    match width_policy {
+        DiscoveryWidthPolicy::Serial => 1,
+        DiscoveryWidthPolicy::ControlledWidthTwo => 2,
+        DiscoveryWidthPolicy::Adaptive(governor) => governor.current_target_width(),
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn emit_p1_cohort_entry_line(
     group_idx: usize,
@@ -9824,7 +9874,7 @@ fn emit_p1_cohort_entry_line(
 /// receipt (§3 reuse of `memory_governor`'s cgroup-walk authority — no second
 /// cgroup-path derivation here). `memory.peak` is absent on some kernels; that
 /// arm reads `None` rather than fabricating a value (§5).
-fn p1_cohort_cgroup_memory() -> (Option<u64>, Option<u64>) {
+pub fn p1_cohort_cgroup_memory() -> (Option<u64>, Option<u64>) {
     match crate::memory_governor::leaf_cgroup_dir() {
         Some(dir) => (
             crate::memory_governor::read_cgroup_u64(&dir, "memory.current"),
@@ -21422,7 +21472,18 @@ fn run_discovery_corpus_with_options_inner(
     // index `Rc`) so prelude work does not duplicate into the shared store; workers alone
     // read/write the shared store as the typed-cache authority (no local Rc duplicate).
     // Store creation lives in the Adaptive match arm below — unrepresentable on Serial.
-    let index = process_shared_index(source_roots);
+    let index = if p1_cohort_experiment_active()
+        && matches!(width_policy, DiscoveryWidthPolicy::Serial)
+        && p1_experimental_arm_shared_typed_store(1)
+    {
+        let store = new_shared_typecheck_caches();
+        Rc::new(build_multi_entry_index_with_shared_caches(
+            source_roots,
+            store,
+        ))
+    } else {
+        process_shared_index(source_roots)
+    };
     // Calibration receipt, emitted BEFORE the heavy resolve so it survives a host-level
     // OOM kill (censored lower-bound pairs for the space-lens memory predictor — design
     // in flight on PR #6442; consumer binds to roster_import_closure_nodes_pre_resolve):
@@ -21663,18 +21724,25 @@ fn run_discovery_corpus_with_options_inner(
         }
         DiscoveryWidthPolicy::ControlledWidthTwo => {
             const CONTROLLED_WIDTH: usize = 2;
+            let arm_shared_store = if p1_cohort_experiment_active() {
+                p1_experimental_arm_shared_typed_store(CONTROLLED_WIDTH)
+            } else {
+                true
+            };
             let groups = entry_row_groups(&rows);
             eprintln!(
-                "run_discovery_corpus: controlled width-2 pool over {} entry-group(s), {} row(s)",
+                "run_discovery_corpus: controlled width-2 pool over {} entry-group(s), {} row(s), shared_typed_store={}",
                 groups.len(),
                 rows.len(),
+                arm_shared_store,
             );
-            let cross_worker_store = new_shared_typecheck_caches();
+            let cross_worker_store = arm_shared_store.then(new_shared_typecheck_caches);
             if floor_stream {
                 eprintln!(
-                    "{} [affected-set] controlled width-2 pool (fixed {} workers; shared typed-module store)",
+                    "{} [affected-set] controlled width-2 pool (fixed {} workers; shared typed-module store={})",
                     floor_ts(),
                     CONTROLLED_WIDTH,
+                    arm_shared_store,
                 );
             }
             let queue: std::sync::Arc<Mutex<VecDeque<Vec<DiscoveryRow>>>> =
@@ -21700,6 +21768,7 @@ fn run_discovery_corpus_with_options_inner(
                 let paths = changed_paths.clone();
                 let keys = whole_tree_published_keys.clone();
                 let store = cross_worker_store.clone();
+                let arm_shared_for_worker = arm_shared_store;
                 let style = ShardStyle {
                     shard_id: worker_ordinal,
                     shard_count: CONTROLLED_WIDTH,
@@ -21708,7 +21777,14 @@ fn run_discovery_corpus_with_options_inner(
                 };
                 handles.push(std::thread::spawn(
                     move || -> Result<Vec<DiscoverySummary>, String> {
-                        let index = build_multi_entry_index_with_shared_caches(&roots, store);
+                        let index = if arm_shared_for_worker {
+                            let store = store.expect(
+                                "shared typed store armed but cross_worker_store missing",
+                            );
+                            build_multi_entry_index_with_shared_caches(&roots, store)
+                        } else {
+                            build_multi_entry_index(&roots)
+                        };
                         let runner = if selection_for_workers != NodeFrontierSelectionMode::Off {
                             let resolved = if execution_authority_is_subject_for_workers {
                                 resolve_entry_with_index(&index, FLOOR_RUNNER_ENTRY)

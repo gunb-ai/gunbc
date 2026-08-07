@@ -32,6 +32,14 @@ pub struct SharedTypecheckStoreCounters {
     pub shared_store_encode: usize,
     pub shared_store_decode: usize,
     pub private_store_fallback: usize,
+    /// Bytes written by `serde_json::to_vec` on the shared-store insert path.
+    pub shared_store_encode_bytes: usize,
+    /// Bytes read by `serde_json::from_slice` on the shared-store decode path.
+    pub shared_store_decode_bytes: usize,
+    /// Nanoseconds spent waiting on per-key compute mutexes (width-2 2×2 instrumentation).
+    pub shared_store_lock_wait_nanos: u64,
+    /// Nanoseconds held inside per-key compute mutexes after acquisition.
+    pub shared_store_compute_held_nanos: u64,
 }
 
 static SHARED_STORE_HIT: AtomicUsize = AtomicUsize::new(0);
@@ -39,6 +47,10 @@ static SHARED_STORE_MISS: AtomicUsize = AtomicUsize::new(0);
 static SHARED_STORE_ENCODE: AtomicUsize = AtomicUsize::new(0);
 static SHARED_STORE_DECODE: AtomicUsize = AtomicUsize::new(0);
 static PRIVATE_STORE_FALLBACK: AtomicUsize = AtomicUsize::new(0);
+static SHARED_STORE_ENCODE_BYTES: AtomicUsize = AtomicUsize::new(0);
+static SHARED_STORE_DECODE_BYTES: AtomicUsize = AtomicUsize::new(0);
+static SHARED_STORE_LOCK_WAIT_NANOS: AtomicUsize = AtomicUsize::new(0);
+static SHARED_STORE_COMPUTE_HELD_NANOS: AtomicUsize = AtomicUsize::new(0);
 
 pub fn shared_typecheck_store_counters_snapshot() -> SharedTypecheckStoreCounters {
     SharedTypecheckStoreCounters {
@@ -47,6 +59,11 @@ pub fn shared_typecheck_store_counters_snapshot() -> SharedTypecheckStoreCounter
         shared_store_encode: SHARED_STORE_ENCODE.load(Ordering::SeqCst),
         shared_store_decode: SHARED_STORE_DECODE.load(Ordering::SeqCst),
         private_store_fallback: PRIVATE_STORE_FALLBACK.load(Ordering::SeqCst),
+        shared_store_encode_bytes: SHARED_STORE_ENCODE_BYTES.load(Ordering::SeqCst),
+        shared_store_decode_bytes: SHARED_STORE_DECODE_BYTES.load(Ordering::SeqCst),
+        shared_store_lock_wait_nanos: SHARED_STORE_LOCK_WAIT_NANOS.load(Ordering::SeqCst) as u64,
+        shared_store_compute_held_nanos: SHARED_STORE_COMPUTE_HELD_NANOS.load(Ordering::SeqCst)
+            as u64,
     }
 }
 
@@ -57,6 +74,10 @@ pub fn reset_shared_typecheck_store_counters_for_test() {
     SHARED_STORE_ENCODE.store(0, Ordering::SeqCst);
     SHARED_STORE_DECODE.store(0, Ordering::SeqCst);
     PRIVATE_STORE_FALLBACK.store(0, Ordering::SeqCst);
+    SHARED_STORE_ENCODE_BYTES.store(0, Ordering::SeqCst);
+    SHARED_STORE_DECODE_BYTES.store(0, Ordering::SeqCst);
+    SHARED_STORE_LOCK_WAIT_NANOS.store(0, Ordering::SeqCst);
+    SHARED_STORE_COMPUTE_HELD_NANOS.store(0, Ordering::SeqCst);
 }
 
 pub(crate) fn record_shared_store_hit() {
@@ -124,10 +145,20 @@ impl SharedTypecheckCaches {
                 .map_err(|e| format!("shared typecheck store read: {e}"))?;
             caches.keyed_compute_guard(typed_key)
         };
-        let _guard = guard_arc
+        let wait_started = std::time::Instant::now();
+        let guard = guard_arc
             .lock()
             .map_err(|e| format!("typed-module key guard poisoned: {e}"))?;
-        f()
+        SHARED_STORE_LOCK_WAIT_NANOS
+            .fetch_add(wait_started.elapsed().as_nanos() as usize, Ordering::SeqCst);
+        let compute_started = std::time::Instant::now();
+        let out = f();
+        SHARED_STORE_COMPUTE_HELD_NANOS.fetch_add(
+            compute_started.elapsed().as_nanos() as usize,
+            Ordering::SeqCst,
+        );
+        drop(guard);
+        out
     }
 
     /// Brief read-lock helper: clone the shared byte snapshot only.
@@ -148,6 +179,7 @@ impl SharedTypecheckCaches {
     /// Payload is name-keyed (no intern-table indices) — safe to materialize on any worker index.
     pub fn decode_typed_snapshot(bytes: &[u8]) -> Result<Rc<TypecheckModuleResult>, String> {
         record_shared_store_decode();
+        SHARED_STORE_DECODE_BYTES.fetch_add(bytes.len(), Ordering::SeqCst);
         let value: TypecheckModuleResult = serde_json::from_slice(bytes)
             .map_err(|e| format!("shared typecheck store decode: {e}"))?;
         Ok(Rc::new(value))
@@ -158,6 +190,7 @@ impl SharedTypecheckCaches {
         record_shared_store_encode();
         let bytes = serde_json::to_vec(result)
             .map_err(|e| format!("shared typecheck store encode: {e}"))?;
+        SHARED_STORE_ENCODE_BYTES.fetch_add(bytes.len(), Ordering::SeqCst);
         Ok(Arc::new(bytes))
     }
 
