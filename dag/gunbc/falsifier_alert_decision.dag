@@ -41,7 +41,7 @@ import gunbc.falsifier_lane {
 
 data falsifier_alert_decision_purpose_note: String = "ALERT-4. THE WHOLE DECISION, AS A PURE FUNCTION, PERFORMING NO GITHUB CALLS. alert_decision takes an admission outcome, a receipt outcome, the issue's own decoded state, the current instant, the escalation recipient and the lane routings, and returns one terminal AlertDecision. It opens nothing, comments nothing, closes nothing and reads nothing: the effect plan realizes the decision, and this module only decides.\\n\\nWHY THE PURITY IS THE POINT AND NOT A STYLE PREFERENCE. The moment the core reads the world it stops being testable by fixtures — every property below would need a live issue, a live run and a live clock to exercise, which means the properties that matter most (a heartbeat fires at exactly the window boundary; a malformed marker never opens a new incident; every notifying artifact carries the escalation mention) would be checked by nobody. Every fact this function needs arrives as a parameter, so each property is a fixture and a comparison, and the arms that are hardest to reach in production are the cheapest to prove here."
 
-data falsifier_alert_decision_arm_separation_note: String = "EIGHT DISTINCT REFUSE ARMS, DELIBERATELY NOT COLLAPSED. RefuseUntrustedEvent means the run is not the one this alert observes — a fork head, a wrong branch, an unadmitted originating event — and its remedy is either a misconfiguration or an attack. RefuseReceiptMalformed means the receipt did not decode, and its remedy is in the floor's writer. RefuseReceiptMismatch means the receipt decoded perfectly and is about a DIFFERENT RUN, whose remedy is in the artifact plumbing that fetched it. RefuseMalformedState means the issue's own marker is corrupt, and its remedy is a human looking at the issue body.\\n\\nThose are four different people and four different investigations. One `Refused` arm carrying a string would make the alert's most important output — the thing an operator reads at 3am when the observer itself has stopped working — a sentence to be parsed rather than a state to be dispatched on. This is the same state-space conflation the state decoding already avoids between StateAbsent and StateMalformed, applied one layer out; having avoided it once, collapsing it here would be inconsistent as well as wrong."
+data falsifier_alert_decision_arm_separation_note: String = "THE ALERT'S OWN FAILURES ARE DISTINGUISHED BY CAUSE, AND THEY NOTIFY. Two axes, deliberately not fused. WHOSE failure it is decides whether anyone is told: an UNTRUSTED event produces RefuseUntrustedEvent and says nothing, because a refusal to act on an unadmitted run is the wall working and making it notify would hand an attacker a way to page an operator on demand. Every other failure here is OURS — a trusted run we could not finish processing — and completing the workflow in silence is the original incident's exact shape one layer up, so those notify through NotifyAlertControllerUnavailable.\\n\\nWHICH failure it is decides who investigates, and that is AlertControllerCause: ControllerReceiptMalformed means the receipt did not decode and the remedy is in the floor's writer; ControllerReceiptMismatch means it decoded perfectly about a DIFFERENT RUN, so the remedy is in the artifact plumbing that fetched it; ControllerMarkerMalformed means the issue's own marker is corrupt and a human must read the body; ControllerIssueLookupRefused means the search could not be performed, which is not the same as finding nothing; ControllerMultipleOpenIssues means the alert already lost track of its own incident; ControllerRoutingJoinRefused means whoever computed the routings disagrees with the receipt about which components failed.\\n\\nSix different investigations, carried as a typed cause rather than a sentence. A single `Refused` arm holding a string would make the alert's most important output — what an operator reads at 3am when the observer itself has stopped working — something to be parsed rather than dispatched on.\\n\\nTHIS NOTE PREVIOUSLY DESCRIBED FOUR TOP-LEVEL REFUSE ARMS THAT NO LONGER EXIST. The operator verdict moved these cases from silent refusals to notifications, the arms were left declared but uninhabited beside the inhabited notify arms, and this paragraph kept describing the dead ones — two representations of one failure, with the prose pointing at the representation nothing constructs. Caught by review 49947; the dead arms are deleted and the cause coproduct is the single authority."
 
 type EscalationRecipient
   = EscalationDeclared { handle: NonEmptyStr }
@@ -95,14 +95,8 @@ type AlertDecision
   | OpenObserverIncident { conclusion_tag: NonEmptyStr, next_state: FalsifierAlertState, notification: AlertNotification }
   | RefreshObserverIncident { issue: Issue, conclusion_tag: NonEmptyStr, next_state: FalsifierAlertState, silent_for: Millisecond, notification: AlertNotification }
   | NotifyAlertControllerUnavailable { cause: AlertControllerCause, issue_disposition: ControllerIssueDisposition, notification: AlertNotification }
-  | RefuseMalformedState { detail: String }
   | RefuseUntrustedEvent { admission: FalsifierAlertAdmission }
-  | RefuseReceiptMismatch { mismatch: ReceiptSubjectMatch }
-  | RefuseReceiptMalformed { decoding: FloorComponentReceiptDecoding }
   | RefuseEscalationRecipientUndeclared { cause: NonEmptyStr }
-  | RefuseMultipleOpenIssues { count: Int }
-  | RefuseIssueLookup { cause: NonEmptyStr }
-  | RefuseRoutingJoin { mismatch: RoutingJoinMismatch }
 
 data receipt_input_note: String = "The receipt arrives as its DECODING plus its SUBJECT MATCH, not as a bare document, because the two failures are different arms of the result and a decoded-but-mismatched receipt is not a decode failure. Passing an already-unwrapped document would force the caller to collapse them before calling, which is exactly where the distinction would be lost."
 
@@ -212,14 +206,8 @@ fn alert_decision_notifies(d: AlertDecision) -> Bool {
     NotifyLegacyStateMigration { first_red: _, signature: _, notification: _ } => true
     RefreshIssueWithoutNotification { signature: _, silent_for: _ } => false
     NoAction { reason: _ } => false
-    RefuseMalformedState { detail: _ } => false
     RefuseUntrustedEvent { admission: _ } => false
-    RefuseReceiptMismatch { mismatch: _ } => false
-    RefuseReceiptMalformed { decoding: _ } => false
     RefuseEscalationRecipientUndeclared { cause: _ } => false
-    RefuseMultipleOpenIssues { count: _ } => false
-    RefuseIssueLookup { cause: _ } => false
-    RefuseRoutingJoin { mismatch: _ } => false
     OpenObserverIncident { conclusion_tag: _, next_state: _, notification: _ } => true
     RefreshObserverIncident { issue: _, conclusion_tag: _, next_state: _, silent_for: _, notification: _ } => true
     NotifyAlertControllerUnavailable { cause: _, issue_disposition: _, notification: _ } => true
@@ -235,14 +223,8 @@ fn alert_decision_notification(d: AlertDecision) -> AlertNotification? {
     NotifyLegacyStateMigration { first_red: _, signature: _, notification: n } => Present { value: n }
     RefreshIssueWithoutNotification { signature: _, silent_for: _ } => none
     NoAction { reason: _ } => none
-    RefuseMalformedState { detail: _ } => none
     RefuseUntrustedEvent { admission: _ } => none
-    RefuseReceiptMismatch { mismatch: _ } => none
-    RefuseReceiptMalformed { decoding: _ } => none
     RefuseEscalationRecipientUndeclared { cause: _ } => none
-    RefuseMultipleOpenIssues { count: _ } => none
-    RefuseIssueLookup { cause: _ } => none
-    RefuseRoutingJoin { mismatch: _ } => none
     OpenObserverIncident { conclusion_tag: _, next_state: _, notification: n } => Present { value: n }
     RefreshObserverIncident { issue: _, conclusion_tag: _, next_state: _, silent_for: _, notification: n } => Present { value: n }
     NotifyAlertControllerUnavailable { cause: _, issue_disposition: _, notification: n } => Present { value: n }
@@ -286,15 +268,15 @@ type AlertIncidentState
 type AlertIncidentStateReading
   = IncidentReadable { state: AlertIncidentState }
   | IncidentUnreadable { detail: String }
-  | IncidentIndeterminate { decision: AlertDecision }
+  | IncidentIndeterminate { cause: AlertControllerCause }
 
 fn alert_incident_state_of(observation: AlertIssueObservation) -> AlertIncidentStateReading {
   match observation {
     NoOpenAlertIssue => IncidentReadable { state: NoIncidentIssue }
     MultipleOpenAlertIssues { issues: xs } =>
-      IncidentIndeterminate { decision: RefuseMultipleOpenIssues { count: count(xs) } }
+      IncidentIndeterminate { cause: ControllerMultipleOpenIssues { count: count(xs) } }
     AlertIssueLookupRefused { cause: c } =>
-      IncidentIndeterminate { decision: RefuseIssueLookup { cause: c } }
+      IncidentIndeterminate { cause: ControllerIssueLookupRefused { cause: c } }
     OneOpenAlertIssue { issue: iss, state: decoding } =>
       match decoding {
         StateAbsent => IncidentReadable { state: IncidentIssueWithoutMarker { issue: iss } }
@@ -401,7 +383,7 @@ fn routing_join_check(
   else { none }
 }
 
-data decision_order_note: String = "THE ORDER OF THE GUARDS IS THE ALGEBRA, and it runs outside-in: trust, then the artifact, then our own state, then the verdict. Each stage may only be reached when every stage outside it held.\\n\\nTrust first, because an unadmitted event's receipt must never be decoded, rendered, or acted on — this program holds issue-write capability, so content from an untrusted run is exactly what must not reach it. Receipt decodability before subject match, because a document that did not decode has no subject to compare. Subject match before state, because a receipt about another run tells us nothing about this incident. State before verdict, because a corrupt marker means we cannot safely write ANY outcome, green or red — RefuseMalformedState fires whether the run passed or failed, since the harm is overwriting an unreadable incident record, not the direction of the verdict.\\n\\nThat last ordering is a deliberate choice worth stating: it means a GREEN run with a corrupt marker refuses instead of closing the issue. Closing would be the friendlier-looking answer and it would destroy the corrupt marker in the process, which is the one artifact a human needs to diagnose what wrote it."
+data decision_order_note: String = "THE ORDER OF THE GUARDS IS THE ALGEBRA, and it runs outside-in: trust, then the recipient, then whether the observer ran at all, then the artifact, then our own state, then the verdict. Each stage may only be reached when every stage outside it held.\\n\\nTrust first, because an unadmitted event's receipt must never be decoded, rendered, or acted on — this program holds issue-write capability, so content from an untrusted run is exactly what must not reach it. The recipient next, because an alert with nobody to tell should refuse loudly rather than proceed to produce an artifact that mentions no one. Observer availability before the receipt, because a run that timed out or failed at startup produced no receipt at all and demanding one first reports the wrong failure. Then receipt decodability before subject match, because a document that did not decode has no subject to compare; and subject match before state, because a receipt about another run tells us nothing about this incident.\\n\\nSTATE BEFORE VERDICT, AND A CORRUPT MARKER IS NEVER WRITTEN OVER. A green run with a corrupt marker does NOT close the issue: closing is the friendlier-looking answer and it would destroy the marker in the process, which is the one artifact a human needs to diagnose what wrote it. The harm is overwriting an unreadable incident record, not the direction of the verdict, so the same handling applies whether the run passed or failed.\\n\\nWhat changed since this note first described that behaviour is only WHO HEARS ABOUT IT: the corrupt marker used to produce a silent RefuseMalformedState, and it now produces NotifyAlertControllerUnavailable carrying ControllerMarkerMalformed. The marker is still not touched. Silence was the defect — the alert completing successfully while unable to do its job — and the note kept describing the silent arm after the operator verdict removed it (review 49947)."
 
 fn alert_decision(
   admission: FalsifierAlertAdmission,
@@ -470,7 +452,12 @@ fn alert_decision_observer_unavailable(
   let tag = conclusion_tag(c: event.conclusion)
   let signature = observer_unavailable_signature(conclusion_tag: tag)
   match alert_incident_state_of(observation: observation) {
-    IncidentIndeterminate { decision: d } => d
+    IncidentIndeterminate { cause: c } =>
+      NotifyAlertControllerUnavailable {
+        cause: c,
+        issue_disposition: ControllerIssueUntouched,
+        notification: alert_notification(handle: handle, routings: routings)
+      }
     IncidentUnreadable { detail: d } =>
       NotifyAlertControllerUnavailable {
         cause: ControllerMarkerMalformed { detail: d },
@@ -551,7 +538,12 @@ fn alert_decision_with_receipt(
       }
     ReceiptAdmitted { document: doc } =>
       match alert_incident_state_of(observation: observation) {
-        IncidentIndeterminate { decision: d } => d
+        IncidentIndeterminate { cause: c } =>
+          NotifyAlertControllerUnavailable {
+            cause: c,
+            issue_disposition: controller_issue_disposition(observation: observation),
+            notification: notification
+          }
         IncidentUnreadable { detail: d } =>
           NotifyAlertControllerUnavailable {
             cause: ControllerMarkerMalformed { detail: d },
@@ -668,7 +660,11 @@ fn alert_decision_red(
       }
     IncidentCurrent { issue: iss, state: s } =>
       match alert_signature_of_marker(marker: s.signature) {
-        Absent => RefuseMalformedState { detail: concat("stored incident signature does not parse: ", s.signature as String) }
+        Absent => NotifyAlertControllerUnavailable {
+          cause: ControllerMarkerMalformed { detail: concat("stored incident signature does not parse: ", s.signature as String) },
+          issue_disposition: ControllerIssueObserved { issue: iss },
+          notification: alert_notification(handle: handle, routings: routings)
+        }
         Present { value: previous } =>
       if !incident_signature_eq(left: previous, right: signature) {
         RefreshAndNotifyChangedClass {

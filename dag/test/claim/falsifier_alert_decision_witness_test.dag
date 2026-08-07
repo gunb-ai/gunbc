@@ -32,9 +32,10 @@ import gunbc.falsifier_alert_decision {
   AlertDecision,
   AlertIssueObservation, NoOpenAlertIssue, OneOpenAlertIssue, MultipleOpenAlertIssues, AlertIssueLookupRefused,
   IncidentSignature, ComponentIncidentIdentity,
-  RefuseEscalationRecipientUndeclared, RefuseMultipleOpenIssues, RefuseIssueLookup, RefuseRoutingJoin,
+  RefuseEscalationRecipientUndeclared,
   OpenObserverIncident, RefreshObserverIncident, NotifyAlertControllerUnavailable,
-  ControllerReceiptMalformed, ControllerReceiptMismatch, ControllerMarkerMalformed, ControllerRoutingJoinRefused, ControllerIssueObserved, ControllerIssueUntouched,
+  ControllerReceiptMalformed, ControllerReceiptMismatch, ControllerMarkerMalformed, ControllerRoutingJoinRefused,
+  ControllerIssueLookupRefused, ControllerMultipleOpenIssues, ControllerIssueObserved, ControllerIssueUntouched,
   ConclusionDecidedBeforeReceipt,
   RunPreventedByConfiguration, CancellationUnexplained,
   RoutingsMissingForComponents, RoutingsForNonFailingComponents, RoutingsDuplicated,
@@ -42,7 +43,7 @@ import gunbc.falsifier_alert_decision {
   NoAction, OpenIssue, RefreshIssueWithoutNotification,
   RefreshAndNotifyChangedClass, RefreshAndNotifyHeartbeat,
   NotifyGreenAndClose, NotifyLegacyStateMigration,
-  RefuseMalformedState, RefuseUntrustedEvent, RefuseReceiptMismatch, RefuseReceiptMalformed,
+  RefuseUntrustedEvent,
   GreenWithNoOpenIncident,
   AlertReceiptInput, ReceiptAdmitted, ReceiptSubjectRejected, ReceiptUndecodable,
   EscalationRecipient, EscalationDeclared, EscalationUndeclared,
@@ -542,7 +543,8 @@ test fn two_open_alert_issues_refuse_rather_than_picking_one() -> Bool {
     observation: MultipleOpenAlertIssues { issues: [fixture_issue(), fixture_issue()] },
     now: 6000
   ) {
-    RefuseMultipleOpenIssues { count: n } => n == 2
+    NotifyAlertControllerUnavailable { cause: c, issue_disposition: _, notification: _ } =>
+      match c { ControllerMultipleOpenIssues { count: n } => n == 2, _ => false }
     _ => false
   }
 }
@@ -554,7 +556,8 @@ test fn a_failed_issue_lookup_refuses_rather_than_reading_as_no_issue() -> Bool 
     observation: AlertIssueLookupRefused { cause: "api unavailable" as NonEmptyStr },
     now: 6000
   ) {
-    RefuseIssueLookup { cause: _ } => true
+    NotifyAlertControllerUnavailable { cause: c, issue_disposition: _, notification: _ } =>
+      match c { ControllerIssueLookupRefused { cause: _ } => true, _ => false }
     _ => false
   }
 }
@@ -601,7 +604,8 @@ test fn a_rendered_signature_reads_back_into_the_same_structure() -> Bool {
 
 test fn an_unparseable_stored_signature_refuses_rather_than_reading_as_changed() -> Bool {
   match decide(admission: red_admission(), receipt: red_receipt(), state: current_state(signature: "not-a-signature" as NonEmptyStr, last: 5000), now: 5001) {
-    RefuseMalformedState { detail: _ } => true
+    NotifyAlertControllerUnavailable { cause: c, issue_disposition: _, notification: _ } =>
+      match c { ControllerMarkerMalformed { detail: _ } => true, _ => false }
     _ => false
   }
 }
@@ -805,14 +809,16 @@ test fn an_untrusted_event_still_does_not_notify() -> Bool {
 
 test fn a_negative_index_in_a_stored_marker_refuses_rather_than_reading_as_changed() -> Bool {
   match decide(admission: red_admission(), receipt: red_receipt(), state: current_state(signature: "-1:failed:WitnessRed" as NonEmptyStr, last: 5000), now: 5001) {
-    RefuseMalformedState { detail: _ } => true
+    NotifyAlertControllerUnavailable { cause: c, issue_disposition: _, notification: _ } =>
+      match c { ControllerMarkerMalformed { detail: _ } => true, _ => false }
     _ => false
   }
 }
 
 test fn a_fractional_index_in_a_stored_marker_refuses() -> Bool {
   match decide(admission: red_admission(), receipt: red_receipt(), state: current_state(signature: "6.5:failed:WitnessRed" as NonEmptyStr, last: 5000), now: 5001) {
-    RefuseMalformedState { detail: _ } => true
+    NotifyAlertControllerUnavailable { cause: c, issue_disposition: _, notification: _ } =>
+      match c { ControllerMarkerMalformed { detail: _ } => true, _ => false }
     _ => false
   }
 }
