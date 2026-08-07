@@ -2,6 +2,8 @@
 
 **Lane:** fixed width-2 discovery over the existing process-scoped `SharedTypecheckCaches` byte transport (pre-index module artifact reuse **parked** as contingency).
 
+**Lane verdict (measured no-go, 2026-08-07):** width-2 fails memory bar (`memory.peak` 13.18 GiB > 13 GiB slot ceiling) and never completed the cohort (no speedup; early kills at ~334 s vs width-1 completion at 198 s). #7941 resource prediction consistent; resolved-graph pin mechanism neither confirmed nor refuted. Next term: shared immutable indexes / 518.5 MiB whole-pool heads (operator decision) or pre-index artifacts (parked).
+
 **Closed:** global `Arc` flip on per-index typed caches (+5.84% serial wall, zero width benefit — do not revive).
 
 ## Acceptance (all three groups)
@@ -70,12 +72,34 @@ If the memory bar binds, **these three are the first sharing target**, not the t
 - **Commit 2 (local):** `p1_cohort_probe` with `GUNBC_P1_COHORT_WIDTH=1` (Serial) vs `=2` (ControlledWidthTwo), same 50-entry roster.
 - **Commit 3 (fleet):** Representative floor on PR branch with cgroup memory bars.
 
+## Cgroup ceilings (why the peak number matters)
+
+| Environment | `memory.high` | `memory.max` | Notes |
+|-------------|---------------|--------------|-------|
+| **Runner slot (production)** | **13 GiB** | **14 GiB** | MemoryHigh throttles; MemoryMax is the hard cap. Serial floors measured 10.3–11.0 GiB peak — ~2–3 GiB headroom for a second worker's private index shell. |
+| **This worktree session (measurement host)** | unlimited (`max`) | **31.27 GiB** | No throttling pressure; allocator has no reason to give memory back. |
+
+Width-2 measured **`memory.peak = 13.18 GiB` on a host with >2× the production ceiling**. On an actual slot that peak crosses MemoryHigh immediately and sits **0.8 GiB under the hard cap** — so 13.18 GiB is a **lower bound** under production conditions, not a neutral figure measured with room to spare.
+
 ## Cohort A/B results (local, 2026-08-06)
 
 | Width | Wall | Resolve | Outcome |
 |-------|------|---------|---------|
-| 1 (Serial) | 198,277 ms | 96,327 ms | Completed; 1 pre-existing witness fail (`witness_observed_hostname_reads_typed_op_hermetic`); `private_fallback=12026` |
-| 2 (ControlledWidthTwo) | — | — | **exit 137** at ~334 s wall (two runs); no completion summary |
+| 1 (Serial) | **198,277 ms** (~3.3 min) | 96,327 ms | **Completed**; 1 pre-existing witness fail (`witness_observed_hostname_reads_typed_op_hermetic`); `private_fallback=12026` |
+| 2 (ControlledWidthTwo) | **no completion** | — | Two early attempts: **exit 137 (SIGKILL) at ~334 s wall**; instrumented re-run: **18+ min, manually stopped (exit 143), still no completion summary** |
+
+### Performance bar (speedup)
+
+**No speedup ratio — width-2 never completed the 50-entry cohort on this host.**
+
+| Comparison | Result |
+|------------|--------|
+| Width-1 wall | 198,277 ms — finished |
+| Width-2 early kills | ~334 s wall — **1.69× slower than width-1's completion time, without finishing** |
+| Width-2 instrumented re-run | 1,098 s wall before manual stop — still running, no `p1_cohort_probe: PASS` line |
+| Cohort speedup ≥ 1.30× bar | **Not evaluable** (no width-2 completion); directional evidence is **anti-speedup** |
+
+**Verdict:** width-2 is **both over the memory bar and not demonstrably faster** — a clean unambiguous no-go on both axes that were measured.
 
 ### Exit 137 cause analysis (measured, not inferred)
 
@@ -107,9 +131,18 @@ Exit 137 is SIGKILL. Three distinct causes matter; only cause 2 (own-cgroup OOM)
 
 ### Resource bar vs #7941 (what we can claim)
 
-The fleet resource bar is `memory.peak < 13 GiB`. Measured cgroup **`memory.peak=13.18 GiB` under width-2** — **fails the bar** even without an OOM kill. This is consistent with #7941's prediction that shared `typed_module_cache` alone underdelivers while each worker retains private graph/index shells, but the mechanism receipt is **peak pressure**, not "OOM killed."
+The fleet resource bar is `memory.peak < 13 GiB`. Measured cgroup **`memory.peak=13.18 GiB` under width-2** — **fails the bar** even without an OOM kill. Receipt is **peak pressure**, not "OOM killed."
 
-**Next-term candidate (#7941, do not act without operator):** `pool_parse` + `pool_bare_census` + `both_closure_edges` = **518.5 MiB** per worker, entry-count-independent, drop-order-stable — the only bounded duplication term identified.
+### #7941 prediction verdict (two parts, stated explicitly)
+
+| Axis | Verdict |
+|------|---------|
+| **Resource (#7941 predicted underdelivery)** | **Consistent.** Shared `typed_module_cache` with per-worker private graph/index shells fails the 13 GiB peak bar (13.18 GiB measured). This supports the pre-registered prediction that this configuration underdelivers on memory — without claiming an OOM kill. |
+| **Mechanism (resolved-graph pin)** | **Neither confirmed nor refuted.** Exit 137 cause is undetermined; own-cgroup `oom_kill` did not increment during the instrumented run. Peak pressure is consistent with the pin story but does not demonstrate it — a weaker, honest claim. |
+
+**Do not read this receipt as "the resolved-graph pin was demonstrated."** The prediction is **consistent with** what was measured; that is not the same as mechanism proof.
+
+**Next-term candidate (#7941, operator decision — not acted here):** `pool_parse` + `pool_bare_census` + `both_closure_edges` = **518.5 MiB** per worker, entry-count-independent, drop-order-stable — the only bounded duplication term identified. Pre-index module artifact reuse remains **parked** as contingency per lane scope.
 
 
 ## Counters
