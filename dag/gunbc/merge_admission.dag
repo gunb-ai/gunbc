@@ -30,8 +30,7 @@ import gunbc.commit_workflow {
   CommitCheckEnrollment, CommitCheckKind,
   CommitSpecGate, CommitWitnessClaim, CommitCargoFmtCheck,
 }
-import std.measure { millisecond_count }
-import std.witness_admission { witness_consumer_cadence_content_hash_structural }
+import std.measure { millisecond_count, ClockBasis, CpuClock, WallClock }
 import std.realization_schedule {
   WitnessKind, CorpusWitnessKind, ExecutionWitnessKind, NativeBundleWitnessKind,
   WitnessSeam, WitnessSpan, SpanUndeclared, SpanSeams, SpanEnrolled,
@@ -195,10 +194,10 @@ fn witness_cost_basis_content_hash_structural(basis: WitnessCostBasis) -> Fnv1a6
 fn scheduled_witness_envelope_content_hash_structural(envelope: ScheduledWitnessEnvelope) -> Fnv1a64Structural {
   content_hash_combine_structural(
     left: content_hash_combine_structural(
-      left: witness_consumer_cadence_content_hash_structural(cadence: envelope.consumer),
+      left: content_hash_atom(value: envelope.cadence),
       right: content_hash_atom(value: concat("", millisecond_count(m: envelope.wall_budget)))
     ),
-    right: content_hash_atom(value: concat("", millisecond_count(m: envelope.max_staleness)))
+    right: content_hash_atom(value: envelope.max_staleness)
   )
 }
 

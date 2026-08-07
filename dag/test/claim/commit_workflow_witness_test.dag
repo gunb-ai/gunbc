@@ -16,13 +16,10 @@ import gunbc.commit_workflow {
   witness_span_wellformed
 }
 import std.measure { millisecond, WallClock }
-import std.witness_admission { DiscoverySelection, FalsifierSelfHostWet }
 import std.realization_schedule {
   WitnessSeam, SpanSeams, SpanUndeclared, SpanEnrolled,
   WitnessCostBasis, MeasuredAtExactSubject,
   ScheduledWitnessEnvelope,
-  scheduled_envelope_per_pr_max_staleness,
-  scheduled_envelope_four_hour_max_staleness,
   CorpusWitnessKind, ExecutionWitnessKind, witness_kind_eq
 }
 import gunbc.ci_spec { gunbc_ci_floor_gates }
@@ -117,9 +114,9 @@ test fn witness_span_enrolled_accepts_measured_envelope() -> Bool {
       receipt: "target/frontier-probe-survey/matrix_readthrough_claim_batch_receipt.log"
     },
     envelope: ScheduledWitnessEnvelope {
-      consumer: DiscoverySelection,
+      cadence: "per_pr",
       wall_budget: millisecond(count: 5000),
-      max_staleness: scheduled_envelope_per_pr_max_staleness()
+      max_staleness: "0"
     }
   })
 }
@@ -135,9 +132,9 @@ test fn witness_span_enrolled_rejects_zero_wall_budget() -> Bool {
       receipt: "target/example-receipt.log"
     },
     envelope: ScheduledWitnessEnvelope {
-      consumer: FalsifierSelfHostWet,
+      cadence: "4h",
       wall_budget: millisecond(count: 0),
-      max_staleness: scheduled_envelope_four_hour_max_staleness()
+      max_staleness: "4h"
     }
   })
 }
