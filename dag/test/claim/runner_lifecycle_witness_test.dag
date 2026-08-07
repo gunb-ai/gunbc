@@ -39,6 +39,8 @@ import gunbc.runner_slot_allocation {
 }
 import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
 import gunbc.host_effect {
+  HostOs,
+  BmcController,
   EnsureActionsRunnerRelease,
   EnsureRunnerSlotDirectory,
   EnsureRunnerJitWrapper,
@@ -49,6 +51,20 @@ import gunbc.host_effect {
   ObserveRunnerLocalState,
   ObserveGitHubRunnerRegistration,
 }
+import gunbc.host_effect_realize {
+  resolve_host_effect_cell,
+  EnsureActionsRunnerReleaseOnHost,
+  EnsureRunnerSlotDirectoryOnHost,
+  EnsureRunnerJitWrapperOnHost,
+  EnsureRunnerSystemdTemplateOnHost,
+  EnsureRunnerMemoryCapsOnHost,
+  ActivateRunnerSlotOnHost,
+  ReplaceRunnerIncarnationOnHost,
+  ObserveRunnerLocalStateOnHost,
+  ObserveGitHubRunnerRegistrationOnHost,
+  IncompatibleCell,
+}
+import gunbc.fleet_intent { srv3_host }
 
 test fn witness_add_sequence_caps_before_start() -> Bool {
   runner_slot_caps_precede_start()
@@ -125,32 +141,104 @@ test fn witness_slot_identity_formats_zero_padded_unit() -> Bool {
     && runner_slot_unit_name(slot: slot) == "actions-runner@srv3-06.service"
 }
 
-test fn witness_runner_lifecycle_host_effects_declared() -> Bool {
+test fn witness_runner_lifecycle_host_effects_resolve_host_os_cells() -> Bool {
   let slot = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 1 }
   let artifact = ActionsRunnerBinaryArtifact {
     binary_release: runner_lifecycle_cited_release,
     arch: ActionsRunnerLinuxX64,
   }
   let host_label = operator_host_srv3 as NonEmptyStr
-  let ensure_release = EnsureActionsRunnerRelease { runner_release: runner_lifecycle_cited_release }
-  let ensure_directory = EnsureRunnerSlotDirectory { slot: slot, artifact: artifact }
-  let ensure_jit_wrapper = EnsureRunnerJitWrapper { host_label: host_label }
-  let ensure_systemd_template = EnsureRunnerSystemdTemplate { host_label: host_label }
-  let ensure_memory_caps = EnsureRunnerMemoryCaps { slot: slot }
-  let activate_slot = ActivateRunnerSlot { slot: slot }
-  let replace_incarnation = ReplaceRunnerIncarnation { slot: slot }
-  let observe_local_state = ObserveRunnerLocalState { slot: slot }
-  let observe_registration = ObserveGitHubRunnerRegistration {
-    slot: slot,
-    organization: runner_lifecycle_ci_org,
+  let target = HostOs { node: srv3_host }
+
+  match resolve_host_effect_cell(
+    target: target,
+    effect: EnsureActionsRunnerRelease { runner_release: runner_lifecycle_cited_release },
+  ) {
+    EnsureActionsRunnerReleaseOnHost { node: n, runner_release: r } =>
+      (n.identity as String) == (operator_host_srv3 as String)
+        && r == runner_lifecycle_cited_release
+    _ => false
   }
-  ensure_release == ensure_release
-    && ensure_directory == ensure_directory
-    && ensure_jit_wrapper == ensure_jit_wrapper
-    && ensure_systemd_template == ensure_systemd_template
-    && ensure_memory_caps == ensure_memory_caps
-    && activate_slot == activate_slot
-    && replace_incarnation == replace_incarnation
-    && observe_local_state == observe_local_state
-    && observe_registration == observe_registration
+    && match resolve_host_effect_cell(
+      target: target,
+      effect: EnsureRunnerSlotDirectory { slot: slot, artifact: artifact },
+    ) {
+      EnsureRunnerSlotDirectoryOnHost { node: n, slot: s, artifact: a } =>
+        (n.identity as String) == (operator_host_srv3 as String)
+          && s == slot
+          && a == artifact
+      _ => false
+    }
+    && match resolve_host_effect_cell(
+      target: target,
+      effect: EnsureRunnerJitWrapper { host_label: host_label },
+    ) {
+      EnsureRunnerJitWrapperOnHost { node: n, host_label: l } =>
+        (n.identity as String) == (operator_host_srv3 as String) && l == host_label
+      _ => false
+    }
+    && match resolve_host_effect_cell(
+      target: target,
+      effect: EnsureRunnerSystemdTemplate { host_label: host_label },
+    ) {
+      EnsureRunnerSystemdTemplateOnHost { node: n, host_label: l } =>
+        (n.identity as String) == (operator_host_srv3 as String) && l == host_label
+      _ => false
+    }
+    && match resolve_host_effect_cell(
+      target: target,
+      effect: EnsureRunnerMemoryCaps { slot: slot },
+    ) {
+      EnsureRunnerMemoryCapsOnHost { node: n, slot: s } =>
+        (n.identity as String) == (operator_host_srv3 as String) && s == slot
+      _ => false
+    }
+    && match resolve_host_effect_cell(
+      target: target,
+      effect: ActivateRunnerSlot { slot: slot },
+    ) {
+      ActivateRunnerSlotOnHost { node: n, slot: s } =>
+        (n.identity as String) == (operator_host_srv3 as String) && s == slot
+      _ => false
+    }
+    && match resolve_host_effect_cell(
+      target: target,
+      effect: ReplaceRunnerIncarnation { slot: slot },
+    ) {
+      ReplaceRunnerIncarnationOnHost { node: n, slot: s } =>
+        (n.identity as String) == (operator_host_srv3 as String) && s == slot
+      _ => false
+    }
+    && match resolve_host_effect_cell(
+      target: target,
+      effect: ObserveRunnerLocalState { slot: slot },
+    ) {
+      ObserveRunnerLocalStateOnHost { node: n, slot: s } =>
+        (n.identity as String) == (operator_host_srv3 as String) && s == slot
+      _ => false
+    }
+    && match resolve_host_effect_cell(
+      target: target,
+      effect: ObserveGitHubRunnerRegistration {
+        slot: slot,
+        organization: runner_lifecycle_ci_org,
+      },
+    ) {
+      ObserveGitHubRunnerRegistrationOnHost { node: n, slot: s, organization: o } =>
+        (n.identity as String) == (operator_host_srv3 as String)
+          && s == slot
+          && o == runner_lifecycle_ci_org
+      _ => false
+    }
+}
+
+test fn witness_runner_lifecycle_host_effects_refuse_bmc_controller() -> Bool {
+  let slot = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 1 }
+  match resolve_host_effect_cell(
+    target: BmcController { node: srv3_host },
+    effect: ActivateRunnerSlot { slot: slot },
+  ) {
+    IncompatibleCell { reason: _ } => true
+    _ => false
+  }
 }

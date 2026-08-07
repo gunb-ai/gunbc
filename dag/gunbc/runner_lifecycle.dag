@@ -218,13 +218,3 @@ fn runner_lifecycle_per_slot_caps() -> RunnerPerSlotMemoryCaps {
     memory_swap_max: desired.memory_swap_max,
   }
 }
-
-data runner_lifecycle_jit_wrapper_path: String = join([actions_runner_base_dir, "/jit-runner.sh"], "")
-
-data runner_lifecycle_systemd_template_unit: String = gunbc_runner_unit_template
-
-data runner_lifecycle_memory_cap_dropin: String = gunbc_runner_per_slot_dropin_path
-
-data runner_lifecycle_memory_swap_dropin: String = gunbc_runner_per_slot_swap_dropin_path
-
-data runner_lifecycle_memory_high_dropin: String = gunbc_runner_per_slot_high_dropin_path
