@@ -130,6 +130,13 @@ fn ambiguous_candidate_projection_count(node: Node) -> Int {
   )
 }
 
+type PoolDeclarationIdentity {
+  qualified_name: String
+  name: String
+  module_path: String
+  rel_path: String
+}
+
 type ExactDeclarationIdentity {
   qualified_name: String
   name: String
@@ -149,13 +156,33 @@ fn decl_fact_module_path_from_qualified_name(fact: DeclFact) -> String {
   }
 }
 
-fn decl_fact_exact_declaration_identity(fact: DeclFact) -> ExactDeclarationIdentity {
-  ExactDeclarationIdentity {
+fn pool_declaration_identity_from_fact(fact: DeclFact) -> PoolDeclarationIdentity {
+  PoolDeclarationIdentity {
     qualified_name: fact.qualified_name,
     name: fact.name,
     module_path: decl_fact_module_path_from_qualified_name(fact: fact),
     rel_path: fact.rel_path,
   }
+}
+
+fn pool_declaration_identities_equal(
+  a: PoolDeclarationIdentity,
+  b: PoolDeclarationIdentity
+) -> Bool {
+  a.qualified_name == b.qualified_name
+    && a.name == b.name
+    && a.module_path == b.module_path
+    && a.rel_path == b.rel_path
+}
+
+fn decl_fact_matches_pool_declaration_identity(
+  fact: DeclFact,
+  identity: PoolDeclarationIdentity
+) -> Bool {
+  pool_declaration_identities_equal(
+    a: pool_declaration_identity_from_fact(fact: fact),
+    b: identity
+  )
 }
 
 fn exact_declaration_identities_equal(
@@ -166,16 +193,6 @@ fn exact_declaration_identities_equal(
     && a.name == b.name
     && a.module_path == b.module_path
     && a.rel_path == b.rel_path
-}
-
-fn decl_fact_matches_exact_declaration_identity(
-  fact: DeclFact,
-  identity: ExactDeclarationIdentity
-) -> Bool {
-  exact_declaration_identities_equal(
-    a: decl_fact_exact_declaration_identity(fact: fact),
-    b: identity
-  )
 }
 
 type DeclFactLookup
@@ -197,12 +214,12 @@ fn decl_fact_lookup_by_qualified_name(qn: String, facts: List<DeclFact>) -> Decl
   })
 }
 
-fn decl_fact_lookup_by_exact_declaration_identity(
-  identity: ExactDeclarationIdentity,
+fn decl_fact_lookup_by_pool_declaration_identity(
+  identity: PoolDeclarationIdentity,
   facts: List<DeclFact>
 ) -> DeclFactLookup {
   fold(facts, init: DeclFactMissing, f: fn(acc, fact) {
-    if !decl_fact_matches_exact_declaration_identity(fact: fact, identity: identity) {
+    if !decl_fact_matches_pool_declaration_identity(fact: fact, identity: identity) {
       acc
     } else {
       match acc {

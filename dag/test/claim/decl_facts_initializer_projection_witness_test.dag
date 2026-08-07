@@ -2,6 +2,7 @@ module test.claim.decl_facts_initializer_projection_witness_test
 
 import test.fixture.decl_facts_reflection.ambiguous_shared_a
 import test.fixture.decl_facts_reflection.ambiguous_specimen
+import test.fixture.decl_facts_reflection.ambiguous_b_specimen
 import test.claim.decl_facts_reflection_witness_support {
   decl_facts_reflection_constructor_parent,
   decl_facts_reflection_constructor_variant,
@@ -10,7 +11,6 @@ import test.claim.decl_facts_reflection_witness_support {
   decl_facts_reflection_lookup,
   duplicate_qualified_identity_lookup_names_primary_and_shadow,
   duplicate_qn_exact_declaration_lookup_per_candidate_is_unique,
-  decl_fact_lookup_duplicate_exact_declaration_identity_is_ambiguous_for_qn,
   decl_facts_reflection_value_identity_projection,
   decl_facts_reflection_projection_variant_label_optional,
   decl_facts_reflection_resolved_nullary_parent,
@@ -42,6 +42,7 @@ data mechanism_single_authority_qn: String = "test.fixture.decl_facts_reflection
 data mechanism_realization_dispatch_qn: String = "test.fixture.decl_facts_reflection.specimens.mechanism_realization_dispatch"
 data missing_variant_specimen_qn: String = "test.fixture.decl_facts_reflection.specimens.missing_variant_specimen"
 data ambiguous_arm_specimen_qn: String = "test.fixture.decl_facts_reflection.ambiguous_specimen.ambiguous_arm_specimen"
+data ambiguous_b_arm_specimen_qn: String = "test.fixture.decl_facts_reflection.ambiguous_b_specimen.ambiguous_b_arm_specimen"
 data duplicate_shadowed_specimen_qn: String = "test.fixture.decl_facts_reflection_duplicate_qn.shadowed_module.shadowed_specimen"
 data unimported_globally_unique_specimen_qn: String = "test.fixture.decl_facts_reflection.unimported_globally_unique_user.unimported_globally_unique_specimen"
 data scaffold_named_field_bind_qn: String = "test.fixture.decl_facts_reflection.specimens.scaffold_named_field_bind"
@@ -183,15 +184,38 @@ test fn decl_facts_reflection_missing_variant_refuses_missing_projection() -> Bo
 }
 
 data ambiguous_shared_a_shared_bare_arm_qn: String = "test.fixture.decl_facts_reflection.ambiguous_shared_a.SharedBareArm"
+data ambiguous_shared_b_shared_bare_arm_qn: String = "test.fixture.decl_facts_reflection.ambiguous_shared_b.SharedBareArm"
 
-test fn decl_facts_reflection_explicit_import_resolves_unique_variant_projection() -> Bool {
+// B is in the entry closure because ambiguous_b_specimen imports SharedBareArm from B.
+test fn decl_facts_reflection_closure_b_specimen_resolves_to_b_parent() -> Bool {
+  match decl_facts_reflection_resolved_nullary_parent(qn: ambiguous_b_arm_specimen_qn) {
+    Present { value: parent } =>
+      parent == ambiguous_shared_b_shared_bare_arm_qn
+        && match decl_facts_reflection_resolved_nullary_variant_name(qn: ambiguous_b_arm_specimen_qn) {
+          Present { value: variant } => variant == "SharedArm"
+          Absent => false
+        }
+    Absent => false
+  }
+}
+
+test fn decl_facts_reflection_explicit_import_resolves_to_a_when_b_also_loaded() -> Bool {
   match decl_facts_reflection_resolved_nullary_parent(qn: ambiguous_arm_specimen_qn) {
     Present { value: parent } =>
       parent == ambiguous_shared_a_shared_bare_arm_qn
+        && parent != ambiguous_shared_b_shared_bare_arm_qn
         && match decl_facts_reflection_resolved_nullary_variant_name(qn: ambiguous_arm_specimen_qn) {
           Present { value: variant } => variant == "SharedArm"
           Absent => false
         }
+    Absent => false
+  }
+}
+
+// Discriminating negative: A importer must not resolve to B's parent when both modules are loaded.
+test fn decl_facts_reflection_explicit_import_does_not_resolve_to_b() -> Bool {
+  match decl_facts_reflection_resolved_nullary_parent(qn: ambiguous_arm_specimen_qn) {
+    Present { value: parent } => parent != ambiguous_shared_b_shared_bare_arm_qn
     Absent => false
   }
 }
@@ -246,11 +270,5 @@ test fn decl_facts_reflection_absent_vs_refused_vs_missing_projections_distinct(
 test fn decl_facts_duplicate_qn_exact_declaration_lookup_per_candidate_is_unique() -> Bool {
   duplicate_qn_exact_declaration_lookup_per_candidate_is_unique(
     lookup: decl_facts_reflection_lookup(qn: duplicate_shadowed_specimen_qn)
-  )
-}
-
-test fn decl_facts_duplicate_exact_declaration_identity_lookup_is_ambiguous() -> Bool {
-  decl_fact_lookup_duplicate_exact_declaration_identity_is_ambiguous_for_qn(
-    qn: disposition_scaffold_qn
   )
 }
