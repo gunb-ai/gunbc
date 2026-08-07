@@ -234,6 +234,37 @@ fn floor_component_failure_mode_of_wire_tag(tag: String) -> FloorComponentFailur
   else { none }
 }
 
+data strict_natural_decode_note: String = "A NUMERIC LEXEME IS NOT A NATURAL NUMBER. The JSON grammar admits `-1`, `6.5`, `6e3` and `1e400` as numbers, and parse_int on any of them produces something — a truncation, a wrong magnitude, or a value the carrier cannot hold — with no signal that the input was not what the field means. Component indices and counts are cardinals: they are positions and tallies, and a negative position or a fractional count is not a small error in a valid value, it is a different kind of thing.\\n\\nSo the lexeme is checked before it is trusted, and the check is a ROUND TRIP rather than a character scan: the parse must reproduce the original lexeme exactly, and the result must be non-negative. That rejects `-1` on the sign test and rejects `6.5`, `6e3`, `+6`, ` 6` and `06` because none of them is what its own parse renders back. It is stronger than a digit scan and needs no character iteration — and it catches the out-of-range case for free, since a magnitude the carrier cannot hold does not render back to what was read. This is the boundary the parse-then-hope shape was hiding: parse_int is total, so it answered for inputs the field cannot represent, and a total function answering for an impossible input is exactly the fabricated-plausible-output the rest of this decoder refuses."
+
+fn strict_natural_of_lexeme(text: String) -> Nat? {
+  match parse_int(s: text) {
+    Absent => none
+    Present { value: parsed } =>
+      if text != "" && (parsed as String) == text && parsed >= 0 {
+        Present { value: parsed }
+      } else {
+        none
+      }
+  }
+}
+
+fn receipt_natural_member_at(v: JsonValue, key: String) -> ReceiptNatural {
+  match receipt_numeric_member_at(v: v, key: key) {
+    ReceiptTextFailed { decoding: d } => ReceiptNaturalFailed { decoding: d }
+    ReceiptTextFound { text: lexeme } =>
+      match strict_natural_of_lexeme(text: lexeme) {
+        Absent => ReceiptNaturalFailed {
+          decoding: ReceiptMemberMalformed { member: key, detail: concat("not a natural number: ", lexeme) }
+        }
+        Present { value: n } => ReceiptNaturalFound { value: n }
+      }
+  }
+}
+
+type ReceiptNatural
+  = ReceiptNaturalFound { value: Nat }
+  | ReceiptNaturalFailed { decoding: FloorComponentReceiptDecoding }
+
 data component_alert_summary_note: String = "THE STRICT TYPED PROJECTION OF THE FACTS THE ALERT ACTUALLY DECIDES ON. Component interiors are still transported as JSON residue, because a total reverse decoder for std.observation.ObservationEvent is a separate obligation and half of one would fork a coproduct that already has an authority. But the four fields the alert READS — index, label, outcome, failure_mode — are exactly the fields its incident signature is keyed on, so they are not residue and must not be typed as residue. They are decoded, each required, each exactly once, each with its own located refusal.\n\nThe distinction that makes this coherent rather than arbitrary: unknown OPTIONAL detail may remain JSON, decision-driving facts may not. A field that changes what the alert says must be one the decoder has checked."
 
 type ComponentAlertSummary {
@@ -330,7 +361,16 @@ fn component_outcome_read_of_tag(tag: String, component: JsonValue) -> Component
   } else if tag == "failed" {
     match component_outcome_payload_text(component: component, key: "error") {
       Absent => ComponentOutcomeUnmodelled { detail: "failed outcome carries no error" }
-      Present { value: e } => ComponentOutcomeRecovered { read: ComponentConcluded { outcome: Failed { error: e as NonEmptyStr, output: "" } } }
+      Present { value: e } =>
+        match receipt_required_value_at(v: component, key: "output") {
+          ReceiptValueFailed { decoding: _ } => ComponentOutcomeUnmodelled { detail: "failed outcome carries no output member" }
+          ReceiptValueFound { value: raw } =>
+            match raw {
+              JsonString { value: out } =>
+                ComponentOutcomeRecovered { read: ComponentConcluded { outcome: Failed { error: e as NonEmptyStr, output: out } } }
+              _ => ComponentOutcomeUnmodelled { detail: "failed outcome output is not a string" }
+            }
+        }
     }
   } else if tag == "skipped" {
     match component_outcome_payload_text(component: component, key: "reason") {
@@ -338,9 +378,9 @@ fn component_outcome_read_of_tag(tag: String, component: JsonValue) -> Component
       Present { value: r } => ComponentOutcomeRecovered { read: ComponentConcluded { outcome: Skipped { reason: r as NonEmptyStr } } }
     }
   } else if tag == "final" {
-    match receipt_numeric_member_at(v: component, key: "shown_failures") {
-      ReceiptTextFailed { decoding: _ } => ComponentOutcomeUnmodelled { detail: "final outcome carries no shown_failures count" }
-      ReceiptTextFound { text: n } => ComponentOutcomeRecovered { read: ComponentConcluded { outcome: Final { shown_failures: parse_int(s: n) } } }
+    match receipt_natural_member_at(v: component, key: "shown_failures") {
+      ReceiptNaturalFailed { decoding: _ } => ComponentOutcomeUnmodelled { detail: "final outcome carries no natural shown_failures count" }
+      ReceiptNaturalFound { value: n } => ComponentOutcomeRecovered { read: ComponentConcluded { outcome: Final { shown_failures: n } } }
     }
   } else if tag == "timed_out" {
     ComponentOutcomeUnmodelled { detail: "timed_out carries a ClockBasis the wire does not serialize" }
@@ -349,10 +389,40 @@ fn component_outcome_read_of_tag(tag: String, component: JsonValue) -> Component
   }
 }
 
+data floor_component_outcome_of_mode_single_authority_note: String = "ONE tag table, not two. An earlier revision of the failure-mode edge parsed the seed's tag twice — once to a FloorComponentFailureMode and once, separately, to an ObservationOutcome — so the tag vocabulary was written out in two parallel string tables that had to be edited together (caught by review 48341 on gunbc#7827, non-blocking; fixed here rather than left, because two representations of one vocabulary is the second-representation DESIGN 3 forbids and the fact that today's only caller invokes them back-to-back makes the drift local, not impossible). The outcome is now derived FROM THE MODE rather than from the tag, so the tag appears exactly once (floor_component_failure_mode_of) and the mode-to-outcome collapse appears exactly once here. A newly added mode is a compile error in this match instead of a silently unmapped string, which is the construction form of the fail-closed property the note above states. ModeUnrecorded REFUSES rather than being given an outcome: it is not a failure mode at all, it is the absence of a recorded one, so inventing an outcome for it would be the fabricated-plausible-output DESIGN 5 forbids. It is unreachable from the tag path by construction — floor_component_failure_mode_of never returns it — so the refusal is a total-match obligation, not a live arm."
+
+fn floor_component_outcome_of_mode(m: FloorComponentFailureMode, detail: NonEmptyStr) -> ObservationOutcome? {
+  match m {
+    ModeNoFailure => Present { value: Done }
+    ModeBudgetExceeded => Present { value: Refused { diagnostic: detail } }
+    ModeInfra => Present { value: Failed { error: detail, output: "" } }
+    ModeWitnessRed => Present { value: Failed { error: detail, output: "" } }
+    ModeNotReached => Present { value: Skipped { reason: detail } }
+    ModeUnrecorded => none
+  }
+}
+
+data outcome_mode_pair_note: String = "THE TWO FACTS ARE RECOVERED INDEPENDENTLY, SO THE PAIR MUST BE CHECKED. Typing each field separately closed the `outcome: banana` hole and opened a subtler one: outcome=done with failure_mode=WitnessRed, or outcome=failed with failure_mode=none, are two individually valid values forming a combination the writer cannot construct. The alert routes on the mode and decides incident identity on both, so an impossible pair is a receipt claiming a component both passed and broke — and neither field alone is wrong enough to refuse.\\n\\nThe agreement is DERIVED FROM THE WRITER, not restated. floor_component_outcome_of_mode is the single place the collapse happens, so the check asks that same function what outcome the mode implies and compares tags. Writing the valid pairs out as a table here would be a second copy of that mapping, and the two would drift the moment a mode is added — which is precisely the failure this receipt keeps finding elsewhere.\\n\\nTWO ARMS ARE DELIBERATELY BROADER, and both are properties of the writer rather than concessions. ModeUnrecorded pairs with ANY outcome because it is what the direct-outcome constructor emits: that path is handed an outcome and genuinely observed no mode, so there is no mode for the outcome to agree with. A NOT-CONCLUDED row likewise pairs with any mode, because a row whose transition never reached Concluded has no outcome at all — the mode records what the walk knew, and the absent conclusion is the fact being reported."
+
+fn component_outcome_agrees_with_failure_mode(read: ComponentOutcomeRead, mode: FloorComponentFailureMode) -> Bool {
+  match read {
+    ComponentNotConcluded => true
+    ComponentConcluded { outcome: o } =>
+      match mode {
+        ModeUnrecorded => true
+        _ =>
+          match floor_component_outcome_of_mode(m: mode, detail: "pair-check" as NonEmptyStr) {
+            Absent => false
+            Present { value: implied } => floor_component_outcome_tag(o: o) == floor_component_outcome_tag(o: implied)
+          }
+      }
+  }
+}
+
 fn component_alert_summary_of(component: JsonValue) -> ComponentAlertSummaryDecoding {
-  match receipt_numeric_member_at(v: component, key: "index") {
-    ReceiptTextFailed { decoding: d } => ComponentSummaryFailed { decoding: d }
-    ReceiptTextFound { text: idx } =>
+  match receipt_natural_member_at(v: component, key: "index") {
+    ReceiptNaturalFailed { decoding: d } => ComponentSummaryFailed { decoding: d }
+    ReceiptNaturalFound { value: idx } =>
       match receipt_summary_required_string_at(v: component, key: "label") {
         ReceiptTextFailed { decoding: d } => ComponentSummaryFailed { decoding: d }
         ReceiptTextFound { text: label } =>
@@ -372,13 +442,22 @@ fn component_alert_summary_of(component: JsonValue) -> ComponentAlertSummaryDeco
                           decoding: ReceiptMemberMalformed { member: "outcome", detail: d }
                         }
                         ComponentOutcomeRecovered { read: typed_outcome } =>
+                          if !component_outcome_agrees_with_failure_mode(read: typed_outcome, mode: typed_mode) {
+                            ComponentSummaryFailed {
+                              decoding: ReceiptMemberMalformed {
+                                member: "outcome",
+                                detail: concat(concat("outcome ", outcome), concat(" cannot pair with failure mode ", mode))
+                              }
+                            }
+                          } else {
                           ComponentSummaryDecoded {
                             summary: ComponentAlertSummary {
-                              index: parse_int(s: idx),
+                              index: idx,
                               label: label as NonEmptyStr,
                               outcome: typed_outcome,
                               failure_mode: typed_mode
                             }
+                          }
                           }
                       }
                   }
@@ -486,11 +565,11 @@ fn floor_component_receipt_decode_with(text: String, expected_schema: NonEmptySt
                             match receipt_array_at(v: doc, key: receipt_member_unsuccessful_components) {
                               ReceiptElementsFailed { decoding: d } => d
                               ReceiptElementsFound { elements: unsuccessful } =>
-                            match receipt_numeric_member_at(v: doc, key: receipt_member_component_count) {
-                              ReceiptTextFailed { decoding: d } => d
-                              ReceiptTextFound { text: declared_count } =>
-                            if declared_count != (count(components) as String) {
-                              ReceiptComponentCountMismatch { declared: declared_count, decoded: count(components) }
+                            match receipt_natural_member_at(v: doc, key: receipt_member_component_count) {
+                              ReceiptNaturalFailed { decoding: d } => d
+                              ReceiptNaturalFound { value: declared_count_n } =>
+                            if declared_count_n != count(components) {
+                              ReceiptComponentCountMismatch { declared: declared_count_n as String, decoded: count(components) }
                             } else {
                             match receipt_required_value_at(v: doc, key: receipt_member_affected_set_cold_control) {
                               ReceiptValueFailed { decoding: d } => d
