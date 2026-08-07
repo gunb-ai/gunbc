@@ -16,7 +16,7 @@ use crate::v1_interpreter::{sorted_fields, InterpContext, InterpResult, Value};
 use crate::v1_std_core::{
     authored_name_at, field_init_node_name_at, field_init_node_value, field_node_name_at,
     field_node_type_expr, find_child_named, inferred_to_node, Connective, ExprData, InferredNode,
-    NewlineIndex, Node,
+    NewlineIndex, Node, VarBindingKind,
 };
 
 type SourceIndices = Rc<HashMap<String, Rc<NewlineIndex>>>;
@@ -231,11 +231,16 @@ pub struct ResolvedDeclarationIdentity {
     pub rel_path: String,
 }
 
+/// Exact declaration identity for a coproduct parent and variant arm pair.
+pub type ExactDeclarationIdentity = ResolvedDeclarationIdentity;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedVariantIdentity {
-    pub parent_qualified_name: String,
-    pub variant_name: String,
+    pub parent: ResolvedDeclarationIdentity,
+    pub arm: ResolvedDeclarationIdentity,
 }
+
+pub type ExactVariantIdentity = ResolvedVariantIdentity;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DataInitializerValueResolution {
@@ -362,6 +367,71 @@ fn declaration_identity_for_type_item(
     }
 }
 
+fn declaration_identity_for_variant_arm(
+    ctx: &InterpContext,
+    coproduct: &Rc<Node>,
+    variant_name: &str,
+    si: &SourceIndices,
+    fallback_module_path: &str,
+) -> Option<ResolvedVariantIdentity> {
+    let arm = coproduct_variant_arm_by_name(coproduct, variant_name, si)?;
+    let parent = declaration_identity_for_type_item(ctx, coproduct, si, fallback_module_path);
+    let arm_name = {
+        let authored = authored_name_at(si.clone(), arm.clone());
+        if authored.is_empty() {
+            variant_name.to_string()
+        } else {
+            bare_symbol_tail(&authored).to_string()
+        }
+    };
+    let arm_id = ResolvedDeclarationIdentity {
+        qualified_name: format!("{}.{}", parent.qualified_name, arm_name),
+        name: arm_name,
+        module_path: parent.module_path.clone(),
+        rel_path: parent.rel_path.clone(),
+    };
+    Some(ResolvedVariantIdentity {
+        parent,
+        arm: arm_id,
+    })
+}
+
+fn expr_var_binding_kind(expr: &Rc<Node>) -> Option<Rc<VarBindingKind>> {
+    match expr.expr_data.as_ref() {
+        ExprData::ExprVar { binding_kind, .. } => binding_kind.clone(),
+        _ => None,
+    }
+}
+
+fn is_variant_value_binding(expr: &Rc<Node>) -> bool {
+    matches!(
+        expr_var_binding_kind(expr).as_deref(),
+        Some(VarBindingKind::VariantValueBinding { .. })
+    )
+}
+
+fn variant_value_binding_parent_enum(expr: &Rc<Node>) -> Option<String> {
+    match expr_var_binding_kind(expr).as_deref() {
+        Some(VarBindingKind::VariantValueBinding { parent_enum }) => Some(parent_enum.clone()),
+        _ => None,
+    }
+}
+
+fn coproduct_from_variant_value_binding(
+    ctx: &InterpContext,
+    tm: &TypedModule,
+    parent_enum: &str,
+    si: &SourceIndices,
+) -> Option<(Rc<Node>, String)> {
+    let bare = bare_symbol_tail(parent_enum);
+    let node = type_item_from_importing_module_type_env(tm, bare, si)?;
+    if node.connective != Connective::Disj {
+        return None;
+    }
+    let importing_module = authored_name_at(si.clone(), tm.module.clone());
+    Some((node, importing_module))
+}
+
 fn cross_module_coproduct_variant_candidates(
     ctx: &InterpContext,
     variant_name: &str,
@@ -382,10 +452,26 @@ fn cross_module_coproduct_variant_candidates(
                 continue;
             }
             let parent_name = authored_name_at(si.clone(), item.clone());
-            cands.push(ResolvedVariantIdentity {
-                parent_qualified_name: decl_logical_qualified_name(&mod_name, &parent_name),
-                variant_name: variant_name.to_string(),
-            });
+            if let Some(variant_id) =
+                declaration_identity_for_variant_arm(ctx, item, variant_name, si, &mod_name)
+            {
+                cands.push(variant_id);
+            } else {
+                let parent = declaration_identity_for_type_item(ctx, item, si, &mod_name);
+                cands.push(ResolvedVariantIdentity {
+                    parent,
+                    arm: ResolvedDeclarationIdentity {
+                        qualified_name: format!(
+                            "{}.{}",
+                            decl_logical_qualified_name(&mod_name, &parent_name),
+                            variant_name
+                        ),
+                        name: variant_name.to_string(),
+                        module_path: mod_name.clone(),
+                        rel_path: rel_path_from_node(item),
+                    },
+                });
+            }
         }
     }
     cands
@@ -430,10 +516,26 @@ fn duplicate_bare_type_name_variant_candidates(
                 continue;
             }
             let type_name = authored_name_at(si.clone(), item.clone());
-            cands.push(ResolvedVariantIdentity {
-                parent_qualified_name: decl_logical_qualified_name(&mod_name, &type_name),
-                variant_name: variant_name.to_string(),
-            });
+            if let Some(variant_id) =
+                declaration_identity_for_variant_arm(ctx, &item, variant_name, si, &mod_name)
+            {
+                cands.push(variant_id);
+            } else {
+                let parent = declaration_identity_for_type_item(ctx, &item, si, &mod_name);
+                cands.push(ResolvedVariantIdentity {
+                    parent,
+                    arm: ResolvedDeclarationIdentity {
+                        qualified_name: format!(
+                            "{}.{}",
+                            decl_logical_qualified_name(&mod_name, &type_name),
+                            variant_name
+                        ),
+                        name: variant_name.to_string(),
+                        module_path: mod_name.clone(),
+                        rel_path: rel_path_from_node(&item),
+                    },
+                });
+            }
         }
     }
     cands
@@ -480,14 +582,18 @@ fn variant_value_from_typechecked_expr(
         return DataInitializerValueResolution::Missing;
     }
 
+    if !matches!(expr.expr_data.as_ref(), ExprData::ExprVar { .. }) {
+        return DataInitializerValueResolution::NotVariantValue;
+    }
+
+    if !is_variant_value_binding(expr) {
+        return DataInitializerValueResolution::NotVariantValue;
+    }
+
     let inferred_node = match expr.inferred.as_deref() {
         Some(InferredNode::Resolved { node }) => node.clone(),
         _ => return DataInitializerValueResolution::NotVariantValue,
     };
-
-    if !matches!(expr.expr_data.as_ref(), ExprData::ExprVar { .. }) {
-        return DataInitializerValueResolution::NotVariantValue;
-    }
 
     let variant_name = {
         let from_inferred = local_symbol_name(si, &inferred_node);
@@ -501,15 +607,13 @@ fn variant_value_from_typechecked_expr(
         return DataInitializerValueResolution::NotVariantValue;
     }
 
-    let expr_variant_name = if matches!(expr.expr_data.as_ref(), ExprData::ExprVar { .. }) {
+    let expr_variant_name = {
         let bare = crate::v1_std_core::expr_var_name_at(expr.clone(), si.clone());
         if bare.is_empty() {
             variant_name.clone()
         } else {
             bare
         }
-    } else {
-        variant_name.clone()
     };
 
     let ambiguous_cands = ambiguous_variant_candidates(ctx, &variant_name, si);
@@ -522,43 +626,25 @@ fn variant_value_from_typechecked_expr(
         None => return DataInitializerValueResolution::Missing,
     };
 
-    // Prefer the importing module type env + declared field/type annotation — ident lookup
-    // often resolves to a variant arm (Conj), not the parent coproduct (Disj).
-    let mut from_declared_annotation = false;
-    let mut defining_module = importing_module.to_string();
-    let coproduct = if let Some(bare) = declared_type_bare.filter(|bare| !bare.is_empty()) {
-        coproduct_type_item_with_variant_children(ctx, &tm, bare, si).map(|(node, mod_name)| {
-            from_declared_annotation = true;
-            defining_module = mod_name;
-            node
-        })
-    } else {
-        None
-    }
-    .or_else(|| {
-        inferred_node
-            .ident
-            .as_ref()
-            .and_then(|id| lookup_type(tm.type_env.clone(), id.clone()))
-    });
-
-    let coproduct = match coproduct {
-        Some(node) if node.connective == Connective::Disj => node,
-        _ => return DataInitializerValueResolution::NotVariantValue,
+    let parent_enum = match variant_value_binding_parent_enum(expr) {
+        Some(parent_enum) => parent_enum,
+        None => return DataInitializerValueResolution::NotVariantValue,
     };
 
-    if from_declared_annotation
-        && matches!(
-            expr.inferred.as_deref(),
-            Some(InferredNode::Resolved { .. })
-        )
-    {
-        let parent_id = declaration_identity_for_type_item(ctx, &coproduct, si, &defining_module);
-        return DataInitializerValueResolution::Resolved(ResolvedVariantIdentity {
-            parent_qualified_name: parent_id.qualified_name,
-            variant_name: expr_variant_name,
-        });
-    }
+    let (coproduct, defining_module) =
+        match coproduct_from_variant_value_binding(ctx, &tm, &parent_enum, si) {
+            Some(found) => found,
+            None => {
+                if let Some(bare) = declared_type_bare.filter(|bare| !bare.is_empty()) {
+                    match coproduct_type_item_with_variant_children(ctx, &tm, bare, si) {
+                        Some(found) => found,
+                        None => return DataInitializerValueResolution::Missing,
+                    }
+                } else {
+                    return DataInitializerValueResolution::Missing;
+                }
+            }
+        };
 
     if !coproduct_has_variant_named(&coproduct, &expr_variant_name, si)
         && !coproduct_has_variant_named(&coproduct, &variant_name, si)
@@ -566,16 +652,22 @@ fn variant_value_from_typechecked_expr(
         return DataInitializerValueResolution::Missing;
     }
 
-    let parent_id = declaration_identity_for_type_item(ctx, &coproduct, si, &defining_module);
     let resolved_variant_name = if coproduct_has_variant_named(&coproduct, &expr_variant_name, si) {
         expr_variant_name
     } else {
         variant_name
     };
-    DataInitializerValueResolution::Resolved(ResolvedVariantIdentity {
-        parent_qualified_name: parent_id.qualified_name,
-        variant_name: resolved_variant_name,
-    })
+
+    match declaration_identity_for_variant_arm(
+        ctx,
+        &coproduct,
+        &resolved_variant_name,
+        si,
+        &defining_module,
+    ) {
+        Some(variant_id) => DataInitializerValueResolution::Resolved(variant_id),
+        None => DataInitializerValueResolution::Missing,
+    }
 }
 
 fn constructor_resolution_refused_projection(ctx: &InterpContext) -> Value {
@@ -726,11 +818,19 @@ fn marshal_variant_identity_node(ctx: &InterpContext, id: &ResolvedVariantIdenti
         &[
             (
                 "parent_qualified_name".to_string(),
-                projection_atom_identity_node(ctx, &id.parent_qualified_name),
+                projection_atom_identity_node(ctx, &id.parent.qualified_name),
             ),
             (
                 "variant_name".to_string(),
-                projection_atom_identity_node(ctx, &id.variant_name),
+                projection_atom_identity_node(ctx, &id.arm.name),
+            ),
+            (
+                "parent_type".to_string(),
+                marshal_declaration_identity_node(ctx, &id.parent),
+            ),
+            (
+                "arm".to_string(),
+                marshal_declaration_identity_node(ctx, &id.arm),
             ),
         ],
     )
@@ -768,11 +868,19 @@ fn marshal_value_identity_node(
             &[
                 (
                     "parent_qualified_name".to_string(),
-                    projection_atom_identity_node(ctx, &v.parent_qualified_name),
+                    projection_atom_identity_node(ctx, &v.parent.qualified_name),
                 ),
                 (
                     "variant_name".to_string(),
-                    projection_atom_identity_node(ctx, &v.variant_name),
+                    projection_atom_identity_node(ctx, &v.arm.name),
+                ),
+                (
+                    "parent_type".to_string(),
+                    marshal_declaration_identity_node(ctx, &v.parent),
+                ),
+                (
+                    "arm".to_string(),
+                    marshal_declaration_identity_node(ctx, &v.arm),
                 ),
             ],
         ),
@@ -983,9 +1091,23 @@ fn marshal_coproduct_record_projection(
     }
 
     let parent_id = declaration_identity_for_type_item(ctx, &coproduct_item, si, importing_module);
-    let variant_id = ResolvedVariantIdentity {
-        parent_qualified_name: parent_id.qualified_name.clone(),
-        variant_name: variant_name.clone(),
+    let variant_id = match declaration_identity_for_variant_arm(
+        ctx,
+        &coproduct_item,
+        &variant_name,
+        si,
+        importing_module,
+    ) {
+        Some(variant_id) => variant_id,
+        None => ResolvedVariantIdentity {
+            parent: parent_id.clone(),
+            arm: ResolvedDeclarationIdentity {
+                qualified_name: format!("{}.{}", parent_id.qualified_name, variant_name),
+                name: variant_name.clone(),
+                module_path: parent_id.module_path.clone(),
+                rel_path: parent_id.rel_path.clone(),
+            },
+        },
     };
 
     let mut edges: Vec<(String, Value)> = vec![(
