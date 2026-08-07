@@ -4,6 +4,7 @@ import gunbc.ci_execution_plan {
   CiExecutionSubject,
   PushToMain, PullRequestToMain, OperatorRerun, ForkPullRequestRefused,
   ci_subject_identity_key,
+  ci_subject_head_sha,
   ci_pull_request_is_same_repo,
   ci_execution_plan_for_subject,
   ci_execution_default_stages,
@@ -60,6 +61,19 @@ fn sample_tree_hash() -> GitObjectId {
           hex: "4b825dc642cb6eb9a060e54bf8d69288fbee4904" as Sha1DigestHex,
         },
       }
+  }
+}
+
+test fn witness_refused_subject_has_no_head_sha() -> Bool {
+  match ci_subject_head_sha(
+    subject: ForkPullRequestRefused {
+      pr_number: 1,
+      head_repo_full_name: "other/fork",
+      reason: "fork PRs refuse in v0" as NonEmptyStr,
+    },
+  ) {
+    Absent => true
+    Present { value: _ } => false
   }
 }
 
@@ -252,6 +266,7 @@ test fn witness_executor_stage_labels_match_plan() -> Bool {
 
 test fn witness_owned_ci_witness_bundle() -> Bool {
   witness_poll_without_github_read_refuses()
+    && witness_refused_subject_has_no_head_sha()
     && witness_fork_pr_refused()
     && witness_same_repo_pr_admits()
     && witness_expired_lease_is_reclaimed()
