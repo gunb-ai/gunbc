@@ -185,10 +185,7 @@ fn falsifier_floor_component_receipt_download_step() -> Step {
 }
 
 fn gunbc_falsifier_job_backstop_timeout_minutes() -> Int {
-  gunbc_falsifier_build_job_backstop_timeout_minutes()
-    + gunbc_falsifier_selection_control_job_backstop_timeout_minutes()
-    + gunbc_falsifier_cold_corpus_job_backstop_timeout_minutes()
-    + gunbc_falsifier_aggregate_verdict_job_backstop_timeout_minutes()
+  gunbc_falsifier_build_job_backstop_timeout_minutes() + gunbc_falsifier_selection_control_job_backstop_timeout_minutes() + gunbc_falsifier_cold_corpus_job_backstop_timeout_minutes() + gunbc_falsifier_aggregate_verdict_job_backstop_timeout_minutes()
 }
 
 data gunbc_falsifier_job_split_note: String = "Four-job topology (2026-08-07, operator ruling proud-bear-834 adhoc-8b992195-d13; pre-authorized follow-up named in gunbc.falsifier_run_control falsifier_control_prerequisite_note): falsifier-build compiles and uploads release-bins ONLY; selection-control independently validates prediction machinery; cold-corpus runs whenever build artifacts are available — needs: [falsifier-build] alone, NOT selection-control — so a selector RED is a reason to run the broad backstop, not suppress it (specimen run 31181460723: selection failure skipped the entire corpus job). aggregate-verdict fails if either arm is red and emits gunbc.falsifier_cold_corpus_execution ColdCorpusExecution so CorpusNotRun is never read as 'falsifier found a regression'. Prior two-job split (2026-08-04) isolated cgroup peak for the floor path; this change isolates SELECTION from CORPUS scheduling."
