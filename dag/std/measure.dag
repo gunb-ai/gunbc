@@ -233,6 +233,8 @@ type Millicore = Measure<Count, Milli, Nat>
 
 type Watt = Measure<Power, One, Nat>
 
+type Milliwatt = Measure<Power, Milli, Nat>
+
 type Volt = Measure<ElectricPotential, One, Nat>
 
 type Ampere = Measure<ElectricCurrent, One, Nat>
@@ -299,6 +301,14 @@ fn watt(count: Nat) -> Watt {
 }
 
 fn watt_count(w: Watt) -> Nat {
+  measure_count(w)
+}
+
+fn milliwatt(count: Nat) -> Milliwatt {
+  Measure { count: count }
+}
+
+fn milliwatt_count(w: Milliwatt) -> Nat {
   measure_count(w)
 }
 

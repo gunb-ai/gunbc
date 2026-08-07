@@ -1,7 +1,7 @@
 module extdeps.network.switch_types
 
 import std.types { NonEmptyStr, Int, Bool }
-import std.measure { Watt, watt, Bandwidth, bandwidth }
+import std.measure { Milliwatt, milliwatt, Bandwidth, bandwidth }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -34,5 +34,5 @@ type NetworkSwitchCatalogRow {
   port_speed: Bandwidth
   fanless: Bool
   switching_capacity: Bandwidth
-  max_power_draw: Watt
+  max_power_draw: Milliwatt
 }

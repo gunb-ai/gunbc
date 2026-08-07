@@ -25,6 +25,8 @@ import product.placement_supply {
   BootstrapNotNeeded,
   WifiBootstrapStep,
   WifiBootstrapChain,
+  WifiBootstrapAdmissible,
+  WifiBootstrapRefused,
   site_contains_rack,
   same_rack,
   wireless_adapter_can_associate,

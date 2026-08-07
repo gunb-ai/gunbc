@@ -1,6 +1,6 @@
 module extdeps.rack.types
 
-import std.types { NonEmptyStr, Int }
+import std.types { NonEmptyStr, Int, Bool }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
