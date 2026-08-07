@@ -278,4 +278,3 @@ jobs:
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/apply.dag --function apply_wet --arg workflow=${{ inputs.workflow }} --arg srv3_width=${{ inputs.srv3_width }} --arg srv4_width=${{ inputs.srv4_width }} --arg mode=${{ inputs.mode }}
         timeout-minutes: 30
-
