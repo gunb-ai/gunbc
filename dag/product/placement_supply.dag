@@ -129,19 +129,22 @@ fn same_rack(a: RackResidence, b: RackResidence) -> Bool? {
   }
 }
 
-fn wireless_adapter_can_associate(standing: WirelessAdapterStanding) -> Bool {
+// Unobserved is Absent, not false: "we have not looked at the adapter" and "there is no adapter"
+// have different remedies (observe vs install), and collapsing them let an unobserved host read as
+// definitively incapable. Mirrors same_rack / rack_residence_rack in this module (review 50310).
+fn wireless_adapter_can_associate(standing: WirelessAdapterStanding) -> Bool? {
   match standing {
-    WirelessAdapterPresent { interface: _, station_mode: _ } => true
-    WirelessAdapterAbsent => false
-    WirelessAdapterUnobserved => false
+    WirelessAdapterPresent { interface: _, station_mode: _ } => Present { value: true }
+    WirelessAdapterAbsent => Present { value: false }
+    WirelessAdapterUnobserved => Absent
   }
 }
 
-fn wifi_relay_can_bootstrap(relay: WifiRelayProvision, wireless: WirelessAdapterStanding) -> Bool {
+fn wifi_relay_can_bootstrap(relay: WifiRelayProvision, wireless: WirelessAdapterStanding) -> Bool? {
   match relay {
     RelayProvisioned => wireless_adapter_can_associate(standing: wireless)
-    RelayUnprovisioned => false
-    RelayIncapable => false
+    RelayUnprovisioned => Present { value: false }
+    RelayIncapable => Present { value: false }
   }
 }
 
@@ -185,14 +188,15 @@ fn wifi_probe_is_candidate(
   bootstrapper_residence: RackResidence,
   target_residence: RackResidence,
   bootstrapper_wireless: WirelessAdapterStanding,
-) -> Bool {
-  if !wireless_adapter_can_associate(standing: bootstrapper_wireless) {
-    false
-  } else {
-    match same_rack(a: bootstrapper_residence, b: target_residence) {
-      Absent => false
-      Present { value: same } => same
-    }
+) -> Bool? {
+  match wireless_adapter_can_associate(standing: bootstrapper_wireless) {
+    Absent => Absent
+    Present { value: can_associate } =>
+      if !can_associate {
+        Present { value: false }
+      } else {
+        same_rack(a: bootstrapper_residence, b: target_residence)
+      }
   }
 }
 
@@ -227,27 +231,39 @@ fn wifi_bootstrap_step_admissible(
         match host_spatial_facts_for(facts: facts, host: step.target) {
           Absent => WifiBootstrapRefused { cause: "target_facts_absent" as NonEmptyStr }
           Present { value: target } =>
-            if !wifi_relay_can_bootstrap(
+            match wifi_relay_can_bootstrap(
               relay: bootstrapper.relay,
               wireless: bootstrapper.wireless,
             ) {
-              WifiBootstrapRefused { cause: "bootstrapper_not_provisioned" as NonEmptyStr }
-            } else if !wifi_target_needs_bootstrap(need: target.bootstrap_need) {
-              WifiBootstrapRefused { cause: "target_does_not_need_bootstrap" as NonEmptyStr }
-            } else if !wifi_probe_is_candidate(
-              bootstrapper_residence: bootstrapper.residence,
-              target_residence: target.residence,
-              bootstrapper_wireless: bootstrapper.wireless,
-            ) {
-              WifiBootstrapRefused { cause: "wifi_probe_not_candidate" as NonEmptyStr }
-            } else if !wireless_reach_established(
-              bootstrapper: step.bootstrapper,
-              target: step.target,
-              standings: reach_standings,
-            ) {
-              WifiBootstrapRefused { cause: "wireless_reach_unobserved" as NonEmptyStr }
-            } else {
-              WifiBootstrapAdmissible
+              Absent =>
+                WifiBootstrapRefused { cause: "bootstrapper_wireless_unobserved" as NonEmptyStr }
+              Present { value: relay_ok } =>
+                if !relay_ok {
+                  WifiBootstrapRefused { cause: "bootstrapper_not_provisioned" as NonEmptyStr }
+                } else if !wifi_target_needs_bootstrap(need: target.bootstrap_need) {
+                  WifiBootstrapRefused { cause: "target_does_not_need_bootstrap" as NonEmptyStr }
+                } else {
+                  match wifi_probe_is_candidate(
+                    bootstrapper_residence: bootstrapper.residence,
+                    target_residence: target.residence,
+                    bootstrapper_wireless: bootstrapper.wireless,
+                  ) {
+                    Absent =>
+                      WifiBootstrapRefused { cause: "wifi_probe_residence_unobserved" as NonEmptyStr }
+                    Present { value: is_candidate } =>
+                      if !is_candidate {
+                        WifiBootstrapRefused { cause: "wifi_probe_not_candidate" as NonEmptyStr }
+                      } else if !wireless_reach_established(
+                        bootstrapper: step.bootstrapper,
+                        target: step.target,
+                        standings: reach_standings,
+                      ) {
+                        WifiBootstrapRefused { cause: "wireless_reach_unobserved" as NonEmptyStr }
+                      } else {
+                        WifiBootstrapAdmissible
+                      }
+                  }
+                }
             }
         }
     }

@@ -148,21 +148,34 @@ test fn same_rack_unobserved_is_absent_not_false() -> Bool {
 }
 
 test fn wireless_standing_discriminates_present_vs_absent() -> Bool {
-  wireless_adapter_can_associate(
+  match wireless_adapter_can_associate(
     standing: WirelessAdapterPresent {
       interface: "wlan0" as NonEmptyStr,
       station_mode: StationModeUnobserved,
     },
-  )
-    && !wireless_adapter_can_associate(standing: WirelessAdapterAbsent)
-    && !wireless_adapter_can_associate(standing: WirelessAdapterUnobserved)
-    && wifi_relay_can_bootstrap(
-      relay: RelayProvisioned,
-      wireless: WirelessAdapterPresent {
-        interface: "wlan0" as NonEmptyStr,
-        station_mode: StationModeUnobserved,
-      },
-    )
+  ) {
+    Absent => false
+    Present { value: present_can } =>
+      match wireless_adapter_can_associate(standing: WirelessAdapterAbsent) {
+        Absent => false
+        Present { value: absent_can } =>
+          match wireless_adapter_can_associate(standing: WirelessAdapterUnobserved) {
+            Present { value: _ } => false
+            Absent =>
+              match wifi_relay_can_bootstrap(
+                relay: RelayProvisioned,
+                wireless: WirelessAdapterPresent {
+                  interface: "wlan0" as NonEmptyStr,
+                  station_mode: StationModeUnobserved,
+                },
+              ) {
+                Absent => false
+                Present { value: relay_can } =>
+                  present_can && !absent_can && relay_can
+              }
+          }
+      }
+  }
 }
 
 test fn srv1_measured_adapter_absent_specimen() -> Bool {
@@ -170,7 +183,10 @@ test fn srv1_measured_adapter_absent_specimen() -> Bool {
     Present { value: srv1 } =>
       match srv1.wireless {
         WirelessAdapterAbsent =>
-          !wireless_adapter_can_associate(standing: srv1.wireless)
+          match wireless_adapter_can_associate(standing: srv1.wireless) {
+            Present { value: can } => !can
+            Absent => false
+          }
         WirelessAdapterPresent { interface: _, station_mode: _ } => false
         WirelessAdapterUnobserved => false
       }
@@ -180,14 +196,17 @@ test fn srv1_measured_adapter_absent_specimen() -> Bool {
 }
 
 test fn same_rack_makes_probe_candidate_without_establishing_reach() -> Bool {
-  wifi_probe_is_candidate(
+  match wifi_probe_is_candidate(
     bootstrapper_residence: seed_rack_a_residence,
     target_residence: next_rack_a_residence,
     bootstrapper_wireless: WirelessAdapterPresent {
       interface: "wlan0" as NonEmptyStr,
       station_mode: StationModeUnobserved,
     },
-  )
+  ) {
+    Absent => false
+    Present { value: is_candidate } => is_candidate
+  }
     && !wireless_reach_established(
       bootstrapper: host_seed,
       target: host_next,
@@ -223,14 +242,17 @@ test fn association_receipt_establishes_reach_and_admits_bootstrap() -> Bool {
 }
 
 test fn synthetic_second_rack_refuses_probe_and_bootstrap() -> Bool {
-  !wifi_probe_is_candidate(
+  match wifi_probe_is_candidate(
     bootstrapper_residence: seed_rack_a_residence,
     target_residence: far_rack_b_residence,
     bootstrapper_wireless: WirelessAdapterPresent {
       interface: "wlan0" as NonEmptyStr,
       station_mode: StationModeUnobserved,
     },
-  )
+  ) {
+    Absent => false
+    Present { value: is_candidate } => !is_candidate
+  }
     && match wifi_bootstrap_step_admissible(
       step: WifiBootstrapStep { bootstrapper: host_seed, target: host_far },
       facts: spatial_fixture_facts,

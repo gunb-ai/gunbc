@@ -31,6 +31,7 @@ type Quantity =
   | RotationalSpeed
 
   | ElectricPotential
+  | ElectricPotentialDifference
   | ElectricCurrent
   | Resistance
   | Capacitance
@@ -235,13 +236,11 @@ type Watt = Measure<Power, One, Nat>
 
 type Milliwatt = Measure<Power, Milli, Nat>
 
-type Volt = Measure<ElectricPotential, One, Nat>
+type Volt = Measure<ElectricPotentialDifference, One, Nat>
 
 type Ampere = Measure<ElectricCurrent, One, Nat>
 
-type Foot = Measure<Length, One, Nat>
-
-type Millimeter = Measure<Length, One, Nat>
+type Millimeter = Measure<Length, Milli, Nat>
 
 type Joule = Measure<Energy, One, Nat>
 
@@ -326,14 +325,6 @@ fn ampere(count: Nat) -> Ampere {
 
 fn ampere_count(a: Ampere) -> Nat {
   measure_count(a)
-}
-
-fn foot(count: Nat) -> Foot {
-  Measure { count: count }
-}
-
-fn foot_count(f: Foot) -> Nat {
-  measure_count(f)
 }
 
 fn millimeter(count: Nat) -> Millimeter {

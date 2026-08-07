@@ -1,7 +1,7 @@
 module extdeps.power.eaton_tripp_lite
 
 import std.types { NonEmptyStr, String }
-import std.measure { volt, ampere, foot }
+import std.measure { volt, ampere, millimeter }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.power.types { PduCatalogRow }
 import extdeps.vendor.eaton { eaton }
@@ -15,6 +15,11 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+// The datasheet states the RS-1215 cord length as 15 ft. It is carried as 4572 mm, which is
+// exact (1 ft = 304.8 mm). std.measure has one canonical Length carrier and no non-decimal
+// foot scale: Measure<Dimension, Scale, Carrier> expresses only decimal and binary scales, so
+// a Foot alias at scale One was structurally identical to Millimeter and silently
+// interchangeable with it (review 50310).
 data eaton_tripp_lite_rs_1215_family_catalog: PduCatalogRow = PduCatalogRow {
   model_family: "RS-1215",
   manufacturer: eaton,
@@ -24,7 +29,7 @@ data eaton_tripp_lite_rs_1215_family_catalog: PduCatalogRow = PduCatalogRow {
   outlet_count: 12,
   front_outlet_count: 6,
   rear_outlet_count: 6,
-  cord_length: foot(15),
+  cord_length: millimeter(4572),
 }
 
 data pdu_variant_selection_note: String = "RS-1215 vs RS-1215-RA differ in outlet geometry and must come from the physical label on pdu-01 — do not pick one until observed."
