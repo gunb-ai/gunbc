@@ -1,8 +1,6 @@
 // THIS MODULE DESCRIBES CLAIMS; IT DOES NOT VERIFY THEM. Decoding a JWT payload is base64url and JSON, requiring no key and proving nothing — a token whose claims decode cleanly may be entirely forged. Verification means fetching the issuer's JWKS and checking the signature over the header and payload, which is a network operation with its own failure modes and cache semantics.
 //
 // The boundary is stated because the two are trivially confusable once claims are sitting in a typed record that looks authoritative. Reading unverified claims is legitimate for display and for deciding which account a credential names; it is NOT legitimate for authorization. Nothing here should be read as making the second safe, and a verification surface lands as its own module with the JWKS fetch it requires.
-//
-// The StringOrURI decoder above is not an exception to this. It checks SYNTAX, which is decidable from the value alone; it does not check that the URI resolves, that the issuer is trusted, or that anyone signed anything.
 module extdeps.auth.jwt
 
 import std.types { String, NonEmptyStr, Int, Bool, List }
@@ -175,6 +173,7 @@ fn jwt_scheme_valid(s: String, end: Int) -> Bool {
   }
 }
 
+// This decoder is not an exception to the module's describe-not-verify boundary. It checks SYNTAX, which is decidable from the value alone; it does not check that the URI resolves, that the issuer is trusted, or that anyone signed anything.
 fn jwt_string_or_uri_of_wire(raw: NonEmptyStr) -> JwtStringOrUriDecode {
   let s = raw as String
   match jwt_first_colon(s: s) {
