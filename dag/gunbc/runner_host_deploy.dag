@@ -14,6 +14,7 @@ import extdeps.cache.sccache { SccacheBinaryRelease, sccache_release_0_15_0, scc
 import extdeps.crypto.hash { Digest, sha256_digest }
 import extdeps.container.docker_ce { docker_ce_apt_repo_noble_arm64, docker_ce_packages, docker_ce_repo_install_script }
 import gunbc.fleet_intent { fleet_intent_known_hosts }
+import gunbc.runner_slot_allocation { srv4_disk_admitted_slot_width }
 import product.placement_supply { HostIdentity }
 
 data runner_host_deploy_citation: String = "§3 cite-upstream, do-not-re-coin: GitHub Actions runner host provisioning is realized by the ctrl installer at ctrl:scripts/session-dashboard/host/ (deploy-runner-hosts.sh and install-actions-runner.sh) — the single battle-tested rotation point (GitHub App key distribution, jit-runner.sh ephemeral wrapper, actions-runner service template, ghrunner de-priv job user plus rootless docker for public-PR isolation, per-slot cgroup caps). RunnerHostDeploy models the typed INTERFACE (which host, label, runner user, de-priv job user, App-key secret, slot count); the installer is the bound realization HANDLER, one of N transports, NOT re-implemented in .dag. DISSOLVES WHEN host_effect_apply binds RunnerHostDeploy through a transport handler that invokes the cited installer plus per-slot provisioning without a hand-run shell step."
@@ -46,7 +47,7 @@ type RunnerHostDeploy {
   runner_count: Int
 }
 
-data srv4_runner_count_disk_cap_note: String = "srv4's MATERIALIZED width stays hand-pinned at 5 while the solver derives 7, and the gap is a declared disk constraint rather than a disagreement about RAM. Its NVMe is a Samsung 970 EVO 500GB against 2TB on srv1-3, and every ephemeral runner keeps a _work tree plus caches, so disk — not memory — is what binds this host. gunbc.ci_runner_placement models RAM only; until a per-host disk-headroom term folds into runner_deployment_plan, the solver cannot see the constraint that actually decides srv4's width, and this row is where that fact is carried.\n\nARITHMETIC CORRECTED 2026-08-05. This note previously said the solver gave srv4 'the RAM-derived 10', which stopped being true at the 2026-07-10 re-carve: 10 belonged to the retired 8GiB x 10 shape, and at 16GiB x 5 the solver derived 5 — the same number as this pin, so the fork was invisible for three weeks precisely because the two agreed by coincidence. The 2026-08-05 per-host ruling moves the solver to 7 for srv3/srv4 (gunbc.runner_slot_allocation gunbc_runner_slot_width_ruling_note), which makes the disagreement visible again and real: 7 ephemeral _work trees on a 500GB disk is roughly 38GB each after the shared toolchain and cache trees, against ~100GB each today.\n\nWHAT THIS MEANS OPERATIONALLY, stated so nobody reads the solver's 7 as a green light: srv4 is admitted for 7 slots by MEMORY and gated at 5 by DISK, and only the memory half is modeled. Provisioning slots 06 and 07 on srv4 must not happen on the strength of runner_deployment_plan alone. srv3 carries no such gate — same 2TB class as srv1/srv2 — so the managed pair are NOT symmetric on this axis even though their RAM widths are identical.\n\ndissolve-on unchanged and now load-bearing rather than tidy: fold a per-host disk-headroom term into runner_deployment_plan so the cap is solver-derived, at which point this pin and this note both retire and srv4's admitted width becomes whichever of the two constraints actually binds."
+data srv4_runner_count_disk_cap_note: String = "srv4_runner_host_deploy.runner_count CONSUMES gunbc.runner_slot_allocation srv4_disk_admitted_slot_width — the single disk-cap authority (srv4_disk_admitted_slot_width_note). This row does not re-author the width; it projects the deploy interface from the allocation module so installer argv and roster width cannot drift independently."
 
 data srv4_runner_host_deploy: RunnerHostDeploy = RunnerHostDeploy {
   host_label: "srv4",
@@ -54,7 +55,7 @@ data srv4_runner_host_deploy: RunnerHostDeploy = RunnerHostDeploy {
   runner_user: "briansrls",
   job_user: "ghrunner",
   app: gunbc_ci_github_app,
-  runner_count: 5,
+  runner_count: srv4_disk_admitted_slot_width,
 }
 
 data runner_host_prereq_note: String = "Execution-surface prereqs the runner host must satisfy (gunbc.fleet_intent.fleet_intent_execution_surface now declares container_runtime: Docker + toolchains: [sccache], so the surface no longer lies). These two scripts provision that surface on a fresh host BEFORE install-actions-runner.sh: docker_ce (the rootless-docker apt prereq the ctrl installer assumes) then sccache (the pinned binary install-ctrl-sccache.sh assumes on PATH). Each cites its upstream; the shell leaves carry dissolution triggers in their extdeps modules."
