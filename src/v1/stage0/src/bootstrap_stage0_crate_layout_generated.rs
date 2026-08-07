@@ -7,6 +7,7 @@ pub const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "cli_run.rs",
     "coproduct_reflection.rs",
     "data_initializer_identity.rs",
+    "decl_facts_marshal_bridge.rs",
     "resolved_graph_cache.rs",
     "shared_typecheck_store.rs",
     "recorded_fixture.rs",
