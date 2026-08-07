@@ -16,7 +16,7 @@ use std::io::Write as IoWrite;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, OnceLock};
-use std::time::Instant;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
@@ -239,6 +239,23 @@ fn snapshot_terminal_path(walk_attempt_id: &str) -> PathBuf {
 
 fn trace_path(walk_attempt_id: &str) -> PathBuf {
     snapshot_dir(walk_attempt_id).join(FLOOR_DISCOVERY_TRACE_FILE)
+}
+
+/// Wall-clock origin for a trace row, in milliseconds since the Unix epoch.
+///
+/// `started_ms` and `completed_ms` must be comparable ACROSS rows and across the
+/// producer/consumer process boundary, so they cannot be derived from a per-call
+/// `Instant`: a monotonic origin is only meaningful relative to itself. The row's
+/// duration is carried separately by `wall_ns`.
+///
+/// `0` is the unreadable-clock sentinel (system time at or before the epoch). It is
+/// deliberately an implausible timestamp rather than a plausible one, and it is
+/// observational telemetry only — no gate reads this value.
+fn trace_epoch_millis() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0)
 }
 
 pub fn append_discovery_trace_row(
@@ -601,7 +618,7 @@ pub fn discover_floor_witness_roster_with_snapshot(
     )?;
     let request_digest = request_identity_digest(&request);
     let started = Instant::now();
-    let started_ms = started.elapsed().as_millis();
+    let started_ms = trace_epoch_millis();
 
     match consumer {
         FloorDiscoveryConsumerRole::CoordinatedConsumer => {
@@ -609,7 +626,7 @@ pub fn discover_floor_witness_roster_with_snapshot(
             install_floor_discovery_snapshot(&snapshot);
             let rows: Vec<super::DiscoveryRow> =
                 snapshot.roster.iter().map(snapshot_to_row).collect();
-            let completed_ms = started.elapsed().as_millis();
+            let completed_ms = trace_epoch_millis();
             append_discovery_trace_row(
                 walk_attempt_id,
                 "discover_floor_witness_roster",
@@ -627,7 +644,7 @@ pub fn discover_floor_witness_roster_with_snapshot(
         FloorDiscoveryConsumerRole::Producer | FloorDiscoveryConsumerRole::Standalone => {
             if let Some(lock) = IN_PROCESS_ROSTER_BY_REQUEST.get() {
                 if let Some(rows) = lock.lock().unwrap().get(&request_digest) {
-                    let completed_ms = started.elapsed().as_millis();
+                    let completed_ms = trace_epoch_millis();
                     append_discovery_trace_row(
                         walk_attempt_id,
                         "discover_floor_witness_roster",
@@ -658,7 +675,7 @@ pub fn discover_floor_witness_roster_with_snapshot(
     if consumer == FloorDiscoveryConsumerRole::Producer {
         publish_floor_discovery_snapshot(walk_attempt_id, &snapshot)?;
     }
-    let completed_ms = started.elapsed().as_millis();
+    let completed_ms = trace_epoch_millis();
     append_discovery_trace_row(
         walk_attempt_id,
         "discover_floor_witness_roster",

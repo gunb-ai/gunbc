@@ -8702,25 +8702,24 @@ fn maybe_run_floor_coordinator(args: &[String]) -> Option<ExitCode> {
         }
     };
     let excludes = v1_compiler::cli_run::witness_exclusion_substrings();
-    let pre_plan_request = build_floor_discovery_request(
+    let pre_plan_request = match build_floor_discovery_request(
         &source_roots,
         &[],
         &excludes,
         &[],
         "Hermetic",
         &source_roots,
-    )
-    .map_err(|msg| {
-        eprintln!("claim_executor: floor coordinator pre-plan request refusal: {msg}");
-    })
-    .ok();
-    if let Some(request) = pre_plan_request {
-        let digest = request_identity_digest(&request);
-        if let Err(msg) = verify_floor_discovery_terminal_for_coordinator(&walk_attempt_id, &digest)
-        {
-            eprintln!("claim_executor: floor coordinator snapshot terminal refusal: {msg}");
+    ) {
+        Ok(request) => request,
+        Err(msg) => {
+            eprintln!("claim_executor: floor coordinator pre-plan request refusal: {msg}");
             return Some(ExitCode::from(1));
         }
+    };
+    let digest = request_identity_digest(&pre_plan_request);
+    if let Err(msg) = verify_floor_discovery_terminal_for_coordinator(&walk_attempt_id, &digest) {
+        eprintln!("claim_executor: floor coordinator snapshot terminal refusal: {msg}");
+        return Some(ExitCode::from(1));
     }
     let batch_ids = match read_scoped_witness_batch_manifest() {
         Ok(ids) => ids,
