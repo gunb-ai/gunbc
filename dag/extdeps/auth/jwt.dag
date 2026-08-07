@@ -1,4 +1,7 @@
 module extdeps.auth.jwt
+// THIS MODULE DESCRIBES CLAIMS; IT DOES NOT VERIFY THEM. Decoding a JWT payload is base64url and JSON, requiring no key and proving nothing — a token whose claims decode cleanly may be entirely forged. Verification means fetching the issuer's JWKS and checking the signature over the header and payload, which is a network operation with its own failure modes and cache semantics.
+//
+// The boundary is stated because the two are trivially confusable once claims are sitting in a typed record that looks authoritative. Reading unverified claims is legitimate for display and for deciding which account a credential names; it is NOT legitimate for authorization. Nothing here should be read as making the second safe, and a verification surface lands as its own module with the JWKS fetch it requires.
 
 import std.types { String, NonEmptyStr, Int, Bool, List }
 import std.measure { Second, second }
@@ -12,7 +15,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data jwt_registered_claims_note: String = "RFC 7519 REGISTERED CLAIMS BELONG TO THE IETF, NOT TO WHOEVER ISSUED THE TOKEN. Every provider that emits a JWT emits iss, sub, aud, exp and iat with the same meanings, so modeling them inside a vendor's module would coin the seventh copy of a concept the RFC already owns.\\n\\nEVERY ONE OF THEM IS OPTIONAL, and the first cut of this record got that exactly backwards. Section 4.1 says it in the registry's own preamble — none of the registered claims are intended to be mandatory to use or implement — and then repeats 'Use of this claim is OPTIONAL' under each individual claim. The earlier record made all six required, which encoded ONE OBSERVED TOKEN as the definition of the standard: the codex id_token happens to carry all of them, so a shape derived from it refuses every conforming JWT that omits a claim the RFC never demanded. A signed token with no jti is not malformed, and a model that cannot represent one is not describing RFC 7519.\\n\\nWHERE REQUIREMENT ACTUALLY LIVES IS THE PROFILE. OIDC Core section 2 requires iss, sub, aud, exp and iat in an ID Token — that is a real obligation, and it belongs to OIDC rather than to the JWT layer. Pushing it down here would make the base type unable to describe the many conforming JWTs that are not ID Tokens. So this record stays fully optional and extdeps.auth.oidc declares its own required core, which is the single-authority reading: the RFC owns the vocabulary, the profile owns the obligation."
 
 // NumericDate is RFC 7519 section 2: a JSON numeric value counting seconds from the UNIX epoch,
 // explicitly not milliseconds, and explicitly ignoring leap seconds. The unit matters enough to be
@@ -171,6 +173,7 @@ fn jwt_scheme_valid(s: String, end: Int) -> Bool {
   }
 }
 
+// This decoder is not an exception to the module's describe-not-verify boundary. It checks SYNTAX, which is decidable from the value alone; it does not check that the URI resolves, that the issuer is trusted, or that anyone signed anything.
 fn jwt_string_or_uri_of_wire(raw: NonEmptyStr) -> JwtStringOrUriDecode {
   let s = raw as String
   match jwt_first_colon(s: s) {
@@ -227,6 +230,11 @@ fn jwt_audience_values(audience: JwtAudience) -> List<JwtStringOrUri> {
   }
 }
 
+// RFC 7519 REGISTERED CLAIMS BELONG TO THE IETF, NOT TO WHOEVER ISSUED THE TOKEN. Every provider that emits a JWT emits iss, sub, aud, exp and iat with the same meanings, so modeling them inside a vendor's module would coin the seventh copy of a concept the RFC already owns.
+//
+// EVERY ONE OF THEM IS OPTIONAL, and the first cut of this record got that exactly backwards. Section 4.1 says it in the registry's own preamble — none of the registered claims are intended to be mandatory to use or implement — and then repeats 'Use of this claim is OPTIONAL' under each individual claim. The earlier record made all six required, which encoded ONE OBSERVED TOKEN as the definition of the standard: the codex id_token happens to carry all of them, so a shape derived from it refuses every conforming JWT that omits a claim the RFC never demanded. A signed token with no jti is not malformed, and a model that cannot represent one is not describing RFC 7519.
+//
+// WHERE REQUIREMENT ACTUALLY LIVES IS THE PROFILE. OIDC Core section 2 requires iss, sub, aud, exp and iat in an ID Token — that is a real obligation, and it belongs to OIDC rather than to the JWT layer. Pushing it down here would make the base type unable to describe the many conforming JWTs that are not ID Tokens. So this record stays fully optional and extdeps.auth.oidc declares its own required core, which is the single-authority reading: the RFC owns the vocabulary, the profile owns the obligation.
 type JwtRegisteredClaims {
   issuer: JwtStringOrUri?
   subject: JwtStringOrUri?
@@ -237,4 +245,3 @@ type JwtRegisteredClaims {
   jwt_id: NonEmptyStr?
 }
 
-data jwt_verification_boundary_note: String = "THIS MODULE DESCRIBES CLAIMS; IT DOES NOT VERIFY THEM. Decoding a JWT payload is base64url and JSON, requiring no key and proving nothing — a token whose claims decode cleanly may be entirely forged. Verification means fetching the issuer's JWKS and checking the signature over the header and payload, which is a network operation with its own failure modes and cache semantics.\\n\\nThe boundary is stated because the two are trivially confusable once claims are sitting in a typed record that looks authoritative. Reading unverified claims is legitimate for display and for deciding which account a credential names; it is NOT legitimate for authorization. Nothing here should be read as making the second safe, and a verification surface lands as its own module with the JWKS fetch it requires.\\n\\nThe StringOrURI decoder above is not an exception to this. It checks SYNTAX, which is decidable from the value alone; it does not check that the URI resolves, that the issuer is trusted, or that anyone signed anything."

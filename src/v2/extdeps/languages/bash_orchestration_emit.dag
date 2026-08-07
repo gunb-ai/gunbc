@@ -30,9 +30,7 @@ import v2.extdeps.languages.bash_orch_if {
   orch_if_block_target_model,
   orch_if_else_block_target_model,
   bash_stmt_while_emitted,
-  orch_while_target_model,
-  bash_bounded_poll_emitted,
-  orch_bounded_poll_target_model
+  orch_while_target_model
 }
 import v2.extdeps.languages.bash_orch_tier2 {
   bash_orch_procedure_emitted,
@@ -71,7 +69,6 @@ import v2.std.orchestration_emit {
   orch_construct_if_block,
   orch_construct_if_else_block,
   orch_construct_while,
-  orch_construct_bounded_poll,
   orch_construct_procedure,
   orch_construct_call,
   orch_construct_cmdsubst_assign,
@@ -134,10 +131,6 @@ fn bash_orchestration_emit_registry_node() -> Node {
       bash_named_edge(
         name: orch_construct_while,
         target: bash_stmt_while_emitted
-      ),
-      bash_named_edge(
-        name: orch_construct_bounded_poll,
-        target: bash_bounded_poll_emitted
       ),
       bash_named_edge(
         name: orch_construct_procedure,
@@ -236,7 +229,6 @@ fn bash_orchestration_emit_medium() -> OrchestrationEmitMedium {
     realize_if_block: orch_if_block_target_model,
     realize_if_else_block: orch_if_else_block_target_model,
     realize_while: orch_while_target_model,
-    realize_bounded_poll: orch_bounded_poll_target_model,
     realize_procedure: orch_procedure_target_model,
     realize_call: orch_call_target_model,
     realize_cmdsubst_assign: orch_cmdsubst_assign_target_model,

@@ -1,9 +1,9 @@
 # `.dag` annotation prose — the representation defect
 
-**Status: audit complete; source-annotation policy ruled; implementation and reconciliation unstarted.**
-Measured at `64aed6007e`, 2026-08-04. **Nothing deleted, migrated, or reconciled.** The canonical policy
+**Status: audit complete; source-annotation policy ruled; M1C-1 implemented in #7955 on jwt.dag and the annotation carrier modules; corpus reconciliation ongoing.**
+Measured at `64aed6007e`, 2026-08-04. **M1C-1 (#7955) implements the two deferred jwt.dag prose migrations, self-applies the feature to `dag/std/source_annotation.dag`, `src/v1/annotation_bind.dag`, and `src/v1/tests/claim/v1_annotation_round_trip_test.dag`, and leaves oidc.dag's four legacy rows for a follow-on.** The canonical policy
 landed in DESIGN.md §4c through `gunbc.design_document` (operator ruling, 2026-08-04); §5 records the
-D-A–D-D rulings and the four structural corrections that shaped them. No slice below is started.
+D-A–D-D rulings and the four structural corrections that shaped them. Slice status is reconciled in §6.
 
 **Instrument:** a scratchpad Python extractor (three tiers, ≥200 B decoded string values, matching
 [dag-note-prose-census.md](dag-note-prose-census.md) §6's grain). **Not committed** — see §8. Verified
@@ -232,8 +232,8 @@ load-bearing — why a predicate is deliberately concrete rather than generic an
 about a required executable (`gunbc.roadmap_dashboard_instance_apply` `executable_survey_note`); why a
 stale-socket host differs from a never-provisioned one, at a measured cost of a week's silent uncaching
 (`gunbc.build_cache_endpoint_path` `endpoint_path_state_authority_note`); why RFC 7519's registered claims
-are all optional, including that the first cut got it backwards (`extdeps.auth.jwt`
-`jwt_registered_claims_note`).
+are all optional, including that the first cut got it backwards (`extdeps.auth.jwt` module annotation on
+`JwtRegisteredClaims`).
 
 **The crucial reading: valuable and irreducible does not mean correctly represented.** Every one of those
 notes is worth keeping *and* wrong as `data Foo: String`. Value and representation are independent axes,
@@ -319,36 +319,25 @@ not hand-edited. The rule it states: **prose is not forbidden; unclassified pros
 
 ---
 
-## 6. Sequence after sign-off (nothing here is started)
+## 6. Sequence after sign-off (slice status reconciled)
 
-1. **Slice 1 — authority + pure laws.** Structural subject, annotation block, ordered graph, attachment
-   refusals, erasure projection, module-item attachment law, and the **allocator-disjointness law** (§2c).
-   No annotation identity, no `SourceAnnotationRationale`, and no `.dag` syntax named. Home chosen by the
-   DFS D-A requires, not assumed.
-2. **Slice 2 — `.dag` syntax realization.** A line-comment **`AnnotationRule` — never `TriviaRule`, never
-   `TokenRule`** (§2a) — reusing the existing `LineCommentTextChar` lexical class, carrying
-   `AnnotationPlacement` so trailing is distinguishable after whitespace removal (§2e); split comment
-   fidelity out of
-   `v2.extdeps.languages.dag` `DagTriviaNormalization` (a preserved comment is no longer trivia) so
-   `dag_line_comment_fidelity` becomes `Modeled` while `dag_block_comment_fidelity` stays
-   `FailClosed { feature: DagBlockCommentFailClosed }`. The v1 bridge needs a new `TokenShape` variant
-   (`v1.00_core` — the `Sh*` convention has no comment variant today), tokenize-rather-than-skip in
-   `01_tokenize`, pending-annotation attachment in `02_parse`, and a **regenerated** stage0 mirror.
-3. **Slice 3 — discriminating execution.** Recut `v2.test.round_trip.dag_comment_wall_test` rather than
-   invert it, covering all seven D-C proofs. Controls: annotation block appears exactly once with the right
-   subject (consecutive lines grouped, not one per line); semantic structure and **occurrence identities**
-   equal with and without, **including in later-parsed modules**; semantic hash equal; emitted Rust bytes
-   identical; annotation census differs; provenance still correct after the byte-range shift;
-   **parse → render → parse preserves the block**; a `TriviaRule` treatment reds the visibility witness; a
-   binding treatment reds the non-binding witness; `//` inside a string yields zero annotations; block and
-   trailing still refuse; pending-at-EOF refuses.
-4. **Slice 4 — make recurrence unwritable.** Extend an existing liveness kernel (`v2.lens.inert_carrier`
-   covers type carriers, not this `data`-declaration class) rather than minting a fresh prose lens. The
-   decidable class: *a declaration with zero real program/document/typed-carrier consumers cannot survive
-   merely to hold prose.* Deadness and consumer identity are **graph facts** — resolved declaration and
-   reference facts, not `_note` names and not regexes.
-5. **Slice 5 — reconcile the mountain**, per the §4 partition, splitting mixed rows by fact before
-   disposition.
+1. **Slice 1 — authority + pure laws.** **Landed in M1A.** `std.source_annotation` carries structural
+   subject, annotation block, ordered graph, attachment refusals, erasure projection, module-item
+   attachment law, and the allocator-disjointness law (§2c). Provisional carriers named in §2 were
+   grounded under their final names in-tree.
+2. **Slice 2 — `.dag` syntax realization.** **Landed in M1A.** The v1 seed realizes line-comment capture
+   through `UnboundAnnotationCapture`, placement observation, and delimiter normalization in
+   `v1.compiler.annotation_bind`; v2 modeled syntax remains a separate follow-on.
+3. **Slice 3 — discriminating execution.** **M1A + M1B complete at declared scope.** Binding controls,
+   admission routing, blank-line grouping, and the round-trip roster exercise parse → render → parse
+   through the production admission seam.
+4. **Slice 4 — make recurrence unwritable.** **Path-scoped introduction wall landed; corpus-wide wall
+   open.** `gunbc.prose_row_frontier` refuses new `data *_note` rows on enrolled paths; the roster grows
+   with each migrated batch rather than waiting for directories to drain first.
+5. **Slice 5 — reconcile the mountain.** **M1C-0 merged; M1C-1 implemented in #7955; corpus drain
+   ongoing.** jwt.dag is prose-free; four grandfathered rows remain in oidc.dag; the three annotation
+   carrier modules self-apply with lifecycle/status facts retained in typed rows where no dedicated home
+   exists yet.
 
 ---
 
@@ -378,20 +367,16 @@ ever having pretended it was program data.
 - **48 sites** — §3's shares carry roughly ±14pp at 95%; ≤6% is a *site* bound, not a byte bound.
 - **The extractor over-counts by ~3%** (payload leakage) and ~1% against an independent count.
 - **§3b's markers are lexical.** Whether a note's core is irreducible is a judgment, stated as one.
-- **§2's type names are provisional**; the laws beside them are the substance. `LexArtifact`,
-  `AuthoredParseArtifact`, `SourceAnnotationDebt`, `AnnotationPlacement`, and `UnboundSourceAnnotation` do
-  **not** exist in tree — they are the shapes Slices 1–2 would author. Everything §2 cites as *existing*
-  was grep-verified (`LexRule` with exactly two variants today, `ParseArtifact { tree, span_index }`, v1
-  `Node.properties`, `LineCommentTextChar`, `DagTriviaNormalization`, `dag_line_comment_fidelity`,
-  `inert_carrier`, the executing wall). One correction: **`ShLineComment` does not exist** — `TokenShape`
-  in `v1.00_core` has no comment variant, so Slice 2 adds one rather than reusing it.
-- **The §2c allocator hazard is reasoned, not executed.** That annotations drawing from the occurrence
-  allocator *would* shift later semantic identities follows from the allocator being graph-scoped; no
-  probe has demonstrated the shift, because the unsafe carrier was never built. The D-C controls are
-  written to prove the disjointness law directly rather than to rely on this reasoning.
-- **Nothing was deleted, split, migrated, or reconciled**; no slice is started. The only change outside
-  this document is DESIGN.md §4c and its authority, plus the doc-graph bind.
-
-**Scaffold, with a dissolution trigger:** this document deletes when the source-annotation carrier lands
-with its executed controls and the §4 partition is complete — at which point a lexical audit over prose is
-superseded by a fold over the annotation graph and the typed populations beside it.
+- **§2's provisional names are largely grounded in-tree.** `std.source_annotation` and
+  `v1.compiler.annotation_bind` realize the carriers this audit originally named provisionally; v2 modeled
+  `AnnotationRule` syntax and the full D-C wall over v2 ingest remain open follow-ons.
+- **Allocator disjointness has executed controls.** M1A binding and round-trip witnesses exercise
+  attachment without minting annotation identities; the D-C controls were written to prove the law directly
+  rather than to rely on reasoning alone.
+- **Migration has started, not finished.** jwt.dag and the three self-applied annotation modules are
+  implemented in #7955; oidc.dag still carries four grandfathered prose rows; the §4 partition and corpus
+  drain remain open.
+- **This audit document remains until the deletion trigger closes.** The scaffold deletes when the
+  source-annotation carrier, its executed controls, and the §4 partition are complete — at which point a
+  lexical audit over prose is superseded by a fold over the annotation graph and the typed populations
+  beside it.

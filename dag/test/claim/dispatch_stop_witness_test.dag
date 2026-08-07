@@ -1,14 +1,10 @@
 module test.claim.dispatch_stop_witness
 
-import gunbc.roadmap_model { Unsized }
 import extdeps.tmux { TmuxLsEntry }
 import gunbc.roadmap_dispatch_actuator {
   TmuxSessionScope, TmuxPaneEntry,
   parse_tmux_pane_line, parse_tmux_panes_output, tmux_list_panes_argv,
   tmux_session_observation_with_panes, dispatch_tmux_session_scope,
-  dispatch_actuator_selection,
-  DispatchActuatorSelectionOk,
-  DispatchActuatorSelectionRefused,
   DispatchStopGate, StopPermitted, StopRefused, dispatch_stop_gate,
   DispatchLiveSession,
   CodexDispatchProvider,
@@ -19,6 +15,7 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_session_cleanup,
   dispatch_tmux_process_fingerprint_observation_dissolution_trigger,
 }
+import gunbc.dispatch_selection { dispatch_codex_process_fingerprint }
 import gunbc.roadmap_belt_actuate {
   BeltStopResult, StopProcessStopped, StopRetainedSessionCleared,
   StopDisabled, StopRefusedResult, StopObserveRefused, StopTeardownFailed,
@@ -40,22 +37,13 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data dispatch_stop_witness_note: String = "Cleanup receipts separate a present tmux container from its provider process. The legacy running-process fingerprint gate remains pinned as a compatibility negative control. The shared lifecycle path proves three independent conclusions: an owned running node process may be stopped, a retained dead pane may be cleared regardless of its historical env command, and a foreign running process refuses. The wire distinguishes process_stopped from session_cleared and carries ok explicitly; the client renders process evidence beside a stop/clear/unavailable cleanup control."
+data dispatch_stop_witness_note: String = "Cleanup receipts separate a present tmux container from its provider process. The legacy running-process fingerprint gate remains pinned as a compatibility negative control. The shared lifecycle path proves three independent conclusions: an owned running node process may be stopped, a retained dead pane may be cleared regardless of its historical env command, and a foreign running process refuses. The wire distinguishes process_stopped from session_cleared and carries ok explicitly; the client renders process evidence beside a stop/clear/unavailable cleanup control. scope() uses dispatch_codex_process_fingerprint directly — stop-contract witnesses prove tmux ownership classification, not production selection standing; production dispatch_actuator_selection refuses until observation wires inventory standing."
 
 fn scope() -> TmuxSessionScope {
-  match dispatch_actuator_selection(node_sizing: Unsized) {
-    DispatchActuatorSelectionOk { provider: _, effort: _, process_fingerprint } =>
-      TmuxSessionScope {
-        session_name: "gunbc-dispatch-ts-authority-converge" as NonEmptyStr,
-        expected_owner_label: "gunbc-dispatch-ts-authority-converge" as NonEmptyStr,
-        expected_process_fingerprint: process_fingerprint,
-      }
-    DispatchActuatorSelectionRefused { reason: _ } =>
-      TmuxSessionScope {
-        session_name: "selection-refused" as NonEmptyStr,
-        expected_owner_label: "selection-refused" as NonEmptyStr,
-        expected_process_fingerprint: "selection-refused" as NonEmptyStr,
-      }
+  TmuxSessionScope {
+    session_name: "gunbc-dispatch-ts-authority-converge" as NonEmptyStr,
+    expected_owner_label: "gunbc-dispatch-ts-authority-converge" as NonEmptyStr,
+    expected_process_fingerprint: dispatch_codex_process_fingerprint,
   }
 }
 
