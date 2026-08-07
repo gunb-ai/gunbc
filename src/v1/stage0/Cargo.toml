@@ -288,3 +288,9 @@ path = "src/bin/silent_pick_crosscheck.rs"
 [[bin]]
 name = "namespace_structural_root_exposure_generated_witness"
 path = "src/bin/namespace_structural_root_exposure_generated_witness.rs"
+
+# Owned CI control plane v0 — poll-first discovery, durable queue, one executor,
+# GitHub Checks projection. See docs/plans/owned-ci-control-plane-design.md.
+[[bin]]
+name = "ci_control_plane"
+path = "src/bin/ci_control_plane.rs"

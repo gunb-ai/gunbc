@@ -159,4 +159,74 @@ service github.Checks {
       5xx => GitHubErrorShape
     }
   }
+
+  operation CreateRun {
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      name: String
+      head_sha: CommitSha
+      status: CheckStatus
+      details_url: String
+      external_id: String
+    }
+    output {
+      result: CheckRun
+    }
+    transport rest {
+      method: POST,
+      path: "/repos/\{owner\}/\{repo\}/check-runs",
+      body: {
+        name: name,
+        head_sha: head_sha,
+        status: check_status_wire_label(s: status),
+        details_url: details_url,
+        external_id: external_id,
+      }
+    }
+    response {
+      201 => CheckRun
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+
+  operation UpdateRun {
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      check_run_id: Int
+      status: CheckStatus
+      conclusion: CheckConclusion?
+      details_url: String
+      output_title: String
+      output_summary: String
+    }
+    output {
+      result: CheckRun
+    }
+    transport rest {
+      method: PATCH,
+      path: "/repos/\{owner\}/\{repo\}/check-runs/\{check_run_id\}",
+      body: {
+        status: check_status_wire_label(s: status),
+        conclusion: conclusion,
+        details_url: details_url,
+        output: { title: output_title, summary: output_summary },
+      }
+    }
+    response {
+      200 => CheckRun
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
 }

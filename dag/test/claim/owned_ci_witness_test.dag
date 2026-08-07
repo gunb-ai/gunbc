@@ -1,0 +1,115 @@
+module test.claim.owned_ci_witness
+
+import gunbc.ci_execution_plan {
+  CiExecutionSubject,
+  PushToMain, PullRequestToMain, OperatorRerun, ForkPullRequestRefused,
+  ci_subject_identity_key,
+  ci_subject_is_fork_refused,
+  ci_pull_request_is_same_repo,
+  ci_execution_plan_for_subject,
+  ci_execution_default_stages,
+  CiBuildStage, CiRegenStage, CiFloorStage,
+}
+import gunbc.owned_ci {
+  QueueLease,
+  CheckPublicationState,
+  CheckPublicationCompleted, CheckPublicationPending,
+  CheckPublicationNotStarted,
+  queue_lease_expired,
+  queue_lease_valid,
+  queue_lease_should_reclaim,
+  check_publication_reports_github_success,
+  check_publication_is_pending_honest,
+  owned_ci_check_name,
+}
+import extdeps.github.checks { Success, Failure }
+import extdeps.git.object_store { GitObjectId, GitSha1ObjectId, git_sha1_object_id }
+import std.types { String, Bool, NonEmptyStr }
+import v2.std.collection { Absent, Present }
+import gunbc.repository { gunbc_repository }
+
+data owned_ci_witness_note: String = "Owned CI v0 decision-procedure witnesses: lease expiry, fork refusal, publication honesty, subject identity, execution plan shape."
+
+fn sample_tree_hash() -> GitObjectId {
+  match git_sha1_object_id(hex: "4b825dc642cb6eb9a060e54bf8d69288fbee4904") {
+    Present { value: oid } => oid
+    Absent => GitSha1ObjectId { digest: "" }
+  }
+}
+
+test fn witness_fork_pr_refused() -> Bool {
+  let subject = ForkPullRequestRefused {
+    pr_number: 1,
+    head_repo_full_name: "other/fork",
+    reason: "fork PRs refuse in v0" as NonEmptyStr,
+  }
+  ci_subject_is_fork_refused(subject: subject)
+    && !(ci_pull_request_is_same_repo(head_repo_full_name: "other/fork"))
+}
+
+test fn witness_same_repo_pr_admits() -> Bool {
+  ci_pull_request_is_same_repo(head_repo_full_name: gunbc_repository.full_name)
+}
+
+test fn witness_expired_lease_is_reclaimed() -> Bool {
+  let lease = QueueLease { holder: "stale-host", expires_at_unix: 50 }
+  queue_lease_should_reclaim(lease: lease, now_unix: 50)
+    && queue_lease_should_reclaim(lease: lease, now_unix: 51)
+    && !(queue_lease_should_reclaim(lease: lease, now_unix: 49))
+}
+
+test fn witness_queue_lease_expiry() -> Bool {
+  let lease = QueueLease { holder: "host-1", expires_at_unix: 100 }
+  queue_lease_expired(lease: lease, now_unix: 100)
+    && queue_lease_expired(lease: lease, now_unix: 101)
+    && !(queue_lease_expired(lease: lease, now_unix: 99))
+    && queue_lease_valid(lease: lease, holder: "host-1", now_unix: 50)
+    && !(queue_lease_valid(lease: lease, holder: "host-2", now_unix: 50))
+}
+
+test fn witness_publication_pending_is_not_github_success() -> Bool {
+  let pending = CheckPublicationPending {
+    local_conclusion: Success,
+    details_url: "http://localhost/ci/run/x" as NonEmptyStr,
+  }
+  check_publication_is_pending_honest(state: pending)
+    && !(check_publication_reports_github_success(state: pending))
+}
+
+test fn witness_publication_completed_is_github_success() -> Bool {
+  let done = CheckPublicationCompleted { check_run_id: 1, conclusion: Success }
+  check_publication_reports_github_success(state: done)
+    && !(check_publication_is_pending_honest(state: done))
+}
+
+test fn witness_execution_plan_stages_build_regen_floor() -> Bool {
+  let subject = PushToMain {
+    head_sha: "abc123",
+    base_tree_hash: sample_tree_hash(),
+  }
+  let plan = ci_execution_plan_for_subject(subject: subject)
+  (plan.check_name == owned_ci_check_name)
+    && (length(plan.stages) == 3)
+    && (plan.stages.first() == CiBuildStage)
+    && (plan.stages.skip(n: 1).first() == CiRegenStage)
+    && (plan.stages.skip(n: 2).first() == CiFloorStage)
+}
+
+test fn witness_subject_identity_keys_differ_by_sha() -> Bool {
+  let a = PushToMain { head_sha: "aaa", base_tree_hash: sample_tree_hash() }
+  let b = PushToMain { head_sha: "bbb", base_tree_hash: sample_tree_hash() }
+  (ci_subject_identity_key(subject: a) == "main:aaa")
+    && (ci_subject_identity_key(subject: b) == "main:bbb")
+    && (ci_subject_identity_key(subject: a) != ci_subject_identity_key(subject: b))
+}
+
+test fn witness_owned_ci_witness_bundle() -> Bool {
+  witness_fork_pr_refused()
+    && witness_same_repo_pr_admits()
+    && witness_expired_lease_is_reclaimed()
+    && witness_queue_lease_expiry()
+    && witness_publication_pending_is_not_github_success()
+    && witness_publication_completed_is_github_success()
+    && witness_execution_plan_stages_build_regen_floor()
+    && witness_subject_identity_keys_differ_by_sha()
+}

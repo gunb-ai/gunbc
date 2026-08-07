@@ -1,0 +1,135 @@
+module gunbc.owned_ci
+
+import std.types { String, Int, CommitSha, NonEmptyStr, Bool }
+import extdeps.github.checks { CheckConclusion, CheckStatus, Queued, InProgress, Completed, Success, ActionRequired, Cancelled, Failure, Neutral, Skipped, Stale, TimedOut }
+import v2.std.collection { Absent, Present }
+
+data owned_ci_authority_note: String = "Owned CI control plane v0 state carriers (docs/plans/owned-ci-control-plane-design.md). Poll-first subject discovery, durable filesystem queue with expiring lease, one local executor, Checks projection honesty boundary."
+
+data owned_ci_state_root_rel: String = ".gunbc/owned-ci"
+data owned_ci_check_name: NonEmptyStr = "gunbc-ci"
+data owned_ci_default_lease_seconds: Int = 3600
+
+type QueueLease {
+  holder: String
+  expires_at_unix: Int
+}
+
+type CiRunQueueState
+  = QueuePending
+  | QueueClaimed { lease: QueueLease }
+  | QueueCompleted
+  | QueueFailed { detail: String }
+
+type CheckPublicationState
+  = CheckPublicationNotStarted
+  | CheckPublicationQueued { check_run_id: Int? }
+  | CheckPublicationInProgress { check_run_id: Int }
+  | CheckPublicationCompleted { check_run_id: Int, conclusion: CheckConclusion }
+  | CheckPublicationPending { local_conclusion: CheckConclusion, details_url: NonEmptyStr }
+  | CheckPublicationFailed { cause: NonEmptyStr, local_conclusion: CheckConclusion }
+
+type CiRunStageName
+  = RunStageBuild
+  | RunStageRegen
+  | RunStageFloor
+
+type CiRunStageStatus
+  = StagePending
+  | StageRunning
+  | StageSucceeded
+  | StageFailed { detail: String }
+
+fn owned_ci_state_root(workspace_root: String) -> String {
+  concat(workspace_root, concat("/", owned_ci_state_root_rel))
+}
+
+fn owned_ci_index_rel_path() -> String {
+  concat(owned_ci_state_root_rel, "/index.json")
+}
+
+fn owned_ci_run_record_rel_path(run_id: String) -> String {
+  concat(concat(concat(owned_ci_state_root_rel, "/runs/"), run_id), "/run.json")
+}
+
+fn owned_ci_queue_pending_rel_dir() -> String {
+  concat(owned_ci_state_root_rel, "/queue/pending")
+}
+
+fn owned_ci_queue_claimed_rel_dir() -> String {
+  concat(owned_ci_state_root_rel, "/queue/claimed")
+}
+
+fn queue_lease_expired(lease: QueueLease, now_unix: Int) -> Bool {
+  now_unix >= lease.expires_at_unix
+}
+
+fn queue_lease_valid(lease: QueueLease, holder: String, now_unix: Int) -> Bool {
+  (lease.holder == holder) && !(queue_lease_expired(lease: lease, now_unix: now_unix))
+}
+
+fn queue_lease_should_reclaim(lease: QueueLease, now_unix: Int) -> Bool {
+  queue_lease_expired(lease: lease, now_unix: now_unix)
+}
+
+fn check_publication_reports_github_success(state: CheckPublicationState) -> Bool {
+  match state {
+    CheckPublicationCompleted { check_run_id: _, conclusion: c } =>
+      match c {
+        Success => true
+        ActionRequired => false
+        Cancelled => false
+        Failure => false
+        Neutral => false
+        Skipped => false
+        Stale => false
+        TimedOut => false
+      }
+    CheckPublicationPending { local_conclusion: _, details_url: _ } => false
+    CheckPublicationNotStarted => false
+    CheckPublicationQueued { check_run_id: _ } => false
+    CheckPublicationInProgress { check_run_id: _ } => false
+    CheckPublicationFailed { cause: _, local_conclusion: _ } => false
+  }
+}
+
+fn check_publication_is_pending_honest(state: CheckPublicationState) -> Bool {
+  match state {
+    CheckPublicationPending { local_conclusion: _, details_url: _ } => true
+    CheckPublicationNotStarted => false
+    CheckPublicationQueued { check_run_id: _ } => false
+    CheckPublicationInProgress { check_run_id: _ } => false
+    CheckPublicationCompleted { check_run_id: _, conclusion: _ } => false
+    CheckPublicationFailed { cause: _, local_conclusion: _ } => false
+  }
+}
+
+fn owned_ci_details_url(base_url: String, run_id: String) -> String {
+  concat(concat(base_url, "/ci/run/"), run_id)
+}
+
+fn owned_ci_check_status_for_queue(state: CiRunQueueState) -> CheckStatus {
+  match state {
+    QueuePending => Queued
+    QueueClaimed { lease: _ } => InProgress
+    QueueCompleted => Completed
+    QueueFailed { detail: _ } => Completed
+  }
+}
+
+fn owned_ci_check_conclusion_for_queue(state: CiRunQueueState, publication: CheckPublicationState) -> CheckConclusion? {
+  match state {
+    QueuePending => none
+    QueueClaimed { lease: _ } => none
+    QueueCompleted =>
+      match publication {
+        CheckPublicationCompleted { check_run_id: _, conclusion: c } => Present { value: c }
+        CheckPublicationPending { local_conclusion: c, details_url: _ } => Present { value: c }
+        CheckPublicationFailed { cause: _, local_conclusion: c } => Present { value: c }
+        CheckPublicationNotStarted => Present { value: Failure }
+        CheckPublicationQueued { check_run_id: _ } => Present { value: Failure }
+        CheckPublicationInProgress { check_run_id: _ } => Present { value: Failure }
+      }
+    QueueFailed { detail: _ } => Present { value: Failure }
+  }
+}
