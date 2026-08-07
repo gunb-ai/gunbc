@@ -248,6 +248,35 @@ worker still assembles and holds its own resolved graphs is the configuration th
 will underdeliver**, and that prediction is testable against `bright-koi-166`'s A/B: if width 2 fails on
 memory with the share armed, this bundle is why.
 
+### 6.1 What the fit reading depends on, and what does not
+
+The fit table above is denominated in an **inherited** 2–3 GiB headroom band. This note measures the
+numerator (what a worker holds) and takes the denominator from the lane. Two cautions on that
+denominator, the second one an operator correction (2026-08-06) recorded here so this receipt does not
+propagate the error:
+
+* **An UNCAPPED peak is not a lower bound on capped production need.** The inference runs backwards:
+  under a real cap, reclaim and swap *reduce* resident memory, so a process observed at N GiB uncapped
+  may run under a cap below N. A serial-floor figure derived that way overstates, and any headroom band
+  derived from it is correspondingly wrong.
+* **An aggregate cgroup counter does not measure workers in isolation.** A slice-level reading covers
+  every process in the slice, not the worker under study.
+
+**What survives if the band moves.** Everything in §3–§5, because none of it is denominated in the cap:
+the measurements are in-process (counting allocator for attribution, `/proc/self` RSS for context) and
+never read a cgroup counter. Specifically the load-bearing findings are **ratios and swings**, which are
+cap-independent:
+
+* the bundle is **79.3%** of a worker (91.2% unarmed) — a fraction, not a byte budget;
+* `resolved_graph_memo` swings **262.6 ↔ 1863.8 MiB** with drop order, and `typed_module_cache`
+  **1147.1 ↔ 83.8 MiB** — the non-separability, and therefore the 83.8–1147.1 MiB *range* on what
+  sharing the typed cache actually frees;
+* the whole-pool heads are **entry-count-independent and duplicated per worker with zero amortization**.
+
+Only the verdict sentence "a second worker does not comfortably fit" is conditional on the band. If the
+corrected slot arithmetic yields more headroom, that sentence weakens; **the range-not-a-number result
+does not**, and it is the one that predicts a shared-typed-cache configuration will underdeliver.
+
 Whether the bundle *can* be shared is not this note's question. It carries the same `Rc`→`Arc` `Send`
 precondition already named as the width latch's dissolve-on in
 [cross-worker-typecheck-share-design](cross-worker-typecheck-share-design.md) open decision 2, and it is
