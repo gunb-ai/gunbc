@@ -13,6 +13,15 @@
 # compare Rc against Rc and report ~0% — silently contradicting the very measurement
 # this harness exists to reproduce (DESIGN §5, fabricated plausible output). The pin
 # below is asserted, not assumed: the run refuses if the arms are not what they claim.
+#
+# THE PROBE IS ONE FILE, SHARED BY BOTH ARMS. Only the library may differ. main's
+# `p1_cohort_probe.rs` hardcodes `DiscoveryWidthPolicy::Adaptive` and reports no
+# typecheck_compute_count, while the pinned probe defaults to Serial and reports the
+# counter — so building each arm from its own tree would vary width policy and
+# instrumentation alongside the representation, and a three-variable run cannot
+# attribute its delta to Arc. subject.tsv already declares the correct method
+# ("p1_cohort_probe.rs copied to base worktree so only compiler differs"); this
+# harness now performs that copy instead of only documenting it.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -22,6 +31,7 @@ AFTER_WT="$ROOT/.receipt-worktrees/arc1-after"
 # The measured commit. Authority: receipts/arc-1-shareability-frontier/subject.tsv `after_commit`.
 AFTER_COMMIT="dfc1cb46c0233e468c5a947494b154824476a013"
 ARC_ALIAS="std::sync::Arc as Rc"
+PROBE_REL="src/v1/stage0/src/bin/p1_cohort_probe.rs"
 mkdir -p "$RECEIPT_DIR"
 
 # Fail closed on the one confusion that makes this harness lie: an arm that is not
@@ -29,8 +39,23 @@ mkdir -p "$RECEIPT_DIR"
 # ~0% delta.
 assert_arm_representation() {
   local label="$1" tree="$2" want="$3"  # want = present | absent
-  local n
-  n="$(grep -rl -- "$ARC_ALIAS" "$tree/src/v1/stage0/src" 2>/dev/null | wc -l | tr -d ' ')"
+  local hits status n
+  # grep exit 1 means "no matches" — the EXPECTED result for the Rc baseline, not an
+  # error. Under `set -euo pipefail` an inline pipeline would take that 1 as the
+  # substitution's status and kill the run with no diagnostic at all, so status is
+  # captured and classified: 0 = matched, 1 = no match, >=2 = grep itself failed and
+  # the arm is unverifiable, which refuses rather than reading as "absent".
+  set +e
+  hits="$(grep -rl -- "$ARC_ALIAS" "$tree/src/v1/stage0/src" 2>/dev/null)"
+  status=$?
+  set -e
+  if [ "$status" -ge 2 ]; then
+    echo "arc1_cohort_receipt: REFUSED — could not scan arm '$label' ($tree); grep exited $status." >&2
+    echo "  The arm's representation is unverifiable. Refusing rather than treating an" >&2
+    echo "  unreadable tree as the Rc baseline." >&2
+    exit 2
+  fi
+  n="$([ -z "$hits" ] && echo 0 || printf '%s\n' "$hits" | wc -l | tr -d ' ')"
   if [ "$want" = present ] && [ "$n" -eq 0 ]; then
     echo "arc1_cohort_receipt: REFUSED — arm '$label' ($tree) contains no '$ARC_ALIAS'." >&2
     echo "  This arm must be the Arc representation; it is not. Refusing rather than" >&2
@@ -44,6 +69,19 @@ assert_arm_representation() {
     exit 2
   fi
   echo "arc1_cohort_receipt: arm '$label' representation OK ($want, $n file(s) matched)"
+}
+
+# The probe must be byte-identical across arms, or the delta is not attributable to
+# the representation. Refuse loudly rather than measure a three-variable run.
+assert_probe_identical() {
+  if ! cmp -s "$AFTER_WT/$PROBE_REL" "$WT/$PROBE_REL"; then
+    echo "arc1_cohort_receipt: REFUSED — $PROBE_REL differs between arms after the copy." >&2
+    echo "  Both arms must run one probe so the only variable is the library" >&2
+    echo "  representation. Refusing rather than attributing a width-policy or" >&2
+    echo "  instrumentation difference to Arc." >&2
+    exit 2
+  fi
+  echo "arc1_cohort_receipt: probe identical across arms ($PROBE_REL)"
 }
 
 export CTRL_BUILD_WRAP_CARGO=0
@@ -68,7 +106,12 @@ AFTER_SHA="$(sha256sum "$AFTER_BIN" | awk '{print $1}')"
 echo "arc1_cohort_receipt: building base (main/Rc) binary in worktree"
 rm -rf "$WT"
 git worktree add -f "$WT" origin/main >/dev/null
+# Representation is asserted on main's own tree, BEFORE the probe copy, so the check
+# reads the library the base arm actually measures. The pinned probe carries no
+# `$ARC_ALIAS` (it uses plain `std::sync::Arc`), so the copy cannot flip this verdict.
 assert_arm_representation base "$WT" absent
+cp "$AFTER_WT/$PROBE_REL" "$WT/$PROBE_REL"
+assert_probe_identical
 cd "$WT"
 cargo build --release --bin p1_cohort_probe
 BASE_BIN="$WT/target/release/p1_cohort_probe"
@@ -121,15 +164,16 @@ run_arm after-r1 "$AFTER_BIN" "$AFTER_SHA"
 run_arm base-r2 "$BASE_BIN" "$BASE_SHA"
 run_arm after-r2 "$AFTER_BIN" "$AFTER_SHA"
 
-python3 - "$RECEIPT_DIR" "$ROOT" "$BASE_SHA" "$AFTER_SHA" <<'PY'
-import json, pathlib, statistics, subprocess, sys
+python3 - "$RECEIPT_DIR" "$AFTER_COMMIT" "$BASE_SHA" "$AFTER_SHA" "$PROBE_REL" <<'PY'
+import json, pathlib, statistics, sys
 
 receipt_dir = pathlib.Path(sys.argv[1])
-root = pathlib.Path(sys.argv[2])
+# The measured commit is the PIN, not `git rev-parse HEAD` of whatever checkout
+# invoked the script — a re-run from any other tree would otherwise overwrite the
+# receipt's subject with a commit that was never measured (DESIGN §3).
+after_commit = sys.argv[2]
 base_sha, after_sha = sys.argv[3], sys.argv[4]
-
-def subprocess_check(cmd):
-    return subprocess.check_output(cmd, text=True).strip()
+probe_rel = sys.argv[5]
 
 def load_tsv(name):
     data = {}
@@ -154,11 +198,13 @@ after_tc = [arms["after-r1"]["typecheck_compute_count"], arms["after-r2"]["typec
 
 summary = {
     "subject": {
-        "after_commit": subprocess_check(["git", "-C", str(root), "rev-parse", "HEAD"]),
+        "after_commit": after_commit,
         "base_ref": "origin/main",
         "cohort": "docs/plans/receipts/fill-composition-overlay-direction/cohort.tsv (first 50)",
         "width_policy": "Serial (width-1 inline drain)",
         "variable": "emitter wrapper Arc-as-Rc vs main Rc",
+        "probe_source": f"{probe_rel} copied from {after_commit} into the base worktree "
+                        "so both arms run one probe and only the library differs",
     },
     "binary_sha256": {"base": base_sha, "after": after_sha},
     "wall_ms": {"base": base_wall, "after": after_wall, "base_median": base_median, "after_median": after_median, "delta_pct": delta_pct},
