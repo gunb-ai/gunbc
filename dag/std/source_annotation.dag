@@ -141,9 +141,7 @@ fn annotation_placement_is_attachable(placement: AnnotationPlacement) -> Bool {
 
 // Placement is decided by the PHYSICAL LINE PREFIX — the raw text between the last line feed and the annotation — and never by which lexical category the preceding lexeme belonged to.
 
-// The category guess is wrong, and a real grammar disproves it. Deciding `leading` by `no semantic token seen on this line yet` assumes line boundaries live in trivia; the Python model's own token lexemes include `):\
-//     `, which ENDS on a fresh line carrying only indentation, and `\
-//     if `, which ends on a fresh line carrying semantic text. An annotation after the first is leading and after the second is trailing, yet a category rule classifies both as trailing because in both cases the last thing consumed was a semantic token. Any grammar whose tokens may span lines breaks the same way.
+// The category guess is wrong, and a real grammar disproves it. Deciding `leading` by `no semantic token seen on this line yet` assumes line boundaries live in trivia; the Python model's own token lexemes include `):\n    `, which ENDS on a fresh line carrying only indentation, and `\n    if `, which ends on a fresh line carrying semantic text. An annotation after the first is leading and after the second is trailing, yet a category rule classifies both as trailing because in both cases the last thing consumed was a semantic token. Any grammar whose tokens may span lines breaks the same way.
 
 // So the state is `line prefix is indent only`, advanced by the RAW TEXT of every consumed lexeme regardless of category. One fold expresses the whole rule: a line feed resets the prefix to empty (vacuously indent-only), and every character after it must be indentation for the prefix to stay so. A lexeme with no line feed therefore preserves the previous state only while it is itself indentation, and a lexeme containing one is judged entirely by what follows its LAST line feed — both cases the fold produces without a special arm. An empty lexeme preserves the state.
 
