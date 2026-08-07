@@ -1,0 +1,76 @@
+module std.human_intervention
+
+import std.types { NonEmptyStr, Int, List, Bool }
+import std.decl_ref { DeclarationRef }
+import std.algebra { Ordering, Less, Equal, Greater }
+
+type HumanInterventionFrequency
+  = FleetOnce
+  | DeviceOnce
+  | EveryProvision
+  | BreakGlassOnly
+
+type HumanInterventionIdentity = NonEmptyStr where brand("HumanInterventionIdentity")
+
+type HumanIntervention {
+  identity: HumanInterventionIdentity
+  frequency: HumanInterventionFrequency
+  subject: NonEmptyStr
+  instruction: NonEmptyStr
+  completion_evidence: DeclarationRef
+}
+
+type ProvisioningHumanBurden {
+  interventions: List<HumanIntervention>
+}
+
+fn human_intervention_frequency_eq(a: HumanInterventionFrequency, b: HumanInterventionFrequency) -> Bool {
+  match a {
+    FleetOnce => match b { FleetOnce => true  DeviceOnce => false  EveryProvision => false  BreakGlassOnly => false }
+    DeviceOnce => match b { FleetOnce => false  DeviceOnce => true  EveryProvision => false  BreakGlassOnly => false }
+    EveryProvision => match b { FleetOnce => false  DeviceOnce => false  EveryProvision => true  BreakGlassOnly => false }
+    BreakGlassOnly => match b { FleetOnce => false  DeviceOnce => false  EveryProvision => false  BreakGlassOnly => true }
+  }
+}
+
+fn human_intervention_count_at(
+  burden: ProvisioningHumanBurden,
+  frequency: HumanInterventionFrequency
+) -> Int {
+  list_length(items: filter(
+    xs: burden.interventions,
+    f: i => human_intervention_frequency_eq(a: i.frequency, b: frequency)
+  ))
+}
+
+fn compare_int_ascending(a: Int, b: Int) -> Ordering {
+  if a < b { Less } else if a > b { Greater } else { Equal }
+}
+
+fn compare_routine_human_burden(
+  a: ProvisioningHumanBurden,
+  b: ProvisioningHumanBurden
+) -> Ordering {
+  match compare_int_ascending(
+    a: human_intervention_count_at(burden: a, frequency: EveryProvision),
+    b: human_intervention_count_at(burden: b, frequency: EveryProvision)
+  ) {
+    Less => Less
+    Greater => Greater
+    Equal => match compare_int_ascending(
+      a: human_intervention_count_at(burden: a, frequency: DeviceOnce),
+      b: human_intervention_count_at(burden: b, frequency: DeviceOnce)
+    ) {
+      Less => Less
+      Greater => Greater
+      Equal => compare_int_ascending(
+        a: human_intervention_count_at(burden: a, frequency: FleetOnce),
+        b: human_intervention_count_at(burden: b, frequency: FleetOnce)
+      )
+    }
+  }
+}
+
+fn human_burden_break_glass_count(burden: ProvisioningHumanBurden) -> Int {
+  human_intervention_count_at(burden: burden, frequency: BreakGlassOnly)
+}

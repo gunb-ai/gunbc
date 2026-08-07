@@ -1,6 +1,12 @@
 module gunbc.dgx_spark_pxe_boot
 
 import std.types { NonEmptyStr, String, List, Bool }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.human_intervention {
+  HumanIntervention,
+  HumanInterventionIdentity,
+  DeviceOnce,
+}
 import extdeps.uri { Uri }
 import extdeps.provisioning.network_boot { NetworkBootChain, NativeDhcpBootOptions }
 import extdeps.systems.nvidia_dgx_spark_pxe {
@@ -30,17 +36,33 @@ type PxeNetworkObservation {
   client_has_ip_address: Bool
 }
 
+type PxeNetworkIsolation
+  = IsolatedProvisioningSegment
+  | DedicatedNicDirectCable
+  | ProxyDhcpPxeOnly
+  | AdmittedRouterDhcpChange
+
 type PxeNetworkGap
   = DhcpBootfileNotOffered
   | TftpBootChainUnreachable
   | HttpInstallImageUnreachable
   | ClientAddressUnconfigured
+  | DhcpAuthorityUnobserved
+  | TftpEndpointUnobserved
+  | HttpEndpointUnobserved
+  | DhcpIsolationUnobserved
 
 type PxeNetworkStanding
-  = PxeNetworkReady
+  = PxeNetworkReady {
+      dhcp_authority: DeclarationRef,
+      tftp_endpoint: DeclarationRef,
+      http_endpoint: DeclarationRef,
+      isolation: PxeNetworkIsolation,
+    }
   | PxeNetworkGapped { gaps: List<PxeNetworkGap> }
+  | PxeNetworkUnobserved
 
-fn pxe_network_gaps(observation: PxeNetworkObservation) -> List<PxeNetworkGap> {
+fn pxe_network_reachability_gaps(observation: PxeNetworkObservation) -> List<PxeNetworkGap> {
   concat(
     if observation.dhcp_offers_bootloader { [] } else { [DhcpBootfileNotOffered] },
     concat(
@@ -57,25 +79,118 @@ fn pxe_network_gaps(observation: PxeNetworkObservation) -> List<PxeNetworkGap> {
   )
 }
 
-fn pxe_network_standing_from_gaps(gaps: List<PxeNetworkGap>) -> PxeNetworkStanding {
-  if list_length(items: gaps) == 0 {
-    PxeNetworkReady
-  } else {
-    PxeNetworkGapped { gaps: gaps }
+fn pxe_network_authority_gaps(
+  dhcp_authority: DeclarationRef?,
+  tftp_endpoint: DeclarationRef?,
+  http_endpoint: DeclarationRef?,
+  isolation: PxeNetworkIsolation?,
+) -> List<PxeNetworkGap> {
+  concat(
+    match dhcp_authority {
+      Absent => [DhcpAuthorityUnobserved]
+      Present { value: _ } => []
+    },
+    concat(
+      match tftp_endpoint {
+        Absent => [TftpEndpointUnobserved]
+        Present { value: _ } => []
+      },
+      concat(
+        match http_endpoint {
+          Absent => [HttpEndpointUnobserved]
+          Present { value: _ } => []
+        },
+        match isolation {
+          Absent => [DhcpIsolationUnobserved]
+          Present { value: _ } => []
+        },
+      ),
+    ),
+  )
+}
+
+fn pxe_network_ready_standing(
+  dhcp_authority: DeclarationRef,
+  tftp_endpoint: DeclarationRef,
+  http_endpoint: DeclarationRef,
+  isolation: PxeNetworkIsolation,
+) -> PxeNetworkStanding {
+  PxeNetworkReady {
+    dhcp_authority: dhcp_authority,
+    tftp_endpoint: tftp_endpoint,
+    http_endpoint: http_endpoint,
+    isolation: isolation,
   }
 }
 
-fn evaluate_pxe_network_standing(observation: PxeNetworkObservation?) -> PxeNetworkStanding {
+fn pxe_network_all_gaps(
+  observation: PxeNetworkObservation,
+  dhcp_authority: DeclarationRef?,
+  tftp_endpoint: DeclarationRef?,
+  http_endpoint: DeclarationRef?,
+  isolation: PxeNetworkIsolation?,
+) -> List<PxeNetworkGap> {
+  concat(
+    pxe_network_reachability_gaps(observation: observation),
+    pxe_network_authority_gaps(
+      dhcp_authority: dhcp_authority,
+      tftp_endpoint: tftp_endpoint,
+      http_endpoint: http_endpoint,
+      isolation: isolation,
+    ),
+  )
+}
+
+fn evaluate_pxe_network_standing(
+  observation: PxeNetworkObservation?,
+  dhcp_authority: DeclarationRef?,
+  tftp_endpoint: DeclarationRef?,
+  http_endpoint: DeclarationRef?,
+  isolation: PxeNetworkIsolation?,
+) -> PxeNetworkStanding {
   match observation {
-    Absent => PxeNetworkGapped {
-      gaps: [
-        DhcpBootfileNotOffered,
-        TftpBootChainUnreachable,
-        HttpInstallImageUnreachable,
-        ClientAddressUnconfigured,
-      ]
-    }
-    Present { value: o } => pxe_network_standing_from_gaps(gaps: pxe_network_gaps(observation: o))
+    Absent => PxeNetworkUnobserved
+    Present { value: o } =>
+      if list_length(items: pxe_network_all_gaps(
+        observation: o,
+        dhcp_authority: dhcp_authority,
+        tftp_endpoint: tftp_endpoint,
+        http_endpoint: http_endpoint,
+        isolation: isolation,
+      )) == 0 {
+        match dhcp_authority {
+          Absent => PxeNetworkGapped { gaps: [DhcpAuthorityUnobserved] }
+          Present { value: dhcp } =>
+            match tftp_endpoint {
+              Absent => PxeNetworkGapped { gaps: [TftpEndpointUnobserved] }
+              Present { value: tftp } =>
+                match http_endpoint {
+                  Absent => PxeNetworkGapped { gaps: [HttpEndpointUnobserved] }
+                  Present { value: http } =>
+                    match isolation {
+                      Absent => PxeNetworkGapped { gaps: [DhcpIsolationUnobserved] }
+                      Present { value: iso } =>
+                        pxe_network_ready_standing(
+                          dhcp_authority: dhcp,
+                          tftp_endpoint: tftp,
+                          http_endpoint: http,
+                          isolation: iso,
+                        )
+                    }
+                }
+            }
+        }
+      } else {
+        PxeNetworkGapped {
+          gaps: pxe_network_all_gaps(
+            observation: o,
+            dhcp_authority: dhcp_authority,
+            tftp_endpoint: tftp_endpoint,
+            http_endpoint: http_endpoint,
+            isolation: isolation,
+          )
+        }
+      }
   }
 }
 
@@ -94,7 +209,23 @@ type SparkPxeFirmwareGap
 
 type SparkPxeFirmwareStanding
   = SparkPxeFirmwareReady
-  | SparkPxeFirmwareGapped { gaps: List<SparkPxeFirmwareGap> }
+  | SparkPxeFirmwareHumanInterventionRequired { intervention: HumanIntervention }
+
+data spark_pxe_firmware_enablement_authority: DeclarationRef = DeclarationRef {
+  module_path: "gunbc.dgx_spark_pxe_boot",
+  decl_name: "spark_pxe_firmware_enablement_intervention",
+  field: WholeDeclaration,
+}
+
+fn spark_pxe_firmware_enablement_intervention() -> HumanIntervention {
+  HumanIntervention {
+    identity: "spark-pxe-firmware-enablement" as HumanInterventionIdentity,
+    frequency: DeviceOnce,
+    subject: "UEFI network stack",
+    instruction: "At this unit's console, either disable secure boot or enroll grubnetaa64.efi.signed, then enable PXE on the chosen interface under Network Stack Configuration.",
+    completion_evidence: spark_pxe_firmware_enablement_authority,
+  }
+}
 
 fn spark_pxe_firmware_gaps(config: SparkUefiPxeConfiguration) -> List<SparkPxeFirmwareGap> {
   concat(
@@ -113,16 +244,14 @@ fn spark_pxe_firmware_gaps(config: SparkUefiPxeConfiguration) -> List<SparkPxeFi
   )
 }
 
-fn spark_pxe_firmware_standing_from_gaps(gaps: List<SparkPxeFirmwareGap>) -> SparkPxeFirmwareStanding {
-  if list_length(items: gaps) == 0 {
+fn evaluate_spark_pxe_firmware_standing(config: SparkUefiPxeConfiguration) -> SparkPxeFirmwareStanding {
+  if list_length(items: spark_pxe_firmware_gaps(config: config)) == 0 {
     SparkPxeFirmwareReady
   } else {
-    SparkPxeFirmwareGapped { gaps: gaps }
+    SparkPxeFirmwareHumanInterventionRequired {
+      intervention: spark_pxe_firmware_enablement_intervention(),
+    }
   }
-}
-
-fn evaluate_spark_pxe_firmware_standing(config: SparkUefiPxeConfiguration) -> SparkPxeFirmwareStanding {
-  spark_pxe_firmware_standing_from_gaps(gaps: spark_pxe_firmware_gaps(config: config))
 }
 
 type SparkUnattendedImageBoot {
@@ -166,7 +295,7 @@ type SparkUnattendedPxeBootAdmissionOutcome
 
 type SparkUnattendedPxeBootRefusalReason
   = UnattendedPxeBootNetworkStandingIncomplete { gaps: List<PxeNetworkGap> }
-  | UnattendedPxeBootFirmwareStandingIncomplete { gaps: List<SparkPxeFirmwareGap> }
+  | UnattendedPxeBootFirmwareHumanInterventionRequired { intervention: HumanIntervention }
   | NetworkObservationAbsent
   | FirmwareConfigurationAbsent
 
@@ -175,6 +304,10 @@ fn admit_spark_unattended_pxe_boot(
   tftp_root: Uri,
   http_image_root: Uri,
   network_observation: PxeNetworkObservation?,
+  dhcp_authority: DeclarationRef?,
+  tftp_endpoint: DeclarationRef?,
+  http_endpoint: DeclarationRef?,
+  isolation: PxeNetworkIsolation?,
   firmware_config: SparkUefiPxeConfiguration?,
 ) -> SparkUnattendedPxeBootAdmissionOutcome {
   match network_observation {
@@ -183,12 +316,22 @@ fn admit_spark_unattended_pxe_boot(
         reason: NetworkObservationAbsent
       }
     Present { value: network_obs } =>
-      match evaluate_pxe_network_standing(observation: Present { value: network_obs }) {
+      match evaluate_pxe_network_standing(
+        observation: Present { value: network_obs },
+        dhcp_authority: dhcp_authority,
+        tftp_endpoint: tftp_endpoint,
+        http_endpoint: http_endpoint,
+        isolation: isolation,
+      ) {
+        PxeNetworkUnobserved =>
+          SparkUnattendedPxeBootRefused {
+            reason: NetworkObservationAbsent
+          }
         PxeNetworkGapped { gaps: network_gaps } =>
           SparkUnattendedPxeBootRefused {
             reason: UnattendedPxeBootNetworkStandingIncomplete { gaps: network_gaps }
           }
-        PxeNetworkReady =>
+        PxeNetworkReady { dhcp_authority: _, tftp_endpoint: _, http_endpoint: _, isolation: _ } =>
           match firmware_config {
             Absent =>
               SparkUnattendedPxeBootRefused {
@@ -196,9 +339,9 @@ fn admit_spark_unattended_pxe_boot(
               }
             Present { value: fw } =>
               match evaluate_spark_pxe_firmware_standing(config: fw) {
-                SparkPxeFirmwareGapped { gaps: firmware_gaps } =>
+                SparkPxeFirmwareHumanInterventionRequired { intervention: i } =>
                   SparkUnattendedPxeBootRefused {
-                    reason: UnattendedPxeBootFirmwareStandingIncomplete { gaps: firmware_gaps }
+                    reason: UnattendedPxeBootFirmwareHumanInterventionRequired { intervention: i }
                   }
                 SparkPxeFirmwareReady =>
                   SparkUnattendedPxeBootAdmitted {
