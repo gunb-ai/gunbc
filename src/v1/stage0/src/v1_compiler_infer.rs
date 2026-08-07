@@ -8665,7 +8665,126 @@ pub fn presence_check_census_gate_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn map_literal_expected_keyed_node(
+    type_name: Option<String>,
+    expected: Option<Rc<Node>>,
+    scope: Rc<InferScope>,
+) -> Option<Rc<Node>> {
+    match type_name.clone() {
+        Some(_) => None,
+        None => match expected.clone() {
+            Some(e) => {
+                if node_is_keyed_collection(
+                    e.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                ) {
+                    Some(e.clone())
+                } else {
+                    None
+                }
+            }
+            None => None,
+        },
+    }
+}
+
+pub fn infer_map_literal(
+    map_node: Rc<Node>,
+    field_inits: Rc<Vec<Rc<Node>>>,
+    span: Rc<SourceSpan>,
+    scope: Rc<InferScope>,
+) -> Rc<InferResult> {
+    {
+        let value_expected = match map_node
+            .children
+            .clone()
+            .iter()
+            .cloned()
+            .skip(1 as usize)
+            .next()
+        {
+            Some(v) => Some(v.clone()),
+            None => None,
+        };
+        let fi_results = Rc::new({
+            let mut __result = Vec::new();
+            for fi in field_inits.clone().iter().cloned() {
+                __result.push({
+                    let ar = infer_expr(
+                        field_init_node_value(fi.clone()),
+                        scope.clone(),
+                        value_expected.clone(),
+                    );
+                    Rc::new(FieldInferResult {
+                        typed_field: make_field_init_node(
+                            field_init_node_name_at(
+                                fi.clone(),
+                                scope.type_env.clone().source_indices.clone(),
+                            ),
+                            ar.typed.clone(),
+                            fi.span.clone(),
+                            node_name_span(fi.clone()),
+                        ),
+                        infer_result: ar.clone(),
+                        diagnostics: ar.diagnostics.clone(),
+                    })
+                });
+            }
+            __result
+        });
+        Rc::new(InferResult {
+            typed: make_expr_node(
+                Rc::new(ExprData::ExprRecordLit { parent_enum: None }),
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for fir in fi_results.clone().iter().cloned() {
+                        __result.push(fir.typed_field.clone());
+                    }
+                    __result
+                }),
+                Some(Rc::new(InferredNode::Resolved {
+                    node: map_node.clone(),
+                })),
+                span.clone(),
+            ),
+            diagnostics: Rc::new({
+                let mut __result = Vec::new();
+                for fir in fi_results.clone().iter().cloned() {
+                    __result.extend((*fir.diagnostics.clone()).iter().cloned());
+                }
+                __result
+            }),
+        })
+    }
+}
+
 pub fn infer_record_lit(
+    type_name: Option<String>,
+    field_inits: Rc<Vec<Rc<Node>>>,
+    span: Rc<SourceSpan>,
+    name_span: Rc<SourceSpan>,
+    scope: Rc<InferScope>,
+    expected: Option<Rc<Node>>,
+) -> Rc<InferResult> {
+    match map_literal_expected_keyed_node(type_name.clone(), expected.clone(), scope.clone()) {
+        Some(map_node) => infer_map_literal(
+            map_node.clone(),
+            field_inits.clone(),
+            span.clone(),
+            scope.clone(),
+        ),
+        None => infer_record_lit_structural(
+            type_name.clone(),
+            field_inits.clone(),
+            span.clone(),
+            name_span.clone(),
+            scope.clone(),
+            expected.clone(),
+        ),
+    }
+}
+
+pub fn infer_record_lit_structural(
     type_name: Option<String>,
     field_inits: Rc<Vec<Rc<Node>>>,
     span: Rc<SourceSpan>,

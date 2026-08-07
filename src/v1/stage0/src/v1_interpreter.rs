@@ -4870,6 +4870,50 @@ fn extract_field(
     }
 }
 
+/// Build the `Value::Map` a keyed-collection literal denotes. Keys are the
+/// authored field names; a non-string key type is a typed, located refusal
+/// rather than a silently coerced key, because the interpreter cannot peel a
+/// declared key type down to its kernel scalar and guessing would fabricate a
+/// map whose keys are not the ones the source names (DESIGN §5).
+fn eval_map_lit(
+    node: &Rc<Node>,
+    map_type: &Rc<Node>,
+    env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    if let Some(key_type) = map_type.children.iter().next() {
+        let key_name = authored_name_at(
+            ctx.si(),
+            crate::v1_compiler_infer_types::normalize_access_type_node(key_type.clone()),
+        );
+        if matches!(key_name.as_str(), "Int" | "Bool" | "Float" | "Bytes") {
+            return Err(InterpError::TypeError {
+                msg: format!(
+                    "map literal with non-string key type '{}' is not modeled by the interpreter \
+                     (only authored-name string keys are); declared at {}:{}",
+                    key_name, node.span.file, node.span.start
+                ),
+            });
+        }
+    }
+    let mut entries = HamtMap::new();
+    for child in node.children.iter() {
+        let fname = field_init_node_name_at(child.clone(), ctx.si());
+        let fval = eval_expr(&field_init_node_value(child.clone()), env, ctx)?;
+        match CanonKey::new(Value::Str(fname.clone())) {
+            Some(ck) => {
+                entries = entries.update(ck, fval);
+            }
+            None => {
+                return Err(InterpError::TypeError {
+                    msg: format!("map literal key '{}' is not a valid map key", fname),
+                })
+            }
+        }
+    }
+    Ok(map_value(entries))
+}
+
 fn eval_record_lit(
     node: &Rc<Node>,
     parent_enum: Option<&str>,
@@ -4877,6 +4921,24 @@ fn eval_record_lit(
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
     let type_name = record_lit_type_name_at(node.clone(), ctx.si()).unwrap_or_default();
+
+    // A brace literal in a keyed-collection position IS a map, and the single
+    // authority for that fact is the literal's own inferred type — the same
+    // `node_is_keyed_collection` relation `05_emit_rust` reads when it renders
+    // the identical literal as a `HashMap`. Reading it here is what stops the
+    // interpreter and the emitter disagreeing about one value's representation
+    // (DESIGN §3/§5: one authority, and the representation derived from it
+    // rather than reconciled per consumer). Before this, the interpreter built
+    // a `Record`, `map_get` limped through `raw_map_lookup`'s Record arm, and
+    // `map_keys(kernel_type_set)` refused — so the whole ordinary front end was
+    // unreachable from interpreted `.dag`.
+    if type_name.is_empty() {
+        if let Some(InferredNode::Resolved { node: ty, .. }) = node.inferred.as_deref() {
+            if crate::v1_compiler_infer_types::node_is_keyed_collection(ty.clone(), ctx.si()) {
+                return eval_map_lit(node, ty, env, ctx);
+            }
+        }
+    }
 
     let mut fields: Vec<(Symbol, Value)> = Vec::new();
     for child in node.children.iter() {
