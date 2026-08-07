@@ -26,18 +26,19 @@ import gunbc.mnemonic_name {
   mnemonic_name_space_size,
 }
 
-// NO PRODUCTION CONSUMER YET, SAID HERE RATHER THAN INFERRED FROM ITS ABSENCE.
-// The fleet names its machines srv1..srv4 by operator assignment, and nothing
-// in tree calls allocate_host_name today; the witness is the only executing
-// consumer. That is a real standing, not a hidden one, so it is carried as a
-// typed row rather than left for a reader to discover by grep — and it is the
-// reason this module claims no terminal authority over host naming. Adoption,
-// not this carrier, decides whether the mnemonic scheme is what the fleet
-// should use; until some caller needs a name it did not choose, the carrier is
-// unexercised outside its witness.
-data host_name_allocation_adoption_standing: String = "AWAITING FIRST PRODUCTION CONSUMER (review 49815, floating-island finding — accepted as accurate). Executing consumers today: dag/test/claim/host_name_allocation_witness_test.dag only. The mechanism is proven by execution; what is NOT established is that the fleet wants mnemonic host names at all, because no lane in ROADMAP or DESIGN Open Threads calls for renaming srv1..srv4 and none of gunbc.host_layout, gunbc.assimilate, or the BMC onboarding path asks for a derived name. RESOLUTION IS A SCOPE DECISION, NOT A CODE ONE: either a caller that needs a machine-derived name adopts allocate_host_name (host standup naming a fresh machine before it has an operator label is the plausible one, since that is the moment where no chosen name exists yet), or this carrier is deleted. Retiring it costs three files and no consumer migration, which is exactly why it was safe to land the mechanism before the decision. DO NOT wire a consumer into the fleet carriers to discharge this row — that would put a naming policy into load-bearing host-standup paths on a reviewer's say-so rather than an operator's."
+// THE CONSUMER IS NAMED, AND IS NOT YET IN TREE.
+// SPARK-PROVISION-0 (gunbc#7950) is the first consumer: two DGX Sparks whose
+// OS hostnames must NOT be their internal slot identities, so provisioning
+// allocates mnemonic names and uses those. Its SparkHostnameAllocation sits on
+// HostnameAllocationPending with a declared dissolve-on pointing at an
+// allocation authority — this module. So the carrier lands one PR ahead of its
+// consumer rather than speculatively, but "ahead" is still a real gap: nothing
+// in tree calls allocate_host_name until #7950 merges, and the witness remains
+// the only executing consumer. That gap is stated here rather than left for a
+// reader to infer from a grep that finds no callers.
+data host_name_allocation_adoption_standing: String = "CONSUMER NAMED, NOT YET IN TREE. First consumer: SPARK-PROVISION-0 (gunbc#7950), whose SparkHostnameAllocation, whose HostnameAllocated arm carries a DnsLabel and whose other arm is HostnameAllocationPending, sits on Pending for both Spark units with a dissolve-on naming an allocation authority; this module is that authority. Executing consumers in tree today: dag/test/claim/host_name_allocation_witness_test.dag only, because #7950 has not merged. DISSOLVE-ON: this row retires when #7950 lands and allocate_host_name has a production caller. HISTORY WORTH KEEPING, because it is why this row exists at all: an earlier revision said no lane called for mnemonic naming and offered deletion as a resolution (review 49815's floating-island finding, accurate at the time). That was superseded by the operator ruling behind #7950 — the row is corrected rather than deleted so a reader does not re-derive the retired conclusion from a stale sentence."
 
-data host_name_allocation_authority_note: String = "Single authority for allocating and retiring mnemonic host names (adjective-animal-suffix, gunbc.mnemonic_name). Three facts are kept separate here because collapsing any pair is a state-space conflation: WHICH NAME a subject derives is a pure projection of (version, durable subject key, attempt) and lives in gunbc.mnemonic_name; WHETHER that name is free is an exact identity join against the registry, reusing std.keyed_roster rather than forking a second duplicate-detection rule; and WHETHER the subject already has a name is a separate join on the subject key, whose answer is idempotent re-derivation and NOT an allocation. Retirement writes standing, never deletes a row: an exactly-unique registry is a claim across time (DESIGN section 1 A3), so a retired name stays a collision forever and is never reissued to a second machine. Every collision is a typed row carried in the allocation receipt, so probe pressure is countable rather than absorbed into a silent re-roll (DESIGN section 5)."
+data host_name_allocation_authority_note: String = "Single authority for allocating and retiring mnemonic host names (adjective-animal-suffix, gunbc.mnemonic_name). Three facts are kept separate here because collapsing any pair is a state-space conflation: WHICH NAME a subject derives is a pure projection of (version, admitted subject key, attempt) and lives in gunbc.mnemonic_name — the key coming from the logical slot identity, never from observed hardware (host_name_projection_subject_authority_note); WHETHER that name is free is an exact identity join against the registry, reusing std.keyed_roster rather than forking a second duplicate-detection rule; and WHETHER the subject already has a name is a separate join on the subject key, whose answer is idempotent re-derivation and NOT an allocation. Retirement writes standing, never deletes a row: an exactly-unique registry is a claim across time (DESIGN section 1 A3), so a retired name stays a collision forever and is never reissued to a second machine. Every collision is a typed row carried in the allocation receipt, so probe pressure is countable rather than absorbed into a silent re-roll (DESIGN section 5)."
 
 // WHAT THE NAME PROJECTS FROM, AND WHY IT IS NOT THE HARDWARE.
 // The canonical host name must survive hardware replacement in the same logical
