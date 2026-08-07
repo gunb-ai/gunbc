@@ -15,6 +15,7 @@ import gunbc.cursor_sdk_provider_standing {
 import gunbc.provider_standing {
   AuthenticationAuthenticated,
   AuthenticationCredentialsAbsent,
+  AuthenticationStandingUnobserved,
 }
 import extdeps.llm.cursor_sdk_errors {
   CursorSdkAuthenticationError,
@@ -59,6 +60,21 @@ test fn provider_standing_rate_limit_keeps_authentication_not_absent() -> Bool {
     && standing.authentication != AuthenticationCredentialsAbsent
 }
 
+test fn provider_standing_unrecognised_error_code_stays_unobserved() -> Bool {
+  let standing = cursor_sdk_local_provider_standing_from_auth_probe(
+    probe: cursor_sdk_auth_probe_from_run_result(
+      raw: "{\"status\":\"error\",\"error\":{\"message\":\"bad\",\"code\":\"token_revoked\"}}",
+    ),
+  )
+  match standing.authentication {
+    AuthenticationStandingUnobserved { reason } =>
+      string_contains(s: reason as String, pattern: "unrecognised terminal error code: token_revoked")
+    AuthenticationAuthenticated => false
+    AuthenticationCredentialsAbsent => false
+    _ => false
+  }
+}
+
 test fn provider_standing_derives_authentication_from_probe() -> Bool {
   let standing = cursor_sdk_local_provider_standing_from_auth_probe(
     probe: cursor_sdk_auth_probe_from_run_result(
@@ -93,5 +109,6 @@ test fn cursor_sdk_auth_standing_witness_keystone_holds() -> Bool {
     && provider_standing_derives_authentication_from_probe()
     && provider_standing_rejects_credentials_on_auth_error()
     && provider_standing_rate_limit_keeps_authentication_not_absent()
+    && provider_standing_unrecognised_error_code_stays_unobserved()
     && provider_standing_usage_is_capability_gap()
 }

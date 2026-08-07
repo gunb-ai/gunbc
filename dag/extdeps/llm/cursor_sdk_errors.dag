@@ -71,3 +71,15 @@ fn cursor_sdk_error_code_is_authentication_failure(code: CursorSdkErrorCode) -> 
     CursorSdkErrorCodeOther { raw: _ } => false
   }
 }
+
+fn cursor_sdk_error_code_is_enumerated_non_authentication_failure(
+  code: CursorSdkErrorCode,
+) -> Bool {
+  match code {
+    CursorSdkRateLimitError => true
+    CursorSdkAgentNotFoundError => true
+    CursorSdkAgentBusyError => true
+    CursorSdkAuthenticationError => false
+    CursorSdkErrorCodeOther { raw: _ } => false
+  }
+}

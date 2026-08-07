@@ -28,6 +28,10 @@ import gunbc.cursor_sdk_auth_probe {
   CursorSdkAuthProbeTerminalNonAuthenticationError,
   CursorSdkAuthProbeUnclassified,
 }
+import extdeps.llm.cursor_sdk_errors {
+  CursorSdkErrorCodeOther,
+  cursor_sdk_error_code_is_enumerated_non_authentication_failure,
+}
 
 data cursor_sdk_provider_standing_note: String = "Produces a six-axis ProviderStandingBundle for Cursor SDK local from modeled auth probe + typed capability gaps. Account headroom is LimitCapabilityGapUnobservable — never LimitObservedAvailable. AuthenticationAuthenticated is derived from probe only, never authored. Coordinates arm names with gunbc.provider_standing (valiant-stag-845 / PR 7926)."
 
@@ -43,7 +47,24 @@ fn cursor_sdk_authentication_standing_from_probe(
   match probe {
     CursorSdkAuthProbeAuthenticated => AuthenticationAuthenticated
     CursorSdkAuthProbeCredentialsRejected { code: _ } => AuthenticationCredentialsAbsent
-    CursorSdkAuthProbeTerminalNonAuthenticationError { code: _ } => AuthenticationAuthenticated
+    CursorSdkAuthProbeTerminalNonAuthenticationError { code: code } =>
+      if cursor_sdk_error_code_is_enumerated_non_authentication_failure(code: code) {
+        AuthenticationAuthenticated
+      } else {
+        match code {
+          CursorSdkErrorCodeOther { raw: raw } =>
+            AuthenticationStandingUnobserved {
+              reason: concat(
+                "unrecognised terminal error code: ",
+                raw,
+              ) as NonEmptyStr,
+            }
+          _ =>
+            AuthenticationStandingUnobserved {
+              reason: "unrecognised terminal error code" as NonEmptyStr,
+            }
+        }
+      }
     CursorSdkAuthProbeUnclassified { reason } =>
       AuthenticationStandingUnobserved { reason: reason }
   }
