@@ -1,4 +1,7 @@
-//! Execution receipt: assembly_symbol_index on all-hits vs exactly-one-miss (same entry, same index).
+//! Execution receipt: partial-hit `assembly_symbol_index` absorbing fallback (§5).
+//!
+//! Same entry, same index: all typed-cache hits skip symbol_index entirely; exactly one
+//! miss rebuilds the **whole closure** index (~82–96% of cold cost), not a proportional subset.
 
 use std::fs;
 
@@ -135,8 +138,12 @@ fn partial_hit_symbol_index_pathology_receipt() {
 
 #[test]
 fn partial_hit_symbol_index_pathology_receipt_ci_spec() {
-    let roots = vec!["dag".to_string(), "src/v2".to_string()];
-    let entry = crate::helpers::workspace_root()
+    let ws = crate::helpers::workspace_root();
+    let roots = vec![
+        ws.join("dag").to_string_lossy().into_owned(),
+        ws.join("src/v2").to_string_lossy().into_owned(),
+    ];
+    let entry = ws
         .join("dag/gunbc/ci_spec.dag")
         .to_string_lossy()
         .into_owned();
