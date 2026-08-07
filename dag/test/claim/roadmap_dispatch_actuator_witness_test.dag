@@ -78,6 +78,9 @@ import gunbc.roadmap_dispatch_actuator {
   classify_tmux_session,
   dispatch_tmux_session_scope_for_process_fingerprint,
   dispatch_live_session_row_for_scope,
+  dispatch_live_sessions_from_entries,
+  fixture_projection_standing_refusal_tmux_entry,
+  classify_dispatch_request,
   dispatch_provider_instance_for,
   session_lease_reuses_process_port_classifier_shape,
   hostile_node_id_stays_single_argv_token,
@@ -503,6 +506,7 @@ test fn witness_provider_projection_is_exact_bounded_capability() -> Bool {
 test fn codex_provider_v0_argv_keystone_holds() -> Bool {
   witness_probe_bridge_ineligible_standing_refuses_actuator_selection()
     && witness_actuator_automatic_selection_refuses_with_standing_reason()
+    && witness_projection_standing_refusal_specimen_holds()
     && witness_codex_npm_launcher_fingerprint_is_live_receipt()
     && witness_codex_argv_is_unattended_but_sandboxed()
     && witness_selected_provider_shapes_codex_tmux_command()
@@ -633,6 +637,28 @@ test fn witness_live_sessions_panel_rows() -> Bool {
     }
     TmuxLsParseRefused { line_number: _, raw: _, reason: _ } => false
   }
+}
+
+test fn witness_projection_standing_refusal_specimen_holds() -> Bool {
+  let entry = fixture_projection_standing_refusal_tmux_entry()
+  let node = sized_derivable(id: "panel-a", prs: [12], title: "Panel")
+  let doc = fixture_doc(nodes: [node], edges: [])
+  let ready = next_spawnable(doc: doc, merged: [])
+  match dispatch_actuator_selection(node_sizing: Unsized) {
+    DispatchActuatorSelectionRefused { reason } =>
+      reason == dispatch_selection_standing_ineligible_reason
+    DispatchActuatorSelectionOk { provider: _, effort: _, process_fingerprint: _ } => false
+  }
+    && count(dispatch_live_sessions_from_entries(entries: [entry])) == 0
+    && match classify_dispatch_request(
+      node: node,
+      ready: ready,
+      tmux_entries: [entry],
+      attempt_key: "feedfacefeedface",
+    ) {
+      DispatchRefused { reason: r } => r == dispatch_selection_standing_ineligible_reason
+      DispatchPermitted { session_name: _, worktree_path: _, branch_name: _, brief: _, reasoning_effort: _ } => false
+    }
 }
 
 test fn witness_name_only_observation_not_converged() -> Bool {

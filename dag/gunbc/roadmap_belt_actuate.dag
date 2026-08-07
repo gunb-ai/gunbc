@@ -4285,7 +4285,7 @@ fn belt_stop_json(node_id: String) -> String {
   serialize_json(v: belt_stop_result_json_value(r: belt_stop_node(node_id: node_id)))
 }
 
-data belt_sessions_json_note: String = "The sessions wire projects independent session-container, process-lifecycle, provider, readiness, phase, and cleanup facts. Inclusion in sessions proves only `session_presence=present`. process_state comes from the exact dead/status pane observation; cleanup_action is derived separately from process state plus ownership policy. A refused pane probe stays per-session as process unobserved and cleanup unavailable while the known session set remains a 200. Only refusal of the tmux session-list source produces top-level observe_refused/503."
+data belt_sessions_json_note: String = "The sessions wire projects independent session-container, process-lifecycle, provider, readiness, phase, and cleanup facts. Inclusion in sessions proves only `session_presence=present`. process_state comes from the exact dead/status pane observation; cleanup_action is derived separately from process state plus ownership policy. A refused pane probe stays per-session as process unobserved and cleanup unavailable while the known session set remains a 200. Only refusal of the tmux session-list source produces top-level observe_refused/503. Cleanup scope for admitted rows uses dispatch_tmux_session_scope_for_live_session from the session worker's configured provider facts — never a production-selection re-query that would fabricate eligibility or a partial row when standing refuses."
 
 fn belt_sessions_json_value(o: BeltObserve) -> JsonValue {
   match o {
