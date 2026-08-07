@@ -7,6 +7,7 @@ import std.measure {
   ClockBasis, CpuClock, WallClock, clock_basis_eq,
   Measure, Time, ByteSize, Watt,
   Second, Millisecond,
+  millisecond, millisecond_count,
   byte_size, byte_size_count, watt, time_measure, measure_count
 }
 import std.pareto { AxisGoal }
@@ -20,6 +21,10 @@ import std.content_hash {
   fnv1a64_structural_hex_digest
 }
 import std.algebra { Empty, Cons }
+import std.witness_admission {
+  WitnessConsumerCadence,
+  witness_consumer_cadence_eq,
+}
 
 type CostBasis
   = Predicted
@@ -82,10 +87,30 @@ type WitnessCostBasis
       basis: String
     }
 
+data scheduled_witness_envelope_authority_note: String = "Slice C-b typed enrollment envelope (operator 7893 recut): consumer is WitnessConsumerCadence — consumer identity, not a schedule period string. max_staleness is Millisecond alongside wall_budget (std.measure), not a wire string — 4h is 14400000 ms, not a cadence spelling. Actual enrollment on SpanEnrolled; desired placement derives separately in slice C-c. Dissolve-on: string cadence/staleness wire decoders delete when no enrollment surface still carries them."
+
 type ScheduledWitnessEnvelope {
-  cadence: String
+  consumer: WitnessConsumerCadence
   wall_budget: Millisecond
-  max_staleness: String
+  max_staleness: Millisecond
+}
+
+fn scheduled_envelope_per_pr_max_staleness() -> Millisecond {
+  millisecond(count: 0)
+}
+
+fn scheduled_envelope_four_hour_max_staleness() -> Millisecond {
+  millisecond(count: 14400000)
+}
+
+fn scheduled_witness_envelope_wellformed(envelope: ScheduledWitnessEnvelope) -> Bool {
+  millisecond_count(m: envelope.wall_budget) > 0
+}
+
+fn scheduled_witness_envelope_eq(a: ScheduledWitnessEnvelope, b: ScheduledWitnessEnvelope) -> Bool {
+  witness_consumer_cadence_eq(a: a.consumer, b: b.consumer)
+    && (millisecond_count(m: a.wall_budget) == millisecond_count(m: b.wall_budget))
+    && (millisecond_count(m: a.max_staleness) == millisecond_count(m: b.max_staleness))
 }
 
 type WitnessSpan
