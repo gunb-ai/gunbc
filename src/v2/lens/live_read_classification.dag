@@ -535,6 +535,73 @@ fn live_read_classification_g2_from_facts(
   }
 }
 
+data g2_manifest_shape_law: String = "ONE EVAL, MANY ROWS, and the shape is forced by cost rather than taste. The obvious wiring calls the projection once per enrolled declaration, which recomputes the dependency edges, declaration facts, and fn-arrow facts on every call — restoring correctness while making selection itself unaffordable, which is precisely the trade the live-read design names when it pairs G2 path-intersection with carrier memoization. The requests are small (a triple per enrolled row) and the facts are large, so the fold inverts: derive the three fact sets ONCE, then classify every request against them.
+
+The row key is declaration grain — entry path plus function — because an entry-grain verdict would make one live-read witness render every sibling in its file unskippable, the same precision loss the G1 union caused a layer down. The subject rides on every row rather than being implied by the call, so a decoded manifest can be checked against the index that is about to consume it instead of being trusted because it exists."
+
+type LiveReadSelectionRequest {
+  entry_path: String
+  entry_module: String
+  fn_name: String
+}
+
+type LiveReadSelectionManifestRow {
+  key: String
+  projection: LiveReadSelectionProjection
+}
+
+data empty_manifest_rows: List<LiveReadSelectionManifestRow> = []
+
+fn live_read_manifest_row_key(entry_path: String, fn_name: String) -> String {
+  concat(concat(entry_path, "::"), fn_name)
+}
+
+fn live_read_selection_manifest_over(
+  requests: List<LiveReadSelectionRequest>,
+  subject: G2FactSubject,
+  edges: List<ModuleDependencyEdge>,
+  nodes: List<ModuleDeclarationFact>,
+  decls: List<FnArrowDecl>
+) -> List<LiveReadSelectionManifestRow> {
+  fold_list(xs: requests, empty: empty_manifest_rows, cons: fn(acc, req) {
+    list_snoc_item(
+      xs: acc,
+      item: LiveReadSelectionManifestRow {
+        key: live_read_manifest_row_key(entry_path: req.entry_path, fn_name: req.fn_name),
+        projection: live_read_selection_projection_live(
+          entry_path: req.entry_path,
+          entry_module: req.entry_module,
+          fn_name: req.fn_name,
+          subject: subject,
+          edges: edges,
+          nodes: nodes,
+          decls: decls
+        )
+      }
+    )
+  })
+}
+
+fn live_read_selection_manifest_live(
+  requests: List<LiveReadSelectionRequest>,
+  subject_id: String,
+  pool_roots: List<String>,
+  importer_roots: List<String>,
+  exclude_substrings: List<String>
+) -> List<LiveReadSelectionManifestRow> {
+  live_read_selection_manifest_over(
+    requests: requests,
+    subject: WholeTreeFactSubject { subject_id: subject_id },
+    edges: dependency_resolution_facts_live(
+      pool_roots: pool_roots,
+      importer_roots: importer_roots,
+      exclude_substrings: exclude_substrings
+    ),
+    nodes: module_declaration_facts_live(pool_roots: pool_roots),
+    decls: fn_arrow_decl_facts_live()
+  )
+}
+
 data g2_live_production_boundary_law: String = "THE LIVE BOUNDARY IS ModuleDependencyEdge, NOT ModuleImportFact (operator ruling, 2026-08-07). v2.lens.module_graph declares dependency_resolution_facts_live the single swappable edge producer and forbids a second one, because the namespace terminal step replaces its BODY when the import grammar is deleted. Two consequences bind this module. Calling import_resolution_facts_live instead would omit the strict-tier reference-derived edges that producer already unions in, so a G2 closure would be narrower than the selection closure that decides the same question one axis over — an under-selection source. And it would bind live classification to the import grammar that is scheduled to disappear, so the namespace swap would silently narrow G2 instead of leaving it untouched, which is exactly what the edge-source-agnostic-by-construction note exists to prevent.
 
 ModuleImportFact stays FIXTURE-FACING. It is a hand-authorable {module, imports} view with no live producer in the corpus, which is what makes it good for planted tests and wrong for production: a shape nothing derives cannot be kept honest against the tree. The seed does not mint it either — asking the host to fabricate the fact shape would put fact production back in the layer this lane is repairing."
