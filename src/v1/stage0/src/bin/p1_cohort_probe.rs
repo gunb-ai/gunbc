@@ -21,6 +21,10 @@
 //
 // Instrumentation:
 //   GUNBC_P1_COHORT_RECEIPT=1 — per-entry lines + periodic heartbeat (auto-on for matrix runs)
+//
+// Terminal-run wall clock: PASS/REFUSED lines emit `cohort_complete_wall_ms` at the moment
+// `run_discovery_corpus_with_options` returns (before heartbeat teardown). Do not compare
+// against external `timeout` wrappers or heartbeat `elapsed_ms` — those are probe windows.
 
 use std::io::Write;
 use std::process::ExitCode;
@@ -194,6 +198,40 @@ fn install_interrupt_flush() {
 #[cfg(not(unix))]
 fn install_interrupt_flush() {}
 
+fn cgroup_terminal_snapshot() -> String {
+    let dir = leaf_cgroup_dir();
+    let (current, peak) = p1_cohort_cgroup_memory();
+    let max = dir.as_ref().and_then(|d| read_cgroup_u64(d, "memory.max"));
+    let high = dir.as_ref().and_then(|d| read_cgroup_raw(d, "memory.high"));
+    let swap_max = dir
+        .as_ref()
+        .and_then(|d| read_cgroup_u64(d, "memory.swap.max"));
+    let swap_current = dir
+        .as_ref()
+        .and_then(|d| read_cgroup_u64(d, "memory.swap.current"));
+    let events = dir
+        .as_ref()
+        .and_then(|d| read_cgroup_raw(d, "memory.events"));
+    format!(
+        "memory.max={} memory.high={} memory.peak={} memory.current={} memory.swap.max={} memory.swap.current={} memory.events={}",
+        max.map(|b| b.to_string()).unwrap_or_else(|| "unreadable".into()),
+        high.unwrap_or_else(|| "unreadable".into()),
+        peak
+            .map(|b| b.to_string())
+            .unwrap_or_else(|| "unreadable".into()),
+        current
+            .map(|b| b.to_string())
+            .unwrap_or_else(|| "unreadable".into()),
+        swap_max
+            .map(|b| b.to_string())
+            .unwrap_or_else(|| "unreadable".into()),
+        swap_current
+            .map(|b| b.to_string())
+            .unwrap_or_else(|| "unreadable".into()),
+        events.unwrap_or_else(|| "unreadable".into()),
+    )
+}
+
 fn spawn_periodic_heartbeat(stop: Arc<AtomicBool>) -> std::thread::JoinHandle<()> {
     std::thread::Builder::new()
         .name("p1-cohort-heartbeat".into())
@@ -289,6 +327,7 @@ fn main() -> ExitCode {
         width_policy,
         options,
     );
+    let cohort_complete_wall_ms = wall_start.elapsed().as_millis();
 
     stop.store(true, Ordering::Relaxed);
     let _ = heartbeat.join();
@@ -296,14 +335,13 @@ fn main() -> ExitCode {
 
     match run_result {
         Ok(summary) => {
-            let wall_ms = wall_start.elapsed().as_millis();
             let counters = shared_typecheck_store_counters_snapshot();
             eprintln!(
-                "p1_cohort_probe: PASS matrix_cell={} width={} shared_typed_store={} wall_ms={} total={} skipped={} failures={} resolve_ms={:.3} eval_ms={:.3} typecheck_compute={}",
+                "p1_cohort_probe: PASS matrix_cell={} width={} shared_typed_store={} cohort_complete_wall_ms={} total={} skipped={} failures={} resolve_ms={:.3} eval_ms={:.3} typecheck_compute={}",
                 matrix,
                 width_label,
                 shared_armed,
-                wall_ms,
+                cohort_complete_wall_ms,
                 summary.total,
                 summary.skipped,
                 summary.failures.len(),
@@ -323,6 +361,7 @@ fn main() -> ExitCode {
                 counters.shared_store_compute_held_nanos,
                 counters.private_store_fallback,
             );
+            eprintln!("p1_cohort_probe: cgroup {}", cgroup_terminal_snapshot());
             if summary.failures.is_empty() {
                 ExitCode::SUCCESS
             } else {
@@ -334,9 +373,12 @@ fn main() -> ExitCode {
         }
         Err(msg) => {
             eprintln!(
-                "p1_cohort_probe: refused matrix_cell={} width={}: {msg}",
-                matrix, width_label
+                "p1_cohort_probe: refused matrix_cell={} width={} cohort_complete_wall_ms={}: {msg}",
+                matrix,
+                width_label,
+                cohort_complete_wall_ms,
             );
+            eprintln!("p1_cohort_probe: cgroup {}", cgroup_terminal_snapshot());
             ExitCode::from(1)
         }
     }
