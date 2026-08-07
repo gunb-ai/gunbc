@@ -72,7 +72,7 @@ import v2.workflow.ci_floor_plan {
   witness_floor_batch_clamp_rate_all_nonneg,
   v1_claim_scoped_known_red_probe_batch_enrolled,
 }
-import gunbc.explicit_witness_admission { known_red_probe_corpus_roster, known_red_probe_v1_envelope_roster }
+import gunbc.explicit_witness_admission { known_red_probe_corpus_roster, known_red_probe_v1_envelope_roster, known_red_probe_corpus_fast_budget_roster, known_red_probe_corpus_long_budget_roster }
 import gunbc.ci_layer_roots { witness_layer_roots, witness_discovery_scan_dirs, v1_claim_scoped_witness_entries, v1_claim_scoped_witness_batch, scoped_witness_batches, known_red_probe_roster, falsifier_silent_pick_gate_entries, falsifier_substrate_long_lane_entries, bin_witness_wet_entries }
 import v2.compiler.self_host.wet_receipt_enrollment {
   falsifier_self_host_wet_entries,
@@ -92,7 +92,7 @@ import std.realization_schedule {
   SelectionOff, SelectionApplied, SelectionPredictOnly, NodeFrontierSelection,
   runnable_eq, runnable_resource_profile, runnable_memory_substantial,
   runnable_forbids_corpus_co_residence, runnable_heavy_whole_tree_resolve,
-  ScheduleWitnessEntry, schedule_witness_entry_eq,
+  ScheduleWitnessEntry, schedule_witness_entry_eq, schedule_witness_entry_roster_contains,
   CorpusWitnessKind, ExecutionWitnessKind
 }
 import std.realization_schedule { WalkPlan, NoWalkFinalization, NoFinalizationDeclared, NoPreWalkExecution }
@@ -604,7 +604,9 @@ fn falsifier_self_host_wet_batch_holds(r: Runnable) -> Bool {
   }
 }
 
-fn falsifier_known_red_probe_batch_holds(r: Runnable) -> Bool {
+data known_red_probe_lane_partition_witness_note: String = "The known-red probe lane carries ONE runnable PER DECLARED BUDGET, not one runnable holding the whole roster. Eval ceilings are scoped per batch, so a single mixed batch could only obtain the long ceiling by widening every fast sibling with it — the axis conflation this lane exists to remove. What this witness pins is therefore stronger than the count it replaced: each runnable's entries equal EXACTLY one derived budget roster (identity join, not a length agreement, so a same-sized wrong population refuses), the runnable count equals the number of NONEMPTY rosters (an empty side schedules no batch rather than an empty one), and every runnable independently keeps the lane's hermetic/no-host-compiler/SelectionApplied profile. Pinning only the total would let the two rosters be swapped between runnables — the budget inversion — and pinning only the count would let either carry the wrong rows."
+
+fn known_red_probe_batch_matches_roster(r: Runnable, roster: List<ScheduleWitnessEntry>) -> Bool {
   match r {
     RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: entries, node_frontier_selection: mode, exclude_substrings: _, discovery_scope_dirs: _, profile: p } =>
       match mode {
@@ -613,13 +615,38 @@ fn falsifier_known_red_probe_batch_holds(r: Runnable) -> Bool {
         SelectionOff => false
       }
         && (length(xs: dirs) == 0)
-        && (length(xs: entries) == length(xs: known_red_probe_corpus_roster()))
+        && (length(xs: entries) == length(xs: roster))
+        && fold(entries, init: true, f: fn(ok, e) {
+             ok && schedule_witness_entry_roster_contains(xs: roster, w: e)
+           })
         && discovery_batch_declares_hermetic(r: r)
         && (p.spawns_host_compiler == false)
     RunnableScopedWitnessBatch { batch: _ } => false
     RunnableSingleClaim { entry: _, function: _, profile: _ } => false
     RunnableKernelWorkload { fused_op_count: _ } => false
   }
+}
+
+fn falsifier_known_red_probe_batches_hold(b: List<Runnable>) -> Bool {
+  let fast = known_red_probe_corpus_fast_budget_roster()
+  let long = known_red_probe_corpus_long_budget_roster()
+  let fast_on = length(xs: fast) > 0
+  let long_on = length(xs: long) > 0
+  let expected = (if fast_on { 1 } else { 0 }) + (if long_on { 1 } else { 0 })
+  let count_ok = length(xs: b) == expected
+  let fast_ok = if fast_on {
+    known_red_probe_batch_matches_roster(r: b.first(), roster: fast)
+  } else {
+    true
+  }
+  let long_ok = if long_on {
+    let long_at = skip(xs: b, n: (if fast_on { 1 } else { 0 })).first()
+    known_red_probe_batch_matches_roster(r: long_at, roster: long)
+  } else {
+    true
+  }
+  let covers_lane = (length(xs: fast) + length(xs: long)) == length(xs: known_red_probe_corpus_roster())
+  count_ok && fast_ok && long_ok && covers_lane
 }
 
 fn falsifier_self_host_wet_known_red_batch_holds(r: Runnable) -> Bool {
@@ -739,8 +766,7 @@ fn falsifier_plan_structure_holds() -> Bool {
   let probe_ok = if probe_enrolled {
     let probe_offset = 1 + (if wet_enrolled { 1 } else { 0 }) + (if wet_known_red_enrolled { 1 } else { 0 })
     let probe_batch = skip(xs: batches, n: probe_offset).first()
-    (probe_batch.length() == 1)
-      && falsifier_known_red_probe_batch_holds(r: probe_batch.first())
+    falsifier_known_red_probe_batches_hold(b: probe_batch)
   } else {
     true
   }
