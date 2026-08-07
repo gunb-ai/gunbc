@@ -16,33 +16,37 @@ import std.human_intervention {
   NoDischargeSiteModeled,
 }
 import product.placement_supply { HostIdentity }
-import gunbc.dgx_spark_procurement { srv5_reserved, srv6_reserved }
 import extdeps.access.posix { PosixUser }
-import extdeps.dns.domain_name { DnsLabel }
-import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
+import extdeps.network.ipv4 { Ipv4Address }
 import extdeps.systems.nvidia_dgx_spark_setup {
   InitialUpdateDisposition,
   InitialUpdateBehaviorUnobserved,
+  InitialUpdateAppliedDuringSetup,
+  InitialUpdateDeferredToOperator,
   DgxSparkPxeInstallParameters,
-  OobeHostnameAssignment,
+  OobeSetupField,
+  OobeLanguage,
+  OobeTimeZone,
+  OobeTermsAndConditions,
+  OobeUserAccount,
+  OobeAnalytics,
   dgx_spark_oobe_offers_field,
-  dgx_spark_oobe_surface,
-  dgx_spark_documented_initial_update,
 }
 import gunbc.fleet_posix_accounts { fleet_posix_operator_user }
 import gunbc.spark_bootstrap_credential {
   SparkFactoryBootstrap,
-  BootstrapNetworkStickerUnread,
-  spark_admin_password_ref,
-  spark_bootstrap_password_ref,
+  SparkProvisioningCredentials,
 }
 
-// SPARK-PROVISION-0 (2026-08-06). ONE provisioning INTERFACE for the two DGX Spark units
-// (srv5 192.168.1.222 / srv6 192.168.1.223, on the LAN and still at factory OOBE), with
-// TWO realizations of it. The interface is what a provisioning intent MEANS; the strategy
-// is how that meaning is discharged on a given device. Model-only: nothing in this module
-// executes, observes, or touches hardware, and no row below asserts a fact about a unit
-// that has not been watched.
+// SPARK-PROVISION-0. ONE provisioning INTERFACE for the DGX Spark units, with TWO
+// realizations of it. The interface is what a provisioning intent MEANS; the strategy is
+// how that meaning is discharged on a given device. Model-only: nothing here executes,
+// observes, or touches hardware.
+//
+// NOT MODELED HERE, deliberately: the hostname. An OS hostname is presentation, it is not
+// load-bearing for receiving, deployment or enrollment, and its convergence happens later
+// through the ordinary apply path — so blocking a provision on it would invent a
+// dependency the world does not have (operator ruling, 2026-08-07).
 
 type PxeEnvironmentIdentity = NonEmptyStr where brand("PxeEnvironmentIdentity")
 
@@ -54,8 +58,8 @@ type SparkAutoinstallSpec {
 
 // PxeAutoinstall is DECLARED here and its standings are not. Whether a given network can
 // serve the boot chain, and whether a given unit's firmware will take it, are observations
-// of things this session has not looked at — they belong to SPARK-PXE-0, and authoring
-// them here from nothing would be the fabrication DESIGN §5 forbids, dressed as coverage.
+// this session has not made — they belong to SPARK-PXE-0, and authoring them here from
+// nothing would be fabrication dressed as coverage.
 type SparkProvisioningStrategy
   = FactoryOobe { bootstrap: SparkFactoryBootstrap }
   | PxeAutoinstall {
@@ -63,23 +67,6 @@ type SparkProvisioningStrategy
       image: InstallationImageIdentity,
       install_spec: SparkAutoinstallSpec
     }
-
-// An intent consumes an ALLOCATED hostname; it never derives one from HostIdentity
-// (operator ruling, 2026-08-07). srv5/srv6 are internal legacy fleet slots kept as SSH and
-// config aliases — parsing a slot name into an OS hostname fuses two independent facts into
-// one writable string, and the canonical label is a separate allocation of shape
-// <adjective>-<animal>-<suffix> that must survive both a role change and a hardware swap in
-// the same slot. Neither unit has been allocated one yet, so the honest state is Pending: a
-// name that has not been issued cannot be authored here, and writing the slot name into the
-// field would be exactly the fusion the ruling separates.
-//
-// dissolve-on: HOST-NAME-0 lands the allocation authority; HostnameAllocated's DnsLabel
-// payload becomes a reference into it and this two-arm carrier retires rather than forking
-// a second naming vocabulary beside it. DnsLabel is the existing DNS syntax authority and
-// is not re-minted here.
-type SparkHostnameAllocation
-  = HostnameAllocated { label: DnsLabel }
-  | HostnameAllocationPending
 
 type TelemetryDisposition
   = TelemetryEnabled
@@ -96,14 +83,101 @@ type SparkNetworkPlacement {
 
 type SparkProvisioningIntent {
   host: HostIdentity
-  desired_hostname: SparkHostnameAllocation
   administrator: PosixUser
+  credentials: SparkProvisioningCredentials
   locale: NonEmptyStr
   timezone: NonEmptyStr
   telemetry: TelemetryDisposition
   network: SparkNetworkPlacement
   license: LicenseAcceptance
   strategy: SparkProvisioningStrategy
+}
+
+// The intent's configuration subjects must be settleable by the wizard the strategy uses.
+// This is what gives the cited OOBE field list a consumer: a subject the wizard does not
+// offer cannot be discharged inside the portal, and the model should say so structurally
+// rather than discovering it at the keyboard.
+fn spark_intent_oobe_subjects() -> List<OobeSetupField> {
+  [OobeLanguage, OobeTimeZone, OobeTermsAndConditions, OobeUserAccount, OobeAnalytics]
+}
+
+fn spark_oobe_covers_intent_subjects() -> Bool {
+  fold(
+    spark_intent_oobe_subjects(),
+    init: true,
+    f: (acc, subject) => acc && dgx_spark_oobe_offers_field(field: subject)
+  )
+}
+
+// ------------------------------------------------------------------------------------
+// Standings the environment supplies. Nothing below is authored per unit.
+// ------------------------------------------------------------------------------------
+
+// Whether a machine can drive the bootstrap association at all. This is the seam onto
+// BOOTSTRAP-REACH-0's pluggable reach provider; no transport, vendor or device is named
+// here, because which machine relays is that lane's fact and not this one's. Unknown is a
+// real third state and is never collapsed into either answer — "no controller exists" and
+// "nobody has looked" have different remedies.
+//
+// dissolve-on: BOOTSTRAP-REACH-0 lands the provider; BootstrapControllerReady gains its
+// provider payload and BootstrapControllerUnknown retires.
+type BootstrapControllerStanding
+  = BootstrapControllerReady
+  | BootstrapControllerAbsent
+  | BootstrapControllerUnknown
+
+// Whether the unit's supplied bootstrap credentials have been materialized for use.
+type BootstrapCredentialStanding
+  = BootstrapCredentialsMaterialized
+  | BootstrapCredentialsNotMaterialized
+  | BootstrapCredentialStandingUnknown
+
+// The PXE side of the same question, owned by SPARK-PXE-0. Declared so strategy selection
+// can consume it; Unknown is the only value this lane may assert today.
+type PxePrerequisiteStanding
+  = PxePrerequisitesReady
+  | PxePrerequisitesAbsent
+  | PxePrerequisitesUnknown
+
+type SparkProvisioningEnvironment {
+  controller: BootstrapControllerStanding
+  credentials: BootstrapCredentialStanding
+  pxe: PxePrerequisiteStanding
+}
+
+// THE ACTUAL WORLD, 2026-08-07, and every arm is Unknown on purpose. No bootstrap
+// controller has been established; no path from any workflow to Secret Manager exists, so
+// no credential can be materialized; and the PXE prerequisites belong to a lane that has
+// not run. Every consumer of this row therefore gets an undecidable answer, which is the
+// honest one — a concrete human-step count for the factory lane today would be theater.
+data spark_current_environment: SparkProvisioningEnvironment = SparkProvisioningEnvironment {
+  controller: BootstrapControllerUnknown,
+  credentials: BootstrapCredentialStandingUnknown,
+  pxe: PxePrerequisitesUnknown,
+}
+
+// ------------------------------------------------------------------------------------
+// Observation. Completion is constructible ONLY from these.
+// ------------------------------------------------------------------------------------
+
+type AccountObservation
+  = AccountObserved { name: NonEmptyStr }
+  | AccountNotObserved
+
+type ReachObservation
+  = LanReachObserved { address: Ipv4Address }
+  | LanReachNotObserved
+
+type SetupSurfaceStanding
+  = SetupSurfaceCompleted
+  | SetupSurfaceIncomplete
+  | SetupSurfaceUnobserved
+
+type PostSetupObservation {
+  account: AccountObservation
+  lan_reach: ReachObservation
+  setup_surface: SetupSurfaceStanding
+  software: InitialUpdateDisposition
 }
 
 // ------------------------------------------------------------------------------------
@@ -117,28 +191,35 @@ type SparkProvisioningPhase
   | PhaseInitialSoftwareImage
   | PhasePostSetupAccess
 
-// An INTERRUPTION is the device or the process being mid-flight. None of these is evidence
-// that anything was rejected: a reboot the vendor documents is the installer working, and a
-// prerequisite that has not been reached yet is a statement about ORDER, not about validity.
 type SparkProvisioningInterruptionCause
   = ExpectedRebootInProgress
   | InitialSoftwareImageInstalling
   | PrerequisiteNotYetReached { prerequisite: NonEmptyStr }
   | BootstrapNetworkHandoffInProgress
+  | PostSetupObservationIncomplete { missing: NonEmptyStr }
 
-// A REFUSAL is the device or the model saying no. Every arm names something that was
-// actually rejected — not something that merely has not happened.
 type SparkProvisioningRefusalCause
   = InstallerRejectedField { field: NonEmptyStr }
   | BootstrapCredentialRejected
   | SensitiveInputAdmissionRefused
   | StrategyUnsupportedOnDevice { detail: NonEmptyStr }
 
+// THE RECEIPT IS BUILT FROM OBSERVATION, NEVER FROM INTENT. An earlier revision carried a
+// spark_receipt_from_intent that recast the requested state as the achieved one — the
+// fabricated-plausible-output class in its purest form, since a provision that never ran
+// produced a receipt indistinguishable from one that did. That function is DELETED rather
+// than guarded: leaving it callable would relocate the defect instead of closing it, and
+// the receipt now has no constructor that does not carry a device observation.
+//
+// initial_update likewise comes from the device, not from the extdeps documented row: what
+// the vendor pages say about first-boot updates is a fact about the DOCS, and copying it
+// into a receipt would claim an observation nobody made.
 type SparkProvisioningReceipt {
   host: HostIdentity
-  hostname: SparkHostnameAllocation
   administrator: PosixUser
   strategy_used: SparkProvisioningStrategy
+  account: AccountObservation
+  lan_reach: ReachObservation
   initial_update: InitialUpdateDisposition
 }
 
@@ -146,9 +227,8 @@ type SparkProvisioningReceipt {
 // names, and each collapse has its own harm. Interrupted-as-Refused aborts a working
 // install at its documented reboot. Refused-as-Interrupted retries forever against a
 // device that already said no. HumanInterventionRequired-as-Refused reads a step nobody
-// has performed yet as the device rejecting it — the model blaming the machine for the
-// operator's queue. HumanInterventionRequired-as-Interrupted is worse still: it waits for
-// a transition that cannot occur without a person who has not been asked.
+// has performed yet as the device rejecting it. HumanInterventionRequired-as-Interrupted
+// waits for a transition that cannot occur without a person who has not been asked.
 type SparkProvisioningOutcome
   = SparkProvisioned { receipt: SparkProvisioningReceipt }
   | SparkProvisioningInterrupted {
@@ -161,13 +241,8 @@ type SparkProvisioningOutcome
       cause: SparkProvisioningRefusalCause
     }
 
-// What a provisioning run would report about where it got to. This is an OBSERVATION
-// coproduct, deliberately one-to-one with nothing: each arm names a distinguishable state
-// of the world, and the classifier below is the only place those states are mapped onto
-// outcomes. Keeping the mapping in one total fold is what makes the four-way distinction
-// checkable rather than a naming convention.
 type SparkProvisioningProgress
-  = ProgressReachedPostSetupAccess
+  = ProgressPostSetupObserved { observation: PostSetupObservation }
   | ProgressAwaitingDocumentedReboot
   | ProgressInstallingSoftwareImage
   | ProgressBootstrapHandoffPending
@@ -178,14 +253,53 @@ type SparkProvisioningProgress
   | ProgressStrategyUnsupported { detail: NonEmptyStr }
   | ProgressSensitiveInputRefused
 
+// An incomplete observation is an INTERRUPTION, not a refusal and not a success: nothing
+// rejected anything, and the provision simply has not been seen to finish. The missing
+// element is named so the gap is countable rather than a silent not-yet.
+fn post_setup_observation_gap(observation: PostSetupObservation) -> NonEmptyStr? {
+  match observation.account {
+    AccountNotObserved => Present { value: "administrator account not observed on the device" }
+    AccountObserved { name: _ } => match observation.lan_reach {
+      LanReachNotObserved => Present { value: "device not observed reachable on the LAN" }
+      LanReachObserved { address: _ } => match observation.setup_surface {
+        SetupSurfaceUnobserved => Present { value: "post-OOBE setup surface not observed" }
+        SetupSurfaceIncomplete => Present { value: "post-OOBE setup surface observed incomplete" }
+        SetupSurfaceCompleted => match observation.software {
+          InitialUpdateBehaviorUnobserved =>
+            Present { value: "initial software baseline not observed on the device" }
+          InitialUpdateAppliedDuringSetup => Absent
+          InitialUpdateDeferredToOperator => Absent
+        }
+      }
+    }
+  }
+}
+
 fn classify_spark_progress(
   intent: SparkProvisioningIntent,
   phase: SparkProvisioningPhase,
   progress: SparkProvisioningProgress
 ) -> SparkProvisioningOutcome {
   match progress {
-    ProgressReachedPostSetupAccess =>
-      SparkProvisioned { receipt: spark_receipt_from_intent(intent: intent) }
+    ProgressPostSetupObserved { observation: observation } =>
+      match post_setup_observation_gap(observation: observation) {
+        Present { value: missing } =>
+          SparkProvisioningInterrupted {
+            phase: PhasePostSetupAccess,
+            cause: PostSetupObservationIncomplete { missing: missing }
+          }
+        Absent =>
+          SparkProvisioned {
+            receipt: SparkProvisioningReceipt {
+              host: intent.host,
+              administrator: intent.administrator,
+              strategy_used: intent.strategy,
+              account: observation.account,
+              lan_reach: observation.lan_reach,
+              initial_update: observation.software,
+            }
+          }
+      }
     ProgressAwaitingDocumentedReboot =>
       SparkProvisioningInterrupted { phase: phase, cause: ExpectedRebootInProgress }
     ProgressInstallingSoftwareImage =>
@@ -214,7 +328,7 @@ fn classify_spark_progress(
 }
 
 // ------------------------------------------------------------------------------------
-// Human burden, per realization.
+// Human burden. DERIVED from environment standing, never authored.
 // ------------------------------------------------------------------------------------
 
 fn spark_intervention(
@@ -232,202 +346,195 @@ fn spark_intervention(
   }
 }
 
-// FactoryOobe's irreducible human steps. Both are DeviceOnce and both are physical: the
-// hotspot credential exists only on a sticker in the box (extdeps first-boot citation), and
-// joining that hotspot means a second machine in radio range of this specific unit. Neither
-// can be amortized across the fleet, because neither is about the fleet.
-fn factory_oobe_human_burden() -> ProvisioningHumanBurden {
-  ProvisioningHumanBurden {
-    interventions: [
-      spark_intervention(
-        identity: "spark-oobe-sticker-credential",
-        frequency: DeviceOnce,
-        subject: "bootstrap hotspot credential",
-        instruction: "Read the per-unit SSID and password from the Quick Start Guide sticker in this unit's box and store the password as the device's bootstrap SecretRef. The password is never transcribed into source."
-      ),
-      spark_intervention(
-        identity: "spark-oobe-hotspot-join",
-        frequency: DeviceOnce,
-        subject: "bootstrap network association",
-        instruction: "Associate a setup machine with this unit's Wi-Fi hotspot so the captive portal is reachable. The hotspot is per-unit and short-lived; it turns off once the unit joins the LAN."
-      ),
-    ]
-  }
-}
-
-// PxeAutoinstall's steps split across two frequencies, which is the entire reason the
-// frequency axis exists: the boot environment is stood up once for every unit that will
-// ever be provisioned this way, while the firmware change is per-unit console work.
-fn pxe_autoinstall_human_burden() -> ProvisioningHumanBurden {
-  ProvisioningHumanBurden {
-    interventions: [
-      spark_intervention(
-        identity: "spark-pxe-boot-environment",
-        frequency: FleetOnce,
-        subject: "network boot environment",
-        instruction: "Stand up the TFTP, HTTP and DHCP services the DGX Spark PXE chain requires. Paid once for the fleet, not once per unit."
-      ),
-      spark_intervention(
-        identity: "spark-pxe-firmware-enablement",
-        frequency: DeviceOnce,
-        subject: "UEFI network stack",
-        instruction: "At this unit's console, either disable secure boot or enroll grubnetaa64.efi.signed, then enable PXE on the chosen interface under Network Stack Configuration."
-      ),
-      spark_intervention(
-        identity: "spark-recovery-media-reinstall",
-        frequency: BreakGlassOnly,
-        subject: "recovery",
-        instruction: "Emergency only: reinstall from the FastOS recovery archive. Never scheduled, never part of a routine provision."
-      ),
-    ]
-  }
-}
-
-fn spark_strategy_human_burden(strategy: SparkProvisioningStrategy) -> ProvisioningHumanBurden {
-  match strategy {
-    FactoryOobe { bootstrap: _ } => factory_oobe_human_burden()
-    PxeAutoinstall { environment: _, image: _, install_spec: _ } => pxe_autoinstall_human_burden()
-  }
-}
-
-// Selection minimizes routine burden lexicographically (EveryProvision, then DeviceOnce,
-// then FleetOnce) and never prices BreakGlassOnly — see std.human_intervention. A tie keeps
-// the first argument rather than inventing a tiebreak the model cannot justify.
-fn select_spark_strategy(
-  a: SparkProvisioningStrategy,
-  b: SparkProvisioningStrategy
-) -> SparkProvisioningStrategy {
-  match compare_routine_human_burden(
-    a: spark_strategy_human_burden(strategy: a),
-    b: spark_strategy_human_burden(strategy: b)
-  ) {
-    Less => a
-    Equal => a
-    Greater => b
-  }
-}
-
-// ------------------------------------------------------------------------------------
-// The one place the interface meets the cited surface: OOBE does not offer a hostname.
-// ------------------------------------------------------------------------------------
-
-// An intent carries desired_hostname, and the cited first-boot page lists no hostname
-// field. Under FactoryOobe that is a real residue and the honest outcome is an intervention
-// — a step a human or a later modeled effect must take — NOT a refusal, because nothing
-// rejected anything, and NOT an interruption, because no transition is pending.
+// A burden is not a property of a strategy — it is a property of a strategy MEETING an
+// environment. Associating with a Wi-Fi hotspot and filling a captive portal are machine
+// capabilities: given a controller that can reach the bootstrap network and credentials
+// already materialized, the human OOBE burden is EMPTY. An earlier revision authored
+// hotspot association as an irreducible DeviceOnce human step, which priced a capability
+// the fleet either has or can acquire as though it were a law of physics, and made
+// FactoryOobe permanently look more expensive than it is.
 //
-// Under PxeAutoinstall the answer is neither "handled" nor "residue": it is NOT MODELED.
-// SparkAutoinstallSpec carries only the cited kernel-parameter switches, and neither it nor
-// extdeps.systems.nvidia_dgx_spark_setup models a hostname anywhere in the PXE path. An
-// earlier revision returned Absent here and a comment asserted the autoinstall payload
-// carries the hostname — a claim with no cited carrier behind it, i.e. the fabricated
-// plausible output DESIGN §5 forbids, and one that made a modeling gap read as coverage
-// (review 49796). The third arm below is what an unmodeled path is entitled to: a typed,
-// located, countable gap, not a silent zero. It dissolves when SPARK-PXE-0 lands a cited
-// hostname carrier in the PXE path — at which point this arm becomes a real residue or a
-// real "handled", decided by the citation rather than by this function.
-type SparkHostnameResidue
-  = HostnameResidueIntervention { intervention: HumanIntervention }
-  | HostnameSetWithinStrategy
-  | HostnameHandlingUnmodeled { strategy_detail: NonEmptyStr }
+// Sticker capture is likewise absent: the units' bootstrap credentials were supplied at
+// receiving. Completed work is not remaining work, and carrying it as a pending
+// intervention would inflate every burden comparison that consumes this.
+type HumanBurdenDerivation
+  = BurdenDerived { burden: ProvisioningHumanBurden }
+  | BurdenUndecidable { cause: NonEmptyStr }
 
-fn spark_hostname_residue(
-  strategy: SparkProvisioningStrategy,
-  allocation: SparkHostnameAllocation
-) -> SparkHostnameResidue {
-  match strategy {
-    FactoryOobe { bootstrap: _ } =>
-      match dgx_spark_oobe_offers_field(field: OobeHostnameAssignment) {
-        true => HostnameSetWithinStrategy
-        false => HostnameResidueIntervention {
-          intervention: spark_intervention(
-            identity: "spark-oobe-hostname-residue",
-            frequency: DeviceOnce,
-            subject: "hostname assignment",
-            instruction: spark_hostname_residue_instruction(allocation: allocation)
-          )
+fn factory_oobe_human_burden(env: SparkProvisioningEnvironment) -> HumanBurdenDerivation {
+  match env.controller {
+    BootstrapControllerUnknown =>
+      BurdenUndecidable {
+        cause: "bootstrap controller standing unknown: whether a machine can drive the OOBE association has not been established, and guessing either way prices a burden that may not exist."
+      }
+    BootstrapControllerReady => match env.credentials {
+      BootstrapCredentialStandingUnknown =>
+        BurdenUndecidable {
+          cause: "bootstrap credential standing unknown: the supplied credentials may or may not be materialized for the controller."
+        }
+      BootstrapCredentialsMaterialized =>
+        BurdenDerived { burden: ProvisioningHumanBurden { interventions: [] } }
+      BootstrapCredentialsNotMaterialized =>
+        BurdenDerived {
+          burden: ProvisioningHumanBurden {
+            interventions: [spark_credential_materialization_intervention()]
+          }
+        }
+    }
+    BootstrapControllerAbsent =>
+      BurdenDerived {
+        burden: ProvisioningHumanBurden {
+          interventions: [spark_manual_oobe_intervention()]
         }
       }
-    PxeAutoinstall { environment: _, image: _, install_spec: _ } =>
-      HostnameHandlingUnmodeled {
-        strategy_detail: "PxeAutoinstall: SparkAutoinstallSpec carries only the cited kernel-parameter switches, and no cited NVIDIA surface in this repository states how a hostname is set on the PXE path. Owed to SPARK-PXE-0."
+  }
+}
+
+fn spark_credential_materialization_intervention() -> HumanIntervention {
+  spark_intervention(
+    identity: "spark-bootstrap-credential-materialization",
+    frequency: DeviceOnce,
+    subject: "bootstrap credential materialization",
+    instruction: "Make this unit's already-supplied bootstrap password available to the controller as a materialized secret. The credential exists; only its binding to the controller is outstanding."
+  )
+}
+
+fn spark_manual_oobe_intervention() -> HumanIntervention {
+  spark_intervention(
+    identity: "spark-oobe-manual-association",
+    frequency: EveryProvision,
+    subject: "bootstrap network association and portal completion",
+    instruction: "No controller can reach this unit's bootstrap network, so a person associates with the hotspot and completes the captive portal by hand. This is the cost of the missing controller, not of the strategy."
+  )
+}
+
+fn pxe_autoinstall_human_burden(env: SparkProvisioningEnvironment) -> HumanBurdenDerivation {
+  match env.pxe {
+    PxePrerequisitesUnknown =>
+      BurdenUndecidable {
+        cause: "PXE prerequisite standing unknown: neither the boot environment nor this unit's firmware posture has been observed. Owed to SPARK-PXE-0."
+      }
+    PxePrerequisitesReady =>
+      BurdenDerived {
+        burden: ProvisioningHumanBurden {
+          interventions: [spark_pxe_recovery_intervention()]
+        }
+      }
+    PxePrerequisitesAbsent =>
+      BurdenDerived {
+        burden: ProvisioningHumanBurden {
+          interventions: [
+            spark_pxe_environment_intervention(),
+            spark_pxe_firmware_intervention(),
+            spark_pxe_recovery_intervention(),
+          ]
+        }
       }
   }
 }
 
-fn spark_hostname_residue_instruction(allocation: SparkHostnameAllocation) -> NonEmptyStr {
-  match allocation {
-    HostnameAllocated { label: _ } =>
-      "The first-boot wizard offers no hostname field, so the allocated canonical label is applied after setup completes — through gunbc.hostname_set over the account OOBE created, not inside the portal."
-    HostnameAllocationPending =>
-      "The first-boot wizard offers no hostname field AND no canonical label has been allocated for this unit yet. Obtain the allocation first, then apply it through gunbc.hostname_set. The internal fleet slot name is not a substitute."
+fn spark_pxe_environment_intervention() -> HumanIntervention {
+  spark_intervention(
+    identity: "spark-pxe-boot-environment",
+    frequency: FleetOnce,
+    subject: "network boot environment",
+    instruction: "Stand up the TFTP, HTTP and DHCP services the DGX Spark PXE chain requires. Paid once for the fleet, not once per unit."
+  )
+}
+
+fn spark_pxe_firmware_intervention() -> HumanIntervention {
+  spark_intervention(
+    identity: "spark-pxe-firmware-enablement",
+    frequency: DeviceOnce,
+    subject: "UEFI network stack",
+    instruction: "At this unit's console, either disable secure boot or enroll grubnetaa64.efi.signed, then enable PXE on the chosen interface under Network Stack Configuration."
+  )
+}
+
+fn spark_pxe_recovery_intervention() -> HumanIntervention {
+  spark_intervention(
+    identity: "spark-recovery-media-reinstall",
+    frequency: BreakGlassOnly,
+    subject: "recovery",
+    instruction: "Emergency only: reinstall from the FastOS recovery archive. Never scheduled, never part of a routine provision."
+  )
+}
+
+fn spark_strategy_human_burden(
+  strategy: SparkProvisioningStrategy,
+  env: SparkProvisioningEnvironment
+) -> HumanBurdenDerivation {
+  match strategy {
+    FactoryOobe { bootstrap: _ } => factory_oobe_human_burden(env: env)
+    PxeAutoinstall { environment: _, image: _, install_spec: _ } =>
+      pxe_autoinstall_human_burden(env: env)
   }
 }
 
 // ------------------------------------------------------------------------------------
-// srv5 / srv6 intents. Reserved identities from gunbc.dgx_spark_procurement; addresses are
-// the operator-stated LAN placements. No deployment, enrollment or observation is claimed.
+// Strategy selection, against a real environment.
 // ------------------------------------------------------------------------------------
 
-data srv5_spark_bootstrap: SparkFactoryBootstrap = SparkFactoryBootstrap {
-  access_point_identity: BootstrapNetworkStickerUnread,
-  access_point_password_ref: spark_bootstrap_password_ref(host: srv5_reserved),
-  documented_surface: dgx_spark_oobe_surface,
+// Selection minimizes routine burden lexicographically (EveryProvision, then DeviceOnce,
+// then FleetOnce) and never prices BreakGlassOnly — see std.human_intervention. It cannot
+// be answered from static costs: whether a relay exists, whether the PXE network exists,
+// and whether firmware is ready all move the answer, so an environment is required and an
+// undecidable standing REFUSES rather than defaulting to whichever strategy happens to
+// look cheap while the world is unknown.
+type SparkStrategySelection
+  = StrategySelected { strategy: SparkProvisioningStrategy }
+  | StrategySelectionUndecidable { cause: NonEmptyStr }
+
+fn select_spark_strategy(
+  a: SparkProvisioningStrategy,
+  b: SparkProvisioningStrategy,
+  env: SparkProvisioningEnvironment
+) -> SparkStrategySelection {
+  match spark_strategy_human_burden(strategy: a, env: env) {
+    BurdenUndecidable { cause: cause_a } => StrategySelectionUndecidable { cause: cause_a }
+    BurdenDerived { burden: burden_a } =>
+      match spark_strategy_human_burden(strategy: b, env: env) {
+        BurdenUndecidable { cause: cause_b } => StrategySelectionUndecidable { cause: cause_b }
+        BurdenDerived { burden: burden_b } =>
+          match compare_routine_human_burden(a: burden_a, b: burden_b) {
+            Less => StrategySelected { strategy: a }
+            Equal => StrategySelected { strategy: a }
+            Greater => StrategySelected { strategy: b }
+          }
+      }
+  }
 }
 
-data srv6_spark_bootstrap: SparkFactoryBootstrap = SparkFactoryBootstrap {
-  access_point_identity: BootstrapNetworkStickerUnread,
-  access_point_password_ref: spark_bootstrap_password_ref(host: srv6_reserved),
-  documented_surface: dgx_spark_oobe_surface,
-}
+// ------------------------------------------------------------------------------------
+// Intent construction.
+// ------------------------------------------------------------------------------------
 
 data spark_license_acceptance: LicenseAcceptance = LicenseAcceptance {
   terms_identity: "NVIDIA DGX Spark first-boot terms and conditions",
   accepted_by: fleet_posix_operator_user.name,
 }
 
+// The per-unit intent rows are deliberately NOT authored yet, and that is the correct
+// state rather than a deficiency. They need the two credential secret names, which do not
+// exist: no path from any workflow to Secret Manager has been established, and the
+// unit-to-slot mapping is itself unsettled. Reconstructing those names from a rendered
+// host identity is precisely what the credential module forbids, so the constructor waits
+// for real values instead of accepting invented ones.
 fn spark_provisioning_intent(
   host: HostIdentity,
-  hostname: SparkHostnameAllocation,
+  credentials: SparkProvisioningCredentials,
   address: Ipv4Address,
   strategy: SparkProvisioningStrategy
 ) -> SparkProvisioningIntent {
   SparkProvisioningIntent {
     host: host,
-    desired_hostname: hostname,
     administrator: fleet_posix_operator_user,
+    credentials: credentials,
     locale: "en_US.UTF-8",
-    timezone: "America/Los_Angeles",
+    timezone: "America/New_York",
     telemetry: TelemetryDeclined,
     network: SparkNetworkPlacement { address: address },
     license: spark_license_acceptance,
     strategy: strategy,
-  }
-}
-
-data srv5_spark_intent: SparkProvisioningIntent = spark_provisioning_intent(
-  host: srv5_reserved,
-  hostname: HostnameAllocationPending,
-  address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 222),
-  strategy: FactoryOobe { bootstrap: srv5_spark_bootstrap },
-)
-
-data srv6_spark_intent: SparkProvisioningIntent = spark_provisioning_intent(
-  host: srv6_reserved,
-  hostname: HostnameAllocationPending,
-  address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 223),
-  strategy: FactoryOobe { bootstrap: srv6_spark_bootstrap },
-)
-
-// The receipt a completed provision would carry. initial_update is the extdeps-cited
-// disposition, which today is InitialUpdateBehaviorUnobserved: a receipt for a unit nobody
-// has watched boot cannot claim updates were applied OR deferred.
-fn spark_receipt_from_intent(intent: SparkProvisioningIntent) -> SparkProvisioningReceipt {
-  SparkProvisioningReceipt {
-    host: intent.host,
-    hostname: intent.desired_hostname,
-    administrator: intent.administrator,
-    strategy_used: intent.strategy,
-    initial_update: dgx_spark_documented_initial_update,
   }
 }

@@ -2,19 +2,60 @@ module test.claim.spark_provisioning_witness
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data pxe_strategy: SparkProvisioningStrategy = PxeAutoinstall {
-  environment: "gunbc-lan-boot" as PxeEnvironmentIdentity,
-  image: "dgx-base-os-7.0.0" as InstallationImageIdentity,
-  install_spec: SparkAutoinstallSpec {
-    parameters: DgxSparkPxeInstallParameters {
-      unattended: true,
-      user_interface_disabled: true,
-      skip_firmware_update: false,
-    }
-  },
+// Controlled fixtures. Every credential ref, environment standing and observation below is
+// authored HERE, in the witness, so each count and verdict is grounded in an input this
+// file states rather than in a measurement of the tree.
+data fixture_project: GcpProjectId = "gunbai-secrets"
+
+fn fixture_credentials() -> SparkProvisioningCredentials {
+  spark_credentials(
+    hotspot: spark_secret_ref(project: fixture_project, name: "fixture-hotspot"),
+    administrator: spark_secret_ref(project: fixture_project, name: "fixture-administrator"),
+  )
 }
 
-data oobe_strategy: SparkProvisioningStrategy = srv5_spark_intent.strategy
+fn fixture_bootstrap() -> SparkFactoryBootstrap {
+  SparkFactoryBootstrap {
+    access_point_identity: spark_bootstrap_ssid_a3ee,
+    credentials: fixture_credentials(),
+    documented_surface: dgx_spark_oobe_surface,
+  }
+}
+
+fn oobe_strategy() -> SparkProvisioningStrategy {
+  FactoryOobe { bootstrap: fixture_bootstrap() }
+}
+
+fn pxe_strategy() -> SparkProvisioningStrategy {
+  PxeAutoinstall {
+    environment: "fixture-boot-network" as PxeEnvironmentIdentity,
+    image: "fixture-base-os" as InstallationImageIdentity,
+    install_spec: SparkAutoinstallSpec {
+      parameters: DgxSparkPxeInstallParameters {
+        unattended: true,
+        user_interface_disabled: true,
+        skip_firmware_update: false,
+      }
+    },
+  }
+}
+
+fn fixture_intent() -> SparkProvisioningIntent {
+  spark_provisioning_intent(
+    host: srv5_reserved,
+    credentials: fixture_credentials(),
+    address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 222),
+    strategy: oobe_strategy(),
+  )
+}
+
+fn environment(
+  controller: BootstrapControllerStanding,
+  credentials: BootstrapCredentialStanding,
+  pxe: PxePrerequisiteStanding
+) -> SparkProvisioningEnvironment {
+  SparkProvisioningEnvironment { controller: controller, credentials: credentials, pxe: pxe }
+}
 
 fn outcome_tag(o: SparkProvisioningOutcome) -> String {
   match o {
@@ -27,54 +68,104 @@ fn outcome_tag(o: SparkProvisioningOutcome) -> String {
 
 fn classify_tag(progress: SparkProvisioningProgress) -> String {
   outcome_tag(o: classify_spark_progress(
-    intent: srv5_spark_intent,
+    intent: fixture_intent(),
     phase: PhaseOperatorConfiguration,
     progress: progress
   ))
 }
 
-fn completion_evidence_tag(e: InterventionCompletionEvidence) -> String {
-  match e {
-    DischargedAt { evidence: _ } => "discharged-at"
-    NoDischargeSiteModeled => "no-discharge-site"
-  }
-}
-
-// No per-intervention discharge site exists in the repository today, and every intervention
-// says so rather than citing a shared placeholder that would reduce the field to the flag it
-// exists to prevent (review 49806).
-test fn spark_interventions_declare_no_discharge_site() -> Bool {
-  let oobe = factory_oobe_human_burden()
-  let pxe = pxe_autoinstall_human_burden()
-  let undischarged = fold(
-    list_concat_all(a: oobe.interventions, b: pxe.interventions),
-    init: 0,
-    f: (acc, i) => if completion_evidence_tag(e: i.completion_evidence) == "no-discharge-site" { acc + 1 } else { acc }
+fn sample_intervention() -> HumanIntervention {
+  spark_intervention(
+    identity: "spark-witness-pending-human-step",
+    frequency: DeviceOnce,
+    subject: "witness fixture",
+    instruction: "A step that has not been performed yet. It is not a refusal and it is not a pending transition."
   )
-
-  undischarged == 5
-    && list_length(items: oobe.interventions) + list_length(items: pxe.interventions) == 5
-    && completion_evidence_tag(e: sample_intervention().completion_evidence) == "no-discharge-site"
 }
 
-fn list_concat_all(a: List<HumanIntervention>, b: List<HumanIntervention>) -> List<HumanIntervention> {
-  fold(b, init: a, f: (acc, x) => append(acc, x))
-}
-
-fn residue_tag(strategy: SparkProvisioningStrategy) -> String {
-  match spark_hostname_residue(strategy: strategy, allocation: HostnameAllocationPending) {
-    HostnameResidueIntervention { intervention: _ } => "residue"
-    HostnameSetWithinStrategy => "handled"
-    HostnameHandlingUnmodeled { strategy_detail: _ } => "unmodeled"
+fn complete_observation() -> PostSetupObservation {
+  PostSetupObservation {
+    account: AccountObserved { name: "briansrls" },
+    lan_reach: LanReachObserved {
+      address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 222)
+    },
+    setup_surface: SetupSurfaceCompleted,
+    software: InitialUpdateAppliedDuringSetup,
   }
 }
 
-// The load-bearing claim: the four outcome arms are genuinely distinct, and specifically
-// that the three non-success arms do not collapse into each other. A documented reboot, an
-// unreached prerequisite, an unperformed human step and a rejected field must land on three
-// different tags — if any pair collapsed, two of these equalities would fail.
+fn observation_missing_account() -> PostSetupObservation {
+  PostSetupObservation {
+    account: AccountNotObserved,
+    lan_reach: LanReachObserved {
+      address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 222)
+    },
+    setup_surface: SetupSurfaceCompleted,
+    software: InitialUpdateAppliedDuringSetup,
+  }
+}
+
+fn observation_missing_software() -> PostSetupObservation {
+  PostSetupObservation {
+    account: AccountObserved { name: "briansrls" },
+    lan_reach: LanReachObserved {
+      address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 222)
+    },
+    setup_surface: SetupSurfaceCompleted,
+    software: InitialUpdateBehaviorUnobserved,
+  }
+}
+
+// THE LOAD-BEARING CLAIM OF THE WHOLE MODULE: completion cannot be manufactured from an
+// intent. A fully-specified intent plus an incomplete observation is NOT provisioned, and
+// the arm it lands on is interrupted rather than refused — nothing rejected anything.
+// The receipt exists only on the far side of a complete observation.
+test fn spark_completion_requires_observation_never_intent() -> Bool {
+  let complete = classify_tag(progress: ProgressPostSetupObserved { observation: complete_observation() })
+  let no_account = classify_tag(progress: ProgressPostSetupObserved { observation: observation_missing_account() })
+  let no_software = classify_tag(progress: ProgressPostSetupObserved { observation: observation_missing_software() })
+
+  complete == "provisioned"
+    && no_account == "interrupted"
+    && no_software == "interrupted"
+    && no_account != "provisioned"
+    && no_account != "refused"
+    && no_software != "provisioned"
+}
+
+fn update_tag(d: InitialUpdateDisposition) -> String {
+  match d {
+    InitialUpdateAppliedDuringSetup => "applied"
+    InitialUpdateDeferredToOperator => "deferred"
+    InitialUpdateBehaviorUnobserved => "unobserved"
+  }
+}
+
+// The receipt's software baseline is the DEVICE's, never the vendor documentation's. The
+// documented row is Unobserved, so a receipt echoing it would be claiming an observation
+// nobody made — here the observed value is Applied and the receipt carries Applied.
+test fn spark_receipt_software_comes_from_the_device() -> Bool {
+  let outcome = classify_spark_progress(
+    intent: fixture_intent(),
+    phase: PhasePostSetupAccess,
+    progress: ProgressPostSetupObserved { observation: complete_observation() }
+  )
+  let documented = update_tag(d: dgx_spark_documented_initial_update)
+
+  match outcome {
+    SparkProvisioned { receipt: receipt } => {
+      let observed = update_tag(d: receipt.initial_update)
+      observed == "applied" && documented == "unobserved" && observed != documented
+    }
+    SparkProvisioningInterrupted { phase: _, cause: _ } => false
+    SparkProvisioningHumanInterventionRequired { intervention: _ } => false
+    SparkProvisioningRefused { phase: _, cause: _ } => false
+  }
+}
+
+// The four outcome arms stay four.
 test fn spark_outcome_arms_stay_distinct() -> Bool {
-  let success = classify_tag(progress: ProgressReachedPostSetupAccess)
+  let success = classify_tag(progress: ProgressPostSetupObserved { observation: complete_observation() })
   let reboot = classify_tag(progress: ProgressAwaitingDocumentedReboot)
   let prerequisite = classify_tag(progress: ProgressPrerequisiteNotYetReached { prerequisite: "network join" })
   let human = classify_tag(progress: ProgressAwaitingHuman { intervention: sample_intervention() })
@@ -91,87 +182,166 @@ test fn spark_outcome_arms_stay_distinct() -> Bool {
     && human != success
 }
 
-fn sample_intervention() -> HumanIntervention {
-  spark_intervention(
-    identity: "spark-witness-pending-human-step",
-    frequency: DeviceOnce,
-    subject: "witness fixture",
-    instruction: "A step that has not been performed yet. It is not a refusal and it is not a pending transition."
+fn burden_tag(d: HumanBurdenDerivation) -> String {
+  match d {
+    BurdenDerived { burden: _ } => "derived"
+    BurdenUndecidable { cause: _ } => "undecidable"
+  }
+}
+
+fn burden_count_at(d: HumanBurdenDerivation, frequency: HumanInterventionFrequency) -> Int {
+  match d {
+    BurdenDerived { burden: burden } =>
+      human_intervention_count_at(burden: burden, frequency: frequency)
+    BurdenUndecidable { cause: _ } => 0 - 1
+  }
+}
+
+// THE WORLD AS IT ACTUALLY IS TODAY: no controller established, no Secret Manager path in
+// any workflow, no PXE observation. Every lane is undecidable, and the module asserts NO
+// human-step count for the factory lane — a number here would be theater, since the thing
+// that determines it does not exist yet.
+test fn spark_current_environment_is_undecidable_not_counted() -> Bool {
+  let factory = spark_strategy_human_burden(strategy: oobe_strategy(), env: spark_current_environment)
+  let pxe = spark_strategy_human_burden(strategy: pxe_strategy(), env: spark_current_environment)
+
+  burden_tag(d: factory) == "undecidable"
+    && burden_tag(d: pxe) == "undecidable"
+    && selection_tag(env: spark_current_environment) == "undecidable"
+}
+
+// Wi-Fi association is a MACHINE capability, so the human OOBE burden is a function of the
+// controller, not of the strategy. Ready controller with materialized credentials => ZERO
+// human actions. Absent controller => the manual portal step appears, and it is
+// EveryProvision because a person repeats it for every provision the controller cannot do.
+test fn spark_factory_human_burden_derives_from_controller() -> Bool {
+  let ready = factory_oobe_human_burden(env: environment(
+    controller: BootstrapControllerReady,
+    credentials: BootstrapCredentialsMaterialized,
+    pxe: PxePrerequisitesUnknown
+  ))
+  let unbound = factory_oobe_human_burden(env: environment(
+    controller: BootstrapControllerReady,
+    credentials: BootstrapCredentialsNotMaterialized,
+    pxe: PxePrerequisitesUnknown
+  ))
+  let absent = factory_oobe_human_burden(env: environment(
+    controller: BootstrapControllerAbsent,
+    credentials: BootstrapCredentialsMaterialized,
+    pxe: PxePrerequisitesUnknown
+  ))
+
+  burden_count_at(d: ready, frequency: EveryProvision) == 0
+    && burden_count_at(d: ready, frequency: DeviceOnce) == 0
+    && burden_count_at(d: ready, frequency: FleetOnce) == 0
+    && burden_count_at(d: unbound, frequency: DeviceOnce) == 1
+    && burden_count_at(d: unbound, frequency: EveryProvision) == 0
+    && burden_count_at(d: absent, frequency: EveryProvision) == 1
+}
+
+// RED control for the derivation: the SAME strategy value produces different burdens under
+// different environments. A burden authored as a property of the strategy could not do
+// this, so the two readings provably disagree.
+test fn spark_burden_is_not_a_property_of_the_strategy_red_control() -> Bool {
+  let ready = factory_oobe_human_burden(env: environment(
+    controller: BootstrapControllerReady,
+    credentials: BootstrapCredentialsMaterialized,
+    pxe: PxePrerequisitesUnknown
+  ))
+  let absent = factory_oobe_human_burden(env: environment(
+    controller: BootstrapControllerAbsent,
+    credentials: BootstrapCredentialsMaterialized,
+    pxe: PxePrerequisitesUnknown
+  ))
+  let ready_count = burden_count_at(d: ready, frequency: EveryProvision)
+  let absent_count = burden_count_at(d: absent, frequency: EveryProvision)
+
+  ready_count != absent_count
+}
+
+fn selection_tag(env: SparkProvisioningEnvironment) -> String {
+  match select_spark_strategy(a: oobe_strategy(), b: pxe_strategy(), env: env) {
+    StrategySelectionUndecidable { cause: _ } => "undecidable"
+    StrategySelected { strategy: strategy } => match strategy {
+      FactoryOobe { bootstrap: _ } => "oobe"
+      PxeAutoinstall { environment: _, image: _, install_spec: _ } => "pxe"
+    }
+  }
+}
+
+// Selection consumes the environment: with a ready controller and materialized credentials
+// the factory lane costs zero routine human actions and wins, while under an absent
+// controller the manual EveryProvision step makes ready-PXE the cheaper routine lane.
+// Static costs could not produce both answers from the same two strategy values.
+test fn spark_strategy_selection_consumes_the_environment() -> Bool {
+  let favors_oobe = environment(
+    controller: BootstrapControllerReady,
+    credentials: BootstrapCredentialsMaterialized,
+    pxe: PxePrerequisitesAbsent
   )
+  let favors_pxe = environment(
+    controller: BootstrapControllerAbsent,
+    credentials: BootstrapCredentialsMaterialized,
+    pxe: PxePrerequisitesReady
+  )
+
+  selection_tag(env: favors_oobe) == "oobe"
+    && selection_tag(env: favors_pxe) == "pxe"
+    && selection_tag(env: favors_oobe) != selection_tag(env: favors_pxe)
 }
 
-// Frequency is the axis, and the counts are DERIVED from the lists. A stored count would
-// pass this by being edited; these numbers can only move by adding or removing an
-// intervention.
-test fn spark_human_burden_is_frequency_classified() -> Bool {
-  let oobe = factory_oobe_human_burden()
-  let pxe = pxe_autoinstall_human_burden()
+// BreakGlassOnly is never priced as routine: the ready-PXE burden carries exactly one
+// intervention and it is the emergency one, so all three routine counts are zero.
+test fn spark_break_glass_is_not_priced_as_routine() -> Bool {
+  let pxe_ready = pxe_autoinstall_human_burden(env: environment(
+    controller: BootstrapControllerUnknown,
+    credentials: BootstrapCredentialStandingUnknown,
+    pxe: PxePrerequisitesReady
+  ))
 
-  human_intervention_count_at(burden: oobe, frequency: EveryProvision) == 0
-    && human_intervention_count_at(burden: oobe, frequency: DeviceOnce) == 2
-    && human_intervention_count_at(burden: oobe, frequency: FleetOnce) == 0
-    && human_intervention_count_at(burden: oobe, frequency: BreakGlassOnly) == 0
-    && human_intervention_count_at(burden: pxe, frequency: EveryProvision) == 0
-    && human_intervention_count_at(burden: pxe, frequency: DeviceOnce) == 1
-    && human_intervention_count_at(burden: pxe, frequency: FleetOnce) == 1
-    && human_intervention_count_at(burden: pxe, frequency: BreakGlassOnly) == 1
+  burden_count_at(d: pxe_ready, frequency: BreakGlassOnly) == 1
+    && burden_count_at(d: pxe_ready, frequency: EveryProvision) == 0
+    && burden_count_at(d: pxe_ready, frequency: DeviceOnce) == 0
+    && burden_count_at(d: pxe_ready, frequency: FleetOnce) == 0
 }
 
-// Selection is lexicographic and BreakGlassOnly is not priced. PXE wins on DeviceOnce
-// (1 < 2) despite carrying MORE total interventions than OOBE (3 vs 2) — which is exactly
-// the discrimination a scalar burden could not make, and the RED below proves the scalar
-// reading would have chosen the other way.
-test fn spark_strategy_selection_is_lexicographic_not_total() -> Bool {
-  let oobe = factory_oobe_human_burden()
-  let pxe = pxe_autoinstall_human_burden()
+// Credentials are carried refs rather than names rebuilt from a rendered host identity,
+// the two refs are independent, and the intent carries no hostname at all.
+test fn spark_credentials_are_carried_never_derived() -> Bool {
+  let intent = fixture_intent()
 
-  list_length(items: pxe.interventions) > list_length(items: oobe.interventions)
-    && match compare_routine_human_burden(a: pxe, b: oobe) { Less => true  Equal => false  Greater => false }
-    && match compare_routine_human_burden(a: oobe, b: pxe) { Less => false  Equal => false  Greater => true }
-    && strategy_tag(s: select_spark_strategy(a: oobe_strategy, b: pxe_strategy)) == "pxe"
-    && strategy_tag(s: select_spark_strategy(a: pxe_strategy, b: oobe_strategy)) == "pxe"
+  intent.credentials.hotspot_password.secret == "fixture-hotspot"
+    && intent.credentials.administrator_password.secret == "fixture-administrator"
+    && intent.credentials.hotspot_password.secret != intent.credentials.administrator_password.secret
+    && intent.host == srv5_reserved
+    && intent.timezone == "America/New_York"
+    && intent.administrator.name == "briansrls"
+    && intent.license.accepted_by == intent.administrator.name
 }
 
-fn strategy_tag(s: SparkProvisioningStrategy) -> String {
-  match s {
-    FactoryOobe { bootstrap: _ } => "oobe"
-    PxeAutoinstall { environment: _, image: _, install_spec: _ } => "pxe"
+// The SSIDs are established nonsecret display aliases, and they are NOT fleet identity:
+// the two units' aliases differ from each other and from the host identity beside them.
+test fn spark_bootstrap_ssids_are_established_aliases() -> Bool {
+  spark_bootstrap_ssid_a3ee.ssid == "spark-a3ee"
+    && spark_bootstrap_ssid_3bd5.ssid == "spark-3bd5"
+    && spark_bootstrap_ssid_a3ee.ssid != spark_bootstrap_ssid_3bd5.ssid
+    && (spark_bootstrap_ssid_a3ee.ssid as String) != (srv5_reserved as String)
+}
+
+fn completion_evidence_tag(e: InterventionCompletionEvidence) -> String {
+  match e {
+    DischargedAt { evidence: _ } => "discharged-at"
+    NoDischargeSiteModeled => "no-discharge-site"
   }
 }
 
-// RED control for the selection claim: a burden compared by TOTAL count would rank OOBE
-// (2 interventions) ahead of PXE (3), the opposite of the lexicographic verdict above.
-// This test asserts the disagreement, so if the frequency axis were ever collapsed into a
-// scalar the two tests could not both hold.
-test fn spark_scalar_burden_would_choose_differently_red_control() -> Bool {
-  let oobe = factory_oobe_human_burden()
-  let pxe = pxe_autoinstall_human_burden()
-  let scalar_prefers_oobe = list_length(items: oobe.interventions) < list_length(items: pxe.interventions)
-  let lexicographic_prefers_pxe =
-    match compare_routine_human_burden(a: pxe, b: oobe) { Less => true  Equal => false  Greater => false }
-
-  scalar_prefers_oobe && lexicographic_prefers_pxe
-}
-
-fn bootstrap_network_tag(standing: BootstrapNetworkStanding) -> String {
-  match standing {
-    BootstrapNetworkRead { identity: _ } => "read"
-    BootstrapNetworkStickerUnread => "unread"
-  }
-}
-
-// The bootstrap credential is a reference, never a value; the admin secret name is derived
-// per device rather than authored; and the SSID — nonsecret but equally unknown until a box
-// is opened — is carried as an explicit unread standing rather than a plausible string.
-test fn spark_bootstrap_credential_is_a_reference() -> Bool {
-  bootstrap_network_tag(standing: srv5_spark_bootstrap.access_point_identity) == "unread"
-    && bootstrap_network_tag(standing: srv6_spark_bootstrap.access_point_identity) == "unread"
-    && srv5_spark_bootstrap.access_point_password_ref.secret == "spark-srv5-bootstrap-hotspot-password"
-    && srv5_spark_intent.host == srv5_reserved
-    && srv6_spark_intent.host == srv6_reserved
-    && srv5_spark_bootstrap.access_point_password_ref.version == "latest"
-    && spark_admin_password_secret_name(host: srv5_reserved) == "spark-srv5-admin-password"
-    && spark_admin_password_secret_name(host: srv6_reserved) == "spark-srv6-admin-password"
+// No per-intervention discharge site exists in the repository today, and every intervention
+// says so rather than citing a shared placeholder.
+test fn spark_interventions_declare_no_discharge_site() -> Bool {
+  completion_evidence_tag(e: spark_manual_oobe_intervention().completion_evidence) == "no-discharge-site"
+    && completion_evidence_tag(e: spark_credential_materialization_intervention().completion_evidence) == "no-discharge-site"
+    && completion_evidence_tag(e: spark_pxe_firmware_intervention().completion_evidence) == "no-discharge-site"
+    && completion_evidence_tag(e: spark_pxe_recovery_intervention().completion_evidence) == "no-discharge-site"
 }
 
 data clean_sensitive_run: SensitiveRunObservation = SensitiveRunObservation {
@@ -204,14 +374,16 @@ data argv_leaking_run: SensitiveRunObservation = SensitiveRunObservation {
   credential_found_in_evidence_corpus_scan: false,
 }
 
-data sensitive_use: SensitiveBrowserInputUse = SensitiveBrowserInputUse {
-  secret_ref: spark_secret_ref(name: "spark-srv5-bootstrap-hotspot-password"),
-  field_identity: "captive-portal-wifi-password" as SensitiveFieldIdentity,
-  evidence_policy: RetainNoDomNoHarNoTrace { retain_transition_result_only: true },
+fn sensitive_use() -> SensitiveBrowserInputUse {
+  SensitiveBrowserInputUse {
+    secret_ref: spark_secret_ref(project: fixture_project, name: "fixture-hotspot"),
+    field_identity: "captive-portal-wifi-password" as SensitiveFieldIdentity,
+    evidence_policy: RetainNoDomNoHarNoTrace { retain_transition_result_only: true },
+  }
 }
 
 fn admission_tag(obs: SensitiveRunObservation) -> String {
-  match admit_sensitive_browser_input(use: sensitive_use, observation: obs) {
+  match admit_sensitive_browser_input(use: sensitive_use(), observation: obs) {
     SensitiveInputAdmitted { use: _ } => "admitted"
     SensitiveInputRefused { cause: _, evidence_disposition: d } =>
       match d { EvidenceBundleDestroyed => "refused-destroyed"  EvidenceBundleRetained => "refused-retained" }
@@ -220,39 +392,23 @@ fn admission_tag(obs: SensitiveRunObservation) -> String {
 
 // Positive control plus two discriminating REDs: a corpus scan that finds the credential
 // must refuse AND destroy the bundle, while a secret that reached argv refuses without a
-// bundle to destroy. A single boolean verdict could not tell those apart.
+// bundle to destroy.
 test fn spark_sensitive_browser_input_admission() -> Bool {
   admission_tag(obs: clean_sensitive_run) == "admitted"
     && admission_tag(obs: leaking_sensitive_run) == "refused-destroyed"
     && admission_tag(obs: argv_leaking_run) == "refused-retained"
 }
 
-// The cited surface says what it says. The initial-update disposition is Unobserved, not
-// applied and not deferred; OOBE offers no hostname, so FactoryOobe carries a residue and
-// PxeAutoinstall does not; and every documented post-setup route presupposes the account
-// provisioning creates, so none of them can be the provisioning authority.
+// The cited OOBE field list has a real consumer: every configuration subject the intent
+// carries is one the wizard actually offers.
 test fn spark_cited_setup_surface_holds() -> Bool {
-  update_tag(d: dgx_spark_documented_initial_update) == "unobserved"
-    && update_tag(d: InitialUpdateAppliedDuringSetup) != update_tag(d: dgx_spark_documented_initial_update)
-    && update_tag(d: InitialUpdateDeferredToOperator) != update_tag(d: dgx_spark_documented_initial_update)
-    && dgx_spark_oobe_offers_field(field: OobeHostnameAssignment) == false
-    && residue_tag(strategy: oobe_strategy) == "residue"
-    && residue_tag(strategy: pxe_strategy) == "unmodeled"
-    && residue_tag(strategy: pxe_strategy) != "handled"
+  spark_oobe_covers_intent_subjects()
+    && update_tag(d: dgx_spark_documented_initial_update) == "unobserved"
     && post_setup_route_requires_existing_account(route: PostSetupSsh)
     && post_setup_route_requires_existing_account(route: PostSetupNvidiaSync)
 }
 
-fn update_tag(d: InitialUpdateDisposition) -> String {
-  match d {
-    InitialUpdateAppliedDuringSetup => "applied"
-    InitialUpdateDeferredToOperator => "deferred"
-    InitialUpdateBehaviorUnobserved => "unobserved"
-  }
-}
-
-// The PXE parameter tokens are the cited ones, and the three switches are independent:
-// asking for noui without skipping firmware is expressible.
+// The PXE parameter tokens are the cited ones, and the three switches are independent.
 test fn spark_pxe_parameter_tokens_are_independent() -> Bool {
   join(dgx_spark_pxe_parameter_tokens(params: DgxSparkPxeInstallParameters {
     unattended: true, user_interface_disabled: true, skip_firmware_update: false
@@ -263,48 +419,4 @@ test fn spark_pxe_parameter_tokens_are_independent() -> Bool {
     && join(dgx_spark_pxe_parameter_tokens(params: DgxSparkPxeInstallParameters {
          unattended: false, user_interface_disabled: false, skip_firmware_update: false
        }), " ") == ""
-}
-
-// The two reserved units carry distinct LAN placements and derive one administrator from
-// the existing fleet operator principal rather than minting a second one.
-test fn spark_intents_are_grounded() -> Bool {
-  render_ipv4_address(addr: srv5_spark_intent.network.address) == "192.168.1.222"
-    && render_ipv4_address(addr: srv6_spark_intent.network.address) == "192.168.1.223"
-    && srv5_spark_intent.administrator.name == "briansrls"
-    && srv5_spark_intent.administrator.uid == 1000
-    && srv6_spark_intent.administrator.uid == 1000
-    && srv5_spark_intent.license.accepted_by == srv5_spark_intent.administrator.name
-    && allocation_tag(a: srv5_spark_intent.desired_hostname) == "pending"
-    && allocation_tag(a: srv6_spark_intent.desired_hostname) == "pending"
-}
-
-fn allocation_tag(a: SparkHostnameAllocation) -> String {
-  match a {
-    HostnameAllocated { label: _ } => "allocated"
-    HostnameAllocationPending => "pending"
-  }
-}
-
-// The operator ruling made concrete: an intent CONSUMES an allocated canonical label and
-// never derives one from its fleet slot. Neither unit has an allocation yet, so both sit on
-// the pending arm — and the OOBE residue fires either way, with an instruction that says
-// which of the two blockers is in front of you. The internal slot name never becomes a
-// hostname: the field cannot hold a HostIdentity at all.
-test fn spark_hostname_is_allocated_never_derived_from_slot() -> Bool {
-  let allocated = spark_provisioning_intent(
-    host: srv5_reserved,
-    hostname: HostnameAllocated { label: "patient-ibis-7k2m4p8q" },
-    address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 222),
-    strategy: FactoryOobe { bootstrap: srv5_spark_bootstrap },
-  )
-
-  let pending_instruction = spark_hostname_residue_instruction(allocation: HostnameAllocationPending)
-  let allocated_instruction = spark_hostname_residue_instruction(allocation: HostnameAllocated { label: "patient-ibis-7k2m4p8q" })
-
-  allocation_tag(a: srv5_spark_intent.desired_hostname) == "pending"
-    && allocation_tag(a: allocated.desired_hostname) == "allocated"
-    && residue_tag(strategy: oobe_strategy) == "residue"
-    && pending_instruction != allocated_instruction
-    && allocation_tag(a: spark_receipt_from_intent(intent: allocated).hostname) == "allocated"
-    && allocation_tag(a: spark_receipt_from_intent(intent: srv5_spark_intent).hostname) == "pending"
 }

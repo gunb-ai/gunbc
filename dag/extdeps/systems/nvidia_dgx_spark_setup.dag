@@ -95,10 +95,12 @@ data dgx_spark_oobe_fields: List<OobeSetupField> = [
 // vendor page changed (review 49759). Adding or removing a row in the list is now the only
 // way to move the predicate.
 //
-// Hostname assignment is in the universe and not in the list, and that gap is what the
-// predicate exists to expose: an intent carrying a desired_hostname cannot discharge it
-// inside OOBE and must route it to a separate post-setup step. This is a measured absence
-// in the cited page, not an omission in this model.
+// Hostname assignment is in the universe and not in the list — a measured absence in the
+// cited page rather than an omission here. It is carried because the page's silence is a
+// fact worth stating, not because anything upstream needs it: gunbc.spark_provisioning
+// models no hostname at all (an OS hostname is presentation and converges later through
+// the ordinary apply path), so this member is the predicate's negative case and nothing
+// more.
 fn dgx_spark_oobe_offers_field(field: OobeSetupField) -> Bool {
   fold(
     dgx_spark_oobe_fields,
