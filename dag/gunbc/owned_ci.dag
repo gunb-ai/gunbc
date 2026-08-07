@@ -1,6 +1,7 @@
 module gunbc.owned_ci
 
 import std.types { String, Int, CommitSha, NonEmptyStr, Bool, path_segment_is_safe }
+import std.disposition { Disposition, Terminal }
 import std.measure { Second, second, second_count }
 import extdeps.auth.jwt {
   NumericDate,
@@ -228,6 +229,10 @@ fn queue_lease_validity(lease: QueueLease, holder: String, now: NumericDate) -> 
   } else {
     LeaseInvalidHolder
   }
+}
+
+data check_publication_predicate_family_disposition: Disposition = Terminal {
+  reason: "check_publication_reports_github_success and check_publication_is_pending_honest are total matches over CheckPublicationState — all six variants (CheckPublicationNotStarted, CheckPublicationQueued, CheckPublicationInProgress, CheckPublicationCompleted, CheckPublicationPending, CheckPublicationFailed) carry an explicit arm, no top-level wildcard false arm. Same disposition and same reason as runner_incarnation runner_slot_installation_predicate_family_disposition: these dissolve at authoring, so unlike fleet_runner_connectivity connectivity_verdict_is_* (wildcard false arms, enrolled in non_fold_residue_frontier) an NFR row would stale the roster. Adding a variant to CheckPublicationState therefore breaks these matches loudly rather than silently answering false."
 }
 
 fn check_publication_reports_github_success(state: CheckPublicationState) -> Bool {
