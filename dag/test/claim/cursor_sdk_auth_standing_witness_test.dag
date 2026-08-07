@@ -1,0 +1,71 @@
+module test.claim.cursor_sdk_auth_standing_witness_test
+
+import std.types { Bool, NonEmptyStr }
+import gunbc.cursor_sdk_auth_probe {
+  CursorSdkAuthProbeAuthenticated,
+  CursorSdkAuthProbeCredentialsRejected,
+  CursorSdkAuthProbeUnclassified,
+  cursor_sdk_auth_probe_from_run_result,
+}
+import gunbc.cursor_sdk_provider_standing {
+  cursor_sdk_local_provider_standing_from_auth_probe,
+  cursor_sdk_local_provider_standing_has_usage_capability_gap,
+}
+import gunbc.provider_standing {
+  AuthenticationAuthenticated,
+  AuthenticationCredentialsAbsent,
+}
+import extdeps.llm.cursor_sdk_errors { CursorSdkAuthenticationError }
+
+test fn auth_probe_authenticated_on_finished_result() -> Bool {
+  match cursor_sdk_auth_probe_from_run_result(
+    raw: "{\"status\":\"finished\",\"result\":\"ok\"}",
+  ) {
+    CursorSdkAuthProbeAuthenticated => true
+    _ => false
+  }
+}
+
+test fn auth_probe_rejects_authentication_error() -> Bool {
+  match cursor_sdk_auth_probe_from_run_result(
+    raw: "{\"status\":\"error\",\"error\":{\"message\":\"bad key\",\"code\":\"authentication_error\"}}",
+  ) {
+    CursorSdkAuthProbeCredentialsRejected { code: CursorSdkAuthenticationError } => true
+    _ => false
+  }
+}
+
+test fn provider_standing_derives_authentication_from_probe() -> Bool {
+  let standing = cursor_sdk_local_provider_standing_from_auth_probe(
+    probe: cursor_sdk_auth_probe_from_run_result(
+      raw: "{\"status\":\"finished\",\"result\":\"ok\"}",
+    ),
+  )
+  standing.authentication == AuthenticationAuthenticated
+}
+
+test fn provider_standing_rejects_credentials_on_auth_error() -> Bool {
+  let standing = cursor_sdk_local_provider_standing_from_auth_probe(
+    probe: cursor_sdk_auth_probe_from_run_result(
+      raw: "{\"status\":\"error\",\"error\":{\"message\":\"bad key\",\"code\":\"authentication_error\"}}",
+    ),
+  )
+  standing.authentication == AuthenticationCredentialsAbsent
+}
+
+test fn provider_standing_usage_is_capability_gap() -> Bool {
+  let standing = cursor_sdk_local_provider_standing_from_auth_probe(
+    probe: CursorSdkAuthProbeUnclassified {
+      reason: "fixture" as NonEmptyStr,
+    },
+  )
+  cursor_sdk_local_provider_standing_has_usage_capability_gap(standing: standing)
+}
+
+test fn cursor_sdk_auth_standing_witness_keystone_holds() -> Bool {
+  auth_probe_authenticated_on_finished_result()
+    && auth_probe_rejects_authentication_error()
+    && provider_standing_derives_authentication_from_probe()
+    && provider_standing_rejects_credentials_on_auth_error()
+    && provider_standing_usage_is_capability_gap()
+}

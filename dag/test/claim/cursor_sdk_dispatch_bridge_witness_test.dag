@@ -25,7 +25,7 @@ import extdeps.llm.cursor_cli { cursor_api_key_env_var }
 data witness_secret_ref: SecretRef = SecretRef {
   project: "gunbc-dashboard" as GcpProjectId,
   secret: "cursor-api-key" as NonEmptyStr,
-  version: "latest" as NonEmptyStr,
+  version: "7" as NonEmptyStr,
   hash_state: HashPending,
 }
 
@@ -63,9 +63,27 @@ test fn environment_materialization_consumes_cli_env_var() -> Bool {
   }
 }
 
+test fn dispatch_binding_refuses_latest_secret_version() -> Bool {
+  match cursor_sdk_local_credential_from_dispatch(
+    credential: CursorApiKeySecretRef {
+      secret_ref: SecretRef {
+        project: "gunbc-dashboard" as GcpProjectId,
+        secret: "cursor-api-key" as NonEmptyStr,
+        version: "latest" as NonEmptyStr,
+        hash_state: HashPending,
+      },
+    },
+  ) {
+    CursorSdkLocalCredentialRefused { reason } =>
+      string_contains(s: reason as String, pattern: "never latest")
+    _ => false
+  }
+}
+
 test fn cursor_sdk_dispatch_bridge_witness_keystone_holds() -> Bool {
   dispatch_secret_ref_admits_sdk_local_binding()
     && dispatch_local_login_ref_refuses()
     && dispatch_secret_ref_materializes_via_secret_ref_arm()
     && environment_materialization_consumes_cli_env_var()
+    && dispatch_binding_refuses_latest_secret_version()
 }

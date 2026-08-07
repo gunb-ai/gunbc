@@ -86,6 +86,8 @@ type CursorSdkLocalAccountUsageUnobservable {
 
 data cursor_sdk_local_usage_missing_capability: NonEmptyStr = "cursor-sdk-local-account-usage-api" as NonEmptyStr
 
+data cursor_sdk_local_limit_standing_reason: NonEmptyStr = "cursor local account-level usage is upstream-unobservable (cursor-sdk-local-account-usage-api)" as NonEmptyStr
+
 fn cursor_sdk_local_account_usage_unobservable() -> CursorSdkLocalAccountUsageUnobservable {
   CursorSdkLocalAccountUsageUnobservable {
     reason: "Cursor SDK local runtime has no account-level remaining-capacity API; usage is per-agent and cloud-only" as NonEmptyStr,

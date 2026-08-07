@@ -1,7 +1,11 @@
 module gunbc.cursor_sdk_local_binding
 
 import std.types { Bool, NonEmptyStr, String }
-import extdeps.cloud.gcp.secret_ref { SecretRef }
+import gunbc.cursor_sdk_secret_admission {
+  CursorSdkSecretRefVersionAdmitted,
+  CursorSdkSecretRefVersionRefused,
+  cursor_sdk_admit_exact_secret_ref_version,
+}
 import extdeps.llm.cursor_sdk {
   CursorSdkLocalCredential,
   CursorSdkApiKeySecretRef,
@@ -35,13 +39,18 @@ fn cursor_sdk_local_credential_from_dispatch(
   credential: CursorCredentialRef,
 ) -> CursorSdkLocalCredentialAdmission {
   match credential {
-    CursorApiKeySecretRef { secret_ref: ref } => {
-      let local = CursorSdkApiKeySecretRef { secret_ref: ref }
-      CursorSdkLocalCredentialAdmitted {
-        credential: local,
-        materialization: cursor_sdk_materialize_api_key(credential: local),
+    CursorApiKeySecretRef { secret_ref: ref } =>
+      match cursor_sdk_admit_exact_secret_ref_version(ref: ref) {
+        CursorSdkSecretRefVersionRefused { reason } =>
+          CursorSdkLocalCredentialRefused { reason: reason }
+        CursorSdkSecretRefVersionAdmitted { secret_ref: admitted_ref } => {
+          let local = CursorSdkApiKeySecretRef { secret_ref: admitted_ref }
+          CursorSdkLocalCredentialAdmitted {
+            credential: local,
+            materialization: cursor_sdk_materialize_api_key(credential: local),
+          }
+        }
       }
-    }
     CursorLocalLoginRef =>
       CursorSdkLocalCredentialRefused {
         reason: "Cursor SDK local automation requires CursorApiKeySecretRef, not interactive login" as NonEmptyStr,
