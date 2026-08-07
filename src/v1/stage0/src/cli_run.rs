@@ -25479,12 +25479,12 @@ mod node_frontier_plumbing_controls {
         );
     }
 
-    // CONTROL 7 — the freeze-introduction arm, and the fail-open it used to hide. CONFIRMED absence
-    // at a valid commit is the one permitting arm; a failure to OBSERVE whether the path is there
-    // is ignorance and must refuse. `git show`'s nonzero exit cannot tell those apart, which is why
-    // the observation is `ls-tree` and a blob-read failure is a separate refusal.
+    // CONTROL 7 — the freeze-introduction arm. CONFIRMED absence of the roster at a valid commit is
+    // the one permitting arm, because a change that introduces the freeze has nothing to shrink
+    // from. Paired with control 7b below, which holds the permitting arm fixed and moves only the
+    // reason the roster could not be read.
     #[test]
-    fn frozen_roster_confirmed_absence_permits_but_unobservable_baseline_refuses() {
+    fn frozen_roster_confirmed_absence_is_the_freeze_introduction_arm() {
         let repo = FreezeRepo::new("introduction");
         std::fs::write(repo.dir.join("unrelated.txt"), "no roster yet\n").expect("write");
         let before_the_freeze = repo.commit("a commit with no roster at all");
@@ -25499,12 +25499,93 @@ mod node_frontier_plumbing_controls {
             "the introducing change has no baseline to shrink from and must pass"
         );
 
-        // The same question against a commit that cannot be observed at all: ignorance, not the
-        // introducing change. A regression to `git show`-decides-absence would permit here, and
-        // permitting means admitting the ENTIRE current roster.
+        // A baseline that does not resolve at all is ignorance, not the introducing change. This
+        // arm is caught by the endpoint resolve, one guard earlier than the roster read — stated
+        // so the two are not confused for each other.
         let err = repo
             .collect(&repo.direct("0000000000000000000000000000000000000000", "HEAD"))
-            .expect_err("an unobservable baseline must refuse, never read as absence");
+            .expect_err("an unresolvable baseline must refuse, never read as absence");
+        assert!(err.contains("FreezeBaselineUnobservable"), "{err}");
+    }
+
+    // CONTROL 7b — THE ABSENCE/IGNORANCE SPLIT, at the only grain that actually discriminates it.
+    //
+    // This control exists because its first version did not. That version asked the question with
+    // an all-zero SHA, which `rev-parse` rejects one guard earlier, so it proved the endpoint
+    // resolve while its name claimed it proved the roster read: reverting the `ls-tree` split left
+    // it GREEN. A control whose name outruns its evidence is the same defect as a status row
+    // claiming a rung it does not occupy, and the sweep that reverts each wall in turn is what
+    // caught it.
+    //
+    // The discriminating state is a commit that RESOLVES, whose tree LISTS the roster, and whose
+    // blob cannot be read. `git show` exits nonzero there — identically to a path that is genuinely
+    // absent — so deciding absence from that exit code permits, and permitting means admitting the
+    // ENTIRE current roster on an unreadable repository. `ls-tree` separates them: it answers about
+    // the tree, so its success plus an empty result is a positive fact, and a failed blob read
+    // afterwards is unambiguously a failure rather than an absence.
+    #[test]
+    fn frozen_roster_unreadable_baseline_blob_refuses_instead_of_reading_as_absence() {
+        let repo = FreezeRepo::new("unreadable-blob");
+        repo.write_roster(&["already_frozen"]);
+        let baseline = repo.commit("baseline carrying the roster");
+        repo.write_roster(&["already_frozen", "added_here"]);
+        repo.commit("head adds a row");
+
+        // Destroy only the baseline's roster BLOB. The commit and tree objects survive, so the
+        // repository still resolves the endpoint and still lists the path.
+        let blob = repo.git(&[
+            "rev-parse",
+            &format!(
+                "{baseline}:{}",
+                super::WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL
+            ),
+        ]);
+        let object = repo
+            .dir
+            .join(".git/objects")
+            .join(&blob[..2])
+            .join(&blob[2..]);
+        std::fs::remove_file(&object).expect("remove the baseline roster blob");
+
+        // The fixture must actually reach the wall: endpoint resolves, tree lists the path, blob
+        // read fails. Asserted, so this cannot quietly degrade into testing an earlier guard the
+        // way its predecessor did.
+        assert!(
+            std::process::Command::new("git")
+                .args([
+                    "ls-tree",
+                    "-z",
+                    &baseline,
+                    "--",
+                    super::WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL
+                ])
+                .current_dir(&repo.dir)
+                .output()
+                .expect("git ls-tree")
+                .status
+                .success(),
+            "the fixture must still LIST the path at the baseline"
+        );
+        assert!(
+            !std::process::Command::new("git")
+                .args([
+                    "show",
+                    &format!(
+                        "{baseline}:{}",
+                        super::WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL
+                    )
+                ])
+                .current_dir(&repo.dir)
+                .output()
+                .expect("git show")
+                .status
+                .success(),
+            "the fixture must make the blob unreadable, else this control proves nothing"
+        );
+
+        let err = repo
+            .collect(&repo.direct(&baseline, "HEAD"))
+            .expect_err("an unreadable baseline roster is ignorance and must refuse");
         assert!(err.contains("FreezeBaselineUnobservable"), "{err}");
     }
 
