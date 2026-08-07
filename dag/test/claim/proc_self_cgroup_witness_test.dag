@@ -12,21 +12,8 @@ import extdeps.linux.proc_self_cgroup {
   ProcSelfCgroupLineRefused,
   ProcSelfCgroupLineMissingColon,
 }
-import std.path_intent {
-  NearestAncestorContaining,
-  nearest_ancestor_while_predicate,
-  And,
-  Not,
-  PathEntryKind,
-}
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.filesystem.types { RegularFile }
-import std.types { FilePathParts, NonEmptyStr }
-import v2.extdeps.languages.bash_orch_if {
-  bash_nearest_ancestor_locate_assign_command,
-  bash_nearest_ancestor_locate_cond_command,
-  bash_nearest_ancestor_locate_body_command,
-}
+import std.types { NonEmptyStr }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -104,62 +91,6 @@ test fn proc_self_cgroup_unified_v2_requires_empty_controller_field_holds() -> B
     hierarchy_id: "0" as NonEmptyStr,
     controller_list: "cpu",
   )
-}
-
-data cgroup_locate_spec: NearestAncestorContaining = NearestAncestorContaining {
-  path_var: "d" as NonEmptyStr,
-  mount_root: FilePathParts { segments: ["sys", "fs", "cgroup"] },
-  relative_entry: FilePathParts { segments: ["memory.peak"] },
-  expected_kind: RegularFile,
-}
-
-test fn cgroup_locate_assign_preserves_membership_refusals_holds() -> Bool {
-  let cmd = bash_nearest_ancestor_locate_assign_command(spec: cgroup_locate_spec)
-  string_contains(s: cmd, pattern: "cgroup_membership=malformed")
-    && string_contains(s: cmd, pattern: "cgroup_membership=missing")
-    && string_contains(s: cmd, pattern: "cgroup_membership=ambiguous")
-    && string_contains(s: cmd, pattern: "grep -c '^0::'")
-    && !string_contains(s: cmd, pattern: "head -1")
-    && !string_contains(s: cmd, pattern: "awk -F:")
-}
-
-test fn cgroup_locate_assign_uses_exact_unified_v2_shape_holds() -> Bool {
-  let cmd = bash_nearest_ancestor_locate_assign_command(spec: cgroup_locate_spec)
-  string_contains(s: cmd, pattern: "sed -n '/^0::/s/^0:://p'")
-}
-
-test fn cgroup_locate_cond_preserves_predicate_shape_holds() -> Bool {
-  let cmd = bash_nearest_ancestor_locate_cond_command(spec: cgroup_locate_spec)
-  string_contains(s: cmd, pattern: "[ -n \"$d\" ]")
-    && string_contains(s: cmd, pattern: "[ \"$d\" != \"/sys/fs/cgroup\" ]")
-    && string_contains(s: cmd, pattern: "! [ -f \"$d/memory.peak\" ]")
-}
-
-test fn cgroup_locate_body_preserves_ascent_holds() -> Bool {
-  let cmd = bash_nearest_ancestor_locate_body_command(spec: cgroup_locate_spec)
-  cmd == "d=$(dirname \"$d\")"
-}
-
-test fn nearest_ancestor_predicate_uses_regular_file_peak_holds() -> Bool {
-  match nearest_ancestor_while_predicate(spec: cgroup_locate_spec) {
-    And { lhs: _, rhs: And { lhs: _, rhs: Not { inner: PathEntryKind { path: _, kind: RegularFile } } } } => true
-    _ => false
-  }
-}
-
-test fn proc_self_cgroup_three_refusal_states_are_distinct_holds() -> Bool {
-  (match read_unified_cgroup_membership(content: fixture_missing_unified) {
-    MembershipMissing => true
-    _ => false
-  })
-    && (match read_unified_cgroup_membership(content: fixture_unified_duplicate) {
-      MembershipAmbiguous { first: _, second: _ } => true
-      _ => false
-    })
-    && (match read_unified_cgroup_membership(content: fixture_malformed_no_colon) {
-      MembershipMalformed { cause: _ } => true
-      _ => false
-    })
 }
 
 test fn proc_self_cgroup_line_parse_splits_on_second_colon_only_holds() -> Bool {

@@ -22,24 +22,8 @@ import v2.std.diagnostic {
 }
 import std.filesystem.types { EntryKind }
 import v2.std.node { Node, Symbol }
-import std.path_intent {
-  PathIntent,
-  PathPredicate,
-  DirnameAscent,
-  PathRef,
-  PathLiteral,
-  PathJoin,
-  PathNonempty,
-  PathNotEq,
-  PathEntryKind,
-  Not,
-  And,
-  Or,
-  NearestAncestorContaining,
-  nearest_ancestor_while_predicate,
-  nearest_ancestor_while_ascent,
-}
-import std.types { FilePathParts, NonEmptyStr }
+import std.path_intent { PathIntent, PathPredicate, DirnameAscent, PathRef, PathLiteral, PathJoin, PathNonempty, PathNotEq, PathEntryKind, Not, And, Or }
+import std.types { FilePathParts }
 import v2.std.text { String }
 import v2.extdeps.languages.bash {
   bash_conj_emitted_from_tokens,
@@ -1088,94 +1072,4 @@ fn bash_test_int_ne_target_model(lhs: String, rhs: String) -> Outcome<TargetMode
       )
     }
   )
-}
-
-data bash_proc_self_cgroup_membership_assign_note: String = "Membership assign mirrors extdeps.linux.proc_self_cgroup read_unified_cgroup_membership: malformed lines refuse before unified counting; exactly one 0:: line assigns d=/sys/fs/cgroup$path; zero unified lines refuse missing; more than one refuse ambiguous. No head -1 selection and no empty-path widen to /sys/fs/cgroup."
-
-data bash_proc_self_cgroup_membership_malformed_scan: String = "_cg_bad=0; while IFS= read -r _cg_line; do _cg_trim=$(echo \"$_cg_line\" | sed -e 's/^ //' -e 's/ $//'); [ -z \"$_cg_trim\" ] && continue; _cg_c2=$(echo \"$_cg_trim\" | cut -d: -f3 -s); [ -z \"$_cg_c2\" ] && _cg_bad=1; done < /proc/self/cgroup; [ \"$_cg_bad\" -eq 1 ] && { echo \"[calibration] cgroup_membership=malformed\" >&2; exit 1; }"
-
-data bash_proc_self_cgroup_membership_count_unified: String = "_cg_n=$(grep -c '^0::' /proc/self/cgroup 2>/dev/null || echo 0)"
-
-data bash_proc_self_cgroup_membership_refuse_missing: String = "if [ \"$_cg_n\" -eq 0 ]; then echo \"[calibration] cgroup_membership=missing\" >&2; exit 1; fi"
-
-data bash_proc_self_cgroup_membership_refuse_ambiguous: String = "if [ \"$_cg_n\" -gt 1 ]; then echo \"[calibration] cgroup_membership=ambiguous\" >&2; exit 1; fi"
-
-data bash_proc_self_cgroup_membership_assign_suffix: String = "\"/sys/fs/cgroup$(sed -n '/^0::/s/^0:://p' /proc/self/cgroup)\""
-
-fn bash_proc_self_cgroup_membership_assign_body(path_var: NonEmptyStr) -> String {
-  concat(
-    bash_proc_self_cgroup_membership_malformed_scan,
-    "; ",
-    bash_proc_self_cgroup_membership_count_unified,
-    "; ",
-    bash_proc_self_cgroup_membership_refuse_missing,
-    "; ",
-    bash_proc_self_cgroup_membership_refuse_ambiguous,
-    "; ",
-    path_var as String,
-    "=",
-    bash_proc_self_cgroup_membership_assign_suffix,
-  )
-}
-
-fn bash_proc_self_cgroup_membership_assign_command(path_var: NonEmptyStr) -> String {
-  concat(
-    "{ ",
-    bash_proc_self_cgroup_membership_assign_body(path_var: path_var),
-    "; } || exit 1",
-  )
-}
-
-fn bash_proc_self_cgroup_membership_assign_target_model(
-  path_var: NonEmptyStr,
-) -> Outcome<TargetModel> {
-  if !bash_path_ident_ok(name: path_var as String) {
-    outcome_rejected(bash_path_intent_invalid_diagnostic())
-  } else {
-    outcome_accepted(
-      bash_make_bound_tokens_target_model(
-        rules: bash_orch_call_translation_rules_node(),
-        source_literal: ^bash_orch_call_source_literal,
-        production_name: ^bash_production_orch_call,
-        tokens: bash_orch_call_tokens(),
-        source_text: bash_proc_self_cgroup_membership_assign_command(path_var: path_var),
-        lex: bash_orch_call_lex(
-          spelling: bash_proc_self_cgroup_membership_assign_command(path_var: path_var)
-        ),
-        binding_spellings: bash_orch_call_binding_spellings(
-          spelling: bash_proc_self_cgroup_membership_assign_command(path_var: path_var)
-        )
-      )
-    )
-  }
-}
-
-fn bash_nearest_ancestor_locate_assign_command(spec: NearestAncestorContaining) -> String {
-  bash_proc_self_cgroup_membership_assign_command(path_var: spec.path_var)
-}
-
-fn bash_nearest_ancestor_locate_cond_command(spec: NearestAncestorContaining) -> String {
-  match bash_path_predicate_target_model(
-    predicate: nearest_ancestor_while_predicate(spec: spec)
-  ) {
-    Accepted { value: source, diagnostics: d } =>
-      match d {
-        None => source.authority_source_text
-        Some { diagnostics: _ } => ""
-      }
-    Rejected { diagnostics: _ } => ""
-  }
-}
-
-fn bash_nearest_ancestor_locate_body_command(spec: NearestAncestorContaining) -> String {
-  match bash_dirname_ascent_target_model(
-    ascent: nearest_ancestor_while_ascent(spec: spec)
-  ) {
-    Accepted { value: source, diagnostics: d } =>
-      match d {
-        None => source.authority_source_text
-        Some { diagnostics: _ } => ""
-      }
-    Rejected { diagnostics: _ } => ""
-  }
 }
