@@ -37,10 +37,14 @@ fn dirname_ascent(path: PathIntent, target: NonEmptyStr) -> DirnameAscent {
   DirnameAscent { path: path, target: target }
 }
 
-data nearest_ancestor_containing_note: String = "NearestAncestorContaining is a pure search policy over path predicates: walk upward from start, stopping before stop_before, until relative_entry exists at expected_kind. start is a PathIntent (typically PathRef to the walk carrier after membership observation); it is NOT a separate bash-variable-name field. The procfs membership assign that seeds start lives in extdeps.linux.proc_self_cgroup."
+data nearest_ancestor_containing_note: String = "NearestAncestorContaining is a pure search policy over path predicates: walk upward from start, stopping before stop_before, until relative_entry exists at expected_kind. start is PathRefStart — the PathIntent.PathRef carrier shape only; PathLiteral and PathJoin are unwritable at construction so nearest_ancestor_walk_target never fabricates a bash variable name. The procfs membership assign that seeds start lives in extdeps.linux.proc_self_cgroup."
+
+type PathRefStart {
+  name: NonEmptyStr
+}
 
 type NearestAncestorContaining {
-  start: PathIntent
+  start: PathRefStart
   stop_before: FilePathParts
   relative_entry: FilePathParts
   expected_kind: EntryKind
@@ -51,11 +55,11 @@ type NearestAncestorContainingResult
   | NoAncestorContainsEntry
 
 fn nearest_ancestor_walk_target(spec: NearestAncestorContaining) -> NonEmptyStr {
-  match spec.start {
-    PathRef { name: walk_target } => walk_target
-    PathLiteral { parts: _ } => "d" as NonEmptyStr
-    PathJoin { base: _, suffix: _ } => "d" as NonEmptyStr
-  }
+  spec.start.name
+}
+
+fn nearest_ancestor_start_as_intent(start: PathRefStart) -> PathIntent {
+  PathRef { name: start.name }
 }
 
 fn nearest_ancestor_stop_literal(spec: NearestAncestorContaining) -> PathIntent {
@@ -64,17 +68,18 @@ fn nearest_ancestor_stop_literal(spec: NearestAncestorContaining) -> PathIntent 
 
 fn nearest_ancestor_entry_join(spec: NearestAncestorContaining) -> PathIntent {
   PathJoin {
-    base: spec.start,
+    base: nearest_ancestor_start_as_intent(start: spec.start),
     suffix: spec.relative_entry,
   }
 }
 
 fn nearest_ancestor_while_predicate(spec: NearestAncestorContaining) -> PathPredicate {
+  let start_path = nearest_ancestor_start_as_intent(start: spec.start)
   And {
-    lhs: PathNonempty { path: spec.start },
+    lhs: PathNonempty { path: start_path },
     rhs: And {
       lhs: PathNotEq {
-        lhs: spec.start,
+        lhs: start_path,
         rhs: nearest_ancestor_stop_literal(spec: spec),
       },
       rhs: Not {
@@ -89,7 +94,7 @@ fn nearest_ancestor_while_predicate(spec: NearestAncestorContaining) -> PathPred
 
 fn nearest_ancestor_while_ascent(spec: NearestAncestorContaining) -> DirnameAscent {
   DirnameAscent {
-    path: spec.start,
+    path: nearest_ancestor_start_as_intent(start: spec.start),
     target: nearest_ancestor_walk_target(spec: spec),
   }
 }
