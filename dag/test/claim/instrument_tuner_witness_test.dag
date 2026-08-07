@@ -1,0 +1,123 @@
+module test.claim.instrument_tuner_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { String, Bool, Int, List }
+import gunbc.roadmap_component {
+  instrument_tuner_asset_path, instrument_tuner_client_js_source,
+  instrument_tuner_root_class, instrument_reading_class, instrument_depth_btn_class,
+  instrument_mode_btn_class, instrument_subject_class, js_instrument_step_depth_fn,
+  js_instrument_save_fn, js_instrument_seek_depth_fn, js_instrument_handle_wheel_fn,
+  js_instrument_wheel_threshold_const, js_tick_fn,
+}
+import gunbc.design.instrument_camera {
+  camera_storage_key, camera_wire, camera_initial, camera_wire_sep,
+  ProgramCamera, DepthFront,
+  wheel_detent_threshold_px, wheel_gesture_reset_interval,
+  instrument_user_depths, instrument_user_depth_keys, program_depth_key,
+}
+import std.measure { millisecond_count }
+import gunbc.roadmap_instrument_tuner {
+  instrument_tuner_css, instrument_tuner_camera_population_joined,
+  reading_row,
+}
+import gunbc.roadmap_program_view { V1DeletionProgramView, RemainingShape, ProposedCarrierAbsent }
+import extdeps.languages.html_fragment { serialize_fragment }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data instrument_tuner_witness_note: String = "The operable follow-on to the static study: a modeled TsProgram client, a served asset, pre-rendered reading rows keyed by camera_wire, and witnesses that join camera population to v1_exit_finish_lines rather than pinning a census literal. Model-layer detent integrator and seek-depth claims live in instrument_camera_witness; this file pins the client seam and HTML pre-render shape."
+
+fn fixture_view() -> V1DeletionProgramView {
+  V1DeletionProgramView {
+    finish_lines: [],
+    fronts: [],
+    remaining: RemainingShape {
+      sequential_depth: 0,
+      open_fronts: 0,
+      startable_now: 0,
+      in_flight: 0,
+      dependency_held: 0,
+      contract_held: 0,
+      unsized: 0,
+    },
+    proposed: ProposedCarrierAbsent,
+  }
+}
+
+fn witness_the_client_program_persists_the_camera() -> Bool {
+  string_contains(s: instrument_tuner_client_js_source(), pattern: camera_storage_key)
+    && string_contains(s: instrument_tuner_client_js_source(), pattern: js_instrument_save_fn)
+    && string_contains(s: instrument_tuner_client_js_source(), pattern: camera_wire_sep)
+}
+
+fn witness_the_client_program_steps_one_detent_with_sound() -> Bool {
+  string_contains(s: instrument_tuner_client_js_source(), pattern: js_instrument_step_depth_fn)
+    && string_contains(s: instrument_tuner_client_js_source(), pattern: "prevDepth")
+    && string_contains(s: instrument_tuner_client_js_source(), pattern: js_tick_fn)
+    && string_contains(s: instrument_tuner_client_js_source(), pattern: js_instrument_seek_depth_fn)
+}
+
+fn witness_the_client_program_integrates_wheel_travel() -> Bool {
+  string_contains(s: instrument_tuner_client_js_source(), pattern: js_instrument_handle_wheel_fn)
+    && string_contains(s: instrument_tuner_client_js_source(), pattern: js_instrument_wheel_threshold_const)
+    && string_contains(s: instrument_tuner_client_js_source(), pattern: to_string(wheel_detent_threshold_px))
+    && string_contains(s: instrument_tuner_client_js_source(), pattern: to_string(millisecond_count(m: wheel_gesture_reset_interval)))
+    && string_contains(s: instrument_tuner_client_js_source(), pattern: "deltaMode")
+    && string_contains(s: instrument_tuner_client_js_source(), pattern: "instrumentWheelTravel")
+}
+
+fn witness_the_client_program_has_selection_parity_hooks() -> Bool {
+  string_contains(s: instrument_tuner_client_js_source(), pattern: "gunbcSelectInstrumentSubject")
+    && string_contains(s: instrument_tuner_client_js_source(), pattern: ":focus-visible")
+    && string_contains(s: instrument_tuner_client_js_source(), pattern: "Escape")
+    && string_contains(s: instrument_tuner_client_js_source(), pattern: "'Enter'")
+    && string_contains(s: instrument_tuner_client_js_source(), pattern: "!== ' '")
+}
+
+fn witness_the_page_pre_renders_every_camera_state() -> Bool {
+  instrument_tuner_camera_population_joined()
+    && string_contains(s: instrument_tuner_css(), pattern: instrument_depth_btn_class)
+    && string_contains(s: instrument_tuner_css(), pattern: instrument_mode_btn_class)
+}
+
+fn witness_the_page_exposes_only_mvp_depth_controls() -> Bool {
+  map(instrument_user_depths(), d => program_depth_key(d: d)) == instrument_user_depth_keys()
+    && count(instrument_user_depth_keys()) == 3
+}
+
+fn witness_exactly_one_initial_reading_row_is_visible_in_html() -> Bool {
+  let initial_html = serialize_fragment(frag: reading_row(view: fixture_view(), camera: camera_initial))
+  let hidden_camera = ProgramCamera {
+    depth: DepthFront,
+    mode: camera_initial.mode,
+    focus: camera_initial.focus,
+  }
+  let hidden_html = serialize_fragment(frag: reading_row(view: fixture_view(), camera: hidden_camera))
+  string_contains(s: initial_html, pattern: "data-reading-key")
+    && !string_contains(s: initial_html, pattern: "hidden")
+    && string_contains(s: hidden_html, pattern: "hidden")
+}
+
+fn witness_the_client_program_refuses_invalid_wire_keys() -> Bool {
+  string_contains(s: instrument_tuner_client_js_source(), pattern: "INSTRUMENT_WIRE_DEPTH_KEYS")
+    && string_contains(s: instrument_tuner_client_js_source(), pattern: "INSTRUMENT_MODE_KEYS")
+    && string_contains(s: instrument_tuner_client_js_source(), pattern: "INSTRUMENT_FOCUS_KEYS")
+}
+
+fn witness_the_client_apply_hides_non_matching_readings() -> Bool {
+  string_contains(s: instrument_tuner_client_js_source(), pattern: "data-reading-key")
+    && string_contains(s: instrument_tuner_client_js_source(), pattern: ".hidden")
+}
+
+test fn instrument_tuner_keystone_holds() -> Bool {
+  witness_the_client_program_persists_the_camera()
+    && witness_the_client_program_steps_one_detent_with_sound()
+    && witness_the_client_program_integrates_wheel_travel()
+    && witness_the_client_program_has_selection_parity_hooks()
+    && witness_the_client_program_refuses_invalid_wire_keys()
+    && witness_the_client_apply_hides_non_matching_readings()
+    && witness_the_page_pre_renders_every_camera_state()
+    && witness_the_page_exposes_only_mvp_depth_controls()
+    && witness_exactly_one_initial_reading_row_is_visible_in_html()
+    && instrument_tuner_asset_path == "/assets/instrument-tuner.js"
+}

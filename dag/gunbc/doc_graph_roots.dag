@@ -109,6 +109,17 @@ fn hand_authored_doc_path(b: HandAuthoredDocBind) -> String {
 data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "review-surface-subject-map",
+    primary_work: DeclarationRef { module_path: "v2.lens.registry.completeness", decl_name: "lens_registry_completeness_consolidated_roster_note", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.lens.grounding_ledger", decl_name: "structural_ledger_entry", field: WholeDeclaration },
+      DeclarationRef { module_path: "v2.lens.grounding", decl_name: "first_coincident_target", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.review_verdict", decl_name: "is_approving_verdict", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "every row in the map has been deleted, consumed by a named live edge, or transferred to a typed roadmap obligation with an owner and acceptance. The four bound works are the map's load-bearing subjects and each names its own end state: the completeness roster note's exemption for v2.lens.grounding_ledger cites consumption by v2.lens.grounding that does not exist, and dissolves when the ledger is deleted so the row disappears rather than being reworded; LedgerEntry is that inert module's carrier; first_coincident_target folds to the FIRST non-self match while GroundingWorklistEntry stores a single coincides_with string, which is the silent-pick defect blocking any exclusive-candidate review and dissolves when the candidate population becomes complete, zero/one/many explicit, and identified by DeclarationRef rather than presentation strings; MergeReadinessTally has no producer outside fixtures and a dormant consumer whose kernel has no in-tree driver, and its unread approval_count field dissolves when the two-approval rule becomes a typed obligation with a zero-approval RED. The map is a worksheet, not an authority: it registers here so it cannot sit unreachable, and it deletes outright rather than migrating to DESIGN." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "witness-evidence-lifecycle-design",
     primary_work: DeclarationRef { module_path: "v2.workflow.floor_discovery_producer", decl_name: "floor_discovery_process_dag_file", field: WholeDeclaration },
     additional_works: [
@@ -331,6 +342,15 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "arc-store-path-migration-decision",
+    primary_work: DeclarationRef { module_path: "v1.compiler.languages", decl_name: "sharing_wrap_ctor_for_target", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.compiler.wrap_decision", decl_name: "WrapDecisionBundleChildLookup", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the v1-run-stability width>1 resumption trigger in this note fires and the parked alias-flip plus C1 in-memory store land in one motion — or the decision record migrates into a registered gunbc.plan.Plan row" },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "module-identity-storage-binding-design",
     primary_work: DeclarationRef { module_path: "v2.lens.effect_reach", decl_name: "effect_reach_law", field: WholeDeclaration },
     additional_works: [DeclarationRef { module_path: "v2.workflow.witness_admission", decl_name: "consumer_for_explicit_rosters", field: WholeDeclaration }],
@@ -521,6 +541,16 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     primary_work: DeclarationRef { module_path: "tools.publication_publisher", decl_name: "PublicationAuthority", field: WholeDeclaration },
     additional_works: [DeclarationRef { module_path: "tools.publication_push_shadow", decl_name: "shadow_replay_public_pushes", field: WholeDeclaration }],
     dissolution: HasTrigger { text: "live slice lands: ordinary sessions lose public-write credentials, git.PublicationTransport dispatch binds to PublicationAuthority, and shadow witness becomes regression control — then register as gunbc.plan.Plan row or delete with carriers" },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "c1-cost-expr-authority-design",
+    primary_work: DeclarationRef { module_path: "v2.lens.cost", decl_name: "cost_lens", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "gunbc.plans.v2_complexity_capability_parity", decl_name: "v2_complexity_capability_parity_plan", field: WholeDeclaration },
+      DeclarationRef { module_path: "v2.lens.enforcement.complexity_contract_subject", decl_name: "complexity_derived_kernel_boundary", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "v2.lens.cost carries grounded SizeExpr/CostExpr with normalize_cost_expr_to_symbolic live, the C1 blocking-wall baseline roster is green post-carrier, bounded-summation and CostRefused witnesses execute green, and parity note C1 acceptance is met — then the carriers state the capability and this bind deletes with the doc." },
   },
   HandAuthoredDocBind {
     home: ProbeDoc,

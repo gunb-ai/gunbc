@@ -17,6 +17,7 @@ import extdeps.bmc.webui.nbd_proxy_serve { NbdProxyServeTransportIntent }
 import gunbc.fleet_intent { ComputeHost }
 import gunbc.host_converge { HostConverge }
 import gunbc.live_deploy.spec { DeploymentSpec, DeploymentDependencyStep }
+import gunbc.live_deploy.candidate { CandidateRelease }
 import std.effects {
   EffectShape,
   KeySource,

@@ -4,6 +4,7 @@ import gunbc.ci_gate {
   Gate,
   EmitHostGate, CheapClaimPoolGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate, ExtdepsScopePlacementGate,
+  ProseRowIntroductionGate,
   SourceRootIngestGate, RegenVerifyGate,
   SelfHostReadsRealBytesGate, SelfHostStalenessGate
 }
@@ -950,6 +951,10 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
     surfaces: [GithubActionsCiJob]
   },
   CommitCheckEnrollment {
+    check: CommitSpecGate { gate: ProseRowIntroductionGate },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
     check: CommitSpecGate { gate: SourceRootIngestGate },
     surfaces: [FalsifierCadenceJob]
   },
@@ -1275,6 +1280,29 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/realization_vocabulary_containment/no_new_debt_gate_test.dag",
+      check_fns: [
+        "ts0_census_roadmap_component_edge_is_grandfathered_holds",
+        "ts0_census_theme_transition_edge_is_grandfathered_holds",
+        "ts0_census_node_http_server_emit_edge_is_grandfathered_holds",
+        "ts0_census_effect_plan_bash_materialize_edge_is_grandfathered_holds",
+        "ts0_census_build_step_edge_is_grandfathered_holds",
+        "ts0_frozen_roadmap_component_import_is_not_leak_holds",
+        "ts0_frozen_theme_transition_import_is_not_leak_holds",
+        "ts0_frozen_effect_plan_bash_materialize_import_is_not_leak_holds",
+        "ts0_unrostered_non_edge_import_is_leak_holds",
+        "ts0_grandfathered_file_cannot_acquire_second_vocab_edge_holds",
+        "ts0_different_importer_same_vocab_new_edge_is_leak_holds",
+        "ts0_frozen_population_containment_holds_holds",
+        "ts0_grandfathered_edge_keys_use_exact_edge_identity_holds"
+      ],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
       entry: "src/v2/test/claim/realization_vocabulary_containment/lens_unit/discriminators_test.dag",
       check_fns: [
         "fresh_non_edge_import_is_leak_holds",
@@ -1286,7 +1314,11 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
         "build_step_rostered_for_bash_build_holds",
         "bash_vocab_fresh_non_edge_import_is_leak_holds",
         "bash_vocab_realization_edge_import_is_not_leak_holds",
-        "node_http_server_emit_rostered_for_typescript_sidecar_holds"
+        "node_http_server_emit_rostered_for_typescript_sidecar_holds",
+        "roadmap_component_rostered_for_typescript_sidecar_holds",
+        "theme_transition_rostered_for_typescript_sidecar_holds",
+        "effect_plan_bash_materialize_rostered_for_bash_build_holds",
+        "grandfathered_edge_keys_are_exact_identity_holds"
       ],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
@@ -1305,7 +1337,12 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
       entry: "src/v2/test/claim/realization_vocabulary_containment/roster_soundness_test.dag",
-      check_fns: ["realization_vocab_roster_soundness_planted_stale_red_holds"],
+      check_fns: [
+        "realization_vocab_roster_soundness_census_complete_holds",
+        "realization_vocab_roster_soundness_planted_stale_red_holds",
+        "realization_vocab_grandfathered_edge_roster_keys_are_distinct_holds",
+        "realization_vocab_grandfathered_edge_keys_distinct_red_on_planted_duplicate_holds"
+      ],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
     },
@@ -1661,6 +1698,7 @@ fn gate_eq(a: Gate, b: Gate) -> Bool {
     DagCompileCleanGate => match b { DagCompileCleanGate => true  _ => false }
     GeneratedArtifactDriftGate => match b { GeneratedArtifactDriftGate => true  _ => false }
     ExtdepsScopePlacementGate => match b { ExtdepsScopePlacementGate => true  _ => false }
+    ProseRowIntroductionGate => match b { ProseRowIntroductionGate => true  _ => false }
     SourceRootIngestGate => match b { SourceRootIngestGate => true  _ => false }
     RegenVerifyGate => match b { RegenVerifyGate => true  _ => false }
     SelfHostReadsRealBytesGate => match b { SelfHostReadsRealBytesGate => true  _ => false }

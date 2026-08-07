@@ -4,7 +4,7 @@ module gunbc.generated_artifact_emit
 import gunbc.generated_artifact {
   GeneratedArtifact,
   CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact,
-  RunnerDeployArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact,
+  RunnerDeployArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact,
   AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
   Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact,
   Stage0CratePartitionGeneratedDagArtifact,
@@ -22,6 +22,8 @@ import gunbc.design_document { expected_design_md }
 import gunbc.runner_deploy_emit { expected_runner_deploy_manifest }
 import gunbc.githooks_pre_push_emit { expected_githooks_pre_push_sh }
 import gunbc.githooks_pre_commit_emit { expected_githooks_pre_commit_sh }
+import gunbc.generated_artifact_merge_driver { expected_generated_artifact_merge_driver_sh }
+import gunbc.ci_spec { ci_heal_author_commit_regen_command }
 import gunbc.os_install_emit { autoinstall_user_data }
 import gunbc.install_server_emit { install_server_dnsmasq_conf }
 import gunbc.plan { expected_plan_md }
@@ -64,6 +66,7 @@ fn artifact_generate(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
     DesignArtifact => artifact_generated(content: expected_design_md())
     GithooksPrePushArtifact => artifact_generated(content: expected_githooks_pre_push_sh())
     GithooksPreCommitArtifact => artifact_generated(content: expected_githooks_pre_commit_sh())
+    GeneratedArtifactMergeDriverArtifact => artifact_generated(content: expected_generated_artifact_merge_driver_sh(regen_command: ci_heal_author_commit_regen_command))
     RunnerDeployArtifact => artifact_generated(content: expected_runner_deploy_manifest())
     Stage0CrateLayoutGeneratedDagArtifact => artifact_generated(content: expected_stage0_crate_layout_generated_dag())
     Stage0CrateLayoutGeneratedRsArtifact => artifact_generated(content: expected_stage0_crate_layout_generated_rs())
@@ -95,6 +98,7 @@ fn artifact_extra_valid(a: GeneratedArtifact, generated: ArtifactGenerationOutco
     DesignArtifact => true
     GithooksPrePushArtifact => true
     GithooksPreCommitArtifact => true
+    GeneratedArtifactMergeDriverArtifact => true
     RunnerDeployArtifact => true
     Stage0CrateLayoutGeneratedDagArtifact => true
     Stage0CrateLayoutGeneratedRsArtifact => true

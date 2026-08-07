@@ -1,0 +1,179 @@
+module gunbc.build_cache_latency_probe
+
+import std.types { NonEmptyStr, String, Int, Bool, List }
+import std.measure { Millisecond, millisecond, measure_count }
+import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network {
+  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
+}
+
+data build_cache_latency_probe_disposition: Disposition = Terminal {
+  reason: "The acceptance metric for the srvN build-cache placement lane, and the falsifier for any fix to it. It measures ONE thing — how long the CI `build` job takes, per host — because that duration is dominated by whether cache-miss compiles are served by a healthy sccache server, and because it is derivable from GitHub Actions job timings that already exist. No host access, no new instrumentation, no agent on the box."
+}
+
+data why_this_metric_note: String = "THE DEFECT IS INVISIBLE ON THE AXIS EVERYONE WAS WATCHING. srv1's build jobs on 2026-08-05 ran a median of 607000ms against a peer median of 238000ms — 2.55x — while its job FAILURE rate was 26.2%, the second LOWEST of the four hosts (srv2 28.9%, srv4 31.4%). Counting conclusion=failure finds nothing here; counting cancellations finds nothing either. The harm is latency, and it is large: about 6.2 minutes of excess per build, 44 builds in the window, roughly 4.5 hours of wall-clock per day on the build job alone — which gates everything downstream through the release-bins artifact.\n\nThat is why the metric is worth a carrier rather than a shell command. A defect that costs hours a day while every conclusion-shaped signal reads normal will be rediscovered by whoever next happens to look, in exactly the way this one was."
+
+data bimodality_is_the_mechanism_note: String = "SORTED, srv1's 44 samples fall into two clusters with an EMPTY GAP between 112000ms and 505000ms — nothing in between, on either side of a four-minute void. Ten samples sit at 78000-112000ms; thirty-four sit at 505000-1640000ms. That gap is the mechanism made visible: there is no partially-warm state, because a compile is either served from the cache or it is not.\n\nA CORRECTION THE FULL DISTRIBUTION FORCED, and it sharpens the diagnosis rather than softening it. The fast cluster was first read as 'faster than peers', comparing srv1's 78000ms floor to the peer MEDIAN of 238000ms. That comparison is wrong: the peer hosts' own minima are 74000-81000ms, indistinguishable from srv1's. Every host gets full cache hits at about the same speed.\n\nThe difference is entirely at the top. Peer builds cap at 342000-372000ms — that is what a cache MISS costs on a healthy host. srv1's misses run 505000-1640000ms, between 1.4x and 4.4x a peer's worst case. So srv1 is not merely running cold; its misses are individually more expensive than a peer's misses, which a cold cache alone does not explain. It is consistent with the server being memory-starved while compiling — the same server whose cgroup carries 229780 memory.max breach events and 12 oom_kills (gunbc.fleet_host_budget gunbc_compile_pool_doc).\n\nCONSEQUENCE FOR THE FIX, which is why the correction matters: respawning the server into a healthier cgroup addresses the placement, but the durable repair is the one that gives it a memory budget of its own — the managed unit plus the declared compile-pool slice. A server that is merely relocated is still unbudgeted."
+
+type BuildLatencySample {
+  host: HostIdentity
+  run_id: NonEmptyStr
+  job_id: NonEmptyStr
+  duration: Millisecond
+}
+
+type BuildLatencyPopulation {
+  host: HostIdentity
+  observation_window: NonEmptyStr
+  durations: List<Millisecond>
+}
+
+data observation_provenance_note: String = "Provenance sits on the POPULATION rather than on each sample, because the claim is distributional — 'every successful build job in this window' — and per-row run ids would not make it more checkable, only longer. The window string carries the query needed to reproduce the population exactly. Extreme samples are cited individually below, since claims about the fastest and slowest builds ARE per-run claims and must name their runs."
+
+data build_latency_observation_window: NonEmptyStr = "workflow=ci.yml job=build conclusion=success, all runs on 2026-08-05 UTC reachable from `gh run list --workflow ci.yml --limit 600` (285 completed runs, 937 job placements); duration = completed_at - started_at from the Actions jobs API"
+
+data srv1_build_latency: BuildLatencyPopulation = BuildLatencyPopulation {
+  host: operator_host_srv1,
+  observation_window: build_latency_observation_window,
+  durations: [
+    millisecond(count: 78000), millisecond(count: 80000), millisecond(count: 80000),
+    millisecond(count: 81000), millisecond(count: 81000), millisecond(count: 83000),
+    millisecond(count: 85000), millisecond(count: 86000), millisecond(count: 87000),
+    millisecond(count: 112000), millisecond(count: 505000), millisecond(count: 527000),
+    millisecond(count: 552000), millisecond(count: 555000), millisecond(count: 570000),
+    millisecond(count: 581000), millisecond(count: 584000), millisecond(count: 593000),
+    millisecond(count: 598000), millisecond(count: 604000), millisecond(count: 605000),
+    millisecond(count: 607000), millisecond(count: 611000), millisecond(count: 614000),
+    millisecond(count: 616000), millisecond(count: 626000), millisecond(count: 627000),
+    millisecond(count: 629000), millisecond(count: 632000), millisecond(count: 640000),
+    millisecond(count: 680000), millisecond(count: 790000), millisecond(count: 874000),
+    millisecond(count: 877000), millisecond(count: 904000), millisecond(count: 946000),
+    millisecond(count: 977000), millisecond(count: 1018000), millisecond(count: 1035000),
+    millisecond(count: 1107000), millisecond(count: 1135000), millisecond(count: 1350000),
+    millisecond(count: 1359000), millisecond(count: 1640000),
+  ],
+}
+
+data srv1_build_latency_exemplars: List<BuildLatencySample> = [
+  BuildLatencySample {
+    host: operator_host_srv1,
+    run_id: "31001447946",
+    job_id: "92291104649",
+    duration: millisecond(count: 78000),
+  },
+  BuildLatencySample {
+    host: operator_host_srv1,
+    run_id: "31040650507",
+    job_id: "92423873975",
+    duration: millisecond(count: 1640000),
+  },
+]
+
+data peer_population_summary_note: String = "The peer hosts are carried as their MEDIANS and sample counts rather than as raw populations, and the asymmetry is deliberate rather than convenient: srv1 is the subject under investigation, so its distribution is recorded in full for the bimodal gap to be checkable in-model, while the peers serve only as the reference the divergence ratio is taken against. Recording 201 further durations would triple this file to strengthen nothing. The window is identical for all four, so the comparison is like-for-like.\n\nONE CAVEAT ON THESE THREE NUMBERS, following the median convention correction above: they were computed during collection by an averaging median, so srv3's (n=86) and srv4's (n=58) are means of two middle samples rather than samples any build produced, while srv2's (n=57) is a real element. They are carried as CONTEXT and no verdict is taken against them individually. The number the verdict actually uses is peer_combined_median over all 201 peer samples, and 201 is odd, so that one is a real observation — which is the only reason this caveat is a footnote rather than a defect."
+
+type BuildLatencyReference {
+  host: HostIdentity
+  sample_count: Int
+  median: Millisecond
+}
+
+data peer_build_latency_references: List<BuildLatencyReference> = [
+  BuildLatencyReference { host: operator_host_srv2, sample_count: 57, median: millisecond(count: 255000) },
+  BuildLatencyReference { host: operator_host_srv3, sample_count: 86, median: millisecond(count: 240000) },
+  BuildLatencyReference { host: operator_host_srv4, sample_count: 58, median: millisecond(count: 229000) },
+]
+
+data peer_combined_median: Millisecond = millisecond(count: 238000)
+
+type MedianScan {
+  index: Int
+  picked: Millisecond?
+}
+
+data median_selection_note: String = "Selection is a single linear fold over the sorted list because this substrate exposes only first/last/length on List — there is no index accessor, and the alternatives are a quadratic rank-count or a hand-rolled recursion. One fold carrying (index, picked) is O(n) after the sort, which keeps the whole derivation at sort cost and clear of DESIGN section 6's standing rule that a quadratic fold is always fixed regardless of the realized n.\n\nEVEN-SIZED POPULATIONS take the LOWER median rather than averaging the middle pair. Declared rather than incidental: averaging would mint a duration that no build actually took, and every consumer here compares a real observation against a policy ratio, so a synthetic midpoint would be the only unmeasured number in the chain.\n\nRECEIPT FOR THE RULE, from this file: a sibling note first quoted srv1's median as 609000ms, taken from an averaging median computed in a shell during collection. The derivation returns 607000ms — a real sample — and 609000 is the mean of the two middle values, a duration no build on srv1 ever took. The witness comparing the recorded verdict to its re-derivation caught the discrepancy immediately. The convention was already declared here and violated two declarations away, which is the ordinary way a stated convention fails."
+
+fn population_median(p: BuildLatencyPopulation) -> Millisecond? {
+  let n = p.durations |> length
+  if n == 0 {
+    none
+  } else {
+    let sorted = p.durations |> sort_by(d => measure_count(m: d))
+    let target = (n - 1) / 2
+    fold(
+      sorted,
+      init: MedianScan { index: 0, picked: none },
+      f: (acc, d) =>
+        if acc.index == target {
+          MedianScan { index: acc.index + 1, picked: Present { value: d } }
+        } else {
+          MedianScan { index: acc.index + 1, picked: acc.picked }
+        }
+    ).picked
+  }
+}
+
+data divergence_policy_note: String = "THE RATIO IS AN OPERATOR POLICY BUDGET, not a threshold fitted to the observation — which matters because the 2026-08-01 test-oracle ruling forbids a merge-blocking comparison against a literal read off the current tree. Its ground is that all four hosts are the SAME BOARD with the same CPU and the same declared per-slot caps (gunbc.fleet_intent: ASRock ALTRAD8UD-1L2T, Ampere Altra Max M128-30). Identical hardware compiling identical inputs cannot sustain a 2x median divergence for any hardware reason, so a host that does is telling you something about software placement.\n\nTwo is chosen as the smallest ratio that no plausible hardware or scheduling variance explains, not as the smallest ratio that flags srv1 — srv1 sits at 2.55x and would still be caught at 2.5x. A tighter ratio would begin to catch ordinary cache-warmth luck; a looser one would have let srv1 pass at some point during its degradation."
+
+type BuildLatencyDivergencePolicy {
+  ratio_numerator: Int
+  ratio_denominator: Int
+}
+
+data gunbc_build_latency_divergence_policy: BuildLatencyDivergencePolicy = BuildLatencyDivergencePolicy {
+  ratio_numerator: 2,
+  ratio_denominator: 1,
+}
+
+type BuildLatencyVerdict
+  = BuildLatencyConverged { host: HostIdentity, host_median: Millisecond, reference: Millisecond }
+  | BuildLatencyDiverged { host: HostIdentity, host_median: Millisecond, reference: Millisecond }
+  | BuildLatencyUnmeasured { host: HostIdentity, reason: NonEmptyStr }
+
+fn build_latency_verdict(
+  p: BuildLatencyPopulation,
+  reference: Millisecond,
+  policy: BuildLatencyDivergencePolicy
+) -> BuildLatencyVerdict {
+  match population_median(p: p) {
+    Absent =>
+      BuildLatencyUnmeasured {
+        host: p.host,
+        reason: "no successful build-job samples in the observation window: the host either took no build work or completed none, and neither is a latency verdict — refuse rather than reporting convergence for a host that produced no evidence",
+      }
+    Present { value: m } =>
+      if measure_count(m: m) * policy.ratio_denominator > measure_count(m: reference) * policy.ratio_numerator {
+        BuildLatencyDiverged { host: p.host, host_median: m, reference: reference }
+      } else {
+        BuildLatencyConverged { host: p.host, host_median: m, reference: reference }
+      }
+  }
+}
+
+fn build_latency_verdict_is_diverged(v: BuildLatencyVerdict) -> Bool {
+  match v {
+    BuildLatencyDiverged { host: _, host_median: _, reference: _ } => true
+    BuildLatencyConverged { host: _, host_median: _, reference: _ } => false
+    BuildLatencyUnmeasured { host: _, reason: _ } => false
+  }
+}
+
+data srv1_verdict_2026_08_05: BuildLatencyVerdict = build_latency_verdict(
+  p: srv1_build_latency,
+  reference: peer_combined_median,
+  policy: gunbc_build_latency_divergence_policy
+)
+
+data acceptance_criterion_note: String = "THE FALSIFIER FOR THE FIX, declared BEFORE the fix so it cannot be fitted afterwards. Whatever is done about srv1 — killing the stranded server, relocating it, or the durable managed-unit-plus-compile-pool-slice repair — succeeds exactly when srv1's build median re-derives to Converged against the peer reference on a fresh window, and fails otherwise. Nothing else counts: not a healthy-looking stats table (extdeps.cache.sccache sccache_stats_query_does_not_spawn_note records that --show-stats answers plausibly with no server in existence), not an individual fast build (23% of srv1's builds were already fast, which is what made the defect look like luck), and not a green CI run.\n\nIt is also the EARLY WARNING for the rest of the fleet, at no extra cost. The birth defect is fleet-wide: srv2's and srv3's cache servers live in ACTIVE runner slots and self-limit only because ephemeral runners recycle them, so each is one slot-retirement from srv1's state. A build-median divergence on either is that transition happening, and this same derivation sees it within a window."
+
+data live_producer_frontier_note: String = "THERE IS NO LIVE PRODUCER AND THIS ROW SAYS SO RATHER THAN IMPLYING ONE. The population above was collected by hand — a session querying the GitHub Actions jobs API and folding durations — and hand-collected observations go stale silently, which is exactly the parallel-ledger failure gunbc.host_phase_status host_phase_observation_frontier_note refuses for host phases. The derivation, the policy and the verdict shapes are durable; the DATA is a snapshot of 2026-08-05 and must not be read as current.\n\nWhat a producer needs is small and entirely outside the fleet: the Actions jobs API already returns started_at, completed_at, conclusion and runner_name for every job, so the probe is a query plus this fold. It needs no host access, no ssh, no agent, and no reach through the A1 secret-materialization gap that blocks so much else here — which is the strongest argument for building it early rather than after the placement lane lands.\n\nDISSOLVE-ON: a scheduled producer writes BuildLatencyPopulation rows from the Actions API, at which point srv1_build_latency retires from a hand-entered literal to an observation, and this note retires with it."
+
+data build_cache_latency_producer_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.build_cache_latency_probe",
+    decl_name: "build_latency_population_from_actions_api",
+    field: WholeDeclaration
+  }
+}

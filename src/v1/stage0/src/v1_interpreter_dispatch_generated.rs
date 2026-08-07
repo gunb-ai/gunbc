@@ -90,9 +90,16 @@ pub enum EvalBuiltinArm {
     FreeCallDocGraphDocCount,
     FreeCallCompileDagRustEmitCheck,
     FreeCallCompileDagDiagnosticCensus,
+    FreeCallObserveDeclaredImportClosureSymbolBinding,
+    FreeCallClassBImportClosureGateNotAffectedSkip,
     FreeCallWitnessLayerRootsCompileCleanCheck,
     FreeCallWitnessLayerRootsCompileCleanEmitCheck,
     FreeCallConsumeFloorCompileCleanGateVerdict,
+    FreeCallConsumeFloorCompileCleanGateFailureDetail,
+    FreeCallRecordRegenVerifyGateFailureDetail,
+    FreeCallConsumeRegenVerifyGateFailureDetail,
+    FreeCallRecordGeneratedArtifactDriftGateFailureDetail,
+    FreeCallConsumeGeneratedArtifactDriftGateFailureDetail,
     FreeCallWitnessCompileCleanCliFloorVerdictsAgree,
     FreeCallTestMigrationDebtModuleCount,
     FreeCallTestMigrationDebtTotalLoc,
@@ -221,9 +228,16 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "doc_graph_doc_count" => Some(EvalBuiltinArm::FreeCallDocGraphDocCount),
         "compile_dag_rust_emit_check" => Some(EvalBuiltinArm::FreeCallCompileDagRustEmitCheck),
         "compile_dag_diagnostic_census" => Some(EvalBuiltinArm::FreeCallCompileDagDiagnosticCensus),
+        "observe_declared_import_closure_symbol_binding" => Some(EvalBuiltinArm::FreeCallObserveDeclaredImportClosureSymbolBinding),
+        "class_b_import_closure_gate_not_affected_skip" => Some(EvalBuiltinArm::FreeCallClassBImportClosureGateNotAffectedSkip),
         "witness_layer_roots_compile_clean_check" => Some(EvalBuiltinArm::FreeCallWitnessLayerRootsCompileCleanCheck),
         "witness_layer_roots_compile_clean_emit_check" => Some(EvalBuiltinArm::FreeCallWitnessLayerRootsCompileCleanEmitCheck),
         "consume_floor_compile_clean_gate_verdict" => Some(EvalBuiltinArm::FreeCallConsumeFloorCompileCleanGateVerdict),
+        "consume_floor_compile_clean_gate_failure_detail" => Some(EvalBuiltinArm::FreeCallConsumeFloorCompileCleanGateFailureDetail),
+        "record_regen_verify_gate_failure_detail" => Some(EvalBuiltinArm::FreeCallRecordRegenVerifyGateFailureDetail),
+        "consume_regen_verify_gate_failure_detail" => Some(EvalBuiltinArm::FreeCallConsumeRegenVerifyGateFailureDetail),
+        "record_generated_artifact_drift_gate_failure_detail" => Some(EvalBuiltinArm::FreeCallRecordGeneratedArtifactDriftGateFailureDetail),
+        "consume_generated_artifact_drift_gate_failure_detail" => Some(EvalBuiltinArm::FreeCallConsumeGeneratedArtifactDriftGateFailureDetail),
         "witness_compile_clean_cli_floor_verdicts_agree" => Some(EvalBuiltinArm::FreeCallWitnessCompileCleanCliFloorVerdictsAgree),
         "test_migration_debt_module_count" => Some(EvalBuiltinArm::FreeCallTestMigrationDebtModuleCount),
         "test_migration_debt_total_loc" => Some(EvalBuiltinArm::FreeCallTestMigrationDebtTotalLoc),
@@ -350,9 +364,16 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.doc_graph_doc_count") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallDocGraphDocCount };
     ("free_call.compile_dag_rust_emit_check") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagRustEmitCheck };
     ("free_call.compile_dag_diagnostic_census") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagDiagnosticCensus };
+    ("free_call.observe_declared_import_closure_symbol_binding") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallObserveDeclaredImportClosureSymbolBinding };
+    ("free_call.class_b_import_closure_gate_not_affected_skip") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallClassBImportClosureGateNotAffectedSkip };
     ("free_call.witness_layer_roots_compile_clean_check") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallWitnessLayerRootsCompileCleanCheck };
     ("free_call.witness_layer_roots_compile_clean_emit_check") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallWitnessLayerRootsCompileCleanEmitCheck };
     ("free_call.consume_floor_compile_clean_gate_verdict") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallConsumeFloorCompileCleanGateVerdict };
+    ("free_call.consume_floor_compile_clean_gate_failure_detail") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallConsumeFloorCompileCleanGateFailureDetail };
+    ("free_call.record_regen_verify_gate_failure_detail") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallRecordRegenVerifyGateFailureDetail };
+    ("free_call.consume_regen_verify_gate_failure_detail") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallConsumeRegenVerifyGateFailureDetail };
+    ("free_call.record_generated_artifact_drift_gate_failure_detail") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallRecordGeneratedArtifactDriftGateFailureDetail };
+    ("free_call.consume_generated_artifact_drift_gate_failure_detail") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallConsumeGeneratedArtifactDriftGateFailureDetail };
     ("free_call.witness_compile_clean_cli_floor_verdicts_agree") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallWitnessCompileCleanCliFloorVerdictsAgree };
     ("free_call.test_migration_debt_module_count") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallTestMigrationDebtModuleCount };
     ("free_call.test_migration_debt_total_loc") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallTestMigrationDebtTotalLoc };

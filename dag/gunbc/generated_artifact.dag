@@ -4,6 +4,7 @@ module gunbc.generated_artifact
 import gunbc.os_install { HostAutoinstall, fleet_autoinstall_specs, InstallServerSpec, fleet_install_server_specs }
 import gunbc.plan { Plan, plan_path }
 import gunbc.plan_registry { all_plans }
+import gunbc.generated_artifact_merge_driver { generated_artifact_merge_driver_script_path }
 
 type GeneratedArtifact
   = CiYamlArtifact
@@ -14,6 +15,7 @@ type GeneratedArtifact
   | DesignArtifact
   | GithooksPrePushArtifact
   | GithooksPreCommitArtifact
+  | GeneratedArtifactMergeDriverArtifact
   | RunnerDeployArtifact
   | Stage0CrateLayoutGeneratedDagArtifact
   | Stage0CrateLayoutGeneratedRsArtifact
@@ -27,7 +29,7 @@ type GeneratedArtifact
 data generated_artifact_registry: List<GeneratedArtifact> = concat(
   concat(
     concat(
-      [CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0EmitPlanGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact],
+      [CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0EmitPlanGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact],
       map(fleet_autoinstall_specs, s => AutoinstallUserDataArtifact { spec: s })
     ),
     map(fleet_install_server_specs, s => ProxyDhcpDnsmasqArtifact { spec: s })
@@ -45,12 +47,6 @@ type CommitPolicy
   = CommitRequired { consumer: RepoConsumer }
   | NotCommitted
 
-type HealPolicy
-  = AutoPushEligible
-  | AuthorCommitRequired { consumer: RepoConsumer }
-
-data github_app_workflows_write_absent_note: String = "The GitHub App installation token used by CI carries contents:write but NOT workflows:write. GitHub therefore rejects any push that modifies .github/workflows/** (GH013 / repository-rule violation on workflow paths). Workflow generated artifacts remain CommitRequired — they must land in the repo — but the heal job must not attempt an auto-push the token cannot perform. AuthorCommitRequired is the typed outcome: regeneration may still run locally (main_wet), but committing workflow drift is the PR author's obligation."
-
 fn artifact_path(a: GeneratedArtifact) -> String {
   match a {
     CiYamlArtifact => ".github/workflows/ci.yml"
@@ -61,6 +57,7 @@ fn artifact_path(a: GeneratedArtifact) -> String {
     DesignArtifact => "DESIGN.md"
     GithooksPrePushArtifact => ".githooks/pre-push"
     GithooksPreCommitArtifact => ".githooks/pre-commit"
+    GeneratedArtifactMergeDriverArtifact => generated_artifact_merge_driver_script_path
     RunnerDeployArtifact => ".github/fleet-runner-deploy.manifest"
     Stage0CrateLayoutGeneratedDagArtifact => "dag/gunbc/stage0_crate_layout_generated.dag"
     Stage0CrateLayoutGeneratedRsArtifact => "src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs"
@@ -79,6 +76,7 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     GitattributesArtifact => CommitRequired { consumer: GitProtocol }
     GithooksPrePushArtifact => CommitRequired { consumer: GitProtocol }
     GithooksPreCommitArtifact => CommitRequired { consumer: GitProtocol }
+    GeneratedArtifactMergeDriverArtifact => CommitRequired { consumer: GitProtocol }
     CiYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     FalsifierYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     RoadmapArtifact => CommitRequired { consumer: ProjectDocumentation }
@@ -112,80 +110,6 @@ fn committed_generated_artifact_paths() -> List<String> {
 
 data artifact_eq_disposition_reference_note: String = "Disposition authority (reference only; do not fork the lifecycle here): gunbc.non_fold_residue.non_fold_residue_frontier enrolls dag/gunbc/generated_artifact.dag::artifact_eq with the typed nfr_reason_land_red_era reason and nfr_dissolve_owning_fold trigger. The live non_fold_residue_clean_holds witness refuses both an unrostered predicate and a stale roster row; its synthetic malformed-row RED witnesses that reason without a dissolution trigger is invalid. This equality residue therefore grows only under that one bounded census row and deletes when the owning fold derives equality from inhabitance."
 
-fn artifact_heal_policy(a: GeneratedArtifact) -> HealPolicy {
-  match artifact_commit_policy(a: a) {
-    CommitRequired { consumer: GithubActionsWorkflow } =>
-      AuthorCommitRequired { consumer: GithubActionsWorkflow }
-    CommitRequired { consumer: _ } => AutoPushEligible
-    NotCommitted => AutoPushEligible
-  }
-}
-
-type CommittedHealPartition = {
-  auto_push: List<GeneratedArtifact>,
-  author_commit: List<GeneratedArtifact>
-}
-
-fn partition_committed_by_heal_policy() -> CommittedHealPartition {
-  fold(committed_generated_artifacts(), init: CommittedHealPartition { auto_push: [], author_commit: [] }, f: fn(acc, a) {
-    match artifact_heal_policy(a: a) {
-      AutoPushEligible =>
-        CommittedHealPartition {
-          auto_push: concat(acc.auto_push, [a]),
-          author_commit: acc.author_commit
-        }
-      AuthorCommitRequired { consumer: _ } =>
-        CommittedHealPartition {
-          auto_push: acc.auto_push,
-          author_commit: concat(acc.author_commit, [a])
-        }
-    }
-  })
-}
-
-fn auto_push_eligible_committed_artifacts() -> List<GeneratedArtifact> {
-  partition_committed_by_heal_policy().auto_push
-}
-
-fn author_commit_required_committed_artifacts() -> List<GeneratedArtifact> {
-  partition_committed_by_heal_policy().author_commit
-}
-
-fn auto_push_eligible_committed_artifact_paths() -> List<String> {
-  map(auto_push_eligible_committed_artifacts(), a => artifact_path(a: a))
-}
-
-fn author_commit_required_committed_artifact_paths() -> List<String> {
-  map(author_commit_required_committed_artifacts(), a => artifact_path(a: a))
-}
-
-fn path_requires_author_commit(path: String) -> Bool {
-  any(author_commit_required_committed_artifact_paths(), p => p == path)
-}
-
-type HealRepairDisposition
-  = HealRepairNoDrift
-  | HealRepairAutoPushEligibleOnly { paths: List<String> }
-  | HealRepairAuthorCommitRequired { paths: List<String> }
-  | HealRepairMixed {
-      auto_push_paths: List<String>,
-      author_commit_paths: List<String>
-    }
-
-fn classify_heal_repair_paths(changed_paths: List<String>) -> HealRepairDisposition {
-  let author = filter(changed_paths, p => path_requires_author_commit(path: p))
-  let auto_push = filter(changed_paths, p => !path_requires_author_commit(path: p))
-  if count(changed_paths) == 0 {
-    HealRepairNoDrift
-  } else if count(author) == 0 {
-    HealRepairAutoPushEligibleOnly { paths: auto_push }
-  } else if count(auto_push) == 0 {
-    HealRepairAuthorCommitRequired { paths: author }
-  } else {
-    HealRepairMixed { auto_push_paths: auto_push, author_commit_paths: author }
-  }
-}
-
 fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
   match a {
     CiYamlArtifact => match b { CiYamlArtifact => true  _ => false }
@@ -196,6 +120,7 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     DesignArtifact => match b { DesignArtifact => true  _ => false }
     GithooksPrePushArtifact => match b { GithooksPrePushArtifact => true  _ => false }
     GithooksPreCommitArtifact => match b { GithooksPreCommitArtifact => true  _ => false }
+    GeneratedArtifactMergeDriverArtifact => match b { GeneratedArtifactMergeDriverArtifact => true  _ => false }
     RunnerDeployArtifact => match b { RunnerDeployArtifact => true  _ => false }
     Stage0CrateLayoutGeneratedDagArtifact => match b { Stage0CrateLayoutGeneratedDagArtifact => true  _ => false }
     Stage0CrateLayoutGeneratedRsArtifact => match b { Stage0CrateLayoutGeneratedRsArtifact => true  _ => false }

@@ -2,6 +2,7 @@ module v1.compiler.annotation_bind
 
 import std.types { Bool, Int, String, SourceSpan, List }
 import std.occurrence_identity {
+  OccurrenceId,
   OccurrenceIndexEntry,
   OccurrenceTransport
 }
@@ -13,11 +14,14 @@ import std.source_annotation {
   AnnotationsRefused,
   NormalizedAnnotationCapture,
   SourceAnnotationGraph,
+  KeyedAnnotationRow,
+  SourceAnnotationDebt,
   UnboundAnnotationCapture,
   admit_annotations,
   attach_annotations,
   non_empty_refusals_all,
-  source_annotation_graph_empty
+  source_annotation_graph_empty,
+  source_annotation_graph_rows
 }
 import v1.std.core { CompilerDiagnostic, SourceAnnotationRefused }
 
@@ -127,6 +131,138 @@ fn strip_line_comment_delimiter(lexeme: String) -> String {
     substring(s: lexeme, start: 2, end: len)
   } else {
     lexeme
+  }
+}
+
+data annotation_render_consumer_scope_note: String = "WHAT CONSUMES THIS TODAY, stated because the honest answer is `no production renderer yet` and the reason is measured rather than assumed. There is no authored-.dag-source renderer in this tree to wire the canonical form into: `gunbc compile --target dag` emits dag-artifact.json, a JSON graph dump, and extdeps.languages.dag.emit is a keyword-and-template vocabulary consumed by the shared emitter fold rather than a module that writes .dag text. Threading the annotation graph to such a renderer additionally requires crossing the erasure boundary property 4 pinned, where ResolvedPipelineResult and emit_resolved_for_target carry no authored graph at all.
+
+So this module supplies the canonical spelling and the round-trip evidence, and the production consumer is EXPLICITLY OPEN rather than quietly implied. That distinction is the whole point of saying it here: a helper with no consumer that is described as an emitter would read as delivered.
+
+WHAT THE OPEN RENDERER DOES AND DOES NOT BLOCK, corrected 2026-08-05 by operator ruling because an earlier cut of this note asserted the wrong dependency. The renderer is required before any AUTOMATED SOURCE RECONSTRUCTION OR FORMATTING may rewrite .dag source — a machine that regenerates a file from the semantic graph must be able to write prose back, or it silently drops it. It does NOT block migrating hand-authored .dag files. Their committed bytes are the authority, no process in this tree reconstructs and overwrites them from the semantic graph, and M1A already captures, attaches, admits, and retains their annotations. An author replacing a `data ..._note: String` row with authored `//` text is editing the authority directly; there is no rendering path in between to drop anything. The earlier claim — that a rendering path could still drop newly modeled prose — reasoned about a path that does not exist, and an absent hypothetical cannot rewrite a committed file.
+
+DISSOLVE-ON: an authored-source renderer exists and carries the annotation graph; then the round-trip property re-executes through it end to end and this note goes away with the scaffolding it describes."
+
+data dag_annotation_canonical_form_note: String = "THE CANONICAL .dag SPELLING, and the inverse of strip_line_comment_delimiter directly above. It sits beside its inverse deliberately: the delimiter is stated once, and a change to what .dag strips is in the same edit as what .dag writes. Two functions in two modules agreeing about `//` by coincidence is the fork this lane removes.
+
+The form is a single `//` followed by one space, then the line's normalized text. The empty line renders as a bare `//` with NO trailing space, and that is a correctness case rather than tidiness: `// ` and `//` both normalize to the empty string, so either round-trips, but a trailing space is the character formatters and editors strip on save — so choosing the spelling that survives contact with a text editor is choosing the one that keeps the fixed point stable. An empty line inside a block is reachable: an author writing a bare `//` between two commented lines produces one block whose middle line is empty.
+
+Text is NOT re-indented, re-wrapped, or trimmed. `//   indented` normalizes to two spaces plus `indented` and renders back to `//   indented`, because the authored indentation is content — the strip step consumes exactly one space for exactly this reason, and a renderer that trimmed would delete authored structure on the first round trip."
+
+fn render_line_comment_delimiter(line: String) -> String {
+  if string_length(s: line) == 0 { "//" } else { concat("// ", line) }
+}
+
+data render_annotation_block_note: String = "One row becomes one BLOCK: its embedded line breaks become adjacent annotation lines with nothing between them. Adjacency is what the grouping fold reads back as `one block`, so the joiner here and the blank-line rule below are the two halves of one law stated in std.source_annotation."
+
+fn render_annotation_block(text: String) -> String {
+  split(s: text, delimiter: "\n")
+    |> map(line => render_line_comment_delimiter(line: line))
+    |> join(separator: "\n")
+}
+
+data render_subject_blocks_note: String = "SELECTION AND RENDERING ARE ONE OPERATION, and the fusion is the fix for a rung inflation this seam produced twice. The first cut took a bare List<SourceAnnotationDebt> named `rows for one subject` and ignored every row's subject field. The second cut minted a SubjectAnnotationBlocks { subject, texts } carrier and claimed mixed-subject content was structurally impossible — but the record's fields were public and the renderer read only texts, so a caller could still pair a subject with texts selected from anywhere. The invalid ASSOCIATION stayed writable; erasing the texts' own subjects had only made the contradiction unobservable, which is strictly worse than validated. A guarantee that names a subject while accepting caller-supplied content is validation wearing construction's name.
+
+So no carrier exists. This function takes the admitted graph and a subject, selects exactly the rows whose subject matches, refuses an empty selection, and renders the result. The only path to `subject S's rendering` runs through the graph's own subject edges, so text that is not provenance-bound to S has no route into a value that claims S. render_annotation_block below it still renders arbitrary text — a text-level spelling that names no subject and therefore claims none.
+
+Consecutive blocks on the one subject are separated by a blank line — the renderer half of the std grouping law. Joining with a single newline would emit two authored blocks as one, and the round trip would then certify a merge the author never wrote.
+
+EMPTY SELECTION REFUSES: a subject carrying no prose yields Absent rather than an empty string, because rendering `no blocks` is the caller's decision to omit the region entirely, and an empty string would put a bare newline where nothing was authored."
+
+fn render_subject_annotation_blocks(
+  graph: SourceAnnotationGraph,
+  subject: OccurrenceId
+) -> String? {
+  let texts = fold(
+    source_annotation_graph_rows(graph: graph),
+    init: [],
+    f: (acc, row) => if row.subject.value == subject.value { list_push(acc, row.text) } else { acc }
+  )
+  if (texts |> count) == 0 {
+    none
+  } else {
+    Present {
+      value: texts
+        |> map(text => render_annotation_block(text: text))
+        |> join(separator: "\n\n"),
+    }
+  }
+}
+
+data keyed_annotation_rows_note: String = "Projects a graph's rows onto the cross-parse-stable key std.source_annotation's agreement is defined over: the AUTHORED NAME, resolved against the SAME eligible-subject population attachment rosters — the module and its depth-1 items — never the whole occurrence index. An earlier cut scanned every occurrence, which admitted two failure directions the roster cannot produce: a nested binder sharing a top-level name could collide with the real subject, and nothing checked that the name identified ONE eligible subject at all.
+
+It is FAIL-CLOSED twice, and both arms close the same false-AGREEMENT direction. A row whose subject is not in the eligible population yields Absent for the whole projection rather than a placeholder key — a placeholder would make two unresolvable subjects compare equal, turning a lookup failure into a false agreement. And a DUPLICATE authored name among the eligible subjects refuses the whole projection: with two module items named alpha, rows attached to DIFFERENT declarations would project onto ONE key, and agreement would certify prose as `the same subject's` across genuinely different subjects. The name key is sound exactly where eligible names are unique, so where they are not, there is no projection — the property is explicitly scoped to one module with unique eligible authored names, and everything outside that scope refuses rather than guessing.
+
+Both lookups scan the eligible list per row — a join without a sorted index, bounded by one module's items, the same shape and dissolve-on as the roster scan in std.source_annotation: a name-indexed subject table on the parse artifact."
+
+fn eligible_key_entries(transport: OccurrenceTransport) -> List<OccurrenceIndexEntry> {
+  fold(
+    transport.index.entries,
+    init: [],
+    f: (acc, entry) =>
+      if entry_ancestor_depth(entry: entry) < 2 { list_push(acc, entry) } else { acc }
+  )
+}
+
+fn authored_name_among(entries: List<OccurrenceIndexEntry>, id: OccurrenceId) -> String? {
+  fold(
+    entries,
+    init: none,
+    f: (acc, entry) =>
+      if entry.projection.occurrence.value == id.value {
+        Present { value: entry.projection.authored_name }
+      } else {
+        acc
+      }
+  )
+}
+
+fn eligible_name_count(entries: List<OccurrenceIndexEntry>, name: String) -> Int {
+  fold(
+    entries,
+    init: 0,
+    f: (n, entry) => if entry.projection.authored_name == name { n + 1 } else { n }
+  )
+}
+
+fn eligible_names_unique(entries: List<OccurrenceIndexEntry>) -> Bool {
+  fold(
+    entries,
+    init: true,
+    f: (ok, entry) =>
+      ok && eligible_name_count(entries: entries, name: entry.projection.authored_name) == 1
+  )
+}
+
+data empty_keyed_rows_note: String = "Pins the element type of the accumulator's empty list. A bare `[]` in the fold's init leaves the element type unconstrained until the first push, and the emitter writes that unconstrained type into the closure signature it generates — so the seed compiles the accumulator as a list of unit and the fold no longer typechecks. Naming the empty list through a typed return is the one place the element type is stated."
+
+fn empty_keyed_rows() -> List<KeyedAnnotationRow> {
+  []
+}
+
+fn keyed_annotation_rows(
+  transport: OccurrenceTransport,
+  graph: SourceAnnotationGraph
+) -> List<KeyedAnnotationRow>? {
+  let eligible = eligible_key_entries(transport: transport)
+  if !eligible_names_unique(entries: eligible) {
+    none
+  } else {
+    fold(
+      source_annotation_graph_rows(graph: graph),
+      init: Present { value: empty_keyed_rows() },
+      f: (acc, row) =>
+        match acc {
+          Absent => none
+          Present { value: rows } =>
+            match authored_name_among(entries: eligible, id: row.subject) {
+              Absent => none
+              Present { value: name } =>
+                Present {
+                  value: list_push(rows, KeyedAnnotationRow { subject_key: name, text: row.text }),
+                }
+            }
+        }
+    )
   }
 }
 

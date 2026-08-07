@@ -1758,6 +1758,106 @@ pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
     )
 }
 
+/// One symbol's binding observation on a declared-import-closure-only compile.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeclaredImportClosureBindingObserved {
+    pub binding_source: Option<UnlistedImportBindingSource>,
+    pub definer_module: Option<String>,
+    pub symbol_resolves: bool,
+    pub blocking_hard_diagnostic_count: i64,
+}
+
+/// Result of [`observe_declared_import_closure_symbol_binding`]. `NotRunnable` is distinct from
+/// an observed refusal so could-not-measure never reads as the subject passing (DESIGN §5).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DeclaredImportClosureBindingObservation {
+    Observed(DeclaredImportClosureBindingObserved),
+    NotRunnable(String),
+}
+
+fn declared_import_closure_hard_diagnostic_count(
+    resolved: &v1_compiler_compile::ResolvedPipelineResult,
+) -> i64 {
+    resolved
+        .diagnostics
+        .iter()
+        .filter(|d| compile_clean_diagnostic_is_hard(d))
+        .count() as i64
+}
+
+/// Classify binding on an already-resolved declared-import-closure compile. `graph: None` is not
+/// an observed refusal — the module never ingested — so it returns `NotRunnable` (P1(b), #7835).
+/// Any hard diagnostic on the compile also refuses observation: a graph with hard errors did not
+/// produce a trustworthy binding observation (#7835 producer control).
+pub fn declared_import_closure_binding_observation_from_resolved(
+    resolved: &v1_compiler_compile::ResolvedPipelineResult,
+    consumer_module: &str,
+    symbol: &str,
+) -> DeclaredImportClosureBindingObservation {
+    let graph = match resolved.graph.as_ref() {
+        Some(g) => g.as_ref(),
+        None => {
+            return DeclaredImportClosureBindingObservation::NotRunnable(
+                "declared-import-closure compile produced no graph (parse/frontend refusal)"
+                    .to_string(),
+            );
+        }
+    };
+    let hard_count = declared_import_closure_hard_diagnostic_count(resolved);
+    if hard_count > 0 {
+        return DeclaredImportClosureBindingObservation::NotRunnable(format!(
+            "declared-import-closure compile produced {hard_count} hard diagnostic(s); binding observation refused"
+        ));
+    }
+    let definer = definer_module_for_name(graph, symbol);
+    let symbol_resolves = definer.is_some();
+    let binding_source = if symbol_resolves {
+        Some(classify_unlisted_import_binding_source(graph, consumer_module, symbol).0)
+    } else {
+        None
+    };
+    DeclaredImportClosureBindingObservation::Observed(DeclaredImportClosureBindingObserved {
+        binding_source,
+        definer_module: definer,
+        symbol_resolves,
+        blocking_hard_diagnostic_count: 0,
+    })
+}
+
+/// Host realization backing the `observe_declared_import_closure_symbol_binding` builtin:
+/// compile an entry's **declared import-edge closure only** (no reference-derived widening) under
+/// primary-precedence `pool_roots`, then classify how `consumer_module` binds `symbol`.
+///
+/// MEASUREMENT ONLY — binding-source classification (`ListedImport` vs `PoolCoincidence`) is
+/// carried as data for Class B (#6985) controls; callers judge acceptance.
+pub fn observe_declared_import_closure_symbol_binding(
+    pool_roots: &[String],
+    entry_path: &str,
+    consumer_module: &str,
+    symbol: &str,
+) -> DeclaredImportClosureBindingObservation {
+    let compiled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        compile_declared_import_closure_only_with_pool(pool_roots, entry_path, None)
+    }));
+    let resolved = match compiled {
+        Ok(Ok(r)) => r,
+        Ok(Err(cause)) => {
+            return DeclaredImportClosureBindingObservation::NotRunnable(cause);
+        }
+        Err(_) => {
+            return DeclaredImportClosureBindingObservation::NotRunnable(
+                "observe_declared_import_closure_symbol_binding: compile panicked before producing a graph"
+                    .to_string(),
+            );
+        }
+    };
+    declared_import_closure_binding_observation_from_resolved(
+        resolved.as_ref(),
+        consumer_module,
+        symbol,
+    )
+}
+
 /// Host realization backing the `compile_dag_rust_emit_check` builtin: compile an in-memory
 /// `.dag` program to Rust and check that the named emitted file contains every string in
 /// `includes` and none of `excludes`, with zero **compile-clean hard** diagnostics
@@ -3873,6 +3973,279 @@ pub fn selection_control_skip_label_for_ci() -> Result<String, SelectionControlS
     }
 }
 
+// ---------------------------------------------------------------------------
+// Class B import-closure gate affected-set skip (#7835).
+//
+// `run_class_b_import_closure_gate` costs ~2.3 min wall per cold run; skip when the
+// merge-base diff is provably disjoint from the gate's input closure (declared-import
+// pool ∪ witness layer ∪ perturbation fixtures ∪ gate transport modules). Same shape as
+// regen_floor_skip_label_for_ci / selection_control_skip_label_for_ci: skip only on a
+// non-empty diff proven disjoint; run on empty diff, departed non-docs paths, and any
+// observation/closure failure (fail-closed — regen shape: still RUN the gate, but the two
+// failure arms carry grep-countable labels distinct from structural run_class_b_gate).
+// Gated to pull_request events — push-to-main runs the full gate as the cold control.
+// ---------------------------------------------------------------------------
+
+pub const CLASS_B_ENTRY_REL: &str = "src/v2/extdeps/languages/rust_test_fixtures.dag";
+pub const CLASS_B_TRANSPORT_REL: &str = "src/v2/workflow/class_b_import_closure_transport.dag";
+pub const CLASS_B_BINDING_REL: &str = "dag/gunbc/declared_import_closure_binding.dag";
+pub const CLASS_B_OVERLAY_REL: &str = "dag/gunbc/class_b_import_closure_overlay.dag";
+pub const CLASS_B_FIXTURES_PREFIX: &str = "fixtures/class_b_import_closure";
+const CLASS_B_DECLARED_POOL_ROOTS_DATA_NAME: &str = "class_b_declared_import_pool_roots";
+
+pub const CLASS_B_GATE_INPUT_ENTRIES: &[&str] = &[
+    CLASS_B_ENTRY_REL,
+    CLASS_B_TRANSPORT_REL,
+    CLASS_B_BINDING_REL,
+    CLASS_B_OVERLAY_REL,
+];
+
+pub const CLASS_B_GATE_NOT_AFFECTED_SKIP_LABEL: &str = "class_b_gate_not_affected_skip";
+pub const RUN_CLASS_B_GATE_LABEL: &str = "run_class_b_gate";
+/// Grep-countable run-arm markers for failure paths that still execute the gate (regen shape:
+/// fail-closed by running, not by widening). Distinct from structural `run_class_b_gate` arms
+/// so routine closure/diff failures are observable in job logs (loyal-ram-550 #7835).
+pub const RUN_CLASS_B_GATE_DIFF_OBSERVATION_FAILED_LABEL: &str =
+    "run_class_b_gate:diff_observation_failed";
+pub const RUN_CLASS_B_GATE_INPUT_CLOSURE_FAILED_LABEL: &str =
+    "run_class_b_gate:input_closure_failed";
+
+fn class_b_overlay_authority_content() -> &'static str {
+    static CONTENT: OnceLock<String> = OnceLock::new();
+    CONTENT
+        .get_or_init(|| {
+            let path = process_workspace_root().join(CLASS_B_OVERLAY_REL);
+            std::fs::read_to_string(&path).unwrap_or_else(|e| {
+                panic!(
+                    "class_b overlay authority: failed to read {}: {e}",
+                    path.display()
+                )
+            })
+        })
+        .as_str()
+}
+
+/// Project `class_b_declared_import_pool_roots` out of the overlay authority source text.
+pub(crate) fn class_b_declared_import_pool_roots_from_source(content: &str) -> Vec<String> {
+    string_list_data_from_module_source(
+        CLASS_B_OVERLAY_REL,
+        content,
+        CLASS_B_DECLARED_POOL_ROOTS_DATA_NAME,
+        false,
+    )
+}
+
+/// The Class B rows 1–2 declared-import pool roots, read live from the single `.dag` authority.
+pub(crate) fn class_b_declared_import_pool_roots() -> Vec<String> {
+    static ROOTS: OnceLock<Vec<String>> = OnceLock::new();
+    ROOTS
+        .get_or_init(|| {
+            class_b_declared_import_pool_roots_from_source(class_b_overlay_authority_content())
+        })
+        .clone()
+}
+
+fn class_b_pool_source_roots(workspace: &Path, pool_roots: &[String]) -> Vec<PathBuf> {
+    pool_roots.iter().map(|rel| workspace.join(rel)).collect()
+}
+
+fn import_closure_dag_files(
+    workspace: &Path,
+    source_roots: &[PathBuf],
+    seed_entries: &[&str],
+) -> Result<HashSet<String>, String> {
+    let index = selection_control_module_index(source_roots)?;
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut queue: Vec<String> = Vec::new();
+    for rel in seed_entries {
+        let path = workspace.join(rel);
+        let content = std::fs::read_to_string(&path)
+            .map_err(|e| format!("read declared Class B gate entry {rel}: {e}"))?;
+        seen.insert(normalize_repo_path(rel));
+        queue.push(content);
+    }
+    while let Some(content) = queue.pop() {
+        for module_path in extract_import_paths(&content) {
+            let Some(candidates) = index.get(&module_path) else {
+                continue;
+            };
+            for path in candidates {
+                let rel = normalize_repo_path(&regen_workspace_relpath(path, workspace));
+                if !seen.insert(rel) {
+                    continue;
+                }
+                let file_content = std::fs::read_to_string(path)
+                    .map_err(|e| format!("read imported module {}: {e}", path.display()))?;
+                queue.push(file_content);
+            }
+        }
+    }
+    Ok(seen)
+}
+
+fn collect_repo_files_under_prefix(
+    workspace: &Path,
+    prefix: &str,
+    seen: &mut HashSet<String>,
+) -> Result<(), String> {
+    let root = workspace.join(prefix);
+    if !root.exists() {
+        return Err(format!("Class B fixture prefix does not exist: {prefix}"));
+    }
+    fn walk(dir: &Path, workspace: &Path, seen: &mut HashSet<String>) -> Result<(), String> {
+        for entry in
+            std::fs::read_dir(dir).map_err(|e| format!("read_dir {}: {e}", dir.display()))?
+        {
+            let entry = entry.map_err(|e| format!("read_dir entry: {e}"))?;
+            let path = entry.path();
+            if path.is_dir() {
+                walk(&path, workspace, seen)?;
+            } else if path.is_file() {
+                seen.insert(normalize_repo_path(&regen_workspace_relpath(
+                    &path, workspace,
+                )));
+            }
+        }
+        Ok(())
+    }
+    walk(&root, workspace, seen)
+}
+
+/// Every workspace-relative path whose content can change `run_class_b_import_closure_gate`'s
+/// verdict: witness-layer import closure of the gate transport modules (rows 3–4 wide pool),
+/// declared-import-pool closure of the subject entry (rows 1–2 minimal pool), perturbation
+/// fixtures, sorted.
+///
+/// 🟡 dissolve-on (two triggers, near then terminal):
+///
+/// NEAR — the import walk here duplicates the shape of `selection_control_input_sources` and
+/// `regen_input_sources`. They are NOT unified yet because regen's closure is guarded by a
+/// byte-identical oracle (`regen_stage0 --verify`) that this change is not in a position to
+/// re-verify, and the three differ in duplicate policy (refuse vs. superset) and entry
+/// selection (whole-root walk vs. declared list). DISSOLVES WHEN the walk is lifted to one
+/// parameterized helper (duplicate policy + entry source as arguments) and regen's byte oracle
+/// re-greens on it.
+///
+/// TERMINAL — owning lane: `docs/plans/affected-set-precompute-pruning.md`, whose **Step 5
+/// "delete Rust parallel"** (NOT STARTED, gated on Step 4) is what retires host-side selection
+/// Rust in favour of the `.dag` authority. This fn and
+/// `class_b_import_closure_gate_skip_label_for_ci` are new members of exactly that Rust-parallel
+/// set — a path/import-closure skip decision living in the seed rather than in `.dag` — so they
+/// inherit Step 5's terminal condition. They are ENUMERATED on that roster as an explicit
+/// deferral (the "Step 5 roster — CI skip-decision surfaces" row, extended by PR #7835), which
+/// is what makes this a declared, countable seed-retained surface rather than a silent escape
+/// hatch (DESIGN §7). Why deferred rather than modeled now: the decision must run BEFORE the
+/// floor resolves anything — that is its entire purpose — so a `.dag` consumer would pay the
+/// ~100s cold whole-pool resolve the skip exists to avoid; it therefore dissolves with the
+/// persistent content-keyed node store, not on its own schedule. Declared pool roots are NOT
+/// forked here: they are projected live from
+/// `gunbc.class_b_import_closure_overlay.class_b_declared_import_pool_roots` (same authority the
+/// transport and witnesses read).
+///
+/// Receipt bar, per DESIGN §5: this is a scaffold because the decision is *checkable* by
+/// execution — skip/run label arms (structural + 2 refusal), discriminating in both directions,
+/// plus bin unit tests and a live authority identity join for the declared pool roots.
+pub fn class_b_import_closure_input_sources(workspace: &Path) -> Result<Vec<String>, String> {
+    let witness_roots = class_b_pool_source_roots(workspace, &witness_layer_roots());
+    let pool_roots = class_b_pool_source_roots(workspace, &class_b_declared_import_pool_roots());
+    let mut seen = import_closure_dag_files(workspace, &witness_roots, CLASS_B_GATE_INPUT_ENTRIES)?;
+    seen.extend(import_closure_dag_files(
+        workspace,
+        &pool_roots,
+        &[CLASS_B_ENTRY_REL],
+    )?);
+    collect_repo_files_under_prefix(workspace, CLASS_B_FIXTURES_PREFIX, &mut seen)?;
+    let mut result: Vec<String> = seen.into_iter().collect();
+    result.sort();
+    Ok(result)
+}
+
+fn class_b_path_affects_gate(changed: &str, dag_closure: &HashSet<String>) -> bool {
+    let p = normalize_repo_path(changed);
+    if p.starts_with("src/v1/") {
+        return true;
+    }
+    if p.starts_with("fixtures/class_b_import_closure/") || p == "fixtures/class_b_import_closure" {
+        return true;
+    }
+    if p == "Cargo.lock"
+        || p == "Cargo.toml"
+        || p.ends_with("/Cargo.toml")
+        || p == "rust-toolchain.toml"
+        || p == "rust-toolchain"
+        || p == ".cargo/config.toml"
+        || p == ".cargo/config"
+    {
+        return true;
+    }
+    dag_closure.contains(&p)
+}
+
+/// CI skip label for the Class B gate inside `source_root_ingest_gate_passes`.
+pub fn class_b_import_closure_gate_skip_label_for_ci() -> String {
+    if std::env::var("GITHUB_EVENT_NAME").ok().as_deref() != Some("pull_request") {
+        eprintln!("class B gate skip: not pull_request — run gate (cold control)");
+        return RUN_CLASS_B_GATE_LABEL.to_string();
+    }
+    let (changed_paths, departed_paths) = match floor_git_diff_name_status_range() {
+        Ok(v) => v,
+        Err(msg) => {
+            eprintln!(
+                "[{RUN_CLASS_B_GATE_DIFF_OBSERVATION_FAILED_LABEL}] class B gate skip: diff observation failed ({msg}) — run gate"
+            );
+            return RUN_CLASS_B_GATE_DIFF_OBSERVATION_FAILED_LABEL.to_string();
+        }
+    };
+    if changed_paths.is_empty() {
+        eprintln!("class B gate skip: empty diff — run gate (fail-closed cold control)");
+        return RUN_CLASS_B_GATE_LABEL.to_string();
+    }
+    if let Some(gone) = departed_paths.iter().find(|p| {
+        let n = normalize_repo_path(p);
+        !n.starts_with("docs/")
+    }) {
+        eprintln!(
+            "class B gate skip: departed non-docs path in diff ({}) — run gate (current-tree closure cannot see deletions)",
+            normalize_repo_path(gone)
+        );
+        return RUN_CLASS_B_GATE_LABEL.to_string();
+    }
+    let workspace = workspace_root();
+    let dag_closure: HashSet<String> = match class_b_import_closure_input_sources(&workspace) {
+        Ok(sources) => sources.into_iter().collect(),
+        Err(msg) => {
+            eprintln!(
+                "[{RUN_CLASS_B_GATE_INPUT_CLOSURE_FAILED_LABEL}] class B gate skip: input-closure computation failed ({msg}) — run gate"
+            );
+            return RUN_CLASS_B_GATE_INPUT_CLOSURE_FAILED_LABEL.to_string();
+        }
+    };
+    match changed_paths
+        .iter()
+        .find(|p| class_b_path_affects_gate(p, &dag_closure))
+    {
+        Some(example) => {
+            eprintln!(
+                "class B gate skip: diff intersects Class B gate inputs (e.g. {}) — run gate",
+                normalize_repo_path(example)
+            );
+            RUN_CLASS_B_GATE_LABEL.to_string()
+        }
+        None => {
+            eprintln!(
+                "class B gate skip: {} changed path(s), none intersect the Class B gate input closure (declared-import pool ∪ witness layer ∪ fixtures ∪ src/v1/** ∪ Cargo/toolchain) — gate verdict provably unchanged (push-to-main runs gate unconditionally as cold control)",
+                changed_paths.len()
+            );
+            CLASS_B_GATE_NOT_AFFECTED_SKIP_LABEL.to_string()
+        }
+    }
+}
+
+/// Builtin backing `class_b_import_closure_gate_not_affected_skip` in the transport gate.
+pub fn class_b_import_closure_gate_not_affected_skip_for_ci() -> bool {
+    class_b_import_closure_gate_skip_label_for_ci() == CLASS_B_GATE_NOT_AFFECTED_SKIP_LABEL
+}
+
 fn compile_clean_scope_plan_for_ci() -> CompileCleanScopePlan {
     // Falsifier cold-control arm: force the whole-tree compile before any diff observation.
     // Widen-to-more-checking only — this env can never skip or narrow the gate, so it is a
@@ -3972,10 +4345,77 @@ fn append_test_floor_compile_clean_inject(sources: &mut Vec<Rc<v1_compiler_compi
 enum FloorCompileCleanReceipt {
     Skipped { reason: String },
     Refused { reason: String },
-    Compiled { ok: bool },
+    Compiled { ok: bool, failure_detail: String },
 }
 
 static FLOOR_COMPILE_CLEAN_RECEIPT: Mutex<Option<FloorCompileCleanReceipt>> = Mutex::new(None);
+
+static REGEN_VERIFY_GATE_FAILURE_DETAIL: Mutex<Option<String>> = Mutex::new(None);
+static GENERATED_ARTIFACT_DRIFT_GATE_FAILURE_DETAIL: Mutex<Option<String>> = Mutex::new(None);
+
+pub fn record_regen_verify_gate_failure_detail(detail: String) {
+    if let Ok(mut guard) = REGEN_VERIFY_GATE_FAILURE_DETAIL.lock() {
+        *guard = Some(detail);
+    }
+}
+
+pub fn consume_regen_verify_gate_failure_detail() -> String {
+    match REGEN_VERIFY_GATE_FAILURE_DETAIL.lock() {
+        Ok(guard) => guard.clone().unwrap_or_else(|| {
+            "regen_verify failure detail unavailable (gate body did not run in this process)"
+                .to_string()
+        }),
+        Err(e) => format!("regen_verify failure detail refused: gate detail lock poisoned ({e})"),
+    }
+}
+
+pub fn record_generated_artifact_drift_gate_failure_detail(detail: String) {
+    if let Ok(mut guard) = GENERATED_ARTIFACT_DRIFT_GATE_FAILURE_DETAIL.lock() {
+        *guard = Some(detail);
+    }
+}
+
+#[cfg(test)]
+fn reset_regen_verify_gate_failure_detail_for_test() {
+    if let Ok(mut guard) = REGEN_VERIFY_GATE_FAILURE_DETAIL.lock() {
+        *guard = None;
+    }
+}
+
+#[cfg(test)]
+fn reset_generated_artifact_drift_gate_failure_detail_for_test() {
+    if let Ok(mut guard) = GENERATED_ARTIFACT_DRIFT_GATE_FAILURE_DETAIL.lock() {
+        *guard = None;
+    }
+}
+
+pub fn consume_generated_artifact_drift_gate_failure_detail() -> String {
+    match GENERATED_ARTIFACT_DRIFT_GATE_FAILURE_DETAIL.lock() {
+        Ok(guard) => guard.clone().unwrap_or_else(|| {
+            "generated-artifact drift failure detail unavailable (gate body did not run in this process)"
+                .to_string()
+        }),
+        Err(e) => format!(
+            "generated-artifact drift failure detail refused: gate detail lock poisoned ({e})"
+        ),
+    }
+}
+
+fn format_first_compile_clean_hard_diagnostic(diagnostics: &im::Vector<Rc<ErrorNode>>) -> String {
+    diagnostics
+        .iter()
+        .find(|d| compile_clean_diagnostic_is_hard(d))
+        .map(|d| {
+            format!(
+                "compile-clean: {}",
+                diagnostic_to_message(d.diagnostic.clone())
+            )
+        })
+        .unwrap_or_else(|| {
+            "dag compile-clean gate failed: no hard diagnostic located in compile receipt"
+                .to_string()
+        })
+}
 
 /// Cost snapshot of the ONE compile-clean leg — the "receipt keys" half of the
 /// prelude-coverage-hole follow-up (`gunbc_ci_floor_batch_clamp_note` row (a)):
@@ -4091,7 +4531,7 @@ fn floor_compile_clean_emit_ok(sources: Vec<Rc<v1_compiler_compile::SourceFile>>
 fn floor_compile_clean_emit_ok_via_index(
     sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
     index_roots: &[String],
-) -> bool {
+) -> (bool, String) {
     use crate::v1_compiler_artifact::RenderTarget;
     use crate::v1_compiler_complexity::empty_complexity_report;
     let index = process_shared_index(index_roots);
@@ -4107,12 +4547,15 @@ fn floor_compile_clean_emit_ok_via_index(
         Ok(resolved) => resolved,
         Err(msg) => {
             eprintln!("compile-clean: hard diagnostics:\n{msg}");
-            return false;
+            return (false, format!("compile-clean: {msg}"));
         }
     };
     if compile_clean_pipeline_has_hard_errors(compile_clean_diags.as_ref()) {
         eprint_compile_clean_hard_diagnostics(compile_clean_diags.as_ref());
-        return false;
+        return (
+            false,
+            format_first_compile_clean_hard_diagnostic(compile_clean_diags.as_ref()),
+        );
     }
     let newline_indices: Rc<im::Vector<Rc<NewlineIndex>>> =
         Rc::new(si.values().cloned().collect::<im::Vector<_>>());
@@ -4126,10 +4569,12 @@ fn floor_compile_clean_emit_ok_via_index(
     });
     let result = v1_compiler_compile::emit_resolved_for_target(resolved, RenderTarget::Dag);
     if result.files.is_empty() {
-        eprintln!("floor compile-clean: refused — compile produced zero files (empty emit set)");
-        return false;
+        let detail = "floor compile-clean: refused — compile produced zero files (empty emit set)"
+            .to_string();
+        eprintln!("{detail}");
+        return (false, detail);
     }
-    true
+    (true, String::new())
 }
 
 fn produce_floor_compile_clean_receipt() -> FloorCompileCleanReceipt {
@@ -4169,7 +4614,7 @@ fn produce_floor_compile_clean_receipt() -> FloorCompileCleanReceipt {
             let closure_units = sources.len() as u128;
             let leg_started = std::time::Instant::now();
             let _ = drain_module_typecheck_walls();
-            let ok = floor_compile_clean_emit_ok_via_index(sources, &index_roots);
+            let (ok, failure_detail) = floor_compile_clean_emit_ok_via_index(sources, &index_roots);
             let wall_ms = leg_started.elapsed().as_millis();
             let module_typecheck_walls = drain_module_typecheck_walls();
             write_floor_compile_clean_cost_receipt(
@@ -4186,7 +4631,7 @@ fn produce_floor_compile_clean_receipt() -> FloorCompileCleanReceipt {
                     pass_subject,
                 });
             }
-            FloorCompileCleanReceipt::Compiled { ok }
+            FloorCompileCleanReceipt::Compiled { ok, failure_detail }
         }
     }
 }
@@ -4247,7 +4692,7 @@ pub fn install_floor_compile_clean_receipt() -> Result<(), String> {
         "claim_executor: floor compile-clean — one whole-tree --target dag compile via shared index (gate consumes receipt; batch-2 resolves reuse the typed store)"
     );
     let receipt = produce_floor_compile_clean_receipt();
-    if let FloorCompileCleanReceipt::Compiled { ok } = &receipt {
+    if let FloorCompileCleanReceipt::Compiled { ok, .. } = &receipt {
         eprintln!("claim_executor: floor compile-clean receipt ok={ok}");
     }
     *guard = Some(receipt);
@@ -4299,7 +4744,32 @@ pub fn consume_floor_compile_clean_gate_verdict() -> bool {
             eprintln!("compile-clean gate: refused ({reason})");
             false
         }
-        Some(FloorCompileCleanReceipt::Compiled { ok }) => *ok,
+        Some(FloorCompileCleanReceipt::Compiled { ok, .. }) => *ok,
+    }
+}
+
+/// Failure-receipt companion for the compile-clean gate: reads the in-run receipt only.
+pub fn consume_floor_compile_clean_gate_failure_detail() -> String {
+    let guard = match FLOOR_COMPILE_CLEAN_RECEIPT.lock() {
+        Ok(g) => g,
+        Err(e) => {
+            return format!("compile-clean failure detail refused: receipt lock poisoned ({e})");
+        }
+    };
+    match guard.as_ref() {
+        None => "compile-clean failure detail unavailable: no in-run compile receipt".to_string(),
+        Some(FloorCompileCleanReceipt::Skipped { reason }) => {
+            format!("compile-clean gate skipped: {reason}")
+        }
+        Some(FloorCompileCleanReceipt::Refused { reason }) => reason.clone(),
+        Some(FloorCompileCleanReceipt::Compiled {
+            ok: true,
+            failure_detail: _,
+        }) => String::new(),
+        Some(FloorCompileCleanReceipt::Compiled {
+            ok: false,
+            failure_detail,
+        }) => failure_detail.clone(),
     }
 }
 
@@ -4502,7 +4972,7 @@ pub fn compile_clean_floor_verdict_whole_tree() -> Result<bool, String> {
         None => return Ok(true),
         Some(s) => s,
     };
-    Ok(floor_compile_clean_emit_ok_via_index(sources, &roots))
+    Ok(floor_compile_clean_emit_ok_via_index(sources, &roots).0)
 }
 
 /// CLI compile-clean verdict: same source closure and diagnostic policy as the floor,
@@ -4575,6 +5045,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::CallArgumentNameUnknown { .. } => "CallArgumentNameUnknown",
         CompilerDiagnostic::CallPositionalSurplus { .. } => "CallPositionalSurplus",
         CompilerDiagnostic::CallPositionalDeficit { .. } => "CallPositionalDeficit",
+        CompilerDiagnostic::CallArgumentDuplicate { .. } => "CallArgumentDuplicate",
         CompilerDiagnostic::CallNamedArgOnFunctionValue { .. } => "CallNamedArgOnFunctionValue",
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => "OccurrenceTransportViolation",
         CompilerDiagnostic::SourceAnnotationRefused { .. } => "SourceAnnotationRefused",
@@ -4615,6 +5086,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::CallArgumentNameUnknown { argument, .. } => argument.clone(),
         CompilerDiagnostic::CallPositionalSurplus { callee, .. } => callee.clone(),
         CompilerDiagnostic::CallPositionalDeficit { parameter, .. } => parameter.clone(),
+        CompilerDiagnostic::CallArgumentDuplicate { argument, .. } => argument.clone(),
         CompilerDiagnostic::CallNamedArgOnFunctionValue { argument, .. } => argument.clone(),
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => {
             "(occurrence-transport-refusal)".to_string()
@@ -5202,7 +5674,7 @@ mod compile_clean_via_index_verdict_equivalence {
         fn verdicts(&self) -> (bool, bool) {
             let raw = floor_compile_clean_emit_ok(self.sources.clone());
             let via_index =
-                floor_compile_clean_emit_ok_via_index(self.sources.clone(), &self.roots);
+                floor_compile_clean_emit_ok_via_index(self.sources.clone(), &self.roots).0;
             (raw, via_index)
         }
     }
@@ -6096,6 +6568,140 @@ pub fn load_sources_for_entry_with_pool_index(
     // fresh build (process_shared_index only builds strict).
     let index = process_shared_index(source_roots);
     load_sources_for_entry_with_pool(&index, entry_path)
+}
+
+/// Import-edge closure ONLY — no reference-derived or bare-reference extension.
+/// Host twin for witnesses proving a module's cross-module bindings come from
+/// declared `import` edges, not pool membership or bare-reference coincidence
+/// (Class B controls per DESIGN import-strip witness-discovery cascade).
+#[cfg(feature = "test_hooks")]
+pub fn declared_import_closure_live_paths(
+    source_roots: &[String],
+    entry_path: &str,
+) -> Result<Vec<String>, String> {
+    let index = build_multi_entry_index_primary_precedence(source_roots);
+    let entry_rel = workspace_relative_entry_path(entry_path);
+    if !index.module_graph_facts.declares_repo_path(&entry_rel) {
+        return Err(format!(
+            "declared_import_closure_live_paths: entry '{entry_rel}' has no provenance in the module-graph facts pool (fail-closed)"
+        ));
+    }
+    Ok(import_closure_live_paths_with_facts(
+        &entry_rel,
+        &index.module_graph_facts,
+    ))
+}
+
+/// Whether `module_path` is indexed under primary-precedence `pool_roots`.
+#[cfg(feature = "test_hooks")]
+pub fn primary_precedence_pool_contains_module(pool_roots: &[String], module_path: &str) -> bool {
+    let index = build_multi_entry_index_primary_precedence(pool_roots);
+    index.source_files.contains_key(module_path)
+}
+
+/// Repo-relative paths of modules loaded for the entry's declared import closure.
+#[cfg(feature = "test_hooks")]
+pub fn declared_import_closure_source_paths(
+    pool_roots: &[String],
+    entry_path: &str,
+) -> Result<Vec<String>, String> {
+    let index = build_multi_entry_index_primary_precedence(pool_roots);
+    let sources = load_declared_import_closure_sources(&index, entry_path)?;
+    Ok(sources
+        .iter()
+        .map(|s| workspace_relative_repo_path(&s.path))
+        .collect())
+}
+
+fn load_declared_import_closure_sources(
+    index: &MultiEntryIndex,
+    entry_path: &str,
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    let entry_source = entry_source_from_index_or_disk(&index.source_files, entry_path)?;
+    let rel_path = entry_source.path.clone();
+    let mut sources = resolve_transitively(
+        vec![entry_source.clone()],
+        &index.source_files,
+        &index.module_graph_facts,
+    )?;
+    if !sources
+        .iter()
+        .any(|s| s.path == rel_path || same_canonical_file(&s.path, &rel_path))
+    {
+        sources.push(entry_source);
+    }
+    sources.sort_by(|a, b| a.path.cmp(&b.path));
+    sources.dedup_by(|a, b| a.path == b.path);
+    Ok(sources)
+}
+
+/// Resolve/typecheck an entry using ONLY its declared import-edge closure.
+#[cfg(feature = "test_hooks")]
+pub fn compile_entry_on_declared_import_closure_only(
+    source_roots: &[String],
+    entry_path: &str,
+) -> Result<Rc<v1_compiler_compile::ResolvedPipelineResult>, String> {
+    compile_declared_import_closure_only_with_pool(source_roots, entry_path, None)
+}
+
+/// Pool-scoped variant: builds the module index from `pool_roots` but compiles only
+/// the entry's declared import-edge closure. Use a tmp-root overlay (primary-precedence
+/// root[0]) when simulating a stripped entry so pool membership can affect resolution
+/// while the import closure stays entry-only; `entry_content_override` skips the pool
+/// entirely and is only for fast isolated negative controls without ambient pressure.
+pub fn compile_declared_import_closure_only_with_pool(
+    pool_roots: &[String],
+    entry_path: &str,
+    entry_content_override: Option<&str>,
+) -> Result<Rc<v1_compiler_compile::ResolvedPipelineResult>, String> {
+    let index = build_multi_entry_index_primary_precedence(pool_roots);
+    let sources = if let Some(content) = entry_content_override {
+        vec![Rc::new(v1_compiler_compile::SourceFile {
+            path: entry_path.to_string(),
+            content: content.to_string(),
+        })]
+    } else {
+        load_declared_import_closure_sources(&index, entry_path)?
+    };
+    Ok(v1_compiler_compile::compile_to_resolved(Rc::new(
+        sources.into(),
+    )))
+}
+
+/// Declaration identity + binding-source receipt for one cross-module symbol site.
+#[cfg(feature = "test_hooks")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CrossModuleBindingReceipt {
+    pub definer_module: Option<String>,
+    pub binding_source: Option<UnlistedImportBindingSource>,
+}
+
+/// Extract per-symbol binding receipts for a consumer module against a resolved graph.
+#[cfg(feature = "test_hooks")]
+pub fn cross_module_binding_receipts_for_symbols(
+    graph: &ResolvedGraph,
+    consumer_module: &str,
+    symbols: &[&str],
+) -> std::collections::BTreeMap<String, CrossModuleBindingReceipt> {
+    use std::collections::BTreeMap;
+    symbols
+        .iter()
+        .map(|sym| {
+            let definer = definer_module_for_name(graph, sym);
+            let binding_source = if definer.is_some() {
+                Some(classify_unlisted_import_binding_source(graph, consumer_module, sym).0)
+            } else {
+                None
+            };
+            (
+                (*sym).to_string(),
+                CrossModuleBindingReceipt {
+                    definer_module: definer,
+                    binding_source,
+                },
+            )
+        })
+        .collect::<BTreeMap<_, _>>()
 }
 
 /// Builtins that REQUIRE a service registration to dispatch, paired with the
@@ -8974,13 +9580,37 @@ fn typed_module_cache_cap_derivation() -> (usize, String, bool) {
     // (Option<u64>, String); if it ever grows a typed source enum, ground this check on
     // the enum instead of re-parsing its display label (§3, avoid a second representation).
     let degraded = !(source_label.contains("memory.max") || source_label.contains("memory.high"));
-    let cap = budget
-        .map(|b| (b / TYPED_MODULE_BYTES_PER_ENTRY_ESTIMATE) as usize)
-        .unwrap_or(TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL)
-        .clamp(
-            TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR,
-            TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL,
+    // REFUSE rather than widen when no budget is readable (operator ruling 2026-08-05;
+    // authority `dag/gunbc/host_budget_source.dag` `HostBudgetUnreadable`).
+    //
+    // This was `.unwrap_or(TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL)`: a budget that could not
+    // be computed became the MOST PERMISSIVE cap available — top-as-answer conflated with
+    // top-as-ignorance, the absorbing fallback DESIGN section 5 forbids by name. It is not
+    // hypothetical. It OOM-killed the full witness corpus twice on a macOS dev machine
+    // (exit 137): nothing readable, cap defaults to the ceiling, nothing bounds the resolve,
+    // kernel ends the process. The deficit's frequency was zero by construction, so it never
+    // ranked for fixing, and the cost arrived as a dead process instead of a diagnostic.
+    //
+    // Every platform this runs on now has a modeled source — procfs on Linux, sysctl
+    // hw.memsize on Darwin — so reaching this arm means an unmodeled host, which is exactly
+    // when admitting against an invented bound is least defensible. Panicking here is a hard
+    // stop by design: this runs inside resolution, there is no caller that could honour a
+    // typed refusal without threading Result through the cache seam, and continuing is the
+    // one option ruled out.
+    let Some(budget_bytes) = budget else {
+        panic!(
+            "HostBudgetUnreadable: no modeled host memory source answered ({source_label}). \
+             The typed-module cache cap bounds the memory used to RESOLVE the corpus, so an \
+             unknown budget cannot be defaulted — the previous default was the ceiling, which \
+             OOM-killed this process rather than refusing. Declare one with \
+             GUNBC_MEMORY_BUDGET_BYTES, or model this platform's memory source \
+             (dag/gunbc/host_budget_source.dag)."
         );
+    };
+    let cap = ((budget_bytes / TYPED_MODULE_BYTES_PER_ENTRY_ESTIMATE) as usize).clamp(
+        TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR,
+        TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL,
+    );
     (cap, source_label, degraded)
 }
 
@@ -9010,7 +9640,7 @@ fn typed_module_cache_cap(index: &MultiEntryIndex) -> usize {
         let (cap, source, degraded) = typed_module_cache_cap_derivation();
         if degraded {
             eprintln!(
-                "[floor-drain] degraded_budget_source: cap={cap} source={source} (no private cgroup memory.max/memory.high found; falling back to a host-shared signal)"
+                "[floor-drain] degraded_budget_source: cap={cap} source={source} (no private cgroup memory.max/memory.high found)"
             );
         }
         cap
@@ -16452,9 +17082,41 @@ pub fn current_rss_bytes() -> Option<u64> {
     proc_status_kb_field("VmRSS")
 }
 
-/// Peak resident set from `/proc/self/status` VmHWM (high water mark), in bytes.
+/// Peak resident set (high water mark) in bytes, read the PORTABLE way.
+///
+/// Authority: `dag/extdeps/posix/rusage.dag` for the interface, with the unit answered by
+/// `dag/extdeps/linux/rusage.dag` (kibibytes) and `dag/extdeps/darwin/rusage.dag` (bytes).
+///
+/// This used to be `proc_status_kb_field("VmHWM")` — a `/proc/self/status` read, which
+/// exists on exactly one kernel family. That made every consumer of peak RSS Linux-only and
+/// produced `VmHWM unavailable on this host` on macOS, a message read as "this platform
+/// cannot report peak residency". It can: POSIX `getrusage(RUSAGE_SELF)` returns the same
+/// quantity in `ru_maxrss` everywhere, and libc was already a dependency. The procfs read
+/// was a TRANSPORT choice, not a capability limit, and mistaking one for the other is what
+/// made the fact look unobservable.
+///
+/// POSIX deliberately leaves `ru_maxrss`'s unit unspecified, so the conversion is per
+/// implementation and permanent — no release reconciles them. Linux reports kibibytes,
+/// Darwin bytes; the Darwin figure was confirmed by execution (a bare python3 reported
+/// 15417344, which is 14.7 MiB read as bytes and an impossible 14.7 GiB read as kibibytes).
+/// Reading a Linux value as bytes would understate peak residency 1024x, in the direction
+/// that looks survivable.
 pub fn peak_rss_vhwm_bytes() -> Option<u64> {
-    proc_status_kb_field("VmHWM")
+    // SAFETY: `ru` is a live, fully-owned zeroed `rusage`; `getrusage` only writes it.
+    let mut ru: libc::rusage = unsafe { std::mem::zeroed() };
+    let rc = unsafe { libc::getrusage(libc::RUSAGE_SELF, &mut ru) };
+    if rc != 0 || ru.ru_maxrss <= 0 {
+        return None;
+    }
+    let raw = ru.ru_maxrss as u64;
+    #[cfg(target_os = "macos")]
+    {
+        Some(raw)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Some(raw.saturating_mul(1024))
+    }
 }
 
 /// `memory.events` `high` counter from the process leaf cgroup, when readable.
@@ -16678,7 +17340,23 @@ fn witness_admission_entry_function_keys_from_source(
                 }
             }
             let after = &content[search_from..];
-            let window = &after[..after.len().min(WINDOW)];
+            // WINDOW is a BYTE budget, but `after` is UTF-8: clamping with `min` alone
+            // slices mid-character whenever byte `WINDOW` lands inside a multi-byte char,
+            // and the admission rows this reads are prose that routinely contains one
+            // (em dash, arrow). That panicked the whole floor worker — exit 101, no
+            // terminal receipt — on a row whose reason string simply happened to put an
+            // em dash across byte 400. Every other slice in this function takes its
+            // offset from `find`/`split_once`, which return char boundaries; this fixed
+            // offset was the only unguarded one. Walk down to the nearest boundary so a
+            // long row is truncated rather than fatal.
+            let window_end = {
+                let mut end = after.len().min(WINDOW);
+                while end > 0 && !after.is_char_boundary(end) {
+                    end -= 1;
+                }
+                end
+            };
+            let window = &after[..window_end];
             let trimmed = window.trim_start();
             if !def_sig.is_empty() && trimmed.starts_with(def_sig) {
                 continue;
@@ -34288,12 +34966,35 @@ mod witness_layer_roots_compile_clean_tests {
             reset_floor_compile_clean_receipt_for_test();
             install_floor_compile_clean_receipt_fixture(FloorCompileCleanReceipt::Compiled {
                 ok: false,
+                failure_detail: "compile-clean: synthetic hard diagnostic".to_string(),
             });
             assert!(
                 !consume_floor_compile_clean_gate_verdict(),
                 "gate must refuse when the installed receipt records compile failure"
             );
         });
+    }
+
+    #[test]
+    fn regen_verify_gate_failure_detail_unavailable_without_prior_record() {
+        reset_regen_verify_gate_failure_detail_for_test();
+        assert!(
+            consume_regen_verify_gate_failure_detail()
+                .contains("gate body did not run in this process"),
+            "missing record must refuse with a located message, not imply an empty success verdict"
+        );
+    }
+
+    #[test]
+    fn regen_verify_gate_failure_detail_round_trips_recorded_reason() {
+        reset_regen_verify_gate_failure_detail_for_test();
+        record_regen_verify_gate_failure_detail(
+            "Changed generated file(s): v1_compiler_emit_rust.rs".to_string(),
+        );
+        assert_eq!(
+            consume_regen_verify_gate_failure_detail(),
+            "Changed generated file(s): v1_compiler_emit_rust.rs"
+        );
     }
 
     /// §5 discriminating RED (end-to-end): real whole-tree compile with an injected broken module
@@ -34500,6 +35201,269 @@ mod witness_layer_roots_compile_clean_tests {
                     REGEN_NOT_AFFECTED_SKIP_LABEL
                 );
             });
+        });
+    }
+
+    /// Class B gate skip: unrelated path outside the gate input closure skips on pull_request.
+    #[test]
+    fn class_b_gate_skip_skips_on_unrelated_path() {
+        const UNRELATED: &str = "src/v2/lens/machine_shape.dag";
+        let closure = class_b_import_closure_input_sources(&workspace_root())
+            .expect("Class B gate closure must compute");
+        assert!(
+            !closure.iter().any(|p| p == UNRELATED),
+            "{UNRELATED} entered the Class B gate input closure — choose a new skip subject"
+        );
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                let _event = EnvGuard::set("GITHUB_EVENT_NAME", "pull_request");
+                let _ns = EnvGuard::set(
+                    "GUNBC_CI_DIFF_NAME_STATUS",
+                    &format!("M\\000{UNRELATED}\\000"),
+                );
+                assert_eq!(
+                    class_b_import_closure_gate_skip_label_for_ci(),
+                    CLASS_B_GATE_NOT_AFFECTED_SKIP_LABEL
+                );
+            });
+        });
+    }
+
+    /// Class B gate skip: touching the subject entry runs the gate.
+    #[test]
+    fn class_b_gate_skip_runs_on_subject_entry() {
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                let _event = EnvGuard::set("GITHUB_EVENT_NAME", "pull_request");
+                let _ns = EnvGuard::set(
+                    "GUNBC_CI_DIFF_NAME_STATUS",
+                    &format!("M\\000{CLASS_B_ENTRY_REL}\\000"),
+                );
+                assert_eq!(
+                    class_b_import_closure_gate_skip_label_for_ci(),
+                    RUN_CLASS_B_GATE_LABEL
+                );
+            });
+        });
+    }
+
+    /// Class B gate skip: departed non-docs path runs the gate.
+    #[test]
+    fn class_b_gate_skip_runs_on_departed_dag_path() {
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                let _event = EnvGuard::set("GITHUB_EVENT_NAME", "pull_request");
+                let _ns = EnvGuard::set(
+                    "GUNBC_CI_DIFF_NAME_STATUS",
+                    "D\\000src/v2/lens/machine_shape.dag\\000",
+                );
+                assert_eq!(
+                    class_b_import_closure_gate_skip_label_for_ci(),
+                    RUN_CLASS_B_GATE_LABEL
+                );
+            });
+        });
+    }
+
+    /// Class B gate skip: non-pull_request always runs (cold control).
+    #[test]
+    fn class_b_gate_skip_runs_on_push_event() {
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                let _event = EnvGuard::set("GITHUB_EVENT_NAME", "push");
+                let _ns = EnvGuard::set(
+                    "GUNBC_CI_DIFF_NAME_STATUS",
+                    "M\\000src/v2/lens/machine_shape.dag\\000",
+                );
+                assert_eq!(
+                    class_b_import_closure_gate_skip_label_for_ci(),
+                    RUN_CLASS_B_GATE_LABEL
+                );
+            });
+        });
+    }
+
+    /// Failure arm — diff observation failed still RUNs the gate (regen shape), but carries a
+    /// grep-countable label distinct from structural `run_class_b_gate` so routine observation
+    /// failures are observable in job logs without widening to skip.
+    #[test]
+    fn class_b_gate_skip_runs_with_countable_label_when_diff_observation_fails() {
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                let _event = EnvGuard::set("GITHUB_EVENT_NAME", "pull_request");
+                let _ns =
+                    EnvGuard::set("GUNBC_CI_DIFF_NAME_STATUS", "Z\\000src/v1/whatever.rs\\000");
+                assert_eq!(
+                    class_b_import_closure_gate_skip_label_for_ci(),
+                    RUN_CLASS_B_GATE_DIFF_OBSERVATION_FAILED_LABEL
+                );
+                assert!(
+                    !class_b_import_closure_gate_not_affected_skip_for_ci(),
+                    "a failure arm must still run the gate, never skip"
+                );
+            });
+        });
+    }
+
+    /// The two failure run labels must stay distinguishable from each other and from the
+    /// structural run / skip labels so each deficit is separately countable in job logs.
+    #[test]
+    fn class_b_gate_skip_labels_are_distinct_and_countable() {
+        assert_ne!(
+            RUN_CLASS_B_GATE_LABEL,
+            RUN_CLASS_B_GATE_DIFF_OBSERVATION_FAILED_LABEL
+        );
+        assert_ne!(
+            RUN_CLASS_B_GATE_LABEL,
+            RUN_CLASS_B_GATE_INPUT_CLOSURE_FAILED_LABEL
+        );
+        assert_ne!(
+            RUN_CLASS_B_GATE_DIFF_OBSERVATION_FAILED_LABEL,
+            RUN_CLASS_B_GATE_INPUT_CLOSURE_FAILED_LABEL
+        );
+        assert_ne!(
+            CLASS_B_GATE_NOT_AFFECTED_SKIP_LABEL,
+            RUN_CLASS_B_GATE_DIFF_OBSERVATION_FAILED_LABEL
+        );
+        assert_ne!(
+            CLASS_B_GATE_NOT_AFFECTED_SKIP_LABEL,
+            RUN_CLASS_B_GATE_INPUT_CLOSURE_FAILED_LABEL
+        );
+    }
+
+    #[test]
+    fn class_b_declared_pool_roots_reader_follows_synthetic_authority() {
+        let synthetic = "module gunbc.class_b_import_closure_overlay\n\n\
+             data class_b_declared_import_pool_roots: List<String> = [\"alpha\", \"beta\"]\n";
+        assert_eq!(
+            class_b_declared_import_pool_roots_from_source(synthetic),
+            vec!["alpha".to_string(), "beta".to_string()],
+            "the Class B pool-roots reader must FOLLOW the overlay authority, not a hardcoded copy"
+        );
+    }
+
+    #[test]
+    fn class_b_declared_pool_roots_matches_overlay_authority() {
+        let overlay = std::fs::read_to_string(workspace_root().join(CLASS_B_OVERLAY_REL))
+            .expect("read class_b overlay authority");
+        assert_eq!(
+            class_b_declared_import_pool_roots(),
+            class_b_declared_import_pool_roots_from_source(&overlay),
+            "live memoized pool roots must match the overlay authority on disk (identity join)"
+        );
+    }
+
+    /// P1(b) discriminating control: `graph: None` must NOT read as
+    /// `symbol_resolves: false` with zero blocking diagnostics — that vacuously passes row 3.
+    #[test]
+    fn parse_failure_observation_is_not_runnable_not_seam_refusal() {
+        use crate::v1_compiler_complexity::empty_complexity_report;
+        let resolved = Rc::new(v1_compiler_compile::ResolvedPipelineResult {
+            graph: None,
+            diagnostics: Rc::new(im::Vector::new()),
+            source_indices: v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+            complexity: empty_complexity_report(),
+            ownership: Rc::new(im::Vector::new()),
+            newline_indices: Rc::new(im::Vector::new()),
+        });
+        let observation = declared_import_closure_binding_observation_from_resolved(
+            resolved.as_ref(),
+            "v2.extdeps.languages.rust_test",
+            "rust_selection_policy_node",
+        );
+        assert!(
+            matches!(
+                observation,
+                DeclaredImportClosureBindingObservation::NotRunnable(_)
+            ),
+            "graph:None must be NotRunnable, not an observed seam refusal; got {observation:?}"
+        );
+        with_workspace_cwd(|| {
+            let malformed = "module broken.syntax\n@@@ not valid dag\n";
+            let compiled = compile_declared_import_closure_only_with_pool(
+                &class_b_declared_import_pool_roots(),
+                "broken/syntax.dag",
+                Some(malformed),
+            )
+            .expect("content override bypasses pool load");
+            if compiled.graph.is_none() {
+                let live = declared_import_closure_binding_observation_from_resolved(
+                    compiled.as_ref(),
+                    "broken.syntax",
+                    "rust_selection_policy_node",
+                );
+                assert!(
+                    matches!(
+                        live,
+                        DeclaredImportClosureBindingObservation::NotRunnable(_)
+                    ),
+                    "live malformed compile with graph:None must also be NotRunnable; got {live:?}"
+                );
+            } else {
+                panic!(
+                    "malformed source unexpectedly produced a graph — this control no longer proves that a parse failure reaches the graph:None path"
+                );
+            }
+        });
+    }
+
+    /// Producer control: graph-present compile with an unrelated hard diagnostic must refuse
+    /// observation — not populate `blocking_hard_diagnostic_count: 0` on an unresolved symbol.
+    #[test]
+    fn unrelated_hard_diagnostic_observation_is_not_runnable_at_producer() {
+        use crate::v1_std_core::{make_error_node, CompilerDiagnostic};
+        const CONSUMER: &str = "v2.extdeps.languages.rust_test";
+        const SYMBOL: &str = "rust_selection_policy_node";
+        with_workspace_cwd(|| {
+            let valid = "module v2.extdeps.languages.rust_test\n\nimport std.types { Bool }\n\ndata probe: Bool = true\n";
+            let compiled = compile_declared_import_closure_only_with_pool(
+                &class_b_declared_import_pool_roots(),
+                "src/v2/extdeps/languages/rust_test_fixtures.dag",
+                Some(valid),
+            )
+            .expect("content override bypasses pool load");
+            assert!(
+                compiled.graph.is_some(),
+                "valid fixture must produce a graph so this control exercises the hard-diagnostic refusal path"
+            );
+            let mut diagnostics = compiled.diagnostics.iter().cloned().collect::<Vec<_>>();
+            diagnostics.push(make_error_node(
+                Rc::new(CompilerDiagnostic::InternalError {
+                    message: "producer control unrelated hard diagnostic".to_string(),
+                    span: Rc::new(SourceSpan {
+                        file: "src/v2/extdeps/languages/rust_test_fixtures.dag".to_string(),
+                        start: 0,
+                        end: 1,
+                    }),
+                }),
+                CONSUMER.to_string(),
+            ));
+            let resolved = Rc::new(v1_compiler_compile::ResolvedPipelineResult {
+                graph: compiled.graph.clone(),
+                diagnostics: Rc::new(diagnostics.into()),
+                source_indices: compiled.source_indices.clone(),
+                complexity: compiled.complexity.clone(),
+                ownership: compiled.ownership.clone(),
+                newline_indices: compiled.newline_indices.clone(),
+            });
+            let observation = declared_import_closure_binding_observation_from_resolved(
+                resolved.as_ref(),
+                CONSUMER,
+                SYMBOL,
+            );
+            assert!(
+                matches!(
+                    observation,
+                    DeclaredImportClosureBindingObservation::NotRunnable(_)
+                ),
+                "unrelated hard diagnostic must refuse observation at producer; got {observation:?}"
+            );
+            if let DeclaredImportClosureBindingObservation::Observed(observed) = observation {
+                assert!(
+                    !observed.symbol_resolves || observed.blocking_hard_diagnostic_count == 0,
+                    "would have vacuously passed row 3: {observed:?}"
+                );
+            }
         });
     }
 
@@ -35689,6 +36653,51 @@ mod module_path_index_tests {
     }
 
     #[test]
+    fn build_module_path_index_matches_primary_precedence_module_source_index() {
+        let ws = workspace_root();
+        let tmp = ws.join("target").join(format!(
+            "path-index-prec-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let stub_dir = tmp.join("dag/gunbc");
+        std::fs::create_dir_all(&stub_dir).expect("overlay parents");
+        std::fs::write(
+            stub_dir.join("ci_layer_roots.dag"),
+            "module gunbc.ci_layer_roots\n\ndata overlay_shadow_marker: Int = 0\n",
+        )
+        .expect("write overlay stub");
+
+        let roots = vec![
+            tmp.to_string_lossy().into_owned(),
+            ws.join("dag").to_string_lossy().into_owned(),
+        ];
+        let source_index = super::build_module_index_primary_precedence(&roots);
+        let path_index = build_module_path_index(&roots);
+        let module = "gunbc.ci_layer_roots";
+        let source_path = workspace_relative_repo_path(
+            &source_index
+                .get(module)
+                .expect("primary-precedence source index")
+                .path,
+        );
+        let indexed_path = path_index.get(module).expect("module path index").clone();
+        assert_eq!(
+            indexed_path, source_path,
+            "module-graph facts path index must agree with primary-precedence source index"
+        );
+        assert!(
+            indexed_path.contains("path-index-prec"),
+            "root[0] overlay must win over later dag root for the same module path"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
     fn exclusion_frontier_reader_follows_synthetic_authority() {
         let synthetic = "module gunbc.ci_layer_roots\n\n\
              data witness_exclusion_frontier: List<WitnessExclusionRow> = [\n\
@@ -35718,6 +36727,48 @@ mod module_path_index_tests {
             vec!["OfflineLocalRecipe", "BinWitnessWet"],
             "classification variant names must project from the row fields"
         );
+    }
+
+    #[test]
+    fn row_scan_survives_a_multibyte_char_straddling_the_window_edge() {
+        // The 400-byte scan window is a BYTE budget over UTF-8 prose. This fixture puts an
+        // em dash so that the window edge falls strictly INSIDE it, which is what made the
+        // slice panic and kill the floor worker (exit 101, no terminal receipt). The pad is
+        // computed rather than eyeballed so the straddle is a property of the fixture, not
+        // of anyone's byte counting: the em dash starts one byte before the edge, so bytes
+        // 399..402 span it and 400 is not a boundary.
+        // `entry:` and `function:` come FIRST, mirroring the real rows: the scanner
+        // deliberately panics when it cannot find `entry:` within the window, and that
+        // refusal is correct behaviour, not the bug under test. Keeping them early isolates
+        // this test to the slice.
+        //
+        // The prose that follows is a long run of em dashes, so every byte in the window's
+        // neighbourhood belongs to a 3-byte char. The exact window edge depends on where the
+        // scanner sets `search_from`, an internal this test deliberately does NOT model —
+        // pinning it would make the fixture fail for the wrong reason the moment the scanner
+        // moves. Shifting the run by 0/1/2 ASCII bytes covers every residue class mod 3, so
+        // at least one iteration is guaranteed to put the edge strictly inside a character.
+        // That is what makes the sweep discriminating rather than merely likely.
+        for shift in 0..3 {
+            let synthetic = format!(
+                "module gunbc.ci_layer_roots\n\n  SubstrateLongLaneRow {{\n    \
+                 entry: \"dag/test/claim/long/x_test.dag\",\n    \
+                 function: \"w_x\",\n    \
+                 reason: \"{pad}{dashes} tail\",\n  }}\n",
+                pad = "x".repeat(shift),
+                dashes = "\u{2014}".repeat(200),
+            );
+            // Must not panic for any shift. The prose is truncated mid-run by design, so the
+            // claim is survival plus correct extraction of the keys that precede it.
+            let keys = super::witness_admission_entry_function_keys_from_source(
+                "synthetic.dag",
+                &synthetic,
+            );
+            assert!(
+                keys.iter().any(|k| k.contains("w_x")),
+                "shift {shift}: the row's keys precede the prose and must still extract; got {keys:?}"
+            );
+        }
     }
 
     #[test]

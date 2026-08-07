@@ -1,11 +1,14 @@
 module test.claim.ci_heal_job_witness
 
+import v2.std.algebra { list_head, HeadFound, HeadAbsent }
 import gunbc.ci_workflow {
   ci_workflow,
+  ci_floor_job_prelude_steps,
+  ci_regen_job,
   ci_heal_generated_artifacts_job,
+  ci_heal_author_commit_upload_step,
   ci_build_job,
   ci_job,
-  ci_heal_branch_ref_expr
 }
 import extdeps.languages.yaml.types {
   YamlKeyValue, YamlValue,
@@ -29,18 +32,31 @@ import gunbc.ci_spec {
 }
 import std.disposition { Scaffold }
 import gunbc.generated_artifact {
-  auto_push_eligible_committed_artifact_paths,
-  author_commit_required_committed_artifact_paths,
   CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, artifact_path
 }
-import gunbc.ci_workflow_expressions { ci_regen_heal_if }
+import gunbc.heal_push_plan {
+  auto_push_eligible_committed_artifact_paths,
+  author_commit_required_committed_artifact_paths,
+  live_heal_push_refusal_cause_token
+}
+import gunbc.ci_heal_credential {
+  ci_heal_job_permissions,
+  ci_heal_effective_grant,
+  ci_heal_branch_ref_expr,
+  ci_regen_heal_if
+}
+import gunbc.ci_workflow_expressions {
+  ci_floor_runs_unless_cancelled_if,
+  ci_floor_upstream_red_refusal_script
+}
+
 import extdeps.github.actions {
   Job, Workflow, WorkflowPermissions, PermissionLevel, PermWrite, PermRead,
-  WorkflowDispatch, Push, PullRequest, Schedule, WorkflowCall, MergeGroup,
+  WorkflowDispatch, Push, PullRequest, Schedule, WorkflowCall, MergeGroup, WorkflowRunCompleted,
   Step, UsesStep, RunStep
 }
 
-data ci_heal_job_witness_note: String = "Green-by-execution proof that the CI auto-heal job is wired correctly, over the actual Job/Workflow model (not a grep). contents_write_is_scoped_to_heal_only pins least privilege. heal_job_needs_build_not_ci prevents heal from depending on ci. heal_commit_scope_is_auto_push_eligible_only: staging is auto_push_eligible_committed_artifact_paths() only — workflow YAML is AuthorCommitRequired and must never be git add'd. heal_workflow_drift_is_author_commit_required: detects drift, packages repair artifact, emits HealAuthorCommitRequired with regen command, never stages workflow paths. heal_author_commit_upload_step_enrolled: upload-artifact publishes heal-author-commit-required/ when workflow drift exists. heal_author_commit_upload_publishes_its_hidden_payload closes the gap that enrollment alone left open: the step being PRESENT was already witnessed while the artifact it published was empty on every run, because upload-artifact excludes hidden paths by default and this artifact's payload is entirely under .github/. Enrollment is not delivery, and only the second test tells them apart. author_commit_required_paths_all_carry_a_hidden_segment pins the premise the derivation rests on, so the day a non-hidden author-commit path is registered the flag stops being unconditionally true by accident. hidden_segment_predicate_discriminates is the RED control: it fixes both polarities on real corpus paths, so broadening the predicate to match every path, or narrowing it to miss a mid-path dot-directory, reds."
+data ci_heal_job_witness_note: String = "Green-by-execution proof that the CI auto-heal job is wired correctly, over the actual Job/Workflow model (not a grep). contents_write_is_scoped_to_heal_only pins least privilege. heal_job_needs_build_not_ci prevents heal from depending on ci. heal_commit_scope_is_auto_push_eligible_only: staging is auto_push_eligible_committed_artifact_paths() only — workflow YAML is AuthorCommitRequired and must never be git add'd. heal_workflow_drift_is_author_commit_required: detects drift, packages repair artifact, emits HealAuthorCommitRequired with regen command, never stages workflow paths. heal_author_commit_upload_step_enrolled: upload-artifact publishes heal-author-commit-required/ when workflow drift exists. heal_author_commit_upload_publishes_its_hidden_payload closes the gap that enrollment alone left open: the step being PRESENT was already witnessed while the artifact it published was empty on every run, because upload-artifact excludes hidden paths by default and this artifact's payload is entirely under .github/. Enrollment is not delivery, and only the second test tells them apart. author_commit_required_paths_all_carry_a_hidden_segment pins the premise the derivation rests on, so the day a non-hidden author-commit path is registered the flag stops being unconditionally true by accident. hidden_segment_predicate_discriminates is the RED control: it fixes both polarities on real corpus paths, so broadening the predicate to match every path, or narrowing it to miss a mid-path dot-directory, reds. THE FOUR FLOOR-PREFLIGHT WITNESSES ARE ONE GROUP AND MUST BE READ TOGETHER. floor_job_waits_on_the_heal_preflight pins the dependency so the expensive floor is ordered after the cheap preflights. floor_job_runs_even_when_an_upstream_job_failed pins the condition as !cancelled() and REFUSES BOTH failure() AND success() BY NAME. floor_refuses_an_already_red_branch_before_its_expensive_steps pins that the refusal lives in the prelude, which ci_job composes ahead of the floor step. floor_refusal_tolerates_a_skipped_heal_but_not_a_failed_one pins the asymmetry between heal and its siblings.\n\nWHY failure() IS REFUSED BY NAME, and it is the opposite of what an earlier revision of this witness asserted: the first cut of this change used `!failure() && !cancelled()`, and a review (review 49309) showed that is a fail-open on the only required merge gate. GitHub's troubleshooting-required-status-checks page states that a job skipped by a conditional REPORTS SUCCESS, and the live default-branch ruleset names exactly one required context, ci. So an upstream failure would have skipped ci, ci would have satisfied its own required check by being skipped, and GeneratedArtifactDriftGate would never have run - drift merging while only the non-required heal job was red. The dangerous edit is therefore no longer 'simplify the condition to success()'; it is 'reintroduce failure() into the condition', which reads as a tightening and is in fact the hole. That is what floor_job_runs_even_when_an_upstream_job_failed exists to red on, and why the refusal moved out of the job condition and into an executing first step that exits 1. heal_commit_scope_is_auto_push_eligible_only: staging is auto_push_eligible_committed_artifact_paths() only — workflow YAML is AuthorCommitRequired and must never be git add'd. heal_workflow_drift_is_author_commit_required: detects drift, packages repair artifact, emits HealAuthorCommitRequired with regen command, never stages workflow paths. heal_author_commit_upload_step_enrolled: upload-artifact publishes heal-author-commit-required/ when workflow drift exists."
 
 fn perm_is_write(p: PermissionLevel) -> Bool {
   match p { PermWrite => true  _ => false }
@@ -94,8 +110,74 @@ test fn heal_job_enrolled_in_ci_workflow() -> Bool {
   fold(ci_workflow.jobs, init: false, f: (acc, j) => acc || (j.id == "heal_generated_artifacts"))
 }
 
+test fn heal_job_permissions_are_the_grant_authority() -> Bool {
+  match ci_heal_generated_artifacts_job().permissions {
+    Present { value: wp } =>
+      (wp == ci_heal_job_permissions)
+        && (ci_heal_effective_grant.permissions == ci_heal_job_permissions)
+        && (ci_heal_effective_grant.job.decl_name == "ci_heal_generated_artifacts_job")
+        && (ci_heal_effective_grant.workflow.module_path == "gunbc.ci_workflow")
+    Absent => false
+  }
+}
+
 test fn heal_job_needs_build_not_ci() -> Bool {
   ci_heal_generated_artifacts_job().needs == ["build"]
+}
+
+test fn floor_job_waits_on_the_heal_preflight() -> Bool {
+  any(ci_job().needs, n => n == "heal_generated_artifacts")
+    && any(ci_job().needs, n => n == "build")
+    && any(ci_job().needs, n => n == "regen")
+}
+
+test fn floor_job_runs_even_when_an_upstream_job_failed() -> Bool {
+  match ci_job().if_condition {
+    Present { value: s } =>
+      (s == ci_floor_runs_unless_cancelled_if)
+        && string_contains(s: s, pattern: "!cancelled()")
+        && !string_contains(s: s, pattern: "failure()")
+        && !string_contains(s: s, pattern: "success()")
+    Absent => false
+  }
+}
+
+fn step_is_the_upstream_red_refusal(s: Step) -> Bool {
+  match s {
+    RunStep { name: _, id: _, run: r, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      r == ci_floor_upstream_red_refusal_script
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+  }
+}
+
+test fn floor_refusal_is_exactly_the_first_step() -> Bool {
+  match list_head(xs: ci_job().steps) {
+    HeadFound { value: head } => step_is_the_upstream_red_refusal(s: head)
+    HeadAbsent => false
+  }
+}
+
+test fn floor_refuses_an_already_red_branch_before_its_expensive_steps() -> Bool {
+  fold(ci_job().steps, init: false, f: (found, s) => found || step_is_the_upstream_red_refusal(s: s))
+    && string_contains(s: ci_floor_upstream_red_refusal_script, pattern: "needs.build.result")
+    && string_contains(s: ci_floor_upstream_red_refusal_script, pattern: "needs.regen.result")
+    && string_contains(s: ci_floor_upstream_red_refusal_script, pattern: "needs.heal_generated_artifacts.result")
+    && string_contains(s: ci_floor_upstream_red_refusal_script, pattern: "FloorUpstreamAlreadyRed")
+    && string_contains(s: ci_floor_upstream_red_refusal_script, pattern: "exit 1")
+}
+
+test fn floor_refusal_reaches_only_the_job_whose_needs_it_names() -> Bool {
+  !fold(ci_regen_job().steps, init: false, f: (found, s) => found || step_is_the_upstream_red_refusal(s: s))
+    && !fold(ci_build_job().steps, init: false, f: (found, s) => found || step_is_the_upstream_red_refusal(s: s))
+    && !fold(ci_heal_generated_artifacts_job().steps, init: false, f: (found, s) => found || step_is_the_upstream_red_refusal(s: s))
+    && !fold(ci_floor_job_prelude_steps(), init: false, f: (found, s) => found || step_is_the_upstream_red_refusal(s: s))
+}
+
+test fn floor_refusal_tolerates_a_skipped_heal_but_not_a_failed_one() -> Bool {
+  string_contains(s: ci_floor_upstream_red_refusal_script, pattern: "\"$HEAL\" = \"failure\"")
+    && !string_contains(s: ci_floor_upstream_red_refusal_script, pattern: "\"$HEAL\" != \"success\"")
+    && string_contains(s: ci_floor_upstream_red_refusal_script, pattern: "\"$BUILD\" != \"success\"")
+    && string_contains(s: ci_floor_upstream_red_refusal_script, pattern: "\"$REGEN\" != \"success\"")
 }
 
 test fn heal_job_runs_on_pr_only() -> Bool {
@@ -136,6 +218,7 @@ test fn workflow_dispatch_carries_optional_exact_healed_sha_input() -> Bool {
       PullRequest { branches: _, types: _ } => false
       Schedule { cron: _ } => false
       WorkflowCall { inputs: _ } => false
+      WorkflowRunCompleted { workflows: _ } => false
       MergeGroup => false
     }
   })
@@ -181,6 +264,18 @@ test fn heal_commit_scope_is_auto_push_eligible_only() -> Bool {
     && (count(author_commit_required_committed_artifact_paths()) == 2)
 }
 
+// The packaging diagnostic must be reachable. GitHub runs `run:` under
+// `bash -eo pipefail`, so a post-hoc `[ ! -e ]` check after `cp` is dead in both
+// directions: cp failing aborts the script first, cp succeeding leaves the file
+// present. The typed diagnostic therefore has to hang off the failing command.
+test fn heal_bundle_incompleteness_diagnostic_is_reachable() -> Bool {
+  let script = gunbc_ci_heal_commit_push_script()
+  string_contains(s: script, pattern: "if ! cp \"$p\" \"")
+    && string_contains(s: script, pattern: "if ! mkdir -p \"")
+    && string_contains(s: script, pattern: "::error::HealRepairBundleIncomplete path=$p")
+    && !string_contains(s: script, pattern: "if [ ! -e \"")
+}
+
 test fn heal_git_add_is_existence_guarded() -> Bool {
   let script = gunbc_ci_heal_commit_push_script()
   string_contains(s: script, pattern: concat("if [ -e \"", artifact_path(a: GitignoreArtifact)))
@@ -190,7 +285,8 @@ test fn heal_git_add_is_existence_guarded() -> Bool {
 test fn heal_workflow_drift_is_author_commit_required() -> Bool {
   let script = gunbc_ci_heal_commit_push_script()
   string_contains(s: script, pattern: "HealAuthorCommitRequired")
-    && string_contains(s: script, pattern: "GitHubAppLacksWorkflowsWrite")
+    && string_contains(s: script, pattern: concat("cause=", live_heal_push_refusal_cause_token()))
+    && !string_contains(s: script, pattern: "GitHubAppLacksWorkflowsWrite")
     && string_contains(s: script, pattern: ci_heal_author_commit_regen_command)
     && string_contains(s: script, pattern: concat("git diff --quiet -- \"", artifact_path(a: CiYamlArtifact)))
     && string_contains(s: script, pattern: concat("git diff --quiet -- \"", artifact_path(a: FalsifierYamlArtifact)))
@@ -218,6 +314,46 @@ fn step_uploads_author_commit_artifact(s: Step) -> Bool {
       }
     RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
   }
+}
+
+fn step_with_value(s: Step, key: NonEmptyStr) -> YamlValue? {
+  match s {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => none
+    UsesStep { name: _, id: _, uses: _, with: w, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match w {
+        Absent => none
+        Present { value: rows } => fold(rows, init: none, f: fn(found, row) {
+          match found {
+            Present { value: v } => Present { value: v }
+            Absent => if row.key == key { Present { value: row.value } } else { none }
+          }
+        })
+      }
+  }
+}
+
+// Complements the sibling hidden-payload witnesses rather than restating them:
+// they pin that the flag is TRUE, this pins that the emitted flag equals the
+// derivation. A hardcoded `true` passes theirs and reds here the day the roster
+// gains a non-hidden path — which is the construction property the derivation
+// exists to buy. The predicate's own polarities are hidden_segment_predicate_discriminates.
+test fn heal_author_commit_upload_includes_hidden_workflow_files() -> Bool {
+  let paths = author_commit_required_committed_artifact_paths()
+  (count(paths) > 0)
+    && match step_with_value(s: ci_heal_author_commit_upload_step(), key: "include-hidden-files") {
+         Present { value: v } => match v {
+           YamlBool { value: b } => b == ci_heal_author_commit_artifact_includes_hidden_files()
+           _ => false
+         }
+         Absent => false
+       }
+    && match step_with_value(s: ci_heal_author_commit_upload_step(), key: "path") {
+         Present { value: v } => match v {
+           YamlString { value: d } => d == ci_heal_author_commit_artifact_dir
+           _ => false
+         }
+         Absent => false
+       }
 }
 
 test fn heal_author_commit_upload_step_enrolled() -> Bool {

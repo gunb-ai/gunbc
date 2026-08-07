@@ -42,7 +42,8 @@ import v2.workflow.ci_placement {
   PlacementShadowWarmCostEvidence,
   placement_is_admissible,
   placement_shadow_report,
-  placement_shadow_row_report
+  placement_shadow_row_report,
+  placement_shadow_report_matches_roster
 }
 
 test fn ci_placement_gauntlet_always_admissible_holds() -> Bool {
@@ -150,15 +151,14 @@ fn placement_shadow_missing_identity() -> CommitCheckEnrollment {
   }
 }
 
-test fn ci_placement_shadow_report_spans_all_51_rows_holds() -> Bool {
-  let report = placement_shadow_report(
+test fn ci_placement_shadow_report_matches_commit_gate_roster_identities_holds() -> Bool {
+  placement_shadow_report_matches_roster(
     roster: commit_gate_roster,
-    basis: PlacementShadowSignedBasis { receipts: [] }
+    report: placement_shadow_report(
+      roster: commit_gate_roster,
+      basis: PlacementShadowSignedBasis { receipts: [] }
+    )
   )
-  match report.rows.length() {
-    56 => true
-    _ => false
-  }
 }
 
 test fn ci_placement_shadow_row_qualifies_multi_and_entrywide_rows_holds() -> Bool {

@@ -2,19 +2,39 @@
 module test.claim.generated_artifact_drift
 
 import gunbc.generated_artifact {
-  GeneratedArtifact, CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0EmitPlanGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact, AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
+  GeneratedArtifact, CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0EmitPlanGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact, AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
   RepoConsumer, GitProtocol, GithubActionsWorkflow, ProjectDocumentation, HostReconciler,
   CommitPolicy, CommitRequired, NotCommitted,
-  HealPolicy, AutoPushEligible, AuthorCommitRequired,
-  HealRepairDisposition, HealRepairNoDrift, HealRepairAutoPushEligibleOnly,
-  HealRepairAuthorCommitRequired, HealRepairMixed,
   generated_artifact_registry,
   committed_generated_artifacts, artifact_path, artifact_commit_policy, artifact_is_committed,
-  artifact_heal_policy,
-  partition_committed_by_heal_policy,
-  auto_push_eligible_committed_artifacts, author_commit_required_committed_artifacts,
-  classify_heal_repair_paths, path_requires_author_commit,
   registry_contains
+}
+import gunbc.ci_heal_credential { live_heal_push_binding_resolution, live_heal_control_plane, ci_heal_checkout_step_ref }
+import gunbc.auth.github_credential { PushCredentialBindingMissing }
+import gunbc.heal_push_plan {
+  HealRepairDisposition, HealRepairNoDrift, HealRepairAutoPushEligibleOnly,
+  HealRepairAuthorCommitRequired, HealRepairMixed,
+  HealPushPlan, HealPushNothingToDo, HealPushReady, HealPushPartial, HealPushRefused,
+  HealPushRefusal, HealPushRefusalCause,
+  ActionsJobCredentialScopeUnavailable, ActionsJobCredentialScopeNotGranted,
+  ActionsJobCredentialForkPolicyUnobserved, ManagedInstallationGrantUnobserved,
+  ManagedCredentialSubjectMismatch, PushBindingMissingOnCheckoutStep, PushBindingLeaseUnresolved,
+  PushBindingStepKindNotSupported, PushBindingActionNotCheckout,
+  PushBindingInputObservationDuplicated, ActionsJobCredentialAxisNotModeled,
+  ActionsJobCredentialDeclaredAccessInvalid,
+  HealPushRemediation, HealAutomatically, AuthorCommitRequired, MachineRepairRequired,
+  ProviderObservationRequired, HealNothingToRemediate, HealPlanInconsistent,
+  HealPushPlanInconsistent, RemedyOwner, RemedyAuthor, RemedyMachine,
+  RemedyProviderObservation,
+  HealPushFailure, PushBindingInputValueUnsupported,
+  HealPushBindingSite,
+  failure_causes, refusal_causes_token, remediation_for_refusal,
+  refusal_cause_remedy_owner, plan_remediation, live_heal_remediation,
+  remediation_author_commit_paths,
+  heal_push_refusal_cause_token, live_heal_push_refusal_cause_token,
+  plan_heal_push, plan_heal_push_from_binding, live_heal_push_plan,
+  auto_push_eligible_committed_artifacts, author_commit_required_committed_artifacts,
+  classify_heal_repair_paths, path_requires_author_commit
 }
 import gunbc.generated_artifact_emit { artifact_extra_valid, ArtifactGenerated, ArtifactGenerationRefused }
 import gunbc.generated_artifact_assessment {
@@ -130,6 +150,7 @@ test fn witness_all_known_committed() -> Bool {
     && artifact_is_committed(a: RoadmapArtifact)
     && artifact_is_committed(a: DesignArtifact)
     && artifact_is_committed(a: GithooksPrePushArtifact)
+    && artifact_is_committed(a: GeneratedArtifactMergeDriverArtifact)
     && artifact_is_committed(a: GithooksPreCommitArtifact)
     && artifact_is_committed(a: PlanArtifact { plan: idea_machine_plan })
     && !artifact_is_committed(a: RunnerDeployArtifact)
@@ -164,7 +185,7 @@ test fn witness_ignored_paths_excluded() -> Bool {
 }
 
 test fn witness_registry_complete() -> Bool {
-  count(generated_artifact_registry) == (16 + count(fleet_autoinstall_specs) + count(fleet_install_server_specs) + count(all_plans))
+  count(generated_artifact_registry) == (17 + count(fleet_autoinstall_specs) + count(fleet_install_server_specs) + count(all_plans))
     && registry_contains(a: CiYamlArtifact)
     && registry_contains(a: FalsifierYamlArtifact)
     && registry_contains(a: GitignoreArtifact)
@@ -173,6 +194,7 @@ test fn witness_registry_complete() -> Bool {
     && registry_contains(a: DesignArtifact)
     && registry_contains(a: GithooksPrePushArtifact)
     && registry_contains(a: GithooksPreCommitArtifact)
+    && registry_contains(a: GeneratedArtifactMergeDriverArtifact)
     && registry_contains(a: RunnerDeployArtifact)
     && registry_contains(a: Stage0CrateLayoutGeneratedDagArtifact)
     && registry_contains(a: Stage0CrateLayoutGeneratedRsArtifact)
@@ -189,6 +211,7 @@ test fn witness_registry_complete() -> Bool {
     && artifact_is_committed(a: RoadmapArtifact)
     && artifact_is_committed(a: DesignArtifact)
     && artifact_is_committed(a: GithooksPrePushArtifact)
+    && artifact_is_committed(a: GeneratedArtifactMergeDriverArtifact)
     && artifact_is_committed(a: GithooksPreCommitArtifact)
     && artifact_is_committed(a: PlanArtifact { plan: idea_machine_plan })
     && artifact_is_committed(a: Stage0CrateLayoutGeneratedDagArtifact)
@@ -217,6 +240,7 @@ test fn witness_commit_policy_reasons() -> Bool {
   consumer_is(a: GitignoreArtifact, expected: GitProtocol)
     && consumer_is(a: GitattributesArtifact, expected: GitProtocol)
     && consumer_is(a: GithooksPrePushArtifact, expected: GitProtocol)
+    && consumer_is(a: GeneratedArtifactMergeDriverArtifact, expected: GitProtocol)
     && consumer_is(a: GithooksPreCommitArtifact, expected: GitProtocol)
     && consumer_is(a: CiYamlArtifact, expected: GithubActionsWorkflow)
     && consumer_is(a: FalsifierYamlArtifact, expected: GithubActionsWorkflow)
@@ -233,34 +257,333 @@ test fn witness_commit_policy_reasons() -> Bool {
     && match artifact_commit_policy(a: ProxyDhcpDnsmasqArtifact { spec: srv3_install_server_spec }) { NotCommitted => true  _ => false }
 }
 
-fn heal_policy_is(a: GeneratedArtifact, expected: HealPolicy) -> Bool {
-  match artifact_heal_policy(a: a) {
-    AutoPushEligible => match expected { AutoPushEligible => true  _ => false }
-    AuthorCommitRequired { consumer } => match expected {
-      AuthorCommitRequired { consumer: expected_consumer } =>
-        match consumer {
-          GithubActionsWorkflow => match expected_consumer { GithubActionsWorkflow => true  _ => false }
-          GitProtocol => match expected_consumer { GitProtocol => true  _ => false }
-          ProjectDocumentation => match expected_consumer { ProjectDocumentation => true  _ => false }
-          HostReconciler => match expected_consumer { HostReconciler => true  _ => false }
+fn plan_refuses_workflow_paths(plan: HealPushPlan) -> Bool {
+  match plan {
+    HealPushPartial { ready: _, refused, cause: _ } =>
+      any(map(refused, a => artifact_path(a: a)), p => p == ".github/workflows/ci.yml")
+    HealPushRefused { refused, cause: _ } =>
+      any(map(refused, a => artifact_path(a: a)), p => p == ".github/workflows/ci.yml")
+    HealPushReady { artifacts: _ } => false
+    HealPushNothingToDo => false
+    HealPushPlanInconsistent { refused_paths: _ } => false
+  }
+}
+
+fn refusal_is_actions_scope_unavailable(cause: HealPushRefusal) -> Bool {
+  count(cause.failures) == 1
+    && fold_list(
+         xs: cause.failures,
+         empty: true,
+         cons: fn(acc, f) {
+           acc && match f.missing {
+             Absent => false
+             Present { value: axis } => permission_axis_wire_name(axis: axis) == "workflows"
+           } && match f.cause {
+             ActionsJobCredentialScopeUnavailable => true
+             _ => false
+           }
+         }
+       )
+}
+
+fn plan_cause_is_kind_cannot_satisfy(plan: HealPushPlan) -> Bool {
+  match plan {
+    HealPushPartial { ready: _, refused: _, cause } => refusal_is_actions_scope_unavailable(cause: cause)
+    HealPushRefused { refused: _, cause } => refusal_is_actions_scope_unavailable(cause: cause)
+    HealPushReady { artifacts: _ } => false
+    HealPushNothingToDo => false
+    HealPushPlanInconsistent { refused_paths: _ } => false
+  }
+}
+
+test fn witness_live_heal_plan_refuses_workflow_paths_structurally() -> Bool {
+  plan_refuses_workflow_paths(plan: live_heal_push_plan)
+    && plan_cause_is_kind_cannot_satisfy(plan: live_heal_push_plan)
+}
+
+fn owner_is_machine(c: HealPushRefusalCause) -> Bool {
+  match refusal_cause_remedy_owner(cause: c) { RemedyMachine => true  _ => false }
+}
+
+test fn witness_only_a_structurally_unavailable_scope_is_author_work() -> Bool {
+  match refusal_cause_remedy_owner(cause: ActionsJobCredentialScopeUnavailable) {
+    RemedyAuthor => true
+    _ => false
+  }
+    && owner_is_machine(c: PushBindingMissingOnCheckoutStep)
+    && owner_is_machine(c: PushBindingLeaseUnresolved)
+    && owner_is_machine(c: PushBindingStepKindNotSupported)
+    && owner_is_machine(c: PushBindingActionNotCheckout)
+    && owner_is_machine(c: PushBindingInputObservationDuplicated)
+    && owner_is_machine(c: PushBindingInputValueUnsupported)
+    && owner_is_machine(c: ManagedCredentialSubjectMismatch)
+    && owner_is_machine(c: ActionsJobCredentialAxisNotModeled)
+    && owner_is_machine(c: ActionsJobCredentialDeclaredAccessInvalid)
+    && owner_is_machine(c: ActionsJobCredentialScopeNotGranted)
+    && match refusal_cause_remedy_owner(cause: ManagedInstallationGrantUnobserved) {
+         RemedyProviderObservation => true
+         _ => false
+       }
+    && match refusal_cause_remedy_owner(cause: ActionsJobCredentialForkPolicyUnobserved) {
+         RemedyProviderObservation => true
+         _ => false
+       }
+}
+
+test fn witness_binding_refusal_retains_its_locator() -> Bool {
+  let broken = plan_heal_push_from_binding(
+    artifacts: [CiYamlArtifact, GitignoreArtifact],
+    resolution: PushCredentialBindingMissing { checkout_step: ci_heal_checkout_step_ref },
+    control_plane: live_heal_control_plane
+  )
+  match broken {
+    HealPushRefused { refused: _, cause } =>
+      (count(cause.failures) == 1) && any(
+        cause.failures,
+        f => match f.site {
+          Absent => false
+          Present { value: site } =>
+            site.checkout_step.module_path == ci_heal_checkout_step_ref.module_path
+              && site.checkout_step.decl_name == ci_heal_checkout_step_ref.decl_name
+              && match site.input { Absent => true  _ => false }
         }
-      AutoPushEligible => false
+      )
+    _ => false
+  }
+}
+
+// witness_refusal_cause_tokens_are_pairwise_distinct's fold_list cons lambda, third clause
+// (t != "HealPushRefusalPopulationEmpty"): this pins what refusal_causes_token's
+// fold relies on. It reuses the empty-population marker as its own "nothing accumulated
+// yet" state, so a cause token colliding with that marker would make the first joined
+// cause silently replace the marker instead of appending. Safe today by coincidence;
+// this makes it safe by execution (review 49204).
+test fn witness_refusal_cause_tokens_are_pairwise_distinct() -> Bool {
+  let causes = [
+    ActionsJobCredentialScopeUnavailable, ActionsJobCredentialScopeNotGranted,
+    ActionsJobCredentialForkPolicyUnobserved, ActionsJobCredentialAxisNotModeled,
+    ActionsJobCredentialDeclaredAccessInvalid, PushBindingMissingOnCheckoutStep,
+    PushBindingLeaseUnresolved, PushBindingStepKindNotSupported,
+    PushBindingActionNotCheckout, PushBindingInputObservationDuplicated,
+    PushBindingInputValueUnsupported, ManagedInstallationGrantUnobserved,
+    ManagedCredentialSubjectMismatch
+  ]
+  let tokens = map(causes, c => heal_push_refusal_cause_token(cause: c))
+  fold_list(
+    xs: tokens,
+    empty: true,
+    cons: fn(ok, t) {
+      ok && (count(filter(tokens, u => u == t)) == 1) && (t != "")
+        && (t != "HealPushRefusalPopulationEmpty")
     }
+  )
+}
+
+test fn witness_machine_fault_never_becomes_author_work() -> Bool {
+  let broken_checkout = plan_heal_push_from_binding(
+    artifacts: [CiYamlArtifact, GitignoreArtifact],
+    resolution: PushCredentialBindingMissing { checkout_step: ci_heal_checkout_step_ref },
+    control_plane: live_heal_control_plane
+  )
+  match plan_remediation(plan: broken_checkout) {
+    MachineRepairRequired { causes } =>
+      (count(causes) == 1) && any(
+        map(causes, c => heal_push_refusal_cause_token(cause: c)),
+        t => t == "PushBindingMissingOnCheckoutStep"
+      )
+    _ => false
+  } && (count(remediation_author_commit_paths(r: plan_remediation(plan: broken_checkout))) == 0)
+    && match live_heal_remediation {
+         AuthorCommitRequired { paths, causes } =>
+           (count(paths) == 2) && (count(causes) == 1) && any(
+             map(causes, c => heal_push_refusal_cause_token(cause: c)),
+             t => t == "ActionsJobCredentialScopeUnavailable"
+           )
+         _ => false
+       }
+}
+
+fn remediation_token(r: HealPushRemediation) -> String {
+  match r {
+    HealAutomatically { paths: _ } => "HealAutomatically"
+    AuthorCommitRequired { paths: _, causes: _ } => "AuthorCommitRequired"
+    MachineRepairRequired { causes: _ } => "MachineRepairRequired"
+    ProviderObservationRequired { causes: _ } => "ProviderObservationRequired"
+    HealNothingToRemediate => "HealNothingToRemediate"
+    HealPlanInconsistent { refused_paths: _ } => "HealPlanInconsistent"
+  }
+}
+
+test fn witness_a_machine_repairable_failure_dominates_the_author_fallback() -> Bool {
+  let workflow_path = RepositoryPath { value: ".github/workflows/ci.yml" }
+  let both = HealPushRefusal {
+    paths: [workflow_path],
+    failures: [
+      HealPushFailure {
+        cause: ActionsJobCredentialScopeNotGranted,
+        missing: Present { value: ContentsAxis }
+      },
+      HealPushFailure {
+        cause: ActionsJobCredentialScopeUnavailable,
+        missing: Present { value: WorkflowsAxis }
+      }
+    ]
+  }
+  let residual_only = HealPushRefusal {
+    paths: [workflow_path],
+    failures: [
+      HealPushFailure {
+        cause: ActionsJobCredentialScopeUnavailable,
+        missing: Present { value: WorkflowsAxis }
+      }
+    ]
+  }
+  remediation_token(r: remediation_for_refusal(refusal: both)) == "MachineRepairRequired"
+    && remediation_token(r: remediation_for_refusal(refusal: residual_only)) == "AuthorCommitRequired"
+    && (count(remediation_author_commit_paths(r: remediation_for_refusal(refusal: both))) == 0)
+    && match remediation_for_refusal(refusal: both) {
+         MachineRepairRequired { causes } => count(causes) == 1
+         _ => false
+       }
+}
+
+test fn witness_author_commit_requires_the_exact_workflow_path_residual() -> Bool {
+  let non_workflow = HealPushRefusal {
+    paths: [RepositoryPath { value: ".gitignore" }],
+    failures: [
+      HealPushFailure {
+        cause: ActionsJobCredentialScopeUnavailable,
+        missing: Present { value: WorkflowsAxis }
+      }
+    ]
+  }
+  let wrong_axis = HealPushRefusal {
+    paths: [RepositoryPath { value: ".github/workflows/ci.yml" }],
+    failures: [
+      HealPushFailure {
+        cause: ActionsJobCredentialScopeUnavailable,
+        missing: Present { value: ContentsAxis }
+      }
+    ]
+  }
+  let axis_absent = HealPushRefusal {
+    paths: [RepositoryPath { value: ".github/workflows/ci.yml" }],
+    failures: [
+      HealPushFailure { cause: ActionsJobCredentialScopeUnavailable, missing: none }
+    ]
+  }
+  remediation_token(r: remediation_for_refusal(refusal: non_workflow)) == "HealPlanInconsistent"
+    && remediation_token(r: remediation_for_refusal(refusal: wrong_axis)) == "HealPlanInconsistent"
+    && remediation_token(r: remediation_for_refusal(refusal: axis_absent)) == "HealPlanInconsistent"
+}
+
+test fn witness_provider_observation_outranks_author_but_not_machine() -> Bool {
+  let workflow_path = RepositoryPath { value: ".github/workflows/ci.yml" }
+  let provider_and_residual = HealPushRefusal {
+    paths: [workflow_path],
+    failures: [
+      HealPushFailure {
+        cause: ActionsJobCredentialForkPolicyUnobserved,
+        missing: Present { value: ContentsAxis }
+      },
+      HealPushFailure {
+        cause: ActionsJobCredentialScopeUnavailable,
+        missing: Present { value: WorkflowsAxis }
+      }
+    ]
+  }
+  let machine_and_provider = HealPushRefusal {
+    paths: [workflow_path],
+    failures: [
+      HealPushFailure {
+        cause: ActionsJobCredentialForkPolicyUnobserved,
+        missing: Present { value: ContentsAxis }
+      },
+      HealPushFailure {
+        cause: ActionsJobCredentialScopeNotGranted,
+        missing: Present { value: ContentsAxis }
+      }
+    ]
+  }
+  remediation_token(r: remediation_for_refusal(refusal: provider_and_residual)) == "ProviderObservationRequired"
+    && remediation_token(r: remediation_for_refusal(refusal: machine_and_provider)) == "MachineRepairRequired"
+}
+
+test fn witness_refusal_population_is_retained_not_collapsed() -> Bool {
+  let two = HealPushRefusal {
+    paths: [RepositoryPath { value: ".github/workflows/ci.yml" }],
+    failures: [
+      HealPushFailure {
+        cause: ActionsJobCredentialScopeNotGranted,
+        missing: Present { value: ContentsAxis }
+      },
+      HealPushFailure {
+        cause: ActionsJobCredentialScopeUnavailable,
+        missing: Present { value: WorkflowsAxis }
+      }
+    ]
+  }
+  (count(two.failures) == 2)
+    && (refusal_causes_token(causes: failure_causes(fs: two.failures)) == "ActionsJobCredentialScopeNotGranted+ActionsJobCredentialScopeUnavailable")
+}
+
+test fn witness_live_refusal_cause_token_is_derived_from_the_plan() -> Bool {
+  live_heal_push_refusal_cause_token() == "ActionsJobCredentialScopeUnavailable"
+    && live_heal_push_refusal_cause_token() != "GitHubAppLacksWorkflowsWrite"
+    && heal_push_refusal_cause_token(cause: ManagedInstallationGrantUnobserved) == "ManagedInstallationGrantUnobserved"
+    && heal_push_refusal_cause_token(cause: ManagedCredentialSubjectMismatch) == "ManagedCredentialSubjectMismatch"
+    && heal_push_refusal_cause_token(cause: ActionsJobCredentialForkPolicyUnobserved) == "ActionsJobCredentialForkPolicyUnobserved"
+}
+
+test fn witness_heal_plan_empty_input_is_nothing_to_do() -> Bool {
+  match plan_heal_push_from_binding(
+    artifacts: [],
+    resolution: live_heal_push_binding_resolution,
+    control_plane: live_heal_control_plane
+  ) {
+    HealPushNothingToDo => true
+    HealPushPlanInconsistent { refused_paths: _ } => false
+    HealPushReady { artifacts: _ } => false
+    HealPushPartial { ready: _, refused: _, cause: _ } => false
+    HealPushRefused { refused: _, cause: _ } => false
+  }
+}
+
+test fn witness_heal_plan_non_workflow_artifacts_are_ready() -> Bool {
+  match plan_heal_push_from_binding(
+    artifacts: [GitignoreArtifact, DesignArtifact],
+    resolution: live_heal_push_binding_resolution,
+    control_plane: live_heal_control_plane
+  ) {
+    HealPushReady { artifacts } => count(artifacts) == 2
+    HealPushNothingToDo => false
+    HealPushPlanInconsistent { refused_paths: _ } => false
+    HealPushPartial { ready: _, refused: _, cause: _ } => false
+    HealPushRefused { refused: _, cause: _ } => false
+  }
+}
+
+test fn witness_heal_plan_workflow_only_refuses_wholesale() -> Bool {
+  match plan_heal_push_from_binding(
+    artifacts: [CiYamlArtifact, FalsifierYamlArtifact],
+    resolution: live_heal_push_binding_resolution,
+    control_plane: live_heal_control_plane
+  ) {
+    HealPushRefused { refused, cause: _ } => count(refused) == 2
+    HealPushNothingToDo => false
+    HealPushPlanInconsistent { refused_paths: _ } => false
+    HealPushReady { artifacts: _ } => false
+    HealPushPartial { ready: _, refused: _, cause: _ } => false
   }
 }
 
 test fn witness_heal_policy_workflow_artifacts_require_author_commit() -> Bool {
-  heal_policy_is(a: CiYamlArtifact, expected: AuthorCommitRequired { consumer: GithubActionsWorkflow })
-    && heal_policy_is(a: FalsifierYamlArtifact, expected: AuthorCommitRequired { consumer: GithubActionsWorkflow })
-    && heal_policy_is(a: GitignoreArtifact, expected: AutoPushEligible)
-    && heal_policy_is(a: DesignArtifact, expected: AutoPushEligible)
-    && (count(author_commit_required_committed_artifacts()) == 2)
+  (count(author_commit_required_committed_artifacts()) == 2)
     && (count(auto_push_eligible_committed_artifacts()) == count(committed_generated_artifacts()) - 2)
-    && (count(partition_committed_by_heal_policy().author_commit) == 2)
-    && (count(partition_committed_by_heal_policy().auto_push) == count(committed_generated_artifacts()) - 2)
     && path_requires_author_commit(path: ".github/workflows/ci.yml")
     && path_requires_author_commit(path: ".github/workflows/falsifier.yml")
     && !path_requires_author_commit(path: ".gitignore")
+
 }
 
 data witness_extra_validation_wired_note: String = "P0 (operator-directed, 2026-08-05; loyal-ram-550 review of #7823): artifact_extra_valid takes the already-computed generation outcome rather than generating internally, and this witness proves it is WIRED, not that generation itself works (generation is proven elsewhere, by the observer and the gate) — so it hands each arm a SYNTHETIC ArtifactGenerated { content: \"x\" }, never a real artifact_generate(a:) call; no generation happens in this witness at all. Only two of the twelve arms (Stage0EmitPlanGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact) read the generated parameter — the other ten ignore it and return true or delegate to ci_yml_parses. The positive alone cannot tell an arm that reads the parameter from one that discards it and returns true unconditionally, so witness_extra_validation_wired_refuses_on_generation_refusal is the discriminating RED: it hands those same two arms an ArtifactGenerationRefused and asserts false — a result only reachable if the arm genuinely matches on the value threaded through it. That RED cannot pass under a bare arrow-true stub."
