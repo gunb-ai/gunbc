@@ -140,7 +140,7 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     trigger: TriggerProse { text: nfr_dissolve_provider_standing_limit_draw },
   },
   FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/provider_standing.dag::first_blocking_native_limit_bucket_for_automatic_draw" },
+    subject: PathSubject { path: "dag/gunbc/provider_standing.dag::provider_standing_bundle_is_selection_eligible" },
     reason: nfr_reason_provider_standing_limit_draw,
     trigger: TriggerProse { text: nfr_dissolve_provider_standing_limit_draw },
   },
