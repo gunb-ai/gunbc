@@ -30,29 +30,14 @@ pub mod std_coercion;
 #[path = "../../stage0/src/std_currency.rs"]
 pub mod std_currency;
 #[rustfmt::skip]
-#[path = "../../stage0/src/std_decl_ref.rs"]
-pub mod std_decl_ref;
-#[rustfmt::skip]
-#[path = "../../stage0/src/std_keyed_row.rs"]
-pub mod std_keyed_row;
-#[rustfmt::skip]
-#[path = "../../stage0/src/std_keyed_roster.rs"]
-pub mod std_keyed_roster;
-#[rustfmt::skip]
-#[path = "../../stage0/src/std_roster_frontier.rs"]
-pub mod std_roster_frontier;
-#[rustfmt::skip]
 #[path = "../../stage0/src/std_disposition.rs"]
 pub mod std_disposition;
 #[rustfmt::skip]
-#[path = "../../stage0/src/std_error_primitives.rs"]
-pub mod std_error_primitives;
+#[path = "../../stage0/src/std_emit_model.rs"]
+pub mod std_emit_model;
 #[rustfmt::skip]
 #[path = "../../stage0/src/std_http_path.rs"]
 pub mod std_http_path;
-#[rustfmt::skip]
-#[path = "../../stage0/src/std_emit_model.rs"]
-pub mod std_emit_model;
 #[rustfmt::skip]
 #[path = "../../stage0/src/std_magnitude.rs"]
 pub mod std_magnitude;
@@ -60,44 +45,20 @@ pub mod std_magnitude;
 #[path = "../../stage0/src/std_measure.rs"]
 pub mod std_measure;
 #[rustfmt::skip]
-#[path = "../../stage0/src/std_types.rs"]
-pub mod std_types;
-#[rustfmt::skip]
-#[path = "../../stage0/src/std_unicode_types.rs"]
-pub mod std_unicode_types;
-#[rustfmt::skip]
 #[path = "../../stage0/src/std_lens_verdict.rs"]
 pub mod std_lens_verdict;
-#[rustfmt::skip]
-#[path = "../../stage0/src/std_algebra.rs"]
-pub mod std_algebra;
 #[rustfmt::skip]
 #[path = "../../stage0/src/std_nat.rs"]
 pub mod std_nat;
 #[rustfmt::skip]
-#[path = "../../stage0/src/std_node.rs"]
-pub mod std_node;
-#[rustfmt::skip]
 #[path = "../../stage0/src/std_syntax.rs"]
 pub mod std_syntax;
-#[rustfmt::skip]
-#[path = "../../stage0/src/std_computation.rs"]
-pub mod std_computation;
-#[rustfmt::skip]
-#[path = "../../stage0/src/std_termination.rs"]
-pub mod std_termination;
-#[rustfmt::skip]
-#[path = "../../stage0/src/std_induction.rs"]
-pub mod std_induction;
 #[rustfmt::skip]
 #[path = "../../stage0/src/std_iteration.rs"]
 pub mod std_iteration;
 #[rustfmt::skip]
 #[path = "../../stage0/src/std_graph.rs"]
 pub mod std_graph;
-#[rustfmt::skip]
-#[path = "../../stage0/src/extdeps_uri.rs"]
-pub mod extdeps_uri;
 #[rustfmt::skip]
 #[path = "../../stage0/src/extdeps_external_authority.rs"]
 pub mod extdeps_external_authority;
@@ -114,11 +75,50 @@ pub mod extdeps_units_iec_80000_13;
 #[path = "../../stage0/src/extdeps_units_iso8601.rs"]
 pub mod extdeps_units_iso8601;
 #[rustfmt::skip]
-#[path = "../../stage0/src/std_occurrence_identity.rs"]
-pub mod std_occurrence_identity;
+#[path = "../../stage0/src/v1_std_core.rs"]
+pub mod v1_std_core;
+#[rustfmt::skip]
+#[path = "../../stage0/src/std_algebra.rs"]
+pub mod std_algebra;
+#[rustfmt::skip]
+#[path = "../../stage0/src/std_node.rs"]
+pub mod std_node;
+#[rustfmt::skip]
+#[path = "../../stage0/src/std_termination.rs"]
+pub mod std_termination;
+#[rustfmt::skip]
+#[path = "../../stage0/src/extdeps_uri.rs"]
+pub mod extdeps_uri;
+#[rustfmt::skip]
+#[path = "../../stage0/src/std_roster_frontier.rs"]
+pub mod std_roster_frontier;
+#[rustfmt::skip]
+#[path = "../../stage0/src/std_decl_ref.rs"]
+pub mod std_decl_ref;
+#[rustfmt::skip]
+#[path = "../../stage0/src/std_keyed_roster.rs"]
+pub mod std_keyed_roster;
+#[rustfmt::skip]
+#[path = "../../stage0/src/std_keyed_row.rs"]
+pub mod std_keyed_row;
 #[rustfmt::skip]
 #[path = "../../stage0/src/std_source_annotation.rs"]
 pub mod std_source_annotation;
 #[rustfmt::skip]
-#[path = "../../stage0/src/v1_std_core.rs"]
-pub mod v1_std_core;
+#[path = "../../stage0/src/std_induction.rs"]
+pub mod std_induction;
+#[rustfmt::skip]
+#[path = "../../stage0/src/std_types.rs"]
+pub mod std_types;
+#[rustfmt::skip]
+#[path = "../../stage0/src/std_error_primitives.rs"]
+pub mod std_error_primitives;
+#[rustfmt::skip]
+#[path = "../../stage0/src/std_computation.rs"]
+pub mod std_computation;
+#[rustfmt::skip]
+#[path = "../../stage0/src/std_unicode_types.rs"]
+pub mod std_unicode_types;
+#[rustfmt::skip]
+#[path = "../../stage0/src/std_occurrence_identity.rs"]
+pub mod std_occurrence_identity;
