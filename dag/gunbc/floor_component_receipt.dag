@@ -64,7 +64,11 @@ import gunbc.floor_component_receipt_document {
   receipt_member_affected_set_cold_control, receipt_member_unsuccessful_components,
   receipt_member_components, receipt_member_selection_degradation,
   receipt_member_workflow_name, receipt_member_head_sha
-}
+,
+  FloorComponentFailureMode, ModeNoFailure, ModeBudgetExceeded, ModeInfra, ModeWitnessRed, ModeNotReached, ModeUnrecorded,
+  floor_component_failure_mode_of, floor_component_failure_mode_tag, floor_component_outcome_of_mode,
+  ComponentOutcomeRead, ComponentConcluded, ComponentNotConcluded,
+  floor_component_outcome_tag, floor_component_outcome_wire_tag}
 
 data floor_component_receipt_note: String = "The floor's per-COMPONENT receipt, machine-readable, written on every exit path including a red one. WHY IT EXISTS, priced: .github/workflows/falsifier-alert.yml read only the overall workflow conclusion and hardcoded one causal story for every failure — 'affected-set cold control is dark, per-PR selection UNVERIFIED, Gate-1 receipts do not execute'. On run 30509024051 all three clauses were FALSE: the predict-only affected-set control concluded Done over 5217 witnesses and the expect_red batches produced their receipts; the single failing component was the silent-pick gate, killed at its whole-receipt wall budget. An overall-red composite that erases the green state of its completed children is a state-space conflation (DESIGN section 5), and it misdirects triage every time it fires. This module is the projection that makes the alert read state instead of inferring it. THE RECORD IS NOT NEW: each component is one batch-grain Concluded std.observation.ObservationEvent — the same authority gunbc.witness_row_cost names as THE record ('not a TSV schema') — so Refused stays distinct from Failed and a budget kill is TimedOut with its budget and elapsed, not a flattened red. A bespoke status schema here would have been a second representation of that record (DESIGN section 3)."
 
@@ -83,34 +87,6 @@ data floor_component_receipt_path: String = "target/floor-component-receipt.json
 data floor_component_receipt_artifact_name: String = "floor-component-receipt"
 
 data floor_component_failure_mode_edge_note: String = "WHY THE MODE RIDES BESIDE THE OUTCOME INSTEAD OF BEING RECOVERED FROM IT. floor_component_outcome_of_failure_mode is deliberately many-to-one: Infra and WitnessRed BOTH map to Failed, because both are a component that broke and ObservationOutcome is the right grain for the observation record. But they are not the same fault and they do not route to the same place — Infra is the fleet's (a runner died, a toolchain went missing), WitnessRed is the witness owner's (a claim is genuinely false). A consumer holding only the Failed arm cannot tell them apart, so it either routes both to one owner or re-derives the class by sniffing the diagnostic prose, which is the string-classification this module already refuses at the seed boundary. The mode therefore rides ON THE ROW, at row grain, and std.observation is NOT widened: ObservationOutcome stays the canonical record of WHAT the transition was, and the mode records WHICH declared failure vocabulary produced it. The two are derived from ONE tag in one place (floor_component_row_of_failure_mode), so they cannot disagree — a row whose mode says Infra while its outcome says Done is not constructible through the seed path. ModeUnrecorded is the honest arm for the tag-built constructor, which is handed an outcome directly and genuinely never saw a mode; the seed path never produces it."
-
-type FloorComponentFailureMode
-  = ModeNoFailure
-  | ModeBudgetExceeded
-  | ModeInfra
-  | ModeWitnessRed
-  | ModeNotReached
-  | ModeUnrecorded
-
-fn floor_component_failure_mode_of(mode: NonEmptyStr) -> FloorComponentFailureMode? {
-  if (mode as String) == "none" { Present { value: ModeNoFailure } }
-  else if (mode as String) == "BudgetExceeded" { Present { value: ModeBudgetExceeded } }
-  else if (mode as String) == "Infra" { Present { value: ModeInfra } }
-  else if (mode as String) == "WitnessRed" { Present { value: ModeWitnessRed } }
-  else if (mode as String) == "not_reached" { Present { value: ModeNotReached } }
-  else { none }
-}
-
-fn floor_component_failure_mode_tag(m: FloorComponentFailureMode) -> String {
-  match m {
-    ModeNoFailure => "none"
-    ModeBudgetExceeded => "BudgetExceeded"
-    ModeInfra => "Infra"
-    ModeWitnessRed => "WitnessRed"
-    ModeNotReached => "not_reached"
-    ModeUnrecorded => "unrecorded"
-  }
-}
 
 type FloorComponentRow {
   event: ObservationEvent
@@ -169,34 +145,10 @@ fn floor_component_outcome_of_tag(
 
 data floor_component_failure_mode_note: String = "The seed's failure-mode vocabulary (claim_executor falsifier_failure_mode: BudgetExceeded | Infra | WitnessRed, plus the no-failures case) mapped onto ObservationOutcome HERE rather than in Rust, so the classification sits under a witness and the seed transport carries no judgment of its own. BudgetExceeded becomes Refused, not Failed: a kill at a declared ceiling is the deliberate, located stop observation_refused_distinct_note defines Refused to mean, and its remedy (re-basis the dated ceiling, or fix the row's cost) differs from a broken witness's. UNKNOWN MODE REFUSES. The first version of this mapping lived in the seed with a `_ => failed` catch-all, which would have absorbed a newly added mode into `failed` silently — a widen with no diagnostic, exactly the absorbing fallback DESIGN section 5 forbids. Here an unmodelled mode returns absent, the row cannot be built, and the walk fails closed with the mode named."
 
-data floor_component_outcome_of_mode_single_authority_note: String = "ONE tag table, not two. An earlier revision of the failure-mode edge parsed the seed's tag twice — once to a FloorComponentFailureMode and once, separately, to an ObservationOutcome — so the tag vocabulary was written out in two parallel string tables that had to be edited together (caught by review 48341 on gunbc#7827, non-blocking; fixed here rather than left, because two representations of one vocabulary is the second-representation DESIGN 3 forbids and the fact that today's only caller invokes them back-to-back makes the drift local, not impossible). The outcome is now derived FROM THE MODE rather than from the tag, so the tag appears exactly once (floor_component_failure_mode_of) and the mode-to-outcome collapse appears exactly once here. A newly added mode is a compile error in this match instead of a silently unmapped string, which is the construction form of the fail-closed property the note above states. ModeUnrecorded REFUSES rather than being given an outcome: it is not a failure mode at all, it is the absence of a recorded one, so inventing an outcome for it would be the fabricated-plausible-output DESIGN 5 forbids. It is unreachable from the tag path by construction — floor_component_failure_mode_of never returns it — so the refusal is a total-match obligation, not a live arm."
-
-fn floor_component_outcome_of_mode(m: FloorComponentFailureMode, detail: NonEmptyStr) -> ObservationOutcome? {
-  match m {
-    ModeNoFailure => Present { value: Done }
-    ModeBudgetExceeded => Present { value: Refused { diagnostic: detail } }
-    ModeInfra => Present { value: Failed { error: detail, output: "" } }
-    ModeWitnessRed => Present { value: Failed { error: detail, output: "" } }
-    ModeNotReached => Present { value: Skipped { reason: detail } }
-    ModeUnrecorded => none
-  }
-}
-
 fn floor_component_outcome_of_failure_mode(mode: NonEmptyStr, detail: NonEmptyStr) -> ObservationOutcome? {
   match floor_component_failure_mode_of(mode: mode) {
     Absent => none
     Present { value: m } => floor_component_outcome_of_mode(m: m, detail: detail)
-  }
-}
-
-fn floor_component_outcome_tag(o: ObservationOutcome) -> String {
-  match o {
-    Done => "done"
-    Refused { diagnostic: _ } => "refused"
-    Failed { error: _, output: _ } => "failed"
-    TimedOut { basis: _, budget: _, elapsed: _ } => "timed_out"
-    Skipped { reason: _ } => "skipped"
-    Final { shown_failures: _ } => "final"
   }
 }
 
@@ -384,7 +336,7 @@ fn floor_component_row_json(row: FloorComponentRow) -> JsonValue {
       json_kv(key: "index", value: json_int(n: floor_component_row_index(row: row))),
       json_kv(key: "label", value: json_string(s: floor_component_row_label(row: row))),
       json_kv(key: "selection", value: json_string(s: floor_component_selection_tag(s: row.selection))),
-      json_kv(key: "outcome", value: json_string(s: "not_concluded")),
+      json_kv(key: "outcome", value: json_string(s: floor_component_outcome_wire_tag(r: ComponentNotConcluded))),
       json_kv(key: "failure_mode", value: json_string(s: floor_component_failure_mode_tag(m: row.failure_mode)))
     ])
     Present { value: o } => json_object(members: concat(
@@ -393,7 +345,7 @@ fn floor_component_row_json(row: FloorComponentRow) -> JsonValue {
         json_kv(key: "label", value: json_string(s: floor_component_row_label(row: row))),
         json_kv(key: "selection", value: json_string(s: floor_component_selection_tag(s: row.selection))),
         json_kv(key: "witnesses", value: json_int(n: row.witnesses)),
-        json_kv(key: "outcome", value: json_string(s: floor_component_outcome_tag(o: o))),
+        json_kv(key: "outcome", value: json_string(s: floor_component_outcome_wire_tag(r: ComponentConcluded { outcome: o }))),
         json_kv(key: "failure_mode", value: json_string(s: floor_component_failure_mode_tag(m: row.failure_mode))),
         json_kv(key: "is_affected_set_cold_control", value: json_bool(
           b: node_frontier_selection_eq(left: row.selection, right: SelectionPredictOnly)
@@ -494,9 +446,13 @@ fn floor_component_receipt_json_value(
       )
     ]))
   } else {
-    json_object(members: base)
+    json_object(members: concat(base, [
+      json_kv(key: receipt_member_selection_degradation, value: json_null())
+    ]))
   }
 }
+
+data selection_degradation_always_emitted_note: String = "selection_degradation IS EMITTED ON EVERY PATH, INCLUDING THE ONE WITH NO SELECTION SNAPSHOT, where it is an explicit null. It previously appeared only when a snapshot existed, and the member was simply absent otherwise.\n\nThat was tolerable while nothing decoded the receipt. It stopped being tolerable the moment gunbc.floor_component_receipt_document made the member REQUIRED on the read side: the writer could still emit a document the reader would refuse, so encode-then-decode was broken for exactly the path claim_executor takes when no selection ran (review 49594 caught this, correctly, along with a note on the decoder side that overstated what this writer did).\n\nAn explicit null is the right repair rather than relaxing the decoder, because the two states differ and the receipt should say which one it is: `null` means this run had no selection degradation to report, and an ABSENT member means the writer did not tell you either way. Making absence impossible on the write side is what lets the read side treat absence as the defect it now is."
 
 fn floor_component_receipt_document(
   workflow_name: NonEmptyStr,
