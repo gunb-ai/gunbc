@@ -38,6 +38,8 @@ fn ci_focused_native_release_test_budget_matches_enrollment() -> Bool {
   gunbc_ci_focused_native_release_test_step_budget_minutes() == (list_length(items: gunbc_ci_focused_native_release_test_rows) * gunbc_ci_focused_native_release_test_step_timeout_minutes)
 }
 
+data ci_focused_native_release_test_budget_eq_line_start_parse_note: String = "SCAFFOLD (#7982 workaround, not parser repair): ci_focused_native_release_test_budget_matches_enrollment originally broke a line before ==; parser refused with context-free \"expected expression, found EqEq\" (names token, not the continuation rule). Corpus census across dag/, src/v2/, src/v1/ .dag files — line-start binary continuation: && 9785, |> 789, == 0; leading == is novel. This PR keeps == on the same line as the callee (dominant &&/|> continuation style does not extend to ==). OPEN: is == continuation intentionally forbidden with a bad diagnostic, or a parser defect? Lane item — do not let the symptom evaporate when CI greens."
+
 data backstop_magnitude_pin_deleted_note: String = "ci_job_backstop_equals_one_hundred_minutes DELETED (the live-state count-transcription class, operator ruling 2026-07-30 — same class as the roadmap 63-declared pin): it mirrored the derived step-sum as a literal, so any legitimate step roster change redded it and the reviewer's move was editing the number until it matched. It redded here when the two receipt-gate steps moved in-executor (100 -> 90) — a correct change reported as a failure. The invariants that MATTER are magnitude-independent and stay asserted: the backstop equals the exact step-sum + prelude, and the selection-control term stayed dropped."
 
 fn ci_job_backstop_dropped_the_selection_control_term() -> Bool {
