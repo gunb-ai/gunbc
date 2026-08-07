@@ -93,6 +93,10 @@ data nfr_dissolve_content_hash_structural_refusal: String = "SourceRef digest co
 
 data nfr_reason_class_b_binding_projection: String = "Class B declared-import-closure observation projection (match on DeclaredImportClosureBindingObservation with off-variant wildcard refusal arms) landed with #7835 observe_declared_import_closure_symbol_binding builtin; callers judge ListedImport vs PoolCoincidence vs refusal — the match is the typed verdict fold over the host observation carrier, not business policy; declared at landing so the ratchet re-arms"
 
+data nfr_reason_release_identity_absent_split: String = "one-special-variant split over RunningReleaseUnidentifiedCause: ReleaseRevisionAbsent answers ProcessIdentityAbsent because a process predating the identity channel is a MIGRATION state, and the other nine causes answer ProcessIdentityMalformed because a live channel carrying something that is not an identity is a DEFECT in the deploying machinery. The nine share one arm because they already differ where it matters — running_release_unidentified_detail names each cause before the match runs, so the arm carries the distinction rather than erasing it, and enumerating the nine would clone one arm nine times (the DESIGN §2 redundancy, not the DESIGN §4 totality). Landed with Phase A release-identity readiness; declared at landing so the ratchet arms with the code."
+
+data nfr_dissolve_release_identity_absent_split: String = "the migration arm becomes unreachable once the identity-publishing release is deployed everywhere routed, at which point ReleaseRevisionAbsent is the executing RED control rather than a live arm; the split then folds into a derived migration-vs-defect partition over RunningReleaseUnidentifiedCause (the same derived-from-inhabitance move that clears the terminal-absorption rows) and this row deletes with it."
+
 data nfr_dissolve_class_b_binding_projection: String = "the observation carrier's verdict partition becomes derived from inhabitance (total match over BindingObserved vs BindingNotRunnable and over UnlistedImportBindingSource) and the wildcard arms delete with their rows"
 
 data non_fold_residue_frontier: List<FrontierRow> = [
@@ -865,6 +869,12 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "dag/gunbc/fleet_runner_connectivity.dag::connectivity_verdict_is_unknown" },
     reason: nfr_reason_mint_era,
     trigger: TriggerProse { text: nfr_dissolve_wildcard_total },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/live_deploy/readiness.dag::healthz_release_identity_refusal" },
+    reason: nfr_reason_release_identity_absent_split,
+    trigger: TriggerProse { text: nfr_dissolve_release_identity_absent_split },
+  },
   },
 ]
 
