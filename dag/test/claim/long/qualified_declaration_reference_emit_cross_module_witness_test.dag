@@ -1,0 +1,20 @@
+module test.claim.qualified_declaration_reference_emit_cross_module_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data qualified_declaration_reference_emit_cross_module_witness_note: String = "Long-lane half of qualified_declaration_reference_emit_witness_test: w_cross_module_qualified_reference_emits_call exercises std.emit_on_demand.interpreter_surviving_roles_ceiling through compile_dag_rust_emit_check. Measured ~4125ms thread-CPU warm locally; PR CI run 31198854678 discovery batch 3 killed at 5544ms > 5000ms fast-lane budget. Same-module fixture stays per-PR in dag/test/claim/qualified_declaration_reference_emit_witness_test.dag. dissolve_on: eval lands under gunbc_ci_fast_lane_witness_eval_budget on measured cold run and re-enrolls per-PR discovery."
+
+fn w_cross_module_qualified_reference_emits_call() -> Bool {
+  compile_dag_rust_emit_check(
+    "module qdref_cross\n\nimport std.emit_on_demand { interpreter_surviving_roles_ceiling }\nimport std.types { Int }\n\ndata qdref_cross_derived: Int = std.emit_on_demand.interpreter_surviving_roles_ceiling\n",
+    "src/qdref_cross.rs",
+    ["interpreter_surviving_roles_ceiling()"],
+    []
+  )
+}
+
+test fn cross_module_qualified_reference_emits_call_from_correct_module() -> Bool {
+  w_cross_module_qualified_reference_emits_call()
+}

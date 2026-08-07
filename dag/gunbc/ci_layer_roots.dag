@@ -1414,6 +1414,12 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run (e.g. shared module_declaration_facts memoization for the fixture pool) and re-enrolls per-PR discovery; row deletes with the long-lane file"
   },
   SubstrateLongLaneRow {
+    entry: "dag/test/claim/long/qualified_declaration_reference_emit_cross_module_witness_test.dag",
+    function: "cross_module_qualified_reference_emits_call_from_correct_module",
+    reason: "compile_dag_rust_emit_check cross-module fixture importing std.emit_on_demand.interpreter_surviving_roles_ceiling: measured ~4125ms thread-CPU warm locally; PR CI run 31198854678 discovery batch 3 killed at 5544ms > 5000ms fast-lane budget. Same-module sibling stays per-PR in dag/test/claim/qualified_declaration_reference_emit_witness_test.dag.",
+    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery; row deletes with the long-lane file"
+  },
+  SubstrateLongLaneRow {
     entry: "dag/test/claim/roadmap_program_view_live_corpus_receipt_test.dag",
     function: "live_roadmap_program_view_corpus_projection_receipt",
     reason: "LIVE-AUTHORITY INTEGRATION RECEIPT (operator verdict 2026-08-05, PR #7822): exercises the full declared roadmap closure through gunbc.roadmap_program_view — evidentiary wiring receipt enrolled on the corpus/integration lane for its integration role, not because eval cost exceeds the per-PR business budget. Business algebra stays on planted fixtures in roadmap_program_view_witness_test.dag",
