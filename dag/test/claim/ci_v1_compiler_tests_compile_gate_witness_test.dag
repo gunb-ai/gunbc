@@ -4,10 +4,8 @@ import v2.workflow.ci_v1_compiler_tests_compile_gate_emit {
   ci_v1_compiler_tests_compile_gate_script,
   ci_v1_compiler_tests_compile_gate_shell_emit_scaffold,
 }
-import gunbc.ci_spec {
-  ci_v1_compiler_tests_compile_gate_run_script,
-  ci_release_features,
-}
+import gunbc.ci_workflow { ci_v1_compiler_tests_compile_gate_run_script, ci_build_job }
+import gunbc.ci_spec { ci_release_features }
 import gunbc.ci_build_job_v1_compiler_unit_receipt {
   one_profile_ordering_status,
   one_compiler_unit_status,
@@ -15,7 +13,6 @@ import gunbc.ci_build_job_v1_compiler_unit_receipt {
   fleet_build_job_log_evidence_run,
   fleet_build_job_log_evidence_status,
 }
-import gunbc.ci_workflow { ci_build_job }
 import gunbc.ci_materialization { step_display_name }
 import extdeps.github.actions { Step, RunStep, UsesStep }
 import std.disposition { Scaffold }
@@ -43,6 +40,15 @@ test fn w_gate_script_names_release_test_no_run_command() -> Bool {
     && string_contains(s: script, pattern: "\"$CARGO_BIN\"")
     && !string_contains(s: script, pattern: "'check'")
     && !string_contains(s: script, pattern: "nextest")
+}
+
+test fn w_gate_script_eagain_cold_retry() -> Bool {
+  let script = ci_v1_compiler_tests_compile_gate_run_script()
+  string_contains(s: script, pattern: "Resource temporarily unavailable|failed to spawn")
+    && string_contains(s: script, pattern: "CARGO_BUILD_JOBS=1")
+    && string_contains(s: script, pattern: "keep sccache")
+    && !string_contains(s: script, pattern: "without RUSTC_WRAPPER")
+    && !string_contains(s: script, pattern: "env -u RUSTC_WRAPPER")
 }
 
 test fn w_gate_run_script_is_cargo_test_no_run_only() -> Bool {

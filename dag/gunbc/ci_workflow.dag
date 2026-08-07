@@ -20,7 +20,12 @@ import gunbc.ci_spec {
   ci_heal_author_commit_artifact_includes_hidden_files,
   gunbc_ci_heal_repo_local_git_config_invoke,
   ci_fmt_gate_line,
-  ci_v1_compiler_tests_compile_gate_run_script,
+}
+import gunbc.merge_admission_produce { ci_repo_root_shell }
+import v2.workflow.ci_retry_emit { ci_cargo_eagain_retry_script }
+import v2.workflow.ci_v1_compiler_tests_compile_gate_emit {
+  ci_v1_compiler_tests_compile_gate_command,
+  ci_v1_compiler_tests_compile_gate_shell_emit_dissolution_trigger,
 }
 import v2.workflow.ci_heal_revalidation_preflight_emit {
   ci_heal_revalidation_preflight_script,
@@ -299,6 +304,22 @@ fn ci_fmt_gate_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
+}
+
+fn ci_v1_compiler_tests_compile_gate_run_script() -> String {
+  concat(
+    "set -e\n",
+    concat(
+      concat("ROOT=", ci_repo_root_shell(), "\n"),
+      concat(
+        concat(
+          "# ",
+          concat(ci_v1_compiler_tests_compile_gate_shell_emit_dissolution_trigger, "\n")
+        ),
+        ci_cargo_eagain_retry_script(command: ci_v1_compiler_tests_compile_gate_command())
+      )
+    )
+  )
 }
 
 fn ci_v1_compiler_tests_compile_gate_step() -> Step {
