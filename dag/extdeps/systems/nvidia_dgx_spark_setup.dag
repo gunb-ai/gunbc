@@ -89,22 +89,22 @@ data dgx_spark_oobe_fields: List<OobeSetupField> = [
 
 // OobeSetupField is the closed universe of subjects a provisioning intent might want the
 // wizard to settle; dgx_spark_oobe_fields above is the subset the cited page says it
-// actually prompts for. Hostname assignment is in the universe and not in the list, and
-// that gap is expressed as a total predicate rather than a comment so a consumer can
-// branch on it: an intent carrying a desired_hostname cannot discharge it inside OOBE and
-// must route it to a separate post-setup step. This is a measured absence in the cited
-// page, not an omission in this model.
+// actually prompts for, in the order the page gives. The predicate is DERIVED from that
+// list rather than restating it — a second hand-maintained arm-by-arm table would be a
+// parallel representation of one cited fact, and the two would drift the first time the
+// vendor page changed (review 49759). Adding or removing a row in the list is now the only
+// way to move the predicate.
+//
+// Hostname assignment is in the universe and not in the list, and that gap is what the
+// predicate exists to expose: an intent carrying a desired_hostname cannot discharge it
+// inside OOBE and must route it to a separate post-setup step. This is a measured absence
+// in the cited page, not an omission in this model.
 fn dgx_spark_oobe_offers_field(field: OobeSetupField) -> Bool {
-  match field {
-    OobeLanguage => true
-    OobeTimeZone => true
-    OobeKeyboardLayout => true
-    OobeTermsAndConditions => true
-    OobeUserAccount => true
-    OobeAnalytics => true
-    OobeWirelessNetwork => true
-    OobeHostnameAssignment => false
-  }
+  fold(
+    dgx_spark_oobe_fields,
+    init: false,
+    f: (acc, offered) => acc || offered == field
+  )
 }
 
 // Whether first boot installs software updates is NOT settled by the cited corpus.
