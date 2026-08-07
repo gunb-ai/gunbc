@@ -579,6 +579,16 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: ProbeDoc,
+    slug: "claude_paired_entitlement_probe/README",
+    primary_work: DeclarationRef { module_path: "extdeps.llm.claude_agent_sdk_stream", decl_name: "claude_sdk_control_response_parser_drop_holds", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "test.claim.claude_sdk_parser_drop_witness", decl_name: "witness_control_response_parser_drop_fixture_holds", field: WholeDeclaration },
+      DeclarationRef { module_path: "test.claim.claude_sdk_parser_drop_live_witness", decl_name: "witness_wet_receipt_control_response_parser_drop_holds", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "gunbc.claude_agent_sdk_press enrolls the paired probe as a typed witness subsuming this hand runner (run-paired-probe.mjs dissolve-on header); then this bind deletes with the md" },
+  },
+  HandAuthoredDocBind {
+    home: ProbeDoc,
     slug: "g1-cited-symbol-control-declaration-absent",
     primary_work: DeclarationRef { module_path: "v2.std.node", decl_name: "G1_planted_declaration_absent_control_RED", field: WholeDeclaration },
     additional_works: [],
