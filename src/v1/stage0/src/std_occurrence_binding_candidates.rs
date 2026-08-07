@@ -381,9 +381,7 @@ pub fn declaration_exposure_from_containment(
             if __fm.is_empty() {
                 Rc::new(DeclarationExposure::RootExposure)
             } else {
-                Rc::new(DeclarationExposure::ModuleExposure {
-                    module: module_path.clone(),
-                })
+                declaration_exposure_module_local_member(module_path.clone(), containment.clone())
             }
         }
         DeclarationExposureGrounding::ModuleLocalMemberExposure => {
