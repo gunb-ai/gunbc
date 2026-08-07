@@ -17,11 +17,27 @@ import std.cache_interface {
   ReleasedAtProviderScopeExit,
   ReleasedNever,
   ReleasedManually,
-  capacity_is_bounded,
+  CapacityPolicy,
+  CapacityUnbounded,
+  CapacityBounded,
+  CapacityUnobserved,
+  CapacityLimit,
+  ByteCapacity,
+  EntryCountCapacity,
+  ExactLimit,
+  RuntimeDerivedLimit,
+  EffectiveLimitUnobserved,
+  AtCapacityDisposition,
+  RefuseNewStore,
+  ReplaceExisting,
+  AtCapacityUnobserved,
+  ReplacementStrategy,
+  LeastRecentlyUsed,
+  ProviderNativeReplacement,
 }
 import std.disposition { Disposition, Terminal }
 
-data artifact_store_module_note: String = "Witness-realization plan P2 (pure-spec half): the content-addressed artifact store - the corpus's first CacheProvider whose eviction field is READ (memory-control audit F5: eviction was write-only; here it gates construction and drives packing). The store is modeled as a pure fold: get bumps recency, put packs to budget by least-recent eviction with every eviction COUNTED in the returned receipt (a failure arm must refuse or count, never widen - DESIGN section 5). Keying is ContentHash BY SHAPE: no mtime, no existence input exists to consult, so ExistenceKeyed is unwritable here (the #6352 wall by construction). The host transport (real artifact directory + build wiring) is P2's second half; this spec is its single authority. Dissolve-on for the budget parameter: EvictionClass's budget field currently carries cited upstream policy PROSE in extdeps rows (two concepts in one field - our enforceable budget vs their described mechanism); when that splits into typed variants, store_over_provider derives the budget from the row instead of taking it beside the row."
+data artifact_store_module_note: String = "Witness-realization plan P2 (pure-spec half): the content-addressed artifact store - the corpus's first CacheProvider whose eviction field is READ (memory-control audit F5: eviction was write-only; here it gates construction and drives packing). The store is modeled as a pure fold: get bumps recency, put packs to budget by least-recent eviction with every eviction COUNTED in the returned receipt (a failure arm must refuse or count, never widen - DESIGN section 5). Keying is ContentHash BY SHAPE: no mtime, no existence input exists to consult, so ExistenceKeyed is unwritable here (the #6352 wall by construction). The host transport (real artifact directory + build wiring) is P2's second half; this spec is its single authority. THAT DISSOLVE-ON HAS FIRED (2026-08-07). The budget parameter is gone: store_over_provider(provider) now DERIVES the ceiling from the provider's own CapacityBounded/ByteCapacity/ExactLimit, because a caller-supplied ByteSize beside a provider that declares its own capacity was two authorities for one fact, and the fixtures proved they contradicted - providers declaring EffectiveLimitUnobserved were handed exact budgets of 100 and 1000000 bytes and the store believed the caller. It also realized every bounded provider as least-recently-used regardless of what at_capacity said, so a RefuseNewStore row would silently have evicted. Each way the derivation can fail now has its own cause rather than one StoreRefusedRetention the caller must re-interpret."
 
 type ArtifactKey {
   closure_digest: Fnv1a64Structural
@@ -83,32 +99,87 @@ type ArtifactStore {
   rows: List<ArtifactRow>
 }
 
+// EXACT CAUSES, not one carrier the caller must re-read. The remedies differ:
+// a wrong UNIT means this provider is the wrong cache for a byte-budgeted
+// store; an unresolved value means the deriving authority has to run first; an
+// unobserved one needs a citation; an unsupported at-capacity action means the
+// LRU realization below is not what that provider does.
+type StoreRefusalCause
+  = ProviderScopeReleased
+  | ProviderCapacityUnbounded
+  | ProviderCapacityUnobserved
+  | CapacityUnitMismatch
+  | CapacityValueUnobserved
+  | CapacityValueUnresolved
+  | StoreAtCapacityUnobserved
+  | RefuseNewStoreUnsupported
+  | ReplacementStrategyUnsupported
+
 type StoreConstruction
   = StoreReady { store: ArtifactStore }
-  | StoreRefusedRetention { provider_id: String, declared: ProviderRetention }
+  | StoreRefusedRetention {
+      provider_id: String,
+      declared: ProviderRetention,
+      cause: StoreRefusalCause
+    }
 
-// A persistent store needs BOTH halves, and the old single-variant test could
-// only see one: storage that outlives the provider's scope (a scope-released
-// carrier is not a store, which is what the ScopeExit arm refused), AND a known
-// ceiling (which SpacePacked asserted but, minted from Ttl or Lru, had often
-// not established). Refusing on either half is the same wall applied to the
-// axis that is actually missing.
-fn store_over_provider(provider: CacheProvider, budget: ByteSize) -> StoreConstruction {
+// A persistent store needs BOTH halves: storage that outlives the provider's
+// scope, AND a byte ceiling whose value is in hand. The budget is no longer a
+// parameter, so a store cannot be built over a provider that never established
+// the number it is being sized by.
+fn store_over_provider(provider: CacheProvider) -> StoreConstruction {
   match provider.retention.release_policy {
-    ReleasedAtProviderScopeExit =>
-      StoreRefusedRetention { provider_id: provider.id, declared: provider.retention }
-    ReleasedNever =>
-      store_if_capacity_bounded(provider: provider, budget: budget)
-    ReleasedManually =>
-      store_if_capacity_bounded(provider: provider, budget: budget)
+    ReleasedAtProviderScopeExit => store_refused(provider: provider, cause: ProviderScopeReleased)
+    ReleasedNever => store_from_capacity(provider: provider, c: provider.retention.capacity)
+    ReleasedManually => store_from_capacity(provider: provider, c: provider.retention.capacity)
   }
 }
 
-fn store_if_capacity_bounded(provider: CacheProvider, budget: ByteSize) -> StoreConstruction {
-  if capacity_is_bounded(c: provider.retention.capacity) {
-    StoreReady { store: ArtifactStore { budget: budget, next_ordinal: 1, rows: [] } }
-  } else {
-    StoreRefusedRetention { provider_id: provider.id, declared: provider.retention }
+fn store_refused(provider: CacheProvider, cause: StoreRefusalCause) -> StoreConstruction {
+  StoreRefusedRetention {
+    provider_id: provider.id,
+    declared: provider.retention,
+    cause: cause
+  }
+}
+
+fn store_from_capacity(provider: CacheProvider, c: CapacityPolicy) -> StoreConstruction {
+  match c {
+    CapacityUnbounded => store_refused(provider: provider, cause: ProviderCapacityUnbounded)
+    CapacityUnobserved => store_refused(provider: provider, cause: ProviderCapacityUnobserved)
+    CapacityBounded { limit: l, at_capacity: action } =>
+      match store_replacement_supported(action: action) {
+        Present { value: cause } => store_refused(provider: provider, cause: cause)
+        Absent => store_from_limit(provider: provider, l: l)
+      }
+  }
+}
+
+// THE REALIZATION BELOW IS LEAST-RECENTLY-USED, so it may only be built over a
+// provider that says so. The former shape read at_capacity not at all and
+// packed by LRU whatever the row declared.
+fn store_replacement_supported(action: AtCapacityDisposition) -> StoreRefusalCause? {
+  match action {
+    AtCapacityUnobserved => Present { value: StoreAtCapacityUnobserved }
+    RefuseNewStore => Present { value: RefuseNewStoreUnsupported }
+    ReplaceExisting { strategy: s } => match s {
+      LeastRecentlyUsed => none
+      ProviderNativeReplacement => Present { value: ReplacementStrategyUnsupported }
+    }
+  }
+}
+
+fn store_from_limit(provider: CacheProvider, l: CapacityLimit) -> StoreConstruction {
+  match l {
+    EntryCountCapacity { limit: _ } => store_refused(provider: provider, cause: CapacityUnitMismatch)
+    ByteCapacity { limit: v } => match v {
+      ExactLimit { value: bytes } =>
+        StoreReady { store: ArtifactStore { budget: bytes, next_ordinal: 1, rows: [] } }
+      RuntimeDerivedLimit { authority: _ } =>
+        store_refused(provider: provider, cause: CapacityValueUnresolved)
+      EffectiveLimitUnobserved =>
+        store_refused(provider: provider, cause: CapacityValueUnobserved)
+    }
   }
 }
 

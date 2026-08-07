@@ -5,7 +5,7 @@ import std.types { String }
 import std.content_hash { ContentHash, Fnv1a64Structural, content_hash_atom }
 import std.measure { ByteSize, byte_size }
 import std.cache_interface {
-  CapacityBounded, ByteCapacity, EffectiveLimitUnobserved,
+  CapacityBounded, ByteCapacity, ExactLimit,
   ReplaceExisting, LeastRecentlyUsed,
 }
 import std.materialization_ladder {
@@ -80,7 +80,7 @@ data kernel_provider: CacheProvider = provider_row(
   scope: [],
   coverage: CoversAllComputations,
   tier: ArtifactTier { keying: ContentKeyed },
-  retention: persistent_retention(capacity: CapacityBounded { limit: ByteCapacity { limit: EffectiveLimitUnobserved }, at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed } })
+  retention: persistent_retention(capacity: CapacityBounded { limit: ByteCapacity { limit: ExactLimit { value: byte_size(count: 1000000) } }, at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed } })
 )
 
 fn kernel_closure_digest() -> Fnv1a64Structural {
@@ -108,7 +108,7 @@ fn kernel_alt_subject_tree() -> InferredTree {
 }
 
 fn kernel_test_store() -> ArtifactStore {
-  match store_over_provider(provider: kernel_provider, budget: byte_size(count: 1000000)) {
+  match store_over_provider(provider: kernel_provider) {
     StoreReady { store: s } => s
     StoreRefusedRetention { provider_id: _, declared: _ } =>
       ArtifactStore { budget: byte_size(count: 0), next_ordinal: 1, rows: [] }

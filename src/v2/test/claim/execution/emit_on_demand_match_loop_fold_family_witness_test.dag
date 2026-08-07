@@ -5,7 +5,7 @@ import std.types { String }
 import std.content_hash { ContentHash, Fnv1a64Structural }
 import std.measure { ByteSize, byte_size }
 import std.cache_interface {
-  CapacityBounded, ByteCapacity, EffectiveLimitUnobserved,
+  CapacityBounded, ByteCapacity, ExactLimit,
   ReplaceExisting, LeastRecentlyUsed,
 }
 import std.materialization_ladder {
@@ -99,11 +99,11 @@ data family_provider: CacheProvider = provider_row(
   scope: [],
   coverage: CoversAllComputations,
   tier: ArtifactTier { keying: ContentKeyed },
-  retention: persistent_retention(capacity: CapacityBounded { limit: ByteCapacity { limit: EffectiveLimitUnobserved }, at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed } })
+  retention: persistent_retention(capacity: CapacityBounded { limit: ByteCapacity { limit: ExactLimit { value: byte_size(count: 1000000) } }, at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed } })
 )
 
 fn family_open_test_store() -> Optional<ArtifactStore> {
-  match store_over_provider(provider: family_provider, budget: byte_size(count: 1000000)) {
+  match store_over_provider(provider: family_provider) {
     StoreReady { store: s } => optional_present(value: s)
     StoreRefusedRetention { provider_id: _, declared: _ } => optional_absent()
   }
