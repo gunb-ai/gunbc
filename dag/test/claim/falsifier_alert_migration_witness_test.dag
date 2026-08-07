@@ -44,7 +44,10 @@ import gunbc.floor_component_receipt_document {
   ReceiptSubjectMatch, ReceiptSubjectMatches,
   ReceiptSubjectRunIdMismatch, ReceiptSubjectWorkflowMismatch, ReceiptSubjectHeadShaMismatch,
   ReceiptComponentCountMismatch, ReceiptUnsuccessfulComponentIdentityNotUnique,
+  ReceiptUnsuccessfulPopulationMismatch,
   ComponentAlertSummary,
+  FloorComponentFailureMode, floor_component_failure_mode_tag,
+  summary_outcome_is_unsuccessful,
   floor_component_receipt_decode_with,
   floor_component_receipt_subject_matches_event
 }
