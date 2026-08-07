@@ -446,6 +446,9 @@ fn component_outcome_agrees_with_failure_mode(read: ComponentOutcomeRead, mode: 
         ModeBudgetExceeded => outcome_matches_implied_mode(o: o, mode: mode)
         ModeInfra => outcome_matches_implied_mode(o: o, mode: mode)
         ModeWitnessRed => outcome_matches_implied_mode(o: o, mode: mode)
+        ModeStaleKnownRed => outcome_matches_implied_mode(o: o, mode: mode)
+        ModeExpectedRedEvidenceAbsent => outcome_matches_implied_mode(o: o, mode: mode)
+        ModeExpectedRedPreVerdictUnverified => outcome_matches_implied_mode(o: o, mode: mode)
         ModeNotReached => outcome_matches_implied_mode(o: o, mode: mode)
       }
   }
