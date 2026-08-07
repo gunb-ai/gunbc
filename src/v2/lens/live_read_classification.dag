@@ -506,17 +506,12 @@ fn live_read_classification_g2_from_facts(
   carrier_homes: List<LiveReadCarrierHome>
 ) -> LiveReadClassification {
   let closure_modules = witness_import_closure(root: entry_module, facts: facts)
-  let g1 = live_read_classification_g1(
-    closure_modules: closure_modules,
-    carrier_homes: carrier_homes
-  )
   let reachable = call_reachable_decls(
     entry_module: entry_module,
     closure_modules: closure_modules,
     decls: decls
   )
-  let g2_carriers = carriers_from_reachable_decls(reachable: reachable)
-  let carriers = merge_g1_and_g2_carriers(g1: g1, g2_carriers: g2_carriers)
+  let carriers = carriers_from_reachable_decls(reachable: reachable)
   if length(xs: carriers) == 0 {
     LocalRead
   } else {
