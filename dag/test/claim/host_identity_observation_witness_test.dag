@@ -202,12 +202,26 @@ test fn witness_adopt_model_hash_is_stable() -> Bool {
 
 test fn witness_desired_intent_from_modeled_fleet_slot() -> Bool {
   match gunbc_srv1_deployed_intent_v1 {
-    Present { value: desired } =>
-      match deployed_intent_v1_desired_hostname_short(fleet_slot: operator_host_srv1) {
-        Present { value: derived } => desired.desired_hostname_short == derived
+    Present { value: desired } => (desired.desired_hostname_short as String) == "srv1"
+    Absent => false
+  }
+}
+
+test fn witness_desired_hostname_comes_from_allocation_not_slot_spelling() -> Bool {
+  match canonical_hostname_for_fleet_slot(fleet_slot: operator_host_srv1) {
+    Present { value: allocated } =>
+      match gunbc_srv1_deployed_intent_v1 {
+        Present { value: desired } => desired.desired_hostname_short == allocated
         Absent => false
       }
     Absent => false
+  }
+}
+
+test fn witness_unallocated_fleet_slot_has_no_hostname() -> Bool {
+  match canonical_hostname_for_fleet_slot(fleet_slot: "srv9" as HostIdentity) {
+    Absent => true
+    Present { value: _ } => false
   }
 }
 
