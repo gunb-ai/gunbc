@@ -49,6 +49,14 @@ data still_ram_738_srv3_shell_transport: HostShellTransportObservation = ShellTr
   gap: "gunbc.plans.fleet_subsumption_manual_gaps B2 + A1 materialized secret for fleet-automation key" as NonEmptyStr,
 }
 
+data parent_probe_2026_08_07_srv3_shell_transport: HostShellTransportObservation = ShellTransportSucceeded {
+  observed_on: "2026-08-07" as NonEmptyStr,
+  principal: "srv2 (jump) -> ubuntu@192.168.1.221" as NonEmptyStr,
+  detail: "vivid-eagle-131 reached srv3 on this path (supersedes still_ram_738 2026-08-06 ReachRefused from srv1-as-briansrls direct attempt; srv4 remains only unreachable host)" as NonEmptyStr,
+}
+
+data srv3_shell_transport_observation_correction_note: String = "CORRECTION (2026-08-07): srv3 IS reachable via srv2->ubuntu@192.168.1.221. still_ram_738_srv3_shell_transport is a stale session receipt; parent_probe_2026_08_07_srv3_shell_transport is the current observation for planning."
+
 data still_ram_738_srv4_shell_transport: HostShellTransportObservation = ShellTransportReachRefused {
   observed_on: "2026-08-06" as NonEmptyStr,
   principal: "node@srv4" as NonEmptyStr,
@@ -62,7 +70,7 @@ fn still_ram_738_session_shell_transport(host: HostIdentity) -> HostShellTranspo
   } else if (host as String) == (operator_host_srv2 as String) {
     still_ram_738_srv2_shell_transport
   } else if (host as String) == (operator_host_srv3 as String) {
-    still_ram_738_srv3_shell_transport
+    parent_probe_2026_08_07_srv3_shell_transport
   } else if (host as String) == (operator_host_srv4 as String) {
     still_ram_738_srv4_shell_transport
   } else {

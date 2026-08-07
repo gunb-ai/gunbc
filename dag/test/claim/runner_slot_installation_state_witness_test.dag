@@ -4,21 +4,48 @@ import std.logic { Bool }
 import gunbc.runner_incarnation {
   RunnerSlotInstallationState,
   SlotAbsent,
-  SlotMaterializedNotActivated,
-  SlotActivated,
+  SlotMaterializedNotActive,
+  SlotCurrentlyActive,
+  runner_slot_add_requires_incarnation_replace,
   runner_slot_installation_is_ready_to_activate,
+  runner_slot_installation_is_converged,
   runner_slot_installation_must_not_reextract,
 }
 
-test fn witness_materialized_not_activated_is_ready_without_runner_dot() -> Bool {
+test fn witness_never_activated_materialized_is_ready() -> Bool {
   runner_slot_installation_is_ready_to_activate(
-    state: SlotMaterializedNotActivated { slot_dir_complete: true, has_runner_dot_file: false },
+    state: SlotMaterializedNotActive {
+      install_tree_complete: true,
+      unit_active: false,
+      stale_runner_dot_present: false,
+    },
   )
 }
 
-test fn witness_materialized_not_activated_must_not_reextract_when_complete() -> Bool {
+test fn witness_stale_runner_dot_does_not_block_activation() -> Bool {
+  runner_slot_installation_is_ready_to_activate(
+    state: SlotMaterializedNotActive {
+      install_tree_complete: true,
+      unit_active: false,
+      stale_runner_dot_present: true,
+    },
+  )
+    && !runner_slot_add_requires_incarnation_replace(
+      state: SlotMaterializedNotActive {
+        install_tree_complete: true,
+        unit_active: false,
+        stale_runner_dot_present: true,
+      },
+    )
+}
+
+test fn witness_materialized_not_active_must_not_reextract_when_complete() -> Bool {
   runner_slot_installation_must_not_reextract(
-    state: SlotMaterializedNotActivated { slot_dir_complete: true, has_runner_dot_file: false },
+    state: SlotMaterializedNotActive {
+      install_tree_complete: true,
+      unit_active: false,
+      stale_runner_dot_present: true,
+    },
   )
 }
 
@@ -27,8 +54,23 @@ test fn witness_absent_is_not_ready_and_may_fetch() -> Bool {
     && !runner_slot_installation_must_not_reextract(state: SlotAbsent {})
 }
 
-test fn witness_activated_with_runner_dot_must_not_reextract() -> Bool {
-  runner_slot_installation_must_not_reextract(
-    state: SlotActivated { unit_active: true, has_runner_dot_file: true },
+test fn witness_active_unit_is_converged_not_ready() -> Bool {
+  !runner_slot_installation_is_ready_to_activate(
+    state: SlotMaterializedNotActive {
+      install_tree_complete: true,
+      unit_active: true,
+      stale_runner_dot_present: true,
+    },
   )
+    && runner_slot_installation_is_converged(
+      state: SlotMaterializedNotActive {
+        install_tree_complete: true,
+        unit_active: true,
+        stale_runner_dot_present: true,
+      },
+    )
+}
+
+test fn witness_currently_active_is_converged() -> Bool {
+  runner_slot_installation_is_converged(state: SlotCurrentlyActive {})
 }

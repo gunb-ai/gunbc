@@ -10,33 +10,50 @@ data runner_incarnation_authority_disposition: Disposition = SingleAuthority
 
 data runner_incarnation_process_identity_note: String = "LocalRunnerSlotIncarnation deliberately carries NO process/PID field today. Staleness for ReplaceRunnerIncarnation is expressed through slot, unit, unit_active, and registration_name until gunbc.runner_lifecycle ObserveRunnerLocalState grounds a live process identity producer. Adding a phantom process field without that producer would be specification-without-execution (DESIGN section 5). The seam witness proves the modeled fields survive HostEffect projection; a dedicated process identity lands with ObserveRunnerLocalState wet read-back."
 
-data runner_slot_installation_state_note: String = "THREE STATES (operator correction 2026-08-07): SlotAbsent | SlotMaterializedNotActivated | SlotActivated. srv1 observed: 50 complete runner trees under /opt/actions-runner/srv1-NN (bin, config.sh, run.sh, runsvc.sh, svc.sh, _work, …) but only 5 units active. srv1-06 is structurally identical to srv1-01 except no .runner file — JIT registration happens at unit start via jit-runner.sh, not at install time. WRONG ARMS for MaterializedNotActivated: 'refuse existing directory' (empty-observation narrow — slot is ready to start) and 're-extract over it' (clobbers working tree). When directory is already complete, ADD may need only set-property caps + daemon-reload + start (operator scope UNRULED — do not implement until ruled). Digest verify / extract remain required for genuinely SlotAbsent slots only."
+data runner_slot_installation_state_note: String = "INSTALLATION STATES (operator corrections 2026-08-07): SlotAbsent | SlotMaterializedNotActive | SlotCurrentlyActive. Materialized-not-active is ONE actionable state whether or not a stale .runner exists — run.sh --jitconfig rewrites .runner every incarnation start (srv1-01 measured: .runner mtime 09:19:21, unit ActiveEnterTimestamp 09:19:20). srv3-06/07 stale Jul-21 .runner files are harmless; ADD does NOT need IncarnationReplace. Startable when install tree complete AND unit disabled+inactive; converged when unit active. When materialized, ADD may need only set-property caps + daemon-reload + start (scope UNRULED). Digest/extract only for SlotAbsent. Never refuse or re-extract complete trees."
+
+data runner_slot_stale_runner_dot_note: String = "stale_runner_dot_present records HISTORY only (never-activated vs previously-activated). It must NOT fork the plan or block activation. Measured: jit-runner.sh does not clean .runner/.credentials before start; run.sh overwrites them."
 
 type RunnerSlotInstallationState
   = SlotAbsent {}
-  | SlotMaterializedNotActivated {
-      slot_dir_complete: Bool
-      has_runner_dot_file: Bool
-    }
-  | SlotActivated {
+  | SlotMaterializedNotActive {
+      install_tree_complete: Bool
       unit_active: Bool
-      has_runner_dot_file: Bool
+      stale_runner_dot_present: Bool
     }
+  | SlotCurrentlyActive {}
+
+fn runner_slot_add_requires_incarnation_replace(state: RunnerSlotInstallationState) -> Bool {
+  match state {
+    SlotAbsent {} => false
+    SlotMaterializedNotActive { install_tree_complete: _, unit_active: _, stale_runner_dot_present: _ } => false
+    SlotCurrentlyActive {} => false
+  }
+}
 
 fn runner_slot_installation_is_ready_to_activate(state: RunnerSlotInstallationState) -> Bool {
   match state {
     SlotAbsent {} => false
-    SlotMaterializedNotActivated { slot_dir_complete: complete, has_runner_dot_file: has_dot } =>
-      complete && !has_dot
-    SlotActivated { unit_active: active, has_runner_dot_file: _ } => active
+    SlotMaterializedNotActive { install_tree_complete: complete, unit_active: active, stale_runner_dot_present: _ } =>
+      complete && !active
+    SlotCurrentlyActive {} => false
+  }
+}
+
+fn runner_slot_installation_is_converged(state: RunnerSlotInstallationState) -> Bool {
+  match state {
+    SlotAbsent {} => false
+    SlotMaterializedNotActive { install_tree_complete: _, unit_active: active, stale_runner_dot_present: _ } => active
+    SlotCurrentlyActive {} => true
   }
 }
 
 fn runner_slot_installation_must_not_reextract(state: RunnerSlotInstallationState) -> Bool {
   match state {
     SlotAbsent {} => false
-    SlotMaterializedNotActivated { slot_dir_complete: complete, has_runner_dot_file: _ } => complete
-    SlotActivated { unit_active: _, has_runner_dot_file: _ } => true
+    SlotMaterializedNotActive { install_tree_complete: complete, unit_active: _, stale_runner_dot_present: _ } =>
+      complete
+    SlotCurrentlyActive {} => true
   }
 }
 

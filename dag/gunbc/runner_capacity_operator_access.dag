@@ -24,7 +24,9 @@ data runner_capacity_workflow_only_application_note: String = "OPERATOR RULING (
 
 data runner_capacity_apply_yml_heal_note: String = "PR A apply.yml heal is structurally blocked: .github/workflows/** cannot be pushed by the Actions token. CI cannot emit apply.yml; an author commit is required. Do not depend on heal landing that file."
 
-data runner_capacity_width_authority_note: String = "WIDTH AUTHORITY = activated unit count joined to org roster, NOT raw directory count. srv1 has 50 COMPLETE install trees but only 5 activated units — 45 are MaterializedNotActivated (ready to start, no .runner until JIT at start). srv3-06/07 state is UNOBSERVED from this session; in-band read-only probe required before planning. Never refuse or re-extract a complete dormant tree (operator correction 2026-08-07)."
+data runner_capacity_width_authority_note: String = "WIDTH AUTHORITY = activated unit count joined to org roster, NOT install-tree count. srv1: 50 complete trees, 5 active. srv3 observed 2026-08-07: slots 06/07/08 are complete install trees (08 exists — materialized width 8); committed width 7 is a memory CEILING, not a materialization limit — slot 08 stays materialized and unactivated. Stale .runner on 06/07 is not a blocker (rewritten at start). Never refuse or re-extract complete dormant trees."
+
+data srv3_slot_installation_parent_probe_note: String = "srv3 read-only probe via srv2->ubuntu@192.168.1.221 (vivid-eagle-131, 2026-08-07): srv3-06/07/08 complete (bin, config.sh, run.sh, _work, …). 06/07 have stale .runner dated 2026-07-21; units disabled+inactive. Same actionable state as srv1-06 (never activated). ADD path: set-property + daemon-reload + start only — no IncarnationReplace. srv4 remains ReachRefused (only unreachable host)."
 
 type RunnerCapacityActionClass
   = RunnerCapacityAddSlots { host: HostIdentity }
