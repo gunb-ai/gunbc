@@ -24,7 +24,7 @@ import gunbc.runner_slot_provision {
   RunnerSlotMember,
   runner_slot_provision_has_width_increase,
 }
-import gunbc.membership_reconcile { membership_upsert_count }
+import gunbc.membership_reconcile { membership_added_count }
 import gunbc.fleet_host_budget { declared_runner_count_for }
 import gunbc.fleet_intent_network { operator_host_srv3 }
 import extdeps.exec.command { shell_command_render }
@@ -74,8 +74,8 @@ test fn witness_membership_reconcile_adds_delta_slots() -> Bool {
     desired: desired_runner_slot_members(deploy: srv3_runner_host_deploy),
     observed: observed,
   )
-  membership_upsert_count(plan: plan) == 5
-    && membership_upsert_count(plan: plan) == list_length(items: desired_runner_slot_members(deploy: srv3_runner_host_deploy)) - 2
+  membership_added_count(plan: plan) == 5
+    && membership_added_count(plan: plan) == list_length(items: desired_runner_slot_members(deploy: srv3_runner_host_deploy)) - 2
 }
 
 test fn witness_provision_plan_extracts_only_upserts() -> Bool {

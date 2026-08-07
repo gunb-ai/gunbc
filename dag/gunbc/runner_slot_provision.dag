@@ -5,11 +5,12 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.membership_reconcile {
   MembershipPlan,
-  MemberUpsert,
-  MemberTeardown,
-  MemberTeardownRefused,
+  MemberAdded,
+  MemberChanged,
+  MemberRemoved,
+  MemberRemovalRefused,
   membership_reconcile,
-  membership_upsert_count,
+  membership_added_count,
 }
 import gunbc.ownership { Ownership }
 import gunbc.runner_host_deploy {
@@ -81,7 +82,7 @@ fn runner_slot_member_value_eq(a: RunnerSlotMember, b: RunnerSlotMember) -> Bool
   a.slot_dir as String == b.slot_dir as String
 }
 
-data runner_slot_member_ownership_scaffold_note: String = "Ownership is NOT asserted for every observed slot-dir under /opt/actions-runner. R5 teardown-owned-only requires a provenance signal (gunbc-managed systemd drop-in + unit template this lane writes) before apply lands; until host_effect observation can read that signal, ownership_of returns Absent so Removed out-of-band dirs yield MemberTeardownRefused rather than fabricated Owned (review 49707)."
+data runner_slot_member_ownership_scaffold_note: String = "Ownership is NOT asserted for every observed slot-dir under /opt/actions-runner. R5 teardown-owned-only requires a provenance signal (gunbc-managed systemd drop-in + unit template this lane writes) before apply lands; until host_effect observation can read that signal, ownership_of returns Absent so Removed out-of-band dirs yield MemberRemovalRefused rather than fabricated Owned (review 49707)."
 
 fn runner_slot_member_ownership(m: RunnerSlotMember) -> Ownership? {
   Absent
@@ -148,19 +149,20 @@ fn runner_slot_provision_plan(
     base_dir_script: actions_runner_base_dir_ensure_script(runner_user: deploy.runner_user),
     upsert_extract_scripts: flat_map(membership.actions, a =>
       match a {
-        MemberUpsert { member: m } =>
+        MemberAdded { to: m } =>
           [actions_runner_slot_extract_script(
             artifact: artifact,
             slot_dir: m.slot_dir,
             job_user: deploy.job_user,
           )]
-        MemberTeardown { member: _ } => []
-        MemberTeardownRefused { member: _, cause: _ } => []
+        MemberChanged { from: _, to: _ } => []
+        MemberRemoved { from: _ } => []
+        MemberRemovalRefused { from: _, cause: _ } => []
       }
     ),
   }
 }
 
 fn runner_slot_provision_has_width_increase(plan: RunnerSlotProvisionPlan) -> Bool {
-  membership_upsert_count(plan: plan.membership) > 0
+  membership_added_count(plan: plan.membership) > 0
 }
