@@ -1,6 +1,6 @@
 module test.claim.session_auto_publish_harness_witness
 
-import std.types { Bool, CommitSha, Timestamp }
+import std.types { Bool, CommitSha, Timestamp, List }
 import v2.std.optional { Absent, Present }
 import gunbc.session_auto_publish {
   SessionPublishState,
@@ -50,10 +50,41 @@ import gunbc.session_auto_publish {
   HealerRepairTargetUnknownRefused,
   adjudicate_local_checkpoint,
   adjudicate_remote_publication,
+  admit_remote_publication,
   publication_is_permitted,
+  PublicationRequest,
+  mint_publication_request,
+  ObservedRemoteHead,
+  RemoteHeadKnown,
+  RemoteHeadObservationUnknown,
+  IndexCleanliness,
+  IndexClean,
+  IndexDirty,
+  IndexCleanlinessUnknown,
+  CountObservation,
+  CountKnown,
+  CountUnknown,
+  PostWriteCompile,
+  PostWriteCompileGreen,
+  PostWriteCompileRed,
+  PostWriteCompileUnknown,
+  PeerAuthorship,
+  PeerAuthoredByPublisher,
+  PeerNotAuthoredByPublisher,
+  PeerAuthorshipUnknown,
+  RemotePublishAttempt,
+  NoExplicitPublicationRequest,
+  RemoteHeadMovedSinceObservation,
+  IndexDirtyRefused,
+  UnmergedStagesPresent,
+  ConflictMarkersPresent,
+  WriteOutsideDeclaredSet,
+  PostWriteCompileRedRefused,
+  PeerCommitNotAuthoredByPublisherRefused,
+  PostWriteCompileUnknownRefused,
 }
 
-data witness_scope_note: String = "AUTO-PUBLISH harness: slice 0 recut proves three independent axes — LocalCheckpoint (local autosave), RemoteBranchPublication (explicit publish push), WorkerNotification (user publish or drift reminder) — and that silent polling advances none of them; slice 1 proves immediate policy adjudication. What is NOT claimed: shell transport does not yet call these fns, so publishSessionWorktree can still auto-push, autosave can still create a remote branch, and the healer can still mutate an active author branch until the transport slice lands."
+data witness_scope_note: String = "AUTO-PUBLISH harness: slice 0 recut proves three independent axes — LocalCheckpoint (local autosave), RemoteBranchPublication (explicit publish push), WorkerNotification (user publish or drift reminder) — and that silent polling advances none of them; slice 1 proves immediate policy adjudication; slice 2 proves default-deny remote-publish conjunction with five refusal fixtures and a positive control. What is NOT claimed: shell transport does not yet call admit_remote_publication, so publishSessionWorktree can still auto-push until the transport slice lands."
 
 data head_a: CommitSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 data head_b: CommitSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
@@ -363,6 +394,219 @@ test fn red_autosave_remote_would_have_published() -> Bool {
     kind: RemotePushBranch,
   ) {
     PublicationRefuse { cause: AutosaveRemotePublicationForbidden } => true
+    PublicationPermit => false
+  }
+}
+
+fn clean_publish_request(head: CommitSha) -> PublicationRequest {
+  mint_publication_request(
+    requester: "loyal-otter-651",
+    expected_remote_head: head,
+    produced_head: head,
+  )
+}
+
+fn clean_publish_attempt(head: CommitSha, paths: List<String>) -> RemotePublishAttempt {
+  RemotePublishAttempt {
+    subject: PublicationSubjectExplicitUserIntent,
+    kind: RemotePushBranch,
+    request: Present { value: clean_publish_request(head: head) },
+    observed_remote_head: RemoteHeadKnown { head: head },
+    current_remote_head: RemoteHeadKnown { head: head },
+    index_cleanliness: IndexClean,
+    unmerged_stage_count: CountKnown { count: 0 },
+    conflict_marker_count: CountKnown { count: 0 },
+    declared_write_paths: paths,
+    actual_write_paths: paths,
+    post_write_compile: PostWriteCompileGreen,
+    peer_authorship: PeerAuthoredByPublisher,
+  }
+}
+
+test fn explicit_request_positive_control_permits_remote_publication() -> Bool {
+  publication_is_permitted(
+    disposition: admit_remote_publication(
+      attempt: clean_publish_attempt(
+        head: head_a,
+        paths: ["dag/gunbc/session_auto_publish.dag"],
+      ),
+    ),
+  )
+}
+
+test fn fixture_uncompilable_tree_refuses_before_remote_write() -> Bool {
+  match admit_remote_publication(
+    attempt: RemotePublishAttempt {
+      subject: PublicationSubjectExplicitUserIntent,
+      kind: RemotePushBranch,
+      request: Present { value: clean_publish_request(head: head_a) },
+      observed_remote_head: RemoteHeadKnown { head: head_a },
+      current_remote_head: RemoteHeadKnown { head: head_a },
+      index_cleanliness: IndexClean,
+      unmerged_stage_count: CountKnown { count: 0 },
+      conflict_marker_count: CountKnown { count: 0 },
+      declared_write_paths: ["dag/gunbc/session_auto_publish.dag"],
+      actual_write_paths: ["dag/gunbc/session_auto_publish.dag"],
+      post_write_compile: PostWriteCompileRed,
+      peer_authorship: PeerAuthoredByPublisher,
+    },
+  ) {
+    PublicationRefuse { cause: PostWriteCompileRedRefused } => true
+    PublicationPermit => false
+  }
+}
+
+test fn fixture_conflict_markers_refuse_before_remote_write() -> Bool {
+  match admit_remote_publication(
+    attempt: RemotePublishAttempt {
+      subject: PublicationSubjectExplicitUserIntent,
+      kind: RemotePushBranch,
+      request: Present { value: clean_publish_request(head: head_a) },
+      observed_remote_head: RemoteHeadKnown { head: head_a },
+      current_remote_head: RemoteHeadKnown { head: head_a },
+      index_cleanliness: IndexClean,
+      unmerged_stage_count: CountKnown { count: 0 },
+      conflict_marker_count: CountKnown { count: 39 },
+      declared_write_paths: ["dag/gunbc/session_auto_publish.dag"],
+      actual_write_paths: ["dag/gunbc/session_auto_publish.dag"],
+      post_write_compile: PostWriteCompileGreen,
+      peer_authorship: PeerAuthoredByPublisher,
+    },
+  ) {
+    PublicationRefuse { cause: ConflictMarkersPresent { count: 39 } } => true
+    PublicationPermit => false
+  }
+}
+
+test fn fixture_write_outside_declared_set_refuses_before_remote_write() -> Bool {
+  match admit_remote_publication(
+    attempt: RemotePublishAttempt {
+      subject: PublicationSubjectExplicitUserIntent,
+      kind: RemotePushBranch,
+      request: Present { value: clean_publish_request(head: head_a) },
+      observed_remote_head: RemoteHeadKnown { head: head_a },
+      current_remote_head: RemoteHeadKnown { head: head_a },
+      index_cleanliness: IndexClean,
+      unmerged_stage_count: CountKnown { count: 0 },
+      conflict_marker_count: CountKnown { count: 0 },
+      declared_write_paths: ["dag/gunbc/session_auto_publish.dag"],
+      actual_write_paths: ["scratch/spike_probe.dag"],
+      post_write_compile: PostWriteCompileGreen,
+      peer_authorship: PeerAuthoredByPublisher,
+    },
+  ) {
+    PublicationRefuse { cause: WriteOutsideDeclaredSet { path: path } } =>
+      path == "scratch/spike_probe.dag"
+    PublicationPermit => false
+  }
+}
+
+test fn fixture_peer_commit_not_authored_by_publisher_refuses() -> Bool {
+  match admit_remote_publication(
+    attempt: RemotePublishAttempt {
+      subject: PublicationSubjectExplicitUserIntent,
+      kind: RemotePushBranch,
+      request: Present { value: clean_publish_request(head: head_a) },
+      observed_remote_head: RemoteHeadKnown { head: head_a },
+      current_remote_head: RemoteHeadKnown { head: head_a },
+      index_cleanliness: IndexClean,
+      unmerged_stage_count: CountKnown { count: 0 },
+      conflict_marker_count: CountKnown { count: 0 },
+      declared_write_paths: ["dag/gunbc/session_auto_publish.dag"],
+      actual_write_paths: ["dag/gunbc/session_auto_publish.dag"],
+      post_write_compile: PostWriteCompileGreen,
+      peer_authorship: PeerNotAuthoredByPublisher,
+    },
+  ) {
+    PublicationRefuse { cause: PeerCommitNotAuthoredByPublisherRefused } => true
+    PublicationPermit => false
+  }
+}
+
+test fn fixture_remote_head_moved_refuses_before_remote_write() -> Bool {
+  match admit_remote_publication(
+    attempt: RemotePublishAttempt {
+      subject: PublicationSubjectExplicitUserIntent,
+      kind: RemotePushBranch,
+      request: Present { value: clean_publish_request(head: head_a) },
+      observed_remote_head: RemoteHeadKnown { head: head_a },
+      current_remote_head: RemoteHeadKnown { head: head_b },
+      index_cleanliness: IndexClean,
+      unmerged_stage_count: CountKnown { count: 0 },
+      conflict_marker_count: CountKnown { count: 0 },
+      declared_write_paths: ["dag/gunbc/session_auto_publish.dag"],
+      actual_write_paths: ["dag/gunbc/session_auto_publish.dag"],
+      post_write_compile: PostWriteCompileGreen,
+      peer_authorship: PeerAuthoredByPublisher,
+    },
+  ) {
+    PublicationRefuse { cause: RemoteHeadMovedSinceObservation } => true
+    PublicationPermit => false
+  }
+}
+
+test fn fixture_no_explicit_request_refuses_before_remote_write() -> Bool {
+  match admit_remote_publication(
+    attempt: RemotePublishAttempt {
+      subject: PublicationSubjectExplicitUserIntent,
+      kind: RemotePushBranch,
+      request: Absent,
+      observed_remote_head: RemoteHeadKnown { head: head_a },
+      current_remote_head: RemoteHeadKnown { head: head_a },
+      index_cleanliness: IndexClean,
+      unmerged_stage_count: CountKnown { count: 0 },
+      conflict_marker_count: CountKnown { count: 0 },
+      declared_write_paths: ["dag/gunbc/session_auto_publish.dag"],
+      actual_write_paths: ["dag/gunbc/session_auto_publish.dag"],
+      post_write_compile: PostWriteCompileGreen,
+      peer_authorship: PeerAuthoredByPublisher,
+    },
+  ) {
+    PublicationRefuse { cause: NoExplicitPublicationRequest } => true
+    PublicationPermit => false
+  }
+}
+
+test fn red_unevaluable_compile_status_refuses_not_passes() -> Bool {
+  match admit_remote_publication(
+    attempt: RemotePublishAttempt {
+      subject: PublicationSubjectExplicitUserIntent,
+      kind: RemotePushBranch,
+      request: Present { value: clean_publish_request(head: head_a) },
+      observed_remote_head: RemoteHeadKnown { head: head_a },
+      current_remote_head: RemoteHeadKnown { head: head_a },
+      index_cleanliness: IndexClean,
+      unmerged_stage_count: CountKnown { count: 0 },
+      conflict_marker_count: CountKnown { count: 0 },
+      declared_write_paths: ["dag/gunbc/session_auto_publish.dag"],
+      actual_write_paths: ["dag/gunbc/session_auto_publish.dag"],
+      post_write_compile: PostWriteCompileUnknown,
+      peer_authorship: PeerAuthoredByPublisher,
+    },
+  ) {
+    PublicationRefuse { cause: PostWriteCompileUnknownRefused } => true
+    PublicationPermit => false
+  }
+}
+
+test fn dirty_index_refuses_before_remote_write() -> Bool {
+  match admit_remote_publication(
+    attempt: RemotePublishAttempt {
+      subject: PublicationSubjectExplicitUserIntent,
+      kind: RemotePushBranch,
+      request: Present { value: clean_publish_request(head: head_a) },
+      observed_remote_head: RemoteHeadKnown { head: head_a },
+      current_remote_head: RemoteHeadKnown { head: head_a },
+      index_cleanliness: IndexDirty,
+      unmerged_stage_count: CountKnown { count: 0 },
+      conflict_marker_count: CountKnown { count: 0 },
+      declared_write_paths: ["dag/gunbc/session_auto_publish.dag"],
+      actual_write_paths: ["dag/gunbc/session_auto_publish.dag"],
+      post_write_compile: PostWriteCompileGreen,
+      peer_authorship: PeerAuthoredByPublisher,
+    },
+  ) {
+    PublicationRefuse { cause: IndexDirtyRefused } => true
     PublicationPermit => false
   }
 }

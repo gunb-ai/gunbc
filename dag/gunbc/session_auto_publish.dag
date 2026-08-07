@@ -1,9 +1,11 @@
 module gunbc.session_auto_publish
 
-import std.types { CommitSha, Timestamp, Bool, String }
+import std.types { CommitSha, Timestamp, Bool, String, List }
 import v2.std.optional { Absent, Present }
 
-data session_auto_publish_note: String = "AUTO-PUBLISH: three independent publication facts (slice 0 recut) with immediate policy adjudication (slice 1). LocalCheckpoint tracks the local commit after dashboard autosave only — not after a push. RemoteBranchPublication tracks the remote branch head after an explicit publish and successful push. WorkerNotification tracks the worker-notification baseline stamped on user publish or drift-reminder delivery. Drift reminders diff WorkerNotification.notified_head..HEAD; conflating any axis with another sweeps unrelated churn into the worker notice (DASHBOARD_OPS_HYGIENE_BRIEF section 6.1). Silent polling OBSERVES state and must not call any transition fn — a poll push is an unrequested publication, not a local checkpoint. SLICE 1 MODELS IMMEDIATE POLICY BUT STILL CHANGES NO RUNTIME BEHAVIOUR: adjudicate_local_checkpoint and adjudicate_remote_publication encode the three rules — scratch/probe worktree local-checkpoint only with no remote branch or PR; dashboard autosave local commits only; artifact healer bot-owned branch or patch artifact never mutating an active author branch — and unevaluable subjects refuse remote publication rather than pass. The incident that produced this work (WIP auto-commit swept a spike file, pushed, opened PR #7904 without author act) would recur identically until shell transport calls these fns before any git push, gh pr create, or healer branch mutation. Deferred halves, each with a dissolution trigger: (1) shell transport wiring — session-dashboard schema and publishSessionWorktree route every publish attempt through adjudicate_local_checkpoint / adjudicate_remote_publication and the slice-0 state fns instead of conflated pr_publish_head || pr_publish_notified_head; dissolves when a harness integration witness executes against the live transport; (2) remote-publish refusal conjunction — explicit request, expected-head compare-and-swap, clean index, zero unmerged stages, zero conflict markers, declared write set, parse+format+compile of exact post-write tree, actor/head/file-set receipt, with unevaluable preconditions refusing not passing; dissolves when all five acceptance fixtures refuse before a remote write and a positive control publishes."
+data session_auto_publish_note: String = "AUTO-PUBLISH: three independent publication facts (slice 0 recut) with immediate policy adjudication (slice 1) and default-deny remote-publish conjunction (slice 2). LocalCheckpoint tracks the local commit after dashboard autosave only — not after a push. RemoteBranchPublication tracks the remote branch head after an explicit publish and successful push. WorkerNotification tracks the worker-notification baseline stamped on user publish or drift-reminder delivery. Drift reminders diff WorkerNotification.notified_head..HEAD; conflating any axis with another sweeps unrelated churn into the worker notice (DASHBOARD_OPS_HYGIENE_BRIEF section 6.1). Silent polling OBSERVES state and must not call any transition fn — a poll push is an unrequested publication, not a local checkpoint. SLICE 2 MODELS THE DEFAULT-DENY CONSUMER BUT STILL CHANGES NO RUNTIME BEHAVIOUR: admit_remote_publication stacks slice-1 policy under a refusal conjunction — explicit PublicationRequest, expected-head compare-and-swap, clean index, zero unmerged stages, zero conflict markers, declared write set, post-write compile green, peer authorship known — and every unevaluable precondition refuses rather than passes. Incident specimens (auto_publish_incident_specimens_note) record what produced this work; neither specimen alone proves which mechanism moved a ref. Slices 0–2 change no publication behaviour until shell transport calls admit_remote_publication before any git push, gh pr create, or healer branch mutation. Deferred halves, each with a dissolution trigger: (1) shell transport wiring — session-dashboard schema and publishSessionWorktree route every publish attempt through admit_remote_publication and the slice-0 state fns instead of conflated pr_publish_head || pr_publish_notified_head; dissolves when a harness integration witness executes against the live transport; (2) publication attribution — RemoteBranchPublication carries who requested the publication and under what authority as typed facts the publication cannot be performed without, not as a log line; dissolves when every remote publication transition requires a PublicationRequest carrier with requester identity and a harness witness proves an unattributed advance is unwritable."
+
+data auto_publish_incident_specimens_note: String = "SPECIMEN 1 (#7904): WIP auto-commit swept a throwaway spike file into a commit, pushed the branch to origin, and opened PR #7904 without author act. Proven class: local checkpoint became remote publication with no author act; author initially misattributed it to another session before discovering it was theirs. SPECIMEN 2 (2026-08-07, during operator freeze forbidding pushes): origin/session/royal-ant-539-cgroup-vertical-backup advanced from f94c17019b6 to e4e51154765e4d4b326591b9dac7479679782b4d (author and committer Brian Searls, timestamp 2026-08-07T04:52:05Z) within roughly four minutes; branch owner states they did not push in that session. HONEST BOUND ON WHAT SPECIMEN 2 PROVES: a remote ref moved and nobody can say who moved it after the fact — not that the harness auto-published it. Events API returned nothing for this repo; git author identity is the same for every session so it cannot discriminate session push from automated push; owner denial is not proof no owned process pushed. A person or subagent could have pushed. WHAT BOTH SPECIMENS ARGUE FOR: default-deny stops unauthorized publication (slice 2); attribution makes authorized publication auditable (slice 3 deferred) — a publication path whose provenance is unreconstructible after the fact is one where a wrong publication cannot be attributed, and RemoteBranchPublication describing only a head commit is weaker than it appears."
 
 type LocalCheckpoint
   = LocalCheckpointAbsent
@@ -189,6 +191,20 @@ type PublicationRefusalCause
   | HealerAuthorBranchMutationForbidden
   | PublicationSubjectUnknownRefused
   | HealerRepairTargetUnknownRefused
+  | NoExplicitPublicationRequest
+  | RemoteHeadObservationUnknownRefused
+  | RemoteHeadMovedSinceObservation
+  | IndexDirtyRefused
+  | IndexCleanlinessUnknownRefused
+  | UnmergedStagesPresent
+  | UnmergedStageCountUnknownRefused
+  | ConflictMarkersPresent { count: Int }
+  | ConflictMarkerCountUnknownRefused
+  | WriteOutsideDeclaredSet { path: String }
+  | PostWriteCompileRedRefused
+  | PostWriteCompileUnknownRefused
+  | PeerCommitNotAuthoredByPublisherRefused
+  | PeerAuthorshipUnknownRefused
 
 type PublicationDisposition
   = PublicationPermit
@@ -201,6 +217,20 @@ fn publication_refusal_cause_token(cause: PublicationRefusalCause) -> String {
     HealerAuthorBranchMutationForbidden => "HealerAuthorBranchMutationForbidden"
     PublicationSubjectUnknownRefused => "PublicationSubjectUnknownRefused"
     HealerRepairTargetUnknownRefused => "HealerRepairTargetUnknownRefused"
+    NoExplicitPublicationRequest => "NoExplicitPublicationRequest"
+    RemoteHeadObservationUnknownRefused => "RemoteHeadObservationUnknownRefused"
+    RemoteHeadMovedSinceObservation => "RemoteHeadMovedSinceObservation"
+    IndexDirtyRefused => "IndexDirtyRefused"
+    IndexCleanlinessUnknownRefused => "IndexCleanlinessUnknownRefused"
+    UnmergedStagesPresent => "UnmergedStagesPresent"
+    UnmergedStageCountUnknownRefused => "UnmergedStageCountUnknownRefused"
+    ConflictMarkersPresent { count: _ } => "ConflictMarkersPresent"
+    ConflictMarkerCountUnknownRefused => "ConflictMarkerCountUnknownRefused"
+    WriteOutsideDeclaredSet { path: _ } => "WriteOutsideDeclaredSet"
+    PostWriteCompileRedRefused => "PostWriteCompileRedRefused"
+    PostWriteCompileUnknownRefused => "PostWriteCompileUnknownRefused"
+    PeerCommitNotAuthoredByPublisherRefused => "PeerCommitNotAuthoredByPublisherRefused"
+    PeerAuthorshipUnknownRefused => "PeerAuthorshipUnknownRefused"
   }
 }
 
@@ -254,6 +284,199 @@ fn adjudicate_healer_remote_publication(
           PublicationRefuse { cause: HealerAuthorBranchMutationForbidden }
         RemotePushBranch => PublicationPermit
         RemoteCreatePullRequest => PublicationPermit
+      }
+  }
+}
+
+data default_deny_conjunction_note: String = "Slice 2 default-deny consumer. admit_remote_publication runs slice-1 policy first, then a conjunction of refusals. Every arm refuses; unevaluable observations refuse rather than pass. Shell transport must call this before any remote write; until then the conjunction is modeled and witnessed only."
+
+type PublicationRequest sole_constructor {
+  requester: String
+  expected_remote_head: CommitSha
+  produced_head: CommitSha
+}
+
+fn mint_publication_request(
+  requester: String,
+  expected_remote_head: CommitSha,
+  produced_head: CommitSha,
+) -> PublicationRequest {
+  PublicationRequest {
+    requester: requester,
+    expected_remote_head: expected_remote_head,
+    produced_head: produced_head,
+  }
+}
+
+type ObservedRemoteHead
+  = RemoteHeadKnown { head: CommitSha }
+  | RemoteHeadObservationUnknown
+
+type IndexCleanliness
+  = IndexClean
+  | IndexDirty
+  | IndexCleanlinessUnknown
+
+type CountObservation
+  = CountKnown { count: Int }
+  | CountUnknown
+
+type PostWriteCompile
+  = PostWriteCompileGreen
+  | PostWriteCompileRed
+  | PostWriteCompileUnknown
+
+type PeerAuthorship
+  = PeerAuthoredByPublisher
+  | PeerNotAuthoredByPublisher
+  | PeerAuthorshipUnknown
+
+type RemotePublishAttempt {
+  subject: PublicationSubject
+  kind: RemotePublicationKind
+  request: PublicationRequest?
+  observed_remote_head: ObservedRemoteHead
+  current_remote_head: ObservedRemoteHead
+  index_cleanliness: IndexCleanliness
+  unmerged_stage_count: CountObservation
+  conflict_marker_count: CountObservation
+  declared_write_paths: List<String>
+  actual_write_paths: List<String>
+  post_write_compile: PostWriteCompile
+  peer_authorship: PeerAuthorship
+}
+
+fn remote_head_conjunction_refusals(
+  request: PublicationRequest?,
+  observed: ObservedRemoteHead,
+  current: ObservedRemoteHead,
+) -> List<PublicationRefusalCause> {
+  match request {
+    Absent => []
+    Present { value: req } =>
+      match observed {
+        RemoteHeadObservationUnknown => [RemoteHeadObservationUnknownRefused]
+        RemoteHeadKnown { head: observed_head } =>
+          match current {
+            RemoteHeadObservationUnknown => [RemoteHeadObservationUnknownRefused]
+            RemoteHeadKnown { head: current_head } =>
+              if (observed_head as String) != (req.expected_remote_head as String) {
+                [RemoteHeadMovedSinceObservation]
+              } else if (current_head as String) != (observed_head as String) {
+                [RemoteHeadMovedSinceObservation]
+              } else {
+                []
+              }
+          }
+      }
+  }
+}
+
+fn index_cleanliness_refusals(cleanliness: IndexCleanliness) -> List<PublicationRefusalCause> {
+  match cleanliness {
+    IndexClean => []
+    IndexDirty => [IndexDirtyRefused]
+    IndexCleanlinessUnknown => [IndexCleanlinessUnknownRefused]
+  }
+}
+
+fn unmerged_stage_refusals(count_obs: CountObservation) -> List<PublicationRefusalCause> {
+  match count_obs {
+    CountUnknown => [UnmergedStageCountUnknownRefused]
+    CountKnown { count: count } =>
+      if count > 0 {
+        [UnmergedStagesPresent]
+      } else {
+        []
+      }
+  }
+}
+
+fn conflict_marker_refusals(count_obs: CountObservation) -> List<PublicationRefusalCause> {
+  match count_obs {
+    CountUnknown => [ConflictMarkerCountUnknownRefused]
+    CountKnown { count: count } =>
+      if count > 0 {
+        [ConflictMarkersPresent { count: count }]
+      } else {
+        []
+      }
+  }
+}
+
+fn write_set_refusals(
+  declared: List<String>,
+  actual: List<String>,
+) -> List<PublicationRefusalCause> {
+  flat_map(actual, path =>
+    if contains(declared, path) {
+      []
+    } else {
+      [WriteOutsideDeclaredSet { path: path }]
+    }
+  )
+}
+
+fn post_write_compile_refusals(status: PostWriteCompile) -> List<PublicationRefusalCause> {
+  match status {
+    PostWriteCompileGreen => []
+    PostWriteCompileRed => [PostWriteCompileRedRefused]
+    PostWriteCompileUnknown => [PostWriteCompileUnknownRefused]
+  }
+}
+
+fn peer_authorship_refusals(authorship: PeerAuthorship) -> List<PublicationRefusalCause> {
+  match authorship {
+    PeerAuthoredByPublisher => []
+    PeerNotAuthoredByPublisher => [PeerCommitNotAuthoredByPublisherRefused]
+    PeerAuthorshipUnknown => [PeerAuthorshipUnknownRefused]
+  }
+}
+
+fn remote_publish_conjunction_refusals(
+  attempt: RemotePublishAttempt,
+) -> List<PublicationRefusalCause> {
+  append(
+    match attempt.request {
+      Absent => [NoExplicitPublicationRequest]
+      Present { value: _ } => []
+    },
+    items: append(
+      remote_head_conjunction_refusals(
+        request: attempt.request,
+        observed: attempt.observed_remote_head,
+        current: attempt.current_remote_head,
+      ),
+      items: append(
+        index_cleanliness_refusals(cleanliness: attempt.index_cleanliness),
+        items: append(
+          unmerged_stage_refusals(count_obs: attempt.unmerged_stage_count),
+          items: append(
+            conflict_marker_refusals(count_obs: attempt.conflict_marker_count),
+            items: append(
+              write_set_refusals(
+                declared: attempt.declared_write_paths,
+                actual: attempt.actual_write_paths,
+              ),
+              items: append(
+                post_write_compile_refusals(status: attempt.post_write_compile),
+                items: peer_authorship_refusals(authorship: attempt.peer_authorship),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  )
+}
+
+fn admit_remote_publication(attempt: RemotePublishAttempt) -> PublicationDisposition {
+  match adjudicate_remote_publication(subject: attempt.subject, kind: attempt.kind) {
+    PublicationRefuse { cause: cause } => PublicationRefuse { cause: cause }
+    PublicationPermit =>
+      match remote_publish_conjunction_refusals(attempt: attempt).first() {
+        Absent => PublicationPermit
+        Present { value: cause } => PublicationRefuse { cause: cause }
       }
   }
 }
