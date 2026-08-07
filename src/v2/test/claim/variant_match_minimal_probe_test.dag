@@ -18,3 +18,25 @@ test fn probe_minimal_second_arm_matches() -> Bool {
 test fn probe_minimal_first_arm_matches() -> Bool {
   probe_is_second(p: ProbeFirst { a: "x" }) == false
 }
+
+fn foreign_is_second_wildcard(p: ForeignTwoArm) -> Bool {
+  match p {
+    ForeignFirst { a: _ } => false
+    ForeignSecond { b: _ } => true
+  }
+}
+
+fn foreign_is_second_named(p: ForeignTwoArm) -> Bool {
+  match p {
+    ForeignFirst { a: x } => string_is_empty(s: x)
+    ForeignSecond { b: y } => !string_is_empty(s: y)
+  }
+}
+
+test fn probe_foreign_wildcard_payload_matches() -> Bool {
+  foreign_is_second_wildcard(p: ForeignSecond { b: "x" })
+}
+
+test fn probe_foreign_named_payload_matches() -> Bool {
+  foreign_is_second_named(p: ForeignSecond { b: "x" })
+}
