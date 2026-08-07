@@ -28,7 +28,9 @@ data owned_ci_control_plane_seed_scaffold: Disposition = Scaffold {
   }
 }
 
-data owned_ci_control_plane_seed_note: String = "§7 seed-retained projection for ci_control_plane (docs/plans/owned-ci-control-plane-design.md). The Rust bin MUST read repository identity, stage order, floor plan entry/function, state root, and lease duration ONLY through these rows — never parallel literals. dissolve-on: hand-Rust ureq for extdeps.github.checks CreateRun/UpdateRun and extdeps.github.pulls List folds into the interpreter REST bridge (effects_rest_transport_witness tracked-op class; add github.Checks to that roster when wiring lands). Until then this module is the single authority the seed consults."
+data owned_ci_control_plane_seed_note: String = "§7 seed-retained projection for ci_control_plane (docs/plans/owned-ci-control-plane-design.md). The Rust bin MUST read repository identity, stage order, floor plan entry/function, state root, and lease duration ONLY through these rows — never parallel literals. dissolve-on: (1) hand-Rust ureq for extdeps.github.checks CreateRun/UpdateRun and extdeps.github.pulls List folds into the interpreter REST bridge (effects_rest_transport_witness tracked-op class; add github.Checks to that roster when wiring lands); (2) runtime JSON state carriers (queue states, publication states, stage/run records) fold into the .dag coproducts in gunbc.owned_ci / gunbc.ci_execution_plan so Rust serde structs cannot drift independently; (3) subject_key and run_id grammar route through ci_subject_identity_key and owned_ci_run_id_admits eval. Until then this module is the scalar projection authority the seed consults."
+
+data owned_ci_poll_interval_seed_debt_note: String = "poll_interval_secs and DEFAULT_POLL_INTERVAL_SECS are Rust-only literals today — extend owned_ci_seed when the seed authority widens beyond scalars."
 
 fn owned_ci_seed_repo_owner() -> String {
   gunbc_repository.owner

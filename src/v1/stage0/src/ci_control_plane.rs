@@ -4,7 +4,7 @@
 //! Authority: `docs/plans/owned-ci-control-plane-design.md`
 //!
 //! SCAFFOLD — seed-retained host transport; projection authority `gunbc.owned_ci_seed`.
-//! dissolve-on: REST calls fold into extdeps.github.checks / pulls interpreter bridge.
+//! dissolve-on: REST bridge; .dag state coproducts replace Rust JSON carriers; subject_key/run_id eval.
 
 use std::fs;
 use std::io::Write;
