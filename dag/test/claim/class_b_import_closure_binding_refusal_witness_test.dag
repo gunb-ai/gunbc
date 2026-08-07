@@ -1,0 +1,99 @@
+module test.claim.class_b_import_closure_binding_refusal_witness
+
+import gunbc.declared_import_closure_binding {
+  BindingObserved,
+  BindingNotRunnable,
+  ObservationProduced,
+  ObservationProductionRefused,
+  binding_refused_at_intended_seam,
+  row3_stripped_refuses_binding,
+  row4_stripped_pool_coincidence_or_refuse
+}
+import gunbc.compile_clean_diagnostic_policy { ListedImport }
+import v2.std.optional { Present, Absent }
+import std.types { Bool, NonEmptyStr }
+
+data class_b_binding_predicate_note: String = "Per-PR discovery-admitted unit controls for gunbc.declared_import_closure_binding verdict predicates (#7835 P1). Pure folds over typed observation/outcome variants — not path-excluded and not explicit_witness_admission enrolled. binding_refused_at_seam_rejects_unrelated_hard_diagnostic exercises the fold predicate only; producer-level hard-diagnostic refusal is tested in cli_run.rs unrelated_hard_diagnostic_observation_is_not_runnable_at_producer."
+
+test fn binding_refused_at_seam_not_runnable_is_false() -> Bool {
+  !binding_refused_at_intended_seam(obs: BindingNotRunnable { cause: "could-not-measure" as NonEmptyStr })
+}
+
+test fn binding_refused_at_seam_rejects_unrelated_hard_diagnostic() -> Bool {
+  !binding_refused_at_intended_seam(
+    obs: BindingObserved {
+      binding_source: Absent,
+      definer_module: "",
+      symbol_resolves: false,
+      blocking_hard_diagnostic_count: 1
+    }
+  )
+}
+
+test fn binding_refused_at_seam_accepts_clean_unresolved() -> Bool {
+  binding_refused_at_intended_seam(
+    obs: BindingObserved {
+      binding_source: Absent,
+      definer_module: "",
+      symbol_resolves: false,
+      blocking_hard_diagnostic_count: 0
+    }
+  )
+}
+
+test fn row3_production_refused_is_false() -> Bool {
+  !row3_stripped_refuses_binding(
+    outcome: ObservationProductionRefused {
+      phase: "strip" as NonEmptyStr,
+      cause: "setup failed" as NonEmptyStr
+    }
+  )
+}
+
+test fn row3_compile_production_refused_is_false() -> Bool {
+  !row3_stripped_refuses_binding(
+    outcome: ObservationProductionRefused {
+      phase: "compile" as NonEmptyStr,
+      cause: "declared-import-closure compile produced no graph" as NonEmptyStr
+    }
+  )
+}
+
+test fn row3_not_runnable_observation_is_false() -> Bool {
+  !row3_stripped_refuses_binding(
+    outcome: ObservationProduced {
+      observation: BindingNotRunnable { cause: "could-not-measure" as NonEmptyStr }
+    }
+  )
+}
+
+test fn row4_production_refused_is_false() -> Bool {
+  !row4_stripped_pool_coincidence_or_refuse(
+    outcome: ObservationProductionRefused {
+      phase: "mktemp" as NonEmptyStr,
+      cause: "setup failed" as NonEmptyStr
+    }
+  )
+}
+
+test fn row4_compile_production_refused_is_false() -> Bool {
+  !row4_stripped_pool_coincidence_or_refuse(
+    outcome: ObservationProductionRefused {
+      phase: "compile" as NonEmptyStr,
+      cause: "declared-import-closure compile produced no graph" as NonEmptyStr
+    }
+  )
+}
+
+test fn row4_listed_import_on_produced_observation_fails() -> Bool {
+  !row4_stripped_pool_coincidence_or_refuse(
+    outcome: ObservationProduced {
+      observation: BindingObserved {
+        binding_source: Present { value: ListedImport },
+        definer_module: "v2.extdeps.languages.rust",
+        symbol_resolves: true,
+        blocking_hard_diagnostic_count: 0
+      }
+    }
+  )
+}
