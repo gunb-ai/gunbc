@@ -158,6 +158,10 @@ pub struct UnixWholeSeconds {
 pub struct SubjectLedger {
     pub main_head_sha: Option<String>,
     pub subjects: Vec<SubjectEntry>,
+    #[serde(default)]
+    pub last_pr_poll_refusal: Option<String>,
+    #[serde(default)]
+    pub last_pr_poll_refusal_at_unix: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -242,6 +246,7 @@ struct ForkRefusal {
 struct DiscoverOutcome {
     admitted: Vec<DiscoveredSubject>,
     fork_refusals: Vec<ForkRefusal>,
+    pr_poll_refusal: Option<String>,
 }
 
 pub struct CiControlPlane {
@@ -297,6 +302,8 @@ impl CiControlPlane {
             self.write_ledger(&SubjectLedger {
                 main_head_sha: None,
                 subjects: vec![],
+                last_pr_poll_refusal: None,
+                last_pr_poll_refusal_at_unix: None,
             })?;
         }
         Ok(())
@@ -319,6 +326,9 @@ impl CiControlPlane {
         self.reclaim_expired_claims()?;
         let outcome = self.discover_subjects()?;
         self.reconcile_subjects(&outcome.admitted)?;
+        if let Some(cause) = &outcome.pr_poll_refusal {
+            self.record_pr_poll_refusal(cause)?;
+        }
         self.reconcile_fork_refusals(&outcome.fork_refusals)?;
         if self.config.dry_run {
             if let Some(run_id) = self.peek_next_pending()? {
@@ -417,17 +427,38 @@ impl CiControlPlane {
             pr_number: None,
         });
 
-        let token = std::env::var("GITHUB_TOKEN")
-            .map_err(|_| self.authority.poll_missing_github_token_refusal.clone())?;
-        if token.is_empty() {
-            return Err(self.authority.poll_empty_github_token_refusal.clone());
-        }
-        let (prs, fork_refusals) = self.discover_open_prs(&token)?;
+        let token = std::env::var("GITHUB_TOKEN");
+        let (prs, fork_refusals, pr_poll_refusal) = match token {
+            Ok(token) if token.is_empty() => (
+                Vec::new(),
+                Vec::new(),
+                Some(self.authority.poll_empty_github_token_refusal.clone()),
+            ),
+            Ok(token) => match self.discover_open_prs(&token) {
+                Ok((prs, fork_refusals)) => (prs, fork_refusals, None),
+                Err(cause) => (Vec::new(), Vec::new(), Some(cause)),
+            },
+            Err(_) => (
+                Vec::new(),
+                Vec::new(),
+                Some(self.authority.poll_missing_github_token_refusal.clone()),
+            ),
+        };
         admitted.extend(prs);
         Ok(DiscoverOutcome {
             admitted,
             fork_refusals,
+            pr_poll_refusal,
         })
+    }
+
+    fn record_pr_poll_refusal(&self, cause: &str) -> Result<(), String> {
+        let mut ledger = self.read_ledger()?;
+        ledger.last_pr_poll_refusal = Some(cause.to_string());
+        ledger.last_pr_poll_refusal_at_unix = Some(now_unix()?);
+        self.write_ledger(&ledger)?;
+        eprintln!("owned-ci: PR poll refused (main mirror reconciliation still proceeds): {cause}");
+        Ok(())
     }
 
     fn discover_open_prs(
@@ -491,7 +522,11 @@ impl CiControlPlane {
                 .unwrap_or_default()
                 .to_string();
             let (Some(number), Some(head_sha)) = (number, head_sha) else {
-                continue;
+                let snippet =
+                    serde_json::to_string(pull).unwrap_or_else(|_| "<unserializable>".to_string());
+                return Err(format!(
+                    "list pulls malformed payload: open PR missing number or head.sha (fail-closed, not silent skip): {snippet}"
+                ));
             };
             if head_repo != self.authority.repo_full_name {
                 fork_refusals.push(ForkRefusal {
@@ -1193,5 +1228,42 @@ mod tests {
     #[test]
     fn parse_github_link_rel_next_none_when_absent() {
         assert!(parse_github_link_rel_next("").is_none());
+    }
+
+    #[test]
+    fn extend_open_pull_subjects_refuses_malformed_payload() {
+        let plane = CiControlPlane {
+            config: Config {
+                workspace_root: std::env::temp_dir(),
+                mirror_path: std::env::temp_dir(),
+                serve_base_url: "http://127.0.0.1:8787".to_string(),
+                poll_interval_secs: 60,
+                lease_secs: 3600,
+                lease_holder: "test".to_string(),
+                once: true,
+                dry_run: true,
+            },
+            authority: SeedAuthority {
+                repo_owner: "gunb-ai".to_string(),
+                repo_name: "gunbc".to_string(),
+                repo_full_name: "gunb-ai/gunbc".to_string(),
+                check_name: "gunbc-ci".to_string(),
+                state_root_rel: ".gunbc/owned-ci".to_string(),
+                default_lease_seconds: 3600,
+                stage_labels: vec!["build".to_string()],
+                floor_plan_entry: "src/v2/workflow/ci_floor_plan.dag".to_string(),
+                floor_plan_function: "gunbc_ci_floor_plan".to_string(),
+                poll_missing_github_token_refusal: "missing".to_string(),
+                poll_empty_github_token_refusal: "empty".to_string(),
+            },
+        };
+        let mut admitted = Vec::new();
+        let mut fork_refusals = Vec::new();
+        let pulls = vec![serde_json::json!({ "head": { "sha": "abc" } })];
+        let err = plane
+            .extend_open_pull_subjects(&pulls, &mut admitted, &mut fork_refusals)
+            .expect_err("malformed pull");
+        assert!(err.contains("missing number or head.sha"));
+        assert!(admitted.is_empty());
     }
 }
