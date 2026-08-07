@@ -16,7 +16,7 @@ import std.content_hash {
 import std.measure { ByteSize, byte_size, measure_count }
 import std.materialization_ladder {
   CacheProvider, CoversAllComputations, ReferenceTier, ArtifactTier, ContentKeyed,
-  ScopeExit, SpacePacked, provider_row,
+  provider_row, scope_released_retention, persistent_retention,
 }
 import std.artifact_store {
   ArtifactKey, ArtifactRealizationInput, artifact_key_hash, artifact_realization_digest,

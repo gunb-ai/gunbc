@@ -15,7 +15,6 @@ import std.cache_interface {
   MissThenCreate,
   FileTree,
   PerRunnerFilesystem,
-  Manual,
   PerFile,
   FilesystemPerms,
   LocalDiskUs,

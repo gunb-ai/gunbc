@@ -17,7 +17,6 @@ import std.cache_interface {
   MissThenCreate,
   RawBytes,
   PerHostFilesystem,
-  Lru,
   FilesystemPerms,
   LocalDiskUs,
   ReadYourWrites,

@@ -8,7 +8,6 @@ import std.cache_interface {
   MissThenCreate,
   RawBytes,
   CrossHostNetwork,
-  Never,
   WriteThenCommit,
   ApiKey,
   LanMs,

@@ -13,7 +13,6 @@ import std.cache_interface {
   MissThenCreate,
   FileTree,
   PerHostFilesystem,
-  Never,
   PerFile,
   FilesystemPerms,
   LocalDiskUs,

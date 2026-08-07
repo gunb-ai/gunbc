@@ -14,8 +14,6 @@ import std.cache_interface {
   StructuredArtifact,
   PerHostFilesystem,
   InProcess,
-  Ttl,
-  Never,
   PerFile,
   FilesystemPerms,
   None,

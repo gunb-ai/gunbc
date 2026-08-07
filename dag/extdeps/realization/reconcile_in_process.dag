@@ -19,7 +19,6 @@ import std.cache_interface {
   MissThenCreate,
   StructuredArtifact,
   InProcess,
-  Never,
   PerFile,
   None,
   InProcessNs,

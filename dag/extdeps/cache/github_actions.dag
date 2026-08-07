@@ -15,7 +15,6 @@ import std.cache_interface {
   MissThenCreate,
   TarArchive,
   CrossHostNetwork,
-  Lru,
   ApiKey,
   WanTensMs,
   Eventual,
