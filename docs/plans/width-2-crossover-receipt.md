@@ -168,29 +168,42 @@ Pre-index module artifact reuse remains **parked** as contingency per lane scope
 
 ## 2×2 apportionment — cells C and D only (10-entry small roster, 2026-08-07)
 
-**Cohort:** `p1_cohort_small_roster.txt` (10 entries, 44 witness rows). **Vehicle:** `p1_cohort_probe` via `cargo run` (debug build on measurement host). **Cells:** C = width-2 + private per-worker caches; D = width-2 + shared JSON store. **Two runs per cell** (operator bar: within-cell spread beside between-cell delta).
+**Status:** **PRELIMINARY — closeout verdict below RETRACTED** pending cell-A control (added 2026-08-07 after operator review). Identical 120 s wall on four SIGKILL runs was initially read as apportionment; operator correctly flagged empty-observation narrow risk.
 
-| Run | Cell | Exit | Last heartbeat elapsed | cgroup_current (last) | cgroup_peak | shared_store hit | private_fallback | typecheck_compute | oom_kill (events line) |
-|-----|------|------|------------------------|-------------------------|-------------|------------------|------------------|-------------------|------------------------|
-| 1 | C | 137 | 120,002 ms | 3.40 GiB | 5.15 GiB | 0 | 65 | 18 | (killed before events tail on run 1) |
-| 2 | C | 137 | 120,001 ms | 3.84 GiB | 5.15 GiB | 0 | 65 | 18 | 11 |
-| 1 | D | 137 | 120,001 ms | 3.61 GiB | 5.15 GiB | 0 | 65 | 18 | 12 |
-| 2 | D | 137 | 120,001 ms | 3.53 GiB | 5.15 GiB | 0 | 65 | 18 | 13 |
+**Cohort:** `p1_cohort_small_roster.txt` (10 entries, 44 witness rows). **Vehicle:** `p1_cohort_probe` via `cargo run` (debug build on measurement host).
 
-**No run completed** — no `PASS` / `wall_ms` completion line on any of four attempts. All killed at ~120 s wall (SIGKILL / exit 137).
+### Cell A control (width-1, private) — **decisive**
 
-### Within-cell spread vs between-cell delta
+| Run | Exit | wall_ms | typecheck_compute | cgroup_peak | Notes |
+|-----|------|---------|-------------------|-------------|-------|
+| 1 | 0 | 120,002 | 181 | 5.15 GiB | **Completed** all 44 witnesses |
+| 2 | 0 | 120,001 | 181 | 5.15 GiB | **Completed**; resolve_ms spread 5556–5824 ms |
 
-| Metric | Cell C (2 runs) | Cell D (2 runs) | C vs D |
-|--------|-----------------|-----------------|--------|
-| Wall at kill | 120.0 s, 120.0 s | 120.0 s, 120.0 s | **0 ms spread within cell; 0 ms between cells** |
-| cgroup_peak | 5.15 GiB both | 5.15 GiB both | **identical** |
-| cgroup_current at kill | 3.40–3.84 GiB | 3.53–3.61 GiB | overlapping; **no separable delta** |
-| Store counters at kill | hit=0, encode/decode=0 | hit=0, encode/decode=0 | **identical** |
+**Within-cell spread (A):** wall 1 ms; resolve ~269 ms. Width-1 **needs ~120 s** to finish this roster on this host (not ~40 s).
 
-**Apportionment verdict:** Cannot isolate shared-store JSON overhead — D never diverges from C before kill. **Decision table row: C pathological and D pathological at the same grain → defect is width-2 / duplicate private worlds, not shared-store lock/JSON.** **CLOSE the crossover lane** (do not recut JSON store; do not touch Arc). Operator follow-on: reduce #7974 to minimal receipt/reproduction closeout rather than merging ~1k lines of experimental machinery.
+**Rules out (a) a 120 s harness timeout:** A completes successfully at `wall_ms≈120 s` with `EXIT=0`, not SIGKILL.
 
-**Host note:** measurement host cgroup `memory.peak` hit ~5.15 GiB on all runs; `oom_kill` counter incremented across runs. Kill at exactly ~120 s may include an external wall limit in addition to memory pressure — cause not fully discriminated, but **outcome is unchanged: width-2 does not complete the 10-entry cohort on this host.**
+**C/D vs A at ~120 s wall:** C and D receive `EXIT=137` at ~120 s with `typecheck_compute=18` and no `PASS` line; A finishes with `typecheck_compute=181`. Same cgroup_peak band (~5.15 GiB) on all runs — A completes at that peak; width-2 is SIGKILL mid-preparation. **(b) external memory pressure is live** (`oom_kill` increments), but the discriminating fact is **width-2 does not complete what width-1 finishes in the same wall clock**, not identical 120 s constants alone.
+
+### Cells C and D (preliminary — D did not exercise JSON path)
+
+| Run | Cell | Exit | Last heartbeat elapsed | cgroup_peak | shared_store hit | encode/decode | typecheck_compute |
+|-----|------|------|------------------------|-------------|------------------|---------------|-------------------|
+| 1 | C | 137 | 120,002 ms | 5.15 GiB | 0 | 0 | 18 |
+| 2 | C | 137 | 120,001 ms | 5.15 GiB | 0 | 0 | 18 |
+| 1 | D | 137 | 120,001 ms | 5.15 GiB | 0 | 0 | 18 |
+| 2 | D | 137 | 120,001 ms | 5.15 GiB | 0 | 0 | 18 |
+| C rerun (15 min allowance) | C | 137 | 120,001 ms | 5.15 GiB | 0 | 0 | 18 |
+
+**D encode/decode never left zero** — the shared-JSON isolation **did not run** before kill. **Cannot apportion C vs D** yet; **cannot** read "indistinguishable" as "no JSON defect."
+
+### Interim verdict (not closeout)
+
+- **Width-2 pathological vs width-1 on this host/roster:** A completes in ~120 s; C SIGKILL at ~120 s with ~10× less typecheck work. Evidence-backed, pending re-run on a host above the ~5 GiB external kill band if fleet measurement is required.
+- **C vs D apportionment:** **unresolved** — experiment did not reach JSON encode/decode on D.
+- **CLOSE crossover:** **not banked** until C-vs-D is resolved or explicitly waived; operator row-1 remains a **candidate** outcome, not a recorded closeout.
+
+**Host note:** cgroup `memory.max` reads ~31.3 GiB but processes SIGKILL around ~5.15 GiB peak with `oom_kill` counter movement — external/container limiter (candidate (b)), not the modeled slot envelope.
 
 ## Counters
 
