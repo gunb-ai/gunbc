@@ -8,8 +8,11 @@ import gunbc.runner_broker_progress_watchdog {
   RemoteRegistrationEvidence,
   RemoteRegistrationObserved,
   ObservedEvidence,
+  BrokerProgressSilent,
+  RunnerWorkerAbsent,
   RunnerRemoteOffline,
   RunnerRemoteOnline,
+  runner_broker_progress_silence_bound_seconds,
 }
 import gunbc.runner_connectivity_recovery {
   RunnerSlotConnectivitySnapshot,
@@ -17,7 +20,7 @@ import gunbc.runner_connectivity_recovery {
   RunnerRemoteObservation,
   RunnerLocalIncarnation,
   HostReachAdmitted,
-  decide_runner_connectivity_action_legacy,
+  decide_runner_connectivity_action_for_snapshot,
 }
 import gunbc.runner_connectivity_repair_plan {
   RepairExecute,
@@ -68,6 +71,12 @@ fn wedged_snapshot(act: Timestamp) -> RunnerSlotConnectivitySnapshot {
       observed_at: act,
       control_plane_error_burst: false,
     },
+    broker: BrokerProgressSilent {
+      silence_seconds: runner_broker_progress_silence_bound_seconds,
+      grade: ObservedEvidence,
+    },
+    worker: RunnerWorkerAbsent { grade: ObservedEvidence },
+    registration_grace_elapsed: true,
     confirmed_at: act,
     last_restart_at: Absent,
   }
@@ -76,7 +85,7 @@ fn wedged_snapshot(act: Timestamp) -> RunnerSlotConnectivitySnapshot {
 test fn replace_action_projects_five_step_repair_sequence() -> Bool {
   let act = act_ts(s: "2026-08-06T20:00:00Z")
   let snap = wedged_snapshot(act: act)
-  let action = decide_runner_connectivity_action_legacy(
+  let action = decide_runner_connectivity_action_for_snapshot(
     snap: snap,
     prior: snap,
     act_at: act,
@@ -132,10 +141,13 @@ test fn noop_action_projects_empty_repair_plan() -> Bool {
       observed_at: act,
       control_plane_error_burst: false,
     },
+    broker: snap.broker,
+    worker: snap.worker,
+    registration_grace_elapsed: snap.registration_grace_elapsed,
     confirmed_at: act,
     last_restart_at: Absent,
   }
-  let action = decide_runner_connectivity_action_legacy(
+  let action = decide_runner_connectivity_action_for_snapshot(
     snap: connected,
     prior: connected,
     act_at: act,

@@ -75,6 +75,9 @@ type RunnerSlotConnectivitySnapshot {
   slot: RunnerSlotIdentity
   local: RunnerLocalObservation
   remote: RunnerRemoteObservation
+  broker: BrokerProgressObservation
+  worker: RunnerWorkerObservation
+  registration_grace_elapsed: Bool
   confirmed_at: Timestamp
   last_restart_at: Timestamp?
 }
@@ -193,6 +196,40 @@ fn process_identity_eq(a: ProcessIdentity, b: ProcessIdentity) -> Bool {
 
 fn remote_observation_registration(obs: RunnerRemoteObservation) -> RunnerRemoteRegistration? {
   remote_evidence_registration(ev: obs.evidence)
+}
+
+fn remote_registration_id_from_evidence(ev: RemoteRegistrationEvidence) -> String {
+  match ev {
+    RemoteRegistrationObserved { registration_id: id, registration: _, grade: _ } => id
+    RemoteRegistrationOperatorDeclared { registration: _, reason: _ } => ""
+    RemoteRegistrationUnobserved { reason: _ } => ""
+    RemoteRegistrationRefused { reason: _ } => ""
+  }
+}
+
+fn watchdog_inputs_from_snapshot(
+  snap: RunnerSlotConnectivitySnapshot,
+  reach: HostReachAdmission,
+) -> RunnerWatchdogInputs {
+  RunnerWatchdogInputs {
+    remote: snap.remote.evidence,
+    broker: snap.broker,
+    worker: snap.worker,
+    registration_grace_elapsed: snap.registration_grace_elapsed,
+    reach: reach,
+  }
+}
+
+fn repair_decision_receipt_from_prior(
+  prior: RunnerSlotConnectivitySnapshot,
+  act_at: Timestamp,
+) -> RunnerRepairDecisionReceipt {
+  RunnerRepairDecisionReceipt {
+    slot: prior.slot,
+    local_process: prior.local.incarnation.process,
+    remote_registration_id: remote_registration_id_from_evidence(ev: prior.remote.evidence),
+    act_at: prior.confirmed_at,
+  }
 }
 
 fn replacement_cause_for_watchdog(
@@ -439,6 +476,20 @@ fn decide_wedged_runner_connectivity_action(
          Absent => false
        } {
     RunnerRepairRefused { slot: slot, cause: ConditionNotPersistentAcrossReobservation }
+  } else if reobservation_refuses_mutation(
+    receipt: repair_decision_receipt_from_prior(prior: prior, act_at: act_at),
+    fresh_local_process: snap.local.incarnation.process,
+    fresh_remote: watchdog.remote,
+    fresh_worker: watchdog.worker,
+    fresh_broker: watchdog.broker,
+    act_at: act_at,
+  ) {
+    RunnerRepairRefused {
+      slot: slot,
+      cause: ReobservationRefused {
+        reason: "repair decision stale after re-read; process, registration, worker, or broker progress changed" as NonEmptyStr,
+      },
+    }
   } else if !allow_replace {
     RunnerRepairRefused { slot: slot, cause: CanaryAwaitingVerification }
   } else {
@@ -460,7 +511,7 @@ fn decide_wedged_runner_connectivity_action(
   }
 }
 
-fn decide_runner_connectivity_action_legacy(
+fn decide_runner_connectivity_action_for_snapshot(
   snap: RunnerSlotConnectivitySnapshot,
   prior: RunnerSlotConnectivitySnapshot,
   act_at: Timestamp,
@@ -470,16 +521,7 @@ fn decide_runner_connectivity_action_legacy(
   decide_runner_connectivity_action(
     snap: snap,
     prior: prior,
-    watchdog: RunnerWatchdogInputs {
-      remote: snap.remote.evidence,
-      broker: BrokerProgressSilent {
-        silence_seconds: runner_broker_progress_silence_bound_seconds,
-        grade: ObservedEvidence,
-      },
-      worker: RunnerWorkerAbsent { grade: ObservedEvidence },
-      registration_grace_elapsed: true,
-      reach: reach,
-    },
+    watchdog: watchdog_inputs_from_snapshot(snap: snap, reach: reach),
     act_at: act_at,
     allow_replace: allow_replace,
   )
@@ -531,7 +573,7 @@ fn plan_slot_connectivity_action(
   canary_slot: RunnerSlotIdentity,
   canary_verified: Bool,
 ) -> RunnerConnectivityAction {
-  decide_runner_connectivity_action_legacy(
+  decide_runner_connectivity_action_for_snapshot(
     snap: snap,
     prior: prior,
     act_at: act_at,
