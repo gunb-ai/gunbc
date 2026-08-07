@@ -7,7 +7,7 @@ import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-data record_construction_census_witness_note: String = "Executing consumer for the decl-fact skeleton's record_construction identity edge (the marshal capability that grounded the BoundedPoll deletion census, adhoc-429f6982-280). A record construction marshals its constructor name as an Atom under a NAMED record_construction edge; string-literal atoms and callee atoms ride positional edges, and match patterns marshal no construction identity at all. The witness proves that discrimination on a closed fixture pool with authored oracle counts: the planted construction counts exactly 1, the match-pattern-only specimen counts 0, and the same-lexeme string literal counts 0. The BoundedPoll deletion itself needs no standing corpus census: with the variant deleted, any future construction is an unresolved name the compile-clean gate refuses, so unwritability is structural and this witness guards the census MECHANISM, not the deleted symbol."
+data record_construction_census_witness_note: String = "Executing consumer for the decl-fact skeleton's record_construction_spelling edge (the marshal capability that grounded the BoundedPoll deletion census, adhoc-429f6982-280). The edge carries the AUTHORED CONSTRUCTOR SPELLING — the AST node's authored lexeme, NOT a resolved declaration identity: no qualified name is resolved, no parent-enum identity is carried, and two same-spelled record types in different modules are indistinguishable at this grain. A census over it is therefore a conservative OVER-APPROXIMATION of construction sites for a spelling, sound for an emptiness verdict (zero spelling occurrences implies zero constructions of every declaration with that spelling) and NOT an exact per-declaration authority — same_spelling_other_module_counts_toward_bare_target below exposes that over-approximation deliberately rather than papering it. What the named edge does discriminate, structurally: a construction occurrence from a string literal or callee atom spelling the same lexeme (those ride positional edges) and from a match pattern (which marshals no construction spelling at all). Counting is suffix-aware (census_spelling_names_target) because a qualified construction marshals its FULL DOTTED authored spelling — qualified_construction_cannot_hide_target is the executed positive control that qualified syntax cannot hide the target from the count. Resolved constructor identity — the edge carrying the resolved qualified declaration and, for variants, the parent declaration identity — is separate future work, not claimed here. The BoundedPoll deletion itself needs no standing corpus census: with the variant deleted, any future construction is an unresolved name the compile-clean gate refuses, so unwritability is structural and this witness guards the census MECHANISM, not the deleted symbol."
 
 type CensusConstructionCount {
   constructions: Int
@@ -16,9 +16,13 @@ type CensusConstructionCount {
 
 fn census_edge_is_construction(e: Edge) -> Bool {
   match e.label {
-    Named { name: nm } => nm == ^record_construction
+    Named { name: nm } => nm == ^record_construction_spelling
     Positional => false
   }
+}
+
+fn census_spelling_names_target(spelling: String, target: Symbol) -> Bool {
+  spelling == (target as String) || ends_with(spelling, "." + (target as String))
 }
 
 fn census_construction_fold(n: Node, target: Symbol) -> CensusConstructionCount {
@@ -28,7 +32,7 @@ fn census_construction_fold(n: Node, target: Symbol) -> CensusConstructionCount 
       init: fn(n0) {
         match n0.kind {
           TypeNode { connective: Atom { identity: s } } =>
-            CensusConstructionCount { constructions: 0, self_is_target_atom: s == target }
+            CensusConstructionCount { constructions: 0, self_is_target_atom: census_spelling_names_target(spelling: s as String, target: target) }
           _ => CensusConstructionCount { constructions: 0, self_is_target_atom: false }
         }
       },
@@ -72,4 +76,12 @@ test fn string_literal_same_lexeme_counts_zero() -> Bool {
 
 test fn missing_specimen_refuses_as_negative_sentinel() -> Bool {
   census_count_for_decl(name: "census_probe_absent_decl", target: ^CensusProbeSubject) == (0 - 1)
+}
+
+test fn qualified_construction_cannot_hide_target() -> Bool {
+  census_count_for_decl(name: "census_probe_constructs_subject_qualified", target: ^CensusProbeSubject) == 1
+}
+
+test fn same_spelling_other_module_counts_toward_bare_target() -> Bool {
+  census_count_for_decl(name: "census_probe_constructs_homonym_subject", target: ^CensusProbeSubject) == 1
 }

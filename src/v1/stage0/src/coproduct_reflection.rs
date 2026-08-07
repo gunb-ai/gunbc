@@ -672,12 +672,17 @@ fn marshal_generic(
         edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
     } else if matches!(node.expr_data.as_ref(), ExprData::ExprRecordLit { .. }) && !name.is_empty()
     {
-        // Record-construction identity: the constructor name rides a NAMED edge so a
-        // constructor census cannot conflate it with a string literal spelling the same
-        // lexeme (string-literal atoms and callee atoms are positional edges).
+        // Authored constructor SPELLING, not resolved declaration identity: the name is
+        // the AST node's authored lexeme (no qualified name, no parent-enum identity),
+        // so a spelling census over this edge is a conservative over-approximation —
+        // two same-spelled record types in different modules are indistinguishable
+        // here. The NAMED edge only discriminates a construction occurrence from a
+        // string literal or callee atom spelling the same lexeme (those ride
+        // positional edges). Resolved constructor identity (qualified declaration +
+        // parent identity for variants) is separate future work.
         edges.push(edge_named(
             ctx,
-            "record_construction",
+            "record_construction_spelling",
             atom_identity_node(ctx, &name),
         ));
     }
