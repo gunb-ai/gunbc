@@ -48,7 +48,11 @@ test fn witness_identity_that_is_not_a_dns_label_can_still_have_a_hostname() -> 
 }
 
 test fn witness_production_fleet_roster_is_injective() -> Bool {
-  hostname_allocation_roster_is_consistent(allocations: gunbc_fleet_hostname_allocations)
+  match hostname_allocation_roster_verdict(allocations: gunbc_fleet_hostname_allocations) {
+    HostnameAllocationRosterConsistent => true
+    FleetSlotAllocatedTwice { fleet_slot: _ } => false
+    CanonicalHostnameClaimedTwice { canonical_hostname: _ } => false
+  }
 }
 
 test fn witness_two_identities_may_not_claim_one_canonical_hostname() -> Bool {
