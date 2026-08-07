@@ -166,6 +166,32 @@ Only **A vs D** has been measured. Apportion cause with four cells on a **small 
 
 Pre-index module artifact reuse remains **parked** as contingency per lane scope.
 
+## 2×2 apportionment — cells C and D only (10-entry small roster, 2026-08-07)
+
+**Cohort:** `p1_cohort_small_roster.txt` (10 entries, 44 witness rows). **Vehicle:** `p1_cohort_probe` via `cargo run` (debug build on measurement host). **Cells:** C = width-2 + private per-worker caches; D = width-2 + shared JSON store. **Two runs per cell** (operator bar: within-cell spread beside between-cell delta).
+
+| Run | Cell | Exit | Last heartbeat elapsed | cgroup_current (last) | cgroup_peak | shared_store hit | private_fallback | typecheck_compute | oom_kill (events line) |
+|-----|------|------|------------------------|-------------------------|-------------|------------------|------------------|-------------------|------------------------|
+| 1 | C | 137 | 120,002 ms | 3.40 GiB | 5.15 GiB | 0 | 65 | 18 | (killed before events tail on run 1) |
+| 2 | C | 137 | 120,001 ms | 3.84 GiB | 5.15 GiB | 0 | 65 | 18 | 11 |
+| 1 | D | 137 | 120,001 ms | 3.61 GiB | 5.15 GiB | 0 | 65 | 18 | 12 |
+| 2 | D | 137 | 120,001 ms | 3.53 GiB | 5.15 GiB | 0 | 65 | 18 | 13 |
+
+**No run completed** — no `PASS` / `wall_ms` completion line on any of four attempts. All killed at ~120 s wall (SIGKILL / exit 137).
+
+### Within-cell spread vs between-cell delta
+
+| Metric | Cell C (2 runs) | Cell D (2 runs) | C vs D |
+|--------|-----------------|-----------------|--------|
+| Wall at kill | 120.0 s, 120.0 s | 120.0 s, 120.0 s | **0 ms spread within cell; 0 ms between cells** |
+| cgroup_peak | 5.15 GiB both | 5.15 GiB both | **identical** |
+| cgroup_current at kill | 3.40–3.84 GiB | 3.53–3.61 GiB | overlapping; **no separable delta** |
+| Store counters at kill | hit=0, encode/decode=0 | hit=0, encode/decode=0 | **identical** |
+
+**Apportionment verdict:** Cannot isolate shared-store JSON overhead — D never diverges from C before kill. **Decision table row: C pathological and D pathological at the same grain → defect is width-2 / duplicate private worlds, not shared-store lock/JSON.** **CLOSE the crossover lane** (do not recut JSON store; do not touch Arc). Operator follow-on: reduce #7974 to minimal receipt/reproduction closeout rather than merging ~1k lines of experimental machinery.
+
+**Host note:** measurement host cgroup `memory.peak` hit ~5.15 GiB on all runs; `oom_kill` counter incremented across runs. Kill at exactly ~120 s may include an external wall limit in addition to memory pressure — cause not fully discriminated, but **outcome is unchanged: width-2 does not complete the 10-entry cohort on this host.**
+
 ## Counters
 
 `shared_store_hit`, `shared_store_miss`, `shared_store_encode`, `shared_store_decode`, `private_store_fallback` — process-wide via `shared_typecheck_store_counters_snapshot()`.
