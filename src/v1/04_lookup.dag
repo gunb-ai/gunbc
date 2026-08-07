@@ -139,52 +139,93 @@ fn func_decl_owner_module(func_env: ResolvedFuncEnv, name: String) -> String? {
   }
 }
 
+// Admission reads declaration metadata (admit_callers) off the node this lookup returns, so
+// the node must be the DECLARATION. Four of the five node sources feeding this lookup were
+// binding-resolved VALUE nodes -- b.resolved, cand.binding.resolved, binding.resolved --
+// which carry no declaration properties, so fn_admit_callers found nothing and the wall
+// admitted every caller of any name resolving through one of them. Zero-arity sealed
+// constructors were the live population: an unlisted caller could reference or invoke one
+// with no diagnostic, in both the bare-reference and explicit-call spellings, while a
+// one-arity name happened to resolve through the symbol index and refused correctly. Arity
+// was a correlate of which path ran, never the distinguishing fact, so the repair is
+// uniform rather than arity-specific.
+// THE OWNER MUST BE LOCATED, NOT GUESSED. Only func_decl_owner_module and
+// borrowed_census_decl positively assert that a declaration of this name lives in the module
+// they name; the str_bindings arm and the trailing default both answer with the REFERENCING
+// module, which is a guess about location. Resolving against a guessed owner and then treating
+// the index miss as unrecoverable turns a wrong guess into a hard refusal: measured on the
+// whole tree that fabricated 11 refusals over three ordinary data declarations
+// (srv3_nbd_proxy_local_port, gnu_bash_subject_ref, extdeps_external_authority_anchor), none of
+// them constructors, one of them a homonym declared in two modules. So a name no locating
+// authority claims is NotAnAdmissionBearingConstructor, and the unavailable arm is reserved for
+// the genuinely anomalous case -- a located declaration the index cannot produce.
+// THE VALUE NODE IS NOT AN ADMISSION FALLBACK. An earlier revision kept it as one and argued
+// the change could only add refusals; that is not sufficient, because a fabricated refusal is
+// a wrong answer exactly as a fabricated success is (DESIGN section 5), and keeping it would
+// leave one policy with two metadata sources -- the fork this de-fork exists to remove. So
+// the outcome is typed three ways and an unrecoverable declaration REFUSES rather than
+// falling back to a provenance-losing node. Typing is unaffected: the value node remains the
+// fallback for inference, just never for reading admission facts.
+type ExactDeclarationIdentity {
+  owner_module_path: String
+  decl_name: String
+}
+
+type DeclarationLookupFailure
+  = DeclarationNotIndexedAtQualifiedName { qualified_name: String }
+
+type ConstructorDeclarationLookup
+  = ExactConstructorDeclaration { identity: ExactDeclarationIdentity, declaration: Node }
+  | NotAdmissionBearingReference {}
+  | AdmissionBearingDeclarationUnavailable { identity: ExactDeclarationIdentity, cause: DeclarationLookupFailure }
+
+fn constructor_declaration_for_admission(
+  type_env: TypeEnv,
+  owner_module_path: String,
+  name: String
+) -> ConstructorDeclarationLookup {
+  let decl_name = qualified_last_segment_local(name: name)
+  let qualified = if contains(name, ".") { name } else { concat(owner_module_path, ".", name) }
+  let identity = ExactDeclarationIdentity { owner_module_path: owner_module_path, decl_name: decl_name }
+  match symbol_index_lookup(index: type_env.symbol_index, qualified_name: qualified) {
+    Present { value: node } =>
+      ExactConstructorDeclaration { identity: identity, declaration: node }
+    Absent =>
+      AdmissionBearingDeclarationUnavailable {
+        identity: identity,
+        cause: DeclarationNotIndexedAtQualifiedName { qualified_name: qualified }
+      }
+  }
+}
+
+fn qualified_last_segment_local(name: String) -> String {
+  match split(name, ".") |> last {
+    Present { value: seg } => seg
+    Absent => name
+  }
+}
+
 fn func_decl_binding_for_call(
   func_env: ResolvedFuncEnv,
   type_env: TypeEnv,
   name: String
-) -> BorrowedCensusDecl? {
-  match lookup_binding_by_name_local(env: type_env, name: name) {
-    Present { value: binding } =>
-      let owner_module_path = match map_get(type_env.str_bindings, name) {
-        Present { value: _ } => type_env.module_path
-        Absent =>
-          match func_decl_owner_module(func_env: func_env, name: name) {
-            Present { value: owner } => owner
-            Absent =>
-              match borrowed_census_decl(type_env: type_env, name: name) {
-                Present { value: bd } => bd.owner_module_path
-                Absent => type_env.module_path
-              }
-          }
-      }
-      Present {
-        value: BorrowedCensusDecl {
-          owner_module_path: owner_module_path,
-          node: binding.resolved
-        }
-      }
+) -> ConstructorDeclarationLookup {
+  match func_decl_owner_module(func_env: func_env, name: name) {
+    Present { value: owner } =>
+      constructor_declaration_for_admission(
+        type_env: type_env,
+        owner_module_path: owner,
+        name: name
+      )
     Absent =>
       match borrowed_census_decl(type_env: type_env, name: name) {
-        Present { value: bd } => Present { value: bd }
-        Absent =>
-          match func_decl_owner_module(func_env: func_env, name: name) {
-            Present { value: owner } =>
-              match symbol_index_lookup(
-                index: type_env.symbol_index,
-                qualified_name: concat(owner, ".", name)
-              ) {
-                Present { value: node } =>
-                  Present {
-                    value: BorrowedCensusDecl {
-                      owner_module_path: owner,
-                      node: node
-                    }
-                  }
-                Absent => none
-              }
-            Absent => none
-          }
+        Present { value: bd } =>
+          constructor_declaration_for_admission(
+            type_env: type_env,
+            owner_module_path: bd.owner_module_path,
+            name: name
+          )
+        Absent => NotAdmissionBearingReference {}
       }
   }
 }
