@@ -4,6 +4,12 @@ import std.types { NonEmptyStr, Int, List, Bool }
 import std.decl_ref { DeclarationRef }
 import std.algebra { Ordering, Less, Equal, Greater }
 
+// Human burden is a FREQUENCY, never a scalar. "This strategy needs 3 manual steps" is
+// the state-space conflation DESIGN's failure-mode list names: a step performed once for
+// the whole fleet, once per device, once per provision, and once in an emergency are four
+// different costs, and summing them prices a one-time enrollment the same as a step paid
+// on every run. The axis below is what actually multiplies against the number of devices
+// and the number of provisions, so it is the axis the model carries.
 type HumanInterventionFrequency
   = FleetOnce
   | DeviceOnce
@@ -12,12 +18,32 @@ type HumanInterventionFrequency
 
 type HumanInterventionIdentity = NonEmptyStr where brand("HumanInterventionIdentity")
 
+// "The human did it" is a claim, and a claim must point at the declaration carrying the
+// evidence — an intervention must not be dischargeable by editing a flag beside it (DESIGN
+// §5: a check satisfiable by editing the declaration while the realization still lies).
+//
+// But a bare DeclarationRef field cannot express the state every intervention in this
+// repository is actually in today, which is that NO per-intervention discharge site exists
+// to cite. Filling it with a shared module-level ref — as an earlier revision did, pointing
+// every intervention at one strategy-selector declaration — is a placeholder wearing the
+// shape of evidence, and it reduces the field to exactly the flag it was introduced to
+// prevent (review 49806). So the carrier names the gap instead: an intervention may cite a
+// real discharge site or state that none is modeled, and it may not quietly do the second
+// while looking like the first.
+//
+// dissolve-on: a per-intervention discharge carrier lands and NoDischargeSiteModeled has no
+// remaining inhabitant, at which point the arm retires and the field is a DeclarationRef
+// again — this time with something real behind it.
+type InterventionCompletionEvidence
+  = DischargedAt { evidence: DeclarationRef }
+  | NoDischargeSiteModeled
+
 type HumanIntervention {
   identity: HumanInterventionIdentity
   frequency: HumanInterventionFrequency
   subject: NonEmptyStr
   instruction: NonEmptyStr
-  completion_evidence: DeclarationRef
+  completion_evidence: InterventionCompletionEvidence
 }
 
 type ProvisioningHumanBurden {
@@ -33,6 +59,12 @@ fn human_intervention_frequency_eq(a: HumanInterventionFrequency, b: HumanInterv
   }
 }
 
+// DERIVED. No burden carries a stored count; a stored one is a second representation of
+// the list beside it and goes stale the moment an intervention is added (DESIGN §2/§3).
+// The result is an Int rather than std.nat.Nat because Nat at this layer is the algebraic
+// CommutativeSemiring<Magnitude> alias with no counting surface, and list_length — the one
+// authority for "how many elements" — answers in Int; minting a second cardinal here to
+// satisfy a name would be exactly the re-invention the decomposition test forbids.
 fn human_intervention_count_at(
   burden: ProvisioningHumanBurden,
   frequency: HumanInterventionFrequency
@@ -43,6 +75,11 @@ fn human_intervention_count_at(
   ))
 }
 
+// Routine burden is compared LEXICOGRAPHICALLY down the axis, most-multiplied first:
+// EveryProvision is paid on every run of every device, DeviceOnce once per device,
+// FleetOnce once ever. BreakGlassOnly is deliberately NOT a term — an emergency path is
+// not cheaper for being rare, it is a different kind of thing, and pricing it as routine
+// would let a strategy buy a better score by moving work into the emergency path.
 fn compare_int_ascending(a: Int, b: Int) -> Ordering {
   if a < b { Less } else if a > b { Greater } else { Equal }
 }

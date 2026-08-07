@@ -1,11 +1,12 @@
 module gunbc.dgx_spark_pxe_boot
 
 import std.types { NonEmptyStr, String, List, Bool }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.decl_ref { DeclarationRef }
 import std.human_intervention {
   HumanIntervention,
   HumanInterventionIdentity,
   DeviceOnce,
+  NoDischargeSiteModeled,
 }
 import extdeps.uri { Uri }
 import extdeps.provisioning.network_boot { NetworkBootChain, NativeDhcpBootOptions }
@@ -211,19 +212,13 @@ type SparkPxeFirmwareStanding
   = SparkPxeFirmwareReady
   | SparkPxeFirmwareHumanInterventionRequired { intervention: HumanIntervention }
 
-data spark_pxe_firmware_enablement_authority: DeclarationRef = DeclarationRef {
-  module_path: "gunbc.dgx_spark_pxe_boot",
-  decl_name: "spark_pxe_firmware_enablement_intervention",
-  field: WholeDeclaration,
-}
-
 fn spark_pxe_firmware_enablement_intervention() -> HumanIntervention {
   HumanIntervention {
     identity: "spark-pxe-firmware-enablement" as HumanInterventionIdentity,
     frequency: DeviceOnce,
     subject: "UEFI network stack",
     instruction: "At this unit's console, either disable secure boot or enroll grubnetaa64.efi.signed, then enable PXE on the chosen interface under Network Stack Configuration.",
-    completion_evidence: spark_pxe_firmware_enablement_authority,
+    completion_evidence: NoDischargeSiteModeled,
   }
 }
 
