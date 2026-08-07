@@ -25444,14 +25444,25 @@ mod node_frontier_plumbing_controls {
     #[test]
     fn frozen_roster_unrelated_history_refuses_only_under_merge_base_mode() {
         let repo = FreezeRepo::new("unrelated");
-        repo.write_roster(&["only_on_the_orphan"]);
-        let orphan_root = {
-            repo.git(&["checkout", "--quiet", "--orphan", "orphan"]);
-            repo.commit("orphan root")
-        };
-        repo.git(&["checkout", "--quiet", "main"]);
+        // `main` must carry a commit before an orphan branch is cut, or there is no branch to
+        // return to — a fresh repository has no `main` until something lands on it.
         repo.write_roster(&["only_on_main"]);
         repo.commit("main root");
+
+        repo.git(&["checkout", "--quiet", "--orphan", "orphan"]);
+        repo.write_roster(&["only_on_the_orphan"]);
+        let orphan_root = repo.commit("orphan root");
+        repo.git(&["checkout", "--quiet", "main"]);
+        assert!(
+            std::process::Command::new("git")
+                .args(["merge-base", &orphan_root, "HEAD"])
+                .current_dir(&repo.dir)
+                .output()
+                .expect("git merge-base")
+                .stdout
+                .is_empty(),
+            "the fixture must actually be two unrelated histories"
+        );
 
         let err = repo
             .collect(&repo.merge_base(&orphan_root, "HEAD"))
