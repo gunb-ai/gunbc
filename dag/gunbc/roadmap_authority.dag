@@ -1752,6 +1752,52 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     ),
 
     active(
+      identity: "rn_6KQZ2H8TXW4NDVC0RJ5YMPB37F",
+      id: "placement-task-and-memory-envelope",
+      owner: "ci-placement",
+      path: "docs/plans/srvn-buildcache-provisioning-design.md",
+      t: fields(
+        headline: "Give build work a task and memory budget it cannot silently exceed",
+        boundary: "One derived envelope decides how many processes and how much memory build work may use on a machine, and the compile work runs inside a home of its own rather than inside whichever job happened to start the shared cache. Effective limits are read back from the machine, never inferred from a command that exited zero.",
+        displaced_cost: "Two separate failures were charged to the code for a whole day. Jobs died unable to start a process at all, and jobs died being killed from above their own budget while sitting far under it -- across four independent measurements, at 8.8 percent of the visible limit, with the peak identical on every attempt. Neither is a defect in any change under review, and both arrive looking exactly like one.",
+        first_slice: "Take the half the cited record already grounds: give the shared build cache a home of its own on one machine, provisioned during standup rather than started by whichever job happened to need it first, and establish who owns it by observing the machine rather than trusting a command that exited zero.",
+        red_control: "A process-count exhaustion and a kill from an outer budget must report as two different, separately named things. A restore that the command accepts but the machine did not take must refuse. An envelope that grows because more work arrived, rather than because the budget was raised deliberately, must refuse.",
+        out_of_scope: "Not a bigger machine, and not the final capacity model. Moving the shared cache without also bounding how much work it admits is explicitly not this.",
+        handback: "Both failure kinds separately reproduced and separately named; the restored limits read back off the machine; the previously failing work passing; and the exhaustion counter no longer moving."
+      )
+    ),
+    active(
+      identity: "rn_QT0V9LFN5S8XA2GEW6HD4JRK1C",
+      id: "observation-verification-integrity",
+      owner: "ci-observation",
+      path: "docs/plans/ci-merge-freshness.md",
+      t: fields(
+        headline: "Stop the build from reporting a result it did not actually get",
+        boundary: "Every verification names the exact source and the exact binary it used. A remote build that produces no local output refuses instead of exiting zero, a re-run compares against the current state of the branch rather than replaying an old combination, and having no checks at all is an unobserved state rather than a satisfied one.",
+        displaced_cost: "Five separate mechanisms can currently report a result nobody earned: a remote build exits zero while its output never comes back, a comparison passes because it compared a stale binary against itself, a re-run replays a combination computed when the change was opened, a change verified elsewhere is indistinguishable from one never tested, and a cancelled job reads as a failure. A slow true answer costs time; a fast false one costs the thing it was protecting.",
+        first_slice: "Take the one the cited record already grounds: a result accepted against a base the branch has moved past. Require the answer to be recomputed against the current state of the branch before it is allowed to decide anything.",
+        red_control: "A remote build that writes nothing locally must fail rather than pass. A comparison given a stale binary must refuse rather than report no difference. A re-run against a moved branch must not reuse the old combination. Cancelled, skipped, timed out, infrastructure-failed and genuinely-failed must each stay a distinct answer.",
+        out_of_scope: "Not making anything faster. This is only about whether the answer is true.",
+        handback: "Each mechanism shown failing before and refusing after, with the distinct outcome kinds demonstrated separately rather than collapsed into pass and fail."
+      )
+    ),
+    active_small(
+      identity: "rn_8NRW1YJC6PZQ3MTB5FKX0GDAV2",
+      id: "ci-gate-threshold-grounding",
+      owner: "ci-observation",
+      path: "docs/plans/ci-performance-tanking-evidence.md",
+      t: fields(
+        headline: "Stop a merge gate whose answer is set by how busy the machine is",
+        boundary: "A check that blocks merging decides on something about the change. A time limit that one check sits under on a quiet machine and over on a busy one is measuring the machine, so either the work it measures gets cheaper or the check stops blocking merges.",
+        displaced_cost: "One check was measured ten times across four separate efforts with nothing in the code changing between them, and the readings ranged from well under its limit to well over it. It blocked one change outright, produced a false alarm on another whose own checks all passed, and sent three separate efforts hunting for a defect that was never there.",
+        first_slice: "Make the measured work cheaper under the limit it already has.",
+        red_control: "Repeated runs of the same unchanged code must land on the same side of the limit. Raising the limit, or moving the check somewhere it stops running per change, does not close this and must be refused as a way of closing it.",
+        out_of_scope: "Not a general performance effort, and not a review of every limit -- only the ones currently deciding merges on machine load.",
+        handback: "Repeated unchanged runs landing consistently on one side, the previously blocked change passing unmodified, and the limit itself untouched."
+      )
+    ),
+
+    active(
       identity: "rn_3B3802MNXFPG4VS2VFT7BNBN1Y",
       id: "toolchain-pin-model",
       owner: "toolchain",
