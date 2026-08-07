@@ -225,7 +225,16 @@ fn cfba_reference_joined_at(
 }
 
 fn cfba_closure_id_by_name(entries: List<OccurrenceIndexEntry>, name: String) -> Int {
-  (entries |> filter(e => e.projection.authored_name == name) |> first()).projection.occurrence.value
+  fold(
+    entries,
+    init: -1,
+    f: (acc, e) =>
+      if e.projection.authored_name == name {
+        e.projection.occurrence.value
+      } else {
+        acc
+      },
+  )
 }
 
 // Provider row carrying BOTH a declaration and a reference, minting raw ids 0 and 1 from
