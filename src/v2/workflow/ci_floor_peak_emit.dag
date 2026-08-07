@@ -22,7 +22,7 @@ import v2.extdeps.languages.bash_orch_if {
   bash_nearest_ancestor_locate_cond_command,
   bash_nearest_ancestor_locate_body_command,
 }
-import std.path_intent { NearestAncestorContaining, PathRef }
+import std.path_intent { NearestAncestorContaining, PathRefStart }
 import std.filesystem.types { RegularFile }
 import std.types { FilePathParts, NonEmptyStr }
 
@@ -31,7 +31,7 @@ data ci_floor_peak_path_predicate_qualification_note: String = "PathPredicate IS
 data ci_floor_peak_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ floor-peak cgroup observation emission was rejected by v2.compiler.emit_orchestration; this marker is not valid workflow shell, so the committed ci.yml drift gate goes red rather than a hand-spelled fallback masking the refusal (DESIGN 5: refuse, never widen)\n"
 
 data ci_floor_peak_nearest_ancestor_spec: NearestAncestorContaining = NearestAncestorContaining {
-  start: PathRef { name: "d" as NonEmptyStr },
+  start: PathRefStart { name: "d" as NonEmptyStr },
   stop_before: FilePathParts { segments: ["sys", "fs", "cgroup"] },
   relative_entry: FilePathParts { segments: ["memory.peak"] },
   expected_kind: RegularFile,

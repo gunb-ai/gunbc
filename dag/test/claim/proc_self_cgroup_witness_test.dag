@@ -22,7 +22,7 @@ import v2.extdeps.languages.bash_orch_if {
 }
 import std.path_intent {
   NearestAncestorContaining,
-  PathRef,
+  PathRefStart,
   And,
   Not,
   nearest_ancestor_while_predicate,
@@ -221,7 +221,7 @@ test fn bash_assign_from_source_preserves_refusal_markers_holds() -> Bool {
 }
 
 data cgroup_locate_spec: NearestAncestorContaining = NearestAncestorContaining {
-  start: PathRef { name: cgroup_walk_var },
+  start: PathRefStart { name: cgroup_walk_var },
   stop_before: cgroup_mount_root,
   relative_entry: FilePathParts { segments: ["memory.peak"] },
   expected_kind: RegularFile,
