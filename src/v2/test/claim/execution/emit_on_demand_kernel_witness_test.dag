@@ -4,8 +4,12 @@ import std.logic { Bool }
 import std.types { String }
 import std.content_hash { ContentHash, Fnv1a64Structural, content_hash_atom }
 import std.measure { ByteSize, byte_size }
+import std.cache_interface {
+  CapacityBounded, ByteCapacity, EffectiveLimitUnobserved,
+  ReplaceExisting, LeastRecentlyUsed,
+}
 import std.materialization_ladder {
-  CacheProvider, CoversAllComputations, ArtifactTier, ContentKeyed, SpacePacked, provider_row,
+  CacheProvider, CoversAllComputations, ArtifactTier, ContentKeyed, provider_row, persistent_retention,
 }
 import std.artifact_store {
   ArtifactStore, StoreReady, StoreRefusedRetention, store_over_provider, store_put, store_put_fold,

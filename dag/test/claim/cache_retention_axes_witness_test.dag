@@ -22,6 +22,8 @@ import std.cache_interface {
   capacity_is_bounded,
   LeastRecentlyUsed,
   retention_growth_is_bounded,
+  retention_has_capacity_bound,
+  retention_has_exact_byte_bound,
 }
 
 data cache_retention_axes_note: String = "THE DISCRIMINATING CONTROLS for the retention axis split (operator ruling 2026-08-06). Every cell here is a PLANTED retention value, not a live corpus row, so a red is attributable to the algebra rather than to a catalog edit; the per-row dispositions are checked by each row consumer. Two cells prove the shape the old sum could not express AT ALL - scope release AND a capacity bound carried in one value - which is the whole reason the axis was split. One cell keeps the two negative states apart, because known-unbounded and not-established have different remedies and only the second is closed by a citation. One cell keeps refuse-new-store distinct from replacement, the distinction PR 2 rests on. The LRU and TTL halves are deliberately NOT tested here and the note below says why: both became unrepresentable rather than merely false, and an unrepresentable state has no value a predicate could be handed."

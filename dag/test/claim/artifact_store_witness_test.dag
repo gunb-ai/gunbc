@@ -14,6 +14,11 @@ import std.content_hash {
   sha256_hex_digest,
 }
 import std.measure { ByteSize, byte_size, measure_count }
+import std.cache_interface {
+  CapacityUnbounded, CapacityBounded,
+  ByteCapacity, ExactLimit, EffectiveLimitUnobserved,
+  ReplaceExisting, LeastRecentlyUsed,
+}
 import std.materialization_ladder {
   CacheProvider, CoversAllComputations, ReferenceTier, ArtifactTier, ContentKeyed,
   provider_row, scope_released_retention, persistent_retention,
