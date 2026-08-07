@@ -24,7 +24,9 @@ import gunbc.diff_baseline {
   resolve_diff_baseline,
   diff_baseline_ref,
   diff_baseline_diff_base,
-  diff_baseline_diff_head
+  diff_baseline_diff_head,
+  DiffBaselineKind,
+  diff_baseline_kind
 }
 import std.types { String, NonEmptyStr, GitRef }
 import std.logic { Bool }
@@ -267,6 +269,71 @@ fn floor_observe_diff_baseline_readout(policy: DiffPolicy) -> FloorDiffBaselineR
 
 fn floor_observe_diff_baseline_readout_for_ci() -> FloorDiffBaselineReadout {
   floor_observe_diff_baseline_readout(policy: gunbc_ci_spec.diff_policy)
+}
+
+data floor_diff_comparison_readout_law: String = "THE PROJECTION A DECIDING CONSUMER MUST TAKE, and the defect that produced it. The baseline readout above answers 'which ref' and nothing else, which is exactly enough to LOCATE a diagnostic and not nearly enough to COMPARE two trees. gunbc#7953 took that lossy projection into the frozen-roster monotonicity gate and then reconstructed the missing half in Rust by imposing merge-base on every arm — deleting the origin/main source fork and immediately re-forking the RELATION instead. That is a fail-open, not a cosmetic slip: PushBefore and ExactReplayBoundary are exact two-dot comparisons, so a non-fast-forward push whose before SHA is not an ancestor gets compared against the common ancestor instead, and a frozen row REINTRODUCED by that push reads as no addition at all. Executed counterexample: roster A=\{X\}, push before B=\{\} (X removed), pushed head H=\{X\} off A; the true two-dot answer H minus B is \{X\} and must refuse, while merge-base(B,H)=A gives H minus A=\{\} and passes real growth.
+
+WHAT THIS CARRIER FIXES, stated as the law rather than as the patch: a comparison is a TRIPLE — resolved base, resolved head, and the relation between them — and it must cross the seam as one value. The mode arm is the discriminator, so a consumer cannot silently pick a relation, and the head is the SELECTED head rather than an ambient one, because ExactReplayBoundary carries its own exact head and substituting the checkout's HEAD is the same class of substitution one endpoint over. Kind rides along to locate refusals and decides nothing. Deriving all three here rather than in each consumer keeps resolve_diff_baseline the single authority (DESIGN section 3); a second consumer that re-derived any member would be the fork this row exists to close."
+
+type FloorDiffComparisonReadout
+  = DirectComparison {
+      base: String,
+      head: String,
+      kind: DiffBaselineKind,
+      event_name: String
+    }
+  | MergeBaseComparison {
+      base: String,
+      head: String,
+      kind: DiffBaselineKind,
+      event_name: String
+    }
+  | ComparisonReadoutRefused { reason: String }
+
+fn floor_comparison_of_mode(
+  mode: DiffMode,
+  base: String,
+  head: String,
+  kind: DiffBaselineKind,
+  event_name: String
+) -> FloorDiffComparisonReadout {
+  match mode {
+    DiffTwoDot =>
+      DirectComparison { base: base, head: head, kind: kind, event_name: event_name }
+    DiffMergeBase =>
+      MergeBaseComparison { base: base, head: head, kind: kind, event_name: event_name }
+  }
+}
+
+fn floor_observe_diff_comparison_readout(policy: DiffPolicy) -> FloorDiffComparisonReadout {
+  match floor_resolve_baseline(policy: policy) {
+    BaselineRefused { reason: reason } => ComparisonReadoutRefused { reason: reason }
+    BaselineSourceConflict { window_detail: detail, override_ref: override_ref } =>
+      ComparisonReadoutRefused {
+        reason: join([
+          "baseline source conflict — ",
+          detail,
+          " while GUNBC_CI_DIFF_BASE is set to ",
+          override_ref,
+          "; halting the floor (AFFECTED-SET REFUSAL)",
+        ], ""),
+      }
+    BaselineSelected { baseline: baseline } =>
+      floor_comparison_of_mode(
+        mode: floor_diff_mode_for_baseline(baseline: baseline, policy: policy),
+        base: diff_baseline_diff_base(b: baseline),
+        head: diff_baseline_diff_head(
+          b: baseline,
+          default_head: floor_resolved_head(policy: policy)
+        ),
+        kind: diff_baseline_kind(b: baseline),
+        event_name: floor_observe_ci_diff_event().event_name
+      )
+  }
+}
+
+fn floor_observe_diff_comparison_readout_for_ci() -> FloorDiffComparisonReadout {
+  floor_observe_diff_comparison_readout(policy: gunbc_ci_spec.diff_policy)
 }
 
 fn floor_name_status_from_raw(raw: String) -> FloorNameStatusDiffResult {
