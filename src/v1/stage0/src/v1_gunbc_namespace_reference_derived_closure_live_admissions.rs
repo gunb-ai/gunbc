@@ -13,7 +13,9 @@ use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerived
 use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureCapability::{SameFileEarlierNeighbourVisible, SiblingDecisionBranchExcluded, LaterDeclarationExcluded, DistinctSameSpelledDeclarationsPreserved};
 pub use crate::std_reference_binding_observation::{ReferenceBindingObservation};
 use crate::std_reference_binding_observation::ReferenceBindingObservation::*;
-pub use crate::v1_gunbc_namespace_reference_derived_closure_production_observations::{namespace_structural_binding_observations_a_through_d, namespace_structural_binding_observations_mutation_a, namespace_structural_binding_observations_mutation_b, namespace_structural_binding_observations_mutation_c, namespace_structural_binding_observations_mutation_d};
+pub use crate::v1_gunbc_namespace_reference_derived_closure_production_observations::{N3aPipelineStage};
+pub use crate::v1_gunbc_namespace_reference_derived_closure_production_observations::{namespace_structural_binding_observations_a_through_d, namespace_structural_binding_observations_mutation_a, namespace_structural_binding_observations_mutation_b, namespace_structural_binding_observations_mutation_c, namespace_structural_binding_observations_mutation_d, n3a_base_ordinary_compile_observation};
+use crate::v1_gunbc_namespace_reference_derived_closure_production_observations::N3aPipelineStage::{N3aStageTokenize, N3aStageParse, N3aStageOccurrenceWalk, N3aStageResolve, N3aStageBinder};
 pub use crate::std_types::{Bool, List};
 use crate::std_types::Bool::*;
 
@@ -164,4 +166,74 @@ pub fn n3a_closing_receipt_holds() -> bool {
         && n3a_mutation_b_receipt().target_reds_alone.clone())
         && n3a_mutation_c_receipt().target_reds_alone.clone())
         && n3a_mutation_d_receipt().target_reds_alone.clone())
+}
+
+pub fn n3a_ordinary_compile_closing_receipt_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "The closing receipt above (n3a_closing_receipt_holds) is the semantic claim; this second receipt is the rung-honesty claim (DESIGN §4b(1)) about the SUBJECT it was computed over — that the base specimen was genuinely loaded from a real ordinary .dag file and walked through tokenize+parse+occurrence-walk only, never through resolve or the binder. Checking the carrier's stages rather than re-deriving the same Bool is deliberate: it is the one place a future change that quietly widened this seam (e.g. swapping in a fabricated transport) would be caught, because the carrier's shape — not this file's prose — is what a witness can fail on.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn n3a_ordinary_compile_closing_receipt_holds() -> bool {
+    {
+        let observation = n3a_base_ordinary_compile_observation();
+        ((((((((observation.file()
+            == "fixtures/namespace/reference_derived_closure/specimen.dag".to_string())
+            && (observation.source_root()
+                == "fixtures/namespace/reference_derived_closure".to_string()))
+            && {
+                let mut __found = false;
+                for stage in observation.stages_executed().iter().cloned() {
+                    if (stage.clone() == N3aPipelineStage::N3aStageTokenize) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            })
+            && {
+                let mut __found = false;
+                for stage in observation.stages_executed().iter().cloned() {
+                    if (stage.clone() == N3aPipelineStage::N3aStageParse) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            })
+            && {
+                let mut __found = false;
+                for stage in observation.stages_executed().iter().cloned() {
+                    if (stage.clone() == N3aPipelineStage::N3aStageOccurrenceWalk) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            })
+            && {
+                let mut __found = false;
+                for stage in observation.stages_not_executed().iter().cloned() {
+                    if (stage.clone() == N3aPipelineStage::N3aStageResolve) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            })
+            && {
+                let mut __found = false;
+                for stage in observation.stages_not_executed().iter().cloned() {
+                    if (stage.clone() == N3aPipelineStage::N3aStageBinder) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            })
+            && n3a_closing_receipt_holds())
+    }
 }

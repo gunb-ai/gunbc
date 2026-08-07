@@ -36,7 +36,41 @@ data namespace_reference_derived_closure_production_observations_note: String = 
 
 data namespace_reference_derived_closure_filesystem_import_note: String = "The extdeps.filesystem.filesystem_io import above brings no named symbol into scope — filesystem_read itself is a v1 host builtin (registered in 04_method.dag), not an export of this module. The import exists solely for its grounding side effect: it puts the declared service Filesystem { operation Read } into this file's reachable graph.modules, which is what makes Filesystem.Read appear in the compiled program's service_ops so hermetic execution admits the filesystem_read call below instead of refusing it."
 
-data namespace_reference_derived_closure_production_specimen_note: String = "ONE ordinary compiled specimen is loaded through the ordinary compilation path — a real file on disk under src/v1/gunbc/closure_fixture, read via the filesystem_read builtin (the same host-effect primitive dag/tools/extdeps_scope_placement_gate.dag and dag/test/claim/filesystem_read_hermetic_witness.dag use; hermetic execution serves it as a real checkout-input read, never a fabricated fixture) — and parsed once through the real tokenizer/parser, with all four clause observations derived from that single OccurrenceTransport. namespace_structural_binding_observations_for_source is the shared load-once/parse-once seam every export (base and mutation) routes through. The fixture files carry a .dag.txt extension, not .dag, so they are real authored files on disk yet never swept into src/v1's own .dag module discovery (stage0 regen / dag_compile_clean_gate both glob strictly on the .dag extension) — the specimen intentionally declares helper() twice at module scope to exercise DistinctSameSpelledDeclarationsPreserved, which the ordinary binder (unlike this occurrence-binding walker) would refuse as a duplicate declaration. Four discriminating mutation files (namespace_reference_derived_closure_specimen_mutation_a..d.dag.txt) each delete exactly the one declaration a single clause depends on, leaving the other three clauses' declarations byte-identical; src/v1/gunbc/namespace_reference_derived_closure_live_admissions.dag folds base-establishes-all-four and each-mutation-breaks-exactly-its-own-clause into the N3-A closing receipt. Sibling decision-branch uses if/else let arms (parse_block nesting) because match-arm bodies remain siblings of pattern binders in v1.parse containment."
+data namespace_reference_derived_closure_production_specimen_note: String = "ONE ordinary compiled specimen is loaded through the ordinary compilation path — a real .dag file on disk under fixtures/namespace/reference_derived_closure (a top-level fixture root, not src/v1 or dag/), read via the filesystem_read builtin (the same host-effect primitive dag/tools/extdeps_scope_placement_gate.dag and dag/test/claim/filesystem_read_hermetic_witness.dag use; hermetic execution serves it as a real checkout-input read, never a fabricated fixture) — and parsed once through the real tokenizer/parser, with all four clause observations derived from that single OccurrenceTransport. namespace_structural_binding_observations_for_source is the shared load-once/parse-once seam every export (base and mutation) routes through. The fixture root sits outside both regen_stage0's blind src/v1 .dag walk (regen_input_sources / regen_collect_dag_files, src/v1/stage0/src/cli_run.rs) and the dag_compile_clean_gate's --target dag import-closure scan, and nothing `import`s it — so a real, ordinarily-parseable .dag file can carry an intentional duplicate helper() declaration at module scope (to exercise DistinctSameSpelledDeclarationsPreserved, which the ordinary binder — unlike this occurrence-binding walker — would refuse) without ever joining the production compile-clean corpus. This is a placement fact, not a leniency in the walker: the file is genuinely accepted by tokenize+parse exactly as authored. Four discriminating mutation files (specimen_mutation_a..d.dag) each delete exactly the one declaration a single clause depends on, leaving the other three clauses' declarations byte-identical; src/v1/gunbc/namespace_reference_derived_closure_live_admissions.dag folds base-establishes-all-four and each-mutation-breaks-exactly-its-own-clause into the N3-A closing receipt. Sibling decision-branch uses if/else let arms (parse_block nesting) because match-arm bodies remain siblings of pattern binders in v1.parse containment."
+
+data nrdfc_fixture_source_root: String = "fixtures/namespace/reference_derived_closure"
+
+type N3aPipelineStage
+  = N3aStageTokenize
+  | N3aStageParse
+  | N3aStageOccurrenceWalk
+  | N3aStageResolve
+  | N3aStageBinder
+
+type N3aOrdinaryCompileObservation = N3aOrdinaryCompileObservation {
+  file: String,
+  source_root: String,
+  stages_executed: List<N3aPipelineStage>,
+  stages_not_executed: List<N3aPipelineStage>,
+}
+
+data n3a_ordinary_compile_observation_rung_note: String = "N3aOrdinaryCompileObservation states the honest rung structurally (DESIGN §4b(1) rung honesty), not by prose claim: stages_executed names exactly tokenize, parse, and occurrence-walk, and stages_not_executed names exactly resolve and binder, for every observation this producer emits, because the producer never calls anything past parse_authored_occurrence_binding_source. The resolve/binder gap is not a fresh frontier row here — it is the SAME gap already recorded in src/v1/tests/claim/v1_annotation_target_emission_test.dag's property_4_emission_measurement (compile_to_resolved raises a type error under the interpreter; emit_resolved_for_target is never reached), cited rather than re-triggered per DESIGN §3 (one trigger, not two rows). This carrier's stages_not_executed is a witness-checkable fact, not a restatement of that citation."
+
+fn n3a_ordinary_compile_observation_for(
+  file: String,
+  source_root: String,
+) -> N3aOrdinaryCompileObservation {
+  N3aOrdinaryCompileObservation {
+    file: file,
+    source_root: source_root,
+    stages_executed: [N3aStageTokenize, N3aStageParse, N3aStageOccurrenceWalk],
+    stages_not_executed: [N3aStageResolve, N3aStageBinder],
+  }
+}
+
+fn n3a_base_ordinary_compile_observation() -> N3aOrdinaryCompileObservation {
+  n3a_ordinary_compile_observation_for(file: nrdfc_specimen_path, source_root: nrdfc_fixture_source_root)
+}
 
 type NrdfcParsed
   = NrdfcParsedReady {
@@ -59,15 +93,15 @@ fn nrdfc_parse(file: String, source: String) -> NrdfcParsed {
   }
 }
 
-data nrdfc_specimen_path: String = "src/v1/gunbc/closure_fixture/namespace_reference_derived_closure_specimen.dag.txt"
+data nrdfc_specimen_path: String = "fixtures/namespace/reference_derived_closure/specimen.dag"
 
-data nrdfc_specimen_mutation_a_path: String = "src/v1/gunbc/closure_fixture/namespace_reference_derived_closure_specimen_mutation_a.dag.txt"
+data nrdfc_specimen_mutation_a_path: String = "fixtures/namespace/reference_derived_closure/specimen_mutation_a.dag"
 
-data nrdfc_specimen_mutation_b_path: String = "src/v1/gunbc/closure_fixture/namespace_reference_derived_closure_specimen_mutation_b.dag.txt"
+data nrdfc_specimen_mutation_b_path: String = "fixtures/namespace/reference_derived_closure/specimen_mutation_b.dag"
 
-data nrdfc_specimen_mutation_c_path: String = "src/v1/gunbc/closure_fixture/namespace_reference_derived_closure_specimen_mutation_c.dag.txt"
+data nrdfc_specimen_mutation_c_path: String = "fixtures/namespace/reference_derived_closure/specimen_mutation_c.dag"
 
-data nrdfc_specimen_mutation_d_path: String = "src/v1/gunbc/closure_fixture/namespace_reference_derived_closure_specimen_mutation_d.dag.txt"
+data nrdfc_specimen_mutation_d_path: String = "fixtures/namespace/reference_derived_closure/specimen_mutation_d.dag"
 
 fn nrdfc_load_specimen(path: String) -> String {
   filesystem_read(path: path).content

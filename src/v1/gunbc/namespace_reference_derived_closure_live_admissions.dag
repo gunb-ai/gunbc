@@ -17,6 +17,12 @@ import v1.gunbc.namespace_reference_derived_closure_production_observations {
   namespace_structural_binding_observations_mutation_b,
   namespace_structural_binding_observations_mutation_c,
   namespace_structural_binding_observations_mutation_d,
+  n3a_base_ordinary_compile_observation,
+  N3aStageTokenize,
+  N3aStageParse,
+  N3aStageOccurrenceWalk,
+  N3aStageResolve,
+  N3aStageBinder,
 }
 import std.types { Bool, List }
 
@@ -112,4 +118,18 @@ fn n3a_closing_receipt_holds() -> Bool {
     && n3a_mutation_b_receipt().target_reds_alone
     && n3a_mutation_c_receipt().target_reds_alone
     && n3a_mutation_d_receipt().target_reds_alone
+}
+
+data n3a_ordinary_compile_closing_receipt_note: String = "The closing receipt above (n3a_closing_receipt_holds) is the semantic claim; this second receipt is the rung-honesty claim (DESIGN §4b(1)) about the SUBJECT it was computed over — that the base specimen was genuinely loaded from a real ordinary .dag file and walked through tokenize+parse+occurrence-walk only, never through resolve or the binder. Checking the carrier's stages rather than re-deriving the same Bool is deliberate: it is the one place a future change that quietly widened this seam (e.g. swapping in a fabricated transport) would be caught, because the carrier's shape — not this file's prose — is what a witness can fail on."
+
+fn n3a_ordinary_compile_closing_receipt_holds() -> Bool {
+  let observation = n3a_base_ordinary_compile_observation()
+  observation.file == "fixtures/namespace/reference_derived_closure/specimen.dag"
+    && observation.source_root == "fixtures/namespace/reference_derived_closure"
+    && observation.stages_executed |> any(stage => stage == N3aStageTokenize)
+    && observation.stages_executed |> any(stage => stage == N3aStageParse)
+    && observation.stages_executed |> any(stage => stage == N3aStageOccurrenceWalk)
+    && observation.stages_not_executed |> any(stage => stage == N3aStageResolve)
+    && observation.stages_not_executed |> any(stage => stage == N3aStageBinder)
+    && n3a_closing_receipt_holds()
 }

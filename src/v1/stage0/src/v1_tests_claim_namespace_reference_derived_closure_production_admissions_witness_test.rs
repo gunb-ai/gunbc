@@ -16,7 +16,7 @@ pub use crate::gunbc_namespace_reference_derived_closure_contract::{reference_de
 pub use crate::std_reference_binding_observation::{ReferenceBindingObservation};
 use crate::std_reference_binding_observation::ReferenceBindingObservation::{DistinctHomonymObservation, DistinctHomonymProductionRefused, LaterDeclarationObservation, LaterDeclarationProductionRefused, SameFileNeighbourObservation, SameFileNeighbourProductionRefused, SiblingBranchObservation, SiblingBranchProductionRefused};
 pub use crate::v1_gunbc_namespace_reference_derived_closure_production_observations::{namespace_structural_binding_observations_a_through_d};
-pub use crate::v1_gunbc_namespace_reference_derived_closure_live_admissions::{n3a_closing_receipt_holds, n3a_base_establishes_all_four, n3a_mutation_a_receipt, n3a_mutation_b_receipt, n3a_mutation_c_receipt, n3a_mutation_d_receipt};
+pub use crate::v1_gunbc_namespace_reference_derived_closure_live_admissions::{n3a_closing_receipt_holds, n3a_ordinary_compile_closing_receipt_holds, n3a_base_establishes_all_four, n3a_mutation_a_receipt, n3a_mutation_b_receipt, n3a_mutation_c_receipt, n3a_mutation_d_receipt};
 pub use crate::std_types::{Bool, List};
 use crate::std_types::Bool::*;
 
@@ -168,6 +168,10 @@ pub fn witness_n3a_mutation_d_reds_distinct_homonym_alone() -> bool {
 
 pub fn witness_n3a_closing_receipt_holds() -> bool {
     n3a_closing_receipt_holds()
+}
+
+pub fn witness_n3a_ordinary_compile_closing_receipt_holds() -> bool {
+    n3a_ordinary_compile_closing_receipt_holds()
 }
 
 pub fn witness_closing_contract_still_reds_until_dependency_clauses_land() -> bool {

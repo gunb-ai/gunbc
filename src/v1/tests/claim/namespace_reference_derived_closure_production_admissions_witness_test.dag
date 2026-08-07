@@ -32,6 +32,7 @@ import v1.gunbc.namespace_reference_derived_closure_production_observations {
 }
 import v1.gunbc.namespace_reference_derived_closure_live_admissions {
   n3a_closing_receipt_holds,
+  n3a_ordinary_compile_closing_receipt_holds,
   n3a_base_establishes_all_four,
   n3a_mutation_a_receipt,
   n3a_mutation_b_receipt,
@@ -116,6 +117,10 @@ test fn witness_n3a_mutation_d_reds_distinct_homonym_alone() -> Bool {
 
 test fn witness_n3a_closing_receipt_holds() -> Bool {
   n3a_closing_receipt_holds()
+}
+
+test fn witness_n3a_ordinary_compile_closing_receipt_holds() -> Bool {
+  n3a_ordinary_compile_closing_receipt_holds()
 }
 
 test fn witness_closing_contract_still_reds_until_dependency_clauses_land() -> Bool {
