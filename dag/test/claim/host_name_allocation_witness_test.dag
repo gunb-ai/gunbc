@@ -4,6 +4,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { String, NonEmptyStr, List, Bool, Int }
 import std.keyed_row { KeyedRow }
 import extdeps.dns.domain_name { DnsLabel, parse_dns_label_raw }
+import extdeps.dhcp.v4 { MacAddress }
 import std.error_primitives { Ok, Err }
 import gunbc.mnemonic_name {
   MnemonicSchemeVersion,
@@ -33,6 +34,11 @@ import gunbc.host_name_allocation {
   HostNameNotAllocated,
   HostNameAlreadyRetired,
   MachineSerial,
+  PrimaryNicMac,
+  HostNameSubjectIdentity,
+  host_name_subject_key,
+  host_name_subject_from_inventory_serial,
+  host_name_subject_from_primary_nic_mac,
   allocate_host_name,
   retire_host_name,
   empty_host_name_registry,
@@ -40,18 +46,21 @@ import gunbc.host_name_allocation {
   host_name_registry_active_count,
   host_name_registry_retired_count,
   host_name_allocation_collision_count,
-  host_name_subject_from_machine_serial,
   current_host_name_scheme_version,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn witness_subject_a() -> HostNameSubject {
-  host_name_subject_from_machine_serial(serial: "SERIAL-A-2f19c4")
+  HostNameSubject { identity: MachineSerial { inventory_serial: "SERIAL-A-2f19c4" } }
 }
 
 fn witness_subject_b() -> HostNameSubject {
-  host_name_subject_from_machine_serial(serial: "SERIAL-B-90ae31")
+  HostNameSubject { identity: MachineSerial { inventory_serial: "SERIAL-B-90ae31" } }
+}
+
+fn witness_subject_mac() -> HostNameSubject {
+  host_name_subject_from_primary_nic_mac(mac: "3c:ec:ef:70:1a:44" as MacAddress)
 }
 
 // Labels are compared as text and planted from projections directly: minting a
@@ -62,7 +71,7 @@ fn witness_label_text(subject: HostNameSubject, attempt: Int) -> String {
   match mnemonic_projected_label(
     projection: mnemonic_project(
       version: MnemonicNameV1,
-      subject_key: subject.durable_key,
+      subject_key: host_name_subject_key(subject: subject),
       attempt: attempt,
     )
   ) {
@@ -81,7 +90,7 @@ fn witness_occupied_registry(
   fold(attempts, init: empty_host_name_registry, f: fn(acc, attempt) {
     match mnemonic_project(
       version: MnemonicNameV1,
-      subject_key: owner_of_names.durable_key,
+      subject_key: host_name_subject_key(subject: owner_of_names),
       attempt: attempt,
     ) {
       MnemonicProjectionRefused { cause: _ } => acc
@@ -119,7 +128,7 @@ test fn mnemonic_projection_separates_two_subjects() -> Bool {
 test fn mnemonic_projection_renders_adjective_animal_suffix() -> Bool {
   match mnemonic_project(
     version: MnemonicNameV1,
-    subject_key: witness_subject_a().durable_key,
+    subject_key: host_name_subject_key(subject: witness_subject_a()),
     attempt: 0,
   ) {
     MnemonicProjectionRefused { cause: _ } => false
@@ -149,7 +158,7 @@ test fn mnemonic_projected_label_is_a_parsed_dns_label() -> Bool {
 test fn mnemonic_negative_attempt_refuses() -> Bool {
   match mnemonic_project(
     version: MnemonicNameV1,
-    subject_key: witness_subject_a().durable_key,
+    subject_key: host_name_subject_key(subject: witness_subject_a()),
     attempt: 0 - 1,
   ) {
     MnemonicProjectionRefused { cause: MnemonicNegativeAttempt { attempt: n } } => n == (0 - 1)
@@ -249,7 +258,7 @@ test fn every_probe_taken_exhausts_with_counted_collisions() -> Bool {
     } =>
       attempts == 8
         && size == mnemonic_name_space_size(version: MnemonicNameV1)
-        && (refused_subject.durable_key as String) == (subject.durable_key as String)
+        && (host_name_subject_key(subject: refused_subject) as String) == (host_name_subject_key(subject: subject) as String)
         && fold(collisions, init: 0, f: fn(n, _c) { n + 1 }) == 8
     HostNameAllocationRefused { cause: _ } => false
     HostNameAllocated { receipt: _, registry: _ } => false
@@ -292,7 +301,7 @@ test fn retirement_keeps_the_row_and_moves_standing() -> Bool {
       ) {
         HostNameRetiredOk { receipt: retirement, registry: after } =>
           (retirement.label as String) == (receipt.label as String)
-            && (retirement.subject.durable_key as String) == (witness_subject_a().durable_key as String)
+            && (host_name_subject_key(subject: retirement.subject) as String) == (host_name_subject_key(subject: witness_subject_a()) as String)
             && (retirement.reason as String) == "witness: host decommissioned"
             && host_name_registry_active_count(registry: after) == 0
             && host_name_registry_retired_count(registry: after) == 1
@@ -345,7 +354,7 @@ test fn a_retired_name_is_never_reissued_to_its_own_subject() -> Bool {
 test fn retiring_an_unallocated_name_refuses() -> Bool {
   match mnemonic_project(
     version: MnemonicNameV1,
-    subject_key: witness_subject_a().durable_key,
+    subject_key: host_name_subject_key(subject: witness_subject_a()),
     attempt: 0,
   ) {
     MnemonicProjectionRefused { cause: _ } => false
@@ -381,6 +390,63 @@ test fn retiring_twice_refuses_with_the_prior_reason() -> Bool {
             HostNameRetiredOk { receipt: _, registry: _ } => false
           }
         HostNameRetirementRefused { cause: _ } => false
+      }
+    HostNameSubjectAlreadyNamed { entry: _ } => false
+    HostNameAllocationRefused { cause: _ } => false
+  }
+}
+
+// The conflation the identity coproduct closes: a serial and a MAC carrying the
+// same text are DIFFERENT subjects, because the arm tag enters the derived key.
+// Under the earlier bare durable_key + provenance pair they would have keyed
+// identically and collapsed into one allocation.
+test fn a_serial_and_a_mac_with_identical_text_are_different_subjects() -> Bool {
+  let same_text = "3c:ec:ef:70:1a:44"
+  let as_serial = HostNameSubject { identity: MachineSerial { inventory_serial: same_text } }
+  let as_mac = host_name_subject_from_primary_nic_mac(mac: same_text as MacAddress)
+  let serial_key = host_name_subject_key(subject: as_serial) as String
+  let mac_key = host_name_subject_key(subject: as_mac) as String
+  serial_key != mac_key
+}
+
+// A BMC that reported no serial yields no serial-grounded subject. Refusing is
+// the point: substituting another identifier under the serial arm's name would
+// be the fabrication DESIGN section 5 forbids.
+test fn an_absent_inventory_serial_yields_no_subject() -> Bool {
+  match host_name_subject_from_inventory_serial(serial: none) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn a_present_inventory_serial_yields_a_serial_grounded_subject() -> Bool {
+  match host_name_subject_from_inventory_serial(serial: Present { value: "SERIAL-C-77b201" }) {
+    Absent => false
+    Present { value: subject } =>
+      match subject.identity {
+        MachineSerial { inventory_serial: s } => (s as String) == "SERIAL-C-77b201"
+        PrimaryNicMac { mac: _ } => false
+        OperatorAssigned { key: _, reason: _ } => false
+      }
+  }
+}
+
+test fn a_mac_grounded_subject_allocates_and_is_idempotent() -> Bool {
+  match allocate_host_name(
+    registry: empty_host_name_registry,
+    subject: witness_subject_mac(),
+    version: current_host_name_scheme_version,
+  ) {
+    HostNameAllocated { receipt: receipt, registry: registry } =>
+      match allocate_host_name(
+        registry: registry,
+        subject: witness_subject_mac(),
+        version: current_host_name_scheme_version,
+      ) {
+        HostNameSubjectAlreadyNamed { entry: entry } =>
+          (entry.label as String) == (receipt.label as String)
+        HostNameAllocated { receipt: _, registry: _ } => false
+        HostNameAllocationRefused { cause: _ } => false
       }
     HostNameSubjectAlreadyNamed { entry: _ } => false
     HostNameAllocationRefused { cause: _ } => false

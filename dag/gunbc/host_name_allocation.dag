@@ -13,6 +13,7 @@ import std.keyed_roster {
 }
 import std.content_hash { Fnv1a64StructuralDigestHex }
 import extdeps.dns.domain_name { DnsLabel }
+import extdeps.dhcp.v4 { MacAddress }
 import gunbc.mnemonic_name {
   MnemonicSchemeVersion,
   MnemonicNameV1,
@@ -24,27 +25,62 @@ import gunbc.mnemonic_name {
   mnemonic_name_space_size,
 }
 
+// NO PRODUCTION CONSUMER YET, SAID HERE RATHER THAN INFERRED FROM ITS ABSENCE.
+// The fleet names its machines srv1..srv4 by operator assignment, and nothing
+// in tree calls allocate_host_name today; the witness is the only executing
+// consumer. That is a real standing, not a hidden one, so it is carried as a
+// typed row rather than left for a reader to discover by grep — and it is the
+// reason this module claims no terminal authority over host naming. Adoption,
+// not this carrier, decides whether the mnemonic scheme is what the fleet
+// should use; until some caller needs a name it did not choose, the carrier is
+// unexercised outside its witness.
+data host_name_allocation_adoption_standing: String = "AWAITING FIRST PRODUCTION CONSUMER (review 49815, floating-island finding — accepted as accurate). Executing consumers today: dag/test/claim/host_name_allocation_witness_test.dag only. The mechanism is proven by execution; what is NOT established is that the fleet wants mnemonic host names at all, because no lane in ROADMAP or DESIGN Open Threads calls for renaming srv1..srv4 and none of gunbc.host_layout, gunbc.assimilate, or the BMC onboarding path asks for a derived name. RESOLUTION IS A SCOPE DECISION, NOT A CODE ONE: either a caller that needs a machine-derived name adopts allocate_host_name (host standup naming a fresh machine before it has an operator label is the plausible one, since that is the moment where no chosen name exists yet), or this carrier is deleted. Retiring it costs three files and no consumer migration, which is exactly why it was safe to land the mechanism before the decision. DO NOT wire a consumer into the fleet carriers to discharge this row — that would put a naming policy into load-bearing host-standup paths on a reviewer's say-so rather than an operator's."
+
 data host_name_allocation_authority_note: String = "Single authority for allocating and retiring mnemonic host names (adjective-animal-suffix, gunbc.mnemonic_name). Three facts are kept separate here because collapsing any pair is a state-space conflation: WHICH NAME a subject derives is a pure projection of (version, durable subject key, attempt) and lives in gunbc.mnemonic_name; WHETHER that name is free is an exact identity join against the registry, reusing std.keyed_roster rather than forking a second duplicate-detection rule; and WHETHER the subject already has a name is a separate join on the subject key, whose answer is idempotent re-derivation and NOT an allocation. Retirement writes standing, never deletes a row: an exactly-unique registry is a claim across time (DESIGN section 1 A3), so a retired name stays a collision forever and is never reissued to a second machine. Every collision is a typed row carried in the allocation receipt, so probe pressure is countable rather than absorbed into a silent re-roll (DESIGN section 5)."
 
 // WHAT A SUBJECT KEY IS, AND WHY IT IS NOT THE HOST LABEL.
 // The projection is stable exactly insofar as its input is. Keying on the
 // operator label (srv1) would make the mnemonic name a function of a name
 // someone already chose, so re-labelling a machine would re-derive it, and two
-// machines that swapped labels would swap mnemonic names. The key is therefore
-// a durable machine fact, and where no such fact was read the provenance says
-// so rather than presenting an operator string as a hardware observation.
-type HostNameSubjectProvenance
-  = MachineSerial
-  | PrimaryNicMac
-  | OperatorAssigned { reason: NonEmptyStr }
+// machines that swapped labels would swap mnemonic names.
+//
+// The identity therefore CARRIES the grounded fact rather than a loose string
+// beside a label saying where it came from. An earlier revision paired a bare
+// durable_key with a provenance enum, which is a state-space conflation: the
+// two fields could disagree, so a subject could claim PrimaryNicMac provenance
+// while its key held something that was never a MAC, and nothing could tell.
+// Here the MAC arm holds extdeps.dhcp.v4 MacAddress (the fleet's existing MAC
+// authority, cited to RFC 2132) and the serial arm holds the serial this
+// repository actually observes — extdeps.bmc.types RedfishSystemInventory
+// serial_number, the Redfish read the BMC onboarding path already performs —
+// so an ungrounded key can only enter through the arm that says so in its name.
+type HostNameSubjectIdentity
+  = MachineSerial { inventory_serial: NonEmptyStr }
+  | PrimaryNicMac { mac: MacAddress }
+  | OperatorAssigned { key: NonEmptyStr, reason: NonEmptyStr }
 
 type HostNameSubject {
-  durable_key: NonEmptyStr
-  provenance: HostNameSubjectProvenance
+  identity: HostNameSubjectIdentity
+}
+
+// The key is DERIVED from the identity, never stored beside it. The arm tag
+// enters the key so that a serial and a MAC that happen to share text are still
+// different subjects rather than colliding into one name.
+fn host_name_subject_key(subject: HostNameSubject) -> NonEmptyStr {
+  match subject.identity {
+    MachineSerial { inventory_serial: serial } =>
+      join(["machine-serial:", serial as String], "")
+    PrimaryNicMac { mac: mac } =>
+      join(["primary-nic-mac:", mac as String], "")
+    OperatorAssigned { key: key, reason: _ } =>
+      join(["operator-assigned:", key as String], "")
+  }
 }
 
 fn host_name_subject_eq(left: HostNameSubject, right: HostNameSubject) -> Bool {
-  (left.durable_key as String) == (right.durable_key as String)
+  let left_key = host_name_subject_key(subject: left) as String
+  let right_key = host_name_subject_key(subject: right) as String
+  left_key == right_key
 }
 
 type HostNameStanding
@@ -187,7 +223,7 @@ fn host_name_probe_step(
     HostNameProbeSettled { receipt: _, registry: _ } => state
     HostNameProbeRefused { cause: _ } => state
     HostNameProbing { collisions: collisions } =>
-      match mnemonic_project(version: version, subject_key: subject.durable_key, attempt: attempt) {
+      match mnemonic_project(version: version, subject_key: host_name_subject_key(subject: subject), attempt: attempt) {
         MnemonicProjectionRefused { cause: cause } =>
           HostNameProbeRefused {
             cause: HostNameProjectionRefused { cause: cause, attempt: attempt }
@@ -387,12 +423,21 @@ fn host_name_allocation_collision_count(receipt: HostNameAllocationReceipt) -> I
   fold(receipt.collisions, init: 0, f: fn(n, _c) { n + 1 })
 }
 
-fn host_name_subject_from_machine_serial(serial: NonEmptyStr) -> HostNameSubject {
-  HostNameSubject { durable_key: serial, provenance: MachineSerial }
+// Built from the Redfish system inventory this repository already reads during
+// BMC onboarding (extdeps.bmc.types RedfishSystemInventory). serial_number is
+// optional there and stays optional here: a machine whose BMC reported no
+// serial has no serial-grounded subject, and answering Absent refuses rather
+// than substituting some other identifier under the serial arm's name.
+fn host_name_subject_from_inventory_serial(serial: NonEmptyStr?) -> HostNameSubject? {
+  match serial {
+    Absent => none
+    Present { value: s } =>
+      Present { value: HostNameSubject { identity: MachineSerial { inventory_serial: s } } }
+  }
 }
 
-fn host_name_subject_from_primary_nic_mac(mac: NonEmptyStr) -> HostNameSubject {
-  HostNameSubject { durable_key: mac, provenance: PrimaryNicMac }
+fn host_name_subject_from_primary_nic_mac(mac: MacAddress) -> HostNameSubject {
+  HostNameSubject { identity: PrimaryNicMac { mac: mac } }
 }
 
 data current_host_name_scheme_version: MnemonicSchemeVersion = MnemonicNameV1
