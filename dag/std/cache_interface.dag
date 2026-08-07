@@ -1,8 +1,9 @@
 module std.cache_interface
 
 import std.types { NonEmptyStr, Bool, Int, LogicalTime }
+import std.decl_ref { DeclarationRef }
 import std.content_hash { ContentHash }
-import std.measure { Nano, ByteSize }
+import std.measure { Nano, ByteSize, Second, second }
 
 import std.verification { NanosecondDuration, nanosecond_duration, nanosecond_duration_count }
 import std.pareto {
@@ -28,12 +29,122 @@ type PersistenceLocality
   | PerHostFilesystem
   | CrossHostNetwork
 
-type EvictionPolicy
-  = Ttl { days: Int }
-  | Lru
-  | SizeBounded { cap_bytes: ByteSize }
-  | Never
-  | Manual
+// The former single EvictionPolicy axis (Ttl | Lru | SizeBounded | Never | Manual)
+// fused four independent questions and forked a fifth. Ttl and Manual were a
+// second spelling of InvalidationTrigger's TtlExpiry / ManualPurge, which this
+// module already carries on key_derivation — so the old axis could not state
+// "bounded by bytes AND released at scope exit" while it happily stated one
+// concept twice. Splitting it is a §3 de-fork, not a new taxonomy: freshness
+// stays on InvalidationTrigger, and what remains here is capacity, the action
+// taken at capacity, the replacement order (if any), and storage lifetime.
+
+// UNIT OUTER, EVIDENCE INNER. A first cut put the unit only on the arms that
+// carried a number (ByteLimit / EntryCountLimit) and let the other two states
+// stand alone — so RuntimeDerivedLimit and LimitUnobserved erased whether the
+// thing bounded was bytes, entries, or objects, and a consumer needing a BYTE
+// budget could not tell sccache (byte ceiling, value unread) from the typed
+// module cache (entry ceiling, value derived at run start). The unit is a fact
+// about the cache; the value's standing is a fact about our EVIDENCE for it.
+// Those are independent, so they are separate levels.
+type CapacityValue<T>
+  = ExactLimit { value: T }
+  | RuntimeDerivedLimit { authority: DeclarationRef }
+  | EffectiveLimitUnobserved
+
+type CapacityLimit
+  = ByteCapacity { limit: CapacityValue<ByteSize> }
+  | EntryCountCapacity { limit: CapacityValue<Int> }
+
+type ReplacementStrategy = LeastRecentlyUsed | ProviderNativeReplacement
+
+type AtCapacityDisposition
+  = RefuseNewStore
+  | ReplaceExisting { strategy: ReplacementStrategy }
+  | AtCapacityUnobserved
+
+// Three states, because "known unbounded" and "not established" have different
+// remedies and only the bounded arm may ever discharge a boundedness
+// obligation. at_capacity nests INSIDE the bounded arm because full-store
+// behaviour only exists where a ceiling does — so CapacityUnbounded paired
+// with ReplaceExisting is unwritable rather than merely wrong.
+// A row that merely evicts by LRU has named a replacement ORDER and
+// established no ceiling: it is CapacityUnobserved until a capacity fact is
+// cited, which is exactly the inference provider_from_catalog used to make.
+type CapacityPolicy
+  = CapacityUnbounded
+  | CapacityBounded { limit: CapacityLimit, at_capacity: AtCapacityDisposition }
+  | CapacityUnobserved
+
+// Lifetime names no frame: the provider already carries its scope as
+// List<Frame>, so ReleasedAtProviderScopeExit says storage ends with THAT
+// scope rather than re-spelling "witness" or "entry" in a second place.
+type ReleasePolicy
+  = ReleasedAtProviderScopeExit
+  | ReleasedNever
+  | ReleasedManually
+
+// The product the old sum could not express. One vocabulary serves both the
+// cited mechanism and the ladder's required class: with the axes separated,
+// "required class" is a PREDICATE over retention (is growth bounded?), not a
+// second taxonomy — so the ScopeExit/SpacePacked homonym dissolves rather than
+// being renamed. Freshness is NOT an axis here: TtlExpiry and ManualPurge stay
+// on InvalidationTrigger, where they already lived.
+type ProviderRetention {
+  release_policy: ReleasePolicy
+  capacity: CapacityPolicy
+}
+
+// THREE PREDICATES, THREE ROLES — deliberately not one word "bounded".
+// A first cut had provider_for_bounded_role consult the GROWTH predicate, which
+// admits ReleasedAtProviderScopeExit + CapacityUnbounded: fine for a short
+// scoped memo whose frame ends, and exactly wrong for a promoted entry-scoped
+// memo that needs a byte ceiling INSIDE its frame. The 2026-07-10 20GiB kill
+// happened under a live scope, so scope release is evidence about growth over
+// time and never about peak. A role asks the predicate matching its obligation.
+
+// Growth over time: storage ends with the provider's scope, or a ceiling exists.
+fn retention_growth_is_bounded(r: ProviderRetention) -> Bool {
+  match r.release_policy {
+    ReleasedAtProviderScopeExit => true
+    ReleasedNever => retention_has_capacity_bound(r: r)
+    ReleasedManually => retention_has_capacity_bound(r: r)
+  }
+}
+
+// A ceiling exists, whatever its unit and whoever knows its value.
+fn retention_has_capacity_bound(r: ProviderRetention) -> Bool {
+  capacity_is_bounded(c: r.capacity)
+}
+
+fn capacity_is_bounded(c: CapacityPolicy) -> Bool {
+  match c {
+    CapacityUnbounded => false
+    CapacityBounded { limit: _, at_capacity: _ } => true
+    CapacityUnobserved => false
+  }
+}
+
+// A ceiling in BYTES whose value is in hand — the only state from which a real
+// store can size itself. A runtime-derived or unobserved value does not qualify:
+// both name a number nobody here holds.
+fn retention_has_exact_byte_bound(r: ProviderRetention) -> Bool {
+  match r.capacity {
+    CapacityUnbounded => false
+    CapacityUnobserved => false
+    CapacityBounded { limit: l, at_capacity: _ } => capacity_limit_exact_bytes_present(l: l)
+  }
+}
+
+fn capacity_limit_exact_bytes_present(l: CapacityLimit) -> Bool {
+  match l {
+    EntryCountCapacity { limit: _ } => false
+    ByteCapacity { limit: v } => match v {
+      ExactLimit { value: _ } => true
+      RuntimeDerivedLimit { authority: _ } => false
+      EffectiveLimitUnobserved => false
+    }
+  }
+}
 
 type AtomicityModel = PerFile | WriteThenRename | WriteThenCommit | TwoPhase
 
@@ -89,8 +200,16 @@ type KeyDerivationClass
 
 type VisibilityScope = Repo | Org | Network | World
 
+// TtlExpiry CARRIES ITS WINDOW. The retention split claimed freshness "stays on
+// InvalidationTrigger", but TtlExpiry was a bare tag with no duration, so
+// retiring the old eviction axis deleted the one typed TTL in the live catalog
+// (hermetic_fixture's Ttl { days: 30 }) and left the number surviving only in an
+// evidence prose string. A de-fork that drops the fact it was consolidating has
+// not consolidated it, and prose is not a carrier a machine can read (§4c). The
+// window is Second rather than days because the cited seed constant is
+// FIXTURE_FRESHNESS_SECS -- the row now states the unit its authority states.
 type InvalidationTrigger
-  = TtlExpiry
+  = TtlExpiry { window: Second }
   | ManualPurge
   | ToolchainChange
   | DependencyChange
@@ -133,7 +252,7 @@ type CacheInterfaceFacts {
   miss_semantics: CacheMissSemantics
   value_shape: ValueShape
   locality: PersistenceLocality
-  eviction: EvictionPolicy
+  retention: ProviderRetention
   atomicity: AtomicityModel
   auth: AuthScope
   read_latency: ReadLatencyClass

@@ -13,15 +13,22 @@ use crate::std_occurrence_binding_candidates::ReferenceBindingProjection::{
     ReferenceBindingProjectionBound, ReferenceBindingProjectionExposureRefused,
     ReferenceBindingProjectionTransportRefused, ReferenceBindingProjectionUnbound,
 };
+use crate::std_occurrence_binding_candidates::StructuralBindingIndexRefusal::{
+    StructuralBindingAuthoredOrderRefusal, StructuralBindingExposureRefusal,
+};
+use crate::std_occurrence_binding_candidates::StructuralBindingWalk::{
+    StructuralBindingWalkReady, StructuralBindingWalkRefused,
+};
 pub use crate::std_occurrence_binding_candidates::{
     candidate_occurrence_ids_for_reference, direct_module_dependencies_from_bound_population,
     occurrence_candidate_index_build, resolve_reference_binding_via_structural_candidates,
+    structural_binding_walk,
 };
 pub use crate::std_occurrence_binding_candidates::{
     AuthoredOrderIndexRefusal, AuthoredOrderRow, BoundReferencePopulation, BoundReferenceProvider,
     DeclarationExposure, DeclarationExposureIndexRefusal, DeclarationExposureRow,
     DirectModuleDependencyBuild, OccurrenceBindingCandidateInputs, OccurrenceCandidateIndexBuild,
-    ReferenceBindingProjection,
+    ReferenceBindingProjection, StructuralBindingIndexRefusal, StructuralBindingWalk,
 };
 pub use crate::std_occurrence_identity::{
     AuthoredTokenOrdinal, DeclarationOccurrence, OccurrenceId, OccurrenceIndexEntry,
@@ -29,21 +36,13 @@ pub use crate::std_occurrence_identity::{
 };
 use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, List, NonEmptyStr};
+pub use crate::v1_gunbc_occurrence_binding_parser_walk::ParsedOccurrenceBindingSource;
 use crate::v1_gunbc_occurrence_binding_parser_walk::ParsedOccurrenceBindingSource::{
     ParsedOccurrenceBindingSourceReady, ParsedOccurrenceBindingSourceRefused,
 };
-use crate::v1_gunbc_occurrence_binding_parser_walk::StructuralBindingIndexRefusal::{
-    StructuralBindingAuthoredOrderRefusal, StructuralBindingExposureRefusal,
-};
-use crate::v1_gunbc_occurrence_binding_parser_walk::StructuralBindingWalk::{
-    StructuralBindingWalkReady, StructuralBindingWalkRefused,
-};
 pub use crate::v1_gunbc_occurrence_binding_parser_walk::{
     occurrence_binding_inputs_from_transport, occurrence_id_for_authored_name,
-    parse_authored_occurrence_binding_source, reference_named, structural_binding_walk,
-};
-pub use crate::v1_gunbc_occurrence_binding_parser_walk::{
-    ParsedOccurrenceBindingSource, StructuralBindingIndexRefusal, StructuralBindingWalk,
+    parse_authored_occurrence_binding_source, reference_named,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};

@@ -9,6 +9,7 @@ import extdeps.git {
 }
 import extdeps.git.object_store {
   GitPath,
+  git_path_octets,
   GitTreeEntryName,
   GitTreeEntryNameOctet,
   GitTreeEntryNameBeforeSlashValue,
@@ -129,6 +130,7 @@ import std.content_hash {
 }
 import std.types { Bytes }
 import std.bytes { bytes_octets, octets_bytes, utf8_encode_bytes }
+import std.algebra { Cons, Empty }
 
 data git_upstream_witness_lit_note: String = "Witness-corpus Git object ids are constructed only through git_sha1_object_id / git_sha256_object_id (review 45376). The Absent arm below is unreachable for pinned corpus literals; it exists only because data initializers require a total GitObjectId."
 
@@ -661,39 +663,62 @@ test fn witness_git_tree_entry_names_refuse_empty_slash_and_nul() -> Bool {
   }
 }
 
-test fn witness_git_ls_tree_z_wire_decodes_into_mode_path_and_identity_rows() -> Bool {
+fn ls_tree_z_record(mode: String, object_type: String, oid_hex: String, name: String) -> String {
+  let space = " "
+  let tab = from_code_point(9)
   let nul = from_code_point(0)
+  concat(
+    concat(join([mode, object_type, oid_hex], space), tab),
+    concat(name, nul),
+  )
+}
+
+test fn witness_git_ls_tree_z_wire_decodes_into_mode_path_and_identity_rows() -> Bool {
   let text = concat(
-    join(
-      [
-        "120000",
-        "blob",
-        git_object_id_wire_hex(oid: sha1_blob_symlink) as String,
-        "link",
-        "100644",
-        "blob",
-        git_object_id_wire_hex(oid: sha1_blob_regular) as String,
-        "readme",
-        "100755",
-        "blob",
-        git_object_id_wire_hex(oid: sha1_blob_executable) as String,
-        "run",
-        "040000",
-        "tree",
-        git_object_id_wire_hex(oid: sha1_subtree) as String,
-        "src",
-        "160000",
-        "commit",
-        git_object_id_wire_hex(oid: sha1_gitlink) as String,
-        "vendor",
-        "100644",
-        "blob",
-        git_object_id_wire_hex(oid: sha1_blob_regular) as String,
-        concat(from_code_point(255), ".dag"),
-      ],
-      nul,
+    concat(
+      concat(
+        ls_tree_z_record(
+          mode: "120000",
+          object_type: "blob",
+          oid_hex: git_object_id_wire_hex(oid: sha1_blob_symlink) as String,
+          name: "link",
+        ),
+        ls_tree_z_record(
+          mode: "100644",
+          object_type: "blob",
+          oid_hex: git_object_id_wire_hex(oid: sha1_blob_regular) as String,
+          name: "readme",
+        ),
+      ),
+      concat(
+        ls_tree_z_record(
+          mode: "100755",
+          object_type: "blob",
+          oid_hex: git_object_id_wire_hex(oid: sha1_blob_executable) as String,
+          name: "run",
+        ),
+        ls_tree_z_record(
+          mode: "040000",
+          object_type: "tree",
+          oid_hex: git_object_id_wire_hex(oid: sha1_subtree) as String,
+          name: "src",
+        ),
+      ),
     ),
-    nul,
+    concat(
+      ls_tree_z_record(
+        mode: "160000",
+        object_type: "commit",
+        oid_hex: git_object_id_wire_hex(oid: sha1_gitlink) as String,
+        name: "vendor",
+      ),
+      ls_tree_z_record(
+        mode: "100644",
+        object_type: "blob",
+        oid_hex: git_object_id_wire_hex(oid: sha1_blob_regular) as String,
+        name: concat(from_code_point(255), ".dag"),
+      ),
+    ),
   )
   match git_decode_ls_tree_z(
     payload: utf8_encode_bytes(s: text),
@@ -705,7 +730,8 @@ test fn witness_git_ls_tree_z_wire_decodes_into_mode_path_and_identity_rows() ->
 }
 
 test fn witness_git_ls_tree_z_preserves_non_utf8_path_octets() -> Bool {
-  let nul = from_code_point(0)
+  let space = " "
+  let tab = from_code_point(9)
   let header = concat(
     join(
       [
@@ -713,9 +739,9 @@ test fn witness_git_ls_tree_z_preserves_non_utf8_path_octets() -> Bool {
         "blob",
         git_object_id_wire_hex(oid: sha1_blob_regular) as String,
       ],
-      nul,
+      space,
     ),
-    nul,
+    tab,
   )
   let payload = octets_bytes(
     o: append(
@@ -758,7 +784,8 @@ test fn witness_git_object_id_text_has_one_canonical_spelling() -> Bool {
 }
 
 test fn witness_git_ls_files_stage_z_observes_mode_identity_stage_and_raw_path() -> Bool {
-  let nul = from_code_point(0)
+  let space = " "
+  let tab = from_code_point(9)
   let header = concat(
     join(
       [
@@ -766,9 +793,9 @@ test fn witness_git_ls_files_stage_z_observes_mode_identity_stage_and_raw_path()
         git_object_id_wire_hex(oid: sha1_blob_regular) as String,
         "0",
       ],
-      nul,
+      space,
     ),
-    nul,
+    tab,
   )
   let payload = octets_bytes(
     o: append(
@@ -794,7 +821,8 @@ test fn witness_git_ls_files_stage_z_observes_mode_identity_stage_and_raw_path()
 }
 
 test fn witness_git_index_path_preserves_component_boundaries() -> Bool {
-  let nul = from_code_point(0)
+  let space = " "
+  let tab = from_code_point(9)
   let header = concat(
     join(
       [
@@ -802,9 +830,9 @@ test fn witness_git_index_path_preserves_component_boundaries() -> Bool {
         git_object_id_wire_hex(oid: sha1_empty_blob) as String,
         "0",
       ],
-      nul,
+      space,
     ),
-    nul,
+    tab,
   )
   let payload = octets_bytes(
     o: append(
@@ -825,6 +853,44 @@ test fn witness_git_index_path_preserves_component_boundaries() -> Bool {
           stage: GitIndexStageNormal,
         },
       ]
+    GitLsFilesStageZRefused { cause: _ } => false
+  }
+}
+
+test fn witness_git_ls_files_stage_z_path_containing_space_and_tab_survives_intact() -> Bool {
+  let space = " "
+  let tab = from_code_point(9)
+  let header = concat(
+    join(
+      [
+        "100644",
+        git_object_id_wire_hex(oid: sha1_empty_blob) as String,
+        "0",
+      ],
+      space,
+    ),
+    tab,
+  )
+  let raw_path_octets = [104, 97, 115, 32, 115, 112, 97, 99, 101, 9, 116, 97, 98, 46, 116, 120, 116]
+  let payload = octets_bytes(
+    o: append(
+      bytes_octets(b: utf8_encode_bytes(s: header)),
+      items: append(raw_path_octets, items: [0]),
+    ),
+  )
+  match git_decode_ls_files_stage_z(
+    payload: payload,
+    format: GitObjectFormatSha1,
+  ) {
+    GitLsFilesStageZDecoded { entries } =>
+      match entries {
+        Cons { head: GitIndexEntry { mode, oid, stage, path }, tail: Empty } =>
+          mode == GitRegularBlobMode
+            && oid == sha1_empty_blob
+            && stage == GitIndexStageNormal
+            && git_path_octets(path: path) == raw_path_octets
+        _ => false
+      }
     GitLsFilesStageZRefused { cause: _ } => false
   }
 }

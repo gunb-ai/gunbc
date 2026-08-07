@@ -25,24 +25,92 @@ import extdeps.systems.nvidia_fleet_lifecycle {
   FleetLifecycleEnvelope,
   FleetLifecycleStatus,
   StatusOk,
+  StatusError,
 }
+import product.placement_supply { HostIdentity }
+import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_of_value }
+import extdeps.uuid { Uuid }
+import gunbc.fleet_lifecycle_observation {
+  FleetLifecycleObservation,
+  ProcessReceipt,
+  process_receipt,
+  EndpointBindingIdentity,
+  DeviceHardwareIdentity,
+  DeviceSerial,
+  DeviceProductUuid,
+  DeviceSerialNumber,
+  HardwareIdentitiesDistinct,
+  HardwareIdentitiesSame,
+  HardwareIdentitiesIncomparable,
+  compare_hardware_identity,
+  ObservationSelection,
+  ObservationMissing,
+  ObservationUnique,
+  ObservationAmbiguous,
+  select_observation_for_subject,
+  select_observation_by_attempt,
+  EnvelopeHostPresentationEvidence,
+  EnvelopeHostAgreesWithSubject,
+  EnvelopeHostDisagreesWithSubject,
+  envelope_host_presentation_evidence,
+}
+import extdeps.dhcp.v4 { MacAddress, StaticDhcpReservation, Active }
+import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
+import extdeps.router.verizon_cr1000a { Cr1000aDhcpLeaseRow }
+import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv3 }
 import gunbc.dgx_spark_procurement {
   dgx_spark_procurement_intent,
-  srv5_reserved,
-  srv6_reserved,
+  dgx_spark_router_bindings,
+  dgx_spark_reserved_identities,
+  srv5_router_binding,
+  srv6_router_binding,
+  spark_a3ee_reservation,
+  spark_3bd5_reservation,
+  observed_dgx_spark_router_reservations,
+  DgxSparkRouterBinding,
+  SlotAssigned,
+  SlotUnassigned,
+  router_binding_identity,
+  OperatorAllocation,
+  dgx_spark_router_binding_operator_allocation,
+  dgx_spark_arrival_standing,
+  AllOrderedUnitsObservedOnLan,
+  OrderedUnitsOutstanding,
   admit_dgx_spark_deployment,
   DgxSparkAdmissionOutcome,
   DgxSparkDeploymentAdmitted,
   DgxSparkDeploymentRefused,
   DgxSparkAdmissionRefusalReason,
   DeploymentAdmissionNoEvidence,
+  DeploymentAdmissionAmbiguousEvidence,
+  DeploymentAdmissionSubjectMismatch,
+  DeploymentAdmissionEndpointBindingMismatch,
+  DeploymentAdmissionExecutionEvidenceDisagrees,
+  admit_dgx_spark_pair,
+  admit_dgx_spark_pair_deployments,
+  DgxSparkPairAdmitted,
+  DgxSparkPairRefused,
+  PairUnitNotAdmitted,
+  PairSubjectsNotDistinct,
+  PairHardwareIdentityUnobserved,
+  PairHardwareIdentityNotDistinct,
+  PairHardwareIdentityIncomparable,
   DeploymentAdmissionWrongTool,
-  DeploymentAdmissionHostMismatch,
+  DeploymentAdmissionObservationNotOk,
+  DeploymentAdmissionIdentityNotReserved,
+  DeploymentAdmissionRouterBindingMismatch,
+  DeploymentAdmissionRouterBindingPending,
+  converge_dgx_spark_procurement,
+  dgx_spark_procurement_convergence,
+  DgxSparkProcurementConverged,
+  DgxSparkProcurementPending,
+  DgxSparkUnitDeployed,
+  DgxSparkUnitPending,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// SPARK-0 green-by-execution proof. The RED control (w_red_admission_without_evidence_refuses) is the deliverable per the brief: constructing a DgxSparkDeployment from vendor catalog data plus procurement intent alone, with no FleetLifecycleEnvelope, must REFUSE -- physical binding evidence (a real device_identity.py observation) is absent, and catalog+intent can never substitute for it. w_admission_with_real_evidence_succeeds is the positive control proving the same function admits once that evidence is supplied, so the RED control is proven to be a real discriminator and not a permanently-broken function. w_red_admission_with_wrong_tool_evidence_refuses is a second RED control (review 49032): presence of ANY FleetLifecycleEnvelope is not sufficient -- an envelope from a different tool (spark_updatectl.py, an UpdateControl observation) must also REFUSE, proving the wall discriminates on evidence identity, not mere presence. w_red_admission_with_mismatched_host_refuses is a third RED control (review 49071): a real device_identity.py envelope observed against one host must not bind a deployment for a different identity. dgx_spark_catalog_row (extdeps.systems.nvidia) has no witness calling it by name but is exercised indirectly: it constructs nvidia_dgx_spark_1tb_catalog and nvidia_dgx_spark_4tb_catalog as data, and multiple witnesses above dereference both, so its body executes on every run of this file.
+// SPARK-0 green-by-execution proof. The RED control (w_red_admission_without_evidence_refuses) is the deliverable per the brief: constructing a DgxSparkDeployment from vendor catalog data plus procurement intent alone, with no FleetLifecycleEnvelope, must REFUSE -- physical binding evidence (a real device_identity.py observation) is absent, and catalog+intent can never substitute for it. w_admission_with_real_evidence_succeeds is the positive control proving the same function admits once that evidence is supplied, so the RED control is proven to be a real discriminator and not a permanently-broken function. w_red_admission_with_wrong_tool_evidence_refuses is a second RED control (review 49032): presence of ANY FleetLifecycleEnvelope is not sufficient -- an envelope from a different tool (spark_updatectl.py, an UpdateControl observation) must also REFUSE, proving the wall discriminates on evidence identity, not mere presence. w_admission_when_envelope_host_disagrees_records_diagnostic_evidence is the SPARK-ALLOC-LAND-0 control: a disagreeing vendor host string must not block admission; it is recorded as diagnostic evidence on the admitted deployment instead. dgx_spark_catalog_row (extdeps.systems.nvidia) has no witness calling it by name but is exercised indirectly: it constructs nvidia_dgx_spark_1tb_catalog and nvidia_dgx_spark_4tb_catalog as data, and multiple witnesses above dereference both, so its body executes on every run of this file.
 test fn w_catalog_row_nests_gpu_from_grounded_authority() -> Bool {
   nvidia_dgx_spark_1tb_catalog.gpu.model == nvidia_gb10_gpu_catalog.model
     && nvidia_dgx_spark_1tb_catalog.gpu.model == "GB10 Blackwell GPU"
@@ -79,28 +147,69 @@ test fn w_tool_names_match_the_cited_page() -> Bool {
     && fleet_lifecycle_operation_tool_name(op: UpdateControl) == "spark_updatectl.py"
 }
 
+
 test fn w_procurement_intent_reserves_two_identities_not_enrolled() -> Bool {
   dgx_spark_procurement_intent.unit_count == 2
-    && dgx_spark_procurement_intent.reserved_identities == [srv5_reserved, srv6_reserved]
+    && dgx_spark_procurement_intent.reserved_identities == [operator_host_srv5, operator_host_srv6]
+    && dgx_spark_reserved_identities() == [operator_host_srv5, operator_host_srv6]
 }
 
-test fn w_red_admission_without_evidence_refuses() -> Bool {
-  match admit_dgx_spark_deployment(
-    identity: srv5_reserved,
-    catalog: nvidia_dgx_spark_4tb_catalog,
-    identity_observation: none,
-  ) {
-    DgxSparkDeploymentRefused { reason: DeploymentAdmissionNoEvidence } => true
-    DgxSparkDeploymentRefused { reason: _ } => false
-    DgxSparkDeploymentAdmitted { deployment: _ } => false
+test fn w_reserved_identities_derive_from_the_router_binding_roster() -> Bool {
+  count(dgx_spark_router_bindings) == 2
+    && dgx_spark_reserved_identities() == map(dgx_spark_router_bindings, b => router_binding_identity(binding: b))
+    && router_binding_identity(binding: srv5_router_binding) == operator_host_srv5
+    && router_binding_identity(binding: srv6_router_binding) == operator_host_srv6
+}
+
+// The live state: both units arrived and each holds a Static, Active CR1000A reservation, and each
+// slot is now ASSIGNED to one of them. This witness pins the assignment as an OperatorAllocation
+// receipt rather than a measurement: it asserts the addresses AND that every binding carries an
+// attributable allocation, so an assignment authored with no named authority reds here. Basis is
+// ascending address order -- srv5 to the lower reserved address -- an arbitrary tie-break between
+// two identical units, which is exactly why it must be recorded as a choice someone made.
+test fn w_slots_are_assigned_by_an_attributable_operator_allocation() -> Bool {
+  count(observed_dgx_spark_router_reservations) == 2
+    && spark_a3ee_reservation.ipv4_address == ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 222)
+    && spark_3bd5_reservation.ipv4_address == ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 223)
+    && match srv5_router_binding {
+      SlotAssigned { identity: _, reservation: r, allocation: a } =>
+        r.ipv4_address == spark_a3ee_reservation.ipv4_address
+          && r.mac_address == spark_a3ee_reservation.mac_address
+          && a.decided_on == dgx_spark_router_binding_operator_allocation.decided_on
+      SlotUnassigned { identity: _ } => false
+    }
+    && match srv6_router_binding {
+      SlotAssigned { identity: _, reservation: r, allocation: _ } =>
+        r.ipv4_address == spark_3bd5_reservation.ipv4_address
+          && r.mac_address == spark_3bd5_reservation.mac_address
+      SlotUnassigned { identity: _ } => false
+    }
+    && fold(
+      dgx_spark_router_bindings,
+      init: true,
+      f: (acc, b) =>
+        acc && match b {
+          SlotAssigned { identity: _, reservation: _, allocation: a } => a.decided_by != ""
+          SlotUnassigned { identity: _ } => false
+        }
+    )
+}
+
+// Arrival is DERIVED from the observed reservation rows against the ordered unit count, never
+// stored beside them. The stored-flag version is what let this module claim the units had not
+// arrived while they sat on the LAN: prose cannot be kept in step with facts by discipline alone.
+test fn w_arrival_standing_derives_from_the_observed_reservation_rows() -> Bool {
+  match dgx_spark_arrival_standing() {
+    AllOrderedUnitsObservedOnLan { observed_count: n } => n == 2
+    OrderedUnitsOutstanding { ordered_count: _, observed_count: _ } => false
   }
 }
 
-fn synthetic_device_identity_envelope() -> FleetLifecycleEnvelope {
+fn synthetic_envelope_for(host: NonEmptyStr) -> FleetLifecycleEnvelope {
   FleetLifecycleEnvelope {
     tool: "device_identity.py",
-    ts: "2026-08-05T00:00:00Z",
-    host: "srv5",
+    ts: "2026-08-07T00:00:00Z",
+    host: host,
     status: StatusOk,
     rc: 0,
     duration_ms: 42,
@@ -110,36 +219,102 @@ fn synthetic_device_identity_envelope() -> FleetLifecycleEnvelope {
   }
 }
 
+// A synthetic reservation fixture, carrying the all-zero MAC so it can never be mistaken for an observed router row (the convention gunbc.network_identity_subsumption's post-install fixture uses). Its only job is to make the router-binding wall a proven discriminator: without a bound fixture the positive control could not exist, and a wall no input can pass proves nothing.
+fn synthetic_bound_binding_for(identity_host: NonEmptyStr, last_octet: Int) -> DgxSparkRouterBinding {
+  SlotAssigned {
+    identity: identity_host as HostIdentity,
+    reservation: Cr1000aDhcpLeaseRow {
+      mac_address: "00:00:00:00:00:00" as MacAddress,
+      ipv4_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: last_octet),
+      lease: StaticDhcpReservation {
+        reservation_label: "synthetic-dgx-spark-fixture" as NonEmptyStr,
+        status: Active,
+      },
+    },
+    allocation: OperatorAllocation {
+      decided_by: "synthetic fixture",
+      decided_on: "2026-08-07",
+      basis: "fixture allocation, not a real slot decision",
+    },
+  }
+}
+
+// The dispatch-side facts a real collector run would carry: the SUBJECT it was dispatched against, the endpoint it reached, the attempt that produced these bytes, and a digest of the raw evidence. Every fixture below builds its observation this way, so no witness can accidentally re-introduce the defect the carrier exists to close -- there is no path here that derives a subject from the envelope.
+fn synthetic_observation(
+  subject_host: NonEmptyStr,
+  envelope_host: NonEmptyStr,
+  last_octet: Int,
+  attempt_label: NonEmptyStr,
+) -> FleetLifecycleObservation {
+  FleetLifecycleObservation {
+    subject: subject_host as HostIdentity,
+    endpoint_binding: EndpointBindingIdentity {
+      address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: last_octet),
+    },
+    execution_receipt: process_receipt(label: attempt_label, exit_status: 0),
+    raw_evidence_identity: content_hash_of_value(value: attempt_label),
+    device_hardware_identity: none,
+    envelope: synthetic_envelope_for(host: envelope_host),
+  }
+}
+
+fn srv5_good_observation() -> FleetLifecycleObservation {
+  synthetic_observation(subject_host: "srv5", envelope_host: "srv5", last_octet: 222, attempt_label: "attempt-1")
+}
+
 test fn w_admission_with_real_evidence_succeeds() -> Bool {
   match admit_dgx_spark_deployment(
-    identity: srv5_reserved,
+    identity: operator_host_srv5,
     catalog: nvidia_dgx_spark_4tb_catalog,
-    identity_observation: Present { value: synthetic_device_identity_envelope() },
+    selection: ObservationUnique { observation: srv5_good_observation() },
+    router_binding: synthetic_bound_binding_for(identity_host: "srv5", last_octet: 222),
   ) {
-    DgxSparkDeploymentAdmitted { deployment: d } => d.identity == srv5_reserved
+    DgxSparkDeploymentAdmitted { deployment: d } =>
+      d.identity == operator_host_srv5 && d.observation.subject == operator_host_srv5
     DgxSparkDeploymentRefused { reason: _ } => false
   }
 }
 
-fn synthetic_wrong_tool_envelope() -> FleetLifecycleEnvelope {
-  FleetLifecycleEnvelope {
-    tool: "spark_updatectl.py",
-    ts: "2026-08-05T00:00:00Z",
-    host: "srv5",
-    status: StatusOk,
-    rc: 0,
-    duration_ms: 42,
-    summary: "synthetic wrong-tool envelope: an UpdateControl observation, not a DeviceIdentity one",
-    warnings: [],
-    artifacts: [],
+test fn w_red_admission_without_evidence_refuses() -> Bool {
+  match admit_dgx_spark_deployment(
+    identity: operator_host_srv5,
+    catalog: nvidia_dgx_spark_4tb_catalog,
+    selection: ObservationMissing { subject: operator_host_srv5 },
+    router_binding: synthetic_bound_binding_for(identity_host: "srv5", last_octet: 222),
+  ) {
+    DgxSparkDeploymentRefused { reason: DeploymentAdmissionNoEvidence { requested_identity: i } } =>
+      i == operator_host_srv5
+    DgxSparkDeploymentRefused { reason: _ } => false
+    DgxSparkDeploymentAdmitted { deployment: _ } => false
   }
 }
 
 test fn w_red_admission_with_wrong_tool_evidence_refuses() -> Bool {
+  let o = FleetLifecycleObservation {
+    subject: operator_host_srv5,
+    endpoint_binding: EndpointBindingIdentity {
+      address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 222),
+    },
+    execution_receipt: process_receipt(label: "attempt-wrong-tool", exit_status: 0),
+    raw_evidence_identity: content_hash_of_value(value: "attempt-wrong-tool"),
+    device_hardware_identity: none,
+    envelope: FleetLifecycleEnvelope {
+      tool: "spark_updatectl.py",
+      ts: "2026-08-07T00:00:00Z",
+      host: "srv5",
+      status: StatusOk,
+      rc: 0,
+      duration_ms: 42,
+      summary: "synthetic wrong-tool envelope: an UpdateControl observation, not a DeviceIdentity one",
+      warnings: [],
+      artifacts: [],
+    },
+  }
   match admit_dgx_spark_deployment(
-    identity: srv5_reserved,
+    identity: operator_host_srv5,
     catalog: nvidia_dgx_spark_4tb_catalog,
-    identity_observation: Present { value: synthetic_wrong_tool_envelope() },
+    selection: ObservationUnique { observation: o },
+    router_binding: synthetic_bound_binding_for(identity_host: "srv5", last_octet: 222),
   ) {
     DgxSparkDeploymentRefused { reason: DeploymentAdmissionWrongTool { observed_tool: t } } => t == "spark_updatectl.py"
     DgxSparkDeploymentRefused { reason: _ } => false
@@ -147,17 +322,517 @@ test fn w_red_admission_with_wrong_tool_evidence_refuses() -> Bool {
   }
 }
 
-test fn w_red_admission_with_mismatched_host_refuses() -> Bool {
+// DEFECT 1 control, dispatch half: an observation DISPATCHED against srv5 must not admit a deployment for srv6, and the refusal names the dispatched subject -- the authority fact -- rather than anything the envelope printed.
+test fn w_red_admission_with_mismatched_dispatch_subject_refuses() -> Bool {
   match admit_dgx_spark_deployment(
-    identity: srv6_reserved,
+    identity: operator_host_srv6,
     catalog: nvidia_dgx_spark_4tb_catalog,
-    identity_observation: Present { value: synthetic_device_identity_envelope() },
+    selection: ObservationUnique { observation: srv5_good_observation() },
+    router_binding: synthetic_bound_binding_for(identity_host: "srv6", last_octet: 223),
   ) {
     DgxSparkDeploymentRefused {
-      reason: DeploymentAdmissionHostMismatch { observed_host: h, requested_identity: i }
-    } => h == "srv5" && i == srv6_reserved
+      reason: DeploymentAdmissionSubjectMismatch { dispatched_subject: s, requested_identity: i }
+    } => s == operator_host_srv5 && i == operator_host_srv6
     DgxSparkDeploymentRefused { reason: _ } => false
     DgxSparkDeploymentAdmitted { deployment: _ } => false
   }
 }
 
+// SPARK-ALLOC-LAND-0 control: the observation is dispatched against srv6 with correct binding and
+// endpoint, but the unit PRINTED "srv5". Admission must still succeed; the disagreement is recorded
+// as diagnostic evidence on the deployment, never as a refusal.
+test fn w_admission_when_envelope_host_disagrees_records_diagnostic_evidence() -> Bool {
+  let o = synthetic_observation(subject_host: "srv6", envelope_host: "srv5", last_octet: 223, attempt_label: "attempt-disagreeing-host")
+  match admit_dgx_spark_deployment(
+    identity: operator_host_srv6,
+    catalog: nvidia_dgx_spark_4tb_catalog,
+    selection: ObservationUnique { observation: o },
+    router_binding: synthetic_bound_binding_for(identity_host: "srv6", last_octet: 223),
+  ) {
+    DgxSparkDeploymentAdmitted { deployment: d } =>
+      d.identity == operator_host_srv6
+        && match d.envelope_host_presentation {
+          EnvelopeHostDisagreesWithSubject {
+            subject: s,
+            observed_host: h,
+            expected_presentation: _,
+          } => s == operator_host_srv6 && h == "srv5"
+          EnvelopeHostAgreesWithSubject => false
+        }
+    DgxSparkDeploymentRefused { reason: _ } => false
+  }
+}
+
+test fn w_red_admission_with_failed_observation_refuses() -> Bool {
+  let o = FleetLifecycleObservation {
+    subject: operator_host_srv5,
+    endpoint_binding: EndpointBindingIdentity {
+      address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 222),
+    },
+    execution_receipt: process_receipt(label: "attempt-failed", exit_status: 1),
+    raw_evidence_identity: content_hash_of_value(value: "attempt-failed"),
+    device_hardware_identity: none,
+    envelope: FleetLifecycleEnvelope {
+      tool: "device_identity.py",
+      ts: "2026-08-07T00:00:00Z",
+      host: "srv5",
+      status: StatusError,
+      rc: 1,
+      duration_ms: 42,
+      summary: "synthetic FAILED device_identity.py run: the tool was invoked against srv5 and did not succeed",
+      warnings: [],
+      artifacts: [],
+    },
+  }
+  match admit_dgx_spark_deployment(
+    identity: operator_host_srv5,
+    catalog: nvidia_dgx_spark_4tb_catalog,
+    selection: ObservationUnique { observation: o },
+    router_binding: synthetic_bound_binding_for(identity_host: "srv5", last_octet: 222),
+  ) {
+    DgxSparkDeploymentRefused {
+      reason: DeploymentAdmissionObservationNotOk { observed_status: StatusError, observed_rc: rc }
+    } => rc == 1
+    DgxSparkDeploymentRefused { reason: _ } => false
+    DgxSparkDeploymentAdmitted { deployment: _ } => false
+  }
+}
+
+// A valid successful observation of srv3, a real fleet host, with a matching bound binding. It must still refuse: nothing about a valid observation of some host makes that host a machine the operator procured, and admitting one would let the procurement roster be written by whatever answered.
+test fn w_red_admission_of_unreserved_identity_refuses() -> Bool {
+  let o = synthetic_observation(subject_host: "srv3", envelope_host: "srv3", last_octet: 221, attempt_label: "attempt-srv3")
+  match admit_dgx_spark_deployment(
+    identity: operator_host_srv3,
+    catalog: nvidia_dgx_spark_4tb_catalog,
+    selection: ObservationUnique { observation: o },
+    router_binding: synthetic_bound_binding_for(identity_host: "srv3", last_octet: 221),
+  ) {
+    DgxSparkDeploymentRefused {
+      reason: DeploymentAdmissionIdentityNotReserved { requested_identity: i }
+    } => i == operator_host_srv3
+    DgxSparkDeploymentRefused { reason: _ } => false
+    DgxSparkDeploymentAdmitted { deployment: _ } => false
+  }
+}
+
+// An UNASSIGNED binding: everything else about this call is valid, so this isolates the assignment requirement as the sole reason for refusal. Both live slots are now decided; this uses a synthetic unassigned binding so the wall stays proven for the next unit that arrives before anyone has decided where it goes.
+test fn w_red_admission_with_pending_router_binding_refuses() -> Bool {
+  match admit_dgx_spark_deployment(
+    identity: operator_host_srv5,
+    catalog: nvidia_dgx_spark_4tb_catalog,
+    selection: ObservationUnique { observation: srv5_good_observation() },
+    router_binding: SlotUnassigned { identity: operator_host_srv5 },
+  ) {
+    DgxSparkDeploymentRefused {
+      reason: DeploymentAdmissionRouterBindingPending { requested_identity: i }
+    } => i == operator_host_srv5
+    DgxSparkDeploymentRefused { reason: _ } => false
+    DgxSparkDeploymentAdmitted { deployment: _ } => false
+  }
+}
+
+test fn w_red_admission_with_mismatched_router_binding_refuses() -> Bool {
+  let o = synthetic_observation(subject_host: "srv6", envelope_host: "srv6", last_octet: 223, attempt_label: "attempt-srv6")
+  match admit_dgx_spark_deployment(
+    identity: operator_host_srv6,
+    catalog: nvidia_dgx_spark_4tb_catalog,
+    selection: ObservationUnique { observation: o },
+    router_binding: synthetic_bound_binding_for(identity_host: "srv5", last_octet: 222),
+  ) {
+    DgxSparkDeploymentRefused {
+      reason: DeploymentAdmissionRouterBindingMismatch { binding_identity: b, requested_identity: i }
+    } => b == operator_host_srv5 && i == operator_host_srv6
+    DgxSparkDeploymentRefused { reason: _ } => false
+    DgxSparkDeploymentAdmitted { deployment: _ } => false
+  }
+}
+
+// Evidence must arrive from the RESERVED endpoint. The subject, the binding and the envelope all agree here; only the address the collector actually reached differs from the one reserved for that subject, which is the case where a machine answered on an address nobody reserved for it.
+test fn w_red_admission_from_unreserved_endpoint_refuses() -> Bool {
+  let o = synthetic_observation(subject_host: "srv5", envelope_host: "srv5", last_octet: 231, attempt_label: "attempt-wrong-endpoint")
+  match admit_dgx_spark_deployment(
+    identity: operator_host_srv5,
+    catalog: nvidia_dgx_spark_4tb_catalog,
+    selection: ObservationUnique { observation: o },
+    router_binding: synthetic_bound_binding_for(identity_host: "srv5", last_octet: 222),
+  ) {
+    DgxSparkDeploymentRefused {
+      reason: DeploymentAdmissionEndpointBindingMismatch { requested_identity: i }
+    } => i == operator_host_srv5
+    DgxSparkDeploymentRefused { reason: _ } => false
+    DgxSparkDeploymentAdmitted { deployment: _ } => false
+  }
+}
+
+// DEFECT 2 control, the one the old first-wins fold silently passed. Two collector attempts against ONE subject, disagreeing (the second reports failure). Selection must report Ambiguous with the candidate count rather than returning whichever the list ordered first, and the wall must refuse on it. Under the previous shape this input admitted a deployment built from attempt-1 while attempt-2's failure was dropped without a trace.
+fn two_conflicting_srv5_observations() -> List<FleetLifecycleObservation> {
+  [
+    srv5_good_observation(),
+    FleetLifecycleObservation {
+      subject: operator_host_srv5,
+      endpoint_binding: EndpointBindingIdentity {
+        address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 222),
+      },
+      execution_receipt: process_receipt(label: "attempt-2", exit_status: 1),
+      raw_evidence_identity: content_hash_of_value(value: "attempt-2"),
+      device_hardware_identity: none,
+      envelope: FleetLifecycleEnvelope {
+        tool: "device_identity.py",
+        ts: "2026-08-07T00:05:00Z",
+        host: "srv5",
+        status: StatusError,
+        rc: 1,
+        duration_ms: 42,
+        summary: "synthetic second attempt against the same subject, disagreeing with the first",
+        warnings: [],
+        artifacts: [],
+      },
+    },
+  ]
+}
+
+test fn w_red_two_attempts_for_one_subject_select_ambiguous() -> Bool {
+  match select_observation_for_subject(
+    subject: operator_host_srv5,
+    observations: two_conflicting_srv5_observations(),
+  ) {
+    ObservationAmbiguous { subject: s, candidate_count: n } => s == operator_host_srv5 && n == 2
+    ObservationUnique { observation: _ } => false
+    ObservationMissing { subject: _ } => false
+  }
+}
+
+test fn w_red_admission_on_ambiguous_evidence_refuses() -> Bool {
+  match admit_dgx_spark_deployment(
+    identity: operator_host_srv5,
+    catalog: nvidia_dgx_spark_4tb_catalog,
+    selection: select_observation_for_subject(
+      subject: operator_host_srv5,
+      observations: two_conflicting_srv5_observations(),
+    ),
+    router_binding: synthetic_bound_binding_for(identity_host: "srv5", last_octet: 222),
+  ) {
+    DgxSparkDeploymentRefused {
+      reason: DeploymentAdmissionAmbiguousEvidence { requested_identity: i, candidate_count: n }
+    } => i == operator_host_srv5 && n == 2
+    DgxSparkDeploymentRefused { reason: _ } => false
+    DgxSparkDeploymentAdmitted { deployment: _ } => false
+  }
+}
+
+// The three arms of selection are all reachable and distinct: zero candidates, exactly one, and the attempt-exact disambiguation that resolves the ambiguous case above to a unique pick. Naming the attempt is the ONLY way to narrow it -- list position never is.
+test fn w_selection_is_zero_one_many_and_attempt_disambiguates() -> Bool {
+  match select_observation_for_subject(subject: operator_host_srv5, observations: []) {
+    ObservationMissing { subject: s } => s == operator_host_srv5
+    ObservationUnique { observation: _ } => false
+    ObservationAmbiguous { subject: _, candidate_count: _ } => false
+  }
+    && match select_observation_for_subject(
+      subject: operator_host_srv5,
+      observations: [srv5_good_observation()],
+    ) {
+      ObservationUnique { observation: o } => o.subject == operator_host_srv5
+      ObservationMissing { subject: _ } => false
+      ObservationAmbiguous { subject: _, candidate_count: _ } => false
+    }
+    && match select_observation_by_attempt(
+      subject: operator_host_srv5,
+      attempt: process_receipt(label: "attempt-2", exit_status: 1),
+      observations: two_conflicting_srv5_observations(),
+    ) {
+      ObservationUnique { observation: o } => o.envelope.rc == 1
+      ObservationMissing { subject: _ } => false
+      ObservationAmbiguous { subject: _, candidate_count: _ } => false
+    }
+}
+
+// Selection keys on the DISPATCH subject, not on what the envelope printed: an observation dispatched against srv6 whose envelope says "srv5" must not be selectable as srv5's evidence. This is the selection-side half of DEFECT 1 -- the old fold matched on envelope.host, so this row WAS srv5's evidence.
+test fn w_red_selection_ignores_envelope_host() -> Bool {
+  let o = synthetic_observation(subject_host: "srv6", envelope_host: "srv5", last_octet: 223, attempt_label: "attempt-mislabeled")
+  match select_observation_for_subject(subject: operator_host_srv5, observations: [o]) {
+    ObservationMissing { subject: s } => s == operator_host_srv5
+    ObservationUnique { observation: _ } => false
+    ObservationAmbiguous { subject: _, candidate_count: _ } => false
+  }
+}
+
+// Live convergence: the real roster against the real (empty) observation population is Pending with one typed row per unit, and the cause is the absence of evidence -- not an untyped "not ready" and not a silently empty result a consumer could read as converged.
+test fn w_live_procurement_convergence_is_pending_for_both_units() -> Bool {
+  match dgx_spark_procurement_convergence() {
+    DgxSparkProcurementPending { pending: p } =>
+      count(p) == 2
+        && fold(
+          p,
+          init: true,
+          f: (acc, d) =>
+            acc && match d {
+              DgxSparkUnitPending { identity: _, reason: DeploymentAdmissionNoEvidence { requested_identity: _ } } => true
+              DgxSparkUnitPending { identity: _, reason: _ } => false
+              DgxSparkUnitDeployed { deployment: _ } => false
+            }
+        )
+    DgxSparkProcurementConverged { deployments: _ } => false
+  }
+}
+
+test fn w_procurement_converges_when_both_units_are_bound_and_observed() -> Bool {
+  match converge_dgx_spark_procurement(
+    bindings: [
+      synthetic_bound_binding_for(identity_host: "srv5", last_octet: 222),
+      synthetic_bound_binding_for(identity_host: "srv6", last_octet: 223),
+    ],
+    observations: [
+      srv5_good_observation(),
+      synthetic_observation(subject_host: "srv6", envelope_host: "srv6", last_octet: 223, attempt_label: "attempt-srv6"),
+    ],
+  ) {
+    DgxSparkProcurementConverged { deployments: ds } =>
+      count(ds) == 2
+        && map(ds, d => d.identity) == [operator_host_srv5, operator_host_srv6]
+    DgxSparkProcurementPending { pending: _ } => false
+  }
+}
+
+// Partial arrival is Pending, not converged: one unit bound and observed, the other still unassigned. The discriminator against a converge that folds with an OR.
+test fn w_red_partial_arrival_does_not_converge() -> Bool {
+  match converge_dgx_spark_procurement(
+    bindings: [
+      synthetic_bound_binding_for(identity_host: "srv5", last_octet: 222),
+      SlotUnassigned { identity: operator_host_srv6 },
+    ],
+    observations: [
+      srv5_good_observation(),
+      synthetic_observation(subject_host: "srv6", envelope_host: "srv6", last_octet: 223, attempt_label: "attempt-srv6"),
+    ],
+  ) {
+    DgxSparkProcurementPending { pending: p } =>
+      count(p) == 1
+        && fold(
+          p,
+          init: false,
+          f: (acc, d) =>
+            acc || match d {
+              DgxSparkUnitPending {
+                identity: i,
+                reason: DeploymentAdmissionRouterBindingPending { requested_identity: _ },
+              } => i == operator_host_srv6
+              DgxSparkUnitPending { identity: _, reason: _ } => false
+              DgxSparkUnitDeployed { deployment: _ } => false
+            }
+        )
+    DgxSparkProcurementConverged { deployments: _ } => false
+  }
+}
+
+// The dispatcher's own record of the process and the tool's self-reported rc are two independent facts about one execution. A tool that reports success in its payload while the process exited nonzero is precisely the case a single self-reported field cannot express, and it must refuse rather than trusting either side alone.
+test fn w_red_admission_when_execution_receipt_disagrees_with_reported_rc_refuses() -> Bool {
+  let o = FleetLifecycleObservation {
+    subject: operator_host_srv5,
+    endpoint_binding: EndpointBindingIdentity {
+      address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 222),
+    },
+    execution_receipt: process_receipt(label: "attempt-disagreeing-exit", exit_status: 1),
+    envelope: synthetic_envelope_for(host: "srv5"),
+    raw_evidence_identity: content_hash_of_value(value: "attempt-disagreeing-exit"),
+    device_hardware_identity: none,
+  }
+  match admit_dgx_spark_deployment(
+    identity: operator_host_srv5,
+    catalog: nvidia_dgx_spark_4tb_catalog,
+    selection: ObservationUnique { observation: o },
+    router_binding: synthetic_bound_binding_for(identity_host: "srv5", last_octet: 222),
+  ) {
+    DgxSparkDeploymentRefused {
+      reason: DeploymentAdmissionExecutionEvidenceDisagrees { receipt_exit_status: e, reported_rc: r }
+    } => e == 1 && r == 0
+    DgxSparkDeploymentRefused { reason: _ } => false
+    DgxSparkDeploymentAdmitted { deployment: _ } => false
+  }
+}
+
+fn observation_with_hardware(
+  subject_host: NonEmptyStr,
+  last_octet: Int,
+  attempt_label: NonEmptyStr,
+  hardware: DeviceHardwareIdentity,
+) -> FleetLifecycleObservation {
+  FleetLifecycleObservation {
+    subject: subject_host as HostIdentity,
+    endpoint_binding: EndpointBindingIdentity {
+      address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: last_octet),
+    },
+    execution_receipt: process_receipt(label: attempt_label, exit_status: 0),
+    envelope: synthetic_envelope_for(host: subject_host),
+    raw_evidence_identity: content_hash_of_value(value: attempt_label),
+    device_hardware_identity: Present { value: hardware },
+  }
+}
+
+fn deployment_with_hardware(
+  subject_host: NonEmptyStr,
+  last_octet: Int,
+  attempt_label: NonEmptyStr,
+  hardware: DeviceHardwareIdentity,
+) -> DgxSparkAdmissionOutcome {
+  admit_dgx_spark_deployment(
+    identity: subject_host as HostIdentity,
+    catalog: nvidia_dgx_spark_4tb_catalog,
+    selection: ObservationUnique {
+      observation: observation_with_hardware(
+        subject_host: subject_host,
+        last_octet: last_octet,
+        attempt_label: attempt_label,
+        hardware: hardware,
+      )
+    },
+    router_binding: synthetic_bound_binding_for(identity_host: subject_host, last_octet: last_octet),
+  )
+}
+
+fn pair_outcome_for(
+  first_hw: DeviceHardwareIdentity,
+  second_hw: DeviceHardwareIdentity,
+) -> DgxSparkPairAdmissionOutcome {
+  match deployment_with_hardware(subject_host: "srv5", last_octet: 222, attempt_label: "pair-a", hardware: first_hw) {
+    DgxSparkDeploymentAdmitted { deployment: a } =>
+      match deployment_with_hardware(subject_host: "srv6", last_octet: 223, attempt_label: "pair-b", hardware: second_hw) {
+        DgxSparkDeploymentAdmitted { deployment: b } =>
+          admit_dgx_spark_pair_deployments(first: a, second: b)
+        DgxSparkDeploymentRefused { reason: r } =>
+          DgxSparkPairRefused { reason: PairUnitNotAdmitted { identity: operator_host_srv6, reason: r } }
+      }
+    DgxSparkDeploymentRefused { reason: r } =>
+      DgxSparkPairRefused { reason: PairUnitNotAdmitted { identity: operator_host_srv5, reason: r } }
+  }
+}
+
+data serial_a: DeviceSerialNumber = "FIXTURE-SERIAL-A"
+data serial_b: DeviceSerialNumber = "FIXTURE-SERIAL-B"
+data product_uuid_a: Uuid = "00000000-0000-4000-8000-00000000000a"
+
+// The pair positive control: two units, each individually admitted, carrying DIFFERENT serials. This is the only shape that admits, so every RED below is proven to be a discriminator rather than a permanently-refusing arm.
+test fn w_pair_admits_when_hardware_identities_are_distinct() -> Bool {
+  match pair_outcome_for(
+    first_hw: DeviceSerial { serial: serial_a },
+    second_hw: DeviceSerial { serial: serial_b },
+  ) {
+    DgxSparkPairAdmitted { first: a, second: b } =>
+      a.identity == operator_host_srv5 && b.identity == operator_host_srv6
+    DgxSparkPairRefused { reason: _ } => false
+  }
+}
+
+// THE CLASS THE OPERATOR NAMED: two envelopes that both claim to be the pair are not evidence of two machines. Both units here are individually impeccable -- correct subject, correct binding, correct endpoint, successful observation, agreeing receipt -- and they came off ONE box, which per-unit admission cannot see and pair admission must refuse.
+test fn w_red_pair_refuses_when_both_observations_share_one_machine() -> Bool {
+  match pair_outcome_for(
+    first_hw: DeviceSerial { serial: serial_a },
+    second_hw: DeviceSerial { serial: serial_a },
+  ) {
+    DgxSparkPairRefused {
+      reason: PairHardwareIdentityNotDistinct { first: f, second: s }
+    } => f == operator_host_srv5 && s == operator_host_srv6
+    DgxSparkPairRefused { reason: _ } => false
+    DgxSparkPairAdmitted { first: _, second: _ } => false
+  }
+}
+
+// A serial against a product UUID: two naming schemes for one machine, so their INEQUALITY proves nothing about whether the machines differ. Collapsing this into Distinct would let "I cannot tell" answer the question, which is the failure mode the three-valued comparison exists to prevent -- the same shape and the same reason as std.content_hash's cross-family comparison.
+test fn w_red_pair_refuses_on_incomparable_identity_kinds() -> Bool {
+  match pair_outcome_for(
+    first_hw: DeviceSerial { serial: serial_a },
+    second_hw: DeviceProductUuid { product_uuid: product_uuid_a },
+  ) {
+    DgxSparkPairRefused {
+      reason: PairHardwareIdentityIncomparable { first: f, second: s }
+    } => f == operator_host_srv5 && s == operator_host_srv6
+    DgxSparkPairRefused { reason: _ } => false
+    DgxSparkPairAdmitted { first: _, second: _ } => false
+  }
+}
+
+// Unobserved hardware identity is not "probably distinct". This is the arm the live population reaches today: no read transport is bound and the per-tool device_identity.py payload is unmodeled, so nothing can supply this field yet, and the pair therefore refuses rather than admitting on the strength of two individually-valid observations.
+test fn w_red_pair_refuses_when_hardware_identity_is_unobserved() -> Bool {
+  match admit_dgx_spark_pair_deployments(
+    first: unobserved_hw_deployment(subject_host: "srv5", last_octet: 222),
+    second: unobserved_hw_deployment(subject_host: "srv6", last_octet: 223),
+  ) {
+    DgxSparkPairRefused { reason: PairHardwareIdentityUnobserved { identity: i } } =>
+      i == operator_host_srv5
+    DgxSparkPairRefused { reason: _ } => false
+    DgxSparkPairAdmitted { first: _, second: _ } => false
+  }
+}
+
+fn unobserved_hw_deployment(subject_host: NonEmptyStr, last_octet: Int) -> DgxSparkDeployment {
+  let observation = synthetic_observation(
+    subject_host: subject_host,
+    envelope_host: subject_host,
+    last_octet: last_octet,
+    attempt_label: "unobserved-hw",
+  )
+  DgxSparkDeployment {
+    identity: subject_host as HostIdentity,
+    catalog: nvidia_dgx_spark_4tb_catalog,
+    observation: observation,
+    router_reservation: Cr1000aDhcpLeaseRow {
+      mac_address: "00:00:00:00:00:00" as MacAddress,
+      ipv4_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: last_octet),
+      lease: StaticDhcpReservation {
+        reservation_label: "synthetic-dgx-spark-fixture" as NonEmptyStr,
+        status: Active,
+      },
+    },
+    envelope_host_presentation: envelope_host_presentation_evidence(observation: observation),
+  }
+}
+
+// One subject cannot be its own pair.
+test fn w_red_pair_refuses_when_subjects_are_not_distinct() -> Bool {
+  match admit_dgx_spark_pair_deployments(
+    first: unobserved_hw_deployment(subject_host: "srv5", last_octet: 222),
+    second: unobserved_hw_deployment(subject_host: "srv5", last_octet: 222),
+  ) {
+    DgxSparkPairRefused { reason: PairSubjectsNotDistinct { identity: i } } => i == operator_host_srv5
+    DgxSparkPairRefused { reason: _ } => false
+    DgxSparkPairAdmitted { first: _, second: _ } => false
+  }
+}
+
+// The three distinctness verdicts are each reachable and distinct at the comparison itself, so the pair walls above rest on a proven decision rather than on one arm that happens to fire.
+test fn w_hardware_identity_comparison_is_three_valued() -> Bool {
+  match compare_hardware_identity(
+    left: DeviceSerial { serial: serial_a },
+    right: DeviceSerial { serial: serial_b },
+  ) {
+    HardwareIdentitiesDistinct => true
+    HardwareIdentitiesSame => false
+    HardwareIdentitiesIncomparable => false
+  }
+    && match compare_hardware_identity(
+      left: DeviceSerial { serial: serial_a },
+      right: DeviceSerial { serial: serial_a },
+    ) {
+      HardwareIdentitiesSame => true
+      HardwareIdentitiesDistinct => false
+      HardwareIdentitiesIncomparable => false
+    }
+    && match compare_hardware_identity(
+      left: DeviceProductUuid { product_uuid: product_uuid_a },
+      right: DeviceSerial { serial: serial_a },
+    ) {
+      HardwareIdentitiesIncomparable => true
+      HardwareIdentitiesDistinct => false
+      HardwareIdentitiesSame => false
+    }
+}
+
+// The live pair read: convergence is Pending on missing evidence, so no pair exists, and the refusal carries the UNIT's own typed cause out rather than flattening it to a generic "not converged".
+test fn w_live_pair_admission_refuses_with_the_units_own_cause() -> Bool {
+  match admit_dgx_spark_pair(convergence: dgx_spark_procurement_convergence()) {
+    DgxSparkPairRefused {
+      reason: PairUnitNotAdmitted { identity: i, reason: DeploymentAdmissionNoEvidence { requested_identity: _ } }
+    } => i == operator_host_srv5
+    DgxSparkPairRefused { reason: _ } => false
+    DgxSparkPairAdmitted { first: _, second: _ } => false
+  }
+}
