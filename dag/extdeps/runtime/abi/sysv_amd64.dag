@@ -14,16 +14,14 @@ import std.integer { PositiveInt }
 // register/syscall calling-convention facts. Citation consumer receipts (pin, selector,
 // evidence links, wet observations) live in gunbc.citation.x86_64_abi_pdf_consumer.
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+data x86_64_abi_pdf_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf"
   }
 }
 
-fn x86_64_abi_pdf_authority() -> ExternalAuthority {
-  extdeps_external_authority_anchor
-}
+data extdeps_external_authority_anchor: ExternalAuthority = x86_64_abi_pdf_authority
 
 data x86_64_abi_specification: NonEmptyStr = "System V AMD64 ABI"
 
@@ -37,7 +35,7 @@ data x86_64_abi_subject_ref: ExternalSubjectRef = ExternalSubjectRef {
 
 data x86_64_abi_pdf_identity: CitedRepresentationIdentity = cited_representation_identity(
   source: x86_64_abi_subject_ref,
-  access_route: x86_64_abi_pdf_authority().uri,
+  access_route: x86_64_abi_pdf_authority.uri,
   byte_domain: RawResponseBody,
 )
 
