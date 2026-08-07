@@ -23,10 +23,8 @@ import extdeps.systems.nvidia_dgx_spark_setup {
   InitialUpdateDisposition,
   InitialUpdateBehaviorUnobserved,
   DgxSparkPxeInstallParameters,
-  OobeSetupField,
-  OobeUnofferedSubject,
   OobeHostnameAssignment,
-  dgx_spark_oobe_offers_subject,
+  dgx_spark_oobe_offers_field,
   dgx_spark_oobe_surface,
   dgx_spark_documented_initial_update,
 }
@@ -309,10 +307,9 @@ fn select_spark_strategy(
 fn spark_hostname_residue(strategy: SparkProvisioningStrategy) -> HumanIntervention? {
   match strategy {
     FactoryOobe { bootstrap: _ } =>
-      if dgx_spark_oobe_offers_subject(subject: OobeHostnameAssignment) {
-        Absent
-      } else {
-        Present {
+      match dgx_spark_oobe_offers_field(field: OobeHostnameAssignment) {
+        true => Absent
+        false => Present {
           value: spark_intervention(
             identity: "spark-oobe-hostname-residue",
             frequency: DeviceOnce,

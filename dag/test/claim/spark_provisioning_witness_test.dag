@@ -45,21 +45,21 @@ fn residue_count(strategy: SparkProvisioningStrategy) -> Int {
 // unreached prerequisite, an unperformed human step and a rejected field must land on three
 // different tags — if any pair collapsed, two of these equalities would fail.
 test fn spark_outcome_arms_stay_distinct() -> Bool {
-  classify_tag(progress: ProgressReachedPostSetupAccess) == "provisioned"
-    && classify_tag(progress: ProgressAwaitingDocumentedReboot) == "interrupted"
-    && classify_tag(progress: ProgressPrerequisiteNotYetReached { prerequisite: "network join" }) == "interrupted"
-    && classify_tag(progress: ProgressAwaitingHuman {
-         intervention: sample_intervention()
-       }) == "human"
-    && classify_tag(progress: ProgressDeviceRejectedField { field: "username" }) == "refused"
-    && classify_tag(progress: ProgressAwaitingDocumentedReboot)
-         != classify_tag(progress: ProgressDeviceRejectedField { field: "username" })
-    && classify_tag(progress: ProgressAwaitingHuman {
-         intervention: sample_intervention()
-       }) != classify_tag(progress: ProgressDeviceRejectedField { field: "username" })
-    && classify_tag(progress: ProgressAwaitingHuman {
-         intervention: sample_intervention()
-       }) != classify_tag(progress: ProgressAwaitingDocumentedReboot)
+  let success = classify_tag(progress: ProgressReachedPostSetupAccess)
+  let reboot = classify_tag(progress: ProgressAwaitingDocumentedReboot)
+  let prerequisite = classify_tag(progress: ProgressPrerequisiteNotYetReached { prerequisite: "network join" })
+  let human = classify_tag(progress: ProgressAwaitingHuman { intervention: sample_intervention() })
+  let rejected = classify_tag(progress: ProgressDeviceRejectedField { field: "username" })
+
+  success == "provisioned"
+    && reboot == "interrupted"
+    && prerequisite == "interrupted"
+    && human == "human"
+    && rejected == "refused"
+    && reboot != rejected
+    && human != rejected
+    && human != reboot
+    && human != success
 }
 
 fn sample_intervention() -> HumanIntervention {
@@ -195,7 +195,7 @@ test fn spark_cited_setup_surface_holds() -> Bool {
   update_tag(d: dgx_spark_documented_initial_update) == "unobserved"
     && update_tag(d: InitialUpdateAppliedDuringSetup) != update_tag(d: dgx_spark_documented_initial_update)
     && update_tag(d: InitialUpdateDeferredToOperator) != update_tag(d: dgx_spark_documented_initial_update)
-    && dgx_spark_oobe_offers_subject(subject: OobeHostnameAssignment) == false
+    && dgx_spark_oobe_offers_field(field: OobeHostnameAssignment) == false
     && residue_count(strategy: oobe_strategy) == 1
     && residue_count(strategy: pxe_strategy) == 0
     && post_setup_route_requires_existing_account(route: PostSetupSsh)

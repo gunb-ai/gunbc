@@ -46,8 +46,14 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // A per-unit sticker password is a secret; modeling it as FactoryLogin would put it in
 // source in plaintext. The carrier below therefore names WHERE the credential comes from
 // and never holds one.
+// The axis is credential PROVENANCE, and the two arms are the two real cases this
+// repository already has in hand: a BMC's password is published identically for every
+// unit (std.credentials.FactoryLogin's honest shape), while a DGX Spark's arrives on a
+// per-unit printed sticker. Which arm a device sits on decides whether its credential may
+// live in source at all.
 type OobeBootstrapCredentialCarrier
   = PrintedQuickStartGuideSticker
+  | VendorPublishedDefault
 
 type OobeCaptivePortalBehavior
   = CaptivePortalOpensAutomatically
@@ -69,6 +75,7 @@ type OobeSetupField
   | OobeUserAccount
   | OobeAnalytics
   | OobeWirelessNetwork
+  | OobeHostnameAssignment
 
 data dgx_spark_oobe_fields: List<OobeSetupField> = [
   OobeLanguage,
@@ -80,13 +87,13 @@ data dgx_spark_oobe_fields: List<OobeSetupField> = [
   OobeWirelessNetwork,
 ]
 
-// A hostname is NOT among them. This is a measured absence in the cited page, not an
-// oversight in this model: a provisioning intent that carries a desired_hostname cannot
-// discharge it inside OOBE and must route it to a separate post-setup step. The absence
-// is expressed as a total predicate rather than a comment so a consumer can branch on it.
-type OobeUnofferedSubject
-  = OobeHostnameAssignment
-
+// OobeSetupField is the closed universe of subjects a provisioning intent might want the
+// wizard to settle; dgx_spark_oobe_fields above is the subset the cited page says it
+// actually prompts for. Hostname assignment is in the universe and not in the list, and
+// that gap is expressed as a total predicate rather than a comment so a consumer can
+// branch on it: an intent carrying a desired_hostname cannot discharge it inside OOBE and
+// must route it to a separate post-setup step. This is a measured absence in the cited
+// page, not an omission in this model.
 fn dgx_spark_oobe_offers_field(field: OobeSetupField) -> Bool {
   match field {
     OobeLanguage => true
@@ -96,11 +103,6 @@ fn dgx_spark_oobe_offers_field(field: OobeSetupField) -> Bool {
     OobeUserAccount => true
     OobeAnalytics => true
     OobeWirelessNetwork => true
-  }
-}
-
-fn dgx_spark_oobe_offers_subject(subject: OobeUnofferedSubject) -> Bool {
-  match subject {
     OobeHostnameAssignment => false
   }
 }
@@ -157,11 +159,7 @@ type DgxSparkPxeInstallParameters {
 }
 
 fn dgx_spark_pxe_parameter_tokens(params: DgxSparkPxeInstallParameters) -> List<String> {
-  list_concat(
-    list_concat(
-      if params.unattended { ["autoinstall"] } else { [] },
-      if params.user_interface_disabled { ["noui"] } else { [] }
-    ),
-    if params.skip_firmware_update { ["usb.skipfw"] } else { [] }
-  )
+  let with_unattended = if params.unattended { ["autoinstall"] } else { [] }
+  let with_noui = if params.user_interface_disabled { append(with_unattended, "noui") } else { with_unattended }
+  if params.skip_firmware_update { append(with_noui, "usb.skipfw") } else { with_noui }
 }
