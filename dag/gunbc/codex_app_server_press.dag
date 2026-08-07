@@ -24,17 +24,22 @@ import extdeps.llm.codex_app_server {
   CodexAppServerTurnStart,
   CodexAppServerStdio,
   codex_app_server_initialize_request_line,
+  codex_app_server_initialized_notification_line,
   codex_app_server_account_read_request_line,
   codex_app_server_rate_limits_read_request_line,
   codex_initialize_result_user_agent_key,
   codex_account_read_result_requires_openai_auth_key,
   codex_account_read_result_account_key,
   codex_rate_limits_result_rate_limits_key,
+  codex_rate_limits_result_by_limit_id_key,
+  codex_rate_limits_snapshot_limit_id_key,
   codex_rate_limits_snapshot_primary_key,
   codex_rate_limits_snapshot_secondary_key,
   codex_rate_limits_snapshot_spend_control_reached_key,
   codex_rate_limits_snapshot_rate_limit_reached_type_key,
   codex_rate_limits_window_used_percent_key,
+  codex_rate_limits_window_resets_at_key,
+  codex_default_rate_limit_id,
   codex_structured_error_code_rate_limit_reached,
   codex_structured_error_code_quota_exceeded,
   codex_structured_error_code_authentication_required,
@@ -44,6 +49,7 @@ import extdeps.shell
 import extdeps.shell.exec
 import extdeps.languages.json.emit {
   JsonValue, JsonObject, JsonString, JsonNumber, JsonBool, JsonArray, JsonNull,
+  JsonKeyValue,
 }
 import extdeps.languages.json.parse {
   parse_json,
@@ -54,13 +60,13 @@ import extdeps.languages.json.parse {
   JsonMemberNotAnObject,
 }
 
-data codex_press_note: String = "Account-standing observation for the Codex app-server specimen. This module does NOT claim a provider turn: thread/start and turn/start are target itinerary only until a subjectful WorkerTurn binding lands. AccountStandingAuthenticatedRateLimitsReadable means initialize+account/read succeeded AND RateLimitSnapshot capacity decode shows the account can accept work (window usedPercent below 100, spendControlReached not true, rateLimitReachedType absent). An empty rateLimits object answers the endpoint without proving capacity and classifies Incomplete — never Ready. An authenticated/capacity-available result must never be labeled turn-started."
+data codex_press_note: String = "Account-standing observation for the Codex app-server specimen. This module does NOT claim a provider turn. Rate-limit standing is PER limit_id (rateLimitsByLimitId): a live Pro account can exhaust the codex bucket while codex_bengalfox remains at usedPercent 0 — collapsing to one account-level Ready|QuotaReached is false. CodexPressAccountReady gates on the native limit_id codex bucket only; every bucket verdict is retained on the evidence for ProviderNativeLimitBucket bridging. Empty rateLimits:\{\} is Incomplete. Trip stdin must send initialized after initialize or id=3 may never arrive."
 
 data codex_press_hermetic_evidence_root: FilePath = "/tmp/gunbc-codex-press-evidence" as FilePath
 
 data account_trip_digest_mode_note: String = "Hermetic parse helpers (parse_account_trip_stdout_for_tests) use AccountTripDigestStructural — content_hash_of_value fingerprints with zero host effects, so discovery stays mock-free. Wet observe_codex_account_preflight uses AccountTripDigestRetainPrivateSha512 under a caller-supplied evidence_root. Structural digests are NOT durable content identities; private SHA-512 retention is."
 
-data account_standing_authenticated_rate_limits_readable_note: String = "Ready requires decoded capacity from the cited RateLimitSnapshot fields (primary/secondary usedPercent, spendControlReached, rateLimitReachedType). Empty rateLimits:\{\} is Incomplete. QuotaReached covers spend-control, reached-type, and saturated windows. Bridge into gunbc.provider_standing LimitObservedAvailable|LimitUnavailableUntilReset|LimitExhausted dissolves when that consumer lands on this receipt."
+data account_standing_authenticated_rate_limits_readable_note: String = "Ready means the native limit_id codex bucket shows remaining capacity (usedPercent below 100 without rateLimitReachedType). Sibling buckets are recorded separately and must not be erased into that verdict. spendControlReached true is exhaustion when observed; live exhaustion often has it false — usedPercent and rateLimitReachedType are the operative facts. Bridge subjects are ProviderNativeLimitBucket \{ native_key: limit_id \} per extdeps.llm.codex_app_server codex_rate_limit_subject_encoding_note — never ProviderAccountLimit to force selection blocking. Bridge into gunbc.provider_standing LimitObservedAvailable|LimitUnavailableUntilReset dissolves when that consumer lands on this receipt."
 
 type AccountTripDigestMode
   = AccountTripDigestStructural
@@ -127,11 +133,21 @@ type AccountStandingClassification
   | AccountStandingInitializeMissing
   | AccountStandingIncomplete
 
+type CodexRateLimitBucketVerdict
+  = CodexBucketCapacityAvailable { limit_id: NonEmptyStr }
+  | CodexBucketUnavailableUntilReset {
+      limit_id: NonEmptyStr
+      reached_type: NonEmptyStr?
+      resets_at: Int?
+    }
+  | CodexBucketCapacityUnknown { limit_id: NonEmptyStr }
+
 type CodexAccountStandingEvidence {
   itinerary: CodexPressItinerary
   initialize: AccountTripResponseObservation
   account_read: AccountTripResponseObservation
   rate_limits: AccountTripResponseObservation
+  rate_limit_buckets: List<CodexRateLimitBucketVerdict>
   unknown_frame_digests: List<ContentHash>
   stderr_digest: ContentHash?
   classification: AccountStandingClassification
@@ -185,12 +201,12 @@ fn codex_press_outcome_wire_status(outcome: CodexPressOutcome) -> String {
 
 fn codex_press_outcome_operator_caption(outcome: CodexPressOutcome) -> String {
   match outcome {
-    CodexPressAccountReady { receipt: _ } => "authenticated; capacity available"
+    CodexPressAccountReady { receipt: _ } => "authenticated; codex capacity available"
     CodexPressLoginRequired { reason: _, receipt: _ } => "login required"
     CodexPressUnavailable { reason: _, process: _ } => "unavailable"
     CodexPressRefused { reason, receipt: _ } =>
       if (reason as String).contains("quota") {
-        "quota exhausted"
+        "codex quota exhausted"
       } else {
         "refused"
       }
@@ -251,16 +267,22 @@ fn codex_press_account_trip_script(
             concat(
               "' >\"$REQ\"; printf '%s\\n' '",
               concat(
-                codex_app_server_account_read_request_line() as String,
+                codex_app_server_initialized_notification_line() as String,
                 concat(
                   "' >>\"$REQ\"; printf '%s\\n' '",
                   concat(
-                    codex_app_server_rate_limits_read_request_line() as String,
+                    codex_app_server_account_read_request_line() as String,
                     concat(
-                      "' >>\"$REQ\"; cat \"$REQ\" | '",
+                      "' >>\"$REQ\"; printf '%s\\n' '",
                       concat(
-                        executable as String,
-                        "' app-server --stdio >\"$OUT\" 2>\"$ERR\"; EC=$?; echo \"---GUNBC_EXIT---$EC---\"; echo '---GUNBC_STDOUT---'; cat \"$OUT\"; echo '---GUNBC_STDERR---'; cat \"$ERR\"; rm -f \"$REQ\" \"$OUT\" \"$ERR\"; exit \"$EC\"",
+                        codex_app_server_rate_limits_read_request_line() as String,
+                        concat(
+                          "' >>\"$REQ\"; cat \"$REQ\" | '",
+                          concat(
+                            executable as String,
+                            "' app-server --stdio >\"$OUT\" 2>\"$ERR\"; EC=$?; echo \"---GUNBC_EXIT---$EC---\"; echo '---GUNBC_STDOUT---'; cat \"$OUT\"; echo '---GUNBC_STDERR---'; cat \"$ERR\"; rm -f \"$REQ\" \"$OUT\" \"$ERR\"; exit \"$EC\"",
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -317,26 +339,26 @@ fn disposition_from_initialize_result(result: JsonValue) -> AccountTripFrameDisp
 fn disposition_from_account_read_result(result: JsonValue) -> AccountTripFrameDisposition {
   match json_object_unique_member(
     v: result,
-    key: codex_account_read_result_requires_openai_auth_key as String,
+    key: codex_account_read_result_account_key as String,
   ) {
-    JsonMemberFound { value: JsonBool { value: true } } => AccountTripLoginRequiredSignal
-    _ =>
+    JsonMemberFound { value: JsonNull } => AccountTripLoginRequiredSignal
+    JsonMemberFound { value: JsonObject { members: ms } } =>
+      if count(ms) == 0 {
+        AccountTripMissing
+      } else {
+        AccountTripResultOk
+      }
+    JsonMemberFound { value: _ } => AccountTripMissing
+    JsonMemberAbsent =>
       match json_object_unique_member(
         v: result,
-        key: codex_account_read_result_account_key as String,
+        key: codex_account_read_result_requires_openai_auth_key as String,
       ) {
-        JsonMemberFound { value: JsonNull } => AccountTripLoginRequiredSignal
-        JsonMemberFound { value: JsonObject { members: ms } } =>
-          if count(ms) == 0 {
-            AccountTripMissing
-          } else {
-            AccountTripResultOk
-          }
-        JsonMemberFound { value: _ } => AccountTripMissing
-        JsonMemberAbsent => AccountTripMissing
-        JsonMemberDuplicated { count: _ } => AccountTripMissing
-        JsonMemberNotAnObject => AccountTripMissing
+        JsonMemberFound { value: JsonBool { value: true } } => AccountTripLoginRequiredSignal
+        _ => AccountTripMissing
       }
+    JsonMemberDuplicated { count: _ } => AccountTripMissing
+    JsonMemberNotAnObject => AccountTripMissing
   }
 }
 
@@ -380,20 +402,24 @@ fn rate_limit_window_shows_remaining_capacity(window: JsonValue) -> Bool {
 fn rate_limits_snapshot_has_exhaustion_signal(snapshot: JsonValue) -> Bool {
   match json_object_unique_member(
     v: snapshot,
-    key: codex_rate_limits_snapshot_spend_control_reached_key as String,
+    key: codex_rate_limits_snapshot_rate_limit_reached_type_key as String,
   ) {
-    JsonMemberFound { value: JsonBool { value: true } } => true
+    JsonMemberFound { value: JsonString { value: t } } => t != ""
     _ =>
       match json_object_unique_member(
         v: snapshot,
-        key: codex_rate_limits_snapshot_rate_limit_reached_type_key as String,
+        key: codex_rate_limits_snapshot_spend_control_reached_key as String,
       ) {
-        JsonMemberFound { value: JsonString { value: t } } => t != ""
-        JsonMemberFound { value: JsonNull } => false
-        JsonMemberFound { value: _ } => false
-        JsonMemberAbsent => false
-        JsonMemberDuplicated { count: _ } => false
-        JsonMemberNotAnObject => false
+        JsonMemberFound { value: JsonBool { value: true } } => true
+        _ =>
+          rate_limits_snapshot_window_saturated(
+            snapshot: snapshot,
+            key: codex_rate_limits_snapshot_primary_key as String,
+          )
+            || rate_limits_snapshot_window_saturated(
+              snapshot: snapshot,
+              key: codex_rate_limits_snapshot_secondary_key as String,
+            )
       }
   }
 }
@@ -417,17 +443,63 @@ fn rate_limits_snapshot_window_has_capacity(snapshot: JsonValue, key: String) ->
   }
 }
 
-fn disposition_from_rate_limits_snapshot(snapshot: JsonValue) -> AccountTripFrameDisposition {
-  if rate_limits_snapshot_has_exhaustion_signal(snapshot: snapshot)
-    || rate_limits_snapshot_window_saturated(
-      snapshot: snapshot,
-      key: codex_rate_limits_snapshot_primary_key as String,
-    )
-    || rate_limits_snapshot_window_saturated(
-      snapshot: snapshot,
-      key: codex_rate_limits_snapshot_secondary_key as String,
-    ) {
-    AccountTripQuotaSignal
+fn rate_limits_primary_resets_at(snapshot: JsonValue) -> Int? {
+  match json_object_unique_member(
+    v: snapshot,
+    key: codex_rate_limits_snapshot_primary_key as String,
+  ) {
+    JsonMemberFound { value: window } =>
+      match json_object_unique_member(
+        v: window,
+        key: codex_rate_limits_window_resets_at_key as String,
+      ) {
+        JsonMemberFound { value: ts } => json_number_as_int(v: ts)
+        _ => none
+      }
+    _ => none
+  }
+}
+
+fn rate_limits_reached_type(snapshot: JsonValue) -> NonEmptyStr? {
+  match json_object_unique_member(
+    v: snapshot,
+    key: codex_rate_limits_snapshot_rate_limit_reached_type_key as String,
+  ) {
+    JsonMemberFound { value: JsonString { value: t } } =>
+      if t == "" {
+        none
+      } else {
+        Present { value: t as NonEmptyStr }
+      }
+    _ => none
+  }
+}
+
+fn rate_limits_snapshot_limit_id(snapshot: JsonValue, fallback: NonEmptyStr) -> NonEmptyStr {
+  match json_object_unique_member(
+    v: snapshot,
+    key: codex_rate_limits_snapshot_limit_id_key as String,
+  ) {
+    JsonMemberFound { value: JsonString { value: id } } =>
+      if id == "" {
+        fallback
+      } else {
+        id as NonEmptyStr
+      }
+    _ => fallback
+  }
+}
+
+fn verdict_from_rate_limits_snapshot(
+  limit_id: NonEmptyStr,
+  snapshot: JsonValue,
+) -> CodexRateLimitBucketVerdict {
+  if rate_limits_snapshot_has_exhaustion_signal(snapshot: snapshot) {
+    CodexBucketUnavailableUntilReset {
+      limit_id: limit_id,
+      reached_type: rate_limits_reached_type(snapshot: snapshot),
+      resets_at: rate_limits_primary_resets_at(snapshot: snapshot),
+    }
   } else if rate_limits_snapshot_window_has_capacity(
     snapshot: snapshot,
     key: codex_rate_limits_snapshot_primary_key as String,
@@ -436,9 +508,72 @@ fn disposition_from_rate_limits_snapshot(snapshot: JsonValue) -> AccountTripFram
       snapshot: snapshot,
       key: codex_rate_limits_snapshot_secondary_key as String,
     ) {
-    AccountTripResultOk
+    CodexBucketCapacityAvailable { limit_id: limit_id }
   } else {
-    AccountTripMissing
+    CodexBucketCapacityUnknown { limit_id: limit_id }
+  }
+}
+
+fn rate_limit_buckets_from_by_limit_id(by_id: JsonValue) -> List<CodexRateLimitBucketVerdict> {
+  match by_id {
+    JsonObject { members: ms } =>
+      fold(
+        ms,
+        init: [],
+        f: (acc, kv) =>
+          if kv.key == "" {
+            acc
+          } else {
+            acc |> list_push(
+              verdict_from_rate_limits_snapshot(
+                limit_id: kv.key as NonEmptyStr,
+                snapshot: kv.value,
+              ),
+            )
+          },
+      )
+    _ => []
+  }
+}
+
+fn rate_limit_buckets_from_result(result: JsonValue) -> List<CodexRateLimitBucketVerdict> {
+  match json_object_unique_member(
+    v: result,
+    key: codex_rate_limits_result_by_limit_id_key as String,
+  ) {
+    JsonMemberFound { value: by_id } =>
+      match by_id {
+        JsonObject { members: _ } => rate_limit_buckets_from_by_limit_id(by_id: by_id)
+        _ => rate_limit_buckets_from_legacy_rate_limits(result: result)
+      }
+    JsonMemberAbsent => rate_limit_buckets_from_legacy_rate_limits(result: result)
+    JsonMemberDuplicated { count: _ } => []
+    JsonMemberNotAnObject => []
+  }
+}
+
+fn rate_limit_buckets_from_legacy_rate_limits(
+  result: JsonValue,
+) -> List<CodexRateLimitBucketVerdict> {
+  match json_object_unique_member(
+    v: result,
+    key: codex_rate_limits_result_rate_limits_key as String,
+  ) {
+    JsonMemberFound { value: snapshot } =>
+      match snapshot {
+        JsonObject { members: _ } =>
+          [
+            verdict_from_rate_limits_snapshot(
+              limit_id: rate_limits_snapshot_limit_id(
+                snapshot: snapshot,
+                fallback: codex_default_rate_limit_id,
+              ),
+              snapshot: snapshot,
+            ),
+          ]
+        _ => []
+      }
+    _ => []
   }
 }
 
@@ -448,10 +583,70 @@ fn disposition_from_rate_limits_result(result: JsonValue) -> AccountTripFrameDis
     key: codex_rate_limits_result_rate_limits_key as String,
   ) {
     JsonMemberFound { value: snapshot } =>
-      disposition_from_rate_limits_snapshot(snapshot: snapshot)
+      match snapshot {
+        JsonObject { members: _ } => AccountTripResultOk
+        JsonNull => AccountTripMissing
+        _ => AccountTripMissing
+      }
     JsonMemberAbsent => AccountTripMissing
     JsonMemberDuplicated { count: _ } => AccountTripMissing
     JsonMemberNotAnObject => AccountTripMissing
+  }
+}
+
+fn codex_bucket_verdict_for_limit_id(
+  buckets: List<CodexRateLimitBucketVerdict>,
+  limit_id: NonEmptyStr,
+) -> CodexRateLimitBucketVerdict? {
+  fold(
+    buckets,
+    init: none,
+    f: (acc, bucket) =>
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match bucket {
+            CodexBucketCapacityAvailable { limit_id: id } =>
+              if id == limit_id {
+                Present { value: bucket }
+              } else {
+                none
+              }
+            CodexBucketUnavailableUntilReset { limit_id: id, reached_type: _, resets_at: _ } =>
+              if id == limit_id {
+                Present { value: bucket }
+              } else {
+                none
+              }
+            CodexBucketCapacityUnknown { limit_id: id } =>
+              if id == limit_id {
+                Present { value: bucket }
+              } else {
+                none
+              }
+          }
+      },
+  )
+}
+
+fn classification_from_codex_default_bucket(
+  buckets: List<CodexRateLimitBucketVerdict>,
+) -> AccountStandingClassification {
+  if count(buckets) == 0 {
+    AccountStandingIncomplete
+  } else {
+    match codex_bucket_verdict_for_limit_id(
+      buckets: buckets,
+      limit_id: codex_default_rate_limit_id,
+    ) {
+      Absent => AccountStandingIncomplete
+      Present { value: CodexBucketCapacityAvailable { limit_id: _ } } =>
+        AccountStandingAuthenticatedRateLimitsReadable
+      Present { value: CodexBucketUnavailableUntilReset { limit_id: _, reached_type: _, resets_at: _ } } =>
+        AccountStandingQuotaReached
+      Present { value: CodexBucketCapacityUnknown { limit_id: _ } } =>
+        AccountStandingIncomplete
+    }
   }
 }
 
@@ -537,6 +732,7 @@ type AccountTripParseAcc {
   initialize: AccountTripResponseObservation
   account_read: AccountTripResponseObservation
   rate_limits: AccountTripResponseObservation
+  rate_limit_buckets: List<CodexRateLimitBucketVerdict>
   unknown_frame_digests: List<ContentHash>
   retention_failed: Bool
 }
@@ -546,6 +742,7 @@ fn empty_account_trip_parse_acc() -> AccountTripParseAcc {
     initialize: AccountTripResponseAbsent,
     account_read: AccountTripResponseAbsent,
     rate_limits: AccountTripResponseAbsent,
+    rate_limit_buckets: [],
     unknown_frame_digests: [],
     retention_failed: false,
   }
@@ -585,6 +782,7 @@ fn push_unknown_digest(
             initialize: acc.initialize,
             account_read: acc.account_read,
             rate_limits: acc.rate_limits,
+            rate_limit_buckets: acc.rate_limit_buckets,
             unknown_frame_digests: acc.unknown_frame_digests,
             retention_failed: acc.retention_failed,
           }
@@ -593,6 +791,7 @@ fn push_unknown_digest(
             initialize: acc.initialize,
             account_read: acc.account_read,
             rate_limits: acc.rate_limits,
+            rate_limit_buckets: acc.rate_limit_buckets,
             unknown_frame_digests: acc.unknown_frame_digests,
             retention_failed: true,
           }
@@ -602,9 +801,26 @@ fn push_unknown_digest(
         initialize: acc.initialize,
         account_read: acc.account_read,
         rate_limits: acc.rate_limits,
+        rate_limit_buckets: acc.rate_limit_buckets,
         unknown_frame_digests: acc.unknown_frame_digests |> list_push(digest),
         retention_failed: acc.retention_failed,
       }
+  }
+}
+
+fn buckets_from_rate_limits_frame(
+  current: AccountTripResponseObservation,
+  prior_buckets: List<CodexRateLimitBucketVerdict>,
+  obj: JsonValue,
+) -> List<CodexRateLimitBucketVerdict> {
+  match current {
+    AccountTripResponseAbsent =>
+      match json_object_unique_member(v: obj, key: "result") {
+        JsonMemberFound { value: result } => rate_limit_buckets_from_result(result: result)
+        _ => []
+      }
+    AccountTripResponseUnique { response: _ } => prior_buckets
+    AccountTripResponseDuplicate { id: _, count: _ } => prior_buckets
   }
 }
 
@@ -648,6 +864,7 @@ fn absorb_account_trip_line(
                     ),
                     account_read: acc.account_read,
                     rate_limits: acc.rate_limits,
+                    rate_limit_buckets: acc.rate_limit_buckets,
                     unknown_frame_digests: acc.unknown_frame_digests,
                     retention_failed: acc.retention_failed,
                   }
@@ -660,6 +877,7 @@ fn absorb_account_trip_line(
                       disposition: disposition,
                     ),
                     rate_limits: acc.rate_limits,
+                    rate_limit_buckets: acc.rate_limit_buckets,
                     unknown_frame_digests: acc.unknown_frame_digests,
                     retention_failed: acc.retention_failed,
                   }
@@ -671,6 +889,11 @@ fn absorb_account_trip_line(
                       current: acc.rate_limits,
                       id: n,
                       disposition: disposition,
+                    ),
+                    rate_limit_buckets: buckets_from_rate_limits_frame(
+                      current: acc.rate_limits,
+                      prior_buckets: acc.rate_limit_buckets,
+                      obj: parsed,
                     ),
                     unknown_frame_digests: acc.unknown_frame_digests,
                     retention_failed: acc.retention_failed,
@@ -720,7 +943,8 @@ fn classify_account_trip(acc: AccountTripParseAcc) -> AccountStandingClassificat
           AccountTripNativeCauseUnknown { message: _ } => AccountStandingIncomplete
           AccountTripResultOk =>
             match rate {
-              AccountTripResultOk => AccountStandingAuthenticatedRateLimitsReadable
+              AccountTripResultOk =>
+                classification_from_codex_default_bucket(buckets: acc.rate_limit_buckets)
               AccountTripQuotaSignal => AccountStandingQuotaReached
               AccountTripLoginRequiredSignal => AccountStandingLoginRequired
               AccountTripMissing => AccountStandingIncomplete
@@ -767,6 +991,7 @@ fn parse_account_trip_session(
     initialize: acc.initialize,
     account_read: acc.account_read,
     rate_limits: acc.rate_limits,
+    rate_limit_buckets: acc.rate_limit_buckets,
     unknown_frame_digests: acc.unknown_frame_digests,
     retention_failed: retention_failed,
   }
@@ -775,6 +1000,7 @@ fn parse_account_trip_session(
     initialize: acc_final.initialize,
     account_read: acc_final.account_read,
     rate_limits: acc_final.rate_limits,
+    rate_limit_buckets: acc_final.rate_limit_buckets,
     unknown_frame_digests: acc_final.unknown_frame_digests,
     stderr_digest: stderr_digest,
     classification: classify_account_trip(acc: acc_final),
