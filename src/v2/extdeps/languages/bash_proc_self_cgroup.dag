@@ -1,0 +1,84 @@
+module v2.extdeps.languages.bash_proc_self_cgroup
+
+import extdeps.linux.proc_self_cgroup {
+  read_unified_cgroup_membership,
+  ProcPidCgroupMembershipRecord,
+  CurrentCgroupObserved,
+  MembershipMissing,
+  MembershipAmbiguous,
+  MembershipMalformed,
+  proc_self_cgroup_mount_root_text,
+  proc_self_cgroup_absolute_path_from_relative,
+}
+import std.types { FilePathParts, NonEmptyStr, String }
+
+data bash_membership_refuse_malformed_body: String = "echo \"[calibration] cgroup_membership=malformed\" >&2; exit 1"
+
+data bash_membership_refuse_missing_body: String = "echo \"[calibration] cgroup_membership=missing\" >&2; exit 1"
+
+data bash_membership_refuse_ambiguous_body: String = "echo \"[calibration] cgroup_membership=ambiguous\" >&2; exit 1"
+
+fn bash_membership_assign_from_record(
+  record: ProcPidCgroupMembershipRecord,
+  walk_var: NonEmptyStr,
+  mount_root: FilePathParts,
+) -> String {
+  match record {
+    CurrentCgroupObserved { relative_path: rel } =>
+      concat(
+        walk_var as String,
+        "=\"",
+        proc_self_cgroup_absolute_path_from_relative(relative_path: rel, mount_root: mount_root),
+        "\"",
+      )
+    MembershipMissing => bash_membership_refuse_missing_body
+    MembershipAmbiguous { first: _, second: _ } => bash_membership_refuse_ambiguous_body
+    MembershipMalformed { cause: _ } => bash_membership_refuse_malformed_body
+  }
+}
+
+fn bash_membership_assign_from_content(
+  content: String,
+  walk_var: NonEmptyStr,
+  mount_root: FilePathParts,
+) -> String {
+  bash_membership_assign_from_record(
+    record: read_unified_cgroup_membership(content: content),
+    walk_var: walk_var,
+    mount_root: mount_root,
+  )
+}
+
+data bash_membership_realization_note: String = "Bash realization for extdeps.linux.proc_self_cgroup unified-hierarchy membership. bash_membership_assign_from_content lowers read_unified_cgroup_membership outcomes to shell text. bash_membership_assign_from_source is the foreign-executor transport: a runtime scan over cgroup_source that mirrors the parser's refusal/observed semantics for wet witnesses. The semantic parser lives in extdeps.linux.proc_self_cgroup; this module owns target spelling only."
+
+data bash_membership_runtime_scan_loop: String = "_cg_bad=0; _cg_n=0; _cg_rel=\"\"; while IFS= read -r _cg_line || [ -n \"$_cg_line\" ]; do _cg_trim=$(echo \"$_cg_line\" | sed -e 's/^ //' -e 's/ $//'); [ -z \"$_cg_trim\" ] && continue; case \"$_cg_trim\" in *:*:*) ;; *) _cg_bad=1; continue ;; esac; _cg_h=$(echo \"$_cg_trim\" | cut -d: -f1); _cg_ctl=$(echo \"$_cg_trim\" | cut -d: -f2); _cg_path=$(echo \"$_cg_trim\" | cut -d: -f3-); [ -z \"$_cg_h\" ] && _cg_bad=1; [ -z \"$_cg_path\" ] && _cg_bad=1; if [ \"$_cg_h\" = \"0\" ] && [ -z \"$_cg_ctl\" ]; then _cg_n=$((_cg_n + 1)); _cg_rel=\"$_cg_path\"; fi; done"
+
+fn bash_membership_runtime_scan_body(cgroup_source: String) -> String {
+  concat(bash_membership_runtime_scan_loop, " < ", cgroup_source)
+}
+
+fn bash_membership_assign_from_source(
+  cgroup_source: String,
+  walk_var: NonEmptyStr,
+  mount_root: FilePathParts,
+) -> String {
+  concat(
+    "{ ",
+    bash_membership_runtime_scan_body(cgroup_source: cgroup_source),
+    "; ",
+    "[ \"$_cg_bad\" -eq 1 ] && { ",
+    bash_membership_refuse_malformed_body,
+    "; }; ",
+    "[ \"$_cg_n\" -eq 0 ] && { ",
+    bash_membership_refuse_missing_body,
+    "; }; ",
+    "[ \"$_cg_n\" -gt 1 ] && { ",
+    bash_membership_refuse_ambiguous_body,
+    "; }; ",
+    walk_var as String,
+    "=\"",
+    proc_self_cgroup_mount_root_text(mount_root: mount_root),
+    "$_cg_rel\"; ",
+    "} || exit 1",
+  )
+}
