@@ -36217,6 +36217,28 @@ type ExtdepsParsedModule = (
     Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 );
 
+fn resolve_extdeps_module_source_path(path: &str) -> std::path::PathBuf {
+    let candidate = std::path::Path::new(path);
+    if candidate.is_file() {
+        candidate.to_path_buf()
+    } else {
+        let rooted = workspace_root().join(path);
+        if rooted.is_file() {
+            rooted
+        } else {
+            panic!("resolve_extdeps_module_source_path: file not found: {path}");
+        }
+    }
+}
+
+fn read_extdeps_module_source_text(path: &str) -> String {
+    let resolved = resolve_extdeps_module_source_path(path);
+    let path_str = resolved.to_string_lossy();
+    std::fs::read_to_string(&resolved).unwrap_or_else(|e| {
+        panic!("read_extdeps_module_source_text: failed to read {path_str}: {e}")
+    })
+}
+
 thread_local! {
     /// Content-keyed memo for `parse_extdeps_module_items`. Keyed on the file's own
     /// bytes (hashed), never on the path alone, so a mutated file re-parses and the
@@ -36243,17 +36265,7 @@ pub fn parse_extdeps_module_items(
     use crate::v1_compiler_parse::parse;
     use crate::v1_compiler_tokenize::tokenize;
     use crate::v1_std_core::build_newline_index;
-    let candidate = std::path::Path::new(path);
-    let resolved = if candidate.is_file() {
-        candidate.to_path_buf()
-    } else {
-        let rooted = workspace_root().join(path);
-        if rooted.is_file() {
-            rooted
-        } else {
-            panic!("parse_extdeps_module_items: file not found: {path}");
-        }
-    };
+    let resolved = resolve_extdeps_module_source_path(path);
     let path_str = resolved.to_string_lossy();
     let content = std::fs::read_to_string(&resolved)
         .unwrap_or_else(|e| panic!("parse_extdeps_module_items: failed to read {path_str}: {e}"));
@@ -36842,25 +36854,74 @@ fn external_authority_scheme_identity_from_value_node(
     authored_name_at(source_indices.clone(), node.clone())
 }
 
-fn read_external_authority_anchor_from_items(
-    items: &Rc<im::Vector<Rc<crate::v1_std_core::Node>>>,
-    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
-) -> ExternalAuthorityAnchorProjection {
-    use crate::v1_compiler_emit_core_support::is_data_def_item;
-    use crate::v1_std_core::authored_name_at;
-    for item in items.iter() {
-        if !is_data_def_item(item.clone()) || item.name != "extdeps_external_authority_anchor" {
+fn extdeps_import_home_for_symbol(module_content: &str, symbol: &str) -> Option<String> {
+    for line in module_content.lines() {
+        let trimmed = line.trim();
+        if !trimmed.starts_with("import ") {
             continue;
         }
-        let Some(body) = item.body.as_ref() else {
-            return ExternalAuthorityAnchorProjection::Absent;
+        let rest = trimmed["import ".len()..].trim();
+        let (module_part, names_part) = match rest.find('{') {
+            Some(open) => (
+                rest[..open].trim(),
+                Some(rest[open + 1..].trim_end_matches('}').trim()),
+            ),
+            None => (rest, None),
         };
-        let variant = authored_name_at(source_indices.clone(), body.clone());
-        let Some(uri_node) =
-            external_authority_uri_record_from_anchor_body(body, variant.as_str(), source_indices)
-        else {
-            return ExternalAuthorityAnchorProjection::Absent;
+        if module_part.is_empty() {
+            continue;
+        }
+        let Some(names) = names_part else {
+            continue;
         };
+        for imported in names.split(',') {
+            if imported.trim() == symbol {
+                return Some(module_part.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn external_authority_alias_symbol_name(
+    body: &Rc<crate::v1_std_core::Node>,
+    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> Option<String> {
+    use crate::v1_std_core::{authored_name_at, expr_var_name_at, ExprData};
+    match body.expr_data.as_ref() {
+        ExprData::ExprVar { .. } => {
+            let name = expr_var_name_at(body.clone(), source_indices.clone());
+            if !name.is_empty() {
+                Some(name)
+            } else if !body.name.is_empty() {
+                Some(body.name.clone())
+            } else {
+                None
+            }
+        }
+        _ => {
+            let variant = authored_name_at(source_indices.clone(), body.clone());
+            if variant.is_empty() {
+                None
+            } else {
+                Some(variant)
+            }
+        }
+    }
+}
+
+fn external_authority_anchor_from_data_body(
+    body: &Rc<crate::v1_std_core::Node>,
+    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    module_content: &str,
+    module_path: &str,
+    visited: &mut std::collections::HashSet<String>,
+) -> ExternalAuthorityAnchorProjection {
+    use crate::v1_std_core::authored_name_at;
+    let variant = authored_name_at(source_indices.clone(), body.clone());
+    if let Some(uri_node) =
+        external_authority_uri_record_from_anchor_body(body, variant.as_str(), source_indices)
+    {
         let scheme = extdeps_record_field_value(&uri_node, "scheme", source_indices)
             .map(|n| external_authority_scheme_identity_from_value_node(&n, source_indices))
             .unwrap_or_default();
@@ -36875,13 +36936,86 @@ fn read_external_authority_anchor_from_items(
             locator,
         };
     }
+    let Some(symbol) = external_authority_alias_symbol_name(body, source_indices) else {
+        let _ = module_path;
+        return ExternalAuthorityAnchorProjection::Absent;
+    };
+    if let Some(home) = extdeps_import_home_for_symbol(module_content, symbol.as_str()) {
+        if !visited.insert(home.clone()) {
+            return ExternalAuthorityAnchorProjection::Absent;
+        }
+        return project_external_authority_named_data(&home, symbol.as_str(), visited);
+    }
+    let _ = module_path;
+    ExternalAuthorityAnchorProjection::Absent
+}
+
+fn project_external_authority_named_data(
+    module_path: &str,
+    data_name: &str,
+    visited: &mut std::collections::HashSet<String>,
+) -> ExternalAuthorityAnchorProjection {
+    use crate::v1_compiler_emit_core_support::is_data_def_item;
+    let path = source_path_for_module_path(module_path.to_string());
+    let content = read_extdeps_module_source_text(&path);
+    let (items, source_indices) = parse_extdeps_module_items(&path);
+    for item in items.iter() {
+        if !is_data_def_item(item.clone()) || item.name != data_name {
+            continue;
+        }
+        let Some(body) = item.body.as_ref() else {
+            return ExternalAuthorityAnchorProjection::Absent;
+        };
+        return external_authority_anchor_from_data_body(
+            body,
+            &source_indices,
+            content.as_str(),
+            module_path,
+            visited,
+        );
+    }
+    ExternalAuthorityAnchorProjection::Absent
+}
+
+fn read_external_authority_anchor_from_items(
+    items: &Rc<im::Vector<Rc<crate::v1_std_core::Node>>>,
+    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    module_content: &str,
+    module_path: &str,
+    visited: &mut std::collections::HashSet<String>,
+) -> ExternalAuthorityAnchorProjection {
+    use crate::v1_compiler_emit_core_support::is_data_def_item;
+    for item in items.iter() {
+        if !is_data_def_item(item.clone()) || item.name != "extdeps_external_authority_anchor" {
+            continue;
+        }
+        let Some(body) = item.body.as_ref() else {
+            return ExternalAuthorityAnchorProjection::Absent;
+        };
+        return external_authority_anchor_from_data_body(
+            body,
+            source_indices,
+            module_content,
+            module_path,
+            visited,
+        );
+    }
     ExternalAuthorityAnchorProjection::Absent
 }
 
 fn project_external_authority_anchor(module_path: &str) -> ExternalAuthorityAnchorProjection {
     let path = source_path_for_module_path(module_path.to_string());
+    let content = read_extdeps_module_source_text(&path);
     let (items, source_indices) = parse_extdeps_module_items(&path);
-    read_external_authority_anchor_from_items(&items, &source_indices)
+    let mut visited = std::collections::HashSet::new();
+    visited.insert(module_path.to_string());
+    read_external_authority_anchor_from_items(
+        &items,
+        &source_indices,
+        content.as_str(),
+        module_path,
+        &mut visited,
+    )
 }
 
 fn external_authority_machinery_exempt_module_paths() -> &'static [&'static str] {
@@ -36958,6 +37092,36 @@ pub fn extdeps_external_authority_live_roster_module_count() -> i64 {
         .into_iter()
         .filter(|path| !external_authority_is_clean_tree_roster_excluded_for_module_path(path))
         .count() as i64
+}
+
+#[cfg(test)]
+mod extdeps_external_authority_anchor_projection_tests {
+    use super::*;
+
+    #[test]
+    fn extdeps_import_home_for_symbol_finds_setup_token_cli_anchor_import() {
+        let content = include_str!("../../../../dag/extdeps/llm/claude_setup_token_cli.dag");
+        assert_eq!(
+            extdeps_import_home_for_symbol(content, "claude_cli_external_authority_anchor"),
+            Some("extdeps.llm.cli".to_string())
+        );
+    }
+
+    #[test]
+    fn aliased_extdeps_external_authority_anchor_projects_imported_literal() {
+        let facts = extdeps_external_authority_module_facts("extdeps.llm.claude_setup_token_cli");
+        assert_eq!(facts.anchor_kind, "present");
+        assert_eq!(facts.scheme_identity, "Https");
+        assert_eq!(
+            facts.locator,
+            "docs.claude.com/en/docs/claude-code/cli-reference"
+        );
+    }
+
+    #[test]
+    fn corpus_live_clean_tree_wall_holds_with_aliased_setup_token_cli_anchor() {
+        assert!(extdeps_external_authority_live_clean_tree_holds());
+    }
 }
 
 #[cfg(test)]
