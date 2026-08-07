@@ -23,7 +23,7 @@ import gunbc.ci_spec {
   gunbc_ci_ordinary_floor_budget_minutes,
   gunbc_ci_admission_postcondition_budget_minutes,
 }
-import gunbc.falsifier_workflow { falsifier_plan_function }
+import gunbc.falsifier_workflow { falsifier_plan_function, gunbc_falsifier_soft_deadline_minutes }
 import gunbc.falsifier_lane {
   FalsifierLane,
   LanePredictOnly,
@@ -605,6 +605,12 @@ data gunbc_falsifier_substrate_long_lane_witness_eval_budget: Second = second(co
 
 fn gunbc_falsifier_substrate_long_lane_eval_budget_ms() -> v2.std.nat.Nat {
   second_count(s: gunbc_falsifier_substrate_long_lane_witness_eval_budget) * 1000
+}
+
+data gunbc_falsifier_soft_deadline_projection_note: String = "A UNIT PROJECTION, NOT A SECOND BUDGET. The value is gunbc.falsifier_workflow gunbc_falsifier_soft_deadline_minutes, which is itself derived by subtracting the flush allowance from the step timeout the workflow declares — this function only converts that one authority's minutes into the milliseconds the seed's budget seam reads, exactly as gunbc_falsifier_substrate_long_lane_eval_budget_ms converts seconds beside it. Re-deriving the subtraction here, or writing the minute count as a literal, would be a second representation of a number whose whole correctness property is that it stays below the cap it is subtracted from."
+
+fn gunbc_falsifier_soft_deadline_ms() -> Int {
+  gunbc_falsifier_soft_deadline_minutes() * 60 * 1000
 }
 
 fn corpus_runnable_for(spec: CiSpec) -> Runnable {
