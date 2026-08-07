@@ -208,6 +208,23 @@ fn placement_shadow_report(
   }
 }
 
+fn placement_shadow_report_matches_roster(
+  roster: List<CommitCheckEnrollment>,
+  report: PlacementShadowReport
+) -> Bool {
+  (length(xs: roster) == length(xs: report.rows))
+    && !any(xs: roster, predicate: fn(enrollment) {
+      !any(xs: report.rows, predicate: fn(row) {
+        commit_check_enrollment_eq(left: enrollment, right: row.identity)
+      })
+    })
+    && !any(xs: report.rows, predicate: fn(row) {
+      !any(xs: roster, predicate: fn(enrollment) {
+        commit_check_enrollment_eq(left: enrollment, right: row.identity)
+      })
+    })
+}
+
 fn classification_admits_pr_tier(c: PlacementClassification) -> Bool {
   match c {
     Hermetic => true
