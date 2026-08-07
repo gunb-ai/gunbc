@@ -670,6 +670,24 @@ fn marshal_generic(
         // G2 live-read call reachability: callee atoms make cross-fn carrier chains
         // visible in the fn-arrow skeleton (docs/plans/live-read-witness-classification-design.md P1).
         edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
+    } else if matches!(node.expr_data.as_ref(), ExprData::ExprRecordLit { .. }) && !name.is_empty()
+    {
+        // Authored constructor SPELLING, not resolved declaration identity: the name is
+        // the AST node's authored lexeme (no qualified name, no parent-enum identity),
+        // so a spelling census over this edge is a conservative over-approximation —
+        // two same-spelled record types in different modules are indistinguishable
+        // here. It also fires ONLY for record literals: a fieldless variant
+        // constructed bare is not an ExprRecordLit and stays invisible, so a
+        // zero count over a fieldless declaration is vacuous, never evidence.
+        // The NAMED edge only discriminates a construction occurrence from a
+        // string literal or callee atom spelling the same lexeme (those ride
+        // positional edges). Resolved constructor identity (qualified declaration +
+        // parent identity for variants) is separate future work.
+        edges.push(edge_named(
+            ctx,
+            "record_construction_spelling",
+            atom_identity_node(ctx, &name),
+        ));
     }
     if let Some(literal_edge) = marshal_string_literal_atom(ctx, node) {
         edges.push(literal_edge);

@@ -397,6 +397,17 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "width-2-crossover-receipt",
+    primary_work: DeclarationRef { module_path: "gunbc.floor_materialization", decl_name: "floor_typecheck_store_share_note", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "gunbc.floor_materialization", decl_name: "floor_typecheck_store_share_provider_id", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.p1_retention_cohort_receipt", decl_name: "p1_retention_cohort_receipt_reproduction_steps", field: WholeDeclaration },
+      DeclarationRef { module_path: "test.claim.floor_materialization_witness_test", decl_name: "floor_materialization_witness_note", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the width-2 crossover decision is banked on its carriers (ControlledWidthTwo harness + process_shared_typecheck_store) or superseded by shared immutable indexes / pre-index artifact reuse — then surviving facts migrate to DESIGN open-thread or a registered gunbc.plan.Plan row and this bind deletes with the doc." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "ci-floor-time-45-72-band-attribution",
     primary_work: DeclarationRef { module_path: "gunbc.ci_materialization", decl_name: "ci_floor_declared_resolve_count", field: WholeDeclaration },
     additional_works: [],

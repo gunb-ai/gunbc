@@ -121,8 +121,18 @@ jobs:
         run: |
           set -e
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          # 🟡 dissolve-on: ci_v1_compiler_tests_compile_gate_script — foreign-executor (GitHub Actions run:) shell transport for extdeps.cargo_build cargo.Build.Test(extra_args: ci_v1_compiler_tests_compile_gate_extra_args); DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the build-job step to orchestration emit over the typed cargo operation — the same de-fork ci_fmt_gate_line and ci_release_build_script await
-          "$CARGO_BIN" 'test' '-p' 'v1-compiler-tests' '--release' '--no-run'
+          # 🟡 dissolve-on: ci_v1_compiler_tests_compile_gate_script — foreign-executor (GitHub Actions run:) shell transport for extdeps.cargo_build cargo.Build.Test(extra_args: ci_v1_compiler_tests_compile_gate_extra_args); the EAGAIN retry wrapper lives in gunbc.ci_workflow ci_v1_compiler_tests_compile_gate_run_script (same seam as ci_release_build_script); DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the build-job step to orchestration emit over the typed cargo operation — the same de-fork ci_fmt_gate_line and ci_release_build_script await
+          set -o pipefail
+          BUILD_LOG=$(mktemp)
+          if ! ("$CARGO_BIN" 'test' '-p' 'v1-compiler-tests' '--release' '--no-run') 2>&1 | tee "$BUILD_LOG"; then
+            if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error|(exit status: 254)|sccache: error: failed to execute compile' "$BUILD_LOG"; then
+              echo "::warning::cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)"
+              CARGO_BUILD_JOBS=1 "$CARGO_BIN" 'test' '-p' 'v1-compiler-tests' '--release' '--no-run'
+            else
+              exit 1
+            fi
+          fi
+          rm -f "$BUILD_LOG"
         timeout-minutes: 15
       - name: cargo check all seven stage0 partition crates (compile gate; roster drift backstop)
         run: |

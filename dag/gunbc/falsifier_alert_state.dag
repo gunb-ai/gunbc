@@ -168,6 +168,8 @@ data falsifier_alert_instant_duration_split_note: String = "AN INSTANT AND A DUR
 
 data falsifier_alert_heartbeat_window: Millisecond = millisecond(count: 72000000)
 
+data falsifier_alert_malformed_state_refuses_note: String = "A MALFORMED MARKER REFUSES; IT DOES NOT BECOME A NEW INCIDENT. An earlier revision mapped StateAbsent and StateMalformed to the same NotifyFirstRed, which threw away the distinction the decoding coproduct exists to make and did so at the one point where it has a data-loss consequence.\n\nThe two are not alike. ABSENT means no marker exists, so there is no incident state to lose and initiating one is correct. MALFORMED means a marker IS there and did not decode — the body was hand-edited, or something that is not this writer produced it, or the writer has a defect. Treating that as a first red does two harmful things at once: it announces a NEW incident for one that has been running, and the very next write overwrites the corrupt marker with a fresh first_red, destroying the only surviving record of when the real incident started. The corruption is then unrecoverable AND unreported, because the alert's own repair erased the evidence.\n\nSo the arm refuses. RefuseMalformedState carries the decoder's located detail and drives no write: the incident state stays exactly as it is on the issue, corrupt and inspectable, and a human decides. That is DESIGN §5's failure arm — refuse, never widen — applied to a decoder's own output, and the widening it forbids here is the alert overwriting a fact it could not read."
+
 data falsifier_alert_throttle_note: String = "THE THROTTLE DECISION IS PURE AND TOTAL over (now, state, current signature). A CHANGED SIGNATURE ALWAYS NOTIFIES AND IS NEVER THROTTLED — it is a different incident with a different remedy, so suppressing it as `still red` is the state-space conflation the whole signature mechanism exists to prevent. An unchanged signature notifies only when the window has elapsed since the LAST NOTIFICATION, not since the run started and not since first_red. Comparing against last_notification_at is what makes the window mean what it says: measuring from first_red would make the interval drift with incident age, and measuring from the run start would notify every run."
 
 type FalsifierAlertNotificationDecision
@@ -176,6 +178,7 @@ type FalsifierAlertNotificationDecision
   | NotifyMigratedToTypedState
   | NotifyFirstRed
   | SuppressWithinWindow { silent_for: Millisecond }
+  | RefuseMalformedState { detail: String }
 
 fn falsifier_alert_notification_decision(
   now: EpochMs,
@@ -184,7 +187,7 @@ fn falsifier_alert_notification_decision(
 ) -> FalsifierAlertNotificationDecision {
   match decoding {
     StateAbsent => NotifyFirstRed
-    StateMalformed { detail: _ } => NotifyFirstRed
+    StateMalformed { detail: d } => RefuseMalformedState { detail: d }
     LegacyStateWithoutLastNotification { first_red: _, signature: _ } => NotifyMigratedToTypedState
     CurrentState { state: s } =>
       if (s.signature as String) != (signature as String) {
