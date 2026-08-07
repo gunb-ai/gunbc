@@ -1375,7 +1375,29 @@ fn stamp_parsed_node(
     ctx: inferred.ctx
   )
   ParsedNodeStampResult {
-    node: node,
+    node: Node {
+      name: node.name,
+      ident: Present { value: occurrence.value },
+      span: node.span,
+      ident_span: node.ident_span,
+      children: children.nodes,
+      connective: node.connective,
+      params: params.nodes,
+      inferred: match inferred.node {
+        Present { value: stamped } => Present { value: Resolved { node: stamped } }
+        Absent => node.inferred
+      },
+      return_cardinality: node.return_cardinality,
+      uses: uses.nodes,
+      body: body.node,
+      transport: transport.node,
+      properties: properties.nodes,
+      type_annotation: annotation.node,
+      is_self_recursive: node.is_self_recursive,
+      has_non_tail_self_call: node.has_non_tail_self_call,
+      match_pattern: pattern.pattern,
+      expr_data: node.expr_data,
+    },
     ctx: pattern.ctx,
   }
 }

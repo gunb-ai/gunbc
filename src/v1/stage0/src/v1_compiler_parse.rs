@@ -2673,8 +2673,33 @@ pub fn stamp_parsed_node(
             child_ancestors.clone(),
             inferred.ctx.clone(),
         );
+        let inferred = match inferred.node.clone() {
+            Some(stamped) => Some(Rc::new(InferredNode::Resolved {
+                node: stamped.clone(),
+            })),
+            None => node.inferred.clone(),
+        };
         Rc::new(ParsedNodeStampResult {
-            node: node.clone(),
+            node: Rc::new(Node {
+                name: node.name.clone(),
+                ident: Some(occurrence.value),
+                span: node.span.clone(),
+                ident_span: node.ident_span.clone(),
+                children: children.nodes.clone(),
+                connective: node.connective.clone(),
+                params: params.nodes.clone(),
+                inferred,
+                return_cardinality: node.return_cardinality.clone(),
+                uses: uses.nodes.clone(),
+                body: body.node.clone(),
+                transport: transport.node.clone(),
+                properties: properties.nodes.clone(),
+                type_annotation: annotation.node.clone(),
+                is_self_recursive: node.is_self_recursive.clone(),
+                has_non_tail_self_call: node.has_non_tail_self_call.clone(),
+                match_pattern: pattern.pattern.clone(),
+                expr_data: node.expr_data.clone(),
+            }),
             ctx: pattern.ctx.clone(),
         })
     }

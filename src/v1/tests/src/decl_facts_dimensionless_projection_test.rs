@@ -10,7 +10,11 @@ use im::HashMap;
 
 use v1_compiler::data_initializer_identity::marshal_data_initializer_projection;
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
+use v1_compiler::v1_compiler_infer_items::{item_kind, ItemKind};
+use v1_compiler::v1_compiler_parse::{empty_intern_table, parse_with_table};
+use v1_compiler::v1_compiler_tokenize::tokenize;
 use v1_compiler::v1_interpreter::{ExecutionMode, InterpContext, Value};
+use v1_compiler::v1_std_core::{authored_name_at, build_newline_index};
 
 use crate::helpers::{
     resolve_imports_transitively_with_source_roots, v2_layer_roots, workspace_root,
@@ -20,15 +24,71 @@ const SPECIMENS_REL: &str = "dag/test/fixture/decl_facts_reflection/specimens.da
 const DISPOSITION_SCAFFOLD_QN: &str =
     "test.fixture.decl_facts_reflection.specimens.disposition_scaffold";
 const LOCAL_A_SCAFFOLD_QN: &str = "test.fixture.decl_facts_reflection.specimens.local_a_scaffold";
+const INITIALIZER_WITNESS_REL: &str =
+    "dag/test/claim/decl_facts_initializer_projection_witness_test.dag";
 const AMBIGUOUS_ARM_SPECIMEN_QN: &str =
     "test.fixture.decl_facts_reflection.ambiguous_specimen.ambiguous_arm_specimen";
+const AMBIGUOUS_B_ARM_SPECIMEN_QN: &str =
+    "test.fixture.decl_facts_reflection.ambiguous_b_specimen.ambiguous_b_arm_specimen";
 const AMBIGUOUS_SHARED_A_SHARED_BARE_ARM_QN: &str =
     "test.fixture.decl_facts_reflection.ambiguous_shared_a.SharedBareArm";
-const WITNESS_SUPPORT_REL: &str = "dag/test/claim/decl_facts_reflection_witness_support.dag";
+const AMBIGUOUS_SHARED_B_SHARED_BARE_ARM_QN: &str =
+    "test.fixture.decl_facts_reflection.ambiguous_shared_b.SharedBareArm";
+const AMBIGUOUS_SHARED_B_REL: &str =
+    "dag/test/fixture/decl_facts_reflection/ambiguous_shared_b.dag";
+const AMBIGUOUS_SHARED_A_REL: &str =
+    "dag/test/fixture/decl_facts_reflection/ambiguous_shared_a.dag";
 
 fn read_fixture(rel: &str) -> String {
     std::fs::read_to_string(workspace_root().join(rel))
         .unwrap_or_else(|e| panic!("read {rel}: {e}"))
+}
+
+fn type_item_ident_in_ctx(
+    ctx: &InterpContext,
+    module_path_suffix: &str,
+    type_bare_name: &str,
+) -> Option<i64> {
+    let si = ctx.source_indices.clone();
+    for tm in ctx.modules.iter() {
+        let module_path = authored_name_at(si.clone(), tm.module.clone());
+        if !module_path.ends_with(module_path_suffix) {
+            continue;
+        }
+        for item in tm.items.iter() {
+            if item_kind(Rc::clone(item)) != ItemKind::TypeItem {
+                continue;
+            }
+            let name = authored_name_at(si.clone(), Rc::clone(item));
+            let bare = name.rsplit('.').next().unwrap_or(&name);
+            if bare == type_bare_name {
+                return item.ident;
+            }
+        }
+    }
+    None
+}
+
+fn standalone_shared_bare_arm_type_ident(rel: &str) -> Option<i64> {
+    let content = read_fixture(rel);
+    let filename = rel.rsplit('/').next().expect("filename");
+    let tokens = tokenize(content.clone(), filename.to_string());
+    let source_index = build_newline_index(filename.to_string(), content);
+    let mut indices = HashMap::new();
+    indices.insert(filename.to_string(), source_index);
+    let source_indices = Rc::new(indices);
+    let parsed = parse_with_table(tokens, source_indices.clone(), empty_intern_table());
+    let module = parsed.result.module.as_ref()?;
+    for child in module.children.iter() {
+        if child.connective != v1_compiler::v1_std_core::Connective::Disj {
+            continue;
+        }
+        let name = authored_name_at(source_indices.clone(), child.clone());
+        if name == "SharedBareArm" || name.ends_with(".SharedBareArm") {
+            return child.ident;
+        }
+    }
+    None
 }
 
 fn ctx_from_sources(sources: Vec<Rc<SourceFile>>) -> InterpContext {
@@ -146,16 +206,20 @@ fn constructor_parent_qualified_name(ctx: &InterpContext, projection: &Value) ->
     declaration_identity_qualified_name(ctx, &parent)
 }
 
-#[test]
-fn eval_decl_facts_explicit_import_resolves_unique_variant_projection() {
-    use v1_compiler::coproduct_reflection::eval_decl_facts;
-
+fn ambiguous_fixture_ctx() -> InterpContext {
     let sources = resolve_imports_transitively_with_source_roots(
-        WITNESS_SUPPORT_REL,
-        &read_fixture(WITNESS_SUPPORT_REL),
+        INITIALIZER_WITNESS_REL,
+        &read_fixture(INITIALIZER_WITNESS_REL),
         &v2_layer_roots(),
     );
-    let ctx = ctx_from_sources(sources);
+    ctx_from_sources(sources)
+}
+
+#[test]
+fn eval_decl_facts_explicit_import_resolves_to_a_when_b_also_loaded() {
+    use v1_compiler::coproduct_reflection::eval_decl_facts;
+
+    let ctx = ambiguous_fixture_ctx();
     let roots = vec![workspace_root()
         .join("dag/test/fixture/decl_facts_reflection")
         .to_string_lossy()
@@ -201,6 +265,11 @@ fn eval_decl_facts_explicit_import_resolves_unique_variant_projection() {
                 Some(AMBIGUOUS_SHARED_A_SHARED_BARE_ARM_QN.to_string()),
                 "constructor parent must be module A SharedBareArm"
             );
+            assert_ne!(
+                constructor_parent_qualified_name(&ctx, &projection),
+                Some(AMBIGUOUS_SHARED_B_SHARED_BARE_ARM_QN.to_string()),
+                "constructor parent must not be module B SharedBareArm when A is imported"
+            );
             assert_eq!(
                 projection_kind_lexeme(&ctx, node),
                 projection_kind_lexeme(&ctx, &projection),
@@ -212,13 +281,8 @@ fn eval_decl_facts_explicit_import_resolves_unique_variant_projection() {
 }
 
 #[test]
-fn explicit_import_resolves_unique_variant_projection() {
-    let sources = resolve_imports_transitively_with_source_roots(
-        WITNESS_SUPPORT_REL,
-        &read_fixture(WITNESS_SUPPORT_REL),
-        &v2_layer_roots(),
-    );
-    let ctx = ctx_from_sources(sources);
+fn explicit_import_resolves_to_a_when_b_also_loaded() {
+    let ctx = ambiguous_fixture_ctx();
     let projection = marshal_data_initializer_projection(&ctx, AMBIGUOUS_ARM_SPECIMEN_QN)
         .expect("ambiguous specimen must marshal without error");
     assert_eq!(
@@ -237,6 +301,47 @@ fn explicit_import_resolves_unique_variant_projection() {
         constructor_parent_qualified_name(&ctx, &projection),
         Some(AMBIGUOUS_SHARED_A_SHARED_BARE_ARM_QN.to_string()),
         "constructor parent must be the explicitly imported SharedBareArm from module A"
+    );
+    assert_ne!(
+        constructor_parent_qualified_name(&ctx, &projection),
+        Some(AMBIGUOUS_SHARED_B_SHARED_BARE_ARM_QN.to_string()),
+        "constructor parent must not be module B when specimen imports from A"
+    );
+}
+
+#[test]
+fn b_specimen_resolves_to_b_when_b_loaded_via_import() {
+    let ctx = ambiguous_fixture_ctx();
+    let projection = marshal_data_initializer_projection(&ctx, AMBIGUOUS_B_ARM_SPECIMEN_QN)
+        .expect("ambiguous B specimen must marshal");
+    assert_eq!(
+        constructor_parent_qualified_name(&ctx, &projection),
+        Some(AMBIGUOUS_SHARED_B_SHARED_BARE_ARM_QN.to_string()),
+        "B importer must resolve to B's SharedBareArm"
+    );
+}
+
+#[test]
+fn shared_bare_arm_type_idents_distinct_in_one_compile_graph() {
+    let ctx = ambiguous_fixture_ctx();
+    let a = type_item_ident_in_ctx(&ctx, "ambiguous_shared_a", "SharedBareArm")
+        .expect("A SharedBareArm must carry stamped ident in compile graph");
+    let b = type_item_ident_in_ctx(&ctx, "ambiguous_shared_b", "SharedBareArm")
+        .expect("B SharedBareArm must carry stamped ident in compile graph");
+    assert_ne!(
+        a, b,
+        "one threaded allocator across the closure must mint distinct parent type idents"
+    );
+}
+
+#[test]
+fn isolated_per_file_parse_collides_shared_bare_arm_type_ident() {
+    let a = standalone_shared_bare_arm_type_ident(AMBIGUOUS_SHARED_A_REL).expect("A ident");
+    let b = standalone_shared_bare_arm_type_ident(AMBIGUOUS_SHARED_B_REL).expect("B ident");
+    assert_eq!(
+        a,
+        b,
+        "standalone parse resets allocator scope — proves raw OccurrenceId value compare is unsound across scopes"
     );
 }
 
