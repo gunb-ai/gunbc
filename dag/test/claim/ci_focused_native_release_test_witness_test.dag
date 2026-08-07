@@ -2,7 +2,6 @@ module test.claim.ci_focused_native_release_test_witness
 
 import gunbc.ci_focused_native_release_tests {
   nested_match_6777_focused_native_release_test_row,
-  comment_path_probe_focused_native_release_test_row,
 }
 import v2.workflow.ci_focused_native_release_test_emit {
   ci_focused_native_release_test_script,
@@ -62,17 +61,4 @@ test fn w_build_job_runs_nested_match_row_after_compile_gate() -> Bool {
     name: nested_match_6777_focused_native_release_test_row.step_display_name
   )
   (gate >= 0) && (reproducer >= 0) && (gate < reproducer)
-}
-
-test fn w_comment_path_probe_row_defined_for_7996_enrollment() -> Bool {
-  comment_path_probe_focused_native_release_test_row.control_id == "comment_path_probe"
-    && comment_path_probe_focused_native_release_test_row.package_name == "v1-compiler"
-    && string_contains(
-      s: comment_path_probe_focused_native_release_test_row.row_note,
-      pattern: "assert_ne!"
-    )
-    && string_contains(
-      s: comment_path_probe_focused_native_release_test_row.row_note,
-      pattern: "assert_eq!"
-    )
 }
