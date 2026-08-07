@@ -18,16 +18,32 @@ type HumanInterventionFrequency
 
 type HumanInterventionIdentity = NonEmptyStr where brand("HumanInterventionIdentity")
 
-// completion_evidence is a DeclarationRef, not a Bool: "the human did it" is a claim that
-// must point at the declaration carrying the evidence, so an intervention cannot be marked
-// discharged by editing a flag beside it (DESIGN §5 — a check satisfiable by editing the
-// declaration while the realization still lies).
+// "The human did it" is a claim, and a claim must point at the declaration carrying the
+// evidence — an intervention must not be dischargeable by editing a flag beside it (DESIGN
+// §5: a check satisfiable by editing the declaration while the realization still lies).
+//
+// But a bare DeclarationRef field cannot express the state every intervention in this
+// repository is actually in today, which is that NO per-intervention discharge site exists
+// to cite. Filling it with a shared module-level ref — as an earlier revision did, pointing
+// every intervention at one strategy-selector declaration — is a placeholder wearing the
+// shape of evidence, and it reduces the field to exactly the flag it was introduced to
+// prevent (review 49806). So the carrier names the gap instead: an intervention may cite a
+// real discharge site or state that none is modeled, and it may not quietly do the second
+// while looking like the first.
+//
+// dissolve-on: a per-intervention discharge carrier lands and NoDischargeSiteModeled has no
+// remaining inhabitant, at which point the arm retires and the field is a DeclarationRef
+// again — this time with something real behind it.
+type InterventionCompletionEvidence
+  = DischargedAt { evidence: DeclarationRef }
+  | NoDischargeSiteModeled
+
 type HumanIntervention {
   identity: HumanInterventionIdentity
   frequency: HumanInterventionFrequency
   subject: NonEmptyStr
   instruction: NonEmptyStr
-  completion_evidence: DeclarationRef
+  completion_evidence: InterventionCompletionEvidence
 }
 
 type ProvisioningHumanBurden {

@@ -1,7 +1,6 @@
 module gunbc.spark_provisioning
 
 import std.types { NonEmptyStr, String, Bool, List, Int }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.algebra { Ordering, Less, Equal, Greater }
 import std.human_intervention {
   HumanIntervention,
@@ -14,6 +13,7 @@ import std.human_intervention {
   BreakGlassOnly,
   human_intervention_count_at,
   compare_routine_human_burden,
+  NoDischargeSiteModeled,
 }
 import product.placement_supply { HostIdentity }
 import extdeps.access.posix { PosixUser }
@@ -216,12 +216,6 @@ fn classify_spark_progress(
 // Human burden, per realization.
 // ------------------------------------------------------------------------------------
 
-data spark_provisioning_authority: DeclarationRef = DeclarationRef {
-  module_path: "gunbc.spark_provisioning",
-  decl_name: "select_spark_strategy",
-  field: WholeDeclaration
-}
-
 fn spark_intervention(
   identity: NonEmptyStr,
   frequency: HumanInterventionFrequency,
@@ -233,7 +227,7 @@ fn spark_intervention(
     frequency: frequency,
     subject: subject,
     instruction: instruction,
-    completion_evidence: spark_provisioning_authority,
+    completion_evidence: NoDischargeSiteModeled,
   }
 }
 

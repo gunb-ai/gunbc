@@ -33,6 +33,34 @@ fn classify_tag(progress: SparkProvisioningProgress) -> String {
   ))
 }
 
+fn completion_evidence_tag(e: InterventionCompletionEvidence) -> String {
+  match e {
+    DischargedAt { evidence: _ } => "discharged-at"
+    NoDischargeSiteModeled => "no-discharge-site"
+  }
+}
+
+// No per-intervention discharge site exists in the repository today, and every intervention
+// says so rather than citing a shared placeholder that would reduce the field to the flag it
+// exists to prevent (review 49806).
+test fn spark_interventions_declare_no_discharge_site() -> Bool {
+  let oobe = factory_oobe_human_burden()
+  let pxe = pxe_autoinstall_human_burden()
+  let undischarged = fold(
+    list_concat_all(a: oobe.interventions, b: pxe.interventions),
+    init: 0,
+    f: (acc, i) => if completion_evidence_tag(e: i.completion_evidence) == "no-discharge-site" { acc + 1 } else { acc }
+  )
+
+  undischarged == 5
+    && list_length(items: oobe.interventions) + list_length(items: pxe.interventions) == 5
+    && completion_evidence_tag(e: sample_intervention().completion_evidence) == "no-discharge-site"
+}
+
+fn list_concat_all(a: List<HumanIntervention>, b: List<HumanIntervention>) -> List<HumanIntervention> {
+  fold(b, init: a, f: (acc, x) => append(acc, x))
+}
+
 fn residue_tag(strategy: SparkProvisioningStrategy) -> String {
   match spark_hostname_residue(strategy: strategy, allocation: HostnameAllocationPending) {
     HostnameResidueIntervention { intervention: _ } => "residue"

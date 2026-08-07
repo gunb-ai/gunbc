@@ -122,9 +122,19 @@ type InitialUpdateDisposition
 
 data dgx_spark_documented_initial_update: InitialUpdateDisposition = InitialUpdateBehaviorUnobserved
 
-// Access routes the doc names AFTER setup completes. All three presuppose the account
-// OOBE created, so none of them is a provisioning authority — a model that reached for
-// SSH to "finish" provisioning would be assuming the very thing provisioning produces.
+// Access routes the doc names AFTER setup completes. Every one presupposes the account OOBE
+// created, so none of them is a provisioning authority — a model that reached for SSH to
+// "finish" provisioning would be assuming the very thing provisioning produces.
+//
+// The predicate below returns true on every arm today, which reads as a constant with a
+// match wrapper (raised twice in review, 49791 and 49806). It is kept as an exhaustive match
+// deliberately, and the mechanism is not authorial diligence: the coproduct is closed and
+// the match is total, so ADDING a route makes this match non-exhaustive and the compiler
+// refuses. A future route that legitimately does not require an existing account therefore
+// cannot be added silently — the author is forced to state which side of the axis it sits
+// on. Prose or an axiom over the coproduct would carry the invariant but not that refusal,
+// which is the construction-over-validation preference the design asks for; the constant
+// return value is what the world happens to be, not what the shape guarantees.
 type PostSetupAccessRoute
   = PostSetupNvidiaSync
   | PostSetupSsh
