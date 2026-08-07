@@ -195,6 +195,17 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "worker-private-memory-decomposition",
+    primary_work: DeclarationRef { module_path: "gunbc.executor_schedule_retention", decl_name: "schedule_retention_heads_stay_resident", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "gunbc.executor_schedule_retention", decl_name: "schedule_retention_policy_note", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.p1_retention_cohort_receipt", decl_name: "p1_retention_cohort_receipt_verdict", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.roadmap_authority", decl_name: "five_minute_ci_gate_program_note", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the width-2 crossover decision is taken and cites these terms or a superseding measurement, or the ResolvedGraph-anchored bundle this receipt names becomes shared — at which point the decomposition no longer describes a worker and this bind deletes with the doc." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "accelerator-demo-roundtrip",
     primary_work: DeclarationRef { module_path: "extdeps.languages.simd.kernel", decl_name: "simd_kernel_medium", field: WholeDeclaration },
     additional_works: [DeclarationRef { module_path: "gunbc.accelerator_demo_plan", decl_name: "AcceleratorRecognitionOutcome", field: WholeDeclaration }],
