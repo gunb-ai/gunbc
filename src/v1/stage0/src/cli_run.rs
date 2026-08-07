@@ -7840,6 +7840,367 @@ pub fn live_read_manifest_key(entry_path: &str, fn_name: &str) -> String {
     format!("{}::{}", workspace_relative_repo_path(entry_path), fn_name)
 }
 
+/// One enrolled declaration to classify. Mirrors `v2.lens.live_read_classification`
+/// `LiveReadSelectionRequest` field for field.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LiveReadSelectionRequest {
+    pub entry_path: String,
+    pub entry_module: String,
+    pub fn_name: String,
+}
+
+/// The lens entry the manifest producer evaluates. Named here rather than at the call site so the
+/// one authority the producer consumes is stated once.
+const LIVE_READ_CLASSIFICATION_ENTRY: &str = "src/v2/lens/live_read_classification.dag";
+
+/// Build the whole-tree live-read manifest by evaluating the `.dag` authority ONCE for the entire
+/// request set.
+///
+/// The batching is not an optimisation detail, it is the reason the seam has this shape: the G2
+/// classification needs the dependency-edge, module-declaration, and fn-arrow fact populations for
+/// the whole tree, and those are derived per evaluation. A per-declaration call would rebuild all
+/// three for every row — quadratic in the corpus against a population that does not change between
+/// rows. `live_read_selection_manifest_over` therefore derives them once and folds the requests
+/// over the shared closure, and this producer's job is to hand it the full request set in one go.
+///
+/// Every failure arm REFUSES. There is no arm that returns an empty or partial manifest, because a
+/// manifest is consumed as a completeness claim — `row_for` treats an absent row as a refusal — and
+/// a producer that answered "here is what I could classify" would convert its own failure into a
+/// silent skip licence for everything it dropped (§5: a failure arm must refuse, never widen, and
+/// here widening the *skippable* set is the under-selection direction that reads as a faster green).
+pub fn build_live_read_selection_manifest(
+    requests: &[LiveReadSelectionRequest],
+    subject_id: &str,
+    source_roots: &[String],
+) -> Result<LiveReadSelectionManifest, String> {
+    let index = build_multi_entry_index(source_roots);
+    let (graph, indices) =
+        resolve_entry_with_index_for_discovery_corpus(&index, LIVE_READ_CLASSIFICATION_ENTRY)
+            .map_err(|e| {
+                format!(
+                    "LIVE-READ MANIFEST REFUSAL cause=LensEntryUnresolved entry={LIVE_READ_CLASSIFICATION_ENTRY} \
+                     detail={e} — the classification authority could not be resolved, so no \
+                     declaration has an established classification and none may fast-skip."
+                )
+            })?;
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+
+    let request_values: Vec<v1_interpreter::Value> = requests
+        .iter()
+        .map(|req| v1_interpreter::Value::Record {
+            type_name: ctx.sym("LiveReadSelectionRequest"),
+            fields: Rc::new(vec![
+                (
+                    ctx.sym("entry_path"),
+                    v1_interpreter::Value::Str(req.entry_path.clone()),
+                ),
+                (
+                    ctx.sym("entry_module"),
+                    v1_interpreter::Value::Str(req.entry_module.clone()),
+                ),
+                (
+                    ctx.sym("fn_name"),
+                    v1_interpreter::Value::Str(req.fn_name.clone()),
+                ),
+            ]),
+        })
+        .collect();
+    let root_values: Vec<v1_interpreter::Value> = source_roots
+        .iter()
+        .map(|r| v1_interpreter::Value::Str(r.clone()))
+        .collect();
+
+    let args = vec![
+        (
+            Some("requests".to_string()),
+            v1_interpreter::Value::List(Rc::new(request_values.into())),
+        ),
+        (
+            Some("subject_id".to_string()),
+            v1_interpreter::Value::Str(subject_id.to_string()),
+        ),
+        (
+            Some("pool_roots".to_string()),
+            v1_interpreter::Value::List(Rc::new(root_values.clone().into())),
+        ),
+        (
+            Some("importer_roots".to_string()),
+            v1_interpreter::Value::List(Rc::new(root_values.into())),
+        ),
+        (
+            Some("exclude_substrings".to_string()),
+            v1_interpreter::Value::List(Rc::new(im::Vector::new())),
+        ),
+    ];
+
+    let produced = v1_interpreter::with_active_context(&ctx, || {
+        v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "live_read_selection_manifest_live",
+            &args,
+            false,
+        )
+    })
+    .map_err(|e| {
+        format!(
+            "LIVE-READ MANIFEST REFUSAL cause=ProducerFailed detail={e} — the classification \
+             authority did not produce a manifest, so no declaration is classified."
+        )
+    })?;
+
+    let v1_interpreter::Value::List(row_values) = &produced else {
+        return Err(format!(
+            "LIVE-READ MANIFEST REFUSAL cause=ProducerShapeUnexpected got={} — expected a \
+             List<LiveReadSelectionManifestRow>.",
+            produced.type_label_public()
+        ));
+    };
+
+    let mut rows = std::collections::HashMap::new();
+    for row in row_values.iter() {
+        let v1_interpreter::Value::Record { fields, .. } = row else {
+            return Err(format!(
+                "LIVE-READ MANIFEST REFUSAL cause=RowShapeUnexpected got={} — expected a \
+                 LiveReadSelectionManifestRow record.",
+                row.type_label_public()
+            ));
+        };
+        let key = match ctx.field(fields, "key") {
+            Some(v1_interpreter::Value::Str(k)) => k.clone(),
+            other => {
+                return Err(format!(
+                    "LIVE-READ MANIFEST REFUSAL cause=RowKeyUnexpected got={other:?} — a row \
+                     without a String key cannot be attributed to a declaration."
+                ))
+            }
+        };
+        let projection = match ctx.field(fields, "projection") {
+            Some(p) => p.clone(),
+            None => {
+                return Err(format!(
+                    "LIVE-READ MANIFEST REFUSAL cause=RowProjectionAbsent key={key} — a row \
+                     without a projection carries no classification."
+                ))
+            }
+        };
+        rows.insert(key, decode_live_read_selection_row(&ctx, &projection)?);
+    }
+
+    Ok(LiveReadSelectionManifest {
+        subject_id: subject_id.to_string(),
+        rows,
+    })
+}
+
+/// Decode one `v2.std.live_read.LiveReadSelectionProjection` value.
+///
+/// `LiveReadSelectionRefused` decodes to `Refused`, NOT to a decode error: it is a legitimate,
+/// modelled state of the authority (the classification could not be established), and the seed's
+/// job is to carry it through so the consumer forbids a skip. Collapsing it into an error here
+/// would lose the located cause the authority already computed.
+fn decode_live_read_selection_row(
+    ctx: &v1_interpreter::InterpContext,
+    projection: &v1_interpreter::Value,
+) -> Result<LiveReadSelectionRow, String> {
+    let v1_interpreter::Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = projection
+    else {
+        return Err(format!(
+            "LIVE-READ MANIFEST REFUSAL cause=ProjectionShapeUnexpected got={} — expected a \
+             LiveReadSelectionProjection variant.",
+            projection.type_label_public()
+        ));
+    };
+    if ctx.sym_eq(*variant_name, "LiveReadSelectionRefused") {
+        let cause = match ctx.field(fields, "cause") {
+            Some(v1_interpreter::Value::Str(c)) => c.clone(),
+            _ => "typed refusal without a String cause".to_string(),
+        };
+        return Ok(LiveReadSelectionRow::Refused { cause });
+    }
+    if !ctx.sym_eq(*variant_name, "LiveReadSelectionClassified") {
+        return Err(
+            "LIVE-READ MANIFEST REFUSAL cause=ProjectionVariantUnknown — the projection carried a \
+             variant this seed does not model, so its classification cannot be attributed."
+                .to_string(),
+        );
+    }
+    let Some(classification) = ctx.field(fields, "classification") else {
+        return Err(
+            "LIVE-READ MANIFEST REFUSAL cause=ClassificationAbsent — a Classified projection with \
+             no classification."
+                .to_string(),
+        );
+    };
+    let v1_interpreter::Value::Variant {
+        variant_name: cls_name,
+        fields: cls_fields,
+        ..
+    } = classification
+    else {
+        return Err(format!(
+            "LIVE-READ MANIFEST REFUSAL cause=ClassificationShapeUnexpected got={} — expected a \
+             LiveReadClassification variant.",
+            classification.type_label_public()
+        ));
+    };
+    if ctx.sym_eq(*cls_name, "LocalRead") {
+        return Ok(LiveReadSelectionRow::Classified {
+            runtime_read: false,
+            carriers: vec![],
+        });
+    }
+    if !ctx.sym_eq(*cls_name, "RuntimeRead") {
+        return Err(
+            "LIVE-READ MANIFEST REFUSAL cause=ClassificationVariantUnknown — neither LocalRead nor \
+             RuntimeRead; this seed cannot decide whether a skip is licensed."
+                .to_string(),
+        );
+    }
+    let carriers = match ctx.field(cls_fields, "carriers") {
+        Some(v1_interpreter::Value::List(items)) => items
+            .iter()
+            .map(|item| match item {
+                v1_interpreter::Value::Str(s) => Ok(s.clone()),
+                v1_interpreter::Value::Record { fields, .. } => match ctx.field(fields, "module") {
+                    Some(v1_interpreter::Value::Str(s)) => Ok(s.clone()),
+                    _ => Err("carrier record without a String module".to_string()),
+                },
+                other => Err(format!("carrier is {}", other.type_label_public())),
+            })
+            .collect::<Result<Vec<String>, String>>()
+            .map_err(|e| {
+                format!(
+                    "LIVE-READ MANIFEST REFUSAL cause=CarrierShapeUnexpected detail={e} — a \
+                     RuntimeRead whose carriers cannot be read is not a licence to skip."
+                )
+            })?,
+        // A RuntimeRead with no readable carrier list still FORBIDS a skip; it is only the carrier
+        // NAMES that are missing, and the classification itself is unambiguous.
+        _ => vec![],
+    };
+    Ok(LiveReadSelectionRow::Classified {
+        runtime_read: true,
+        carriers,
+    })
+}
+
+// The producer's executing consumer. A `pub fn` that compiles is not evidence it works (§5:
+// specification-without-execution) — these run it against the real tree.
+#[cfg(test)]
+mod live_read_selection_manifest_producer_tests {
+    use super::{
+        build_live_read_selection_manifest, workspace_root, LiveReadSelectionRequest,
+        LiveReadSelectionRow,
+    };
+
+    fn source_roots() -> Vec<String> {
+        vec!["dag".to_string(), "src/v2".to_string()]
+    }
+
+    // A declaration inside a declared carrier home whose body reaches the carrier callee, and one
+    // pure declaration that reaches nothing. The pair is the discriminator: a producer that
+    // answered the same thing for both would prove nothing, so the test asserts they DIFFER.
+    fn requests() -> Vec<LiveReadSelectionRequest> {
+        vec![
+            LiveReadSelectionRequest {
+                entry_path: "src/v2/lens/module_graph.dag".to_string(),
+                entry_module: "v2.lens.module_graph".to_string(),
+                fn_name: "module_declaration_facts_live".to_string(),
+            },
+            LiveReadSelectionRequest {
+                entry_path: "src/v2/lens/live_read_classification.dag".to_string(),
+                entry_module: "v2.lens.live_read_classification".to_string(),
+                fn_name: "classification_is_local_read".to_string(),
+            },
+        ]
+    }
+
+    #[test]
+    fn manifest_classifies_a_carrier_reaching_decl_apart_from_a_pure_one() {
+        std::env::set_current_dir(workspace_root()).expect("chdir workspace");
+        let manifest =
+            build_live_read_selection_manifest(&requests(), "test-subject", &source_roots())
+                .unwrap_or_else(|e| panic!("producer refused: {e}"));
+
+        let carrier_row = manifest
+            .row_for(
+                "test-subject",
+                "src/v2/lens/module_graph.dag",
+                "module_declaration_facts_live",
+            )
+            .unwrap_or_else(|e| panic!("carrier row lookup: {e}"));
+        let pure_row = manifest
+            .row_for(
+                "test-subject",
+                "src/v2/lens/live_read_classification.dag",
+                "classification_is_local_read",
+            )
+            .unwrap_or_else(|e| panic!("pure row lookup: {e}"));
+
+        // The pure declaration must classify LocalRead. If it did not, the producer would be
+        // marking the whole corpus unskippable — safe, but it would also mean the manifest carries
+        // no information and the discriminator below is vacuous.
+        assert_eq!(
+            pure_row,
+            &LiveReadSelectionRow::Classified {
+                runtime_read: false,
+                carriers: vec![],
+            },
+            "a pure predicate classified as something other than LocalRead"
+        );
+        // And the carrier-reaching one must NOT. This is the direction that matters for safety:
+        // a LocalRead here would license the exact skip that under-selected the falsifier.
+        assert_ne!(
+            carrier_row, pure_row,
+            "a declaration reaching a live-read carrier classified identically to a pure \
+             predicate — the manifest is not discriminating, so every row it carries is suspect"
+        );
+    }
+
+    // The subject wall. A manifest built against one tree must refuse to answer for another,
+    // rather than serving a classification derived from facts about a different commit.
+    #[test]
+    fn manifest_lookup_refuses_on_subject_mismatch() {
+        std::env::set_current_dir(workspace_root()).expect("chdir workspace");
+        let manifest =
+            build_live_read_selection_manifest(&requests(), "subject-a", &source_roots())
+                .unwrap_or_else(|e| panic!("producer refused: {e}"));
+        let err = manifest
+            .row_for(
+                "subject-b",
+                "src/v2/lens/module_graph.dag",
+                "module_declaration_facts_live",
+            )
+            .expect_err("a lookup under a different subject was served rather than refused");
+        assert!(
+            err.contains("SubjectMismatch"),
+            "refusal did not name the cause: {err}"
+        );
+    }
+
+    // An enrolled declaration the manifest does not carry is a gap in the classification, not an
+    // absence of runtime reads — so the lookup refuses rather than returning a miss the caller
+    // could read as "nothing known, proceed".
+    #[test]
+    fn manifest_lookup_refuses_on_absent_declaration() {
+        std::env::set_current_dir(workspace_root()).expect("chdir workspace");
+        let manifest =
+            build_live_read_selection_manifest(&requests(), "subject-a", &source_roots())
+                .unwrap_or_else(|e| panic!("producer refused: {e}"));
+        let err = manifest
+            .row_for("subject-a", "src/v2/lens/module_graph.dag", "no_such_fn")
+            .expect_err("an unenrolled declaration was served rather than refused");
+        assert!(
+            err.contains("DeclarationAbsent"),
+            "refusal did not name the cause: {err}"
+        );
+    }
+}
+
 pub struct MultiEntryIndex {
     source_files: ModuleSourceIndex,
     module_graph_facts: ModuleGraphFactsLive,
