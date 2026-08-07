@@ -23,10 +23,12 @@ import std.occurrence_binding_candidates {
   ReferenceBindingProjectionBound,
   ReferenceBindingProjectionUnbound,
   resolve_type_reference_containment_binding,
+  DeclarationExposureGrounding,
+  NamespaceStructuralRootExposure,
+  declaration_exposure_from_containment,
 }
 import gunbc.type_reference_binding_context {
   ModuleOccurrenceBindingSource,
-  declaration_exposure_from_containment_tree,
   merge_occurrence_binding_input_rows,
   occurrence_binding_inputs_from_module_transport,
   build_graph_type_reference_binding_inputs,
@@ -97,9 +99,10 @@ fn trbc_fixture_reference(
 test fn module_root_containment_derives_root_exposure_holds() -> Bool {
   let type_decl = OccurrenceId { value: 10 }
   let type_path = trbc_fixture_path(ancestors: [], terminal: type_decl)
-  match declaration_exposure_from_containment_tree(
+  match declaration_exposure_from_containment(
     module_path: trbc_module_path(dotted: "std.content_hash"),
     containment: type_path,
+    grounding: NamespaceStructuralRootExposure,
   ) {
     RootExposure => true
     _ => false
@@ -109,9 +112,10 @@ test fn module_root_containment_derives_root_exposure_holds() -> Bool {
 test fn single_ancestor_containment_derives_module_exposure_holds() -> Bool {
   let fn_body = OccurrenceId { value: 20 }
   let fn_path = trbc_fixture_path(ancestors: [OccurrenceId { value: 1 }], terminal: fn_body)
-  match declaration_exposure_from_containment_tree(
+  match declaration_exposure_from_containment(
     module_path: trbc_module_path(dotted: "extdeps.consumer"),
     containment: fn_path,
+    grounding: NamespaceStructuralRootExposure,
   ) {
     ModuleExposure { module: module } => module == trbc_module_path(dotted: "extdeps.consumer")
     _ => false
@@ -123,9 +127,10 @@ test fn nested_containment_derives_lexical_exposure_holds() -> Bool {
   let inner = OccurrenceId { value: 2 }
   let binder = OccurrenceId { value: 30 }
   let nested_path = trbc_fixture_path(ancestors: [outer, inner], terminal: binder)
-  match declaration_exposure_from_containment_tree(
+  match declaration_exposure_from_containment(
     module_path: trbc_module_path(dotted: "extdeps.consumer"),
     containment: nested_path,
+    grounding: NamespaceStructuralRootExposure,
   ) {
     LexicalExposure { exposing_scope: scope } =>
       scope.terminal == inner && (scope.ancestors |> count) == 1

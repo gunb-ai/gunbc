@@ -41,7 +41,8 @@ data witness_declared_release_bins: List<String> = [
   "parse_witness",
   "resolution_divergence_census",
   "cssl_assemble",
-  "frontier_probe_survey"
+  "frontier_probe_survey",
+  "namespace_structural_root_exposure_generated_witness"
 ]
 
 fn release_bin_list_contains(xs: List<String>, needle: String) -> Bool {

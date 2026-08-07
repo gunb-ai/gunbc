@@ -1,5 +1,7 @@
 module v2.extdeps.languages.rust_test
 
+import std.algebra { Cons, Empty }
+
 import v2.extdeps.languages.rust {
   rust_add_declared_inhabitants_root,
   rust_binding_spellings,

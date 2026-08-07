@@ -14,8 +14,6 @@ import std.cache_interface {
   StructuredArtifact,
   PerHostFilesystem,
   InProcess,
-  Ttl,
-  Never,
   PerFile,
   FilesystemPerms,
   None,
@@ -28,6 +26,7 @@ import std.cache_interface {
   ManualPurge,
   Repo,
 }
+import std.measure { second }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -50,7 +49,7 @@ data hermetic_fixture_file_facts: CacheInterfaceCatalogFacts = {
     prefix_fallback_allowed: false
     content_verified_on_read: true
     visibility_scope: Repo
-    invalidation_triggers: [TtlExpiry, ManualPurge]
+    invalidation_triggers: [TtlExpiry { window: second(count: 2592000) }, ManualPurge]
   }
   io: {
     lookup_semantics: ContentAddressLookup
@@ -60,7 +59,7 @@ data hermetic_fixture_file_facts: CacheInterfaceCatalogFacts = {
   placement: {
     value_shape: StructuredArtifact
     locality: PerHostFilesystem
-    eviction: Ttl { days: 30 }
+    retention: { release_policy: ReleasedNever, capacity: CapacityUnobserved }
     atomicity: PerFile
     auth: FilesystemPerms
     read_latency: LocalDiskUs
@@ -77,7 +76,7 @@ data hermetic_fixture_file_facts: CacheInterfaceCatalogFacts = {
     {
       field: "write_semantics"
       evidence: OperatorObserved {
-        note: "WriteOnce: re-record with a different response for the same input_hash => FixtureError::ResponseDrift (cache-purity oracle); freshness window FIXTURE_FRESHNESS_SECS = 30d"
+        note: "WriteOnce: re-record with a different response for the same input_hash => FixtureError::ResponseDrift (cache-purity oracle). The freshness window is carried typed on this row's TtlExpiry trigger, cited to recorded_fixture.rs FIXTURE_FRESHNESS_SECS"
         observed_at: 0
       }
     },
@@ -105,7 +104,7 @@ data hermetic_fixture_in_process_facts: CacheInterfaceCatalogFacts = {
   placement: {
     value_shape: StructuredArtifact
     locality: InProcess
-    eviction: Never
+    retention: { release_policy: ReleasedAtProviderScopeExit, capacity: CapacityUnbounded }
     atomicity: PerFile
     auth: None
     read_latency: InProcessNs
