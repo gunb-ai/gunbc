@@ -28,7 +28,7 @@ data fleet_runner_connectivity_authority_disposition: Disposition = Terminal {
 
 data organization_roster_is_one_org_read_note: String = "THE ROSTER IS ONE CENTRAL ORG READ, not a per-host poll. GitHub's org runners API returns every self-hosted registration for the organization in one response; slot health is derived by joining that roster to stable (host, index) identities. The gunbai-ci GitHub App carries organization_self_hosted_runners read permission for this producer. Local journal mining and per-host gh api calls are not the authority for whether GitHub will schedule work onto a registration."
 
-data achieved_widths_are_orthogonal_to_desired_width_note: String = "THE ACHIEVED AXES HERE ARE ORTHOGONAL TO gunbc.runner_slot_allocation's desired-side widths (#7930 candidate/actuatable/observed). registered_width counts GitHub org roster rows; connected_width counts status == online; schedulable_width counts online AND NOT busy; executing_width counts online AND busy. desired_width is INTENT from gunbc_runner_slots_per_host and does NOT reconcile down when connected collapses during an outage. materialized_width and unit_active_width are LOCAL incarnation facts pinned from the incident corpus until the local producer grounds them."
+data achieved_widths_are_orthogonal_to_desired_width_note: String = "THE ACHIEVED AXES HERE ARE ORTHOGONAL TO gunbc.runner_slot_allocation's desired-side widths (#7930 candidate/actuatable/observed). registered_width counts GitHub org roster rows; connected_width counts status == online; schedulable_width counts online AND NOT busy; executing_width counts online AND busy. desired_width is INTENT from gunbc_runner_slots_per_host and does NOT reconcile down when connected collapses during an outage. unit_active_width counts active systemd units (never slot directories — see do_not_count_directories_for_width_note). materialized_width names on-disk install artifacts separately until a live producer grounds them."
 
 type OrganizationRunnerRosterEvidence
   = RosterObserved { observed_on: NonEmptyStr, registrations: List<GitHubSelfHostedRunnerRegistration> }
@@ -158,7 +158,9 @@ fn find_registration_by_name(
   )
 }
 
-data incident_local_materialized_width_note: String = "MATERIALIZED WIDTH IS WHAT EXISTS ON DISK, pinned from the incident corpus: five runner units per host on all four hosts (20 total), even though gunbc_runner_slots_per_host admits 22 desired slots today (srv3 candidate seven, only five materialized). This row is the seam where local incarnation observation should eventually ground gunbc.runner_slot_allocation observed_live_width when that carrier lands — without taking a dependency on an unmerged PR."
+data do_not_count_directories_for_width_note: String = "DO NOT COUNT DIRECTORIES FOR WIDTH. srv1 carries fifty slot directories with only five active systemd units; srv1-06/07 directories exist since 2026-07-11 with no unit. srv3-06/07 and srv4-06/07 directories may already exist from prior attempts without a matching unit. Live width authority is unit/process state joined with the org roster — never filesystem enumeration. A directory-counting producer reads fifty, computes nothing missing, and reports success having provisioned nothing."
+
+data incident_local_unit_active_width_note: String = "UNIT_ACTIVE WIDTH IS ACTIVE SYSTEMD INCARNATION STATE, pinned from the incident corpus: five active actions-runner@<slot>.service units per host on all four hosts (20 total), even though gunbc_runner_slots_per_host admits 22 desired slots today. MATERIALIZED WIDTH names on-disk install artifacts separately and must not be equated with directory count. This row is the seam where local incarnation observation should eventually ground gunbc.runner_slot_allocation observed_live_width when that carrier lands — without taking a dependency on an unmerged PR."
 
 fn materialized_width_for_host(host: HostIdentity) -> Int {
   if (host as String) == (operator_host_srv1 as String) {
@@ -175,7 +177,17 @@ fn materialized_width_for_host(host: HostIdentity) -> Int {
 }
 
 fn unit_active_width_for_host(host: HostIdentity) -> Int {
-  materialized_width_for_host(host: host)
+  if (host as String) == (operator_host_srv1 as String) {
+    5
+  } else if (host as String) == (operator_host_srv2 as String) {
+    5
+  } else if (host as String) == (operator_host_srv3 as String) {
+    5
+  } else if (host as String) == (operator_host_srv4 as String) {
+    5
+  } else {
+    0
+  }
 }
 
 data incident_materialized_slot_indices: List<Nat> = [1, 2, 3, 4, 5]

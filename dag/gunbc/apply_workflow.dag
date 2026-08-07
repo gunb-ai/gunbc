@@ -8,7 +8,7 @@ import extdeps.github.actions {
   Workflow, Job, Step, RunStep, RunnerSpec,
   WorkflowTrigger, WorkflowDispatch,
   DispatchInput, InputString,
-  WorkflowPermissions, PermRead,
+  WorkflowPermissions, PermRead, SelfHosted,
 }
 import extdeps.github.hosted_runners { github_hosted_ubuntu_2404_private_catalog }
 import gunbc.ci_runner_target { ci_runner_target_spec, GithubHostedRunner }
@@ -17,8 +17,18 @@ import gunbc.ci_workflow {
   ci_release_build_step,
   gunbc_ci_release_build_step_timeout_minutes,
 }
+import gunbc.ci_deploy_target_host { host_pinned_runner_spec }
+import gunbc.ci_fleet { srv3_offer, srv4_offer, ComputeOffer }
+import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
+import product.placement_supply { HostIdentity }
 
-data apply_workflow_hosted_runner_note: String = "THE workflow_dispatch WRAPPER MUST NOT SCHEDULE ONTO THE SELF-HOSTED POOL IT EXISTS TO CREATE OR REPAIR. This workflow uses a GitHub-hosted ubuntu-24.04 runner (private-repo catalog row) so it remains invokable while the fleet has zero schedulable self-hosted runners. Direct operator execution via gunbc run remains the primary path during recovery."
+data apply_workflow_actuation_route_note: String = "THREE ROUTES, NOT ONE RUNNER CHOICE. ADD slots 06/07 on a host that still has live runners -> in-band LocalShell on that host via a self-hosted job pinned to the target-host label (runs-on includes srv3 or srv4). RECOVER a host with ZERO live runners -> no in-band route exists -> GitHub-hosted control plus SSH out-of-band (#7940 owns the SSH transport; srv3/srv4 SSH is blocked today). REPLACE the last runner on a host -> would kill its own executor -> also out-of-band (#7940). The operator rule 'must not schedule onto the pool it exists to create or repair' applies to REPAIR, not ADD: adding srv3-06 from a job on srv3-01 extends the pool; it does not repair it."
+
+data apply_workflow_hosted_control_note: String = "THE PLAN JOB STAYS ON GITHUB-HOSTED ubuntu-24.04 so workflow_dispatch remains invokable while the fleet has zero schedulable self-hosted runners. Planning does not mutate srv3/srv4 and does not need host reach. mode=apply actuation is refused in gunbc.apply until PR B; when it lands, actuation rides on per-host self-hosted jobs below, never on the hosted runner."
+
+data apply_workflow_directory_width_trap_note: String = "DO NOT COUNT DIRECTORIES FOR WIDTH. srv1 carries dozens of slot directories with only five active units; srv3-06/07 and srv4-06/07 directories may already exist from prior attempts without a matching systemd unit. Live width authority is unit/process state joined with the org roster, not filesystem enumeration."
+
+data apply_mode_apply_if: String = "inputs.mode == 'apply'"
 
 data apply_workflow_dispatch_inputs: List<DispatchInput> = [
   DispatchInput {
@@ -44,7 +54,7 @@ data apply_workflow_dispatch_inputs: List<DispatchInput> = [
   },
   DispatchInput {
     name: "mode",
-    description: Present { value: "plan refuses destructive apply in PR A; apply is PR B" },
+    description: Present { value: "plan on hosted runner; apply actuates on per-host self-hosted jobs (refused in PR A)" },
     required: true,
     default: Present { value: "plan" },
     type: InputString,
@@ -73,9 +83,9 @@ fn apply_wet_invoke_script() -> String {
   )
 }
 
-fn apply_runner_capacity_plan_step() -> Step {
+fn apply_runner_capacity_step(name: String) -> Step {
   RunStep {
-    name: Present { value: "gunbc.apply runner-capacity plan (mode=apply refuses until PR B)" },
+    name: Present { value: name },
     id: none,
     run: apply_wet_invoke_script(),
     shell: none,
@@ -93,12 +103,19 @@ fn apply_workflow_hosted_runner_spec() -> RunnerSpec {
   )
 }
 
-fn apply_workflow_job() -> Job {
+fn apply_workflow_actuation_runner_spec(host: HostIdentity, offer: ComputeOffer) -> RunnerSpec {
+  host_pinned_runner_spec(offer: offer, host: host)
+}
+
+fn apply_plan_job() -> Job {
   Job {
-    id: "apply",
-    name: none,
+    id: "plan",
+    name: Present { value: "gunbc.apply runner-capacity plan (hosted control plane)" },
     runner: apply_workflow_hosted_runner_spec(),
-    steps: concat(ci_prelude_steps(), [ci_release_build_step(), apply_runner_capacity_plan_step()]),
+    steps: concat(
+      ci_prelude_steps(),
+      [ci_release_build_step(), apply_runner_capacity_step(name: "gunbc.apply plan (mode=apply actuation is per-host self-hosted below)")]
+    ),
     needs: [],
     env: none,
     outputs: none,
@@ -118,6 +135,52 @@ fn apply_workflow_job() -> Job {
   }
 }
 
+fn apply_actuate_host_job(id: String, host: HostIdentity, offer: ComputeOffer, step_name: String) -> Job {
+  Job {
+    id: id,
+    name: Present { value: step_name },
+    runner: apply_workflow_actuation_runner_spec(host: host, offer: offer),
+    steps: concat(
+      ci_prelude_steps(),
+      [ci_release_build_step(), apply_runner_capacity_step(name: step_name)]
+    ),
+    needs: ["plan"],
+    env: none,
+    outputs: none,
+    if_condition: Present { value: apply_mode_apply_if },
+    timeout_minutes: Present { value: gunbc_ci_release_build_step_timeout_minutes + 30 },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: Present {
+      value: WorkflowPermissions {
+        contents: Present { value: PermRead },
+        pull_requests: none,
+        issues: none,
+        actions: none,
+        id_token: none,
+      }
+    },
+  }
+}
+
+fn apply_actuate_srv3_job() -> Job {
+  apply_actuate_host_job(
+    id: "actuate_srv3",
+    host: operator_host_srv3,
+    offer: srv3_offer,
+    step_name: "gunbc.apply runner-capacity actuate srv3 (in-band LocalShell; refused in PR A)"
+  )
+}
+
+fn apply_actuate_srv4_job() -> Job {
+  apply_actuate_host_job(
+    id: "actuate_srv4",
+    host: operator_host_srv4,
+    offer: srv4_offer,
+    step_name: "gunbc.apply runner-capacity actuate srv4 (in-band LocalShell; refused in PR A)"
+  )
+}
+
 data apply_workflow: Workflow = {
   name: "gunbc-apply",
   on: [WorkflowDispatch { inputs: apply_workflow_dispatch_inputs }],
@@ -126,9 +189,16 @@ data apply_workflow: Workflow = {
     value: [kv(key: "CARGO_TERM_COLOR", value: yaml_string(s: "always"))],
   },
   permissions: none,
-  jobs: [apply_workflow_job()],
+  jobs: [apply_plan_job(), apply_actuate_srv3_job(), apply_actuate_srv4_job()],
 }
 
 fn expected_apply_yml() -> String {
   serialize_yaml(v: project_workflow_to_yaml(workflow: apply_workflow))
+}
+
+fn apply_workflow_actuation_runner_labels(host: HostIdentity, offer: ComputeOffer) -> List<String> {
+  match apply_workflow_actuation_runner_spec(host: host, offer: offer) {
+    SelfHosted { labels: labels } => labels
+    _ => []
+  }
 }

@@ -12,7 +12,7 @@ import gunbc.fleet_runner_connectivity {
   RosterObserved,
   RosterReadUnavailable,
   runner_slot_connectivity_verdict,
-  materialized_width_for_host,
+  unit_active_width_for_host,
   local_incarnations_for_host,
   SlotConnectivityDetached,
   SlotConnectivityOrphaned,
@@ -87,7 +87,7 @@ fn desired_slot_identities(host: HostIdentity, requested_width: Int) -> List<Run
 
 fn observed_slot_identities(host: HostIdentity) -> List<RunnerSlotIdentity> {
   map(
-    local_incarnations_for_host(host: host, width: materialized_width_for_host(host: host)),
+    local_incarnations_for_host(host: host, width: unit_active_width_for_host(host: host)),
     inc => inc.slot
   )
 }
@@ -182,7 +182,7 @@ fn plan_runner_capacity_host(
   roster: OrganizationRunnerRosterEvidence,
 ) -> RunnerCapacityHostPlan? {
   let admission = admit_runner_capacity_width(host: host, requested: requested_width)
-  let observed_width = materialized_width_for_host(host: host)
+  let observed_width = unit_active_width_for_host(host: host)
   match admission {
     WidthRefused { requested: _, cause: _ } =>
       Present {

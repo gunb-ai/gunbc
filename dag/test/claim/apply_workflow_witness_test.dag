@@ -1,7 +1,7 @@
 module test.claim.apply_workflow_witness
 
 import extdeps.github.actions {
-  WorkflowDispatch, DispatchInput, InputString,
+  WorkflowDispatch, DispatchInput, InputString, SelfHosted,
 }
 import extdeps.languages.yaml.gha_workflow { workflow_trigger_entry }
 import extdeps.languages.yaml.types {
@@ -11,7 +11,14 @@ import gunbc.apply_workflow {
   apply_workflow_dispatch_inputs,
   apply_wet_invoke_script,
   apply_workflow_hosted_runner_spec,
+  apply_workflow_actuation_runner_labels,
+  apply_mode_apply_if,
+  apply_plan_job,
+  apply_actuate_srv3_job,
+  apply_actuate_srv4_job,
 }
+import gunbc.ci_fleet { srv3_offer, srv4_offer }
+import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
 import extdeps.github.actions { HostedRunner, Ubuntu2404 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -45,6 +52,10 @@ fn value_has_input_field(v: YamlValue, name: String) -> Bool {
   }
 }
 
+fn label_list_contains(labels: List<String>, needle: String) -> Bool {
+  fold(labels, init: false, f: (acc, l) => acc || (l == needle))
+}
+
 test fn apply_workflow_dispatch_carries_runner_capacity_inputs() -> Bool {
   let entry = workflow_trigger_entry(trigger: WorkflowDispatch { inputs: apply_workflow_dispatch_inputs })
   entry.key == "workflow_dispatch"
@@ -63,9 +74,34 @@ test fn apply_workflow_dispatch_input_names_match_apply_wet() -> Bool {
     && apply_wet_invoke_script().contains(s: "inputs.mode")
 }
 
-test fn apply_workflow_uses_hosted_runner_not_self_hosted() -> Bool {
-  match apply_workflow_hosted_runner_spec() {
+test fn apply_workflow_plan_uses_hosted_runner_not_self_hosted() -> Bool {
+  match apply_plan_job().runner {
     HostedRunner { label: Ubuntu2404 } => true
     _ => false
   }
+}
+
+test fn apply_workflow_actuation_pins_srv3_self_hosted_label() -> Bool {
+  let labels = apply_workflow_actuation_runner_labels(host: operator_host_srv3, offer: srv3_offer)
+  label_list_contains(labels: labels, needle: "srv3")
+    && label_list_contains(labels: labels, needle: "self-hosted")
+}
+
+test fn apply_workflow_actuation_pins_srv4_self_hosted_label() -> Bool {
+  let labels = apply_workflow_actuation_runner_labels(host: operator_host_srv4, offer: srv4_offer)
+  label_list_contains(labels: labels, needle: "srv4")
+    && label_list_contains(labels: labels, needle: "self-hosted")
+}
+
+test fn apply_workflow_actuation_jobs_gate_on_apply_mode() -> Bool {
+  match apply_actuate_srv3_job().if_condition {
+    Present { value: cond } => cond == apply_mode_apply_if
+    _ => false
+  }
+    && match apply_actuate_srv4_job().if_condition {
+      Present { value: cond } => cond == apply_mode_apply_if
+      _ => false
+    }
+    && apply_actuate_srv3_job().needs == ["plan"]
+    && apply_actuate_srv4_job().needs == ["plan"]
 }
