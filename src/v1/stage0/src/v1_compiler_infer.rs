@@ -19926,19 +19926,62 @@ pub fn build_module_exported_type_name_index(
     )
 }
 
-pub fn direct_import_export_name_sets(
-    m: Rc<TypedModule>,
-    export_name_index: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+pub fn dedup_type_bindings_let_binding_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "EMITTER SHAPE, not style: the fold result is bound to a let before map_values rather than piped straight into it. `fold(..) |> map_values` emits `v1_rt::map_values(&<fold expression>)`, and v1_rt::map_values is generic over its key and value, so rustc must resolve those parameters before it can apply the Rc deref coercion — but the only thing that would fix them is the fold's own init, whose type is in turn being inferred from this call. Inference runs backwards and the emitted seed fails to compile with E0308 expected `im::HashMap<_, Rc<TypeBinding>>`, found `Rc<im::HashMap<String, Rc<TypeBinding>>>`. Binding the fold first gives the map a concrete type at the coercion site, which is why every map_values call that already compiles in this seed reads a NAMED map (a field or a let) and never an inline fold. Found by executing the regenerated seed through rustc: the .dag half typechecks and self-compiles clean either way, so a .dag-only green does not establish that the emitted Rust builds (DESIGN section 5 — green by execution means the real consumer ran).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn dedup_type_bindings_by_name(bindings: Rc<Vec<Rc<TypeBinding>>>) -> Rc<Vec<Rc<TypeBinding>>> {
+    {
+        let by_name = bindings.clone().iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+            |acc: Rc<HashMap<String, Rc<TypeBinding>>>, b: Rc<TypeBinding>| {
+                v1_rt::rc_map_insert(acc, b.name.clone(), b.clone())
+            },
+        );
+        Rc::new(v1_rt::map_values(&by_name))
+    }
+}
+
+pub fn module_exported_type_bindings(m: Rc<TypedModule>) -> Rc<Vec<Rc<TypeBinding>>> {
+    dedup_type_bindings_by_name(Rc::new(v1_rt::map_values(
+        &m.type_env.clone().bindings.clone(),
+    )))
+}
+
+pub fn build_module_exported_type_binding_index(
+    modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<Rc<BTreeSet<String>>>> {
+) -> Rc<HashMap<String, Rc<Vec<Rc<TypeBinding>>>>> {
+    modules.clone().iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, Rc<Vec<Rc<TypeBinding>>>>(),
+        |acc: Rc<HashMap<String, Rc<Vec<Rc<TypeBinding>>>>>, m: Rc<TypedModule>| {
+            v1_rt::rc_map_insert(
+                acc,
+                authored_name_at(source_indices.clone(), m.module.clone()),
+                module_exported_type_bindings(m.clone()),
+            )
+        },
+    )
+}
+
+pub fn direct_import_export_bindings(
+    m: Rc<TypedModule>,
+    export_binding_index: Rc<HashMap<String, Rc<Vec<Rc<TypeBinding>>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<Vec<Rc<TypeBinding>>>>> {
     Rc::new({
         let mut __result = Vec::new();
         for imp in module_imports(m.module.clone()).iter().cloned() {
             __result.extend(
                 (*{
                     let path = import_module_path_at(imp.clone(), source_indices.clone());
-                    match v1_rt::map_get(&export_name_index, path.clone()) {
-                        Some(names) => Rc::new(vec![names.clone()]),
+                    match v1_rt::map_get(&export_binding_index, path.clone()) {
+                        Some(bindings) => Rc::new(vec![bindings.clone()]),
                         None => Rc::new(vec![]),
                     }
                 })
@@ -19950,25 +19993,50 @@ pub fn direct_import_export_name_sets(
     })
 }
 
-pub fn direct_import_exporter_count(
-    import_export_names: Rc<Vec<Rc<BTreeSet<String>>>>,
+pub fn direct_import_exporter_counts_cost_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Cost shape (DESIGN section 6 bare-minimum cost; calm-carp-36 receipt, measured against rewire_import_str's 41.6-53.2 percent share of the resolve wall in gunbc CI on gunbc#7937/#7869), corrected from an allocation-only fix to a traversal-shape fix (parent session smart-badger-549 review). direct_import_exporter_count was a per-KEY question — the sole caller (rewire_inherited_str_binding) only tests `> 1` — originally answered by allocating a fresh Vec, scanning every one of the module's direct-import export SETS with set_contains, pushing each match, then reading .len() and dropping the Vec: O(keys x imports) calls, one Vec allocation per call. Set<String> itself has no enumeration primitive (confirmed against v2 self-compile: `fold(a_set, ...)` fails to resolve) — but a Set is a derived fact, not the source (DESIGN section 2 decompress-then-map): every export set in this file is built by folding `m.type_env.bindings |> map_values`, a List<TypeBinding>, which IS fold-able (module_exported_type_names does exactly this). build_module_exported_type_binding_index carries that same source alongside the existing Set index (module_exported_type_names/build_module_exported_type_name_index are unchanged and still used for local_names), so direct_import_export_bindings gives each module's direct imports as List<List<TypeBinding>> instead of List<Set<String>>. module_exported_type_bindings dedups by name through a Map<String, TypeBinding> before projecting back to a List — the same collapse module_exported_type_names gets for free from Set<String>'s own distinctness — because a module's bindings map can hold more than one TypeBinding for one name (export_index_merge_module's seen_names guard exists for the identical reason); without that dedup a module exporting one name twice would bump the per-import saturating count twice for a single import, diverging from the old Set-based count. direct_import_exporter_counts then folds those deduped binding lists ONCE per module — not once per inherited key — reading b.name inline inside the fold (no separate map step, so it does not depend on map being registered over List) and bumping a saturating (capped at 2, since `> 1` is the only predicate ever asked) Map<String, Int>. Each import's binding list is visited exactly once per module regardless of how many inherited keys that module has, collapsing the traversal from O(keys x imports) to O(imports' bindings) per module. rewire_inherited_str_binding is unchanged: it already reads its per-key answer out of import_exporter_counts via a single map_get, so the O(1)-per-key read was already correct — only how the map is BUILT changes. A fingerprint-equality control over the resolved corpus's str_bindings/ancestry_str_bindings proves the rewiring is unchanged (DESIGN section 5 — a faster function that rewires differently is strictly worse than the slow one).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn bump_saturating_exporter_count(
+    counts: Rc<HashMap<String, i64>>,
     name: String,
-) -> i64 {
-    (Rc::new({
-        let mut __result = Vec::new();
-        for names in import_export_names.clone().iter().cloned() {
-            if v1_rt::set_contains(&names, name.clone()) {
-                __result.push(names);
+) -> Rc<HashMap<String, i64>> {
+    match v1_rt::map_get(&counts, name.clone()) {
+        None => v1_rt::rc_map_insert(counts.clone(), name.clone(), 1),
+        Some(n) => {
+            if (n.clone() >= 2) {
+                counts.clone()
+            } else {
+                v1_rt::rc_map_insert(counts.clone(), name.clone(), (n.clone() + 1))
             }
         }
-        __result
-    })
-    .len() as i64)
+    }
+}
+
+pub fn direct_import_exporter_counts(
+    import_export_bindings: Rc<Vec<Rc<Vec<Rc<TypeBinding>>>>>,
+) -> Rc<HashMap<String, i64>> {
+    import_export_bindings.clone().iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, i64>(),
+        |counts: Rc<HashMap<String, i64>>, bindings: Rc<Vec<Rc<TypeBinding>>>| {
+            bindings.clone().iter().cloned().fold(
+                counts,
+                |counts: Rc<HashMap<String, i64>>, b: Rc<TypeBinding>| {
+                    bump_saturating_exporter_count(counts, b.name.clone())
+                },
+            )
+        },
+    )
 }
 
 pub fn rewire_inherited_str_binding(
     type_name_index: Rc<HashMap<String, Rc<TypeNameExportFacts>>>,
-    import_export_names: Rc<Vec<Rc<BTreeSet<String>>>>,
+    import_exporter_counts: Rc<HashMap<String, i64>>,
     local_names: Rc<BTreeSet<String>>,
     str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
     ancestry_str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
@@ -19979,8 +20047,13 @@ pub fn rewire_inherited_str_binding(
             Some(facts) => facts.exporter_count.clone(),
             None => 0,
         };
+        let direct_import_exporter_count =
+            match v1_rt::map_get(&import_exporter_counts, name.clone()) {
+                Some(count) => count.clone(),
+                None => 0,
+            };
         if ((v1_rt::set_contains(&local_names, name.clone())
-            || (direct_import_exporter_count(import_export_names.clone(), name.clone()) > 1))
+            || (direct_import_exporter_count.clone() > 1))
             || (exporter_count.clone() > 1))
         {
             Rc::new(StrBindingsRewireAccum {
@@ -20031,6 +20104,8 @@ pub fn rewire_type_env_import_str_binding_identity(
         let type_name_index = build_type_name_export_index(modules.clone());
         let export_name_index =
             build_module_exported_type_name_index(modules.clone(), source_indices.clone());
+        let export_binding_index =
+            build_module_exported_type_binding_index(modules.clone(), source_indices.clone());
         Rc::new({
             let mut __result = Vec::new();
             for m in modules.clone().iter().cloned() {
@@ -20042,9 +20117,9 @@ pub fn rewire_type_env_import_str_binding_identity(
                         Some(names) => names.clone(),
                         None => module_exported_type_names(m.clone()),
                     };
-                    let import_export_names = direct_import_export_name_sets(
+                    let import_export_bindings = direct_import_export_bindings(
                         m.clone(),
-                        export_name_index.clone(),
+                        export_binding_index.clone(),
                         source_indices.clone(),
                     );
                     let ancestry_keys = Rc::new(v1_rt::map_keys(
@@ -20053,6 +20128,8 @@ pub fn rewire_type_env_import_str_binding_identity(
                     let str_keys =
                         Rc::new(v1_rt::map_keys(&m.type_env.clone().str_bindings.clone()));
                     let inherited_keys = v1_rt::concat(ancestry_keys.clone(), str_keys.clone());
+                    let import_exporter_counts =
+                        direct_import_exporter_counts(import_export_bindings.clone());
                     let rewired = inherited_keys.clone().iter().cloned().fold(
                         Rc::new(StrBindingsRewireAccum {
                             str_bindings: m.type_env.clone().str_bindings.clone(),
@@ -20061,7 +20138,7 @@ pub fn rewire_type_env_import_str_binding_identity(
                         |acc: Rc<StrBindingsRewireAccum>, name: String| {
                             rewire_inherited_str_binding(
                                 type_name_index.clone(),
-                                import_export_names.clone(),
+                                import_exporter_counts.clone(),
                                 local_names.clone(),
                                 acc.str_bindings.clone(),
                                 acc.ancestry_str_bindings.clone(),
