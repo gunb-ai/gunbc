@@ -17,7 +17,6 @@ fn fixture_credentials() -> SparkProvisioningCredentials {
 fn fixture_bootstrap() -> SparkFactoryBootstrap {
   SparkFactoryBootstrap {
     access_point_identity: spark_bootstrap_ssid_a3ee,
-    credentials: fixture_credentials(),
     documented_surface: dgx_spark_oobe_surface,
   }
 }
@@ -317,6 +316,18 @@ test fn spark_credentials_are_carried_never_derived() -> Bool {
     && intent.timezone == "America/New_York"
     && intent.administrator.name == "briansrls"
     && intent.license.accepted_by == intent.administrator.name
+    && strategy_carries_no_second_credential_copy(s: intent.strategy)
+}
+
+// The single-authority half, stated so it stays true: the FactoryOobe payload carries the
+// bootstrap NETWORK facts and no credential copy, so there is exactly one pair of refs to
+// edit and no second one to drift away from it.
+fn strategy_carries_no_second_credential_copy(s: SparkProvisioningStrategy) -> Bool {
+  match s {
+    FactoryOobe { bootstrap: bootstrap } =>
+      (bootstrap.access_point_identity.ssid as String) == "spark-a3ee"
+    PxeAutoinstall { environment: _, image: _, install_spec: _ } => true
+  }
 }
 
 // The SSIDs are established nonsecret display aliases, and they are NOT fleet identity:
