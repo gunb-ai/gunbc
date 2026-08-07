@@ -1,7 +1,8 @@
-// The .dag realization of annotation attachment: it turns what the tokenizer captured into subject-bound rows by calling std.source_annotation.attach_annotations. Everything here is either .dag-specific — what the comment delimiter looks like, how a module item is recognized in this parser's transport — or a projection of facts the parser already produced. The RULE itself is not here; a second copy of the rule beside the shared one is the fork this lane exists to prevent.
-
-// It is a PURE DOWNSTREAM READER of the occurrence transport. No allocator is in scope, so the identities it reads were all minted by the semantic parser before it ran, and no edit to a comment can shift one.
 module v1.compiler.annotation_bind
+
+// The .dag realization of annotation attachment: it turns what the tokenizer captured into subject-bound rows by calling std.source_annotation.attach_annotations. Everything here is either .dag-specific — what the comment delimiter looks like, how a module item is recognized in this parser's transport — or a projection of facts the parser already produced. The RULE itself is not here; a second copy of the rule beside the shared one is the fork this lane exists to prevent.
+//
+// It is a PURE DOWNSTREAM READER of the occurrence transport. No allocator is in scope, so the identities it reads were all minted by the semantic parser before it ran, and no edit to a comment can shift one.
 
 import std.types { Bool, Int, String, SourceSpan, List }
 import std.occurrence_identity {

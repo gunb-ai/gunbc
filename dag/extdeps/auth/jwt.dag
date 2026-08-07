@@ -1,7 +1,8 @@
+module extdeps.auth.jwt
+
 // THIS MODULE DESCRIBES CLAIMS; IT DOES NOT VERIFY THEM. Decoding a JWT payload is base64url and JSON, requiring no key and proving nothing — a token whose claims decode cleanly may be entirely forged. Verification means fetching the issuer's JWKS and checking the signature over the header and payload, which is a network operation with its own failure modes and cache semantics.
 //
 // The boundary is stated because the two are trivially confusable once claims are sitting in a typed record that looks authoritative. Reading unverified claims is legitimate for display and for deciding which account a credential names; it is NOT legitimate for authorization. Nothing here should be read as making the second safe, and a verification surface lands as its own module with the JWKS fetch it requires.
-module extdeps.auth.jwt
 
 import std.types { String, NonEmptyStr, Int, Bool, List }
 import std.measure { Second, second }

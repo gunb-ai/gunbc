@@ -1,5 +1,6 @@
-// The language-agnostic authority for source annotations, per DESIGN 4c. It names no .dag syntax and no lexical rule: a realization decides what its annotation syntax looks like and routes it through its own annotation channel, then lands rows of THIS shape. Both the v1 seed tokenizer and the v2 modeled tokenizer import from here rather than each minting a placement enum, because two spellings of one concept is the nicknaming defect this whole lane exists to remove.
 module std.source_annotation
+
+// The language-agnostic authority for source annotations, per DESIGN 4c. It names no .dag syntax and no lexical rule: a realization decides what its annotation syntax looks like and routes it through its own annotation channel, then lands rows of THIS shape. Both the v1 seed tokenizer and the v2 modeled tokenizer import from here rather than each minting a placement enum, because two spellings of one concept is the nicknaming defect this whole lane exists to remove.
 
 import std.types { String, SourceSpan, List, Bool }
 import std.occurrence_identity { OccurrenceId }
