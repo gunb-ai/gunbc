@@ -88,16 +88,6 @@ fn hostname_allocation_roster_verdict(
   ).verdict
 }
 
-fn hostname_allocation_roster_is_consistent(
-  allocations: List<HostnameAllocation>,
-) -> Bool {
-  match hostname_allocation_roster_verdict(allocations: allocations) {
-    HostnameAllocationRosterConsistent => true
-    FleetSlotAllocatedTwice { fleet_slot: _ } => false
-    CanonicalHostnameClaimedTwice { canonical_hostname: _ } => false
-  }
-}
-
 fn hostname_allocation_pick(
   acc: DnsLabel?,
   row: HostnameAllocation,
@@ -118,14 +108,15 @@ fn canonical_hostname_in_roster(
   allocations: List<HostnameAllocation>,
   fleet_slot: HostIdentity,
 ) -> DnsLabel? {
-  if hostname_allocation_roster_is_consistent(allocations: allocations) {
-    fold(
-      allocations,
-      init: none,
-      f: (acc, row) => hostname_allocation_pick(acc: acc, row: row, fleet_slot: fleet_slot),
-    )
-  } else {
-    none
+  match hostname_allocation_roster_verdict(allocations: allocations) {
+    HostnameAllocationRosterConsistent =>
+      fold(
+        allocations,
+        init: none,
+        f: (acc, row) => hostname_allocation_pick(acc: acc, row: row, fleet_slot: fleet_slot),
+      )
+    FleetSlotAllocatedTwice { fleet_slot: _ } => none
+    CanonicalHostnameClaimedTwice { canonical_hostname: _ } => none
   }
 }
 
