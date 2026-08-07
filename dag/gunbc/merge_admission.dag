@@ -38,6 +38,12 @@ import std.realization_schedule {
   MeasuredAtExactSubject, EstimatedFromSiblingClass,
   ScheduledWitnessEnvelope,
 }
+import std.witness_admission {
+  WitnessConsumerCadence,
+  DiscoverySelection, FalsifierSelfHostWet, FalsifierRehomedBinWet,
+  FalsifierSubstrateLongLane, BinWitnessWet, QuarantineProbeExpectRed,
+  OfflineLocalRecipe, FixtureExplicitRoster, NoConsumer,
+}
 import gunbc.ci_gate {
   Gate,
   EmitHostGate, CheapClaimPoolGate,
@@ -191,13 +197,27 @@ fn witness_cost_basis_content_hash_structural(basis: WitnessCostBasis) -> Fnv1a6
   }
 }
 
+fn witness_consumer_cadence_content_hash_structural(cadence: WitnessConsumerCadence) -> Fnv1a64Structural {
+  match cadence {
+    DiscoverySelection => content_hash_atom(value: "DiscoverySelection")
+    FalsifierSelfHostWet => content_hash_atom(value: "FalsifierSelfHostWet")
+    FalsifierRehomedBinWet => content_hash_atom(value: "FalsifierRehomedBinWet")
+    FalsifierSubstrateLongLane => content_hash_atom(value: "FalsifierSubstrateLongLane")
+    BinWitnessWet => content_hash_atom(value: "BinWitnessWet")
+    QuarantineProbeExpectRed => content_hash_atom(value: "QuarantineProbeExpectRed")
+    OfflineLocalRecipe => content_hash_atom(value: "OfflineLocalRecipe")
+    FixtureExplicitRoster => content_hash_atom(value: "FixtureExplicitRoster")
+    NoConsumer => content_hash_atom(value: "NoConsumer")
+  }
+}
+
 fn scheduled_witness_envelope_content_hash_structural(envelope: ScheduledWitnessEnvelope) -> Fnv1a64Structural {
   content_hash_combine_structural(
     left: content_hash_combine_structural(
-      left: content_hash_atom(value: envelope.cadence),
+      left: witness_consumer_cadence_content_hash_structural(cadence: envelope.path_classification),
       right: content_hash_atom(value: concat("", millisecond_count(m: envelope.wall_budget)))
     ),
-    right: content_hash_atom(value: envelope.max_staleness)
+    right: content_hash_atom(value: concat("", millisecond_count(m: envelope.max_staleness)))
   )
 }
 
