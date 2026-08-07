@@ -519,7 +519,7 @@ data spark_license_acceptance: LicenseAcceptance = LicenseAcceptance {
 // The per-unit intent rows are deliberately NOT authored yet, and that is the correct
 // state rather than a deficiency. They need the two credential secret names, which do not
 // exist: no path from any workflow to Secret Manager has been established, and the
-// unit-to-slot mapping is itself unsettled. Reconstructing those names from a rendered
+// secrets themselves have not been created. Reconstructing those names from a rendered
 // host identity is precisely what the credential module forbids, so the constructor waits
 // for real values instead of accepting invented ones.
 fn spark_provisioning_intent(
