@@ -54,7 +54,13 @@ type WirelessAdapterStanding
   | WirelessAdapterAbsent
   | WirelessAdapterUnobserved
 
-type SignalStrength = Int
+// Wi-Fi signal strength is dBm: 10*log10(P / 1mW), a LOGARITHMIC ratio rather than a scaled
+// power. std.measure Scale admits only decimal multipliers (Atto..Tera, plus Sixty), so
+// Measure<Power, Milli, Int> would read -60 dBm as -60 milliwatts — a fabricated value wearing
+// a unit, not a conversion. The field name carries the unit until the carrier can.
+// feature:logarithmic-measure-scale
+// dissolve-on: std.measure grows a logarithmic scale family; SignalStrength becomes its alias.
+type SignalStrength { dbm: Int }
 
 type WirelessReachStanding
   = TargetSsidObserved {
@@ -148,11 +154,14 @@ fn wifi_relay_can_bootstrap(relay: WifiRelayProvision, wireless: WirelessAdapter
   }
 }
 
-fn wifi_target_needs_bootstrap(need: WifiBootstrapNeed) -> Bool {
+// Unobserved is Absent, not false — the same split as wireless_adapter_can_associate above.
+// Collapsing it made an unlooked-at target report "does not need bootstrap", which is the
+// empty-observation narrow: the remedy for unknown is to observe, for not-needed is to skip.
+fn wifi_target_needs_bootstrap(need: WifiBootstrapNeed) -> Bool? {
   match need {
-    BootstrapNeeded => true
-    BootstrapNotNeeded => false
-    BootstrapNeedUnobserved => false
+    BootstrapNeeded => Present { value: true }
+    BootstrapNotNeeded => Present { value: false }
+    BootstrapNeedUnobserved => Absent
   }
 }
 
@@ -240,7 +249,15 @@ fn wifi_bootstrap_step_admissible(
               Present { value: relay_ok } =>
                 if !relay_ok {
                   WifiBootstrapRefused { cause: "bootstrapper_not_provisioned" as NonEmptyStr }
-                } else if !wifi_target_needs_bootstrap(need: target.bootstrap_need) {
+                } else if match wifi_target_needs_bootstrap(need: target.bootstrap_need) {
+                  Absent => true
+                  Present { value: _ } => false
+                } {
+                  WifiBootstrapRefused { cause: "target_bootstrap_need_unobserved" as NonEmptyStr }
+                } else if match wifi_target_needs_bootstrap(need: target.bootstrap_need) {
+                  Absent => false
+                  Present { value: needs } => !needs
+                } {
                   WifiBootstrapRefused { cause: "target_does_not_need_bootstrap" as NonEmptyStr }
                 } else {
                   match wifi_probe_is_candidate(

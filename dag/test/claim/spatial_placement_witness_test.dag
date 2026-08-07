@@ -30,6 +30,9 @@ import product.placement_supply {
   site_contains_rack,
   same_rack,
   wireless_adapter_can_associate,
+  wifi_target_needs_bootstrap,
+  BootstrapNeeded,
+  BootstrapNeedUnobserved,
   wifi_relay_can_bootstrap,
   wifi_probe_is_candidate,
   wireless_reach_established,
@@ -144,6 +147,25 @@ test fn same_rack_unobserved_is_absent_not_false() -> Bool {
   match same_rack(a: RackResidenceUnobserved, b: seed_rack_a_residence) {
     Absent => true
     Present { value: _ } => false
+  }
+}
+
+// Three arms, discriminating: needed is Present(true), not-needed is Present(false), and
+// unobserved is Absent. The RED this pins is the collapse review 50391 found — mapping
+// BootstrapNeedUnobserved to false made an unlooked-at target report "does not need
+// bootstrap", so a witness asserting Present{value:false} on the third arm must fail.
+test fn bootstrap_need_discriminates_unobserved_from_not_needed() -> Bool {
+  match wifi_target_needs_bootstrap(need: BootstrapNeeded) {
+    Absent => false
+    Present { value: needed } =>
+      match wifi_target_needs_bootstrap(need: BootstrapNotNeeded) {
+        Absent => false
+        Present { value: not_needed } =>
+          match wifi_target_needs_bootstrap(need: BootstrapNeedUnobserved) {
+            Present { value: _ } => false
+            Absent => needed && !not_needed
+          }
+      }
   }
 }
 
