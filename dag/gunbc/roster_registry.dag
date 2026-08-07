@@ -282,11 +282,11 @@ data roster_registry: List<RosterRegistration> = [
     }
   },
   RosterRegistration {
-    roster: roster_decl(module_path: "v2.workflow.rust_crate_partition", decl_name: "stage0_partition_crate_rows"),
+    roster: roster_decl(module_path: "v2.workflow.rust_crate_partition", decl_name: "stage0_partition_crate_rows_outcome"),
     unit_kind: "stage0 seed module basename per partition crate",
     membership: DeclaredFrontier {
-      reason: "the hand-drawn stage0 crate split: per-crate module membership is hand-listed (stage0_std_primitive_modules and siblings) while the true relation is the module import closure — enrolled 2026-07-23 off two drift incidents this class caused silently (std_currency absent from std-core after #6977 added the measure→currency edge, so v1-stage0-std-core stopped building standalone; the partition allow-block lacked the monolith's recursion_limit so v1-stage0-extdeps-languages failed on serde json_internal). Nothing in CI builds the partition crate libs, so the drift had zero signal (sheet row ts-group-partition-drift)",
-      dissolve_on: "the emitted-crate-partition thread derives the crate layout ByDerivation from the module graph (docs/plans/emitted-crate-partition-design.md), at which point the hand lists delete; interim backstop = an executing per-crate cargo-check consumer in the CI build job"
+      reason: "C2 dissolved hand-listed per-crate module rosters — membership is now computed by stage0_derived_partition_outcome (order-independent owner fold over unit seeds plus stage0_cross_unit_import_edges) — but the edge census itself remains hand-enrolled beside source imports (§3 parallel representation; witnesses prove fold correctness on the enrolled graph, not edge↔import parity). Interim backstop: per-crate cargo-check consumer (#7925 C1)",
+      dissolve_on: "stage0_cross_unit_import_edges derives from the module import graph (not a hand edge list) AND stage0_partition_crate_rows_outcome is the sole crate-row authority — then promote this registration to ByDerivation"
     }
   },
   RosterRegistration {

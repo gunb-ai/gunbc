@@ -10,7 +10,7 @@ import std.graph {
 import std.disposition { RealizationDispatch }
 import std.types { List, String, Bool, Int, NonEmptyStr }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import v2.std.algebra { any, fold_list, length }
+import v2.std.algebra { any, fold_list, length, list_head, list_reverse, HeadAbsent, HeadFound }
 import v2.std.collection {
   empty_map,
   map_get,
@@ -55,6 +55,7 @@ type ExplicitPartition {
 
 type PartitionParameter
   = ExplicitPartitionParam { partition: ExplicitPartition }
+  | DerivedStage0PartitionParam
   | PolicyPartitionParam { policy: PartitionPolicy }
 
 type PolicyResolverUnimplemented {
@@ -63,6 +64,9 @@ type PolicyResolverUnimplemented {
 
 type ResolvePartitionRefusalCause
   = PolicyResolverUnimplemented { policy: PartitionPolicy }
+  | Stage0DerivedMembershipRefused {
+      cause: Stage0UnitMembershipFoldRefusalCause
+    }
 
 type ResolvePartitionOutcome
   = ResolvePartitionOk { assignment: Map<ModuleId, CompilationUnitId> }
@@ -78,6 +82,12 @@ type Stage0PartitionCrateKind
   | Stage0LayeredCoreCrate
   | Stage0EmitCoreCrate
 
+type Stage0PartitionCrateRowsOutcome
+  = Stage0PartitionCrateRowsOk { rows: List<Stage0PartitionCrateRow> }
+  | Stage0PartitionCrateRowsRefused {
+      cause: Stage0UnitMembershipFoldRefusalCause
+    }
+
 type Stage0PartitionCrateRow {
   unit_id: CompilationUnitId
   package_name: String
@@ -88,15 +98,99 @@ type Stage0PartitionCrateRow {
   carries_non_empty_wrappers: Bool
 }
 
+type ModuleDagForwardClosureRefusalCause
+  = ModuleDagForwardClosureNonConvergent { steps_budget: Int }
+
+type ModuleDagForwardClosureOutcome
+  = ModuleDagForwardClosureOk { closure: List<ModuleId> }
+  | ModuleDagForwardClosureRefused { cause: ModuleDagForwardClosureRefusalCause }
+
+type Stage0PartitionAssignmentCollisionCause {
+  module: ModuleId
+  reachers: List<CompilationUnitId>
+}
+
+type Stage0PartitionReachDisposition
+  = Stage0PartitionReachMember
+  | Stage0PartitionSharedDependencyThroughPackage {
+      module: ModuleId
+      owner_package: String
+    }
+  | Stage0PartitionUnroutedCrossUnitReach {
+      module: ModuleId
+      claimer: CompilationUnitId
+      owner: CompilationUnitId
+    }
+  | Stage0PartitionAssignmentConflict {
+      collision: Stage0PartitionAssignmentCollisionCause
+    }
+
+type Stage0UnitMembershipFoldOutcome
+  = Stage0UnitMembershipFoldOk {
+      members: List<ModuleId>
+      assignment: Map<ModuleId, CompilationUnitId>
+    }
+  | Stage0UnitMembershipFoldRefused {
+      cause: Stage0UnitMembershipFoldRefusalCause
+    }
+
+type Stage0UnitMembershipFoldRefusalCause
+  = Stage0UnitMembershipNonConvergent { steps_budget: Int }
+  | Stage0UnitMembershipReachRefused {
+      disposition: Stage0PartitionReachDisposition
+    }
+  | Stage0PartitionMissingRawReachPopulation {
+      unit_id: CompilationUnitId
+    }
+  | Stage0PartitionMissingAssignment {
+      module: ModuleId
+    }
+
+type Stage0UnitModuleReachDispositionRow {
+  module: ModuleId
+  disposition: Stage0PartitionReachDisposition
+}
+
+type Stage0DerivedPartitionOutcome
+  = Stage0DerivedPartitionOk {
+      assignment: Map<ModuleId, CompilationUnitId>
+      members_by_unit: Map<CompilationUnitId, List<ModuleId>>
+      reach_dispositions_by_unit: Map<CompilationUnitId, List<Stage0UnitModuleReachDispositionRow>>
+    }
+  | Stage0DerivedPartitionRefused {
+      cause: Stage0UnitMembershipFoldRefusalCause
+    }
+
+type Stage0UnitRawReachOutcome
+  = Stage0UnitRawReachOk { members: List<ModuleId> }
+  | Stage0UnitRawReachRefused {
+      cause: Stage0UnitMembershipFoldRefusalCause
+    }
+
+type Stage0ModuleOwnershipOutcome
+  = Stage0ModuleOwnershipOk { owner: CompilationUnitId }
+  | Stage0ModuleOwnershipConflict {
+      module: ModuleId
+      reachers: List<CompilationUnitId>
+    }
+
 data rust_crate_partition_note: String = "Rust R3 workflow realization of the shared CompilationUnit home (emitted-crate-partition-design.md §2/§13). resolve_partition_outcome is the sole entry for the assignment Map; partition_fold_outcome is the sole producer of interface + deps. Phase 0: HandExplicit provenance + ExplicitPartition interim ~8-crate layered grouping (dissolves to PolicyPartition when balanced crates≈cores policy lands)."
 
 data rust_crate_partition_dissolve_on: String = "dissolve-on: rust_crate_partition_interim_explicit — replace ExplicitPartition assignment with PolicyPartition { target_crate_count: declared_core_target } when balanced partition policy lands; provenance flips HandExplicit → PolicyDerived."
+
+data stage0_partition_membership_closure_note: String = "C2: per-crate module membership is DERIVED order-independently — each unit's raw_reach is computed in isolation, then a global owner rule assigns each module. SharedDependencyThroughPackage is the reach arm when a unit's raw closure touches a module owned elsewhere via a declared reexport package (Cargo dep — not same-crate membership). AssignmentConflict refuses genuine ambiguity. Convergence budget is |partition domain| — never a fixed step truncate."
+
+data stage0_partition_closure_collision_policy_note: String = "C2 collision policy is explicit: SharedDependencyThroughPackage | AssignmentConflict. Import-order and layer-order first-wins are forbidden — ownership is a global function of raw reaches plus declared package deps."
+
+data stage0_partition_map_lookup_refusal_note: String = "C2 issue-7: production partition folds refuse on every missing map population — absent raw-reach by unit, absent assignment for a module in raw reach, or absent reach-disposition row. Lookup-unavailable-then-keep-accumulator is forbidden; each omission is Stage0PartitionMissingRawReachPopulation or Stage0PartitionMissingAssignment, never a silently smaller answer."
+
+data stage0_partition_emit_core_exemption_note: String = "Emit-core is structurally outside the membership fold: stage0_unit_emit_core is excluded from stage0_module_bearing_unit_ids and partition_fold CompilationUnits. Stage0EmitCoreCrate is a reexport shell (stage0_r3_emit_shell_crate_row); its modules list is the declared public reexport surface (stage0_r3_emit_reexport_surface_modules), with totality enforced by stage0_partition_row_lookups_resolved — every listed basename must resolve to an owner in module-bearing rows. C3 emitted-reference oracle is sharp-cat-359; C2 does not run the owner fold on emit-core."
 
 data rust_crate_partition_declared_core_target: Int = 7
 
 data rust_crate_partition_module_bearing_unit_target: Int = 6
 
-data stage0_r3_emit_shell_note: String = "R3-only emit shell crate (reexport surface, NOT a partition_fold CompilationUnit): modules list is the reexport bundle for render at cutover; those modules remain owned by module-bearing units in stage0_interim_explicit_assignment. Physical crate count = module_bearing (6) + emit_shell (1) = declared_core_target (7)."
+data stage0_r3_emit_shell_note: String = "R3-only emit shell crate (reexport surface, NOT a partition_fold CompilationUnit): modules list is the reexport bundle for render at cutover; those modules remain owned by module-bearing units in stage0_derived_partition_outcome. Physical crate count = module_bearing (6) + emit_shell (1) = declared_core_target (7)."
 
 data stage0_unit_runtime: CompilationUnitId = "stage0-unit-runtime" as CompilationUnitId
 data stage0_unit_std_primitives: CompilationUnitId = "stage0-unit-std-primitives" as CompilationUnitId
@@ -107,6 +201,30 @@ data stage0_unit_v1_infer: CompilationUnitId = "stage0-unit-v1-infer" as Compila
 data stage0_unit_extdeps_languages: CompilationUnitId = "stage0-unit-extdeps-languages" as CompilationUnitId
 data stage0_unit_v1_artifact: CompilationUnitId = "stage0-unit-v1-artifact" as CompilationUnitId
 data stage0_unit_emit_core: CompilationUnitId = "stage0-unit-emit-core" as CompilationUnitId
+
+data stage0_planted_unit_low: CompilationUnitId = "stage0-planted-unit-low" as CompilationUnitId
+data stage0_planted_unit_high: CompilationUnitId = "stage0-planted-unit-high" as CompilationUnitId
+data stage0_planted_basename_l: String = "stage0_planted_mod_l"
+data stage0_planted_basename_h: String = "stage0_planted_mod_h"
+data stage0_planted_pkg_low: String = "stage0-planted-pkg-low"
+data stage0_planted_pkg_high: String = "stage0-planted-pkg-high"
+
+type Stage0PlantedPartitionVariant
+  = Stage0PlantedLowHighSharedDependency
+  | Stage0PlantedLowHighAssignmentConflict
+  | Stage0PlantedLowHighSeparated
+  | Stage0PlantedLowHighConvergenceChain
+  | Stage0PlantedThreeUnitUnroutedReach
+
+data stage0_planted_unit_mid: CompilationUnitId = "stage0-planted-unit-mid" as CompilationUnitId
+data stage0_planted_basename_m: String = "stage0_planted_mod_m"
+data stage0_planted_pkg_mid: String = "stage0-planted-pkg-mid"
+
+type Stage0PartitionDerivationContext
+  = Stage0PartitionDerivationContextEnrolled
+  | Stage0PartitionDerivationContextPlanted {
+      variant: Stage0PlantedPartitionVariant
+    }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: RealizationDispatch }
@@ -177,56 +295,71 @@ fn stage0_module_id(basename: String) -> ModuleId {
   basename as NonEmptyStr
 }
 
-fn stage0_runtime_modules() -> List<String> {
+fn stage0_module_id_list_contains(xs: List<ModuleId>, item: ModuleId) -> Bool {
+  any(xs: xs, predicate: fn(m) { m == item })
+}
+
+fn stage0_module_id_list_snoc_unique(xs: List<ModuleId>, item: ModuleId) -> List<ModuleId> {
+  if stage0_module_id_list_contains(xs: xs, item: item) {
+    xs
+  } else {
+    xs |> concat([item])
+  }
+}
+
+fn stage0_package_name_list_contains(xs: List<String>, package: String) -> Bool {
+  any(xs: xs, predicate: fn(p) { p == package })
+}
+
+fn stage0_package_name_for_unit(unit_id: CompilationUnitId) -> String {
+  if unit_id == stage0_unit_runtime {
+    "v1-stage0-runtime"
+  } else if unit_id == stage0_unit_std_core {
+    "v1-stage0-std-core"
+  } else if unit_id == stage0_unit_std_surface {
+    "v1-stage0-std-surface"
+  } else if unit_id == stage0_unit_extdeps_languages {
+    "v1-stage0-extdeps-languages"
+  } else if unit_id == stage0_unit_v1_infer {
+    "v1-stage0-v1-infer"
+  } else if unit_id == stage0_unit_v1_artifact {
+    "v1-stage0-v1-artifact"
+  } else if unit_id == stage0_unit_emit_core {
+    "v1-stage0-emit-core"
+  } else {
+    ""
+  }
+}
+
+fn stage0_unit_runtime_seed_basenames() -> List<String> {
   ["v1_rt"]
 }
 
-fn stage0_std_primitive_modules() -> List<String> {
+fn stage0_unit_std_core_seed_basenames() -> List<String> {
   [
     "std_content_hash",
     "std_coercion",
     "std_currency",
-    "std_decl_ref",
-    "std_keyed_row",
-    "std_keyed_roster",
-    "std_roster_frontier",
     "std_disposition",
-    "std_error_primitives",
-    "std_http_path",
     "std_emit_model",
+    "std_http_path",
     "std_magnitude",
     "std_measure",
-    "std_types",
-    "std_unicode_types",
-    "std_lens_verdict"
+    "std_lens_verdict",
+    "std_nat",
+    "std_syntax",
+    "std_iteration",
+    "std_graph",
+    "extdeps_external_authority",
+    "extdeps_container_oci_digest",
+    "extdeps_units_dimensionless",
+    "extdeps_units_iec_80000_13",
+    "extdeps_units_iso8601",
+    "v1_std_core"
   ]
 }
 
-fn stage0_std_core_modules() -> List<String> {
-  stage0_std_primitive_modules()
-    |> concat([
-      "std_algebra",
-      "std_nat",
-      "std_node",
-      "std_syntax",
-      "std_computation",
-      "std_termination",
-      "std_induction",
-      "std_iteration",
-      "std_graph",
-      "extdeps_uri",
-      "extdeps_external_authority",
-      "extdeps_container_oci_digest",
-      "extdeps_units_dimensionless",
-      "extdeps_units_iec_80000_13",
-      "extdeps_units_iso8601",
-      "std_occurrence_identity",
-      "std_source_annotation",
-      "v1_std_core"
-    ])
-}
-
-fn stage0_std_surface_modules() -> List<String> {
+fn stage0_unit_std_surface_seed_basenames() -> List<String> {
   [
     "std_effects",
     "std_execution_mode",
@@ -237,7 +370,7 @@ fn stage0_std_surface_modules() -> List<String> {
   ]
 }
 
-fn stage0_extdeps_language_modules() -> List<String> {
+fn stage0_unit_extdeps_languages_seed_basenames() -> List<String> {
   [
     "extdeps_languages_dag_emit",
     "extdeps_languages_dag_syntax",
@@ -254,11 +387,7 @@ fn stage0_extdeps_language_modules() -> List<String> {
   ]
 }
 
-fn stage0_extdeps_modules() -> List<String> {
-  stage0_extdeps_language_modules()
-}
-
-fn stage0_v1_infer_modules() -> List<String> {
+fn stage0_unit_v1_infer_seed_basenames() -> List<String> {
   [
     "v1_compiler_infer_emit_info",
     "v1_compiler_infer_env",
@@ -270,8 +399,1464 @@ fn stage0_v1_infer_modules() -> List<String> {
   ]
 }
 
-fn stage0_v1_artifact_modules() -> List<String> {
+fn stage0_unit_v1_artifact_seed_basenames() -> List<String> {
   ["v1_compiler_artifact", "v1_compiler_languages"]
+}
+
+fn stage0_unit_seed_basenames(unit_id: CompilationUnitId) -> List<String> {
+  if unit_id == stage0_unit_runtime {
+    stage0_unit_runtime_seed_basenames()
+  } else if unit_id == stage0_unit_std_core {
+    stage0_unit_std_core_seed_basenames()
+  } else if unit_id == stage0_unit_std_surface {
+    stage0_unit_std_surface_seed_basenames()
+  } else if unit_id == stage0_unit_extdeps_languages {
+    stage0_unit_extdeps_languages_seed_basenames()
+  } else if unit_id == stage0_unit_v1_infer {
+    stage0_unit_v1_infer_seed_basenames()
+  } else if unit_id == stage0_unit_v1_artifact {
+    stage0_unit_v1_artifact_seed_basenames()
+  } else {
+    []
+  }
+}
+
+fn stage0_unit_reexport_packages(unit_id: CompilationUnitId) -> List<String> {
+  if unit_id == stage0_unit_runtime {
+    []
+  } else if unit_id == stage0_unit_std_core {
+    ["v1-stage0-runtime"]
+  } else if unit_id == stage0_unit_std_surface {
+    ["v1-stage0-runtime", "v1-stage0-std-core"]
+  } else if unit_id == stage0_unit_extdeps_languages {
+    ["v1-stage0-runtime", "v1-stage0-std-core", "v1-stage0-std-surface"]
+  } else if unit_id == stage0_unit_v1_infer {
+    [
+      "v1-stage0-runtime",
+      "v1-stage0-std-core",
+      "v1-stage0-std-surface",
+      "v1-stage0-extdeps-languages"
+    ]
+  } else if unit_id == stage0_unit_v1_artifact {
+    [
+      "v1-stage0-runtime",
+      "v1-stage0-std-core",
+      "v1-stage0-std-surface",
+      "v1-stage0-extdeps-languages",
+      "v1-stage0-v1-infer"
+    ]
+  } else {
+    []
+  }
+}
+
+fn stage0_module_bearing_unit_ids() -> List<CompilationUnitId> {
+  [
+    stage0_unit_runtime,
+    stage0_unit_std_core,
+    stage0_unit_std_surface,
+    stage0_unit_extdeps_languages,
+    stage0_unit_v1_infer,
+    stage0_unit_v1_artifact
+  ]
+}
+
+fn stage0_planted_low_high_unit_ids() -> List<CompilationUnitId> {
+  [stage0_planted_unit_low, stage0_planted_unit_high]
+}
+
+fn stage0_planted_three_unit_ids() -> List<CompilationUnitId> {
+  [stage0_planted_unit_low, stage0_planted_unit_mid, stage0_planted_unit_high]
+}
+
+fn stage0_derivation_unit_ids(ctx: Stage0PartitionDerivationContext) -> List<CompilationUnitId> {
+  match ctx {
+    Stage0PartitionDerivationContextEnrolled => stage0_module_bearing_unit_ids()
+    Stage0PartitionDerivationContextPlanted { variant: variant } =>
+      match variant {
+        Stage0PlantedThreeUnitUnroutedReach => stage0_planted_three_unit_ids()
+        _ => stage0_planted_low_high_unit_ids()
+      }
+  }
+}
+
+fn stage0_derivation_package_name(
+  ctx: Stage0PartitionDerivationContext,
+  unit_id: CompilationUnitId
+) -> String {
+  match ctx {
+    Stage0PartitionDerivationContextEnrolled =>
+      stage0_package_name_for_unit(unit_id: unit_id)
+    Stage0PartitionDerivationContextPlanted { variant: variant } =>
+      if unit_id == stage0_planted_unit_low {
+        stage0_planted_pkg_low
+      } else if unit_id == stage0_planted_unit_mid {
+        stage0_planted_pkg_mid
+      } else if unit_id == stage0_planted_unit_high {
+        stage0_planted_pkg_high
+      } else {
+        ""
+      }
+  }
+}
+
+fn stage0_derivation_reexport_packages(
+  ctx: Stage0PartitionDerivationContext,
+  unit_id: CompilationUnitId
+) -> List<String> {
+  match ctx {
+    Stage0PartitionDerivationContextEnrolled =>
+      stage0_unit_reexport_packages(unit_id: unit_id)
+    Stage0PartitionDerivationContextPlanted { variant: variant } =>
+      if unit_id == stage0_planted_unit_high {
+        match variant {
+          Stage0PlantedLowHighSharedDependency => [stage0_planted_pkg_low]
+          Stage0PlantedLowHighAssignmentConflict => []
+          Stage0PlantedLowHighSeparated => [stage0_planted_pkg_low]
+          Stage0PlantedLowHighConvergenceChain => [stage0_planted_pkg_low]
+          Stage0PlantedThreeUnitUnroutedReach => [stage0_planted_pkg_low]
+        }
+      } else {
+        []
+      }
+  }
+}
+
+fn stage0_derivation_seed_basenames(
+  ctx: Stage0PartitionDerivationContext,
+  unit_id: CompilationUnitId
+) -> List<String> {
+  match ctx {
+    Stage0PartitionDerivationContextEnrolled =>
+      stage0_unit_seed_basenames(unit_id: unit_id)
+    Stage0PartitionDerivationContextPlanted { variant: variant } =>
+      if unit_id == stage0_planted_unit_low {
+        [stage0_planted_basename_l]
+      } else if unit_id == stage0_planted_unit_mid {
+        match variant {
+          Stage0PlantedThreeUnitUnroutedReach => [stage0_planted_basename_m]
+          _ => []
+        }
+      } else if unit_id == stage0_planted_unit_high {
+        [stage0_planted_basename_h]
+      } else {
+        []
+      }
+  }
+}
+
+fn stage0_planted_chain_basenames() -> List<String> {
+  [
+    "stage0_planted_chain_1",
+    "stage0_planted_chain_2",
+    "stage0_planted_chain_3",
+    "stage0_planted_chain_4",
+    "stage0_planted_chain_5"
+  ]
+}
+
+fn stage0_derivation_domain_basenames(ctx: Stage0PartitionDerivationContext) -> List<String> {
+  match ctx {
+    Stage0PartitionDerivationContextEnrolled => stage0_partition_domain_module_basenames()
+    Stage0PartitionDerivationContextPlanted { variant: variant } =>
+      match variant {
+        Stage0PlantedLowHighSharedDependency =>
+          [stage0_planted_basename_h, stage0_planted_basename_l]
+        Stage0PlantedLowHighAssignmentConflict =>
+          [stage0_planted_basename_h, stage0_planted_basename_l]
+        Stage0PlantedLowHighSeparated =>
+          [stage0_planted_basename_h, stage0_planted_basename_l]
+        Stage0PlantedLowHighConvergenceChain =>
+          [stage0_planted_basename_h]
+            |> concat(stage0_planted_chain_basenames())
+            |> concat([stage0_planted_basename_l])
+        Stage0PlantedThreeUnitUnroutedReach =>
+          [stage0_planted_basename_h, stage0_planted_basename_m, stage0_planted_basename_l]
+      }
+  }
+}
+
+fn stage0_derivation_edges(ctx: Stage0PartitionDerivationContext) -> List<ModuleDagEdge> {
+  match ctx {
+    Stage0PartitionDerivationContextEnrolled => stage0_cross_unit_import_edges()
+    Stage0PartitionDerivationContextPlanted { variant: variant } =>
+      match variant {
+        Stage0PlantedLowHighSharedDependency =>
+          [
+            stage0_module_dag_edge(
+              from: stage0_planted_basename_h,
+              to: stage0_planted_basename_l
+            )
+          ]
+        Stage0PlantedLowHighAssignmentConflict =>
+          [
+            stage0_module_dag_edge(
+              from: stage0_planted_basename_h,
+              to: stage0_planted_basename_l
+            )
+          ]
+        Stage0PlantedLowHighSeparated => []
+        Stage0PlantedLowHighConvergenceChain =>
+          [
+            stage0_module_dag_edge(
+              from: stage0_planted_basename_h,
+              to: "stage0_planted_chain_1"
+            ),
+            stage0_module_dag_edge(
+              from: "stage0_planted_chain_1",
+              to: "stage0_planted_chain_2"
+            ),
+            stage0_module_dag_edge(
+              from: "stage0_planted_chain_2",
+              to: "stage0_planted_chain_3"
+            ),
+            stage0_module_dag_edge(
+              from: "stage0_planted_chain_3",
+              to: "stage0_planted_chain_4"
+            ),
+            stage0_module_dag_edge(
+              from: "stage0_planted_chain_4",
+              to: "stage0_planted_chain_5"
+            ),
+            stage0_module_dag_edge(
+              from: "stage0_planted_chain_5",
+              to: stage0_planted_basename_l
+            )
+          ]
+        Stage0PlantedThreeUnitUnroutedReach =>
+          [
+            stage0_module_dag_edge(
+              from: stage0_planted_basename_h,
+              to: stage0_planted_basename_m
+            )
+          ]
+      }
+  }
+}
+
+fn stage0_derivation_closure_budget(ctx: Stage0PartitionDerivationContext) -> Int {
+  stage0_derivation_domain_basenames(ctx: ctx) |> count
+}
+
+fn stage0_derivation_unit_reexports_package(
+  ctx: Stage0PartitionDerivationContext,
+  claimer: CompilationUnitId,
+  owner: CompilationUnitId
+) -> Bool {
+  stage0_package_name_list_contains(
+    xs: stage0_derivation_reexport_packages(ctx: ctx, unit_id: claimer),
+    package: stage0_derivation_package_name(ctx: ctx, unit_id: owner)
+  )
+}
+
+data stage0_string_lists_equal_as_sets_note: String = "Duplicate-safe exact-set equality: both operands are normalized to unique membership via stage0_string_list_to_unique_set before comparison. A duplicate in one list cannot substitute for a missing element in the other — [a,a] vs [a,b] normalizes to singleton-a vs pair-a-b and reports unequal. Order after normalization is ignored; [a,b] vs [b,a] reports equal. Shared authority for partition baseline and member comparisons; import this symbol rather than reimplementing length-plus-membership."
+
+fn stage0_string_list_to_unique_set(xs: List<String>) -> List<String> {
+  fold_list(
+    xs: xs,
+    empty: Empty,
+    cons: fn(acc, item) { stage0_snoc_unique_string(xs: acc, item: item) }
+  )
+}
+
+fn stage0_module_id_list_to_unique_set(xs: List<ModuleId>) -> List<ModuleId> {
+  fold_list(
+    xs: xs,
+    empty: Empty,
+    cons: fn(acc, item) { stage0_module_id_list_snoc_unique(xs: acc, item: item) }
+  )
+}
+
+fn stage0_string_lists_equal_as_sets(
+  left: List<String>,
+  right: List<String>
+) -> Bool {
+  let left_norm = stage0_string_list_to_unique_set(xs: left)
+  let right_norm = stage0_string_list_to_unique_set(xs: right)
+  (left_norm |> count) == (right_norm |> count)
+    && left_norm
+      |> fold(init: true, f: fn(ok, item) {
+        ok && any(xs: right_norm, predicate: fn(s) { s == item })
+      })
+}
+
+fn stage0_snoc_unique_string(xs: List<String>, item: String) -> List<String> {
+  if any(xs: xs, predicate: fn(s) { s == item }) {
+    xs
+  } else {
+    xs |> concat([item])
+  }
+}
+
+fn stage0_partition_domain_module_basenames() -> List<String> {
+  let seed_basenames = stage0_unit_runtime_seed_basenames()
+    |> concat(stage0_unit_std_core_seed_basenames())
+    |> concat(stage0_unit_std_surface_seed_basenames())
+    |> concat(stage0_unit_extdeps_languages_seed_basenames())
+    |> concat(stage0_unit_v1_infer_seed_basenames())
+    |> concat(stage0_unit_v1_artifact_seed_basenames())
+  stage0_cross_unit_import_edges()
+    |> fold(init: seed_basenames, f: fn(acc, edge) {
+      stage0_snoc_unique_string(
+        xs: stage0_snoc_unique_string(xs: acc, item: edge.from as String),
+        item: edge.to as String
+      )
+    })
+}
+
+fn stage0_partition_closure_step_budget() -> Int {
+  stage0_partition_domain_module_basenames() |> count
+}
+
+fn stage0_compilation_unit_id_list_contains(
+  xs: List<CompilationUnitId>,
+  item: CompilationUnitId
+) -> Bool {
+  any(xs: xs, predicate: fn(unit_id) { unit_id == item })
+}
+
+fn stage0_compilation_unit_id_list_snoc_unique(
+  xs: List<CompilationUnitId>,
+  item: CompilationUnitId
+) -> List<CompilationUnitId> {
+  if stage0_compilation_unit_id_list_contains(xs: xs, item: item) {
+    xs
+  } else {
+    xs |> concat([item])
+  }
+}
+
+fn stage0_module_id_lists_equal_as_sets(
+  left: List<ModuleId>,
+  right: List<ModuleId>
+) -> Bool {
+  let left_norm = stage0_module_id_list_to_unique_set(xs: left)
+  let right_norm = stage0_module_id_list_to_unique_set(xs: right)
+  (left_norm |> count) == (right_norm |> count)
+    && left_norm
+      |> fold(init: true, f: fn(ok, member_module) {
+        ok && stage0_module_id_list_contains(xs: right_norm, item: member_module)
+      })
+}
+
+fn stage0_unit_raw_reach_extend_once(
+  members: List<ModuleId>,
+  edges: List<ModuleDagEdge>
+) -> List<ModuleId> {
+  fold_list(
+    xs: edges,
+    empty: members,
+    cons: fn(acc, edge) {
+      if !stage0_module_id_list_contains(xs: acc, item: edge.from)
+        || stage0_module_id_list_contains(xs: acc, item: edge.to) {
+        acc
+      } else {
+        stage0_module_id_list_snoc_unique(xs: acc, item: edge.to)
+      }
+    }
+  )
+}
+
+fn stage0_unit_raw_reach_fixpoint(
+  members: List<ModuleId>,
+  edges: List<ModuleDagEdge>,
+  remaining_steps: Int
+) -> Stage0UnitRawReachOutcome {
+  let next_members = stage0_unit_raw_reach_extend_once(members: members, edges: edges)
+  if (next_members |> count) == (members |> count) {
+    Stage0UnitRawReachOk { members: next_members }
+  } else if remaining_steps == 0 {
+    Stage0UnitRawReachRefused {
+      cause: Stage0UnitMembershipNonConvergent {
+        steps_budget: stage0_partition_closure_step_budget()
+      }
+    }
+  } else {
+    stage0_unit_raw_reach_fixpoint(
+      members: next_members,
+      edges: edges,
+      remaining_steps: remaining_steps - 1
+    )
+  }
+}
+
+fn stage0_unit_raw_reach_outcome(
+  unit_id: CompilationUnitId,
+  edges: List<ModuleDagEdge>,
+  ctx: Stage0PartitionDerivationContext
+) -> Stage0UnitRawReachOutcome {
+  let seeds = stage0_derivation_seed_basenames(ctx: ctx, unit_id: unit_id)
+    |> map(basename => stage0_module_id(basename: basename))
+  stage0_unit_raw_reach_fixpoint(
+    members: seeds,
+    edges: edges,
+    remaining_steps: stage0_derivation_closure_budget(ctx: ctx)
+  )
+}
+
+fn stage0_unit_raw_reach_outcome_enrolled(
+  unit_id: CompilationUnitId,
+  edges: List<ModuleDagEdge>
+) -> Stage0UnitRawReachOutcome {
+  stage0_unit_raw_reach_outcome(
+    unit_id: unit_id,
+    edges: edges,
+    ctx: Stage0PartitionDerivationContextEnrolled
+  )
+}
+
+type Stage0UnitIdsReachingModuleOutcome
+  = Stage0UnitIdsReachingModuleOk { reachers: List<CompilationUnitId> }
+  | Stage0UnitIdsReachingModuleRefused {
+      cause: Stage0UnitMembershipFoldRefusalCause
+    }
+
+type Stage0OwnedMembersFromRawReachOutcome
+  = Stage0OwnedMembersFromRawReachOk { members: List<ModuleId> }
+  | Stage0OwnedMembersFromRawReachRefused {
+      cause: Stage0UnitMembershipFoldRefusalCause
+    }
+
+type Stage0UnitReachDispositionsOutcome
+  = Stage0UnitReachDispositionsOk {
+      rows: List<Stage0UnitModuleReachDispositionRow>
+    }
+  | Stage0UnitReachDispositionsRefused {
+      cause: Stage0UnitMembershipFoldRefusalCause
+    }
+
+fn stage0_unit_ids_reaching_module_from_raw_reach_outcome(
+  module: ModuleId,
+  unit_ids: List<CompilationUnitId>,
+  raw_members_by_unit: Map<CompilationUnitId, List<ModuleId>>
+) -> Stage0UnitIdsReachingModuleOutcome {
+  fold_list(
+    xs: unit_ids,
+    empty: Stage0UnitIdsReachingModuleOk { reachers: [] },
+    cons: fn(acc, unit_id) {
+      match acc {
+        Stage0UnitIdsReachingModuleRefused { cause: _ } => acc
+        Stage0UnitIdsReachingModuleOk { reachers: reachers } =>
+          match map_get(raw_members_by_unit, unit_id) {
+            Accepted { value: Present { value: members }, diagnostics: _ } =>
+              if stage0_module_id_list_contains(xs: members, item: module) {
+                Stage0UnitIdsReachingModuleOk {
+                  reachers: stage0_compilation_unit_id_list_snoc_unique(
+                    xs: reachers,
+                    item: unit_id
+                  )
+                }
+              } else {
+                Stage0UnitIdsReachingModuleOk { reachers: reachers }
+              }
+            Accepted { value: Absent, diagnostics: _ } =>
+              Stage0UnitIdsReachingModuleRefused {
+                cause: Stage0PartitionMissingRawReachPopulation { unit_id: unit_id }
+              }
+            Rejected { diagnostics: _ } =>
+              Stage0UnitIdsReachingModuleRefused {
+                cause: Stage0PartitionMissingRawReachPopulation { unit_id: unit_id }
+              }
+          }
+      }
+    }
+  )
+}
+
+fn stage0_collect_raw_members_by_unit(
+  unit_ids: List<CompilationUnitId>,
+  edges: List<ModuleDagEdge>,
+  ctx: Stage0PartitionDerivationContext
+) -> Stage0DerivedPartitionOutcome {
+  fold_list(
+    xs: unit_ids,
+    empty: Stage0DerivedPartitionOk {
+      assignment: empty_map(),
+      members_by_unit: empty_map(),
+      reach_dispositions_by_unit: empty_map()
+    },
+    cons: fn(acc, unit_id) {
+      match acc {
+        Stage0DerivedPartitionRefused { cause: _ } => acc
+        Stage0DerivedPartitionOk { assignment: _, members_by_unit: raw_members_by_unit, reach_dispositions_by_unit: _ } =>
+          match stage0_unit_raw_reach_outcome(
+            unit_id: unit_id,
+            edges: edges,
+            ctx: ctx
+          ) {
+            Stage0UnitRawReachRefused { cause: cause } =>
+              Stage0DerivedPartitionRefused { cause: cause }
+            Stage0UnitRawReachOk { members: members } =>
+              Stage0DerivedPartitionOk {
+                assignment: empty_map(),
+                members_by_unit: map_insert(raw_members_by_unit, unit_id, members),
+                reach_dispositions_by_unit: empty_map()
+              }
+          }
+      }
+    }
+  )
+}
+
+fn stage0_reach_disposition_for_unit_module(
+  ctx: Stage0PartitionDerivationContext,
+  unit_id: CompilationUnitId,
+  module: ModuleId,
+  owner: CompilationUnitId
+) -> Stage0PartitionReachDisposition {
+  if owner == unit_id {
+    Stage0PartitionReachMember
+  } else if stage0_derivation_unit_reexports_package(
+    ctx: ctx,
+    claimer: unit_id,
+    owner: owner
+  ) {
+    Stage0PartitionSharedDependencyThroughPackage {
+      module: module,
+      owner_package: stage0_derivation_package_name(ctx: ctx, unit_id: owner)
+    }
+  } else {
+    Stage0PartitionUnroutedCrossUnitReach {
+      module: module,
+      claimer: unit_id,
+      owner: owner
+    }
+  }
+}
+
+type Stage0UnroutedReachScanOutcome
+  = Stage0UnroutedReachAbsent
+  | Stage0UnroutedReachFound {
+      cause: Stage0UnitMembershipFoldRefusalCause
+    }
+
+fn stage0_scan_rows_for_unrouted_refusal(
+  rows: List<Stage0UnitModuleReachDispositionRow>
+) -> Stage0UnroutedReachScanOutcome {
+  fold_list(
+    xs: rows,
+    empty: Stage0UnroutedReachAbsent,
+    cons: fn(acc, row) {
+      match acc {
+        Stage0UnroutedReachFound { cause: _ } => acc
+        Stage0UnroutedReachAbsent =>
+          match row.disposition {
+            Stage0PartitionUnroutedCrossUnitReach {
+              module: module,
+              claimer: claimer,
+              owner: owner
+            } =>
+              Stage0UnroutedReachFound {
+                cause: Stage0UnitMembershipReachRefused {
+                  disposition: Stage0PartitionUnroutedCrossUnitReach {
+                    module: module,
+                    claimer: claimer,
+                    owner: owner
+                  }
+                }
+              }
+            _ => Stage0UnroutedReachAbsent
+          }
+      }
+    }
+  )
+}
+
+fn stage0_owned_members_from_raw_reach_outcome(
+  unit_id: CompilationUnitId,
+  raw_members: List<ModuleId>,
+  assignment: Map<ModuleId, CompilationUnitId>
+) -> Stage0OwnedMembersFromRawReachOutcome {
+  fold_list(
+    xs: raw_members,
+    empty: Stage0OwnedMembersFromRawReachOk { members: [] },
+    cons: fn(acc, member) {
+      match acc {
+        Stage0OwnedMembersFromRawReachRefused { cause: _ } => acc
+        Stage0OwnedMembersFromRawReachOk { members: members } =>
+          match map_get(assignment, member) {
+            Accepted { value: Present { value: owner }, diagnostics: _ } =>
+              if owner == unit_id {
+                Stage0OwnedMembersFromRawReachOk {
+                  members: stage0_module_id_list_snoc_unique(xs: members, item: member)
+                }
+              } else {
+                Stage0OwnedMembersFromRawReachOk { members: members }
+              }
+            Accepted { value: Absent, diagnostics: _ } =>
+              Stage0OwnedMembersFromRawReachRefused {
+                cause: Stage0PartitionMissingAssignment { module: member }
+              }
+            Rejected { diagnostics: _ } =>
+              Stage0OwnedMembersFromRawReachRefused {
+                cause: Stage0PartitionMissingAssignment { module: member }
+              }
+          }
+      }
+    }
+  )
+}
+
+fn stage0_build_unit_reach_dispositions_outcome(
+  ctx: Stage0PartitionDerivationContext,
+  unit_id: CompilationUnitId,
+  raw_members: List<ModuleId>,
+  assignment: Map<ModuleId, CompilationUnitId>
+) -> Stage0UnitReachDispositionsOutcome {
+  fold_list(
+    xs: raw_members,
+    empty: Stage0UnitReachDispositionsOk { rows: [] },
+    cons: fn(acc, member) {
+      match acc {
+        Stage0UnitReachDispositionsRefused { cause: _ } => acc
+        Stage0UnitReachDispositionsOk { rows: rows } =>
+          match map_get(assignment, member) {
+            Accepted { value: Present { value: owner }, diagnostics: _ } =>
+              Stage0UnitReachDispositionsOk {
+                rows: rows
+                  |> concat([
+                    Stage0UnitModuleReachDispositionRow {
+                      module: member,
+                      disposition: stage0_reach_disposition_for_unit_module(
+                        ctx: ctx,
+                        unit_id: unit_id,
+                        module: member,
+                        owner: owner
+                      )
+                    }
+                  ])
+              }
+            Accepted { value: Absent, diagnostics: _ } =>
+              Stage0UnitReachDispositionsRefused {
+                cause: Stage0PartitionMissingAssignment { module: member }
+              }
+            Rejected { diagnostics: _ } =>
+              Stage0UnitReachDispositionsRefused {
+                cause: Stage0PartitionMissingAssignment { module: member }
+              }
+          }
+      }
+    }
+  )
+}
+
+fn stage0_derived_partition_assign_module(
+  ctx: Stage0PartitionDerivationContext,
+  assignment: Map<ModuleId, CompilationUnitId>,
+  member_module: ModuleId,
+  unit_ids: List<CompilationUnitId>,
+  raw_members_by_unit: Map<CompilationUnitId, List<ModuleId>>
+) -> Stage0DerivedPartitionOutcome {
+  match stage0_unit_ids_reaching_module_from_raw_reach_outcome(
+    module: member_module,
+    unit_ids: unit_ids,
+    raw_members_by_unit: raw_members_by_unit
+  ) {
+    Stage0UnitIdsReachingModuleRefused { cause: cause } =>
+      Stage0DerivedPartitionRefused { cause: cause }
+    Stage0UnitIdsReachingModuleOk { reachers: reachers } =>
+      match stage0_module_owner_from_reachers(
+        ctx: ctx,
+        module: member_module,
+        reachers: reachers
+      ) {
+        Stage0ModuleOwnershipConflict { module: _, reachers: conflict_reachers } =>
+          Stage0DerivedPartitionRefused {
+            cause: Stage0UnitMembershipReachRefused {
+              disposition: Stage0PartitionAssignmentConflict {
+                collision: Stage0PartitionAssignmentCollisionCause {
+                  module: member_module,
+                  reachers: conflict_reachers
+                }
+              }
+            }
+          }
+        Stage0ModuleOwnershipOk { owner: owner } =>
+          Stage0DerivedPartitionOk {
+            assignment: map_insert(assignment, member_module, owner),
+            members_by_unit: empty_map(),
+            reach_dispositions_by_unit: empty_map()
+          }
+      }
+  }
+}
+
+fn stage0_derived_partition_build_assignment(
+  ctx: Stage0PartitionDerivationContext,
+  unit_ids: List<CompilationUnitId>,
+  domain_modules: List<ModuleId>,
+  raw_members_by_unit: Map<CompilationUnitId, List<ModuleId>>
+) -> Stage0DerivedPartitionOutcome {
+  fold_list(
+    xs: domain_modules,
+    empty: Stage0DerivedPartitionOk {
+      assignment: empty_map(),
+      members_by_unit: empty_map(),
+      reach_dispositions_by_unit: empty_map()
+    },
+    cons: fn(acc, member_module) {
+      match acc {
+        Stage0DerivedPartitionRefused { cause: _ } => acc
+        Stage0DerivedPartitionOk { assignment: assignment, members_by_unit: _, reach_dispositions_by_unit: _ } =>
+          stage0_derived_partition_assign_module(
+            ctx: ctx,
+            assignment: assignment,
+            member_module: member_module,
+            unit_ids: unit_ids,
+            raw_members_by_unit: raw_members_by_unit
+          )
+      }
+    }
+  )
+}
+
+fn stage0_derived_partition_build_result(
+  ctx: Stage0PartitionDerivationContext,
+  assignment: Map<ModuleId, CompilationUnitId>,
+  unit_ids: List<CompilationUnitId>,
+  raw_members_by_unit: Map<CompilationUnitId, List<ModuleId>>
+) -> Stage0DerivedPartitionOutcome {
+  fold_list(
+    xs: unit_ids,
+    empty: Stage0DerivedPartitionOk {
+      assignment: assignment,
+      members_by_unit: empty_map(),
+      reach_dispositions_by_unit: empty_map()
+    },
+    cons: fn(acc, unit_id) {
+      match acc {
+        Stage0DerivedPartitionRefused { cause: _ } => acc
+        Stage0DerivedPartitionOk { assignment: kept_assignment, members_by_unit: members_by_unit, reach_dispositions_by_unit: reach_dispositions_by_unit } =>
+          match map_get(raw_members_by_unit, unit_id) {
+            Accepted { value: Present { value: raw_members }, diagnostics: _ } =>
+              match stage0_build_unit_reach_dispositions_outcome(
+                ctx: ctx,
+                unit_id: unit_id,
+                raw_members: raw_members,
+                assignment: kept_assignment
+              ) {
+                Stage0UnitReachDispositionsRefused { cause: cause } =>
+                  Stage0DerivedPartitionRefused { cause: cause }
+                Stage0UnitReachDispositionsOk { rows: disposition_rows } =>
+                  match stage0_scan_rows_for_unrouted_refusal(rows: disposition_rows) {
+                    Stage0UnroutedReachFound { cause: cause } =>
+                      Stage0DerivedPartitionRefused { cause: cause }
+                    Stage0UnroutedReachAbsent =>
+                      match stage0_owned_members_from_raw_reach_outcome(
+                        unit_id: unit_id,
+                        raw_members: raw_members,
+                        assignment: kept_assignment
+                      ) {
+                        Stage0OwnedMembersFromRawReachRefused { cause: cause } =>
+                          Stage0DerivedPartitionRefused { cause: cause }
+                        Stage0OwnedMembersFromRawReachOk { members: owned_members } =>
+                          Stage0DerivedPartitionOk {
+                            assignment: kept_assignment,
+                            members_by_unit: map_insert(
+                              members_by_unit,
+                              unit_id,
+                              owned_members
+                            ),
+                            reach_dispositions_by_unit: map_insert(
+                              reach_dispositions_by_unit,
+                              unit_id,
+                              disposition_rows
+                            )
+                          }
+                      }
+                  }
+              }
+            Accepted { value: Absent, diagnostics: _ } =>
+              Stage0DerivedPartitionRefused {
+                cause: Stage0PartitionMissingRawReachPopulation { unit_id: unit_id }
+              }
+            Rejected { diagnostics: _ } =>
+              Stage0DerivedPartitionRefused {
+                cause: Stage0PartitionMissingRawReachPopulation { unit_id: unit_id }
+              }
+          }
+      }
+    }
+  )
+}
+
+fn stage0_derived_partition_outcome_for_context(
+  ctx: Stage0PartitionDerivationContext,
+  unit_ids: List<CompilationUnitId>
+) -> Stage0DerivedPartitionOutcome {
+  let edges = stage0_derivation_edges(ctx: ctx)
+  let domain_modules = stage0_derivation_domain_basenames(ctx: ctx)
+    |> map(basename => stage0_module_id(basename: basename))
+  match stage0_collect_raw_members_by_unit(
+    unit_ids: unit_ids,
+    edges: edges,
+    ctx: ctx
+  ) {
+    Stage0DerivedPartitionRefused { cause: cause } =>
+      Stage0DerivedPartitionRefused { cause: cause }
+    Stage0DerivedPartitionOk { assignment: _, members_by_unit: raw_members_by_unit, reach_dispositions_by_unit: _ } =>
+      match stage0_derived_partition_build_assignment(
+        ctx: ctx,
+        unit_ids: unit_ids,
+        domain_modules: domain_modules,
+        raw_members_by_unit: raw_members_by_unit
+      ) {
+        Stage0DerivedPartitionRefused { cause: cause } =>
+          Stage0DerivedPartitionRefused { cause: cause }
+        Stage0DerivedPartitionOk { assignment: assignment, members_by_unit: _, reach_dispositions_by_unit: _ } =>
+          stage0_derived_partition_build_result(
+            ctx: ctx,
+            assignment: assignment,
+            unit_ids: unit_ids,
+            raw_members_by_unit: raw_members_by_unit
+          )
+      }
+  }
+}
+
+fn stage0_derived_partition_outcome_for_unit_order(
+  unit_ids: List<CompilationUnitId>
+) -> Stage0DerivedPartitionOutcome {
+  stage0_derived_partition_outcome_for_context(
+    ctx: Stage0PartitionDerivationContextEnrolled,
+    unit_ids: unit_ids
+  )
+}
+
+fn stage0_module_owner_candidate_valid(
+  ctx: Stage0PartitionDerivationContext,
+  candidate: CompilationUnitId,
+  reachers: List<CompilationUnitId>
+) -> Bool {
+  reachers
+    |> fold(init: true, f: fn(ok, other) {
+      if other == candidate {
+        ok
+      } else {
+        ok
+          && !stage0_derivation_unit_reexports_package(
+            ctx: ctx,
+            claimer: candidate,
+            owner: other
+          )
+      }
+    })
+}
+
+fn stage0_module_owner_from_reachers(
+  ctx: Stage0PartitionDerivationContext,
+  module: ModuleId,
+  reachers: List<CompilationUnitId>
+) -> Stage0ModuleOwnershipOutcome {
+  let reacher_count = reachers |> count
+  if reacher_count == 0 {
+    Stage0ModuleOwnershipConflict { module: module, reachers: [] }
+  } else if reacher_count == 1 {
+    match list_head(xs: reachers) {
+      HeadAbsent =>
+        Stage0ModuleOwnershipConflict { module: module, reachers: reachers }
+      HeadFound { value: owner } =>
+        Stage0ModuleOwnershipOk { owner: owner }
+    }
+  } else {
+    let owner_candidates = reachers
+      |> fold(init: [], f: fn(acc, candidate) {
+        if stage0_module_owner_candidate_valid(
+          ctx: ctx,
+          candidate: candidate,
+          reachers: reachers
+        ) {
+          stage0_compilation_unit_id_list_snoc_unique(xs: acc, item: candidate)
+        } else {
+          acc
+        }
+      })
+    match owner_candidates |> count {
+      1 =>
+        match list_head(xs: owner_candidates) {
+          HeadAbsent =>
+            Stage0ModuleOwnershipConflict { module: module, reachers: reachers }
+          HeadFound { value: owner } =>
+            Stage0ModuleOwnershipOk { owner: owner }
+        }
+      _ => Stage0ModuleOwnershipConflict { module: module, reachers: reachers }
+    }
+  }
+}
+
+fn stage0_modules_owned_by_unit(
+  assignment: Map<ModuleId, CompilationUnitId>,
+  unit_id: CompilationUnitId,
+  domain_modules: List<ModuleId>
+) -> List<ModuleId> {
+  domain_modules
+    |> fold(init: [], f: fn(acc, member_module) {
+      match map_get(assignment, member_module) {
+        Accepted { value: owner_opt, diagnostics: _ } =>
+          match owner_opt {
+            Present { value: owner } =>
+              if owner == unit_id {
+                stage0_module_id_list_snoc_unique(xs: acc, item: member_module)
+              } else {
+                acc
+              }
+            Absent => acc
+          }
+        Rejected { diagnostics: _ } => acc
+      }
+    })
+}
+
+fn stage0_members_by_unit_lists_equal_for_unit(
+  left: Map<CompilationUnitId, List<ModuleId>>,
+  right: Map<CompilationUnitId, List<ModuleId>>,
+  unit_id: CompilationUnitId
+) -> Bool {
+  match map_get(left, unit_id) {
+    Accepted { value: left_opt, diagnostics: _ } =>
+      match map_get(right, unit_id) {
+        Accepted { value: right_opt, diagnostics: _ } =>
+          match left_opt {
+            Present { value: left_members } =>
+              match right_opt {
+                Present { value: right_members } =>
+                  stage0_module_id_lists_equal_as_sets(
+                    left: left_members,
+                    right: right_members
+                  )
+                Absent => false
+              }
+            Absent =>
+              match right_opt {
+                Absent => true
+                Present { value: _ } => false
+              }
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn stage0_members_by_unit_equal(
+  left: Map<CompilationUnitId, List<ModuleId>>,
+  right: Map<CompilationUnitId, List<ModuleId>>,
+  unit_ids: List<CompilationUnitId>
+) -> Bool {
+  unit_ids
+    |> fold(init: true, f: fn(ok, unit_id) {
+      ok
+        && stage0_members_by_unit_lists_equal_for_unit(
+          left: left,
+          right: right,
+          unit_id: unit_id
+        )
+    })
+}
+
+fn stage0_derived_partition_outcome() -> Stage0DerivedPartitionOutcome {
+  stage0_derived_partition_outcome_for_unit_order(
+    unit_ids: stage0_module_bearing_unit_ids()
+  )
+}
+
+fn stage0_derived_assignment_succeeds_on_enrolled_graph() -> Bool {
+  match stage0_derived_partition_outcome() {
+    Stage0DerivedPartitionOk { assignment: _, members_by_unit: _, reach_dispositions_by_unit: _ } => true
+    Stage0DerivedPartitionRefused { cause: _ } => false
+  }
+}
+
+fn stage0_module_id_list_to_basenames(modules: List<ModuleId>) -> List<String> {
+  modules
+    |> fold(init: [], f: fn(acc, member_id) {
+      acc |> concat([member_id as String])
+    })
+}
+
+fn stage0_module_id_list_to_canonical_basenames(modules: List<ModuleId>) -> List<String> {
+  stage0_module_id_list_to_basenames(modules: modules)
+    |> sort_by(basename => basename)
+}
+
+fn stage0_derived_unit_member_basenames_from_members(
+  members_by_unit: Map<CompilationUnitId, List<ModuleId>>,
+  unit_id: CompilationUnitId
+) -> List<String> {
+  match map_get(members_by_unit, unit_id) {
+    Accepted { value: members_opt, diagnostics: _ } =>
+      match members_opt {
+        Present { value: members } =>
+          stage0_module_id_list_to_canonical_basenames(modules: members)
+        Absent => []
+      }
+    Rejected { diagnostics: _ } => []
+  }
+}
+
+fn stage0_interim_explicit_assignment_outcome() -> ResolvePartitionOutcome {
+  match stage0_derived_partition_outcome() {
+    Stage0DerivedPartitionRefused { cause: cause } =>
+      ResolvePartitionRefused {
+        cause: Stage0DerivedMembershipRefused { cause: cause }
+      }
+    Stage0DerivedPartitionOk { assignment: assignment, members_by_unit: _, reach_dispositions_by_unit: _ } =>
+      ResolvePartitionOk { assignment: assignment }
+  }
+}
+
+data stage0_partition_derived_membership_production_refusal_note: String = "Production partition membership is obtained only through outcome-shaped surfaces: stage0_derived_partition_outcome, stage0_partition_crate_rows_outcome, stage0_interim_explicit_assignment_outcome, and stage0_partition_receipt_outcome. stage0_partition_receipt_outcome and stage0_partition_r4_valid resolve through stage0_interim_explicit_assignment_outcome — not through an ExplicitPartition carrying assignment. Collapsing list/map projections of Stage0DerivedPartitionRefused are deleted from this carrier."
+
+fn stage0_string_set_equality_duplicate_substitution_refuses_holds() -> Bool {
+  !stage0_string_lists_equal_as_sets(left: ["a", "a"], right: ["a", "b"])
+}
+
+fn stage0_string_set_equality_order_independent_holds() -> Bool {
+  stage0_string_lists_equal_as_sets(left: ["a", "b"], right: ["b", "a"])
+}
+
+fn stage0_string_set_equality_identical_holds() -> Bool {
+  stage0_string_lists_equal_as_sets(left: ["a", "b"], right: ["a", "b"])
+}
+
+fn stage0_partition_missing_assignment_population_refuses_holds() -> Bool {
+  let missing_module = stage0_module_id(basename: "stage0_partition_missing_assignment_probe")
+  match stage0_owned_members_from_raw_reach_outcome(
+    unit_id: stage0_unit_runtime,
+    raw_members: [missing_module],
+    assignment: empty_map()
+  ) {
+    Stage0OwnedMembersFromRawReachRefused {
+      cause: Stage0PartitionMissingAssignment { module: module }
+    } => module == missing_module
+    _ => false
+  }
+}
+
+fn stage0_partition_missing_raw_reach_population_refuses_holds() -> Bool {
+  let probe_module = stage0_module_id(basename: "stage0_partition_missing_raw_reach_probe")
+  match stage0_unit_ids_reaching_module_from_raw_reach_outcome(
+    module: probe_module,
+    unit_ids: [stage0_unit_runtime],
+    raw_members_by_unit: empty_map()
+  ) {
+    Stage0UnitIdsReachingModuleRefused {
+      cause: Stage0PartitionMissingRawReachPopulation { unit_id: unit_id }
+    } => unit_id == stage0_unit_runtime
+    _ => false
+  }
+}
+
+fn stage0_partition_membership_closure_covers_seeds() -> Bool {
+  match stage0_derived_partition_outcome() {
+    Stage0DerivedPartitionOk { assignment: _, members_by_unit: members_by_unit, reach_dispositions_by_unit: _ } =>
+      stage0_module_bearing_unit_ids()
+        |> fold(init: true, f: fn(ok, unit_id) {
+          let seeds = stage0_unit_seed_basenames(unit_id: unit_id)
+            |> map(basename => stage0_module_id(basename: basename))
+          match map_get(members_by_unit, unit_id) {
+            Accepted { value: members_opt, diagnostics: _ } =>
+              match members_opt {
+                Present { value: members } =>
+                  ok && seeds
+                    |> fold(init: true, f: fn(seed_ok, seed) {
+                      seed_ok && stage0_module_id_list_contains(xs: members, item: seed)
+                    })
+                Absent => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
+        })
+    Stage0DerivedPartitionRefused { cause: _ } => false
+  }
+}
+
+fn stage0_partition_membership_order_independence() -> Bool {
+  let unit_ids = stage0_module_bearing_unit_ids()
+  let forward = stage0_derived_partition_outcome_for_unit_order(unit_ids: unit_ids)
+  let reversed = stage0_derived_partition_outcome_for_unit_order(
+    unit_ids: list_reverse(xs: unit_ids)
+  )
+  match forward {
+    Stage0DerivedPartitionOk { assignment: _, members_by_unit: forward_members, reach_dispositions_by_unit: _ } =>
+      match reversed {
+        Stage0DerivedPartitionOk { assignment: _, members_by_unit: reversed_members, reach_dispositions_by_unit: _ } =>
+          stage0_members_by_unit_equal(
+            left: forward_members,
+            right: reversed_members,
+            unit_ids: unit_ids
+          )
+        Stage0DerivedPartitionRefused { cause: _ } => false
+      }
+    Stage0DerivedPartitionRefused { cause: _ } => false
+  }
+}
+
+fn stage0_planted_partition_outcome(
+  variant: Stage0PlantedPartitionVariant
+) -> Stage0DerivedPartitionOutcome {
+  stage0_derived_partition_outcome_for_context(
+    ctx: Stage0PartitionDerivationContextPlanted { variant: variant },
+    unit_ids: stage0_planted_low_high_unit_ids()
+  )
+}
+
+fn stage0_reach_disposition_rows_contain_shared_dependency(
+  rows: List<Stage0UnitModuleReachDispositionRow>,
+  module: ModuleId
+) -> Bool {
+  fold_list(
+    xs: rows,
+    empty: false,
+    cons: fn(found, row) {
+      found
+        || (row.module == module
+          && match row.disposition {
+            Stage0PartitionSharedDependencyThroughPackage { module: _, owner_package: _ } => true
+            _ => false
+          })
+    }
+  )
+}
+
+fn stage0_unit_has_shared_dependency_disposition(
+  outcome: Stage0DerivedPartitionOutcome,
+  unit_id: CompilationUnitId,
+  module: ModuleId
+) -> Bool {
+  match outcome {
+    Stage0DerivedPartitionRefused { cause: _ } => false
+    Stage0DerivedPartitionOk { assignment: _, members_by_unit: _, reach_dispositions_by_unit: reach_dispositions_by_unit } =>
+      match map_get(reach_dispositions_by_unit, unit_id) {
+        Accepted { value: Present { value: rows }, diagnostics: _ } =>
+          stage0_reach_disposition_rows_contain_shared_dependency(
+            rows: rows,
+            module: module
+          )
+        _ => false
+      }
+  }
+}
+
+fn stage0_planted_shared_dependency_fixture_holds() -> Bool {
+  let l = stage0_module_id(basename: stage0_planted_basename_l)
+  match stage0_planted_partition_outcome(
+    variant: Stage0PlantedLowHighSharedDependency
+  ) {
+    Stage0DerivedPartitionRefused { cause: _ } => false
+    Stage0DerivedPartitionOk { assignment: assignment, members_by_unit: members_by_unit, reach_dispositions_by_unit: _ } =>
+      match map_get(assignment, l) {
+        Accepted { value: Present { value: owner }, diagnostics: _ } =>
+          owner == stage0_planted_unit_low
+            && match map_get(members_by_unit, stage0_planted_unit_high) {
+              Accepted { value: Present { value: high_raw }, diagnostics: _ } =>
+                match stage0_owned_members_from_raw_reach_outcome(
+                  unit_id: stage0_planted_unit_high,
+                  raw_members: high_raw,
+                  assignment: assignment
+                ) {
+                  Stage0OwnedMembersFromRawReachOk { members: owned_members } =>
+                    !stage0_module_id_list_contains(xs: owned_members, item: l)
+                  Stage0OwnedMembersFromRawReachRefused { cause: _ } => false
+                }
+              _ => false
+            }
+            && stage0_unit_has_shared_dependency_disposition(
+              outcome: stage0_planted_partition_outcome(
+                variant: Stage0PlantedLowHighSharedDependency
+              ),
+              unit_id: stage0_planted_unit_high,
+              module: l
+            )
+        _ => false
+      }
+  }
+}
+
+fn stage0_planted_order_independence_holds() -> Bool {
+  let unit_ids = stage0_planted_low_high_unit_ids()
+  let ctx = Stage0PartitionDerivationContextPlanted {
+    variant: Stage0PlantedLowHighSharedDependency
+  }
+  let forward = stage0_derived_partition_outcome_for_context(
+    ctx: ctx,
+    unit_ids: unit_ids
+  )
+  let reversed = stage0_derived_partition_outcome_for_context(
+    ctx: ctx,
+    unit_ids: list_reverse(xs: unit_ids)
+  )
+  match forward {
+    Stage0DerivedPartitionOk { assignment: _, members_by_unit: forward_members, reach_dispositions_by_unit: _ } =>
+      match reversed {
+        Stage0DerivedPartitionOk { assignment: _, members_by_unit: reversed_members, reach_dispositions_by_unit: _ } =>
+          stage0_members_by_unit_equal(
+            left: forward_members,
+            right: reversed_members,
+            unit_ids: unit_ids
+          )
+        Stage0DerivedPartitionRefused { cause: _ } => false
+      }
+    Stage0DerivedPartitionRefused { cause: _ } => false
+  }
+}
+
+fn stage0_planted_assignment_conflict_holds() -> Bool {
+  match stage0_planted_partition_outcome(
+    variant: Stage0PlantedLowHighAssignmentConflict
+  ) {
+    Stage0DerivedPartitionRefused {
+      cause: Stage0UnitMembershipReachRefused {
+        disposition: Stage0PartitionAssignmentConflict { collision: _ }
+      }
+    } => true
+    _ => false
+  }
+}
+
+fn stage0_planted_three_unit_unrouted_reach_refuses_holds() -> Bool {
+  let ctx = Stage0PartitionDerivationContextPlanted {
+    variant: Stage0PlantedThreeUnitUnroutedReach
+  }
+  let module_m = stage0_module_id(basename: stage0_planted_basename_m)
+  let disposition = stage0_reach_disposition_for_unit_module(
+    ctx: ctx,
+    unit_id: stage0_planted_unit_high,
+    module: module_m,
+    owner: stage0_planted_unit_mid
+  )
+  let disposition_ok = match disposition {
+    Stage0PartitionUnroutedCrossUnitReach {
+      module: _,
+      claimer: claimer,
+      owner: owner
+    } =>
+      claimer == stage0_planted_unit_high && owner == stage0_planted_unit_mid
+    Stage0PartitionSharedDependencyThroughPackage { module: _, owner_package: _ } => false
+    _ => false
+  }
+  let scan_ok = match stage0_scan_rows_for_unrouted_refusal(
+    rows: [
+      Stage0UnitModuleReachDispositionRow {
+        module: module_m,
+        disposition: disposition
+      }
+    ]
+  ) {
+    Stage0UnroutedReachFound { cause: _ } => true
+    Stage0UnroutedReachAbsent => false
+  }
+  disposition_ok && scan_ok
+}
+
+fn stage0_planted_separated_membership_differs_holds() -> Bool {
+  let ctx_shared = Stage0PartitionDerivationContextPlanted {
+    variant: Stage0PlantedLowHighSharedDependency
+  }
+  let ctx_separated = Stage0PartitionDerivationContextPlanted {
+    variant: Stage0PlantedLowHighSeparated
+  }
+  match stage0_unit_raw_reach_outcome(
+    unit_id: stage0_planted_unit_high,
+    edges: stage0_derivation_edges(ctx: ctx_shared),
+    ctx: ctx_shared
+  ) {
+    Stage0UnitRawReachRefused { cause: _ } => false
+    Stage0UnitRawReachOk { members: shared_raw } =>
+      match stage0_unit_raw_reach_outcome(
+        unit_id: stage0_planted_unit_high,
+        edges: stage0_derivation_edges(ctx: ctx_separated),
+        ctx: ctx_separated
+      ) {
+        Stage0UnitRawReachRefused { cause: _ } => false
+        Stage0UnitRawReachOk { members: separated_raw } =>
+          !stage0_string_lists_equal_as_sets(
+            left: stage0_module_id_list_to_basenames(modules: shared_raw),
+            right: stage0_module_id_list_to_basenames(modules: separated_raw)
+          )
+      }
+  }
+}
+
+fn stage0_planted_convergence_chain_succeeds_holds() -> Bool {
+  match stage0_planted_partition_outcome(
+    variant: Stage0PlantedLowHighConvergenceChain
+  ) {
+    Stage0DerivedPartitionOk { assignment: _, members_by_unit: _, reach_dispositions_by_unit: _ } => true
+    Stage0DerivedPartitionRefused { cause: _ } => false
+  }
+}
+
+data stage0_partition_witness_unit_a: CompilationUnitId = "stage0-partition-witness-unit-a" as CompilationUnitId
+data stage0_partition_witness_unit_b: CompilationUnitId = "stage0-partition-witness-unit-b" as CompilationUnitId
+
+fn stage0_partition_witness_shared_dependency_v1_rt_not_in_std_core_holds() -> Bool {
+  match stage0_derived_partition_outcome() {
+    Stage0DerivedPartitionRefused { cause: _ } => false
+    Stage0DerivedPartitionOk { assignment: _, members_by_unit: members_by_unit, reach_dispositions_by_unit: _ } =>
+      stage0_partition_witness_shared_dependency_v1_rt_not_in_std_core_from_members(
+        members_by_unit: members_by_unit
+      )
+  }
+}
+
+fn stage0_partition_witness_shared_dependency_v1_rt_not_in_std_core_from_members(
+  members_by_unit: Map<CompilationUnitId, List<ModuleId>>
+) -> Bool {
+  let std_core_members = stage0_derived_unit_member_basenames_from_members(
+    members_by_unit: members_by_unit,
+    unit_id: stage0_unit_std_core
+  )
+  !any(xs: std_core_members, predicate: fn(basename) { basename == "v1_rt" })
+    && any(xs: std_core_members, predicate: fn(basename) { basename == "v1_std_core" })
+}
+
+fn stage0_partition_witness_nonconvergence_refuses_holds() -> Bool {
+  let witness_seed = stage0_module_id(basename: "stage0_partition_witness_closure_seed")
+  let witness_edges = [
+    stage0_module_dag_edge(
+      from: "stage0_partition_witness_closure_seed",
+      to: "stage0_partition_witness_closure_tail"
+    )
+  ]
+  match stage0_unit_raw_reach_fixpoint(
+    members: [witness_seed],
+    edges: witness_edges,
+    remaining_steps: 0
+  ) {
+    Stage0UnitRawReachRefused {
+      cause: Stage0UnitMembershipNonConvergent { steps_budget: _ }
+    } => true
+    _ => false
+  }
+}
+
+fn stage0_partition_witness_assignment_conflict_refuses_holds() -> Bool {
+  let witness_module = stage0_module_id(basename: "stage0_partition_witness_conflict_shared")
+  let reachers = [
+    stage0_partition_witness_unit_a,
+    stage0_partition_witness_unit_b
+  ]
+  match stage0_module_owner_from_reachers(
+    ctx: Stage0PartitionDerivationContextEnrolled,
+    module: witness_module,
+    reachers: reachers
+  ) {
+    Stage0ModuleOwnershipConflict { module: conflict_module, reachers: conflict_reachers } =>
+      conflict_module == witness_module
+        && (conflict_reachers |> count) == 2
+        && stage0_compilation_unit_id_list_contains(
+          xs: conflict_reachers,
+          item: stage0_partition_witness_unit_a
+        )
+        && stage0_compilation_unit_id_list_contains(
+          xs: conflict_reachers,
+          item: stage0_partition_witness_unit_b
+        )
+    _ => false
+  }
+}
+
+fn stage0_partition_witness_assignment_conflict_cause_carries_reachers_holds() -> Bool {
+  let witness_module = stage0_module_id(basename: "stage0_partition_witness_conflict_shared")
+  let raw_members_by_unit = map_insert(
+    map_insert(
+      empty_map(),
+      stage0_partition_witness_unit_a,
+      [witness_module]
+    ),
+    stage0_partition_witness_unit_b,
+    [witness_module]
+  )
+  match stage0_derived_partition_assign_module(
+    ctx: Stage0PartitionDerivationContextEnrolled,
+    assignment: empty_map(),
+    member_module: witness_module,
+    unit_ids: [
+      stage0_partition_witness_unit_a,
+      stage0_partition_witness_unit_b
+    ],
+    raw_members_by_unit: raw_members_by_unit
+  ) {
+    Stage0DerivedPartitionRefused {
+      cause: Stage0UnitMembershipReachRefused {
+        disposition: Stage0PartitionAssignmentConflict {
+          collision: Stage0PartitionAssignmentCollisionCause {
+            module: conflict_module,
+            reachers: conflict_reachers
+          }
+        }
+      }
+    } =>
+      conflict_module == witness_module
+        && (conflict_reachers |> count) == 2
+        && stage0_compilation_unit_id_list_contains(
+          xs: conflict_reachers,
+          item: stage0_partition_witness_unit_a
+        )
+        && stage0_compilation_unit_id_list_contains(
+          xs: conflict_reachers,
+          item: stage0_partition_witness_unit_b
+        )
+    _ => false
+  }
+}
+
+data stage0_partition_red_control_synthetic_module: String = "synthetic_unassigned_module"
+
+fn stage0_string_list_contains(xs: List<String>, item: String) -> Bool {
+  any(xs: xs, predicate: fn(s) { s == item })
+}
+
+fn stage0_partition_red_control_synthetic_module_not_in_derived_holds() -> Bool {
+  match stage0_derived_partition_outcome() {
+    Stage0DerivedPartitionRefused { cause: _ } => false
+    Stage0DerivedPartitionOk { assignment: _, members_by_unit: members_by_unit, reach_dispositions_by_unit: _ } =>
+      stage0_module_bearing_unit_ids()
+        |> fold(init: true, f: fn(ok, unit_id) {
+          let derived = stage0_derived_unit_member_basenames_from_members(
+            members_by_unit: members_by_unit,
+            unit_id: unit_id
+          )
+          ok
+            && !stage0_string_list_contains(
+              xs: derived,
+              item: stage0_partition_red_control_synthetic_module
+            )
+        })
+  }
+}
+
+fn stage0_partition_derived_refusal_propagates_to_receipt_holds() -> Bool {
+  match stage0_derived_partition_outcome() {
+    Stage0DerivedPartitionRefused { cause: _ } =>
+      match stage0_partition_receipt_outcome() {
+        Stage0PartitionReceiptResolveRefused {
+          cause: Stage0DerivedMembershipRefused { cause: _ }
+        } => true
+        _ => false
+      }
+    Stage0DerivedPartitionOk { assignment: _, members_by_unit: _, reach_dispositions_by_unit: _ } =>
+      match stage0_partition_receipt_outcome() {
+        Stage0PartitionReceiptOk { units: units } => (units |> count) > 0
+        _ => false
+      }
+  }
+}
+
+fn stage0_partition_crate_rows_refusal_propagates_holds() -> Bool {
+  match stage0_derived_partition_outcome() {
+    Stage0DerivedPartitionRefused { cause: _ } =>
+      match stage0_partition_crate_rows_outcome() {
+        Stage0PartitionCrateRowsRefused { cause: _ } => true
+        Stage0PartitionCrateRowsOk { rows: _ } => false
+      }
+    Stage0DerivedPartitionOk { assignment: _, members_by_unit: _, reach_dispositions_by_unit: _ } =>
+      match stage0_partition_crate_rows_outcome() {
+        Stage0PartitionCrateRowsOk { rows: rows } => (rows |> count) == rust_crate_partition_declared_core_target
+        Stage0PartitionCrateRowsRefused { cause: _ } => false
+      }
+  }
 }
 
 fn stage0_r3_emit_reexport_surface_modules() -> List<String> {
@@ -287,12 +1872,7 @@ fn stage0_r3_emit_reexport_surface_modules() -> List<String> {
 }
 
 fn stage0_all_partitioned_modules() -> List<String> {
-  stage0_runtime_modules()
-    |> concat(stage0_std_core_modules())
-    |> concat(stage0_std_surface_modules())
-    |> concat(stage0_extdeps_modules())
-    |> concat(stage0_v1_infer_modules())
-    |> concat(stage0_v1_artifact_modules())
+  stage0_partition_domain_module_basenames()
 }
 
 fn stage0_assign_modules_to_unit(
@@ -304,42 +1884,6 @@ fn stage0_assign_modules_to_unit(
     |> fold(init: assignment, f: fn(acc, basename) {
       map_insert(acc, stage0_module_id(basename: basename), unit_id)
     })
-}
-
-fn stage0_interim_explicit_assignment() -> Map<ModuleId, CompilationUnitId> {
-  stage0_assign_modules_to_unit(
-    assignment: stage0_assign_modules_to_unit(
-      assignment: stage0_assign_modules_to_unit(
-        assignment: stage0_assign_modules_to_unit(
-          assignment: stage0_assign_modules_to_unit(
-            assignment: stage0_assign_modules_to_unit(
-              assignment: empty_map(),
-              modules: stage0_runtime_modules(),
-              unit_id: stage0_unit_runtime
-            ),
-            modules: stage0_std_core_modules(),
-            unit_id: stage0_unit_std_core
-          ),
-          modules: stage0_std_surface_modules(),
-          unit_id: stage0_unit_std_surface
-        ),
-        modules: stage0_extdeps_language_modules(),
-        unit_id: stage0_unit_extdeps_languages
-      ),
-      modules: stage0_v1_infer_modules(),
-      unit_id: stage0_unit_v1_infer
-    ),
-    modules: stage0_v1_artifact_modules(),
-    unit_id: stage0_unit_v1_artifact
-  )
-}
-
-fn stage0_interim_explicit_partition() -> ExplicitPartition {
-  ExplicitPartition { assignment: stage0_interim_explicit_assignment() }
-}
-
-fn stage0_partition_parameter() -> PartitionParameter {
-  ExplicitPartitionParam { partition: stage0_interim_explicit_partition() }
 }
 
 fn stage0_partition_provenance() -> PartitionProvenance {
@@ -424,8 +1968,9 @@ fn resolve_partition_outcome(
   module_dag: ModuleDag
 ) -> ResolvePartitionOutcome {
   match parameter {
-    ExplicitPartitionParam { partition: explicit } =>
-      ResolvePartitionOk { assignment: explicit.assignment }
+    ExplicitPartitionParam { partition: partition } =>
+      ResolvePartitionOk { assignment: partition.assignment }
+    DerivedStage0PartitionParam => stage0_interim_explicit_assignment_outcome()
     PolicyPartitionParam { policy: policy } =>
       ResolvePartitionRefused {
         cause: PolicyResolverUnimplemented { policy: policy }
@@ -433,12 +1978,13 @@ fn resolve_partition_outcome(
   }
 }
 
+fn stage0_partition_parameter() -> PartitionParameter {
+  DerivedStage0PartitionParam
+}
+
 fn stage0_partition_receipt_outcome() -> Stage0PartitionReceiptOutcome {
   let dag = stage0_module_dag()
-  match resolve_partition_outcome(
-    parameter: stage0_partition_parameter(),
-    module_dag: dag
-  ) {
+  match stage0_interim_explicit_assignment_outcome() {
     ResolvePartitionOk { assignment: assignment } =>
       match partition_fold_outcome(module_dag: dag, assignment: assignment) {
         PartitionFoldOk { units: units } =>
@@ -572,81 +2118,133 @@ fn stage0_partition_member_coverage_consistent(
   }
 }
 
-fn stage0_module_bearing_crate_rows() -> List<Stage0PartitionCrateRow> {
+fn stage0_module_bearing_crate_row(
+  unit_id: CompilationUnitId,
+  members_by_unit: Map<CompilationUnitId, List<ModuleId>>,
+  package_name: String,
+  crate_dir: String,
+  kind: Stage0PartitionCrateKind,
+  carries_non_empty_wrappers: Bool
+) -> Stage0PartitionCrateRow {
+  Stage0PartitionCrateRow {
+    unit_id: unit_id,
+    package_name: package_name,
+    crate_dir: crate_dir,
+    kind: kind,
+    modules: stage0_derived_unit_member_basenames_from_members(
+      members_by_unit: members_by_unit,
+      unit_id: unit_id
+    ),
+    reexport_packages: stage0_unit_reexport_packages(unit_id: unit_id),
+    carries_non_empty_wrappers: carries_non_empty_wrappers
+  }
+}
+
+fn stage0_module_bearing_crate_rows_from_members_by_unit(
+  members_by_unit: Map<CompilationUnitId, List<ModuleId>>
+) -> List<Stage0PartitionCrateRow> {
   [
-    Stage0PartitionCrateRow {
+    stage0_module_bearing_crate_row(
       unit_id: stage0_unit_runtime,
+      members_by_unit: members_by_unit,
       package_name: "v1-stage0-runtime",
       crate_dir: "src/v1/stage0_runtime",
       kind: Stage0FoundationCrate,
-      modules: stage0_runtime_modules(),
-      reexport_packages: [],
       carries_non_empty_wrappers: true
-    },
-    Stage0PartitionCrateRow {
+    ),
+    stage0_module_bearing_crate_row(
       unit_id: stage0_unit_std_core,
+      members_by_unit: members_by_unit,
       package_name: "v1-stage0-std-core",
       crate_dir: "src/v1/stage0_std_core",
       kind: Stage0LayeredCoreCrate,
-      modules: stage0_std_core_modules(),
-      reexport_packages: ["v1-stage0-runtime"],
       carries_non_empty_wrappers: false
-    },
-    Stage0PartitionCrateRow {
+    ),
+    stage0_module_bearing_crate_row(
       unit_id: stage0_unit_std_surface,
+      members_by_unit: members_by_unit,
       package_name: "v1-stage0-std-surface",
       crate_dir: "src/v1/stage0_std_surface",
       kind: Stage0LayeredCoreCrate,
-      modules: stage0_std_surface_modules(),
-      reexport_packages: [
-        "v1-stage0-runtime",
-        "v1-stage0-std-core"
-      ],
       carries_non_empty_wrappers: false
-    },
-    Stage0PartitionCrateRow {
+    ),
+    stage0_module_bearing_crate_row(
       unit_id: stage0_unit_extdeps_languages,
+      members_by_unit: members_by_unit,
       package_name: "v1-stage0-extdeps-languages",
       crate_dir: "src/v1/stage0_extdeps_languages",
       kind: Stage0LayeredCoreCrate,
-      modules: stage0_extdeps_language_modules(),
-      reexport_packages: [
-        "v1-stage0-runtime",
-        "v1-stage0-std-core",
-        "v1-stage0-std-surface"
-      ],
       carries_non_empty_wrappers: false
-    },
-    Stage0PartitionCrateRow {
+    ),
+    stage0_module_bearing_crate_row(
       unit_id: stage0_unit_v1_infer,
+      members_by_unit: members_by_unit,
       package_name: "v1-stage0-v1-infer",
       crate_dir: "src/v1/stage0_v1_infer",
       kind: Stage0LayeredCoreCrate,
-      modules: stage0_v1_infer_modules(),
-      reexport_packages: [
-        "v1-stage0-runtime",
-        "v1-stage0-std-core",
-        "v1-stage0-std-surface",
-        "v1-stage0-extdeps-languages"
-      ],
       carries_non_empty_wrappers: false
-    },
-    Stage0PartitionCrateRow {
+    ),
+    stage0_module_bearing_crate_row(
       unit_id: stage0_unit_v1_artifact,
+      members_by_unit: members_by_unit,
       package_name: "v1-stage0-v1-artifact",
       crate_dir: "src/v1/stage0_v1_artifact",
       kind: Stage0LayeredCoreCrate,
-      modules: stage0_v1_artifact_modules(),
-      reexport_packages: [
-        "v1-stage0-runtime",
-        "v1-stage0-std-core",
-        "v1-stage0-std-surface",
-        "v1-stage0-extdeps-languages",
-        "v1-stage0-v1-infer"
-      ],
       carries_non_empty_wrappers: false
-    }
+    )
   ]
+}
+
+fn stage0_members_by_unit_populated_for_units_outcome(
+  members_by_unit: Map<CompilationUnitId, List<ModuleId>>,
+  unit_ids: List<CompilationUnitId>
+) -> Stage0DerivedPartitionOutcome {
+  fold_list(
+    xs: unit_ids,
+    empty: Stage0DerivedPartitionOk {
+      assignment: empty_map(),
+      members_by_unit: empty_map(),
+      reach_dispositions_by_unit: empty_map()
+    },
+    cons: fn(acc, unit_id) {
+      match acc {
+        Stage0DerivedPartitionRefused { cause: _ } => acc
+        Stage0DerivedPartitionOk { assignment: _, members_by_unit: _, reach_dispositions_by_unit: _ } =>
+          match map_get(members_by_unit, unit_id) {
+            Accepted { value: Present { value: _ }, diagnostics: _ } => acc
+            Accepted { value: Absent, diagnostics: _ } =>
+              Stage0DerivedPartitionRefused {
+                cause: Stage0PartitionMissingRawReachPopulation { unit_id: unit_id }
+              }
+            Rejected { diagnostics: _ } =>
+              Stage0DerivedPartitionRefused {
+                cause: Stage0PartitionMissingRawReachPopulation { unit_id: unit_id }
+              }
+          }
+      }
+    }
+  )
+}
+
+fn stage0_module_bearing_crate_rows_outcome() -> Stage0PartitionCrateRowsOutcome {
+  match stage0_derived_partition_outcome() {
+    Stage0DerivedPartitionRefused { cause: cause } =>
+      Stage0PartitionCrateRowsRefused { cause: cause }
+    Stage0DerivedPartitionOk { assignment: _, members_by_unit: members_by_unit, reach_dispositions_by_unit: _ } =>
+      match stage0_members_by_unit_populated_for_units_outcome(
+        members_by_unit: members_by_unit,
+        unit_ids: stage0_module_bearing_unit_ids()
+      ) {
+        Stage0DerivedPartitionRefused { cause: cause } =>
+          Stage0PartitionCrateRowsRefused { cause: cause }
+        Stage0DerivedPartitionOk { assignment: _, members_by_unit: _, reach_dispositions_by_unit: _ } =>
+          Stage0PartitionCrateRowsOk {
+            rows: stage0_module_bearing_crate_rows_from_members_by_unit(
+              members_by_unit: members_by_unit
+            )
+          }
+      }
+  }
 }
 
 fn stage0_r3_emit_shell_crate_row() -> Stage0PartitionCrateRow {
@@ -656,55 +2254,102 @@ fn stage0_r3_emit_shell_crate_row() -> Stage0PartitionCrateRow {
     crate_dir: "src/v1/stage0_emit_core",
     kind: Stage0EmitCoreCrate,
     modules: stage0_r3_emit_reexport_surface_modules(),
-    reexport_packages: [],
+    reexport_packages: stage0_unit_reexport_packages(unit_id: stage0_unit_emit_core),
     carries_non_empty_wrappers: false
   }
 }
 
-fn stage0_partition_crate_rows() -> List<Stage0PartitionCrateRow> {
-  stage0_module_bearing_crate_rows()
-    |> concat([stage0_r3_emit_shell_crate_row()])
+fn stage0_partition_crate_rows_outcome() -> Stage0PartitionCrateRowsOutcome {
+  match stage0_module_bearing_crate_rows_outcome() {
+    Stage0PartitionCrateRowsRefused { cause: cause } =>
+      Stage0PartitionCrateRowsRefused { cause: cause }
+    Stage0PartitionCrateRowsOk { rows: module_bearing_rows } =>
+      Stage0PartitionCrateRowsOk {
+        rows: module_bearing_rows |> concat([stage0_r3_emit_shell_crate_row()])
+      }
+  }
 }
 
-fn stage0_physical_crate_count() -> Int {
-  stage0_partition_crate_rows() |> count
+fn stage0_physical_crate_count_holds(expected: Int) -> Bool {
+  match stage0_partition_crate_rows_outcome() {
+    Stage0PartitionCrateRowsOk { rows: rows } => (rows |> count) == expected
+    Stage0PartitionCrateRowsRefused { cause: _ } => false
+  }
 }
 
-fn stage0_module_bearing_unit_count() -> Int {
-  stage0_module_bearing_crate_rows() |> count
+fn stage0_module_bearing_unit_count_holds(expected: Int) -> Bool {
+  match stage0_module_bearing_crate_rows_outcome() {
+    Stage0PartitionCrateRowsOk { rows: rows } => (rows |> count) == expected
+    Stage0PartitionCrateRowsRefused { cause: _ } => false
+  }
 }
 
-fn stage0_module_owner_resolved_in_module_bearing_rows(module_basename: String) -> Bool {
-  stage0_module_bearing_crate_rows()
-    |> any(row => row.modules |> any(m => m == module_basename))
+fn stage0_module_owner_resolved_in_module_bearing_rows(
+  rows: List<Stage0PartitionCrateRow>,
+  module_basename: String
+) -> Bool {
+  rows |> any(row => row.modules |> any(m => m == module_basename))
 }
 
-fn stage0_package_resolved_in_partition_rows(package_name: String) -> Bool {
-  stage0_partition_crate_rows()
-    |> any(row => row.package_name == package_name)
+fn stage0_package_resolved_in_partition_rows(
+  rows: List<Stage0PartitionCrateRow>,
+  package_name: String
+) -> Bool {
+  rows |> any(row => row.package_name == package_name)
 }
 
 fn stage0_partition_row_lookups_resolved() -> Bool {
-  let layered_ok = stage0_module_bearing_crate_rows()
+  match stage0_derived_partition_outcome() {
+    Stage0DerivedPartitionRefused { cause: _ } => false
+    Stage0DerivedPartitionOk { assignment: _, members_by_unit: _, reach_dispositions_by_unit: _ } =>
+      stage0_partition_row_lookups_resolved_on_enrolled_graph()
+  }
+}
+
+fn stage0_partition_row_lookups_resolved_for_rows(
+  all_rows: List<Stage0PartitionCrateRow>,
+  module_bearing_rows: List<Stage0PartitionCrateRow>
+) -> Bool {
+  let layered_ok = module_bearing_rows
     |> fold(init: true, f: fn(ok, row) {
       ok && row.reexport_packages
         |> fold(init: true, f: fn(p_ok, pkg) {
-          p_ok && stage0_package_resolved_in_partition_rows(package_name: pkg)
+          p_ok
+            && stage0_package_resolved_in_partition_rows(
+              rows: all_rows,
+              package_name: pkg
+            )
         })
     })
   let emit_shell_ok = stage0_r3_emit_reexport_surface_modules()
     |> fold(init: true, f: fn(m_ok, module_basename) {
-      m_ok && stage0_module_owner_resolved_in_module_bearing_rows(module_basename: module_basename)
+      m_ok
+        && stage0_module_owner_resolved_in_module_bearing_rows(
+          rows: module_bearing_rows,
+          module_basename: module_basename
+        )
     })
   layered_ok && emit_shell_ok
 }
 
+fn stage0_partition_row_lookups_resolved_on_enrolled_graph() -> Bool {
+  match stage0_partition_crate_rows_outcome() {
+    Stage0PartitionCrateRowsRefused { cause: _ } => false
+    Stage0PartitionCrateRowsOk { rows: all_rows } =>
+      match stage0_module_bearing_crate_rows_outcome() {
+        Stage0PartitionCrateRowsRefused { cause: _ } => false
+        Stage0PartitionCrateRowsOk { rows: module_bearing_rows } =>
+          stage0_partition_row_lookups_resolved_for_rows(
+            all_rows: all_rows,
+            module_bearing_rows: module_bearing_rows
+          )
+      }
+  }
+}
+
 fn stage0_partition_r4_valid() -> Bool {
   let dag = stage0_module_dag()
-  match resolve_partition_outcome(
-    parameter: stage0_partition_parameter(),
-    module_dag: dag
-  ) {
+  match stage0_interim_explicit_assignment_outcome() {
     ResolvePartitionOk { assignment: assignment } =>
       match partition_fold_outcome(module_dag: dag, assignment: assignment) {
         PartitionFoldOk { units: units } =>
@@ -721,7 +2366,10 @@ fn stage0_partition_r4_valid() -> Bool {
 fn stage0_partition_fold_ok() -> Bool {
   match stage0_partition_receipt_outcome() {
     Stage0PartitionReceiptOk { units: units } =>
-      (units |> count) == stage0_module_bearing_unit_count()
+      match stage0_module_bearing_crate_rows_outcome() {
+        Stage0PartitionCrateRowsOk { rows: rows } => (units |> count) == (rows |> count)
+        Stage0PartitionCrateRowsRefused { cause: _ } => false
+      }
     Stage0PartitionReceiptResolveRefused { cause: _ } => false
     Stage0PartitionReceiptFoldRefused { cause: _ } => false
   }

@@ -1,0 +1,124 @@
+module v2.test.claim.stage0_partition_membership_receipt
+
+import v2.test.claim.stage0_partition_membership_baseline {
+  stage0_partition_derived_membership_matches_enrolled_baseline_holds
+}
+import v2.workflow.rust_crate_partition {
+  stage0_derived_assignment_succeeds_on_enrolled_graph,
+  stage0_partition_crate_rows_refusal_propagates_holds,
+  stage0_partition_derived_refusal_propagates_to_receipt_holds,
+  stage0_partition_membership_closure_covers_seeds,
+  stage0_partition_membership_order_independence,
+  stage0_planted_assignment_conflict_holds,
+  stage0_planted_convergence_chain_succeeds_holds,
+  stage0_planted_order_independence_holds,
+  stage0_planted_separated_membership_differs_holds,
+  stage0_planted_shared_dependency_fixture_holds,
+  stage0_planted_three_unit_unrouted_reach_refuses_holds,
+  stage0_string_set_equality_duplicate_substitution_refuses_holds,
+  stage0_string_set_equality_order_independent_holds,
+  stage0_string_set_equality_identical_holds,
+  stage0_partition_missing_assignment_population_refuses_holds,
+  stage0_partition_missing_raw_reach_population_refuses_holds,
+  stage0_partition_red_control_synthetic_module_not_in_derived_holds,
+  stage0_partition_witness_assignment_conflict_refuses_holds,
+  stage0_partition_witness_assignment_conflict_cause_carries_reachers_holds,
+  stage0_partition_witness_nonconvergence_refuses_holds,
+  stage0_partition_witness_shared_dependency_v1_rt_not_in_std_core_holds,
+  rust_crate_partition_declared_core_target,
+  stage0_physical_crate_count_holds
+}
+
+data stage0_partition_membership_receipt_note: String = "C2 equivalence receipt: derived per-unit membership matches the terminating one-shot baseline in v2.test.claim.stage0_partition_membership_baseline (frozen at stage0_partition_enrolled_membership_baseline_frozen_commit). Baseline dissolves when C1 passes against C2-derived membership AND real C3 structural reference totality lands. RED controls: synthetic unreachable module absent from derived membership; zero-step raw reach refuses; two-unit owner ambiguity refuses; three-unit unrouted cross-unit reach refuses; missing assignment/raw-reach map populations refuse; forward vs reversed unit-order iteration yields identical membership."
+
+test fn stage0_partition_membership_closure_covers_seeds_holds() -> Bool {
+  stage0_partition_membership_closure_covers_seeds()
+}
+
+test fn stage0_partition_derived_membership_matches_enrolled_baseline_witness_holds() -> Bool {
+  stage0_partition_derived_membership_matches_enrolled_baseline_holds()
+}
+
+test fn stage0_partition_derived_assignment_succeeds_on_enrolled_graph_holds() -> Bool {
+  stage0_derived_assignment_succeeds_on_enrolled_graph()
+}
+
+test fn stage0_partition_derived_refusal_propagates_to_receipt_witness_holds() -> Bool {
+  stage0_partition_derived_refusal_propagates_to_receipt_holds()
+}
+
+test fn stage0_partition_crate_rows_refusal_propagates_witness_holds() -> Bool {
+  stage0_partition_crate_rows_refusal_propagates_holds()
+}
+
+test fn stage0_partition_shared_dependency_v1_rt_not_in_std_core_holds() -> Bool {
+  stage0_partition_witness_shared_dependency_v1_rt_not_in_std_core_holds()
+}
+
+test fn stage0_partition_membership_order_independence_holds() -> Bool {
+  stage0_partition_membership_order_independence()
+}
+
+test fn stage0_partition_nonconvergence_refuses_holds() -> Bool {
+  stage0_partition_witness_nonconvergence_refuses_holds()
+}
+
+test fn stage0_partition_assignment_conflict_refuses_holds() -> Bool {
+  stage0_partition_witness_assignment_conflict_refuses_holds()
+}
+
+test fn stage0_partition_assignment_conflict_cause_carries_reachers_holds() -> Bool {
+  stage0_partition_witness_assignment_conflict_cause_carries_reachers_holds()
+}
+
+test fn stage0_partition_physical_crate_count_is_seven_holds() -> Bool {
+  stage0_physical_crate_count_holds(expected: rust_crate_partition_declared_core_target)
+}
+
+test fn stage0_planted_shared_dependency_fixture_witness_holds() -> Bool {
+  stage0_planted_shared_dependency_fixture_holds()
+}
+
+test fn stage0_planted_order_independence_witness_holds() -> Bool {
+  stage0_planted_order_independence_holds()
+}
+
+test fn stage0_planted_assignment_conflict_witness_holds() -> Bool {
+  stage0_planted_assignment_conflict_holds()
+}
+
+test fn stage0_planted_separated_membership_differs_witness_holds() -> Bool {
+  stage0_planted_separated_membership_differs_holds()
+}
+
+test fn stage0_planted_convergence_chain_succeeds_witness_holds() -> Bool {
+  stage0_planted_convergence_chain_succeeds_holds()
+}
+
+test fn stage0_planted_three_unit_unrouted_reach_refuses_witness_holds() -> Bool {
+  stage0_planted_three_unit_unrouted_reach_refuses_holds()
+}
+
+test fn stage0_string_set_equality_duplicate_substitution_refuses_witness_holds() -> Bool {
+  stage0_string_set_equality_duplicate_substitution_refuses_holds()
+}
+
+test fn stage0_string_set_equality_order_independent_witness_holds() -> Bool {
+  stage0_string_set_equality_order_independent_holds()
+}
+
+test fn stage0_string_set_equality_identical_witness_holds() -> Bool {
+  stage0_string_set_equality_identical_holds()
+}
+
+test fn stage0_partition_missing_assignment_population_refuses_witness_holds() -> Bool {
+  stage0_partition_missing_assignment_population_refuses_holds()
+}
+
+test fn stage0_partition_missing_raw_reach_population_refuses_witness_holds() -> Bool {
+  stage0_partition_missing_raw_reach_population_refuses_holds()
+}
+
+test fn stage0_partition_red_control_wrong_module_not_derived_holds() -> Bool {
+  stage0_partition_red_control_synthetic_module_not_in_derived_holds()
+}

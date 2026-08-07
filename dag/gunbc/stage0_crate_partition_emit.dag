@@ -5,11 +5,19 @@ import v2.workflow.rust_crate_partition {
   Stage0FoundationCrate,
   Stage0LayeredCoreCrate,
   Stage0PartitionCrateRow,
-  stage0_partition_crate_rows
+  Stage0PartitionCrateRowsOk,
+  Stage0PartitionCrateRowsOutcome,
+  Stage0PartitionCrateRowsRefused,
+  Stage0UnitMembershipFoldRefusalCause,
+  stage0_partition_crate_rows_outcome
 }
 import v2.std.algebra { fold_list }
 import v2.std.collection { List }
 import v2.std.text { String }
+
+type Stage0PartitionGeneratedSourceOutcome
+  = SourceProduced { content: String }
+  | SourceRefused { cause: Stage0UnitMembershipFoldRefusalCause }
 
 fn escape_dag_string_body(s: String) -> String {
   replace(replace(replace(s, "\\", "\\\\"), "\"", "\\\""), "\n", "\\n")
@@ -64,8 +72,7 @@ fn render_partition_crate_rows_items(rows: List<Stage0PartitionCrateRow>) -> Str
   })
 }
 
-fn expected_stage0_crate_partition_generated_dag() -> String {
-  let rows = stage0_partition_crate_rows()
+fn render_stage0_crate_partition_generated_dag(rows: List<Stage0PartitionCrateRow>) -> String {
   concat(
     "module gunbc.stage0_crate_partition_generated\n\n",
     "import std.types { Bool, List, String }\n\n",
@@ -85,5 +92,22 @@ fn expected_stage0_crate_partition_generated_dag() -> String {
     "data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [\n",
     render_partition_crate_rows_items(rows: rows),
     "\n]\n"
+  )
+}
+
+fn stage0_partition_generated_source_from_crate_rows_outcome(
+  outcome: Stage0PartitionCrateRowsOutcome
+) -> Stage0PartitionGeneratedSourceOutcome {
+  match outcome {
+    Stage0PartitionCrateRowsRefused { cause: cause } =>
+      SourceRefused { cause: cause }
+    Stage0PartitionCrateRowsOk { rows: rows } =>
+      SourceProduced { content: render_stage0_crate_partition_generated_dag(rows: rows) }
+  }
+}
+
+fn expected_stage0_crate_partition_generated_dag() -> Stage0PartitionGeneratedSourceOutcome {
+  stage0_partition_generated_source_from_crate_rows_outcome(
+    outcome: stage0_partition_crate_rows_outcome()
   )
 }

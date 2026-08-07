@@ -24,7 +24,12 @@ import v2.compiler.self_host.frontier { hand_maintained_stage0_filenames }
 import v2.std.algebra { any, filter, fold_list, length, list_map, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.text { String }
-import v2.workflow.rust_crate_partition { stage0_partition_crate_rows }
+import v2.workflow.rust_crate_partition {
+  Stage0PartitionCrateRowsOk,
+  Stage0PartitionCrateRowsRefused,
+  Stage0UnitMembershipFoldRefusalCause,
+  stage0_partition_crate_rows_outcome
+}
 
 data stage0_rust_source_lifecycle_scaffold_note: String = "SCAFFOLD — NOT the live ZeroHandMaintainedRust instrument. gunbc.stage0_rust_host_observation supplies the exact tracked-Rust subject plus Cargo target ROLE facts. This module keeps role and maintenance disposition independent: CargoBin never classifies a path as Generated, DeleteWith, RetainedKernel, or HandScaffold. A Cargo target with no maintenance disposition refuses as CargoTargetMissingLifecycleDisposition. Product reachability and LOC/capability ratchets remain explicit v1-honest-frontier follow-on work; this observation prerequisite does not claim those finish lines."
 
@@ -299,7 +304,7 @@ data hand_maintained_stage0_filenames_authority_ref: DeclarationRef = Declaratio
 
 data stage0_partition_crate_rows_authority_ref: DeclarationRef = DeclarationRef {
   module_path: "v2.workflow.rust_crate_partition",
-  decl_name: "stage0_partition_crate_rows",
+  decl_name: "stage0_partition_crate_rows_outcome",
   field: WholeDeclaration
 }
 
@@ -437,15 +442,26 @@ fn generated_artifact_stage0_src_disjoint_from_residue_holds() -> Bool {
   )
 }
 
+type DerivedPartitionCratePathsOutcome
+  = PathsProduced { paths: List<String> }
+  | PathsRefused { cause: Stage0UnitMembershipFoldRefusalCause }
+
 fn partition_crate_lib_repo_path(crate_dir: String) -> String {
   concat(crate_dir, "/src/lib.rs")
 }
 
-fn derived_partition_crate_lib_repo_paths() -> List<String> {
-  list_map(
-    xs: stage0_partition_crate_rows(),
-    f: fn(row) { partition_crate_lib_repo_path(crate_dir: row.crate_dir) }
-  )
+fn derived_partition_crate_lib_repo_paths_outcome() -> DerivedPartitionCratePathsOutcome {
+  match stage0_partition_crate_rows_outcome() {
+    Stage0PartitionCrateRowsRefused { cause: cause } =>
+      PathsRefused { cause: cause }
+    Stage0PartitionCrateRowsOk { rows: rows } =>
+      PathsProduced {
+        paths: list_map(
+          xs: rows,
+          f: fn(row) { partition_crate_lib_repo_path(crate_dir: row.crate_dir) }
+        )
+      }
+  }
 }
 
 fn list_concat_unique(acc: List<String>, items: List<String>) -> List<String> {
@@ -719,7 +735,15 @@ fn generated_authority_subset_of_derived_holds() -> Bool {
 }
 
 fn partition_crate_paths_complete_holds() -> Bool {
-  length(xs: derived_partition_crate_lib_repo_paths()) == length(xs: stage0_partition_crate_rows())
+  match derived_partition_crate_lib_repo_paths_outcome() {
+    PathsRefused { cause: _ } => false
+    PathsProduced { paths: paths } =>
+      match stage0_partition_crate_rows_outcome() {
+        Stage0PartitionCrateRowsRefused { cause: _ } => false
+        Stage0PartitionCrateRowsOk { rows: rows } =>
+          length(xs: paths) == (rows |> count)
+      }
+  }
 }
 
 fn derived_generated_hand_disjoint_holds() -> Bool {
