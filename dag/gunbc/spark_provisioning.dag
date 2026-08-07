@@ -31,7 +31,7 @@ import extdeps.systems.nvidia_dgx_spark_setup {
 import gunbc.fleet_posix_accounts { fleet_posix_operator_user }
 import gunbc.spark_bootstrap_credential {
   SparkFactoryBootstrap,
-  BootstrapNetworkIdentity,
+  BootstrapNetworkStickerUnread,
   spark_admin_password_ref,
   spark_secret_ref,
 }
@@ -63,6 +63,23 @@ type SparkProvisioningStrategy
       install_spec: SparkAutoinstallSpec
     }
 
+// An intent consumes an ALLOCATED hostname; it never derives one from HostIdentity
+// (operator ruling, 2026-08-07). srv5/srv6 are internal legacy fleet slots kept as SSH and
+// config aliases — parsing a slot name into an OS hostname fuses two independent facts into
+// one writable string, and the canonical label is a separate allocation of shape
+// <adjective>-<animal>-<suffix> that must survive both a role change and a hardware swap in
+// the same slot. Neither unit has been allocated one yet, so the honest state is Pending: a
+// name that has not been issued cannot be authored here, and writing the slot name into the
+// field would be exactly the fusion the ruling separates.
+//
+// dissolve-on: HOST-NAME-0 lands the allocation authority; HostnameAllocated's DnsLabel
+// payload becomes a reference into it and this two-arm carrier retires rather than forking
+// a second naming vocabulary beside it. DnsLabel is the existing DNS syntax authority and
+// is not re-minted here.
+type SparkHostnameAllocation
+  = HostnameAllocated { label: DnsLabel }
+  | HostnameAllocationPending
+
 type TelemetryDisposition
   = TelemetryEnabled
   | TelemetryDeclined
@@ -78,7 +95,7 @@ type SparkNetworkPlacement {
 
 type SparkProvisioningIntent {
   host: HostIdentity
-  desired_hostname: DnsLabel
+  desired_hostname: SparkHostnameAllocation
   administrator: PosixUser
   locale: NonEmptyStr
   timezone: NonEmptyStr
@@ -118,7 +135,7 @@ type SparkProvisioningRefusalCause
 
 type SparkProvisioningReceipt {
   host: HostIdentity
-  hostname: DnsLabel
+  hostname: SparkHostnameAllocation
   administrator: PosixUser
   strategy_used: SparkProvisioningStrategy
   initial_update: InitialUpdateDisposition
@@ -304,7 +321,10 @@ fn select_spark_strategy(
 // — a step a human or a later modeled effect must take — NOT a refusal, because nothing
 // rejected anything, and NOT an interruption, because no transition is pending. Under
 // PxeAutoinstall the autoinstall payload carries it and no residue exists.
-fn spark_hostname_residue(strategy: SparkProvisioningStrategy) -> HumanIntervention? {
+fn spark_hostname_residue(
+  strategy: SparkProvisioningStrategy,
+  allocation: SparkHostnameAllocation
+) -> HumanIntervention? {
   match strategy {
     FactoryOobe { bootstrap: _ } =>
       match dgx_spark_oobe_offers_field(field: OobeHostnameAssignment) {
@@ -314,11 +334,20 @@ fn spark_hostname_residue(strategy: SparkProvisioningStrategy) -> HumanIntervent
             identity: "spark-oobe-hostname-residue",
             frequency: DeviceOnce,
             subject: "hostname assignment",
-            instruction: "The first-boot wizard offers no hostname field, so the desired hostname is set after setup completes — through gunbc.hostname_set over the account OOBE created, not inside the portal."
+            instruction: spark_hostname_residue_instruction(allocation: allocation)
           )
         }
       }
     PxeAutoinstall { environment: _, image: _, install_spec: _ } => Absent
+  }
+}
+
+fn spark_hostname_residue_instruction(allocation: SparkHostnameAllocation) -> NonEmptyStr {
+  match allocation {
+    HostnameAllocated { label: _ } =>
+      "The first-boot wizard offers no hostname field, so the allocated canonical label is applied after setup completes — through gunbc.hostname_set over the account OOBE created, not inside the portal."
+    HostnameAllocationPending =>
+      "The first-boot wizard offers no hostname field AND no canonical label has been allocated for this unit yet. Obtain the allocation first, then apply it through gunbc.hostname_set. The internal fleet slot name is not a substitute."
   }
 }
 
@@ -328,13 +357,13 @@ fn spark_hostname_residue(strategy: SparkProvisioningStrategy) -> HumanIntervent
 // ------------------------------------------------------------------------------------
 
 data srv5_spark_bootstrap: SparkFactoryBootstrap = SparkFactoryBootstrap {
-  access_point_identity: BootstrapNetworkIdentity { ssid: "spark-srv5-setup" },
+  access_point_identity: BootstrapNetworkStickerUnread,
   access_point_password_ref: spark_secret_ref(name: "spark-srv5-bootstrap-hotspot-password"),
   documented_surface: dgx_spark_oobe_surface,
 }
 
 data srv6_spark_bootstrap: SparkFactoryBootstrap = SparkFactoryBootstrap {
-  access_point_identity: BootstrapNetworkIdentity { ssid: "spark-srv6-setup" },
+  access_point_identity: BootstrapNetworkStickerUnread,
   access_point_password_ref: spark_secret_ref(name: "spark-srv6-bootstrap-hotspot-password"),
   documented_surface: dgx_spark_oobe_surface,
 }
@@ -346,7 +375,7 @@ data spark_license_acceptance: LicenseAcceptance = LicenseAcceptance {
 
 fn spark_provisioning_intent(
   host: HostIdentity,
-  hostname: DnsLabel,
+  hostname: SparkHostnameAllocation,
   address: Ipv4Address,
   strategy: SparkProvisioningStrategy
 ) -> SparkProvisioningIntent {
@@ -365,14 +394,14 @@ fn spark_provisioning_intent(
 
 data srv5_spark_intent: SparkProvisioningIntent = spark_provisioning_intent(
   host: "srv5",
-  hostname: "srv5",
+  hostname: HostnameAllocationPending,
   address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 222),
   strategy: FactoryOobe { bootstrap: srv5_spark_bootstrap },
 )
 
 data srv6_spark_intent: SparkProvisioningIntent = spark_provisioning_intent(
   host: "srv6",
-  hostname: "srv6",
+  hostname: HostnameAllocationPending,
   address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 223),
   strategy: FactoryOobe { bootstrap: srv6_spark_bootstrap },
 )

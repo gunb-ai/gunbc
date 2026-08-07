@@ -34,7 +34,7 @@ fn classify_tag(progress: SparkProvisioningProgress) -> String {
 }
 
 fn residue_count(strategy: SparkProvisioningStrategy) -> Int {
-  match spark_hostname_residue(strategy: strategy) {
+  match spark_hostname_residue(strategy: strategy, allocation: HostnameAllocationPending) {
     Present { value: _ } => 1
     Absent => 0
   }
@@ -124,10 +124,19 @@ test fn spark_scalar_burden_would_choose_differently_red_control() -> Bool {
   scalar_prefers_oobe && lexicographic_prefers_pxe
 }
 
-// The bootstrap credential is a reference, never a value, and the admin secret name is
-// derived per device rather than authored.
+fn bootstrap_network_tag(standing: BootstrapNetworkStanding) -> String {
+  match standing {
+    BootstrapNetworkRead { identity: _ } => "read"
+    BootstrapNetworkStickerUnread => "unread"
+  }
+}
+
+// The bootstrap credential is a reference, never a value; the admin secret name is derived
+// per device rather than authored; and the SSID — nonsecret but equally unknown until a box
+// is opened — is carried as an explicit unread standing rather than a plausible string.
 test fn spark_bootstrap_credential_is_a_reference() -> Bool {
-  srv5_spark_bootstrap.access_point_identity.ssid == "spark-srv5-setup"
+  bootstrap_network_tag(standing: srv5_spark_bootstrap.access_point_identity) == "unread"
+    && bootstrap_network_tag(standing: srv6_spark_bootstrap.access_point_identity) == "unread"
     && srv5_spark_bootstrap.access_point_password_ref.secret == "spark-srv5-bootstrap-hotspot-password"
     && srv5_spark_bootstrap.access_point_password_ref.version == "latest"
     && spark_admin_password_secret_name(host: "srv5") == "spark-srv5-admin-password"
@@ -232,5 +241,37 @@ test fn spark_intents_are_grounded() -> Bool {
     && srv5_spark_intent.administrator.name == "briansrls"
     && srv5_spark_intent.administrator.uid == 1000
     && srv6_spark_intent.administrator.uid == 1000
-    && srv5_spark_intent.desired_hostname == "srv5"
+    && allocation_tag(a: srv5_spark_intent.desired_hostname) == "pending"
+    && allocation_tag(a: srv6_spark_intent.desired_hostname) == "pending"
+}
+
+fn allocation_tag(a: SparkHostnameAllocation) -> String {
+  match a {
+    HostnameAllocated { label: _ } => "allocated"
+    HostnameAllocationPending => "pending"
+  }
+}
+
+// The operator ruling made concrete: an intent CONSUMES an allocated canonical label and
+// never derives one from its fleet slot. Neither unit has an allocation yet, so both sit on
+// the pending arm — and the OOBE residue fires either way, with an instruction that says
+// which of the two blockers is in front of you. The internal slot name never becomes a
+// hostname: the field cannot hold a HostIdentity at all.
+test fn spark_hostname_is_allocated_never_derived_from_slot() -> Bool {
+  let allocated = spark_provisioning_intent(
+    host: "srv5",
+    hostname: HostnameAllocated { label: "patient-ibis-7k2m4p8q" },
+    address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 222),
+    strategy: FactoryOobe { bootstrap: srv5_spark_bootstrap },
+  )
+
+  let pending_instruction = spark_hostname_residue_instruction(allocation: HostnameAllocationPending)
+  let allocated_instruction = spark_hostname_residue_instruction(allocation: HostnameAllocated { label: "patient-ibis-7k2m4p8q" })
+
+  allocation_tag(a: srv5_spark_intent.desired_hostname) == "pending"
+    && allocation_tag(a: allocated.desired_hostname) == "allocated"
+    && residue_count(strategy: oobe_strategy) == 1
+    && pending_instruction != allocated_instruction
+    && allocation_tag(a: spark_receipt_from_intent(intent: allocated).hostname) == "allocated"
+    && allocation_tag(a: spark_receipt_from_intent(intent: srv5_spark_intent).hostname) == "pending"
 }
