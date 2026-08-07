@@ -281,7 +281,7 @@ type AlertIncidentState
   = NoIncidentIssue
   | IncidentIssueWithoutMarker { issue: Issue }
   | IncidentCurrent { issue: Issue, state: FalsifierAlertState }
-  | IncidentLegacy { issue: Issue, first_red: EpochMs, signature: NonEmptyStr }
+  | IncidentLegacy { issue: Issue, first_red: FirstRedStanding, signature: NonEmptyStr }
 
 type AlertIncidentStateReading
   = IncidentReadable { state: AlertIncidentState }
