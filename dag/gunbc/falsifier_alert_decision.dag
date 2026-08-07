@@ -30,6 +30,12 @@ import gunbc.floor_component_receipt_document {
   ReceiptSubjectMatch,
   ComponentAlertSummary
 }
+import extdeps.github.issues { Issue }
+import gunbc.falsifier_alert_state { FalsifierAlertState }
+import gunbc.floor_component_receipt_document {
+  FloorComponentFailureMode, floor_component_failure_mode_tag,
+  ComponentOutcomeRead, floor_component_outcome_wire_tag
+}
 import gunbc.falsifier_lane {
   FalsifierRouting, RoutedToOwner, RoutingLaneUndetermined, RoutingOwnerUndeclared
 }
@@ -42,31 +48,43 @@ type EscalationRecipient
   = EscalationDeclared { handle: NonEmptyStr }
   | EscalationUndeclared { cause: NonEmptyStr }
 
+data escalation_handle_is_required_note: String = "AN ALERT NOTIFICATION CARRIES A HANDLE, NOT A DISCUSSION OF WHETHER THERE IS ONE. The first revision typed the field as EscalationRecipient and claimed that made `every notifying artifact contains the mention` structurally true. It did not: EscalationUndeclared inhabits that type, so a notification with no mention at all was constructible and typechecked. The type forced an AUTHOR to think about the recipient; it did not force the ARTIFACT to have one, and only the second is the property the incident demanded.\\n\\nSo AlertNotification carries escalation_handle: NonEmptyStr and the undeclared case is lifted OUT of the notification into a decision arm, RefuseEscalationRecipientUndeclared, which is reached before any notifying arm can be built. The alert with nobody to tell refuses loudly instead of quietly notifying nobody — a comment that mentions no one looks identical to a working alert in every log and dashboard, which is how the original defect survived two days.\\n\\nLane ownership is NOT symmetric with this and stays absent-able. An unowned lane is a real, renderable fact — the issue says so by name — because the question `whose component broke` may honestly have no answer yet, while `who is told the falsifier is broken` may not."
+
 data falsifier_alert_three_facts_note: String = "THREE FACTS, THREE CARRIERS, NEVER FUSED: the GLOBAL ESCALATION RECIPIENT (who is told that the falsifier is broken at all), the LANE-SPECIFIC OWNER (who owns the particular component that failed), and the ISSUE STATE (what has already been said about this incident). They are easy to fuse and fusing them is a real loss.\\n\\nThe live shape makes the trap concrete: the lane owner roster in gunbc.falsifier_lane is EMPTY, so every lane routes to RoutingOwnerUndeclared, while exactly one global handle exists. It is tempting to read the global handle as the owner of every lane — it is the only handle there is — but that would fabricate ownership facts nobody asserted, and would make the undeclared-owner gap invisible precisely because something plausible got rendered in its place.\\n\\nSo the rule is symmetric and both halves are witnessed. An UNDECLARED LANE OWNER MUST NOT SUPPRESS GLOBAL ESCALATION: the falsifier being red is escalated whether or not anyone owns the failing lane, because the escalation recipient's question is `is the observer working` and the lane owner's question is `whose component broke`. And AN UNDECLARED LANE OWNER MUST STILL BE RENDERABLE: the issue says the lane has no owner, by name, so the gap is counted and located rather than papered over by the global mention standing in for it."
 
 type AlertNotification {
-  escalation: EscalationRecipient
+  escalation_handle: NonEmptyStr
   routings: List<FalsifierRouting>
 }
 
 data no_action_reason_note: String = "NoAction carries a typed REASON rather than being a bare arm, because two genuinely different situations reach it: a run whose conclusion is not actionable at all (cancelled, skipped, timed out — the alert has nothing to say about a run that did not conclude green or red), and a green run with no open incident (nothing to close, nothing to announce). The remedy differs — the first may warrant looking at why runs keep being cancelled, the second is the steady state — so although both produce no effect, fusing them would discard the distinction at the only point anything records it. This is a reason on one arm rather than two arms because the brief's terminal set names one NoAction and the EFFECT is genuinely identical; what must not be lost is why."
 
+data non_success_conclusion_policy_note: String = "A RUN THAT NEVER REACHED A CORPUS VERDICT IS NOT A GREEN CORPUS, and the first revision mapped six conclusions to NoAction as though it were. That is the empty-observation narrow at the top of the alert: the falsifier did not run, so nothing is known, and `nothing is known` was rendered as `nothing to say`. A falsifier that starts failing at startup every time would have gone unreported indefinitely while every run produced a clean NoAction.\\n\\nThe policy, by what the conclusion actually says. TIMED_OUT and STARTUP_FAILURE mean the OBSERVER is broken — it never got far enough to judge the corpus — so they notify: NotifyObserverUnavailable, which is the escalation recipient's own question. SKIPPED, NEUTRAL and ACTION_REQUIRED mean the run was prevented or is waiting on a human, which is a configuration fact rather than an observer fault, so they surface as their own NoActionReason arm and stay countable rather than being folded in with a green.\\n\\nCANCELLED IS SPLIT, because one tag covers three situations with three remedies. A run superseded by a newer run on the same ref is the normal, healthy case and must not page anyone. An operator cancelling deliberately is also fine. An unexplained cancellation is neither, and it is the one worth seeing. The event payload cannot distinguish them today — GitHub does not say who cancelled a run or why in the workflow_run envelope — so the arm records the distinction as UNRESOLVED rather than guessing: CancellationUnexplained is its own reason, counted, with the dissolve-on named. Choosing `supersession` because it is the common case would be the fabricated-plausible-output DESIGN forbids, and choosing `page someone` would make every ordinary force-push noisy."
+
 type NoActionReason
-  = ConclusionNotActionable { conclusion_tag: NonEmptyStr }
-  | GreenWithNoOpenIncident
+  = GreenWithNoOpenIncident
+  | RunPreventedByConfiguration { conclusion_tag: NonEmptyStr }
+  | CancellationUnexplained
+
+data next_state_on_every_writing_arm_note: String = "EVERY WRITING ARM CARRIES THE COMPLETE NEXT STATE, because the alternative is that ALERT-5 and ALERT-6 each re-derive the marker policy from the arm name — a second implementation of one rule, in the layer furthest from the witnesses. The arm knowing `a heartbeat happened` is not the same as the arm knowing what to write, and the gap between them is exactly where first_red gets reset by accident.\\n\\nThe policy, stated once, here. A FIRST RED sets first_red and last_notification_at both to now: the incident starts and is announced in the same act. A HEARTBEAT preserves first_red — the incident did not restart, only the silence ended — and moves last_notification_at to now. A SILENT REFRESH preserves BOTH, which is the whole point of it: the body is rewritten with current facts and the throttle clock does not move, because nothing was sent. A LEGACY MIGRATION preserves the first_red it recovered and writes the current signature with last_notification_at = now.\\n\\nA CHANGED CLASS PRESERVES first_red, and this is the one that had to be decided rather than inherited. The falsifier has been red continuously; what changed is which component is failing. Restarting first_red would erase how long the observer has been broken — the single most useful number on the issue — and would do it precisely when the incident got worse. So the incident's age is a property of the unbroken red period, not of the current class, and the arm says so instead of leaving it to be guessed downstream."
 
 type AlertDecision
   = NoAction { reason: NoActionReason }
-  | OpenIssue { signature: NonEmptyStr, notification: AlertNotification }
-  | RefreshIssueWithoutNotification { signature: NonEmptyStr, silent_for: Millisecond }
-  | RefreshAndNotifyChangedClass { previous: NonEmptyStr, current: NonEmptyStr, notification: AlertNotification }
-  | RefreshAndNotifyHeartbeat { signature: NonEmptyStr, silent_for: Millisecond, notification: AlertNotification }
-  | NotifyGreenAndClose { notification: AlertNotification }
-  | NotifyLegacyStateMigration { first_red: EpochMs, signature: NonEmptyStr, notification: AlertNotification }
+  | OpenIssue { signature: IncidentSignature, next_state: FalsifierAlertState, notification: AlertNotification }
+  | RefreshIssueWithoutNotification { issue: Issue, signature: IncidentSignature, next_state: FalsifierAlertState, silent_for: Millisecond }
+  | RefreshAndNotifyChangedClass { issue: Issue, previous: IncidentSignature, current: IncidentSignature, next_state: FalsifierAlertState, notification: AlertNotification }
+  | RefreshAndNotifyHeartbeat { issue: Issue, signature: IncidentSignature, next_state: FalsifierAlertState, silent_for: Millisecond, notification: AlertNotification }
+  | NotifyGreenAndClose { issue: Issue, notification: AlertNotification }
+  | NotifyLegacyStateMigration { issue: Issue, first_red: EpochMs, signature: IncidentSignature, next_state: FalsifierAlertState, notification: AlertNotification }
+  | NotifyObserverUnavailable { conclusion_tag: NonEmptyStr, notification: AlertNotification }
   | RefuseMalformedState { detail: String }
   | RefuseUntrustedEvent { admission: FalsifierAlertAdmission }
   | RefuseReceiptMismatch { mismatch: ReceiptSubjectMatch }
   | RefuseReceiptMalformed { decoding: FloorComponentReceiptDecoding }
+  | RefuseEscalationRecipientUndeclared { cause: NonEmptyStr }
+  | RefuseMultipleOpenIssues { count: Int }
+  | RefuseIssueLookup { cause: NonEmptyStr }
+  | RefuseRoutingJoin { mismatch: RoutingJoinMismatch }
 
 data receipt_input_note: String = "The receipt arrives as its DECODING plus its SUBJECT MATCH, not as a bare document, because the two failures are different arms of the result and a decoded-but-mismatched receipt is not a decode failure. Passing an already-unwrapped document would force the caller to collapse them before calling, which is exactly where the distinction would be lost."
 
@@ -92,26 +110,77 @@ fn conclusion_tag(c: WorkflowRunConclusion) -> NonEmptyStr {
 
 data signature_derivation_note: String = "THE SIGNATURE IS DERIVED FROM THE TYPED COMPONENT SUMMARIES, not from rendered prose and not from a raw JSON scan. ALERT-3.5 made index, label, outcome and failure_mode strictly decoded fields precisely so this function could key on them; the four together are the grain at which a red that CHANGED CLASS is distinguishable from a red that merely persists. failure_mode is in the key because outcome alone is many-to-one — Infra and WitnessRed both surface as `failed` — so without it a change of owner reads as no change at all.\\n\\nAn empty unsuccessful set under a Failure conclusion still produces a signature rather than being treated as green: the run failed, and a receipt that names no failing component is itself a discrepancy the alert should show unchanged across windows rather than silently reclassify."
 
-fn component_signature_member(s: ComponentAlertSummary) -> String {
+data incident_identity_structure_note: String = "THE INCIDENT IDENTITY IS A SET OF TYPED MEMBERS, NOT A JOINED STRING, and both halves of that sentence were defects in the first revision. It mapped the summaries in receipt order and joined them with a pipe, which made the identity depend on two things it has no business depending on.\\n\\nORDER. The floor emits components in whatever order it walked them, so the same failing set arriving in a different order produced a different string and read as a CHANGED INCIDENT — the alert would announce a new class and re-notify while nothing about the failure had changed. Sorting the members by index fixes it at the identity level rather than by hoping the producer is stable.\\n\\nDELIMITERS. index:label:failure_mode:outcome joined by | is ambiguous the moment a label contains a colon or a pipe, and labels are human-authored component names. Two structurally different populations could serialize to one string, or one population could parse two ways — an identity that collides is not an identity. The label is therefore OUT of the identity entirely: it is display text, while index already identifies the component uniquely (the receipt decoder now refuses a population whose indices are not unique, so that uniqueness is a checked property rather than an assumption). What remains — index, outcome class, failure mode — are the facts that decide whether this is the same incident.\\n\\nComparison is over the STRUCTURED SET. Serialization exists only for writing the marker, and it is canonical because it renders the already-sorted members; nothing compares the rendered forms."
+
+type ComponentIncidentIdentity {
+  index: Nat
+  outcome_tag: NonEmptyStr
+  failure_mode_tag: NonEmptyStr
+}
+
+type IncidentSignature {
+  members: List<ComponentIncidentIdentity>
+}
+
+fn component_incident_identity_of(s: ComponentAlertSummary) -> ComponentIncidentIdentity {
+  ComponentIncidentIdentity {
+    index: s.index,
+    outcome_tag: floor_component_outcome_wire_tag(r: s.outcome) as NonEmptyStr,
+    failure_mode_tag: floor_component_failure_mode_tag(m: s.failure_mode) as NonEmptyStr
+  }
+}
+
+fn incident_identity_eq(left: ComponentIncidentIdentity, right: ComponentIncidentIdentity) -> Bool {
+  left.index == right.index
+    && (left.outcome_tag as String) == (right.outcome_tag as String)
+    && (left.failure_mode_tag as String) == (right.failure_mode_tag as String)
+}
+
+fn incident_members_contain(xs: List<ComponentIncidentIdentity>, needle: ComponentIncidentIdentity) -> Bool {
+  fold(xs, init: false, f: (acc, x) => acc || incident_identity_eq(left: x, right: needle))
+}
+
+fn incident_members_sorted_by_index(xs: List<ComponentIncidentIdentity>) -> List<ComponentIncidentIdentity> {
+  fold(xs, init: [], f: (acc, x) => incident_members_insert(sorted: acc, member: x))
+}
+
+fn incident_members_insert(sorted: List<ComponentIncidentIdentity>, member: ComponentIncidentIdentity) -> List<ComponentIncidentIdentity> {
   concat(
-    concat(concat(s.index as String, ":"), concat(s.label as String, ":")),
-    concat(concat(s.failure_mode as String, ":"), s.outcome as String)
+    concat(filter(sorted, y => y.index < member.index), [member]),
+    filter(sorted, y => !(y.index < member.index))
   )
 }
 
-fn alert_signature_of(doc: FloorComponentReceiptDocument) -> NonEmptyStr {
-  let members = map(doc.unsuccessful_summaries, x => component_signature_member(s: x))
-  if count(members) == 0 {
+fn alert_signature_of(doc: FloorComponentReceiptDocument) -> IncidentSignature {
+  IncidentSignature {
+    members: incident_members_sorted_by_index(
+      xs: map(doc.unsuccessful_summaries, x => component_incident_identity_of(s: x))
+    )
+  }
+}
+
+fn incident_signature_eq(left: IncidentSignature, right: IncidentSignature) -> Bool {
+  count(left.members) == count(right.members)
+    && fold(left.members, init: true, f: (acc, m) => acc && incident_members_contain(xs: right.members, needle: m))
+    && fold(right.members, init: true, f: (acc, m) => acc && incident_members_contain(xs: left.members, needle: m))
+}
+
+fn incident_identity_render(m: ComponentIncidentIdentity) -> String {
+  concat(concat(m.index as String, ":"), concat(m.outcome_tag as String, concat(":", m.failure_mode_tag as String)))
+}
+
+fn incident_signature_render(sig: IncidentSignature) -> NonEmptyStr {
+  if count(sig.members) == 0 {
     "no-unsuccessful-components" as NonEmptyStr
   } else {
-    join(members, "|") as NonEmptyStr
+    join(map(sig.members, m => incident_identity_render(m: m)), "|") as NonEmptyStr
   }
 }
 
 data notification_always_carries_escalation_note: String = "EVERY NOTIFYING ARM CARRIES AN AlertNotification, AND EVERY AlertNotification CARRIES THE ESCALATION RECIPIENT. That is a construction property rather than a convention: the four notifying arms cannot be built without one, because the field is required, so an author adding a fifth notifying arm has to supply it to make the program typecheck.\\n\\nThis is the structural form of the defect that started this whole lane. The alert reached its recipient once per incident because the mention lived only in the issue body, and a mention notifies when it is CREATED — body edits send nothing — so the heartbeat and changed-class comments, the artifacts carrying current state, notified nobody for two days while the mechanism reported success. A convention that says `remember to include the mention` is exactly what failed there. The non-notifying arms deliberately do NOT carry one: RefreshIssueWithoutNotification edits a body and sends nothing by design, and giving it a notification field would invite someone to use it."
 
-fn alert_notification(escalation: EscalationRecipient, routings: List<FalsifierRouting>) -> AlertNotification {
-  AlertNotification { escalation: escalation, routings: routings }
+fn alert_notification(handle: NonEmptyStr, routings: List<FalsifierRouting>) -> AlertNotification {
+  AlertNotification { escalation_handle: handle, routings: routings }
 }
 
 data decision_predicates_are_witness_surface_note: String = "THE BOOL HELPERS BELOW ARE A WITNESS SURFACE, NOT A DISPATCH SURFACE, AND THE DISTINCTION IS THE ONLY THING MAKING THEM LEGITIMATE. alert_decision_notifies, notification_escalates, routing_lacks_owner and notification_has_unowned_routing exist so a claim can assert a structural property across several arms at once — `every notifying arm carries the escalation mention` is a statement about five arms, and writing it as five separate matches would state the property five times and let a sixth arm be added without it.\\n\\nNo production code calls them, and none may. An effect plan branching on alert_decision_notifies would be exactly the predicate dissolution this lane already refused twice (review 49400, and the state module's own no-notifies-bool argument): the arms do not notify the SAME THING, so a Bool answering only `does this notify` erases the instruction at the one boundary where the caller is about to choose what to say. The realization matches AlertDecision and reads the arm it landed on.\\n\\nThis is stated rather than enforced because nothing in the substrate today distinguishes a witness caller from a production one. It is therefore a convention, and named as one — a reviewer flagged these helpers as the shape that normally trips predicate dissolution, and they were right to look; what makes them safe is a fact about their call sites that no mechanism holds. The trigger for climbing it: if the effect plan ever imports this module, the import list is the place to check."
@@ -129,6 +198,11 @@ fn alert_decision_notifies(d: AlertDecision) -> Bool {
     RefuseUntrustedEvent { admission: _ } => false
     RefuseReceiptMismatch { mismatch: _ } => false
     RefuseReceiptMalformed { decoding: _ } => false
+    RefuseEscalationRecipientUndeclared { cause: _ } => false
+    RefuseMultipleOpenIssues { count: _ } => false
+    RefuseIssueLookup { cause: _ } => false
+    RefuseRoutingJoin { mismatch: _ } => false
+    NotifyObserverUnavailable { conclusion_tag: _, notification: _ } => true
   }
 }
 
@@ -145,16 +219,18 @@ fn alert_decision_notification(d: AlertDecision) -> AlertNotification? {
     RefuseUntrustedEvent { admission: _ } => none
     RefuseReceiptMismatch { mismatch: _ } => none
     RefuseReceiptMalformed { decoding: _ } => none
+    RefuseEscalationRecipientUndeclared { cause: _ } => none
+    RefuseMultipleOpenIssues { count: _ } => none
+    RefuseIssueLookup { cause: _ } => none
+    RefuseRoutingJoin { mismatch: _ } => none
+    NotifyObserverUnavailable { conclusion_tag: _, notification: n } => Present { value: n }
   }
 }
 
 data escalation_survives_undeclared_owner_note: String = "The predicate that makes the escalation/ownership separation checkable: a notification escalates exactly when the escalation recipient is declared, and that answer does not consult the routings at all. An undeclared lane owner therefore cannot suppress escalation, and — the mirror, which is the half that is easy to lose — a declared lane owner cannot substitute for a missing escalation recipient either. Both directions are witnessed."
 
 fn notification_escalates(n: AlertNotification) -> Bool {
-  match n.escalation {
-    EscalationDeclared { handle: _ } => true
-    EscalationUndeclared { cause: _ } => false
-  }
+  (n.escalation_handle as String) != ""
 }
 
 fn routing_lacks_owner(r: FalsifierRouting) -> Bool {
@@ -169,25 +245,134 @@ fn notification_has_unowned_routing(n: AlertNotification) -> Bool {
   fold(n.routings, init: false, f: (acc, r) => acc || routing_lacks_owner(r: r))
 }
 
+data issue_observation_note: String = "NO OPEN ISSUE AND NO STATE MARKER ARE DIFFERENT FACTS, AND FUSING THEM PRODUCED TWO LIVE DEFECTS. The first revision took only the state decoding, so StateAbsent — which means `the issue body carried no marker` — was read as `there is no incident`. Against an issue that predates the marker format, or one a human opened by hand, that meant a red run OPENED A SECOND ISSUE for an incident already tracked, and a green run reported GreenWithNoOpenIncident and never closed the first one. Both are silent; both look like the alert working.\\n\\nThe observation therefore comes first and the marker is a property of a body that exists. MultipleOpenAlertIssues is its own arm rather than `take the first`: two open alert issues means the alert already lost track of itself, and picking one would compound that by writing to an arbitrary half of a split incident. AlertIssueLookupRefused is its own arm because a failed lookup is not an absence — answering `no issue` when the search could not be performed is the empty-observation narrow, and it would open a duplicate on every red until the lookup recovered."
+
+type AlertIssueObservation
+  = NoOpenAlertIssue
+  | OneOpenAlertIssue { issue: Issue, state: FalsifierAlertStateDecoding }
+  | MultipleOpenAlertIssues { issues: List<Issue> }
+  | AlertIssueLookupRefused { cause: NonEmptyStr }
+
 data readable_incident_state_note: String = "THE MALFORMED MARKER IS PEELED OFF ONCE, AND WHAT REMAINS CANNOT BE MALFORMED. AlertIncidentState is the state a verdict fold is allowed to see: absent, current, or legacy. StateMalformed has no image in it, so the green fold and the red fold cannot re-decide the corrupt-marker question — not because they are careful, but because there is no arm to write it in.\\n\\nThis replaces the shape this module first had, where the guard sat in alert_decision AND again in each of the two folds. All three agreed, so nothing was wrong; what was wrong was that three copies of one rule can only stay in agreement by diligence, and a fourth fold added later would have started with no answer at all. A discriminating RED found this: deleting the outer guard left every claim green, which is what a redundant check looks like from the outside. The rule now lives at exactly one seam, and the two folds are total over a coproduct in which the bad state does not exist."
 
 type AlertIncidentState
-  = IncidentAbsent
-  | IncidentCurrent { state: FalsifierAlertState }
-  | IncidentLegacy { first_red: EpochMs, signature: NonEmptyStr }
+  = NoIncidentIssue
+  | IncidentIssueWithoutMarker { issue: Issue }
+  | IncidentCurrent { issue: Issue, state: FalsifierAlertState }
+  | IncidentLegacy { issue: Issue, first_red: EpochMs, signature: NonEmptyStr }
 
 type AlertIncidentStateReading
   = IncidentReadable { state: AlertIncidentState }
   | IncidentUnreadable { detail: String }
+  | IncidentIndeterminate { decision: AlertDecision }
 
-fn alert_incident_state_of(decoding: FalsifierAlertStateDecoding) -> AlertIncidentStateReading {
-  match decoding {
-    StateAbsent => IncidentReadable { state: IncidentAbsent }
-    CurrentState { state: s } => IncidentReadable { state: IncidentCurrent { state: s } }
-    LegacyStateWithoutLastNotification { first_red: f, signature: sig } =>
-      IncidentReadable { state: IncidentLegacy { first_red: f, signature: sig } }
-    StateMalformed { detail: d } => IncidentUnreadable { detail: d }
+fn alert_incident_state_of(observation: AlertIssueObservation) -> AlertIncidentStateReading {
+  match observation {
+    NoOpenAlertIssue => IncidentReadable { state: NoIncidentIssue }
+    MultipleOpenAlertIssues { issues: xs } =>
+      IncidentIndeterminate { decision: RefuseMultipleOpenIssues { count: count(xs) } }
+    AlertIssueLookupRefused { cause: c } =>
+      IncidentIndeterminate { decision: RefuseIssueLookup { cause: c } }
+    OneOpenAlertIssue { issue: iss, state: decoding } =>
+      match decoding {
+        StateAbsent => IncidentReadable { state: IncidentIssueWithoutMarker { issue: iss } }
+        CurrentState { state: s } => IncidentReadable { state: IncidentCurrent { issue: iss, state: s } }
+        LegacyStateWithoutLastNotification { first_red: f, signature: sig } =>
+          IncidentReadable { state: IncidentLegacy { issue: iss, first_red: f, signature: sig } }
+        StateMalformed { detail: d } => IncidentUnreadable { detail: d }
+      }
   }
+}
+
+data marker_signature_readback_note: String = "THE STORED MARKER IS READ BACK INTO THE STRUCTURE, NOT COMPARED AS TEXT. Comparing the rendered strings would work today — the identity is now sorted, and index, outcome tag and failure-mode tag are all delimiter-free closed vocabularies, so the rendering is unambiguous — but it would be correct only by coincidence of what the members happen to contain, and the coincidence is exactly what broke the first version when a label was in the key. Reading it back means the comparison is over the SET in both directions, and a rendering change cannot silently become a behavioural change.\\n\\nThis is the same grammar read backwards: incident_signature_render writes `index:outcome:mode` members joined by |, and this reads them. A member that does not parse into three parts refuses by producing no signature, which makes the marker malformed rather than making it compare unequal — an unreadable marker must not read as `the incident changed` and trigger a notification about nothing."
+
+fn nth_string(xs: List<String>, n: Nat) -> String? {
+  fold(xs, init: { i: 0, found: none }, f: (acc, x) =>
+    if acc.i == n { { i: acc.i + 1, found: Present { value: x } } } else { { i: acc.i + 1, found: acc.found } }
+  ).found
+}
+
+fn incident_identity_of_rendered(part: String) -> ComponentIncidentIdentity? {
+  let fields = split(s: part, delimiter: ":")
+  if count(fields) != 3 {
+    none
+  } else {
+    match nth_string(xs: fields, n: 0) {
+      Absent => none
+      Present { value: idx } =>
+        match nth_string(xs: fields, n: 1) {
+          Absent => none
+          Present { value: outcome } =>
+            match nth_string(xs: fields, n: 2) {
+              Absent => none
+              Present { value: mode } =>
+                if idx == "" || outcome == "" || mode == "" {
+                  none
+                } else {
+                  Present { value: ComponentIncidentIdentity {
+                    index: parse_int(s: idx),
+                    outcome_tag: outcome as NonEmptyStr,
+                    failure_mode_tag: mode as NonEmptyStr
+                  } }
+                }
+            }
+        }
+    }
+  }
+}
+
+fn alert_signature_of_marker(marker: NonEmptyStr) -> IncidentSignature? {
+  if (marker as String) == "no-unsuccessful-components" {
+    Present { value: IncidentSignature { members: [] } }
+  } else {
+    fold(split(s: marker as String, delimiter: "|"), init: Present { value: IncidentSignature { members: [] } }, f: (acc, part) =>
+      match acc {
+        Absent => none
+        Present { value: sig } =>
+          match incident_identity_of_rendered(part: part) {
+            Absent => none
+            Present { value: m } => Present { value: IncidentSignature { members: concat(sig.members, [m]) } }
+          }
+      })
+  }
+}
+
+data routing_exact_join_note: String = "THE ROUTINGS ARE JOINED TO THE FAILING SET, NOT TRUSTED AS INPUT. They arrive as a parameter, which means nothing in the type stops a caller passing routings for the wrong run, a stale set from the previous incident, a duplicate, or an empty list. Each of those produces an issue that names the wrong owners or no owners while looking entirely normal, and the alert is the thing an operator trusts to tell them who to talk to.\\n\\nSo the join is exact and by index, the same identity the incident signature is keyed on and the same one the receipt decoder now proves unique: every failing component has exactly one routing, no routing names a component that is not failing, and no index is routed twice. Any of the three refuses with the offending indices named rather than being silently dropped or padded — a missing routing is not `route to nobody`, it is a defect in whoever computed the routings.\\n\\nThis is an accept-and-join rather than deriving the routing inside the decision, because the lane roster is a repository fact the decision has no business reading and holding it here would put a second copy of lane ownership inside the alert. The join is what makes the accepted input safe."
+
+type RoutingJoinMismatch
+  = RoutingsMissingForComponents { indices: List<Nat> }
+  | RoutingsForNonFailingComponents { indices: List<Nat> }
+  | RoutingsDuplicated { indices: List<Nat> }
+
+fn routing_index(r: FalsifierRouting) -> Nat {
+  match r {
+    RoutedToOwner { index: i, lane: _, owner: _ } => i
+    RoutingLaneUndetermined { index: i, cause: _ } => i
+    RoutingOwnerUndeclared { index: i, lane: _, cause: _ } => i
+  }
+}
+
+fn nat_list_contains(xs: List<Nat>, needle: Nat) -> Bool {
+  fold(xs, init: false, f: (acc, x) => acc || x == needle)
+}
+
+fn nat_list_occurrences(xs: List<Nat>, needle: Nat) -> Nat {
+  fold(xs, init: 0, f: (acc, x) => if x == needle { acc + 1 } else { acc })
+}
+
+fn routing_join_check(
+  failing: List<ComponentIncidentIdentity>,
+  routings: List<FalsifierRouting>
+) -> RoutingJoinMismatch? {
+  let failing_indices = map(failing, m => m.index)
+  let routed_indices = map(routings, r => routing_index(r: r))
+  let missing = filter(failing_indices, i => !nat_list_contains(xs: routed_indices, needle: i))
+  let surplus = filter(routed_indices, i => !nat_list_contains(xs: failing_indices, needle: i))
+  let duplicated = filter(routed_indices, i => nat_list_occurrences(xs: routed_indices, needle: i) > 1)
+  if count(missing) > 0 { Present { value: RoutingsMissingForComponents { indices: missing } } }
+  else if count(surplus) > 0 { Present { value: RoutingsForNonFailingComponents { indices: surplus } } }
+  else if count(duplicated) > 0 { Present { value: RoutingsDuplicated { indices: duplicated } } }
+  else { none }
 }
 
 data decision_order_note: String = "THE ORDER OF THE GUARDS IS THE ALGEBRA, and it runs outside-in: trust, then the artifact, then our own state, then the verdict. Each stage may only be reached when every stage outside it held.\\n\\nTrust first, because an unadmitted event's receipt must never be decoded, rendered, or acted on — this program holds issue-write capability, so content from an untrusted run is exactly what must not reach it. Receipt decodability before subject match, because a document that did not decode has no subject to compare. Subject match before state, because a receipt about another run tells us nothing about this incident. State before verdict, because a corrupt marker means we cannot safely write ANY outcome, green or red — RefuseMalformedState fires whether the run passed or failed, since the harm is overwriting an unreadable incident record, not the direction of the verdict.\\n\\nThat last ordering is a deliberate choice worth stating: it means a GREEN run with a corrupt marker refuses instead of closing the issue. Closing would be the friendlier-looking answer and it would destroy the corrupt marker in the process, which is the one artifact a human needs to diagnose what wrote it."
@@ -195,7 +380,7 @@ data decision_order_note: String = "THE ORDER OF THE GUARDS IS THE ALGEBRA, and 
 fn alert_decision(
   admission: FalsifierAlertAdmission,
   receipt: AlertReceiptInput,
-  state: FalsifierAlertStateDecoding,
+  observation: AlertIssueObservation,
   now: EpochMs,
   escalation: EscalationRecipient,
   routings: List<FalsifierRouting>
@@ -209,20 +394,29 @@ fn alert_decision(
     AlertRefusedActivityNotCompleted { observed: _, expected: _ } => RefuseUntrustedEvent { admission: admission }
     AlertRefusedEventUnreadable { observation: _ } => RefuseUntrustedEvent { admission: admission }
     AlertAdmitted { event: e } =>
-      match receipt {
-        ReceiptUndecodable { decoding: d } => RefuseReceiptMalformed { decoding: d }
-        ReceiptSubjectRejected { mismatch: m } => RefuseReceiptMismatch { mismatch: m }
-        ReceiptAdmitted { document: doc } =>
-          match alert_incident_state_of(decoding: state) {
-            IncidentUnreadable { detail: d } => RefuseMalformedState { detail: d }
-            IncidentReadable { state: incident } => alert_decision_on_verdict(
-              event: e,
-              document: doc,
-              state: incident,
-              now: now,
-              escalation: escalation,
-              routings: routings
-            )
+      match escalation {
+        EscalationUndeclared { cause: c } => RefuseEscalationRecipientUndeclared { cause: c }
+        EscalationDeclared { handle: h } =>
+          match receipt {
+            ReceiptUndecodable { decoding: d } => RefuseReceiptMalformed { decoding: d }
+            ReceiptSubjectRejected { mismatch: m } => RefuseReceiptMismatch { mismatch: m }
+            ReceiptAdmitted { document: doc } =>
+              match alert_incident_state_of(observation: observation) {
+                IncidentIndeterminate { decision: d } => d
+                IncidentUnreadable { detail: d } => RefuseMalformedState { detail: d }
+                IncidentReadable { state: incident } =>
+                  match routing_join_check(failing: alert_signature_of(doc: doc).members, routings: routings) {
+                    Present { value: mismatch } => RefuseRoutingJoin { mismatch: mismatch }
+                    Absent => alert_decision_on_verdict(
+                      event: e,
+                      document: doc,
+                      state: incident,
+                      now: now,
+                      handle: h,
+                      routings: routings
+                    )
+                  }
+              }
           }
       }
   }
@@ -233,24 +427,30 @@ fn alert_decision_on_verdict(
   document: FloorComponentReceiptDocument,
   state: AlertIncidentState,
   now: EpochMs,
-  escalation: EscalationRecipient,
+  handle: NonEmptyStr,
   routings: List<FalsifierRouting>
 ) -> AlertDecision {
   match event.conclusion {
-    Success => alert_decision_green(state: state, escalation: escalation, routings: routings)
+    Success => alert_decision_green(state: state, handle: handle, routings: routings)
     Failure => alert_decision_red(
       document: document,
       state: state,
       now: now,
-      escalation: escalation,
+      handle: handle,
       routings: routings
     )
-    Cancelled => NoAction { reason: ConclusionNotActionable { conclusion_tag: conclusion_tag(c: Cancelled) } }
-    Neutral => NoAction { reason: ConclusionNotActionable { conclusion_tag: conclusion_tag(c: Neutral) } }
-    Skipped => NoAction { reason: ConclusionNotActionable { conclusion_tag: conclusion_tag(c: Skipped) } }
-    TimedOut => NoAction { reason: ConclusionNotActionable { conclusion_tag: conclusion_tag(c: TimedOut) } }
-    ActionRequired => NoAction { reason: ConclusionNotActionable { conclusion_tag: conclusion_tag(c: ActionRequired) } }
-    StartupFailure => NoAction { reason: ConclusionNotActionable { conclusion_tag: conclusion_tag(c: StartupFailure) } }
+    TimedOut => NotifyObserverUnavailable {
+      conclusion_tag: conclusion_tag(c: TimedOut),
+      notification: alert_notification(handle: handle, routings: routings)
+    }
+    StartupFailure => NotifyObserverUnavailable {
+      conclusion_tag: conclusion_tag(c: StartupFailure),
+      notification: alert_notification(handle: handle, routings: routings)
+    }
+    Cancelled => NoAction { reason: CancellationUnexplained }
+    Skipped => NoAction { reason: RunPreventedByConfiguration { conclusion_tag: conclusion_tag(c: Skipped) } }
+    Neutral => NoAction { reason: RunPreventedByConfiguration { conclusion_tag: conclusion_tag(c: Neutral) } }
+    ActionRequired => NoAction { reason: RunPreventedByConfiguration { conclusion_tag: conclusion_tag(c: ActionRequired) } }
   }
 }
 
@@ -258,54 +458,82 @@ data green_close_note: String = "A GREEN RUN CLOSES ONLY AN INCIDENT THAT EXISTS
 
 fn alert_decision_green(
   state: AlertIncidentState,
-  escalation: EscalationRecipient,
+  handle: NonEmptyStr,
   routings: List<FalsifierRouting>
 ) -> AlertDecision {
   match state {
-    IncidentAbsent => NoAction { reason: GreenWithNoOpenIncident }
-    IncidentCurrent { state: _ } => NotifyGreenAndClose { notification: alert_notification(escalation: escalation, routings: routings) }
-    IncidentLegacy { first_red: _, signature: _ } =>
-      NotifyGreenAndClose { notification: alert_notification(escalation: escalation, routings: routings) }
+    NoIncidentIssue => NoAction { reason: GreenWithNoOpenIncident }
+    IncidentIssueWithoutMarker { issue: iss } =>
+      NotifyGreenAndClose { issue: iss, notification: alert_notification(handle: handle, routings: routings) }
+    IncidentCurrent { issue: iss, state: _ } =>
+      NotifyGreenAndClose { issue: iss, notification: alert_notification(handle: handle, routings: routings) }
+    IncidentLegacy { issue: iss, first_red: _, signature: _ } =>
+      NotifyGreenAndClose { issue: iss, notification: alert_notification(handle: handle, routings: routings) }
   }
 }
 
-data red_window_note: String = "THE WINDOW IS MEASURED FROM last_notification_at, WHICH IS THE FACT THE ALERT ITSELF PRODUCED. Not from first_red, which would make the interval drift with incident age; not from the run start, which would notify every run; and emphatically not from the newest comment's timestamp, which is where this began — a single per_page=100 page read oldest-first, so past 100 comments the throttle inverted from at-most-every-20h into every-run. There is no second source of issue state here and none may be added.\\n\\nA CHANGED SIGNATURE IS NEVER THROTTLED. It is a different incident with a different remedy, so suppressing it as `still red` is the conflation the signature exists to detect; the window applies only to a red whose class has not moved."
+data red_window_note: String = "THE WINDOW IS MEASURED FROM last_notification_at, WHICH IS THE FACT THE ALERT ITSELF PRODUCED. Not from first_red, which would make the interval drift with incident age; not from the run start, which would notify every run; and emphatically not from the newest comment's timestamp, which is where this began — a single per_page=100 page read oldest-first, so past 100 comments the throttle inverted from at-most-every-20h into every-run. There is no second source of issue state here and none may be added.\\n\\nA CHANGED SIGNATURE IS NEVER THROTTLED. It is a different incident with a different remedy, so suppressing it as `still red` is the conflation the signature exists to detect; the window applies only to a red whose class has not moved.\\n\\nAN EXISTING ISSUE WITH NO MARKER IS ADOPTED, NOT DUPLICATED. It is a real open incident whose body predates the marker or was written by a human, so the alert writes its state onto that issue and notifies once, exactly as it does for a legacy marker. Opening a second issue beside it — which is what the fused reading did — splits one incident across two places and guarantees at least one of them is never closed."
 
 fn alert_decision_red(
   document: FloorComponentReceiptDocument,
   state: AlertIncidentState,
   now: EpochMs,
-  escalation: EscalationRecipient,
+  handle: NonEmptyStr,
   routings: List<FalsifierRouting>
 ) -> AlertDecision {
   let signature = alert_signature_of(doc: document)
+  let rendered = incident_signature_render(sig: signature)
   match state {
-    IncidentAbsent =>
-      OpenIssue { signature: signature, notification: alert_notification(escalation: escalation, routings: routings) }
-    IncidentLegacy { first_red: f, signature: _ } =>
+    NoIncidentIssue =>
+      OpenIssue {
+        signature: signature,
+        next_state: FalsifierAlertState { first_red: now, signature: rendered, last_notification_at: now },
+        notification: alert_notification(handle: handle, routings: routings)
+      }
+    IncidentIssueWithoutMarker { issue: iss } =>
       NotifyLegacyStateMigration {
+        issue: iss,
+        first_red: now,
+        signature: signature,
+        next_state: FalsifierAlertState { first_red: now, signature: rendered, last_notification_at: now },
+        notification: alert_notification(handle: handle, routings: routings)
+      }
+    IncidentLegacy { issue: iss, first_red: f, signature: _ } =>
+      NotifyLegacyStateMigration {
+        issue: iss,
         first_red: f,
         signature: signature,
-        notification: alert_notification(escalation: escalation, routings: routings)
+        next_state: FalsifierAlertState { first_red: f, signature: rendered, last_notification_at: now },
+        notification: alert_notification(handle: handle, routings: routings)
       }
-    IncidentCurrent { state: s } =>
-      if (s.signature as String) != (signature as String) {
+    IncidentCurrent { issue: iss, state: s } =>
+      match alert_signature_of_marker(marker: s.signature) {
+        Absent => RefuseMalformedState { detail: concat("stored incident signature does not parse: ", s.signature as String) }
+        Present { value: previous } =>
+      if !incident_signature_eq(left: previous, right: signature) {
         RefreshAndNotifyChangedClass {
-          previous: s.signature,
+          issue: iss,
+          previous: previous,
           current: signature,
-          notification: alert_notification(escalation: escalation, routings: routings)
+          next_state: FalsifierAlertState { first_red: s.first_red, signature: rendered, last_notification_at: now },
+          notification: alert_notification(handle: handle, routings: routings)
         }
       } else if now >= s.last_notification_at + millisecond_count(m: falsifier_alert_heartbeat_window) {
         RefreshAndNotifyHeartbeat {
+          issue: iss,
           signature: signature,
+          next_state: FalsifierAlertState { first_red: s.first_red, signature: rendered, last_notification_at: now },
           silent_for: millisecond(count: now - s.last_notification_at),
-          notification: alert_notification(escalation: escalation, routings: routings)
+          notification: alert_notification(handle: handle, routings: routings)
         }
       } else {
         RefreshIssueWithoutNotification {
+          issue: iss,
           signature: signature,
+          next_state: FalsifierAlertState { first_red: s.first_red, signature: rendered, last_notification_at: s.last_notification_at },
           silent_for: millisecond(count: now - s.last_notification_at)
         }
+      }
       }
   }
 }
