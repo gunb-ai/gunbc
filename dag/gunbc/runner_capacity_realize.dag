@@ -96,6 +96,10 @@ fn count_runner_slot_add_actions(plan: RunnerCapacityPlan) -> Int {
   }
 }
 
+fn plan_has_runner_slot_add_actions(plan: RunnerCapacityPlan) -> Bool {
+  count_runner_slot_add_actions(plan: plan) > 0
+}
+
 fn runner_capacity_reapply_plans_zero_additions(
   srv3_width: Int,
   srv4_width: Int,
@@ -110,22 +114,28 @@ fn runner_capacity_apply_plan(plan: RunnerCapacityPlan) -> RunnerCapacityApplyOu
   match plan {
     PlanRefused { reason: r } => RunnerCapacityApplyRefused { reason: r }
     PlanReady { hosts: hs } =>
-      match fold_disk_preflight_refusals(hosts: hs) {
-        Present { value: why } => RunnerCapacityApplyRefused { reason: why }
-        Absent => {
-          let adds = count_runner_slot_add_actions(plan: plan)
-          if adds > 0 {
-            RunnerCapacityApplyRefused {
-              reason: concat(
-                concat("RunnerCapacityApplyScaffold: ", to_string(adds)),
-                " RunnerSlotAdd actions planned; per-slot HostEffect realize scaffold awaits wet transport wiring (PR B arms bound in host_effect_apply)",
-              ),
-            }
-          } else {
-            RunnerCapacityApplySucceeded { add_actions_executed: 0 }
-          }
+      if plan_has_runner_slot_add_actions(plan: plan) {
+        match fold_disk_preflight_refusals(hosts: hs) {
+          Present { value: why } => RunnerCapacityApplyRefused { reason: why }
+          Absent => runner_capacity_apply_ready_plan(plan: plan)
         }
+      } else {
+        runner_capacity_apply_ready_plan(plan: plan)
       }
+  }
+}
+
+fn runner_capacity_apply_ready_plan(plan: RunnerCapacityPlan) -> RunnerCapacityApplyOutcome {
+  let adds = count_runner_slot_add_actions(plan: plan)
+  if adds > 0 {
+    RunnerCapacityApplyRefused {
+      reason: concat(
+        concat("RunnerCapacityApplyScaffold: ", to_string(adds)),
+        " RunnerSlotAdd actions planned; per-slot HostEffect realize scaffold awaits wet transport wiring (PR B arms bound in host_effect_apply)",
+      ),
+    }
+  } else {
+    RunnerCapacityApplySucceeded { add_actions_executed: 0 }
   }
 }
 

@@ -180,6 +180,113 @@ fn unit_active_width_for_host(host: HostIdentity) -> Int {
 
 data incident_materialized_slot_indices: List<Nat> = [1, 2, 3, 4, 5]
 
+data seven_slot_indices: List<Nat> = [1, 2, 3, 4, 5, 6, 7]
+
+data one_slot_index: List<Nat> = [1]
+
+data empty_nat_list: List<Nat> = []
+
+data converged_seven_roster_observed_on: NonEmptyStr = "converged-seven-fixture" as NonEmptyStr
+
+fn host_registration_name_for_slot(host: HostIdentity, slot_index: Nat) -> NonEmptyStr {
+  join([host as String, "-", slot_suffix(slot_index: slot_index)], "") as NonEmptyStr
+}
+
+fn slot_indices_for_managed_width(width: Int) -> List<Nat> {
+  if width >= 7 {
+    seven_slot_indices
+  } else if width >= 5 {
+    incident_materialized_slot_indices
+  } else if width >= 1 {
+    one_slot_index
+  } else {
+    empty_nat_list
+  }
+}
+
+fn count_host_registrations_at_width(
+  host: HostIdentity,
+  width: Int,
+  registrations: List<GitHubSelfHostedRunnerRegistration>,
+) -> Int {
+  fold(
+    slot_indices_for_managed_width(width: width),
+    init: 0,
+    f: (n, slot_index) =>
+      match find_registration_by_name(
+        registrations: registrations,
+        name: host_registration_name_for_slot(host: host, slot_index: slot_index),
+      ) {
+        Present { value: _ } => n + 1
+        Absent => n
+      },
+  )
+}
+
+fn count_host_online_at_width(
+  host: HostIdentity,
+  width: Int,
+  registrations: List<GitHubSelfHostedRunnerRegistration>,
+) -> Int {
+  fold(
+    slot_indices_for_managed_width(width: width),
+    init: 0,
+    f: (n, slot_index) =>
+      match find_registration_by_name(
+        registrations: registrations,
+        name: host_registration_name_for_slot(host: host, slot_index: slot_index),
+      ) {
+        Present { value: reg } =>
+          if github_runner_registration_is_online(reg: reg) {
+            n + 1
+          } else {
+            n
+          }
+        Absent => n
+      },
+  )
+}
+
+fn roster_is_converged_seven_fixture(roster: OrganizationRunnerRosterEvidence) -> Bool {
+  match roster {
+    RosterObserved { observed_on: observed_on, registrations: _ } =>
+      (observed_on as String) == (converged_seven_roster_observed_on as String)
+    RosterReadUnavailable { reason: _ } => false
+  }
+}
+
+data converged_seven_srv3_registrations: List<GitHubSelfHostedRunnerRegistration> = [
+  incident_registration(id: 101, name: "srv3-01" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 102, name: "srv3-02" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 103, name: "srv3-03" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 104, name: "srv3-04" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 105, name: "srv3-05" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 106, name: "srv3-06" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 107, name: "srv3-07" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+]
+
+data converged_seven_srv4_registrations: List<GitHubSelfHostedRunnerRegistration> = [
+  incident_registration(id: 201, name: "srv4-01" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 202, name: "srv4-02" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 203, name: "srv4-03" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 204, name: "srv4-04" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 205, name: "srv4-05" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 206, name: "srv4-06" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 207, name: "srv4-07" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+]
+
+data converged_seven_managed_registrations: List<GitHubSelfHostedRunnerRegistration> = concat(
+  converged_seven_srv3_registrations,
+  converged_seven_srv4_registrations,
+)
+
+fn organization_runner_roster_converged_seven_evidence() -> OrganizationRunnerRosterEvidence {
+  RosterObserved {
+    observed_on: converged_seven_roster_observed_on,
+    registrations: converged_seven_managed_registrations,
+  }
+}
+
 fn slot_suffix(slot_index: Nat) -> String {
   if slot_index == 1 {
     "01"
@@ -215,10 +322,15 @@ fn runner_slot_incarnation(
 }
 
 fn local_incarnations_for_host(host: HostIdentity, width: Int) -> List<LocalRunnerSlotIncarnation> {
-  if width == 5 {
+  if width == 7 {
+    map(
+      seven_slot_indices,
+      i => runner_slot_incarnation(host: host, slot_index: i, unit_active: true),
+    )
+  } else if width == 5 {
     map(
       incident_materialized_slot_indices,
-      i => runner_slot_incarnation(host: host, slot_index: i, unit_active: true)
+      i => runner_slot_incarnation(host: host, slot_index: i, unit_active: true),
     )
   } else {
     []

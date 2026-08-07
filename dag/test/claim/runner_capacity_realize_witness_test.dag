@@ -8,7 +8,10 @@ import gunbc.runner_capacity_plan {
   PlanReady,
   PlanRefused,
 }
-import gunbc.fleet_runner_connectivity { organization_runner_roster_evidence }
+import gunbc.fleet_runner_connectivity {
+  organization_runner_roster_evidence,
+  organization_runner_roster_converged_seven_evidence,
+}
 import gunbc.runner_capacity_realize {
   runner_capacity_apply_plan,
   runner_capacity_reapply_plans_zero_additions,
@@ -61,4 +64,22 @@ test fn replay_apply_is_no_op_when_observed_width_satisfies_request() -> Bool {
       observed_srv3: 5,
       observed_srv4: 5,
     )
+}
+
+test fn converged_roster_plans_zero_additions_and_apply_succeeds() -> Bool {
+  let plan = runner_capacity_plan(
+    srv3_width: 7,
+    srv4_width: 7,
+    roster: organization_runner_roster_converged_seven_evidence(),
+  )
+  match plan {
+    PlanReady { hosts: _ } =>
+      runner_capacity_add_count(plan: plan, host: operator_host_srv3) == 0
+        && runner_capacity_add_count(plan: plan, host: operator_host_srv4) == 0
+        && match runner_capacity_apply_plan(plan: plan) {
+          RunnerCapacityApplySucceeded { add_actions_executed: n } => n == 0
+          RunnerCapacityApplyRefused { reason: _ } => false
+        }
+    PlanRefused { reason: _ } => false
+  }
 }

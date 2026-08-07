@@ -76,6 +76,15 @@ fn converge_cli_applied_knob_count(intent: HostEffectIntent, fallback: Int) -> I
     LiveDeployEnsureDependency { dep: _ } => fallback
     LiveDeployDigestReadback { port: _ } => fallback
     DeployAccessPreflight {} => fallback
+    EnsureActionsRunnerRelease { runner_release: _ } => fallback
+    EnsureRunnerSlotDirectory { slot: _, artifact: _ } => fallback
+    EnsureRunnerJitWrapper { host_label: _ } => fallback
+    EnsureRunnerSystemdTemplate { host_label: _ } => fallback
+    EnsureRunnerMemoryCaps { slot: _ } => fallback
+    ActivateRunnerSlot { slot: _ } => fallback
+    ReplaceRunnerIncarnation { slot: _ } => fallback
+    ObserveRunnerLocalState { slot: _ } => fallback
+    ObserveGitHubRunnerRegistration { slot: _, organization: _ } => fallback
   }
 }
 
