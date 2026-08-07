@@ -4870,6 +4870,35 @@ fn extract_field(
     }
 }
 
+/// HAND-RUST GATE explicit deferral (review 50372), covering this function and the
+/// keyed-collection branch it is dispatched from in `eval_record_lit`: bounded growth
+/// in the existing seed interpreter, not a new Rust authority. Every DECISION here is
+/// modeled and read back out of `.dag` — whether the literal is a keyed collection is
+/// `04_types` `node_is_keyed_collection`, whether its keys may be the authored field
+/// names is `05_emit_rust` `map_literal_key_is_string`, and both are the SAME functions
+/// the emitter consults about the same literal, which is the point: the seed is not
+/// deciding anything, it is projecting one modeled decision onto the interpreter's own
+/// `Value` representation. Removing this code without grounding that representation
+/// would reopen the fork it closes — infer saying map, eval building a record.
+///
+/// Lane: ROADMAP `v1-interpreter-quarantine` → `v1-interpreter-delete`, counted against
+/// `v1-honest-frontier`; the underlying class is DESIGN's model↔realization fork thread
+/// (every primitive modeled as a coproduct and realized as a native `Value`, reconciled
+/// by per-site bridges), of which this is one bridge repaired rather than added.
+///
+/// Checkable receipt, by execution: `w_map_typed_literal_is_a_map` in
+/// `src/v1/tests/claim/ordinary_frontend_observation_test.dag` goes RED without this
+/// code (`map_keys expects a map, got Record` — the refusal that made the ordinary front
+/// end unreachable), and `w_record_literal_is_still_a_record` goes RED if it
+/// over-converts. Both are enrolled on the v1 claim scoped roster, so the deferral is
+/// counted rather than asserted.
+///
+/// Deletion condition, narrower than the lane's: when a brace literal's representation
+/// is DERIVED from its inferred type rather than reconstructed per consumer — the
+/// grounding half of the model↔realization thread, the same move `#5428` made for the
+/// numeric tower — this function has nothing left to project and deletes outright. The
+/// witness above is then REPLACED by one over the grounded representation, not retired.
+///
 /// Build the `Value::Map` a keyed-collection literal denotes. Keys are the
 /// authored field names, and string-likeness must be POSITIVELY established
 /// before they may be: the test is `map_literal_key_is_string`, the very
