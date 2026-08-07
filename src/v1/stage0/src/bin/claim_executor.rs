@@ -390,19 +390,44 @@ fn write_compile_clean_cost_drift_receipt_at(
     true
 }
 
-/// Runtime per-batch unit count for the derived clamp: a discovery aggregate result contributes
-/// its post-selection witness count (`corpus_witnesses`); every single-claim gate row contributes 1.
-fn batch_runtime_unit_count(results: &[ClaimResult]) -> u128 {
-    results
-        .iter()
-        .map(|r| {
-            if r.corpus_witnesses > 0 {
-                r.corpus_witnesses as u128
-            } else {
-                1u128
+/// Hand-Rust mirror of `gunbc.ci_spec` `RuntimeUnitCount` (variant names must match exactly).
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum FloorRuntimeUnitCount {
+    Observed { units: u128 },
+    Unavailable { cause: String },
+}
+
+fn single_claim_runtime_unit_count() -> FloorRuntimeUnitCount {
+    FloorRuntimeUnitCount::Observed { units: 1 }
+}
+
+fn discovery_runtime_unit_count_from_summary(total: usize) -> FloorRuntimeUnitCount {
+    FloorRuntimeUnitCount::Observed {
+        units: total as u128,
+    }
+}
+
+fn runtime_unit_count_unavailable(cause: impl Into<String>) -> FloorRuntimeUnitCount {
+    FloorRuntimeUnitCount::Unavailable {
+        cause: cause.into(),
+    }
+}
+
+/// Runtime per-batch unit count for the derived clamp: sum Observed rows; any Unavailable
+/// refuses the whole batch clamp (authority `gunbc_ci_floor_batch_runtime_unit_count_note`).
+fn aggregate_batch_runtime_units(results: &[ClaimResult]) -> FloorRuntimeUnitCount {
+    let mut sum = 0u128;
+    for result in results {
+        match &result.runtime_unit_count {
+            FloorRuntimeUnitCount::Observed { units } => sum += *units,
+            FloorRuntimeUnitCount::Unavailable { cause } => {
+                return FloorRuntimeUnitCount::Unavailable {
+                    cause: cause.clone(),
+                };
             }
-        })
-        .sum()
+        }
+    }
+    FloorRuntimeUnitCount::Observed { units: sum }
 }
 
 /// SCAFFOLD (§7 seed-retained HAND-RUST — authority:
@@ -1673,6 +1698,9 @@ struct ClaimResult {
     corpus_eval_nanos: u128,
     /// Number of discovery witnesses (non-zero only for discovery batch nodes).
     corpus_witnesses: usize,
+    /// Unit count for the derived batch clamp — explicit availability, never inferred from
+    /// `corpus_witnesses == 0` (that conflates discovery aggregate loss with gate rows).
+    runtime_unit_count: FloorRuntimeUnitCount,
     /// Per-witness eval+resolve identity preserved from discovery (empty for gate/single-claim rows).
     witness_row_costs: Vec<WitnessRowCost>,
     /// Set only when this row was killed at a budget, carrying the pair that explains it.
@@ -1931,6 +1959,7 @@ fn claim_result_for_outcome(
             corpus_resolve_nanos: 0,
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
             budget_refusal: None,
             selection_degradation: None,
@@ -1954,6 +1983,7 @@ fn claim_result_for_outcome(
             corpus_resolve_nanos: 0,
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
             budget_refusal: None,
             selection_degradation: None,
@@ -1969,6 +1999,7 @@ fn claim_result_for_outcome(
             corpus_resolve_nanos: 0,
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
             budget_refusal: None,
             selection_degradation: None,
@@ -1984,6 +2015,7 @@ fn claim_result_for_outcome(
             corpus_resolve_nanos: 0,
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
             budget_refusal: None,
             selection_degradation: None,
@@ -2013,6 +2045,7 @@ fn claim_result_for_outcome(
             corpus_resolve_nanos: 0,
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
             budget_refusal: Some(BudgetRefusal {
                 elapsed_ms,
@@ -2303,6 +2336,7 @@ fn run_native_bundle_unit(
         corpus_resolve_nanos: 0,
         corpus_eval_nanos: 0,
         corpus_witnesses: 3,
+        runtime_unit_count: FloorRuntimeUnitCount::Observed { units: 3 },
         witness_row_costs: Vec::new(),
         budget_refusal: None,
         selection_degradation: None,
@@ -2333,6 +2367,7 @@ fn run_native_bundle_unit(
         corpus_resolve_nanos: 0,
         corpus_eval_nanos: 0,
         corpus_witnesses: 3,
+        runtime_unit_count: FloorRuntimeUnitCount::Observed { units: 3 },
         witness_row_costs: Vec::new(),
         budget_refusal: None,
         selection_degradation: None,
@@ -2483,6 +2518,9 @@ fn run_native_bundle_unit(
         corpus_resolve_nanos: 0,
         corpus_eval_nanos: interpreter_oracle_wall_nanos,
         corpus_witnesses: selected as usize,
+        runtime_unit_count: FloorRuntimeUnitCount::Observed {
+            units: selected as u128,
+        },
         witness_row_costs: Vec::new(),
         budget_refusal: None,
         selection_degradation: None,
@@ -2523,6 +2561,7 @@ fn run_batch_unit(
             corpus_resolve_nanos: 0,
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
             budget_refusal: None,
             selection_degradation: None,
@@ -2669,6 +2708,7 @@ fn run_shared_entry_claims(
                     corpus_resolve_nanos: 0,
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
+                    runtime_unit_count: single_claim_runtime_unit_count(),
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
                     selection_degradation: None,
@@ -2754,6 +2794,7 @@ fn run_memo_shared_claims(
                         corpus_resolve_nanos: 0,
                         corpus_eval_nanos: 0,
                         corpus_witnesses: 0,
+                        runtime_unit_count: single_claim_runtime_unit_count(),
                         witness_row_costs: Vec::new(),
                         budget_refusal: None,
                         selection_degradation: None,
@@ -3361,6 +3402,7 @@ fn discovery_claim_result(
                 corpus_resolve_nanos: summary.total_resolve_nanos,
                 corpus_eval_nanos: summary.total_measured_nanos,
                 corpus_witnesses: summary.total,
+                runtime_unit_count: discovery_runtime_unit_count_from_summary(summary.total),
                 witness_row_costs,
                 budget_refusal: discovery_budget_refusal(summary),
                 selection_degradation: Some(SelectionDegradationSnapshot::from_summary(
@@ -3390,6 +3432,7 @@ fn discovery_claim_result(
                 corpus_resolve_nanos: summary.total_resolve_nanos,
                 corpus_eval_nanos: summary.total_measured_nanos,
                 corpus_witnesses: summary.total,
+                runtime_unit_count: discovery_runtime_unit_count_from_summary(summary.total),
                 witness_row_costs: Vec::new(),
                 // Same rule as the detail above: a receipt refusal ADDS a cause, it does not
                 // erase the one already established. A batch that blew its budget and then
@@ -3493,6 +3536,9 @@ fn run_discovery_batch_node(
                         corpus_resolve_nanos: summary.total_resolve_nanos,
                         corpus_eval_nanos: summary.total_measured_nanos,
                         corpus_witnesses: summary.total,
+                        runtime_unit_count: discovery_runtime_unit_count_from_summary(
+                            summary.total,
+                        ),
                         witness_row_costs: Vec::new(),
                         budget_refusal: discovery_budget_refusal(&summary),
                         selection_degradation: Some(SelectionDegradationSnapshot::from_summary(
@@ -3658,6 +3704,9 @@ fn run_discovery_batch_node(
                         corpus_resolve_nanos: summary.total_resolve_nanos,
                         corpus_eval_nanos: summary.total_measured_nanos,
                         corpus_witnesses: summary.total,
+                        runtime_unit_count: discovery_runtime_unit_count_from_summary(
+                            summary.total,
+                        ),
                         witness_row_costs: Vec::new(),
                         budget_refusal: discovery_budget_refusal(&summary),
                         selection_degradation: Some(SelectionDegradationSnapshot::from_summary(
@@ -3727,25 +3776,31 @@ fn run_discovery_batch_node(
                     corpus_resolve_nanos: 0,
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
+                    runtime_unit_count: runtime_unit_count_unavailable(msg),
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
                     selection_degradation: None,
                     resolve_realization: None,
                 }
             } else {
+                let detail = match scoped_write_error {
+                    Some(receipt) => format!(
+                        "discovery corpus failed: {msg}; scoped witness receipt refused: {receipt}"
+                    ),
+                    None => format!("discovery corpus failed: {msg}"),
+                };
+                let runtime_unit_count = runtime_unit_count_unavailable(&detail);
                 ClaimResult {
                     function: label,
                     entry: DISCOVERY_AGGREGATE_ENTRY.to_string(),
                     ok: false,
-                    detail: match scoped_write_error {
-                        Some(receipt) => format!("discovery corpus failed: {msg}; scoped witness receipt refused: {receipt}"),
-                        None => format!("discovery corpus failed: {msg}"),
-                    },
+                    detail,
                     wall_nanos: 0,
                     resolve_nanos: 0,
                     corpus_resolve_nanos: 0,
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
+                    runtime_unit_count,
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
                     selection_degradation: None,
@@ -4333,8 +4388,10 @@ struct BatchRecord {
     /// The derived clamp computed for this batch (overhead + unit_count*rate, tightened), or None
     /// for budget-less plans (falsifier/regen). Recorded so the receipt never recomputes it.
     clamp_ms: Option<u128>,
-    /// The runtime unit count the clamp used (discovery witnesses + gate rows).
+    /// The runtime unit count the clamp used when observed.
     unit_count: u128,
+    /// Full availability for the batch clamp receipt (`ClampRefused` when unavailable).
+    runtime_units: FloorRuntimeUnitCount,
     /// Flattened results from all units in this batch (order: unit by unit).
     results: Vec<ClaimResult>,
     /// Heartbeat label for this batch — carried so the component receipt names the
@@ -4770,8 +4827,12 @@ fn write_batch_wall_receipt_at(base: &std::path::Path, batch_records: &[BatchRec
         let n = rec.batch_index + 1;
         let wall_ms = rec.wall_nanos / 1_000_000;
         body.push_str(&format!("batch_{n}_wall_ms={wall_ms}\n"));
-        match rec.clamp_ms {
-            Some(clamp_ms) => {
+        match (&rec.runtime_units, rec.clamp_ms) {
+            (FloorRuntimeUnitCount::Unavailable { .. }, _) => {
+                body.push_str(&format!("batch_{n}_units=unavailable\n"));
+                body.push_str(&format!("batch_{n}_verdict=ClampRefused\n"));
+            }
+            (FloorRuntimeUnitCount::Observed { .. }, Some(clamp_ms)) => {
                 let verdict = if wall_ms > clamp_ms {
                     over_budget += 1;
                     "OverBudget"
@@ -4782,7 +4843,7 @@ fn write_batch_wall_receipt_at(base: &std::path::Path, batch_records: &[BatchRec
                 body.push_str(&format!("batch_{n}_clamp_ms={clamp_ms}\n"));
                 body.push_str(&format!("batch_{n}_verdict={verdict}\n"));
             }
-            None => {
+            (FloorRuntimeUnitCount::Observed { .. }, None) => {
                 body.push_str(&format!("batch_{n}_verdict=Unbudgeted\n"));
             }
         }
@@ -6737,7 +6798,10 @@ struct StageRun {
     /// recomputed by the caller: one derivation, one call.
     label: String,
     wall_nanos: u128,
-    /// Runtime unit count the clamp used (discovery witnesses + gate rows).
+    /// Aggregated runtime unit observation for the clamp (authority
+    /// `gunbc_ci_floor_batch_runtime_unit_count_note`).
+    runtime_units: FloorRuntimeUnitCount,
+    /// Observed unit sum when available; zero when unavailable (receipt uses `runtime_units`).
     unit_count: u128,
     /// The derived clamp actually computed, or None when the plan declares no clamp
     /// params for this population.
@@ -6964,40 +7028,57 @@ fn run_stage(
     // evaluated — the clamp is an admission/scheduling fact, not a verdict term. A
     // population whose plan declares no clamp params gets None and is not clamped;
     // nothing is fabricated for it.
-    let unit_count = batch_runtime_unit_count(&results);
-    let clamp_ms: Option<u128> = clamp_params.map(|(overhead_ms, rate_ms)| {
-        let mut clamp = overhead_ms + unit_count * rate_ms;
-        if let Some(t) = budget_tighten_ms {
-            clamp = clamp.min(t);
-        }
-        clamp
-    });
+    let runtime_units = aggregate_batch_runtime_units(&results);
     let mut over_budget = false;
-    if let Some(clamp) = clamp_ms {
-        let wall_ms = wall_nanos / 1_000_000;
-        if wall_ms > clamp {
-            over_budget = true;
+    let (unit_count, clamp_ms) = match (&runtime_units, clamp_params) {
+        (FloorRuntimeUnitCount::Unavailable { cause }, Some(_)) => {
             println!(
                 "{}",
                 paint(
                     &format!(
-                        "✗ FLOOR-BATCH-OVER-BUDGET {}={} wall_ms={} clamp_ms={} units={}                                  (clamp = overhead + units*rate; authority gunbc.ci_spec                                  gunbc_ci_floor_batch_clamp_params[{}]; raising an overhead or rate requires                                  an operator-signed line per gunbc_ci_floor_batch_clamp_note — a refusal,                                  never a widen)",
+                        "✗ FLOOR-BATCH-CLAMP-REFUSED {}={} units unavailable ({cause})                                  (clamp comparison refused; authority gunbc.ci_spec                                  gunbc_ci_floor_batch_runtime_unit_count_note — not FLOOR-BATCH-OVER-BUDGET)",
                         population.phase_slug(),
                         index + 1,
-                        wall_ms,
-                        clamp,
-                        unit_count,
-                        index
                     ),
                     sgr::ERROR
                 )
             );
+            (0u128, None)
         }
-    }
+        (FloorRuntimeUnitCount::Observed { units }, Some((overhead_ms, rate_ms))) => {
+            let mut clamp = overhead_ms + (*units * rate_ms);
+            if let Some(t) = budget_tighten_ms {
+                clamp = clamp.min(t);
+            }
+            let wall_ms = wall_nanos / 1_000_000;
+            if wall_ms > clamp {
+                over_budget = true;
+                println!(
+                    "{}",
+                    paint(
+                        &format!(
+                            "✗ FLOOR-BATCH-OVER-BUDGET {}={} wall_ms={} clamp_ms={} units={}                                  (clamp = overhead + units*rate; authority gunbc.ci_spec                                  gunbc_ci_floor_batch_clamp_params[{}]; raising an overhead or rate requires                                  an operator-signed line per gunbc_ci_floor_batch_clamp_note — a refusal,                                  never a widen)",
+                            population.phase_slug(),
+                            index + 1,
+                            wall_ms,
+                            clamp,
+                            units,
+                            index
+                        ),
+                        sgr::ERROR
+                    )
+                );
+            }
+            (*units, Some(clamp))
+        }
+        (FloorRuntimeUnitCount::Observed { units }, None) => (*units, None),
+        (FloorRuntimeUnitCount::Unavailable { .. }, None) => (0u128, None),
+    };
     StageRun {
         results,
         label,
         wall_nanos,
+        runtime_units,
         unit_count,
         clamp_ms,
         thread_panicked,
@@ -7214,6 +7295,7 @@ fn run_walk(
             results: batch_results,
             label,
             wall_nanos: batch_wall_nanos,
+            runtime_units: batch_runtime_units,
             unit_count: batch_unit_count,
             clamp_ms: batch_clamp_ms,
             thread_panicked,
@@ -7293,6 +7375,7 @@ fn run_walk(
             wall_nanos: batch_wall_nanos,
             clamp_ms: batch_clamp_ms,
             unit_count: batch_unit_count,
+            runtime_units: batch_runtime_units,
             results: batch_results,
             label: label.clone(),
             selection_tag: batch_selection_tag(batch),
@@ -9596,6 +9679,7 @@ mod tests {
             wall_nanos: 0,
             clamp_ms: None,
             unit_count: 0,
+            runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
             label: "finalization-fixture".to_string(),
             selection_tag: "fixture",
             is_wet: false,
@@ -9611,6 +9695,7 @@ mod tests {
                     corpus_resolve_nanos: 0,
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
+                    runtime_unit_count: single_claim_runtime_unit_count(),
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
                     selection_degradation: None,
@@ -9804,6 +9889,7 @@ mod tests {
             wall_nanos: 0,
             clamp_ms: None,
             unit_count: 0,
+            runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
             label: "obligation-fixture".to_string(),
             selection_tag: "fixture",
             is_wet: false,
@@ -9818,6 +9904,7 @@ mod tests {
                     corpus_resolve_nanos: 0,
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
+                    runtime_unit_count: single_claim_runtime_unit_count(),
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
                     selection_degradation: None,
@@ -9835,6 +9922,7 @@ mod tests {
                     corpus_resolve_nanos: 0,
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
+                    runtime_unit_count: single_claim_runtime_unit_count(),
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
                     selection_degradation: None,
@@ -9862,6 +9950,7 @@ mod tests {
             corpus_resolve_nanos: 0,
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
             budget_refusal: None,
             selection_degradation: None,
@@ -9885,6 +9974,7 @@ mod tests {
             wall_nanos: 0,
             clamp_ms: None,
             unit_count: 0,
+            runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
             label: "emit-only".to_string(),
             selection_tag: "fixture",
             is_wet: false,
@@ -9898,6 +9988,7 @@ mod tests {
                 corpus_resolve_nanos: 0,
                 corpus_eval_nanos: 0,
                 corpus_witnesses: 0,
+                runtime_unit_count: single_claim_runtime_unit_count(),
                 witness_row_costs: Vec::new(),
                 budget_refusal: None,
                 selection_degradation: None,
@@ -9933,6 +10024,7 @@ mod tests {
             corpus_resolve_nanos: 0,
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
             budget_refusal: None,
             selection_degradation: None,
@@ -9964,6 +10056,7 @@ mod tests {
                 wall_nanos: 0,
                 clamp_ms: None,
                 unit_count: 0,
+                runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
                 label: "cheap-gates".to_string(),
                 selection_tag: "fixture",
                 is_wet: false,
@@ -9977,6 +10070,7 @@ mod tests {
                     corpus_resolve_nanos: 0,
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
+                    runtime_unit_count: single_claim_runtime_unit_count(),
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
                     selection_degradation: None,
@@ -9990,6 +10084,7 @@ mod tests {
                 wall_nanos: 0,
                 clamp_ms: None,
                 unit_count: 0,
+                runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
                 label: "compile-anchor".to_string(),
                 selection_tag: "fixture",
                 is_wet: false,
@@ -10003,6 +10098,7 @@ mod tests {
                     corpus_resolve_nanos: 0,
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
+                    runtime_unit_count: single_claim_runtime_unit_count(),
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
                     selection_degradation: None,
@@ -10019,6 +10115,7 @@ mod tests {
                 wall_nanos: 0,
                 clamp_ms: None,
                 unit_count: 0,
+                runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
                 label: "native-bundle".to_string(),
                 selection_tag: "fixture",
                 is_wet: false,
@@ -10034,6 +10131,7 @@ mod tests {
                     corpus_resolve_nanos: 0,
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
+                    runtime_unit_count: single_claim_runtime_unit_count(),
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
                     selection_degradation: None,
@@ -10065,6 +10163,7 @@ mod tests {
             wall_nanos: 0,
             clamp_ms: None,
             unit_count: 0,
+            runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
             label: "memo-regression".to_string(),
             selection_tag: "fixture",
             is_wet: false,
@@ -10079,6 +10178,7 @@ mod tests {
                     corpus_resolve_nanos: 0,
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
+                    runtime_unit_count: single_claim_runtime_unit_count(),
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
                     selection_degradation: None,
@@ -10096,6 +10196,7 @@ mod tests {
                     corpus_resolve_nanos: 0,
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
+                    runtime_unit_count: single_claim_runtime_unit_count(),
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
                     selection_degradation: None,
@@ -10339,11 +10440,13 @@ mod tests {
     }
 
     fn batch_record_for_test(results: Vec<ClaimResult>) -> BatchRecord {
+        let unit_count = results.len() as u128;
         BatchRecord {
             batch_index: 0,
             wall_nanos: 0,
             clamp_ms: None,
-            unit_count: results.len() as u128,
+            unit_count,
+            runtime_units: FloorRuntimeUnitCount::Observed { units: unit_count },
             results,
             label: "batch-under-test".to_string(),
             selection_tag: "off",
@@ -10370,6 +10473,7 @@ mod tests {
             corpus_resolve_nanos: 0,
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
             budget_refusal: Some(BudgetRefusal {
                 elapsed_ms: 900_001,
@@ -10401,6 +10505,7 @@ mod tests {
             corpus_resolve_nanos: 0,
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
             budget_refusal: None,
             selection_degradation: None,
@@ -10669,6 +10774,7 @@ mod tests {
             wall_nanos: 1_000_000_000,
             clamp_ms: None,
             unit_count: 1,
+            runtime_units: FloorRuntimeUnitCount::Observed { units: 1 },
             results: Vec::new(),
             label: batch_heartbeat_label(&batches[0]),
             selection_tag: batch_selection_tag(&batches[0]),
@@ -10711,6 +10817,93 @@ mod tests {
         let _ = fs::remove_dir_all(&base);
     }
 
+    // Hard discovery failure must refuse the batch clamp — never mis-render as
+    // FLOOR-BATCH-OVER-BUDGET via the legacy zero→one unit mapping.
+    #[test]
+    fn hard_discovery_error_refuses_batch_clamp_not_over_budget() {
+        let discovery_fail = ClaimResult {
+            function: "discovery-corpus".to_string(),
+            entry: DISCOVERY_AGGREGATE_ENTRY.to_string(),
+            ok: false,
+            detail: "discovery corpus failed: resolve refused".to_string(),
+            wall_nanos: 0,
+            resolve_nanos: 0,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
+            runtime_unit_count: runtime_unit_count_unavailable("resolve refused"),
+            witness_row_costs: Vec::new(),
+            budget_refusal: None,
+            selection_degradation: None,
+            resolve_realization: None,
+        };
+        let units = aggregate_batch_runtime_units(&[discovery_fail]);
+        assert!(
+            matches!(units, FloorRuntimeUnitCount::Unavailable { .. }),
+            "hard corpus error must mark units unavailable, got {units:?}"
+        );
+        // Positive control: a single gate row still contributes one observed unit.
+        let gate = ClaimResult {
+            function: "some_gate_holds".to_string(),
+            entry: "dag/tools/floor_effect_gate_witness.dag".to_string(),
+            ok: true,
+            detail: String::new(),
+            wall_nanos: 0,
+            resolve_nanos: 0,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
+            witness_row_costs: Vec::new(),
+            budget_refusal: None,
+            selection_degradation: None,
+            resolve_realization: None,
+        };
+        assert_eq!(
+            aggregate_batch_runtime_units(&[gate]),
+            FloorRuntimeUnitCount::Observed { units: 1 }
+        );
+        // RED control: the old zero→one mapping would fabricate OverBudget on a slow wall
+        // against overhead-only clamp when the corpus actually failed.
+        let overhead_ms = 60_000u128;
+        let rate_ms = 1_000u128;
+        let wall_ms = 120_000u128;
+        if let FloorRuntimeUnitCount::Observed { units: 1 } = units {
+            let clamp = overhead_ms + 1 * rate_ms;
+            assert!(
+                wall_ms > clamp,
+                "control: units=1 would have breached overhead-only clamp"
+            );
+        }
+    }
+
+    #[test]
+    fn hard_discovery_batch_wall_receipt_is_clamp_refused_not_over_budget() {
+        let base = std::env::temp_dir().join(format!(
+            "claim-executor-clamp-refused-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&base);
+        let records = vec![BatchRecord {
+            batch_index: 2,
+            wall_nanos: 600_000_000_000,
+            clamp_ms: None,
+            unit_count: 0,
+            runtime_units: runtime_unit_count_unavailable("discovery corpus failed: test"),
+            results: Vec::new(),
+            label: "discovery-corpus".to_string(),
+            selection_tag: "applied",
+            is_wet: false,
+        }];
+        assert!(write_batch_wall_receipt_at(&base, &records));
+        let body = fs::read_to_string(base.join("floor-batch-wall-receipt.txt")).unwrap();
+        assert!(body.contains("batch_3_units=unavailable"));
+        assert!(body.contains("batch_3_verdict=ClampRefused"));
+        assert!(!body.contains("OverBudget"));
+        assert!(body.contains("over_budget_batches=0"));
+        let _ = fs::remove_dir_all(&base);
+    }
+
     // D5 receipt rows, both directions: an over-budget batch records OverBudget and is
     // counted; a within-budget batch records WithinBudget; a budget-less walk records
     // Unbudgeted (falsifier/regen plans).
@@ -10726,6 +10919,7 @@ mod tests {
                 wall_nanos: 5_000_000_000, // 5s
                 clamp_ms: Some(2_000),     // 2s
                 unit_count: 3,
+                runtime_units: FloorRuntimeUnitCount::Observed { units: 3 },
                 results: Vec::new(),
                 label: "batch-0".to_string(),
                 selection_tag: "off",
@@ -10736,6 +10930,7 @@ mod tests {
                 wall_nanos: 1_000_000_000, // 1s
                 clamp_ms: Some(2_000),     // 2s
                 unit_count: 0,
+                runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
                 results: Vec::new(),
                 label: "batch-1".to_string(),
                 selection_tag: "off",
@@ -10756,6 +10951,7 @@ mod tests {
             wall_nanos: 5_000_000_000,
             clamp_ms: None,
             unit_count: 0,
+            runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
             results: Vec::new(),
             label: "batch-0".to_string(),
             selection_tag: "off",
@@ -12582,6 +12778,7 @@ mod tests {
             wall_nanos: 0,
             clamp_ms: None,
             unit_count: 3,
+            runtime_units: FloorRuntimeUnitCount::Observed { units: 3 },
             label: "bin-witness-corpus".to_string(),
             selection_tag: "applied",
             is_wet: true,
@@ -12595,6 +12792,7 @@ mod tests {
                 corpus_resolve_nanos: 0,
                 corpus_eval_nanos: 0,
                 corpus_witnesses: 3,
+                runtime_unit_count: discovery_runtime_unit_count_from_summary(3),
                 witness_row_costs: vec![
                     WitnessRowCost {
                         entry: "dag/test/claim/stage0_rust_host_observation_live_witness_test.dag"
@@ -12676,6 +12874,7 @@ mod tests {
             wall_nanos: 0,
             clamp_ms: None,
             unit_count: 2,
+            runtime_units: FloorRuntimeUnitCount::Observed { units: 2 },
             label: "collision".to_string(),
             selection_tag: "applied",
             is_wet: false,
@@ -12689,6 +12888,7 @@ mod tests {
                 corpus_resolve_nanos: 0,
                 corpus_eval_nanos: 0,
                 corpus_witnesses: 2,
+                runtime_unit_count: discovery_runtime_unit_count_from_summary(2),
                 witness_row_costs: vec![
                     // Executed, sub-millisecond: 500_000ns / 1_000_000 == 0. Both clocks
                     // sampled, as production rows are.
@@ -13154,6 +13354,7 @@ mod tests {
             corpus_resolve_nanos: 0,
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
             budget_refusal: None,
             selection_degradation: None,
