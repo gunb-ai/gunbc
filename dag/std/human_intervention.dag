@@ -50,29 +50,28 @@ type ProvisioningHumanBurden {
   interventions: List<HumanIntervention>
 }
 
-fn human_intervention_frequency_eq(a: HumanInterventionFrequency, b: HumanInterventionFrequency) -> Bool {
-  match a {
-    FleetOnce => match b { FleetOnce => true  DeviceOnce => false  EveryProvision => false  BreakGlassOnly => false }
-    DeviceOnce => match b { FleetOnce => false  DeviceOnce => true  EveryProvision => false  BreakGlassOnly => false }
-    EveryProvision => match b { FleetOnce => false  DeviceOnce => false  EveryProvision => true  BreakGlassOnly => false }
-    BreakGlassOnly => match b { FleetOnce => false  DeviceOnce => false  EveryProvision => false  BreakGlassOnly => true }
-  }
-}
-
 // DERIVED. No burden carries a stored count; a stored one is a second representation of
 // the list beside it and goes stale the moment an intervention is added (DESIGN §2/§3).
 // The result is an Int rather than std.nat.Nat because Nat at this layer is the algebraic
 // CommutativeSemiring<Magnitude> alias with no counting surface, and list_length — the one
 // authority for "how many elements" — answers in Int; minting a second cardinal here to
 // satisfy a name would be exactly the re-invention the decomposition test forbids.
+// Frequency matching is inlined in the fold — not a standalone Bool predicate over the
+// coproduct (review 49932 predicate-dissolution).
 fn human_intervention_count_at(
   burden: ProvisioningHumanBurden,
   frequency: HumanInterventionFrequency
 ) -> Int {
-  list_length(items: filter(
+  fold(
     xs: burden.interventions,
-    f: i => human_intervention_frequency_eq(a: i.frequency, b: frequency)
-  ))
+    init: 0,
+    f: (acc, i) => match i.frequency {
+      FleetOnce => match frequency { FleetOnce => acc + 1  DeviceOnce => acc  EveryProvision => acc  BreakGlassOnly => acc }
+      DeviceOnce => match frequency { FleetOnce => acc  DeviceOnce => acc + 1  EveryProvision => acc  BreakGlassOnly => acc }
+      EveryProvision => match frequency { FleetOnce => acc  DeviceOnce => acc  EveryProvision => acc + 1  BreakGlassOnly => acc }
+      BreakGlassOnly => match frequency { FleetOnce => acc  DeviceOnce => acc  EveryProvision => acc  BreakGlassOnly => acc + 1 }
+    }
+  )
 }
 
 // Routine burden is compared LEXICOGRAPHICALLY down the axis, most-multiplied first:
