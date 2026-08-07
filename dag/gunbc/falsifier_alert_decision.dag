@@ -94,6 +94,7 @@ type AlertDecision
   | NotifyLegacyStateMigration { issue: Issue, first_red: FirstRedStanding, signature: IncidentSignature, next_state: FalsifierAlertState, notification: AlertNotification }
   | OpenObserverIncident { conclusion_tag: NonEmptyStr, next_state: FalsifierAlertState, notification: AlertNotification }
   | RefreshObserverIncident { issue: Issue, conclusion_tag: NonEmptyStr, next_state: FalsifierAlertState, silent_for: Millisecond, notification: AlertNotification }
+  | RefreshObserverIncidentWithoutNotification { issue: Issue, conclusion_tag: NonEmptyStr, next_state: FalsifierAlertState, silent_for: Millisecond }
   | NotifyAlertControllerUnavailable { cause: AlertControllerCause, issue_disposition: ControllerIssueDisposition, notification: AlertNotification }
   | RefuseUntrustedEvent { admission: FalsifierAlertAdmission }
   | RefuseEscalationRecipientUndeclared { cause: NonEmptyStr }
@@ -210,6 +211,7 @@ fn alert_decision_notifies(d: AlertDecision) -> Bool {
     RefuseEscalationRecipientUndeclared { cause: _ } => false
     OpenObserverIncident { conclusion_tag: _, next_state: _, notification: _ } => true
     RefreshObserverIncident { issue: _, conclusion_tag: _, next_state: _, silent_for: _, notification: _ } => true
+    RefreshObserverIncidentWithoutNotification { issue: _, conclusion_tag: _, next_state: _, silent_for: _ } => false
     NotifyAlertControllerUnavailable { cause: _, issue_disposition: _, notification: _ } => true
   }
 }
@@ -227,6 +229,7 @@ fn alert_decision_notification(d: AlertDecision) -> AlertNotification? {
     RefuseEscalationRecipientUndeclared { cause: _ } => none
     OpenObserverIncident { conclusion_tag: _, next_state: _, notification: n } => Present { value: n }
     RefreshObserverIncident { issue: _, conclusion_tag: _, next_state: _, silent_for: _, notification: n } => Present { value: n }
+    RefreshObserverIncidentWithoutNotification { issue: _, conclusion_tag: _, next_state: _, silent_for: _ } => none
     NotifyAlertControllerUnavailable { cause: _, issue_disposition: _, notification: n } => Present { value: n }
   }
 }
@@ -497,16 +500,28 @@ fn alert_decision_observer_unavailable(
             notification: alert_notification(handle: handle, routings: routings)
           }
         IncidentCurrent { issue: iss, state: st } =>
-          RefreshObserverIncident {
-            issue: iss,
-            conclusion_tag: tag,
-            next_state: FalsifierAlertState { first_red: st.first_red, signature: signature, last_notification_at: now },
-            silent_for: millisecond(count: now - st.last_notification_at),
-            notification: alert_notification(handle: handle, routings: routings)
+          if (st.signature as String) != (signature as String)
+            || now >= st.last_notification_at + millisecond_count(m: falsifier_alert_heartbeat_window) {
+            RefreshObserverIncident {
+              issue: iss,
+              conclusion_tag: tag,
+              next_state: FalsifierAlertState { first_red: st.first_red, signature: signature, last_notification_at: now },
+              silent_for: millisecond(count: now - st.last_notification_at),
+              notification: alert_notification(handle: handle, routings: routings)
+            }
+          } else {
+            RefreshObserverIncidentWithoutNotification {
+              issue: iss,
+              conclusion_tag: tag,
+              next_state: FalsifierAlertState { first_red: st.first_red, signature: signature, last_notification_at: st.last_notification_at },
+              silent_for: millisecond(count: now - st.last_notification_at)
+            }
           }
       }
   }
 }
+
+data observer_throttle_symmetry_note: String = "THE OBSERVER PATH IS THROTTLED BY THE SAME WINDOW AS THE RED PATH, and for one revision it was not (review 50351). RefreshObserverIncident was returned unconditionally for IncidentCurrent: it never compared the stored signature, never compared the window, and advanced last_notification_at to now on every run. On the four-hourly falsifier cadence a permanently timed-out observer would therefore have paged every four hours — the exact notification spam this module exists to end — while two notes a few lines apart asserted that it did not. The code was wrong and the prose was right, which is the worse way round: a reader checking the policy would have found it documented and true-looking.\\n\\nTHE SUPPRESSED ARM PRESERVES last_notification_at RATHER THAN ADVANCING IT, and that is the load-bearing half. Writing `now` there looks harmless — the run did just observe the incident — but it restarts the window on every cadence, so the elapsed comparison can never fire and the heartbeat is silenced FOREVER. Advancing turns a spam defect into a silence defect, which is strictly worse because nothing observes it. Only an arm that actually notifies may move the instant, so the field records WHEN WE LAST SPOKE, never when we last looked. The red path's RefreshIssueWithoutNotification carries the same asymmetry for the same reason.\\n\\nThe two notifying cases share one arm because they produce the same effect. A changed observer class and an elapsed window both mean speak now, and RefreshObserverIncident already carries the conclusion_tag that says which conclusion it is; splitting them would be two names for one instruction. The red path splits its two only because their MESSAGES differ — a changed class names the previous signature and the current one — which is a distinction in what gets said, not in whether to say it."
 
 data observer_signature_note: String = "The observer incident gets its own signature, derived from the conclusion tag, so it is distinguishable from every corpus incident AND from the other observer conclusion. A timeout following a startup failure is a changed class and should say so; a timeout following a timeout is the same incident and is throttled by the ordinary window. Reusing a corpus signature here would make an observer outage look like a component failure with no components."
 

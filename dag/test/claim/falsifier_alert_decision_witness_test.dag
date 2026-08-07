@@ -33,7 +33,8 @@ import gunbc.falsifier_alert_decision {
   AlertIssueObservation, NoOpenAlertIssue, OneOpenAlertIssue, MultipleOpenAlertIssues, AlertIssueLookupRefused,
   IncidentSignature, ComponentIncidentIdentity,
   RefuseEscalationRecipientUndeclared,
-  OpenObserverIncident, RefreshObserverIncident, NotifyAlertControllerUnavailable,
+  OpenObserverIncident, RefreshObserverIncident, RefreshObserverIncidentWithoutNotification,
+  NotifyAlertControllerUnavailable,
   ControllerReceiptMalformed, ControllerReceiptMismatch, ControllerMarkerMalformed, ControllerRoutingJoinRefused,
   ControllerIssueLookupRefused, ControllerMultipleOpenIssues, ControllerIssueObserved, ControllerIssueUntouched,
   ConclusionDecidedBeforeReceipt,
@@ -750,7 +751,9 @@ test fn a_timed_out_run_with_no_receipt_reports_the_observer_not_the_writer() ->
   }
 }
 
-test fn a_repeated_observer_outage_refreshes_the_same_incident() -> Bool {
+data observer_throttle_claims_note: String = "These four claims exist because the observer path was NOT throttled for one revision (review 50351) while two notes asserted it was. The old witness here is the reason it survived: it asked the repeated-outage case at now 6000 against last 5000 — a one-second gap inside a twenty-hour window — and asserted RefreshObserverIncident, so it PINNED the spam as the contract and would have gone red against the correct behavior. A witness that agrees with the defect is worse than no witness, because it converts a fix into an apparent regression. It now asks the same repeat at the same instants and asserts suppression, and the notifying cases get their own inputs where the window has genuinely elapsed."
+
+test fn a_repeated_observer_outage_within_the_window_is_suppressed() -> Bool {
   match alert_decision(
     admission: admission_of(json: trusted_event_json_with_conclusion(conclusion: "timed_out")),
     receipt: ReceiptUndecodable { decoding: ReceiptNotJson { detail: "no receipt" } },
@@ -759,9 +762,62 @@ test fn a_repeated_observer_outage_refreshes_the_same_incident() -> Bool {
     escalation: declared_escalation(),
     routings: []
   ) {
-    RefreshObserverIncident { issue: iss, conclusion_tag: _, next_state: ns, silent_for: _, notification: _ } =>
+    RefreshObserverIncidentWithoutNotification { issue: iss, conclusion_tag: _, next_state: ns, silent_for: sf } =>
       iss.number == 4242
+        && ns.last_notification_at == 5000
+        && millisecond_count(m: sf) == 1000
         && match ns.first_red { FirstRedObserved { at: t } => t == 1000, FirstRedUnknownBeforeTracking => false }
+    _ => false
+  }
+}
+
+fn observer_decision_at(last: EpochMs, now: EpochMs) -> AlertDecision {
+  alert_decision(
+    admission: admission_of(json: trusted_event_json_with_conclusion(conclusion: "timed_out")),
+    receipt: ReceiptUndecodable { decoding: ReceiptNotJson { detail: "no receipt" } },
+    observation: observed(state: current_state(signature: "observer-unavailable:timed_out" as NonEmptyStr, last: last)),
+    now: now,
+    escalation: declared_escalation(),
+    routings: []
+  )
+}
+
+test fn a_suppressed_observer_refresh_does_not_advance_the_notification_instant() -> Bool {
+  let just_under = 5000 + millisecond_count(m: falsifier_alert_heartbeat_window) - 1
+  let carried = match observer_decision_at(last: 5000, now: just_under) {
+    RefreshObserverIncidentWithoutNotification { issue: _, conclusion_tag: _, next_state: ns, silent_for: _ } => ns.last_notification_at
+    _ => just_under
+  }
+  match observer_decision_at(last: carried, now: 5000 + millisecond_count(m: falsifier_alert_heartbeat_window)) {
+    RefreshObserverIncident { issue: _, conclusion_tag: _, next_state: _, silent_for: _, notification: _ } => carried == 5000
+    _ => false
+  }
+}
+
+test fn a_repeated_observer_outage_heartbeats_once_the_window_elapses() -> Bool {
+  let boundary = 5000 + millisecond_count(m: falsifier_alert_heartbeat_window)
+  match observer_decision_at(last: 5000, now: boundary) {
+    RefreshObserverIncident { issue: iss, conclusion_tag: _, next_state: ns, silent_for: sf, notification: _ } =>
+      iss.number == 4242
+        && ns.last_notification_at == boundary
+        && millisecond_count(m: sf) == millisecond_count(m: falsifier_alert_heartbeat_window)
+    _ => false
+  }
+}
+
+test fn a_changed_observer_class_notifies_even_inside_the_window() -> Bool {
+  match alert_decision(
+    admission: admission_of(json: trusted_event_json_with_conclusion(conclusion: "timed_out")),
+    receipt: ReceiptUndecodable { decoding: ReceiptNotJson { detail: "no receipt" } },
+    observation: observed(state: current_state(signature: "observer-unavailable:startup_failure" as NonEmptyStr, last: 5000)),
+    now: 6000,
+    escalation: declared_escalation(),
+    routings: []
+  ) {
+    RefreshObserverIncident { issue: _, conclusion_tag: t, next_state: ns, silent_for: _, notification: _ } =>
+      (t as String) == "timed_out"
+        && (ns.signature as String) == "observer-unavailable:timed_out"
+        && ns.last_notification_at == 6000
     _ => false
   }
 }
