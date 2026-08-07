@@ -11,9 +11,9 @@ fn affected_set_self_confirmation_body() -> List<MarkdownBlock> {
     h2(text: "7933B — true self-confirmation"),
     p(text: "One authority produces host-consumed skip-block data. Mechanism declarations and validating checks are referenced symbolically (not a hardcoded path roster). Host consumes a generated or direct projection — no authored Rust twin. Unresolved mechanism or check identity REFUSES. Adding a new selection mechanism without a validating relation REFUSES."),
     ul(items: [
-      li(text: "**Dissolves (Rust twin):** `cli_run_affected_set_stop_line_bridge` — delete `COMPILE_CLEAN_*_VALIDATING_ENTRY` consts and the broad-rule helpers in cli_run.rs; host consumes projection from the `.dag` authority."),
-      li(text: "**Survives (authority home):** `gunbc.affected_set_stop_line` validating-entry rows become inputs to the 7933B symbolic authority — not deleted in favor of Rust."),
-      li(text: "**Keeps:** discriminating witnesses — mechanism-touch pair, #7915 repair-receipt pair, scope-only RED control (identity membership, not cardinality)."),
+      li(text: "**Dissolves (7933A Rust scaffold):** `cli_run_affected_set_stop_line_bridge` — delete `COMPILE_CLEAN_*_VALIDATING_ENTRY` consts and the broad-rule helpers in cli_run.rs once host consumes a generated/direct `.dag` projection."),
+      li(text: "**7933B authority shape:** symbolic mechanism refs + validating-check refs in `.dag`; generated or directly consumed host projection; unresolved mechanism/check identity REFUSES; new selection mechanism without validating relation REFUSES."),
+      li(text: "**Keeps:** discriminating controls from 7933A — mechanism-touch pair, #7915 repair-receipt pair, scope-only RED control (identity membership, not cardinality); re-home as `.dag` witnesses when 7933B lands."),
     ]),
   ]
 }
@@ -23,6 +23,6 @@ data affected_set_self_confirmation_plan: Plan = Plan {
   title: "Plan — affected-set true self-confirmation (7933B)",
   body: affected_set_self_confirmation_body(),
   dissolution: HasTrigger {
-    text: "7933B authority live: symbolic mechanism refs, generated/direct host projection from gunbc.affected_set_stop_line (and successors), refusal on unresolved mechanism or check identity — DELETE the cli_run.rs Rust twin (COMPILE_CLEAN_* consts + broad-rule bridge), not the .dag validating-entry rows."
+    text: "7933B authority live: symbolic mechanism refs, generated/direct host projection, refusal on unresolved mechanism or check identity — DELETE the cli_run.rs 7933A scaffold (COMPILE_CLEAN_* consts + broad-rule bridge); gunbc.affected_set_stop_line becomes rationale/cost carrier only or dissolves into the new authority module."
   }
 }

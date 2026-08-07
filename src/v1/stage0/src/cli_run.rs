@@ -19974,10 +19974,10 @@ fn declared_source_refs_blocks_skip(axis: DeclaredSourceRefAxis) -> bool {
 // SCAFFOLD (§7 HAND-RUST — `cli_run_affected_set_stop_line_bridge`):
 // Lane: 7933A temporary safety stop-line (calm-fox-44) — any non-docs .dag touch blocks
 // discovery skip for compile-clean shard_a and scope witness entries. BROAD interim rule,
-// not precise self-confirmation; see `gunbc.affected_set_stop_line` and 7933B plan.
-// Mid-life parallel representation (§3): validating-entry paths are named in
-// `gunbc.affected_set_stop_line`; the consts below are the interim Rust twin
-// (7933B deletes these, not the .dag rows).
+// not precise self-confirmation; rationale/cost receipt in `gunbc.affected_set_stop_line`,
+// 7933B plan in `gunbc.plans.affected_set_self_confirmation`.
+// Sole executable authority for 7933A: the consts and helpers below (no .dag path twin).
+// 7933B replaces this scaffold with symbolic refs + generated/direct host projection.
 // DELETE WHEN dissolved: `COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY`,
 // `COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY`, `compile_clean_touched_path_norm`,
 // `compile_clean_touched_path_is_docs_only`, `compile_clean_touched_path_is_dag_source`,
