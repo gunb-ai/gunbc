@@ -1,0 +1,481 @@
+module v2.test.claim.self_host.direct_rust_door_qualification_witness_test
+
+import v2.std.algebra { Empty }
+import v2.compiler.self_host.behavioral_comparison_receipt {
+  AdmittedBehaviorEquivalentReceipt,
+  BehavioralComparisonReceipt,
+  admit_behavioral_comparison_equivalent,
+  behavioral_admission_seal_for_observation,
+  behavioral_admission_seal_unminted,
+  behavioral_comparison_execution_identity,
+  behavioral_comparison_hermetic_admitted_equivalent_for_fixture,
+  behavioral_comparison_observation_hermetic_diverged,
+  behavioral_comparison_observation_hermetic_equivalent,
+  behavioral_comparison_receipt_from_observation,
+  behavioral_comparison_subject_for_observation
+}
+import v2.compiler.self_host.direct_rust_door_behavioral_stdout {
+  direct_rust_door_equivalent_stdout_text,
+  direct_rust_door_parse_pass_rows_from_stdout
+}
+import v2.compiler.self_host.fixture_synthetic_emission {
+  advance_written_synthetic_emitted_artifact_cargo_green,
+  advance_written_synthetic_emitted_artifact_fixture_behaviorally_equivalent,
+  fixture_behavior_receipt_identity_for,
+  mint_synthetic_emitted_artifact_from_fixture_inferred_for_behavioral_qualification,
+  SyntheticEmittedArtifact,
+  WrittenSyntheticEmittedArtifact,
+  written_synthetic_emitted_artifact_has_fixture_behaviorally_equivalent_qualification,
+  written_synthetic_emitted_artifact_has_fixture_cargo_green_qualification,
+  written_synthetic_emitted_artifact_ok
+}
+import v2.compiler.self_host.candidate_generation { RustWorkspaceWriteReceipt }
+import v2.compiler.self_host.direct_rust_door_fixture {
+  direct_rust_door_behavioral_corpus_identity,
+  direct_rust_door_behavioral_probe_entry,
+  direct_rust_door_behavioral_probe_function,
+  direct_rust_door_fixture_lane_tag,
+  direct_rust_door_inferred_tree,
+  direct_rust_door_module_path,
+  direct_rust_door_subtract_comparison_rows,
+  direct_rust_door_target_model
+}
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.optional { Absent, Present, Optional, optional_absent, optional_present }
+import v2.std.text { String }
+
+data direct_rust_door_qualification_witness_note: String = "Lane 4 fast per-PR construction witnesses: process-output carrier is partial — forge still open via exported hermetic_equivalent (caller stdout). fully_matching_derived_seal_forgery_advance_succeeds_red performs real forgery and greens while hole open (DESIGN 4b(4) enrolled permanently). Sentinel RED: unminted admission_seal refuses. Ceiling in behavioral_admission_seal_ceiling_note."
+
+data direct_rust_door_qualification_fixture_workspace: String = "hermetic_fixture/direct_rust_door_qualification"
+
+data direct_rust_door_qualification_fixture_head_sha: String = "0000000000000000000000000000000000000000"
+
+data direct_rust_door_qualification_fixture_executable: String = "hermetic_fixture_executable_bytes"
+
+fn direct_rust_door_qualification_written_from_synthetic(
+  artifact: SyntheticEmittedArtifact
+) -> WrittenSyntheticEmittedArtifact {
+  WrittenSyntheticEmittedArtifact {
+    artifact: artifact,
+    write: RustWorkspaceWriteReceipt {
+      workspace_dir: direct_rust_door_qualification_fixture_workspace,
+      manifest_path: concat(
+        direct_rust_door_qualification_fixture_workspace,
+        "/Cargo.toml"
+      ),
+      main_rs_path: concat(
+        direct_rust_door_qualification_fixture_workspace,
+        "/src/lib.rs"
+      ),
+      manifest_write_ok: true,
+      main_write_ok: true
+    }
+  }
+}
+
+fn direct_rust_door_hermetic_admitted_equivalent(
+  written: WrittenSyntheticEmittedArtifact
+) -> Optional<AdmittedBehaviorEquivalentReceipt> {
+  let stdout = direct_rust_door_equivalent_stdout_text
+  match direct_rust_door_parse_pass_rows_from_stdout(stdout: stdout) {
+    Present { value: comparison_rows } =>
+      behavioral_comparison_hermetic_admitted_equivalent_for_fixture(
+        module_path: written.artifact.fixture_receipt.module_path,
+        emitted_source: written.artifact.source,
+        subject_binding_identity: fixture_behavior_receipt_identity_for(
+          receipt: written.artifact.fixture_receipt
+        ),
+        executable_content: direct_rust_door_qualification_fixture_executable,
+        head_sha: direct_rust_door_qualification_fixture_head_sha,
+        corpus_identity: direct_rust_door_behavioral_corpus_identity(),
+        comparison_rows: comparison_rows,
+        behavioral_probe_entry: direct_rust_door_behavioral_probe_entry,
+        behavioral_probe_function: direct_rust_door_behavioral_probe_function,
+        stdout: stdout
+      )
+    Absent =>
+      behavioral_comparison_hermetic_admitted_equivalent_for_fixture(
+        module_path: written.artifact.fixture_receipt.module_path,
+        emitted_source: written.artifact.source,
+        subject_binding_identity: fixture_behavior_receipt_identity_for(
+          receipt: written.artifact.fixture_receipt
+        ),
+        executable_content: direct_rust_door_qualification_fixture_executable,
+        head_sha: direct_rust_door_qualification_fixture_head_sha,
+        corpus_identity: direct_rust_door_behavioral_corpus_identity(),
+        comparison_rows: Empty,
+        behavioral_probe_entry: direct_rust_door_behavioral_probe_entry,
+        behavioral_probe_function: direct_rust_door_behavioral_probe_function,
+        stdout: stdout
+      )
+  }
+}
+
+fn direct_rust_door_fully_matching_counterfeit_admitted(
+  written: WrittenSyntheticEmittedArtifact
+) -> AdmittedBehaviorEquivalentReceipt {
+  match direct_rust_door_hermetic_admitted_equivalent(written: written) {
+    Present { value: admitted } =>
+      let observation_stdout = admitted.receipt.stdout
+      let subject = behavioral_comparison_subject_for_observation(
+        observation: behavioral_comparison_observation_hermetic_diverged(
+          module_path: written.artifact.fixture_receipt.module_path,
+          emitted_source: written.artifact.source,
+          subject_binding_identity: fixture_behavior_receipt_identity_for(
+            receipt: written.artifact.fixture_receipt
+          ),
+          executable_content: direct_rust_door_qualification_fixture_executable,
+          head_sha: direct_rust_door_qualification_fixture_head_sha,
+          corpus_identity: direct_rust_door_behavioral_corpus_identity(),
+          comparison_rows: admitted.receipt.comparison_rows,
+          behavioral_probe_entry: direct_rust_door_behavioral_probe_entry,
+          behavioral_probe_function: direct_rust_door_behavioral_probe_function
+        )
+      )
+      AdmittedBehaviorEquivalentReceipt {
+        receipt: BehavioralComparisonReceipt {
+          subject: subject,
+          corpus_identity: direct_rust_door_behavioral_corpus_identity(),
+          comparison_rows: admitted.receipt.comparison_rows,
+          stdout: observation_stdout,
+          stderr: admitted.receipt.stderr,
+          exit_success: admitted.receipt.exit_success,
+          execution_identity: behavioral_comparison_execution_identity(
+            stdout: observation_stdout,
+            stderr: admitted.receipt.stderr,
+            exit_success: admitted.receipt.exit_success
+          ),
+          head_sha: direct_rust_door_qualification_fixture_head_sha,
+          behavioral_probe_entry: direct_rust_door_behavioral_probe_entry,
+          behavioral_probe_function: direct_rust_door_behavioral_probe_function,
+          admission_seal: behavioral_admission_seal_unminted
+        }
+      }
+    Absent =>
+      AdmittedBehaviorEquivalentReceipt {
+        receipt: BehavioralComparisonReceipt {
+          subject: behavioral_comparison_subject_for_observation(
+            observation: behavioral_comparison_observation_hermetic_diverged(
+              module_path: written.artifact.fixture_receipt.module_path,
+              emitted_source: written.artifact.source,
+              subject_binding_identity: fixture_behavior_receipt_identity_for(
+                receipt: written.artifact.fixture_receipt
+              ),
+              executable_content: direct_rust_door_qualification_fixture_executable,
+              head_sha: direct_rust_door_qualification_fixture_head_sha,
+              corpus_identity: direct_rust_door_behavioral_corpus_identity(),
+              comparison_rows: Empty,
+              behavioral_probe_entry: direct_rust_door_behavioral_probe_entry,
+              behavioral_probe_function: direct_rust_door_behavioral_probe_function
+            )
+          ),
+          corpus_identity: direct_rust_door_behavioral_corpus_identity(),
+          comparison_rows: Empty,
+          stdout: "BEHAVIORAL_VERDICT: DIVERGED",
+          stderr: "",
+          exit_success: false,
+          execution_identity: behavioral_comparison_execution_identity(
+            stdout: "BEHAVIORAL_VERDICT: DIVERGED",
+            stderr: "",
+            exit_success: false
+          ),
+          head_sha: direct_rust_door_qualification_fixture_head_sha,
+          behavioral_probe_entry: direct_rust_door_behavioral_probe_entry,
+          behavioral_probe_function: direct_rust_door_behavioral_probe_function,
+          admission_seal: behavioral_admission_seal_unminted
+        }
+      }
+  }
+}
+
+fn direct_rust_door_hermetic_equivalent_derived_seal_forgery_admitted(
+  written: WrittenSyntheticEmittedArtifact
+) -> AdmittedBehaviorEquivalentReceipt {
+  let stdout = direct_rust_door_equivalent_stdout_text
+  match direct_rust_door_parse_pass_rows_from_stdout(stdout: stdout) {
+    Present { value: comparison_rows } =>
+      let observation = behavioral_comparison_observation_hermetic_equivalent(
+        module_path: written.artifact.fixture_receipt.module_path,
+        emitted_source: written.artifact.source,
+        subject_binding_identity: fixture_behavior_receipt_identity_for(
+          receipt: written.artifact.fixture_receipt
+        ),
+        executable_content: direct_rust_door_qualification_fixture_executable,
+        head_sha: direct_rust_door_qualification_fixture_head_sha,
+        corpus_identity: direct_rust_door_behavioral_corpus_identity(),
+        comparison_rows: comparison_rows,
+        behavioral_probe_entry: direct_rust_door_behavioral_probe_entry,
+        behavioral_probe_function: direct_rust_door_behavioral_probe_function,
+        stdout: stdout
+      )
+      AdmittedBehaviorEquivalentReceipt {
+        receipt: behavioral_comparison_receipt_from_observation(
+          observation: observation,
+          admission_seal: behavioral_admission_seal_for_observation(
+            observation: observation
+          )
+        )
+      }
+    Absent =>
+      let observation = behavioral_comparison_observation_hermetic_equivalent(
+        module_path: written.artifact.fixture_receipt.module_path,
+        emitted_source: written.artifact.source,
+        subject_binding_identity: fixture_behavior_receipt_identity_for(
+          receipt: written.artifact.fixture_receipt
+        ),
+        executable_content: direct_rust_door_qualification_fixture_executable,
+        head_sha: direct_rust_door_qualification_fixture_head_sha,
+        corpus_identity: direct_rust_door_behavioral_corpus_identity(),
+        comparison_rows: Empty,
+        behavioral_probe_entry: direct_rust_door_behavioral_probe_entry,
+        behavioral_probe_function: direct_rust_door_behavioral_probe_function,
+        stdout: stdout
+      )
+      AdmittedBehaviorEquivalentReceipt {
+        receipt: behavioral_comparison_receipt_from_observation(
+          observation: observation,
+          admission_seal: behavioral_admission_seal_for_observation(
+            observation: observation
+          )
+        )
+      }
+  }
+}
+
+test fn fully_matching_derived_seal_forgery_advance_succeeds_red() -> Bool {
+  match mint_synthetic_emitted_artifact_from_fixture_inferred_for_behavioral_qualification(
+    inferred: direct_rust_door_inferred_tree,
+    target: direct_rust_door_target_model(),
+    module_path: direct_rust_door_module_path,
+    fixture_lane_tag: direct_rust_door_fixture_lane_tag,
+    behavioral_probe_entry: direct_rust_door_behavioral_probe_entry,
+    behavioral_probe_function: direct_rust_door_behavioral_probe_function
+  ) {
+    Accepted { value: artifact, diagnostics: _ } =>
+      let written = direct_rust_door_qualification_written_from_synthetic(
+        artifact: artifact
+      )
+      match advance_written_synthetic_emitted_artifact_cargo_green(
+        written: written,
+        cargo_green: true
+      ) {
+        Present { value: cargo_written } =>
+          let forged = direct_rust_door_hermetic_equivalent_derived_seal_forgery_admitted(
+            written: cargo_written
+          )
+          match advance_written_synthetic_emitted_artifact_fixture_behaviorally_equivalent(
+            written: cargo_written,
+            admitted: forged,
+            executable_content: direct_rust_door_qualification_fixture_executable,
+            head_sha: direct_rust_door_qualification_fixture_head_sha,
+            expected_behavioral_probe_entry: direct_rust_door_behavioral_probe_entry,
+            expected_behavioral_probe_function: direct_rust_door_behavioral_probe_function
+          ) {
+            Present { value: behavioral_written } =>
+              written_synthetic_emitted_artifact_has_fixture_behaviorally_equivalent_qualification(
+                written: behavioral_written
+              )
+            Absent => false
+          }
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn fully_matching_counterfeit_without_admission_seal_advance_refuses() -> Bool {
+  match mint_synthetic_emitted_artifact_from_fixture_inferred_for_behavioral_qualification(
+    inferred: direct_rust_door_inferred_tree,
+    target: direct_rust_door_target_model(),
+    module_path: direct_rust_door_module_path,
+    fixture_lane_tag: direct_rust_door_fixture_lane_tag,
+    behavioral_probe_entry: direct_rust_door_behavioral_probe_entry,
+    behavioral_probe_function: direct_rust_door_behavioral_probe_function
+  ) {
+    Accepted { value: artifact, diagnostics: _ } =>
+      let written = direct_rust_door_qualification_written_from_synthetic(
+        artifact: artifact
+      )
+      match advance_written_synthetic_emitted_artifact_cargo_green(
+        written: written,
+        cargo_green: true
+      ) {
+        Present { value: cargo_written } =>
+          let admit_would_accept = match direct_rust_door_hermetic_admitted_equivalent(
+            written: cargo_written
+          ) {
+            Present { value: _ } => true
+            Absent => false
+          }
+          let counterfeit = direct_rust_door_fully_matching_counterfeit_admitted(
+            written: cargo_written
+          )
+          let advance_refused = match advance_written_synthetic_emitted_artifact_fixture_behaviorally_equivalent(
+            written: cargo_written,
+            admitted: counterfeit,
+            executable_content: direct_rust_door_qualification_fixture_executable,
+            head_sha: direct_rust_door_qualification_fixture_head_sha,
+            expected_behavioral_probe_entry: direct_rust_door_behavioral_probe_entry,
+            expected_behavioral_probe_function: direct_rust_door_behavioral_probe_function
+          ) {
+            Absent => true
+            Present { value: _ } => false
+          }
+          written_synthetic_emitted_artifact_has_fixture_cargo_green_qualification(
+            written: cargo_written
+          )
+            && admit_would_accept
+            && advance_refused
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn witness_behavioral_advance_refuses_without_cargo_green_reds() -> Bool {
+  match mint_synthetic_emitted_artifact_from_fixture_inferred_for_behavioral_qualification(
+    inferred: direct_rust_door_inferred_tree,
+    target: direct_rust_door_target_model(),
+    module_path: direct_rust_door_module_path,
+    fixture_lane_tag: direct_rust_door_fixture_lane_tag,
+    behavioral_probe_entry: direct_rust_door_behavioral_probe_entry,
+    behavioral_probe_function: direct_rust_door_behavioral_probe_function
+  ) {
+    Accepted { value: artifact, diagnostics: _ } =>
+      let written = direct_rust_door_qualification_written_from_synthetic(
+        artifact: artifact
+      )
+      let counterfeit = direct_rust_door_fully_matching_counterfeit_admitted(
+        written: written
+      )
+      !written_synthetic_emitted_artifact_has_fixture_cargo_green_qualification(
+        written: written
+      )
+        && match advance_written_synthetic_emitted_artifact_fixture_behaviorally_equivalent(
+          written: written,
+          admitted: counterfeit,
+          executable_content: direct_rust_door_qualification_fixture_executable,
+          head_sha: direct_rust_door_qualification_fixture_head_sha,
+          expected_behavioral_probe_entry: direct_rust_door_behavioral_probe_entry,
+          expected_behavioral_probe_function: direct_rust_door_behavioral_probe_function
+        ) {
+          Absent => true
+          Present { value: _ } => false
+        }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn witness_behavioral_advance_refuses_diverged_observation_reds() -> Bool {
+  match mint_synthetic_emitted_artifact_from_fixture_inferred_for_behavioral_qualification(
+    inferred: direct_rust_door_inferred_tree,
+    target: direct_rust_door_target_model(),
+    module_path: direct_rust_door_module_path,
+    fixture_lane_tag: direct_rust_door_fixture_lane_tag,
+    behavioral_probe_entry: direct_rust_door_behavioral_probe_entry,
+    behavioral_probe_function: direct_rust_door_behavioral_probe_function
+  ) {
+    Accepted { value: artifact, diagnostics: _ } =>
+      let written = direct_rust_door_qualification_written_from_synthetic(
+        artifact: artifact
+      )
+      match advance_written_synthetic_emitted_artifact_cargo_green(
+        written: written,
+        cargo_green: true
+      ) {
+        Present { value: cargo_written } =>
+          let diverged_observation = behavioral_comparison_observation_hermetic_diverged(
+            module_path: cargo_written.artifact.fixture_receipt.module_path,
+            emitted_source: cargo_written.artifact.source,
+            subject_binding_identity: fixture_behavior_receipt_identity_for(
+              receipt: cargo_written.artifact.fixture_receipt
+            ),
+            executable_content: direct_rust_door_qualification_fixture_executable,
+            head_sha: direct_rust_door_qualification_fixture_head_sha,
+            corpus_identity: direct_rust_door_behavioral_corpus_identity(),
+            comparison_rows: direct_rust_door_subtract_comparison_rows(),
+            behavioral_probe_entry: direct_rust_door_behavioral_probe_entry,
+            behavioral_probe_function: direct_rust_door_behavioral_probe_function
+          )
+          match admit_behavioral_comparison_equivalent(
+            observation: diverged_observation
+          ) {
+            Absent => true
+            Present { value: _ } => false
+          }
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn witness_behavioral_advance_refuses_mismatched_executable_identity_reds() -> Bool {
+  match mint_synthetic_emitted_artifact_from_fixture_inferred_for_behavioral_qualification(
+    inferred: direct_rust_door_inferred_tree,
+    target: direct_rust_door_target_model(),
+    module_path: direct_rust_door_module_path,
+    fixture_lane_tag: direct_rust_door_fixture_lane_tag,
+    behavioral_probe_entry: direct_rust_door_behavioral_probe_entry,
+    behavioral_probe_function: direct_rust_door_behavioral_probe_function
+  ) {
+    Accepted { value: artifact, diagnostics: _ } =>
+      let written = direct_rust_door_qualification_written_from_synthetic(
+        artifact: artifact
+      )
+      match advance_written_synthetic_emitted_artifact_cargo_green(
+        written: written,
+        cargo_green: true
+      ) {
+        Present { value: cargo_written } =>
+          match direct_rust_door_hermetic_admitted_equivalent(written: cargo_written) {
+            Present { value: admitted } =>
+              match advance_written_synthetic_emitted_artifact_fixture_behaviorally_equivalent(
+                written: cargo_written,
+                admitted: admitted,
+                executable_content: "wrong_executable_bytes",
+                head_sha: direct_rust_door_qualification_fixture_head_sha,
+                expected_behavioral_probe_entry: direct_rust_door_behavioral_probe_entry,
+                expected_behavioral_probe_function: direct_rust_door_behavioral_probe_function
+              ) {
+                Absent => true
+                Present { value: _ } => false
+              }
+            Absent => false
+          }
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn witness_cargo_green_advance_does_not_imply_behavioral_equivalent_holds() -> Bool {
+  match mint_synthetic_emitted_artifact_from_fixture_inferred_for_behavioral_qualification(
+    inferred: direct_rust_door_inferred_tree,
+    target: direct_rust_door_target_model(),
+    module_path: direct_rust_door_module_path,
+    fixture_lane_tag: direct_rust_door_fixture_lane_tag,
+    behavioral_probe_entry: direct_rust_door_behavioral_probe_entry,
+    behavioral_probe_function: direct_rust_door_behavioral_probe_function
+  ) {
+    Accepted { value: artifact, diagnostics: _ } =>
+      let written = direct_rust_door_qualification_written_from_synthetic(
+        artifact: artifact
+      )
+      match advance_written_synthetic_emitted_artifact_cargo_green(
+        written: written,
+        cargo_green: true
+      ) {
+        Present { value: cargo_written } =>
+          written_synthetic_emitted_artifact_ok(written: cargo_written)
+            && written_synthetic_emitted_artifact_has_fixture_cargo_green_qualification(
+              written: cargo_written
+            )
+            && !written_synthetic_emitted_artifact_has_fixture_behaviorally_equivalent_qualification(
+              written: cargo_written
+            )
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}

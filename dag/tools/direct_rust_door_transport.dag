@@ -1,26 +1,211 @@
 module tools.direct_rust_door_transport
 
 import extdeps.cargo_build
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.git.inspect
+import extdeps.gunbc
 import extdeps.shell
+import gunbc.output_policy { ExpectFailure }
+import tools.direct_rust_door_witness_process_output {
+  DirectRustDoorWitnessBinProcessOutput,
+  direct_rust_door_witness_bin_process_output_from_run_fields
+}
+import v2.compiler.self_host.behavioral_comparison_receipt {
+  AdmittedBehaviorEquivalent,
+  AdmittedBehaviorEquivalentReceipt,
+  BehaviorExecutionRefused,
+  BehavioralComparisonAdmission,
+  BehavioralComparisonObservation,
+  BehavioralComparisonRow,
+  BehaviorDiverged,
+  admit_behavioral_comparison,
+  admit_behavioral_comparison_equivalent,
+  behavioral_comparison_observation_from_wet_process_output
+}
+import v2.compiler.self_host.direct_rust_door_behavioral_stdout {
+  direct_rust_door_inject_fault_stdout_holds,
+  direct_rust_door_parse_pass_rows_from_stdout,
+  direct_rust_door_parse_subtract_rows_from_stdout,
+  direct_rust_door_pass_stdout_holds,
+  direct_rust_door_subtract_stdout_holds
+}
 import v2.compiler.self_host.fixture_synthetic_emission {
   advance_written_synthetic_emitted_artifact_cargo_green,
-  mint_written_synthetic_emitted_artifact_from_fixture_inferred,
+  advance_written_synthetic_emitted_artifact_fixture_behaviorally_equivalent,
+  fixture_behavior_receipt_identity_for,
+  mint_written_synthetic_emitted_artifact_from_fixture_inferred_for_behavioral_qualification,
+  WrittenSyntheticEmittedArtifact,
+  written_synthetic_emitted_artifact_has_fixture_behaviorally_equivalent_qualification,
   written_synthetic_emitted_artifact_has_fixture_cargo_green_qualification,
   written_synthetic_emitted_artifact_ok
 }
 import v2.compiler.self_host.direct_rust_door_fixture {
+  direct_rust_door_behavioral_corpus_identity,
+  direct_rust_door_behavioral_probe_entry,
+  direct_rust_door_behavioral_probe_function,
+  direct_rust_door_fixture_lib_path,
+  direct_rust_door_behavioral_witness_bin_path,
+  direct_rust_door_divergent_rust_source,
+  direct_rust_door_fixture_lane_tag,
   direct_rust_door_inferred_tree,
   direct_rust_door_module_path,
   direct_rust_door_target_model
 }
+import v2.std.collection { List }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
-import v2.std.optional { Absent, Present }
+import v2.std.optional { Absent, Present, optional_absent, optional_present }
 import v2.std.text { String }
+import std.types { CommitSha }
 
-data direct_rust_door_fixture_lane_tag: String = "direct_rust_door_fixture_containment"
+data direct_rust_door_transport_note: String = "Lane B wet transport realization (disposition 2): mint_written_synthetic_emitted_artifact_from_fixture_inferred is the sole fixture write authority; FixtureCargoGreen only after cargo.Build.BuildManifest executes. Behavioral comparison_rows are parsed FROM executed stdout; advance binds head_sha from git.Inspect.HeadCommit independently of the receipt. DirectRustDoorWitnessBinProcessOutput is sole_constructor in tools.direct_rust_door_witness_process_output; observation mint requires walled process output."
 
-data direct_rust_door_transport_note: String = "Lane B wet transport realization (wise-ram-22 PR1 containment): mint_written_synthetic_emitted_artifact_from_fixture_inferred is the sole fixture write authority; FixtureCargoGreen only after cargo.Build.BuildManifest executes. No mint_written_provenanced_rust_artifact and no ProducerEmissionReceipt on this path."
+data direct_rust_door_witness_driver_scaffold_note: String = "SCAFFOLD — tracked debt: direct_rust_door_witness_main_source and direct_rust_door_witness_cargo_appendix are hand-authored Rust witness-driver carriers for the Lane 4 behavioral comparison harness (include! of unmodified emitted lib.rs + seed_add oracle + discriminating corpus + --inject-fault). dissolve-on: modeled self-host behavioral-equivalence harness producer emits the comparison driver; these string carriers delete with it."
+
+data direct_rust_door_witness_cargo_appendix: String = "\n[[bin]]\nname = \"witness\"\npath = \"src/main.rs\"\n"
+
+data direct_rust_door_witness_main_source: String = "mod emitted_lib {\n    include!(\"lib.rs\");\n    pub fn invoke_add(x: i32, y: i32) -> i32 {\n        add(x, y)\n    }\n}\n\nfn seed_add(x: i32, y: i32) -> i32 {\n    x + y\n}\n\nfn main() {\n    let inject_fault = std::env::args().any(|a| a == \"--inject-fault\");\n    let corpus: [(i32, i32, i32); 4] = [\n        (2, 3, 5),\n        (0, 0, 0),\n        (-1, 1, 0),\n        (100, -50, 50),\n    ];\n    let mut all_pass = true;\n    for (x, y, expected) in corpus {\n        let call_x = if inject_fault && x == 2 && y == 3 { x + 1 } else { x };\n        let emitted = emitted_lib::invoke_add(call_x, y);\n        let seed = seed_add(call_x, y);\n        let ok = emitted == seed && emitted == expected;\n        println!(\n            \"BEHAVIORAL_CASE x={} y={} call_x={} expected={} actual={} seed={} ok={}\",\n            x, y, call_x, expected, emitted, seed, ok\n        );\n        all_pass = all_pass && ok;\n    }\n    if all_pass {\n        println!(\"BEHAVIORAL_VERDICT: EQUIVALENT\");\n        std::process::exit(0);\n    } else {\n        println!(\"BEHAVIORAL_VERDICT: DIVERGED\");\n        std::process::exit(1);\n    }\n}\n"
+
+fn direct_rust_door_behavioral_observation_from_run(
+  written: WrittenSyntheticEmittedArtifact,
+  process_output: DirectRustDoorWitnessBinProcessOutput,
+  head_sha: CommitSha,
+  comparison_rows: List<BehavioralComparisonRow>,
+  executable_content: String
+) -> BehavioralComparisonObservation {
+  behavioral_comparison_observation_from_wet_process_output(
+    module_path: written.artifact.fixture_receipt.module_path,
+    emitted_source: written.artifact.source,
+    subject_binding_identity: fixture_behavior_receipt_identity_for(
+      receipt: written.artifact.fixture_receipt
+    ),
+    executable_content: executable_content,
+    process_output: process_output,
+    head_sha: head_sha,
+    corpus_identity: direct_rust_door_behavioral_corpus_identity(),
+    comparison_rows: comparison_rows,
+    behavioral_probe_entry: direct_rust_door_behavioral_probe_entry,
+    behavioral_probe_function: direct_rust_door_behavioral_probe_function
+  )
+}
+
+fn direct_rust_door_prepare_behavioral_witness_workspace(workspace_dir: String) -> Bool {
+  let manifest_path = concat(workspace_dir, "/Cargo.toml")
+  let manifest_read = Filesystem.Read(path: manifest_path)
+  let manifest_write = Filesystem.Write(
+    path: manifest_path,
+    content: concat(manifest_read.content, direct_rust_door_witness_cargo_appendix)
+  )
+  let witness_main = Filesystem.Write(
+    path: concat(workspace_dir, "/src/main.rs"),
+    content: direct_rust_door_witness_main_source
+  )
+  let build = cargo.Build.BuildManifest(
+    workdir: workspace_dir,
+    manifest_path: manifest_path,
+    target_dir: concat(workspace_dir, "/target"),
+    extra_args: ["--release"]
+  )
+  manifest_read.success
+    && manifest_write.success
+    && witness_main.success
+    && build.success
+}
+
+fn direct_rust_door_admitted_equivalent_for_workspace(
+  workspace_dir: String,
+  written: WrittenSyntheticEmittedArtifact
+) -> Optional<AdmittedBehaviorEquivalentReceipt> {
+  let witness_bin_path =
+    direct_rust_door_behavioral_witness_bin_path(workspace_dir: workspace_dir)
+  if !direct_rust_door_prepare_behavioral_witness_workspace(workspace_dir: workspace_dir) {
+    optional_absent()
+  } else {
+    let pass_run = gunbc.WitnessBin.Run(workdir: workspace_dir, bin_path: witness_bin_path)
+    let fault_run = gunbc.WitnessBin.Run(
+      workdir: workspace_dir,
+      bin_path: witness_bin_path,
+      args: ["--inject-fault"],
+      expect: ExpectFailure
+    )
+    let executable_read = Filesystem.Read(
+      path: direct_rust_door_fixture_lib_path(workspace_dir: workspace_dir)
+    )
+    let head = git.Inspect.HeadCommit()
+    let parsed_rows = direct_rust_door_parse_pass_rows_from_stdout(stdout: pass_run.stdout)
+    if pass_run.success
+      && executable_read.success
+      && head.success
+      && direct_rust_door_pass_stdout_holds(stdout: pass_run.stdout)
+      && direct_rust_door_inject_fault_stdout_holds(stdout: fault_run.stdout) {
+      match parsed_rows {
+        Present { value: comparison_rows } =>
+          let process_output = direct_rust_door_witness_bin_process_output_from_run_fields(
+            stdout: pass_run.stdout,
+            stderr: pass_run.stderr,
+            exit_success: pass_run.success
+          )
+          let observation = direct_rust_door_behavioral_observation_from_run(
+            written: written,
+            process_output: process_output,
+            head_sha: head.sha,
+            comparison_rows: comparison_rows,
+            executable_content: executable_read.content
+          )
+          admit_behavioral_comparison_equivalent(observation: observation)
+        Absent => optional_absent()
+      }
+    } else {
+      optional_absent()
+    }
+  }
+}
+
+fn direct_rust_door_subtract_admission_for_workspace(
+  workspace_dir: String,
+  written: WrittenSyntheticEmittedArtifact
+) -> Optional<BehavioralComparisonAdmission> {
+  let witness_bin_path =
+    direct_rust_door_behavioral_witness_bin_path(workspace_dir: workspace_dir)
+  if !direct_rust_door_prepare_behavioral_witness_workspace(workspace_dir: workspace_dir) {
+    optional_absent()
+  } else {
+    let pass_run = gunbc.WitnessBin.Run(
+      workdir: workspace_dir,
+      bin_path: witness_bin_path,
+      expect: ExpectFailure
+    )
+    let executable_read = Filesystem.Read(
+      path: direct_rust_door_fixture_lib_path(workspace_dir: workspace_dir)
+    )
+    let head = git.Inspect.HeadCommit()
+    let parsed_rows =
+      direct_rust_door_parse_subtract_rows_from_stdout(stdout: pass_run.stdout)
+    if executable_read.success
+      && head.success
+      && direct_rust_door_subtract_stdout_holds(stdout: pass_run.stdout) {
+      match parsed_rows {
+        Present { value: comparison_rows } =>
+          let process_output = direct_rust_door_witness_bin_process_output_from_run_fields(
+            stdout: pass_run.stdout,
+            stderr: pass_run.stderr,
+            exit_success: pass_run.success
+          )
+          let observation = direct_rust_door_behavioral_observation_from_run(
+            written: written,
+            process_output: process_output,
+            head_sha: head.sha,
+            comparison_rows: comparison_rows,
+            executable_content: executable_read.content
+          )
+          optional_present(value: admit_behavioral_comparison(observation: observation))
+        Absent => optional_absent()
+      }
+    } else {
+      optional_absent()
+    }
+  }
+}
 
 fn direct_rust_door_compile_workspace(workspace_dir: String) -> Bool {
   let build = cargo.Build.BuildManifest(
@@ -32,29 +217,142 @@ fn direct_rust_door_compile_workspace(workspace_dir: String) -> Bool {
   build.success
 }
 
-fn run_direct_rust_door_emit_write_compile_smoke() -> Bool {
-  let dir = shell.Mktemp.Dir()
-  let src_dir = shell.Mkdir.Parents(path: concat(dir.path, "/src"))
-  let pipeline_ok = match mint_written_synthetic_emitted_artifact_from_fixture_inferred(
+fn direct_rust_door_emit_write_compile_to_cargo_green(
+  workspace_dir: String
+) -> Optional<WrittenSyntheticEmittedArtifact> {
+  match mint_written_synthetic_emitted_artifact_from_fixture_inferred_for_behavioral_qualification(
     inferred: direct_rust_door_inferred_tree,
     target: direct_rust_door_target_model(),
     module_path: direct_rust_door_module_path,
-    workspace_dir: dir.path,
-    fixture_lane_tag: direct_rust_door_fixture_lane_tag
+    workspace_dir: workspace_dir,
+    fixture_lane_tag: direct_rust_door_fixture_lane_tag,
+    behavioral_probe_entry: direct_rust_door_behavioral_probe_entry,
+    behavioral_probe_function: direct_rust_door_behavioral_probe_function
   ) {
     Accepted { value: written, diagnostics: _ } =>
       let compile_ok =
         written_synthetic_emitted_artifact_ok(written: written)
+          && direct_rust_door_compile_workspace(workspace_dir: workspace_dir)
+      match advance_written_synthetic_emitted_artifact_cargo_green(
+        written: written,
+        cargo_green: compile_ok
+      ) {
+        Present { value: cargo_written } =>
+          if written_synthetic_emitted_artifact_ok(written: cargo_written)
+            && written_synthetic_emitted_artifact_has_fixture_cargo_green_qualification(
+              written: cargo_written
+            ) {
+            optional_present(value: cargo_written)
+          } else {
+            optional_absent()
+          }
+        Absent => optional_absent()
+      }
+    Rejected { diagnostics: _ } => optional_absent()
+  }
+}
+
+fn run_direct_rust_door_emit_write_compile_smoke() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let src_dir = shell.Mkdir.Parents(path: concat(dir.path, "/src"))
+  let pipeline_ok = match direct_rust_door_emit_write_compile_to_cargo_green(
+    workspace_dir: dir.path
+  ) {
+    Present { value: _ } => true
+    Absent => false
+  }
+  let cleanup = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success
+    && src_dir.success
+    && pipeline_ok
+    && cleanup.success
+}
+
+fn run_direct_rust_door_behavioral_qualification_smoke() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let src_dir = shell.Mkdir.Parents(path: concat(dir.path, "/src"))
+  let pipeline_ok = match direct_rust_door_emit_write_compile_to_cargo_green(
+    workspace_dir: dir.path
+  ) {
+    Present { value: cargo_written } =>
+      match direct_rust_door_admitted_equivalent_for_workspace(
+        workspace_dir: dir.path,
+        written: cargo_written
+      ) {
+        Present { value: admitted } =>
+          let executable_read = Filesystem.Read(
+            path: direct_rust_door_fixture_lib_path(workspace_dir: dir.path)
+          )
+          let head = git.Inspect.HeadCommit()
+          match advance_written_synthetic_emitted_artifact_fixture_behaviorally_equivalent(
+            written: cargo_written,
+            admitted: admitted,
+            executable_content: executable_read.content,
+            head_sha: head.sha,
+            expected_behavioral_probe_entry: direct_rust_door_behavioral_probe_entry,
+            expected_behavioral_probe_function: direct_rust_door_behavioral_probe_function
+          ) {
+            Present { value: behavioral_written } =>
+              head.success
+                && executable_read.success
+                && written_synthetic_emitted_artifact_ok(written: behavioral_written)
+                && written_synthetic_emitted_artifact_has_fixture_cargo_green_qualification(
+                  written: behavioral_written
+                )
+                && written_synthetic_emitted_artifact_has_fixture_behaviorally_equivalent_qualification(
+                  written: behavioral_written
+                )
+            Absent => false
+          }
+        Absent => false
+      }
+    Absent => false
+  }
+  let cleanup = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success
+    && src_dir.success
+    && pipeline_ok
+    && cleanup.success
+}
+
+fn run_direct_rust_door_divergent_behavioral_receipt_refused() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let src_dir = shell.Mkdir.Parents(path: concat(dir.path, "/src"))
+  let pipeline_ok = match mint_written_synthetic_emitted_artifact_from_fixture_inferred_for_behavioral_qualification(
+    inferred: direct_rust_door_inferred_tree,
+    target: direct_rust_door_target_model(),
+    module_path: direct_rust_door_module_path,
+    workspace_dir: dir.path,
+    fixture_lane_tag: direct_rust_door_fixture_lane_tag,
+    behavioral_probe_entry: direct_rust_door_behavioral_probe_entry,
+    behavioral_probe_function: direct_rust_door_behavioral_probe_function
+  ) {
+    Accepted { value: written, diagnostics: _ } =>
+      let divergent_write = Filesystem.Write(
+        path: concat(dir.path, "/src/lib.rs"),
+        content: direct_rust_door_divergent_rust_source
+      )
+      let compile_ok =
+        divergent_write.success
+          && written_synthetic_emitted_artifact_ok(written: written)
           && direct_rust_door_compile_workspace(workspace_dir: dir.path)
       match advance_written_synthetic_emitted_artifact_cargo_green(
         written: written,
         cargo_green: compile_ok
       ) {
         Present { value: cargo_written } =>
-          written_synthetic_emitted_artifact_ok(written: cargo_written)
-            && written_synthetic_emitted_artifact_has_fixture_cargo_green_qualification(
-              written: cargo_written
-            )
+          match direct_rust_door_subtract_admission_for_workspace(
+            workspace_dir: dir.path,
+            written: cargo_written
+          ) {
+            Present { value: admission } =>
+              match admission {
+                BehaviorDiverged { receipt: _, differences: _ } => true
+                AdmittedBehaviorEquivalent { admitted: _ } => false
+                BehaviorExecutionRefused { cause: _, receipt: _ } => false
+              }
+            Absent => false
+          }
         Absent => false
       }
     Rejected { diagnostics: _ } => false

@@ -399,7 +399,6 @@ test fn witness_proposed_plane_carries_nothing_by_construction() -> Bool {
     }
   }
 }
-
 test fn witness_fixture_every_front_contributes_to_some_line() -> Bool {
   let view = fx_derived(receipts: [], in_flight: [])
   all(view.fronts, fv =>
