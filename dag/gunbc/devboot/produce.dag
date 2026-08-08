@@ -147,7 +147,41 @@ fn observe_toolchain_from_text(version_text: String, verbose_text: String) -> Ob
 
 data devboot_produce_report_note: String = "The report is a rendered String because `gunbc run` prints a value and a caller reads it; the TYPED outcome is what the carriers hold, and this rendering is a projection of it rather than a second representation. It names the subject digest, the decision taken, and the artifact address, which is exactly what a caller needs to fetch."
 
+data store_bootstrap_note: String = "THE SERVICE MAKES THE STORE A REPOSITORY, which until now only the deploy note claimed. The split is stated there and is forced by the privilege boundary: the deploy principal's sudo roster does not grant git, so the deploy can ensure the directory and nothing more, and the account that owns it must do the rest. That left the second half of the sentence unimplemented -- every deploy note said the service initializes the store while the producer's first store touch was a ref lookup against a directory that was not yet a repository.\\n\\nIt failed closed rather than silently, because git refuses a --git-dir that is not a repository and the lookup's own three-valued arm surfaces that as a store deficit. So this is not a repaired fail-open; it is a bootstrap step that the carrier promised and the realization omitted, which meant a freshly deployed host could not reach the ordinary path without someone running git init by hand. A capsule claiming the vertical executes on the ordinary CLI path cannot depend on an out-of-band step.\\n\\ninit --bare IS IDEMPOTENT BY UPSTREAM CONTRACT -- re-running it on an existing repository reinitializes metadata and touches neither refs nor objects -- so it runs on every produce rather than being guarded by an existence check. A check would be a second, weaker representation of a property git already guarantees, and it would introduce the gap between observing and acting that this module removes everywhere else.\\n\\nIT DOES NOT CREATE THE PARENT. If /var/lib/gunbc is absent the init fails and this refuses, which is the correct outcome: the parent is the deploy's responsibility, and silently creating a store outside the ensured location would produce artifacts nobody is converging and nobody would find."
+
+type StoreReadiness
+  = StoreReady
+  | StoreInitRefused { detail: String }
+
+fn ensure_store_repository(store_root: String, repo_root: String) -> StoreReadiness {
+  let init = gunbc.WitnessBin.Run(
+    workdir: repo_root,
+    bin_path: "git",
+    args: ["init", "--bare", "--quiet", store_root],
+  )
+  if init.success {
+    StoreReady
+  } else {
+    StoreInitRefused {
+      detail: join(["artifact store could not be initialized at ", store_root, " (git exit ", to_string(init.exit_code), "): ", trim(s: init.stderr)], ""),
+    }
+  }
+}
+
 fn devboot_produce_report(store_root: String, repo_root: String, index_path: String, caller: String) -> ProduceReport {
+  match ensure_store_repository(store_root: store_root, repo_root: repo_root) {
+    StoreInitRefused { detail } => ProduceRefused { reason: detail }
+    StoreReady =>
+      devboot_produce_in_ready_store(
+        store_root: store_root,
+        repo_root: repo_root,
+        index_path: index_path,
+        caller: caller,
+      )
+  }
+}
+
+fn devboot_produce_in_ready_store(store_root: String, repo_root: String, index_path: String, caller: String) -> ProduceReport {
   let tree_out = gunbc.WitnessBin.Run(
     workdir: repo_root,
     bin_path: "env",
