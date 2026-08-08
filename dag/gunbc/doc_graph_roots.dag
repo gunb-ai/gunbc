@@ -5,6 +5,7 @@ import gunbc.ci_layer_roots { compile_clean_source_roots }
 import gunbc.plan { Plan, plan_path, plan_doc_path, DissolutionTrigger, HasTrigger }
 import gunbc.plan_registry { all_plans }
 import v2.lens.module_graph { module_declaration_facts_live }
+import v2.lens.doc_reachability { doc_graph_clean_holds, doc_graph_orphan_clean_holds }
 import v2.std.algebra { filter, list_flat_map }
 import v2.std.decl_index { decl_facts }
 import v2.std.decl_ref_resolution { declaration_ref_resolves }
@@ -601,11 +602,11 @@ fn doc_graph_roots_all() -> List<String> {
 }
 
 fn doc_graph_floor_orphan_clean_holds() -> Bool {
-  doc_graph_orphan_count(doc_graph_roots_all()) == 0
+  doc_graph_orphan_clean_holds(plan_roots: doc_graph_roots_all())
 }
 
 fn doc_graph_floor_clean_holds() -> Bool {
-  doc_graph_floor_orphan_clean_holds() && doc_graph_dangling_link_count() == 0
+  doc_graph_clean_holds(plan_roots: doc_graph_roots_all())
 }
 
 fn hand_authored_plan_slug_is_unregistered(b: HandAuthoredDocBind) -> Bool {
