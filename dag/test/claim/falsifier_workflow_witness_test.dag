@@ -70,6 +70,7 @@ import gunbc.ci_yaml_emit { expected_ci_yml }
 import gunbc.ci_workflow { ci_workflow }
 import gunbc.ci_materialization { step_display_name }
 import extdeps.github.actions { Step }
+import gunbc.generated_artifact { FalsifierYamlArtifact, artifact_path }
 import gunbc.shell_bash_runner { bash_escape_for_double_quotes }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
