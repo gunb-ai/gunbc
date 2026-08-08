@@ -68,6 +68,7 @@ pub enum Scale {
     Milli,
     One,
     Sixty,
+    RackUnitHeight,
     Kilo,
     Mega,
     Giga,
@@ -90,6 +91,7 @@ pub fn scale_exponent(s: Scale) -> Option<i64> {
         Scale::Milli => Some(-3),
         Scale::One => Some(0),
         Scale::Sixty => None,
+        Scale::RackUnitHeight => None,
         Scale::Kilo => Some(3),
         Scale::Mega => Some(6),
         Scale::Giga => Some(9),
@@ -130,6 +132,7 @@ pub fn time_scale_factor_seconds(s: Scale) -> Option<Nat> {
     match s.clone() {
         Scale::One => Some(1),
         Scale::Sixty => Some(seconds_per_minute()),
+        Scale::RackUnitHeight => None,
         Scale::Atto => None,
         Scale::Femto => None,
         Scale::Pico => None,
@@ -163,6 +166,7 @@ pub fn memory_scale_factor_bytes(s: Scale) -> Option<Nat> {
         Scale::Micro => None,
         Scale::Milli => None,
         Scale::Sixty => None,
+        Scale::RackUnitHeight => None,
         Scale::Kilo => None,
         Scale::Mega => None,
         Scale::Giga => None,
@@ -307,6 +311,8 @@ pub type Ampere = Rc<Measure<(), (), i64>>;
 
 pub type Millimeter = Rc<Measure<(), (), i64>>;
 
+pub type RackUnit = Rc<Measure<(), (), i64>>;
+
 pub type Joule = Rc<Measure<(), (), i64>>;
 
 pub type Celsius = Rc<Measure<(), (), i64>>;
@@ -441,6 +447,21 @@ pub fn millimeter(count: Nat) -> Millimeter {
 
 pub fn millimeter_count(m: Millimeter) -> Nat {
     measure_count(m.clone())
+}
+
+pub fn micrometers_per_rack_unit() -> Nat {
+    44450
+}
+
+pub fn rack_unit(count: Nat) -> RackUnit {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn rack_unit_count(u: RackUnit) -> Nat {
+    measure_count(u.clone())
 }
 
 pub fn joule(count: Nat) -> Joule {
@@ -1081,6 +1102,8 @@ pub struct Milli;
 pub struct One;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Sixty;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RackUnitHeight;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Kilo;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
