@@ -25047,6 +25047,14 @@ new file mode 100644
     //
     // A refusal is a census failure, not a pass. An entry whose classification could not be
     // established has not been shown to be honestly stamped.
+    //
+    // SUBJECT CHANGE, stated rather than left to be noticed: the retired form walked every
+    // `*_test.dag` in the corpus with a parseable disposition, because an entry-grain import
+    // closure needs no declaration names. This one is declaration-grain, so its subject is the
+    // ENROLLED floor roster over the declared discovery scan dirs. A `*_test.dag` outside
+    // discovery is not covered here. It is also not selectable by the floor, so it sits outside
+    // the population the stamp governs — but the two subjects are not identical, and this is
+    // the difference.
     #[test]
     fn lying_substrate_inputs_only_stamp_census() {
         let ws = workspace_root();
@@ -25057,8 +25065,20 @@ new file mode 100644
         ];
         let index = super::build_multi_entry_index(&roots);
         let rows =
-            super::discover_floor_witness_roster(&roots, &["dag/test/claim".to_string()], &[], &[])
-                .expect("discover floor witness roster");
+            // The floor's own declared scan dirs (`gunbc.ci_layer_roots`
+            // `witness_discovery_scan_dirs`), not a narrower hand-picked one — the census must
+            // not quietly cover less than the population the floor selects over.
+            super::discover_floor_witness_roster(
+                &roots,
+                &[
+                    "dag/test/claim".to_string(),
+                    "src/v2/test/claim/manual".to_string(),
+                    "src/v2/test/claim/emit".to_string(),
+                ],
+                &[],
+                &[],
+            )
+            .expect("discover floor witness roster");
         let live = super::LiveReadSelectionContext::build(&index, &rows)
             .expect("build live-read selection context over the complete roster");
 
