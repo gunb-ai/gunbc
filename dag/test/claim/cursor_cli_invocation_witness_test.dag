@@ -63,8 +63,7 @@ test fn argument_arm_places_the_key_in_argv_and_binds_nothing() -> Bool {
     && count(shaped.environment) == 0
 }
 
-data arms_differ_note: String = "The direct statement of the defect: the two arms produce different processes. Under the auth-blind shaper this claim was false — not subtly, but exactly false, because the function never looked at the field that distinguishes them."
-
+// The direct statement of the defect: the two arms produce different processes. Under the auth-blind shaper this claim was false — not subtly, but exactly false, because the function never looked at the field that distinguishes them.
 test fn the_two_auth_arms_produce_different_processes() -> Bool {
   let env_shaped = shape_cursor_invocation(
     inv: witness_invocation(auth: CursorApiKeyEnvironment { key: witness_key }),
@@ -76,8 +75,7 @@ test fn the_two_auth_arms_produce_different_processes() -> Bool {
     && !(count(env_shaped.environment) == count(arg_shaped.environment))
 }
 
-data automation_constructor_note: String = "The automation path cannot reach the leaky arm, because it has no parameter that selects one. This asserts the property through the shaped output rather than by matching the auth field, so it stays true of what the process actually receives rather than of how the value was labelled."
-
+// The automation path cannot reach the leaky arm, because it has no parameter that selects one. This asserts the property through the shaped output rather than by matching the auth field, so it stays true of what the process actually receives rather than of how the value was labelled.
 test fn automation_constructor_only_materializes_into_the_env_var() -> Bool {
   let shaped = shape_cursor_invocation(
     inv: cursor_automation_invocation(

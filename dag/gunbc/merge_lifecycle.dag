@@ -152,8 +152,7 @@ fn apply_lifecycle_event(policy: AdmissionPolicy, state: LifecycleState, ev: Lif
   }
 }
 
-data invariant_check_locus_note: String = "The unverified_tip_seen latch is checked ONLY where main ADVANCES (an admitted MergePr): the quantified property is that the merge step never lands a tree unverified under the roster current at landing. A RosterBump alone does not latch — criteria drift over a standing tip is the stale-ROSTER admission question the static gunbc.merge_admission witnesses already discriminate, not a merge-step fault; a disabled merge is a refusal, and a refusal is never a violation."
-
+// The unverified_tip_seen latch is checked ONLY where main ADVANCES (an admitted MergePr): the quantified property is that the merge step never lands a tree unverified under the roster current at landing. A RosterBump alone does not latch — criteria drift over a standing tip is the stale-ROSTER admission question the static gunbc.merge_admission witnesses already discriminate, not a merge-step fault; a disabled merge is a refusal, and a refusal is never a violation.
 fn simulate_lifecycle(policy: AdmissionPolicy, events: List<LifecycleEvent>) -> LifecycleState {
   fold(events, init: initial_lifecycle_state(), f: fn(acc, ev) {
     apply_lifecycle_event(policy: policy, state: acc, ev: ev)

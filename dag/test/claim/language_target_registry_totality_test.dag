@@ -142,8 +142,7 @@ test fn projection_from_registered_subject_is_total() -> Bool {
   }
 }
 
-data project_projection_note: String = "THE LIVE DISCRIMINATOR FOR THE NEUTRAL JOIN KEY. While the key was an external subject reference, a project-grounded target could not be projected at all — the stacked D0 branch produced projections for every external target and NEITHER project one, which is how the defect surfaced. This asserts a project-grounded subject projects through the same roster as Bash, on live registry rows rather than fixtures. The English row is the paired negative: it is REGISTERED but deliberately unprojected, so an absent projection is proven to report Absent rather than being confused with an unregistered subject."
-
+// THE LIVE DISCRIMINATOR FOR THE NEUTRAL JOIN KEY. While the key was an external subject reference, a project-grounded target could not be projected at all — the stacked D0 branch produced projections for every external target and NEITHER project one, which is how the defect surfaced. This asserts a project-grounded subject projects through the same roster as Bash, on live registry rows rather than fixtures. The English row is the paired negative: it is REGISTERED but deliberately unprojected, so an absent projection is proven to report Absent rather than being confused with an unregistered subject.
 test fn project_grounded_subject_projects_through_the_same_roster() -> Bool {
   match dag_display_name() {
     Present { value: n } => n == "dag"
@@ -188,16 +187,14 @@ test fn red_unknown_legacy_id_refuses_rather_than_defaulting() -> Bool {
   }
 }
 
-data project_grounding_note: String = "Controls for the ProjectGrounding arm, which had zero inhabitants until the .dag and controlled-English rows landed — an unexercised coproduct arm is untested code, and this is the arm that exists precisely because a universal external subject reference would have forced this project's own targets to claim an upstream governance they do not have. The discriminating property is that a project-grounded subject derives from its OWN authority declaration rather than from any external scope, so the derived subject equals the declared authority exactly."
-
+// Controls for the ProjectGrounding arm, which had zero inhabitants until the .dag and controlled-English rows landed — an unexercised coproduct arm is untested code, and this is the arm that exists precisely because a universal external subject reference would have forced this project's own targets to claim an upstream governance they do not have. The discriminating property is that a project-grounded subject derives from its OWN authority declaration rather than from any external scope, so the derived subject equals the declared authority exactly.
 test fn project_grounded_target_derives_its_own_authority_as_subject() -> Bool {
   fold(registered_language_targets, init: false, f: fn(acc, r) {
     acc || declaration_ref_eq(a: registration_subject(registration: r), b: dag_subject_ref)
   })
 }
 
-data grounding_arm_coverage_oracle_note: String = "This test asserted registered_target_count() == 3 until the D0 subject rows landed. That literal was a MEASUREMENT COPIED FROM THE TREE standing in for the property the test is named after — DESIGN section 5's oracle rule names exactly this shape, and its review tell applies: automating the literal's update would collapse the assertion to measure() == measure(), so the manual update WAS the test's entire content. It also failed the moment the registry grew, which is a change detector reporting, not a wall refusing. Rewritten to assert the property directly: BOTH grounding arms are inhabited. That is what makes the coproduct exercised rather than half-dead, it is what the name claims, and it stays true at 3 targets or 300 without anyone editing a number."
-
+// This test asserted registered_target_count() == 3 until the D0 subject rows landed. That literal was a MEASUREMENT COPIED FROM THE TREE standing in for the property the test is named after — DESIGN section 5's oracle rule names exactly this shape, and its review tell applies: automating the literal's update would collapse the assertion to measure() == measure(), so the manual update WAS the test's entire content. It also failed the moment the registry grew, which is a change detector reporting, not a wall refusing. Rewritten to assert the property directly: BOTH grounding arms are inhabited. That is what makes the coproduct exercised rather than half-dead, it is what the name claims, and it stays true at 3 targets or 300 without anyone editing a number.
 test fn registry_carries_both_grounding_arms() -> Bool {
   let arms = fold(registered_language_targets, init: GroundingArmsSeen { external: false, project: false }, f: fn(acc, r) {
     match r.grounding {

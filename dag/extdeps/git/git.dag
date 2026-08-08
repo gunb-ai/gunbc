@@ -472,8 +472,7 @@ fn git_pathspec_exclude(path: String) -> String {
   concat(":(exclude)", path)
 }
 
-data git_argv_program_note: String = "Each shape below is declared as an ARGS list (the operands after the `git` program) with an `_argv` sibling that prepends the program. Both spellings have live consumers and neither is derived by hand: `_argv` feeds git_shell_join_argv for a whole-command leaf, `_args` feeds a command-substitution carrier that already holds `git` as its callee. One authority, two projections — not two lists to keep in step."
-
+// Each shape below is declared as an ARGS list (the operands after the `git` program) with an `_argv` sibling that prepends the program. Both spellings have live consumers and neither is derived by hand: `_argv` feeds git_shell_join_argv for a whole-command leaf, `_args` feeds a command-substitution carrier that already holds `git` as its callee. One authority, two projections — not two lists to keep in step.
 fn git_argv_of_args(args: List<String>) -> List<String> {
   concat(["git"], args)
 }

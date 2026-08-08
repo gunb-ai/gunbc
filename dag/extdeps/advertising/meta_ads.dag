@@ -40,8 +40,7 @@ type MetaBillingEventRow {
   citation: NonEmptyStr
 }
 
-data meta_billing_event_note: String = "billing_event is the published API enum naming what the advertiser is CHARGED for; wire values verbatim from the anchor reference. It is a separate axis from optimization_goal (optimize delivery for one event while being billed on another) -- fusing the two would misstate the documented interface, so the optimization-goal roster lands as its own row below."
-
+// billing_event is the published API enum naming what the advertiser is CHARGED for; wire values verbatim from the anchor reference. It is a separate axis from optimization_goal (optimize delivery for one event while being billed on another) -- fusing the two would misstate the documented interface, so the optimization-goal roster lands as its own row below.
 data meta_bill_app_installs: MetaBillingEventRow = MetaBillingEventRow {
   event: MetaBillAppInstalls,
   wire_value: "APP_INSTALLS",

@@ -2,8 +2,7 @@ module std.access
 
 import std.types { String }
 
-data access_kernel_note: String = "The one authorization decision kernel. Domain-specific authorization surfaces are typed request profiles projected into AccessRequest; they do not mint a second admitted/refused sum. Context and evidence stay distinct because ambient circumstances are not proof, and proof is not the circumstance it supports. A denial always carries a typed cause at structured request coordinates: the former optional reason made an unlocated bare deny writable. AccessPolicy is the sole policy-to-decision seam and decision_meet is the sole conjunction over decisions."
-
+// The one authorization decision kernel. Domain-specific authorization surfaces are typed request profiles projected into AccessRequest; they do not mint a second admitted/refused sum. Context and evidence stay distinct because ambient circumstances are not proof, and proof is not the circumstance it supports. A denial always carries a typed cause at structured request coordinates: the former optional reason made an unlocated bare deny writable. AccessPolicy is the sole policy-to-decision seam and decision_meet is the sole conjunction over decisions.
 type AccessContext<C> {
   value: C
 }

@@ -162,8 +162,7 @@ test fn unversioned_legacy_tool_refuses_as_absent() -> Bool {
   }
 }
 
-data reconcile_bundle_family_note: String = "The (key_of, value_eq) bundle P2 hands to gunbc.membership_reconcile. key_is_identity_so_a_version_bump_is_a_modify pins the identity-vs-content split that spine's authority note requires: the key stays the tool name across a version bump, so the hunk is Modified and the ensure re-upserts in place rather than tearing the tool down and reinstalling it. RED CONTROL value_eq_covers_digest_not_only_version fails if value_eq compares only the version string — a rebuilt binary at the same declared version would then compare equal and the ensure would never re-upsert, which is the exact silent-staleness this lane exists to close."
-
+// The (key_of, value_eq) bundle P2 hands to gunbc.membership_reconcile. key_is_identity_so_a_version_bump_is_a_modify pins the identity-vs-content split that spine's authority note requires: the key stays the tool name across a version bump, so the hunk is Modified and the ensure re-upserts in place rather than tearing the tool down and reinstalling it. RED CONTROL value_eq_covers_digest_not_only_version fails if value_eq compares only the version string — a rebuilt binary at the same declared version would then compare equal and the ensure would never re-upsert, which is the exact silent-staleness this lane exists to close.
 test fn key_is_identity_so_a_version_bump_is_a_modify() -> Bool {
   let bumped = Pin {
     subject: cargo_tool,

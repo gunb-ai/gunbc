@@ -50,8 +50,7 @@ fn systemctl_show_property_argv(unit: NonEmptyStr, property: SystemdUnitProperty
   ]
 }
 
-data systemctl_show_load_state_note: String = "LoadState is a non-numeric unit lifecycle observation, so it has its own argv authority rather than joining SystemdUnitProperty, whose shared ShowProperty mock is numeric cgroup evidence. systemctl show exits nonzero on an unreadable manager; the load-state wire value not-found is the only observation that proves an absent unit."
-
+// LoadState is a non-numeric unit lifecycle observation, so it has its own argv authority rather than joining SystemdUnitProperty, whose shared ShowProperty mock is numeric cgroup evidence. systemctl show exits nonzero on an unreadable manager; the load-state wire value not-found is the only observation that proves an absent unit.
 fn systemctl_show_load_state_argv(unit: NonEmptyStr) -> List<String> {
   ["systemctl", "show", unit as String, "--property=LoadState", "--value"]
 }

@@ -524,8 +524,7 @@ fn coverage_witness_capability_for(contract_name: String) -> CensusMethodCapabil
   ClassifiesDeclaredStructure { contract: coverage_witness_decl(name: contract_name) }
 }
 
-data coverage_conformance_derivation_note: String = "THE CONFORMANCE FIXTURES BUILD REAL CONTROL OUTCOMES, because the carrier no longer accepts an assertion about them. Each control here is an actual census_establish_coverage run against a denominator: the discriminating control observes rows that do NOT reconcile with the declared subjects and must come back CoverageRefused, the positive control observes rows that DO and must come back CoverageEstablished. A fixture that simply claimed those two results is no longer expressible, which is the point of the recut."
-
+// THE CONFORMANCE FIXTURES BUILD REAL CONTROL OUTCOMES, because the carrier no longer accepts an assertion about them. Each control here is an actual census_establish_coverage run against a denominator: the discriminating control observes rows that do NOT reconcile with the declared subjects and must come back CoverageRefused, the positive control observes rows that DO and must come back CoverageEstablished. A fixture that simply claimed those two results is no longer expressible, which is the point of the recut.
 fn coverage_witness_control_outcome(
   subjects: List<CensusSubjectKey>,
   rows: List<CensusObservedRow>,
@@ -849,8 +848,7 @@ test fn witness_reconciliation_operations_are_nowhere_near_quadratic() -> Bool {
   large * 4 < small * 100
 }
 
-data coverage_cost_red_control_note: String = "THE RED CONTROL IS THE QUADRATIC THE RECUT REMOVED, RE-EXPRESSED HERE AND ASSERTED TO FAIL THE SAME TEST. Without it, the ratio assertions above are satisfied by any fixture whose two populations happen to be close in cost, including a broken generator that returns the same list twice — they would be green because nothing varied, not because the reconciliation is linear. This control counts the pairwise scans the old implementation performed, runs it at the same two sizes, and asserts it BREACHES the same tenfold band the real path stays inside. If someone reintroduces the scan, the real assertions red; if the instrument stops discriminating, this one reds."
-
+// THE RED CONTROL IS THE QUADRATIC THE RECUT REMOVED, RE-EXPRESSED HERE AND ASSERTED TO FAIL THE SAME TEST. Without it, the ratio assertions above are satisfied by any fixture whose two populations happen to be close in cost, including a broken generator that returns the same list twice — they would be green because nothing varied, not because the reconciliation is linear. This control counts the pairwise scans the old implementation performed, runs it at the same two sizes, and asserts it BREACHES the same tenfold band the real path stays inside. If someone reintroduces the scan, the real assertions red; if the instrument stops discriminating, this one reds.
 type CoverageScanTally {
   matched: Int
   passed_over: Int

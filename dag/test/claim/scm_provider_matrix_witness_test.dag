@@ -66,8 +66,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data matrix_note: String = "The provider x magnitude matrix. One profile (100 MB stored, 500 MB egress, 200 reads, 20 writes per user-month) scaled to 10k / 100k / 1M users against every provider whose storage AND egress AND request pricing is cited, with progressive tier application so the crossings are real: at 1M users the workload holds 100 TB (past the 50 TB storage step) and moves 500 TB a month (past all three egress steps)."
-
+// The provider x magnitude matrix. One profile (100 MB stored, 500 MB egress, 200 reads, 20 writes per user-month) scaled to 10k / 100k / 1M users against every provider whose storage AND egress AND request pricing is cited, with progressive tier application so the crossings are real: at 1M users the workload holds 100 TB (past the 50 TB storage step) and moves 500 TB a month (past all three egress steps).
 data matrix_basis_assumption: ByteBasisAssumption = BasisAssumed {
   basis: DecimalGigabyte,
   rationale: "Declared for the vendors that do not state a basis (AWS, Azure, Cloudflare, Wasabi, Storj). Google states gibibyte and is therefore priced on its own stated basis regardless of this assumption.",

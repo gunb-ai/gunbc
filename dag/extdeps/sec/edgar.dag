@@ -23,8 +23,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data edgar_data_api_base: NonEmptyStr = "https://data.sec.gov"
 
-data edgar_shape_transport_split_note: String = "§3 shape/transport split: this module owns the EDGAR XBRL JSON response shapes and the agnostic operation contract (inputs → outputs, exit/error semantics). extdeps.sec.edgar_rest binds ONE transport handler (`transport rest`) to that shape; extdeps.http.client (curl argv) is a peer handler — N handlers, one shape, dispatch peripheral. Business policy (SEC User-Agent fair-access, request pacing) is workflow-layer, not extdeps."
-
+// §3 shape/transport split: this module owns the EDGAR XBRL JSON response shapes and the agnostic operation contract (inputs → outputs, exit/error semantics). extdeps.sec.edgar_rest binds ONE transport handler (`transport rest`) to that shape; extdeps.http.client (curl argv) is a peer handler — N handlers, one shape, dispatch peripheral. Business policy (SEC User-Agent fair-access, request pacing) is workflow-layer, not extdeps.
 type EdgarErrorEnvelope {
   status: Int?
   error: String?

@@ -4,11 +4,12 @@ import std.types { String, List, Bool, Int }
 import gunbc.ownership { Ownership, Owned, Ensured }
 import gunbc.membership_reconcile {
   MembershipPlan, MemberAction,
-  MemberUpsert, MemberTeardown, MemberTeardownRefused,
+  MemberAdded, MemberChanged, MemberRemoved, MemberRemovalRefused,
   TeardownRefusalCause, MemberNotOwned, OwnershipUnknown,
   membership_reconcile,
-  membership_upsert_count, membership_teardown_count, membership_refusal_count,
-  MemberEffect, EffectUpsert, EffectTeardown,
+  membership_write_count, membership_removal_count, membership_refusal_count,
+  MemberEffect, EffectAdd, EffectReplace, EffectRemove,
+  membership_added_count, membership_change_count,
   MemberRefusal,
   EffectsOrRefusal, EffectsReady, ApplyRefused,
   membership_effects,
@@ -48,18 +49,28 @@ fn t_reconcile(desired: List<TMember>, observed: List<TMember>) -> MembershipPla
   )
 }
 
-fn plan_has_upsert(plan: MembershipPlan<TMember>, mid: String) -> Bool {
-  any(plan.actions, a => match a { MemberUpsert { member: m } => m.mid == mid  _ => false })
+fn plan_has_add(plan: MembershipPlan<TMember>, mid: String) -> Bool {
+  any(plan.actions, a => match a { MemberAdded { to: m } => m.mid == mid  _ => false })
+}
+
+fn plan_has_change_from_to(plan: MembershipPlan<TMember>, mid: String, from_ver: String, to_ver: String) -> Bool {
+  any(plan.actions, a =>
+    match a {
+      MemberChanged { from: f, to: t } =>
+        f.mid == mid && t.mid == mid && f.ver == from_ver && t.ver == to_ver
+      _ => false
+    }
+  )
 }
 
 fn plan_has_teardown(plan: MembershipPlan<TMember>, mid: String) -> Bool {
-  any(plan.actions, a => match a { MemberTeardown { member: m } => m.mid == mid  _ => false })
+  any(plan.actions, a => match a { MemberRemoved { from: m } => m.mid == mid  _ => false })
 }
 
 fn plan_has_refused_not_owned(plan: MembershipPlan<TMember>, mid: String) -> Bool {
   any(plan.actions, a =>
     match a {
-      MemberTeardownRefused { member: m, cause: c } =>
+      MemberRemovalRefused { from: m, cause: c } =>
         m.mid == mid && (match c { MemberNotOwned => true  OwnershipUnknown => false })
       _ => false
     }
@@ -69,7 +80,7 @@ fn plan_has_refused_not_owned(plan: MembershipPlan<TMember>, mid: String) -> Boo
 fn plan_has_refused_unknown(plan: MembershipPlan<TMember>, mid: String) -> Bool {
   any(plan.actions, a =>
     match a {
-      MemberTeardownRefused { member: m, cause: c } =>
+      MemberRemovalRefused { from: m, cause: c } =>
         m.mid == mid && (match c { OwnershipUnknown => true  MemberNotOwned => false })
       _ => false
     }
@@ -78,34 +89,54 @@ fn plan_has_refused_unknown(plan: MembershipPlan<TMember>, mid: String) -> Bool 
 
 test fn w_added_upserts() -> Bool {
   let plan = t_reconcile(desired: [tm_owned(mid: "a", ver: "1")], observed: [])
-  plan_has_upsert(plan: plan, mid: "a")
-    && membership_upsert_count(plan: plan) == 1
-    && membership_teardown_count(plan: plan) == 0
+  plan_has_add(plan: plan, mid: "a")
+    && membership_write_count(plan: plan) == 1
+    && membership_removal_count(plan: plan) == 0
 }
 
 test fn w_removed_owned_tears_down() -> Bool {
   let plan = t_reconcile(desired: [], observed: [tm_owned(mid: "a", ver: "1")])
   plan_has_teardown(plan: plan, mid: "a")
-    && membership_teardown_count(plan: plan) == 1
+    && membership_removal_count(plan: plan) == 1
     && membership_refusal_count(plan: plan) == 0
 }
 
 test fn w_unchanged_noop() -> Bool {
   let m = tm_owned(mid: "a", ver: "1")
   let plan = t_reconcile(desired: [m], observed: [m])
-  membership_upsert_count(plan: plan) == 0
-    && membership_teardown_count(plan: plan) == 0
+  membership_write_count(plan: plan) == 0
+    && membership_removal_count(plan: plan) == 0
     && membership_refusal_count(plan: plan) == 0
 }
 
-test fn w_modified_reupserts() -> Bool {
+data w_modified_changes_note: String = "A Modified hunk is a MemberChanged carrying BOTH sides, NOT an add of the `to` side. The from-side assertion is the discriminating half: it reds if anyone reintroduces the collapse that discarded `from`, which is the fact every safe realization of a change needs (an SCM compare-and-swap names the expected prior; a moved host address needs the prior endpoint to retire). Asserted at the ACTION grain — a tally alone cannot tell a change from an add."
+
+test fn w_modified_is_change_carrying_both_sides() -> Bool {
   let plan = t_reconcile(
     desired: [tm_owned(mid: "a", ver: "2")],
     observed: [tm_owned(mid: "a", ver: "1")],
   )
-  plan_has_upsert(plan: plan, mid: "a")
-    && membership_upsert_count(plan: plan) == 1
-    && membership_teardown_count(plan: plan) == 0
+  plan_has_change_from_to(plan: plan, mid: "a", from_ver: "1", to_ver: "2")
+    && !plan_has_add(plan: plan, mid: "a")
+    && membership_change_count(plan: plan) == 1
+    && membership_added_count(plan: plan) == 0
+    && membership_write_count(plan: plan) == 1
+    && membership_removal_count(plan: plan) == 0
+    && membership_refusal_count(plan: plan) == 0
+}
+
+data w_ensured_converges_note: String = "REGRESSION CONTROL for a wall that was BUILT AND WITHDRAWN during this change (DESIGN §4b(4): the evidence stays enrolled after the reasoning settles; §4c: prose is never evidence a machine claim holds). An earlier draft refused a Modified hunk whose `from` was not Owned, reading replacement as destruction. That is wrong, and this row is what makes it stay wrong out loud. WHAT IT PROVES, precisely: gunbc.ownership defines Ensured as 'requires present but does NOT own (never torn down)' — a constraint on REMOVAL. Ensured says NOTHING about update, and treating it as if it did breaks the module whose entire job is re-installing drifted pins (tool_readiness classifies every pin Ensured; repo_local_git_config every binding). So the SAME Ensured member must CONVERGE when its value drifts and REFUSE when it is removed — one member, both arms, in one plan, so the asymmetry is asserted rather than assumed. Reintroducing the change-refusal arm turns the first conjunct red."
+
+test fn w_ensured_member_converges_but_refuses_removal() -> Bool {
+  let plan = t_reconcile(
+    desired: [tm_ensured(mid: "drifted", ver: "2")],
+    observed: [tm_ensured(mid: "drifted", ver: "1"), tm_ensured(mid: "gone", ver: "1")],
+  )
+  plan_has_change_from_to(plan: plan, mid: "drifted", from_ver: "1", to_ver: "2")
+    && membership_change_count(plan: plan) == 1
+    && plan_has_refused_not_owned(plan: plan, mid: "gone")
+    && membership_refusal_count(plan: plan) == 1
+    && membership_removal_count(plan: plan) == 0
 }
 
 test fn w_r5_owned_only_teardown_synthetic() -> Bool {
@@ -122,12 +153,38 @@ test fn w_r5_owned_only_teardown_synthetic() -> Bool {
     && !plan_has_teardown(plan: plan, mid: "e")
     && plan_has_refused_unknown(plan: plan, mid: "u")
     && !plan_has_teardown(plan: plan, mid: "u")
-    && membership_teardown_count(plan: plan) == 1
+    && membership_removal_count(plan: plan) == 1
     && membership_refusal_count(plan: plan) == 2
 }
 
 fn effects_has_teardown(es: List<MemberEffect<TMember>>, mid: String) -> Bool {
-  any(es, e => match e { EffectTeardown { member: m } => m.mid == mid  EffectUpsert { member: _ } => false })
+  any(es, e =>
+    match e {
+      EffectRemove { from: m } => m.mid == mid
+      EffectAdd { to: _ } => false
+      EffectReplace { from: _, to: _ } => false
+    }
+  )
+}
+
+data w_effect_replace_note: String = "EffectReplace carries BOTH sides into apply, which is the point of the split: a handler that replaces a member must be able to retire the prior realization, and `from` is the only place the prior endpoint survives. An EffectAdd carries one side because there is nothing there to retire."
+
+test fn w_change_projects_to_effect_replace_with_both_sides() -> Bool {
+  let plan = t_reconcile(
+    desired: [tm_owned(mid: "a", ver: "2")],
+    observed: [tm_owned(mid: "a", ver: "1")],
+  )
+  match membership_effects(plan: plan) {
+    EffectsReady { effects: es } =>
+      count(es) == 1
+        && any(es, e =>
+             match e {
+               EffectReplace { from: f, to: t } => f.ver == "1" && t.ver == "2" && f.mid == "a"
+               EffectAdd { to: _ } => false
+               EffectRemove { from: _ } => false
+             })
+    ApplyRefused { refusals: _ } => false
+  }
 }
 
 data w_effects_wholesale_refuse_note: String = "DISCRIMINATING (§5): a plan carrying any Refused MUST refuse WHOLESALE — membership_effects returns ApplyRefused (o's owned teardown NOT surfaced as an effect), never EffectsReady with the refused sibling silently filtered out. If membership_effects is ever broken to drop-the-refused and return the effects, this hits the EffectsReady arm and returns false = RED. The degenerate apply/retract poles never produce a Refused, so only this synthetic mixed observed set exercises the wall."
@@ -162,9 +219,11 @@ test fn w_tally_matches_counts() -> Bool {
     observed: [tm_owned(mid: "b", ver: "1"), tm_ensured(mid: "c", ver: "1")],
   )
   let t = membership_tally(plan: plan)
-  t.upserts == 1 && t.teardowns == 1 && t.refusals == 1
-    && t.upserts == membership_upsert_count(plan: plan)
-    && t.teardowns == membership_teardown_count(plan: plan)
+  t.adds == 1 && t.removals == 1 && t.refusals == 1 && t.changes == 0
+    && t.adds == membership_added_count(plan: plan)
+    && t.changes == membership_change_count(plan: plan)
+    && (t.adds + t.changes) == membership_write_count(plan: plan)
+    && t.removals == membership_removal_count(plan: plan)
     && t.refusals == membership_refusal_count(plan: plan)
 }
 

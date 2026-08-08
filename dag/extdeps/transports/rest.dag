@@ -6,7 +6,7 @@ import std.serialization { WireFormat }
 import std.fidelity { TransportFidelity }
 import std.effect_grant { Envelope, HandlerBinding, Read, Write, CoveredBy, NoCoveringGrant, covering_grant, NamespacePosition, ServiceOpTree }
 import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, UriScheme, Http, Https, File, Ftp, Javascript, Data, Vbscript, Mailto }
+import extdeps.uri { Uri, UriScheme, Http, Https, Tftp, File, Ftp, Javascript, Data, Vbscript, Mailto }
 import v2.std.operation_argv { OperationRef }
 import v2.std.optional { Absent, Present }
 

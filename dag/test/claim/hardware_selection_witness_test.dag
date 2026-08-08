@@ -1,4 +1,6 @@
 module test.claim.hardware_selection
+import extdeps.vendor.ampere { ampere }
+import std.measure { milliwatt }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

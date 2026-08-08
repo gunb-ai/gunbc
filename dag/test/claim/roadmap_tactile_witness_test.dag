@@ -277,8 +277,7 @@ fn fragment_is_sound_toggle(c: Fragment) -> Bool {
   }
 }
 
-data sound_toggle_frame_scan_note: String = "Amended for the A2 hierarchy closeout: the header's controls moved inside the div.header-inner composition frame (gunbc.roadmap_page.header_composition_frame_note), so the toggle is no longer a direct child. Same shape as the wordmark scan in roadmap_register_witness_test (header_frame_scan_note): a RECURSIVE descent over the header's Fragment subtree, because the claim is 'every page header ships the toggle', not 'the toggle sits at depth one'. A fixed depth would re-pin the nesting it was just unpinned from."
-
+// Amended for the A2 hierarchy closeout: the header's controls moved inside the div.header-inner composition frame (gunbc.roadmap_page.header_composition_frame_note), so the toggle is no longer a direct child. Same shape as the wordmark scan in roadmap_register_witness_test (header_frame_scan_note): a RECURSIVE descent over the header's Fragment subtree, because the claim is 'every page header ships the toggle', not 'the toggle sits at depth one'. A fixed depth would re-pin the nesting it was just unpinned from.
 fn header_subtree_has_sound_toggle(f: Fragment) -> Bool {
   fragment_is_sound_toggle(c: f)
     || (match f {

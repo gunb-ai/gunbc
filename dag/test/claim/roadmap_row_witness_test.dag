@@ -102,8 +102,7 @@ test fn roadmap_row_page_carries_the_cells() -> Bool {
     && !string_contains(s: h, pattern: "<li class=\"node node-done\" data-node=")
 }
 
-data actuator_derived_note: String = "Derived-not-set, both directions on ONE predicate: the block that ships must be the derived one (verbatim presence), and the derived block itself must draw extent from the row token and width from the caption reservation while carrying no fresh literal (no px, no h-control). The planted RED feeds the same predicate the exact block a well-meaning hand retune would write — the discrimination lives in the predicate, not the fixture."
-
+// Derived-not-set, both directions on ONE predicate: the block that ships must be the derived one (verbatim presence), and the derived block itself must draw extent from the row token and width from the caption reservation while carrying no fresh literal (no px, no h-control). The planted RED feeds the same predicate the exact block a well-meaning hand retune would write — the discrimination lives in the predicate, not the fixture.
 fn actuator_block_derived(block: String) -> Bool {
   block.length() > 0
     && string_contains(s: block, pattern: "min-height: var(--h-row)")

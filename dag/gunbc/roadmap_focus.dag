@@ -6,8 +6,7 @@ import gunbc.roadmap_model { RoadmapNode, RoadmapEdge }
 
 data roadmap_focus_note: String = "A VIEW policy over the roadmap, never an edit to it. When one lane is being worked, the other lanes are noise on the page — but deleting or parking them to get quiet would destroy work, and a roadmap that forgets a deliverable because someone wanted a shorter page is the worst possible failure for a queue. So focus filters the PROJECTION and leaves the authority whole: every node stays declared, every edge stays declared, and clearing the focus restores the full page with no recovery step. The mechanism is one row (roadmap_focus_selection) and reverting it is one edit.\n\nSelection is by OWNER rather than by a list of node ids. An id list would silently stop covering the lane the moment a new node joined it — the focus would look right and quietly understate, which is the same class of failure as a hand-maintained count. Owner is the lane's own identity and a new node in the lane inherits the focus by construction."
 
-data roadmap_focus_honesty_note: String = "HIDING MUST BE VISIBLE. A filtered page that simply renders fewer rows is indistinguishable from a roadmap that has fewer deliverables, and the reader most likely to be misled is the one who set the focus and then forgot — the page would read as 'this is all the work' when it means 'this is the work you asked to see'. So the projection states the focus and the DERIVED count of what it is hiding. The count is computed from the same node list the filter runs over, so it cannot drift from what was actually withheld; there is no hand-written number to go stale, and a focus that hides nothing says so rather than printing a reassuring zero it did not compute."
-
+// HIDING MUST BE VISIBLE. A filtered page that simply renders fewer rows is indistinguishable from a roadmap that has fewer deliverables, and the reader most likely to be misled is the one who set the focus and then forgot — the page would read as 'this is all the work' when it means 'this is the work you asked to see'. So the projection states the focus and the DERIVED count of what it is hiding. The count is computed from the same node list the filter runs over, so it cannot drift from what was actually withheld; there is no hand-written number to go stale, and a focus that hides nothing says so rather than printing a reassuring zero it did not compute.
 type RoadmapFocus
   = NoFocus
   | FocusOnOwners {
@@ -82,8 +81,7 @@ fn focus_visible_nodes(
   }
 }
 
-data focus_edge_containment_note: String = "An edge survives only when BOTH endpoints do. A dependency edge pointing at a hidden node would render as a prerequisite the reader cannot see and cannot act on — worse than omitting it, because it implies the page is complete while pointing off the edge of it. Dropping the edge keeps the visible subgraph internally consistent: everything named on the page is on the page. The cross-lane prerequisite is not lost, it is declared in the authority and returns the moment the focus clears, which is precisely the property that makes filtering safe here and unsafe as an edit."
-
+// An edge survives only when BOTH endpoints do. A dependency edge pointing at a hidden node would render as a prerequisite the reader cannot see and cannot act on — worse than omitting it, because it implies the page is complete while pointing off the edge of it. Dropping the edge keeps the visible subgraph internally consistent: everything named on the page is on the page. The cross-lane prerequisite is not lost, it is declared in the authority and returns the moment the focus clears, which is precisely the property that makes filtering safe here and unsafe as an edit.
 fn focus_visible_edges(
   focus: RoadmapFocus,
   nodes: List<RoadmapNode>,

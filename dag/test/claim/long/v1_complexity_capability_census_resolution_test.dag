@@ -68,8 +68,7 @@ test fn census_absent_module_refuses() -> Bool {
   }
 }
 
-data census_prose_only_name_note: String = "The discriminating control for the exact defect the operator named: a name that survives only inside a note string must NOT resolve. 'basis Derived' appears verbatim in the seed's cost_account_space_from_summary note, so a substring check finds it; as a DeclarationRef it is not a declaration and resolution refuses. This is the difference between the old check and this one, executed."
-
+// The discriminating control for the exact defect the operator named: a name that survives only inside a note string must NOT resolve. 'basis Derived' appears verbatim in the seed's cost_account_space_from_summary note, so a substring check finds it; as a DeclarationRef it is not a declaration and resolution refuses. This is the difference between the old check and this one, executed.
 test fn census_prose_only_name_does_not_resolve() -> Bool {
   !declaration_ref_resolves(
     ref: decl_ref(module_path: "v1.compiler.complexity", decl_name: "Derived"),
@@ -95,8 +94,7 @@ test fn census_resolved_identity_carries_observed_path() -> Bool {
   }
 }
 
-data census_substrate_carrier_resolves_note: String = "The integration finding's citation, resolved exactly rather than matched: std.graph really declares graph_multi_node_scc_members, so the claim that the SCC capability already lives in shared substrate rests on a resolved declaration identity and not on a name appearing in a file."
-
+// The integration finding's citation, resolved exactly rather than matched: std.graph really declares graph_multi_node_scc_members, so the claim that the SCC capability already lives in shared substrate rests on a resolved declaration identity and not on a name appearing in a file.
 test fn census_shared_substrate_carrier_resolves() -> Bool {
   match capability_cited_carrier(c: call_graph_and_scc) {
     Absent => false

@@ -49,8 +49,7 @@ import std.temporal_effect {
 
 data observation_module_note: String = "P0 of the progress-and-observation lane (docs/plans/progress-observation-design.md, operator-signed 2026-07-23; CI-rework delta in that doc section 6b). One event vocabulary emitted by the process and consumed by every renderer — a progress line is a PROJECTION of a fact the process already has, never a hand-authored string with a hand-chosen level. This module carries the model, the five laws as rows, and the derived attention/presentation assignment; it renders nothing (renderers are P1 and later). Displaced cost priced in the design doc: the 10-minute silent crawl window of run 30044816605, a 55-minute triage cycle burned on a receipt that only wrote at walk end, and workers hand-rolling the discipline ad hoc."
 
-data observation_homonym_note: String = "Naming diligence (DESIGN section 3): std.upsert_decision.ObservationVerdict is a DIFFERENT concept that shares the word — it classifies a desired-versus-observed STATE for reconcile/upsert (Converged, Drifted, Conflict). This module observes a PROCESS advancing through time. Neither is a nickname for the other; they are not to be consolidated. The distinguishing question: upsert asks what is true of the world, observation asks how far the work has got."
-
+// Naming diligence (DESIGN section 3): std.upsert_decision.ObservationVerdict is a DIFFERENT concept that shares the word — it classifies a desired-versus-observed STATE for reconcile/upsert (Converged, Drifted, Conflict). This module observes a PROCESS advancing through time. Neither is a nickname for the other; they are not to be consolidated. The distinguishing question: upsert asks what is true of the world, observation asks how far the work has got.
 type ObservationSegment
   = RunSegment { id: NonEmptyStr }
   | BatchSegment { index: Nat, label: NonEmptyStr }
@@ -376,8 +375,7 @@ type AttentionBasis {
   maximum: Millisecond
 }
 
-data observation_attention_basis_note: String = "AttentionLevel is DERIVED, never chosen at an emit site — there are no per-site log levels in this model (law 5). The basis is the pair of signed cost constants the CI clamp model carries (design doc section 6b): over the signed average is Notable, over the signed maximum is Anomaly. No threshold is invented here — the basis is a parameter supplied by the consumer that owns those constants, so this module cannot smuggle a number of its own. A refusal, failure, timeout, or orphaned begin is an Anomaly on its own terms, independent of any basis."
-
+// AttentionLevel is DERIVED, never chosen at an emit site — there are no per-site log levels in this model (law 5). The basis is the pair of signed cost constants the CI clamp model carries (design doc section 6b): over the signed average is Notable, over the signed maximum is Anomaly. No threshold is invented here — the basis is a parameter supplied by the consumer that owns those constants, so this module cannot smuggle a number of its own. A refusal, failure, timeout, or orphaned begin is an Anomaly on its own terms, independent of any basis.
 fn observation_outcome_is_anomaly(o: ObservationOutcome) -> Bool {
   match o {
     Done => false
@@ -511,8 +509,7 @@ type ObservationPresentation {
 
 data observation_collapse_axes_note: String = "collapsible and expands_fully are two axes, not one flag with a middle value, because three states are real and conflating them loses one. Routine progress collapses and does not expand. An intrinsic anomaly neither collapses nor stays terse: it expands fully and names itself. The run's Final summary is the third state — it never collapses, because a summary that hid itself would defeat its purpose, yet it is NOT an anomaly and must not be rendered as one. A single collapsible flag would force Final to borrow the anomaly's presentation, which is the state-space conflation the house splits into named variants."
 
-data observation_presentation_note: String = "Event class to presentation is a TOTAL assignment over the class roster, censused and walled the way the register censuses unthemed colors. The presentation carries only the SymbolId: the glyph text per tier and the register colour role are read from the ONE glyph authority (std.symbols identity, extdeps.render.glyphs rows), never restated here, so perturbing a glyph row moves every renderer and a renderer that hardcodes a glyph is provably not reading the table. collapsible and expands_fully carry law 4: sub-threshold work collapses, an anomaly expands fully and names itself, and the two flags are never both permissive for an intrinsically anomalous class."
-
+// Event class to presentation is a TOTAL assignment over the class roster, censused and walled the way the register censuses unthemed colors. The presentation carries only the SymbolId: the glyph text per tier and the register colour role are read from the ONE glyph authority (std.symbols identity, extdeps.render.glyphs rows), never restated here, so perturbing a glyph row moves every renderer and a renderer that hardcodes a glyph is provably not reading the table. collapsible and expands_fully carry law 4: sub-threshold work collapses, an anomaly expands fully and names itself, and the two flags are never both permissive for an intrinsically anomalous class.
 type ObservationDensity
   = RoutineCollapsible
   | SummaryAlwaysShown
@@ -685,8 +682,7 @@ fn observation_escalation_depth(quiet: Millisecond, t: DwellThreshold) -> Nat {
   millisecond_count(m: quiet) / millisecond_count(m: t.period)
 }
 
-data observation_escalation_note: String = "Law 3: attention escalates by dwell time, RECURSIVELY. A subject quiet past T surfaces its current child, past 2T the grandchild, and so on to the leaf — the collapse rule of law 4 run in reverse under time pressure, over the same tree and the same events. Depth is floor of quiet over T, so one law covers every level instead of a special case per level; the reference implementation expands one level only, and only on a TTY, which is why the CI crawl window stayed silent."
-
+// Law 3: attention escalates by dwell time, RECURSIVELY. A subject quiet past T surfaces its current child, past 2T the grandchild, and so on to the leaf — the collapse rule of law 4 run in reverse under time pressure, over the same tree and the same events. Depth is floor of quiet over T, so one law covers every level instead of a special case per level; the reference implementation expands one level only, and only on a TTY, which is why the CI crawl window stayed silent.
 fn observation_escalation_reveal_depth(quiet_subject: ObservationSubject, quiet: Millisecond, t: DwellThreshold) -> Nat {
   count(quiet_subject.segments) + observation_escalation_depth(quiet: quiet, t: t)
 }

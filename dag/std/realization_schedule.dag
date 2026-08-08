@@ -766,6 +766,15 @@ fn schedule_witness_entry_eq(a: ScheduleWitnessEntry, b: ScheduleWitnessEntry) -
   (a.entry == b.entry) && (a.function == b.function) && witness_kind_eq(a: a.kind, b: b.kind)
 }
 
+data schedule_witness_entry_roster_contains_note: String = "Roster membership at the ONE identity grain (entry, function, kind), beside the equality it folds, so every consumer joining two witness rosters — the eval-ceiling union, the budget partition of a known-red lane — asks the same question of the same authority. It exists because the first shape of the ceiling union carried its own private membership fold in gunbc.ci_layer_roots and the budget partition was about to author a second one; two folds over one relation is the fork DESIGN 3 names, and a roster join by bare name rather than by identity is the weaker check the schedule-multiplicity wall already refuses."
+
+fn schedule_witness_entry_roster_contains(
+  xs: List<ScheduleWitnessEntry>,
+  w: ScheduleWitnessEntry
+) -> Bool {
+  fold(xs, init: false, f: fn(found, x) { found || schedule_witness_entry_eq(a: x, b: w) })
+}
+
 fn string_list_eq(left: List<String>, right: List<String>) -> Bool {
   if left.count() != right.count() {
     false
