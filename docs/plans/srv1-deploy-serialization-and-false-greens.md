@@ -300,7 +300,18 @@ Phase A is in main but is **not** yet established as live on srv1. Activation is
 4. its `surface_bundle_identity` and served artifact projection match the same candidate;
 5. no older queued deployment subsequently removes the identity channel.
 
-Until this receipt exists, `ReleaseRevisionAbsent` remains the honest observation of the live process. Note the workflow shape that makes this non-automatic: `deploy_dashboard_srv1` declares `needs: [ci]` and `if: github.ref == 'refs/heads/main' && github.event_name == 'push'`, so a failing `ci` on main skips the deploy, and a `workflow_dispatch` run **cannot** activate Phase A at all.
+Until this receipt exists, `ReleaseRevisionAbsent` remains the honest observation of the live process.
+
+**Measured 2026-08-08, and it changes the shape of this gate: the deploy path is inert, not backed up.** Across the last **40 main-push runs, `deploy_dashboard_srv1` was `skipped` 38 times and ran 0 times** — no successes and no failures in the sample. The skipped job records `0` steps with `started_at == completed_at`, which is the signature of a job-level `if:` evaluating false rather than of a queued or cancelled job.
+
+That is not explained by the two conditions one would reach for first, both checked:
+
+- **`ci` failing is not the cause.** Runs `4d8234db3ba` and `c3b7d4b5162` are `event=push`, `head_branch=main`, `ci: success` — and deploy is still `skipped`.
+- **The event and ref are not the cause.** The GitHub API reports `event=push`, `head_branch=main` for those runs, and the job condition at each of `4d8234db3ba`, `6d077293a78`, and `d409b75f7fc` is byte-identically `if: github.ref == 'refs/heads/main' && github.event_name == 'push'`, which is true for them on its face.
+
+So the activation gate is **not** "wait for the pre-Phase-A queue to drain". The queue is not the obstacle; the deploy job is not executing at all, and has not been for at least 40 main pushes. **The cause is not established here and must not be guessed** — a wrong root cause is exactly what this document was written to stop. What is established is the observation and the two eliminations above.
+
+Consequence for Phase A: it cannot activate by waiting. Until `deploy_dashboard_srv1` executes, srv1 keeps serving a pre-Phase-A process, the identity channel is absent from the routed `/healthz`, and Phase B has no observable baseline to recut against. Diagnosing why this job is skipped is therefore the **first** Phase B prerequisite, ahead of any code work. Note the workflow shape that makes this non-automatic: `deploy_dashboard_srv1` declares `needs: [ci]` and `if: github.ref == 'refs/heads/main' && github.event_name == 'push'`, so a failing `ci` on main skips the deploy, and a `workflow_dispatch` run **cannot** activate Phase A at all.
 
 The receipt to append when it arrives:
 
