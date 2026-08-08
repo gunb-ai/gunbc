@@ -7913,20 +7913,50 @@ pub fn build_live_read_selection_manifest(
     // sets before resolving, so its universe can omit the very test declarations this manifest is
     // asked to classify, and its name would have read like a receipt while quietly excluding the
     // subject.
-    let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> =
-        index.source_files.values().cloned().collect();
-    // Deterministic order: the resolve is order-sensitive for diagnostics, and a HashMap iteration
-    // order would make the manifest's own construction host-dependent (v2.std.determinism).
-    sources.sort_by(|a, b| a.path.cmp(&b.path));
+    // The universe is the UNION OF THE REQUEST ROOTS' OWN CLOSURES, taken from this index's pool,
+    // plus the classification lens's closure. That is the smallest population that provably
+    // contains every fact the producer needs, and the containment is by construction rather than
+    // by hope: classifying root (E, f) needs E's module and the modules
+    // `call_reachable_decls_from_root` can walk from it, and both are exactly E's import closure.
+    //
+    // Taking the index's ENTIRE source population instead would also be sound, and was the first
+    // repair written here — but it pays a whole-corpus resolve even for the small explicit rosters
+    // the selection-control suite runs, and a producer that costs a corpus resolve to answer a
+    // two-entry question is the cost shape this lane exists to remove, reintroduced one layer up.
+    let mut by_path: std::collections::BTreeMap<String, Rc<v1_compiler_compile::SourceFile>> =
+        std::collections::BTreeMap::new();
+    let mut closure_roots: Vec<String> = vec![LIVE_READ_CLASSIFICATION_ENTRY.to_string()];
+    let mut seen_roots: HashSet<String> = HashSet::new();
+    for req in requests {
+        if seen_roots.insert(req.entry_path.clone()) {
+            closure_roots.push(req.entry_path.clone());
+        }
+    }
+    for root in &closure_roots {
+        let closure = load_sources_for_entry_with_pool(index, root).map_err(|e| {
+            format!(
+                "LIVE-READ MANIFEST REFUSAL cause=RequestRootClosureUnloadable root={root} \
+                 detail={e} — a request root whose own closure cannot be loaded from this index's \
+                 pool has no fact population, so its declaration cannot be classified and the \
+                 entry must not be decided from an absent answer."
+            )
+        })?;
+        for src in closure {
+            by_path.insert(src.path.clone(), src);
+        }
+    }
+    // BTreeMap keyed by path: deduplicated across overlapping closures AND ordered, so the resolve
+    // is not a function of host hash-iteration order (v2.std.determinism).
+    let sources: Vec<Rc<v1_compiler_compile::SourceFile>> = by_path.values().cloned().collect();
     let source_module_count = sources.len();
     let (graph, indices) =
         resolved_graph_from_sources(sources, ResolveTypecheckGate::DiscoveryCorpusAdvisory)
             .map_err(|e| {
                 format!(
-            "LIVE-READ MANIFEST REFUSAL cause=IndexUniverseUnresolved detail={e} — the index's own \
-             source universe could not be resolved, so the declaration facts would describe less \
-             than the tree the consumer decides over and no declaration has an established \
-             classification."
+            "LIVE-READ MANIFEST REFUSAL cause=RequestUniverseUnresolved detail={e} — the union of \
+             the request roots' closures could not be resolved, so the declaration facts would \
+             describe less than the roots the consumer decides over and no declaration has an \
+             established classification."
         )
             })?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
@@ -7941,10 +7971,11 @@ pub fn build_live_read_selection_manifest(
     // propagates as a typed `Err` rather than as a widened answer.
     if ctx.modules.len() < source_module_count {
         return Err(format!(
-            "LIVE-READ MANIFEST REFUSAL cause=IndexUniverseIncomplete resolved={} index_sources={} \
-             — the resolved fact context holds fewer modules than the index it must describe, so \
-             some enrolled declaration's home is absent from the population and would classify as \
-             unbound for a reason that is about this resolve rather than about the declaration.",
+            "LIVE-READ MANIFEST REFUSAL cause=RequestUniverseIncomplete resolved={} \
+             closure_sources={} — the resolved fact context holds fewer modules than the request \
+             roots' closures it must describe, so some enrolled declaration's home is absent from \
+             the population and would classify as unbound for a reason that is about this resolve \
+             rather than about the declaration.",
             ctx.modules.len(),
             source_module_count
         ));
