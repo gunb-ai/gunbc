@@ -1,0 +1,63 @@
+module gunbc.devboot.transport
+
+import std.types { Bool, FilePath, GitRef, NonEmptyStr, String }
+
+import extdeps.uri { Uri, File }
+import extdeps.git.publication_transport { GitPushRequest, GitRefUpdateSpec }
+
+data devboot_transport_direction_note: String = "TRANSPORT IS NAMED PER DIRECTION because the two directions do not have the same options, and a single Transport enum spanning both would offer every handler to every direction while only some combinations exist. Getting a subject TO the builder and getting an artifact BACK are different problems with different reach: the first crosses from a requester that has the bytes to a host that does not, the second from a store to a consumer that may or may not share the host.\\n\\nWHAT IS DELIBERATELY ABSENT, so its absence reads as a decision rather than an omission: there is no ssh handler and no HTTP-bytes handler. No fleet host accepts ssh from a session, and the served surface carries String bodies only -- an artifact route returning bytes is unrepresentable there without growing the seed. Modeling either would be declaring a channel that does not exist, which is worse than declaring none, because a typed row reads as available.\\n\\nEach direction keeps a typed unavailable arm rather than falling back to another handler. A subject that cannot be relayed must refuse; it must not become a build of whatever the host happened to have checked out, which is the absorbing fallback in its most damaging form -- the resulting artifact would be correct-looking and built from the wrong source."
+
+data subject_upload_note: String = "UPLOAD RIDES THE REMOTE BOTH SIDES ALREADY SHARE. The requester has the bytes and no direct channel to the builder, but both can reach origin, so the subject travels as a synthetic commit on a wip ref: the tree is written from a temp index, wrapped in a commit because a ref must point at a commit, and pushed under a namespace reserved for this purpose. The builder then fetches by ref and reads the tree.\\n\\nThe commit is SYNTHETIC and carries no meaning: its message, author and parentage are not facts anyone should read, which is exactly why the subject key is the TREE oid and not the commit sha. Two requesters producing byte-identical trees create different commits and still dedupe, because the commit is transport packaging rather than identity.\\n\\nDissolve-on: a direct channel between requester and builder. At that point DirectUploadUnavailable gains an inhabitant, this relay becomes one handler among two, and the wip-ref namespace hygiene residue retires with it."
+
+type SubjectUploadChannel
+  = SyntheticCommitWipRefViaOrigin { remote: NonEmptyStr, ref_namespace: NonEmptyStr }
+  | DirectUploadUnavailable { detail: String }
+
+fn wip_ref_for_subject(channel: SubjectUploadChannel, subject_hex: NonEmptyStr) -> GitRef? {
+  match channel {
+    SyntheticCommitWipRefViaOrigin { remote: _, ref_namespace } =>
+      Present { value: join([ref_namespace as String, "/", subject_hex as String], "") as GitRef }
+    DirectUploadUnavailable { detail: _ } => none
+  }
+}
+
+fn subject_upload_push_request(
+  channel: SubjectUploadChannel,
+  subject_hex: NonEmptyStr,
+) -> GitPushRequest? {
+  match channel {
+    SyntheticCommitWipRefViaOrigin { remote, ref_namespace } =>
+      match wip_ref_for_subject(channel: channel, subject_hex: subject_hex) {
+        Present { value: ref_name } =>
+          Present {
+            value: GitPushRequest {
+              remote: remote,
+              ref_updates: [GitRefUpdateSpec { local_ref: ref_name, remote_ref: ref_name }],
+            },
+          }
+        Absent => none
+      }
+    DirectUploadUnavailable { detail: _ } => none
+  }
+}
+
+data artifact_fetch_note: String = "FETCH IS SPLIT BY WHETHER THE CONSUMER SHARES THE STORE'S HOST, because that fact alone decides which channels exist. A same-host consumer can address the object database directly through a file URI -- no daemon, no port, no network. A consumer elsewhere cannot, and the honest set of options for it today is one unbuilt daemon; so that arm is declared unavailable rather than described as if it worked.\\n\\nTHIS IS WHY CAPSULE ONE'S CONSUMERS ARE FLEET-SIDE. A session cannot execute a fleet-built binary anyway -- the release toolchain targets a newer libc than a session container provides -- so a cross-host BYTES channel would deliver something unusable even if it existed. Sessions submit, and verify a digest; they do not execute what capsule one produces. The channel and the ABI constraint retire together in the session-ABI capsule, which builds for a target the session can run and therefore needs a real cross-host fetch."
+
+type ArtifactFetchChannel
+  = LocalFileUri { store_root: FilePath }
+  | CrossHostFetchUnavailable { detail: String }
+
+fn artifact_fetch_uri(channel: ArtifactFetchChannel) -> Uri? {
+  match channel {
+    LocalFileUri { store_root } =>
+      Present { value: Uri { scheme: File, locator: store_root as String as NonEmptyStr } }
+    CrossHostFetchUnavailable { detail: _ } => none
+  }
+}
+
+fn artifact_fetch_is_available(channel: ArtifactFetchChannel) -> Bool {
+  match channel {
+    LocalFileUri { store_root: _ } => true
+    CrossHostFetchUnavailable { detail: _ } => false
+  }
+}

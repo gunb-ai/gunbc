@@ -31,6 +31,8 @@ import gunbc.host_layout {
   srv1_gunbc_serve_binary,
   srv1_dispatch_worktree_root,
   srv1_dispatch_attempt_state_root,
+  srv1_devboot_artifact_store_root,
+  srv1_devboot_state_root,
 }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
@@ -57,6 +59,8 @@ type OwnedArtifactKind =
   | SystemdUnit
   | BeltTimerUnit
   | TailscaleServeMapping
+  | DevbootArtifactStoreRoot
+  | DevbootStateRoot
 
 type EnsuredDependencyKind =
     TailscalePackage
@@ -101,6 +105,8 @@ fn owned_artifact_teardown_disposition(kind: OwnedArtifactKind) -> TeardownDispo
     SystemdUnit => TeardownActs
     BeltTimerUnit => TeardownActs
     TailscaleServeMapping => TeardownActs
+    DevbootArtifactStoreRoot => TeardownActs
+    DevbootStateRoot => TeardownActs
   }
 }
 
@@ -269,6 +275,15 @@ fn deployment_owned_steps(
   ]
 }
 
+data devboot_root_membership_note: String = "THE BUILD SERVICE'S ROOTS ARE MEMBERSHIP, PROJECTED, AND SEPARATE FROM THE PER-INSTANCE STEPS -- three claims, and the third is the one that took a correction. Membership: these are directories the service WRITES, which is the same property that makes DispatchWorktreeRoot and AttemptStateRoot owned members, and attempt_state_root_member_note records what it cost to learn that a written path outside the roster is a path nothing creates. Projected: the paths come from the gunbc.host_layout rows, never spelled here, so the belt and the deploy cannot drift to two spellings of one directory.\\n\\nSEPARATE, because the first cut put them in deployment_owned_steps beside the dashboard's own members and that was wrong in a way the srv1-only scope hides. Those steps are built PER INSTANCE, and every instance would then have received srv1's literal paths under its own name -- srv2's preview slot creating /var/lib/gunbc directories for a service that does not run there. gunbc_host_layout_note names that exact defect for the exact reason it is dangerous: no value is visibly wrong, so nothing surfaces, and the first host whose layout genuinely diverged would silently inherit srv1's body.\\n\\nSo the projection is its own function, called for the host that actually runs the build service, rather than folded into a per-instance list that would answer for hosts nobody asked about. Dissolve-on: devboot deployed to a second host. At that point the roots become fields of a host layout resolved through a total host-identity lookup -- the next-rung trigger dispatch_state_scope_carries_its_roots_note already names -- and this srv1-shaped function retires into that derivation."
+
+fn devboot_owned_steps() -> List<DeploymentArtifactStep> {
+  [
+    DeploymentArtifactStep { kind: DevbootArtifactStoreRoot, path: srv1_devboot_artifact_store_root as String as NonEmptyStr },
+    DeploymentArtifactStep { kind: DevbootStateRoot, path: srv1_devboot_state_root as String as NonEmptyStr },
+  ]
+}
+
 fn deployment_ensured_steps() -> List<DeploymentDependencyStep> {
   [
     DeploymentDependencyStep { kind: TailscalePackage, package: package_tailscale },
@@ -390,6 +405,8 @@ fn owned_artifact_retirement_disposition(kind: OwnedArtifactKind) -> RetirementD
     SystemdUnit => RetiresRuntime
     BeltTimerUnit => RetiresRuntime
     TailscaleServeMapping => RetirementPreserves
+    DevbootArtifactStoreRoot => RetirementPreserves
+    DevbootStateRoot => RetirementPreserves
   }
 }
 

@@ -1,0 +1,99 @@
+module gunbc.devboot.outcome
+
+import std.types { String, NonEmptyStr }
+import std.measure { ByteSize }
+import std.content_hash {
+  ContentHash,
+  Sha256Digest,
+  compare_content_hash,
+  ContentHashEqual,
+  ContentHashDifferent,
+  ContentHashCrossFamilyIncomparable,
+}
+
+import extdeps.git.object_store { GitObjectId }
+
+import gunbc.devboot.subject { BuildSubject, build_subject_digest }
+
+data devboot_work_id_note: String = "The identity of a REQUEST, kept distinct from the identity of what it asks for. Two requesters naming one subject share a subject digest and must share a producer; they do not share a work id, because each still needs to learn its own request's fate. Collapsing the two would make AttachedToExistingProducer unrepresentable -- the second requester would have nothing of its own to be told about."
+
+type DevbootWorkId = NonEmptyStr where brand("DevbootWorkId")
+
+data stored_artifact_note: String = "THE ONLY EVIDENCE THAT A BUILD PRODUCED SOMETHING, and it is constructed from a read-back rather than from the builder's own report. This carrier is why 'build succeeded' cannot be reported without retrievable bytes: the success arms of BuildOutcome take a StoredArtifact and there is no other way to inhabit them, so an exit-zero cargo invocation whose output nobody could retrieve has no arm to land in.\\n\\nWHY TWO DIGESTS, WHICH IS NOT A DUAL REPRESENTATION. blob_oid is an ADDRESS: it is how the artifact store is asked for these bytes, and it is Git's identity over a blob header plus content. sha256 is an INDEPENDENT VERIFICATION of the content alone, computed without consulting the store. The preimages genuinely differ, so neither is derivable from the other, and that non-derivability is the point -- a consumer that fetched by oid and then recomputed the oid would be re-reading the store's own answer, which establishes nothing (the read-back independence criterion). Recomputing sha256 over the fetched bytes is a check the store cannot satisfy by agreeing with itself.\\n\\nsubject_digest travels with the artifact so a retrieval can be checked against what was REQUESTED. A store that returns bytes for the wrong subject must be refusable, and it can only be refused if the artifact knows whose it is."
+
+type StoredArtifact {
+  subject_digest: ContentHash
+  blob_oid: GitObjectId
+  sha256: Sha256Digest
+  bytes: ByteSize
+}
+
+type BuildFailureCause
+  = CompilationFailed { detail: String }
+  | BuildExceededBudget { detail: String }
+
+data infrastructure_refusal_note: String = "REFUSALS THAT ARE NOT THE BUILD'S FAULT, kept apart from BuildFailureCause because the two have different remedies and different meanings for a retry. A compilation failure is a fact about the subject: rebuilding it changes nothing until the source changes. An infrastructure refusal is a fact about this host at this moment, and the same subject may well succeed once the deficit is fixed. Fusing them would make 'retry is pointless' unanswerable.\\n\\nEvery arm is a refusal, never a widen: a missing store does not silently become a temp directory, an unreachable transport does not become a local rebuild, and a lease that cannot be taken does not become a second concurrent producer."
+
+type InfrastructureRefusalCause
+  = ArtifactStoreRootAbsent { path: String }
+  | ArtifactStoreRootUnwritable { path: String }
+  | StateRootAbsent { path: String }
+  | ProducerLeaseUnavailable { detail: String }
+  | SubjectNotFetchable { detail: String }
+
+data output_unavailable_note: String = "THE ARM THAT MAKES THE CONTRACT LAW HONEST. A terminal record can say a subject was produced while the bytes it names are no longer retrievable -- the store was pruned, the object was corrupted, the root was replaced. Answering such a retrieval with the recorded success would be a fabricated plausible output: the caller would believe it holds an artifact it cannot fetch.\\n\\nSo retrieval is a SEPARATE question from production, with its own arms, and a status is never permitted to claim retrievable on the strength of a past record alone. ArtifactBytesMissing is the pruned or never-stored case; ArtifactDigestMismatch is the worse one, where bytes exist and are not the bytes promised, which must never be served as if the mismatch did not matter."
+
+type OutputUnavailableCause
+  = ArtifactBytesMissing { blob_oid: GitObjectId }
+  | ArtifactDigestMismatch { expected: Sha256Digest, observed: Sha256Digest }
+  | ArtifactStoreUnreadable { detail: String }
+
+type BuildOutcome
+  = Produced { artifact: StoredArtifact }
+  | Reused { artifact: StoredArtifact }
+  | AttachedToExistingProducer { work_id: DevbootWorkId }
+  | BuildFailed { cause: BuildFailureCause }
+  | InfrastructureRefused { cause: InfrastructureRefusalCause }
+  | OutputUnavailable { cause: OutputUnavailableCause }
+
+data subject_match_note: String = "THE REQUESTED-SUBJECT WALL, held here beside the outcome rather than at each call site. A retrieval names a subject; a stored artifact carries the subject it was built for; serving one for the other is the false-share this whole identity scheme exists to prevent. The comparison routes through compare_content_hash so a cross-family pair answers Incomparable rather than collapsing to a silent false -- an artifact digested in one family and a request digested in another are not 'different subjects', they are a question this function must not pretend to have answered."
+
+type SubjectMatch
+  = SubjectMatches
+  | SubjectDiffers
+  | SubjectIncomparable
+
+fn artifact_matches_subject(artifact: StoredArtifact, subject: BuildSubject) -> SubjectMatch {
+  match compare_content_hash(
+    left: artifact.subject_digest,
+    right: build_subject_digest(subject: subject),
+  ) {
+    ContentHashEqual => SubjectMatches
+    ContentHashDifferent => SubjectDiffers
+    ContentHashCrossFamilyIncomparable => SubjectIncomparable
+  }
+}
+
+data outcome_reports_retrievable_note: String = "The single authority for 'may a caller believe it holds an artifact', so no presentation layer re-derives it by listing arms it happens to remember. Only the two arms carrying a StoredArtifact answer true; every refusal and the unavailable arm answer false. A new outcome arm cannot inherit an answer by omission, because the match is total."
+
+fn outcome_reports_retrievable_artifact(outcome: BuildOutcome) -> Bool {
+  match outcome {
+    Produced { artifact: _ } => true
+    Reused { artifact: _ } => true
+    AttachedToExistingProducer { work_id: _ } => false
+    BuildFailed { cause: _ } => false
+    InfrastructureRefused { cause: _ } => false
+    OutputUnavailable { cause: _ } => false
+  }
+}
+
+fn outcome_is_terminal(outcome: BuildOutcome) -> Bool {
+  match outcome {
+    Produced { artifact: _ } => true
+    Reused { artifact: _ } => true
+    AttachedToExistingProducer { work_id: _ } => false
+    BuildFailed { cause: _ } => true
+    InfrastructureRefused { cause: _ } => true
+    OutputUnavailable { cause: _ } => true
+  }
+}

@@ -37,6 +37,44 @@ type Os = Linux | Macos | Windows | Freebsd | Android | Ios | Wasi
 type AbiEnv = NoneAbi | Gnu | GnuEabi | GnuEabihf | Musl | Msvc | AndroidAbi | Eabi | Eabihf
 type ExecutionEnv = Native | Wsl | Container | Ci | Emulator
 
+// Total variant names for the remaining TargetTriple axes, carrying architecture_diagnostic_name's restriction verbatim: DIAGNOSTICS ONLY, never a wire label. The same argument applies unchanged — every upstream spells these differently (Rust's platform-support triples, Debian's arch names, Go's GOOS) and each such spelling belongs with its own upstream as a partial projection that refuses what that upstream does not publish.
+//
+// They exist because a refusal or an identity that cannot distinguish Gnu from Musl is not merely unlocated, it is WRONG: those two differ in exactly the axis that decides whether a produced binary runs on a given host, so a key blind to AbiEnv would let a musl artifact satisfy a request for a gnu one. That is the false-sharing failure a build subject exists to prevent.
+fn triple_vendor_diagnostic_name(vendor: TripleVendor) -> NonEmptyStr {
+  match vendor {
+    UnknownVendor => "UnknownVendor" as NonEmptyStr
+    Pc => "Pc" as NonEmptyStr
+    Apple => "Apple" as NonEmptyStr
+    W64 => "W64" as NonEmptyStr
+  }
+}
+
+fn os_diagnostic_name(os: Os) -> NonEmptyStr {
+  match os {
+    Linux => "Linux" as NonEmptyStr
+    Macos => "Macos" as NonEmptyStr
+    Windows => "Windows" as NonEmptyStr
+    Freebsd => "Freebsd" as NonEmptyStr
+    Android => "Android" as NonEmptyStr
+    Ios => "Ios" as NonEmptyStr
+    Wasi => "Wasi" as NonEmptyStr
+  }
+}
+
+fn abi_env_diagnostic_name(env: AbiEnv) -> NonEmptyStr {
+  match env {
+    NoneAbi => "NoneAbi" as NonEmptyStr
+    Gnu => "Gnu" as NonEmptyStr
+    GnuEabi => "GnuEabi" as NonEmptyStr
+    GnuEabihf => "GnuEabihf" as NonEmptyStr
+    Musl => "Musl" as NonEmptyStr
+    Msvc => "Msvc" as NonEmptyStr
+    AndroidAbi => "AndroidAbi" as NonEmptyStr
+    Eabi => "Eabi" as NonEmptyStr
+    Eabihf => "Eabihf" as NonEmptyStr
+  }
+}
+
 type TargetTriple {
   arch: Architecture
   vendor: TripleVendor

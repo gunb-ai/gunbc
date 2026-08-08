@@ -1,0 +1,162 @@
+module gunbc.devboot.subject
+
+import std.types { String, NonEmptyStr }
+import std.content_hash {
+  ContentHash,
+  Fnv1a64Structural,
+  content_hash_atom,
+  content_hash_combine_structural,
+  content_hash_tagged,
+  content_hash_tagged_structural,
+}
+
+import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex }
+import extdeps.toolchain.types {
+  TargetTriple,
+  ToolchainRequirement,
+  AbiEnv,
+  architecture_diagnostic_name,
+  triple_vendor_diagnostic_name,
+  os_diagnostic_name,
+  abi_env_diagnostic_name,
+}
+import extdeps.cargo { CargoProfile }
+
+data build_subject_note: String = "WHAT A BUILD IS OF, carried so that two requests naming the same thing are the same request and two requests naming different things never collide. Every field is a fact about the COMPUTATION; nothing here can be a fact about the requester.\\n\\nTHE TREE OID IS THE SOURCE AXIS AND IT IS NOT A COMMIT. A commit names a tree plus history, authorship and time, so two rebases of identical content are different commits and would build twice; the tree alone is the content, so a rebase, a merge result and CI's synthetic merge tree all dedupe for free when their content agrees. It is a GitObjectId rather than text because extdeps.git.object_store already owns Git's identity scheme, including the family discriminant that keeps a SHA-1 and a SHA-256 id from comparing equal on hex alone.\\n\\nWHAT MAY NEVER ENTER THIS KEY, stated as a rule rather than left to reviewer memory: branch name, session name, worktree path, ambient working directory, requester identity, wall-clock time, and a commit sha standing alone. Each of those makes two identical computations look different, which does not merely lose the dedup this service exists to provide -- it makes the store grow without bound while every entry claims to be distinct."
+
+data build_subject_feature_order_note: String = "FEATURE ORDER IS PART OF THE SUBJECT, and that is the deliberately conservative choice rather than an oversight. Canonically ordering the list would need a total string comparator, and no ordering primitive over String exists in std today -- so the options were to carry order as significant, or to fabricate a canonical form the substrate cannot yet compute.\\n\\nThe two failure directions are not symmetric, which is what decides it. Treating a reordering as a DIFFERENT subject costs one redundant build: the second request builds instead of dedup'ing, and both artifacts are correct for their request. Treating two genuinely different feature sets as the SAME subject would hand a requester an artifact built from features it did not ask for -- a false share, and the exact class the requested-subject-equals-produced-subject wall exists to make unwritable. A conservative over-approximation computed AS the answer is legitimate (DESIGN section 5 distinguishes it from an absorbing fallback, which widens on a FAILURE state); this one is computed from structure, is loud in the receipt, and never answers wrongly.\\n\\nDUPLICATES ARE STILL REFUSED, because duplicate detection needs only equality, which does exist. A repeated feature is an authoring error whose two spellings would otherwise hash differently while naming one build.\\n\\nDissolve-on: a total String ordering in std. At that point features carry canonically sorted with a constructor that refuses unsorted input, reorderings dedupe, and this note and the order-sensitivity both retire."
+
+type BuildSubject {
+  tree_oid: GitObjectId
+  toolchain: ToolchainRequirement
+  target: TargetTriple
+  profile: CargoProfile
+  features: List<String>
+}
+
+type BuildSubjectRefusalCause
+  = FeatureNameEmpty
+  | DuplicateFeature { name: String }
+
+type BuildSubjectAdmission
+  = SubjectAdmitted { subject: BuildSubject }
+  | SubjectRefused { cause: BuildSubjectRefusalCause }
+
+fn feature_in_list(name: String, names: List<String>) -> Bool {
+  fold(names, init: false, f: (acc, candidate) => acc || candidate == name)
+}
+
+type FeatureScan {
+  seen: List<String>
+  refusal: BuildSubjectRefusalCause?
+}
+
+fn scan_feature(acc: FeatureScan, name: String) -> FeatureScan {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      if name == "" {
+        FeatureScan { seen: acc.seen, refusal: Present { value: FeatureNameEmpty } }
+      } else {
+        if feature_in_list(name: name, names: acc.seen) {
+          FeatureScan {
+            seen: acc.seen,
+            refusal: Present { value: DuplicateFeature { name: name } },
+          }
+        } else {
+          FeatureScan { seen: concat(acc.seen, [name]), refusal: acc.refusal }
+        }
+      }
+  }
+}
+
+fn admit_build_subject(
+  tree_oid: GitObjectId,
+  toolchain: ToolchainRequirement,
+  target: TargetTriple,
+  profile: CargoProfile,
+  features: List<String>,
+) -> BuildSubjectAdmission {
+  match fold(
+    features,
+    init: FeatureScan { seen: [], refusal: none },
+    f: (acc, name) => scan_feature(acc: acc, name: name),
+  ).refusal {
+    Present { value: cause } => SubjectRefused { cause: cause }
+    Absent =>
+      SubjectAdmitted {
+        subject: BuildSubject {
+          tree_oid: tree_oid,
+          toolchain: toolchain,
+          target: target,
+          profile: profile,
+          features: features,
+        },
+      }
+  }
+}
+
+data build_subject_digest_note: String = "THE SUBJECT DIGEST IS DERIVED FROM STRUCTURE, never from a rendered triple. Rendering would require a canonical spelling of the target, and every upstream spells targets differently -- architecture_diagnostic_name carries that restriction explicitly, and reusing any upstream's spelling here would re-coin that authority. Folding one atom per axis needs no spelling to be canonical, only to be total and distinct per variant, which a closed coproduct gives for free.\\n\\nTHE ABI AXIS IS LOAD-BEARING RATHER THAN DECORATIVE. Gnu and Musl differ in exactly the property that decides whether a produced binary runs on a given host, so a digest blind to it would let a musl artifact satisfy a gnu request. An absent env is hashed as its own atom rather than skipped, because skipping would make an unspecified env collide with whatever env sorts first."
+
+fn abi_env_atom(env: AbiEnv?) -> Fnv1a64Structural {
+  match env {
+    Present { value: e } => content_hash_atom(value: abi_env_diagnostic_name(env: e))
+    Absent => content_hash_atom(value: "AbiEnvAbsent")
+  }
+}
+
+fn target_triple_digest(target: TargetTriple) -> Fnv1a64Structural {
+  content_hash_tagged_structural(
+    tag: "devboot.subject.target",
+    payload: content_hash_combine_structural(
+      left: content_hash_atom(value: architecture_diagnostic_name(arch: target.arch)),
+      right: content_hash_combine_structural(
+        left: content_hash_atom(value: triple_vendor_diagnostic_name(vendor: target.vendor)),
+        right: content_hash_combine_structural(
+          left: content_hash_atom(value: os_diagnostic_name(os: target.os)),
+          right: abi_env_atom(env: target.env),
+        ),
+      ),
+    ),
+  )
+}
+
+fn toolchain_digest(toolchain: ToolchainRequirement) -> Fnv1a64Structural {
+  content_hash_tagged_structural(
+    tag: "devboot.subject.toolchain",
+    payload: content_hash_combine_structural(
+      left: content_hash_atom(value: toolchain.name),
+      right: content_hash_atom(value: toolchain.version),
+    ),
+  )
+}
+
+fn features_digest(features: List<String>) -> Fnv1a64Structural {
+  fold(
+    features,
+    init: content_hash_atom(value: "devboot.subject.features"),
+    f: (acc, name) => content_hash_combine_structural(
+      left: acc,
+      right: content_hash_atom(value: name as NonEmptyStr),
+    ),
+  )
+}
+
+fn build_subject_digest(subject: BuildSubject) -> ContentHash {
+  content_hash_tagged(
+    tag: "devboot.subject",
+    payload: content_hash_combine_structural(
+      left: content_hash_atom(value: git_object_id_wire_hex(oid: subject.tree_oid)),
+      right: content_hash_combine_structural(
+        left: toolchain_digest(toolchain: subject.toolchain),
+        right: content_hash_combine_structural(
+          left: target_triple_digest(target: subject.target),
+          right: content_hash_combine_structural(
+            left: content_hash_atom(value: subject.profile as NonEmptyStr),
+            right: features_digest(features: subject.features),
+          ),
+        ),
+      ),
+    ),
+  )
+}

@@ -1,0 +1,295 @@
+module test.claim.devboot_subject_identity_witness
+
+import std.types { Bool, NonEmptyStr, String }
+import std.measure { byte_size }
+import std.content_hash {
+  ContentHash,
+  compare_content_hash,
+  sha256_hex_digest,
+  ContentHashEqual,
+  ContentHashDifferent,
+  ContentHashCrossFamilyIncomparable,
+}
+
+import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
+import extdeps.toolchain.types {
+  TargetTriple,
+  ToolchainRequirement,
+  Aarch64,
+  UnknownVendor,
+  Linux,
+  Gnu,
+  Musl,
+}
+
+import gunbc.devboot.subject {
+  BuildSubject,
+  BuildSubjectAdmission,
+  SubjectAdmitted,
+  SubjectRefused,
+  FeatureNameEmpty,
+  DuplicateFeature,
+  admit_build_subject,
+  build_subject_digest,
+}
+import gunbc.devboot.outcome {
+  StoredArtifact,
+  DevbootWorkId,
+  BuildOutcome,
+  Produced,
+  Reused,
+  AttachedToExistingProducer,
+  BuildFailed,
+  InfrastructureRefused,
+  OutputUnavailable,
+  CompilationFailed,
+  ArtifactStoreRootAbsent,
+  ArtifactBytesMissing,
+  artifact_matches_subject,
+  outcome_reports_retrievable_artifact,
+  outcome_is_terminal,
+  SubjectMatches,
+  SubjectDiffers,
+  SubjectIncomparable,
+}
+
+data witness_grounding_doc: String = "The tree object ids below are REAL, read out of this repository during the DEVBOOT re-observation rather than invented to look plausible. clean_tree_hex is `git write-tree` over a temp index holding HEAD's content and equals the tree HEAD points at; parent_tree_hex is the tree of HEAD~1; dirty_tree_hex is the same index with one untracked file staged. blob_hex and pack_sha256_hex are the object id and content digest of an actual downloaded release pack.\\n\\nUsing measured values matters here beyond tidiness: the claim under test is that this identity scheme distinguishes and collapses the RIGHT things, and a fixture invented to satisfy it could not have falsified it. These three trees really do stand in the relations the tests assert -- same content same id, different content different id."
+
+data clean_tree_hex: String = "4a712980497e1d0a45374185b2184a094cca4c8f"
+data parent_tree_hex: String = "96817c95aa43c3aead837ca3a8f37d77f6fc2d61"
+data dirty_tree_hex: String = "b8084eb2bd437b9b3fb503996604d4d0d45ede1a"
+data blob_hex: String = "2d964d3995eb862e98255555d858bb970bac1b99"
+data pack_sha256_hex: String = "c145cdcad67185c86b487c5d1e9caed689a5b4efd4c8512268ea6f4ae085e47b"
+
+fn witness_toolchain() -> ToolchainRequirement {
+  ToolchainRequirement { name: "rustc" as NonEmptyStr, version: "1.83.0" as NonEmptyStr }
+}
+
+fn witness_target(gnu_abi: Bool) -> TargetTriple {
+  TargetTriple {
+    arch: Aarch64,
+    vendor: UnknownVendor,
+    os: Linux,
+    env: if gnu_abi { Present { value: Gnu } } else { Present { value: Musl } },
+  }
+}
+
+fn witness_oid(hex: String) -> GitObjectId? {
+  git_object_id_from_untagged_hex(hex: hex)
+}
+
+fn witness_subject_digest(tree_hex: String, gnu_abi: Bool, features: List<String>) -> ContentHash? {
+  match witness_oid(hex: tree_hex) {
+    Absent => none
+    Present { value: oid } =>
+      match admit_build_subject(
+        tree_oid: oid,
+        toolchain: witness_toolchain(),
+        target: witness_target(gnu_abi: gnu_abi),
+        profile: "release",
+        features: features,
+      ) {
+        SubjectRefused { cause: _ } => none
+        SubjectAdmitted { subject } => Present { value: build_subject_digest(subject: subject) }
+      }
+  }
+}
+
+fn digests_equal(left: ContentHash?, right: ContentHash?) -> Bool {
+  match left {
+    Absent => false
+    Present { value: l } =>
+      match right {
+        Absent => false
+        Present { value: r } =>
+          match compare_content_hash(left: l, right: r) {
+            ContentHashEqual => true
+            ContentHashDifferent => false
+            ContentHashCrossFamilyIncomparable => false
+          }
+      }
+  }
+}
+
+test fn identical_subjects_share_one_digest() -> Bool {
+  digests_equal(
+    left: witness_subject_digest(tree_hex: clean_tree_hex, gnu_abi: true, features: []),
+    right: witness_subject_digest(tree_hex: clean_tree_hex, gnu_abi: true, features: []),
+  )
+}
+
+test fn different_trees_never_collide() -> Bool {
+  !digests_equal(
+    left: witness_subject_digest(tree_hex: clean_tree_hex, gnu_abi: true, features: []),
+    right: witness_subject_digest(tree_hex: parent_tree_hex, gnu_abi: true, features: []),
+  )
+    && !digests_equal(
+      left: witness_subject_digest(tree_hex: clean_tree_hex, gnu_abi: true, features: []),
+      right: witness_subject_digest(tree_hex: dirty_tree_hex, gnu_abi: true, features: []),
+    )
+}
+
+data abi_false_share_red_doc: String = "THE DISCRIMINATING RED FOR THE FALSE-SHARE CLASS. Gnu and Musl builds of one tree differ in exactly the property that decides whether the artifact runs on a given host, and a subject key blind to the ABI axis would report them as one subject -- handing a requester a binary its libc cannot load while every record claimed a hit. This test goes red the moment abi_env_diagnostic_name stops reaching the digest, which is the failure a reviewer cannot see by reading the fold."
+
+test fn gnu_and_musl_are_different_subjects() -> Bool {
+  !digests_equal(
+    left: witness_subject_digest(tree_hex: clean_tree_hex, gnu_abi: true, features: []),
+    right: witness_subject_digest(tree_hex: clean_tree_hex, gnu_abi: false, features: []),
+  )
+}
+
+test fn features_participate_in_identity() -> Bool {
+  !digests_equal(
+    left: witness_subject_digest(tree_hex: clean_tree_hex, gnu_abi: true, features: []),
+    right: witness_subject_digest(tree_hex: clean_tree_hex, gnu_abi: true, features: ["tracing"]),
+  )
+}
+
+test fn duplicate_feature_refuses() -> Bool {
+  match witness_oid(hex: clean_tree_hex) {
+    Absent => false
+    Present { value: oid } =>
+      match admit_build_subject(
+        tree_oid: oid,
+        toolchain: witness_toolchain(),
+        target: witness_target(gnu_abi: true),
+        profile: "release",
+        features: ["tracing", "tracing"],
+      ) {
+        SubjectRefused { cause: DuplicateFeature { name } } => name == "tracing"
+        SubjectRefused { cause: _ } => false
+        SubjectAdmitted { subject: _ } => false
+      }
+  }
+}
+
+test fn empty_feature_name_refuses() -> Bool {
+  match witness_oid(hex: clean_tree_hex) {
+    Absent => false
+    Present { value: oid } =>
+      match admit_build_subject(
+        tree_oid: oid,
+        toolchain: witness_toolchain(),
+        target: witness_target(gnu_abi: true),
+        profile: "release",
+        features: [""],
+      ) {
+        SubjectRefused { cause: FeatureNameEmpty } => true
+        SubjectRefused { cause: _ } => false
+        SubjectAdmitted { subject: _ } => false
+      }
+  }
+}
+
+fn witness_subject(tree_hex: String) -> BuildSubject? {
+  match witness_oid(hex: tree_hex) {
+    Absent => none
+    Present { value: oid } =>
+      match admit_build_subject(
+        tree_oid: oid,
+        toolchain: witness_toolchain(),
+        target: witness_target(gnu_abi: true),
+        profile: "release",
+        features: [],
+      ) {
+        SubjectRefused { cause: _ } => none
+        SubjectAdmitted { subject } => Present { value: subject }
+      }
+  }
+}
+
+fn witness_artifact(for_tree_hex: String) -> StoredArtifact? {
+  match witness_subject(tree_hex: for_tree_hex) {
+    Absent => none
+    Present { value: subject } =>
+      match witness_oid(hex: blob_hex) {
+        Absent => none
+        Present { value: blob } =>
+          match sha256_hex_digest(hex: pack_sha256_hex) {
+            Absent => none
+            Present { value: digest } =>
+              Present {
+                value: StoredArtifact {
+                  subject_digest: build_subject_digest(subject: subject),
+                  blob_oid: blob,
+                  sha256: digest,
+                  bytes: byte_size(count: 97365738),
+                },
+              }
+          }
+      }
+  }
+}
+
+test fn artifact_matches_the_subject_it_was_built_for() -> Bool {
+  match witness_artifact(for_tree_hex: clean_tree_hex) {
+    Absent => false
+    Present { value: artifact } =>
+      match witness_subject(tree_hex: clean_tree_hex) {
+        Absent => false
+        Present { value: subject } =>
+          match artifact_matches_subject(artifact: artifact, subject: subject) {
+            SubjectMatches => true
+            SubjectDiffers => false
+            SubjectIncomparable => false
+          }
+      }
+  }
+}
+
+data wrong_subject_red_doc: String = "THE REQUESTED-SUBJECT WALL'S RED. An artifact built for one tree, offered against a request naming a different tree, must answer SubjectDiffers -- never SubjectMatches, and never a quiet success on the grounds that bytes were available. This is the 'use what's there' failure the hard stop forbids, and it is the arm a cache is most tempted to take."
+
+test fn artifact_for_another_subject_is_refused() -> Bool {
+  match witness_artifact(for_tree_hex: clean_tree_hex) {
+    Absent => false
+    Present { value: artifact } =>
+      match witness_subject(tree_hex: parent_tree_hex) {
+        Absent => false
+        Present { value: other_subject } =>
+          match artifact_matches_subject(artifact: artifact, subject: other_subject) {
+            SubjectMatches => false
+            SubjectDiffers => true
+            SubjectIncomparable => false
+          }
+      }
+  }
+}
+
+data retrievable_arm_doc: String = "THE CONTRACT LAW, ASSERTED RATHER THAN ASSUMED: only the two arms carrying a StoredArtifact may report a retrievable artifact. OutputUnavailable is the arm that exists precisely so a terminal record of a past success cannot be replayed as a present retrieval, so it answering true would defeat the reason it was introduced."
+
+test fn only_artifact_bearing_outcomes_report_retrievable() -> Bool {
+  match witness_artifact(for_tree_hex: clean_tree_hex) {
+    Absent => false
+    Present { value: artifact } =>
+      outcome_reports_retrievable_artifact(outcome: Produced { artifact: artifact })
+        && outcome_reports_retrievable_artifact(outcome: Reused { artifact: artifact })
+        && !outcome_reports_retrievable_artifact(
+          outcome: BuildFailed { cause: CompilationFailed { detail: "type error" } },
+        )
+        && !outcome_reports_retrievable_artifact(
+          outcome: InfrastructureRefused {
+            cause: ArtifactStoreRootAbsent { path: "/var/lib/gunbc/artifacts.git" },
+          },
+        )
+        && !outcome_reports_retrievable_artifact(
+          outcome: AttachedToExistingProducer { work_id: "w-1" as DevbootWorkId },
+        )
+  }
+}
+
+test fn output_unavailable_never_reports_retrievable() -> Bool {
+  match witness_oid(hex: blob_hex) {
+    Absent => false
+    Present { value: blob } =>
+      !outcome_reports_retrievable_artifact(
+        outcome: OutputUnavailable { cause: ArtifactBytesMissing { blob_oid: blob } },
+      )
+        && outcome_is_terminal(
+          outcome: OutputUnavailable { cause: ArtifactBytesMissing { blob_oid: blob } },
+        )
+  }
+}
+
+test fn attached_producer_is_not_terminal() -> Bool {
+  !outcome_is_terminal(outcome: AttachedToExistingProducer { work_id: "w-2" as DevbootWorkId })
+}
