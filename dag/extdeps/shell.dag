@@ -170,6 +170,16 @@ service shell.Uname {
 }
 
 service shell.Mktemp {
+  operation FileInDirectory {
+    input { dir: FilePath }
+    output { path: FilePath from "stdout", success: Bool from "exit_success" }
+    transport shell { argv: ["mktemp", "-p", "{dir}"] }
+    exit {
+      0 => Unit
+      nonzero => String "mktemp -p failed"
+    }
+  }
+
   operation Dir {
     input {}
     output { path: FilePath from "stdout", success: Bool from "exit_success" }
@@ -203,7 +213,29 @@ service shell.Mkdir {
   }
 }
 
+service shell.Link {
+  operation Hard {
+    input { source: FilePath, destination: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["ln", "{source}", "{destination}"] }
+    exit {
+      0 => Unit "Hardlink created; fails if destination exists, which is the exclusivity this relies on"
+      nonzero => String "ln failed"
+    }
+  }
+}
+
 service shell.Remove {
+  operation FileForce {
+    input { path: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["rm", "-f", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "rm -f failed"
+    }
+  }
+
   operation RecursiveForce {
     input { path: FilePath }
     output { success: Bool from "exit_success" }
@@ -228,6 +260,26 @@ service shell.Move {
 }
 
 service shell.Chmod {
+  operation OwnerOnlyDirectory {
+    input { path: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["chmod", "0700", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "chmod 0700 failed"
+    }
+  }
+
+  operation OwnerReadWriteFile {
+    input { path: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["chmod", "0600", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "chmod 0600 failed"
+    }
+  }
+
   operation RecursiveWritable {
     input { path: FilePath }
     output { success: Bool from "exit_success" }

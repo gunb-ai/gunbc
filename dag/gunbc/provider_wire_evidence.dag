@@ -57,29 +57,36 @@ fn private_evidence_object_path(root: FilePath, hex: NonEmptyStr) -> String {
   concat(root as String, concat("/", hex as String))
 }
 
-fn ensure_private_evidence_root(root: FilePath) -> Bool {
+data private_evidence_typed_transport_note: String = "TYPED OPS, NOT CONCAT-BUILT SCRIPTS (review 50540). Every effect below previously assembled a shell script by concat-ing a FilePath into a single-quoted string and running it through retained_foreign. In THIS module that was the sharpest form of the defect: these effects create the private evidence root and set 0700/0600 on retained provider wire bytes, so an evidence root containing an apostrophe did not merely fail — it terminated the quote and let the remainder of the path be read as shell words, in the one module whose job is to keep those bytes owner-only. Each is now a typed operation in extdeps.shell where the path is a distinct argv element and no quoting exists to escape. The exclusivity the publish relies on is unchanged and now explicit at the authority: ln fails when the destination exists, which is what makes the concurrent-writer arm reachable rather than racy.\n\nThe Bool collapse went with it. ensure_private_evidence_root answered one false for two effects with different remedies — a missing-or-unwritable parent directory versus a directory that exists but could not be made owner-only — and the caller's cause string named both at once (DESIGN §5 state-space conflation: two states whose remedies differ merged into one). Each arm now carries its own cause, and the 0700 failure in particular is a confidentiality-relevant state that a reader must be able to tell from a mkdir failure."
+
+type PrivateEvidenceRootReadiness
+  = PrivateEvidenceRootReady
+  | PrivateEvidenceRootRefused { cause: NonEmptyStr }
+
+fn ensure_private_evidence_root(root: FilePath) -> PrivateEvidenceRootReadiness {
   let made = shell.Mkdir.Parents(path: root)
   if made.success == false {
-    false
+    PrivateEvidenceRootRefused {
+      cause: "private evidence root could not be created" as NonEmptyStr,
+    }
   } else {
-    let mode = retained_foreign(
-      body: concat("chmod 0700 '", concat(root as String, "'")),
-      reason: "Private evidence root must be owner-only (0700)" as NonEmptyStr,
-    )
-    shell.Exec.Run(script: mode).success
+    let mode = shell.Chmod.OwnerOnlyDirectory(path: root)
+    if mode.success == false {
+      PrivateEvidenceRootRefused {
+        cause: "private evidence root exists but could not be made owner-only (0700)" as NonEmptyStr,
+      }
+    } else {
+      PrivateEvidenceRootReady
+    }
   }
 }
 
 fn mktemp_file_in_dir(dir: FilePath) -> FilePath? {
-  let script = retained_foreign(
-    body: concat("mktemp -p '", concat(dir as String, "'")),
-    reason: "Unique same-directory staging file for exclusive evidence publication" as NonEmptyStr,
-  )
-  let run = shell.Exec.Run(script: script)
-  if run.success == false || run.stdout.trim() == "" {
+  let run = shell.Mktemp.FileInDirectory(dir: dir)
+  if run.success == false || (run.path as String).trim() == "" {
     none
   } else {
-    Present { value: run.stdout.trim() as FilePath }
+    Present { value: (run.path as String).trim() as FilePath }
   }
 }
 
@@ -87,36 +94,27 @@ fn publish_evidence_object_exclusive(
   staging: FilePath,
   dest: FilePath,
 ) -> Bool {
-  let script = retained_foreign(
-    body: concat(
-      "ln '",
-      concat(
-        staging as String,
-        concat(
-          "' '",
-          concat(
-            dest as String,
-            "' && chmod 0600 '",
-            concat(dest as String, "' && rm -f '"),
-            concat(staging as String, "'"),
-          ),
-        ),
-      ),
-    ),
-    reason: "Exclusive hardlink publish of content-addressed evidence then 0600 + remove staging" as NonEmptyStr,
-  )
-  shell.Exec.Run(script: script).success
+  let linked = shell.Link.Hard(source: staging, destination: dest)
+  if linked.success == false {
+    false
+  } else {
+    let mode = shell.Chmod.OwnerReadWriteFile(path: dest)
+    if mode.success == false {
+      false
+    } else {
+      shell.Remove.FileForce(path: staging).success
+    }
+  }
 }
 
 fn retain_private_evidence_bytes_detailed(
   root: FilePath,
   bytes: String,
 ) -> PrivateEvidenceBytesRetention {
-  if ensure_private_evidence_root(root: root) == false {
-    PrivateEvidenceBytesRetentionRefused {
-      cause: "private evidence root mkdir/chmod failed" as NonEmptyStr,
-    }
-  } else {
+  match ensure_private_evidence_root(root: root) {
+    PrivateEvidenceRootRefused { cause: root_cause } =>
+      PrivateEvidenceBytesRetentionRefused { cause: root_cause }
+    PrivateEvidenceRootReady => {
     match mktemp_file_in_dir(dir: root) {
       Absent =>
         PrivateEvidenceBytesRetentionRefused {
@@ -212,6 +210,7 @@ fn retain_private_evidence_bytes_detailed(
         }
       }
     }
+  }
   }
 }
 
