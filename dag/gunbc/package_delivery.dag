@@ -1030,23 +1030,21 @@ data package_tree_identity_mode_symlink_note: String = "Tree identity covers reg
 
 data package_materialized_tree_linux_find_note: String = "Installed-tree enumeration currently uses GNU find -printf (mode+symlink target). The first Codex runtime profile is therefore Linux-only; Darwin targets remain declared for package selection but reuse validation on Darwin requires a typed portable filesystem enumeration (dissolve-on)."
 
+data package_materialized_tree_observation_note: String = "TYPED FIND, TYPED REFUSAL (review 50535). This read previously built its argv by concat-ing the root into a single-quoted find string and running it through retained_foreign — medium-as-string (DESIGN §7), and a root containing an apostrophe escaped the wrapper outright. extdeps.shell already owned shell.Find, so the string form was also a §3 fork of an existing authority: the enumeration now goes through shell.Find.FilesAndSymlinksWithMode, where root is a distinct argv element and no quoting exists to escape. The trailing pipe to sort is gone too — std sort orders the rows in-substrate rather than borrowing the shell's collation, which is locale-dependent and was never declared.\n\nThe refusal half: every failure arm returned a bare none, so a missing find, a permission denial, an uninterpretable row, a digest failure and a write failure were one indistinguishable Absent and the caller's cause string was canned regardless of what actually happened (DESIGN §5 — a failure arm must refuse, and the refusal must be typed and located to be countable). Each arm now names its own cause. NOT a state this fixes, stated because the review named it: an EMPTY tree was never ambiguous — it returns an Observed receipt carrying zero entries, not a refusal."
+
+type PackageMaterializedTreeObservation
+  = PackageMaterializedTreeObserved { receipt: PackageMaterializedTreeReceipt }
+  | PackageMaterializedTreeObservationRefused { cause: NonEmptyStr }
+
 fn observe_package_materialized_tree(
   root: FilePath,
   work_dir: FilePath,
-) -> PackageMaterializedTreeReceipt? {
-  let script = retained_foreign(
-    body: concat(
-      "find '",
-      concat(
-        root as String,
-        "' \\( -type f -o -type l \\) -printf '%y\\t%m\\t%P\\t%l\\n' | sort",
-      ),
-    ),
-    reason: "Installed-tree file+symlink enumeration with mode pending typed shell.Find enrollment" as NonEmptyStr,
-  )
-  let listed = shell.Exec.Run(script: script)
+) -> PackageMaterializedTreeObservation {
+  let listed = shell.Find.FilesAndSymlinksWithMode(root: root)
   if listed.success == false {
-    none
+    PackageMaterializedTreeObservationRefused {
+      cause: "installed-tree enumeration command failed" as NonEmptyStr,
+    }
   } else {
     let rows = fold(
       split(s: listed.stdout, delimiter: "\n"),
@@ -1121,7 +1119,10 @@ fn observe_package_materialized_tree(
       },
     )
     match entries_acc {
-      Absent => none
+      Absent =>
+        PackageMaterializedTreeObservationRefused {
+          cause: "installed-tree row could not be interpreted" as NonEmptyStr,
+        }
       Present { value: entries } => {
         let body = fold(
           entries,
@@ -1132,17 +1133,20 @@ fn observe_package_materialized_tree(
         let path = concat(work_dir as String, "/materialized-tree.canonical")
         let wrote = Filesystem.Write(path: path, content: body)
         if wrote.success == false {
-          none
+          PackageMaterializedTreeObservationRefused {
+            cause: "canonical installed-tree listing could not be written" as NonEmptyStr,
+          }
         } else {
           match sha512sum_observe_file(path: path as FilePath) {
             Sha512FileObserved { digest } =>
-              Present {
-                value: PackageMaterializedTreeReceipt {
+              PackageMaterializedTreeObserved {
+                receipt: PackageMaterializedTreeReceipt {
                   entries: entries,
                   tree_identity: as_content_hash_sha512(digest: digest),
                 },
               }
-            Sha512FileObservationRefused { cause: _ } => none
+            Sha512FileObservationRefused { cause: digest_cause } =>
+              PackageMaterializedTreeObservationRefused { cause: digest_cause }
           }
         }
       }
@@ -1574,12 +1578,12 @@ fn validate_existing_codex_runtime_release(
                   root: existing_root,
                   work_dir: scratch_dir,
                 ) {
-                  Absent =>
+                  PackageMaterializedTreeObservationRefused { cause: tree_cause } =>
                     CodexRuntimeReleaseReuseMismatch {
                       existing_root: existing_root,
-                      cause: "existing release tree identity observation refused" as NonEmptyStr,
+                      cause: tree_cause,
                     }
-                  Present { value: tree } =>
+                  PackageMaterializedTreeObserved { receipt: tree } =>
                     match content_hash_sha512_hex(hash: tree.tree_identity) {
                       Absent =>
                         CodexRuntimeReleaseReuseMismatch {
@@ -2015,11 +2019,11 @@ fn finish_codex_runtime_materialization_after_install(
                             root: build_root,
                             work_dir: staging_dir,
                           ) {
-                            Absent =>
+                            PackageMaterializedTreeObservationRefused { cause: tree_cause } =>
                               CodexRuntimeReceiptObservationRefused {
-                                cause: "installed tree identity observation refused" as NonEmptyStr,
+                                cause: tree_cause,
                               }
-                            Present { value: tree } => {
+                            PackageMaterializedTreeObserved { receipt: tree } => {
                               let ordered = sort_admitted_packages_by_lock_key(receipts: durable)
                               let receipt0 = CodexRuntimeBundleReceipt {
                                 manifest_digest: man_digest,

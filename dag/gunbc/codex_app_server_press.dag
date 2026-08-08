@@ -125,6 +125,7 @@ type AccountTripFrameDisposition
   | AccountTripMissing
   | AccountTripNativeCauseUnknown { message: NonEmptyStr }
   | AccountTripNativeCauseNumericCode { code: Int }
+  | AccountTripNativeCauseMessageUnreadable
 
 type AccountTripResponseObservation
   = AccountTripResponseAbsent
@@ -316,15 +317,27 @@ fn json_rpc_id_as_int(v: JsonValue) -> Int? {
   }
 }
 
-fn json_rpc_error_message(err: JsonValue) -> NonEmptyStr {
+data json_rpc_error_message_note: String = "NO CANNED MESSAGE (review 50535). This read previously answered the literal \"json-rpc error\" whenever err.message was absent, empty, or any non-string shape — a structured error carrying code plus data, a nested message object, an array, null — so a real provider cause was reported as a fabricated string that reads exactly like a message the server sent (DESIGN §5 fabricated plausible output). The arms now separate: a genuine string message is carried verbatim, and every shape that is not one lands on AccountTripNativeCauseMessageUnreadable, which carries no text at all. That variant is deliberately field-free — inventing a description of the shape we failed to read would re-introduce the same fabrication one level down; the frame's own retained wire evidence is where the unread bytes stay recoverable."
+
+fn json_rpc_error_message(err: JsonValue) -> NonEmptyStr? {
   match json_object_unique_member(v: err, key: "message") {
     JsonMemberFound { value: JsonString { value: msg } } =>
       if msg == "" {
-        "json-rpc error" as NonEmptyStr
+        none
       } else {
-        msg as NonEmptyStr
+        Present { value: msg as NonEmptyStr }
       }
-    _ => "json-rpc error" as NonEmptyStr
+    JsonMemberFound { value: _ } => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
+  }
+}
+
+fn native_cause_from_json_rpc_error(err: JsonValue) -> AccountTripFrameDisposition {
+  match json_rpc_error_message(err: err) {
+    Present { value: msg } => AccountTripNativeCauseUnknown { message: msg }
+    Absent => AccountTripNativeCauseMessageUnreadable
   }
 }
 
@@ -714,12 +727,12 @@ fn disposition_from_structured_rpc_error(err: JsonValue) -> AccountTripFrameDisp
         || code == (codex_account_read_result_requires_openai_auth_key as String) {
         AccountTripLoginRequiredSignal
       } else {
-        AccountTripNativeCauseUnknown { message: json_rpc_error_message(err: err) }
+        native_cause_from_json_rpc_error(err: err)
       }
     JsonMemberFound { value: JsonNumber { lexeme: n } } =>
       AccountTripNativeCauseNumericCode { code: n }
     _ =>
-      AccountTripNativeCauseUnknown { message: json_rpc_error_message(err: err) }
+      native_cause_from_json_rpc_error(err: err)
   }
 }
 
@@ -987,6 +1000,7 @@ fn classify_account_trip(acc: AccountTripParseAcc) -> AccountStandingClassificat
       AccountTripQuotaSignal => AccountStandingIncomplete
       AccountTripNativeCauseUnknown { message: _ } => AccountStandingIncomplete
       AccountTripNativeCauseNumericCode { code: _ } => AccountStandingIncomplete
+      AccountTripNativeCauseMessageUnreadable => AccountStandingIncomplete
       AccountTripResultOk =>
         match acct {
           AccountTripLoginRequiredSignal => AccountStandingLoginRequired
@@ -994,6 +1008,7 @@ fn classify_account_trip(acc: AccountTripParseAcc) -> AccountStandingClassificat
           AccountTripQuotaSignal => AccountStandingIncomplete
           AccountTripNativeCauseUnknown { message: _ } => AccountStandingIncomplete
           AccountTripNativeCauseNumericCode { code: _ } => AccountStandingIncomplete
+          AccountTripNativeCauseMessageUnreadable => AccountStandingIncomplete
           AccountTripResultOk =>
             match rate {
               AccountTripResultOk =>
@@ -1003,6 +1018,7 @@ fn classify_account_trip(acc: AccountTripParseAcc) -> AccountStandingClassificat
               AccountTripMissing => AccountStandingIncomplete
               AccountTripNativeCauseUnknown { message: _ } => AccountStandingIncomplete
               AccountTripNativeCauseNumericCode { code: _ } => AccountStandingIncomplete
+              AccountTripNativeCauseMessageUnreadable => AccountStandingIncomplete
             }
         }
     }
