@@ -38640,18 +38640,22 @@ type ExtdepsParsedModule = (
     Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 );
 
-fn resolve_extdeps_module_source_path(path: &str) -> std::path::PathBuf {
+fn try_resolve_extdeps_module_source_path(path: &str) -> Option<std::path::PathBuf> {
     let candidate = std::path::Path::new(path);
     if candidate.is_file() {
-        candidate.to_path_buf()
-    } else {
-        let rooted = workspace_root().join(path);
-        if rooted.is_file() {
-            rooted
-        } else {
-            panic!("resolve_extdeps_module_source_path: file not found: {path}");
-        }
+        return Some(candidate.to_path_buf());
     }
+    let rooted = workspace_root().join(path);
+    if rooted.is_file() {
+        return Some(rooted);
+    }
+    None
+}
+
+fn resolve_extdeps_module_source_path(path: &str) -> std::path::PathBuf {
+    try_resolve_extdeps_module_source_path(path).unwrap_or_else(|| {
+        panic!("resolve_extdeps_module_source_path: file not found: {path}");
+    })
 }
 
 fn read_extdeps_module_source_text(path: &str) -> String {
@@ -39395,6 +39399,11 @@ fn project_external_authority_named_data(
 ) -> ExternalAuthorityAnchorProjection {
     use crate::v1_compiler_emit_core_support::is_data_def_item;
     let path = source_path_for_module_path(module_path.to_string());
+    if try_resolve_extdeps_module_source_path(&path).is_none() {
+        return ExternalAuthorityAnchorProjection::Refused {
+            cause: format!("aliased anchor home {module_path} has no source file at {path}"),
+        };
+    }
     let (module, items, source_indices) = parse_extdeps_module_items(&path);
     for item in items.iter() {
         if !is_data_def_item(item.clone()) || item.name != data_name {

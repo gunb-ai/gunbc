@@ -393,6 +393,8 @@ fn json_number_as_epoch_secs(v: JsonValue) -> EpochSecs? {
   }
 }
 
+data rate_limit_used_percent_carrier_frontier: String = "usedPercent is a DIMENSIONLESS RATIO and std.measure.Percent (Measure<Dimensionless, One, Nat>) is its authority — this is a consumer of that carrier, not a new unit, and no nickname is minted here. It is carried as bounded Int TODAY for exactly the reason std.measure.percent_from_computed_int_frontier states: percent(count: Nat) admits a LITERAL Nat only, and runtime eval refuses a computed Int→Nat cast, while this value is decoded from the app-server's JSON (json_number_as_int) and is therefore computed by construction. Same wall, same disposition as extdeps.color.srgb HslProjection s_pct/l_pct, which are bounded Int percent counts citing that identical frontier. DISSOLVE-ON: the numeric-tower Int=Nat grounding extending to computed values (same lane as the CrossRepresentationEquality guard removal) — at which point this fn returns Percent? and the comparison against the exhaustion threshold reads through percent_count with no change of meaning."
+
 fn rate_limit_window_used_percent(window: JsonValue) -> Int? {
   match json_object_unique_member(
     v: window,
