@@ -1,6 +1,7 @@
 module test.claim.host_converge_slice1_witness
 
 import std.types { Bool, NonEmptyStr, List, String }
+import gunbc.runner_host_deploy { runner_index_seq }
 import extdeps.systemd { systemd_memory_max_property, MemoryMax, systemd_tasks_max_property, parse_systemd_task_limit_show }
 import gunbc.host_converge { Drifted, PerSlotMemoryCap, VerdictConverged }
 import gunbc.fleet_intent_network { operator_host_srv1 }
@@ -158,16 +159,26 @@ test fn witness_enumerate_units_uses_typed_list_units_op() -> Bool {
   }
 }
 
-test fn witness_cross_check_enumeration_none_iff_length_matches_declared() -> Bool {
-  let declared = declared_runner_count_for(host: operator_host_srv3)
+test fn witness_cross_check_allows_under_count_for_width_increase() -> Bool {
   let empty_units: List<NonEmptyStr> = []
   match host_converge_slice1_cross_check_enumeration(host: operator_host_srv3, units: empty_units) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn witness_cross_check_refuses_observed_exceeds_declared() -> Bool {
+  let declared = declared_runner_count_for(host: operator_host_srv3)
+  let excess_units: List<NonEmptyStr> = map(
+    runner_index_seq(n: declared + 1),
+    i => join(["actions-runner@srv3-", if i < 10 { join(["0", to_string(i)], "") } else { to_string(i) }, ".service"], "") as NonEmptyStr,
+  )
+  match host_converge_slice1_cross_check_enumeration(host: operator_host_srv3, units: excess_units) {
     Present { value: mismatch } =>
       mismatch.host == operator_host_srv3
         && mismatch.declared_count == declared
-        && length(mismatch.observed_units) == 0
-        && declared != 0
-    Absent => declared == 0
+        && length(mismatch.observed_units) == declared + 1
+    Absent => false
   }
 }
 

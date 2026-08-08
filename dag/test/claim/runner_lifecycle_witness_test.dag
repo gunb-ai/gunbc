@@ -1,0 +1,109 @@
+module test.claim.runner_lifecycle
+
+import std.logic { Bool }
+import std.types { list_length, NonEmptyStr }
+import std.measure { byte_size, byte_size_count }
+import gunbc.runner_lifecycle {
+  runner_slot_add_steps_ordered,
+  runner_slot_caps_precede_start,
+  runner_slot_add_step_index,
+  AddStepMemoryCaps,
+  AddStepStartUnit,
+  AddStepDaemonReload,
+  runner_width_disk_preflight,
+  runner_width_disk_required,
+  DiskHeadroomSufficient,
+  DiskHeadroomInsufficient,
+  DiskHeadroomUnobserved,
+  host_runner_capacity_converged,
+  HostRunnerCapacityReceipt,
+  runner_slot_instance_name,
+  runner_slot_unit_name,
+}
+import gunbc.host_disk_observation {
+  DiskObserved,
+  DiskUnobserved,
+  DiskObservationRefused,
+}
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.runner_slot_allocation {
+  gunbc_runner_slot_allocation_srv3,
+  gunbc_runner_slot_allocation_srv4,
+  gunbc_runner_slots_per_host,
+}
+import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
+
+test fn witness_add_sequence_caps_before_start() -> Bool {
+  runner_slot_caps_precede_start()
+    && runner_slot_add_step_index(step: AddStepMemoryCaps) == 8
+    && runner_slot_add_step_index(step: AddStepDaemonReload) == 9
+    && runner_slot_add_step_index(step: AddStepStartUnit) == 10
+    && list_length(items: runner_slot_add_steps_ordered()) == 12
+}
+
+test fn witness_disk_preflight_sufficient_at_apply_width() -> Bool {
+  let required = runner_width_disk_required(requested_width: 7)
+  let free = byte_size(byte_size_count(b: required) + 1)
+  match runner_width_disk_preflight(requested_width: 7, disk: DiskObserved { free_bytes: free, observed_on: "srv4" as NonEmptyStr }) {
+    DiskHeadroomSufficient { requested_width: w, required: r, observed_free: o } =>
+      w == 7 && byte_size_count(b: r) == byte_size_count(b: required) && byte_size_count(b: o) > byte_size_count(b: r)
+    DiskHeadroomInsufficient { requested_width: _, required: _, observed_free: _ } => false
+    DiskHeadroomUnobserved { requested_width: _, reason: _ } => false
+  }
+}
+
+test fn witness_disk_preflight_insufficient_refuses_not_fallback() -> Bool {
+  let required = runner_width_disk_required(requested_width: 7)
+  let free = byte_size(byte_size_count(b: required) - 1)
+  match runner_width_disk_preflight(requested_width: 7, disk: DiskObserved { free_bytes: free, observed_on: "srv4" as NonEmptyStr }) {
+    DiskHeadroomInsufficient { requested_width: w, required: r, observed_free: o } =>
+      w == 7 && byte_size_count(b: o) < byte_size_count(b: r)
+    DiskHeadroomSufficient { requested_width: _, required: _, observed_free: _ } => false
+    DiskHeadroomUnobserved { requested_width: _, reason: _ } => false
+  }
+}
+
+test fn witness_disk_preflight_unobservable_refuses_not_width_five() -> Bool {
+  match runner_width_disk_preflight(
+    requested_width: 7,
+    disk: DiskUnobserved { reason: "df producer scaffold" },
+  ) {
+    DiskHeadroomUnobserved { requested_width: w, reason: _ } => w == 7
+    DiskHeadroomSufficient { requested_width: _, required: _, observed_free: _ } => false
+    DiskHeadroomInsufficient { requested_width: _, required: _, observed_free: _ } => false
+  }
+    && match runner_width_disk_preflight(
+      requested_width: 7,
+      disk: DiskObservationRefused { detail: "reach refused" as NonEmptyStr },
+    ) {
+      DiskHeadroomUnobserved { requested_width: w, reason: r } => w == 7 && string_contains(s: r, pattern: "reach refused")
+      DiskHeadroomSufficient { requested_width: _, required: _, observed_free: _ } => false
+      DiskHeadroomInsufficient { requested_width: _, required: _, observed_free: _ } => false
+    }
+}
+
+test fn witness_srv3_srv4_committed_width_seven() -> Bool {
+  gunbc_runner_slot_allocation_srv3.slots_per_host == 7
+    && gunbc_runner_slot_allocation_srv4.slots_per_host == 7
+    && gunbc_runner_slots_per_host(host: operator_host_srv3) == 7
+    && gunbc_runner_slots_per_host(host: operator_host_srv4) == 7
+}
+
+test fn witness_host_capacity_receipt_converged_shape() -> Bool {
+  let receipt = HostRunnerCapacityReceipt {
+    host: operator_host_srv3,
+    requested_width: 7,
+    materialized_count: 7,
+    active_unit_count: 7,
+    registered_count: 7,
+    online_count: 7,
+    slots: [],
+  }
+  host_runner_capacity_converged(receipt: receipt)
+}
+
+test fn witness_slot_identity_formats_zero_padded_unit() -> Bool {
+  let slot = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 6 }
+  runner_slot_instance_name(slot: slot) == "srv3-06"
+    && runner_slot_unit_name(slot: slot) == "actions-runner@srv3-06.service"
+}

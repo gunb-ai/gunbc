@@ -45,6 +45,7 @@ pub enum Quantity {
     TemperatureDifference,
     RotationalSpeed,
     ElectricPotential,
+    ElectricPotentialDifference,
     ElectricCurrent,
     Resistance,
     Capacitance,
@@ -67,6 +68,7 @@ pub enum Scale {
     Milli,
     One,
     Sixty,
+    RackUnitHeight,
     Kilo,
     Mega,
     Giga,
@@ -89,6 +91,7 @@ pub fn scale_exponent(s: Scale) -> Option<i64> {
         Scale::Milli => Some(-3),
         Scale::One => Some(0),
         Scale::Sixty => None,
+        Scale::RackUnitHeight => None,
         Scale::Kilo => Some(3),
         Scale::Mega => Some(6),
         Scale::Giga => Some(9),
@@ -129,6 +132,7 @@ pub fn time_scale_factor_seconds(s: Scale) -> Option<Nat> {
     match s.clone() {
         Scale::One => Some(1),
         Scale::Sixty => Some(seconds_per_minute()),
+        Scale::RackUnitHeight => None,
         Scale::Atto => None,
         Scale::Femto => None,
         Scale::Pico => None,
@@ -162,6 +166,7 @@ pub fn memory_scale_factor_bytes(s: Scale) -> Option<Nat> {
         Scale::Micro => None,
         Scale::Milli => None,
         Scale::Sixty => None,
+        Scale::RackUnitHeight => None,
         Scale::Kilo => None,
         Scale::Mega => None,
         Scale::Giga => None,
@@ -298,6 +303,16 @@ pub type Millicore = Rc<Measure<(), (), i64>>;
 
 pub type Watt = Rc<Measure<(), (), i64>>;
 
+pub type Milliwatt = Rc<Measure<(), (), i64>>;
+
+pub type Volt = Rc<Measure<(), (), i64>>;
+
+pub type Ampere = Rc<Measure<(), (), i64>>;
+
+pub type Millimeter = Rc<Measure<(), (), i64>>;
+
+pub type RackUnit = Rc<Measure<(), (), i64>>;
+
 pub type Joule = Rc<Measure<(), (), i64>>;
 
 pub type Celsius = Rc<Measure<(), (), i64>>;
@@ -388,6 +403,65 @@ pub fn watt(count: Nat) -> Watt {
 
 pub fn watt_count(w: Watt) -> Nat {
     measure_count(w.clone())
+}
+
+pub fn milliwatt(count: Nat) -> Milliwatt {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn milliwatt_count(w: Milliwatt) -> Nat {
+    measure_count(w.clone())
+}
+
+pub fn volt(count: Nat) -> Volt {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn volt_count(v: Volt) -> Nat {
+    measure_count(v.clone())
+}
+
+pub fn ampere(count: Nat) -> Ampere {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn ampere_count(a: Ampere) -> Nat {
+    measure_count(a.clone())
+}
+
+pub fn millimeter(count: Nat) -> Millimeter {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn millimeter_count(m: Millimeter) -> Nat {
+    measure_count(m.clone())
+}
+
+pub fn micrometers_per_rack_unit() -> Nat {
+    44450
+}
+
+pub fn rack_unit(count: Nat) -> RackUnit {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn rack_unit_count(u: RackUnit) -> Nat {
+    measure_count(u.clone())
 }
 
 pub fn joule(count: Nat) -> Joule {
@@ -997,6 +1071,8 @@ pub struct RotationalSpeed;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ElectricPotential;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ElectricPotentialDifference;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ElectricCurrent;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Resistance;
@@ -1026,6 +1102,8 @@ pub struct Milli;
 pub struct One;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Sixty;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RackUnitHeight;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Kilo;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

@@ -360,7 +360,7 @@ nicety.
 This **resolves §7 q3 and re-prioritises the ticket**: item 3 is not optional work to be dropped if
 it proves expensive — it is the deployment ask, and "minimal possible items to update to intent" is
 exactly the spine's `Unchanged → noop`. The vocabulary already lines up one-to-one: **apply** =
-`MemberUpsert`, **delete** = `MemberTeardown` (owned-only, else a typed refusal), **reconcile** =
+`MemberAdded`/`MemberChanged`, **delete** = `MemberRemoved` (owned-only, else a typed refusal), **reconcile** =
 the diff itself, with unchanged members producing no hunk and therefore no effect.
 
 The good news is that this is **instantiation, not invention**. `live_deploy` is the *only*

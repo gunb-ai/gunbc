@@ -313,7 +313,7 @@ Realization; a forked reconcile means the genericity bought nothing"):
   re-upserts, which is exactly the ensure semantics wanted.
 - `ownership_of` = `Owned` for tools provisioned into the repo-local root
   (removable), `Ensured` for system-required tools — so the R5 construction
-  wall already refuses teardown of a system tool (`MemberTeardownRefused`,
+  wall already refuses teardown of a system tool (`MemberRemovalRefused`,
   which has no effect arm in any apply dispatch), and ownership-unknown refuses
   rather than assuming.
 

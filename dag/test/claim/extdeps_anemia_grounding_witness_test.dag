@@ -1,4 +1,5 @@
 module test.claim.extdeps_anemia_grounding_witness
+import extdeps.vendor.ampere { ampere }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -20,7 +20,7 @@ import extdeps.realization.emit_on_demand_host {
   ResolvedBuildContext,
 }
 import gunbc.membership_reconcile {
-  membership_upsert_count,
+  membership_write_count,
   membership_refusal_count,
 }
 import gunbc.tool_readiness {
@@ -97,7 +97,7 @@ test fn matching_pinned_tool_is_admitted_with_zero_hunks() -> Bool {
   ) {
     PinnedAdmitted { pin: admitted, plan: plan } =>
       ((admitted.subject.name as String) == "rustfmt")
-        && membership_upsert_count(plan: plan) == 0
+        && membership_write_count(plan: plan) == 0
         && membership_refusal_count(plan: plan) == 0
     PinnedRefused { refusals: _ } => false
     UnpinnedFrontier { row: _, observed: _ } => false
@@ -120,7 +120,7 @@ test fn digest_mismatch_refuses_and_frontier_cannot_bypass_it() -> Bool {
             ((refusal.tool.name as String) == "rustfmt")
               && match refusal.cause {
                 ToolMembershipNotConverged { plan: plan, admission: admission } =>
-                  membership_upsert_count(plan: plan) == 1
+                  membership_write_count(plan: plan) == 1
                     && match admission {
                       PinRefused { subject: _, cause: cause } =>
                         match cause {
@@ -152,7 +152,7 @@ test fn unchanged_tracked_pin_still_refuses_integrity() -> Bool {
         Present { value: refusal } =>
           match refusal.cause {
             ToolPinIntegrityRefused { cause: cause, plan: plan } =>
-              membership_upsert_count(plan: plan) == 0
+              membership_write_count(plan: plan) == 0
                 && match cause {
                   TrackedResolutionUnrecorded { channel: channel } =>
                     (channel as String) == "stable"
@@ -186,10 +186,10 @@ test fn unrelated_tool_identity_does_not_change_rustfmt_readiness() -> Bool {
   )
   match before {
     PinnedAdmitted { pin: _, plan: before_plan } =>
-      membership_upsert_count(plan: before_plan) == 0
+      membership_write_count(plan: before_plan) == 0
         && match after {
           PinnedAdmitted { pin: _, plan: after_plan } =>
-            membership_upsert_count(plan: after_plan) == 0
+            membership_write_count(plan: after_plan) == 0
           _ => false
         }
     _ => false

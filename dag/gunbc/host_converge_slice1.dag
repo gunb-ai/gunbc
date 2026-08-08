@@ -318,7 +318,12 @@ fn host_converge_slice1_enumerate_units(instance_glob: String) -> List<NonEmptyS
   systemctl_list_units_active_services(instance_glob: instance_glob as NonEmptyStr)
 }
 
-fn host_converge_slice1_cross_check_enumeration(host: HostIdentity, units: List<NonEmptyStr>) -> HostConvergeSlice1EnumerationMismatch? {
+// Count equality is a postcondition after RunnerSlotProvision, not a pre-refuse on under-count.
+// Observed < declared means slots are missing — converge existing units' caps; provision adds the delta.
+fn host_converge_slice1_enumeration_mismatch(
+  host: HostIdentity,
+  units: List<NonEmptyStr>,
+) -> HostConvergeSlice1EnumerationMismatch? {
   let declared = declared_runner_count_for(host: host)
   if length(units) == declared {
     none
@@ -330,6 +335,16 @@ fn host_converge_slice1_cross_check_enumeration(host: HostIdentity, units: List<
         observed_units: units,
       }
     }
+  }
+}
+
+fn host_converge_slice1_cross_check_enumeration(host: HostIdentity, units: List<NonEmptyStr>) -> HostConvergeSlice1EnumerationMismatch? {
+  let declared = declared_runner_count_for(host: host)
+  let observed_count = length(units)
+  if observed_count > declared {
+    host_converge_slice1_enumeration_mismatch(host: host, units: units)
+  } else {
+    none
   }
 }
 
