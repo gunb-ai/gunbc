@@ -1,29 +1,42 @@
 module test.claim.module_impact_query_witness_test
 
-import std.algebra { Empty }
 import v2.std.algebra { any, contains, count_where }
 import v2.std.collection { List }
 import v2.std.text { String }
+import gunbc.namespace_reference_derived_closure_admission {
+  ReferenceDerivedClosureAdmission,
+  ReferenceDerivedClosureUnavailable,
+  established,
+  UnrelatedLoadedFileExcluded,
+  RepeatedMentionsCollapseDependency,
+  P2aPoolIndependentDependencyProjection7515,
+  P2aReferenceDependencyProjection7515,
+}
 import v2.lens.module_graph {
   ModuleDeclarationFact,
   ModuleDependencyEdge,
   ImportResolutionFact,
 }
 import v2.lens.module_impact_query {
+  DeclaredTargetAbsentFromPool,
   DependenciesOf,
-  ImpactCycle,
   DependentsOf,
-  ImpactClosedProven,
+  ExactForGraphSubject,
+  ImpactCycle,
   ImpactCycleReferenceAdmissible,
   ImpactImportAcyclicityViolation,
-  ImpactLowerBound,
   ImpactReading,
-  DeclarationGrain,
-  ModulePathGrain,
+  Incomplete,
+  ModuleIdentity,
+  PoolIndependentProjectionUnavailable,
+  ProvisionalForObservedPool,
+  UndeclaredTargetModule,
+  impact_paths_for_module,
+  impact_seeds_for_path,
   module_impact_reading,
 }
 
-data module_impact_query_witness_note: String = "Controlled fixtures: every input population and every expected population is authored here, so no assertion is a measurement of the current tree copied back onto itself (DESIGN 5 oracle rule). The discriminating pair is all_import_cycle vs mixed_cycle — identical cycle topology, different edge provenance, different required arm — so an implementation that reported SCC membership alone and skipped the import-acyclicity law would go red on witness_all_import_cycle_is_an_acyclicity_violation while still passing the plain cycle witness."
+data module_impact_query_witness_note: String = "Controlled fixtures: every input population and every expected population is authored here, so no assertion is a measurement of the current tree copied back onto itself (DESIGN 5 oracle rule). Three discriminating families. (1) The cycle pair - all_import vs mixed - has identical topology and different provenance, so a union-grain classifier reds on one while passing the other. (2) The two-disjoint-cycles fixture is the regression control for review 50459: the pre-fix union-level verdict greened its own suite while suppressing a real violation. (3) The pool-mismatch fixture is the control for the operator's F3 finding: an edge whose target is declared-but-absent from the pool used to vanish silently while the reading still answered complete."
 
 data fixture_nodes: List<ModuleDeclarationFact> = [
   ModuleDeclarationFact { module: "m.a", path: "fixture/a.dag" },
@@ -32,211 +45,274 @@ data fixture_nodes: List<ModuleDeclarationFact> = [
   ModuleDeclarationFact { module: "m.d", path: "fixture/d.dag" },
 ]
 
+data mod_a: ModuleIdentity = ModuleIdentity { name: "m.a" }
+data mod_b: ModuleIdentity = ModuleIdentity { name: "m.b" }
+data mod_c: ModuleIdentity = ModuleIdentity { name: "m.c" }
+
+data pool_independence_unavailable: List<ReferenceDerivedClosureAdmission> = [
+  ReferenceDerivedClosureUnavailable {
+    capability: UnrelatedLoadedFileExcluded,
+    trigger: P2aPoolIndependentDependencyProjection7515
+  },
+]
+
+data pool_independence_established_note: String = "ReferenceDerivedClosureAcceptanceReceipt is sole_constructor, so a consumer CANNOT fabricate an Established capability from outside the admission module - the wall refused this witness's first attempt to hand-build the receipt, which is exactly the point of the wall. The admission module's own `established` constructor is the only legitimate route, so the witness goes through it."
+
+data pool_independence_established: List<ReferenceDerivedClosureAdmission> = [
+  established(capability: UnrelatedLoadedFileExcluded),
+]
+
+data unrelated_admission_only: List<ReferenceDerivedClosureAdmission> = [
+  ReferenceDerivedClosureUnavailable {
+    capability: RepeatedMentionsCollapseDependency,
+    trigger: P2aReferenceDependencyProjection7515
+  },
+]
+
 data chain_edges: List<ModuleDependencyEdge> = [
-  ModuleDependencyEdge {
-    path: "fixture/a.dag",
-    target_module: "m.b",
-    target_declared: true
-  },
-  ModuleDependencyEdge {
-    path: "fixture/b.dag",
-    target_module: "m.c",
-    target_declared: true
-  },
+  ModuleDependencyEdge { path: "fixture/a.dag", target_module: "m.b", target_declared: true },
+  ModuleDependencyEdge { path: "fixture/b.dag", target_module: "m.c", target_declared: true },
 ]
 
 data chain_import_facts: List<ImportResolutionFact> = [
-  ImportResolutionFact {
-    path: "fixture/a.dag",
-    import_module: "m.b",
-    target_declared: true
-  },
-  ImportResolutionFact {
-    path: "fixture/b.dag",
-    import_module: "m.c",
-    target_declared: true
-  },
+  ImportResolutionFact { path: "fixture/a.dag", import_module: "m.b", target_declared: true },
+  ImportResolutionFact { path: "fixture/b.dag", import_module: "m.c", target_declared: true },
 ]
 
-fn chain_reading_dependents() -> ImpactReading {
+fn chain_reading(
+  seeds: List<ModuleIdentity>,
+  admissions: List<ReferenceDerivedClosureAdmission>
+) -> ImpactReading {
   module_impact_reading(
-    seeds: ["fixture/c.dag"],
+    seeds: seeds,
     direction: DependentsOf,
     edges: chain_edges,
     nodes: fixture_nodes,
-    import_facts: chain_import_facts
+    import_facts: chain_import_facts,
+    admissions: admissions
   )
 }
 
-fn chain_reading_dependencies() -> ImpactReading {
-  module_impact_reading(
-    seeds: ["fixture/a.dag"],
-    direction: DependenciesOf,
-    edges: chain_edges,
-    nodes: fixture_nodes,
-    import_facts: chain_import_facts
-  )
+fn reached_has(reading: ImpactReading, wanted: String) -> Bool {
+  any(xs: reading.reached, predicate: fn(m) { m.name == wanted })
 }
 
 test fn witness_dependents_of_walks_the_edge_population_backwards() -> Bool {
-  let reached = chain_reading_dependents().reached
-  contains(xs: reached, item: "fixture/c.dag", eq: fn(a, b) { a == b })
-    && contains(xs: reached, item: "fixture/b.dag", eq: fn(a, b) { a == b })
-    && contains(xs: reached, item: "fixture/a.dag", eq: fn(a, b) { a == b })
-    && count_where(xs: reached, predicate: fn(_) { true }) == 3
+  let reading = chain_reading(seeds: [mod_c], admissions: unrelated_admission_only)
+  reached_has(reading: reading, wanted: "m.c")
+    && reached_has(reading: reading, wanted: "m.b")
+    && reached_has(reading: reading, wanted: "m.a")
+    && count_where(xs: reading.reached, predicate: fn(_) { true }) == 3
 }
 
 test fn witness_dependencies_of_is_the_opposite_direction() -> Bool {
-  let reached = chain_reading_dependencies().reached
-  contains(xs: reached, item: "fixture/a.dag", eq: fn(a, b) { a == b })
-    && contains(xs: reached, item: "fixture/b.dag", eq: fn(a, b) { a == b })
-    && contains(xs: reached, item: "fixture/c.dag", eq: fn(a, b) { a == b })
-    && count_where(xs: reached, predicate: fn(_) { true }) == 3
+  let reading = module_impact_reading(
+    seeds: [mod_a],
+    direction: DependenciesOf,
+    edges: chain_edges,
+    nodes: fixture_nodes,
+    import_facts: chain_import_facts,
+    admissions: unrelated_admission_only
+  )
+  any(xs: reading.reached, predicate: fn(m) { m.name == "m.c" })
+    && count_where(xs: reading.reached, predicate: fn(_) { true }) == 3
 }
 
 test fn witness_dependents_of_a_leaf_source_reaches_only_itself() -> Bool {
-  let reading = module_impact_reading(
-    seeds: ["fixture/a.dag"],
-    direction: DependentsOf,
-    edges: chain_edges,
-    nodes: fixture_nodes,
-    import_facts: chain_import_facts
-  )
+  let reading = chain_reading(seeds: [mod_a], admissions: unrelated_admission_only)
   count_where(xs: reading.reached, predicate: fn(_) { true }) == 1
 }
 
-test fn witness_reading_declares_module_path_grain() -> Bool {
-  match chain_reading_dependents().grain {
-    ModulePathGrain => true
-    DeclarationGrain => false
+test fn witness_core_is_keyed_on_module_identity_not_path() -> Bool {
+  let reading = chain_reading(seeds: [mod_c], admissions: unrelated_admission_only)
+  any(xs: reading.explanation, predicate: fn(edge) {
+    edge.dependent_module.name == "m.a" && edge.dependency_module.name == "m.b"
+  })
+    && any(xs: reading.reached, predicate: fn(m) { m.name == "m.a" })
+    && count_where(xs: reading.reached, predicate: fn(m) { m.name == "fixture/a.dag" }) == 0
+}
+
+test fn witness_path_adapter_projects_a_file_question_to_semantic_seeds() -> Bool {
+  let seeds = impact_seeds_for_path(nodes: fixture_nodes, path: "fixture/a.dag")
+  count_where(xs: seeds, predicate: fn(_) { true }) == 1
+    && any(xs: seeds, predicate: fn(m) { m.name == "m.a" })
+}
+
+test fn witness_path_adapter_invents_no_seed_for_an_unknown_path() -> Bool {
+  count_where(
+    xs: impact_seeds_for_path(nodes: fixture_nodes, path: "fixture/nowhere.dag"),
+    predicate: fn(_) { true }
+  ) == 0
+}
+
+test fn witness_paths_project_back_for_presentation() -> Bool {
+  let paths = impact_paths_for_module(nodes: fixture_nodes, module_id: mod_a)
+  count_where(xs: paths, predicate: fn(_) { true }) == 1
+    && contains(xs: paths, item: "fixture/a.dag", eq: fn(x, y) { x == y })
+}
+
+test fn witness_pool_independence_unavailable_forbids_an_exact_standing() -> Bool {
+  match chain_reading(seeds: [mod_c], admissions: pool_independence_unavailable).standing {
+    PoolIndependentProjectionUnavailable { trigger } =>
+      match trigger {
+        P2aPoolIndependentDependencyProjection7515 => true
+        _ => false
+      }
+    ExactForGraphSubject => false
+    ProvisionalForObservedPool => false
+    Incomplete { causes: _ } => false
   }
 }
 
-test fn witness_all_declared_targets_prove_a_closed_reading() -> Bool {
-  match chain_reading_dependents().completeness {
-    ImpactClosedProven => true
-    ImpactLowerBound { unaccounted: _ } => false
+test fn witness_clean_pool_without_established_independence_is_only_provisional() -> Bool {
+  match chain_reading(seeds: [mod_c], admissions: unrelated_admission_only).standing {
+    ProvisionalForObservedPool => true
+    ExactForGraphSubject => false
+    Incomplete { causes: _ } => false
+    PoolIndependentProjectionUnavailable { trigger: _ } => false
+  }
+}
+
+test fn witness_exact_standing_requires_established_pool_independence() -> Bool {
+  match chain_reading(seeds: [mod_c], admissions: pool_independence_established).standing {
+    ExactForGraphSubject => true
+    ProvisionalForObservedPool => false
+    Incomplete { causes: _ } => false
+    PoolIndependentProjectionUnavailable { trigger: _ } => false
   }
 }
 
 data undeclared_target_edges: List<ModuleDependencyEdge> = [
-  ModuleDependencyEdge {
-    path: "fixture/a.dag",
-    target_module: "m.b",
-    target_declared: true
-  },
-  ModuleDependencyEdge {
-    path: "fixture/b.dag",
-    target_module: "m.outside_the_pool",
-    target_declared: false
-  },
+  ModuleDependencyEdge { path: "fixture/a.dag", target_module: "m.b", target_declared: true },
+  ModuleDependencyEdge { path: "fixture/b.dag", target_module: "m.outside_pool", target_declared: false },
 ]
 
-test fn witness_undeclared_target_forces_a_lower_bound_with_the_named_row() -> Bool {
+test fn witness_undeclared_target_lands_as_a_typed_cause() -> Bool {
   let reading = module_impact_reading(
-    seeds: ["fixture/a.dag"],
+    seeds: [mod_a],
     direction: DependenciesOf,
     edges: undeclared_target_edges,
     nodes: fixture_nodes,
-    import_facts: chain_import_facts
+    import_facts: chain_import_facts,
+    admissions: pool_independence_established
   )
-  match reading.completeness {
-    ImpactClosedProven => false
-    ImpactLowerBound { unaccounted } =>
-      count_where(xs: unaccounted, predicate: fn(_) { true }) == 1
-        && any(
-          xs: unaccounted,
-          predicate: fn(row) { row.target_module == "m.outside_the_pool" }
-        )
+  count_where(xs: reading.causes, predicate: fn(_) { true }) == 1
+    && any(xs: reading.causes, predicate: fn(cause) {
+      match cause {
+        UndeclaredTargetModule { dependent_module, target_module } =>
+          dependent_module.name == "m.b" && target_module == "m.outside_pool"
+        DeclaredTargetAbsentFromPool { dependent_module: _, target_module: _ } => false
+      }
+    })
+}
+
+data declared_but_absent_edges: List<ModuleDependencyEdge> = [
+  ModuleDependencyEdge { path: "fixture/a.dag", target_module: "m.b", target_declared: true },
+  ModuleDependencyEdge { path: "fixture/b.dag", target_module: "m.ghost", target_declared: true },
+]
+
+data pool_mismatch_note: String = "F3 control (operator ruling 2026-08-08). m.ghost is target_declared TRUE but has no ModuleDeclarationFact in fixture_nodes - the producer believed it declared, the supplied pool does not carry it. The pre-recut implementation resolved that edge to zero rows, dropped it from adjacency/closure/cycles, and computed completeness from the raw declared flag alone, so the reading answered CLOSED on an inconsistent pool. The two observations are now independent, so this must surface as DeclaredTargetAbsentFromPool and must NOT be reported as an undeclared target."
+
+test fn witness_declared_but_absent_target_is_not_silently_dropped() -> Bool {
+  let reading = module_impact_reading(
+    seeds: [mod_a],
+    direction: DependenciesOf,
+    edges: declared_but_absent_edges,
+    nodes: fixture_nodes,
+    import_facts: chain_import_facts,
+    admissions: pool_independence_established
+  )
+  count_where(xs: reading.causes, predicate: fn(_) { true }) == 1
+    && any(xs: reading.causes, predicate: fn(cause) {
+      match cause {
+        DeclaredTargetAbsentFromPool { dependent_module, target_module } =>
+          dependent_module.name == "m.b" && target_module == "m.ghost"
+        UndeclaredTargetModule { dependent_module: _, target_module: _ } => false
+      }
+    })
+}
+
+test fn witness_pool_mismatch_forbids_an_exact_standing() -> Bool {
+  let reading = module_impact_reading(
+    seeds: [mod_a],
+    direction: DependenciesOf,
+    edges: declared_but_absent_edges,
+    nodes: fixture_nodes,
+    import_facts: chain_import_facts,
+    admissions: pool_independence_established
+  )
+  match reading.standing {
+    Incomplete { causes } => count_where(xs: causes, predicate: fn(_) { true }) == 1
+    ExactForGraphSubject => false
+    ProvisionalForObservedPool => false
+    PoolIndependentProjectionUnavailable { trigger: _ } => false
   }
 }
 
 data cycle_edges: List<ModuleDependencyEdge> = [
-  ModuleDependencyEdge {
-    path: "fixture/a.dag",
-    target_module: "m.b",
-    target_declared: true
-  },
-  ModuleDependencyEdge {
-    path: "fixture/b.dag",
-    target_module: "m.a",
-    target_declared: true
-  },
+  ModuleDependencyEdge { path: "fixture/a.dag", target_module: "m.b", target_declared: true },
+  ModuleDependencyEdge { path: "fixture/b.dag", target_module: "m.a", target_declared: true },
 ]
 
 data all_import_cycle_facts: List<ImportResolutionFact> = [
-  ImportResolutionFact {
-    path: "fixture/a.dag",
-    import_module: "m.b",
-    target_declared: true
-  },
-  ImportResolutionFact {
-    path: "fixture/b.dag",
-    import_module: "m.a",
-    target_declared: true
-  },
+  ImportResolutionFact { path: "fixture/a.dag", import_module: "m.b", target_declared: true },
+  ImportResolutionFact { path: "fixture/b.dag", import_module: "m.a", target_declared: true },
 ]
 
 data mixed_cycle_facts: List<ImportResolutionFact> = [
-  ImportResolutionFact {
-    path: "fixture/a.dag",
-    import_module: "m.b",
-    target_declared: true
-  },
+  ImportResolutionFact { path: "fixture/a.dag", import_module: "m.b", target_declared: true },
 ]
 
 fn cycle_reading(facts: List<ImportResolutionFact>) -> ImpactReading {
   module_impact_reading(
-    seeds: ["fixture/a.dag"],
+    seeds: [mod_a],
     direction: DependenciesOf,
     edges: cycle_edges,
     nodes: fixture_nodes,
-    import_facts: facts
+    import_facts: facts,
+    admissions: unrelated_admission_only
   )
+}
+
+fn cycle_has_member(cycle: ImpactCycle, wanted: String) -> Bool {
+  match cycle {
+    ImpactImportAcyclicityViolation { members } =>
+      any(xs: members, predicate: fn(m) { m.name == wanted })
+    ImpactCycleReferenceAdmissible { members } =>
+      any(xs: members, predicate: fn(m) { m.name == wanted })
+  }
 }
 
 test fn witness_all_import_cycle_is_an_acyclicity_violation() -> Bool {
   let cycles = cycle_reading(facts: all_import_cycle_facts).cycles
   count_where(xs: cycles, predicate: fn(_) { true }) == 1
-    && any(
-      xs: cycles,
-      predicate: fn(cycle) {
-        match cycle {
-          ImpactImportAcyclicityViolation { members } =>
-            count_where(xs: members, predicate: fn(_) { true }) == 2
-          ImpactCycleReferenceAdmissible { members: _ } => false
-        }
+    && any(xs: cycles, predicate: fn(cycle) {
+      match cycle {
+        ImpactImportAcyclicityViolation { members } =>
+          count_where(xs: members, predicate: fn(_) { true }) == 2
+        ImpactCycleReferenceAdmissible { members: _ } => false
       }
-    )
+    })
 }
 
 test fn witness_cycle_with_a_reference_derived_edge_is_admissible() -> Bool {
   let cycles = cycle_reading(facts: mixed_cycle_facts).cycles
   count_where(xs: cycles, predicate: fn(_) { true }) == 1
-    && any(
-      xs: cycles,
-      predicate: fn(cycle) {
-        match cycle {
-          ImpactImportAcyclicityViolation { members: _ } => false
-          ImpactCycleReferenceAdmissible { members } =>
-            count_where(xs: members, predicate: fn(_) { true }) == 2
-        }
+    && any(xs: cycles, predicate: fn(cycle) {
+      match cycle {
+        ImpactImportAcyclicityViolation { members: _ } => false
+        ImpactCycleReferenceAdmissible { members } =>
+          count_where(xs: members, predicate: fn(_) { true }) == 2
       }
-    )
+    })
 }
 
 test fn witness_acyclic_population_reports_no_cycle() -> Bool {
-  count_where(xs: chain_reading_dependents().cycles, predicate: fn(_) { true }) == 0
+  count_where(
+    xs: chain_reading(seeds: [mod_c], admissions: unrelated_admission_only).cycles,
+    predicate: fn(_) { true }
+  ) == 0
 }
-
-data two_disjoint_cycles_note: String = "Regression witness for review 50459 on gunbc#8044. TWO disjoint cycles in ONE reading: a<->b entirely import-derived, c<->d carrying one reference-derived edge (d->c is absent from the import facts). The pre-fix implementation folded every cyclic node into one member list and emitted ONE verdict, so the reference edge in the second cycle suppressed the first cycle's ImportAcyclicityViolation and the reading answered a single ImpactCycleReferenceAdmissible. Import-acyclicity is a per-cycle law, so this is the discriminating shape a single-2-node-cycle fixture structurally cannot exercise."
-
-data two_cycle_nodes: List<ModuleDeclarationFact> = [
-  ModuleDeclarationFact { module: "m.a", path: "fixture/a.dag" },
-  ModuleDeclarationFact { module: "m.b", path: "fixture/b.dag" },
-  ModuleDeclarationFact { module: "m.c", path: "fixture/c.dag" },
-  ModuleDeclarationFact { module: "m.d", path: "fixture/d.dag" },
-]
 
 data two_disjoint_cycle_edges: List<ModuleDependencyEdge> = [
   ModuleDependencyEdge { path: "fixture/a.dag", target_module: "m.b", target_declared: true },
@@ -253,21 +329,13 @@ data two_disjoint_cycle_import_facts: List<ImportResolutionFact> = [
 
 fn two_disjoint_cycles_reading() -> ImpactReading {
   module_impact_reading(
-    seeds: ["fixture/a.dag", "fixture/c.dag"],
+    seeds: [mod_a, mod_c],
     direction: DependenciesOf,
     edges: two_disjoint_cycle_edges,
-    nodes: two_cycle_nodes,
-    import_facts: two_disjoint_cycle_import_facts
+    nodes: fixture_nodes,
+    import_facts: two_disjoint_cycle_import_facts,
+    admissions: unrelated_admission_only
   )
-}
-
-fn cycle_has_member(cycle: ImpactCycle, wanted: String) -> Bool {
-  match cycle {
-    ImpactImportAcyclicityViolation { members } =>
-      any(xs: members, predicate: fn(m) { m == wanted })
-    ImpactCycleReferenceAdmissible { members } =>
-      any(xs: members, predicate: fn(m) { m == wanted })
-  }
 }
 
 test fn witness_two_disjoint_cycles_are_classified_separately() -> Bool {
@@ -275,41 +343,32 @@ test fn witness_two_disjoint_cycles_are_classified_separately() -> Bool {
 }
 
 test fn witness_all_import_cycle_survives_a_reference_cycle_elsewhere() -> Bool {
-  any(
-    xs: two_disjoint_cycles_reading().cycles,
-    predicate: fn(cycle) {
-      match cycle {
-        ImpactImportAcyclicityViolation { members } =>
-          count_where(xs: members, predicate: fn(_) { true }) == 2
-            && cycle_has_member(cycle: cycle, wanted: "fixture/a.dag")
-            && cycle_has_member(cycle: cycle, wanted: "fixture/b.dag")
-        ImpactCycleReferenceAdmissible { members: _ } => false
-      }
+  any(xs: two_disjoint_cycles_reading().cycles, predicate: fn(cycle) {
+    match cycle {
+      ImpactImportAcyclicityViolation { members } =>
+        count_where(xs: members, predicate: fn(_) { true }) == 2
+          && cycle_has_member(cycle: cycle, wanted: "m.a")
+          && cycle_has_member(cycle: cycle, wanted: "m.b")
+      ImpactCycleReferenceAdmissible { members: _ } => false
     }
-  )
+  })
 }
 
 test fn witness_reference_cycle_stays_admissible_beside_an_import_cycle() -> Bool {
-  any(
-    xs: two_disjoint_cycles_reading().cycles,
-    predicate: fn(cycle) {
-      match cycle {
-        ImpactImportAcyclicityViolation { members: _ } => false
-        ImpactCycleReferenceAdmissible { members } =>
-          count_where(xs: members, predicate: fn(_) { true }) == 2
-            && cycle_has_member(cycle: cycle, wanted: "fixture/c.dag")
-            && cycle_has_member(cycle: cycle, wanted: "fixture/d.dag")
-      }
+  any(xs: two_disjoint_cycles_reading().cycles, predicate: fn(cycle) {
+    match cycle {
+      ImpactImportAcyclicityViolation { members: _ } => false
+      ImpactCycleReferenceAdmissible { members } =>
+        count_where(xs: members, predicate: fn(_) { true }) == 2
+          && cycle_has_member(cycle: cycle, wanted: "m.c")
+          && cycle_has_member(cycle: cycle, wanted: "m.d")
     }
-  )
+  })
 }
 
-test fn witness_no_component_merges_nodes_from_distinct_cycles() -> Bool {
-  any(
-    xs: two_disjoint_cycles_reading().cycles,
-    predicate: fn(cycle) {
-      cycle_has_member(cycle: cycle, wanted: "fixture/a.dag")
-        && cycle_has_member(cycle: cycle, wanted: "fixture/c.dag")
-    }
-  ) == false
+test fn witness_no_component_merges_modules_from_distinct_cycles() -> Bool {
+  any(xs: two_disjoint_cycles_reading().cycles, predicate: fn(cycle) {
+    cycle_has_member(cycle: cycle, wanted: "m.a")
+      && cycle_has_member(cycle: cycle, wanted: "m.c")
+  }) == false
 }

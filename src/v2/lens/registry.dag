@@ -43,7 +43,6 @@ type LensIdV0
   | LeafModelVerification
   | LiveReadClassification
   | MachineShape
-  | ModuleImpact
   | MockTotality
   | MetaExecConfinement
   | MutationAdequacy
@@ -81,11 +80,6 @@ data lens_owned_fn_llvm_instruction_cost: LensOwnedFnV0 = {
 data lens_owned_fn_registry_v0: List<LensOwnedFnV0> = [
   lens_owned_fn_llvm_instruction_cost
 ]
-
-data lens_registry_v0_module_impact: LensRegistryEntryV0 = {
-  lens_id: ModuleImpact
-  module_path: Bound { path: "v2.lens.module_impact_query" }
-}
 
 data lens_registry_v0_complexity_derived_kernel: LensRegistryEntryV0 = {
   lens_id: ComplexityDerivedKernel
@@ -378,7 +372,6 @@ data lens_registry_v0_roster_registry: LensRegistryEntryV0 = {
 }
 
 data lens_registry_v0: List<LensRegistryEntryV0> = [
-  lens_registry_v0_module_impact,
   lens_registry_v0_complexity_derived_kernel,
   lens_registry_v0_complexity_optimality,
   lens_registry_v0_cost,
@@ -607,10 +600,6 @@ fn lens_id_v0_eq(left: LensIdV0, right: LensIdV0) -> Bool {
     }
     MetaExecConfinement => match right {
       MetaExecConfinement => true
-      _ => false
-    }
-    ModuleImpact => match right {
-      ModuleImpact => true
       _ => false
     }
     MockTotality => match right {
