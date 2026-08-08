@@ -10869,12 +10869,19 @@ fn run() -> Result<ExitCode, ExitCode> {
         &source_roots,
     );
     v1_compiler::v1_interpreter::group_end();
+    let any_failed =
+        outcome.any_failed || compile_clean_over_budget || !compile_clean_drift_receipt_ok;
     if outcome.any_failed {
         emit_falsifier_failure_class(&outcome.failure_details, &outcome.infra_faults);
     }
-    floor_terminal_fast_exit(walk_exit_code(
-        outcome.any_failed || compile_clean_over_budget || !compile_clean_drift_receipt_ok,
-    ))
+    let terminal_detail = walk_terminal_detail(
+        any_failed,
+        &outcome.failure_details,
+        &outcome.infra_faults,
+        compile_clean_over_budget,
+        compile_clean_drift_receipt_ok,
+    );
+    floor_terminal_fast_exit(walk_exit_code(any_failed), &terminal_detail)
 }
 
 /// Typed terminal failure class for the falsifier/floor walk (brief Step 2, 2026-07-25):
@@ -10978,6 +10985,40 @@ fn walk_exit_code(any_failed: bool) -> i32 {
     }
 }
 
+/// Located refusal carried in the worker terminal receipt for the coordinator to replay.
+///
+/// `floor_terminal_fast_exit` used to write only `walk terminal exit code N`, which the
+/// thin coordinator then surfaced as the sole failure detail — a refusal that names
+/// nothing is worse than none (DESIGN §5; receipt: run 31263508328 printed
+/// `detail=walk terminal exit code 1` while the worker had already emitted the real
+/// witness-red batch line on stderr that Actions dropped).
+fn walk_terminal_detail(
+    any_failed: bool,
+    failure_details: &[String],
+    infra_faults: &[InfraFault],
+    compile_clean_over_budget: bool,
+    compile_clean_drift_receipt_ok: bool,
+) -> String {
+    if !any_failed {
+        return "walk terminal exit code 0".to_string();
+    }
+    let mode = falsifier_failure_mode_with_faults(failure_details, infra_faults);
+    let mut parts = vec![format!(
+        "walk terminal exit code 1 mode={mode} ci_failure_class_arm={}",
+        ci_failure_class_arm(mode)
+    )];
+    if !failure_details.is_empty() {
+        parts.push(failure_details.join(" | "));
+    }
+    if compile_clean_over_budget {
+        parts.push("compile_clean_over_budget".to_string());
+    }
+    if !compile_clean_drift_receipt_ok {
+        parts.push("compile_clean_cost_drift_receipt_refused".to_string());
+    }
+    scoped_wire_text(&parts.join(" "))
+}
+
 /// Terminal fast-exit for the floor walk (CI floor endgame D2): the executor retains a
 /// ~16GB store (process-shared index, typed caches, interner) whose Drop walk at process
 /// end measured 2.5–3.1 minutes, twice-confirmed (Pi bench: swap grows DURING Drop;
@@ -10989,13 +11030,10 @@ fn walk_exit_code(any_failed: bool) -> i32 {
 /// `run()`'s walk path — every plan walk (floor, plan-artifact, regen, falsifier) exits
 /// through it; every refusal/error path above returns normally. The exit CODE is exactly
 /// `walk_exit_code(any_failed)` — behavior-identical to the ExitCode return it replaces.
-fn floor_terminal_fast_exit(code: i32) -> ! {
+fn floor_terminal_fast_exit(code: i32, detail: &str) -> ! {
     use std::io::Write as _;
     let terminal_outcome = if code == 0 { "completed" } else { "failed" };
-    let final_code = match write_floor_worker_terminal(
-        terminal_outcome,
-        &format!("walk terminal exit code {code}"),
-    ) {
+    let final_code = match write_floor_worker_terminal(terminal_outcome, detail) {
         Ok(()) => code,
         Err(msg) => {
             eprintln!("claim_executor: floor worker terminal receipt refusal: {msg}");
@@ -12058,6 +12096,43 @@ mod tests {
     fn walk_exit_code_maps_failure_to_one_success_to_zero() {
         assert_eq!(walk_exit_code(true), 1);
         assert_eq!(walk_exit_code(false), 0);
+    }
+
+    #[test]
+    fn walk_terminal_detail_carries_located_refusal_not_bare_exit_code() {
+        let detail = walk_terminal_detail(
+            true,
+            &[
+                "batch=3 fn=discovery-corpus detail=25 of 8158 discovery witness(es) failed"
+                    .to_string(),
+            ],
+            &[],
+            false,
+            true,
+        );
+        assert!(
+            detail.contains("batch=3 fn=discovery-corpus"),
+            "the terminal receipt must carry the located batch refusal, got: {detail}"
+        );
+        assert!(
+            detail.contains("mode=WitnessRed"),
+            "the terminal receipt must carry the typed mode, got: {detail}"
+        );
+        assert!(
+            !detail.trim().eq("walk terminal exit code 1"),
+            "a bare exit-code string is not a located refusal: {detail}"
+        );
+        assert_eq!(
+            walk_terminal_detail(false, &[], &[], false, true),
+            "walk terminal exit code 0"
+        );
+    }
+
+    #[test]
+    fn walk_terminal_detail_surfaces_post_walk_compile_clean_refusals() {
+        let detail = walk_terminal_detail(true, &[], &[], true, false);
+        assert!(detail.contains("compile_clean_over_budget"));
+        assert!(detail.contains("compile_clean_cost_drift_receipt_refused"));
     }
 
     fn outcome(entry: &str, function: &str, o: ClaimOutcome) -> DiscoveryWitnessOutcome {
