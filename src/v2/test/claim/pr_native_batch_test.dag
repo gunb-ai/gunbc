@@ -15,8 +15,7 @@ import std.selected_witness_bundle {
   NativeWitnessProductionTransitionReceipt,
   NativeProductionTransitionVerdict,
   NativeProductionTransitionAccepted,
-  NativeProductionTransitionFallback,
-  NativeRealizationAbsent,
+  NativeProductionTransitionRefused,
   native_production_transition_population_holds
 }
 import std.verification { nanosecond_duration }
@@ -61,7 +60,12 @@ test fn witness_native_transition_population_law_RED_accepted_with_shortfall() -
   !native_production_transition_population_holds(receipt: native_transition_receipt_fixture(selected: 3, native: 2, interpreted: 0, unavailable: 0, fallback: 0, verdict: NativeProductionTransitionAccepted))
 }
 
-test fn witness_native_transition_population_law_fallback_arm_discriminates() -> Bool {
-  native_production_transition_population_holds(receipt: native_transition_receipt_fixture(selected: 3, native: 2, interpreted: 1, unavailable: 1, fallback: 1, verdict: NativeProductionTransitionFallback { cause: NativeRealizationAbsent }))
-    && !native_production_transition_population_holds(receipt: native_transition_receipt_fixture(selected: 3, native: 2, interpreted: 0, unavailable: 1, fallback: 1, verdict: NativeProductionTransitionFallback { cause: NativeRealizationAbsent }))
+test fn witness_native_transition_population_law_refusal_arm_discriminates() -> Bool {
+  native_production_transition_population_holds(receipt: native_transition_receipt_fixture(selected: 3, native: 0, interpreted: 0, unavailable: 3, fallback: 0, verdict: NativeProductionTransitionRefused { reason: "native realization unavailable" }))
+    && native_production_transition_population_holds(receipt: native_transition_receipt_fixture(selected: 3, native: 3, interpreted: 0, unavailable: 0, fallback: 0, verdict: NativeProductionTransitionRefused { reason: "equivalence or planted red refused" }))
+}
+
+test fn witness_native_transition_population_law_RED_interpreted_or_fallback_nonzero() -> Bool {
+  !native_production_transition_population_holds(receipt: native_transition_receipt_fixture(selected: 3, native: 0, interpreted: 3, unavailable: 3, fallback: 3, verdict: NativeProductionTransitionRefused { reason: "native realization unavailable" }))
+    && !native_production_transition_population_holds(receipt: native_transition_receipt_fixture(selected: 3, native: 3, interpreted: 0, unavailable: 0, fallback: 1, verdict: NativeProductionTransitionAccepted))
 }

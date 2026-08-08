@@ -61,12 +61,20 @@ failure frequency is exactly DESIGN §5's absorbing-fallback prediction.
    (warnings only), so the failure is environmental to the floor job, not a
    defect in the emitted bundle.
 
-## What this capsule deliberately does not do
+## The cutover happens in this same PR (operator recut, 2026-08-08)
 
-The §5 correctness flip (native-required-no-fallback; interpreter scheduling
-deleted for the population; artifact-removal RED) is the next capsule. It can
-only land once a floor run shows the native path `accepted` — flipping first
-would turn every floor run red on a failure this capsule exists to name/fix.
+The diagnosis above is the first commit of CI-0, not a separately mergeable
+precursor. In the same PR: the counted interpreter fallback is deleted — the
+`NativeProductionTransitionFallback` verdict arm loses its constructor
+(`std.selected_witness_bundle` `native_production_transition_no_fallback_note`)
+and the executor's decision reduces to accepted-or-refused with
+interpreted = fallback = 0 by construction. Native unavailability is a typed,
+located refusal carrying build log + stderr. The build failure named by the
+surfaced stderr (`error: unnecessary parentheses around match scrutinee
+expression` under a deny-warnings build env) is fixed at its root: the emitted
+crate's manifest declares its lint envelope
+(`rust.dag` `rust_emit_host_lint_envelope_note`), because the one match shape
+must keep scrutinee parens for the struct-literal form that requires them.
 Receipt/status homes unchanged: `std.selected_witness_bundle`
 `NativeWitnessBundleExecutionReceipt.member_equivalence`,
 `gunbc.native_witness_transition_receipt`.

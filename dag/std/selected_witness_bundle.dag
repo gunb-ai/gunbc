@@ -314,9 +314,10 @@ type NativeWitnessBundleExecutionReceipt {
   interpreter_frontier_count: Int
 }
 
+data native_production_transition_no_fallback_note: NonEmptyStr = "CI-0 cutover (operator direction 2026-08-08): the Fallback verdict arm is DELETED, not deprecated — a counted interpreter fallback is the state the transition exists to leave, and with no constructor the state is unwritable (the §4b climb from mechanically-preventable to structurally-impossible). Every observed main run from first enrollment (30774223741, 2026-08-03) to the cutover reported the fallback verdict while the native cold build failed deterministically; the arm's zeroed failure frequency is why nobody knew. Native unavailability is now NativeProductionTransitionRefused, and the counted-fallback input shape survives as a permanent regression control in the executor's native_bundle_refuses_without_fallback unit plus the pr_native_batch_test population-law REDs."
+
 type NativeProductionTransitionVerdict
   = NativeProductionTransitionAccepted
-  | NativeProductionTransitionFallback { cause: NativeUnavailableCause }
   | NativeProductionTransitionRefused { reason: NonEmptyStr }
 
 type NativeWitnessProductionTransitionReceipt {
@@ -349,20 +350,14 @@ fn native_production_transition_population_holds(
     && receipt.interpreted_count >= 0
     && receipt.unavailable_count >= 0
     && receipt.fallback_count >= 0
+    && receipt.interpreted_count == 0
+    && receipt.fallback_count == 0
+    && receipt.native_count + receipt.unavailable_count == receipt.selected_count
     && match receipt.verdict {
       NativeProductionTransitionAccepted =>
         receipt.native_count == receipt.selected_count
-          && receipt.interpreted_count == 0
           && receipt.unavailable_count == 0
-          && receipt.fallback_count == 0
-      NativeProductionTransitionFallback { cause: _ } =>
-        receipt.native_count + receipt.interpreted_count == receipt.selected_count
-          && receipt.unavailable_count == receipt.fallback_count
-          && receipt.fallback_count <= receipt.interpreted_count
-      NativeProductionTransitionRefused { reason: _ } =>
-        receipt.native_count + receipt.interpreted_count <= receipt.selected_count
-          && receipt.unavailable_count <= receipt.selected_count
-          && receipt.fallback_count <= receipt.interpreted_count
+      NativeProductionTransitionRefused { reason: _ } => true
     }
 }
 

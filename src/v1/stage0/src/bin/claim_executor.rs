@@ -2743,49 +2743,39 @@ fn write_native_transition_receipt(body: &str) -> Result<(), String> {
     fs::write(path, body).map_err(|e| format!("native transition receipt write: {e}"))
 }
 
-/// Acceptance and fallback are gated on DIFFERENT planted-red evidence, and the
-/// difference is the outage/divergence split (CI receipt run 30764923923, review 47508's
-/// advisory made real: srv4-03's native toolchain refused, the planted RED's native run
-/// therefore also refused, and the old gate — fallback requires planted-red NATIVE
-/// equivalence — made the counted-fallback arm unreachable in exactly the outage it was
-/// modeled for, turning a toolchain outage into a hard floor red).
+/// Native execution is AUTHORITATIVE for this population (CI-0 cutover,
+/// operator direction 2026-08-08): the counted interpreter fallback is DELETED,
+/// not gated. The arm it occupied was the §5 absorbing fallback in its purest
+/// form — from the first enrolled main run (30774223741, 2026-08-03) through
+/// the cutover every floor run cold-failed natively and reported green through
+/// interpretation, and the "srv4-03 outage" that justified the arm (run
+/// 30764923923, review 47508) was the same deterministic failure the arm then
+/// zeroed the frequency of for four days. Receipt:
+/// docs/plans/ci2-native-cutover-reobservation.md.
 ///
-/// - ACCEPTED (native-consumed) still requires the full native bar: native ran green
-///   twice, the interpreter oracle agrees, and the planted RED built and reproduced its
-///   wrong output natively (planted_red_equivalent).
-/// - FALLBACK (counted interpretation) arms only on an OUTAGE — the native transport
-///   refused or its process failed — never on a DIVERGENCE (native ran successfully but
-///   produced unexpected output: that is the hard-refusal class, an auto-pick would mask
-///   it). The discriminating-RED evidence for the thing actually being consumed (the
-///   interpreter oracle) is the planted RED's ORACLE discriminating; demanding the
-///   planted NATIVE run in an outage would demand the outage not exist.
-fn native_transition_decision(
+/// ACCEPTED requires the full native bar: native ran green twice (cold + warm,
+/// warm compile-skipped), the interpreter oracle agrees (the retained
+/// equivalence evidence, §4b dissolution-on-climb — the evidence stays, the
+/// production fallback machinery does not), and the planted RED built and
+/// reproduced its wrong output natively. Anything else — outage, divergence,
+/// oracle red, planted-red non-equivalence — is a typed, located refusal
+/// carrying the transport causes (build log + stderr tail). Interpreted and
+/// fallback counts are 0 by construction: no code path can produce another
+/// value.
+fn native_transition_accepted(
     native_ok: bool,
-    native_diverged: bool,
     oracle_green: bool,
-    planted_oracle_discriminates: bool,
     planted_red_equivalent: bool,
-) -> (bool, bool) {
-    let accepted = native_ok && oracle_green && planted_red_equivalent;
-    let fallback = !native_ok && !native_diverged && oracle_green && planted_oracle_discriminates;
-    (accepted, fallback)
+) -> bool {
+    native_ok && oracle_green && planted_red_equivalent
 }
 
-fn native_transition_population_counts(
-    selected: u64,
-    native_ok: bool,
-    fallback: bool,
-) -> (u64, u64, u64, u64) {
+fn native_transition_population_counts(selected: u64, native_ok: bool) -> (u64, u64, u64, u64) {
     let native_count = if native_ok { selected } else { 0 };
-    let interpreted_count = if fallback { selected } else { 0 };
     let unavailable_count = if native_ok { 0 } else { selected };
-    let fallback_count = if fallback { selected } else { 0 };
-    (
-        native_count,
-        interpreted_count,
-        unavailable_count,
-        fallback_count,
-    )
+    // interpreted_count and fallback_count: the interpreter is not a production
+    // execution route for this population; both are structurally zero.
+    (native_count, 0, unavailable_count, 0)
 }
 
 fn run_native_bundle_unit(
@@ -2881,8 +2871,8 @@ fn run_native_bundle_unit(
         if c.success && w.success && w.compile_skipped
             && c.stdout == primary.expected_stdout && w.stdout == primary.expected_stdout);
     // Divergence = the native realization RAN (process success) and produced output the
-    // spec did not declare. Distinct from an outage (transport Err / process failure):
-    // divergence hard-refuses, outage is fallback-eligible.
+    // spec did not declare. Distinct from an outage (transport Err / process failure);
+    // both refuse — the distinction survives only in the verdict label.
     let leg_diverged = |leg: &Result<NativeTransportObservation, String>| matches!(leg, Ok(obs) if obs.success && obs.stdout != primary.expected_stdout);
     let native_diverged = leg_diverged(&cold) || leg_diverged(&warm);
     let planted_red_equivalent = planted
@@ -2891,13 +2881,7 @@ fn run_native_bundle_unit(
         .zip(planted_native.as_ref().ok())
         .map(|(spec, obs)| obs.success && obs.stdout == spec.expected_stdout && planted_oracle)
         .unwrap_or(false);
-    let (accepted, fallback) = native_transition_decision(
-        native_ok,
-        native_diverged,
-        oracle_green,
-        planted_oracle,
-        planted_red_equivalent,
-    );
+    let accepted = native_transition_accepted(native_ok, oracle_green, planted_red_equivalent);
     // The transport causes are the located half of any non-accepted verdict; dropping
     // them made CI's outage red opaque (run 30764923923 refused with no cause on the
     // wire). Rendered into the FAIL/fallback detail and stderr, never into the TSV
@@ -2944,7 +2928,7 @@ fn run_native_bundle_unit(
     }
     let selected = primary.selected_count;
     let (native_count, interpreted_count, unavailable_count, fallback_count) =
-        native_transition_population_counts(selected, native_ok, fallback);
+        native_transition_population_counts(selected, native_ok);
     let cold_compile_wall = cold
         .as_ref()
         .ok()
@@ -2964,10 +2948,10 @@ fn run_native_bundle_unit(
     let cgroup_peak = cgroup_job_measurement().map(|m| m.leaf_peak).unwrap_or(0);
     let verdict = if accepted {
         "accepted"
-    } else if fallback {
-        "fallback:native_realization_refused"
     } else if native_diverged {
         "refused:native_divergence"
+    } else if !native_ok {
+        "refused:native_realization_unavailable"
     } else {
         "refused:equivalence_or_planted_red"
     };
@@ -2982,14 +2966,9 @@ fn run_native_bundle_unit(
     ClaimResult {
         function: selector_function,
         entry,
-        ok: accepted || fallback,
+        ok: accepted,
         detail: if accepted {
             receipt
-        } else if fallback {
-            format!(
-                "counted native fallback ({}); {receipt}",
-                transport_causes.join(" | ")
-            )
         } else {
             format!(
                 "native transition refused ({}); {receipt}",
@@ -13880,51 +13859,21 @@ mod tests {
     }
 
     #[test]
-    fn native_bundle_fallback_arms_on_outage_never_divergence() {
-        // Outage (no divergence), interpreter oracle green, planted-red ORACLE
-        // discriminates: counted fallback — even though the planted NATIVE run also
-        // failed (planted_red_equivalent=false), because in an outage it must.
-        assert_eq!(
-            native_transition_decision(false, false, true, true, false),
-            (false, true)
-        );
-        // Same outage but the planted-red oracle does NOT discriminate: no fallback —
-        // the thing we would fall back to has no proven RED.
-        assert_eq!(
-            native_transition_decision(false, false, true, false, false),
-            (false, false)
-        );
-        // Divergence (native ran, wrong output): NEVER fallback, regardless of oracles.
-        assert_eq!(
-            native_transition_decision(false, true, true, true, true),
-            (false, false)
-        );
-        // Oracle red: neither acceptance nor fallback.
-        assert_eq!(
-            native_transition_decision(false, false, false, true, false),
-            (false, false)
-        );
-        // Full native bar: accepted requires planted-red NATIVE equivalence.
-        assert_eq!(
-            native_transition_decision(true, false, true, true, true),
-            (true, false)
-        );
-        assert_eq!(
-            native_transition_decision(true, false, true, true, false),
-            (false, false)
-        );
-        assert_eq!(
-            native_transition_population_counts(3, true, false),
-            (3, 0, 0, 0)
-        );
-        assert_eq!(
-            native_transition_population_counts(3, false, true),
-            (0, 3, 3, 3)
-        );
-        assert_eq!(
-            native_transition_population_counts(3, false, false),
-            (0, 0, 3, 0)
-        );
+    fn native_bundle_refuses_without_fallback() {
+        // CI-0 cutover: there is no fallback arm to test — the discriminating
+        // evidence is that NOTHING except the full native bar reports ok.
+        // Outage: refused (this exact input was the counted-fallback arm before
+        // the cutover; it is the permanent regression control for the deleted arm).
+        assert!(!native_transition_accepted(false, true, false));
+        // Native green but oracle red: refused (equivalence evidence retained).
+        assert!(!native_transition_accepted(true, false, true));
+        // Native green, oracle green, planted RED not natively reproduced: refused.
+        assert!(!native_transition_accepted(true, true, false));
+        // Full native bar: accepted.
+        assert!(native_transition_accepted(true, true, true));
+        // Population counts: interpreted and fallback are structurally zero.
+        assert_eq!(native_transition_population_counts(3, true), (3, 0, 0, 0));
+        assert_eq!(native_transition_population_counts(3, false), (0, 0, 3, 0));
     }
 
     #[test]
