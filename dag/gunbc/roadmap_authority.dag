@@ -2027,6 +2027,21 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active(
+      identity: "rn_53RV3EM1TN4T1V3R34L1Z3PL0X9",
+      id: "roadmap-serve-emitted-realization",
+      owner: "fleet",
+      path: "docs/plans/gunbc-served-dashboard-design.md",
+      t: fields(
+        headline: "Serve the roadmap page from emitted native code, never the tree-walking interpreter",
+        boundary: "The interpreted accept loop is a declared scaffold whose dissolution trigger has now fired in production: a two-hour page wedge, one core pinned in memcpy, thirteen connections queued behind a single thread. The fix is ordered. Wire roadmap_serve_handle through the existing emit-on-demand path FIRST — interpreted concat copies its accumulator on every call, quadratic; emitted concat moves, linear: a complexity-class change, not tuning. Then memoize page bodies by content hash of their inputs so a request is lookup-and-write. Concurrency only after bodies are immutable artifacts. A request deadline returns a typed refusal instead of eating the process.",
+        displaced_cost: "The 2026-08-08 srv1 outage: gunbc serve wedged for two hours rendering the daily page, every route behind it dead, and it re-wedges on the next load of the same shape. The scaffold row already names emit-on-demand as its dissolution and the module carries zero references to it — declared and left standing. Separately, the belt reconcile has been dead as long as GcpProjectId has failed to resolve, burning about two minutes of CPU on every timer tick before exiting.",
+        first_slice: "Confirm the quadratic with the existing chars-walked instrumentation at a few page sizes (measured, not assumed — the two-hour spin is proven memcpy but not yet proven quadratic), fix the copied accumulator in both interpreter concat arms, wire roadmap_serve_handle through std.emit_on_demand, land the request deadline, and fix the GcpProjectId unresolved type so the belt lives again.",
+        red_control: "A planted pathological render returns a typed refusal within the deadline instead of pinning a core. Warm-vs-cold page bodies are byte-identical on unchanged inputs; a changed input invalidates the hash rather than serving stale. The chars-walked curve is linear in page size after the fix. The belt tick completes instead of dying on the unresolved type.",
+        out_of_scope: "Threading before the render is linear is refused — a thread pool over a superlinear render converts one wedged route into a machine-wide meltdown, so concurrency is last, where it is nearly free. No new serving architecture: the emit-on-demand and artifact-store carriers already exist; this row is wiring plus the interpreter cost-shape fix, which lands regardless because the interpreter still renders in dev and tests.",
+        handback: "The page served from emitted native code with content-hashed bodies, the interpreted scaffold dissolved, the deadline refusing pathological renders, the concat cost-shape defect fixed in the interpreter, and the belt reconcile alive."
+      )
+    ),
+    active(
       identity: "rn_DMMM7YQHT05Q01CD10Q7B6R1DK",
       id: "fleet-anti-entropy-hygiene",
       owner: "fleet",
@@ -2435,6 +2450,7 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "fleet-closed-loop-converge", parent: "fleet-state-frontier"),
     edge(child: "fleet-closed-loop-converge", parent: "shell-gate-migration"),
     edge(child: "fleet-dashboard-instance-membership", parent: "fleet-state-frontier"),
+    edge(child: "roadmap-serve-emitted-realization", parent: "fleet-state-frontier"),
     edge(child: "fleet-anti-entropy-hygiene", parent: "fleet-closed-loop-converge"),
     edge(child: "fleet-receipt-qualified-control", parent: "fleet-anti-entropy-hygiene"),
     edge(child: "fleet-main-revision-authority", parent: "fleet-closed-loop-converge"),
