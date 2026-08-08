@@ -66,14 +66,16 @@ data host_converge_slice1_knob_name: String = "per_slot_memory_max_bytes"
 
 data host_converge_slice1_tasks_knob_name: String = "per_slot_tasks_max"
 
-// TasksMax=512 (gunbc.runner_slot_allocation gunbc_runner_slot_desired) is the second
-// knob realized on this circuit: same typed systemctl show/set-property transports, same
-// fail-closed order (live read -> Drifted verdict -> pre-apply TasksCurrent guard ->
-// apply -> independent read-back -> reapply-noop), a pids-controller count instead of a
-// byte size. The guard refuses when live TasksCurrent exceeds the target cap — lowering
-// TasksMax below live usage would not kill tasks but would starve every new clone() with
-// EAGAIN, the compute_envelope_model failure class — typed and retryable, never applied
-// past it.
+// TasksMax (gunbc.runner_slot_allocation gunbc_runner_slot_desired, 16384 — the
+// 2026-06-21 incident REPAIR value; 512 was the diagnosed EAGAIN outage value, per the
+// operator ruling on PR 8045) is the second knob realized on this circuit: same typed
+// systemctl show/set-property transports, same fail-closed order (live read -> Drifted
+// verdict -> pre-apply TasksCurrent guard -> apply -> independent read-back ->
+// reapply-noop), a pids-controller count instead of a byte size. The guard refuses when
+// live TasksCurrent meets or exceeds the target cap (>=: equality means zero headroom,
+// so the next clone() would EAGAIN) — lowering TasksMax below live usage would not kill
+// tasks but would starve every new clone(), the compute_envelope_model failure class —
+// typed and retryable, never applied past it.
 type HostConvergeSlice1TasksMaxReceipt {
   host: HostIdentity
   unit: NonEmptyStr
@@ -506,6 +508,12 @@ type HostConvergeSlice1TasksGuardOutcome
   | HostConvergeSlice1TasksUnsafe { unit: NonEmptyStr, current_count: Int, target_count: Int }
   | HostConvergeSlice1TasksUnknown { unit: NonEmptyStr, reason: String }
 
+// Pure boundary predicate for the tasks guard, extracted so the >= boundary is
+// witnessable: equality means zero headroom (the next clone() EAGAINs), so it refuses.
+fn host_converge_slice1_tasks_headroom_refuses(current: Int, target: Int) -> Bool {
+  current >= target
+}
+
 fn host_converge_slice1_tasks_guard(unit: NonEmptyStr, target_value: String) -> HostConvergeSlice1TasksGuardOutcome {
   match parse_int(s: target_value) {
     Present { value: target } =>
@@ -513,7 +521,7 @@ fn host_converge_slice1_tasks_guard(unit: NonEmptyStr, target_value: String) -> 
         Present { value: raw } =>
           match parse_systemd_task_limit_show(raw: raw) {
             TaskLimitCount { count: current } =>
-              if current > target {
+              if host_converge_slice1_tasks_headroom_refuses(current: current, target: target) {
                 HostConvergeSlice1TasksUnsafe { unit: unit, current_count: current, target_count: target }
               } else {
                 HostConvergeSlice1TasksSafe { unit: unit, current_count: current }
@@ -574,6 +582,11 @@ fn host_converge_slice1_tasks_read_limit(unit: NonEmptyStr) -> SystemdCgroupTask
   }
 }
 
+// The reapply-noop second write intentionally bypasses the TasksCurrent guard: it is only
+// reachable after an independent read proved the effective TasksMax already equals the
+// desired value, and re-applying the effective value cannot lower headroom (TasksCurrent
+// is always <= the effective cap), so the EAGAIN-starvation class the guard exists for is
+// physically unreachable on this arm. Mirrors the memory circuit's reapply-noop.
 fn host_converge_slice1_prove_tasks_reapply_noop(unit: NonEmptyStr, knob: ConvergeKnob) -> String? {
   if !host_converge_slice1_apply_tasks_max(unit: unit, value: knob.desired) {
     Present {
