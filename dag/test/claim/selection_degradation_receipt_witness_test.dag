@@ -18,8 +18,7 @@ import gunbc.selection_degradation_receipt {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data sdr_witness_note: String = "Executing consumer for gunbc.selection_degradation_receipt (floor prep-tax P2). THE PAIR IS THE PROOF: a narrowed affected run must read SelectionApplied with honest counts; a whole-corpus affected run must read SelectionSuperset with an explicit fallback_reason — never quiet success. RED controls mislabel a superset as applied."
-
+// Executing consumer for gunbc.selection_degradation_receipt (floor prep-tax P2). THE PAIR IS THE PROOF: a narrowed affected run must read SelectionApplied with honest counts; a whole-corpus affected run must read SelectionSuperset with an explicit fallback_reason — never quiet success. RED controls mislabel a superset as applied.
 test fn sdr_applied_narrowed_receipt() -> Bool {
   let line = selection_degradation_receipt_line(
     selection_mode_tag: "applied" as NonEmptyStr,

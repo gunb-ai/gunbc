@@ -133,8 +133,8 @@ test fn witness_reconcile_covers_upsert_teardown_and_noop() -> Bool {
     observed: [at_desired, unconverged, departed],
   )
   plan.actions.length() == 2
-    && membership_upsert_count(plan: plan) == 1
-    && membership_teardown_count(plan: plan) == 1
+    && membership_write_count(plan: plan) == 1
+    && membership_removal_count(plan: plan) == 1
     && membership_refusal_count(plan: plan) == 0
 }
 

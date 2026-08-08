@@ -21,9 +21,9 @@ import gunbc.workflow_reconcile {
   workflow_reconcile_status_key,
 }
 import gunbc.membership_reconcile {
-  MemberUpsert,
-  MemberTeardown,
-  MemberTeardownRefused,
+  MemberAdded, MemberChanged,
+  MemberRemoved,
+  MemberRemovalRefused,
 }
 
 fn workflow_fact_fixture(
@@ -149,10 +149,11 @@ test fn missing_nested_child_derives_one_reconcile_action() -> Bool {
     && report.plan_refusal_count == 0
     && count(report.plan.actions) == 1
     && all(report.plan.actions, action => match action {
-      MemberUpsert { member } =>
+      MemberAdded { to: member } =>
         member.fact.key.obligation_id == "database"
-      MemberTeardown { member: _ } => false
-      MemberTeardownRefused { member: _, cause: _ } => false
+      MemberChanged { from: _, to: _ } => false
+      MemberRemoved { from: _ } => false
+      MemberRemovalRefused { from: _, cause: _ } => false
     })
     && match report.verdict {
       Unknown { missing } =>
@@ -184,15 +185,18 @@ test fn goal_revision_change_is_modified_not_delete_add() -> Bool {
     && report.plan_refusal_count == 0
     && count(report.plan.actions) == 1
     && all(report.plan.actions, action => match action {
-      MemberUpsert { member } =>
+      MemberChanged { from: prior, to: member } =>
         member.fact.key.obligation_id == "frontend"
           && member.fact.intent_revision == "frontend-v2"
-      MemberTeardown { member: _ } => false
-      MemberTeardownRefused { member: _, cause: _ } => false
+          && prior.fact.key.obligation_id == "frontend"
+          && prior.fact.intent_revision == "frontend-v1"
+      MemberAdded { to: _ } => false
+      MemberRemoved { from: _ } => false
+      MemberRemovalRefused { from: _, cause: _ } => false
     })
 }
 
-test fn reparented_child_is_one_modified_upsert() -> Bool {
+test fn reparented_child_is_one_member_changed() -> Bool {
   let observed = [
     workflow_decomposed_fixture(
       obligation_id: "deliver-feature",
@@ -227,15 +231,21 @@ test fn reparented_child_is_one_modified_upsert() -> Bool {
     && report.plan_refusal_count == 0
     && count(report.plan.actions) == 1
     && all(report.plan.actions, action => match action {
-      MemberUpsert { member } =>
+      MemberChanged { from: prior, to: member } =>
         member.fact.key.obligation_id == "database"
           && match member.parent {
             WorkflowFactChild { parent_key: parent } =>
               parent.obligation_id == "backend"
             WorkflowFactRoot => false
           }
-      MemberTeardown { member: _ } => false
-      MemberTeardownRefused { member: _, cause: _ } => false
+          && match prior.parent {
+            WorkflowFactChild { parent_key: parent } =>
+              parent.obligation_id == "frontend"
+            WorkflowFactRoot => false
+          }
+      MemberAdded { to: _ } => false
+      MemberRemoved { from: _ } => false
+      MemberRemovalRefused { from: _, cause: _ } => false
     })
 }
 
@@ -268,10 +278,11 @@ test fn silent_goal_shrink_refuses_evidence_deletion() -> Bool {
     && report.plan_refusal_count == 1
     && count(report.plan.actions) == 1
     && all(report.plan.actions, action => match action {
-      MemberTeardownRefused { member, cause: _ } =>
+      MemberRemovalRefused { from: member, cause: _ } =>
         member.fact.key.obligation_id == "backend"
-      MemberUpsert { member: _ } => false
-      MemberTeardown { member: _ } => false
+      MemberAdded { to: _ } => false
+      MemberChanged { from: _, to: _ } => false
+      MemberRemoved { from: _ } => false
     })
     && workflow_reconcile_status_key(report: report) == "refused"
 }
@@ -405,7 +416,7 @@ test fn workflow_reconcile_keystone_holds() -> Bool {
   recursive_reconcile_all_satisfied_is_noop()
     && missing_nested_child_derives_one_reconcile_action()
     && goal_revision_change_is_modified_not_delete_add()
-    && reparented_child_is_one_modified_upsert()
+    && reparented_child_is_one_member_changed()
     && silent_goal_shrink_refuses_evidence_deletion()
     && explicit_waiver_is_a_fact_not_deletion()
     && deep_failure_blocks_green_parent_and_siblings()

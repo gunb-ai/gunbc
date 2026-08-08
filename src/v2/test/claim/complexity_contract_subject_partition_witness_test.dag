@@ -22,8 +22,7 @@ import v2.lens.enforcement.contract {
 import v2.lens.common.construction_justification { WallAfterGrounding, RatchetForever }
 import std.disposition { SingleAuthority }
 
-data complexity_contract_subject_witness_note: String = "C0(c) discriminating controls: the legacy mixed lens_contract_complexity row partitions into derived-kernel (WallAfterGrounding / SingleAuthority) and optimality (RatchetForever). Positive: every legacy claim maps to exactly one subject roster and both contract rows carry the matching boundary class. RED: a derived claim classified under OptimalityResidue fails; a planted duplicate in a synthetic roster fails the no-duplicates check."
-
+// C0(c) discriminating controls: the legacy mixed lens_contract_complexity row partitions into derived-kernel (WallAfterGrounding / SingleAuthority) and optimality (RatchetForever). Positive: every legacy claim maps to exactly one subject roster and both contract rows carry the matching boundary class. RED: a derived claim classified under OptimalityResidue fails; a planted duplicate in a synthetic roster fails the no-duplicates check.
 test fn complexity_contract_subjects_partition_legacy_mixed_row_holds() -> Bool {
   complexity_contract_subjects_partition_legacy_mixed_row()
     && complexity_derived_kernel_boundary_is_wall_after_grounding()

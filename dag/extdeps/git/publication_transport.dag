@@ -31,8 +31,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: [git_commit_external_authority_anchor]
 }
 
-data git_publication_transport_note: String = "Modeled upstream publication write operations de-fused from git.Core. GitPushRequest and GitCommitRequest are the interface shapes; shell argv lives only in git.PublicationTransport service transport rows — no parallel free-fn argv surface. Slice 1 is model + shadow only — consumers route through tools.publication_publisher before binding a transport handler in the live slice."
-
+// Modeled upstream publication write operations de-fused from git.Core. GitPushRequest and GitCommitRequest are the interface shapes; shell argv lives only in git.PublicationTransport service transport rows — no parallel free-fn argv surface. Slice 1 is model + shadow only — consumers route through tools.publication_publisher before binding a transport handler in the live slice.
 type GitRefUpdateSpec {
   local_ref: GitRef
   remote_ref: GitRef
@@ -48,8 +47,7 @@ type GitCommitRequest {
   allow_empty: Bool
 }
 
-data git_commit_allow_empty_dispatch_note: String = "GitCommitRequest.allow_empty selects RecordEmptyCommit vs RecordCommit at transport bind — two operations, because shell argv templates cannot branch on Bool."
-
+// GitCommitRequest.allow_empty selects RecordEmptyCommit vs RecordCommit at transport bind — two operations, because shell argv templates cannot branch on Bool.
 service git.PublicationTransport {
   operation PushRefUpdate {
     input {

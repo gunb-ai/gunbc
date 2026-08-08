@@ -63,8 +63,7 @@ import v2.std.node {
 import v2.std.node_query { node_positional_child_targets }
 import v2.std.witness { Holds, Violates, Witness }
 
-data bash_command_fold_serialize_layer_note: String = "Emit realization for bash_command_fold grammar rows lives in workflow (serialize_target ∘ translate over pre-built TargetModel rows). Grammar productions and target-model witnesses stay in v2.extdeps.languages.bash_command_fold per layer DAG (extdeps must not import compiler)."
-
+// Emit realization for bash_command_fold grammar rows lives in workflow (serialize_target ∘ translate over pre-built TargetModel rows). Grammar productions and target-model witnesses stay in v2.extdeps.languages.bash_command_fold per layer DAG (extdeps must not import compiler).
 fn bash_fold_serialize_emit_from_node(emitted: Node, target: TargetModel) -> Outcome<String> {
   match target_serialize_source_from_model(target: target, emitted: emitted) {
     Accepted { value: source, diagnostics: d } =>

@@ -1,12 +1,22 @@
 module std.cache_identity
 
 import std.types { NonEmptyStr }
-import std.content_hash { ContentHash }
+import std.content_hash { ContentHash, content_hash_of_value }
 
 type CacheInterfaceId = NonEmptyStr where brand("CacheInterfaceId")
 type ArtifactKindId = NonEmptyStr where brand("ArtifactKindId")
 
-type ExecutionReceiptDigest = ContentHash where brand("ExecutionReceiptDigest")
+type ExecutionReceiptDigest {
+  digest: ContentHash
+}
+
+fn execution_receipt_digest_from_content_hash(hash: ContentHash) -> ExecutionReceiptDigest {
+  ExecutionReceiptDigest { digest: hash }
+}
+
+fn execution_receipt_digest_of_value(value: NonEmptyStr) -> ExecutionReceiptDigest {
+  execution_receipt_digest_from_content_hash(hash: content_hash_of_value(value: value))
+}
 
 data resolved_graph_artifact_kind: ArtifactKindId = "resolved_graph"
 

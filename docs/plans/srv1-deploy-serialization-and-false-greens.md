@@ -1,6 +1,6 @@
 # srv1 deploy — the concurrency race, the false greens, and the misattributed refusal
 
-Status: DIAGNOSIS, no fix landed (2026-07-29, session sleek-lynx-322). Origin: operator asked to root-cause a `deploy_dashboard_srv1` failure reporting `ServedSurfaceStale`, then directed that the **false greens and the misattributed errors matter as much as the flake**.
+Status: PHASE A LANDED, ACTIVATION UNVERIFIED, ORIGINAL DEFECT OPEN (see [Status — 2026-08-07](#status--2026-08-07) below). Diagnosis dated 2026-07-29, session sleek-lynx-322. Origin: operator asked to root-cause a `deploy_dashboard_srv1` failure reporting `ServedSurfaceStale`, then directed that the **false greens and the misattributed errors matter as much as the flake**.
 
 **Epistemic status, stated up front** — an earlier revision of this line claimed "nothing here is inferred from the shape of the code alone", and that was false of its own contents (review 44766 caught it). Three tiers are used deliberately and marked where they appear:
 
@@ -273,3 +273,119 @@ d6ec32b98f success 23:12:52 -> 23:16:27
 ```
 
 25 deploy jobs; 5 overlap events involving 11 of them; 3 refusals, every one inside an overlap window, and no non-overlapping deploy failed. The other 8 overlapping jobs are the **identity-unproven greens** of §3.2 — successes whose own source closure and binary were never established as live, which is not the same claim as 8 wrong-tree deployments.
+
+---
+
+## Status — 2026-08-07
+
+### Delivered
+
+- **#7909 / Phase A merged as `d409b75f7fcf1aeb8c3a52744734945c35b7ae46`:**
+  - `gunbc serve` binds one release revision at process launch, validated (40 lowercase hex) before the listener binds;
+  - `/healthz` publishes `revision` and `surface_bundle_identity` as separate members, because they fail independently and their remedies differ;
+  - apply admits the candidate checkout before any host mutation — `CandidateCheckoutClean | CandidateCheckoutDirty { tracked_changes, staged_changes, untracked_deployed_paths, ignored_deployed_paths } | CandidateCheckoutUnobservable`, and construction proceeds only from `Clean`;
+  - readiness compares the running process against the *admitted candidate*, not against a freshly re-rendered expectation.
+
+  The ignored-path axis was added in review and is load-bearing: `git status --porcelain=v1 -z --untracked-files=all` does **not** report ignored files, while the source sync excludes only `target` and `.git`. Ignored paths outside those two (this repo ignores `.env`, `/.gunbc/`, `.claude/`, `/target-codex/`, `/.cargo-home/`, and `src/v2/test/claim/manual/sg2_scratch_probe.dag` — a `.dag` inside a source root) were copied by rsync while the admission called the tree clean, producing a self-consistent false identity invisible to every downstream comparison. Observed through `git ls-files --others --ignored --exclude-standard -z` rather than `--ignored=matching`, because the latter reports a matching directory as one folded entry (`!! ign/`) and never names the file inside it.
+
+- **#7990 merged as `36dbd71a31d8a139a2f51a2bcde3320458087015`:** removed the standing `ensure_is_converged` declaration homonym. This is namespace hygiene, **not** part of deploy correctness.
+
+### Operational activation still unproven
+
+Phase A is in main but is **not** yet established as live on srv1. Activation is complete only when:
+
+1. every deploy job created from a commit older than `d409b75f7fc` has finished or been cancelled;
+2. a main-push deploy at `d409b75f7fc` or a descendant succeeds;
+3. the public routed `/healthz` reports that deploy job's exact revision;
+4. its `surface_bundle_identity` and served artifact projection match the same candidate;
+5. no older queued deployment subsequently removes the identity channel.
+
+Until this receipt exists, `ReleaseRevisionAbsent` remains the honest observation of the live process.
+
+**Measured 2026-08-08, and it changes the shape of this gate: the deploy path is inert, not backed up.** Across the last **40 main-push runs, `deploy_dashboard_srv1` was `skipped` 38 times and ran 0 times** — no successes and no failures in the sample. The skipped job records `0` steps with `started_at == completed_at`, which is the signature of a job-level `if:` evaluating false rather than of a queued or cancelled job.
+
+That is not explained by the two conditions one would reach for first, both checked:
+
+- **`ci` failing is not the cause.** Runs `4d8234db3ba` and `c3b7d4b5162` are `event=push`, `head_branch=main`, `ci: success` — and deploy is still `skipped`.
+- **The event and ref are not the cause.** The GitHub API reports `event=push`, `head_branch=main` for those runs, and the job condition at each of `4d8234db3ba`, `6d077293a78`, and `d409b75f7fc` is byte-identically `if: github.ref == 'refs/heads/main' && github.event_name == 'push'`, which is true for them on its face.
+
+So the activation gate is **not** "wait for the pre-Phase-A queue to drain". The queue is not the obstacle; the deploy job is not executing at all, and has not been for at least 40 main pushes. **The cause is not established here and must not be guessed** — a wrong root cause is exactly what this document was written to stop. What is established is the observation and the two eliminations above.
+
+Consequence for Phase A: it cannot activate by waiting. Until `deploy_dashboard_srv1` executes, srv1 keeps serving a pre-Phase-A process, the identity channel is absent from the routed `/healthz`, and Phase B has no observable baseline to recut against. Diagnosing why this job is skipped is therefore the **first** Phase B prerequisite, ahead of any code work. Note the workflow shape that makes this non-automatic: `deploy_dashboard_srv1` declares `needs: [ci]` and `if: github.ref == 'refs/heads/main' && github.event_name == 'push'`, so a failing `ci` on main skips the deploy, and a `workflow_dispatch` run **cannot** activate Phase A at all.
+
+The receipt to append when it arrives:
+
+```text
+workflow run id
+deploy job id
+deploy head SHA
+deployment completion time
+public healthz revision
+public surface_bundle_identity
+expected surface_bundle_identity
+older queued/running deployment count after completion
+```
+
+The last field is not decoration: one successful identity-capable deploy is not durable activation while an older pre-Phase-A job remains eligible to run later and reinstall the old unit.
+
+### Original defect remains open
+
+Phase A makes deployed identity **observable**. It does not serialize deployment, retain every candidate, prevent rollback, or establish eventual tip convergence. Still unresolved:
+
+- pending GitHub deployment work can still be dropped;
+- deployment arrival order can differ from commit ancestry;
+- the host has no target-scoped lease shared by every mutator (a runner label or concurrency group is mitigation only — neither excludes the operator apply path);
+- the actuator has no production monotonic ancestry decision;
+- the original diagnostic-cause substitution (§3.3) remains a separate follow-up unless independently closed elsewhere.
+
+### Phase B — deferred monotonic reconciliation
+
+Start from then-current main **after** the Phase A activation receipt. Do **not** continue #7802 as a merge candidate; it is closed unmerged as a quarry.
+
+Quarry #7802 at exact head `b96cff886b1a70119070d7256366bb4745877ab4` for:
+
+- `dag/extdeps/linux/flock.dag` (118 lines);
+- `gunbc.live_deploy.lease` (600 lines);
+- `gunbc.live_deploy.coordination` (322 lines);
+- the locus / extent / participant / exit-domain witness matrix (most of `ci_deploy_witness_test.dag`, 918 lines);
+- the queue-max workflow projection;
+- the capability-gated cutover ordering.
+
+Dissolve rather than transplant:
+
+- receipt-authoritative active-revision observation;
+- `ObservedDeployedRevision`;
+- the standalone `live_deploy/revision.dag` decision vocabulary where it duplicates Phase A;
+- `RecordCandidateRevision` as a prerequisite for routing;
+- the `ActiveRevisionUngrounded` stopped-line architecture.
+
+Required production path:
+
+```text
+lease target
+→ observe admitted candidate
+→ observe routed process identity
+→ compare routed revision × candidate by Git ancestry
+→ stale/equal: counted zero-mutation no-op
+→ unrelated/unverifiable: refuse before mutation
+→ descendant: prepare and verify idle process
+→ flip route
+→ re-observe routed process identity and surface
+→ retire former active process
+```
+
+A filesystem receipt may remain as audit or recovery evidence. It is **not** the authority for what the public route serves.
+
+### Phase B acceptance gates
+
+- real `free / contended / free` lease probe as `ghrunner` on srv1;
+- real ancestry probes against the runner's object store;
+- active C plus older candidate B performs zero host mutations;
+- equal candidate is idempotent;
+- unrelated or unreadable ancestry refuses before mutation;
+- candidate revision and surface verify on the idle slot;
+- routed revision and surface verify again after the flip;
+- former active process retires only after routed verification;
+- first public cutover executes from merged main, never from an unmerged PR head.
+
+**Resume trigger:** the routed srv1 process reports an exact merged-main revision through the Phase A health channel, and the pre-Phase-A deployment queue has drained.

@@ -111,9 +111,9 @@ fn swap_cap_verdict_gate_accepts(
   }
 }
 
-data host_swap_backing_observation_frontier_note: String = "The live producer, and it returns none for every host on purpose. There is no /proc/swaps reader and no free(1) transport in the tree — extdeps.tools.free carries the cited SHAPE and has zero live producers today — so the honest observation for all four hosts is absence, and the derived verdict for all four is UnknownRefused. Writing a fixture here and reading it back would be the specification-without-execution trap in its purest form (DESIGN §5): the matrix would go green against numbers this module itself authored. The count of unobserved hosts is exported instead, so the deficit is a NUMBER that must change when a producer lands, never a silence. Realization is blocked on one named thing and it is not swap-specific: the argv materializer binds a hardcoded five-parameter vocabulary (path, service, operation, package, bin, args, unit), so fallocate/mkswap/swapon/fstab and a /proc/swaps read cannot be expressed as typed host effects until that binding is generic. That materializer has no .dag declaration to bind a scaffold to — it is a v1 seed builtin, which is part of why it is the blocker — so the scaffold binds the transport type it materializes into. Declaring those operations before then would add rows to the shell-to-dag census that no consumer can reach, which is the parallel-representation debt the census exists to prevent."
+data host_swap_backing_observation_frontier_note: String = "The live producer returns none for every host on purpose — there is no /proc/swaps reader and no free(1) transport in the tree — so the honest observation for all four hosts is absence, and the derived verdict for all four is UnknownRefused. host_swap_backing_observed_producer is an explicit scaffold no-op (not a transport fold that discards success); realization binds host_swap_backing_observed_producer_scaffold until argv materialization can express swap ops. The count of unobserved hosts is exported so the deficit is a NUMBER that must change when a producer lands."
 
-data host_swap_backing_realization_scaffold: Disposition = Scaffold {
+data host_swap_backing_observed_producer_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
     module_path: "gunbc.host_effect",
@@ -122,8 +122,12 @@ data host_swap_backing_realization_scaffold: Disposition = Scaffold {
   }
 }
 
-fn host_swap_backing_observation(host: HostIdentity) -> SwapStats? {
+fn host_swap_backing_observed_producer(host: HostIdentity) -> SwapStats? {
   none
+}
+
+fn host_swap_backing_observation(host: HostIdentity) -> SwapStats? {
+  host_swap_backing_observed_producer(host: host)
 }
 
 data host_swap_backing_probe_independence_note: String = "The host verdict is routed through the read-back independence criterion rather than trusting the observation directly, and it is worth being precise about why, because /proc/swaps IS inert and the routing is therefore a no-op TODAY. The routing is what makes the classification load-bearing instead of decorative: the probe row travels with the verdict, so a future producer that swapped the transport for an ensure-shaped one — `swapon --show` after an activation attempt, an agent that mounts what it fails to find — would have to change proc_swaps_read_probe's classification to keep the same green, and changing it is a visible edit to a cited row rather than a silent change of meaning inside a transport. This is the same reason the swap CAP is qualified by its backing: a value is evidence only together with the conditions under which it was obtained."

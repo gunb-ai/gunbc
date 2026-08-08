@@ -38,8 +38,7 @@ fn witness_red_control_generator_state_inference_rejected() -> Bool {
     && diagnosis_gate_accepts(d: authority, observed: srv4_lan_interface)
 }
 
-data witness_disabled_is_normal_note: String = "Installer-disabled cloud-init is stock Ubuntu, so it must be representable WITHOUT implying anything is wrong. The marker's own text is the citation. The second half is the fact the outage needed and nobody had: a disabled generator freezes its output rather than voiding it, so the netplan file is hand-authoritative from that point — useful before editing it, and irrelevant to why a link is down."
-
+// Installer-disabled cloud-init is stock Ubuntu, so it must be representable WITHOUT implying anything is wrong. The marker's own text is the citation. The second half is the fact the outage needed and nobody had: a disabled generator freezes its output rather than voiding it, so the netplan file is hand-authoritative from that point — useful before editing it, and irrelevant to why a link is down.
 fn witness_installer_disable_is_normal_and_freezes_not_voids() -> Bool {
   cloud_init_is_disabled(d: srv4_cloud_init_disposition)
     && netplan_file_is_applied(f: srv4_netplan_config)
@@ -53,8 +52,7 @@ fn witness_installer_disable_is_normal_and_freezes_not_voids() -> Bool {
     }
 }
 
-data witness_unused_port_note: String = "The two down-looking shapes must not be confused, because they mean opposite things about whether the model did its job. srv4's unused sibling port is administratively down and unconfigured — netplan never mentioned it — which is a CONFIGURATION statement, while the cabled port is configured with no carrier, which is a PHYSICAL statement. Reading the unused ports first is exactly the mistake that produced the wrong causal story during the outage, so the distinction is pinned here."
-
+// The two down-looking shapes must not be confused, because they mean opposite things about whether the model did its job. srv4's unused sibling port is administratively down and unconfigured — netplan never mentioned it — which is a CONFIGURATION statement, while the cabled port is configured with no carrier, which is a PHYSICAL statement. Reading the unused ports first is exactly the mistake that produced the wrong causal story during the outage, so the distinction is pinned here.
 fn witness_unconfigured_port_blames_config_not_physical() -> Bool {
   let d = diagnose_host_network(
     config: Present { value: srv4_netplan_config },
@@ -81,8 +79,7 @@ fn witness_healthy_host_diagnoses_healthy() -> Bool {
     && diagnosis_is_reboot_stable(config: Present { value: srv4_netplan_config }, observed: healthy)
 }
 
-data witness_unobserved_refuses_note: String = "A fleet-level reader that cannot reach the host must refuse rather than pick either decisive answer. Carrier is only knowable from the host, so an unobserved link is neither a configuration verdict nor a physical one — collapsing it into either would let an unreachable host be reported as a definite diagnosis, which is the absorbing fallback this lane keeps refusing."
-
+// A fleet-level reader that cannot reach the host must refuse rather than pick either decisive answer. Carrier is only knowable from the host, so an unobserved link is neither a configuration verdict nor a physical one — collapsing it into either would let an unreachable host be reported as a definite diagnosis, which is the absorbing fallback this lane keeps refusing.
 fn witness_unobserved_carrier_refuses_both_blames() -> Bool {
   let unobserved = InterfaceObservation {
     name: "enP3p3s0f1",
@@ -99,8 +96,7 @@ fn witness_unobserved_carrier_refuses_both_blames() -> Bool {
     && !diagnosis_is_reboot_stable(config: Present { value: srv4_netplan_config }, observed: unobserved)
 }
 
-data witness_persistence_bar_note: String = "The dry proof of the subsumption bar: a host whose configuration is present and applied diagnoses identically across a restart, because no input to the fold is runtime state. That is the property 'the network survives a power cycle' reduces to at the model layer, and it is dry-provable here precisely because the applier reads the file at boot rather than inheriting anything from the previous run. A host with NO configuration must fail the same bar — otherwise the bar would pass vacuously on the very case it exists to catch."
-
+// The dry proof of the subsumption bar: a host whose configuration is present and applied diagnoses identically across a restart, because no input to the fold is runtime state. That is the property 'the network survives a power cycle' reduces to at the model layer, and it is dry-provable here precisely because the applier reads the file at boot rather than inheriting anything from the previous run. A host with NO configuration must fail the same bar — otherwise the bar would pass vacuously on the very case it exists to catch.
 fn witness_persistence_bar_discriminates() -> Bool {
   let healthy = InterfaceObservation {
     name: "enP3p3s0f1",

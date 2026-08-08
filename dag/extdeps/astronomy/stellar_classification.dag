@@ -44,8 +44,7 @@ data m_class: SpectralClass = SpectralClass { code: "M", temperature: BoundedRan
 
 data harvard_main_sequence_classes: List<SpectralClass> = [o_class, b_class, a_class, f_class, g_class, k_class, m_class]
 
-data sun_spectral_type_note: String = "The Sun is a G2V main-sequence star (source, lead section); its class row here is g_class."
-
+// The Sun is a G2V main-sequence star (source, lead section); its class row here is g_class.
 fn temperature_label(r: TemperatureRange) -> String {
   match r {
     BoundedRange { min_k, max_k } => join([to_string(min_k), "–", to_string(max_k), " K"], "")

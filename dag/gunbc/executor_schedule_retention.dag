@@ -4,8 +4,7 @@ data schedule_retention_policy_note: String = "The v1 claim executor holds the W
 
 data schedule_retention_tunable_count: Int = 0
 
-data schedule_retention_tunable_count_note: String = "Zero by construction: the retention rule is the schedule's remaining demand, full stop - no threshold, no recency, no confidence dial. Mirrored by SCHEDULE_RETENTION_TUNABLE_COUNT in cli_run.rs; a nonzero here (a smuggled heuristic - S5's confidence-threshold tell) must move BOTH surfaces and face review."
-
+// Zero by construction: the retention rule is the schedule's remaining demand, full stop - no threshold, no recency, no confidence dial. Mirrored by SCHEDULE_RETENTION_TUNABLE_COUNT in cli_run.rs; a nonzero here (a smuggled heuristic - S5's confidence-threshold tell) must move BOTH surfaces and face review.
 data schedule_retention_grain_is_per_module: Bool = true
 
 data schedule_retention_heads_stay_resident: Bool = true
@@ -14,16 +13,14 @@ data schedule_retention_heads_note: String = "Heads (the whole-pool parse snapsh
 
 data schedule_retention_retain_on_unknown: Bool = true
 
-data schedule_retention_retain_on_unknown_note: String = "When reachability CANNOT be computed for a cached module (a provenance gap), the safe arm is RETAIN - correctness-fail-closed but memory-fail-open - so it is a typed, per-module, COUNTED RetentionUnknown row, never a silent retain-everything (that absorbing fallback is a T-as-ignorance widen whose frequency the corpus would never see, S5)."
-
+// When reachability CANNOT be computed for a cached module (a provenance gap), the safe arm is RETAIN - correctness-fail-closed but memory-fail-open - so it is a typed, per-module, COUNTED RetentionUnknown row, never a silent retain-everything (that absorbing fallback is a T-as-ignorance widen whose frequency the corpus would never see, S5).
 data schedule_retention_release_and_eviction_counted_apart: Bool = true
 
 data schedule_retention_release_vs_eviction_note: String = "A module is RELEASED when its retention refcount reaches zero; it is EVICTED only when that release actually dropped recorded cache state. The two are different facts and are counted apart (schedule_releases vs schedule_evictions, released_modules vs evicted_modules). They diverge on every run whose arming reaches modules the run never reconciles - the ordinary case, because arming spans the whole DISCOVERED roster while the affected set resolves a subset. Fusing them overstates the mechanism by that entire population: a live CI receipt read schedule_evictions=2200 against modules_refcounted=2200 and typed_cache_peak=883, i.e. it claimed to have evicted every module it had ever heard of, ~2.5x the modules that were ever cached, and a counter that equals the arm count by construction carries no information at all. Rust lockstep: SCHEDULE_RETENTION_RELEASE_AND_EVICTION_COUNTED_APART in cli_run.rs; discriminating RED: unreconciled_module_releases_without_evicting (an armed-but-never-reconciled module must release without evicting - re-fusing the counters reds it)."
 
 data schedule_retention_entry_line_asserts_execution: Bool = false
 
-data schedule_retention_entry_line_note: String = "The per-entry drain line witnesses ONE fact: the schedule moved PAST that entry, so its per-module state can no longer be read. It asserts nothing about selection or execution - index_arm_schedule_retention walks every DISCOVERED row before any predict-skip, so the line also appears for entries the affected set skipped without ever resolving them. It was formerly spelled entry='...', which two independent readers hours apart took as proof the entry had been scheduled and run, and that misreading cost hours of misdirected diagnosis on a real selection defect. It is now schedule_passed_entry='...' beside an ARMED-line legend, because a label that asserts a fact its mechanism cannot support is a defect of the same family as a wrong number (DESIGN section 5: a diagnostic must be typed and located, and locating it on the wrong subject is not locating it)."
-
+// The per-entry drain line witnesses ONE fact: the schedule moved PAST that entry, so its per-module state can no longer be read. It asserts nothing about selection or execution - index_arm_schedule_retention walks every DISCOVERED row before any predict-skip, so the line also appears for entries the affected set skipped without ever resolving them. It was formerly spelled entry='...', which two independent readers hours apart took as proof the entry had been scheduled and run, and that misreading cost hours of misdirected diagnosis on a real selection defect. It is now schedule_passed_entry='...' beside an ARMED-line legend, because a label that asserts a fact its mechanism cannot support is a defect of the same family as a wrong number (DESIGN section 5: a diagnostic must be typed and located, and locating it on the wrong subject is not locating it).
 data schedule_retention_underflow_refuses: Bool = true
 
 data schedule_retention_underflow_note: String = "A decrement past zero (a scheduled entry demands state the refcount said was fully consumed) is a schedule-derivation defect and REFUSES, typed and located - the mechanism never serves a wrong verdict against evicted state. Content-key recompute-on-miss is the correctness license; the refusal is the loudness that keeps a derivation bug from hiding."

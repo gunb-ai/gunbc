@@ -221,8 +221,7 @@ type SourceStorageIdentity {
   source_root: SourceRootRef
 }
 
-data source_storage_identity_note: String = "Storage realization identity for a manifest SourceRef row: path plus source_root only. Content hash is a separate observation layered on SourceRef. Closure population uniqueness is enforced at storage identity; two rows sharing storage but disagreeing on content_hash is a typed storage-hash conflict, not two valid refs."
-
+// Storage realization identity for a manifest SourceRef row: path plus source_root only. Content hash is a separate observation layered on SourceRef. Closure population uniqueness is enforced at storage identity; two rows sharing storage but disagreeing on content_hash is a typed storage-hash conflict, not two valid refs.
 type SourceRef {
   path: String
   source_root: SourceRootRef
@@ -441,8 +440,7 @@ fn source_ref_for_observed_storage_path(path: String) -> SourceRef {
   }
 }
 
-data source_ref_read_through_note: String = "Read-through for ingest-manifest SourceRef rows (ingest-manifest-source-ref-carrier-design.md stage 3): filesystem_read at consumption, content identity verified against the ref's ContentHash before parse. Hash mismatch refuses with both digests; missing/unreadable paths refuse as read failures rather than misclassified parse errors."
-
+// Read-through for ingest-manifest SourceRef rows (ingest-manifest-source-ref-carrier-design.md stage 3): filesystem_read at consumption, content identity verified against the ref's ContentHash before parse. Hash mismatch refuses with both digests; missing/unreadable paths refuse as read failures rather than misclassified parse errors.
 data source_ref_read_refused: Symbol = ^source_ref_read_refused
 
 data source_ref_content_hash_mismatch: Symbol = ^source_ref_content_hash_mismatch
@@ -663,8 +661,7 @@ type ModuleStorageProvenance
 
 data module_storage_host_parse_note: String = "Task 4 (module-identity-storage-binding-design.md Phase 1): the host producer build_module_path_index (src/v1/stage0/src/module_path_index) routes through v1_compiler_parse::parse — the same bootstrap parse path the in-graph oracle uses at the module-name grain — so host rows are ParsedFromSource, not a parallel substring scan. DeclarationScanned was deleted with this repoint: it existed only to record honestly that extract_module_path never parsed; keeping it after the repoint would be a second way to say the same thing (§3). Bootstrap host emission records ident_span byte ranges in span_index via span_index_record; full OccurrenceId mint parity with v2.compiler.parse's stamp pipeline is a named follow-on (dissolve-on: v1 bootstrap parse stamps NodeOccurrenceId the way parse_production_prepared does)."
 
-data module_storage_bootstrap_span_note: String = "Host manifest emission (discover_source_root_ingest --emit-module-binding-manifest) records the module declaration's ident_span as a FromSource Textual locus in span_index. The OccurrenceId is keyed by the span start offset within the file — deterministic and sufficient for binding-authority consumers that only need file⇄module, not full occurrence navigation. It is NOT the v2 parse stamp's minted occurrence graph; conflating the two would fabricate stamps the bootstrap parser never produced (§5)."
-
+// Host manifest emission (discover_source_root_ingest --emit-module-binding-manifest) records the module declaration's ident_span as a FromSource Textual locus in span_index. The OccurrenceId is keyed by the span start offset within the file — deterministic and sufficient for binding-authority consumers that only need file⇄module, not full occurrence navigation. It is NOT the v2 parse stamp's minted occurrence graph; conflating the two would fabricate stamps the bootstrap parser never produced (§5).
 type ModuleStorageBinding {
   module: QualifiedName
   provenance: ModuleStorageProvenance
@@ -933,8 +930,7 @@ fn module_storage_binding_from_read_with_model(
   }
 }
 
-data module_storage_binding_refusal_note: String = "§5 — a failure arm REFUSES, never widens. A read whose module name cannot be derived is a located refusal, NOT a dropped binding: the pre-Phase-1 derivation in v2.compiler.program_assembly kept the root and left the index unchanged on Rejected, so a module that failed name extraction became silently invisible to every downstream lookup (an absorbing fallback in drop form — the deficit's frequency zeroed by construction). Duplicate module within the index is likewise a typed refusal here: it is the modeled form of the host panic at src/v1/stage0/src/cli_run.rs module_path_collision_panic_message, so the live 1:1 binding is enforced by the model rather than incidentally by a Rust panic."
-
+// §5 — a failure arm REFUSES, never widens. A read whose module name cannot be derived is a located refusal, NOT a dropped binding: the pre-Phase-1 derivation in v2.compiler.program_assembly kept the root and left the index unchanged on Rejected, so a module that failed name extraction became silently invisible to every downstream lookup (an absorbing fallback in drop form — the deficit's frequency zeroed by construction). Duplicate module within the index is likewise a typed refusal here: it is the modeled form of the host panic at src/v1/stage0/src/cli_run.rs module_path_collision_panic_message, so the live 1:1 binding is enforced by the model rather than incidentally by a Rust panic.
 fn module_storage_binding_module(binding: ModuleStorageBinding) -> QualifiedName {
   binding.module
 }

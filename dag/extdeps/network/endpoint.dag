@@ -35,8 +35,7 @@ fn render_network_host(host: NetworkHost) -> NonEmptyStr? {
   }
 }
 
-data socket_address_note: String = "A transport endpoint: a host reference paired with a port. Reuses std.types.Port (the Int-where-range(1,65535) authority) verbatim — the port bound is not re-declared here. A SocketAddress is what a connect() targets; a bare NetworkHost (no port) is the ssh-config-style reference where the port is defaulted by the protocol."
-
+// A transport endpoint: a host reference paired with a port. Reuses std.types.Port (the Int-where-range(1,65535) authority) verbatim — the port bound is not re-declared here. A SocketAddress is what a connect() targets; a bare NetworkHost (no port) is the ssh-config-style reference where the port is defaulted by the protocol.
 type SocketAddress {
   host: NetworkHost
   port: Port

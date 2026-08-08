@@ -104,8 +104,7 @@ fn grounded_principal_privileged_commands(p: GroundedPosixPrincipal) -> List<Pri
   map(p.sudo_grants, g => posix_sudo_grant_to_privileged(g: g))
 }
 
-data deploy_job_principal_unresolved_refusal_note: String = "fleet_deploy_job_principal Absent is a typed refusal — never silently map to FleetAccountCiRunner and never fabricate a GroundedPosixPrincipal (no uid=0/gid=0 root-in-disguise). live_deploy/emit threads ci_deploy_srv1_access_or_refusal: Absent → deploy_access_job_principal_refused_emit_poison (un-emittable shell); Present → normal pipeline. srv1 closed roster resolves via witness_srv1_job_principal_resolves_from_runner."
-
+// fleet_deploy_job_principal Absent is a typed refusal — never silently map to FleetAccountCiRunner and never fabricate a GroundedPosixPrincipal (no uid=0/gid=0 root-in-disguise). live_deploy/emit threads ci_deploy_srv1_access_or_refusal: Absent → deploy_access_job_principal_refused_emit_poison (un-emittable shell); Present → normal pipeline. srv1 closed roster resolves via witness_srv1_job_principal_resolves_from_runner.
 data deploy_job_principal_unresolved_emit_poison_prefix: String = "__GUNBC_DEPLOY_ACCESS_REFUSED__ job_user not in fleet roster — deploy shell is un-emittable"
 
 fn deploy_access_job_principal_refused_emit_poison(refusal: DeployAccessJobPrincipalRefusal) -> String {
@@ -148,8 +147,7 @@ fn ci_deploy_srv1_access_or_refusal() -> DeployAccessOrRefusal {
   )
 }
 
-data ci_deploy_srv1_access_roster_closure_note: String = "srv1 CI deploy access is roster-closed: witness_srv1_job_principal_resolves_from_runner proves fleet_deploy_job_principal(srv1_ci_deploy_runner_principal) == fleet_posix_principal(FleetAccountCiRunner). Authority is the roster row — never Optional-erase into a fabricated principal."
-
+// srv1 CI deploy access is roster-closed: witness_srv1_job_principal_resolves_from_runner proves fleet_deploy_job_principal(srv1_ci_deploy_runner_principal) == fleet_posix_principal(FleetAccountCiRunner). Authority is the roster row — never Optional-erase into a fabricated principal.
 fn ci_deploy_srv1_local_access() -> DeployAccess {
   let principal = fleet_posix_principal(key: FleetAccountCiRunner)
   DeployAccess {

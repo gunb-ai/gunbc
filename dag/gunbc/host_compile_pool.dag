@@ -89,8 +89,7 @@ fn derive_compile_pool_readiness(
   }
 }
 
-data sizing_checked_last_note: String = "SIZING IS CHECKED LAST, AFTER THE SLICE IS CONFIRMED PRESENT AND CORRECTLY NAMED, and the order is load-bearing rather than stylistic. An unresolved size means the cited jobserver knobs could not be read; a missing slice means the host has no pool at all. Reporting the sizing failure first would send an operator to look at installer configuration on a host that has no slice to size, which is a located diagnostic pointing at the wrong location — the same defect toolchain_ensure_reconcile_located_note records from the build-cache verdict fold. The most structural fact refuses first."
-
+// SIZING IS CHECKED LAST, AFTER THE SLICE IS CONFIRMED PRESENT AND CORRECTLY NAMED, and the order is load-bearing rather than stylistic. An unresolved size means the cited jobserver knobs could not be read; a missing slice means the host has no pool at all. Reporting the sizing failure first would send an operator to look at installer configuration on a host that has no slice to size, which is a located diagnostic pointing at the wrong location — the same defect toolchain_ensure_reconcile_located_note records from the build-cache verdict fold. The most structural fact refuses first.
 fn compile_pool_ready_receipt(readiness: CompilePoolReadiness, intended_slice: NonEmptyStr, host: HostIdentity) -> HostCompilePoolReady {
   match readiness {
     CompilePoolReady { slice_unit: s, sized_bytes: _ } =>
