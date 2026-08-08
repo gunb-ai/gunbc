@@ -1,6 +1,7 @@
 module gunbc.census_closure_frontier
 
-import std.roster_frontier { FrontierRow, TriggerProse, concat_frontier_row_groups, frontier_row_decl }
+import std.roster_frontier { FrontierRow, concat_frontier_row_groups, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
 import std.decl_ref { decl_ref }
 import extdeps.cloud.hetzner { hetzner_money_rate_frontier_rows }
 import extdeps.dhcp.v4 { mac_address_anemic_brand_frontier_rows }
@@ -37,9 +38,7 @@ data census_closure_count_witness_frontier_rows: List<FrontierRow> = [
       decl_name: "census_closure_frontier_rows_count_is_twenty_one",
     ),
     reason: "Hand count beside structure is a conversion receipt (#7207 class-5); retires when roster assembly is registry-derived",
-    trigger: TriggerProse {
-      text: "census_closure_frontier_rows is registry-derived without a hand-count witness",
-    },
+    dissolution: unbound_dissolution(description: "census_closure_frontier_rows is registry-derived without a hand-count witness"),
   )
 ]
 
