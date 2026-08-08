@@ -219,8 +219,7 @@ fn body_lowering_match_first_arm_wires() -> Bool {
   }
 }
 
-data unnavigable_arm_budget_note: String = "Synthetic empty Conj arm capture has no navigable match_arm production spine — body_lower_wire_match_arm_capture must refuse with ^body_lowering_reason_match_arm_navigation_refused (structural termination; no fuel budget)."
-
+// Synthetic empty Conj arm capture has no navigable match_arm production spine — body_lower_wire_match_arm_capture must refuse with ^body_lowering_reason_match_arm_navigation_refused (structural termination; no fuel budget).
 fn body_lowering_match_unnavigable_arm_refuses() -> Bool {
   let unnavigable_arm = node_synthetic(
     kind: TypeNode { connective: Conj },

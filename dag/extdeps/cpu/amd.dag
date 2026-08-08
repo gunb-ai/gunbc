@@ -28,8 +28,7 @@ data amd_ryzen_9_7950x3d_authority: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data amd_ryzen_thread_count_citation_note: String = "cores and threads are cited from each model's AMD product page (authorities above). threads is stored as HardwareThreadCount — the comparable unit for hosted-runner vcpus in pricing extdeps."
-
+// cores and threads are cited from each model's AMD product page (authorities above). threads is stored as HardwareThreadCount — the comparable unit for hosted-runner vcpus in pricing extdeps.
 data amd_zen2_l1_cache_geometry: CpuL1CacheGeometry = CpuL1CacheGeometry {
   data_capacity_per_core: byte_size(32768),
   instruction_capacity_per_core: byte_size(32768),

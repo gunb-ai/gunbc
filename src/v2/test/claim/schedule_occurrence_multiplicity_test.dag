@@ -73,8 +73,7 @@ test fn direct_rust_door_group_root_is_scheduled_exactly_once() -> Bool {
   scheduled_occurrences(subject: multiplicity_subject_direct_rust_door) == 1
 }
 
-data multiplicity_control_note: String = "The planted controls exercise the counter's identity join without reaching the live schedule, so a red in the wall above is attributable to enrollment rather than to the counter. The exact duplicate is what makes it a control for duplicate ENROLLMENT: an earlier version planted two rows sharing one function name across DIFFERENT entries, which proved only name multiplicity and would count ZERO under the exact join this wall performs. The second conjunct asserts exactly that distinction, and the third exercises the Runnable-arm projection the live fold depends on."
-
+// The planted controls exercise the counter's identity join without reaching the live schedule, so a red in the wall above is attributable to enrollment rather than to the counter. The exact duplicate is what makes it a control for duplicate ENROLLMENT: an earlier version planted two rows sharing one function name across DIFFERENT entries, which proved only name multiplicity and would count ZERO under the exact join this wall performs. The second conjunct asserts exactly that distinction, and the third exercises the Runnable-arm projection the live fold depends on.
 test fn multiplicity_counter_discriminates_a_planted_duplicate() -> Bool {
   let exact_duplicate = [
     multiplicity_subject_direct_rust_door,

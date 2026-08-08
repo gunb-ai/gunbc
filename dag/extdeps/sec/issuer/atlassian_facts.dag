@@ -39,8 +39,7 @@ data atlassian_facts_provenance_note: String = "Every amount is a live pull from
 
 data atlassian_comparative_period_note: String = "The FY2022 rows are the comparative period presented in the FY2023 10-K (accession 0001650372-23-000040). Atlassian re-domiciled to the United States in 2022; before that it filed as a foreign private issuer, so the FY2023 10-K is the earliest annual-report authority on this CIK for the FY2022 period. Same shape as the GitLab comparatives: EDGAR labels every row with the FILING's fiscal-year focus, so the citation carries fiscal_year 2023 while the FiledDuration bounds the fact's own fiscal year."
 
-data atlassian_cost_element_substitution_note: String = "Atlassian SWITCHED cost-of-revenue elements mid-series: the FY2023 and FY2024 10-Ks tag CostOfRevenue, and the FY2025 10-K tags CostOfGoodsAndServicesSold. Each row below carries the element ITS OWN filing used -- the actually-filed tag is the authority per filing (DESIGN section 3), never normalized to one nickname for series convenience. This is the same element-substitution case as Rollins/Chemed/Microsoft, but observed WITHIN one issuer across time rather than across issuers, which is why a per-row element field (not a per-issuer one) is the right grain."
-
+// Atlassian SWITCHED cost-of-revenue elements mid-series: the FY2023 and FY2024 10-Ks tag CostOfRevenue, and the FY2025 10-K tags CostOfGoodsAndServicesSold. Each row below carries the element ITS OWN filing used -- the actually-filed tag is the authority per filing (DESIGN section 3), never normalized to one nickname for series convenience. This is the same element-substitution case as Rollins/Chemed/Microsoft, but observed WITHIN one issuer across time rather than across issuers, which is why a per-row element field (not a per-issuer one) is the right grain.
 data atlassian_fy2022_comparative_citation: FiledFactCitation = FiledFactCitation {
   accession: "0001650372-23-000040",
   fiscal_year: 2023,

@@ -186,8 +186,7 @@ test fn two_pull_requests_for_one_target_are_ambiguous_not_a_pick() -> Bool {
   }
 }
 
-data base_discriminates_note: String = "A pull request on the right branch against a DIFFERENT base is not this publication. Without the base in the key, such a pull request would bind — and it is a real shape, since a stacked or retargeted change carries the same head branch. Here it must fall through to the remote-ref path rather than be adopted."
-
+// A pull request on the right branch against a DIFFERENT base is not this publication. Without the base in the key, such a pull request would bind — and it is a real shape, since a stacked or retargeted change carries the same head branch. Here it must fall through to the remote-ref path rather than be adopted.
 test fn a_pull_request_against_another_base_does_not_bind() -> Bool {
   let outcome = adjudicate_with(
     pulls: PullRequestsRead {
@@ -209,8 +208,7 @@ test fn a_pull_request_against_another_base_does_not_bind() -> Bool {
   }
 }
 
-data remote_ref_must_be_exact_note: String = "THE HOLE THE PREVIOUS CUT LEFT. With no pull request to compare against, an earlier version established only that a ref with the right NAME existed — abandoning the exact-head thesis on the one path where nothing else would reveal the mismatch. A stale branch from an earlier attempt satisfied it. Both directions are asserted: at the expected head is its own arm, and diverged names both shas."
-
+// THE HOLE THE PREVIOUS CUT LEFT. With no pull request to compare against, an earlier version established only that a ref with the right NAME existed — abandoning the exact-head thesis on the one path where nothing else would reveal the mismatch. A stale branch from an earlier attempt satisfied it. Both directions are asserted: at the expected head is its own arm, and diverged names both shas.
 test fn a_remote_branch_at_the_expected_head_without_a_pull_request_is_its_own_arm() -> Bool {
   let outcome = adjudicate_with(
     pulls: PullRequestsRead { pulls: [] },
@@ -256,8 +254,7 @@ test fn a_stale_remote_branch_diverges_rather_than_counting_as_published() -> Bo
   }
 }
 
-data remote_ref_ambiguity_note: String = "The pull-request fold got 0/1/many in the first cut of that correction and the remote-ref fold beside it did not - it handled zero and then took the first of the rest, which is the same silent pick one screen below the note forbidding it. This is stated in BOTH orders on purpose: with the expected head first, the old code answered RemoteBranchAtExpectedHeadWithoutPullRequest, and with the stale ref first it answered RemoteBranchHeadDiverged, so a single-order claim would have been satisfied by list position rather than by a decision. Two orders over one observation make the answer order-independent, which is the property that was actually missing."
-
+// The pull-request fold got 0/1/many in the first cut of that correction and the remote-ref fold beside it did not - it handled zero and then took the first of the rest, which is the same silent pick one screen below the note forbidding it. This is stated in BOTH orders on purpose: with the expected head first, the old code answered RemoteBranchAtExpectedHeadWithoutPullRequest, and with the stale ref first it answered RemoteBranchHeadDiverged, so a single-order claim would have been satisfied by list position rather than by a decision. Two orders over one observation make the answer order-independent, which is the property that was actually missing.
 fn ambiguous_over_two_refs(outcome: PublicationOutcome) -> Bool {
   match outcome {
     RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched } =>
@@ -330,8 +327,7 @@ test fn an_unpushed_branch_reports_how_many_refs_it_read() -> Bool {
   }
 }
 
-data refusal_is_not_absence_note: String = "AN UNREADABLE OBSERVATION MUST NOT READ AS 'NOT PUBLISHED'. Both are negative, so a claim asserting only 'it did not conclude bound' passes against the collapse — and the collapse points the operator at the wrong action entirely: pushing a branch that may already be pushed, because the truth is that nothing was learned."
-
+// AN UNREADABLE OBSERVATION MUST NOT READ AS 'NOT PUBLISHED'. Both are negative, so a claim asserting only 'it did not conclude bound' passes against the collapse — and the collapse points the operator at the wrong action entirely: pushing a branch that may already be pushed, because the truth is that nothing was learned.
 test fn unreadable_pull_requests_refuse_rather_than_report_unpublished() -> Bool {
   match adjudicate_with(
     pulls: PullRequestsUnreadable {
@@ -374,8 +370,7 @@ test fn unreadable_remotes_with_no_pull_request_refuse_rather_than_report_unpubl
   }
 }
 
-data only_one_arm_offers_note: String = "Exactly one arm answers yes, and a remote ref at the expected head is deliberately NOT it: there is nothing to review, and the review lane's subject is a pull request. Asserting the true case alone would pass against a predicate that answered yes for everything, so every other arm is asserted false in the same claim."
-
+// Exactly one arm answers yes, and a remote ref at the expected head is deliberately NOT it: there is nothing to review, and the review lane's subject is a pull request. Asserting the true case alone would pass against a predicate that answered yes for everything, so every other arm is asserted false in the same claim.
 test fn only_a_bound_pull_request_offers_the_expected_head() -> Bool {
   let bound = adjudicate_with(pulls: one_pull(sha: fixture_expected, draft: false), remotes: remotes_deliberately_unreadable())
   let diverged = adjudicate_with(pulls: one_pull(sha: fixture_older, draft: false), remotes: remotes_deliberately_unreadable())
@@ -689,8 +684,7 @@ test fn an_ambiguous_binding_round_trips_its_pull_request_numbers() -> Bool {
   }
 }
 
-data repository_round_trips_note: String = "THE DECODER USED TO REBUILD THE REPOSITORY IT DID NOT STORE - full_name by concatenation, private as false, and default_branch from the subject's expected_base. For this repository the base IS the default branch, so the round trip compared equal and nothing looked wrong. This claim uses a subject whose base is NOT the default branch, which is the case that would have produced a repository nobody recorded and a false wrong-subject refusal in the one function whose job is to tell those apart."
-
+// THE DECODER USED TO REBUILD THE REPOSITORY IT DID NOT STORE - full_name by concatenation, private as false, and default_branch from the subject's expected_base. For this repository the base IS the default branch, so the round trip compared equal and nothing looked wrong. This claim uses a subject whose base is NOT the default branch, which is the case that would have produced a repository nobody recorded and a false wrong-subject refusal in the one function whose job is to tell those apart.
 test fn a_subject_against_a_non_default_base_still_round_trips_its_repository() -> Bool {
   let subject = PublicationSubject {
     node_id: "some-node",
@@ -949,8 +943,7 @@ test fn four_pull_request_read_failures_stay_four_distinct_causes() -> Bool {
     && count(filter(keys, k => k == "body")) == 1
 }
 
-data refusal_names_the_operation_not_the_url_note: String = "THE RENDERER NAMES github.Pulls.List THROUGH ITS OperationRef, following the discipline ls_remote_operation_ref_note derives for the sibling reader: a path-and-query spelling is ONE realization of an operation and changes when the invocation is derived, while the operation identity does not. So a refusal that quoted /repos/OWNER/REPO/pulls would carry a fact with a shorter shelf life than the failure it describes.\\n\\nEACH ARM MUST ALSO CARRY WHAT ITS OWN REMEDY NEEDS, which is why this asserts fields rather than just the operation label. A status refusal is actionable only with the status AND the body - the body is usually the only place the remote says why, and 401 alone does not distinguish a missing scope from a revoked token. A transport refusal has no status to carry, and asserting its absence is the point: a sentinel zero would be a plausible-looking value standing where the honest answer is that the question does not apply."
-
+// THE RENDERER NAMES github.Pulls.List THROUGH ITS OperationRef, following the discipline ls_remote_operation_ref_note derives for the sibling reader: a path-and-query spelling is ONE realization of an operation and changes when the invocation is derived, while the operation identity does not. So a refusal that quoted /repos/OWNER/REPO/pulls would carry a fact with a shorter shelf life than the failure it describes.\n\nEACH ARM MUST ALSO CARRY WHAT ITS OWN REMEDY NEEDS, which is why this asserts fields rather than just the operation label. A status refusal is actionable only with the status AND the body - the body is usually the only place the remote says why, and 401 alone does not distinguish a missing scope from a revoked token. A transport refusal has no status to carry, and asserting its absence is the point: a sentinel zero would be a plausible-looking value standing where the honest answer is that the question does not apply.
 test fn a_status_refusal_renders_operation_repository_status_and_body() -> Bool {
   let rendered = render_pull_request_read_failure(
     cause: PullRequestStatusRefused {

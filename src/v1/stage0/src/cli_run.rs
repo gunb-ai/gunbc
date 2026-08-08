@@ -45,10 +45,17 @@ use crate::v1_std_core::{
 };
 use serde::Serialize;
 
+pub(crate) mod floor_discovery_snapshot;
 pub(crate) mod materialization_provider_consumer;
 #[path = "phase_profile.rs"]
 mod phase_profile;
 pub(crate) mod test_module_hygiene_bridge;
+pub use floor_discovery_snapshot::{
+    append_discovery_trace_row, build_floor_discovery_request, coordinated_discovery_compute_count,
+    discover_floor_witness_roster_with_snapshot, floor_discovery_consumer_role_from_env,
+    request_identity_digest, verify_floor_discovery_terminal_for_coordinator,
+    FloorDiscoveryConsumerRole, FLOOR_DISCOVERY_CONSUMER_ENV,
+};
 #[doc(hidden)]
 pub use materialization_provider_consumer::{
     materialization_provider_ctx_build_count_for_test, provider_ctx_reentrancy_refusal_for_test,
@@ -2718,6 +2725,7 @@ fn extend_with_reference_closure_for_pool(
 /// skipped: a module path inside a string is data (a registry row, prose), not a
 /// reference, and following it over-pulls modules the corpus never resolves against.
 fn referenced_module_paths_in_text(content: &str, index: &ModuleSourceIndex) -> Vec<String> {
+    let content: &str = &annotation_erased_scan_text(content);
     let bytes = content.as_bytes();
     let is_ident_start = |c: u8| c.is_ascii_alphabetic() || c == b'_';
     let is_ident = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
@@ -5229,7 +5237,7 @@ fn workspace_relative_entry_path(path: &str) -> String {
 
 /// Normalize `source_roots` to the workspace-relative form `import_resolution_facts` /
 /// `module_declaration_facts` expect when invoked from `.dag` (`witness_layer_roots` style).
-fn pool_roots_for_module_graph_closure(source_roots: &[String]) -> Vec<String> {
+pub(crate) fn pool_roots_for_module_graph_closure(source_roots: &[String]) -> Vec<String> {
     source_roots
         .iter()
         .map(|r| {
@@ -5325,14 +5333,14 @@ pub fn import_closure_from_facts(
 /// corpus on every `resolve_transitively` call (Phase 1 perf receipt, DESIGN §2).
 #[derive(Clone)]
 pub struct ModuleGraphFactsLive {
-    edges: Vec<ImportResolutionFactRaw>,
-    nodes: Vec<ModuleDeclarationFactRaw>,
-    adjacency: HashMap<String, Vec<String>>,
+    pub(crate) edges: Vec<ImportResolutionFactRaw>,
+    pub(crate) nodes: Vec<ModuleDeclarationFactRaw>,
+    pub(crate) adjacency: HashMap<String, Vec<String>>,
     // Workspace-relative paths of `nodes`, precomputed once per facts build: the
     // membership question is asked per ENTRY on the resolve path (see
     // `resolve_transitively`), so deriving it per call would rebuild an O(corpus)
     // set per entry (bare-minimum-cost, DESIGN §6).
-    declared_paths: HashSet<String>,
+    pub(crate) declared_paths: HashSet<String>,
     // SELECTION-ONLY adjacency: `adjacency` above PLUS strict-tier (Qualified + UniqueBare)
     // reference-derived edges for import-less files.
     //
@@ -5345,23 +5353,23 @@ pub struct ModuleGraphFactsLive {
     // resolve — measured, not predicted (the precompute went from 82 keys to a hard failure).
     // Selection wants maximum precision; the loader wants a safe superset over a pool it can
     // actually resolve. Same facts build, two answers, no shared tier.
-    selection_adjacency: HashMap<String, Vec<String>>,
+    pub(crate) selection_adjacency: HashMap<String, Vec<String>>,
     // Import-less files the reference-edge producer could not answer for (unreadable / no module
     // line / parse failure). An entry in this set has an UNKNOWN dependency set, which is the one
     // state `entry_file_touched_via_import_closure` may refuse on. Every other edgeless entry has
     // a known-empty dependency set and a precise `{self}` closure.
-    reference_unaccounted: HashSet<String>,
+    pub(crate) reference_unaccounted: HashSet<String>,
     // Reverse of `build_import_adjacency`'s internal `module_to_path`: declared module name by
     // repo path. Built once here so `reference_only_direct_import_modules` (the typed-module
     // content-key's reference-derived import term) does not re-derive it per module.
-    path_to_module: HashMap<String, String>,
+    pub(crate) path_to_module: HashMap<String, String>,
     // Every in-scope `.dag` path the importer walk SAW on disk (whether or not it produced
     // facts), and every observed path whose content read refused. The producers skip an
     // unreadable file at scan time, so without these rows a vanished module is
     // indistinguishable from an absent one — the fail-open undercount consumers like the
     // inert-lens census must refuse on, never absorb (operator review 2026-07-28, PR #7384).
-    observed_paths: HashSet<String>,
-    read_refusals: Vec<(String, String)>,
+    pub(crate) observed_paths: HashSet<String>,
+    pub(crate) read_refusals: Vec<(String, String)>,
 }
 
 #[cfg(test)]
@@ -5808,7 +5816,9 @@ pub(crate) fn reset_module_graph_facts_cache_for_test() {
     reset_module_path_index_cache_for_test();
 }
 
-fn build_module_graph_facts_live_uncached(pool_roots: &[String]) -> ModuleGraphFactsLive {
+pub(crate) fn build_module_graph_facts_live_uncached(
+    pool_roots: &[String],
+) -> ModuleGraphFactsLive {
     #[cfg(test)]
     MODULE_GRAPH_FACTS_BUILD_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     const EXCLUDE: &[String] = &[];
@@ -5895,6 +5905,16 @@ pub fn build_module_graph_facts_live(pool_roots: &[String]) -> ModuleGraphFactsL
         cache.borrow_mut().insert(key, facts.clone());
         facts
     })
+}
+
+pub(crate) fn install_module_graph_facts_cache_entry(
+    pool_roots: &[String],
+    facts: ModuleGraphFactsLive,
+) {
+    let key = pool_roots_for_module_graph_closure(pool_roots).join("\u{1f}");
+    MODULE_GRAPH_FACTS_CACHE.with(|cache| {
+        cache.borrow_mut().insert(key, facts);
+    });
 }
 
 /// Host realization of `v2.lens.module_graph.import_closure_live`.
@@ -6777,7 +6797,59 @@ struct BareCandidates {
 /// `gunbc.plans.md_helpers.h2`), over-pulling those modules into 13 unrelated
 /// compiler-closure entries. String literals are skipped, matching the main
 /// scan.
+/// Blank every source-annotation (`//` to end of line) region, preserving byte
+/// offsets and line structure so a scanner's spans stay valid.
+///
+/// DESIGN §4c: semantic passes receive only the annotation-erased projection.
+/// The three raw-text scanners below (`referenced_module_paths_in_text`,
+/// `destructuring_bound_spans`, `bare_identifier_candidates`) already skip
+/// string literals; annotations were the remaining unerased region, so prose
+/// carried in an annotation was lexed as program text. Measured on the M1C
+/// prose migration: moving rationale out of a `data _note: String` — a region
+/// the string skip already erased — into the sanctioned `//` form made the
+/// English word `edge` in `v2.lens.identity_captured_navigation` a bare
+/// reference, which bound to `v2.test.manual.ownership_movable`'s `fn edge`
+/// and pulled that module (an off-path manual witness importing `src/v1`) into
+/// an unrelated `src/v2` entry's pool, where its import cannot resolve.
+/// Erasure is one authority, applied at each scan entry, rather than a
+/// per-scanner comment rule.
+fn annotation_erased_scan_text(content: &str) -> String {
+    let bytes = content.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if bytes[i] == b'"' {
+            out.push(bytes[i]);
+            i += 1;
+            while i < bytes.len() && bytes[i] != b'"' {
+                if bytes[i] == b'\\' && i + 1 < bytes.len() {
+                    out.push(bytes[i]);
+                    i += 1;
+                }
+                out.push(bytes[i]);
+                i += 1;
+            }
+            if i < bytes.len() {
+                out.push(bytes[i]);
+                i += 1;
+            }
+            continue;
+        }
+        if bytes[i] == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'/' {
+            while i < bytes.len() && bytes[i] != b'\n' {
+                out.push(b' ');
+                i += 1;
+            }
+            continue;
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8(out).unwrap_or_else(|_| content.to_string())
+}
+
 fn destructuring_bound_spans(content: &str) -> (BTreeSet<usize>, BTreeSet<usize>) {
+    let content: &str = &annotation_erased_scan_text(content);
     let bytes = content.as_bytes();
     let is_ident = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
     let matching_close = |open_at: usize, open: u8, close: u8| -> Option<usize> {
@@ -6849,6 +6921,7 @@ fn destructuring_bound_spans(content: &str) -> (BTreeSet<usize>, BTreeSet<usize>
 }
 
 fn bare_identifier_candidates(content: &str) -> BareCandidates {
+    let content: &str = &annotation_erased_scan_text(content);
     let bytes = content.as_bytes();
     let is_ident_start = |c: u8| c.is_ascii_alphabetic() || c == b'_';
     let is_ident = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
@@ -18585,7 +18658,9 @@ fn scan_test_decl_lines(content: &str) -> Vec<(String, i64)> {
     out
 }
 
-fn floor_filename_hygiene_refusal_via_producer(source_roots: &[String]) -> Result<(), String> {
+pub(crate) fn floor_filename_hygiene_refusal_via_producer(
+    source_roots: &[String],
+) -> Result<(), String> {
     let mut dag_paths: Vec<String> = Vec::new();
     for root in source_roots {
         let mut dag_files: Vec<PathBuf> = Vec::new();
@@ -18854,7 +18929,7 @@ fn parse_floor_discovery_producer_result(
     }
 }
 
-fn invoke_floor_discovery_producer(
+pub(crate) fn invoke_floor_discovery_producer(
     source_roots: &[String],
     scan_dirs: &[String],
     exclude_substrings: &[String],
@@ -18926,7 +19001,7 @@ fn invoke_floor_discovery_producer_over_corpus(
     parse_floor_discovery_producer_result(&ctx, &result)
 }
 
-fn apply_discovery_scope_dirs_filter(
+pub(crate) fn apply_discovery_scope_dirs_filter(
     mut rows: Vec<DiscoveryRow>,
     discovery_scope_dirs: &[String],
 ) -> Vec<DiscoveryRow> {
@@ -19520,7 +19595,7 @@ pub fn construction_authority_graph_unresolved(
     ))
 }
 
-fn unjustified_lens_modules(
+pub(crate) fn unjustified_lens_modules(
     module_to_path: &std::collections::HashMap<String, String>,
     justified: &std::collections::BTreeSet<String>,
 ) -> Vec<String> {
@@ -19559,7 +19634,9 @@ fn is_top_level_lens_module(module: &str) -> bool {
 /// an absorbing fail-open undercount, not an over-flag. Any read refusal recorded by
 /// the single facts authority stops the census, typed and located (paths named),
 /// never narrowed.
-fn refuse_on_module_graph_read_refusals(facts: &ModuleGraphFactsLive) -> Result<(), String> {
+pub(crate) fn refuse_on_module_graph_read_refusals(
+    facts: &ModuleGraphFactsLive,
+) -> Result<(), String> {
     if facts.read_refusals.is_empty() {
         return Ok(());
     }
@@ -19588,7 +19665,10 @@ fn refuse_on_module_graph_read_refusals(facts: &ModuleGraphFactsLive) -> Result<
 /// targets, and an undeclared name can never be a declared lens module, so the inert
 /// set is unchanged (proven by the legacy-oracle equivalence test:
 /// `facts_walk_matches_legacy_floor_lens_graph_on_live_corpus`).
-fn inert_lens_modules(rows: &[DiscoveryRow], facts: &ModuleGraphFactsLive) -> Vec<String> {
+pub(crate) fn inert_lens_modules(
+    rows: &[DiscoveryRow],
+    facts: &ModuleGraphFactsLive,
+) -> Vec<String> {
     // Seed reachability from ALL *_test.dag files the facts scan saw (declared modules
     // plus edge-bearing importers — a file with neither contributes no module and no
     // edges, so omitting it cannot change reachability), not just enrolled rows, so
@@ -19642,7 +19722,7 @@ fn inert_lens_modules(rows: &[DiscoveryRow], facts: &ModuleGraphFactsLive) -> Ve
 /// that cannot be read refuses, never counts as justified (the arm the deleted
 /// `build_floor_lens_import_graph` carried for the whole corpus, kept here scoped to
 /// the lens declarations — the only file reads left on this census path).
-fn lens_justification_census(
+pub(crate) fn lens_justification_census(
     facts: &ModuleGraphFactsLive,
 ) -> Result<
     (
@@ -21161,7 +21241,7 @@ fn discovery_rows_live_tree_count(rows: &[DiscoveryRow]) -> usize {
     rows.iter().filter(|r| r.reads_live_tree).count()
 }
 
-fn apply_effect_reach_derived_reads_live_tree(
+pub(crate) fn apply_effect_reach_derived_reads_live_tree(
     rows: &mut [DiscoveryRow],
     facts: &ModuleGraphFactsLive,
 ) {
@@ -29294,14 +29374,14 @@ pub fn fact_cardinality_decl_facts() -> Vec<FactCardinalityDeclFactRaw> {
     records
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ImportResolutionFactRaw {
     pub path: String,
     pub import_module: String,
     pub target_declared: bool,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ModuleDeclarationFactRaw {
     pub module: String,
     pub path: String,
@@ -41340,3 +41420,84 @@ mod selected_entry_closure_overlap_arithmetic {
 
 #[path = "census_exclude_derive.rs"]
 pub mod census_exclude_derive;
+
+#[cfg(test)]
+mod annotation_erased_scan_projection {
+    //! DESIGN §4c: a semantic pass reads the annotation-erased projection. These pin the
+    //! discriminating direction — prose inside an annotation must not become a reference,
+    //! while identical text outside one must — plus the offset law the span-carrying
+    //! scanner depends on.
+
+    use super::*;
+
+    #[test]
+    fn annotation_prose_is_not_scanned_as_a_reference() {
+        let src = "module m\n// the identity edge is a tag\nfn f() -> Bool { true }\n";
+        let c = bare_identifier_candidates(src);
+        assert!(
+            !c.names.contains("edge"),
+            "annotation prose leaked a reference"
+        );
+        assert!(!c.names.contains("identity"));
+    }
+
+    #[test]
+    fn the_same_word_outside_an_annotation_is_still_scanned() {
+        let src = "module m\nfn f() -> Bool { edge }\n";
+        let c = bare_identifier_candidates(src);
+        assert!(
+            c.names.contains("edge"),
+            "erasure must not blank real program text"
+        );
+    }
+
+    #[test]
+    fn erasure_preserves_byte_offsets_and_lines() {
+        let src = "module m\n// prose ünïcode here\nfn f() -> Bool { true }\n";
+        let erased = annotation_erased_scan_text(src);
+        assert_eq!(erased.len(), src.len(), "byte offsets must stay aligned");
+        assert_eq!(erased.lines().count(), src.lines().count());
+        assert!(!erased.contains("prose"));
+        assert!(erased.contains("fn f()"));
+    }
+
+    #[test]
+    fn a_double_slash_inside_a_string_literal_is_not_an_annotation() {
+        let src = "module m\ndata u: String = \"https://example.invalid/edge\"\nfn g() -> Bool { true }\n";
+        let erased = annotation_erased_scan_text(src);
+        assert!(
+            erased.contains("https://example.invalid/edge"),
+            "string content must survive erasure"
+        );
+    }
+
+    /// The second, independently discovered route into the same defect
+    /// (loyal-ram-550, found by writing a dotted module path in an annotation and
+    /// watching it become a real dependency edge in the source-loading fixpoint).
+    /// Different scanner, different token shape than the bare-identifier case
+    /// above, so it is its own discriminating input rather than a restatement.
+    #[test]
+    fn a_dotted_module_path_in_an_annotation_is_not_a_dependency_edge() {
+        let mut index: ModuleSourceIndex = HashMap::new();
+        index.insert(
+            "std.decl_ref".to_string(),
+            Rc::new(v1_compiler_compile::SourceFile {
+                path: "dag/std/decl_ref.dag".to_string(),
+                content: "module std.decl_ref\n".to_string(),
+            }),
+        );
+
+        let annotated = "module m\n// see std.decl_ref for the carrier\nfn f() -> Bool { true }\n";
+        assert!(
+            referenced_module_paths_in_text(annotated, &index).is_empty(),
+            "a module path named in an annotation must not become a dependency edge"
+        );
+
+        let referenced = "module m\nimport std.decl_ref { DeclarationRef }\n";
+        assert_eq!(
+            referenced_module_paths_in_text(referenced, &index),
+            vec!["std.decl_ref".to_string()],
+            "a real reference to the same module must still produce the edge"
+        );
+    }
+}

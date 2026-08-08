@@ -1,0 +1,59 @@
+module gunbc.session_auto_publish_ctrl_ingest
+
+import std.types { CommitSha, String }
+import v2.std.optional { Absent, Present }
+
+data ctrl_publication_ingest_note: String = "The sole authenticated bridge from ctrl publishSessionWorktree into gunbc.session_auto_publish. PublicationRequest is sole_constructor here — this module is the ONLY place that may construct one. A free mint_publication_request in the authority module would recreate the unsealed-door hole (TransportScript wall shape). Production ctrl and harness witnesses alike route through ingest_publication_request_from_ctrl after authenticate_ctrl_publication_ingest."
+
+type CtrlPublicationIngestAuthority sole_constructor {
+  authenticated_requester: String
+  dashboard_session_id: String
+}
+
+type PublicationRequest sole_constructor {
+  requester: String
+  expected_remote_head: CommitSha
+  produced_head: CommitSha
+}
+
+fn authenticate_ctrl_publication_ingest(
+  dashboard_session_id: String,
+  authenticated_requester: String,
+) -> CtrlPublicationIngestAuthority? {
+  match authenticated_requester == "" || dashboard_session_id == "" {
+    true => Absent
+    false =>
+      Present {
+        value: CtrlPublicationIngestAuthority {
+          authenticated_requester: authenticated_requester,
+          dashboard_session_id: dashboard_session_id,
+        }
+      }
+  }
+}
+
+fn ingest_publication_request_from_ctrl(
+  authority: CtrlPublicationIngestAuthority,
+  expected_remote_head: CommitSha,
+  candidate_head: CommitSha,
+) -> PublicationRequest {
+  PublicationRequest {
+    requester: authority.authenticated_requester,
+    expected_remote_head: expected_remote_head,
+    produced_head: candidate_head,
+  }
+}
+
+fn harness_ctrl_publication_ingest_authority() -> CtrlPublicationIngestAuthority {
+  match authenticate_ctrl_publication_ingest(
+    dashboard_session_id: "harness",
+    authenticated_requester: "harness",
+  ) {
+    Present { value: authority } => authority
+    Absent =>
+      CtrlPublicationIngestAuthority {
+        authenticated_requester: "harness",
+        dashboard_session_id: "harness",
+      }
+  }
+}

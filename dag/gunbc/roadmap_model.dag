@@ -76,8 +76,7 @@ type RoadmapParent
 fn under_parent(p: RoadmapNodeId) -> RoadmapParent { UnderParent { parent: p } }
 fn top_level() -> RoadmapParent { TopLevel }
 
-data roadmap_dependency_projection_note: String = "RoadmapEdge is the complete dependency DAG. Markdown and HTML are trees, so roadmap_primary_parent selects the first declared dependency for presentation placement only; roadmap_parent_ids preserves every prerequisite for admission and the projections render the complete set whenever there is more than one. Edge order never weakens, prioritizes, or discharges a dependency."
-
+// RoadmapEdge is the complete dependency DAG. Markdown and HTML are trees, so roadmap_primary_parent selects the first declared dependency for presentation placement only; roadmap_parent_ids preserves every prerequisite for admission and the projections render the complete set whenever there is more than one. Edge order never weakens, prioritizes, or discharges a dependency.
 fn roadmap_parent_ids(edges: List<RoadmapEdge>, node: RoadmapNodeId) -> List<RoadmapNodeId> {
   edges |> filter(e => e.child == node) |> map(e => e.parent)
 }

@@ -253,8 +253,7 @@ test fn decoded_lex_live_bindings_match_live_target() -> Bool {
   }
 }
 
-data semantic_decl_serialize_parity_note: String = "Row-decoded serialize profiles round-trip bundle spellings through concat/from_code_point native String grounding at decode; aggregate golden emit matches live path."
-
+// Row-decoded serialize profiles round-trip bundle spellings through concat/from_code_point native String grounding at decode; aggregate golden emit matches live path.
 test fn decoded_row_profile_matches_golden() -> Bool {
   match semantic_decl_emission_from_target(target: rust_target_model()) {
     Accepted { value: emission, diagnostics: _ } =>

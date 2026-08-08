@@ -54,8 +54,7 @@ fn storage_vendor_label(v: StorageVendor) -> NonEmptyStr {
 
 data durability_standard_note: String = "The industry 'normal standard' for replicated object storage is ELEVEN NINES of annual durability, and for AWS this is not folklore -- it is a machine-readable attribute on the price-list row itself (Durability=99.999999999% on S3 Standard AND Standard-Infrequent-Access; the same file carries 99.99% rows for reduced-redundancy classes). Durability at that level is achieved by erasure-coding each object across multiple facilities, which is WHY the price already includes redundancy: an S3 Standard GB-month is not one copy, so multiplying a cited object-storage rate by a replica count double-counts the redundancy the vendor already sells. That is the modeling trap this row exists to name -- replica multiplication belongs on SELF-MANAGED block storage (the Hetzner dedicated rows in extdeps.pricing.hetzner_dedicated), never on a durability-priced object-storage rate."
 
-data redundancy_scope_note: String = "Redundancy SCOPE is a separate fact from durability nines, and this enum admits only what a vendor's own pricing surface NAMES -- never what the modeler remembers. Azure names it in the SKU itself (LRS locally redundant / ZRS zone redundant / GRS geo redundant / GZRS geo-zone redundant / RA- read-access), which is why Azure is the one vendor whose redundancy ladder is priced row by row below. Storj's pricing page states global distribution across storage locations. Every other vendor here states durability or nothing on the fetched surface, so their scope is RedundancyUnstated -- and a reliability requirement over scope therefore returns Unknown for them rather than a pass (DESIGN section 5: absence of evidence is not a satisfied requirement)."
-
+// Redundancy SCOPE is a separate fact from durability nines, and this enum admits only what a vendor's own pricing surface NAMES -- never what the modeler remembers. Azure names it in the SKU itself (LRS locally redundant / ZRS zone redundant / GRS geo redundant / GZRS geo-zone redundant / RA- read-access), which is why Azure is the one vendor whose redundancy ladder is priced row by row below. Storj's pricing page states global distribution across storage locations. Every other vendor here states durability or nothing on the fetched surface, so their scope is RedundancyUnstated -- and a reliability requirement over scope therefore returns Unknown for them rather than a pass (DESIGN section 5: absence of evidence is not a satisfied requirement).
 type RedundancyScope
   = SingleFacility
   | MultiFacilityOneRegion
@@ -233,8 +232,7 @@ data hetzner_object_storage_rate_unavailable: ObjectStorageClassRow = ObjectStor
   pricing_citation: "hetzner.com/storage/object-storage#rate-not-machine-readable",
 }
 
-data hetzner_object_storage_included_quota_note: String = "What the Hetzner Object Storage page DOES state in fetched text, and the only quota fact stored from it: 'This base price includes 1 TB of storage (up to 744 TB-hours) and 1 TB of egress traffic.' The 744 TB-hours figure is itself the 31-day month, a third billing-period convention beside AWS's GB-Mo and Google's gibibyte-hour."
-
+// What the Hetzner Object Storage page DOES state in fetched text, and the only quota fact stored from it: 'This base price includes 1 TB of storage (up to 744 TB-hours) and 1 TB of egress traffic.' The 744 TB-hours figure is itself the 31-day month, a third billing-period convention beside AWS's GB-Mo and Google's gibibyte-hour.
 data s3_egress_first_10tb: ObjectStorageEgressRow = ObjectStorageEgressRow {
   vendor: AwsS3,
   egress_rate: TransferCited {
@@ -299,8 +297,7 @@ data b2_egress_beyond_free_allowance: ObjectStorageEgressRow = ObjectStorageEgre
   pricing_citation: "backblaze.com/cloud-storage/pricing#egress-beyond-3x",
 }
 
-data gcs_inter_region_replication_note: String = "Google Cloud Storage prices REPLICATION explicitly and separately: writing to a dual-region or multi-region bucket costs 0.02 USD per GiB replicated in North America and Europe (0.04 turbo; 0.08 in Asia). This is the one cited row in the set that puts a number on geographic replication as its own axis rather than folding it into the storage rate -- and it is charged per byte WRITTEN, not per byte stored, so it prices the ingest of new content, not the holding of it."
-
+// Google Cloud Storage prices REPLICATION explicitly and separately: writing to a dual-region or multi-region bucket costs 0.02 USD per GiB replicated in North America and Europe (0.04 turbo; 0.08 in Asia). This is the one cited row in the set that puts a number on geographic replication as its own axis rather than folding it into the storage rate -- and it is charged per byte WRITTEN, not per byte stored, so it prices the ingest of new content, not the holding of it.
 data gcs_default_replication: ObjectStorageEgressRow = ObjectStorageEgressRow {
   vendor: GoogleCloudStorage,
   egress_rate: TransferCited {
@@ -536,8 +533,7 @@ data azure_hot_ra_gzrs_tier0: ObjectStorageClassRow = ObjectStorageClassRow {
   pricing_citation: "prices.azure.com#eastus/GeneralBlockBlobv2/HotRA-GZRSDataStored[0]",
 }
 
-data wasabi_flat_rate_note: String = "Wasabi is the flat-rate shape: one storage price, and the pricing page states 'No fees for egress or API requests'. The quoted rate is per TB-month ('starting at 7.99 USD per TB/month'), which this row carries converted to the same per-unit-month carrier as everyone else by dividing by 1000 -- a WITHIN-vendor unit conversion, and the reason the row's byte basis stays unstated is that whether that TB is 10^12 or 2^40 is exactly what the page does not say (the page's own calculator footnote says estimates 'use base-2 system', which is evidence but not a rate definition). 'Starting at' is itself a hedge: the row carries the stated floor, and a commitment discount is not modeled."
-
+// Wasabi is the flat-rate shape: one storage price, and the pricing page states 'No fees for egress or API requests'. The quoted rate is per TB-month ('starting at 7.99 USD per TB/month'), which this row carries converted to the same per-unit-month carrier as everyone else by dividing by 1000 -- a WITHIN-vendor unit conversion, and the reason the row's byte basis stays unstated is that whether that TB is 10^12 or 2^40 is exactly what the page does not say (the page's own calculator footnote says estimates 'use base-2 system', which is evidence but not a rate definition). 'Starting at' is itself a hedge: the row carries the stated floor, and a commitment discount is not modeled.
 data wasabi_hot_storage: ObjectStorageClassRow = ObjectStorageClassRow {
   vendor: Wasabi,
   storage_class_label: "Hot Cloud Storage (pay as you go)",
@@ -561,8 +557,7 @@ data wasabi_egress_free: ObjectStorageEgressRow = ObjectStorageEgressRow {
   pricing_citation: "wasabi.com/pricing#no-egress-or-api-fees",
 }
 
-data storj_distributed_note: String = "Storj is the erasure-coded distributed shape and the only vendor here whose pricing page states its redundancy posture in the same breath as its price ('Distributed globally across tens of thousands of storage locations'), which is why its redundancy scope is cited rather than unstated. It meters egress at the same 7 USD per TB as storage, so unlike the hyperscalers its network term never dominates by an order of magnitude, and unlike the zero-egress vendors it never vanishes."
-
+// Storj is the erasure-coded distributed shape and the only vendor here whose pricing page states its redundancy posture in the same breath as its price ('Distributed globally across tens of thousands of storage locations'), which is why its redundancy scope is cited rather than unstated. It meters egress at the same 7 USD per TB as storage, so unlike the hyperscalers its network term never dominates by an order of magnitude, and unlike the zero-egress vendors it never vanishes.
 data storj_standard_storage: ObjectStorageClassRow = ObjectStorageClassRow {
   vendor: Storj,
   storage_class_label: "Standard (distributed)",
@@ -588,8 +583,7 @@ data storj_egress: ObjectStorageEgressRow = ObjectStorageEgressRow {
   pricing_citation: "storj.io/pricing#standard-egress",
 }
 
-data gcs_egress_note: String = "Google Cloud Storage states its byte basis outright -- 'per 1 gibibyte' -- unlike AWS, Azure, and Cloudflare, so the GCS rows carry BinaryGibibyte and a serving model must NOT reinterpret them under a decimal assumption. Worldwide destinations excluding Asia and Australia, first tier (0 to 10 TiB)."
-
+// Google Cloud Storage states its byte basis outright -- 'per 1 gibibyte' -- unlike AWS, Azure, and Cloudflare, so the GCS rows carry BinaryGibibyte and a serving model must NOT reinterpret them under a decimal assumption. Worldwide destinations excluding Asia and Australia, first tier (0 to 10 TiB).
 data gcs_egress_worldwide_first_10tib: ObjectStorageEgressRow = ObjectStorageEgressRow {
   vendor: GoogleCloudStorage,
   egress_rate: TransferCited {
@@ -647,8 +641,7 @@ data azure_egress_over_150tb: ObjectStorageEgressRow = ObjectStorageEgressRow {
   pricing_citation: "prices.azure.com#eastus/Bandwidth/StandardDataTransferOut[153695]",
 }
 
-data reliability_requirement_note: String = "The operator's framing: decide the reliability posture FIRST, then price only what satisfies it. A requirement is a floor on two independent axes (durability nines, redundancy scope), and the verdict is three-valued on purpose -- Meets, Fails, or RequirementUnknown when the vendor's cited surface does not state the axis at all. Unknown is NOT a pass: a vendor that says nothing about geo-redundancy has not satisfied a geo-redundancy requirement, and collapsing that into a pass is the absorbing fallback DESIGN section 5 forbids. It is also not a fail -- the vendor may well qualify, the pricing surface simply does not say -- so the verdict names what is missing and the operator resolves it with a citation, not a guess."
-
+// The operator's framing: decide the reliability posture FIRST, then price only what satisfies it. A requirement is a floor on two independent axes (durability nines, redundancy scope), and the verdict is three-valued on purpose -- Meets, Fails, or RequirementUnknown when the vendor's cited surface does not state the axis at all. Unknown is NOT a pass: a vendor that says nothing about geo-redundancy has not satisfied a geo-redundancy requirement, and collapsing that into a pass is the absorbing fallback DESIGN section 5 forbids. It is also not a fail -- the vendor may well qualify, the pricing surface simply does not say -- so the verdict names what is missing and the operator resolves it with a citation, not a guess.
 type ReliabilityRequirement {
   min_durability_nines: Nat
   min_redundancy: RedundancyScope
@@ -703,8 +696,7 @@ fn evaluate_redundancy_only(row: ObjectStorageClassRow, req: ReliabilityRequirem
   }
 }
 
-data azure_operation_rate_note: String = "Azure quotes blob operations per 10,000, not per million, so these rows carry the vendor figure multiplied by 100 into the shared per-million carrier (a within-vendor unit conversion). Note the redundancy ladder reaches operations too, not just capacity: a Hot LRS write is 0.05 per 10K while the geo-zone-redundant write is 0.1175 -- writes cost more when every write must reach more places, which is the mechanism the storage ladder prices showing up on a second axis. Reads do not vary by redundancy."
-
+// Azure quotes blob operations per 10,000, not per million, so these rows carry the vendor figure multiplied by 100 into the shared per-million carrier (a within-vendor unit conversion). Note the redundancy ladder reaches operations too, not just capacity: a Hot LRS write is 0.05 per 10K while the geo-zone-redundant write is 0.1175 -- writes cost more when every write must reach more places, which is the mechanism the storage ladder prices showing up on a second axis. Reads do not vary by redundancy.
 data azure_hot_lrs_write_operations: ObjectStorageRequestRow = ObjectStorageRequestRow {
   vendor: AzureBlobStorage,
   operation_class_label: "Hot LRS Write Operations",

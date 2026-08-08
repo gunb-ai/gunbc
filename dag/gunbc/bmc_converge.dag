@@ -192,8 +192,7 @@ fn bmc_fan_policy_suitability_refusal_reason(
   }
 }
 
-data bmc_converge_shared_workflow_note: String = "BMC and Ubuntu convergence share std.upsert_decision for observe/classify/plan and std.realization_reconcile for apply/read-back. Fan-policy reconciliation is three separable questions: apply suitability, post-apply durability qualification, and ordinary convergence after qualification. Apply may proceed without prior durability evidence; Noop requires qualification plus a live canonical digest equal to the admitted digest."
-
+// BMC and Ubuntu convergence share std.upsert_decision for observe/classify/plan and std.realization_reconcile for apply/read-back. Fan-policy reconciliation is three separable questions: apply suitability, post-apply durability qualification, and ordinary convergence after qualification. Apply may proceed without prior durability evidence; Noop requires qualification plus a live canonical digest equal to the admitted digest.
 fn bmc_firmware_intent_mismatch_reason(
   required: BmcFirmwareTrack,
   observed: BmcFirmwareVersion,

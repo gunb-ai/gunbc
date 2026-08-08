@@ -15,8 +15,7 @@ data gnu_bash_posix_conformance_authority: ExternalAuthority = ExternalAuthority
   }
 }
 
-data conformance_degree_note: String = "TWO ARMS, ONE INHABITED, AND THE EMPTY ONE IS THE REFUSAL rather than a speculative variant. ConformanceUnstated is what a future row takes when the upstream says nothing about conforming — the fail-closed default, so silence is recorded as silence instead of being read as conformance. The inhabited arm is deliberately narrow and matches what the cited manual actually says: Bash is intended as a conformant implementation of the POSIX shell portion AND provides a strict mode that changes behaviour to match the standard more closely, which means the default shell is a SUPERSET and conformance is a mode rather than an unconditional property. Naming it that way is what keeps this from becoming the 'mostly supported' claim the language program exists to eliminate — a target that conforms only under a switch has a support profile with the switch in it."
-
+// TWO ARMS, ONE INHABITED, AND THE EMPTY ONE IS THE REFUSAL rather than a speculative variant. ConformanceUnstated is what a future row takes when the upstream says nothing about conforming — the fail-closed default, so silence is recorded as silence instead of being read as conformance. The inhabited arm is deliberately narrow and matches what the cited manual actually says: Bash is intended as a conformant implementation of the POSIX shell portion AND provides a strict mode that changes behaviour to match the standard more closely, which means the default shell is a SUPERSET and conformance is a mode rather than an unconditional property. Naming it that way is what keeps this from becoming the 'mostly supported' claim the language program exists to eliminate — a target that conforms only under a switch has a support profile with the switch in it.
 type ShellConformanceDegree
   = ConformantSupersetWithStrictMode
   | ConformanceUnstated

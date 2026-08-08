@@ -50,8 +50,7 @@ import extdeps.llm.codex_auth {
 
 data witness_purpose_note: String = "THESE MODULES HAD NO CONSUMER AT ALL, which is why their claims went unchecked long enough to encode one token as a specification. extdeps.auth.jwt, extdeps.auth.oidc and their codex composition typechecked, cited real RFCs, and were never executed by anything — the specification-without-execution tier exactly. A grep would have found the RFC numbers and concluded the modeling was grounded.\\n\\nSo this file is the first consumer, and it is written to go RED on the specific overclaims that were there rather than to restate the types. Each claim below names the wrong behaviour it discriminates against: mandatory registered claims, a normalized audience, an integer-only NumericDate, an unenforced colon rule, a provenance inference from URI shape, and required OIDC optional claims. Reverting any one of those corrections fails a claim here."
 
-data optionality_discrimination_note: String = "THE CLAIM THAT WAS IMPOSSIBLE TO WRITE BEFORE. Every field of JwtRegisteredClaims was required, so a JWT carrying none of the registered claims — which RFC 7519 section 4.1 explicitly permits, since none of them are mandatory — could not be expressed at all. This constructs exactly that value. Under the previous shape this file would not compile, which is the sharpest available discrimination: the red is a type error, not a false assertion."
-
+// THE CLAIM THAT WAS IMPOSSIBLE TO WRITE BEFORE. Every field of JwtRegisteredClaims was required, so a JWT carrying none of the registered claims — which RFC 7519 section 4.1 explicitly permits, since none of them are mandatory — could not be expressed at all. This constructs exactly that value. Under the previous shape this file would not compile, which is the sharpest available discrimination: the red is a type error, not a false assertion.
 fn empty_registered_claims() -> JwtRegisteredClaims {
   JwtRegisteredClaims {
     issuer: none,
@@ -80,8 +79,7 @@ test fn registered_claims_are_all_optional() -> Bool {
   }
 }
 
-data string_or_uri_enforcement_note: String = "THE COLON RULE IS NOW CHECKED, AND THE REFUSAL IS THE POINT. RFC 7519 section 2 requires that a StringOrURI containing a colon be a URI; the previous brand accepted any NonEmptyStr, so the rule was documented and unenforced.\\n\\nThe discriminating input is 9:30 — it contains a colon and its scheme position starts with a digit, which RFC 3986 forbids. A brand admits it silently. The decoder refuses it. The two positive cases bracket the refusal: a bare name with no colon is admissible and stays bare, and urn:openai:amr:passkey is admissible and decodes its scheme as urn, which extdeps.uri's closed scheme enum could not have represented."
-
+// THE COLON RULE IS NOW CHECKED, AND THE REFUSAL IS THE POINT. RFC 7519 section 2 requires that a StringOrURI containing a colon be a URI; the previous brand accepted any NonEmptyStr, so the rule was documented and unenforced.\n\nThe discriminating input is 9:30 — it contains a colon and its scheme position starts with a digit, which RFC 3986 forbids. A brand admits it silently. The decoder refuses it. The two positive cases bracket the refusal: a bare name with no colon is admissible and stays bare, and urn:openai:amr:passkey is admissible and decodes its scheme as urn, which extdeps.uri's closed scheme enum could not have represented.
 test fn bare_string_without_colon_is_admitted() -> Bool {
   match jwt_string_or_uri_of_wire(raw: "pop" as NonEmptyStr) {
     StringOrUriRefused { raw: _, reason: _ } => false
@@ -121,8 +119,7 @@ test fn string_or_uri_round_trips_to_its_wire_form() -> Bool {
   }
 }
 
-data audience_union_note: String = "THE SINGLE FORM AND THE ARRAY FORM ARE DIFFERENT VALUES, which is what normalizing aud to a list destroyed. RFC 7519 section 4.1.3 permits both, and a verifier re-serializing a token must emit the form it received or the signature stops covering the bytes.\\n\\nThe discrimination is structural: both audiences below project to the same one-element value list, so a claim written only against jwt_audience_values cannot tell them apart — and that is exactly the collapse the previous model performed at ingest. Matching the constructor distinguishes them, so the encoding survives."
-
+// THE SINGLE FORM AND THE ARRAY FORM ARE DIFFERENT VALUES, which is what normalizing aud to a list destroyed. RFC 7519 section 4.1.3 permits both, and a verifier re-serializing a token must emit the form it received or the signature stops covering the bytes.\n\nThe discrimination is structural: both audiences below project to the same one-element value list, so a claim written only against jwt_audience_values cannot tell them apart — and that is exactly the collapse the previous model performed at ingest. Matching the constructor distinguishes them, so the encoding survives.
 fn single_audience() -> JwtAudience {
   JwtAudienceSingle { value: JwtBareString { value: "client-a" as NonEmptyStr } }
 }
@@ -187,8 +184,7 @@ test fn expiry_before_issuance_refuses_rather_than_clamping() -> Bool {
   }
 }
 
-data amr_shape_not_provenance_note: String = "THE URI ARM NAMES A SHAPE, NOT AN OWNER. RFC 8176 registers short names and says nothing about who may use a URI, so classifying every colon-bearing amr value as PRIVATE was an inference the specification does not license.\\n\\nAll four values observed in the codex token are decoded here through the shared StringOrURI rule: two registered short names and two URI-valued methods. The refusal case is the one the old local colon test could not produce — a colon-bearing value that is not a valid URI was previously filed as a vendor method, and is now refused."
-
+// THE URI ARM NAMES A SHAPE, NOT AN OWNER. RFC 8176 registers short names and says nothing about who may use a URI, so classifying every colon-bearing amr value as PRIVATE was an inference the specification does not license.\n\nAll four values observed in the codex token are decoded here through the shared StringOrURI rule: two registered short names and two URI-valued methods. The refusal case is the one the old local colon test could not produce — a colon-bearing value that is not a valid URI was previously filed as a vendor method, and is now refused.
 fn amr_is_uri_valued(raw: NonEmptyStr) -> Bool {
   match oidc_amr_of_wire(raw: raw) {
     AmrRefused { raw: _, reason: _ } => false
@@ -236,8 +232,7 @@ test fn malformed_colon_amr_refuses() -> Bool {
   }
 }
 
-data oidc_required_core_note: String = "OIDC REQUIRES FIVE CLAIMS AND THE FIRST CUT REQUIRED ELEVEN. This constructs the minimal conforming ID Token: the five section-2 required claims present, and auth_time, nonce, acr, amr, azp, sid and every standard claim absent. None of those seven is universally required by any specification, and under the previous shape this value was unrepresentable.\\n\\nThe projection claim checks the direction that is safe — an ID Token's required core reads cleanly as RFC 7519 registered claims — while the reverse embedding, which is what the earlier model did, is what made the base type unable to describe a plain JWT."
-
+// OIDC REQUIRES FIVE CLAIMS AND THE FIRST CUT REQUIRED ELEVEN. This constructs the minimal conforming ID Token: the five section-2 required claims present, and auth_time, nonce, acr, amr, azp, sid and every standard claim absent. None of those seven is universally required by any specification, and under the previous shape this value was unrepresentable.\n\nThe projection claim checks the direction that is safe — an ID Token's required core reads cleanly as RFC 7519 registered claims — while the reverse embedding, which is what the earlier model did, is what made the base type unable to describe a plain JWT.
 fn minimal_id_token() -> OidcIdTokenClaims {
   OidcIdTokenClaims {
     issuer: JwtUriString {

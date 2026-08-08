@@ -255,6 +255,11 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     trigger: TriggerProse { text: nfr_dissolve_owning_fold },
   },
   FrontierRow {
+    subject: PathSubject { path: "dag/extdeps/linux/proc_self_cgroup.dag::unified_membership_outcome_tag_eq" },
+    reason: nfr_reason_structural_eq_mint,
+    trigger: TriggerProse { text: nfr_dissolve_derived_equality },
+  },
+  FrontierRow {
     subject: PathSubject { path: "src/v2/lens/enforcement/cost_coverage.dag::cost_coverage_fn_verdict_is_body_not_located" },
     reason: nfr_reason_land_red_era,
     trigger: TriggerProse { text: nfr_dissolve_owning_fold },
@@ -852,7 +857,7 @@ data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
     subject: PathSubject { path: "dag/gunbc/repo_local_git_config.dag::apply_repo_local_git_config_action_at_repo" },
     reason: nfr_reason_legacy_slice1_bridge,
-    trigger: TriggerProse { text: "DISSOLVE-ON: membership apply dispatch derives off-variant noop from MemberAction inhabitance (MemberTeardown/MemberTeardownRefused are construction-unreachable for Ensured bindings) and the wildcard arm deletes with the row" },
+    trigger: TriggerProse { text: "DISSOLVE-ON: membership apply dispatch derives off-variant noop from MemberAction inhabitance (MemberRemoved/MemberRemovalRefused are construction-unreachable for Ensured bindings) and the wildcard arm deletes with the row" },
   },
   FrontierRow {
     subject: PathSubject { path: "dag/gunbc/ci_materialization.dag::warm_without_provider_receipt" },
@@ -886,6 +891,26 @@ data non_fold_residue_frontier: List<FrontierRow> = [
   },
   FrontierRow {
     subject: PathSubject { path: "dag/gunbc/codex_app_server_press.dag::rate_limit_buckets_from_by_limit_id" },
+    reason: nfr_reason_mint_era,
+    trigger: TriggerProse { text: nfr_dissolve_wildcard_total },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/fleet_runner_connectivity.dag::connectivity_verdict_is_detached" },
+    reason: nfr_reason_mint_era,
+    trigger: TriggerProse { text: nfr_dissolve_wildcard_total },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/fleet_runner_connectivity.dag::connectivity_verdict_is_healthy" },
+    reason: nfr_reason_mint_era,
+    trigger: TriggerProse { text: nfr_dissolve_wildcard_total },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/fleet_runner_connectivity.dag::connectivity_verdict_is_orphaned" },
+    reason: nfr_reason_mint_era,
+    trigger: TriggerProse { text: nfr_dissolve_wildcard_total },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/fleet_runner_connectivity.dag::connectivity_verdict_is_unknown" },
     reason: nfr_reason_mint_era,
     trigger: TriggerProse { text: nfr_dissolve_wildcard_total },
   },

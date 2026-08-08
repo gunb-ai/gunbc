@@ -21,11 +21,12 @@ import gunbc.host_standup_assimilation_deduction { srv3_post_install_actuation_v
 import gunbc.membership_reconcile {
   MembershipPlan,
   MemberAction,
-  MemberUpsert,
-  MemberTeardown,
-  MemberTeardownRefused,
+  MemberAdded,
+  MemberChanged,
+  MemberRemoved,
+  MemberRemovalRefused,
   membership_reconcile,
-  membership_upsert_count,
+  membership_write_count,
 }
 import gunbc.ownership { Ownership, Owned }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
@@ -193,7 +194,7 @@ fn host_phase_cell_ownership(c: HostPhaseCellStatus) -> Ownership? {
   Present { value: Owned }
 }
 
-data host_phase_reconcile_instantiation_note: String = "The status matrix reconciled as a MEMBERSHIP DIFF — one more (key_of, key_eq, value_eq, ownership_of) bundle handed to the single generic gunbc.membership_reconcile.membership_reconcile, never a forked diff (a forked reconcile means the genericity bought nothing). Desired is every cell modeled AND observed Converged: that is the end state of the whole subsumption lane — every phase modeled AND every enrolled host converged on it — so a Modified hunk is precisely one unit of remaining work, and membership_upsert_count is the answer to 'how much is left' as a NUMBER rather than a prose reconstruction. Removed is a real arm, not a degenerate pole: a cell observed for a host no longer in fleet_intent is a host that left the fleet, and cells are Owned, so it tears down rather than refusing. The witness exercises that arm synthetically because the live fleet has no departed host today — an instantiation whose interesting hunks are all unreachable in practice is an instantiation nobody has actually tested."
+data host_phase_reconcile_instantiation_note: String = "The status matrix reconciled as a MEMBERSHIP DIFF — one more (key_of, key_eq, value_eq, ownership_of) bundle handed to the single generic gunbc.membership_reconcile.membership_reconcile, never a forked diff (a forked reconcile means the genericity bought nothing). Desired is every cell modeled AND observed Converged: that is the end state of the whole subsumption lane — every phase modeled AND every enrolled host converged on it — so a Modified hunk is precisely one unit of remaining work, and membership_write_count is the answer to 'how much is left' as a NUMBER rather than a prose reconstruction. Removed is a real arm, not a degenerate pole: a cell observed for a host no longer in fleet_intent is a host that left the fleet, and cells are Owned, so it tears down rather than refusing. The witness exercises that arm synthetically because the live fleet has no departed host today — an instantiation whose interesting hunks are all unreachable in practice is an instantiation nobody has actually tested."
 
 fn host_phase_desired(enrollments: List<HostEnrollmentIntent>) -> List<HostPhaseCellStatus> {
   map(
@@ -242,7 +243,7 @@ fn host_phase_fleet_reconcile(enrollments: List<HostEnrollmentIntent>) -> Member
 }
 
 fn host_phase_remaining_work_count(enrollments: List<HostEnrollmentIntent>) -> Int {
-  membership_upsert_count(plan: host_phase_fleet_reconcile(enrollments: enrollments))
+  membership_write_count(plan: host_phase_fleet_reconcile(enrollments: enrollments))
 }
 
 fn host_phase_observation_coverage_count(enrollments: List<HostEnrollmentIntent>) -> Int {

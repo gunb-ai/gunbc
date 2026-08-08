@@ -435,8 +435,7 @@ fn orphan_plain_names_or_refuse(module: ModuleSurface) -> OrphanPlainNamesOutcom
   }
 }
 
-data fixture_spellings_note: String = "Synthetic fixtures — same spellings as cli_run/test_module_hygiene_bridge.rs equivalence tests."
-
+// Synthetic fixtures — same spellings as cli_run/test_module_hygiene_bridge.rs equivalence tests.
 data fixture_zero_enrolled_demotion: ModuleSurface = ModuleSurface {
   entry: "demoted_witness_test.dag",
   test_fns: [],

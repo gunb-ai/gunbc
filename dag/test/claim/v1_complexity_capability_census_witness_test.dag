@@ -154,8 +154,7 @@ fn all_disposition_fixtures() -> List<V1ComplexityInventoryRow> {
   ]
 }
 
-data w_fixture_set_covers_every_work_kind_note: String = "The fixture list is load-bearing, not decoration: this folds over ALL SIX arm fixtures and asserts the set covers every one of the four work kinds. The enumerated per-arm check below states which arm maps where; this one states that the fixture SET is complete over the work-kind space, so an arm added without a fixture leaves a kind uncovered and reds here."
-
+// The fixture list is load-bearing, not decoration: this folds over ALL SIX arm fixtures and asserts the set covers every one of the four work kinds. The enumerated per-arm check below states which arm maps where; this one states that the fixture SET is complete over the work-kind space, so an arm added without a fixture leaves a kind uncovered and reds here.
 fn fixture_kind_present(kind: CapabilityWorkKind) -> Bool {
   fold(all_disposition_fixtures(), init: false, f: (acc, c) =>
     acc || capability_work_kind(c: c) == kind)
@@ -187,8 +186,7 @@ test fn w_work_owed_partitions_every_fixture_arm() -> Bool {
   capability_work_owed(c: fixture_retirement_owed())
 }
 
-data w_integration_is_not_discharged_note: String = "The operator's correction, pinned as its own control. AvailableInSharedSubstrate previously projected as discharged, which understated C4: v2 has not consumed std.graph, so the work changed from migration to integration but did not disappear. If a future edit routes IntegrationOwed back into the no-work-owed partition, this reds."
-
+// The operator's correction, pinned as its own control. AvailableInSharedSubstrate previously projected as discharged, which understated C4: v2 has not consumed std.graph, so the work changed from migration to integration but did not disappear. If a future edit routes IntegrationOwed back into the no-work-owed partition, this reds.
 test fn w_integration_owed_is_not_discharged() -> Bool {
   capability_work_owed(c: call_graph_and_scc) &&
   capability_work_kind(c: call_graph_and_scc) == IntegrationWork &&
@@ -220,8 +218,7 @@ test fn w_every_roster_row_lands_in_exactly_one_work_kind() -> Bool {
     ))
 }
 
-data w_work_counts_sum_note: String = "An internal consistency join, not a tree-copied count: the four work-kind populations must exhaust the roster. No literal expected count appears — the assertion is that the parts sum to the whole, which stays true as rows are added and breaks if a kind is dropped from the projection."
-
+// An internal consistency join, not a tree-copied count: the four work-kind populations must exhaust the roster. No literal expected count appears — the assertion is that the parts sum to the whole, which stays true as rows are added and breaks if a kind is dropped from the projection.
 test fn w_work_kind_counts_exhaust_the_roster() -> Bool {
   let n = length(xs: v1_complexity_inventory_roster)
   let none_owed = capability_work_count(rows: v1_complexity_inventory_roster, kind: NoWorkOwed)

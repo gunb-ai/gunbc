@@ -1,0 +1,205 @@
+module gunbc.runner_capacity_operator_access
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.disposition { Disposition, SingleAuthority }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network {
+  operator_host_srv1,
+  operator_host_srv3,
+  operator_host_srv4,
+}
+import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell }
+import extdeps.access.posix_effective_principal { EffectivePosixPrincipalRead }
+import extdeps.sudo.nopasswd_execute_probe { SudoNopasswdGrantListProbeShape }
+import gunbc.runner_host_deploy {
+  srv3_runner_host_deploy,
+  srv4_runner_host_deploy,
+}
+
+data runner_capacity_operator_access_authority_disposition: Disposition = SingleAuthority
+
+data runner_capacity_operator_access_note: String = "STEP E VOID (operator correction 2026-08-07): no SSH access receipt for ADD — reach is IN-BAND via LocalShell on a GHA job labelled for the target host. SSH is narrowed to RECOVER (zero-runner host / last-runner replace) only. Real ADD gate is PRIVILEGE (ReadEffectivePosixPrincipal + SudoNopasswdGrantListProbe). srv1 probed live 2026-08-07: User=briansrls, (ALL) NOPASSWD: ALL. APPLICATION GOES THROUGH THE WORKFLOW ONLY — operator hand-converged srv1 caps before that ruling; srv1 is the row-6 already-converged control (modeled cap path must emit ZERO effects on srv1). LIVE WIDTH = unit/process + org roster, NOT directories. #7940 subsumes runner-liveness-reconcile.timer. Read live ctrl installer at /home/briansrls/ctrl/scripts/session-dashboard/host/install-actions-runner.sh before wiring realizers; model-vs-fresh realizer scope is operator-open."
+
+data runner_capacity_workflow_only_application_note: String = "OPERATOR RULING (2026-08-07): all host mutation goes through gunbc apply workflow — never hand-ssh fixes. A realizer refusal is a line-stop signal, not permission to act manually. srv1's five slots were hand-converged to the 14GiB model before this ruling; they are now the acceptance row 6 fixture (already correct → zero effects). srv2/srv3/srv4 remain at 16GiB until the workflow applies."
+
+data runner_capacity_apply_yml_heal_note: String = "PR A apply.yml heal is structurally blocked: .github/workflows/** cannot be pushed by the Actions token. CI cannot emit apply.yml; an author commit is required. Do not depend on heal landing that file."
+
+data runner_capacity_width_authority_note: String = "WIDTH AUTHORITY = activated unit count joined to org roster, NOT install-tree count. srv1: 50 complete trees, 5 active. srv3 observed 2026-08-07: slots 06/07/08 are complete install trees (08 exists — materialized width 8); committed width 7 is a memory CEILING, not a materialization limit — slot 08 stays materialized and unactivated. Stale .runner on 06/07 is not a blocker (rewritten at start). Never refuse or re-extract complete dormant trees."
+
+data srv3_slot_installation_parent_probe_note: String = "AUTHORITATIVE: vivid-eagle-131 read-only in-band observation 2026-08-07 (srv2->ubuntu@192.168.1.221). Mapped in gunbc.runner_incarnation vivid_eagle_srv3_slot_installation_observation. 01..05 active; 06/07/08 materialized-not-active. No further probe needed."
+
+type RunnerCapacityActionClass
+  = RunnerCapacityAddSlots { host: HostIdentity }
+  | RunnerCapacityRecoverHost { host: HostIdentity }
+
+type RunnerCapacityExecutionTarget
+  = RunnerCapacityExecuteInBand {
+      host_label: NonEmptyStr
+      transport: HostEffectTransport
+    }
+  | RunnerCapacityExecuteHostedRemote {
+      host: HostIdentity
+      transport: HostEffectTransport
+      reason: String
+    }
+
+fn runner_capacity_execution_target_for_action(
+  action: RunnerCapacityActionClass,
+) -> RunnerCapacityExecutionTarget {
+  match action {
+    RunnerCapacityAddSlots { host: h } =>
+      RunnerCapacityExecuteInBand {
+        host_label: h as NonEmptyStr,
+        transport: LocalShell,
+      }
+    RunnerCapacityRecoverHost { host: h } =>
+      RunnerCapacityExecuteHostedRemote {
+        host: h,
+        transport: SshShell,
+        reason: concat(
+          "zero-runner recovery on ",
+          concat(
+            h as String,
+            " requires GitHub-hosted job + SSH reach; ADD lane uses in-band LocalShell only (#7940 repair)",
+          ),
+        ),
+      }
+  }
+}
+
+type RunnerCapacitySlotAddPrivilegeOperation
+  = PrivOpRunnerRootDirectoryCreate {}
+  | PrivOpSystemdUnitInstall {}
+  | PrivOpSystemdDaemonReload {}
+  | PrivOpSystemdUnitStart {}
+
+type RunnerCapacityInBandTransportBinding {
+  github_actions_host_label: NonEmptyStr
+  transport: HostEffectTransport
+}
+
+type RunnerCapacityInBandAdmissionProbes {
+  effective_principal_read: EffectivePosixPrincipalRead
+  sudo_grant_list_probe: SudoNopasswdGrantListProbeShape
+}
+
+type RunnerCapacityHostInBandAdmissionRequirement {
+  host: HostIdentity
+  transport_binding: RunnerCapacityInBandTransportBinding
+  executing_principal: NonEmptyStr
+  required_operations: List<RunnerCapacitySlotAddPrivilegeOperation>
+  probes: RunnerCapacityInBandAdmissionProbes
+}
+
+data runner_capacity_slot_add_required_operations: List<RunnerCapacitySlotAddPrivilegeOperation> = [
+  PrivOpRunnerRootDirectoryCreate {},
+  PrivOpSystemdUnitInstall {},
+  PrivOpSystemdDaemonReload {},
+  PrivOpSystemdUnitStart {},
+]
+
+data runner_capacity_sudo_grant_list_probe: SudoNopasswdGrantListProbeShape = "/usr/bin/sudo" as SudoNopasswdGrantListProbeShape
+
+fn runner_capacity_in_band_transport_binding(host: HostIdentity) -> RunnerCapacityInBandTransportBinding {
+  RunnerCapacityInBandTransportBinding {
+    github_actions_host_label: host as NonEmptyStr,
+    transport: LocalShell,
+  }
+}
+
+fn runner_capacity_in_band_admission_probes() -> RunnerCapacityInBandAdmissionProbes {
+  RunnerCapacityInBandAdmissionProbes {
+    effective_principal_read: EffectivePosixPrincipalRead {},
+    sudo_grant_list_probe: runner_capacity_sudo_grant_list_probe,
+  }
+}
+
+fn runner_capacity_executing_principal_for_host(host: HostIdentity) -> NonEmptyStr {
+  if (host as String) == (operator_host_srv3 as String) {
+    srv3_runner_host_deploy.runner_user
+  } else if (host as String) == (operator_host_srv4 as String) {
+    srv4_runner_host_deploy.runner_user
+  } else {
+    "briansrls" as NonEmptyStr
+  }
+}
+
+fn runner_capacity_host_in_band_admission_requirement(host: HostIdentity) -> RunnerCapacityHostInBandAdmissionRequirement {
+  RunnerCapacityHostInBandAdmissionRequirement {
+    host: host,
+    transport_binding: runner_capacity_in_band_transport_binding(host: host),
+    executing_principal: runner_capacity_executing_principal_for_host(host: host),
+    required_operations: runner_capacity_slot_add_required_operations,
+    probes: runner_capacity_in_band_admission_probes(),
+  }
+}
+
+type InBandPrivilegeObservation
+  = PrivilegeObserved {
+      observed_on: NonEmptyStr
+      host: HostIdentity
+      principal: NonEmptyStr
+      sudo_grant_summary: NonEmptyStr
+    }
+  | PrivilegeUnobserved { reason: String }
+
+data srv1_in_band_privilege_observation: InBandPrivilegeObservation = PrivilegeObserved {
+  observed_on: "2026-08-07" as NonEmptyStr,
+  host: operator_host_srv1,
+  principal: "briansrls" as NonEmptyStr,
+  sudo_grant_summary: "actions-runner units run as User=briansrls; sudo -n -l returns (ALL) NOPASSWD: ALL; sudo -n true succeeds (deep-badger-594 srv1 probe 2026-08-07)" as NonEmptyStr,
+}
+
+fn in_band_privilege_observation_for_host(host: HostIdentity) -> InBandPrivilegeObservation {
+  if (host as String) == (operator_host_srv1 as String) {
+    srv1_in_band_privilege_observation
+  } else if (host as String) == (operator_host_srv3 as String)
+    || (host as String) == (operator_host_srv4 as String) {
+    PrivilegeUnobserved {
+      reason: concat(
+        "in-band privilege probe not yet executed on ",
+        concat(host as String, " — require ReadEffectivePosixPrincipal + SudoNopasswdGrantListProbe via LocalShell job labelled for host"),
+      ),
+    }
+  } else {
+    PrivilegeUnobserved {
+      reason: "host is not enrolled in runner_capacity_operator_access in-band admission",
+    }
+  }
+}
+
+data srv1_already_converged_caps_control_note: String = "srv1 acceptance row 6 control (operator 2026-08-07): five slots hand-converged to modeled 14GiB caps (MemoryMax=15032385536 MemoryHigh=13958643712 MemorySwapMax=34359738368 TasksMax=512 CPUWeight=100), verified by read-back. A second identical apply against srv1 must emit ZERO effects — discriminates directory-counting or write-blind realizers."
+
+type RunnerCapacityHostAdmissionVerdict
+  = InBandAdmissionRequirementDocumented { requirement: RunnerCapacityHostInBandAdmissionRequirement }
+  | InBandPrivilegeUnobserved { host: HostIdentity, reason: String }
+  | InBandPrivilegeInsufficient { host: HostIdentity, detail: NonEmptyStr, missing: NonEmptyStr }
+  | OrgRosterReadScopeUnverified { host: HostIdentity, reason: String }
+
+data runner_capacity_org_roster_scope_note: String = "Acceptance rows 5/6/8 require a live org self-hosted-runner roster read. GET /orgs/gunb-ai/actions/runners returns 403 for some session tokens; in-band runner job tokens may differ. Until scope is verified in-band, roster-dependent convergence refuses — never fabricates registrations."
+
+fn runner_capacity_host_admission_verdict(host: HostIdentity) -> RunnerCapacityHostAdmissionVerdict {
+  let requirement = runner_capacity_host_in_band_admission_requirement(host: host)
+  match in_band_privilege_observation_for_host(host: host) {
+    PrivilegeObserved { observed_on: _, host: _, principal: _, sudo_grant_summary: _ } =>
+      InBandAdmissionRequirementDocumented { requirement: requirement }
+    PrivilegeUnobserved { reason: r } =>
+      InBandPrivilegeUnobserved { host: host, reason: r }
+  }
+}
+
+fn runner_capacity_managed_host_admission_verdicts() -> List<RunnerCapacityHostAdmissionVerdict> {
+  [
+    runner_capacity_host_admission_verdict(host: operator_host_srv3),
+    runner_capacity_host_admission_verdict(host: operator_host_srv4),
+  ]
+}
+
+fn runner_capacity_in_band_admission_blocks_wet_work(host: HostIdentity) -> Bool {
+  match runner_capacity_host_admission_verdict(host: host) {
+    InBandAdmissionRequirementDocumented { requirement: _ } => false
+    InBandPrivilegeUnobserved { host: _, reason: _ } => true
+    InBandPrivilegeInsufficient { host: _, detail: _, missing: _ } => true
+    OrgRosterReadScopeUnverified { host: _, reason: _ } => true
+  }
+}

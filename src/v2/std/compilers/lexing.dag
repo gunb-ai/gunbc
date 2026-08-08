@@ -159,8 +159,7 @@ fn token_stream_advance(stream: TokenStream, n: Int) -> TokenStream {
 
 data annotation_placement_reexport_note: String = "AnnotationPlacement is NOT declared here. It is the language-agnostic concept and its authority is std.source_annotation, which the v1 seed tokenizer imports too — a second spelling in this module would be the nicknaming defect the source-annotation lane exists to remove. This module owns only what is lexical: the rule variant, the unbound capture, and the artifact."
 
-data unbound_source_annotation_note: String = "Captured at the lexical boundary, before any structural subject is known — hence UNBOUND. It carries no identity of its own: binding it to a subject is the parser's job, and minting an identity for it would draw from the semantic occurrence allocator, which is exactly what DESIGN 4c forbids (adding a comment could then shift declaration identities in the same source and in later-parsed modules). Consecutive leading captures group into one ordered block at attachment; this row is one physical line."
-
+// Captured at the lexical boundary, before any structural subject is known — hence UNBOUND. It carries no identity of its own: binding it to a subject is the parser's job, and minting an identity for it would draw from the semantic occurrence allocator, which is exactly what DESIGN 4c forbids (adding a comment could then shift declaration identities in the same source and in later-parsed modules). Consecutive leading captures group into one ordered block at attachment; this row is one physical line.
 type UnboundSourceAnnotation {
   annotation_class: Symbol
   lexeme: Lexeme
@@ -170,8 +169,7 @@ type UnboundSourceAnnotation {
   end: Int
 }
 
-data lex_artifact_note: String = "The authored lexical result: the semantic token stream PLUS what the annotation channel captured. Semantic consumers project out `tokens` and see exactly what they saw before this channel existed; annotation-aware consumers take the whole artifact. The projection is the erasure boundary at the lexical layer, mirroring AuthoredParseArtifact at the parse layer."
-
+// The authored lexical result: the semantic token stream PLUS what the annotation channel captured. Semantic consumers project out `tokens` and see exactly what they saw before this channel existed; annotation-aware consumers take the whole artifact. The projection is the erasure boundary at the lexical layer, mirroring AuthoredParseArtifact at the parse layer.
 type LexArtifact {
   tokens: TokenStream
   annotations: List<UnboundSourceAnnotation>

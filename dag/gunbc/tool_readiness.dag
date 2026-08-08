@@ -137,7 +137,7 @@ fn pinned_tool_readiness(
         observed_identity: observation.observed_identity,
       )
       let tally = membership_tally(plan: plan)
-      if tally.upserts > 0 || tally.teardowns > 0 || tally.refusals > 0 {
+      if (tally.adds + tally.changes) > 0 || tally.removals > 0 || tally.refusals > 0 {
         tool_refused(
           tool: pin.subject,
           cause: ToolMembershipNotConverged {

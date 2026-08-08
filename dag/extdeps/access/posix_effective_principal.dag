@@ -11,8 +11,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data posix_effective_principal_read_note: String = "Read the effective POSIX user name (whoami utility semantics). Interface shape and result decoding live here; typed argv transport lives in extdeps.access.posix_effective_principal_read_op at the realization edge. EffectivePosixPrincipalName is opaque outside this authority, so downstream principal projections can consume only a successful, non-empty decoded read observation rather than pairing the request token with an authored name."
-
+// Read the effective POSIX user name (whoami utility semantics). Interface shape and result decoding live here; typed argv transport lives in extdeps.access.posix_effective_principal_read_op at the realization edge. EffectivePosixPrincipalName is opaque outside this authority, so downstream principal projections can consume only a successful, non-empty decoded read observation rather than pairing the request token with an authored name.
 type EffectivePosixPrincipalRead {}
 
 type EffectivePosixPrincipalReadOutcome {

@@ -212,8 +212,7 @@ data codex_roadmap_account_evidence_note: String = "The evidence the fleet's cod
 
 data codex_roadmap_account_evidence: EvidencedSharingDiscipline = EvidencedObservedUpTo { ceiling: ManySessions { total: codex_observed_concurrent_sessions_per_root } }
 
-data codex_roadmap_account_selection_note: String = "The dedicated dashboard account, named once here rather than inferred from a path. Every instance's provider state root ends in this label by the @-suffix convention above, so reading the account back out of the directory string would work and would be a second representation — the selection is the fact and the path is derived from it, not the other way round."
-
+// The dedicated dashboard account, named once here rather than inferred from a path. Every instance's provider state root ends in this label by the @-suffix convention above, so reading the account back out of the directory string would work and would be a second representation — the selection is the fact and the path is derived from it, not the other way round.
 data codex_roadmap_account_label: ProviderAccountLabel = "gunbc-roadmap" as ProviderAccountLabel
 
 fn codex_roadmap_account_selection() -> CodexAccountSelection {
