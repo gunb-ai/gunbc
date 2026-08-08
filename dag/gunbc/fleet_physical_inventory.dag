@@ -1,0 +1,178 @@
+module gunbc.fleet_physical_inventory
+
+import std.types { NonEmptyStr, String, List, Int }
+import std.measure { RackUnit, rack_unit, measure_add }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import product.placement_supply {
+  HostIdentity,
+  PhysicalAssetIdentity,
+  SiteIdentity,
+  RackIdentity,
+  RackResidence,
+  RackResidenceUnobserved,
+  PhysicalAsset,
+  PhysicalSite,
+  HostSpatialFacts,
+  WirelessAdapterAbsent,
+  WirelessAdapterUnobserved,
+  RelayIncapable,
+  RelayUnprovisioned,
+  BootstrapNeeded,
+  BootstrapNotNeeded,
+}
+import extdeps.chassis.rosewill { rosewill_rsv_r4000u_catalog, rosewill_rsv_z2600u_catalog }
+import extdeps.network.tp_link { tp_link_tl_sg1024s_catalog }
+import extdeps.rack.navepoint { navepoint_18u_open_frame_catalog }
+import extdeps.power.eaton_tripp_lite { eaton_tripp_lite_rs_1215_family_catalog }
+
+// SPATIAL-0 owned inventory bindings: extdeps rows cite vendor facts; this module binds allocated
+// PhysicalAssetIdentity and HostIdentity instances to catalog declarations and rack residence.
+// Mounting/shelf/U position stay UNOBSERVED until read or supplied. Amazon order IDs/URLs are
+// procurement provenance, never asset identity. Nominal declared rackmount total 4+4+2+2+1+1 = 14U
+// of 18U is arithmetic on catalog rack_units plus operator-declared 1U shelf for the desktop
+// switch, not an observation. Raspberry Pi catalog identity remains unauthored until exact
+// model/revision is observed.
+data operator_site: SiteIdentity = "operator-lab" as SiteIdentity
+data rack_01: RackIdentity = "rack-01" as RackIdentity
+
+data operator_physical_site: PhysicalSite = PhysicalSite {
+  identity: operator_site,
+  racks: [rack_01],
+}
+
+data nominal_rackmount_units_declared: RackUnit = rack_unit(14)
+data operator_switch_shelf_units: RackUnit = rack_unit(1)
+
+data chassis_srv1: PhysicalAssetIdentity = "chassis-srv1" as PhysicalAssetIdentity
+data chassis_srv2: PhysicalAssetIdentity = "chassis-srv2" as PhysicalAssetIdentity
+data chassis_srv3: PhysicalAssetIdentity = "chassis-srv3" as PhysicalAssetIdentity
+data chassis_srv4: PhysicalAssetIdentity = "chassis-srv4" as PhysicalAssetIdentity
+data chassis_srv5_placeholder: PhysicalAssetIdentity = "chassis-srv5-placeholder" as PhysicalAssetIdentity
+data chassis_srv6_placeholder: PhysicalAssetIdentity = "chassis-srv6-placeholder" as PhysicalAssetIdentity
+data switch_01: PhysicalAssetIdentity = "switch-01" as PhysicalAssetIdentity
+data pdu_01: PhysicalAssetIdentity = "pdu-01" as PhysicalAssetIdentity
+data pi_controller: PhysicalAssetIdentity = "pi-controller" as PhysicalAssetIdentity
+
+data host_srv1: HostIdentity = "srv1" as HostIdentity
+data host_srv2: HostIdentity = "srv2" as HostIdentity
+data host_srv3: HostIdentity = "srv3" as HostIdentity
+data host_srv4: HostIdentity = "srv4" as HostIdentity
+data host_srv5: HostIdentity = "srv5" as HostIdentity
+data host_srv6: HostIdentity = "srv6" as HostIdentity
+
+data srv1_chassis_asset: PhysicalAsset = PhysicalAsset {
+  identity: chassis_srv1,
+  catalog: DeclarationRef {
+    module_path: "extdeps.chassis.rosewill",
+    decl_name: "rosewill_rsv_r4000u_catalog",
+    field: WholeDeclaration,
+  },
+  physical_serial: none,
+  procurement: none,
+}
+
+data switch_01_asset: PhysicalAsset = PhysicalAsset {
+  identity: switch_01,
+  catalog: DeclarationRef {
+    module_path: "extdeps.network.tp_link",
+    decl_name: "tp_link_tl_sg1024s_catalog",
+    field: WholeDeclaration,
+  },
+  physical_serial: none,
+  procurement: none,
+}
+
+data pdu_01_asset: PhysicalAsset = PhysicalAsset {
+  identity: pdu_01,
+  catalog: DeclarationRef {
+    module_path: "extdeps.power.eaton_tripp_lite",
+    decl_name: "eaton_tripp_lite_rs_1215_family_catalog",
+    field: WholeDeclaration,
+  },
+  physical_serial: none,
+  procurement: none,
+}
+
+data rack_01_unobserved_residence: RackResidence = RackResidenceUnobserved
+
+data fleet_host_spatial_facts: List<HostSpatialFacts> = [
+  HostSpatialFacts {
+    host: host_srv1,
+    asset: chassis_srv1,
+    residence: rack_01_unobserved_residence,
+    wireless: WirelessAdapterAbsent,
+    relay: RelayIncapable,
+    bootstrap_need: BootstrapNotNeeded,
+  },
+  HostSpatialFacts {
+    host: host_srv2,
+    asset: chassis_srv2,
+    residence: rack_01_unobserved_residence,
+    wireless: WirelessAdapterUnobserved,
+    relay: RelayUnprovisioned,
+    bootstrap_need: BootstrapNotNeeded,
+  },
+  HostSpatialFacts {
+    host: host_srv3,
+    asset: chassis_srv3,
+    residence: rack_01_unobserved_residence,
+    wireless: WirelessAdapterUnobserved,
+    relay: RelayUnprovisioned,
+    bootstrap_need: BootstrapNotNeeded,
+  },
+  HostSpatialFacts {
+    host: host_srv4,
+    asset: chassis_srv4,
+    residence: rack_01_unobserved_residence,
+    wireless: WirelessAdapterUnobserved,
+    relay: RelayUnprovisioned,
+    bootstrap_need: BootstrapNotNeeded,
+  },
+  HostSpatialFacts {
+    host: host_srv5,
+    asset: chassis_srv5_placeholder,
+    residence: rack_01_unobserved_residence,
+    wireless: WirelessAdapterUnobserved,
+    relay: RelayUnprovisioned,
+    bootstrap_need: BootstrapNeeded,
+  },
+  HostSpatialFacts {
+    host: host_srv6,
+    asset: chassis_srv6_placeholder,
+    residence: rack_01_unobserved_residence,
+    wireless: WirelessAdapterUnobserved,
+    relay: RelayUnprovisioned,
+    bootstrap_need: BootstrapNeeded,
+  },
+]
+
+// FleetOnce wifi-first-relay-standing human burden row is intentionally absent here —
+// std.human_intervention authority is gunbc#7950; this module imports it and authors the burden
+// row when that PR merges, not as a fourth fork of the carrier.
+data srv1_measured_wireless_note: String = "srv1 fleet controller measured WirelessAdapterAbsent: docker0 enP3p3s0f0 enP3p3s0f1 enP3p5s0 enx62a53617b395 lo tailscale0 veth*, no nmcli wireless interface — so no current fleet host can associate with a DGX OOBE hotspot without a dedicated relay."
+
+data dynatron_w1_installation_note: String = "srv3 and srv4 carry Dynatron W1 coolers on Ampere Altra / LGA4926 per operator inventory; cooler installation is a host-component fact not yet modeled as a separate PhysicalAsset row."
+
+data rack_01_catalog_units: RackUnit = navepoint_18u_open_frame_catalog.rack_units
+
+// measure_add<Q, S> admits only operands of the SAME quantity and scale, so this sum is
+// dimensionally checked by construction — a Millimeter or a bare count cannot enter it.
+fn fleet_nominal_rackmount_arithmetic_holds() -> Bool {
+  let declared = measure_add(
+    a: measure_add(
+      a: measure_add(
+        a: measure_add(
+          a: measure_add(
+            a: rosewill_rsv_r4000u_catalog.rack_units,
+            b: rosewill_rsv_r4000u_catalog.rack_units,
+          ),
+          b: rosewill_rsv_z2600u_catalog.rack_units,
+        ),
+        b: rosewill_rsv_z2600u_catalog.rack_units,
+      ),
+      b: operator_switch_shelf_units,
+    ),
+    b: eaton_tripp_lite_rs_1215_family_catalog.rack_units,
+  )
+  declared == nominal_rackmount_units_declared && rack_01_catalog_units == navepoint_18u_open_frame_catalog.rack_units
+}

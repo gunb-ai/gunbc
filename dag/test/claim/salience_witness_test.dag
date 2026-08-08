@@ -145,8 +145,7 @@ test fn witness_red_viewport_scale_attraction_is_outside_the_envelope() -> Bool 
   !attraction_envelope(f: evasive)
 }
 
-data unit_comparability_red_note: String = "THE DISCRIMINATING PART IS THE NUMBER, NOT THE SIZE. Both controls below are authored to satisfy EVERY numeric constraint in their envelope and differ from an accepted specimen ONLY in unit, so they cannot pass by being small and cannot fail by being large — the sole reason either refuses is that a rem magnitude is not comparable to a px bound. A corona of 40rem satisfies 40 <= 48 and 40 > 4 while denoting roughly 640px, and an attraction field of 12rem travel inside a 150rem radius satisfies every one of the four numeric bounds; before the unit check both were admitted. The emission arm additionally pins WHICH refusal fires: EmissionUnitNotComparable carrying both offending unit tokens, never EmissionOutsideEnvelope, whose corona_radius_px field would report a rem magnitude under a px name."
-
+// THE DISCRIMINATING PART IS THE NUMBER, NOT THE SIZE. Both controls below are authored to satisfy EVERY numeric constraint in their envelope and differ from an accepted specimen ONLY in unit, so they cannot pass by being small and cannot fail by being large — the sole reason either refuses is that a rem magnitude is not comparable to a px bound. A corona of 40rem satisfies 40 <= 48 and 40 > 4 while denoting roughly 640px, and an attraction field of 12rem travel inside a 150rem radius satisfies every one of the four numeric bounds; before the unit check both were admitted. The emission arm additionally pins WHICH refusal fires: EmissionUnitNotComparable carrying both offending unit tokens, never EmissionOutsideEnvelope, whose corona_radius_px field would report a rem magnitude under a px name.
 test fn witness_red_rem_emission_is_not_comparable_to_a_px_bound() -> Bool {
   let rem_spec = EmissionSpec {
     core_radius: CssLength { n: 4, unit: Rem },

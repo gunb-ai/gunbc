@@ -83,8 +83,7 @@ fn record_is_active(r: RoadmapIdentityRecord) -> Bool {
   }
 }
 
-data roadmap_identity_resolution_note: String = "Resolution is EXACTLY-ONE, not first-pick. A filter-map-first lookup answers a duplicate registry with a plausible first row, which is the fabricated-plausible-output arm DESIGN 5 forbids — and it fails at exactly the moment the registry is corrupt, when a confident wrong answer is worst. The three outcomes are distinct because their remedies are: a MISSING identity is an unknown reference; a DUPLICATE is a corrupt registry; found is found. Callers match the sum rather than unwrapping an Optional that cannot tell those apart."
-
+// Resolution is EXACTLY-ONE, not first-pick. A filter-map-first lookup answers a duplicate registry with a plausible first row, which is the fabricated-plausible-output arm DESIGN 5 forbids — and it fails at exactly the moment the registry is corrupt, when a confident wrong answer is worst. The three outcomes are distinct because their remedies are: a MISSING identity is an unknown reference; a DUPLICATE is a corrupt registry; found is found. Callers match the sum rather than unwrapping an Optional that cannot tell those apart.
 type RoadmapIdentityResolution
   = IdentityResolved { identity: RoadmapNodeIdentity }
   | IdentityUnknown { slug: String }

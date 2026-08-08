@@ -19,8 +19,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data roadmap_altitude_witness_note: String = "Composition slice 3's receipts: the attention law's derivations proven total and fail-closed, the fold/open decision proven over RENDERED fixtures (a routine section folds, one working member holds it open), the counts wire pinned, and the client expand chain proven derived — each by execution, with the REDs planted as fixtures the same predicates must refuse."
 
-data derivation_totality_note: String = "The law's arms, pinned: finished work is routine, the working set holds, fail and loud expand — and the fail-closed arms are load-bearing, so they are asserted as REDs would be: an unmodeled status and an unmodeled band key must be anomalies, never quietly routine (the absorbing-fallback shape, refused)."
-
+// The law's arms, pinned: finished work is routine, the working set holds, fail and loud expand — and the fail-closed arms are load-bearing, so they are asserted as REDs would be: an unmodeled status and an unmodeled band key must be anomalies, never quietly routine (the absorbing-fallback shape, refused).
 fn attention_key(a: RowAttention) -> String {
   match a {
     RowRoutine => "routine"
@@ -114,8 +113,7 @@ test fn altitude_unsigned_done_holds_section_open() -> Bool {
     && string_contains(s: unsigned_done, pattern: "1 review")
 }
 
-data expand_chain_note: String = "The client chain proven derived, both directions: the derived key set is exactly the anomaly bands (order from the wire rows), the emitted asset carries the chain over those keys plus the disclosure flip, and the negative arm pins that no non-expanding band appears in an expand test — the exact defect a hand-authored chain would plant."
-
+// The client chain proven derived, both directions: the derived key set is exactly the anomaly bands (order from the wire rows), the emitted asset carries the chain over those keys plus the disclosure flip, and the negative arm pins that no non-expanding band appears in an expand test — the exact defect a hand-authored chain would plant.
 test fn altitude_expand_keys_derive_from_the_law() -> Bool {
   let keys = dispatch_expand_band_keys()
   return count(keys) == 2

@@ -1426,6 +1426,7 @@ type SeedRetainedSupportDirRegistration {
 
 data seed_retained_intrinsic_registrations: List<SeedRetainedIntrinsicRegistration> = [
   SeedRetainedIntrinsicRegistration { basename: "v1_interpreter", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "ci_control_plane", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "cli_run", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "coproduct_reflection", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "resolved_graph_cache", has_pub_mod: true, is_dir: false },

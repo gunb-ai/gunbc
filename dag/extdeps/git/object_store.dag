@@ -568,8 +568,7 @@ type GitEffectiveConflictMarkerGrammar {
   size: PositiveInt
 }
 
-data git_effective_conflict_marker_grammar_note: String = "Per-path effective conflict grammar after Git resolves gitattributes conflict-marker-size. Git defaults each marker to seven characters, but the attribute can choose another positive width for a path; consumers must observe the effective value rather than assume the default. The upstream fact is stored once as std.integer.PositiveInt and all three tokens derive from it, so empty, mismatched, and non-marker grammars are unwritable."
-
+// Per-path effective conflict grammar after Git resolves gitattributes conflict-marker-size. Git defaults each marker to seven characters, but the attribute can choose another positive width for a path; consumers must observe the effective value rather than assume the default. The upstream fact is stored once as std.integer.PositiveInt and all three tokens derive from it, so empty, mismatched, and non-marker grammars are unwritable.
 fn git_conflict_marker_begin(grammar: GitEffectiveConflictMarkerGrammar) -> String {
   repeat_string(s: "<", n: grammar.size)
 }

@@ -11,8 +11,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data posix_exit_status_note: String = "POSIX.1-2017 Chapter 2 (Shell Command Language) exit status: 0 = success; values 1–125 and >128 reserved for implementation-defined errors; 126 = command found but not executable; 127 = command not found."
-
+// POSIX.1-2017 Chapter 2 (Shell Command Language) exit status: 0 = success; values 1–125 and >128 reserved for implementation-defined errors; 126 = command found but not executable; 127 = command not found.
 data exit_code_success: Int = 0
 
 data exit_code_general_error: Int = 1

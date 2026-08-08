@@ -229,8 +229,7 @@ fn roadmap_rules() -> List<BuildRule> {
     concat(figure_rules(), roadmap_behavior_rules(rows: roadmap_behaviors)))
 }
 
-data dispatch_btn_base_decls_note: String = "The instrument's base rule, with its rest-state paint DERIVED (composition slice 1): the ink/fill/border decls splice in from the family roster's rest member via state_rest_decl at the exact positions the authored order demands, so the rest-to-invite binding is spelled only in dispatch_state_family — the base rule can no longer disagree with the roster it used to restate. Geometry decls stay authored here; they are the button's own facts, not state functions."
-
+// The instrument's base rule, with its rest-state paint DERIVED (composition slice 1): the ink/fill/border decls splice in from the family roster's rest member via state_rest_decl at the exact positions the authored order demands, so the rest-to-invite binding is spelled only in dispatch_state_family — the base rule can no longer disagree with the roster it used to restate. Geometry decls stay authored here; they are the button's own facts, not state functions.
 fn dispatch_btn_base_decls() -> List<CssDecl> {
   concat([
     decl(prop: FontSize, value: scale_var(t: text_13)),

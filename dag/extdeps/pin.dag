@@ -146,8 +146,7 @@ type PinRefusalCause
   | CrossFamilyIdentityIncomparable { expected: ContentHash, observed: ContentHash }
   | ObservedIdentityMismatch { expected: ContentHash, observed: ContentHash }
 
-data pin_admission_subject_note: String = "PinRefused carries the SUBJECT, not a name string. The first shape carried tool_name: NonEmptyStr, which re-spelled the subject's identity in the refusal and forced every consumer to join back by string equality — the same anemic-leaf defect the dimension note records for ToolPin itself. Carrying the subject means a refusal points AT the row that failed, so a consumer can project whatever identity it actually needs (a CliTool's name, a release's tag) from the modeled value rather than trusting a copied string."
-
+// PinRefused carries the SUBJECT, not a name string. The first shape carried tool_name: NonEmptyStr, which re-spelled the subject's identity in the refusal and forced every consumer to join back by string equality — the same anemic-leaf defect the dimension note records for ToolPin itself. Carrying the subject means a refusal points AT the row that failed, so a consumer can project whatever identity it actually needs (a CliTool's name, a release's tag) from the modeled value rather than trusting a copied string.
 type PinAdmission<Subject>
   = PinIntegrityAdmitted { pin: Pin<Subject> }
   | PinRefused { subject: Subject, cause: PinRefusalCause }

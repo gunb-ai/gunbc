@@ -1,0 +1,259 @@
+module gunbc.runner_capacity_realize
+
+import std.types { String, Int, List }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.runner_capacity_plan {
+  RunnerCapacityPlan,
+  PlanReady,
+  PlanRefused,
+  RunnerCapacityHostPlan,
+  RunnerCapacityAction,
+  RunnerSlotAdd,
+  RunnerSlotChange,
+  RunnerSlotRemove,
+  RunnerIncarnationReplace,
+  WidthAdmitted,
+  runner_capacity_plan,
+  runner_capacity_add_count,
+  addition_actions,
+}
+import gunbc.fleet_runner_connectivity { organization_runner_roster_evidence }
+import gunbc.runner_lifecycle {
+  runner_width_disk_preflight,
+  DiskHeadroomSufficient,
+  DiskHeadroomInsufficient,
+  DiskHeadroomUnobserved,
+}
+import gunbc.host_disk_observation { host_disk_observation }
+import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
+import product.placement_supply { HostIdentity }
+
+data runner_capacity_realize_authority_note: String = "PR C seam: wires gunbc.apply mode=apply to runner_capacity_plan + per-host disk preflight + ADD-only dispatch. Does NOT provision runners — all nine runner_lifecycle_realize_* arms return NotConverged (honest scaffold; dissolve-on runner_lifecycle_realize_wet_transport_dissolve_on: LocalShell in-band transport + enumerated sudo grants + HostEffectTransport). Runner-capacity apply executes RunnerSlotAdd only; Change/Remove/IncarnationReplace refuse per host (repair is #7940). Per-host outcomes are independent: srv4 disk/refusal does not discard srv3's receipt. No ctrl in this closure. Disk unobservable REFUSES per host (never width-5 fallback). Live width authority is unit/process state, not directory count (runner_capacity_width_authority_note)."
+
+data runner_capacity_ctrl_inventory_note: String = "DECISION 4 inventory (historical ctrl citations OUTSIDE this closure, later lane): runner_host_deploy runner_host_prereq_note, extdeps.jobserver, extdeps.cache.sccache, gunbc.build_cache_instance, gunbc.host_converge, gunbc.ci_runner_placement, gunbc.fleet_host_budget, gunbc.host_build_cache_provision_script, gunbc.plans.fleet_subsumption_manual_gaps. None imported by runner_capacity_plan/realize."
+
+type RunnerCapacityHostApplyOutcome
+  = HostApplySucceeded { add_actions_executed: Int }
+  | HostApplyRefused { reason: String }
+
+type RunnerCapacityHostApplyReceipt {
+  host: HostIdentity
+  outcome: RunnerCapacityHostApplyOutcome
+}
+
+type RunnerCapacityApplyOutcome
+  = RunnerCapacityApplyCompleted { hosts: List<RunnerCapacityHostApplyReceipt> }
+  | RunnerCapacityApplyRefused { reason: String }
+
+fn disk_preflight_refusal(host: HostIdentity, requested_width: Int) -> String? {
+  match runner_width_disk_preflight(
+    requested_width: requested_width,
+    disk: host_disk_observation(host: host),
+  ) {
+    DiskHeadroomSufficient { requested_width: _, required: _, observed_free: _ } => none
+    DiskHeadroomInsufficient { requested_width: w, required: _, observed_free: _ } =>
+      Present {
+        value: concat(
+          concat("disk headroom insufficient for width ", to_string(w)),
+          concat(" on ", host as String),
+        ),
+      }
+    DiskHeadroomUnobserved { requested_width: w, reason: r } =>
+      Present {
+        value: concat(
+          concat(concat("disk unobservable for width ", to_string(w)), concat(" on ", host as String)),
+          concat(": ", r),
+        ),
+      }
+  }
+}
+
+fn disk_preflight_refusal_for_host_plan(host_plan: RunnerCapacityHostPlan) -> String? {
+  match host_plan.admission {
+    WidthAdmitted { width: w } => disk_preflight_refusal(host: host_plan.host, requested_width: w)
+    _ => none
+  }
+}
+
+fn non_add_action_refusal(action: RunnerCapacityAction, host: HostIdentity) -> String? {
+  match action {
+    RunnerSlotAdd { to: _ } => none
+    RunnerSlotChange { from: _, to: _ } =>
+      Present {
+        value: concat("RunnerSlotChange outside runner-capacity apply on ", host as String),
+      }
+    RunnerSlotRemove { from: _ } =>
+      Present {
+        value: concat("RunnerSlotRemove outside runner-capacity apply on ", host as String),
+      }
+    RunnerIncarnationReplace { slot: _, cause: _ } =>
+      Present {
+        value: concat(
+          "RunnerIncarnationReplace outside runner-capacity apply on ",
+          host as String,
+        ),
+      }
+  }
+}
+
+fn host_plan_non_add_refusal(host_plan: RunnerCapacityHostPlan) -> String? {
+  fold(
+    host_plan.actions,
+    init: none,
+    f: (acc, a) =>
+      match acc {
+        Present { value: _ } => acc
+        Absent => non_add_action_refusal(action: a, host: host_plan.host)
+      },
+  )
+}
+
+fn count_add_actions_in_host_plan(host_plan: RunnerCapacityHostPlan) -> Int {
+  fold(
+    host_plan.actions,
+    init: 0,
+    f: (n, a) =>
+      match a {
+        RunnerSlotAdd { to: _ } => n + 1
+        _ => n
+      },
+  )
+}
+
+fn count_runner_slot_add_actions(plan: RunnerCapacityPlan) -> Int {
+  match plan {
+    PlanRefused { reason: _ } => 0
+    PlanReady { hosts: hs } =>
+      fold(
+        hs,
+        init: 0,
+        f: (n, h) => n + count_add_actions_in_host_plan(host_plan: h),
+      )
+  }
+}
+
+fn runner_capacity_apply_host_plan(host_plan: RunnerCapacityHostPlan) -> RunnerCapacityHostApplyReceipt {
+  match host_plan_non_add_refusal(host_plan: host_plan) {
+    Present { value: why } =>
+      RunnerCapacityHostApplyReceipt {
+        host: host_plan.host,
+        outcome: HostApplyRefused { reason: why },
+      }
+    Absent =>
+      let adds = count_add_actions_in_host_plan(host_plan: host_plan)
+      if adds > 0 {
+        match disk_preflight_refusal_for_host_plan(host_plan: host_plan) {
+          Present { value: why } =>
+            RunnerCapacityHostApplyReceipt {
+              host: host_plan.host,
+              outcome: HostApplyRefused { reason: why },
+            }
+          Absent =>
+            RunnerCapacityHostApplyReceipt {
+              host: host_plan.host,
+              outcome: HostApplyRefused {
+                reason: concat(
+                  concat(
+                    concat(concat("RunnerCapacityApplyScaffold: ", to_string(adds)), " RunnerSlotAdd actions planned on "),
+                    host_plan.host as String,
+                  ),
+                  "; dissolve-on runner_lifecycle_realize_wet_transport_dissolve_on",
+                ),
+              },
+            }
+        }
+      } else {
+        RunnerCapacityHostApplyReceipt {
+          host: host_plan.host,
+          outcome: HostApplySucceeded { add_actions_executed: 0 },
+        }
+      }
+  }
+}
+
+fn runner_capacity_reapply_plans_zero_additions(
+  srv3_width: Int,
+  srv4_width: Int,
+  observed_srv3: Int,
+  observed_srv4: Int,
+) -> Bool {
+  addition_actions(host: operator_host_srv3, requested_width: srv3_width, observed_width: observed_srv3).length() == 0
+    && addition_actions(host: operator_host_srv4, requested_width: srv4_width, observed_width: observed_srv4).length() == 0
+}
+
+fn runner_capacity_apply_plan(plan: RunnerCapacityPlan) -> RunnerCapacityApplyOutcome {
+  match plan {
+    PlanRefused { reason: r } => RunnerCapacityApplyRefused { reason: r }
+    PlanReady { hosts: hs } =>
+      RunnerCapacityApplyCompleted {
+        hosts: map(hs, h => runner_capacity_apply_host_plan(host_plan: h)),
+      }
+  }
+}
+
+fn runner_capacity_apply_any_host_refused(outcome: RunnerCapacityApplyOutcome) -> Bool {
+  match outcome {
+    RunnerCapacityApplyRefused { reason: _ } => true
+    RunnerCapacityApplyCompleted { hosts: hs } =>
+      fold(
+        hs,
+        init: false,
+        f: (acc, r) =>
+          acc
+            || match r.outcome {
+              HostApplyRefused { reason: _ } => true
+              HostApplySucceeded { add_actions_executed: _ } => false
+            },
+      )
+  }
+}
+
+fn runner_capacity_apply_total_adds_executed(outcome: RunnerCapacityApplyOutcome) -> Int {
+  match outcome {
+    RunnerCapacityApplyRefused { reason: _ } => 0
+    RunnerCapacityApplyCompleted { hosts: hs } =>
+      fold(
+        hs,
+        init: 0,
+        f: (n, r) =>
+          match r.outcome {
+            HostApplySucceeded { add_actions_executed: a } => n + a
+            HostApplyRefused { reason: _ } => n
+          },
+      )
+  }
+}
+
+fn runner_capacity_host_apply_receipt(
+  outcome: RunnerCapacityApplyOutcome,
+  host: HostIdentity,
+) -> RunnerCapacityHostApplyReceipt? {
+  match outcome {
+    RunnerCapacityApplyRefused { reason: _ } => none
+    RunnerCapacityApplyCompleted { hosts: hs } =>
+      fold(
+        hs,
+        init: none,
+        f: (acc, r) =>
+          if (r.host as String) == (host as String) {
+            Present { value: r }
+          } else {
+            acc
+          },
+      )
+  }
+}
+
+fn runner_capacity_apply_wet_exit(srv3_width: Int, srv4_width: Int) -> ProcessExit {
+  let plan = runner_capacity_plan(
+    srv3_width: srv3_width,
+    srv4_width: srv4_width,
+    roster: organization_runner_roster_evidence(),
+  )
+  let outcome = runner_capacity_apply_plan(plan: plan)
+  if runner_capacity_apply_any_host_refused(outcome: outcome) {
+    exit_failure(reason: "runner-capacity apply: one or more hosts refused; see per-host receipts")
+  } else {
+    ExitSuccess
+  }
+}

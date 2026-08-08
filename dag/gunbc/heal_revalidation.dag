@@ -78,8 +78,7 @@ type WorkflowDispatchPreflight
       run_subject_head: CommitSha
     }
 
-data heal_revalidation_external_boundary_note: String = "This module and the CI workflow close the in-repository model/realization loop: a produced heal explicitly dispatches a new run and exact-head coverage is required. The external dashboard readout that historically treated an absent run as ok, and its separate aggregate conflation of Cancelled superseded runs with failed runs, live outside this repository and are not fixed or claimed fixed here."
-
+// This module and the CI workflow close the in-repository model/realization loop: a produced heal explicitly dispatches a new run and exact-head coverage is required. The external dashboard readout that historically treated an absent run as ok, and its separate aggregate conflation of Cancelled superseded runs with failed runs, live outside this repository and are not fixed or claimed fixed here.
 fn heal_revalidation_initial(outcome: HealOutcome) -> HealRevalidationState {
   match outcome {
     HealNoChange { head } => HealRevalidationNotRequired { head: head }

@@ -381,8 +381,7 @@ fn publication_outcome_segment_state(
   }
 }
 
-data bound_detail_reads_the_subject_head_note: String = "THE HEAD IN THE BOUND SENTENCE COMES FROM THE SUBJECT, NOT FROM THE OUTCOME. ReceiptBound carries no head of its own - see roadmap_publish's receipt_bound_carries_no_head_note - because the head it offers is the subject's expected_head by the meaning of the variant. So this projection takes that head as a parameter and renders the one copy that exists, which is why the sentence cannot disagree with the judgment it describes."
-
+// THE HEAD IN THE BOUND SENTENCE COMES FROM THE SUBJECT, NOT FROM THE OUTCOME. ReceiptBound carries no head of its own - see roadmap_publish's receipt_bound_carries_no_head_note - because the head it offers is the subject's expected_head by the meaning of the variant. So this projection takes that head as a parameter and renders the one copy that exists, which is why the sentence cannot disagree with the judgment it describes.
 fn publication_outcome_segment_detail(
   outcome: PublicationReceiptOutcome,
   expected_head: CommitSha,
@@ -889,8 +888,7 @@ fn workflow_segment_json_value(segment: WorkflowSegment) -> JsonValue {
   ])
 }
 
-data progress_json_members_note: String = "Split so a composing consumer can EXTEND the attempt object without re-stating these members or pattern-matching the built JsonValue back open: the belt appends the decided presentation ('activity', from gunbc.roadmap_presentation) to this same object, and progress cannot import presentation without a cycle — the member list is the composition seam."
-
+// Split so a composing consumer can EXTEND the attempt object without re-stating these members or pattern-matching the built JsonValue back open: the belt appends the decided presentation ('activity', from gunbc.roadmap_presentation) to this same object, and progress cannot import presentation without a cycle — the member list is the composition seam.
 fn workflow_attempt_progress_json_members(
   progress: WorkflowAttemptProgress,
 ) -> List<JsonKeyValue> {

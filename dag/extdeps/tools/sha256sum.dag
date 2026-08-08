@@ -62,8 +62,7 @@ data sha256_verify_native_transport_frontier_rows: List<FrontierRow> = [
   )
 ]
 
-data sha256_check_outcome_is_data_note: String = "sha256sum --check exits non-zero on DIGEST MISMATCH, which is this fn's Sha256Mismatch answer, not a fault — so the check call is OutcomeIsData. The guard holds on the same evidence as the caller: Sha256VerifyVerdict already separates the two content answers (Matches / Mismatch) from Sha256VerifyInfraFailure, the arm for the verification machinery itself breaking, so annotating the content comparison cannot silence an infra failure — that arm is reached by different conditions entirely."
-
+// sha256sum --check exits non-zero on DIGEST MISMATCH, which is this fn's Sha256Mismatch answer, not a fault — so the check call is OutcomeIsData. The guard holds on the same evidence as the caller: Sha256VerifyVerdict already separates the two content answers (Matches / Mismatch) from Sha256VerifyInfraFailure, the arm for the verification machinery itself breaking, so annotating the content comparison cannot silence an infra failure — that arm is reached by different conditions entirely.
 fn sha256sum_verify_via_shell(path: NonEmptyStr, expected_digest: NonEmptyStr) -> Sha256VerifyVerdict {
   let checksum_dir = shell.Mktemp.Dir()
   if checksum_dir.success == false {

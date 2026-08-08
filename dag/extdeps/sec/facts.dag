@@ -17,8 +17,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data filed_facts_derive_not_store_note: String = "Store ONLY filed monetary facts with accession + fiscal-period citations. Margins and other ratios are DERIVED projections computed from stored facts at read time (DESIGN section 2 derive-not-store) — never stored fields on the fact row."
 
-data usd_whole_dollars_note: String = "SEC XBRL monetary facts report USD in whole dollars (companyfacts/companyconcept `val` field). Grounded on std.measure MoneyAmount<One, Currency> — not bare Int — so currency is in the type, not the field name."
-
+// SEC XBRL monetary facts report USD in whole dollars (companyfacts/companyconcept `val` field). Grounded on std.measure MoneyAmount<One, Currency> — not bare Int — so currency is in the type, not the field name.
 type UsdWholeDollars = MoneyAmount<One>
 
 fn usd_whole_dollars(count: Nat) -> UsdWholeDollars {
@@ -29,8 +28,7 @@ fn usd_whole_dollars_count(m: UsdWholeDollars) -> Nat {
   measure_count(m)
 }
 
-data filed_period_shape_note: String = "XBRL facts are either duration-typed (start and end bound a flow, e.g. income-statement lines) or instant-typed (a single as-of date, e.g. balance and commitment amounts; the upstream companyconcept row simply omits start). The period is a closed sum so a half-specified period is unwritable (DESIGN section 5, correctness by construction) rather than two optional date fields."
-
+// XBRL facts are either duration-typed (start and end bound a flow, e.g. income-statement lines) or instant-typed (a single as-of date, e.g. balance and commitment amounts; the upstream companyconcept row simply omits start). The period is a closed sum so a half-specified period is unwritable (DESIGN section 5, correctness by construction) rather than two optional date fields.
 type FiledPeriod
   = FiledDuration { start: EdgarCalendarDate, end: EdgarCalendarDate }
   | FiledInstant { as_of: EdgarCalendarDate }

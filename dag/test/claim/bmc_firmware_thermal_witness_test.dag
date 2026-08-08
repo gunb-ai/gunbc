@@ -168,8 +168,7 @@ data fixture_pinned_track3_intent: BmcFirmwareIntent = BmcFirmwareTrackRequired 
   },
 }
 
-data fixture_pinned_track3_intent_note: String = "A synthetic OpenBMC track-3 firmware requirement used only to exercise the firmware-classification machinery (mismatch detection, typed update plans). The fleet intent is BmcFirmwareUnpinned so no fleet host drifts on firmware; drift and update-plan coverage is demonstrated against this pinned fixture rather than fleet policy, so the machinery stays tested after the fleet stopped pinning a track for fan reasons."
-
+// A synthetic OpenBMC track-3 firmware requirement used only to exercise the firmware-classification machinery (mismatch detection, typed update plans). The fleet intent is BmcFirmwareUnpinned so no fleet host drifts on firmware; drift and update-plan coverage is demonstrated against this pinned fixture rather than fleet policy, so the machinery stays tested after the fleet stopped pinning a track for fan reasons.
 fn host_uses_global_bmc_valid_state(host: ComputeHost) -> Bool {
   match host.bmc_intent {
     Present { value: intent } => intent == fleet_bmc_valid_state

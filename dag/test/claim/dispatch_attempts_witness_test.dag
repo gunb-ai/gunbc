@@ -111,8 +111,7 @@ test fn attempts_argv_is_typed_and_scoped() -> Bool {
     && !any(cmd.args, a => a == "-rf")
 }
 
-data attempt_grain_note: String = "U1's own REDs: redispatch works exactly when a NEW attempt yields a NEW branch/worktree/uuid while the tmux name — the observe/reconcile key — stays node-grain. Fresh where debris collides, stable where identity reconciles. Homed beside U3's parse witnesses because the two are the same authority read in both directions: this row proves the MINT varies per attempt, attempts_parse_roundtrips_the_minted_branch proves the READ recovers exactly what was minted."
-
+// U1's own REDs: redispatch works exactly when a NEW attempt yields a NEW branch/worktree/uuid while the tmux name — the observe/reconcile key — stays node-grain. Fresh where debris collides, stable where identity reconciles. Homed beside U3's parse witnesses because the two are the same authority read in both directions: this row proves the MINT varies per attempt, attempts_parse_roundtrips_the_minted_branch proves the READ recovers exactly what was minted.
 test fn belt_attempt_grain_holds() -> Bool {
   let n = "5-regen-cutover"
   let t1 = "2026-07-25T20:00:00Z"

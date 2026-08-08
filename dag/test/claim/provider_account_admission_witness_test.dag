@@ -176,8 +176,7 @@ test fn fleet_evidence_row_matches_the_observation() -> Bool {
   }
 }
 
-data construction_requires_admission_note: String = "THE CLAIM THAT WOULD NOT COMPILE BEFORE, AND THE ONE THAT WOULD NOT COMPILE AFTER. Every instance's provider state now carries an admitted binding, so reading one back is possible at all — under the previous shape there was no field to read. And the wall works in the other direction too: a DashboardExistingProviderState written without a binding is a type error, which is the construction property stated as a compile fact rather than as a note.\\n\\nAll three live instances are checked rather than one, because the bypass was in the SHARED constructor and a claim against a single instance would pass while a second declaration wrote the field by hand."
-
+// THE CLAIM THAT WOULD NOT COMPILE BEFORE, AND THE ONE THAT WOULD NOT COMPILE AFTER. Every instance's provider state now carries an admitted binding, so reading one back is possible at all — under the previous shape there was no field to read. And the wall works in the other direction too: a DashboardExistingProviderState written without a binding is a type error, which is the construction property stated as a compile fact rather than as a note.\n\nAll three live instances are checked rather than one, because the bypass was in the SHARED constructor and a claim against a single instance would pass while a second declaration wrote the field by hand.
 fn instance_binding_is_single_session(instance: HostDashboardInstance) -> Bool {
   match instance.provider_state {
     DashboardExistingProviderState { root: _, executable: _, binding } =>

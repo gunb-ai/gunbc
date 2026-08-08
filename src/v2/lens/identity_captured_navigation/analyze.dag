@@ -27,8 +27,7 @@ fn capture_list_prepend(item: Node, xs: List<Node>) -> List<Node> {
   Cons { head: item, tail: xs }
 }
 
-data direct_capture_note: String = "collect_direct_captures walks n.children only until it hits a node whose OWN production identity equals the target emitted symbol - it does not descend past a match, so it finds exactly the direct (non-nested) occurrences of a production, matching the technique v2.lens.complexity_accumulator_copy.analyze uses to read a call's own args (^dag_surface_arg) without wandering into a nested call's args."
-
+// collect_direct_captures walks n.children only until it hits a node whose OWN production identity equals the target emitted symbol - it does not descend past a match, so it finds exactly the direct (non-nested) occurrences of a production, matching the technique v2.lens.complexity_accumulator_copy.analyze uses to read a call's own args (^dag_surface_arg) without wandering into a nested call's args.
 fn collect_direct_captures(n: Node, emitted: Symbol, acc: List<Node>) -> List<Node> {
   match parse_production_emitted_identity_optional(node: n) {
     Present { value: id } =>
@@ -122,8 +121,7 @@ fn node_source_symbol(node: Node, span_index: SpanIndex, source_text: String) ->
   }
 }
 
-data arg_value_symbol_caret_note: String = "primary_expr's grammar is a Choice: caret_symbol_expr = Sequence(caret_terminal, ident_terminal) for an atom literal like ^foo, vs primary_expr_core's plain-identifier case = Sequence(ident_lexeme, suffix) for a call head like find_named_child - the SAME sequence shape, but the symbol lives on the LEFT for a plain identifier and the RIGHT for a caret-prefixed atom literal (the left is the caret token itself, dag_lex_token_symbol-true). arg_value_symbol reads the left first and, when it is literally ^dag_token_caret, resolves the right - the atom literal's real referenced symbol - via node_source_symbol (see node_source_symbol_note) rather than returning the caret token's own class symbol."
-
+// primary_expr's grammar is a Choice: caret_symbol_expr = Sequence(caret_terminal, ident_terminal) for an atom literal like ^foo, vs primary_expr_core's plain-identifier case = Sequence(ident_lexeme, suffix) for a call head like find_named_child - the SAME sequence shape, but the symbol lives on the LEFT for a plain identifier and the RIGHT for a caret-prefixed atom literal (the left is the caret token itself, dag_lex_token_symbol-true). arg_value_symbol reads the left first and, when it is literally ^dag_token_caret, resolves the right - the atom literal's real referenced symbol - via node_source_symbol (see node_source_symbol_note) rather than returning the caret token's own class symbol.
 fn caret_literal_right_symbol(value_expr: Node, span_index: SpanIndex, source_text: String) -> Optional<Symbol> {
   match sequence_right_node(cap: value_expr) {
     Absent => Absent
@@ -239,8 +237,7 @@ fn count_symbol(xs: List<Symbol>, needle: Symbol) -> Int {
   fold(xs, init: 0, f: fn(acc, s) { if s == needle { acc + 1 } else { acc } })
 }
 
-data classify_note: String = "Name-agnostic shape check (see identity_captured_navigation_wall_note): mentions is every value-reference identifier inside the guarding match's arm region. Removing every ^Absent (the legitimate empty-Optional literal a Rejected arm returns) and exactly one ^node_atom_identity_optional (the sanctioned reduction) should leave EXACTLY one mention - the binder passed as that reduction's sole argument. Zero reductions with a non-Absent mention present means the raw identity node was referenced without ever being reduced (the bare-return escape shape); more than one leftover mention after one reduction means something besides the reduction's own argument escaped; more than one reduction is an ambiguous shape this lens refuses rather than guesses at."
-
+// Name-agnostic shape check (see identity_captured_navigation_wall_note): mentions is every value-reference identifier inside the guarding match's arm region. Removing every ^Absent (the legitimate empty-Optional literal a Rejected arm returns) and exactly one ^node_atom_identity_optional (the sanctioned reduction) should leave EXACTLY one mention - the binder passed as that reduction's sole argument. Zero reductions with a non-Absent mention present means the raw identity node was referenced without ever being reduced (the bare-return escape shape); more than one leftover mention after one reduction means something besides the reduction's own argument escaped; more than one reduction is an ambiguous shape this lens refuses rather than guesses at.
 fn empty_symbol_list() -> List<Symbol> {
   Empty
 }

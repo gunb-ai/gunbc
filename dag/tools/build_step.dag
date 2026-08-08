@@ -13,8 +13,7 @@ import v2.extdeps.languages.bash_build {
 }
 import v2.std.node { Node }
 
-data build_step_serialize_dissolution_note: String = "Shell text emission for build-artifact verification lives in v2.workflow.build_step_emit (grammar-row serializer via bash_command_fold_serialize.bash_fold_serialize_program). This module retains Node stmt construction only."
-
+// Shell text emission for build-artifact verification lives in v2.workflow.build_step_emit (grammar-row serializer via bash_command_fold_serialize.bash_fold_serialize_program). This module retains Node stmt construction only.
 type BuildArtifact {
   path: Node
   name: String
