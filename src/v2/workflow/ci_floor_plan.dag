@@ -31,7 +31,7 @@ import gunbc.ci_spec {
   gunbc_ci_ordinary_floor_budget_minutes,
   gunbc_ci_admission_postcondition_budget_minutes,
 }
-import gunbc.falsifier_workflow { falsifier_plan_function }
+import gunbc.falsifier_workflow { falsifier_plan_function, gunbc_falsifier_soft_deadline_minutes }
 import gunbc.falsifier_lane {
   FalsifierLane,
   LanePredictOnly,
@@ -545,6 +545,19 @@ fn gunbc_ci_floor_batch_clamp_per_unit_ms() -> List<Int> {
   map(gunbc_ci_floor_batch_clamp_params, c => millisecond_count(m: c.per_unit))
 }
 
+// The positional clamp's citation is PROJECTED from the same rows the numbers come from, never
+// spelled in the executor's format string. That is the difference between a diagnostic whose
+// authority is derived and one that merely agrees with the model until someone edits one of them:
+// a hardcoded citation stays green while the value it names moves, which is exactly the failure
+// this pair exists to make unwritable (std.realization_schedule RunnableBatchClamp).
+fn gunbc_ci_floor_batch_clamp_authority_modules() -> List<String> {
+  map(gunbc_ci_floor_batch_clamp_params, c => c.authority.module_path)
+}
+
+fn gunbc_ci_floor_batch_clamp_authority_decls() -> List<String> {
+  map(gunbc_ci_floor_batch_clamp_params, c => c.authority.decl_name)
+}
+
 fn gunbc_ci_compile_clean_clamp_overhead_seconds() -> Int {
   second_count(s: gunbc_ci_compile_clean_clamp.overhead)
 }
@@ -613,6 +626,12 @@ data gunbc_falsifier_substrate_long_lane_witness_eval_budget: Second = second(co
 
 fn gunbc_falsifier_substrate_long_lane_eval_budget_ms() -> v2.std.nat.Nat {
   second_count(s: gunbc_falsifier_substrate_long_lane_witness_eval_budget) * 1000
+}
+
+data gunbc_falsifier_soft_deadline_projection_note: String = "A UNIT PROJECTION, NOT A SECOND BUDGET. The value is gunbc.falsifier_workflow gunbc_falsifier_soft_deadline_minutes, which is itself derived by subtracting the flush allowance from the step timeout the workflow declares — this function only converts that one authority's minutes into the milliseconds the seed's budget seam reads, exactly as gunbc_falsifier_substrate_long_lane_eval_budget_ms converts seconds beside it. Re-deriving the subtraction here, or writing the minute count as a literal, would be a second representation of a number whose whole correctness property is that it stays below the cap it is subtracted from."
+
+fn gunbc_falsifier_soft_deadline_ms() -> Int {
+  gunbc_falsifier_soft_deadline_minutes() * 60 * 1000
 }
 
 fn corpus_runnable_for(spec: CiSpec) -> Runnable {
