@@ -214,14 +214,11 @@ data srv4_bmc_fan_active_config_digest: Digest = sha256_digest(
 
 data srv4_bmc_fan_realization_id: NonEmptyStr = "altrad8ud-openbmc-3.22.00-swampd-asrr-temp-soc-jffs2-v1"
 
-data bmc_fan_symbol_index_subtree_digest_dissolve_on: NonEmptyStr = "namespace content-addressed SymbolIndex subtree digest"
-
 fn bmc_fan_caller_asserted_definition_linkage(
   reason: NonEmptyStr,
 ) -> StateDefinitionLinkage {
   CallerAssertedDefinitionLinkage {
     reason: reason,
-    dissolve_on: bmc_fan_symbol_index_subtree_digest_dissolve_on,
   }
 }
 
@@ -245,7 +242,7 @@ fn bmc_fan_realization_definition_linkages() -> StateRealizationDefinitionLinkag
   }
 }
 
-data srv4_bmc_fan_realization_definition_linkages_scaffold_note: String = "🟡 dissolve-on: bmc_fan_symbol_index_subtree_digest_dissolve_on. Until the namespace content-addressed SymbolIndex subtree-digest authority lands, every realization role is CallerAssertedDefinitionLinkage and durable qualification refuses with typed DurabilityDefinitionLinkageUnavailable."
+data srv4_bmc_fan_realization_definition_linkages_scaffold_note: String = "Until the namespace content-addressed SymbolIndex subtree-digest authority lands, every realization role is CallerAssertedDefinitionLinkage and durable qualification refuses with typed DurabilityDefinitionLinkageUnavailable. The condition is not restated per row: std.state_durability state_definition_linkage_frontier_note is its single authority, and the arm's own name carries the temporary state, so the deleted per-instance dissolve_on string was one module fact copied to eight sites — including a witness that asserted the sentence verbatim, which made the prose the contract rather than the behaviour."
 
 data srv4_bmc_fan_realization: StateRealizationIdentity = StateRealizationIdentity {
   realization_id: srv4_bmc_fan_realization_id,

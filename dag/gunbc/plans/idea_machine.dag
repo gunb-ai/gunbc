@@ -1,6 +1,6 @@
 module gunbc.plans.idea_machine
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownBlock }
 import gunbc.plans.md_helpers { h2, p, li, ul, ol }
 
@@ -49,7 +49,6 @@ data idea_machine_plan: Plan = Plan {
   slug: "idea-machine",
   title: "Plan — idea → idea compiler (the idea-machine)",
   body: idea_machine_body(),
-  dissolution: HasTrigger {
-    text: "Delete this doc when ingest+emit are proven across ≥2 non-code media fail-closed (e.g. English round-trip + one structured medium) and the `Medium<A>↔Medium<B>` homomorphism is general — at which point \"adding a medium = rows\" is a witnessed property and this tracker is redundant."
+  retirement: PlanRetiresWhen { condition: "Delete this doc when ingest+emit are proven across ≥2 non-code media fail-closed (e.g. English round-trip + one structured medium) and the `Medium<A>↔Medium<B>` homomorphism is general — at which point \"adding a medium = rows\" is a witnessed property and this tracker is redundant."
   }
 }

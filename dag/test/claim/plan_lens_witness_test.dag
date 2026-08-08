@@ -4,35 +4,31 @@ module test.claim.plan_lens_witness
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn plan_with_trigger() -> Plan {
-  Plan { slug: "x", title: "x", body: [], dissolution: HasTrigger { text: "delete when X is witnessed" } }
+  Plan { slug: "x", title: "x", body: [], retirement: PlanRetiresWhen { condition: "delete when X is witnessed" } }
 }
 
 fn plan_without_trigger() -> Plan {
-  Plan { slug: "y", title: "y", body: [], dissolution: NoTrigger }
+  Plan { slug: "y", title: "y", body: [], retirement: PlanHasNoRetirement }
 }
 
 fn plan_untitled() -> Plan {
-  Plan { slug: "z", title: "", body: [], dissolution: HasTrigger { text: "t" } }
+  Plan { slug: "z", title: "", body: [], retirement: PlanRetiresWhen { condition: "t" } }
 }
 
-fn plan_with_empty_trigger() -> Plan {
-  Plan { slug: "w", title: "w", body: [], dissolution: HasTrigger { text: "" } }
-}
+data empty_condition_climb_note: String = "plan_with_empty_trigger and its two assertions are DELETED, not ported. They constructed PlanRetiresWhen with an empty condition and asserted the predicate caught it; PlanRetirement.condition is NonEmptyStr, so that value no longer compiles and the RED asserted a predicate over a state that is now unwritable — the same disposition doc_graph_roots recorded when primary_work became a required scalar and its empty-works control went with the predicate it backed (DESIGN §4b(4): a climb deletes the lower-rung production machinery, and a control whose subject has no constructor left is part of that machinery rather than evidence of the higher rung). What remains enrolled is the discriminating pair the coproduct still admits: a plan that retires and a plan that does not. The compile-refusal probe proving an empty condition refuses belongs to the refinement-at-data-positions census class, which DESIGN already names as its own open trigger rather than something this witness can stand in for."
 
-test fn every_registered_plan_has_dissolution_trigger() -> Bool {
-  plans_all_have_dissolution_trigger(plans: all_plans)
+test fn every_registered_plan_has_retirement() -> Bool {
+  plans_all_have_retirement(plans: all_plans)
 }
 
 test fn every_registered_plan_is_titled() -> Bool {
   plans_all_titled(plans: all_plans)
 }
 
-test fn missing_dissolution_trigger_is_detected() -> Bool {
-  plan_has_dissolution_trigger(p: plan_with_trigger())
-    && (plan_has_dissolution_trigger(p: plan_without_trigger()) == false)
-    && (plan_has_dissolution_trigger(p: plan_with_empty_trigger()) == false)
-    && (plans_all_have_dissolution_trigger(plans: [plan_with_trigger(), plan_without_trigger()]) == false)
-    && (plans_all_have_dissolution_trigger(plans: [plan_with_trigger(), plan_with_empty_trigger()]) == false)
+test fn missing_retirement_is_detected() -> Bool {
+  plan_has_retirement(p: plan_with_trigger())
+    && (plan_has_retirement(p: plan_without_trigger()) == false)
+    && (plans_all_have_retirement(plans: [plan_with_trigger(), plan_without_trigger()]) == false)
 }
 
 test fn missing_title_is_detected() -> Bool {

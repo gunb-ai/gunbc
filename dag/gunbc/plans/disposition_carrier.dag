@@ -1,6 +1,6 @@
 module gunbc.plans.disposition_carrier
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownBlock, MarkdownTableRow, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell }
 
@@ -127,7 +127,6 @@ data disposition_carrier_plan: Plan = Plan {
   slug: "disposition-carrier",
   title: "Plan — the `Disposition` carrier (confront the skipped modeling decisions)",
   body: disposition_carrier_body(),
-  dissolution: HasTrigger {
-    text: "Delete this doc when `Disposition` is a substrate-mandatory field on every coproduct (#1 reached, the ratcheting lens is dead code) and the redundancy lens is whole-tree — at which point an untagged or not-cleaned-up coproduct is unwritable and this tracker is redundant."
+  retirement: PlanRetiresWhen { condition: "Delete this doc when `Disposition` is a substrate-mandatory field on every coproduct (#1 reached, the ratcheting lens is dead code) and the redundancy lens is whole-tree — at which point an untagged or not-cleaned-up coproduct is unwritable and this tracker is redundant."
   }
 }

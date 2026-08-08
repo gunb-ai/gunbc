@@ -35,8 +35,6 @@ type Stage0CratePlan {
 
 data stage0_crate_plan_note: String = "Derived from v2.workflow.rust_crate_partition via gunbc.stage0_crate_partition_generated (HandExplicit ~8-crate interim partition). Dissolve-on: rust_crate_partition_interim_explicit when PolicyPartition lands."
 
-data stage0_crate_plan_list_wrapper_dissolve_on: String = "dissolve-on: stage0_crate_plan — deleted; receipt paths must call stage0_crate_plan_outcome (§5 empty-plan wrapper collapsed Stage0CratePlanRefused to crates:[]). workspace_members and regen_stage0 consume outcome surfaces only."
-
 fn stage0_crate_allow_block() -> String {
   [
     "#![allow(",

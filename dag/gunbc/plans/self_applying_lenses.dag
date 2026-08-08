@@ -1,6 +1,6 @@
 module gunbc.plans.self_applying_lenses
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownBlock, MarkdownListItem, TableBlock, BlockquoteBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row }
 
@@ -128,7 +128,6 @@ data self_applying_lenses_plan: Plan = Plan {
   slug: "self-applying-lenses",
   title: "Self-applying lenses — detect → generalize → emit → write",
   body: self_applying_lenses_body(),
-  dissolution: HasTrigger {
-    text: "Delete this doc when the `v2.lens.intent_linearity` registry's single producer-and-applier is built over the shared anti-unify kernel and the bucket-A rows (`structural_similarity`, `identical_variant_payload`, `table_decision_tree`, `cost`'s RunTime entries) are realized as registry rows wired green through emit + the filesystem-write effect — at which point the consolidation map and audit classification are witnessed properties of the registry and this tracker is redundant (DESIGN §6: the mark on the carrier is the authority)."
+  retirement: PlanRetiresWhen { condition: "Delete this doc when the `v2.lens.intent_linearity` registry's single producer-and-applier is built over the shared anti-unify kernel and the bucket-A rows (`structural_similarity`, `identical_variant_payload`, `table_decision_tree`, `cost`'s RunTime entries) are realized as registry rows wired green through emit + the filesystem-write effect — at which point the consolidation map and audit classification are witnessed properties of the registry and this tracker is redundant (DESIGN §6: the mark on the carrier is the authority)."
   }
 }

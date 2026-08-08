@@ -1,6 +1,6 @@
 module gunbc.plans.budget_tree
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownBlock }
 import gunbc.plans.md_helpers { h2, p, li, ul }
 
@@ -57,7 +57,6 @@ data budget_tree_plan: Plan = Plan {
   slug: "budget-tree",
   title: "Resource budget tree — grounding notes",
   body: budget_tree_body(),
-  dissolution: HasTrigger {
-    text: "Delete this doc when both §6 actuator halves have landed — a consumer derives a real decision from `extdeps.accounting.budget` (Track A `.dag`-floor spawn-width reads its L2 allocation) AND an enforcement actuator holds actual-run-count ≤ authored-claim-count (admission cap or cgroup `memory.max`) — so the tree is protective rather than descriptive, the three forked budgets (`realization_width`, complexity `EffortBudget`) have converged onto the single authority, and these planning-level grounding facts ride the carrier (§6) rather than this doc."
+  retirement: PlanRetiresWhen { condition: "Delete this doc when both §6 actuator halves have landed — a consumer derives a real decision from `extdeps.accounting.budget` (Track A `.dag`-floor spawn-width reads its L2 allocation) AND an enforcement actuator holds actual-run-count ≤ authored-claim-count (admission cap or cgroup `memory.max`) — so the tree is protective rather than descriptive, the three forked budgets (`realization_width`, complexity `EffortBudget`) have converged onto the single authority, and these planning-level grounding facts ride the carrier (§6) rather than this doc."
   }
 }

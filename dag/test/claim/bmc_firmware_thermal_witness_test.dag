@@ -979,7 +979,6 @@ test fn reboot_durability_evidence_refuses_relabeled_perturbation_capability_dig
         version: "relabelled-capability",
         definition_linkage: CallerAssertedDefinitionLinkage {
           reason: "relabelled-capability-linkage" as NonEmptyStr,
-          dissolve_on: "namespace content-addressed SymbolIndex subtree digest",
         },
       },
       publication_protocol: srv4_bmc_fan_projection_capability.publication_protocol,
@@ -1194,10 +1193,9 @@ test fn linux_synchronized_publication_admits_commit_barrier() -> Bool {
   }
     && match srv4_bmc_fan_durability_capability_version.definition_linkage {
       CallerAssertedDefinitionLinkage {
-        reason: _,
-        dissolve_on: dissolve_on,
+        reason: reason,
       } =>
-        dissolve_on == "namespace content-addressed SymbolIndex subtree digest"
+        reason as String == "linux synchronized rename-replace publication capability is caller-asserted until SymbolIndex subtree digest"
     }
 }
 

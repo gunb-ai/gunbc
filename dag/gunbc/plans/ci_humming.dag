@@ -1,6 +1,6 @@
 module gunbc.plans.ci_humming
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownBlock }
 import gunbc.plans.md_helpers { h2, p, li, ul }
 
@@ -71,5 +71,5 @@ data ci_humming_plan: Plan = Plan {
   slug: "ci-humming",
   title: "CI humming — throughput, wall-clock, reliability (the single CI-operations authority)",
   body: ci_humming_body(),
-  dissolution: HasTrigger { text: "Delete this doc when CI throughput, wall-clock, and reliability all fall out of the single modeled fleet budget consumed by a verified-effective apply (T0 un-zeroes the runner slice, T1/T2 caps are verified-effective on srv1+srv2, and the session slice is capped or oomd-backstopped) — so capacity is safe by construction rather than hand-managed." }
+  retirement: PlanRetiresWhen { condition: "Delete this doc when CI throughput, wall-clock, and reliability all fall out of the single modeled fleet budget consumed by a verified-effective apply (T0 un-zeroes the runner slice, T1/T2 caps are verified-effective on srv1+srv2, and the session slice is capped or oomd-backstopped) — so capacity is safe by construction rather than hand-managed." }
 }

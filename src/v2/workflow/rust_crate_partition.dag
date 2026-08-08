@@ -534,8 +534,6 @@ fn validate_partition_r4(
   }
 }
 
-data stage0_compilation_units_list_wrapper_dissolve_on: String = "dissolve-on: stage0_compilation_units — removed; receipt paths must call stage0_partition_receipt_outcome (§5 List wrapper collapses resolve/fold refusal to [], indistinguishable from empty partition). Witnesses read units from Stage0PartitionReceiptOk only."
-
 fn stage0_single_crate_assignment() -> Map<ModuleId, CompilationUnitId> {
   stage0_assign_modules_to_unit(
     assignment: empty_map(),

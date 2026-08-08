@@ -1,6 +1,6 @@
 module gunbc.plans.structural_quadratic_wall_coverage_audit
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, quote, cell, row }
 
@@ -60,7 +60,6 @@ data structural_quadratic_wall_coverage_audit_plan: Plan = Plan {
   slug: "structural-quadratic-wall-coverage-audit",
   title: "Structural-quadratic wall -- coverage audit and execution receipt",
   body: structural_quadratic_wall_coverage_audit_body(),
-  dissolution: HasTrigger {
-    text: "Dissolves when the whole-corpus asymptotic cost gate grounds (`decl_facts(roots)` #5966 + compile-graph gunbc#5364 land, flipping cost.dag from roster-bound to whole-corpus): at that point the region-(2) \"un-walled residue\" rows close, the emit-only `complexity_linearity_audit` bin is deleted, and this census is superseded by the live gate's own coverage report. Also re-run the section-2 receipt whenever a sibling lane lands a resolver-pathology quadratic fix, to confirm the reintroduction-fence candidate is still measured-live."
+  retirement: PlanRetiresWhen { condition: "Dissolves when the whole-corpus asymptotic cost gate grounds (`decl_facts(roots)` #5966 + compile-graph gunbc#5364 land, flipping cost.dag from roster-bound to whole-corpus): at that point the region-(2) \"un-walled residue\" rows close, the emit-only `complexity_linearity_audit` bin is deleted, and this census is superseded by the live gate's own coverage report. Also re-run the section-2 receipt whenever a sibling lane lands a resolver-pathology quadratic fix, to confirm the reintroduction-fence candidate is still measured-live."
   }
 }

@@ -1,6 +1,6 @@
 module gunbc.plans.representation_minimization
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownBlock }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol }
 
@@ -57,7 +57,6 @@ data representation_minimization_plan: Plan = Plan {
   slug: "representation-minimization",
   title: "Resolved-graph representation minimization (root-first, v1-survivable)",
   body: representation_minimization_body(),
-  dissolution: HasTrigger {
-    text: "§7 v2 self-host fixed point: when the resolved-graph representation is minimal-by-construction in the `.dag` authority and the v1 Rust seed is retired, items 1 through 4 are landed-or-moot and item 5 dies with the seed; this lane dissolves into the v2 representation."
+  retirement: PlanRetiresWhen { condition: "§7 v2 self-host fixed point: when the resolved-graph representation is minimal-by-construction in the `.dag` authority and the v1 Rust seed is retired, items 1 through 4 are landed-or-moot and item 5 dies with the seed; this lane dissolves into the v2 representation."
   }
 }

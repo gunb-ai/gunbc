@@ -99,7 +99,6 @@ type StateRealizationIdentity {
 type StateDefinitionLinkage
   = CallerAssertedDefinitionLinkage {
       reason: NonEmptyStr,
-      dissolve_on: NonEmptyStr,
     }
 
 type StateDefinitionRole
@@ -113,7 +112,6 @@ type StateDefinitionRole
 type StateDefinitionCallerAssertion {
   role: StateDefinitionRole
   reason: NonEmptyStr
-  dissolve_on: NonEmptyStr
 }
 
 type StateRealizationDefinitionLinkages {
@@ -147,13 +145,11 @@ fn state_definition_linkage_verdict(
   match linkage {
     CallerAssertedDefinitionLinkage {
       reason: reason,
-      dissolve_on: dissolve_on,
     } =>
       StateDefinitionLinkageUnavailable {
         assertion: StateDefinitionCallerAssertion {
           role: role,
           reason: reason,
-          dissolve_on: dissolve_on,
         },
       }
   }

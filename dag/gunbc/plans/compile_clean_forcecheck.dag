@@ -1,6 +1,6 @@
 module gunbc.plans.compile_clean_forcecheck
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone, AlignRight }
 import gunbc.plans.md_helpers { h2, p, li, ul, ol, cell, row }
 
@@ -95,7 +95,6 @@ data compile_clean_forcecheck_plan: Plan = Plan {
   slug: "compile-clean-forcecheck",
   title: "Plan — compile-clean gate force-check (ROADMAP §1 floor-coverage / §0 inference fail-open)",
   body: compile_clean_forcecheck_body(),
-  dissolution: HasTrigger {
-    text: "Delete this doc when (A) lands as construction: the builtin registry carries a `SubstrateAvailable`/`SeedOnly` availability tag, a dag-substrate compile fails closed on a live seed-only name such as `scan_while` while the v1 seed admits it, and the stale `DeclarationRef`s in `utf8_decode_bytes_host_realization_marker` / `bytes_seam_host_realization_marker` are repaired onto a live authority or dissolve — at which point the leak is dead by construction (DESIGN §5)."
+  retirement: PlanRetiresWhen { condition: "Delete this doc when (A) lands as construction: the builtin registry carries a `SubstrateAvailable`/`SeedOnly` availability tag, a dag-substrate compile fails closed on a live seed-only name such as `scan_while` while the v1 seed admits it, and the stale `DeclarationRef`s in `utf8_decode_bytes_host_realization_marker` / `bytes_seam_host_realization_marker` are repaired onto a live authority or dissolve — at which point the leak is dead by construction (DESIGN §5)."
   }
 }

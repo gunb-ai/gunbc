@@ -1,6 +1,6 @@
 module gunbc.plans.resolver_pathology_profile_receipt
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownBlock, CodeBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, cell, row, hr }
 
@@ -35,7 +35,6 @@ data resolver_pathology_profile_receipt_plan: Plan = Plan {
   slug: "resolver-pathology-profile-receipt",
   title: "Resolver pathology — cold-resolve profile receipt",
   body: resolver_pathology_profile_receipt_body(),
-  dissolution: HasTrigger {
-    text: "Delete when resolve-phase timings are substrate-emitted and ROADMAP 1-resolver-pathology closes with a fix PR."
+  retirement: PlanRetiresWhen { condition: "Delete when resolve-phase timings are substrate-emitted and ROADMAP 1-resolver-pathology closes with a fix PR."
   }
 }

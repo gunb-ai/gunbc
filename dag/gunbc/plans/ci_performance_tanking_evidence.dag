@@ -1,6 +1,6 @@
 module gunbc.plans.ci_performance_tanking_evidence
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, p, li, ul, cell, row }
 
@@ -91,7 +91,6 @@ data ci_performance_tanking_evidence_plan: Plan = Plan {
   slug: "ci-performance-tanking-evidence",
   title: "Why CI performance is tanking - the evidence, argued serially (2026-07-10/11 main-red incident)",
   body: ci_performance_tanking_evidence_body(),
-  dissolution: HasTrigger {
-    text: "This is an incident-evidence document, not a standing design. It dissolves when (a) main is green with the affected-set flip ON for a sustained window, and (b) the two pinning receipts it names have landed: the P1 complete latent-red enumeration and the P2 direct corpus A/B (admission fix acceptance). At that point its durable content lives in the carriers it cites (the floor receipts, the admission increment's rows, the resolver design docs) and this narrative retires."
+  retirement: PlanRetiresWhen { condition: "This is an incident-evidence document, not a standing design. It dissolves when (a) main is green with the affected-set flip ON for a sustained window, and (b) the two pinning receipts it names have landed: the P1 complete latent-red enumeration and the P2 direct corpus A/B (admission fix acceptance). At that point its durable content lives in the carriers it cites (the floor receipts, the admission increment's rows, the resolver design docs) and this narrative retires."
   }
 }

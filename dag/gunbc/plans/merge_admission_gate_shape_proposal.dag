@@ -1,7 +1,7 @@
 module gunbc.plans.merge_admission_gate_shape_proposal
 
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
-import gunbc.plan { Plan, HasTrigger }
+import gunbc.plan { Plan, PlanRetiresWhen }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, quote, cell, row }
 import gunbc.merge_admission { gate_roster_content_hash, receipt_is_admissible }
 
@@ -71,7 +71,6 @@ data merge_admission_gate_shape_proposal_plan: Plan = Plan {
   slug: "merge-admission-gate-shape-proposal",
   title: "[SIGNED OFF] Merge-admission gate shape — predicate landed, actuator follow-on HELD",
   body: merge_admission_gate_shape_proposal_body(),
-  dissolution: HasTrigger {
-    text: "Delete when KeyedReceipt actuator is witnessed in force or superseded by an enrolled enforcement plan."
+  retirement: PlanRetiresWhen { condition: "Delete when KeyedReceipt actuator is witnessed in force or superseded by an enrolled enforcement plan."
   }
 }

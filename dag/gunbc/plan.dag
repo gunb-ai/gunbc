@@ -6,44 +6,50 @@ import std.markdown {
   TextInline, H1, H2,
 }
 import extdeps.languages.markdown { serialize_markdown_source }
+import std.types { NonEmptyStr }
 
-type DissolutionTrigger = HasTrigger { text: String } | NoTrigger
+data plan_retirement_naming_note: String = "Renamed from DissolutionTrigger (operator ruling 2026-08-08). Two unrelated public types must not share one name, and the collision was not merely cosmetic: std.dissolution.DissolutionTrigger is an executable expiry condition whose satisfaction is decided against the declarations present in the tree, while this one is DOCUMENT metadata — a sentence rendered into a plan's markdown under a heading. Nothing checks it, nothing can, and calling it a trigger invited exactly the reading that a plan's retirement was mechanically tracked. PlanRetiresWhen carries a NonEmptyStr because the emptiness check plan_has_dissolution_trigger used to perform is a constraint the carrier can hold itself — an empty condition is now unwritable rather than caught, so the predicate is a total projection over the coproduct with no length test left in it (DESIGN §5 construction over validation)."
+
+type PlanRetirement
+  = PlanRetiresWhen { condition: NonEmptyStr }
+  | PlanHasNoRetirement
 
 type Plan {
   slug: String,
   title: String,
   body: List<MarkdownBlock>,
-  dissolution: DissolutionTrigger,
+  retirement: PlanRetirement,
 }
 
 fn plan_h1(text: String) -> MarkdownBlock { HeadingBlock { level: H1, inlines: [TextInline { text: text }] } }
 fn plan_h2(text: String) -> MarkdownBlock { HeadingBlock { level: H2, inlines: [TextInline { text: text }] } }
 fn plan_p(text: String) -> MarkdownBlock { ParagraphBlock { inlines: [TextInline { text: text }] } }
 
-fn plan_dissolution_blocks(p: Plan) -> List<MarkdownBlock> {
-  match p.dissolution {
-    HasTrigger { text } => [plan_h2(text: "Dissolution trigger (DESIGN §6)"), plan_p(text: text)]
-    NoTrigger => []
+fn plan_retirement_blocks(p: Plan) -> List<MarkdownBlock> {
+  match p.retirement {
+    PlanRetiresWhen { condition } =>
+      [plan_h2(text: "Dissolution trigger (DESIGN §6)"), plan_p(text: condition as String)]
+    PlanHasNoRetirement => []
   }
 }
 
 fn plan_to_blocks(p: Plan) -> List<MarkdownBlock> {
-  concat(concat([plan_h1(text: p.title)], p.body), plan_dissolution_blocks(p: p))
+  concat(concat([plan_h1(text: p.title)], p.body), plan_retirement_blocks(p: p))
 }
 
 fn plan_to_document(p: Plan) -> MarkdownDocument {
   MarkdownDocument { blocks: plan_to_blocks(p: p) }
 }
 
-fn plan_has_dissolution_trigger(p: Plan) -> Bool {
-  match p.dissolution {
-    HasTrigger { text } => text.length() > 0
-    NoTrigger => false
+fn plan_has_retirement(p: Plan) -> Bool {
+  match p.retirement {
+    PlanRetiresWhen { condition: _ } => true
+    PlanHasNoRetirement => false
   }
 }
 
-fn plans_all_have_dissolution_trigger(plans: List<Plan>) -> Bool {
-  all(plans, p => plan_has_dissolution_trigger(p: p))
+fn plans_all_have_retirement(plans: List<Plan>) -> Bool {
+  all(plans, p => plan_has_retirement(p: p))
 }
 
 fn plan_title_is_present(p: Plan) -> Bool {

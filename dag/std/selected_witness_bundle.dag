@@ -37,7 +37,6 @@ type SelectedWitnessMember
       witness: SelectedWitnessIdentity
       cause: NativeUnavailableCause
       reason: NonEmptyStr
-      dissolve_on: NonEmptyStr
     }
 
 type NativeBundleShardPolicy
@@ -170,7 +169,7 @@ fn selected_witness_plan_native_members(plan: SelectedWitnessPlan) -> List<Nativ
           witness: witness,
           realization: realization
         }], acc)
-      InterpreterFrontier { witness: _, cause: _, reason: _, dissolve_on: _ } => acc
+      InterpreterFrontier { witness: _, cause: _, reason: _ } => acc
     }
   ))
 }
@@ -181,7 +180,7 @@ fn selected_witness_plan_interpreter_frontier_count(plan: SelectedWitnessPlan) -
     init: 0,
     f: (count, member) => match member {
       NativeSelected { witness: _, realization: _ } => count
-      InterpreterFrontier { witness: _, cause: _, reason: _, dissolve_on: _ } => count + 1
+      InterpreterFrontier { witness: _, cause: _, reason: _ } => count + 1
     }
   )
 }

@@ -1,6 +1,6 @@
 module gunbc.plans.fleet_acceptance_criteria
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownBlock }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, quote }
 
@@ -203,5 +203,5 @@ data fleet_acceptance_criteria_plan: Plan = Plan {
   slug: "fleet-acceptance-criteria",
   title: "Fleet acceptance criteria — completion tiers and per-node operational acceptance",
   body: fleet_acceptance_criteria_body(),
-  dissolution: HasTrigger { text: "Dissolves when acceptance is carried as typed fields on RoadmapNode (a modeled completion tier + acceptance record) consumed by the dispatch surface, or when every §2 node named here has closed at its required tier — whichever comes first. Until then, an Accept: edit on a node and its checklist here land in the same PR (the node is the summary, this doc is the checklist; both project into generated artifacts)." },
+  retirement: PlanRetiresWhen { condition: "Dissolves when acceptance is carried as typed fields on RoadmapNode (a modeled completion tier + acceptance record) consumed by the dispatch surface, or when every §2 node named here has closed at its required tier — whichever comes first. Until then, an Accept: edit on a node and its checklist here land in the same PR (the node is the summary, this doc is the checklist; both project into generated artifacts)." },
 }

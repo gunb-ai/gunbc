@@ -1200,7 +1200,6 @@ test fn native_selected_witness_bundle_unavailable_is_counted_holds() -> Bool {
       }
       cause: NativeRealizationAbsent
       reason: "The emitter has no native realization for this selected member."
-      dissolve_on: "feature:selected-witness-native-realization"
     }])
   }
   selected_witness_plan_interpreter_frontier_count(plan: unavailable) == 1

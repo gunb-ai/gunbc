@@ -1,6 +1,6 @@
 module gunbc.plans.language_target_self_host_frontier
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row, hr }
 
@@ -82,7 +82,6 @@ data language_target_self_host_frontier_plan: Plan = Plan {
   slug: "language-target-self-host-frontier",
   title: "Language-target self-host frontier — beginning-to-end dependency map",
   body: language_target_self_host_frontier_body(),
-  dissolution: HasTrigger {
-    text: "**Un-shelve is an operator decision (ROADMAP §4 → §1/§3 by PR, priced in displaced cost).** When it fires, this doc + the solve doc are the lane's charter; the typed `LanguageTargetFrontierRow` carrier + completeness/RED witnesses are authored (they do not exist today), the frontier table rows migrate onto per-target carrier rows, the OFFLINE C/Rust F5 smokes are enrolled, and this file dissolves."
+  retirement: PlanRetiresWhen { condition: "**Un-shelve is an operator decision (ROADMAP §4 → §1/§3 by PR, priced in displaced cost).** When it fires, this doc + the solve doc are the lane's charter; the typed `LanguageTargetFrontierRow` carrier + completeness/RED witnesses are authored (they do not exist today), the frontier table rows migrate onto per-target carrier rows, the OFFLINE C/Rust F5 smokes are enrolled, and this file dissolves."
   }
 }

@@ -1,6 +1,6 @@
 module gunbc.plans.m4_universal_hermetic_corpus
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownBlock, MarkdownListItem, TableBlock, AlignNone, ThematicBreak }
 import gunbc.plans.md_helpers { h2, p, li, ul, ol, cell, row }
 
@@ -88,7 +88,6 @@ data m4_universal_hermetic_corpus_plan: Plan = Plan {
   slug: "m4-universal-hermetic-corpus",
   title: "Plan — M4.1: universal hermetic corpus governance",
   body: m4_universal_hermetic_corpus_body(),
-  dissolution: HasTrigger {
-    text: "Dissolve this tracker when M4.1 universal governance has landed and M4.0 opt-in is gone — `precompute_whole_tree_published_mock_keys` is the single authority, `m4_universal_corpus_witness` is green-by-execution on the floor, and the Phase-3 marks (`feature:m4-universal-hermetic-corpus-load`, `feature:hermetic-published-mock-operation-ref`) have fired (corpus co-location import + `operation_key` deleted) — at which point governance is universal-by-construction and this doc is redundant."
+  retirement: PlanRetiresWhen { condition: "Dissolve this tracker when M4.1 universal governance has landed and M4.0 opt-in is gone — `precompute_whole_tree_published_mock_keys` is the single authority, `m4_universal_corpus_witness` is green-by-execution on the floor, and the Phase-3 marks (`feature:m4-universal-hermetic-corpus-load`, `feature:hermetic-published-mock-operation-ref`) have fired (corpus co-location import + `operation_key` deleted) — at which point governance is universal-by-construction and this doc is redundant."
   }
 }

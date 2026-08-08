@@ -1,6 +1,6 @@
 module gunbc.plans.solve_higher_order_design
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownBlock, CodeBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row, hr }
 
@@ -67,7 +67,6 @@ data solve_higher_order_design_plan: Plan = Plan {
   slug: "solve-higher-order-design",
   title: "`solve` is higher-order, not a primitive — the standing rationale",
   body: solve_higher_order_design_body(),
-  dissolution: HasTrigger {
-    text: "This doc dissolves when the lane un-shelves: the **structural**-solve rationale migrates onto the existing `solve_constraints` / `ConstraintGraph` authority's typed doc-rows (`src/v2/std/constraints.dag`; `.dag` has no comment trivia — encode as `data … : String`) plus a DESIGN §4 anchor, and the **numerical**-solve gap is authored at its own trigger as the three orthogonal facts above (finite measure + `TerminationProof`, typed residual-acceptance contract, extdeps solver handler) — no parallel `Residual`/`Constraint` authority is minted. Until then, this is the single authority for the ruling."
+  retirement: PlanRetiresWhen { condition: "This doc dissolves when the lane un-shelves: the **structural**-solve rationale migrates onto the existing `solve_constraints` / `ConstraintGraph` authority's typed doc-rows (`src/v2/std/constraints.dag`; `.dag` has no comment trivia — encode as `data … : String`) plus a DESIGN §4 anchor, and the **numerical**-solve gap is authored at its own trigger as the three orthogonal facts above (finite measure + `TerminationProof`, typed residual-acceptance contract, extdeps solver handler) — no parallel `Residual`/`Constraint` authority is minted. Until then, this is the single authority for the ruling."
   }
 }
