@@ -42,6 +42,8 @@ pub use crate::std_pareto::AxisGoal;
 use crate::std_pareto::AxisGoal::*;
 use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, CommitSha, List, NonEmptyStr};
+pub use crate::std_witness_admission::WitnessConsumerCadence;
+use crate::std_witness_admission::WitnessConsumerCadence::*;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -144,11 +146,20 @@ impl WitnessCostBasis {
     }
 }
 
+pub fn scheduled_witness_envelope_typed_consumer_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "path_classification: WitnessConsumerCadence, not a cadence String (C-b, operator brief 2026-08-07, corrected 2026-08-07): the string fused three separate facts — path-policy classification, schedule period, and maximum tolerated staleness — into one field, so a value like \"4h\" answered both which lane classifies this row and how often it runs, and the wire decoder that tried to recover the identity half from the string only ever knew five of WitnessConsumerCadence's nine arms (witness_consumer_cadence_wire_round_trip_witness_test.dag, RED on the archived draft gunbc#7893 / origin/session/swift-wren-710). WitnessConsumerCadence (std.witness_admission) already is the closed, grounded vocabulary for path-policy classification — importing it here is the §3 single-authority move, not a second declaration. The field is named path_classification, not consumer: per src/v2/workflow/witness_admission.dag's commit_roster_enrollment_is_a_consumer_note, WitnessConsumerCadence answers which path policy classifies a row, NOT whether anything executes it — those are two different questions, and naming this field consumer would silently answer the second with the first (the state-space conflation this slice exists to remove). Whether a row has an executing consumer is answered by the separate fold in src/v2/workflow/witness_admission.dag; this envelope does not carry that fact and must not be read as carrying it. max_staleness is Millisecond, the SAME measure wall_budget already uses (std.measure) — reaching for the existing measure is the point; minting a fresh Duration carrier for a concept that already exists would itself be a failed decomposition (§2 net-concepts test). This envelope represents ACTUAL path-policy classification, never DESIRED placement — that is a distinct, later slice with its own types.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ScheduledWitnessEnvelope {
-    pub cadence: String,
+    pub path_classification: WitnessConsumerCadence,
     pub wall_budget: Millisecond,
-    pub max_staleness: String,
+    pub max_staleness: Millisecond,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

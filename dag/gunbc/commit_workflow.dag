@@ -47,6 +47,13 @@ import v2.compiler.source_authority {
 import std.algebra { Empty }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.measure { millisecond, millisecond_count, WallClock, clock_basis_eq }
+import std.witness_admission {
+  WitnessConsumerCadence,
+  DiscoverySelection, FalsifierSelfHostWet, FalsifierRehomedBinWet,
+  FalsifierSubstrateLongLane, BinWitnessWet, QuarantineProbeExpectRed,
+  OfflineLocalRecipe, FixtureExplicitRoster, NoConsumer,
+  witness_consumer_cadence_eq
+}
 import std.realization_schedule {
   string_list_eq, ScheduleWitnessEntry,
   WitnessKind, CorpusWitnessKind, ExecutionWitnessKind, witness_kind_eq,
@@ -1670,9 +1677,9 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
           receipt: frontier_probe_witness_measure_receipt_read_failure
         },
         envelope: ScheduledWitnessEnvelope {
-          cadence: "per_pr",
+          path_classification: OfflineLocalRecipe,
           wall_budget: millisecond(count: 5000),
-          max_staleness: "0"
+          max_staleness: millisecond(count: 0)
         }
       }
     },
@@ -1696,9 +1703,9 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
           receipt: frontier_probe_witness_measure_receipt_hash_mismatch
         },
         envelope: ScheduledWitnessEnvelope {
-          cadence: "per_pr",
+          path_classification: OfflineLocalRecipe,
           wall_budget: millisecond(count: 5000),
-          max_staleness: "0"
+          max_staleness: millisecond(count: 0)
         }
       }
     },
@@ -1722,9 +1729,9 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
           receipt: frontier_probe_witness_measure_receipt_elision_boundary
         },
         envelope: ScheduledWitnessEnvelope {
-          cadence: "per_pr",
+          path_classification: OfflineLocalRecipe,
           wall_budget: millisecond(count: 5000),
-          max_staleness: "0"
+          max_staleness: millisecond(count: 0)
         }
       }
     },
@@ -1748,9 +1755,9 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
           receipt: frontier_probe_witness_measure_receipt_below_cap
         },
         envelope: ScheduledWitnessEnvelope {
-          cadence: "4h",
+          path_classification: FalsifierRehomedBinWet,
           wall_budget: millisecond(count: 900000),
-          max_staleness: "4h"
+          max_staleness: millisecond(count: 14400000)
         }
       }
     },
@@ -1774,9 +1781,9 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
           receipt: frontier_probe_witness_measure_receipt_second_root
         },
         envelope: ScheduledWitnessEnvelope {
-          cadence: "4h",
+          path_classification: FalsifierRehomedBinWet,
           wall_budget: millisecond(count: 900000),
-          max_staleness: "4h"
+          max_staleness: millisecond(count: 14400000)
         }
       }
     },
@@ -2059,10 +2066,12 @@ fn witness_cost_basis_eq(a: WitnessCostBasis, b: WitnessCostBasis) -> Bool {
   }
 }
 
+data scheduled_witness_envelope_path_classification_scope_note: String = "path_classification is WitnessConsumerCadence, the path-policy classification authority (std.witness_admission) — it does NOT answer whether anything executes a row; that question is answered by the separate fold in src/v2/workflow/witness_admission.dag, per commit_roster_enrollment_is_a_consumer_note there. This function and scheduled_witness_envelope_wellformed below compare/validate only what the field carries."
+
 fn scheduled_witness_envelope_eq(a: ScheduledWitnessEnvelope, b: ScheduledWitnessEnvelope) -> Bool {
-  (a.cadence == b.cadence)
+  witness_consumer_cadence_eq(a: a.path_classification, b: b.path_classification)
     && (millisecond_count(m: a.wall_budget) == millisecond_count(m: b.wall_budget))
-    && (a.max_staleness == b.max_staleness)
+    && (millisecond_count(m: a.max_staleness) == millisecond_count(m: b.max_staleness))
 }
 
 fn witness_cost_basis_wellformed(basis: WitnessCostBasis) -> Bool {
@@ -2075,9 +2084,7 @@ fn witness_cost_basis_wellformed(basis: WitnessCostBasis) -> Bool {
 }
 
 fn scheduled_witness_envelope_wellformed(envelope: ScheduledWitnessEnvelope) -> Bool {
-  envelope.cadence != ""
-    && millisecond_count(m: envelope.wall_budget) > 0
-    && envelope.max_staleness != ""
+  millisecond_count(m: envelope.wall_budget) > 0
 }
 
 fn witness_span_eq(a: WitnessSpan, b: WitnessSpan) -> Bool {
