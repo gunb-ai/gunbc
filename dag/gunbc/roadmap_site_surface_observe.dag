@@ -34,8 +34,7 @@ import gunbc.roadmap_site_surface_render {
 
 data roadmap_site_surface_observe_note: String = "THE SOLE LIVE OBSERVATION AUTHORITY for roadmap served-surface materialization. materialize_live_roadmap_site_surface_bundle is the only entry that loads acceptance history and projects roadmap authority for site-surface rendering; downstream consumers evaluate gunbc.roadmap_site_surface_expect predicates over the retained bundle."
 
-data roadmap_site_surface_producer_identity_note: String = "producer_identity names the observe/render implementation that produced a bundle, distinct from subject_identity (which roadmap snapshot) and bundle_identity (which rendered artifact population)."
-
+// producer_identity names the observe/render implementation that produced a bundle, distinct from subject_identity (which roadmap snapshot) and bundle_identity (which rendered artifact population).
 fn roadmap_site_surface_producer_identity() -> Fnv1a64Structural {
   content_hash_atom(value: "gunbc.roadmap_site_surface_observe/v1" as NonEmptyStr)
 }

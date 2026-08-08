@@ -21,8 +21,7 @@ test fn witness_requirement_is_derived_from_the_declared_cap() -> Bool {
   }
 }
 
-data witness_verdict_arms_note: String = "The four backing states must stay distinct, because each names a different piece of work: no producer (build one), zero total (provision backing), undersized total (resize), sufficient total (done). A fold that collapsed any pair would make one of those disappear from every count derived from it. Absent is asserted specifically against zero rather than against small, because zero is the state the whole module exists for — a cap over nothing."
-
+// The four backing states must stay distinct, because each names a different piece of work: no producer (build one), zero total (provision backing), undersized total (resize), sufficient total (done). A fold that collapsed any pair would make one of those disappear from every count derived from it. Absent is asserted specifically against zero rather than against small, because zero is the state the whole module exists for — a cap over nothing.
 test fn witness_backing_verdict_separates_unknown_absent_drifted_converged() -> Bool {
   let req = host_swap_backing_requirement()
   let cap_bytes = byte_size_count(b: gunbc_runner_slot_desired().memory_swap_max)
@@ -45,8 +44,7 @@ test fn witness_backing_verdict_separates_unknown_absent_drifted_converged() -> 
     && observation_verdict_eq(a: sufficient, b: std.upsert_decision.Converged)
 }
 
-data witness_cap_qualification_note: String = "THE conjunct the module exists for. A per-slot MemorySwapMax read that says Converged is the input on every line here; only the backing term varies. With backing observed Converged the cap verdict passes through unchanged — the non-vacuity control, without which a qualifier that refused everything would look correct. With backing zero, unobserved, or unreachable, the same green cap must NOT survive as Converged, and each case must keep its own arm rather than rounding to a single 'not converged': absent backing is provisioning work, unobserved backing is producer work, unreachable backing is the A1 reach lane."
-
+// THE conjunct the module exists for. A per-slot MemorySwapMax read that says Converged is the input on every line here; only the backing term varies. With backing observed Converged the cap verdict passes through unchanged — the non-vacuity control, without which a qualifier that refused everything would look correct. With backing zero, unobserved, or unreachable, the same green cap must NOT survive as Converged, and each case must keep its own arm rather than rounding to a single 'not converged': absent backing is provisioning work, unobserved backing is producer work, unreachable backing is the A1 reach lane.
 test fn witness_green_cap_does_not_survive_missing_backing() -> Bool {
   let green_cap = std.upsert_decision.Converged
   let with_backing = swap_cap_verdict_qualified_by_backing(cap: green_cap, backing: std.upsert_decision.Converged)
@@ -62,8 +60,7 @@ test fn witness_green_cap_does_not_survive_missing_backing() -> Bool {
     && observation_verdict_eq(a: unreachable, b: std.upsert_decision.Inaccessible)
 }
 
-data witness_qualification_is_not_a_lattice_meet_note: String = "The qualification is a presupposition check and not a meet over some verdict ordering, and this conjunct pins the asymmetry so a later refactor cannot quietly turn it into one. A DRIFTED cap under CONVERGED backing stays Drifted — the backing does not repair the cap — while a CONVERGED cap under DRIFTED backing becomes Drifted. Under a symmetric meet those two would be the same value by construction and the direction of the check would be lost."
-
+// The qualification is a presupposition check and not a meet over some verdict ordering, and this conjunct pins the asymmetry so a later refactor cannot quietly turn it into one. A DRIFTED cap under CONVERGED backing stays Drifted — the backing does not repair the cap — while a CONVERGED cap under DRIFTED backing becomes Drifted. Under a symmetric meet those two would be the same value by construction and the direction of the check would be lost.
 test fn witness_qualification_direction_is_asymmetric() -> Bool {
   let drifted_cap_good_backing = swap_cap_verdict_qualified_by_backing(
     cap: std.upsert_decision.Drifted,

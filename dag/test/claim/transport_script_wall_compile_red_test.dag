@@ -6,8 +6,7 @@ data transport_script_wall_compile_red_note: String = "§5.E wall REDs (operator
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data control_note: String = "Positive control: a clean shell service source compiles and emits src/wallctl.rs containing the argv-shaped Command invocation, so compile_dag_rust_emit_check returns true. Proves the harness is discriminating — the two false results below are genuine refusals of the fakes, not a harness that always returns false."
-
+// Positive control: a clean shell service source compiles and emits src/wallctl.rs containing the argv-shaped Command invocation, so compile_dag_rust_emit_check returns true. Proves the harness is discriminating — the two false results below are genuine refusals of the fakes, not a harness that always returns false.
 fn w_control_clean_shell_service() -> Bool {
   compile_dag_rust_emit_check(
     "module wallctl\n\nservice shell.Run {\n  operation Exec {\n    input { script: String }\n    output { result: String }\n    transport shell { argv: [\"sh\", \"-lc\", \"\{script\}\"] }\n    mock_response {\n      0 => \"done\" \"result\"\n    }\n  }\n}\n",

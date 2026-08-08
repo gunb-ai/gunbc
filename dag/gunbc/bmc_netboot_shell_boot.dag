@@ -26,8 +26,7 @@ data tftp_authority: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data tftp_authority_note: String = "The tftp transfer semantics this boot path relies on (both busybox tftpd serving and the UEFI shell tftp command fetching) are owned by RFC 1350 (TFTP protocol revision 2) — a distinct upstream from the UEFI Shell 2.2 spec, which owns only the shell command surface."
-
+// The tftp transfer semantics this boot path relies on (both busybox tftpd serving and the UEFI shell tftp command fetching) are owned by RFC 1350 (TFTP protocol revision 2) — a distinct upstream from the UEFI Shell 2.2 spec, which owns only the shell command surface.
 data shell_boot_local_kernel: NonEmptyStr = "fs0:\\vmlinuz"
 data shell_boot_local_initrd: NonEmptyStr = "fs0:\\initrd"
 

@@ -11,8 +11,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data cloud_init_authority_note: String = "cloud-init is a DISTINCT upstream from Ubuntu and from subiquity, and it gets its own module for the same reason extdeps.os.ubuntu_autoinstall already cites cloudinit.readthedocs.io separately for the NoCloud datasource rather than folding it into the subiquity anchor: they are different projects with different release cadences and different documentation, and a fact about cloud-init's lifecycle is not a fact about the distribution that ships it. What this module owns is narrow and load-bearing: how cloud-init is turned OFF, and what that does and does not imply about the files it wrote while it was on."
-
+// cloud-init is a DISTINCT upstream from Ubuntu and from subiquity, and it gets its own module for the same reason extdeps.os.ubuntu_autoinstall already cites cloudinit.readthedocs.io separately for the NoCloud datasource rather than folding it into the subiquity anchor: they are different projects with different release cadences and different documentation, and a fact about cloud-init's lifecycle is not a fact about the distribution that ships it. What this module owns is narrow and load-bearing: how cloud-init is turned OFF, and what that does and does not imply about the files it wrote while it was on.
 data cloud_init_disabled_marker_path: NonEmptyStr = "/etc/cloud/cloud-init.disabled"
 
 data cloud_init_reenable_argv_shape: List<NonEmptyStr> = ["cloud-init", "clean", "--machine-id"]

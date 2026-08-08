@@ -5,8 +5,7 @@ data offline_roster_gate_claim_batch_recipe: String = "Operator-ruled OFFLINE (N
 
 data source_findings_pre_normalize_note: String = "Reads the RAW parsed surface tree (parse_module, no normalize pass) rather than the normalized tree: this lens's target is a source-syntax defect (a find_named_child(name: ^grammar_production_identity_node_projection) call whose result escapes un-reduced) that must be located by the surface grammar's own ^dag_surface_match_expr production identity - the proven-working precedent (v2.test.claim.manual.body_lowering_match's body_lowering_find_match_expr) locates match_expr the same way, on the pre-normalize tree, because downstream body-lowering/normalize stages replace a match construct's surface identity with a ComputationNode\{behavior: Match\} - by the time a tree is normalized, ^dag_surface_match_expr is no longer a reliable anchor for this static-analysis walk."
 
-data parsed_source_span_index_note: String = "Carries artifact.span_index and the original source_text alongside the parsed tree, not just the tree: analyze.arg_value_symbol needs both to recover a caret literal's actual referenced identifier text (node_source_symbol_note in analyze.dag) - the grammar's caret-literal terminal is StampClass-stamped, so the Node tree's atom-identity field alone cannot distinguish e.g. ^grammar_production_identity_node_projection from any other caret literal."
-
+// Carries artifact.span_index and the original source_text alongside the parsed tree, not just the tree: analyze.arg_value_symbol needs both to recover a caret literal's actual referenced identifier text (node_source_symbol_note in analyze.dag) - the grammar's caret-literal terminal is StampClass-stamped, so the Node tree's atom-identity field alone cannot distinguish e.g. ^grammar_production_identity_node_projection from any other caret literal.
 type ParsedSource {
   tree: Node,
   span_index: SpanIndex,

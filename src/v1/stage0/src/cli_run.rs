@@ -2725,6 +2725,7 @@ fn extend_with_reference_closure_for_pool(
 /// skipped: a module path inside a string is data (a registry row, prose), not a
 /// reference, and following it over-pulls modules the corpus never resolves against.
 fn referenced_module_paths_in_text(content: &str, index: &ModuleSourceIndex) -> Vec<String> {
+    let content: &str = &annotation_erased_scan_text(content);
     let bytes = content.as_bytes();
     let is_ident_start = |c: u8| c.is_ascii_alphabetic() || c == b'_';
     let is_ident = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
@@ -6796,7 +6797,59 @@ struct BareCandidates {
 /// `gunbc.plans.md_helpers.h2`), over-pulling those modules into 13 unrelated
 /// compiler-closure entries. String literals are skipped, matching the main
 /// scan.
+/// Blank every source-annotation (`//` to end of line) region, preserving byte
+/// offsets and line structure so a scanner's spans stay valid.
+///
+/// DESIGN §4c: semantic passes receive only the annotation-erased projection.
+/// The three raw-text scanners below (`referenced_module_paths_in_text`,
+/// `destructuring_bound_spans`, `bare_identifier_candidates`) already skip
+/// string literals; annotations were the remaining unerased region, so prose
+/// carried in an annotation was lexed as program text. Measured on the M1C
+/// prose migration: moving rationale out of a `data _note: String` — a region
+/// the string skip already erased — into the sanctioned `//` form made the
+/// English word `edge` in `v2.lens.identity_captured_navigation` a bare
+/// reference, which bound to `v2.test.manual.ownership_movable`'s `fn edge`
+/// and pulled that module (an off-path manual witness importing `src/v1`) into
+/// an unrelated `src/v2` entry's pool, where its import cannot resolve.
+/// Erasure is one authority, applied at each scan entry, rather than a
+/// per-scanner comment rule.
+fn annotation_erased_scan_text(content: &str) -> String {
+    let bytes = content.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if bytes[i] == b'"' {
+            out.push(bytes[i]);
+            i += 1;
+            while i < bytes.len() && bytes[i] != b'"' {
+                if bytes[i] == b'\\' && i + 1 < bytes.len() {
+                    out.push(bytes[i]);
+                    i += 1;
+                }
+                out.push(bytes[i]);
+                i += 1;
+            }
+            if i < bytes.len() {
+                out.push(bytes[i]);
+                i += 1;
+            }
+            continue;
+        }
+        if bytes[i] == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'/' {
+            while i < bytes.len() && bytes[i] != b'\n' {
+                out.push(b' ');
+                i += 1;
+            }
+            continue;
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8(out).unwrap_or_else(|_| content.to_string())
+}
+
 fn destructuring_bound_spans(content: &str) -> (BTreeSet<usize>, BTreeSet<usize>) {
+    let content: &str = &annotation_erased_scan_text(content);
     let bytes = content.as_bytes();
     let is_ident = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
     let matching_close = |open_at: usize, open: u8, close: u8| -> Option<usize> {
@@ -6868,6 +6921,7 @@ fn destructuring_bound_spans(content: &str) -> (BTreeSet<usize>, BTreeSet<usize>
 }
 
 fn bare_identifier_candidates(content: &str) -> BareCandidates {
+    let content: &str = &annotation_erased_scan_text(content);
     let bytes = content.as_bytes();
     let is_ident_start = |c: u8| c.is_ascii_alphabetic() || c == b'_';
     let is_ident = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
@@ -41177,3 +41231,84 @@ mod selected_entry_closure_overlap_arithmetic {
 
 #[path = "census_exclude_derive.rs"]
 pub mod census_exclude_derive;
+
+#[cfg(test)]
+mod annotation_erased_scan_projection {
+    //! DESIGN §4c: a semantic pass reads the annotation-erased projection. These pin the
+    //! discriminating direction — prose inside an annotation must not become a reference,
+    //! while identical text outside one must — plus the offset law the span-carrying
+    //! scanner depends on.
+
+    use super::*;
+
+    #[test]
+    fn annotation_prose_is_not_scanned_as_a_reference() {
+        let src = "module m\n// the identity edge is a tag\nfn f() -> Bool { true }\n";
+        let c = bare_identifier_candidates(src);
+        assert!(
+            !c.names.contains("edge"),
+            "annotation prose leaked a reference"
+        );
+        assert!(!c.names.contains("identity"));
+    }
+
+    #[test]
+    fn the_same_word_outside_an_annotation_is_still_scanned() {
+        let src = "module m\nfn f() -> Bool { edge }\n";
+        let c = bare_identifier_candidates(src);
+        assert!(
+            c.names.contains("edge"),
+            "erasure must not blank real program text"
+        );
+    }
+
+    #[test]
+    fn erasure_preserves_byte_offsets_and_lines() {
+        let src = "module m\n// prose ünïcode here\nfn f() -> Bool { true }\n";
+        let erased = annotation_erased_scan_text(src);
+        assert_eq!(erased.len(), src.len(), "byte offsets must stay aligned");
+        assert_eq!(erased.lines().count(), src.lines().count());
+        assert!(!erased.contains("prose"));
+        assert!(erased.contains("fn f()"));
+    }
+
+    #[test]
+    fn a_double_slash_inside_a_string_literal_is_not_an_annotation() {
+        let src = "module m\ndata u: String = \"https://example.invalid/edge\"\nfn g() -> Bool { true }\n";
+        let erased = annotation_erased_scan_text(src);
+        assert!(
+            erased.contains("https://example.invalid/edge"),
+            "string content must survive erasure"
+        );
+    }
+
+    /// The second, independently discovered route into the same defect
+    /// (loyal-ram-550, found by writing a dotted module path in an annotation and
+    /// watching it become a real dependency edge in the source-loading fixpoint).
+    /// Different scanner, different token shape than the bare-identifier case
+    /// above, so it is its own discriminating input rather than a restatement.
+    #[test]
+    fn a_dotted_module_path_in_an_annotation_is_not_a_dependency_edge() {
+        let mut index: ModuleSourceIndex = HashMap::new();
+        index.insert(
+            "std.decl_ref".to_string(),
+            Rc::new(v1_compiler_compile::SourceFile {
+                path: "dag/std/decl_ref.dag".to_string(),
+                content: "module std.decl_ref\n".to_string(),
+            }),
+        );
+
+        let annotated = "module m\n// see std.decl_ref for the carrier\nfn f() -> Bool { true }\n";
+        assert!(
+            referenced_module_paths_in_text(annotated, &index).is_empty(),
+            "a module path named in an annotation must not become a dependency edge"
+        );
+
+        let referenced = "module m\nimport std.decl_ref { DeclarationRef }\n";
+        assert_eq!(
+            referenced_module_paths_in_text(referenced, &index),
+            vec!["std.decl_ref".to_string()],
+            "a real reference to the same module must still produce the edge"
+        );
+    }
+}

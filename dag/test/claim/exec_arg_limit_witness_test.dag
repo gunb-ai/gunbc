@@ -14,8 +14,7 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data exec_arg_limit_witness_note: String = "Single-authority closure for the Linux per-argument exec ceiling. host_exec_arg_max_strlen is derived (32 * PAGE_SIZE from x86_64_linux_architecture_profile); shell.Exec.Check is the argv-embedding consumer; dispatch_shell in v1_interpreter realizes the typed refusal. witness_rust_const_mirrors_authority cross-checks the Rust seed const against the derived authority; argv_arg_limit_test::dispatch_shell_wiring_refuses_oversized_argv proves the dispatch path in-crate."
-
+// Single-authority closure for the Linux per-argument exec ceiling. host_exec_arg_max_strlen is derived (32 * PAGE_SIZE from x86_64_linux_architecture_profile); shell.Exec.Check is the argv-embedding consumer; dispatch_shell in v1_interpreter realizes the typed refusal. witness_rust_const_mirrors_authority cross-checks the Rust seed const against the derived authority; argv_arg_limit_test::dispatch_shell_wiring_refuses_oversized_argv proves the dispatch path in-crate.
 data v1_interpreter_source_path: String = "src/v1/stage0/src/v1_interpreter.rs"
 
 test fn witness_host_exec_arg_max_strlen_is_execve_formula() -> Bool {

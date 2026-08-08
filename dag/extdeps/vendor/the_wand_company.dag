@@ -22,8 +22,7 @@ data issuing_party_compliance_authority: ExternalAuthority = ExternalAuthority {
 
 data the_wand_company: Vendor<Hardware> = Vendor { legal_name: "The Wand Company Limited" }
 
-data legal_name_grain_note: String = "The registered form is grounded, and the grounding arrived by fixing a read path rather than by finding a new source. An earlier revision carried the bare trading name and declared that no source stated a suffix — true only because the manuals were unreadable to a refused fetcher. Both product manuals carry the same compliance block: 'Issuing Party: The Wand Company Limited, 3 Laundress Lane, Cambridge CB2 1SD, UK'. The address is deliberately not modeled: no consumer needs it, and a registered office is a fact with its own lifecycle."
-
+// The registered form is grounded, and the grounding arrived by fixing a read path rather than by finding a new source. An earlier revision carried the bare trading name and declared that no source stated a suffix — true only because the manuals were unreadable to a refused fetcher. Both product manuals carry the same compliance block: 'Issuing Party: The Wand Company Limited, 3 Laundress Lane, Cambridge CB2 1SD, UK'. The address is deliberately not modeled: no consumer needs it, and a registered office is a fact with its own lifecycle.
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {

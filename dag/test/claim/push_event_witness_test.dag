@@ -14,8 +14,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data push_event_witness_note: String = "Hermetic executing consumer for extdeps.github.push_event JSON ingest and git object-id validation. Payload read refusal on a missing path lives in test.claim.push_event_witness_wet (Filesystem.Read is wet-only)."
-
+// Hermetic executing consumer for extdeps.github.push_event JSON ingest and git object-id validation. Payload read refusal on a missing path lives in test.claim.push_event_witness_wet (Filesystem.Read is wet-only).
 test fn witness_push_before_observed_from_json() -> Bool {
   match push_before_from_event_json(
     text: "{\"before\":\"abc123def4567890abc123def4567890abc12345\",\"after\":\"fedcba09\"}"

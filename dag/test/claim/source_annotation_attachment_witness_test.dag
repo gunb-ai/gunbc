@@ -106,8 +106,7 @@ fn attached_refusals() -> List<AnnotationAttachmentRefusal> {
   )
 }
 
-data row_rendering_note: String = "Rows render to one delimited string rather than being indexed, because equality against a complete rendering fails on any extra, missing, reordered, or mis-merged row at once. Indexing element by element asserts only what the author remembered to index, and the failure this whole fold could plausibly produce is a row that should not be there."
-
+// Rows render to one delimited string rather than being indexed, because equality against a complete rendering fails on any extra, missing, reordered, or mis-merged row at once. Indexing element by element asserts only what the author remembered to index, and the failure this whole fold could plausibly produce is a row that should not be there.
 fn render_rows(graph: SourceAnnotationGraph) -> String {
   fold(
     source_annotation_graph_rows(graph: graph),
@@ -182,8 +181,7 @@ test fn w_body_grain_capture_refuses_rather_than_attaching_to_the_next_subject()
     render_rows(graph: attached_graph()) == "|7:alpha\nbeta|9:gamma"
 }
 
-data body_grain_control_note: String = "The discriminating control for the body-grain refusal. It reruns the SAME capture against a roster with f removed, so the capture is no longer inside anything and the nearest following subject is g. It then attaches. That proves the refusal above is produced by the containment rule and not by the capture being dropped, mis-parsed, or filtered somewhere upstream — the two are indistinguishable from the refusal count alone."
-
+// The discriminating control for the body-grain refusal. It reruns the SAME capture against a roster with f removed, so the capture is no longer inside anything and the nearest following subject is g. It then attaches. That proves the refusal above is produced by the containment rule and not by the capture being dropped, mis-parsed, or filtered somewhere upstream — the two are indistinguishable from the refusal count alone.
 test fn w_body_grain_capture_would_otherwise_have_attached() -> Bool {
   let result = attach_annotations(
     captures: [leading(text: "inner", start: 150, end: 160)],
@@ -207,8 +205,7 @@ test fn w_capture_after_the_last_subject_refuses_unattached() -> Bool {
     count_trailing(refusals: attached_refusals()) == 1
 }
 
-data identity_conservation_note: String = "Attachment REFERS to occurrence identities and never mints one, which is the property that keeps a comment edit from shifting declaration identities here and in every later-parsed module. There is no allocator in scope for the fold to draw from, so this asserts the observable consequence: every subject appearing in the output is one that was supplied on the way in."
-
+// Attachment REFERS to occurrence identities and never mints one, which is the property that keeps a comment edit from shifting declaration identities here and in every later-parsed module. There is no allocator in scope for the fold to draw from, so this asserts the observable consequence: every subject appearing in the output is one that was supplied on the way in.
 test fn w_attachment_refers_to_supplied_identities_and_mints_none() -> Bool {
   fold(
     source_annotation_graph_rows(graph: attached_graph()),

@@ -420,8 +420,7 @@ fn loop_multiplicity(n: Node) -> Multiplicity {
   loop_multiplicity_with(registry: measure_descent_fact_registry, n: n)
 }
 
-data loop_multiplicity_node_aware_note: String = "FLAG B (body-lowering design, operator-signed): Loop multiplicity is decided node-aware here while the other behaviors stay tag-only in behavior_multiplicity — a real distinction, not inconsistency: only Loop's termination depends on a node-level edge (the ^loop_bound_edge measure), which the Behavior tag structurally cannot carry. behavior_multiplicity(Loop) stays RequiresTerminationProof as the honest measure-less projection."
-
+// FLAG B (body-lowering design, operator-signed): Loop multiplicity is decided node-aware here while the other behaviors stay tag-only in behavior_multiplicity — a real distinction, not inconsistency: only Loop's termination depends on a node-level edge (the ^loop_bound_edge measure), which the Behavior tag structurally cannot carry. behavior_multiplicity(Loop) stays RequiresTerminationProof as the honest measure-less projection.
 fn node_multiplicity(n: Node) -> Multiplicity {
   match n.kind {
     TypeNode { connective: c } => connective_multiplicity(c: c)

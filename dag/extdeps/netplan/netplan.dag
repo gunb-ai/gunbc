@@ -11,14 +11,12 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data netplan_authority_note: String = "netplan was entirely unmodeled before this — zero occurrences corpus-wide — and its absence is why the fleet model can RECORD an address without being able to say anything about whether a host holds it. gunbc.fleet_intent_network carries srv1..srv4's addresses as NetworkEndpoint rows, which are topology facts: what the address IS, not that the host has it. netplan is the party that decides the latter, so the ensure side of host networking has nowhere to live until this module exists. This is the applier half of the writer/applier pair whose fusion produced a wrong diagnosis on srv4 (see extdeps.cloud_init.cloud_init)."
-
+// netplan was entirely unmodeled before this — zero occurrences corpus-wide — and its absence is why the fleet model can RECORD an address without being able to say anything about whether a host holds it. gunbc.fleet_intent_network carries srv1..srv4's addresses as NetworkEndpoint rows, which are topology facts: what the address IS, not that the host has it. netplan is the party that decides the latter, so the ensure side of host networking has nowhere to live until this module exists. This is the applier half of the writer/applier pair whose fusion produced a wrong diagnosis on srv4 (see extdeps.cloud_init.cloud_init).
 data netplan_config_dir: NonEmptyStr = "/etc/netplan"
 
 type NetplanRenderer = SystemdNetworkd | NetworkManager
 
-data netplan_reads_every_yaml_note: String = "THE applier fact, and the counterpart to cloud-init's writer fact. netplan reads EVERY *.yaml under /etc/netplan at boot, merges them in lexical order, and renders the result to its backend — with no knowledge of and no dependency on which process wrote any of them. A file whose generator has been uninstalled, disabled, or deleted is applied exactly as a hand-written one is. That is the whole content of the inference the srv4 diagnosis got wrong, stated positively so it can be consumed rather than merely warned about."
-
+// THE applier fact, and the counterpart to cloud-init's writer fact. netplan reads EVERY *.yaml under /etc/netplan at boot, merges them in lexical order, and renders the result to its backend — with no knowledge of and no dependency on which process wrote any of them. A file whose generator has been uninstalled, disabled, or deleted is applied exactly as a hand-written one is. That is the whole content of the inference the srv4 diagnosis got wrong, stated positively so it can be consumed rather than merely warned about.
 type NetplanConfigWriter
   = WrittenByCloudInit
   | WrittenByInstaller

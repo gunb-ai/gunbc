@@ -276,8 +276,7 @@ test fn readable_source_without_the_declaration_is_also_missing() -> Bool {
   )) == "oracle-missing"
 }
 
-data duplicate_declaration_note: String = "The third arm, with a real producer rather than a hypothetical one: this substrate accepts a duplicate top-level declaration silently and fn names are not module-scoped, so two declarations answering to one contract name is a state a real diff can reach. It is neither missing nor moved — the contract simply does not determine which declaration the claim runner will select — so adjudicating either one would be picking an oracle the contract did not name."
-
+// The third arm, with a real producer rather than a hypothetical one: this substrate accepts a duplicate top-level declaration silently and fn names are not module-scoped, so two declarations answering to one contract name is a state a real diff can reach. It is neither missing nor moved — the contract simply does not determine which declaration the claim runner will select — so adjudicating either one would be picking an oracle the contract did not name.
 test fn duplicated_declaration_answers_oracle_ambiguous() -> Bool {
   let source = witness_source_with_duplicate_declaration()
   validation_oracle_declaration_count(
@@ -298,8 +297,7 @@ test fn duplicated_declaration_answers_oracle_ambiguous() -> Bool {
     }
 }
 
-data declaration_scan_line_start_note: String = "The scan's stated limit, asserted rather than described. A note string mentioning the oracle's name — which this corpus produces constantly — must not count as a declaration, because a false ambiguity would refuse an attempt whose oracle never moved. Line-start matching is what buys that, and this is the control that keeps it honest."
-
+// The scan's stated limit, asserted rather than described. A note string mentioning the oracle's name — which this corpus produces constantly — must not count as a declaration, because a false ambiguity would refuse an attempt whose oracle never moved. Line-start matching is what buys that, and this is the control that keeps it honest.
 test fn declaration_scan_ignores_the_name_inside_a_note() -> Bool {
   let source = join([
     witness_source_at_dispatch(),
@@ -392,8 +390,7 @@ test fn unpinned_dependency_detail_names_the_uncovered_modules() -> Bool {
     && string_contains(s: detail, pattern: "partially pinned oracle")
 }
 
-data unpinnable_validation_note: String = "A declared validation whose oracle this module cannot observe must refuse rather than run unpinned. Running it would produce a green meaning `the agent's own edits passed a test whose content nothing recorded`, which is the same fail-open the moved-oracle arm closes, reached by a different route."
-
+// A declared validation whose oracle this module cannot observe must refuse rather than run unpinned. Running it would produce a green meaning `the agent's own edits passed a test whose content nothing recorded`, which is the same fail-open the moved-oracle arm closes, reached by a different route.
 test fn cargo_test_validation_refuses_as_unpinnable() -> Bool {
   match validation_oracle_gate(
     contract: ExecutionContract {
@@ -434,8 +431,7 @@ test fn unspecified_contract_refuses_rather_than_verifying() -> Bool {
   }
 }
 
-data absent_pin_note: String = "An attempt with no recorded oracle identity cannot be verified against one. The arm exists because the alternative — verifying anyway when the pin is absent — is how a pinned mechanism silently degrades into an unpinned one for exactly the attempts whose dispatch did not record a pin, which are the attempts least likely to be trustworthy."
-
+// An attempt with no recorded oracle identity cannot be verified against one. The arm exists because the alternative — verifying anyway when the pin is absent — is how a pinned mechanism silently degrades into an unpinned one for exactly the attempts whose dispatch did not record a pin, which are the attempts least likely to be trustworthy.
 test fn attempt_without_a_recorded_pin_refuses() -> Bool {
   match validation_oracle_gate(
     contract: oracle_contract(),
@@ -661,8 +657,7 @@ test fn foreign_receipt_document_is_undecodable() -> Bool {
   }
 }
 
-data moved_oracle_detail_note: String = "The refusal has to be readable by the human who receives it, so the detail names both identities and says why the run was not attempted. A refusal whose text does not distinguish it from a red would push a human toward debugging the subject."
-
+// The refusal has to be readable by the human who receives it, so the detail names both identities and says why the run was not attempted. A refusal whose text does not distinguish it from a red would push a human toward debugging the subject.
 test fn moved_oracle_detail_locates_both_identities() -> Bool {
   let detail = validation_verdict_detail(verdict: ValidationRefused {
     cause: ValidationOracleMoved {
