@@ -440,6 +440,8 @@ fn component_outcome_agrees_with_failure_mode(read: ComponentOutcomeRead, mode: 
         ModeInfra => outcome_matches_implied_mode(o: o, mode: mode)
         ModeWitnessRed => outcome_matches_implied_mode(o: o, mode: mode)
         ModeNotReached => outcome_matches_implied_mode(o: o, mode: mode)
+        ModeRunIncomplete => outcome_matches_implied_mode(o: o, mode: mode)
+        ModeDeadlineReached => outcome_matches_implied_mode(o: o, mode: mode)
       }
   }
 }
