@@ -1138,9 +1138,8 @@ fn marshal_decl_fact_node(
             Ok(fn_arrow_output_skeleton(ctx, si, item).unwrap_or_else(|| unit_type_node(ctx)))
         }
         ItemKind::DataItem => {
-            crate::data_initializer_identity::marshal_data_initializer_projection_for_item(
+            crate::data_initializer_identity::marshal_data_initializer_projection(
                 ctx,
-                item.clone(),
                 qualified_name,
             )
         }
