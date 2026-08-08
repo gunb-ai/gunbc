@@ -71,6 +71,8 @@ data nfr_reason_cost_loop_zero_body_fold: String = "C1 zero-body summation fold 
 
 data nfr_reason_cost_expr_zero_absorbing_compose: String = "zero-absorbing CostExpr composition (zero-valued CostConst is the identity for sequential add and parallel max; nested wildcard arms are the non-degenerate CostAdd/CostMax construction path, not anonymous recursion) — landed with v2.lens.cost.expr cost_expr_seq/cost_expr_par for C2 ComplexitySummary composition; surfaced by whole-corpus nfr receipt on first CI run"
 
+data nfr_reason_cost_valuation_zero_annihilator: String = "Zero-annihilator discrimination in the C1 exact evaluator: the arms separate an ExactCost carrying Zero from every other CostEvaluation on BOTH operands, so the wildcard is a nested-VALUE discrimination and not a variant sweep — CostEvaluation has exactly two variants and the other two matches in this module were made exhaustive rather than rostered when this row was written. Enumerating it would mean writing the residual combine_evaluation call once per surviving shape, which is the redundancy DESIGN §2 forbids rather than the totality DESIGN §4 asks for, and it would put a duplicated expression underneath an arm ORDER that multiply_evaluations_zero_note declares load-bearing: the annihilator is checked before refusal-dominance, so refusal times zero answers exact zero. A later tidy that flattens these arms silently restores the defect the function exists to fix. Declared at landing with the two-sided annihilator fix, not surfaced by a later cold sweep, so the ratchet arms with the code."
+
 data nfr_reason_provider_terminal_absorb: String = "terminal-state absorption over the provider/worker observation coproducts: the arm names each TERMINAL variant (ProviderCompleted / ProviderFailed / ProviderEventsRefused, or WorkerProcessRunning) and gives every non-terminal variant one shared arm, because those variants reduce to the identical behaviour — enumerating them would clone the arm per variant, which is the redundancy DESIGN §2 forbids rather than the totality DESIGN §4 asks for. Landed with the Codex dispatch and recursive workflow evidence slice; declared at landing (not surfaced by a later cold sweep) so the ratchet arms with the code."
 
 data nfr_dissolve_provider_terminal_absorb: String = "ProviderExecutionState and WorkerProcessEvidence carry a DERIVED terminality projection from inhabitance (dag/std/algebra, DESIGN §3/§4 — the same move as derived equality), so these folds match on the partition rather than on the variant list, the shared arm becomes a named case instead of a wildcard, and the rows delete."
@@ -726,6 +728,11 @@ data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
     subject: PathSubject { path: "src/v2/lens/cost/expr.dag::cost_expr_par" },
     reason: nfr_reason_cost_expr_zero_absorbing_compose,
+    trigger: TriggerProse { text: nfr_dissolve_wildcard_total },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "src/v2/lens/cost/valuation.dag::multiply_evaluations" },
+    reason: nfr_reason_cost_valuation_zero_annihilator,
     trigger: TriggerProse { text: nfr_dissolve_wildcard_total },
   },
   FrontierRow {

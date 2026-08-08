@@ -233,17 +233,25 @@ fn symbolic_sequential(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
   }
 }
 
+data symbolic_product_zero_absorption_note: String = "Zero is checked on BOTH operands before anything else, and the order is the whole point. An earlier revision matched a's arms first - including UnknownCost - and only then inspected b, so zero times unknown absorbed to zero while unknown times ZERO returned unknown. Multiplication is commutative, so an operand order that changes the answer is a defect on its face, not a stylistic asymmetry: the authority absorbed zero only when zero happened to be written on the left. Found by comparing this authority against v2.lens.cost.valuation, whose exact evaluator has the same obligation - a zero multiplicity means the other factor is never executed, so its work is zero whatever that factor is and however little is known about it. Both paths now answer zero for both orders, so the two agree completely rather than agreeing in one direction and diverging in the other. The scope of that claim is CLASSIFICATION, not provenance, and saying so here is what stops a later reader from concluding the function is symmetric in every respect and then being surprised. One asymmetry survives deliberately: unknown times unknown returns the LEFT operand's diagnostic, so the reverse order returns the right one and the other is dropped. That is a lesser class than what this change fixed - before it, the operand order changed the KIND of the answer, and now it changes only which of two equally valid diagnostics is carried - and it is not introduced here: symbolic_sequential carries the identical left-biased drop, so it is a module-wide pattern of UnknownCost holding exactly one diagnostic. Closing it means widening UnknownCost to carry several, which is a real change with its own witnesses and does not belong on the annihilator fix."
+
 fn symbolic_product(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
   match a {
     ConstantCost { value: Zero } => zero_cost()
-    ConstantCost { value: Succ { prev: Zero } } => b
-    UnknownCost { diagnostic: _ } => a
     _ =>
       match b {
         ConstantCost { value: Zero } => zero_cost()
-        ConstantCost { value: Succ { prev: Zero } } => a
-        UnknownCost { diagnostic: _ } => b
-        _ => ProductCost { lhs: a, rhs: b }
+        _ =>
+          match a {
+            ConstantCost { value: Succ { prev: Zero } } => b
+            UnknownCost { diagnostic: _ } => a
+            _ =>
+              match b {
+                ConstantCost { value: Succ { prev: Zero } } => a
+                UnknownCost { diagnostic: _ } => b
+                _ => ProductCost { lhs: a, rhs: b }
+              }
+          }
       }
   }
 }
