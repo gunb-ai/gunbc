@@ -126,6 +126,9 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "gunbc.native_witness_transition_receipt", decl_name: "native_at_small_scale_transition_receipt", field: WholeDeclaration },
     ],
     dissolution: HasTrigger { text: "the CI2 correctness flip lands — the native-selected population is native-required with the counted interpreter fallback deleted — and a main floor run's [native-selected-bundle] receipt shows verdict accepted with fallback = interpreted = unavailable = 0. The measured-standing content is superseded at that point by the run receipts and the transition-receipt authority; this doc records the pre-flip standing and its two located defects, and deletes with the fallback machinery it diagnosed." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "witness-bridge-reobservation",
     primary_work: DeclarationRef { module_path: "v2.compiler.body_producer_forward", decl_name: "body_producer_forward_note", field: WholeDeclaration },
     additional_works: [
