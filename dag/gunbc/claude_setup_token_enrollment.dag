@@ -1,0 +1,883 @@
+module gunbc.claude_setup_token_enrollment
+
+import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, list_length }
+import std.measure { CharacterCount, character_count }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import v2.std.optional { Present, Absent }
+import extdeps.llm.claude_setup_token_cli {
+  ClaudeSetupTokenFormatObservation,
+  SetupTokenFormatUnobserved,
+  SetupTokenFormatMeasured,
+  ClaudeSetupTokenFormatMeasured,
+  ClaudeSetupTokenBrowserChallenge,
+  claude_code_oauth_token_env_var,
+  claude_config_dir_env_var,
+  count_setup_token_candidates,
+  extract_setup_token_candidate,
+  setup_token_candidate_length_ok,
+}
+import gunbc.provider_standing {
+  ProviderStanding,
+  ProviderStandingBundle,
+  ProviderInstallationStanding,
+  ProviderAuthenticationStanding,
+  ProviderEntitlementObservation,
+  ProviderLimitObservation,
+  ProviderTurnOutcome,
+  ProviderToolEnvironmentStanding,
+  InstallationReady,
+  InstallationStandingUnobserved,
+  AuthenticationCredentialsAbsent,
+  AuthenticationAuthenticated,
+  AuthenticationRefreshFailed,
+  AuthenticationStandingUnobserved,
+  EntitlementObservationUnobserved,
+  LimitObservationUnobserved,
+  TurnNotStarted,
+  TurnFailed,
+  ToolEnvironmentReady,
+  ToolEnvironmentStandingUnobserved,
+  ProviderLimitSubject,
+  ProviderNativeLimitBucket,
+  LimitCredentialLabel,
+  LimitObservedAvailable,
+  EntitlementObservedAvailable,
+  provider_standing_from_observed_bundle,
+}
+import extdeps.llm.claude_sdk {
+  claude_native_limit_token_to_model_gap_note,
+}
+import extdeps.llm.cli_lifecycle {
+  ProviderInstance,
+  ProviderInstanceFieldObserved,
+  ClaudeCliProvider,
+}
+import std.claim_evidence { RecordedFactId }
+
+data claude_setup_token_enrollment_authority_note: String = "Claude Code enrollment station workflow (operator direction 2026-08-07; revised msg_3b291a6a). The enrollment host is where the irreducible browser gesture happens — NOT the roadmap worker host. Enrollment INITIATES ONLY through the pinned Claude CLI setup-token path. This module is a STANDING PRODUCER: it emits ProviderStanding from managed enrollment; it does NOT wire OfferClaude into production dispatch inventory (WorkerTurn PR). NO WorkerTurn and NO UI workflow progress in this slice."
+
+data claude_enrollment_no_invented_binding_note: String = "HARD PROHIBITION (msg_3b291a6a): no exact enrollment host, GCP project, secret ID, or Unix service-principal binding is established anywhere in this module. Operator proposals (claude-personal-max, claude-code-oauth-personal-max, gunbai-secrets) are NOT selected values. Model the shape; leave values unbound; refuse rather than default."
+
+data claude_ambient_oauth_home_separate_lifecycle_note: String = "Ambient claudeAiOauth home (refresh/access state, finite refresh-token expiry) may mutate in normal operation — write-back behaviour for THAT realization must be MEASURED, not assumed. CLAUDE_CODE_OAUTH_TOKEN from setup-token is supplied through environment with NO evidence the runtime mutates or rotates it; setup-token standing uses ClaudeSetupTokenStanding, not the ambient OAuth write-back path."
+
+data claude_enrollment_no_provider_authenticated_literal_note: String = "Acceptance: no authored ProviderAuthenticated literal from extdeps.llm.cli_lifecycle exists anywhere in this workflow. Authentication standing is projected into gunbc.provider_standing ProviderAuthenticationStanding only."
+
+type ClaudeSetupTokenStanding
+  = SetupTokenUsable
+  | SetupTokenRejected { reason: NonEmptyStr }
+  | SetupTokenExpiryObserved { expires_at: NonEmptyStr }
+  | SetupTokenRotationSemanticsUnobserved
+
+type ClaudeCredentialStanding
+  = ClaudeCredentialUsable
+  | ClaudeCredentialExpiringSoon { detail: NonEmptyStr }
+  | ClaudeCredentialRejected { reason: NonEmptyStr }
+  | ClaudeCredentialObservationRefused { reason: NonEmptyStr }
+
+type ClaudeProviderEnrollmentAction
+  = ConnectClaude
+  | ReconnectClaude { cause: NonEmptyStr }
+  | EnrollmentActionNotRequired
+
+type ClaudeEnrollmentHostPlacement
+  = EnrollmentHostUnbound
+  | EnrollmentHostSpecified { hostname: NonEmptyStr }
+
+type ClaudeEnrollmentUnixServicePrincipal
+  = EnrollmentUnixPrincipalUnbound
+  | EnrollmentUnixPrincipalSpecified { principal: NonEmptyStr }
+
+type ClaudeEnrollmentSecretTarget
+  = EnrollmentSecretTargetUnbound
+  | EnrollmentSecretTargetSpecified {
+      project: NonEmptyStr,
+      secret: NonEmptyStr,
+    }
+
+type ClaudeExactSecretVersionBinding {
+  project: NonEmptyStr,
+  secret: NonEmptyStr,
+  version: NonEmptyStr,
+  private_content_identity: NonEmptyStr,
+}
+
+type ClaudeEnrollmentPrincipalPopulation
+  = EnrollmentPrincipalPopulationDerived { members: List<NonEmptyStr> }
+  | EnrollmentPrincipalPopulationDeploymentModelGap {
+      reason: NonEmptyStr,
+    }
+
+type ClaudeEnrollmentRuntimeBinding {
+  executable: NonEmptyStr,
+  version_pin: NonEmptyStr,
+}
+
+type ClaudeEnrollmentPlacement {
+  host: ClaudeEnrollmentHostPlacement,
+  run_as: ClaudeEnrollmentUnixServicePrincipal,
+  enrollment_root: FilePath,
+  account_label: NonEmptyStr,
+  secret_target: ClaudeEnrollmentSecretTarget,
+  writer: ClaudeEnrollmentPrincipalPopulation,
+  readers: ClaudeEnrollmentPrincipalPopulation,
+  claude_runtime: ClaudeEnrollmentRuntimeBinding,
+  sdk_runtime: ClaudeEnrollmentRuntimeBinding,
+}
+
+type ClaudeEnrollmentOperatorChoices {
+  enrollment_host: NonEmptyStr?,
+  run_as_principal: NonEmptyStr?,
+  gcp_project: NonEmptyStr?,
+  secret_id_or_create_authorization: NonEmptyStr?,
+  account_label: NonEmptyStr?,
+}
+
+type ClaudeEnrollmentPlacementAdmission
+  = EnrollmentPlacementAdmitted { placement: ClaudeEnrollmentPlacement }
+  | EnrollmentPlacementRefusedUnbound { missing_axes: List<NonEmptyStr> }
+
+type ClaudeEnrollmentSession {
+  placement: ClaudeEnrollmentPlacement,
+  standing_fact_id: RecordedFactId,
+}
+
+type ClaudeEnrollmentInitiationSurface
+  = EnrollmentInitiationClaudeCli
+  | EnrollmentInitiationSdkAttempt
+
+type ClaudeEnrollmentInitiationAdmission
+  = EnrollmentInitiationAdmitted
+  | EnrollmentInitiationRefusedSdkPath {
+      reason: NonEmptyStr,
+    }
+
+type ClaudeAmbientOAuthArtifactDigest {
+  digest: NonEmptyStr
+}
+
+type ClaudeAmbientOAuthArtifactObservationPair {
+  before_use: ClaudeAmbientOAuthArtifactDigest,
+  after_use: ClaudeAmbientOAuthArtifactDigest,
+}
+
+type ClaudeAmbientOAuthHomeWriteBackAdmission
+  = AmbientOAuthWriteBackAdmitted {
+      prior: ClaudeAmbientOAuthArtifactDigest,
+      observed: ClaudeAmbientOAuthArtifactDigest,
+    }
+  | AmbientOAuthWriteBackRefusedUnchanged {
+      digest: ClaudeAmbientOAuthArtifactDigest,
+    }
+  | AmbientOAuthWriteBackRefusedMissingObservation {
+      reason: NonEmptyStr,
+    }
+
+type ClaudeEnrollmentColdStartAdmission
+  = EnrollmentColdStartAdmitted
+  | EnrollmentColdStartRefusedAmbientPrerequisite {
+      reason: NonEmptyStr,
+    }
+
+type ClaudeEnrollmentWriterLeaseEpoch {
+  holder: NonEmptyStr
+  epoch: Int
+  binding_version: NonEmptyStr
+}
+
+type ClaudeEnrollmentWriterLeaseAdmission
+  = EnrollmentLeaseGranted { holder: NonEmptyStr, epoch: Int }
+  | EnrollmentLeaseRefusedConcurrent {
+      incumbent_holder: NonEmptyStr,
+      incumbent_binding_version: NonEmptyStr,
+      incumbent_epoch: Int,
+    }
+  | EnrollmentLeaseRefusedNewerBindingExists {
+      incumbent_version: NonEmptyStr,
+      attempted_version: NonEmptyStr,
+    }
+
+type ClaudeEnrollmentWriterLeasePublishAdmission
+  = EnrollmentLeasePublishGranted
+  | EnrollmentLeasePublishRefusedStaleEpoch {
+      holder_epoch: Int,
+      current_epoch: Int,
+    }
+
+type ClaudeSetupTokenCaptureAdmission
+  = SetupTokenCaptureAdmitted { token_length: CharacterCount }
+  | SetupTokenCaptureRefusedMultipleCandidates { count: Int }
+  | SetupTokenCaptureRefusedMalformedPrefix
+  | SetupTokenCaptureRefusedMalformedLength {
+      observed: CharacterCount,
+      min: CharacterCount,
+      max: CharacterCount,
+    }
+  | SetupTokenCaptureRefusedFormatUnobserved { reason: NonEmptyStr }
+  | SetupTokenCaptureRefusedNoCandidate
+
+type ClaudeEnrollmentSecretVersionAdmission
+  = EnrollmentSecretVersionAdmitted
+  | EnrollmentSecretVersionRefusedLatest
+  | EnrollmentSecretVersionRefusedEmpty
+
+type ClaudeEnrollmentSecretWriteOutcome
+  = EnrollmentSecretWritten { version: NonEmptyStr }
+  | EnrollmentSecretWriteRefused { reason: NonEmptyStr }
+
+type ClaudeEnrollmentSecretReadBackOutcome
+  = EnrollmentSecretReadBackOk {
+      version: NonEmptyStr,
+      private_content_identity: NonEmptyStr,
+      digest_matches: Bool,
+    }
+  | EnrollmentSecretReadBackRefused { reason: NonEmptyStr }
+
+type ClaudeExactSecretVersionBindingAdmission
+  = ExactSecretVersionBindingAdmitted {
+      binding: ClaudeExactSecretVersionBinding,
+    }
+  | ExactSecretVersionBindingRefusedWrite { reason: NonEmptyStr }
+  | ExactSecretVersionBindingRefusedReadBack { reason: NonEmptyStr }
+  | ExactSecretVersionBindingRefusedDigestMismatch
+
+type ClaudeEnrollmentWorkflowStage
+  = EnrollmentSpawnCliPrivatePty
+  | EnrollmentObserveBrowserChallenge {
+      challenge: ClaudeSetupTokenBrowserChallenge,
+    }
+  | EnrollmentCaptureSetupTokenPrivate
+  | EnrollmentSecretManagerAddVersion
+  | EnrollmentExactVersionReadBack
+  | EnrollmentCleanContextMaterialization
+  | EnrollmentManagedPairedProbe
+  | EnrollmentProviderStandingReceipt
+
+type ClaudeEnrollmentWorkflowAdmission
+  = EnrollmentWorkflowAdmitted
+  | EnrollmentWorkflowRefusedPlacementUnbound { missing_axes: List<NonEmptyStr> }
+  | EnrollmentWorkflowRefusedDeploymentModelGap { reason: NonEmptyStr }
+  | EnrollmentWorkflowRefusedHostEffectsScaffold { stage: NonEmptyStr }
+
+type ClaudeIsolationPathObservation
+  = IsolationPathObserved { paths_read: List<FilePath> }
+  | IsolationPathObservationRefused { reason: NonEmptyStr }
+
+data claude_enrollment_managed_home_relative: String = ".gunbc/claude-enrollment"
+
+data claude_enrollment_writer_reader_deployment_model_gap_reason: NonEmptyStr = "writer and reader service-identity populations are not yet derived from deployed service identities — name the deployment-model gap rather than asking the operator nine placement questions" as NonEmptyStr
+
+data claude_enrollment_host_effect_realization_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_effect",
+    decl_name: "HostEffectTransport",
+    field: WholeDeclaration,
+  }
+}
+
+data claude_enrollment_spawn_cli_private_pty_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_effect",
+    decl_name: "HostEffectTransport",
+    field: WholeDeclaration,
+  }
+}
+
+data claude_enrollment_observe_browser_challenge_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_effect",
+    decl_name: "HostEffectTransport",
+    field: WholeDeclaration,
+  }
+}
+
+data claude_enrollment_capture_setup_token_private_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_effect",
+    decl_name: "HostEffectTransport",
+    field: WholeDeclaration,
+  }
+}
+
+data claude_enrollment_secret_manager_add_version_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "extdeps.cloud.gcp.secret_manager",
+    decl_name: "AddVersion",
+    field: WholeDeclaration,
+  }
+}
+
+data claude_enrollment_exact_version_read_back_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "extdeps.cloud.gcp.secret_manager",
+    decl_name: "AccessVersion",
+    field: WholeDeclaration,
+  }
+}
+
+data claude_enrollment_clean_context_materialization_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.auth.materialized_secret",
+    decl_name: "with_materialized_secret",
+    field: WholeDeclaration,
+  }
+}
+
+data claude_enrollment_managed_paired_probe_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_effect",
+    decl_name: "HostEffectTransport",
+    field: WholeDeclaration,
+  }
+}
+
+data claude_enrollment_workflow_stage_scaffold_registry_note: String = "DECLARED SCAFFOLDS (wind-down landing state, msg_0ec68b71): each unimplemented host effect names a Scaffold disposition row — claude_enrollment_spawn_cli_private_pty_scaffold, claude_enrollment_observe_browser_challenge_scaffold, claude_enrollment_capture_setup_token_private_scaffold, claude_enrollment_secret_manager_add_version_scaffold, claude_enrollment_exact_version_read_back_scaffold, claude_enrollment_clean_context_materialization_scaffold, claude_enrollment_managed_paired_probe_scaffold — umbrella claude_enrollment_host_effect_realization_scaffold. ProviderStanding receipt projection is pure model (claude_enrollment_provider_standing_from_bundle); host probe that feeds it is scaffolded."
+
+data claude_enrollment_acceptance_control_note: String = "ACCEPTANCE CONTROL (msg_3b291a6a): with the enrollment host ambient credential HIDDEN OR ABSENT, the workflow initiates setup-token, the operator authorizes, an exact Secret Manager version is produced; then a CLEAN SECOND CONTEXT materializes only that exact version and reaches authenticated Claude subscription standing."
+
+data claude_enrollment_workflow_realization_note: String = "Required host effects (not yet realized): spawn exact Claude CLI in a private PTY; observe browser challenge and project ONLY url and code; capture token privately; Secret Manager AddVersion; exact-version independent read-back; clean-context materialization; managed paired probe; ProviderStanding receipt. Until realization lands this module remains an enrollment specification with honest scaffold refusal — not a silent no-op."
+
+fn claude_enrollment_root_for_account(account_label: NonEmptyStr) -> FilePath {
+  join(
+    ["/var/lib/gunbc/claude-enrollment/", account_label as String],
+    "",
+  ) as FilePath
+}
+
+fn claude_enrollment_config_dir_for_placement(
+  placement: ClaudeEnrollmentPlacement,
+) -> FilePath {
+  join(
+    [
+      placement.enrollment_root as String,
+      "/",
+      claude_enrollment_managed_home_relative,
+      "/",
+      placement.account_label as String,
+      "/config",
+    ],
+    "",
+  ) as FilePath
+}
+
+fn claude_enrollment_data_dir_for_placement(
+  placement: ClaudeEnrollmentPlacement,
+) -> FilePath {
+  join(
+    [
+      placement.enrollment_root as String,
+      "/",
+      claude_enrollment_managed_home_relative,
+      "/",
+      placement.account_label as String,
+      "/home",
+    ],
+    "",
+  ) as FilePath
+}
+
+data claude_enrollment_empty_non_empty_str_list: List<NonEmptyStr> = []
+
+fn missing_operator_choice_axes(
+  choices: ClaudeEnrollmentOperatorChoices,
+) -> List<NonEmptyStr> {
+  let host_axis = match choices.enrollment_host {
+    Present { value: _ } => claude_enrollment_empty_non_empty_str_list
+    Absent => ["enrollment_host" as NonEmptyStr]
+  }
+  let run_as_axis = match choices.run_as_principal {
+    Present { value: _ } => host_axis
+    Absent => append(host_axis, ["run_as_principal" as NonEmptyStr])
+  }
+  let project_axis = match choices.gcp_project {
+    Present { value: _ } => run_as_axis
+    Absent => append(run_as_axis, ["gcp_project" as NonEmptyStr])
+  }
+  let secret_axis = match choices.secret_id_or_create_authorization {
+    Present { value: _ } => project_axis
+    Absent => append(project_axis, ["secret_id_or_create_authorization" as NonEmptyStr])
+  }
+  match choices.account_label {
+    Present { value: _ } => secret_axis
+    Absent => append(secret_axis, ["account_label" as NonEmptyStr])
+  }
+}
+
+fn admit_enrollment_placement(
+  choices: ClaudeEnrollmentOperatorChoices,
+  claude_runtime: ClaudeEnrollmentRuntimeBinding,
+  sdk_runtime: ClaudeEnrollmentRuntimeBinding,
+) -> ClaudeEnrollmentPlacementAdmission {
+  let missing = missing_operator_choice_axes(choices: choices)
+  if list_length(items: missing) > 0 {
+    EnrollmentPlacementRefusedUnbound { missing_axes: missing }
+  } else {
+    let account_label = match choices.account_label {
+      Present { value: label } => label
+      Absent => "unreachable" as NonEmptyStr
+    }
+    EnrollmentPlacementAdmitted {
+      placement: ClaudeEnrollmentPlacement {
+        host: EnrollmentHostSpecified {
+          hostname: match choices.enrollment_host {
+            Present { value: host } => host
+            Absent => "unreachable" as NonEmptyStr
+          },
+        },
+        run_as: EnrollmentUnixPrincipalSpecified {
+          principal: match choices.run_as_principal {
+            Present { value: principal } => principal
+            Absent => "unreachable" as NonEmptyStr
+          },
+        },
+        enrollment_root: claude_enrollment_root_for_account(account_label: account_label),
+        account_label: account_label,
+        secret_target: EnrollmentSecretTargetSpecified {
+          project: match choices.gcp_project {
+            Present { value: project } => project
+            Absent => "unreachable" as NonEmptyStr
+          },
+          secret: match choices.secret_id_or_create_authorization {
+            Present { value: secret } => secret
+            Absent => "unreachable" as NonEmptyStr
+          },
+        },
+        writer: EnrollmentPrincipalPopulationDeploymentModelGap {
+          reason: claude_enrollment_writer_reader_deployment_model_gap_reason,
+        },
+        readers: EnrollmentPrincipalPopulationDeploymentModelGap {
+          reason: claude_enrollment_writer_reader_deployment_model_gap_reason,
+        },
+        claude_runtime: claude_runtime,
+        sdk_runtime: sdk_runtime,
+      },
+    }
+  }
+}
+
+fn admit_enrollment_workflow_start(
+  placement_admission: ClaudeEnrollmentPlacementAdmission,
+) -> ClaudeEnrollmentWorkflowAdmission {
+  match placement_admission {
+    EnrollmentPlacementRefusedUnbound { missing_axes } =>
+      EnrollmentWorkflowRefusedPlacementUnbound { missing_axes: missing_axes }
+    EnrollmentPlacementAdmitted { placement } =>
+      match placement.writer {
+        EnrollmentPrincipalPopulationDeploymentModelGap { reason } =>
+          EnrollmentWorkflowRefusedDeploymentModelGap { reason: reason }
+        EnrollmentPrincipalPopulationDerived { members: _ } =>
+          match placement.readers {
+            EnrollmentPrincipalPopulationDeploymentModelGap { reason } =>
+              EnrollmentWorkflowRefusedDeploymentModelGap { reason: reason }
+            EnrollmentPrincipalPopulationDerived { members: _ } =>
+              EnrollmentWorkflowRefusedHostEffectsScaffold {
+                stage: "EnrollmentSpawnCliPrivatePty" as NonEmptyStr,
+              }
+          }
+      }
+  }
+}
+
+fn claude_setup_token_standing_from_capture(
+  capture: ClaudeSetupTokenCaptureAdmission,
+) -> ClaudeSetupTokenStanding {
+  match capture {
+    SetupTokenCaptureAdmitted { token_length: _ } => SetupTokenUsable
+    SetupTokenCaptureRefusedMultipleCandidates { count: _ } =>
+      SetupTokenRejected {
+        reason: "multiple setup-token candidates in capture stream" as NonEmptyStr,
+      }
+    SetupTokenCaptureRefusedMalformedPrefix =>
+      SetupTokenRejected { reason: "setup-token candidate missing required prefix" as NonEmptyStr }
+    SetupTokenCaptureRefusedMalformedLength { observed: _, min: _, max: _ } =>
+      SetupTokenRejected { reason: "setup-token candidate length out of measured bounds" as NonEmptyStr }
+    SetupTokenCaptureRefusedFormatUnobserved { reason } =>
+      SetupTokenRejected { reason: reason }
+    SetupTokenCaptureRefusedNoCandidate =>
+      SetupTokenRejected { reason: "no setup-token candidate observed" as NonEmptyStr }
+  }
+}
+
+fn admit_enrollment_initiation(
+  surface: ClaudeEnrollmentInitiationSurface,
+) -> ClaudeEnrollmentInitiationAdmission {
+  match surface {
+    EnrollmentInitiationClaudeCli => EnrollmentInitiationAdmitted
+    EnrollmentInitiationSdkAttempt =>
+      EnrollmentInitiationRefusedSdkPath {
+        reason: "Claude Agent SDK has no login RPC; enrollment must initiate through claude setup-token CLI only" as NonEmptyStr,
+      }
+  }
+}
+
+fn admit_enrollment_cold_start(
+  relies_on_ambient_enrollment_host_credential: Bool,
+) -> ClaudeEnrollmentColdStartAdmission {
+  if relies_on_ambient_enrollment_host_credential {
+    EnrollmentColdStartRefusedAmbientPrerequisite {
+      reason: "enrollment must not depend on ambient enrollment-host Claude credential; managed binding is the authority" as NonEmptyStr,
+    }
+  } else {
+    EnrollmentColdStartAdmitted
+  }
+}
+
+fn ambient_oauth_artifact_digest_eq(
+  a: ClaudeAmbientOAuthArtifactDigest,
+  b: ClaudeAmbientOAuthArtifactDigest,
+) -> Bool {
+  a.digest == b.digest
+}
+
+fn admit_ambient_oauth_home_write_back(
+  observation: ClaudeAmbientOAuthArtifactObservationPair?,
+) -> ClaudeAmbientOAuthHomeWriteBackAdmission {
+  match observation {
+    Absent =>
+      AmbientOAuthWriteBackRefusedMissingObservation {
+        reason: "ambient OAuth home artifact must be observed before and after admitted runtime use before any write-back" as NonEmptyStr,
+      }
+    Present { value: pair } =>
+      if ambient_oauth_artifact_digest_eq(a: pair.before_use, b: pair.after_use) {
+        AmbientOAuthWriteBackRefusedUnchanged { digest: pair.after_use }
+      } else {
+        AmbientOAuthWriteBackAdmitted {
+          prior: pair.before_use,
+          observed: pair.after_use,
+        }
+      }
+  }
+}
+
+fn admit_enrollment_secret_version(version: String) -> ClaudeEnrollmentSecretVersionAdmission {
+  if version == "" {
+    EnrollmentSecretVersionRefusedEmpty
+  } else if version == "latest" {
+    EnrollmentSecretVersionRefusedLatest
+  } else {
+    EnrollmentSecretVersionAdmitted
+  }
+}
+
+fn admit_exact_secret_version_binding(
+  target: ClaudeEnrollmentSecretTarget,
+  write: ClaudeEnrollmentSecretWriteOutcome,
+  readback: ClaudeEnrollmentSecretReadBackOutcome,
+) -> ClaudeExactSecretVersionBindingAdmission {
+  match target {
+    EnrollmentSecretTargetUnbound =>
+      ExactSecretVersionBindingRefusedWrite {
+        reason: "secret target unbound — cannot produce exact version binding" as NonEmptyStr,
+      }
+    EnrollmentSecretTargetSpecified { project, secret } =>
+      match write {
+        EnrollmentSecretWriteRefused { reason } =>
+          ExactSecretVersionBindingRefusedWrite { reason: reason }
+        EnrollmentSecretWritten { version } =>
+          match readback {
+            EnrollmentSecretReadBackRefused { reason } =>
+              ExactSecretVersionBindingRefusedReadBack { reason: reason }
+            EnrollmentSecretReadBackOk {
+              version: read_version,
+              private_content_identity,
+              digest_matches,
+            } =>
+              if read_version != version {
+                ExactSecretVersionBindingRefusedReadBack {
+                  reason: "read-back version does not match write outcome" as NonEmptyStr,
+                }
+              } else if !digest_matches {
+                ExactSecretVersionBindingRefusedDigestMismatch
+              } else {
+                ExactSecretVersionBindingAdmitted {
+                  binding: ClaudeExactSecretVersionBinding {
+                    project: project,
+                    secret: secret,
+                    version: version,
+                    private_content_identity: private_content_identity,
+                  },
+                }
+              }
+          }
+      }
+  }
+}
+
+fn admit_enrollment_writer_lease(
+  holder: NonEmptyStr,
+  holder_epoch: Int,
+  incumbent_holder: NonEmptyStr?,
+  incumbent_version: NonEmptyStr?,
+  incumbent_epoch: Int?,
+) -> ClaudeEnrollmentWriterLeaseAdmission {
+  match incumbent_holder {
+    Present { value: incumbent } =>
+      if incumbent == holder {
+        EnrollmentLeaseGranted { holder: holder, epoch: holder_epoch }
+      } else {
+        EnrollmentLeaseRefusedConcurrent {
+          incumbent_holder: incumbent as NonEmptyStr,
+          incumbent_binding_version: match incumbent_version {
+            Present { value: v } => v
+            Absent => "unknown" as NonEmptyStr
+          },
+          incumbent_epoch: match incumbent_epoch {
+            Present { value: e } => e
+            Absent => 0
+          },
+        }
+      }
+    Absent => EnrollmentLeaseGranted { holder: holder, epoch: holder_epoch }
+  }
+}
+
+fn admit_enrollment_writer_lease_publish(
+  holder_epoch: Int,
+  current_epoch: Int,
+) -> ClaudeEnrollmentWriterLeasePublishAdmission {
+  if holder_epoch < current_epoch {
+    EnrollmentLeasePublishRefusedStaleEpoch {
+      holder_epoch: holder_epoch,
+      current_epoch: current_epoch,
+    }
+  } else {
+    EnrollmentLeasePublishGranted
+  }
+}
+
+fn admit_enrollment_writer_lease_against_binding(
+  holder: NonEmptyStr,
+  holder_epoch: Int,
+  incumbent_holder: NonEmptyStr?,
+  incumbent_version: NonEmptyStr,
+  incumbent_epoch: Int?,
+  attempted_version: NonEmptyStr,
+  incumbent_version_is_newer: Bool,
+) -> ClaudeEnrollmentWriterLeaseAdmission {
+  if incumbent_version_is_newer {
+    EnrollmentLeaseRefusedNewerBindingExists {
+      incumbent_version: incumbent_version,
+      attempted_version: attempted_version,
+    }
+  } else {
+    admit_enrollment_writer_lease(
+      holder: holder,
+      holder_epoch: holder_epoch,
+      incumbent_holder: incumbent_holder,
+      incumbent_version: Present { value: incumbent_version },
+      incumbent_epoch: incumbent_epoch,
+    )
+  }
+}
+
+fn admit_setup_token_capture(
+  candidate_count: Int,
+  token: String?,
+  format: ClaudeSetupTokenFormatObservation,
+) -> ClaudeSetupTokenCaptureAdmission {
+  match format {
+    SetupTokenFormatUnobserved { reason } =>
+      SetupTokenCaptureRefusedFormatUnobserved { reason: reason }
+    SetupTokenFormatMeasured { format: measured } =>
+      if candidate_count > 1 {
+        SetupTokenCaptureRefusedMultipleCandidates { count: candidate_count }
+      } else if candidate_count == 0 {
+        SetupTokenCaptureRefusedNoCandidate
+      } else {
+        match token {
+          Absent => SetupTokenCaptureRefusedNoCandidate
+          Present { value: candidate } =>
+            if !starts_with(s: candidate, prefix: measured.token_prefix as String) {
+              SetupTokenCaptureRefusedMalformedPrefix
+            } else if !setup_token_candidate_length_ok(
+              token: candidate,
+              min_length: measured.min_length,
+              max_length: measured.max_length,
+            ) {
+              SetupTokenCaptureRefusedMalformedLength {
+                observed: character_count(count: string_length(s: candidate)),
+                min: measured.min_length,
+                max: measured.max_length,
+              }
+            } else {
+              SetupTokenCaptureAdmitted {
+                token_length: character_count(count: string_length(s: candidate)),
+              }
+            }
+        }
+      }
+  }
+}
+
+fn claude_enrollment_action_for_absent_credential() -> ClaudeProviderEnrollmentAction {
+  ConnectClaude
+}
+
+fn claude_enrollment_action_for_credential_standing(
+  standing: ClaudeCredentialStanding,
+) -> ClaudeProviderEnrollmentAction {
+  match standing {
+    ClaudeCredentialUsable => EnrollmentActionNotRequired
+    ClaudeCredentialExpiringSoon { detail } =>
+      ReconnectClaude { cause: detail }
+    ClaudeCredentialRejected { reason } =>
+      ReconnectClaude { cause: reason }
+    ClaudeCredentialObservationRefused { reason } =>
+      ReconnectClaude { cause: reason }
+  }
+}
+
+fn claude_managed_credential_standing_from_probe_auth_failed(
+  reason: NonEmptyStr,
+) -> ClaudeCredentialStanding {
+  ClaudeCredentialRejected { reason: reason }
+}
+
+fn claude_authentication_standing_from_managed_credential(
+  standing: ClaudeCredentialStanding,
+) -> ProviderAuthenticationStanding {
+  match standing {
+    ClaudeCredentialUsable => AuthenticationAuthenticated
+    ClaudeCredentialExpiringSoon { detail: _ } => AuthenticationAuthenticated
+    ClaudeCredentialRejected { reason } =>
+      AuthenticationRefreshFailed { reason: reason as String }
+    ClaudeCredentialObservationRefused { reason } =>
+      AuthenticationStandingUnobserved { reason: reason }
+  }
+}
+
+fn claude_enrollment_standing_bundle_before_probe() -> ProviderStandingBundle {
+  ProviderStandingBundle {
+    installation: InstallationReady,
+    authentication: AuthenticationCredentialsAbsent,
+    entitlement: EntitlementObservationUnobserved {
+      reason: "paired probe not yet executed under managed binding" as NonEmptyStr,
+    },
+    limits: [
+      LimitObservationUnobserved {
+        reason: "paired probe not yet executed under managed binding" as NonEmptyStr,
+      },
+    ],
+    turn: TurnNotStarted,
+    tool_environment: ToolEnvironmentStandingUnobserved {
+      reason: "paired probe not yet executed under managed binding" as NonEmptyStr,
+    },
+  }
+}
+
+data claude_paired_probe_open_question_note: String = "Step 7 MEASURES an open question for the first time. The unauthenticated 7921 receipt leaves authenticated entitlement dissolution undecided. A negative authenticated probe result is a finding, not a harness bug."
+
+data claude_enrollment_writer_lease_version_order_note: String = "incumbent_version_is_newer is computed at the host boundary with numeric Secret Manager version ordering. The substrate does not compare version strings lexicographically here because GCP version ids are integers and lexicographic order disagrees on multi-digit ids."
+
+data claude_enrollment_native_limit_encoding_note: String = "Limits axis encodes SDK rateLimitType tokens as ProviderNativeLimitBucket { native_key } — never ProviderModelLimit from token spelling (seven_day_opus is not a cited Opus join). Authority: extdeps.llm.claude_sdk claude_native_limit_token_to_model_gap_note."
+
+fn claude_enrollment_limit_subject(
+  credential_label: NonEmptyStr,
+  native_key: NonEmptyStr,
+) -> ProviderLimitSubject {
+  ProviderNativeLimitBucket {
+    credential: LimitCredentialLabel { label: credential_label },
+    native_key: native_key,
+  }
+}
+
+fn claude_enrollment_limit_observed_available(
+  credential_label: NonEmptyStr,
+  native_key: NonEmptyStr,
+) -> ProviderLimitObservation {
+  LimitObservedAvailable {
+    subject: claude_enrollment_limit_subject(
+      credential_label: credential_label,
+      native_key: native_key,
+    ),
+  }
+}
+
+fn claude_enrollment_standing_bundle_from_paired_probe_verdict(
+  auth_succeeded: Bool,
+  observed_native_limit_keys: List<NonEmptyStr>,
+  auth_failure_reason: NonEmptyStr,
+  credential_label: NonEmptyStr,
+) -> ProviderStandingBundle {
+  let authentication = if auth_succeeded {
+    AuthenticationAuthenticated
+  } else {
+    AuthenticationRefreshFailed { reason: auth_failure_reason as String }
+  }
+  let limits_observed = list_length(items: observed_native_limit_keys) > 0
+  let entitlement = if limits_observed {
+    EntitlementObservedAvailable
+  } else {
+    EntitlementObservationUnobserved {
+      reason: "entitlement surface not reached or not observed by paired probe" as NonEmptyStr,
+    }
+  }
+  let limits = if limits_observed {
+    observed_native_limit_keys |> map(key =>
+      claude_enrollment_limit_observed_available(
+        credential_label: credential_label,
+        native_key: key,
+      )
+    )
+  } else {
+    [
+      LimitObservationUnobserved {
+        reason: "limit surface not reached or not observed by paired probe" as NonEmptyStr,
+      },
+    ]
+  }
+  let turn = if auth_succeeded {
+    TurnNotStarted
+  } else {
+    TurnFailed { reason: auth_failure_reason }
+  }
+  ProviderStandingBundle {
+    installation: InstallationReady,
+    authentication: authentication,
+    entitlement: entitlement,
+    limits: limits,
+    turn: turn,
+    tool_environment: ToolEnvironmentReady,
+  }
+}
+
+fn claude_enrollment_provider_standing_from_bundle(
+  session: ClaudeEnrollmentSession,
+  bundle: ProviderStandingBundle,
+) -> ProviderStanding {
+  provider_standing_from_observed_bundle(
+    fact_id: session.standing_fact_id,
+    provider: ProviderInstance {
+      kind: ClaudeCliProvider,
+      host: ProviderInstanceFieldObserved {
+        value: session.placement.account_label,
+      },
+      executable: session.placement.claude_runtime.executable,
+      observed_version: ProviderInstanceFieldObserved {
+        value: session.placement.claude_runtime.version_pin,
+      },
+      state_directory: ProviderInstanceFieldObserved {
+        value: session.placement.enrollment_root as String as NonEmptyStr,
+      },
+      credential_storage_method: ProviderInstanceFieldObserved {
+        value: "managed-setup-token-secret-version" as NonEmptyStr,
+      },
+      service_identity: ProviderInstanceFieldObserved {
+        value: session.placement.account_label,
+      },
+    },
+    bundle: bundle,
+  )
+}
+
+data claude_enrollment_materialization_frontier_note: String = "Clean-second-context materialization: load CLAUDE_CODE_OAUTH_TOKEN from ClaudeExactSecretVersionBinding via gunbc.auth.materialized_secret EnvVar binding in a context that does NOT inherit the enrollment host ambient credential. Setup-token capture does NOT use admit_ambient_oauth_home_write_back — rotation semantics are SetupTokenRotationSemanticsUnobserved until measured. Host binding realization remains a declared scaffold until gunbc.auth.materialized_secret host effects land."
+
+data claude_enrollment_writer_lease_epoch_note: String = "One account credential has exactly one writer lease epoch. admit_enrollment_writer_lease_publish refuses when holder_epoch < current_epoch so a stale writer cannot publish after another lease epoch advanced. Concurrent holder and newer-binding refusals remain independent axes."

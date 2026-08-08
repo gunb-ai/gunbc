@@ -95,6 +95,7 @@ import gunbc.auth.secret_ref_credential {
   SecretCredentialAccessUpsertRequired,
   SecretCredentialFetchRefused,
   SecretCredentialReady,
+  SecretCredentialWireDecodeRefused,
   fetch_secret_ref_credential,
 }
 import gunbc.bmc_converge {
@@ -1618,6 +1619,8 @@ func bmc_fan_run(
   ) {
     SecretCredentialAccessUpsertRequired { plan: plan } =>
       exit_failure(reason: access_token_upsert_required_reason(plan: plan))
+    SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } =>
+      exit_failure(reason: "secret manager access version wire decode refused")
     SecretCredentialFetchRefused { reason: reason } =>
       exit_failure(reason: reason as String)
     SecretCredentialReady { credential: credential } =>

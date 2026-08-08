@@ -4,7 +4,7 @@ import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
-import extdeps.crypto.hash { HashAlgorithm, Sha256 }
+import extdeps.crypto.hash { HashAlgorithm, Sha256, Sha512 }
 import extdeps.github.github { GitHubUser }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -395,7 +395,9 @@ fn key_fingerprint_eq(a: GitHubAppPublicKeyFingerprint, b: GitHubAppPublicKeyFin
           FingerprintBase64 => a.digest == b.digest
         }
       }
+      Sha512 => false
     }
+    Sha512 => false
   }
 }
 

@@ -56,3 +56,11 @@ fn gunbc_ci_floor_batch_clamp_overhead_seconds() -> List<Int> {
 fn gunbc_ci_floor_batch_clamp_per_unit_ms() -> List<Int> {
   [0]
 }
+
+fn gunbc_ci_floor_batch_clamp_authority_modules() -> List<String> {
+  ["v2.test.fixture.floor_skip.budget_red_control_plan"]
+}
+
+fn gunbc_ci_floor_batch_clamp_authority_decls() -> List<String> {
+  ["gunbc_ci_floor_batch_clamp_overhead_seconds"]
+}

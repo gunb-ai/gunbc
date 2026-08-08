@@ -1,0 +1,107 @@
+module extdeps.llm.cursor_sdk_facts
+
+import std.types { String, NonEmptyStr, Int }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.probes.provider_interface_acquisition {
+  provider_interface_acquisition_cursor_sdk_closure_receipt,
+  provider_interface_acquisition_cursor_sdk_package_name,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cursor.com/docs/sdk/typescript"
+  }
+}
+
+data cursor_sdk_probe_receipt_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "registry.npmjs.org/@cursor/sdk"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.llm.cursor_sdk_facts",
+      decl_name: "CursorSdkPackageClosure",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [cursor_sdk_probe_receipt_authority]
+}
+
+data cursor_sdk_authority_note: String = "Slice-E modeling only (provider-control-interface-audit §6, §12). Package closure and usage-capability facts without SecretRef so witnesses compile in isolation. Credential binding lives in extdeps.llm.cursor_sdk."
+
+data cursor_sdk_package_closure_note: String = "Exact-lock facts from provider_interface_acquisition_2026-08-03.json via extdeps.probes.provider_interface_acquisition — requirement versus exact selection, archive integrity, zero install scripts. Dissolves into gunbc.package_delivery when slice B lands; this module owns only the Cursor @cursor/sdk closure projection the delivery spine will consume. No acquisition on a deployed host in this slice."
+
+type CursorSdkPackageClosure {
+  package_name: NonEmptyStr
+  exact_version: NonEmptyStr
+  lockfile_sha256: String
+  root_integrity: NonEmptyStr
+  lock_entry_count: Int
+  platform_gated_entry_count: Int
+  install_script_count: Int
+  node_toolchain_version: NonEmptyStr
+  npm_toolchain_version: NonEmptyStr
+  module_export: NonEmptyStr
+}
+
+fn cursor_sdk_local_package_closure() -> CursorSdkPackageClosure {
+  let receipt = provider_interface_acquisition_cursor_sdk_closure_receipt()
+  CursorSdkPackageClosure {
+    package_name: receipt.package_name,
+    exact_version: receipt.exact_version,
+    lockfile_sha256: receipt.lockfile_sha256,
+    root_integrity: receipt.root_integrity,
+    lock_entry_count: receipt.lock_entry_count,
+    platform_gated_entry_count: receipt.platform_gated_entry_count,
+    install_script_count: receipt.install_script_count,
+    node_toolchain_version: receipt.node_toolchain_version,
+    npm_toolchain_version: receipt.npm_toolchain_version,
+    module_export: provider_interface_acquisition_cursor_sdk_package_name,
+  }
+}
+
+data cursor_sdk_api_key_never_in_argv_note: String = "Slice E: modeled SDK local credential must not project to argv tokens. CursorSdkApiKeyFromSecretRef and CursorSdkApiKeyFromEnvironment are the only admitted materialization arms for automation; argv projection refuses via cursor_sdk_refuse_argv_api_key_projection."
+
+data cursor_sdk_usage_capability_gap_note: String = "Cursor local exposes NO account-level remaining capacity. The SDK usage API is per-agent and cloud-only (provider-control-interface-audit §6, §10). Local usage standing must be CursorSdkLocalAccountUsageUnobservable — a typed capability gap naming the missing capability — never an estimated or assumed healthy balance. Coordinate arm adoption with valiant-stag-845 (ProviderLimitObservation decomposition). Silence is not a positive observation (DESIGN §5)."
+
+type CursorSdkLocalAccountUsageUnobservable {
+  reason: NonEmptyStr
+  missing_capability: NonEmptyStr
+}
+
+data cursor_sdk_local_usage_missing_capability: NonEmptyStr = "cursor-sdk-local-account-usage-api" as NonEmptyStr
+
+data cursor_sdk_local_limit_standing_reason: NonEmptyStr = "cursor local account-level usage is upstream-unobservable (cursor-sdk-local-account-usage-api)" as NonEmptyStr
+
+fn cursor_sdk_local_account_usage_unobservable() -> CursorSdkLocalAccountUsageUnobservable {
+  CursorSdkLocalAccountUsageUnobservable {
+    reason: "Cursor SDK local runtime has no account-level remaining-capacity API; usage is per-agent and cloud-only" as NonEmptyStr,
+    missing_capability: cursor_sdk_local_usage_missing_capability,
+  }
+}
+
+data cursor_sdk_srv1_presence_note: String = "Audit §6/§7: @cursor/sdk was acquired and inspected in a disposable probe directory only — not in srv1's runtime dependency closure at audit time. Until gunbc.package_delivery admits a ProviderInterfaceAdmissionReceipt for the local SDK export, provision on a deployed host is a typed capability gap, never an assumed offer."
+
+type CursorSdkLocalProvisionGap {
+  reason: NonEmptyStr
+  missing_capability: NonEmptyStr
+}
+
+data cursor_sdk_local_provision_missing_capability: NonEmptyStr = "cursor-sdk-local-package-provisioned" as NonEmptyStr
+
+fn cursor_sdk_local_package_unprovisioned_on_deployed_host() -> CursorSdkLocalProvisionGap {
+  CursorSdkLocalProvisionGap {
+    reason: "Provider-interface audit §7: @cursor/sdk 1.0.26 inspected in disposable probe only; not admitted in srv1 runtime dependency closure" as NonEmptyStr,
+    missing_capability: cursor_sdk_local_provision_missing_capability,
+  }
+}
+
+data cursor_sdk_api_key_binding_note: String = "SecretRef binding is modeled in extdeps.llm.cursor_sdk and gunbc.cursor_sdk_local_binding; live key materialization is not wired in slice E. Whether a bound SecretRef resolves to material on a deployed host is a MaterializedSecret consumer — not observable here, and never assumed healthy."

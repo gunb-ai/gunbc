@@ -10,8 +10,13 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
+fn accumulator_copy_roster_gate_entry_live_tree_disposition() -> LiveTreeDisposition {
+  ReadsLiveTree
+}
+
 test fn roster_machine_code_zero_suspects_within_ratchet() -> Bool {
-  file_gate(path: "src/v2/extdeps/languages/machine_code.dag", refusal_ceiling: 0)
+  accumulator_copy_roster_gate_entry_live_tree_disposition() == ReadsLiveTree
+    && file_gate(path: "src/v2/extdeps/languages/machine_code.dag", refusal_ceiling: 0)
 }
 
 test fn roster_compile_stage_zero_suspects_within_ratchet() -> Bool {

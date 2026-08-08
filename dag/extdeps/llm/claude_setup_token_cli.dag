@@ -1,0 +1,194 @@
+module extdeps.llm.claude_setup_token_cli
+
+import std.types {
+  String,
+  NonEmptyStr,
+  Int,
+  Bool,
+  List,
+  RenderedTerminalText,
+}
+import std.measure {
+  CharacterCount,
+  character_count,
+  measure_le,
+}
+import v2.std.optional { Present, Absent }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.llm.cli { claude_cli_external_authority_anchor }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+data extdeps_external_authority_anchor: ExternalAuthority = claude_cli_external_authority_anchor
+
+data claude_setup_token_command: NonEmptyStr = "setup-token" as NonEmptyStr
+
+data claude_code_oauth_token_env_var: NonEmptyStr = "CLAUDE_CODE_OAUTH_TOKEN" as NonEmptyStr
+
+data claude_setup_token_cli_authority_note: String = "Upstream Claude Code setup-token (code.claude.com/docs/en/cli-reference): generates a long-lived OAuth token for CI/scripts, prints to terminal, requires subscription. Managed enrollment uses ONLY this path plus CLAUDE_CODE_OAUTH_TOKEN — never ambient ~/.claude OAuth refresh home, never ANTHROPIC_API_KEY alongside it. Token prefix/length bounds are NOT assumed here; gunbc.claude_setup_token_enrollment admits captures only against ClaudeSetupTokenFormatMeasured receipts from the pinned executable."
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.llm.claude_setup_token_cli",
+      decl_name: "claude_setup_token_command",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data claude_config_dir_env_var: NonEmptyStr = "CLAUDE_CONFIG_DIR" as NonEmptyStr
+
+data claude_config_dir_consistency_gap_note: String = "CLAUDE_CONFIG_DIR has known upstream consistency issues (anthropics/claude-code issue 4739). Isolation for managed enrollment is established by execution-time path observation receipts, never by assuming this env var redirects every file Claude reads."
+
+fn shape_claude_setup_token_argv(executable: NonEmptyStr) -> List<String> {
+  [executable as String, claude_setup_token_command as String]
+}
+
+type ClaudeSetupTokenFormatMeasured {
+  token_prefix: NonEmptyStr
+  min_length: CharacterCount
+  max_length: CharacterCount
+}
+
+type ClaudeSetupTokenFormatObservation
+  = SetupTokenFormatUnobserved { reason: NonEmptyStr }
+  | SetupTokenFormatMeasured { format: ClaudeSetupTokenFormatMeasured }
+
+type ClaudeSetupTokenBrowserChallenge {
+  verification_uri: NonEmptyStr
+  user_code: NonEmptyStr
+}
+
+type ClaudeSetupTokenChallengeParse
+  = SetupTokenChallengeParsed { challenge: ClaudeSetupTokenBrowserChallenge }
+  | SetupTokenChallengeParseRefused { reason: NonEmptyStr }
+
+data setup_token_challenge_url_marker: String = "https://"
+
+data setup_token_challenge_code_marker: String = "Enter this code"
+
+type SetupTokenCodeScan
+  = SetupTokenCodeScanSeeking
+  | SetupTokenCodeScanAfterMarker
+  | SetupTokenCodeScanFound { code: String }
+
+fn setup_token_code_scan(lines: List<String>) -> SetupTokenCodeScan {
+  fold(lines, init: SetupTokenCodeScanSeeking, f: fn(acc, line) {
+    match acc {
+      SetupTokenCodeScanSeeking =>
+        if string_contains(s: line, pattern: setup_token_challenge_code_marker) {
+          SetupTokenCodeScanAfterMarker
+        } else {
+          SetupTokenCodeScanSeeking
+        }
+      SetupTokenCodeScanAfterMarker =>
+        if line == "" {
+          SetupTokenCodeScanAfterMarker
+        } else {
+          SetupTokenCodeScanFound { code: line }
+        }
+      SetupTokenCodeScanFound { code } => SetupTokenCodeScanFound { code: code }
+    }
+  })
+}
+
+fn first_https_url_token(line: String) -> String? {
+  let tokens = split(s: line, delimiter: " ")
+  fold(tokens, init: Absent, f: fn(acc, token) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => {
+        let trimmed = trim(token)
+        match starts_with(s: trimmed, prefix: setup_token_challenge_url_marker) {
+          true => Present { value: trimmed }
+          false => Absent
+        }
+      }
+    }
+  })
+}
+
+fn parse_setup_token_challenge_from_terminal(
+  pane: RenderedTerminalText,
+) -> ClaudeSetupTokenChallengeParse {
+  let lines = split(s: pane as String, delimiter: "\n") |> map(l => trim(l))
+  let url_hit = lines
+    |> filter(l => string_contains(s: l, pattern: setup_token_challenge_url_marker))
+    |> first
+  match url_hit {
+    Absent => SetupTokenChallengeParseRefused {
+      reason: "no verification uri in setup-token terminal output" as NonEmptyStr,
+    }
+    Present { value: url_line } =>
+      match first_https_url_token(line: url_line) {
+        Absent => SetupTokenChallengeParseRefused {
+          reason: "verification uri line contains no extractable https url token" as NonEmptyStr,
+        }
+        Present { value: url } =>
+          match setup_token_code_scan(lines: lines) {
+            SetupTokenCodeScanSeeking => SetupTokenChallengeParseRefused {
+              reason: "verification uri present but user code marker missing" as NonEmptyStr,
+            }
+            SetupTokenCodeScanAfterMarker => SetupTokenChallengeParseRefused {
+              reason: "user code marker present but code line not yet rendered" as NonEmptyStr,
+            }
+            SetupTokenCodeScanFound { code } => SetupTokenChallengeParsed {
+              challenge: ClaudeSetupTokenBrowserChallenge {
+                verification_uri: url as NonEmptyStr,
+                user_code: code as NonEmptyStr,
+              },
+            }
+          }
+      }
+  }
+}
+
+fn line_is_setup_token_candidate(line: String, prefix: NonEmptyStr) -> Bool {
+  let trimmed = trim(line)
+  if trimmed == "" {
+    false
+  } else {
+    string_contains(s: trimmed, pattern: prefix as String)
+  }
+}
+
+fn count_setup_token_candidates(
+  pane: RenderedTerminalText,
+  prefix: NonEmptyStr,
+) -> Int {
+  let lines = split(s: pane as String, delimiter: "\n") |> map(l => trim(l))
+  fold(lines, init: 0, f: fn(count, line) {
+    if line_is_setup_token_candidate(line: line, prefix: prefix) {
+      count + 1
+    } else {
+      count
+    }
+  })
+}
+
+fn extract_setup_token_candidate(
+  pane: RenderedTerminalText,
+  prefix: NonEmptyStr,
+) -> String? {
+  let lines = split(s: pane as String, delimiter: "\n") |> map(l => trim(l))
+  fold(lines, init: Absent, f: fn(found, line) {
+    match found {
+      Present { value: _ } => found
+      Absent =>
+        match line_is_setup_token_candidate(line: line, prefix: prefix) {
+          true => Present { value: line }
+          false => Absent
+        }
+    }
+  })
+}
+
+fn setup_token_candidate_length_ok(
+  token: String,
+  min_length: CharacterCount,
+  max_length: CharacterCount,
+) -> Bool {
+  let observed = character_count(count: string_length(s: token))
+  measure_le(a: min_length, b: observed) && measure_le(a: observed, b: max_length)
+}

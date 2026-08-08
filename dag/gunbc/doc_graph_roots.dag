@@ -5,6 +5,7 @@ import gunbc.ci_layer_roots { compile_clean_source_roots }
 import gunbc.plan { Plan, plan_path, plan_doc_path, DissolutionTrigger, HasTrigger }
 import gunbc.plan_registry { all_plans }
 import v2.lens.module_graph { module_declaration_facts_live }
+import v2.lens.doc_reachability { doc_graph_clean_holds, doc_graph_orphan_clean_holds }
 import v2.std.algebra { filter, list_flat_map }
 import v2.std.decl_index { decl_facts }
 import v2.std.decl_ref_resolution { declaration_ref_resolves }
@@ -188,6 +189,27 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "gunbc.ci_cost_arc_closeout_receipt", decl_name: "compiler_next_measured_target", field: WholeDeclaration },
     ],
     dissolution: HasTrigger { text: "every sub-lane row is accepted or honestly retired and the program parent five-minute-ci-gate is accepted on fleet receipts showing a representative leaf .dag PR at ≤5 minutes wall with byte-identical verdicts vs a cold recompute control — or the operator recuts the program and this note is superseded by a registered plan row." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "owned-ci-control-plane-design",
+    primary_work: DeclarationRef { module_path: "gunbc.owned_ci_seed", decl_name: "owned_ci_control_plane_seed_scaffold", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "gunbc.owned_ci_seed", decl_name: "owned_ci_control_plane_seed_note", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.owned_ci", decl_name: "owned_ci_authority_note", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.ci_execution_plan", decl_name: "ci_execution_plan_note", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "v0 lands on fleet with shadow comparison and branch-protection cutover per the design sequence, the scaffold dissolve-on items complete (REST bridge, runtime state carriers, subject_key and run_id grammar), and ci_control_plane self-emits or the plan registers — then surviving policy migrates to DESIGN or a registered gunbc.plan.Plan row and this bind deletes with the doc." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "spark-standup-program-accounting",
+    primary_work: DeclarationRef { module_path: "gunbc.plans.fleet_subsumption_manual_gaps", decl_name: "fleet_subsumption_manual_gaps_plan", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "gunbc.dgx_spark_procurement", decl_name: "dgx_spark_arrival_standing", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.dgx_spark_procurement", decl_name: "dgx_spark_router_bindings", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the Spark standup lanes are carried as registered rows rather than by this note — the manual-gap items reach zero and srv5/srv6 are enrolled with their arrival obligations modeled where that arrival lives, at which point the accounting has no facts of its own and this bind deletes with the doc." },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -600,6 +622,16 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: ProbeDoc,
+    slug: "claude_paired_entitlement_probe/README",
+    primary_work: DeclarationRef { module_path: "extdeps.llm.claude_agent_sdk_stream", decl_name: "claude_sdk_control_response_parser_drop_holds", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "test.claim.claude_sdk_parser_drop_witness", decl_name: "witness_control_response_parser_drop_fixture_holds", field: WholeDeclaration },
+      DeclarationRef { module_path: "test.claim.claude_sdk_parser_drop_live_witness", decl_name: "witness_wet_receipt_control_response_parser_drop_holds", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "gunbc.claude_agent_sdk_press enrolls the paired probe as a typed witness subsuming this hand runner (run-paired-probe.mjs dissolve-on header); then this bind deletes with the md" },
+  },
+  HandAuthoredDocBind {
+    home: ProbeDoc,
     slug: "g1-cited-symbol-control-declaration-absent",
     primary_work: DeclarationRef { module_path: "v2.std.node", decl_name: "G1_planted_declaration_absent_control_RED", field: WholeDeclaration },
     additional_works: [],
@@ -637,6 +669,14 @@ fn hand_authored_doc_graph_roots() -> List<String> {
 
 fn doc_graph_roots_all() -> List<String> {
   concat(plan_doc_graph_roots(), hand_authored_doc_graph_roots())
+}
+
+fn doc_graph_floor_orphan_clean_holds() -> Bool {
+  doc_graph_orphan_clean_holds(plan_roots: doc_graph_roots_all())
+}
+
+fn doc_graph_floor_clean_holds() -> Bool {
+  doc_graph_clean_holds(plan_roots: doc_graph_roots_all())
 }
 
 fn hand_authored_plan_slug_is_unregistered(b: HandAuthoredDocBind) -> Bool {

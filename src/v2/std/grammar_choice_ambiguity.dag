@@ -19,4 +19,4 @@ type NonEmptyGrammarChoiceAmbiguityRows {
   tail: FreeMonoid<GrammarChoiceAmbiguityRow>
 }
 
-data non_empty_grammar_choice_ambiguity_rows_dissolve_trigger: String = "migrate_when_nonempty_list_refinement_promoted — NonEmptyGrammarChoiceAmbiguityRows dissolves into NonEmptyList<GrammarChoiceAmbiguityRow> when the manual NonEmptyList refinement is promoted from v2.test.claim.manual.refinement_nonempty_list to std."
+data non_empty_grammar_choice_ambiguity_rows_dissolve_trigger: String = "migrate_when_free_semigroup_available — NonEmptyGrammarChoiceAmbiguityRows dissolves into std.algebra FreeSemigroup<GrammarChoiceAmbiguityRow>. RETARGETED: this trigger previously named the promotion of the manual Refined<List<T>> fixture to std, and the generic carrier that landed is a record with a head field rather than that refinement, with the NonEmptyList alias deliberately withheld while the fixture lives - so the event as previously spelled will not occur and this row would have stalled untracked. The construction wall is now available; see std.algebra free_semigroup_grounding_note."

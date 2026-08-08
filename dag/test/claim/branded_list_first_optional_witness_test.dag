@@ -33,9 +33,11 @@ test fn branded_list_first_content_hash_method_nonempty() -> Bool {
             Fnv1a64(right) => content_hash_eq_structural(left: left, right: right)
             Sha256Hash(_) => false
             Sha1Hash(_) => false
+            Sha512Hash(_) => false
           }
         Sha256Hash(_) => false
         Sha1Hash(_) => false
+        Sha512Hash(_) => false
       }
     Absent => false
   }
@@ -71,9 +73,11 @@ test fn branded_list_first_content_hash_pipe_nonempty() -> Bool {
             Fnv1a64(right) => content_hash_eq_structural(left: left, right: right)
             Sha256Hash(_) => false
             Sha1Hash(_) => false
+            Sha512Hash(_) => false
           }
         Sha256Hash(_) => false
         Sha1Hash(_) => false
+        Sha512Hash(_) => false
       }
     Absent => false
   }

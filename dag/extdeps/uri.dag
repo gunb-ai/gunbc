@@ -10,6 +10,7 @@ import std.unicode.types {
 type UriScheme
   = Http
   | Https
+  | Tftp
   | File
   | Ftp
   | Javascript
@@ -26,6 +27,7 @@ fn uri_scheme_is_http(s: UriScheme) -> Bool {
   match s {
     Http => true
     Https => true
+    Tftp => false
     File => false
     Ftp => false
     Javascript => false
@@ -43,6 +45,7 @@ fn uri_scheme_wire(s: UriScheme) -> NonEmptyStr {
   match s {
     Http => "http://"
     Https => "https://"
+    Tftp => "tftp://"
     File => "file://"
     Ftp => "ftp://"
     Javascript => "javascript:"
@@ -85,6 +88,8 @@ fn parse_href_scheme(url: String) -> ParsedHrefScheme {
     HrefScheme { scheme: Https }
   } else if starts_with(s, prefix: "http://") || starts_with(s, prefix: "HTTP://") {
     HrefScheme { scheme: Http }
+  } else if starts_with(s, prefix: "tftp://") || starts_with(s, prefix: "TFTP://") {
+    HrefScheme { scheme: Tftp }
   } else if starts_with(s, prefix: "mailto:") || starts_with(s, prefix: "MAILTO:") {
     HrefScheme { scheme: Mailto }
   } else {

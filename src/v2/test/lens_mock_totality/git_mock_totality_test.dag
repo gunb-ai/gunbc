@@ -22,6 +22,10 @@ fn materialize_git_mock(case: PublishedMockCase) -> Outcome<MaterializedGitMock>
     outcome_accepted(value: MaterializedGitMock { tag: ^materialized_merge_base })
   } else if case.operation_key == "git.Inspect.ListTreePathsAtRevision" {
     outcome_accepted(value: MaterializedGitMock { tag: ^materialized_list_tree_paths_at_revision })
+  } else if case.operation_key == "git.Inspect.WorkingTreeStatus" {
+    outcome_accepted(value: MaterializedGitMock { tag: ^materialized_working_tree_status })
+  } else if case.operation_key == "git.Inspect.IgnoredFiles" {
+    outcome_accepted(value: MaterializedGitMock { tag: ^materialized_ignored_files })
   } else if case.operation_key == "git.Core.LsFiles" {
     outcome_accepted(value: MaterializedGitMock { tag: ^materialized_ls_files })
   } else if case.operation_key == "git.Core.Diff" {

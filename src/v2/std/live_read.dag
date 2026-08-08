@@ -30,6 +30,20 @@ type LiveReadClassification
       carriers: List<LiveReadCarrier>
     }
 
+data g2_fact_subject_law: String = "COMPLETENESS IS A PROPERTY OF THE PRODUCER, NOT OF THE FACT LIST. G2 concludes LocalRead by finding no reachable carrier invocation, and that conclusion is sound only if the facts contain the bodies where such an invocation would appear. Nothing in a List<FnArrowDecl> can establish that: a list of one planted declaration is indistinguishable from a whole-tree projection with one match. The earlier heuristic — every reachable carrier home contributes at least one declaration — asked the facts to vouch for their own coverage, which is the shape of the question it was trying to answer.
+
+So the receipt is CARRIED, not inferred. G2FactSubject names the substrate that produced the facts: WholeTreeFactSubject identifies the exact index/tree the projection is bound to, and PartialFactSubject marks any other origin — a fixture, a planted list, a narrower context. A projection built on a partial subject may not decide AT ALL. An earlier revision of this law made the rule asymmetric — LocalRead refused, RuntimeRead accepted, on the reasoning that positive evidence of a carrier survives a narrow view. The existence of a carrier does survive; the SET of paths it reads does not, and that set is what selection consumes. A complete closure reading two literal paths, viewed partially, still classifies RuntimeRead while exposing one of them, and a diff touching the other then misses the carrier set and licenses a skip. The accepted arm was therefore the under-selection direction wearing the safer-looking label. WholeTreeFactSubject is now NULLARY and mintable only where the whole-tree fact producers are themselves called, so it cannot be attached to a fact list by a caller that merely asserts it; PartialFactSubject carries its cause and always refuses, retaining the classification as diagnostic payload.
+
+The subject identity also makes the memo checkable rather than merely fast: a manifest carries the subject it was built against, and a lookup whose current index does not equal that subject REFUSES instead of serving a classification derived from a different tree. Evidence that cannot name its subject cannot be checked against it — the same defect class as a baseline that did not name the commit it compared."
+
+type G2FactSubject
+  = WholeTreeFactSubject
+  | PartialFactSubject { cause: String }
+
+type LiveReadSelectionProjection
+  = LiveReadSelectionClassified { classification: LiveReadClassification }
+  | LiveReadSelectionRefused { cause: String }
+
 data live_read_carrier_homes_v0: List<LiveReadCarrierHome> = [
   LiveReadCarrierHome { module: "v2.lens.enforcement.cost_coverage", kind: FilesystemReadCarrier },
   LiveReadCarrierHome { module: "v2.lens.enforcement.grammar_coverage", kind: FilesystemReadCarrier },

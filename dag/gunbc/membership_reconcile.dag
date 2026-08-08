@@ -14,17 +14,19 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 type TeardownRefusalCause = MemberNotOwned | OwnershipUnknown
 
 type MemberAction<M>
-  = MemberUpsert { member: M }
-  | MemberTeardown { member: M }
-  | MemberTeardownRefused { member: M, cause: TeardownRefusalCause }
+  = MemberAdded { to: M }
+  | MemberChanged { from: M, to: M }
+  | MemberRemoved { from: M }
+  | MemberRemovalRefused { from: M, cause: TeardownRefusalCause }
 
 type MembershipPlan<M> {
   actions: List<MemberAction<M>>
 }
 
 type MemberEffect<M>
-  = EffectUpsert { member: M }
-  | EffectTeardown { member: M }
+  = EffectAdd { to: M }
+  | EffectReplace { from: M, to: M }
+  | EffectRemove { from: M }
 
 type MemberRefusal<M> {
   member: M
@@ -35,24 +37,37 @@ type EffectsOrRefusal<M>
   = EffectsReady { effects: List<MemberEffect<M>> }
   | ApplyRefused { refusals: List<MemberRefusal<M>> }
 
-data membership_reconcile_authority_note: String = "THE grain-agnostic membership-diff reconcile (R2/R3/R5/R9). Desired set vs observed set keyed by member identity: Added/Modified -> upsert, Removed -> teardown (owned-only) or refuse, Unchanged -> noop (absence of a hunk). Generic over member type M and key K: a member may be a service/unit/host OR a Session — consumers CALL this with their (key_of, key_eq, value_eq, ownership_of) bundle, they NEVER copy-adapt it (one fn, N bundles — a Realization; a forked reconcile means the genericity bought nothing). Reuses std.change.keyed_two_way_diff (the single already-generic diff engine) — no fork. R5 teardown-owned-only is a CONSTRUCTION WALL: a Removed non-owned member yields MemberTeardownRefused, which has NO effect arm in any apply dispatch, so the bad state is unwritable — never a post-check, never 'assume owned' (the absorbing fallback DESIGN §5 forbids). key_of MUST return stable IDENTITY (not content) so a content drift is Modified (re-upsert), not Remove+Add (teardown+reinstall); value_eq is presence+content so a same-key content drift re-upserts."
+data membership_reconcile_authority_note: String = "THE grain-agnostic membership-diff reconcile (R2/R3/R5/R9). Desired set vs observed set keyed by member identity: Added -> add, Modified -> change, Removed -> remove (owned-only) or refuse, Unchanged -> noop (absence of a hunk). Add and change are DISTINCT arms and are NOT collapsed into one 'upsert': an add creates where nothing was, a change carries BOTH sides of a surviving occurrence. Only REMOVAL consults ownership, and that asymmetry is deliberate rather than an oversight — gunbc.ownership defines Ensured as 'requires present but does NOT own (never torn down)', a constraint on removal specifically. Converging a drifted member the model does not own is the intended behavior of an Ensured member, not a violation of it: tool_readiness exists precisely to re-install a pin whose observed version drifted from desired, and refusing that would break the module rather than protect anything. Generic over member type M and key K: a member may be a service/unit/host OR a Session — consumers CALL this with their (key_of, key_eq, value_eq, ownership_of) bundle, they NEVER copy-adapt it (one fn, N bundles — a Realization; a forked reconcile means the genericity bought nothing). Reuses std.change.keyed_two_way_diff (the single already-generic diff engine) — no fork. R5 removal-owned-only is a CONSTRUCTION WALL: a Removed non-owned member yields MemberRemovalRefused, which has NO effect arm in any apply dispatch, so the bad state is unwritable — never a post-check, never 'assume owned' (the absorbing fallback DESIGN §5 forbids). key_of MUST return stable IDENTITY (not content) so a content drift is Modified (one change), not Remove+Add (teardown+reinstall)."
 
 fn member_rows<M, K>(members: List<M>, key_of: fn(M) -> K) -> List<KeyedRow<K, M>> {
   map(members, m => KeyedRow { row_key: key_of(m), value: m })
 }
 
+data member_changed_both_sides_note: String = "WHY MemberChanged carries `from` as well as `to`. The prior shape collapsed a Modified hunk into an upsert of the `to` side and DISCARDED `from`, which is lossy in a load-bearing way rather than merely untidy: the prior value is what every safe realization of a change needs. An SCM ref update is a compare-and-swap that names the expected prior (git update-ref <ref> <new> <old>), so without `from` the only reachable realization is the unconditional write and the atomicity the capability already offers cannot be used. A host resource whose address moved must retire the prior endpoint, and `from` is the only place that endpoint survives. gunbc.change_realization is the table that consumes both sides. A NOTE ON WHAT THIS IS NOT: an earlier draft of this change also refused a Modified hunk whose `from` was not Owned, on the reading that replacement is destruction. That was withdrawn — it over-fires on every Ensured consumer and contradicts gunbc.ownership, where Ensured constrains teardown only. Ownership gates removal; it does not gate convergence."
+
+type RemovalAdmission
+  = RemovalAdmitted
+  | RemovalRefused { cause: TeardownRefusalCause }
+
+fn removal_admission<M>(existing: M, ownership_of: fn(M) -> Ownership?) -> RemovalAdmission {
+  match ownership_of(existing) {
+    Present { value: own } =>
+      match own {
+        Owned => RemovalAdmitted
+        Ensured => RemovalRefused { cause: MemberNotOwned }
+      }
+    Absent => RemovalRefused { cause: OwnershipUnknown }
+  }
+}
+
 fn hunk_to_action<M, K>(hunk: KeyedDiffHunk<K, M>, ownership_of: fn(M) -> Ownership?) -> MemberAction<M> {
   match hunk {
-    KeyedDiffAddedHunk { hunk_key: _, to: m } => MemberUpsert { member: m }
-    KeyedDiffModifiedHunk { hunk_key: _, from: _, to: m } => MemberUpsert { member: m }
+    KeyedDiffAddedHunk { hunk_key: _, to: m } => MemberAdded { to: m }
+    KeyedDiffModifiedHunk { hunk_key: _, from: f, to: t } => MemberChanged { from: f, to: t }
     KeyedDiffRemovedHunk { hunk_key: _, from: m } =>
-      match ownership_of(m) {
-        Present { value: own } =>
-          match own {
-            Owned => MemberTeardown { member: m }
-            Ensured => MemberTeardownRefused { member: m, cause: MemberNotOwned }
-          }
-        Absent => MemberTeardownRefused { member: m, cause: OwnershipUnknown }
+      match removal_admission(existing: m, ownership_of: ownership_of) {
+        RemovalAdmitted => MemberRemoved { from: m }
+        RemovalRefused { cause: c } => MemberRemovalRefused { from: m, cause: c }
       }
   }
 }
@@ -76,14 +91,15 @@ fn membership_reconcile<M, K>(
   }
 }
 
-data membership_effects_note: String = "The APPLY-grain projection of a plan: partitions a MembershipPlan into effects (upsert/teardown) OR a wholesale refusal. EffectsOrRefusal is a SUM, not a product: the ApplyRefused arm carries NO effects, so a plan with any refusal is UN-EMITTABLE — a consumer can obtain a List<MemberEffect> only from the EffectsReady arm, making drop-and-proceed (emit the effects, ignore the refusals) unrepresentable, not merely discouraged (DESIGN §5 construction-over-validation). Refused is PRESERVED and surfaced as MemberRefusal (member+cause: typed+located+counted), never dropped — the spine keeps producing it (plan grain), the apply grain refuses wholesale on it. flat_map (not a concat-in-fold) builds each list in one pass — no accumulator-copy. See membership_effects_wholesale_refuse_policy_trigger for the deliberate scope-dependent policy."
+data membership_effects_note: String = "The APPLY-grain projection of a plan: partitions a MembershipPlan into effects (add/replace/remove) OR a wholesale refusal. EffectReplace carries BOTH sides because an apply handler that replaces a member must be able to retire the prior realization, not merely write the new one over it; an EffectAdd carries one side because there is nothing there to retire. EffectsOrRefusal is a SUM, not a product: the ApplyRefused arm carries NO effects, so a plan with any refusal is UN-EMITTABLE — a consumer can obtain a List<MemberEffect> only from the EffectsReady arm, making drop-and-proceed (emit the effects, ignore the refusals) unrepresentable, not merely discouraged (DESIGN §5 construction-over-validation). Refused is PRESERVED and surfaced as MemberRefusal (member+cause: typed+located+counted), never dropped — the spine keeps producing it (plan grain), the apply grain refuses wholesale on it. flat_map (not a concat-in-fold) builds each list in one pass — no accumulator-copy. See membership_effects_wholesale_refuse_policy_trigger for the deliberate scope-dependent policy."
 
 fn membership_effects<M>(plan: MembershipPlan<M>) -> EffectsOrRefusal<M> {
   let refusals = flat_map(plan.actions, a =>
     match a {
-      MemberTeardownRefused { member: m, cause: c } => [MemberRefusal { member: m, cause: c }]
-      MemberUpsert { member: _ } => []
-      MemberTeardown { member: _ } => []
+      MemberRemovalRefused { from: m, cause: c } => [MemberRefusal { member: m, cause: c }]
+      MemberAdded { to: _ } => []
+      MemberChanged { from: _, to: _ } => []
+      MemberRemoved { from: _ } => []
     }
   )
   if count(refusals) > 0 {
@@ -92,9 +108,10 @@ fn membership_effects<M>(plan: MembershipPlan<M>) -> EffectsOrRefusal<M> {
     EffectsReady {
       effects: flat_map(plan.actions, a =>
         match a {
-          MemberUpsert { member: m } => [EffectUpsert { member: m }]
-          MemberTeardown { member: m } => [EffectTeardown { member: m }]
-          MemberTeardownRefused { member: _, cause: _ } => []
+          MemberAdded { to: m } => [EffectAdd { to: m }]
+          MemberChanged { from: f, to: t } => [EffectReplace { from: f, to: t }]
+          MemberRemoved { from: m } => [EffectRemove { from: m }]
+          MemberRemovalRefused { from: _, cause: _ } => []
         }
       )
     }
@@ -102,32 +119,46 @@ fn membership_effects<M>(plan: MembershipPlan<M>) -> EffectsOrRefusal<M> {
 }
 
 type MembershipTally {
-  upserts: Int
-  teardowns: Int
+  adds: Int
+  changes: Int
+  removals: Int
   refusals: Int
 }
 
-data membership_tally_note: String = "The counts-monoid of a plan (zero = all-zero, combine = componentwise +). ONE catamorphism over the actions computes all three counts in a single pass; the membership_upsert/teardown/refusal_count fns are its projections (was three separate folds — DESIGN §2 one-concept, the elegant fold the diff is). The accumulator is a fixed-size record (O(1)/step), not a growing list, so no copy cost."
+data membership_tally_note: String = "The counts-monoid of a plan (zero = all-zero, combine = componentwise +). ONE catamorphism over the actions computes all four counts in a single pass; the membership_added/change/removal/refusal_count fns are its projections (was three separate folds — DESIGN §2 one-concept, the elegant fold the diff is). The accumulator is a fixed-size record (O(1)/step), not a growing list, so no copy cost."
 
 fn membership_tally<M>(plan: MembershipPlan<M>) -> MembershipTally {
-  fold(plan.actions, init: MembershipTally { upserts: 0, teardowns: 0, refusals: 0 }, f: (acc, a) =>
+  fold(plan.actions, init: MembershipTally { adds: 0, changes: 0, removals: 0, refusals: 0 }, f: (acc, a) =>
     match a {
-      MemberUpsert { member: _ } =>
-        MembershipTally { upserts: acc.upserts + 1, teardowns: acc.teardowns, refusals: acc.refusals }
-      MemberTeardown { member: _ } =>
-        MembershipTally { upserts: acc.upserts, teardowns: acc.teardowns + 1, refusals: acc.refusals }
-      MemberTeardownRefused { member: _, cause: _ } =>
-        MembershipTally { upserts: acc.upserts, teardowns: acc.teardowns, refusals: acc.refusals + 1 }
+      MemberAdded { to: _ } =>
+        MembershipTally { adds: acc.adds + 1, changes: acc.changes, removals: acc.removals, refusals: acc.refusals }
+      MemberChanged { from: _, to: _ } =>
+        MembershipTally { adds: acc.adds, changes: acc.changes + 1, removals: acc.removals, refusals: acc.refusals }
+      MemberRemoved { from: _ } =>
+        MembershipTally { adds: acc.adds, changes: acc.changes, removals: acc.removals + 1, refusals: acc.refusals }
+      MemberRemovalRefused { from: _, cause: _ } =>
+        MembershipTally { adds: acc.adds, changes: acc.changes, removals: acc.removals, refusals: acc.refusals + 1 }
     }
   )
 }
 
-fn membership_upsert_count<M>(plan: MembershipPlan<M>) -> Int {
-  membership_tally(plan: plan).upserts
+fn membership_added_count<M>(plan: MembershipPlan<M>) -> Int {
+  membership_tally(plan: plan).adds
 }
 
-fn membership_teardown_count<M>(plan: MembershipPlan<M>) -> Int {
-  membership_tally(plan: plan).teardowns
+fn membership_change_count<M>(plan: MembershipPlan<M>) -> Int {
+  membership_tally(plan: plan).changes
+}
+
+data membership_write_count_note: String = "adds + changes — the count of members this plan will WRITE, which is what the former membership_upsert_count actually answered for its consumers ('how much work is left'). It is kept as a DERIVED projection over the two separate tally fields, never as a stored merged counter: an add and a change have different realizations (gunbc.change_realization), so a single stored 'upserts' number is the conflation this change removed and re-storing it would reinstate it. A consumer that genuinely cares which kind of write it is reads adds and changes directly."
+
+fn membership_write_count<M>(plan: MembershipPlan<M>) -> Int {
+  let t = membership_tally(plan: plan)
+  t.adds + t.changes
+}
+
+fn membership_removal_count<M>(plan: MembershipPlan<M>) -> Int {
+  membership_tally(plan: plan).removals
 }
 
 fn membership_refusal_count<M>(plan: MembershipPlan<M>) -> Int {

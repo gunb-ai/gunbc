@@ -4013,6 +4013,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         Present { value: d } => [d]
         Absent => []
       }
+      let cast_sole_ctor_diags = sole_constructor_construction_diags(type_name: target_name, span: span, scope: scope)
       let cast_refinement_diags = where_refinement_mismatch_diags(
         formal: target_type,
         value_expr: inner_typed,
@@ -4023,7 +4024,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let cast_texpr = make_expr_node(expr_data: ExprCast, children: [inner_typed, target_type], inferred: Present { value: Resolved { node: target_type } }, span: span)
       InferResult {
         typed: cast_texpr,
-        diagnostics: concat(concat(inner_diags, cast_diags), cast_refinement_diags)
+        diagnostics: concat(concat(concat(inner_diags, cast_diags), cast_sole_ctor_diags), cast_refinement_diags)
       }
 
     ExprForEach =>
@@ -4484,11 +4485,102 @@ fn type_has_sole_constructor(type_name: String, scope: InferScope) -> Bool {
   }
 }
 
+// sole_constructor is a property of the TYPE, so every construction form producing an inhabitant
+// consults ONE authority here rather than each arm re-deriving the same definer-file comparison.
+// Two forms reach it: the record literal (infer_record_lit) and the CAST (`x as Sealed`).
+//
+// WHY THE CAST NEEDED ITS OWN WIRING. validate_cast judges a cast only when source AND target are
+// both inside std.coercion's dag_cast_rules primitive domain, so `String as SomeRecord` fell through
+// its `!is_dag_cast_domain_type` arm unjudged — a cast into a sealed type re-typed the value with no
+// diagnostic at all. A cast IS construction: it is the one expression form that produces a value of
+// the target type from a value that is not one, which is exactly what a sole_constructor type says
+// only its definer may do. This is the gap the capability audit names by example (casts like
+// `as TransportScript`).
+//
+// The refusal grain matches the record-literal arm exactly (the definer's FILE, decl.span.file), so a
+// sealed type's own module keeps every construction form and no other module gets any of them.
+fn sole_constructor_construction_diags(
+  type_name: String,
+  span: SourceSpan,
+  scope: InferScope
+) -> List<ErrorNode> {
+  if type_has_sole_constructor(type_name: type_name, scope: scope) {
+    match lookup_type_by_name(env: scope.type_env, name: type_name) {
+      Present { value: decl } =>
+        if decl.span.file == span.file {
+          []
+        } else {
+          [make_error_node(diagnostic: SoleConstructorViolation { type_name: type_name, span: span }, module_name: scope.module_name)]
+        }
+      Absent => []
+    }
+  } else { [] }
+}
+
 data zero_field_variant_tag_reference_frontier_note: String = "P0 field-wall frontier (operator Ruling 1a, 2026-07-15): a ZERO-field literal of a coproduct VARIANT (field_inits empty AND variant_owner_node != none) is sanctioned as a TAG REFERENCE, not a construction — the `discriminant(v: PrefixToken {})` idiom (16+ sites in src/v2/std/compilers/target_model.dag) names a variant to obtain its stable tag identity without materializing a value. Presence checking is skipped for exactly this shape; PARTIAL literals (any field present) stay red, and zero-field literals of NON-variant records (variant_owner_node == none) stay red — so the audit F1 probes (CacheProvider/CostAccount partial literals) are unaffected. This is a decidable structural exemption (not an absorbing fallback: it refuses precisely, never widens on failure). DISSOLVE-ON: a first-class variant-tag carrier that types the discriminant argument position, at which point the exemption is deleted and the sites migrate to the carrier."
 
 data presence_check_census_gate_note: String = "Field-presence enforcement (P0 wall, #6663) stands down when the literal's bare type name is AMBIGUOUS in the corpus-wide census (global_bare, order-independent): with two same-named decls in the closure, every name-keyed template lookup below resolves by overlay-wins import order (a LEDGERED binding fork, see guarded_cache_union_note), so enforcing would GUESS which decl the author meant and red correct literals against the wrong layer's fields (2026-07-16 main-red: v2 nested Monoid/BooleanAlgebra/OrderedRing literals checked against dag/std flat shapes). Skipping on ambiguity is the pre-wall behavior for exactly those names; enforcement stays live for census-unique names (~98 percent of the corpus) AND for names this module DECLARES LOCALLY. The local carve-out is the one census-ambiguous case that still enforces, and it is read from TypeEnv.str_bindings ONLY: build_type_env sets str_bindings = local_str_bindings (this module's own declarations; the direct-import overlay lands in ancestry_str_bindings), and lookup_binding_by_name_local consults str_bindings FIRST, so a locally-declared name resolves to the local decl deterministically and order-independently - the precedence note's 'locals > kernel > direct-selected > transitive union' with no fork to guess (direct_import_export_precedence_note). The gate must NOT reach lookup_type_by_name here: that walks on into ancestry_str_bindings, i.e. the import-order overlay, which makes the WALL ITSELF order-dependent - the same source text refusing under one import order and passing under the other (reproduced 2026-07-20, target/probe-presencewall ARM SET A: probe.c1 'import a then b' passes while probe.c2 'import b then a' reds on one identical literal), which is exactly the GUESS this gate exists to refuse. Dissolve-on: containment SymbolIndex (namespace lane) makes the expected type scope-resolved; then this gate is dead code and the wall goes total. Ratchet (PR #6709 review, accepted): before the wall goes total, stand-downs become counted out-of-band ledger rows (binding_forks channel shape — LEDGERED, never diagnostics; a red refusal would re-red correct literals), landing with the SymbolIndex work that dissolves this gate."
 
+fn map_literal_expected_keyed_node(type_name: String?, expected: Node?, scope: InferScope) -> Node? {
+  match type_name {
+    Present { value: _ } => none
+    Absent =>
+      match expected {
+        Present { value: e } =>
+          if node_is_keyed_collection(n: e, source_indices: scope.type_env.source_indices) {
+            Present { value: e }
+          } else { none }
+        Absent => none
+      }
+  }
+}
+
+fn infer_map_literal(map_node: Node, field_inits: List<Node>, span: SourceSpan, scope: InferScope) -> InferResult {
+  let value_expected = match map_node.children |> skip(n: 1) |> first {
+    Present { value: v } => Present { value: v }
+    Absent => none
+  }
+  let fi_results = field_inits |> map(fi =>
+    let ar = infer_expr(texpr: field_init_node_value(n: fi), scope: scope, expected: value_expected)
+    FieldInferResult {
+      typed_field: make_field_init_node(
+        name: field_init_node_name_at(n: fi, source_indices: scope.type_env.source_indices),
+        value: ar.typed,
+        span: fi.span,
+        name_span: node_name_span(n: fi)
+      ),
+      infer_result: ar,
+      diagnostics: ar.diagnostics
+    }
+  )
+  InferResult {
+    typed: make_expr_node(
+      expr_data: ExprRecordLit { parent_enum: none },
+      children: fi_results |> map(fir => fir.typed_field),
+      inferred: Present { value: Resolved { node: map_node } },
+      span: span
+    ),
+    diagnostics: flat_map(fi_results, fir => fir.diagnostics)
+  }
+}
+
 fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope, expected: Node?) -> InferResult {
+  match map_literal_expected_keyed_node(type_name: type_name, expected: expected, scope: scope) {
+    Present { value: map_node } =>
+      infer_map_literal(map_node: map_node, field_inits: field_inits, span: span, scope: scope)
+    Absent =>
+      infer_record_lit_structural(
+        type_name: type_name,
+        field_inits: field_inits,
+        span: span,
+        name_span: name_span,
+        scope: scope,
+        expected: expected
+      )
+  }
+}
+
+fn infer_record_lit_structural(type_name: String?, field_inits: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope, expected: Node?) -> InferResult {
   let instantiated_struct_fields = record_lit_instantiated_fields(type_name: type_name, expected: expected, scope: scope)
   let expected_struct_fields = if instantiated_struct_fields == none {
     record_lit_fields_from_expected(type_name: type_name, expected: expected, scope: scope)
@@ -4767,17 +4859,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
         module_name: scope.module_name
       )]
     }
-    let sole_ctor_diags = if type_has_sole_constructor(type_name: type_name.value, scope: scope) {
-      match lookup_type_by_name(env: scope.type_env, name: type_name.value) {
-        Present { value: decl } =>
-          if decl.span.file == span.file {
-            []
-          } else {
-            [make_error_node(diagnostic: SoleConstructorViolation { type_name: type_name.value, span: span }, module_name: scope.module_name)]
-          }
-        Absent => []
-      }
-    } else { [] }
+    let sole_ctor_diags = sole_constructor_construction_diags(type_name: type_name.value, span: span, scope: scope)
     let typed_field_nodes2 = typed_fields
     let rl_name = match type_name { Present { value: tn_val } => tn_val  Absent => "" }
     let texpr = make_named_expr_node(

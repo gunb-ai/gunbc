@@ -1,0 +1,118 @@
+module extdeps.tools.npm
+
+import std.types { NonEmptyStr, String, Bool, FilePath }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.tools { CliTool, SourceApt }
+import extdeps.apt { package_npm }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.npmjs.com/cli/v10/commands/npm-ci"
+  }
+}
+
+data npm_cli_tool: CliTool = CliTool {
+  name: "npm",
+  min_version: none,
+  installable_via: [SourceApt { package: package_npm }],
+}
+
+data npm_cli_version_observation_note: String = "min_version = none is NOT a materialization receipt. Observed npm --version is recorded on CodexRuntimeBundleReceipt so the toolchain that performed offline ci is attributable."
+
+service npm.Cli {
+  operation Version {
+    input {}
+    output {
+      version: String from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["npm", "--version"] }
+    exit {
+      0 => Unit "npm CLI version printed"
+      nonzero => String "npm --version failed"
+    }
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.tools.npm",
+      decl_name: "npm_cli_tool",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.tools.npm.extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data npm_ci_ignore_scripts_note: String = "npm ci --ignore-scripts is the FIRST Codex materialization realization: exact lock install with lifecycle scripts forbidden. workdir via env -C (cargo.BuildInheritEnv precedent). gunbc.package_delivery owns product policy (when to call); this module owns the npm CLI shape."
+
+data npm_offline_cache_note: String = "Controlled cache realization: npm.Cache.Add seeds an isolated --cache from gunbc-admitted local tarball bytes; npm.Ci.IgnoreScriptsOffline then runs with --offline so no network package acquisition remains after admission. gunbc.package_delivery owns which archives populate the cache."
+
+service npm.Cache {
+  operation Add {
+    input { cache: FilePath, tarball: FilePath }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: ["npm", "cache", "add", "{tarball}", "--cache", "{cache}"]
+    }
+    exit {
+      0 => Unit "local tarball added to isolated npm cache"
+      nonzero => String "npm cache add failed"
+    }
+  }
+}
+
+service npm.Ci {
+  operation IgnoreScripts {
+    input { workdir: FilePath }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: ["env", "-C", "{workdir}", "npm", "ci", "--ignore-scripts"]
+    }
+    exit {
+      0 => Unit "lock install completed with scripts ignored"
+      nonzero => String "npm ci --ignore-scripts failed"
+    }
+  }
+
+  operation IgnoreScriptsOffline {
+    input { workdir: FilePath, cache: FilePath }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: [
+        "env",
+        "-C",
+        "{workdir}",
+        "npm",
+        "ci",
+        "--offline",
+        "--ignore-scripts",
+        "--cache",
+        "{cache}",
+      ]
+    }
+    exit {
+      0 => Unit "offline lock install completed from isolated cache with scripts ignored"
+      nonzero => String "npm ci --offline --ignore-scripts failed"
+    }
+  }
+}

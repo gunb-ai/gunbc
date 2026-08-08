@@ -21,6 +21,15 @@ import gunbc.host_effect {
   LiveDeployEnsureDependency,
   LiveDeployDigestReadback,
   DeployAccessPreflight,
+  EnsureActionsRunnerRelease,
+  EnsureRunnerSlotDirectory,
+  EnsureRunnerJitWrapper,
+  EnsureRunnerSystemdTemplate,
+  EnsureRunnerMemoryCaps,
+  ActivateRunnerSlot,
+  ReplaceRunnerIncarnation,
+  ObserveRunnerLocalState,
+  ObserveGitHubRunnerRegistration,
   NodeControlPlane, HostOs, BmcController,
   Drive, OneShot, ConvergeLoop,
   HostEffectIntent, HostEffectEvidence, ShellEffectApplied, ConvergePlanApplied,
@@ -99,6 +108,21 @@ import gunbc.live_deploy.emit {
   live_deploy_retract_script_for,
   deployment_ensure_dependency_script,
 }
+import gunbc.runner_lifecycle_realize {
+  runner_lifecycle_realize_ensure_actions_runner_release,
+  runner_lifecycle_realize_ensure_runner_slot_directory,
+  runner_lifecycle_realize_ensure_runner_jit_wrapper,
+  runner_lifecycle_realize_ensure_runner_systemd_template,
+  runner_lifecycle_realize_ensure_runner_memory_caps,
+  runner_lifecycle_realize_activate_runner_slot,
+  runner_lifecycle_realize_replace_runner_incarnation,
+  runner_lifecycle_realize_observe_runner_local_state,
+  runner_lifecycle_realize_observe_github_runner_registration,
+}
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.runner_incarnation { LocalRunnerSlotIncarnation }
+import gunbc.runner_lifecycle { RunnerReplacementCause }
+import extdeps.github.actions_runner { ActionsRunnerRelease, ActionsRunnerBinaryArtifact }
 import gunbc.roadmap_static_site { roadmap_site_digest_readback_script }
 import gunbc.host_build_cache_provision_script { build_cache_provision_shell_script }
 import gunbc.host_build_cache_catalog_gate {
@@ -195,6 +219,27 @@ type ResolvedHostEffectCell =
   | LiveDeployRetractOnHost { node: ComputeHost, spec: DeploymentSpec }
   | LiveDeployEnsureDependencyOnHost { node: ComputeHost, dep: DeploymentDependencyStep }
   | LiveDeployDigestReadbackOnHost { node: ComputeHost, port: Int }
+  | EnsureActionsRunnerReleaseOnHost { node: ComputeHost, runner_release: ActionsRunnerRelease }
+  | EnsureRunnerSlotDirectoryOnHost {
+      node: ComputeHost,
+      slot: RunnerSlotIdentity,
+      artifact: ActionsRunnerBinaryArtifact,
+    }
+  | EnsureRunnerJitWrapperOnHost { node: ComputeHost, host_label: NonEmptyStr }
+  | EnsureRunnerSystemdTemplateOnHost { node: ComputeHost, host_label: NonEmptyStr }
+  | EnsureRunnerMemoryCapsOnHost { node: ComputeHost, slot: RunnerSlotIdentity }
+  | ActivateRunnerSlotOnHost { node: ComputeHost, slot: RunnerSlotIdentity }
+  | ReplaceRunnerIncarnationOnHost {
+      node: ComputeHost,
+      from: LocalRunnerSlotIncarnation,
+      cause: RunnerReplacementCause,
+    }
+  | ObserveRunnerLocalStateOnHost { node: ComputeHost, slot: RunnerSlotIdentity }
+  | ObserveGitHubRunnerRegistrationOnHost {
+      node: ComputeHost,
+      slot: RunnerSlotIdentity,
+      organization: NonEmptyStr,
+    }
   | IncompatibleCell { reason: String }
 
 fn converge_plan_identity_mismatch_reason(node: ComputeHost, policy: HostConverge) -> String {
@@ -284,6 +329,24 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
               LiveDeployEnsureDependencyOnHost { node: n, dep: d }
             LiveDeployDigestReadback { port: p } =>
               LiveDeployDigestReadbackOnHost { node: n, port: p }
+            EnsureActionsRunnerRelease { runner_release: r } =>
+              EnsureActionsRunnerReleaseOnHost { node: n, runner_release: r }
+            EnsureRunnerSlotDirectory { slot: s, artifact: a } =>
+              EnsureRunnerSlotDirectoryOnHost { node: n, slot: s, artifact: a }
+            EnsureRunnerJitWrapper { host_label: l } =>
+              EnsureRunnerJitWrapperOnHost { node: n, host_label: l }
+            EnsureRunnerSystemdTemplate { host_label: l } =>
+              EnsureRunnerSystemdTemplateOnHost { node: n, host_label: l }
+            EnsureRunnerMemoryCaps { slot: s } =>
+              EnsureRunnerMemoryCapsOnHost { node: n, slot: s }
+            ActivateRunnerSlot { slot: s } =>
+              ActivateRunnerSlotOnHost { node: n, slot: s }
+            ReplaceRunnerIncarnation { from: inc, cause: c } =>
+              ReplaceRunnerIncarnationOnHost { node: n, from: inc, cause: c }
+            ObserveRunnerLocalState { slot: s } =>
+              ObserveRunnerLocalStateOnHost { node: n, slot: s }
+            ObserveGitHubRunnerRegistration { slot: s, organization: o } =>
+              ObserveGitHubRunnerRegistrationOnHost { node: n, slot: s, organization: o }
             DeployAccessPreflight {} =>
               IncompatibleCell {
                 reason: "host_effect: DeployAccessPreflight is intent-only (authorization gate record) and cannot be applied; typed mismatch, DESIGN section 5.",
@@ -343,6 +406,24 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
               IncompatibleCell { reason: "host_effect: LiveDeployEnsureDependency is in-band (actuator host shell mutation) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
             LiveDeployDigestReadback { port: _ } =>
               IncompatibleCell { reason: "host_effect: LiveDeployDigestReadback is in-band (actuator host shell readback) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+            EnsureActionsRunnerRelease { runner_release: _ } =>
+              IncompatibleCell { reason: "host_effect: EnsureActionsRunnerRelease is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+            EnsureRunnerSlotDirectory { slot: _, artifact: _ } =>
+              IncompatibleCell { reason: "host_effect: EnsureRunnerSlotDirectory is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+            EnsureRunnerJitWrapper { host_label: _ } =>
+              IncompatibleCell { reason: "host_effect: EnsureRunnerJitWrapper is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+            EnsureRunnerSystemdTemplate { host_label: _ } =>
+              IncompatibleCell { reason: "host_effect: EnsureRunnerSystemdTemplate is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+            EnsureRunnerMemoryCaps { slot: _ } =>
+              IncompatibleCell { reason: "host_effect: EnsureRunnerMemoryCaps is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+            ActivateRunnerSlot { slot: _ } =>
+              IncompatibleCell { reason: "host_effect: ActivateRunnerSlot is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+            ReplaceRunnerIncarnation { from: _, cause: _ } =>
+              IncompatibleCell { reason: "host_effect: ReplaceRunnerIncarnation is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+            ObserveRunnerLocalState { slot: _ } =>
+              IncompatibleCell { reason: "host_effect: ObserveRunnerLocalState is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+            ObserveGitHubRunnerRegistration { slot: _, organization: _ } =>
+              IncompatibleCell { reason: "host_effect: ObserveGitHubRunnerRegistration is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
             DeployAccessPreflight {} =>
               IncompatibleCell { reason: "host_effect: DeployAccessPreflight is intent-only (authorization gate record) and cannot target BmcController; typed mismatch, DESIGN section 5." }
           }
@@ -1733,6 +1814,24 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
       realize_live_deploy_ensure_dependency_on_host(dep: d, transport: transport, intent: intent)
     LiveDeployDigestReadbackOnHost { node: _, port: p } =>
       realize_live_deploy_digest_readback_on_host(port: p, transport: transport, intent: intent)
+    EnsureActionsRunnerReleaseOnHost { node: _, runner_release: _ } =>
+      runner_lifecycle_realize_ensure_actions_runner_release(intent: intent)
+    EnsureRunnerSlotDirectoryOnHost { node: _, slot: _, artifact: _ } =>
+      runner_lifecycle_realize_ensure_runner_slot_directory(intent: intent)
+    EnsureRunnerJitWrapperOnHost { node: _, host_label: _ } =>
+      runner_lifecycle_realize_ensure_runner_jit_wrapper(intent: intent)
+    EnsureRunnerSystemdTemplateOnHost { node: _, host_label: _ } =>
+      runner_lifecycle_realize_ensure_runner_systemd_template(intent: intent)
+    EnsureRunnerMemoryCapsOnHost { node: _, slot: _ } =>
+      runner_lifecycle_realize_ensure_runner_memory_caps(intent: intent)
+    ActivateRunnerSlotOnHost { node: _, slot: _ } =>
+      runner_lifecycle_realize_activate_runner_slot(intent: intent)
+    ReplaceRunnerIncarnationOnHost { node: _, from: _, cause: _ } =>
+      runner_lifecycle_realize_replace_runner_incarnation(intent: intent)
+    ObserveRunnerLocalStateOnHost { node: _, slot: _ } =>
+      runner_lifecycle_realize_observe_runner_local_state(intent: intent)
+    ObserveGitHubRunnerRegistrationOnHost { node: _, slot: _, organization: _ } =>
+      runner_lifecycle_realize_observe_github_runner_registration(intent: intent)
     RedfishOnBmc { node: _, action: _ } =>
       NotConverged { reason: "host_effect_apply: RedfishAction realization is a fail-closed Unimplemented stub in Phase A; neat-boar-71 realizes it over RedfishRest in Phase C. No plausible no-op for a power/boot action (DESIGN section 5).", applied: intent }
     IncompatibleCell { reason: why } => NotConverged { reason: why, applied: intent }
@@ -1889,6 +1988,24 @@ fn host_effect_apply_gated(
           realize_live_deploy_ensure_dependency_on_host(dep: d, transport: transport, intent: intent)
         LiveDeployDigestReadbackOnHost { node: _, port: p } =>
           realize_live_deploy_digest_readback_on_host(port: p, transport: transport, intent: intent)
+        EnsureActionsRunnerReleaseOnHost { node: _, runner_release: _ } =>
+          runner_lifecycle_realize_ensure_actions_runner_release(intent: intent)
+        EnsureRunnerSlotDirectoryOnHost { node: _, slot: _, artifact: _ } =>
+          runner_lifecycle_realize_ensure_runner_slot_directory(intent: intent)
+        EnsureRunnerJitWrapperOnHost { node: _, host_label: _ } =>
+          runner_lifecycle_realize_ensure_runner_jit_wrapper(intent: intent)
+        EnsureRunnerSystemdTemplateOnHost { node: _, host_label: _ } =>
+          runner_lifecycle_realize_ensure_runner_systemd_template(intent: intent)
+        EnsureRunnerMemoryCapsOnHost { node: _, slot: _ } =>
+          runner_lifecycle_realize_ensure_runner_memory_caps(intent: intent)
+        ActivateRunnerSlotOnHost { node: _, slot: _ } =>
+          runner_lifecycle_realize_activate_runner_slot(intent: intent)
+        ReplaceRunnerIncarnationOnHost { node: _, from: _, cause: _ } =>
+          runner_lifecycle_realize_replace_runner_incarnation(intent: intent)
+        ObserveRunnerLocalStateOnHost { node: _, slot: _ } =>
+          runner_lifecycle_realize_observe_runner_local_state(intent: intent)
+        ObserveGitHubRunnerRegistrationOnHost { node: _, slot: _, organization: _ } =>
+          runner_lifecycle_realize_observe_github_runner_registration(intent: intent)
         RedfishOnBmc { node: _, action: _ } =>
           NotConverged { reason: "host_effect_apply: RedfishAction realization is a fail-closed Unimplemented stub in Phase A; neat-boar-71 realizes it over RedfishRest in Phase C. No plausible no-op for a power/boot action (DESIGN section 5).", applied: intent }
         IncompatibleCell { reason: why } => NotConverged { reason: why, applied: intent }
@@ -1946,6 +2063,15 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
             LiveDeployRetractOnHost { node: _, spec: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             LiveDeployEnsureDependencyOnHost { node: _, dep: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             LiveDeployDigestReadbackOnHost { node: _, port: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            EnsureActionsRunnerReleaseOnHost { node: _, runner_release: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            EnsureRunnerSlotDirectoryOnHost { node: _, slot: _, artifact: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            EnsureRunnerJitWrapperOnHost { node: _, host_label: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            EnsureRunnerSystemdTemplateOnHost { node: _, host_label: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            EnsureRunnerMemoryCapsOnHost { node: _, slot: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            ActivateRunnerSlotOnHost { node: _, slot: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            ReplaceRunnerIncarnationOnHost { node: _, from: _, cause: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            ObserveRunnerLocalStateOnHost { node: _, slot: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            ObserveGitHubRunnerRegistrationOnHost { node: _, slot: _, organization: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             RedfishOnBmc { node: _, action: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
           }
       }

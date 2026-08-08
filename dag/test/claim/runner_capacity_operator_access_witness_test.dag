@@ -1,0 +1,111 @@
+module test.claim.runner_capacity_operator_access_witness
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
+import gunbc.host_effect { LocalShell, SshShell }
+import gunbc.runner_capacity_operator_access {
+  runner_capacity_host_in_band_admission_requirement,
+  runner_capacity_host_admission_verdict,
+  runner_capacity_managed_host_admission_verdicts,
+  runner_capacity_execution_target_for_action,
+  in_band_privilege_observation_for_host,
+  srv1_in_band_privilege_observation,
+  RunnerCapacityAddSlots,
+  RunnerCapacityRecoverHost,
+  RunnerCapacityExecuteInBand,
+  RunnerCapacityExecuteHostedRemote,
+  InBandAdmissionRequirementDocumented,
+  InBandPrivilegeUnobserved,
+  PrivilegeObserved,
+  PrivilegeUnobserved,
+  PrivOpRunnerRootDirectoryCreate,
+  PrivOpSystemdUnitInstall,
+  PrivOpSystemdDaemonReload,
+  PrivOpSystemdUnitStart,
+}
+import v2.std.optional { Present, Absent }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn witness_srv3_admission_binds_local_shell_not_ssh() -> Bool {
+  let req = runner_capacity_host_in_band_admission_requirement(host: operator_host_srv3)
+  req.transport_binding.transport == LocalShell
+    && req.transport_binding.github_actions_host_label == ("srv3" as NonEmptyStr)
+    && req.executing_principal == ("briansrls" as NonEmptyStr)
+    && req.required_operations.length() == 4
+    && match req.required_operations[0] {
+      Present { value: op } =>
+        match op {
+          PrivOpRunnerRootDirectoryCreate {} => true
+          PrivOpSystemdUnitInstall {} => false
+          PrivOpSystemdDaemonReload {} => false
+          PrivOpSystemdUnitStart {} => false
+        }
+      Absent {} => false
+    }
+}
+
+test fn witness_srv1_privilege_observed_from_parent_probe() -> Bool {
+  match srv1_in_band_privilege_observation {
+    PrivilegeObserved { observed_on: o, host: h, principal: p, sudo_grant_summary: s } =>
+      (h as String) == (operator_host_srv1 as String)
+        && p == ("briansrls" as NonEmptyStr)
+        && string_contains(s: s as String, pattern: "NOPASSWD")
+        && (o as String) == "2026-08-07"
+    PrivilegeUnobserved { reason: _ } => false
+  }
+}
+
+test fn witness_srv3_admission_verdict_is_privilege_unobserved_today() -> Bool {
+  match runner_capacity_host_admission_verdict(host: operator_host_srv3) {
+    InBandPrivilegeUnobserved { host: h, reason: r } =>
+      (h as String) == (operator_host_srv3 as String)
+        && string_contains(s: r, pattern: "LocalShell")
+    InBandAdmissionRequirementDocumented { requirement: _ } => false
+    _ => false
+  }
+}
+
+test fn witness_srv4_admission_verdict_is_privilege_unobserved_today() -> Bool {
+  match runner_capacity_host_admission_verdict(host: operator_host_srv4) {
+    InBandPrivilegeUnobserved { host: h, reason: _ } =>
+      (h as String) == (operator_host_srv4 as String)
+    InBandAdmissionRequirementDocumented { requirement: _ } => false
+    _ => false
+  }
+}
+
+test fn witness_managed_hosts_have_independent_admission_verdicts() -> Bool {
+  runner_capacity_managed_host_admission_verdicts().length() == 2
+}
+
+test fn witness_srv3_privilege_not_inferred_from_srv1() -> Bool {
+  match in_band_privilege_observation_for_host(host: operator_host_srv3) {
+    PrivilegeUnobserved { reason: _ } => true
+    PrivilegeObserved { observed_on: _, host: _, principal: _, sudo_grant_summary: _ } => false
+  }
+}
+
+test fn witness_add_slots_execution_target_is_in_band_local_shell() -> Bool {
+  match runner_capacity_execution_target_for_action(
+    action: RunnerCapacityAddSlots { host: operator_host_srv3 },
+  ) {
+    RunnerCapacityExecuteInBand { host_label: l, transport: t } =>
+      (l as String) == "srv3" && t == LocalShell
+    RunnerCapacityExecuteHostedRemote { host: _, transport: _, reason: _ } => false
+  }
+}
+
+test fn witness_recover_host_execution_target_is_hosted_ssh() -> Bool {
+  match runner_capacity_execution_target_for_action(
+    action: RunnerCapacityRecoverHost { host: operator_host_srv3 },
+  ) {
+    RunnerCapacityExecuteHostedRemote { host: h, transport: t, reason: r } =>
+      (h as String) == (operator_host_srv3 as String)
+        && t == SshShell
+        && string_contains(s: r, pattern: "GitHub-hosted")
+    RunnerCapacityExecuteInBand { host_label: _, transport: _ } => false
+  }
+}

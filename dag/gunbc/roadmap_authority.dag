@@ -1626,19 +1626,34 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The start working, the repeat being harmless, and the refusals."
       )
     ),
+    active(
+      identity: "rn_C0D3XAPP5RV3RT1CALP0D1460",
+      id: "codex-app-server-press-vertical",
+      owner: "roadmap-runtime",
+      path: "docs/plans/provider-control-interface-audit.md",
+      t: fields(
+        headline: "Bundle exact Codex 0.146 runtime and observe typed account standing",
+        boundary: "Owns exact Codex package materialization (lock admit with package/version/optional/os-cpu gates → offline install → host-owned content-addressed release with full tree+native reuse read-back) and provider-scoped account preflight (CodexAccountPreflightSubject: runtime×interface×probe_key — not AttemptKey). Typed JSON-RPC id 1/2/3 with duplicate refusal, structured result bodies, SHA-512 private wire evidence. Does NOT own WorkerTurn, thread/start, turn/start, OAuth, production dispatch, or UI.",
+        displaced_cost: "Replaces /tmp pathname trust, dual initialize sessions, substring standing classification, and attempt-keyed readiness that looked like item progress.",
+        first_slice: "Closed artifact chain + CodexRuntimeBundleReceipt + observe_codex_account_preflight with wet Ready|Login|quota and incomplete/duplicate RED. Account standing is wet/provider-readiness only.",
+        red_control: "Wrong package/version/optional/os-cpu refuses; admitted lock/manifest bytes bind npm execution; reuse without tree identity match refuses; duplicate JSON-RPC ids refuse; empty rateLimits objects are not AuthenticatedRateLimitsReadable; whole-stream substring cannot reclassify; account_authenticated_rate_limits_readable never labeled turn_started; production dispatch does not mint attempts for readiness.",
+        out_of_scope: "No thread/start or turn/start, no device-code/Secret Manager enrollment, no WorkerTurn persistence, no Check/Connect production UI, no srv1 exec/tmux removal.",
+        handback: "Exact admitted Codex runtime + typed provider-account preflight under gunbc.package_delivery / gunbc.codex_app_server_press — ready for stacked WorkerTurn PR, not a completed press vertical."
+      )
+    ),
     active_small(
       identity: "rn_WJDVJZSNQSWQ3XS55NM5VXV18R",
       id: "roadmap-runtime-readback",
       owner: "roadmap-runtime",
       path: "docs/plans/roadmap-workspace-ux-plan.md",
       t: fields(
-        headline: "Check what actually happened rather than assuming it worked",
-        boundary: "After starting work, separately observe whether a session exists, whether its tools are ready, how the attempt ended, and whether a pull request appeared.",
-        displaced_cost: "The dashboard currently treats 'we sent the request' as 'it is running', so it shows work that does not exist.",
-        first_slice: "Watch one started attempt and show the four facts independently.",
-        red_control: "An accepted request with no observed session never displays as running or finished.",
-        out_of_scope: "Observation never changes the roadmap.",
-        handback: "The four observations plus a stale-state refresh."
+        headline: "Generalize press read-back after the Codex specimen closes",
+        boundary: "CHILD OF codex-app-server-press-vertical — not a sibling owner of the click-with-no-work defect. After the Codex press trip lands a subjectful Start + terminal turn receipt as the first closing specimen, generalize observation across providers: session existence, tool readiness, attempt terminal, and Publication/PR appearance as independent facts. Do not start this row while the Codex vertical is open; do not build a parallel session-debris path that competes with app-server turn receipts.",
+        displaced_cost: "Prevents a second worker from implementing competing read-back around old session observations while the Codex vertical already closes the same incident with provider-turn receipts.",
+        first_slice: "After Codex press green: project the four observation axes from the turn-receipt contract onto one non-Codex provider or a synthetic second specimen.",
+        red_control: "An accepted request with no observed provider turn (and no typed refusal) never displays as running or finished; a session-only acknowledgement without turn receipt is not success.",
+        out_of_scope: "Observation never changes the roadmap. Does not reopen a second press path. Publication/PR facts remain owned by Publication obligations.",
+        handback: "Generalized observation axes with the Codex turn receipt as the positive control and a no-turn accepted-request RED."
       )
     ),
 
@@ -1828,6 +1843,53 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return the declared floor, the startup assertion, and the undeclared-dependency control."
       )
     ),
+    active_sized(
+      identity: "rn_2NQW3MVYJYQ453E95V3V1T76AV",
+      id: "instrument-motion-physical-qualification",
+      owner: "instrument-motion",
+      path: "dag/gunbc/capability_binding.dag",
+      intricacy: IntricacyHigh,
+      volume: VolumeMedium,
+      t: fields(
+        headline: "Make a real tap on a real machine reach the bob",
+        boundary: "A physical impulse observed on a named host and browser, qualified against the requirement, reaching PhysicalImpulse and moving the plate. Chrome and Safari each get their own executed receipt with the host named exactly. A negative control runs first: the machine sitting idle and the machine being typed on must NOT qualify. Native macOS access is reached for only if the web routes produce no usable values.",
+        displaced_cost: "Today every support row is an obligation and the requirement thresholds are audition candidates, so nothing in the lane can answer whether a laptop can feel a knock. The motion lab renders a synthetic bob and says so; a person still cannot learn from it what their own machine does.",
+        first_slice: "One Chrome run on a named host: probe, record the exact observation, and see whether any axis carries a value at all.",
+        red_control: "The idle and typing controls fail to qualify while a deliberate tap qualifies; a measurement taken against unsigned thresholds lands on the provisional arm and never on supported; a run in a context whose Permissions Policy blocks the feature refuses instead of reporting absence.",
+        out_of_scope: "No new capability vocabulary, no widening of the platform roster, no OS bindings beyond the one the receipts force.",
+        handback: "Return the two executed browser receipts with their hosts named, the negative-control receipts, the calibration that turns bob_impulse_requirement_candidate from AuditionProvisional into RequirementSigned or the finding that it cannot be, and a headless-rendering-engine playback receipt replacing the jsdom substitute noted below."
+      )
+    ),
+    active_small(
+      identity: "rn_ANX7D5C8EBN0A41V05PHETTG9K",
+      id: "instrument-rendered-control-coverage",
+      owner: "instrument-motion",
+      path: "dag/gunbc/roadmap_component.dag",
+      t: fields(
+        headline: "Derive interaction coverage from what is actually rendered",
+        boundary: "Coverage of interactive controls is derived from the rendered control contracts rather than from a hand-listed set, so a control that exists on the page but in nobody's list is a counted gap rather than an invisible one.",
+        displaced_cost: "The present denominator omits the theme, clear and activity controls, so the coverage figure reads green while naming fewer controls than the page ships — a false green whose size nobody can see.",
+        first_slice: "Derive the denominator from the rendered contracts and let the omitted controls surface as the gap they are.",
+        red_control: "A control rendered on the page and absent from coverage reds; adding a control without covering it reds; the three currently omitted controls appear in the first derived count.",
+        out_of_scope: "Do not repair this by adding three remembered enum variants — that reproduces the hand-listed denominator one edit later.",
+        handback: "Return the derived denominator, the newly visible gaps, and the control that reds on an uncovered rendered control."
+      )
+    ),
+    active_small(
+      identity: "rn_ZXQH9CD43E8XH64CHYBT99WD9W",
+      id: "discarded-bool-result-wall",
+      owner: "language-integrity",
+      path: "dag/gunbc/design_document.dag",
+      t: fields(
+        headline: "Refuse a claim that is computed and thrown away",
+        boundary: "Inside a function returning Bool, a bare Boolean expression in non-terminal position is censused and then refused. Its value cannot be observed, so computing one is either a mistake or a claim someone believes is being enforced.",
+        displaced_cost: "Two independent keystones reported green while claims sat above the returned expression, discarded. One of them was a bob that could not settle. The defect is invisible at review because the discarded line reads exactly like an enforced one.",
+        first_slice: "Census the corpus for the shape and report the population before refusing anything, because the size of it decides whether the wall lands in one step or behind a frozen roster.",
+        red_control: "A planted discarded claim reds; a terminal Boolean expression and a Boolean bound by a let and later used both stay accepted, so the wall does not fire on legitimate code.",
+        out_of_scope: "Not a general unused-expression rule, and no motion, capability or browser work belongs in this lane.",
+        handback: "Return the census, the wall or the frozen roster with its dissolution trigger, and both controls."
+      )
+    ),
   ], guarantee_ladder_nodes())
 }
 
@@ -1916,7 +1978,8 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
 
     edge(child: "roadmap-runtime-ready-override", parent: "roadmap-runtime-identity-join"),
     edge(child: "roadmap-runtime-dispatch-consumer", parent: "roadmap-runtime-ready-override"),
-    edge(child: "roadmap-runtime-readback", parent: "roadmap-runtime-dispatch-consumer"),
+    edge(child: "codex-app-server-press-vertical", parent: "roadmap-runtime-dispatch-consumer"),
+    edge(child: "roadmap-runtime-readback", parent: "codex-app-server-press-vertical"),
 
     edge(child: "fleet-bmc-policy-convergence", parent: "fleet-state-frontier"),
     edge(child: "fleet-closed-loop-converge", parent: "fleet-state-frontier"),
@@ -2927,7 +2990,7 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
       volume: VolumeLarge,
       t: fields(
         headline: "The capability audit: sole_constructor completeness, then seal the proof-carriers",
-        boundary: "The language ALREADY has a construction wall: sole_constructor rejects cross-module construction with SoleConstructorViolation and carries a sealed-record specimen (post-merge review of gunbc#7486 refuted this node's earlier premise that no private/sealed/opaque capability exists). What is UNVERIFIED is its completeness: generic carriers (does type Refined<B> sole_constructor hold across instantiation?), every construction form (literals, casts like as TransportScript, coproduct variants, default values), and behavior under module_skips_direct_call_arg_check. Audit by falsification first; extend sole_constructor or ground the reference-grant algebra (the parked visibility-grants design) only where the audit reds.",
+        boundary: "The language ALREADY has a construction wall: sole_constructor rejects cross-module construction with SoleConstructorViolation (post-merge review of gunbc#7486 refuted this node's earlier premise). What is UNVERIFIED is completeness. The CAST form is audited and CLOSED: it red on falsification, and 04_infer sole_constructor_construction_diags is now the one authority both the record literal and the cast consult. Caller admission is enrolled beside it. STILL UNVERIFIED: generic carriers, coproduct variants, default values, and module_skips_direct_call_arg_check. Continue auditing by falsification; extend sole_constructor or ground the reference-grant algebra only where the audit reds.",
         displaced_cost: "Every capability-kind ceiling resolves together — either sole_constructor suffices (cheap: seal Refined, delete the stub-pack forge arm) or its named gaps price the visibility-grants work honestly instead of by assumption.",
         first_slice: "The falsification matrix on ONE carrier: type Refined<B> sole_constructor with cross-module forge probes per construction form, incl. inside v2.* modules; delete refined_vacuous_stub_pack's forged rejection arm if the wall holds.",
         red_control: "Refined authored outside the sealing module refuses at compile in every probed form; refine remains the only inhabitation path; a probe form that does NOT refuse is a counted audit finding, never silently absorbed.",
