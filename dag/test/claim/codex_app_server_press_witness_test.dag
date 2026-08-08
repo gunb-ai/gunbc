@@ -69,6 +69,12 @@ data fixture_rate_limits_capacity_available_line: String = "{\"jsonrpc\":\"2.0\"
 
 data fixture_rate_limits_empty_object_line: String = "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"rateLimits\":{}}}\n"
 
+data fixture_rate_limits_empty_limit_id_line: String = "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"rateLimits\":{\"limitId\":\"\",\"primary\":{\"usedPercent\":12}}}}\n"
+
+data fixture_rate_limits_nonstring_limit_id_line: String = "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"rateLimits\":{\"limitId\":7,\"primary\":{\"usedPercent\":12}}}}\n"
+
+data fixture_rate_limits_sibling_bucket_only_line: String = "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"rateLimits\":{\"limitId\":\"codex_bengalfox\",\"primary\":{\"usedPercent\":12}}}}\n"
+
 data fixture_rate_limits_primary_saturated_line: String = "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"rateLimits\":{\"limitId\":\"codex\",\"primary\":{\"usedPercent\":100,\"resetsAt\":1893456000},\"rateLimitReachedType\":\"rate_limit_reached\"}}}\n"
 
 data fixture_rate_limits_negative_resets_at_line: String = "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"rateLimits\":{\"limitId\":\"codex\",\"primary\":{\"usedPercent\":100,\"resetsAt\":-1},\"rateLimitReachedType\":\"rate_limit_reached\"}}}\n"
@@ -473,6 +479,43 @@ test fn quota_refusal_caption_is_quota_exhausted_not_accepted() -> Bool {
         && codex_press_outcome_wire_status(outcome: outcome) != "accepted"
         && codex_press_outcome_wire_status(outcome: outcome) != "turn_started"
   }
+}
+
+data rate_limit_id_witness_note: String = "Discriminating controls for the limitId absorbing-fallback repair (review 50532). The fabrication these pin is NOT cosmetic: buckets are read downstream BY limit_id, so a malformed id emitted under the synthesized default would put a sibling bucket's numbers on the codex bucket. The sibling-only control is the one that fails loudest against the old code — it carries a REAL id (codex_bengalfox), so a reader that defaults on anything other than absence reports it as codex. The absence control is the positive: the legacy mirror legitimately has no limitId and must still yield codex, so this pair proves the split rather than a blanket refusal."
+
+fn rate_limit_bucket_ids_for_stdout(line: String) -> List<String> {
+  let evidence = parse_account_trip_stdout_for_tests(
+    stdout: concat(
+      "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"userAgent\":\"x\"}}\n",
+      concat(fixture_account_read_chatgpt_requires_auth_true_line, line),
+    ),
+  )
+  map(
+    evidence.rate_limit_buckets,
+    bucket =>
+      match bucket {
+        CodexBucketCapacityAvailable { limit_id: id } => id as String
+        CodexBucketUnavailableUntilReset { limit_id: id, reached_type: _, resets_at: _ } => id as String
+        CodexBucketCapacityUnknown { limit_id: id } => id as String
+      },
+  )
+}
+
+test fn absent_limit_id_still_defaults_to_codex_legacy_mirror() -> Bool {
+  rate_limit_bucket_ids_for_stdout(line: fixture_rate_limits_empty_object_line) == ["codex"]
+}
+
+test fn real_sibling_limit_id_is_never_reported_as_codex() -> Bool {
+  let ids = rate_limit_bucket_ids_for_stdout(line: fixture_rate_limits_sibling_bucket_only_line)
+  ids == ["codex_bengalfox"]
+}
+
+test fn empty_limit_id_emits_no_bucket_rather_than_a_fabricated_one() -> Bool {
+  rate_limit_bucket_ids_for_stdout(line: fixture_rate_limits_empty_limit_id_line) == []
+}
+
+test fn nonstring_limit_id_emits_no_bucket_rather_than_a_fabricated_one() -> Bool {
+  rate_limit_bucket_ids_for_stdout(line: fixture_rate_limits_nonstring_limit_id_line) == []
 }
 
 test fn negative_resets_at_refuses_epoch_secs_mint() -> Bool {

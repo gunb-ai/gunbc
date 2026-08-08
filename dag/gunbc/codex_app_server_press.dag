@@ -498,18 +498,39 @@ fn rate_limits_reached_type(snapshot: JsonValue) -> NonEmptyStr? {
   }
 }
 
-fn rate_limits_snapshot_limit_id(snapshot: JsonValue, fallback: NonEmptyStr) -> NonEmptyStr {
+data rate_limit_id_reading_note: String = "THREE DISTINGUISHABLE WIRE STATES, NOT ONE (review 50532). This read previously collapsed absent-key, empty-string, and wrong-shape into one synthesized codex_default_rate_limit_id, which consumers could not tell from a real wire id of the same text — the DESIGN section 5 absorbing fallback (a failure arm must refuse, never widen). The harm is specific and this module's own account_standing_authenticated_rate_limits_readable_note already names it: downstream reads buckets BY limit_id, so a bucket whose real id was codex_bengalfox emitted under the fabricated id codex misattributes a sibling bucket's limits to the codex bucket — exactly the inverted failure that note warns produces fabricated-plausible account standing. Only ONE of the three states legitimately defaults: an ABSENT key is the backward-compatible rateLimits mirror shape, whose id is codex by the mirror's definition rather than by fabrication. An empty or non-string id is malformed wire and refuses. On refusal the caller emits NO bucket rather than one under a guessed name: every CodexRateLimitBucketVerdict variant requires a limit_id, so a malformed id cannot name a bucket at all, and emitting none is strictly safer than emitting one that a per-limit_id consumer will read as a different bucket."
+
+type CodexRateLimitIdReading
+  = CodexRateLimitIdObserved { limit_id: NonEmptyStr }
+  | CodexRateLimitIdAbsentLegacyMirror
+  | CodexRateLimitIdMalformed { cause: NonEmptyStr }
+
+fn rate_limits_snapshot_limit_id(snapshot: JsonValue) -> CodexRateLimitIdReading {
   match json_object_unique_member(
     v: snapshot,
     key: codex_rate_limits_snapshot_limit_id_key as String,
   ) {
     JsonMemberFound { value: JsonString { value: id } } =>
       if id == "" {
-        fallback
+        CodexRateLimitIdMalformed {
+          cause: "rateLimits snapshot limitId is an empty string" as NonEmptyStr,
+        }
       } else {
-        id as NonEmptyStr
+        CodexRateLimitIdObserved { limit_id: id as NonEmptyStr }
       }
-    _ => fallback
+    JsonMemberFound { value: _ } =>
+      CodexRateLimitIdMalformed {
+        cause: "rateLimits snapshot limitId is not a JSON string" as NonEmptyStr,
+      }
+    JsonMemberAbsent => CodexRateLimitIdAbsentLegacyMirror
+    JsonMemberDuplicated { count: _ } =>
+      CodexRateLimitIdMalformed {
+        cause: "rateLimits snapshot carries duplicate limitId members" as NonEmptyStr,
+      }
+    JsonMemberNotAnObject =>
+      CodexRateLimitIdMalformed {
+        cause: "rateLimits snapshot is not a JSON object" as NonEmptyStr,
+      }
   }
 }
 
@@ -585,15 +606,23 @@ fn rate_limit_buckets_from_legacy_rate_limits(
     JsonMemberFound { value: snapshot } =>
       match snapshot {
         JsonObject { members: _ } =>
-          [
-            verdict_from_rate_limits_snapshot(
-              limit_id: rate_limits_snapshot_limit_id(
-                snapshot: snapshot,
-                fallback: codex_default_rate_limit_id,
-              ),
-              snapshot: snapshot,
-            ),
-          ]
+          match rate_limits_snapshot_limit_id(snapshot: snapshot) {
+            CodexRateLimitIdObserved { limit_id: observed } =>
+              [
+                verdict_from_rate_limits_snapshot(
+                  limit_id: observed,
+                  snapshot: snapshot,
+                ),
+              ]
+            CodexRateLimitIdAbsentLegacyMirror =>
+              [
+                verdict_from_rate_limits_snapshot(
+                  limit_id: codex_default_rate_limit_id,
+                  snapshot: snapshot,
+                ),
+              ]
+            CodexRateLimitIdMalformed { cause: _ } => []
+          }
         _ => []
       }
     _ => []
