@@ -1,12 +1,11 @@
 module gunbc.deployed_intent_v1
 
-import std.types { String }
 import std.disposition { Disposition, Terminal }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent { ComputeHost, srv1_host, srv2_host, srv3_host, srv4_host }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
-import extdeps.dns.domain_name { DnsLabel, parse_dns_label_raw }
-import std.error_primitives { Result, Ok, Err }
+import extdeps.dns.domain_name { DnsLabel }
+import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
 
 type DeployedIntentV1 {
   fleet_slot: HostIdentity
@@ -15,21 +14,14 @@ type DeployedIntentV1 {
 }
 
 data gunbc_deployed_intent_v1_scope_disposition: Disposition = Terminal {
-  reason: "Phase-1 desired-intent carrier: hostname_short derives from modeled fleet identity (operator_host_srv*) parsed through the DNS-label authority (extdeps.dns.domain_name) so a desired name outside the hostnamectl-safe grammar is unwritable — construction fails closed to Absent rather than a runtime String check. v1 pairs with DeployedIntentV0 persisted base for keyed three-way fold."
-}
-
-fn deployed_intent_v1_desired_hostname_short(fleet_slot: HostIdentity) -> DnsLabel? {
-  match parse_dns_label_raw(raw: fleet_slot as String) {
-    Ok { value: label } => Present { value: label }
-    Err { value: _ } => none
-  }
+  reason: "Phase-1 desired-intent carrier: desired_hostname_short is the hostname ALLOCATED to the fleet slot (gunbc.hostname_allocation), not a name parsed out of the slot identity — host identity and canonical hostname are separate facts, so a slot with no allocation fails closed to Absent rather than silently inheriting whatever its identity happens to spell. The DnsLabel carrier keeps a desired name outside the hostnamectl-safe grammar unwritable. v1 pairs with DeployedIntentV0 persisted base for keyed three-way fold."
 }
 
 fn deployed_intent_v1_from_fleet_slot(
   fleet_slot: HostIdentity,
   target_host: ComputeHost,
 ) -> DeployedIntentV1? {
-  match deployed_intent_v1_desired_hostname_short(fleet_slot: fleet_slot) {
+  match canonical_hostname_for_fleet_slot(fleet_slot: fleet_slot) {
     Present { value: label } =>
       Present {
         value: DeployedIntentV1 {

@@ -1,0 +1,39 @@
+module extdeps.cooling.types
+
+import std.types { NonEmptyStr, Int, Bool, List }
+import std.measure { Watt, watt, RackUnit }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+import extdeps.cpu.types { CpuSocket }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Computer_cooling"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.cooling.types",
+      decl_name: "CpuCoolerCatalogRow",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+type CpuCoolerCatalogRow {
+  model: NonEmptyStr
+  manufacturer: Vendor<Hardware>
+  socket: CpuSocket
+  active_passive_switchable: Bool
+  minimum_rack_units: RackUnit
+  max_design_power: Watt
+  supported_motherboards: List<NonEmptyStr>
+}
