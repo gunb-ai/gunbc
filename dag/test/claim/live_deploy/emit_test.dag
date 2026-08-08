@@ -7,6 +7,7 @@ import gunbc.live_deploy.spec {
   DeploymentSpec,
   OwnedArtifactKind,
   DeploymentDependencyStep,
+  EnsuredPackage,
   TailscalePackage,
   TmuxPackage,
   deployment_spec_srv1,
@@ -229,10 +230,10 @@ test fn witness_tailnet_url_absent_not_fabricated() -> Bool {
 
 test fn witness_dependency_ensure_is_idempotent() -> Bool {
   let tailscale = deployment_ensure_dependency_script(
-    dep: DeploymentDependencyStep { kind: TailscalePackage, package: package_tailscale }
+    dep: DeploymentDependencyStep { kind: TailscalePackage, subject: EnsuredPackage { package: package_tailscale } }
   )
   let tmux = deployment_ensure_dependency_script(
-    dep: DeploymentDependencyStep { kind: TmuxPackage, package: package_tmux }
+    dep: DeploymentDependencyStep { kind: TmuxPackage, subject: EnsuredPackage { package: package_tmux } }
   )
   string_contains(s: tailscale, pattern: "dpkg -s tailscale")
     && string_contains(s: tailscale, pattern: "apt-get install --yes tailscale")
@@ -453,7 +454,7 @@ test fn witness_dependency_graph_emit_frontier_binds_orch_emit_pipeline() -> Boo
 data emit_poison_backstop_witness_note: String = "GOLDEN-INDEPENDENT backstop (calm-ferret pass-2 flag 2): the emit-level poison markers (teardown-dependency-unreachable, wholesale-refused) are the defense-in-depth backstop to the PRIMARY typed refusal (the EffectsOrRefusal SUM, proven golden-independent by w_effects_refuses_wholesale_on_any_refusal in the spine test). But the poison backstops are golden-DEPENDENT — a regen while a refusal was buggily active could commit a poisoned golden and the drift gate would then pass. These two witnesses call the refusal producers directly and assert the marker is present, golden-INDEPENDENT, so a golden-absorption can never hide that the arm still refuses loudly."
 
 test fn witness_teardown_dependency_arm_refuses_golden_independent() -> Bool {
-  let steps = emit_deploy_teardown_dependency_refusal(dep: DeploymentDependencyStep { kind: TmuxPackage, package: package_tmux })
+  let steps = emit_deploy_teardown_dependency_refusal(dep: DeploymentDependencyStep { kind: TmuxPackage, subject: EnsuredPackage { package: package_tmux } })
   count(steps) == 1
     && any(steps, s => match s {
          Do { run: r } => string_contains(s: r.command, pattern: "__GUNBC_DEPLOY_UNREACHABLE__")
@@ -609,7 +610,7 @@ test fn teardown_disposition_separates_owned_from_ensured() -> Bool {
   }
   let package = match deployment_step_teardown_disposition(
     step: Dependency {
-      step: DeploymentDependencyStep { kind: TailscalePackage, package: package_tailscale },
+      step: DeploymentDependencyStep { kind: TailscalePackage, subject: EnsuredPackage { package: package_tailscale } },
     },
   ) {
     TeardownActs => false

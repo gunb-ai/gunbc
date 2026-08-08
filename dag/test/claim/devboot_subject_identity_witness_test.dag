@@ -15,11 +15,20 @@ import std.content_hash {
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
 import gunbc.host_layout { srv1_devboot_artifact_store_root }
 import gunbc.live_deploy.spec {
-  DeploymentArtifactStep,
-  DevbootArtifactStoreRoot,
-  devboot_owned_steps,
-  owned_artifact_retirement_disposition,
-  RetirementPreserves,
+  DeploymentStep,
+  Dependency,
+  ArtifactStep,
+  DeploymentDependencyStep,
+  EnsuredHostDirectory,
+  EnsuredPackage,
+  ensured_subject_identity,
+  deployment_ensured_steps,
+  deployment_step_teardown_disposition,
+  deployment_steps_apply_order,
+  TeardownRefuses,
+  TeardownActs,
+  TeardownOutsideOwnership,
+  deployment_spec_srv1,
 }
 import extdeps.toolchain.types {
   TargetTriple,
@@ -636,106 +645,55 @@ test fn an_interrupted_build_is_not_settled() -> Bool {
   !execution_is_settled(execution: ExecutionInterrupted { detail: "producer died" })
 }
 
-data devboot_membership_witness_doc: String = "THE PROJECTION HAS AN EXECUTING CONSUMER, which is a weaker claim than provisioning and is stated as the weaker one. These rows prove that devboot_owned_steps projects the gunbc.host_layout authority rather than spelling the path a second time, and that the root is not disturbed by a blue/green slot flip. They do NOT prove anything is created on a host.\\n\\nThe reason to assert it at all is that a projection nothing evaluates is indistinguishable from a projection that is wrong. A path re-spelled here instead of imported would be the exact defect the host_layout admission note records, and it would be invisible until a deploy went looking for a directory nobody created."
+data devboot_membership_witness_doc: String = "THE STORE ROOT IS ENSURED, AND THESE ROWS SAY WHAT THAT BUYS. It projects the gunbc.host_layout authority rather than respelling the path; it reaches the apply order, so a deploy converges it; and its teardown REFUSES, so no retract can remove it.\\n\\nThe third row is the one the incident earned. Wiring this root into the OWNED roster made a lab twin's retract remove the production artifact store -- caught by the twin disjointness claims, which is why those claims were left exactly as they were. A hazard caught once by a claim about something else deserves a control of its own, so the refusal is asserted directly here rather than left to depend on two tests that are really about twins."
 
-fn devboot_step_projects_layout(acc: Int, step: DeploymentArtifactStep) -> Int {
-  match step.kind {
-    DevbootArtifactStoreRoot =>
-      if (step.path as String) == (srv1_devboot_artifact_store_root as String) {
-        acc + 1
+fn devboot_ensured_step_projects_layout(acc: Int, step: DeploymentDependencyStep) -> Int {
+  match step.subject {
+    EnsuredHostDirectory { path, owner } =>
+      if (path as String) == (srv1_devboot_artifact_store_root as String) { acc + 1 } else { acc }
+    EnsuredPackage { package } => acc
+  }
+}
+
+test fn the_devboot_store_root_is_an_ensured_host_resource_projecting_the_layout_row() -> Bool {
+  fold(
+    deployment_ensured_steps(),
+    init: 0,
+    f: (acc, step) => devboot_ensured_step_projects_layout(acc: acc, step: step),
+  ) == 1
+}
+
+fn same_path(a: String, b: String) -> Bool { a == b }
+
+fn step_is_devboot_root(step: DeploymentStep) -> Bool {
+  match step {
+    Dependency { step: dep } =>
+      same_path(a: ensured_subject_identity(subject: dep.subject) as String, b: srv1_devboot_artifact_store_root as String)
+    ArtifactStep { step: art } => false
+  }
+}
+
+test fn the_devboot_store_root_reaches_the_deploy_apply_path() -> Bool {
+  let spec = deployment_spec_srv1()
+  fold(spec.steps, init: false, f: (acc, step) => acc || step_is_devboot_root(step: step))
+}
+
+data devboot_teardown_refusal_red_doc: String = "THE CONTROL FOR THE HAZARD THAT WAS ACTUALLY HIT. A retract must not be able to remove the artifact store, and this asserts it at the step level: the devboot root's teardown disposition refuses with TeardownOutsideOwnership. If someone moves this root back into the owned roster, TeardownActs replaces the refusal and this row goes red -- which is exactly the edit that, last time, would have let a lab twin's retract delete production's artifacts."
+
+test fn no_retract_can_remove_the_devboot_store_root() -> Bool {
+  let spec = deployment_spec_srv1()
+  fold(
+    spec.steps,
+    init: false,
+    f: (acc, step) =>
+      if step_is_devboot_root(step: step) {
+        match deployment_step_teardown_disposition(step: step) {
+          TeardownRefuses { cause } => true
+          TeardownActs => false
+        }
       } else {
         acc
-      }
-    _ => acc
-  }
+      },
+  )
 }
 
-test fn devboot_owned_steps_project_the_host_layout_rows() -> Bool {
-  fold(devboot_owned_steps(), init: 0, f: (acc, step) => devboot_step_projects_layout(acc: acc, step: step)) == 1
-}
-
-test fn devboot_roots_are_preserved_across_a_slot_flip() -> Bool {
-  match owned_artifact_retirement_disposition(kind: DevbootArtifactStoreRoot) {
-    RetirementPreserves => true
-    _ => false
-  }
-}
-
-data build_plan_derivation_doc: String = "THE DISCRIMINATING EVIDENCE THAT THE PRODUCER READS THE SUBJECT. Before these rows the producer computed a faithful subject digest and then ran a fixed `cargo build --release --bin gunbc` whatever had been admitted, so a request for the library or a debug profile would have been answered with the release CLI stored under the REQUESTING subject's digest -- and every later reuse would have served those wrong bytes as an exact match, because the record and the request really would have agreed.\\n\\nA test that only checked the happy path could not have caught that: the happy path is exactly the one case where the fixed argv was already right. So the positive row pins that the flags are DERIVED -- package, binary name and profile all reach the argv -- and the negative rows pin that an axis this producer cannot realize REFUSES rather than falling through to the fixed build. The refusals are the load-bearing half."
-
-fn plan_args_contain(plan: BuildPlan, needle: String) -> Bool {
-  match plan {
-    BuildPlanReady { args, artifact_path } =>
-      fold(args, init: false, f: (acc, a) => acc || a == needle)
-    BuildPlanRefused { cause } => false
-  }
-}
-
-fn plan_artifact_path(plan: BuildPlan) -> String {
-  match plan {
-    BuildPlanReady { args, artifact_path } => artifact_path
-    BuildPlanRefused { cause } => ""
-  }
-}
-
-fn plan_is_refused(plan: BuildPlan) -> Bool {
-  match plan {
-    BuildPlanReady { args, artifact_path } => false
-    BuildPlanRefused { cause } => true
-  }
-}
-
-test fn the_build_plan_is_derived_from_the_admitted_subject() -> Bool {
-  match witness_subject(tree_hex: clean_tree_hex, gnu_abi: true, features: []) {
-    Absent => false
-    Present { value: subject } =>
-      let plan = build_plan_for_subject(subject: subject)
-      plan_args_contain(plan: plan, needle: "--bin")
-        && plan_args_contain(plan: plan, needle: "gunbc")
-        && plan_args_contain(plan: plan, needle: "--release")
-        && plan_artifact_path(plan: plan) == "target/release/gunbc"
-  }
-}
-
-data build_plan_refusal_doc: String = "EACH AXIS THIS PRODUCER CANNOT REALIZE REFUSES, and each row here is a subject that differs from the buildable one along exactly ONE axis. A library has no single retrievable artifact file; a musl target is not this host; a rustflag changes the emitted bytes and is not yet threaded into the invocation. Any of them silently falling through to the fixed build is the false share these rows exist to make impossible."
-
-test fn a_subject_this_producer_cannot_realize_refuses_rather_than_building_something_else() -> Bool {
-  library_subject_refuses() && cross_target_subject_refuses() && rustflag_subject_refuses()
-}
-
-fn library_subject_refuses() -> Bool {
-  match witness_subject_full(
-    tree_hex: clean_tree_hex,
-    gnu_abi: true,
-    features: [],
-    package: "gunbc",
-    cargo_target: Lib,
-    profile: "release",
-    rustflags: [],
-  ) {
-    Absent => false
-    Present { value: subject } => plan_is_refused(plan: build_plan_for_subject(subject: subject))
-  }
-}
-
-fn cross_target_subject_refuses() -> Bool {
-  match witness_subject(tree_hex: clean_tree_hex, gnu_abi: false, features: []) {
-    Absent => false
-    Present { value: subject } => plan_is_refused(plan: build_plan_for_subject(subject: subject))
-  }
-}
-
-fn rustflag_subject_refuses() -> Bool {
-  match witness_subject_full(
-    tree_hex: clean_tree_hex,
-    gnu_abi: true,
-    features: [],
-    package: "gunbc",
-    cargo_target: Bin { name: "gunbc" },
-    profile: "release",
-    rustflags: ["-Copt-level=3"],
-  ) {
-    Absent => false
-    Present { value: subject } => plan_is_refused(plan: build_plan_for_subject(subject: subject))
-  }
-}

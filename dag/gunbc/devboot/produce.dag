@@ -18,6 +18,7 @@ import gunbc.devboot.subject {
   SubjectRefused,
 }
 import extdeps.git.object_store { git_object_id_from_untagged_hex }
+import extdeps.git { git_ref_missing_exit_code }
 import extdeps.toolchain.types { TargetTriple, ToolchainRequirement, X86_64, UnknownVendor, Linux, Gnu }
 import extdeps.cargo { CargoTarget, Lib, Bin, CargoTest, Example, Bench }
 
@@ -93,8 +94,6 @@ type ArtifactLookup
   | ArtifactRefAbsent
   | ArtifactLookupRefused { detail: String }
 
-data git_missing_ref_exit_code: Int = 1
-
 fn ref_lookup(store_root: String, repo_root: String, ref_name: String) -> ArtifactLookup {
   let existing = gunbc.WitnessBin.Run(
     workdir: repo_root,
@@ -104,7 +103,7 @@ fn ref_lookup(store_root: String, repo_root: String, ref_name: String) -> Artifa
   if existing.success {
     ArtifactRefPresent { oid: trim(s: existing.stdout) }
   } else {
-    if existing.exit_code == git_missing_ref_exit_code {
+    if existing.exit_code == git_ref_missing_exit_code {
       ArtifactRefAbsent
     } else {
       ArtifactLookupRefused {
@@ -129,7 +128,7 @@ fn devboot_produce_admitted(store_root: String, repo_root: String, caller: Strin
 
 data devboot_lease_then_build_note: String = "THE LEASE IS TAKEN BEFORE THE BUILD, not after, because a lease acquired afterwards would protect nothing -- both callers would already have paid for the same compile, which is the duplicate work this service exists to remove. Losing the lease is reported as an attach rather than as a failure: the subject IS being produced, and the correct move for the loser is to wait for the winner's artifact, never to start a second build of the same thing."
 
-data lease_claim_placement_note: String = "THE CLAIM OBJECT IS WRITTEN INTO THE SERVICE'S OWN ROOT, never into the source tree. A lease claim needs to become a git object, and the transport has no stdin, so it goes through a file first -- and an earlier revision put that file in the repository root, where it showed up as untracked working-tree pollution in the very tree whose oid is this service's identity axis. A producer that dirties the source it is building from is one careless index operation away from changing the subject it is producing.\\n\\nThe store root is the right home: it is this service's one durable root, it is where every other piece of its state already lives, and it is a path the caller supplied rather than one spelled here."
+data lease_claim_placement_note: String = "THE CLAIM OBJECT IS WRITTEN INTO THE SERVICE'S OWN ROOT, PER SUBJECT, never into the source tree and never at a shared name. A lease claim needs to become a git object and the transport has no stdin, so it goes through a file first.\\n\\nAn earlier revision put that file in the repository root, where it dirtied the very tree whose oid is this service's identity axis -- a producer one careless index operation away from changing the subject it is producing. It then used a single fixed filename inside the store, which removed that problem and introduced a subtler one: two producers working on DIFFERENT subjects share the store, so one could overwrite the other's claim file between the write and the hash, and the bytes a lease ref pointed at could name a caller that never took it. Exactly-one-producer still held -- the compare-and-swap is per subject ref -- but the answer to WHO holds it was unreliable exactly when it matters, under concurrency.\\n\\nThe filename now carries the subject token, so two subjects never contend for one path and the claim always names the producer that wrote it."
 
 
 data lease_failure_disambiguation_note: String = "LOSING THE RACE AND FAILING TO REACH THE STORE ARE NOT THE SAME EVENT, and git's exit code cannot tell them apart -- measured, both are 128. An earlier revision read any failed update-ref as ATTACHED, which reports a specific and reassuring fact: another producer holds the lease and this caller should wait for its artifact. When the real cause was an unwritable or unreachable store, that is a fabricated plausible output of exactly the kind this vertical refuses everywhere else -- the caller waits for a producer that does not exist, and the deficit is invisible because the answer looked like ordinary healthy contention.\\n\\nTHE DISAMBIGUATION IS STRUCTURAL RATHER THAN TEXTUAL. Matching git's message would be a second, fragile representation of its behaviour, tied to wording no upstream promises to keep. Instead the lease ref is READ BACK: if it now exists, some producer really does hold it and attaching is the truth, with the holder named; if it does not exist, the failure was not a race and the store's own message carries the refusal; if the read-back itself cannot be performed, that refuses too. Git's state answers the question git's exit code could not."
@@ -146,7 +145,7 @@ fn lease_failure_report(store_root: String, repo_root: String, token: String, de
 }
 
 fn devboot_produce_build(store_root: String, repo_root: String, caller: String, subject: BuildSubject, token: String) -> ProduceReport {
-  let claim_path = concat(store_root, "/devboot-lease-claim")
+  let claim_path = join([store_root, "/devboot-lease-claim-", token], "")
   let claim_written = Filesystem.Write(path: claim_path, content: concat("producer=", caller))
 
   let claim = gunbc.WitnessBin.Run(

@@ -43,6 +43,12 @@ data git_pathspec_external_authority_anchor: ExternalAuthority = ExternalAuthori
   }
 }
 
+data git_rev_parse_verify_quiet_exit_note: String = "GIT'S OWN ANSWER FOR ABSENCE, cited here because it is a fact about git rather than about any caller. `git rev-parse --verify --quiet <ref>` exits 0 with the object id when the ref resolves, exits 1 when it does not, and exits 128 when the repository itself could not be used. That third case is the one worth naming: a caller that reads only zero-versus-nonzero cannot tell a ref that is absent from a store it never reached, and those have opposite remedies -- the first means create it, the second means stop.\\n\\nIt lives with git rather than with a consumer for the ordinary single-authority reason. The first consumer to need it declared the integer locally, which made a fact about upstream behaviour a fact about one module; a second consumer would have declared it again, and a change in git would have had two places to reach."
+
+data git_ref_missing_exit_code: Int = 1
+
+data git_repository_unusable_exit_code: Int = 128
+
 type ObjectType = BlobObj | TreeObj | CommitObj | TagObj
 
 type GitAuthor {
