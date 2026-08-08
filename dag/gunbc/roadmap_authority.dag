@@ -3538,6 +3538,8 @@ fn guarantee_ladder_edges() -> List<RoadmapEdge> {
     edge(child: "guarantee-baseline-prevalence", parent: "ladder-claims-carrier"),
     edge(child: "ladder-census-emitters", parent: "ladder-claims-carrier"),
     edge(child: "call-missing-and-duplicate-wall", parent: "guarantee-baseline-prevalence"),
+    edge(child: "compiler-declaration-floor", parent: "guarantee-baseline-prevalence"),
+    edge(child: "compiler-declaration-floor", parent: "ladder-claims-carrier"),
     edge(child: "call-signature-resolution-coverage", parent: "guarantee-baseline-prevalence"),
     edge(child: "method-receiver-normalization", parent: "guarantee-baseline-prevalence"),
     edge(child: "declared-conformance-grounding", parent: "guarantee-baseline-prevalence"),
