@@ -83,6 +83,10 @@ data nfr_reason_dispatch_selection_routing: String = "provider-selection routing
 
 data nfr_dissolve_dispatch_selection_routing: String = "total matches over the closed selection request and offer coproducts land and the wildcard arms migrate to named variants — rows delete with that fold"
 
+data nfr_reason_provider_standing_limit_draw: String = "dispatch-scoped limit relevance folds (match on ProviderLimitDispatchDraw × ProviderLimitSubject and LimitRejected carve-outs with wildcard arms routing off-shape subjects) landed with provider_standing authority #7926; declared at landing so the ratchet re-arms"
+
+data nfr_dissolve_provider_standing_limit_draw: String = "cited model-to-native-token joins land per provider gap notes and limit_subject_covers_dispatch_draw becomes a total match — rows delete with that fold"
+
 data nfr_reason_binding_outcome_resolution_wildcard: String = "StructuralBindingResolution admission projection (StructuralBindingResolved arm extracts binding_outcome; off-variant wildcard Absent collapses six typed index-build refusal variants into option-absence) landed with N3-A carrier move (#7772); un-migrated modeling at assess_reference_binding_observation — the carrier distinguishes refusals but binding_outcome_from_resolution still absorbs them; declared at landing so the ratchet re-arms"
 
 data nfr_dissolve_binding_outcome_resolution_wildcard: String = "assess_reference_binding_observation routes each StructuralBindingResolution variant to a distinct capability assessment without Absent collapse — total match lands with P0-2 factual carrier recut and the wildcard arm deletes with its row"
@@ -93,11 +97,19 @@ data nfr_dissolve_content_hash_structural_refusal: String = "SourceRef digest co
 
 data nfr_reason_class_b_binding_projection: String = "Class B declared-import-closure observation projection (match on DeclaredImportClosureBindingObservation with off-variant wildcard refusal arms) landed with #7835 observe_declared_import_closure_symbol_binding builtin; callers judge ListedImport vs PoolCoincidence vs refusal — the match is the typed verdict fold over the host observation carrier, not business policy; declared at landing so the ratchet re-arms"
 
+data nfr_reason_release_identity_absent_split: String = "one-special-variant split over RunningReleaseUnidentifiedCause: ReleaseRevisionAbsent answers ProcessIdentityAbsent because a process predating the identity channel is a MIGRATION state, and the other nine causes answer ProcessIdentityMalformed because a live channel carrying something that is not an identity is a DEFECT in the deploying machinery. The nine share one arm because they already differ where it matters — running_release_unidentified_detail names each cause before the match runs, so the arm carries the distinction rather than erasing it, and enumerating the nine would clone one arm nine times (the DESIGN §2 redundancy, not the DESIGN §4 totality). Landed with Phase A release-identity readiness; declared at landing so the ratchet arms with the code."
+
+data nfr_dissolve_release_identity_absent_split: String = "the migration arm becomes unreachable once the identity-publishing release is deployed everywhere routed, at which point ReleaseRevisionAbsent is the executing RED control rather than a live arm; the split then folds into a derived migration-vs-defect partition over RunningReleaseUnidentifiedCause (the same derived-from-inhabitance move that clears the terminal-absorption rows) and this row deletes with it."
+
 data nfr_dissolve_class_b_binding_projection: String = "the observation carrier's verdict partition becomes derived from inhabitance (total match over BindingObserved vs BindingNotRunnable and over UnlistedImportBindingSource) and the wildcard arms delete with their rows"
+
+data nfr_reason_pool_independence_projection: String = "ReferenceDerivedDependencyProjection pool-independence comparison harness (match on Ready vs BindingRefused vs FileRefused with off-variant wildcard arms returning RefusalOutcomeMismatch or false) landed with N3-C #7996; the outer match partitions the clause-(e) carrier for baseline-vs-perturbed equality, not business policy; declared at landing so the ratchet re-arms"
+
+data nfr_dissolve_pool_independence_projection: String = "ReferenceDerivedDependencyProjection carrier equality becomes derived from inhabitance (total match over Ready, BindingRefused, and FileRefused with named refusal arms, or a single std projection-equality carrier) and the wildcard arms delete with their rows"
 
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::offer_matches_request" },
+    subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::offer_matches_request_shape" },
     reason: nfr_reason_dispatch_selection_routing,
     trigger: TriggerProse { text: nfr_dissolve_dispatch_selection_routing },
   },
@@ -117,9 +129,49 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     trigger: TriggerProse { text: nfr_dissolve_dispatch_selection_routing },
   },
   FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::codex_limit_dispatch_draw_for_selection" },
+    reason: nfr_reason_dispatch_selection_routing,
+    trigger: TriggerProse { text: nfr_dissolve_dispatch_selection_routing },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::find_offer_for_request" },
+    reason: nfr_reason_dispatch_selection_routing,
+    trigger: TriggerProse { text: nfr_dissolve_dispatch_selection_routing },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::dispatch_selection_refusal_reason_for_miss" },
+    reason: nfr_reason_dispatch_selection_routing,
+    trigger: TriggerProse { text: nfr_dissolve_dispatch_selection_routing },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/provider_standing.dag::limit_subject_covers_dispatch_draw" },
+    reason: nfr_reason_provider_standing_limit_draw,
+    trigger: TriggerProse { text: nfr_dissolve_provider_standing_limit_draw },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/provider_standing.dag::limit_observation_blocks_dispatch" },
+    reason: nfr_reason_provider_standing_limit_draw,
+    trigger: TriggerProse { text: nfr_dissolve_provider_standing_limit_draw },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/provider_standing.dag::provider_standing_bundle_is_selection_eligible" },
+    reason: nfr_reason_provider_standing_limit_draw,
+    trigger: TriggerProse { text: nfr_dissolve_provider_standing_limit_draw },
+  },
+  FrontierRow {
     subject: PathSubject { path: "dag/gunbc/namespace_reference_derived_closure_admission.dag::binding_outcome_from_resolution" },
     reason: nfr_reason_binding_outcome_resolution_wildcard,
     trigger: TriggerProse { text: nfr_dissolve_binding_outcome_resolution_wildcard },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/namespace_pool_independence.dag::assess_file_dependencies_only_equality" },
+    reason: nfr_reason_pool_independence_projection,
+    trigger: TriggerProse { text: nfr_dissolve_pool_independence_projection },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/namespace_pool_independence.dag::assess_pool_independent_projection_equality" },
+    reason: nfr_reason_pool_independence_projection,
+    trigger: TriggerProse { text: nfr_dissolve_pool_independence_projection },
   },
   FrontierRow {
     subject: PathSubject { path: "dag/gunbc/roadmap_dispatch_actuator.dag::live_session_row_with_process" },
@@ -215,6 +267,11 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "dag/extdeps/git/git.dag::git_diff_name_status_pending_after_status" },
     reason: nfr_reason_land_red_era,
     trigger: TriggerProse { text: nfr_dissolve_owning_fold },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/extdeps/linux/proc_self_cgroup.dag::unified_membership_outcome_tag_eq" },
+    reason: nfr_reason_structural_eq_mint,
+    trigger: TriggerProse { text: nfr_dissolve_derived_equality },
   },
   FrontierRow {
     subject: PathSubject { path: "src/v2/lens/enforcement/cost_coverage.dag::cost_coverage_fn_verdict_is_body_not_located" },
@@ -814,7 +871,7 @@ data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
     subject: PathSubject { path: "dag/gunbc/repo_local_git_config.dag::apply_repo_local_git_config_action_at_repo" },
     reason: nfr_reason_legacy_slice1_bridge,
-    trigger: TriggerProse { text: "DISSOLVE-ON: membership apply dispatch derives off-variant noop from MemberAction inhabitance (MemberTeardown/MemberTeardownRefused are construction-unreachable for Ensured bindings) and the wildcard arm deletes with the row" },
+    trigger: TriggerProse { text: "DISSOLVE-ON: membership apply dispatch derives off-variant noop from MemberAction inhabitance (MemberRemoved/MemberRemovalRefused are construction-unreachable for Ensured bindings) and the wildcard arm deletes with the row" },
   },
   FrontierRow {
     subject: PathSubject { path: "dag/gunbc/ci_materialization.dag::warm_without_provider_receipt" },
@@ -845,6 +902,31 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "dag/gunbc/declared_import_closure_binding.dag::binding_refused_at_intended_seam" },
     reason: nfr_reason_class_b_binding_projection,
     trigger: TriggerProse { text: nfr_dissolve_class_b_binding_projection },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/fleet_runner_connectivity.dag::connectivity_verdict_is_detached" },
+    reason: nfr_reason_mint_era,
+    trigger: TriggerProse { text: nfr_dissolve_wildcard_total },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/fleet_runner_connectivity.dag::connectivity_verdict_is_healthy" },
+    reason: nfr_reason_mint_era,
+    trigger: TriggerProse { text: nfr_dissolve_wildcard_total },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/fleet_runner_connectivity.dag::connectivity_verdict_is_orphaned" },
+    reason: nfr_reason_mint_era,
+    trigger: TriggerProse { text: nfr_dissolve_wildcard_total },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/fleet_runner_connectivity.dag::connectivity_verdict_is_unknown" },
+    reason: nfr_reason_mint_era,
+    trigger: TriggerProse { text: nfr_dissolve_wildcard_total },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/live_deploy/readiness.dag::healthz_release_identity_refusal" },
+    reason: nfr_reason_release_identity_absent_split,
+    trigger: TriggerProse { text: nfr_dissolve_release_identity_absent_split },
   },
 ]
 

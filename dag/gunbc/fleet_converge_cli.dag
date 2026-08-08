@@ -71,11 +71,20 @@ fn converge_cli_applied_knob_count(intent: HostEffectIntent, fallback: Int) -> I
     Srv3BootOnceReadBackSleep => fallback
     Srv3ReceiptEmit { lines: _ } => fallback
     HostIdentityShortHostnameRead => fallback
-    LiveDeployApply { spec: _ } => fallback
+    LiveDeployApply { spec: _, candidate: _ } => fallback
     LiveDeployRetract { spec: _ } => fallback
     LiveDeployEnsureDependency { dep: _ } => fallback
     LiveDeployDigestReadback { port: _ } => fallback
     DeployAccessPreflight {} => fallback
+    EnsureActionsRunnerRelease { runner_release: _ } => fallback
+    EnsureRunnerSlotDirectory { slot: _, artifact: _ } => fallback
+    EnsureRunnerJitWrapper { host_label: _ } => fallback
+    EnsureRunnerSystemdTemplate { host_label: _ } => fallback
+    EnsureRunnerMemoryCaps { slot: _ } => fallback
+    ActivateRunnerSlot { slot: _ } => fallback
+    ReplaceRunnerIncarnation { from: _, cause: _ } => fallback
+    ObserveRunnerLocalState { slot: _ } => fallback
+    ObserveGitHubRunnerRegistration { slot: _, organization: _ } => fallback
   }
 }
 

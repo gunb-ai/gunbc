@@ -2,8 +2,7 @@ module v2.test.long.parse_table_memo_governed_witness
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data parse_table_memo_governed_witness_note: String = "Governed memo door receipts: Memoize verdict consumed at parse_table_lookup/insert (non-Memoize refuses store); warm==cold content-hash purity on the bisect fixture; RED on bypass insert (Recompute carrier with hand-populated entries). Door fns parse_table_memo_lookup_refuses_store / parse_table_memo_insert_refused are the direct oracle — witnesses call them, not map shape alone. parse_table_memo_door_order_independent composes insert-then-lookup and lookup-then-insert (Case A: seed ParseTableMemo must not serve/populate on non-Memoize — v1_interpreter.rs gated). reconcile-as-lookup-path is the next increment."
-
+// Governed memo door receipts: Memoize verdict consumed at parse_table_lookup/insert (non-Memoize refuses store); warm==cold content-hash purity on the bisect fixture; RED on bypass insert (Recompute carrier with hand-populated entries). Door fns parse_table_memo_lookup_refuses_store / parse_table_memo_insert_refused are the direct oracle — witnesses call them, not map shape alone. parse_table_memo_door_order_independent composes insert-then-lookup and lookup-then-insert (Case A: seed ParseTableMemo must not serve/populate on non-Memoize — v1_interpreter.rs gated). reconcile-as-lookup-path is the next increment.
 fn governed_witness_probe_key() -> ParsePositionKey {
   ParsePositionKey { position: 0, production: ^governed_witness_probe_prod }
 }

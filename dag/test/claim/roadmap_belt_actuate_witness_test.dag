@@ -51,7 +51,9 @@ import gunbc.roadmap_dispatch_actuator {
   DispatchLiveSession,
   CodexDispatchProvider,
   dispatch_provider_instance_for,
+  filter_dispatch_tmux_sessions,
 }
+import extdeps.tmux { classify_tmux_session_list, TmuxSessionsListed }
 import gunbc.roadmap_belt { DispatchMember, DesiredMember, ObservedMember }
 import std.upsert_decision { ObservationVerdict, Converged }
 import gunbc.roadmap_belt_actuate {
@@ -209,8 +211,8 @@ fn is_exec_refused(o: BeltExecOutcome) -> Bool {
 
 fn is_spawn_failed(o: BeltSpawnOutcome) -> Bool {
   match o {
-    SpawnFailed { node_id: _, step: _, detail: _ } => true
-    Spawned { node_id: _, session_name: _ } => false
+    SpawnFailed { node_id: _, step: _, detail: _, provider: _ } => true
+    Spawned { node_id: _, session_name: _, provider: _ } => false
   }
 }
 
@@ -322,11 +324,15 @@ fn is_observe_refused(o: BeltObserve) -> Bool {
 }
 
 test fn witness_observe_parses_live_on_success() -> Bool {
-  observe_live_count(o: belt_observe_from_result(
-    success: true,
+  match classify_tmux_session_list(
+    exit_ok: true,
     stdout: "gunbc-dispatch-a: 1 windows",
     stderr: "",
-  )) == 1
+  ) {
+    TmuxSessionsListed { entries } =>
+      count(filter_dispatch_tmux_sessions(entries: entries)) == 1
+    _ => false
+  }
 }
 
 test fn witness_observe_empty_on_no_server() -> Bool {
@@ -470,7 +476,7 @@ test fn witness_node_session_live_false() -> Bool {
 }
 
 test fn witness_dispatch_result_ok_spawned_and_live() -> Bool {
-  belt_dispatch_result_ok(r: DispatchSpawned { node_id: "a", session_name: "gunbc-dispatch-a" })
+  belt_dispatch_result_ok(r: DispatchSpawned { node_id: "a", session_name: "gunbc-dispatch-a", provider: "codex" })
     && belt_dispatch_result_ok(r: DispatchAlreadyLive { node_id: "a", session_name: "gunbc-dispatch-a" })
 }
 
@@ -479,7 +485,7 @@ test fn witness_dispatch_result_refusals_not_ok() -> Bool {
     && !belt_dispatch_result_ok(r: DispatchNodeNotFound { node_id: "a" })
     && !belt_dispatch_result_ok(r: DispatchNodeAlreadyDone { node_id: "a" })
     && !belt_dispatch_result_ok(r: DispatchObserveRefused { node_id: "a", reason: "x" })
-    && !belt_dispatch_result_ok(r: DispatchSpawnFailed { node_id: "a", step: "git", detail: "x" })
+    && !belt_dispatch_result_ok(r: DispatchSpawnFailed { node_id: "a", step: "git", detail: "x", provider: "codex" })
 }
 
 fn status_label_glued_to_ok(r: BeltDispatchResult) -> Bool {
@@ -489,35 +495,34 @@ fn status_label_glued_to_ok(r: BeltDispatchResult) -> Bool {
 }
 
 test fn witness_dispatch_status_labels_glued_to_ok_set() -> Bool {
-  status_label_glued_to_ok(r: DispatchSpawned { node_id: "a", session_name: "s" })
+  status_label_glued_to_ok(r: DispatchSpawned { node_id: "a", session_name: "s", provider: "codex" })
     && status_label_glued_to_ok(r: DispatchAlreadyLive { node_id: "a", session_name: "s" })
     && status_label_glued_to_ok(r: DispatchDisabled { node_id: "a", instance_id: "preview", reason: "observe-only" })
     && status_label_glued_to_ok(r: DispatchNodeNotFound { node_id: "a" })
     && status_label_glued_to_ok(r: DispatchNodeAlreadyDone { node_id: "a" })
     && status_label_glued_to_ok(r: DispatchObserveRefused { node_id: "a", reason: "x" })
-    && status_label_glued_to_ok(r: DispatchSpawnFailed { node_id: "a", step: "git", detail: "x" })
+    && status_label_glued_to_ok(r: DispatchSpawnFailed { node_id: "a", step: "git", detail: "x", provider: "codex" })
 }
 
 test fn witness_dispatch_status_labels_pin_wire_contract() -> Bool {
-  belt_dispatch_status_label(r: DispatchSpawned { node_id: "a", session_name: "s" }) == "spawned"
+  belt_dispatch_status_label(r: DispatchSpawned { node_id: "a", session_name: "s", provider: "codex" }) == "spawned"
     && belt_dispatch_status_label(r: DispatchAlreadyLive { node_id: "a", session_name: "s" }) == "already_live"
     && belt_dispatch_status_label(r: DispatchDisabled { node_id: "a", instance_id: "preview", reason: "observe-only" }) == "disabled"
     && belt_dispatch_status_label(r: DispatchNodeNotFound { node_id: "a" }) == "node_not_found"
     && belt_dispatch_status_label(r: DispatchNodeAlreadyDone { node_id: "a" }) == "already_done_signed_off"
     && belt_dispatch_status_label(r: DispatchObserveRefused { node_id: "a", reason: "x" }) == "observe_refused"
     && belt_dispatch_status_label(r: DispatchAuthorityRefused { node_id: "a", detail: "x" }) == "authority_refused"
-    && belt_dispatch_status_label(r: DispatchSpawnFailed { node_id: "a", step: "git", detail: "x" }) == "spawn_failed"
+    && belt_dispatch_status_label(r: DispatchSpawnFailed { node_id: "a", step: "git", detail: "x", provider: "codex" }) == "spawn_failed"
 }
 
 test fn witness_fresh_spawn_wire_names_selected_provider() -> Bool {
-  belt_dispatch_provider_label() == "codex"
+  string_contains(
+    s: serialize_json(v: belt_dispatch_result_json_value(
+      r: DispatchSpawned { node_id: "a", session_name: "s", provider: "codex" })),
+    pattern: "\"provider\": \"codex\"")
     && string_contains(
       s: serialize_json(v: belt_dispatch_result_json_value(
-        r: DispatchSpawned { node_id: "a", session_name: "s" })),
-      pattern: "\"provider\": \"codex\"")
-    && string_contains(
-      s: serialize_json(v: belt_dispatch_result_json_value(
-        r: DispatchSpawnFailed { node_id: "a", step: "codex-auth", detail: "not logged in" })),
+        r: DispatchSpawnFailed { node_id: "a", step: "codex-auth", detail: "not logged in", provider: "codex" })),
       pattern: "\"provider\": \"codex\"")
 }
 
@@ -574,7 +579,7 @@ test fn witness_exemplar_roster_reconciles_variant_set() -> Bool {
 
 fn d4_exemplars_missing_one() -> List<BeltDispatchResult> {
   [
-    DispatchSpawned { node_id: "a", session_name: "s" },
+    DispatchSpawned { node_id: "a", session_name: "s", provider: "codex" },
     DispatchAlreadyLive { node_id: "a", session_name: "s" },
     DispatchDisabled { node_id: "a", instance_id: "preview", reason: "observe-only" },
     DispatchNodeNotFound { node_id: "a" },

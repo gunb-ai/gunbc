@@ -17,6 +17,12 @@ import extdeps.bmc.webui.nbd_proxy_serve { NbdProxyServeTransportIntent }
 import gunbc.fleet_intent { ComputeHost }
 import gunbc.host_converge { HostConverge }
 import gunbc.live_deploy.spec { DeploymentSpec, DeploymentDependencyStep }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import extdeps.github.actions_runner { ActionsRunnerRelease, ActionsRunnerBinaryArtifact }
+import gunbc.runner_incarnation { LocalRunnerSlotIncarnation }
+import gunbc.runner_lifecycle { RunnerReplacementCause }
+import gunbc.auth.github_apps { gunbai_ci_declared }
+import gunbc.live_deploy.candidate { CandidateRelease }
 import std.effects {
   EffectShape,
   KeySource,
@@ -50,11 +56,20 @@ type HostEffect =
   | Srv3BootOnceReadBackSleep
   | Srv3ReceiptEmit { lines: List<String> }
   | HostIdentityShortHostnameRead
-  | LiveDeployApply { spec: DeploymentSpec }
+  | LiveDeployApply { spec: DeploymentSpec, candidate: CandidateRelease }
   | LiveDeployRetract { spec: DeploymentSpec }
   | LiveDeployEnsureDependency { dep: DeploymentDependencyStep }
   | LiveDeployDigestReadback { port: Int }
   | DeployAccessPreflight {}
+  | EnsureActionsRunnerRelease { runner_release: ActionsRunnerRelease }
+  | EnsureRunnerSlotDirectory { slot: RunnerSlotIdentity, artifact: ActionsRunnerBinaryArtifact }
+  | EnsureRunnerJitWrapper { host_label: NonEmptyStr }
+  | EnsureRunnerSystemdTemplate { host_label: NonEmptyStr }
+  | EnsureRunnerMemoryCaps { slot: RunnerSlotIdentity }
+  | ActivateRunnerSlot { slot: RunnerSlotIdentity }
+  | ReplaceRunnerIncarnation { from: LocalRunnerSlotIncarnation, cause: RunnerReplacementCause }
+  | ObserveRunnerLocalState { slot: RunnerSlotIdentity }
+  | ObserveGitHubRunnerRegistration { slot: RunnerSlotIdentity, organization: NonEmptyStr }
 
 type NodeControlPlane =
     HostOs { node: ComputeHost }

@@ -210,7 +210,8 @@ jobs:
         timeout-minutes: 5
       - name: Floor cgroup peak pre-read (calibration; reset if permitted)
         run: |
-          d="/sys/fs/cgroup$(awk -F: '$1=="0"{print $3}' /proc/self/cgroup)"
+          # 🟡 dissolve-on: ci_cgroup_peak_locate_shell — foreign-executor (GitHub Actions run:) shell transport composing extdeps.linux.proc_self_cgroup unified-hierarchy membership (v2.extdeps.languages.bash_proc_self_cgroup) with std.path_intent NearestAncestorContaining dirname ascent (bash_orch_if). Procfs path is extdeps.linux.procfs ProcSelfCgroup. DISSOLVES WHEN shell→intent Phase 2 realizes cgroup membership plus path ascent on host_effect_apply / orchestration path arms without medium-as-string Run.command concat.
+          { _cg_bad=0; _cg_n=0; _cg_rel=""; while IFS= read -r _cg_line || [ -n "$_cg_line" ]; do _cg_trim=$(echo "$_cg_line" | sed -e 's/^ //' -e 's/ $//'); [ -z "$_cg_trim" ] && continue; case "$_cg_trim" in *:*:*) ;; *) _cg_bad=1; continue ;; esac; _cg_h=$(echo "$_cg_trim" | cut -d: -f1); _cg_ctl=$(echo "$_cg_trim" | cut -d: -f2); _cg_path=$(echo "$_cg_trim" | cut -d: -f3-); [ -z "$_cg_h" ] && _cg_bad=1; [ -z "$_cg_path" ] && _cg_bad=1; if [ "$_cg_h" = "0" ] && [ -z "$_cg_ctl" ]; then _cg_n=$((_cg_n + 1)); _cg_rel="$_cg_path"; fi; done < /proc/self/cgroup; [ "$_cg_bad" -eq 1 ] && { echo "[calibration] cgroup_membership=malformed" >&2; exit 1; }; [ "$_cg_n" -eq 0 ] && { echo "[calibration] cgroup_membership=missing" >&2; exit 1; }; [ "$_cg_n" -gt 1 ] && { echo "[calibration] cgroup_membership=ambiguous" >&2; exit 1; }; d="/sys/fs/cgroup$_cg_rel"; } || exit 1
           while [ -n "$d" ] && [ "$d" != "/sys/fs/cgroup" ] && ! [ -f "$d/memory.peak" ]; do d=$(dirname "$d"); done
           if [ -f "$d/memory.peak" ]; then if echo reset > "$d/memory.peak" 2>/dev/null; then echo "[calibration] floor_peak_pre reset=ok scope=floor cgroup=$d"; else echo "[calibration] floor_peak_pre reset=unsupported pre_peak=$(cat "$d/memory.peak") scope=span cgroup=$d (post>pre attributes the peak to the floor exactly; post==pre means floor peak <= pre, a job-scoped upper bound)"; fi; else echo "[calibration] floor_peak_pre scope=unavailable (no memory.peak ancestor)"; fi
         timeout-minutes: 5
@@ -266,7 +267,8 @@ jobs:
           else
           echo "[wet-witness-row-outcome-receipt] absent"
           fi
-          d="/sys/fs/cgroup$(awk -F: '$1=="0"{print $3}' /proc/self/cgroup)"
+          # 🟡 dissolve-on: ci_cgroup_peak_locate_shell — foreign-executor (GitHub Actions run:) shell transport composing extdeps.linux.proc_self_cgroup unified-hierarchy membership (v2.extdeps.languages.bash_proc_self_cgroup) with std.path_intent NearestAncestorContaining dirname ascent (bash_orch_if). Procfs path is extdeps.linux.procfs ProcSelfCgroup. DISSOLVES WHEN shell→intent Phase 2 realizes cgroup membership plus path ascent on host_effect_apply / orchestration path arms without medium-as-string Run.command concat.
+          { _cg_bad=0; _cg_n=0; _cg_rel=""; while IFS= read -r _cg_line || [ -n "$_cg_line" ]; do _cg_trim=$(echo "$_cg_line" | sed -e 's/^ //' -e 's/ $//'); [ -z "$_cg_trim" ] && continue; case "$_cg_trim" in *:*:*) ;; *) _cg_bad=1; continue ;; esac; _cg_h=$(echo "$_cg_trim" | cut -d: -f1); _cg_ctl=$(echo "$_cg_trim" | cut -d: -f2); _cg_path=$(echo "$_cg_trim" | cut -d: -f3-); [ -z "$_cg_h" ] && _cg_bad=1; [ -z "$_cg_path" ] && _cg_bad=1; if [ "$_cg_h" = "0" ] && [ -z "$_cg_ctl" ]; then _cg_n=$((_cg_n + 1)); _cg_rel="$_cg_path"; fi; done < /proc/self/cgroup; [ "$_cg_bad" -eq 1 ] && { echo "[calibration] cgroup_membership=malformed" >&2; exit 1; }; [ "$_cg_n" -eq 0 ] && { echo "[calibration] cgroup_membership=missing" >&2; exit 1; }; [ "$_cg_n" -gt 1 ] && { echo "[calibration] cgroup_membership=ambiguous" >&2; exit 1; }; d="/sys/fs/cgroup$_cg_rel"; } || exit 1
           while [ -n "$d" ] && [ "$d" != "/sys/fs/cgroup" ] && ! [ -f "$d/memory.peak" ]; do d=$(dirname "$d"); done
           if [ -f "$d/memory.peak" ]; then echo "[calibration] floor_peak_post=$(cat "$d/memory.peak") floor_outcome=${{ steps.floor.outcome }} cgroup=$d (observation label: floor_outcome=success is an EXACT point; any other outcome is a CENSORED lower bound - the process was killed while exceeding the read, so true demand is strictly greater. scope per the floor_peak_pre line: reset=ok means this IS the floor peak; scope=span compares against pre_peak)"; else echo "[calibration] floor_peak_post floor_outcome=${{ steps.floor.outcome }} scope=unavailable (no memory.peak ancestor)"; fi
         env:
@@ -342,3 +344,4 @@ jobs:
           fi
           printf '%s\n' "FalsifierCadenceVerdict: cadence-green"
         timeout-minutes: 5
+

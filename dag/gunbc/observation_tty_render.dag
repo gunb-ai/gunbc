@@ -67,8 +67,7 @@ import std.observation {
 
 data observation_tty_render_note: String = "P2 of the progress-and-observation lane: the interactive TTY renderer, a SIBLING projection of the same std.observation carriers the CI renderer projects — not a second model and not the CI renderer's successor. The two differ only where the medium differs. A terminal can be repainted, so routine progress overwrites one line in place and stays quiet; a CI log cannot, so it appends. Everything the two share — the event vocabulary, the density authority, the glyph table, the duration and byte and percent projections, the hold-cause text — is imported from the CI renderer or the model, never re-derived. That sharing is the proof that one event stream drives N renderers (DESIGN section 2); a TTY renderer that re-spelled ci_human_duration would be the fork this lane exists to avoid."
 
-data observation_tty_upgrades_note: String = "The three upgrades over the reference implementation studied for this lane, all inherited from the model rather than re-earned here: outcome lines carry durations (ci_event_line already appends them), Refused is distinct from Failed (the outcome sum and the glyph authority keep them apart), and dwell escalation is recursive rather than one-level (observation_escalation_subject walks the whole tree). The reference has none of these; the TTY renderer gets them for free by projecting the same carriers."
-
+// The three upgrades over the reference implementation studied for this lane, all inherited from the model rather than re-earned here: outcome lines carry durations (ci_event_line already appends them), Refused is distinct from Failed (the outcome sum and the glyph authority keep them apart), and dwell escalation is recursive rather than one-level (observation_escalation_subject walks the whole tree). The reference has none of these; the TTY renderer gets them for free by projecting the same carriers.
 type PreambleFields {
   run_id: NonEmptyStr
   trigger: NonEmptyStr
@@ -91,8 +90,7 @@ fn tty_preamble_line(fields: PreambleFields) -> RenderedLine {
   }
 }
 
-data observation_tty_repaint_note: String = "Whether a line repaints in place or scrolls is DERIVED from its attention, one decision function, never chosen at the call site. Routine progress overwrites — the spinner and the current-entry counter update on one line so the terminal does not fill with green. An anomaly appends, because it must survive on screen and be scrollable back to; overwriting a refusal would erase it the instant the next line arrived, which is the terminal form of burying it in a collapsed group. The summary appends too — it is the last thing the reader wants to keep. This is the same law-4 asymmetry the CI renderer expresses through group placement, expressed here through cursor action, because that is what the medium offers."
-
+// Whether a line repaints in place or scrolls is DERIVED from its attention, one decision function, never chosen at the call site. Routine progress overwrites — the spinner and the current-entry counter update on one line so the terminal does not fill with green. An anomaly appends, because it must survive on screen and be scrollable back to; overwriting a refusal would erase it the instant the next line arrived, which is the terminal form of burying it in a collapsed group. The summary appends too — it is the last thing the reader wants to keep. This is the same law-4 asymmetry the CI renderer expresses through group placement, expressed here through cursor action, because that is what the medium offers.
 fn tty_cursor_action(density: ObservationDensity, attention: AttentionLevel, cap: RenderCapability) -> CursorAction {
   match density {
     SummaryAlwaysShown => Append
@@ -125,8 +123,7 @@ fn tty_group_line(active: ObservationSubject, k: Nat, n: Nat, spinner: SymbolId)
   }
 }
 
-data observation_tty_blocked_inline_note: String = "BlockedOn renders INLINE on the TTY, with its holder and its remaining bound when the governor has one — the reference's contention feature, kept and upgraded to derived facts. A bounded remaining prints the time; an unknown remaining prints why it is unknown rather than a fabricated estimate, because a made-up ETA is the same fabrication the model forbids for any other measurement."
-
+// BlockedOn renders INLINE on the TTY, with its holder and its remaining bound when the governor has one — the reference's contention feature, kept and upgraded to derived facts. A bounded remaining prints the time; an unknown remaining prints why it is unknown rather than a fabricated estimate, because a made-up ETA is the same fabrication the model forbids for any other measurement.
 fn tty_remaining_text(remaining: ContentionRemaining) -> String {
   match remaining {
     RemainingBounded { by: b } => concat("about ", concat(ci_human_duration(d: b), " remaining"))
@@ -146,8 +143,7 @@ fn tty_blocked_line(blocked: BlockedOn) -> RenderedLine {
   }
 }
 
-data observation_tty_reward_note: String = "The reward animal renders on Final — the reference's flourish, kept, and kept CORRECTLY: it is drawn from the reward-animal rows in the one glyph authority, selected deterministically by the run's identity, never a random draw. A random animal would make the event stream unreplayable, which would defeat the same replay the flagship depends on. On a non-emoji terminal the row's ascii form renders, so the flourish degrades to a word rather than a mojibake box."
-
+// The reward animal renders on Final — the reference's flourish, kept, and kept CORRECTLY: it is drawn from the reward-animal rows in the one glyph authority, selected deterministically by the run's identity, never a random draw. A random animal would make the event stream unreplayable, which would defeat the same replay the flagship depends on. On a non-emoji terminal the row's ascii form renders, so the flourish degrades to a word rather than a mojibake box.
 fn tty_final_line(shown_failures: Nat, run_index: Int, tier: Tier) -> RenderedLine {
   let animal = match reward_animal_at(index: run_index, tier: tier) {
     Present { value: a } => a
@@ -164,8 +160,7 @@ fn tty_final_line(shown_failures: Nat, run_index: Int, tier: Tier) -> RenderedLi
   }
 }
 
-data observation_tty_event_note: String = "An event line on the TTY is the SAME projection the CI renderer produces — ci_event_line, imported, not re-implemented — paired with the cursor action its attention derives. The renderer differs from its CI sibling in HOW a line reaches the screen (overwrite vs append), never in WHAT the line says. That is the single-stream property made concrete: change the event and both surfaces move together, because both call the same projection."
-
+// An event line on the TTY is the SAME projection the CI renderer produces — ci_event_line, imported, not re-implemented — paired with the cursor action its attention derives. The renderer differs from its CI sibling in HOW a line reaches the screen (overwrite vs append), never in WHAT the line says. That is the single-stream property made concrete: change the event and both surfaces move together, because both call the same projection.
 type TtyEmission {
   line: RenderedLine
   cursor: CursorAction

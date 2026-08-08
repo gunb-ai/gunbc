@@ -289,8 +289,7 @@ test fn red_surface_naming_subject_absent_from_registry_is_not_registered() -> B
   }
 }
 
-data inert_variant_closure_note: String = "These two controls exist because the variants they exercise were TYPED BUT INERT when first added — declared in the coproduct with nothing constructing them anywhere, which DESIGN calls out directly: a diagnostic variant establishes nothing. Typing a refusal class is not closing it. Each control below plants the exact malformed input its class describes and asserts the class is EMITTED, so the detectors are proven to fire rather than merely to exist."
-
+// These two controls exist because the variants they exercise were TYPED BUT INERT when first added — declared in the coproduct with nothing constructing them anywhere, which DESIGN calls out directly: a diagnostic variant establishes nothing. Typing a refusal class is not closing it. Each control below plants the exact malformed input its class describes and asserts the class is EMITTED, so the detectors are proven to fire rather than merely to exist.
 test fn red_surface_named_by_two_targets_emits_joins_multiple() -> Bool {
   let conflicting = [
     bash_grammar_row(),
@@ -459,8 +458,7 @@ test fn red_duplicate_registration_fails_integrity_but_not_accounting() -> Bool 
     && !registry_integrity_clean(rows: clean_population(), registry: dup_registry, projections: [])
 }
 
-data projection_uniqueness_note: String = "Both projection directions previously resolved by ORDER — a later row silently overwrote an earlier one, so two projections claiming one legacy id returned whichever came last, and a subject with two projections returned whichever came last. That is the same silent last-wins shape as the resolver's double-bound import defect, reproduced inside the module built to remove parallel identities. These controls pin the refusals."
-
+// Both projection directions previously resolved by ORDER — a later row silently overwrote an earlier one, so two projections claiming one legacy id returned whichever came last, and a subject with two projections returned whichever came last. That is the same silent last-wins shape as the resolver's double-bound import defect, reproduced inside the module built to remove parallel identities. These controls pin the refusals.
 fn bash_projection() -> LanguageTargetProjection {
   LanguageTargetProjection {
     subject: bash_subject(),

@@ -40,8 +40,7 @@ import gunbc.roadmap_provider_events {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data workflow_command_witness_note: String = "P3 retry-model carriers: the three command shapes admit or refuse by construction, legacy attempts project as supersedable rather than belt faults, and lineage/turn rows render human-readable history without parsing branch names."
-
+// P3 retry-model carriers: the three command shapes admit or refuse by construction, legacy attempts project as supersedable rather than belt faults, and lineage/turn rows render human-readable history without parsing branch names.
 test fn start_new_attempt_superseding_missing_attempt_refuses() -> Bool {
   match admit_start_new_attempt(
     supersedes: Present { value: "missingkey000000" },

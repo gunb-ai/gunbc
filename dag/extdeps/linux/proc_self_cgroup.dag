@@ -1,0 +1,293 @@
+module extdeps.linux.proc_self_cgroup
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Https, Uri }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { FilePathParts, Int, List, NonEmptyStr, String }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man7/cgroups.7.html"
+  }
+}
+
+data proc_self_cgroup_proc_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man5/proc.5.html#/proc/self/cgroup"
+  }
+}
+
+type ProcSelfCgroupLineRefusal
+  = ProcSelfCgroupLineMissingColon
+  | ProcSelfCgroupLineMissingSecondColon
+  | ProcSelfCgroupLineEmptyHierarchy
+  | ProcSelfCgroupLineEmptyPath
+
+type ProcSelfCgroupLineParse
+  = ProcSelfCgroupLineParsed {
+      hierarchy_id: NonEmptyStr,
+      controller_list: String,
+      relative_path: NonEmptyStr,
+    }
+  | ProcSelfCgroupLineRefused { cause: ProcSelfCgroupLineRefusal }
+
+type ProcPidCgroupMembershipRecord
+  = CurrentCgroupObserved { relative_path: NonEmptyStr }
+  | MembershipMissing
+  | MembershipAmbiguous { first: NonEmptyStr, second: NonEmptyStr }
+  | MembershipMalformed { cause: ProcSelfCgroupLineRefusal }
+
+type UnifiedMembershipOutcomeTag
+  = OutcomeTagMissing
+  | OutcomeTagAmbiguous
+  | OutcomeTagMalformed
+  | OutcomeTagObserved { relative_path: NonEmptyStr }
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.linux.proc_self_cgroup",
+      decl_name: "ProcPidCgroupMembershipRecord",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: proc_self_cgroup_proc_authority,
+  further_citations: [extdeps_external_authority_anchor]
+}
+
+type ProcSelfCgroupMalformedScan
+  = NoMalformedLine
+  | MalformedFound { cause: ProcSelfCgroupLineRefusal }
+
+data proc_self_cgroup_empty_unified_paths: List<NonEmptyStr> = []
+
+fn proc_self_cgroup_char_index_from(s: String, ch: String, from: Int) -> Int {
+  let n = string_length(s: s)
+  if from >= n {
+    -1
+  } else if char_at(s: s, pos: from) == ch {
+    from
+  } else {
+    proc_self_cgroup_char_index_from(s: s, ch: ch, from: from + 1)
+  }
+}
+
+fn proc_self_cgroup_line_from_wire(line: String) -> ProcSelfCgroupLineParse {
+  let trimmed = trim(line)
+  if trimmed == "" {
+    ProcSelfCgroupLineRefused { cause: ProcSelfCgroupLineEmptyHierarchy }
+  } else {
+    let first = proc_self_cgroup_char_index_from(s: trimmed, ch: ":", from: 0)
+    if first < 0 {
+      ProcSelfCgroupLineRefused { cause: ProcSelfCgroupLineMissingColon }
+    } else {
+      let second = proc_self_cgroup_char_index_from(s: trimmed, ch: ":", from: first + 1)
+      if second < 0 {
+        ProcSelfCgroupLineRefused { cause: ProcSelfCgroupLineMissingSecondColon }
+      } else {
+        let hierarchy = substring(s: trimmed, start: 0, end: first)
+        let controllers = substring(s: trimmed, start: first + 1, end: second)
+        let path = substring(s: trimmed, start: second + 1, end: string_length(s: trimmed))
+        if hierarchy == "" {
+          ProcSelfCgroupLineRefused { cause: ProcSelfCgroupLineEmptyHierarchy }
+        } else if path == "" {
+          ProcSelfCgroupLineRefused { cause: ProcSelfCgroupLineEmptyPath }
+        } else {
+          ProcSelfCgroupLineParsed {
+            hierarchy_id: hierarchy as NonEmptyStr,
+            controller_list: controllers,
+            relative_path: path as NonEmptyStr,
+          }
+        }
+      }
+    }
+  }
+}
+
+fn proc_self_cgroup_is_unified_v2_line(hierarchy_id: NonEmptyStr, controller_list: String) -> Bool {
+  (hierarchy_id as String == "0") && (controller_list == "")
+}
+
+fn proc_self_cgroup_nonempty_lines(content: String) -> List<String> {
+  split(s: content, delimiter: "\n")
+    |> filter(line => trim(line) != "")
+    |> map(line => trim(line))
+}
+
+fn proc_self_cgroup_unified_hierarchy_paths_loop(
+  lines: List<String>,
+  acc: List<NonEmptyStr>,
+) -> List<NonEmptyStr> {
+  if list_length(items: lines) == 0 {
+    acc
+  } else {
+    let line = lines.first()
+    let rest = lines.skip(n: 1)
+    match proc_self_cgroup_line_from_wire(line: line) {
+      ProcSelfCgroupLineParsed { hierarchy_id: hid, controller_list: ctl, relative_path: path } =>
+        if proc_self_cgroup_is_unified_v2_line(hierarchy_id: hid, controller_list: ctl) {
+          proc_self_cgroup_unified_hierarchy_paths_loop(lines: rest, acc: concat(acc, [path]))
+        } else {
+          proc_self_cgroup_unified_hierarchy_paths_loop(lines: rest, acc: acc)
+        }
+      ProcSelfCgroupLineRefused { cause: _ } =>
+        proc_self_cgroup_unified_hierarchy_paths_loop(lines: rest, acc: acc)
+    }
+  }
+}
+
+fn proc_self_cgroup_unified_hierarchy_paths(content: String) -> List<NonEmptyStr> {
+  proc_self_cgroup_unified_hierarchy_paths_loop(
+    lines: proc_self_cgroup_nonempty_lines(content: content),
+    acc: proc_self_cgroup_empty_unified_paths,
+  )
+}
+
+fn proc_self_cgroup_first_malformed_cause_loop(lines: List<String>) -> ProcSelfCgroupMalformedScan {
+  if list_length(items: lines) == 0 {
+    NoMalformedLine
+  } else {
+    let line = lines.first()
+    match proc_self_cgroup_line_from_wire(line: line) {
+      ProcSelfCgroupLineRefused { cause: c } => MalformedFound { cause: c }
+      ProcSelfCgroupLineParsed { hierarchy_id: _, controller_list: _, relative_path: _ } =>
+        proc_self_cgroup_first_malformed_cause_loop(lines: lines.skip(n: 1))
+    }
+  }
+}
+
+fn proc_self_cgroup_first_malformed_cause(content: String) -> ProcSelfCgroupMalformedScan {
+  proc_self_cgroup_first_malformed_cause_loop(
+    lines: proc_self_cgroup_nonempty_lines(content: content)
+  )
+}
+
+fn read_unified_cgroup_membership(content: String) -> ProcPidCgroupMembershipRecord {
+  match proc_self_cgroup_first_malformed_cause(content: content) {
+    MalformedFound { cause: cause } => MembershipMalformed { cause: cause }
+    NoMalformedLine =>
+      let paths = proc_self_cgroup_unified_hierarchy_paths(content: content)
+      if list_length(items: paths) == 0 {
+        MembershipMissing
+      } else if list_length(items: paths) == 1 {
+        CurrentCgroupObserved { relative_path: paths.first() }
+      } else {
+        MembershipAmbiguous {
+          first: paths.first(),
+          second: paths.skip(n: 1).first(),
+        }
+      }
+  }
+}
+
+fn unified_membership_outcome_tag(record: ProcPidCgroupMembershipRecord) -> UnifiedMembershipOutcomeTag {
+  match record {
+    MembershipMissing => OutcomeTagMissing
+    MembershipAmbiguous { first: _, second: _ } => OutcomeTagAmbiguous
+    MembershipMalformed { cause: _ } => OutcomeTagMalformed
+    CurrentCgroupObserved { relative_path: rel } => OutcomeTagObserved { relative_path: rel }
+  }
+}
+
+fn unified_membership_outcome_tag_from_content(content: String) -> UnifiedMembershipOutcomeTag {
+  unified_membership_outcome_tag(
+    record: read_unified_cgroup_membership(content: content)
+  )
+}
+
+fn unified_membership_outcome_tag_eq(
+  a: UnifiedMembershipOutcomeTag,
+  b: UnifiedMembershipOutcomeTag,
+) -> Bool {
+  match a {
+    OutcomeTagMissing =>
+      match b { OutcomeTagMissing => true, _ => false }
+    OutcomeTagAmbiguous =>
+      match b { OutcomeTagAmbiguous => true, _ => false }
+    OutcomeTagMalformed =>
+      match b { OutcomeTagMalformed => true, _ => false }
+    OutcomeTagObserved { relative_path: ra } =>
+      match b {
+        OutcomeTagObserved { relative_path: rb } => ra as String == rb as String
+        _ => false
+      }
+  }
+}
+
+fn proc_self_cgroup_is_unified_v2_line_drift_sketch(
+  hierarchy_id: NonEmptyStr,
+  controller_list: String,
+) -> Bool {
+  hierarchy_id as String == "0"
+}
+
+fn proc_self_cgroup_unified_hierarchy_paths_drift_sketch_loop(
+  lines: List<String>,
+  acc: List<NonEmptyStr>,
+) -> List<NonEmptyStr> {
+  if list_length(items: lines) == 0 {
+    acc
+  } else {
+    let line = lines.first()
+    let rest = lines.skip(n: 1)
+    match proc_self_cgroup_line_from_wire(line: line) {
+      ProcSelfCgroupLineParsed { hierarchy_id: hid, controller_list: ctl, relative_path: path } =>
+        if proc_self_cgroup_is_unified_v2_line_drift_sketch(
+          hierarchy_id: hid,
+          controller_list: ctl,
+        ) {
+          proc_self_cgroup_unified_hierarchy_paths_drift_sketch_loop(
+            lines: rest,
+            acc: concat(acc, [path]),
+          )
+        } else {
+          proc_self_cgroup_unified_hierarchy_paths_drift_sketch_loop(lines: rest, acc: acc)
+        }
+      ProcSelfCgroupLineRefused { cause: _ } =>
+        proc_self_cgroup_unified_hierarchy_paths_drift_sketch_loop(lines: rest, acc: acc)
+    }
+  }
+}
+
+fn proc_self_cgroup_unified_hierarchy_paths_drift_sketch(content: String) -> List<NonEmptyStr> {
+  proc_self_cgroup_unified_hierarchy_paths_drift_sketch_loop(
+    lines: proc_self_cgroup_nonempty_lines(content: content),
+    acc: proc_self_cgroup_empty_unified_paths,
+  )
+}
+
+fn read_unified_cgroup_membership_drift_sketch(content: String) -> ProcPidCgroupMembershipRecord {
+  match proc_self_cgroup_first_malformed_cause(content: content) {
+    MalformedFound { cause: cause } => MembershipMalformed { cause: cause }
+    NoMalformedLine =>
+      let paths = proc_self_cgroup_unified_hierarchy_paths_drift_sketch(content: content)
+      if list_length(items: paths) == 0 {
+        MembershipMissing
+      } else if list_length(items: paths) == 1 {
+        CurrentCgroupObserved { relative_path: paths.first() }
+      } else {
+        MembershipAmbiguous {
+          first: paths.first(),
+          second: paths.skip(n: 1).first(),
+        }
+      }
+  }
+}
+
+data proc_self_cgroup_cross_realization_law_note: String = "PERMANENT CROSS-REALIZATION FIXTURE LAW: unified_membership_outcome_tag_from_content is the parser-side projection; bash_proc_self_cgroup classifies executed shell results into the same tag. proc_self_cgroup_is_unified_v2_line_drift_sketch and read_unified_cgroup_membership_drift_sketch are mutation sketches ONLY — they omit the empty-controller guard so a witness can prove drift in that branch reds without shipping the defect."
+
+fn proc_self_cgroup_mount_root_text(mount_root: FilePathParts) -> String {
+  fold(mount_root.segments, init: "", f: fn(acc, seg) {
+    let seg_text = seg as String
+    if acc == "" { concat("/", seg_text) } else { concat(acc, concat("/", seg_text)) }
+  })
+}
+
+fn proc_self_cgroup_absolute_path_from_relative(
+  relative_path: NonEmptyStr,
+  mount_root: FilePathParts,
+) -> String {
+  concat(proc_self_cgroup_mount_root_text(mount_root: mount_root), relative_path as String)
+}

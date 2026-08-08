@@ -6,9 +6,11 @@ import gunbc.roadmap_serve {
   DispatchJsonHandler, HealthzHandler, DashboardInstanceHandler,
   BeltDispatchHandler, DispatchAssetHandler,
   SandboxPageHandler, InstrumentSandboxPageHandler, InstrumentTunerPageHandler,
-  InstrumentTunerAssetHandler, SandboxAssetHandler, SandboxEchoHandler,
+  InstrumentTunerAssetHandler, InstrumentMotionPageHandler, InstrumentMotionAssetHandler,
+  SandboxAssetHandler, SandboxEchoHandler,
   SessionsJsonHandler, AttemptsJsonHandler, WorkflowJsonHandler, BeltStopHandler,
   BeltPublishHandler,
+  CiRunsPageHandler, CiRunDetailPageHandler, CiRunsJsonHandler,
   RoadmapServeRouteSpec,
   RoadmapServeTableBuild, RoadmapServeTable, RoadmapServeTableRefused,
   roadmap_serve_route_table_build,
@@ -26,7 +28,10 @@ import gunbc.roadmap_belt_actuate {
   DispatchDisabled, DispatchNodeAlreadyDone, DispatchObserveRefused, DispatchAuthorityRefused, DispatchSpawnFailed,
 }
 import gunbc.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
+import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
 import gunbc.roadmap_component { instrument_tuner_asset_path }
+import gunbc.roadmap_component { instrument_motion_asset_path, instrument_motion_page_path }
+import gunbc.roadmap_component { instrument_lab_links }
 import gunbc.roadmap_component { roadmap_dispatch_asset_path, dispatch_client_js_source, sandbox_asset_path }
 import extdeps.http.server {
   ServeHttpRequest, ServeHttpResponse,
@@ -65,6 +70,9 @@ test fn witness_serve_table_selection() -> Bool {
     && selects(method: GET, path: "/target/roadmap-dispatch.json", want: DispatchJsonHandler)
     && selects(method: GET, path: "/healthz", want: HealthzHandler)
     && selects(method: GET, path: "/instance.json", want: DashboardInstanceHandler)
+    && selects(method: GET, path: "/ci", want: CiRunsPageHandler)
+    && selects(method: GET, path: "/ci/runs.json", want: CiRunsJsonHandler)
+    && selects(method: GET, path: "/ci/run/run-1", want: CiRunDetailPageHandler)
     && selects(method: GET, path: "/sessions.json", want: SessionsJsonHandler)
     && selects(method: GET, path: "/attempts.json", want: AttemptsJsonHandler)
     && selects(method: GET, path: "/workflow.json", want: WorkflowJsonHandler)
@@ -73,6 +81,8 @@ test fn witness_serve_table_selection() -> Bool {
     && selects(method: GET, path: "/sandbox/instrument", want: InstrumentSandboxPageHandler)
     && selects(method: GET, path: "/sandbox/instrument/tuner", want: InstrumentTunerPageHandler)
     && selects(method: GET, path: instrument_tuner_asset_path, want: InstrumentTunerAssetHandler)
+    && selects(method: GET, path: instrument_motion_page_path, want: InstrumentMotionPageHandler)
+    && selects(method: GET, path: instrument_motion_asset_path, want: InstrumentMotionAssetHandler)
     && selects(method: GET, path: sandbox_asset_path, want: SandboxAssetHandler)
     && selects(method: POST, path: "/sandbox/echo", want: SandboxEchoHandler)
     && selects(method: POST, path: "/dispatch/some-node", want: BeltDispatchHandler)
@@ -87,6 +97,7 @@ test fn witness_asset_route_serves_modeled_js() -> Bool {
     handler: DispatchAssetHandler,
     params: [],
     request: fixture_request(method: GET, path: roadmap_dispatch_asset_path),
+    release_revision: deploy_witness_release_revision,
   )
   r.status == 200
     && media_type_wire_label(m: r.content_type) == "text/javascript; charset=utf-8"
@@ -97,6 +108,22 @@ test fn witness_asset_route_serves_modeled_js() -> Bool {
     && string_contains(s: r.body, pattern: "'dispatch · disabled'")
     && string_contains(s: r.body, pattern: "posture === 'observe-only'")
     && string_contains(s: r.body, pattern: "fetch('/cleanup/' + sess.node_id")
+}
+
+data lab_nav_resolves_note: String = "The shared header renders its links from instrument_lab_links, and the route table builds its specs from the same declarations. This claim is what makes that ONE authority rather than two that happen to agree: every rendered link is required to select a route, so a roster row without a route reds here rather than shipping a header link to a 404. The RED direction is a row added to the roster with no matching route spec."
+
+fn lab_link_selects_something(path: String) -> Bool {
+  match serve_select_route(table: live_table_or_empty(), method: GET, path: path) {
+    SelectedDynamic { handler: _, params: _ } => true
+    SelectedStatic { route: _ } => true
+    MethodNotAllowed { allowed: _ } => false
+    NoRouteMatched => false
+  }
+}
+
+test fn witness_every_lab_nav_link_resolves() -> Bool {
+  count(instrument_lab_links) == 3
+    && all(instrument_lab_links, l => lab_link_selects_something(path: l.path))
 }
 
 test fn witness_dispatch_param_bound() -> Bool {
@@ -123,26 +150,26 @@ fn fixture_request(method: HttpMethod, path: String) -> ServeHttpRequest {
 }
 
 test fn witness_unknown_path_folds_404_response() -> Bool {
-  let r = roadmap_serve_selection_response(sel: NoRouteMatched, request: fixture_request(method: GET, path: "/nope"))
+  let r = roadmap_serve_selection_response(sel: NoRouteMatched, request: fixture_request(method: GET, path: "/nope"), release_revision: deploy_witness_release_revision)
   r.status == 404
 }
 
 test fn witness_405_response_carries_allowed() -> Bool {
-  let r = roadmap_serve_selection_response(sel: MethodNotAllowed { allowed: [POST] }, request: fixture_request(method: GET, path: "/dispatch/x"))
+  let r = roadmap_serve_selection_response(sel: MethodNotAllowed { allowed: [POST] }, request: fixture_request(method: GET, path: "/dispatch/x"), release_revision: deploy_witness_release_revision)
   r.status == 405 && string_contains(s: r.body, pattern: "POST")
 }
 
 data status_map_red_note: String = "The 404/409/503/502 rows are the REDs a lazy 200-or-500 collapse would fail (parent review 2026-07-20): each refusal variant must map to ITS status, so a collapse of any arm reds exactly one witness row below."
 
 test fn witness_dispatch_status_total() -> Bool {
-  belt_dispatch_status(r: DispatchSpawned { node_id: "n", session_name: "s" }) == 200
+  belt_dispatch_status(r: DispatchSpawned { node_id: "n", session_name: "s", provider: "codex" }) == 200
     && belt_dispatch_status(r: DispatchAlreadyLive { node_id: "n", session_name: "s" }) == 200
     && belt_dispatch_status(r: DispatchDisabled { node_id: "n", instance_id: "i", reason: "r" }) == 403
     && belt_dispatch_status(r: DispatchNodeNotFound { node_id: "n" }) == 404
     && belt_dispatch_status(r: DispatchNodeAlreadyDone { node_id: "n" }) == 409
     && belt_dispatch_status(r: DispatchObserveRefused { node_id: "n", reason: "r" }) == 503
     && belt_dispatch_status(r: DispatchAuthorityRefused { node_id: "n", detail: "d" }) == 503
-    && belt_dispatch_status(r: DispatchSpawnFailed { node_id: "n", step: "git", detail: "d" }) == 502
+    && belt_dispatch_status(r: DispatchSpawnFailed { node_id: "n", step: "git", detail: "d", provider: "codex" }) == 502
 }
 
 test fn witness_preview_dispatch_refuses_before_effects() -> Bool {
@@ -151,6 +178,7 @@ test fn witness_preview_dispatch_refuses_before_effects() -> Bool {
     method_label: "POST",
     path: "/dispatch/ts-dispatch-provider-events",
     body: "",
+    release_revision: deploy_witness_release_revision,
   )
   r.status == 403
     && string_contains(s: r.body, pattern: "\"status\": \"disabled\"")
@@ -165,6 +193,7 @@ test fn witness_instance_route_names_posture_and_paths() -> Bool {
     method_label: "GET",
     path: "/instance.json",
     body: "",
+    release_revision: deploy_witness_release_revision,
   )
   r.status == 200
     && string_contains(s: r.body, pattern: "\"instance_id\": \"srv2-preview-codex-feedback-v0\"")
@@ -212,7 +241,7 @@ test fn witness_unknown_method_refuses() -> Bool {
 data unknown_method_501_note: String = "review 40359: an unrecognized method label is 501 Not Implemented (RFC 9110 section 15.6.2 — the server does not implement the method at all), NEVER 405 (405 means the ROUTE exists but this method is not in its allowed set, and carries the allowed set — the MethodNotAllowed arm). The two arms must stay distinct statuses; collapsing them reds this row."
 
 test fn witness_unknown_method_folds_501_response() -> Bool {
-  let r = roadmap_serve_respond(method_label: "BREW", path: "/", body: "")
+  let r = roadmap_serve_respond(method_label: "BREW", path: "/", body: "", release_revision: deploy_witness_release_revision)
   r.status == 501 && string_contains(s: r.body, pattern: "BREW")
 }
 

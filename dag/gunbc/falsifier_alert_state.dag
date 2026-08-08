@@ -1,7 +1,7 @@
 module gunbc.falsifier_alert_state
 
 import std.types { NonEmptyStr, String, EpochMs }
-import std.measure { Millisecond, millisecond, millisecond_count }
+import std.measure { Millisecond, millisecond }
 import extdeps.languages.json.emit {
   JsonValue, JsonString, JsonNumber,
   json_object, json_kv, json_string, json_int, JsonKeyValue,
@@ -18,8 +18,21 @@ import extdeps.languages.json.parse {
 
 data falsifier_alert_state_purpose_note: String = "ALERT-2's state half. The alert's own state — when the incident started, what is currently failing, and when it last NOTIFIED — rides in the issue body as a typed marker, so the issue remains the single authority for its own state and no external store exists. This module owns the marker's shape and both directions across it.\n\nlast_notification_at IS THE POINT OF THIS CARRIER. It replaces recovering the throttle's input by listing the issue's comments and reading the newest one's timestamp, which failed three separate ways: it read comments[length-1] from a single per_page=100 page, and since the endpoint returns oldest-first and accepts no sort parameter, past 100 comments that index is the 100th and only gets older — so the throttle inverted from at-most-every-20h into every-run, turning a silent alert into a spamming one. It also broke if anyone else commented on the issue, and it made a fact the alert itself produced depend on an API call that could fail. The alert knows when it last notified because it did the notifying; that fact is now written where it is produced and read back with no API call at all."
 
+data first_red_standing_note: String = "first_red IS A STANDING, NOT ALWAYS AN INSTANT. Adopting an issue that predates state tracking — one opened by hand, or written before this marker existed — means the alert genuinely does not know when the falsifier first went red. Writing `now` there records a fabricated observation under the name of a measurement, and the issue then says `red since 09:14` about an incident that may have started days earlier.\\n\\nSo the marker can say it does not know. FirstRedObserved carries an instant this alert actually recorded; FirstRedUnknownBeforeTracking says the incident predates what is knowable. Both render honestly and they render differently, which is the whole point — one confident sentence that is sometimes false is worse than two true ones.\\n\\nOn the wire the unknown case is JSON null rather than a sentinel number: 0 would be a valid EpochMs meaning 1970, and every consumer would have to know which impossible instant means `unknown`. A null is the absence, and the decoder reads it as the standing rather than as a malformed number."
+
+type FirstRedStanding
+  = FirstRedObserved { at: EpochMs }
+  | FirstRedUnknownBeforeTracking
+
+fn first_red_json(f: FirstRedStanding) -> JsonValue {
+  match f {
+    FirstRedObserved { at: t } => json_int(n: t)
+    FirstRedUnknownBeforeTracking => json_null()
+  }
+}
+
 type FalsifierAlertState {
-  first_red: EpochMs
+  first_red: FirstRedStanding
   signature: NonEmptyStr
   last_notification_at: EpochMs
 }
@@ -38,13 +51,13 @@ data falsifier_alert_state_decode_note: String = "STATE DECODING IS FOUR NAMED S
 
 type FalsifierAlertStateDecoding
   = CurrentState { state: FalsifierAlertState }
-  | LegacyStateWithoutLastNotification { first_red: EpochMs, signature: NonEmptyStr }
+  | LegacyStateWithoutLastNotification { first_red: FirstRedStanding, signature: NonEmptyStr }
   | StateAbsent
   | StateMalformed { detail: String }
 
 fn falsifier_alert_state_json(state: FalsifierAlertState) -> JsonValue {
   json_object(members: [
-    json_kv(key: falsifier_alert_state_first_red_member, value: json_int(n: state.first_red)),
+    json_kv(key: falsifier_alert_state_first_red_member, value: first_red_json(f: state.first_red)),
     json_kv(key: falsifier_alert_state_signature_member, value: json_string(s: state.signature as String)),
     json_kv(key: falsifier_alert_state_last_notification_member, value: json_int(n: state.last_notification_at))
   ])
@@ -61,6 +74,7 @@ type FalsifierAlertStateNumber
   = StateNumberFound { value: EpochMs }
   | StateNumberMissing
   | StateNumberMalformed { detail: String }
+  | StateNumberNull
 
 data falsifier_alert_state_number_note: String = "A state number is read back through the JSON number's LEXEME, and a lexeme that is not a run of decimal digits is a malformation rather than a value. This module writes those numbers itself through json_int, so any other shape means the marker was edited by hand or produced by something that is not this writer — in both cases the honest answer is Malformed. The negative arm is explicit rather than left to the carrier: parse_int admits a leading minus, so without it a negative lexeme would reach an `Int where range(min: 0)` position having passed the only check that looked at it."
 
@@ -87,7 +101,7 @@ fn falsifier_alert_state_number_at(v: JsonValue, key: String) -> FalsifierAlertS
         JsonString { value: _ } =>
           StateNumberMalformed { detail: concat(key, " is a string, expected a number") }
         JsonNull =>
-          StateNumberMalformed { detail: concat(key, " is null, expected a number") }
+          StateNumberNull
         JsonBool { value: _ } =>
           StateNumberMalformed { detail: concat(key, " is a bool, expected a number") }
         JsonArray { elements: _ } =>
@@ -132,6 +146,28 @@ fn falsifier_alert_state_signature_at(v: JsonValue) -> FalsifierAlertStateSignat
   }
 }
 
+data first_red_null_is_the_unknown_standing_note: String = "A NULL first_red IS THE UNKNOWN STANDING, NOT A MALFORMED NUMBER — and null is a TYPED ARM of the number reader rather than a detail string to be matched. The first version of this compared the reader's diagnostic prose against a constant, which would have made the meaning of a marker depend on the wording of an error message: rewording it would silently turn `unknown since before tracking` back into `this marker is corrupt`. Reading state out of prose is the exact practice this module deleted when it dropped the `First red:` regex, and it had crept back in one layer down.\\n\\nSo StateNumberNull is its own arm, every numeric member sees it, and each decides. first_red reads it as the unknown standing; last_notification_at still refuses, because there is no meaningful `we notified at an unknown time` — either we did and we know when, or the marker is legacy and says nothing at all."
+
+fn falsifier_alert_state_with_first_red(
+  standing: FirstRedStanding,
+  signature: NonEmptyStr,
+  doc: JsonValue
+) -> FalsifierAlertStateDecoding {
+  match falsifier_alert_state_number_at(v: doc, key: falsifier_alert_state_last_notification_member) {
+    StateNumberMissing => LegacyStateWithoutLastNotification { first_red: standing, signature: signature }
+    StateNumberNull => StateMalformed { detail: "last_notification_at is null" }
+    StateNumberMalformed { detail: d } => StateMalformed { detail: d }
+    StateNumberFound { value: last_notification } =>
+      CurrentState {
+        state: FalsifierAlertState {
+          first_red: standing,
+          signature: signature,
+          last_notification_at: last_notification
+        }
+      }
+  }
+}
+
 fn falsifier_alert_state_from_payload(payload: String) -> FalsifierAlertStateDecoding {
   match parse_json(s: payload) {
     Absent => StateMalformed { detail: "state marker payload is not valid JSON" }
@@ -142,21 +178,11 @@ fn falsifier_alert_state_from_payload(payload: String) -> FalsifierAlertStateDec
         StateSignatureFound { value: signature } =>
           match falsifier_alert_state_number_at(v: doc, key: falsifier_alert_state_first_red_member) {
             StateNumberMissing => StateMalformed { detail: "state marker has no first_red" }
+            StateNumberNull =>
+              falsifier_alert_state_with_first_red(standing: FirstRedUnknownBeforeTracking, signature: signature, doc: doc)
             StateNumberMalformed { detail: d } => StateMalformed { detail: d }
             StateNumberFound { value: first_red } =>
-              match falsifier_alert_state_number_at(v: doc, key: falsifier_alert_state_last_notification_member) {
-                StateNumberMissing =>
-                  LegacyStateWithoutLastNotification { first_red: first_red, signature: signature }
-                StateNumberMalformed { detail: d } => StateMalformed { detail: d }
-                StateNumberFound { value: last_notification } =>
-                  CurrentState {
-                    state: FalsifierAlertState {
-                      first_red: first_red,
-                      signature: signature,
-                      last_notification_at: last_notification
-                    }
-                  }
-              }
+              falsifier_alert_state_with_first_red(standing: FirstRedObserved { at: first_red }, signature: signature, doc: doc)
           }
       }
   }
@@ -168,33 +194,10 @@ data falsifier_alert_instant_duration_split_note: String = "AN INSTANT AND A DUR
 
 data falsifier_alert_heartbeat_window: Millisecond = millisecond(count: 72000000)
 
+data falsifier_alert_malformed_state_refuses_note: String = "A MALFORMED MARKER REFUSES; IT DOES NOT BECOME A NEW INCIDENT. An earlier revision mapped StateAbsent and StateMalformed to the same first-red outcome, which threw away the distinction the decoding coproduct exists to make and did so at the one point where it has a data-loss consequence.\n\nThe two are not alike. ABSENT means no marker exists, so there is no incident state to lose and initiating one is correct. MALFORMED means a marker IS there and did not decode — the body was hand-edited, or something that is not this writer produced it, or the writer has a defect. Treating that as a first red does two harmful things at once: it announces a NEW incident for one that has been running, and the very next write overwrites the corrupt marker with a fresh first_red, destroying the only surviving record of when the real incident started. The corruption is then unrecoverable AND unreported, because the alert's own repair erased the evidence.\n\nSo the arm refuses. the refusal carries the decoder's located detail and drives no write: the incident state stays exactly as it is on the issue, corrupt and inspectable, and a human decides. That is DESIGN §5's failure arm — refuse, never widen — applied to a decoder's own output, and the widening it forbids here is the alert overwriting a fact it could not read."
+
 data falsifier_alert_throttle_note: String = "THE THROTTLE DECISION IS PURE AND TOTAL over (now, state, current signature). A CHANGED SIGNATURE ALWAYS NOTIFIES AND IS NEVER THROTTLED — it is a different incident with a different remedy, so suppressing it as `still red` is the state-space conflation the whole signature mechanism exists to prevent. An unchanged signature notifies only when the window has elapsed since the LAST NOTIFICATION, not since the run started and not since first_red. Comparing against last_notification_at is what makes the window mean what it says: measuring from first_red would make the interval drift with incident age, and measuring from the run start would notify every run."
 
-type FalsifierAlertNotificationDecision
-  = NotifyIncidentChanged { previous: NonEmptyStr, current: NonEmptyStr }
-  | NotifyHeartbeatDue { silent_for: Millisecond }
-  | NotifyMigratedToTypedState
-  | NotifyFirstRed
-  | SuppressWithinWindow { silent_for: Millisecond }
+data falsifier_alert_throttle_authority_note: String = "THE THROTTLE DECISION IS NOT DEFINED HERE. This module owns the state MARKER — its shape, its encoding, and the decoding of a payload into FalsifierAlertStateDecoding — and it stops there. Whether a given state plus a given signature plus a given instant means notify, suppress or refuse is decided once, by gunbc.falsifier_alert_decision.\\n\\nIt was briefly defined in both places. FalsifierAlertNotificationDecision and falsifier_alert_notification_decision lived here and computed the same window comparison, the same signature comparison and the same silent_for as alert_decision_red; the copy here had no production consumer, only its own witnesses. Two implementations of one rule stay in agreement only by diligence, and the narrower one would have been the tempting thing to call from an effect plan later — at which point the alert would have had two answers to the same question with nothing forcing them to match. Deleted with ALERT-4, and the payload-driven witnesses it carried moved onto alert_decision rather than being deleted alongside it, so the decoder-to-decision coverage survived the consolidation."
 
-fn falsifier_alert_notification_decision(
-  now: EpochMs,
-  decoding: FalsifierAlertStateDecoding,
-  signature: NonEmptyStr
-) -> FalsifierAlertNotificationDecision {
-  match decoding {
-    StateAbsent => NotifyFirstRed
-    StateMalformed { detail: _ } => NotifyFirstRed
-    LegacyStateWithoutLastNotification { first_red: _, signature: _ } => NotifyMigratedToTypedState
-    CurrentState { state: s } =>
-      if (s.signature as String) != (signature as String) {
-        NotifyIncidentChanged { previous: s.signature, current: signature }
-      } else if now >= s.last_notification_at + millisecond_count(m: falsifier_alert_heartbeat_window) {
-        NotifyHeartbeatDue { silent_for: millisecond(count: now - s.last_notification_at) }
-      } else {
-        SuppressWithinWindow { silent_for: millisecond(count: now - s.last_notification_at) }
-      }
-  }
-}
-
-data falsifier_alert_no_notifies_bool_note: String = "THERE IS DELIBERATELY NO falsifier_alert_notification_notifies PREDICATE, removed for the same reason as the admission module's (review 49400). Four of the five arms notify, but they do not notify the SAME THING — a changed incident, a heartbeat, a one-time migration and a first red produce different messages to different effect — so a Bool that answers only `does this notify` erases the distinction at the one boundary where the caller is about to choose what to say. The decision coproduct is the instruction; collapsing it to a flag means re-deriving the instruction somewhere else from something weaker."
+data falsifier_alert_no_notifies_bool_note: String = "THERE IS DELIBERATELY NO does-this-notify BOOL over the state decoding, for the same reason the admission module has none (review 49400). The arms do not notify the SAME THING — a changed incident, a heartbeat, a one-time migration and a first red produce different messages to different effect — so a Bool erases the distinction at the one boundary where the caller is about to choose what to say. The decision coproduct is the instruction; collapsing it to a flag means re-deriving the instruction somewhere else from something weaker. The coproduct itself now lives in gunbc.falsifier_alert_decision as AlertDecision."

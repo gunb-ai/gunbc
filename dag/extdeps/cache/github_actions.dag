@@ -23,6 +23,12 @@ import std.cache_interface {
   ToolchainChange,
   DependencyChange,
   Repo,
+  ByteCapacity,
+  CapacityBounded,
+  EffectiveLimitUnobserved,
+  LeastRecentlyUsed,
+  ReleasedNever,
+  ReplaceExisting,
 }
 
 import extdeps.external_authority { ExternalAuthority }

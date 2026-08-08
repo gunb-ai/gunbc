@@ -196,6 +196,14 @@ path = "src/bin/floor_skip_discovery_witness.rs"
 name = "p1_cohort_probe"
 path = "src/bin/p1_cohort_probe.rs"
 
+# Per-worker private-footprint decomposition (node://adhoc-2a689db3-964). Requires
+# `--features interp_test_witness` for the force/drop handles on MultiEntryIndex.
+# Measurement harness only: builds one index on one thread, never admits a second
+# worker, and touches neither DiscoveryWidthPolicy nor the cross-worker store.
+[[bin]]
+name = "measure_worker_private_memory"
+path = "src/bin/measure_worker_private_memory.rs"
+
 # Host-physics CI witness: regen self-host fixed-point affected-set skip. Prints
 # regen_not_affected_skip | run_regen for the generated ci regen step by intersecting
 # the merge-base diff with the [src/v1, dag] regen input closure (shared authority
@@ -288,3 +296,11 @@ path = "src/bin/silent_pick_crosscheck.rs"
 [[bin]]
 name = "namespace_structural_root_exposure_generated_witness"
 path = "src/bin/namespace_structural_root_exposure_generated_witness.rs"
+
+# Owned CI control plane v0 — poll-first discovery, durable queue, one executor,
+# GitHub Checks projection. See docs/plans/owned-ci-control-plane-design.md.
+# dissolve-on: REST transport folds into extdeps.github.checks/pulls interpreter bridge;
+# receipt: `rg OWNED_CI_CONTROL_PLANE_SEED_SCAFFOLD_MARKER src/v1/stage0` until deletion.
+[[bin]]
+name = "ci_control_plane"
+path = "src/bin/ci_control_plane.rs"

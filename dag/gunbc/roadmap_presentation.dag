@@ -156,8 +156,7 @@ fn work_lifecycle_key(l: WorkLifecycle) -> String {
   }
 }
 
-data lifecycle_chip_note: String = "Routine-state collapse (the A1 carried-forward miss; the altitude law's interface form — routine collapses, anomaly expands). OpenLifecycle is the default state of nearly every row, so an 'open' chip on each one discriminates nothing and is permanent chrome; the DECIDED rule is that the lifecycle chip renders only when the lifecycle departs the default (review/done/superseded). The state stays machine-readable either way: the row's node-<key> class and the altitude band counts consume work_lifecycle_key regardless of chip visibility, so collapsing the chip erases pixels, never the typed fact."
-
+// Routine-state collapse (the A1 carried-forward miss; the altitude law's interface form — routine collapses, anomaly expands). OpenLifecycle is the default state of nearly every row, so an 'open' chip on each one discriminates nothing and is permanent chrome; the DECIDED rule is that the lifecycle chip renders only when the lifecycle departs the default (review/done/superseded). The state stays machine-readable either way: the row's node-<key> class and the altitude band counts consume work_lifecycle_key regardless of chip visibility, so collapsing the chip erases pixels, never the typed fact.
 fn lifecycle_chip_renders(l: WorkLifecycle) -> Bool {
   match l {
     OpenLifecycle => false
@@ -213,8 +212,7 @@ fn work_scheduling_key(s: WorkScheduling) -> String {
   }
 }
 
-data scheduling_dependency_line_note: String = "The quiet dependency line under the title, DECIDED here: it renders only for an Upcoming row with more than one blocker — a single parent is already told by the tree nesting, and a ready/done row's dependencies are met, so repeating them would be noise a reader must re-dismiss on every row. (The A1 renderer showed 'requires all' for any node with 2+ parents whatever its position; the seam narrows it to the rows where the line answers 'why is this not dispatchable-now', which is the fact the line exists to carry.)"
-
+// The quiet dependency line under the title, DECIDED here: it renders only for an Upcoming row with more than one blocker — a single parent is already told by the tree nesting, and a ready/done row's dependencies are met, so repeating them would be noise a reader must re-dismiss on every row. (The A1 renderer showed 'requires all' for any node with 2+ parents whatever its position; the seam narrows it to the rows where the line answers 'why is this not dispatchable-now', which is the fact the line exists to carry.)
 fn scheduling_dependency_line(s: WorkScheduling) -> String? {
   match s {
     SchedulingUpcoming { blockers } =>
@@ -238,8 +236,7 @@ type SupportingFact {
 
 data work_row_view_note: String = "WorkRowView is the decided row. headline comes from the ticket's own typed field — NEVER from recomposing '**headline** — brief' and re-splitting it at punctuation (the round trip this seam deletes; legacy non-ticket lines keep the lead heuristic as a named residue INSIDE this projection and nowhere else). summary is the row's one purpose-specific supporting claim (why-now / what-it-unlocks); it is Absent until an honest typed source for that claim exists — fabricating it by truncating the brief is prohibited (the explicit A1 re-scope). scheduling is the typed frontier position (its Upcoming arm CARRIES the blockers, so the quiet dependency line under the title reads off the same value the action derivation consumed — a separate blocked_on field beside it was the first cut's dual representation and is gone). supporting_facts are the demoted metadata (owner, sizing, carriers) rendered only under disclosure; disclosure is the decided full-detail region — the renderer serializes it without touching RoadmapItem."
 
-data disclosure_view_note: String = "The disclosure region, decided: a ticket row projects its typed fields as labeled rows (the same label vocabulary the A1 renderer used, now decided here so the renderer never reads TicketFields); a legacy line whose content is longer than its displayed lead projects the full content as the body; a row with neither has NoDisclosure and renders no details element beyond its supporting facts. Markdown-inline serialization of these strings is the renderer's job — serialization, not decision."
-
+// The disclosure region, decided: a ticket row projects its typed fields as labeled rows (the same label vocabulary the A1 renderer used, now decided here so the renderer never reads TicketFields); a legacy line whose content is longer than its displayed lead projects the full content as the body; a row with neither has NoDisclosure and renders no details element beyond its supporting facts. Markdown-inline serialization of these strings is the renderer's job — serialization, not decision.
 type DisclosureField {
   label: String
   value: String
@@ -312,8 +309,7 @@ fn row_supporting_facts(rn: RoadmapNode) -> List<SupportingFact> {
   concat(owner_fact(owner: rn.owner), concat(sizing_fact(s: rn.sizing), carrier_facts(carriers: rn.carriers)))
 }
 
-data row_headline_note: String = "The typed headline path: a TicketLine's headline IS ticket.headline — one field read, no markdown fusion, no delimiter recovery. Legacy variants (Derivable/Authored/Plain/Superseded) carry one content string and keep the historical lead-at-first-separator cut as the named residue of this projection; when those variants gain typed headline fields the residue deletes here and nowhere else."
-
+// The typed headline path: a TicketLine's headline IS ticket.headline — one field read, no markdown fusion, no delimiter recovery. Legacy variants (Derivable/Authored/Plain/Superseded) carry one content string and keep the historical lead-at-first-separator cut as the named residue of this projection; when those variants gain typed headline fields the residue deletes here and nowhere else.
 fn lead_before(full: String, delimiter: String) -> String? {
   let parts = split(s: full, delimiter: delimiter)
   if count(parts) > 1 {
@@ -690,8 +686,7 @@ fn activity_evidence_row_json_value(row: ActivityEvidenceRow) -> JsonValue {
   ])
 }
 
-data activity_view_wire_note: String = "The wire realization of the DECIDED view — what makes the single projection authority real rather than aspirational: /workflow.json carries these fields and the client program paints them verbatim (arm selects the container's presence and material, summary/outcome/reason are final strings, attention is the expansion key, evidence rows are label/value pairs). The obligation ledger is NOT duplicated here — the attempt payload already carries the canonical segments and the client renders the ledger from those rows; a second segments copy under activity would be the dual representation §3 forbids."
-
+// The wire realization of the DECIDED view — what makes the single projection authority real rather than aspirational: /workflow.json carries these fields and the client program paints them verbatim (arm selects the container's presence and material, summary/outcome/reason are final strings, attention is the expansion key, evidence rows are label/value pairs). The obligation ledger is NOT duplicated here — the attempt payload already carries the canonical segments and the client renders the ledger from those rows; a second segments copy under activity would be the dual representation §3 forbids.
 fn activity_view_json_value(view: ActivityView) -> JsonValue {
   match view {
     NoActiveWork => json_object(members: [
@@ -841,8 +836,7 @@ fn session_facts_json_value(v: SessionFactsView) -> JsonValue {
   ])
 }
 
-data program_progress_view_note: String = "The local-denominator program claim plus its causal link to the work below (the A1 recon's item 5: without the relation the page is an inventory; with it the page begins to feel causal). ready_obligation_count is the count of ready rows the focused program's lanes contribute — v0 states the relation for v1 exit as the focused program; a multi-program workspace generalizes the field to per-program rows."
-
+// The local-denominator program claim plus its causal link to the work below (the A1 recon's item 5: without the relation the page is an inventory; with it the page begins to feel causal). ready_obligation_count is the count of ready rows the focused program's lanes contribute — v0 states the relation for v1 exit as the focused program; a multi-program workspace generalizes the field to per-program rows.
 type ProgramProgressView {
   name: String
   completed: Int

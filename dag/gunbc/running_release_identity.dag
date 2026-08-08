@@ -1,0 +1,173 @@
+module gunbc.running_release_identity
+
+import std.types { Bool, CommitSha, Int, NonEmptyStr, String }
+import std.content_hash { Fnv1a64Structural, content_hash_validate_lower_hex_length }
+import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_object, json_string }
+import extdeps.languages.json.parse {
+  JsonMemberLookup,
+  JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject,
+  json_object_unique_member,
+  parse_json,
+}
+
+data running_release_identity_note: String = "THE PROCESS IS THE AUTHORITY FOR WHAT IS DEPLOYED, AND THIS MODULE IS THAT AUTHORITY'S WIRE FORM. `gunbc serve` binds its compiled graph ONCE at process start, so the only fact that answers 'what revision is the public route serving' is one the RUNNING PROCESS reports about itself. A file on disk describes what some previous writer INTENDED; a git HEAD in the slot tree describes the DISK, which diverges from the process exactly when a sync is interrupted or lands out of order. Both are weaker than the process, and grounding deployment ordering on either re-admits the backward move the ordering exists to forbid (operator ruling 2026-08-05; docs/plans/srv1-deploy-serialization-and-false-greens.md section 11).\\n\\nTWO FACTS, DELIBERATELY NOT FUSED. `revision` answers deployment ORDERING (is the candidate a descendant of what is running). `surface_bundle_identity` answers WHAT IS ACTUALLY SERVED (does the running process render this tree's five artifacts). They are separate members because they fail independently and their remedies differ: a correct revision with a stale surface means the graph did not rebind; a fresh surface at an unexpected revision means the wrong candidate won the route. A single fused digest could not tell an operator which of those happened, and could not be compared against the two different authorities that decide them (git ancestry for the first, this tree's rendered bundle for the second). The verified release artifact remains the separate binary-provenance fact and is deliberately not collapsed in here either."
+
+data release_revision_hex_digits: Int = 40
+
+data surface_bundle_identity_hex_digits: Int = 16
+
+data surface_identity_is_validated_note: String = "THE SURFACE IDENTITY IS A VALIDATED DIGEST, NOT WHATEVER STRING ARRIVED. It was carried as a bare String, which accepted any text a process put on the wire — including an empty member, a truncated digest, or a value from an entirely different hash family — and every comparison downstream then reduced to string equality against something that had never been shown to be a digest at all. A mismatch and a malformed member are different facts with different remedies, and a raw String could not tell them apart.\\n\\n16 lowercase hex digits is the fnv1a64 structural width, checked through content_hash_validate_lower_hex_length — the SAME authority the 40-digit revision check uses, one width apart. So the wire parser now refuses a malformed identity where it used to admit it, and Fnv1a64Structural is what reaches readiness, which is why a comparison there is between two digests rather than between two strings that might be digests."
+
+fn release_revision_text_valid(text: String) -> Bool {
+  content_hash_validate_lower_hex_length(
+    text: text,
+    expected_hex_digits: release_revision_hex_digits,
+  )
+}
+
+data release_revision_validation_note: String = "Lowercase-hex validation routes through std.content_hash content_hash_validate_lower_hex_length rather than a private predicate, because 'exactly N lowercase hex digits' already has ONE authority in this corpus (DESIGN section 3) and a second copy would be a nickname that drifts. 40 digits is git's Sha1 object-name width, the same width extdeps.git.object_store refines GitObjectId to; the ancestry probes this revision feeds (extdeps.git.inspect MergeBaseIsAncestor) take CommitSha, so the wire fact stays CommitSha and is validated at every boundary it crosses rather than being trusted because it arrived."
+
+fn surface_bundle_identity_text_valid(text: String) -> Bool {
+  content_hash_validate_lower_hex_length(text: text, expected_hex_digits: surface_bundle_identity_hex_digits)
+}
+
+data running_release_revision_key: String = "revision"
+
+data running_release_surface_identity_key: String = "surface_bundle_identity"
+
+type RunningReleaseObservation {
+  revision: CommitSha
+  surface_bundle_identity: Fnv1a64Structural
+}
+
+// HealthzBodyNotAnObject is named for the DOCUMENT, not for whichever member happened to be looked up when
+// it was noticed. It was ReleaseRevisionNotAnObject while the surface lookup's same arm answered
+// SurfaceBundleIdentityAbsent — one fact under two names, and the second of them WRONG: "the body is not an
+// object" and "the body is an object that omits the surface identity" are different states with different
+// remedies, and reporting the first as the second sends a reader looking for a missing member in a document
+// that has no members. The surface arm is unreachable today, because reaching it means the revision lookup
+// already proved `doc` is an object; a mislabel that is currently unreachable is still the one a later
+// refactor inherits, and it costs nothing to be right now (review 50078).
+type RunningReleaseUnidentifiedCause
+  = ReleaseIdentityBodyUnparseable
+  | ReleaseRevisionAbsent
+  | ReleaseRevisionDuplicated { count: Int }
+  | HealthzBodyNotAnObject
+  | ReleaseRevisionNotAString
+  | ReleaseRevisionMalformed { text: String }
+  | SurfaceBundleIdentityAbsent
+  | SurfaceBundleIdentityDuplicated { count: Int }
+  | SurfaceBundleIdentityNotAString
+  | SurfaceBundleIdentityMalformed { text: String }
+
+type RunningReleaseIdentity
+  = RunningReleaseIdentified { observation: RunningReleaseObservation }
+  | RunningReleaseUnidentified { cause: RunningReleaseUnidentifiedCause }
+
+data running_release_unidentified_cause_note: String = "ReleaseRevisionAbsent IS THE MIGRATION ARM AND IT REFUSES RATHER THAN BOOTSTRAPS. A process launched before the identity channel existed answers /healthz with a well-formed surface document carrying no revision member. That is not 'nothing is deployed' and not 'the revision is unknown but assume the worst is fine' — it is a routed process that is demonstrably serving something whose identity this system cannot yet read, so no ancestry relation to a candidate is decidable and any advance from it would be unordered. The consumer maps this arm to a REFUSAL, never to an advance and never to a synthetic predecessor. It dissolves by deploying the identity-publishing release once, after which the arm is unreachable in production and survives as the executing control that proves the refusal is real.\\n\\nAbsent / Duplicated / NotAnObject / NotAString / Malformed stay distinct because each names a different broken producer: no channel, a document with two revision members (two writers), a body that is not an object at all (wrong process on the port), a non-string revision, and a string that is not a 40-digit lowercase sha (a tag, a branch name, an abbreviated sha, or an empty launch argument that reached the wire). Collapsing them into one Unknown would leave the remedy unlocatable, which is the state-space conflation DESIGN records as a recurring failure mode."
+
+fn running_release_healthz_members(
+  revision: CommitSha,
+  surface_bundle_identity: Fnv1a64Structural,
+) -> List<JsonKeyValue> {
+  [
+    json_kv(key: running_release_revision_key, value: json_string(s: revision as String)),
+    json_kv(
+      key: running_release_surface_identity_key,
+      value: json_string(s: surface_bundle_identity.digest as String),
+    ),
+  ]
+}
+
+fn running_release_member_string(lookup: JsonMemberLookup) -> String? {
+  match lookup {
+    JsonMemberFound { value: v } =>
+      match v {
+        JsonString { value: s } => s
+        JsonNull => Absent
+        JsonBool { value: _ } => Absent
+        JsonNumber { lexeme: _ } => Absent
+        JsonArray { elements: _ } => Absent
+        JsonObject { members: _ } => Absent
+      }
+    JsonMemberAbsent => Absent
+    JsonMemberDuplicated { count: _ } => Absent
+    JsonMemberNotAnObject => Absent
+  }
+}
+
+fn observe_running_release_identity(healthz_body: String) -> RunningReleaseIdentity {
+  match parse_json(s: healthz_body) {
+    Absent => RunningReleaseUnidentified { cause: ReleaseIdentityBodyUnparseable }
+    Present { value: doc } =>
+      match json_object_unique_member(v: doc, key: running_release_revision_key) {
+        JsonMemberAbsent => RunningReleaseUnidentified { cause: ReleaseRevisionAbsent }
+        JsonMemberNotAnObject => RunningReleaseUnidentified { cause: HealthzBodyNotAnObject }
+        JsonMemberDuplicated { count: n } =>
+          RunningReleaseUnidentified { cause: ReleaseRevisionDuplicated { count: n } }
+        JsonMemberFound { value: rv } =>
+          match running_release_member_string(lookup: JsonMemberFound { value: rv }) {
+            Absent => RunningReleaseUnidentified { cause: ReleaseRevisionNotAString }
+            Present { value: revision_text } =>
+              if release_revision_text_valid(text: revision_text) {
+                match json_object_unique_member(v: doc, key: running_release_surface_identity_key) {
+                  JsonMemberAbsent =>
+                    RunningReleaseUnidentified { cause: SurfaceBundleIdentityAbsent }
+                  JsonMemberNotAnObject =>
+                    RunningReleaseUnidentified { cause: HealthzBodyNotAnObject }
+                  JsonMemberDuplicated { count: m } =>
+                    RunningReleaseUnidentified { cause: SurfaceBundleIdentityDuplicated { count: m } }
+                  JsonMemberFound { value: sv } =>
+                    match running_release_member_string(lookup: JsonMemberFound { value: sv }) {
+                      Absent =>
+                        RunningReleaseUnidentified { cause: SurfaceBundleIdentityNotAString }
+                      Present { value: surface_text } =>
+                        if !surface_bundle_identity_text_valid(text: surface_text) {
+                          RunningReleaseUnidentified {
+                            cause: SurfaceBundleIdentityMalformed { text: surface_text },
+                          }
+                        } else {
+                          RunningReleaseIdentified {
+                            observation: RunningReleaseObservation {
+                              revision: revision_text as CommitSha,
+                              surface_bundle_identity: Fnv1a64Structural { digest: surface_text as NonEmptyStr },
+                            },
+                          }
+                        }
+                    }
+                }
+              } else {
+                RunningReleaseUnidentified { cause: ReleaseRevisionMalformed { text: revision_text } }
+              }
+          }
+      }
+  }
+}
+
+data observe_running_release_identity_note: String = "THE OBSERVATION VALIDATES THE WIRE TEXT RATHER THAN TRUSTING IT. The revision arrives as bytes from a network response, so 'it came from our own process' is not a reason to skip the shape check — the launch argument that produced it is itself a string a human or an emitter supplied, and a branch name, an abbreviated sha, or an empty argument would otherwise flow into an ancestry probe as if it were an object name. Malformed is a distinct refusal from Absent for exactly that reason: absent means the process predates the channel, malformed means the channel is live and carrying something that is not a revision, and the second is a defect in the deploying machinery rather than a migration state.\\n\\nMember extraction routes through json_object_unique_member, so a document carrying the key twice REFUSES instead of silently taking the first or last. That matters here because the healthz document is assembled from one member list; two revision members could only mean two producers wrote it, and picking either would be a fabricated answer about which process is running."
+
+fn running_release_revision_equals(
+  identity: RunningReleaseIdentity,
+  expected: CommitSha,
+) -> Bool {
+  match identity {
+    RunningReleaseUnidentified { cause: _ } => false
+    RunningReleaseIdentified { observation: obs } => (obs.revision as String) == (expected as String)
+  }
+}
+
+fn running_release_surface_equals(
+  identity: RunningReleaseIdentity,
+  expected: Fnv1a64Structural,
+) -> Bool {
+  match identity {
+    RunningReleaseUnidentified { cause: _ } => false
+    RunningReleaseIdentified { observation: obs } =>
+      (obs.surface_bundle_identity.digest as String) == (expected.digest as String)
+  }
+}
+
+data running_release_equality_note: String = "TWO PREDICATES, NOT ONE CONJUNCTION, because the caller must be able to say WHICH half failed. Candidate preparation requires both (the prepared process reports the admitted revision AND this tree's surface) and routed verification requires both again after the flip; but a deploy that reports 'the routed process is at the right revision serving the wrong surface' has a different remedy than 'the right surface at the wrong revision', and a fused boolean erases that. Both predicates are FALSE on every Unidentified arm rather than absent: an unreadable identity is not an equality that happens to hold, and returning false keeps the refusal at the decision site that owns the typed cause."

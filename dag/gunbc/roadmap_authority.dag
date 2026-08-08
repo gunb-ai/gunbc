@@ -316,7 +316,7 @@ fn v2_emitter_producer_provenance_execution_contract() -> WorkItemExecutionContr
 
 data v2_emitter_producer_provenance_contract_note: String = "The validation is this node's red control stated almost verbatim. The ticket demands that 'a result recorded as made by the new generator, with no receipt from a run that actually produced it, has to be impossible to write', and witness_restored_binding_without_executed_receipt_does_not_authorize_reds asserts exactly that: a restored binding without an executed receipt does not authorize an emitter-produced claim. It is chosen over the suite's other twenty-six claims because it is the one that fails if the unrepresentability itself lapses, rather than one that checks a roster stayed in step."
 
-data v2_emitter_direct_rust_door_execution_contract_note: String = "THE CANONICAL CLOSING VALIDATION for v2-emitter-direct-rust-door, rebound to direct_rust_door_production_group_closing_expectation_holds. The production path is now observed through ProvenancedRustEmissionObservation, which LOCATES the failure instead of erasing it: assembly ACCEPTS and inference ACCEPTS on the real add_probe source, and emission REJECTS the real inferred tree. That supersedes the earlier reading — carried in this note until 2026-08-05 and in the node first_slice — that the pieces were joined and the last step was simply not called; candidate_generation does call emit, and emit is where the path stops. The prior binding to witness_v2_emitter_direct_rust_door_closing_contract_holds is deleted along with its fold, whose single SeedEmitterRequiredForWrittenSource arm answered for BOTH a rejected pipeline and a seed-dependent artifact — a state-space conflation that made the red unlocatable. MissingTranslationRuleRefuses remains established through the rust_add missing-rules serialize refusal and is carried as the group's one green leaf, which is what proves the parent's red is located rather than uniform. Group ALGEBRA is discriminated by planted-observation controls at zero production cost (v2.test.self_host.direct_rust_door_group_algebra). State the walk claim exactly: ONE production implementation authority, ONE production walk per group construction, TWO scheduled group constructions today, measured by v2.test.claim.schedule_occurrence_multiplicity_test against the live falsifier schedule. And state the location claim exactly: the in-memory group locates EmissionRejected; the scheduled executor receipt remains an unlocated Bool."
+data v2_emitter_direct_rust_door_execution_contract_note: String = "THE CANONICAL CLOSING VALIDATION for v2-emitter-direct-rust-door, rebound to direct_rust_door_production_group_closing_expectation_holds. The production path is now observed through ProvenancedRustEmissionObservation, which LOCATES the failure instead of erasing it: assembly ACCEPTS and inference ACCEPTS on the real add_probe source, and emission REJECTS the real inferred tree. That supersedes the earlier reading — carried in this note until 2026-08-05 and in the node first_slice — that the pieces were joined and the last step was simply not called; candidate_generation does call emit, and emit is where the path stops. The prior binding to witness_v2_emitter_direct_rust_door_closing_contract_holds is deleted along with its fold, whose single SeedEmitterRequiredForWrittenSource arm answered for BOTH a rejected pipeline and a seed-dependent artifact — a state-space conflation that made the red unlocatable. MissingTranslationRuleRefuses remains established through the rust_add missing-rules serialize refusal and is carried as the group's one green leaf, which is what proves the parent's red is located rather than uniform. Group ALGEBRA is discriminated by planted-observation controls at zero production cost (v2.test.self_host.direct_rust_door_group_algebra). State the walk claim exactly: ONE production implementation authority, ONE production walk per group construction, ONE scheduled group construction, measured by v2.test.claim.schedule_occurrence_multiplicity_test against the live falsifier schedule. The count was TWO until 2026-08-06: the root joined the long-lane batch solely to obtain an eval ceiling, because budget was a property of batch membership. Separating the execution-budget axis from the batch roster (std.witness_admission witness_admission_axis_separation_note) dropped it to one, which is what that witness now asserts. And state the location claim exactly: the in-memory group locates EmissionRejected; the scheduled executor receipt remains an unlocated Bool."
 
 fn v2_emitter_direct_rust_door_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
@@ -1826,6 +1826,53 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "An undeclared ambient dependency reds; a floor member below its asserted version refuses rather than proceeding.",
         out_of_scope: "No C toolchain is shipped; cc and the linker remain declared system requirements.",
         handback: "Return the declared floor, the startup assertion, and the undeclared-dependency control."
+      )
+    ),
+    active_sized(
+      identity: "rn_2NQW3MVYJYQ453E95V3V1T76AV",
+      id: "instrument-motion-physical-qualification",
+      owner: "instrument-motion",
+      path: "dag/gunbc/capability_binding.dag",
+      intricacy: IntricacyHigh,
+      volume: VolumeMedium,
+      t: fields(
+        headline: "Make a real tap on a real machine reach the bob",
+        boundary: "A physical impulse observed on a named host and browser, qualified against the requirement, reaching PhysicalImpulse and moving the plate. Chrome and Safari each get their own executed receipt with the host named exactly. A negative control runs first: the machine sitting idle and the machine being typed on must NOT qualify. Native macOS access is reached for only if the web routes produce no usable values.",
+        displaced_cost: "Today every support row is an obligation and the requirement thresholds are audition candidates, so nothing in the lane can answer whether a laptop can feel a knock. The motion lab renders a synthetic bob and says so; a person still cannot learn from it what their own machine does.",
+        first_slice: "One Chrome run on a named host: probe, record the exact observation, and see whether any axis carries a value at all.",
+        red_control: "The idle and typing controls fail to qualify while a deliberate tap qualifies; a measurement taken against unsigned thresholds lands on the provisional arm and never on supported; a run in a context whose Permissions Policy blocks the feature refuses instead of reporting absence.",
+        out_of_scope: "No new capability vocabulary, no widening of the platform roster, no OS bindings beyond the one the receipts force.",
+        handback: "Return the two executed browser receipts with their hosts named, the negative-control receipts, the calibration that turns bob_impulse_requirement_candidate from AuditionProvisional into RequirementSigned or the finding that it cannot be, and a headless-rendering-engine playback receipt replacing the jsdom substitute noted below."
+      )
+    ),
+    active_small(
+      identity: "rn_ANX7D5C8EBN0A41V05PHETTG9K",
+      id: "instrument-rendered-control-coverage",
+      owner: "instrument-motion",
+      path: "dag/gunbc/roadmap_component.dag",
+      t: fields(
+        headline: "Derive interaction coverage from what is actually rendered",
+        boundary: "Coverage of interactive controls is derived from the rendered control contracts rather than from a hand-listed set, so a control that exists on the page but in nobody's list is a counted gap rather than an invisible one.",
+        displaced_cost: "The present denominator omits the theme, clear and activity controls, so the coverage figure reads green while naming fewer controls than the page ships — a false green whose size nobody can see.",
+        first_slice: "Derive the denominator from the rendered contracts and let the omitted controls surface as the gap they are.",
+        red_control: "A control rendered on the page and absent from coverage reds; adding a control without covering it reds; the three currently omitted controls appear in the first derived count.",
+        out_of_scope: "Do not repair this by adding three remembered enum variants — that reproduces the hand-listed denominator one edit later.",
+        handback: "Return the derived denominator, the newly visible gaps, and the control that reds on an uncovered rendered control."
+      )
+    ),
+    active_small(
+      identity: "rn_ZXQH9CD43E8XH64CHYBT99WD9W",
+      id: "discarded-bool-result-wall",
+      owner: "language-integrity",
+      path: "dag/gunbc/design_document.dag",
+      t: fields(
+        headline: "Refuse a claim that is computed and thrown away",
+        boundary: "Inside a function returning Bool, a bare Boolean expression in non-terminal position is censused and then refused. Its value cannot be observed, so computing one is either a mistake or a claim someone believes is being enforced.",
+        displaced_cost: "Two independent keystones reported green while claims sat above the returned expression, discarded. One of them was a bob that could not settle. The defect is invisible at review because the discarded line reads exactly like an enforced one.",
+        first_slice: "Census the corpus for the shape and report the population before refusing anything, because the size of it decides whether the wall lands in one step or behind a frozen roster.",
+        red_control: "A planted discarded claim reds; a terminal Boolean expression and a Boolean bound by a let and later used both stay accepted, so the wall does not fire on legitimate code.",
+        out_of_scope: "Not a general unused-expression rule, and no motion, capability or browser work belongs in this lane.",
+        handback: "Return the census, the wall or the frozen roster with its dissolution trigger, and both controls."
       )
     ),
   ], guarantee_ladder_nodes())

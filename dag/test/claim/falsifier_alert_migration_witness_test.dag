@@ -19,6 +19,7 @@ import gunbc.falsifier_alert_admission {
   FalsifierAlertAdmission,
   AlertAdmitted,
   AlertRefusedWorkflowNotObserved,
+  AlertRefusedWorkflowPathNotObserved,
   AlertRefusedRepositoryNotOwned,
   RepositoryField, EnclosingRepository, HeadRepository,
   AlertRefusedHeadBranchNotMain,
@@ -29,14 +30,11 @@ import gunbc.falsifier_alert_admission {
   falsifier_alert_job_condition
 }
 import gunbc.falsifier_alert_state {
+  FirstRedStanding, FirstRedObserved, FirstRedUnknownBeforeTracking,
   FalsifierAlertState,
   FalsifierAlertStateDecoding,
   CurrentState, LegacyStateWithoutLastNotification, StateAbsent, StateMalformed,
-  FalsifierAlertNotificationDecision,
-  NotifyIncidentChanged, NotifyHeartbeatDue, NotifyMigratedToTypedState, NotifyFirstRed,
-  SuppressWithinWindow,
   falsifier_alert_state_from_payload,
-  falsifier_alert_notification_decision,
   falsifier_alert_heartbeat_window
 }
 import std.measure { Millisecond, millisecond, millisecond_count }
@@ -46,6 +44,12 @@ import gunbc.floor_component_receipt_document {
   ReceiptDecoded, ReceiptNotJson, ReceiptMemberAbsent, ReceiptMemberMalformed, ReceiptSchemaUnknown,
   ReceiptSubjectMatch, ReceiptSubjectMatches,
   ReceiptSubjectRunIdMismatch, ReceiptSubjectWorkflowMismatch, ReceiptSubjectHeadShaMismatch,
+  ReceiptComponentCountMismatch, ReceiptUnsuccessfulComponentIdentityNotUnique,
+  ReceiptUnsuccessfulPopulationMismatch,
+  ComponentAlertSummary,
+  ComponentOutcomeRead, ComponentConcluded, ComponentNotConcluded,
+  FloorComponentFailureMode, floor_component_failure_mode_tag,
+  summary_outcome_is_unsuccessful,
   floor_component_receipt_decode_with,
   floor_component_receipt_subject_matches_event
 }
@@ -63,6 +67,7 @@ import extdeps.github.issues {
   IssueStateRead, IssueStateFound, IssueStateUnmodelledWire,
   parse_issue_state
 }
+import std.observation { ObservationOutcome, Failed }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -72,23 +77,23 @@ data falsifier_alert_migration_witness_note: String = "ALERT-0..3's executing ev
 data alert_expected_schema: NonEmptyStr = "floor-component-receipt/v1"
 
 fn trusted_event_json() -> String {
-  "{\"action\":\"completed\",\"repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"workflow_run\":{\"id\":31000000001,\"name\":\"affected-set-falsifier\",\"conclusion\":\"failure\",\"html_url\":\"https://github.com/gunb-ai/gunbc/actions/runs/31000000001\",\"run_started_at\":\"2026-08-06T00:00:00Z\",\"head_sha\":\"0123456789abcdef0123456789abcdef01234567\",\"head_branch\":\"main\",\"head_repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"event\":\"schedule\"}}"
+  "{\"action\":\"completed\",\"repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"workflow_run\":{\"id\":31000000001,\"name\":\"affected-set-falsifier\",\"workflow_id\":161803,\"path\":\".github/workflows/falsifier.yml\",\"conclusion\":\"failure\",\"html_url\":\"https://github.com/gunb-ai/gunbc/actions/runs/31000000001\",\"run_started_at\":\"2026-08-06T00:00:00Z\",\"head_sha\":\"0123456789abcdef0123456789abcdef01234567\",\"head_branch\":\"main\",\"head_repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"event\":\"schedule\"}}"
 }
 
 fn fork_event_json() -> String {
-  "{\"action\":\"completed\",\"repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"workflow_run\":{\"id\":31000000002,\"name\":\"affected-set-falsifier\",\"conclusion\":\"failure\",\"html_url\":\"https://github.com/gunb-ai/gunbc/actions/runs/31000000002\",\"run_started_at\":\"2026-08-06T00:00:00Z\",\"head_sha\":\"0123456789abcdef0123456789abcdef01234567\",\"head_branch\":\"main\",\"head_repository\":{\"full_name\":\"attacker/gunbc\"},\"event\":\"pull_request\"}}"
+  "{\"action\":\"completed\",\"repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"workflow_run\":{\"id\":31000000002,\"name\":\"affected-set-falsifier\",\"workflow_id\":161803,\"path\":\".github/workflows/falsifier.yml\",\"conclusion\":\"failure\",\"html_url\":\"https://github.com/gunb-ai/gunbc/actions/runs/31000000002\",\"run_started_at\":\"2026-08-06T00:00:00Z\",\"head_sha\":\"0123456789abcdef0123456789abcdef01234567\",\"head_branch\":\"main\",\"head_repository\":{\"full_name\":\"attacker/gunbc\"},\"event\":\"pull_request\"}}"
 }
 
 fn non_main_event_json() -> String {
-  "{\"action\":\"completed\",\"repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"workflow_run\":{\"id\":31000000003,\"name\":\"affected-set-falsifier\",\"conclusion\":\"failure\",\"html_url\":\"https://github.com/gunb-ai/gunbc/actions/runs/31000000003\",\"run_started_at\":\"2026-08-06T00:00:00Z\",\"head_sha\":\"0123456789abcdef0123456789abcdef01234567\",\"head_branch\":\"topic/experiment\",\"head_repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"event\":\"schedule\"}}"
+  "{\"action\":\"completed\",\"repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"workflow_run\":{\"id\":31000000003,\"name\":\"affected-set-falsifier\",\"workflow_id\":161803,\"path\":\".github/workflows/falsifier.yml\",\"conclusion\":\"failure\",\"html_url\":\"https://github.com/gunb-ai/gunbc/actions/runs/31000000003\",\"run_started_at\":\"2026-08-06T00:00:00Z\",\"head_sha\":\"0123456789abcdef0123456789abcdef01234567\",\"head_branch\":\"topic/experiment\",\"head_repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"event\":\"schedule\"}}"
 }
 
 fn other_workflow_event_json() -> String {
-  "{\"action\":\"completed\",\"repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"workflow_run\":{\"id\":31000000004,\"name\":\"ci\",\"conclusion\":\"success\",\"html_url\":\"https://github.com/gunb-ai/gunbc/actions/runs/31000000004\",\"run_started_at\":\"2026-08-06T00:00:00Z\",\"head_sha\":\"0123456789abcdef0123456789abcdef01234567\",\"head_branch\":\"main\",\"head_repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"event\":\"schedule\"}}"
+  "{\"action\":\"completed\",\"repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"workflow_run\":{\"id\":31000000004,\"name\":\"ci\",\"workflow_id\":271828,\"path\":\".github/workflows/ci.yml\",\"conclusion\":\"success\",\"html_url\":\"https://github.com/gunb-ai/gunbc/actions/runs/31000000004\",\"run_started_at\":\"2026-08-06T00:00:00Z\",\"head_sha\":\"0123456789abcdef0123456789abcdef01234567\",\"head_branch\":\"main\",\"head_repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"event\":\"schedule\"}}"
 }
 
 fn event_missing_conclusion_json() -> String {
-  "{\"action\":\"completed\",\"repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"workflow_run\":{\"id\":31000000005,\"name\":\"affected-set-falsifier\",\"conclusion\":null,\"html_url\":\"https://github.com/gunb-ai/gunbc/actions/runs/31000000005\",\"run_started_at\":\"2026-08-06T00:00:00Z\",\"head_sha\":\"0123456789abcdef0123456789abcdef01234567\",\"head_branch\":\"main\",\"head_repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"event\":\"schedule\"}}"
+  "{\"action\":\"completed\",\"repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"workflow_run\":{\"id\":31000000005,\"name\":\"affected-set-falsifier\",\"workflow_id\":161803,\"path\":\".github/workflows/falsifier.yml\",\"conclusion\":null,\"html_url\":\"https://github.com/gunb-ai/gunbc/actions/runs/31000000005\",\"run_started_at\":\"2026-08-06T00:00:00Z\",\"head_sha\":\"0123456789abcdef0123456789abcdef01234567\",\"head_branch\":\"main\",\"head_repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"event\":\"schedule\"}}"
 }
 
 fn admission_of(json: String) -> FalsifierAlertAdmission {
@@ -195,7 +200,7 @@ fn legacy_state_marker(first_red: Int, signature: String) -> String {
 test fn current_state_marker_round_trips() -> Bool {
   match falsifier_alert_state_from_payload(payload: current_state_marker(first_red: 1000, signature: "6:witness discovery:WitnessRed:failed", last: 5000)) {
     CurrentState { state: s } =>
-      s.first_red == 1000
+      match s.first_red { FirstRedObserved { at: t } => t == 1000, FirstRedUnknownBeforeTracking => false }
         && s.last_notification_at == 5000
         && (s.signature as String) == "6:witness discovery:WitnessRed:failed"
     _ => false
@@ -204,7 +209,8 @@ test fn current_state_marker_round_trips() -> Bool {
 
 test fn legacy_marker_is_its_own_state_not_malformed() -> Bool {
   match falsifier_alert_state_from_payload(payload: legacy_state_marker(first_red: 1000, signature: "6:witness discovery:failed")) {
-    LegacyStateWithoutLastNotification { first_red: f, signature: _ } => f == 1000
+    LegacyStateWithoutLastNotification { first_red: f, signature: _ } =>
+      match f { FirstRedObserved { at: t } => t == 1000, FirstRedUnknownBeforeTracking => false }
     _ => false
   }
 }
@@ -216,63 +222,13 @@ test fn malformed_marker_is_not_read_as_legacy() -> Bool {
   }
 }
 
-test fn legacy_state_notifies_exactly_once_as_a_migration() -> Bool {
-  let d = falsifier_alert_notification_decision(
-    now: 9999999,
-    decoding: falsifier_alert_state_from_payload(payload: legacy_state_marker(first_red: 1000, signature: "a:b:c")),
-    signature: "a:b:c" as NonEmptyStr
-  )
-  match d {
-    NotifyMigratedToTypedState => true
-    _ => false
-  }
-}
-
-test fn a_changed_signature_always_notifies_even_inside_the_window() -> Bool {
-  let d = falsifier_alert_notification_decision(
-    now: 5001,
-    decoding: falsifier_alert_state_from_payload(payload: current_state_marker(first_red: 1000, signature: "6:discovery:Infra:failed", last: 5000)),
-    signature: "6:discovery:WitnessRed:failed" as NonEmptyStr
-  )
-  match d {
-    NotifyIncidentChanged { previous: p, current: c } =>
-      (p as String) == "6:discovery:Infra:failed" && (c as String) == "6:discovery:WitnessRed:failed"
-    _ => false
-  }
-}
-
-test fn an_unchanged_signature_is_suppressed_inside_the_window() -> Bool {
-  let d = falsifier_alert_notification_decision(
-    now: 5001,
-    decoding: falsifier_alert_state_from_payload(payload: current_state_marker(first_red: 1000, signature: "a:b:c", last: 5000)),
-    signature: "a:b:c" as NonEmptyStr
-  )
-  match d {
-    SuppressWithinWindow { silent_for: s } => millisecond_count(m: s) == 1
-    _ => false
-  }
-}
-
-test fn an_unchanged_signature_heartbeats_once_the_window_elapses() -> Bool {
-  let d = falsifier_alert_notification_decision(
-    now: 5000 + millisecond_count(m: falsifier_alert_heartbeat_window),
-    decoding: falsifier_alert_state_from_payload(payload: current_state_marker(first_red: 1000, signature: "a:b:c", last: 5000)),
-    signature: "a:b:c" as NonEmptyStr
-  )
-  match d {
-    NotifyHeartbeatDue { silent_for: s } =>
-      millisecond_count(m: s) == millisecond_count(m: falsifier_alert_heartbeat_window)
-    _ => false
-  }
-}
-
 fn receipt_json(schema: String, workflow: String, run_id: String, head_sha: String) -> String {
   concat(
     concat(
       concat(concat("{\"schema\":\"", schema), concat("\",\"workflow_name\":\"", workflow)),
       concat(concat("\",\"run_id\":\"", run_id), concat("\",\"head_sha\":\"", head_sha))
     ),
-    "\",\"component_count\":0,\"affected_set_cold_control\":null,\"unsuccessful_components\":[],\"components\":[]}"
+    "\",\"component_count\":0,\"affected_set_cold_control\":null,\"selection_degradation\":null,\"unsuccessful_components\":[],\"components\":[]}"
   )
 }
 
@@ -445,6 +401,444 @@ test fn the_modelled_issue_states_decode() -> Bool {
         IssueStateFound { state: Closed } => true
         _ => false
       }
+    _ => false
+  }
+}
+
+data alert35_strict_boundary_note: String = "ALERT-3.5's evidence. Every claim here plants ONE wrong value in an otherwise-valid fixture and requires a LOCATED refusal naming the member that was wrong. That shape is the point: a decoder that refuses for the right reason and a decoder that refuses for some reason are indistinguishable on a fixture that is wrong in several ways at once, and the second is useless to debug against."
+
+data numeric_plant_note: String = "THE PLANT REPLACES THE VALUE IN PLACE; IT DOES NOT APPEND A DUPLICATE MEMBER. The first version of these fixtures appended a second copy of the member carrying a number, and every one of them passed — but they passed because json_object_unique_member refuses a DUPLICATED member, which fires before any type check and fires identically whether the decoder is strict or permissive. Proven by execution: reverting head_branch to the permissive decoder left that claim green, so it was measuring duplicate detection and reporting it as type strictness. Each field now has exactly one occurrence carrying a raw number, so the only thing that can refuse is the type check being asserted."
+
+fn event_json_with(name: String, conclusion: String, head_sha: String, head_branch: String, originating: String) -> String {
+  concat(concat(concat(concat(concat(concat(concat(concat(concat(
+    "{\"action\":\"completed\",\"repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"workflow_run\":{\"id\":31000000009,\"workflow_id\":161803,\"path\":\".github/workflows/falsifier.yml\",\"name\":",
+    name), ",\"conclusion\":"), conclusion), ",\"html_url\":\"https://x\",\"run_started_at\":\"2026-08-06T00:00:00Z\",\"head_sha\":"),
+    head_sha), ",\"head_branch\":"), head_branch),
+    ",\"head_repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"event\":"), concat(originating, "}}"))
+}
+
+data plant_valid_name: String = "\"affected-set-falsifier\""
+data plant_valid_conclusion: String = "\"failure\""
+data plant_valid_head_sha: String = "\"0123456789abcdef0123456789abcdef01234567\""
+data plant_valid_head_branch: String = "\"main\""
+data plant_valid_event: String = "\"schedule\""
+data plant_number: String = "12345"
+
+fn numeric_plant_refuses_at(field: String) -> Bool {
+  let text = if field == "name" {
+    event_json_with(name: plant_number, conclusion: plant_valid_conclusion, head_sha: plant_valid_head_sha, head_branch: plant_valid_head_branch, originating: plant_valid_event)
+  } else if field == "conclusion" {
+    event_json_with(name: plant_valid_name, conclusion: plant_number, head_sha: plant_valid_head_sha, head_branch: plant_valid_head_branch, originating: plant_valid_event)
+  } else if field == "head_sha" {
+    event_json_with(name: plant_valid_name, conclusion: plant_valid_conclusion, head_sha: plant_number, head_branch: plant_valid_head_branch, originating: plant_valid_event)
+  } else if field == "head_branch" {
+    event_json_with(name: plant_valid_name, conclusion: plant_valid_conclusion, head_sha: plant_valid_head_sha, head_branch: plant_number, originating: plant_valid_event)
+  } else {
+    event_json_with(name: plant_valid_name, conclusion: plant_valid_conclusion, head_sha: plant_valid_head_sha, head_branch: plant_valid_head_branch, originating: plant_number)
+  }
+  match workflow_run_event_from_json(text: text) {
+    WorkflowRunEventMemberMalformed { member: m, detail: _ } => m == field
+    _ => false
+  }
+}
+
+test fn the_all_valid_plant_baseline_decodes() -> Bool {
+  match workflow_run_event_from_json(text: event_json_with(name: plant_valid_name, conclusion: plant_valid_conclusion, head_sha: plant_valid_head_sha, head_branch: plant_valid_head_branch, originating: plant_valid_event)) {
+    WorkflowRunEventObserved { event: e } => e.head_branch == "main"
+    _ => false
+  }
+}
+
+test fn a_numeric_workflow_name_refuses_located() -> Bool {
+  numeric_plant_refuses_at(field: "name")
+}
+
+test fn a_numeric_conclusion_refuses_located() -> Bool {
+  numeric_plant_refuses_at(field: "conclusion")
+}
+
+test fn a_numeric_head_sha_refuses_located() -> Bool {
+  numeric_plant_refuses_at(field: "head_sha")
+}
+
+test fn a_numeric_head_branch_refuses_located() -> Bool {
+  numeric_plant_refuses_at(field: "head_branch")
+}
+
+test fn a_numeric_originating_event_refuses_located() -> Bool {
+  numeric_plant_refuses_at(field: "event")
+}
+
+test fn the_run_id_still_accepts_its_numeric_wire_form() -> Bool {
+  match workflow_run_event_from_json(text: trusted_event_json()) {
+    WorkflowRunEventObserved { event: e } => (e.run_id as String) == "31000000001"
+    _ => false
+  }
+}
+
+data workflow_path_claim_note: String = "The display name and the file path are asserted as SEPARATE refusals because they are separate facts: a workflow can be renamed without moving, and a file can be moved without being renamed. A wall that checked only the name would admit a run of a different file that had been given the expected name."
+
+fn event_with_path(path: String) -> String {
+  concat(concat(
+    "{\"action\":\"completed\",\"repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"workflow_run\":{\"id\":31000000010,\"workflow_id\":161803,\"path\":\"",
+    path), "\",\"name\":\"affected-set-falsifier\",\"conclusion\":\"failure\",\"html_url\":\"https://x\",\"run_started_at\":\"2026-08-06T00:00:00Z\",\"head_sha\":\"0123456789abcdef0123456789abcdef01234567\",\"head_branch\":\"main\",\"head_repository\":{\"full_name\":\"gunb-ai/gunbc\"},\"event\":\"schedule\"}}")
+}
+
+test fn the_trust_wall_refuses_an_impostor_file_wearing_the_expected_name() -> Bool {
+  match falsifier_alert_admit(observation: workflow_run_event_from_json(text: event_with_path(path: ".github/workflows/attacker.yml"))) {
+    AlertRefusedWorkflowPathNotObserved { observed: o, expected: _ } =>
+      o == ".github/workflows/attacker.yml"
+    _ => false
+  }
+}
+
+test fn the_trust_wall_admits_the_expected_workflow_file() -> Bool {
+  match falsifier_alert_admit(observation: workflow_run_event_from_json(text: event_with_path(path: ".github/workflows/falsifier.yml"))) {
+    AlertAdmitted { event: _ } => true
+    _ => false
+  }
+}
+
+data malformed_state_claim_note: String = "The load-bearing claim of item B: a malformed marker must NOT reach any notify arm, because every notify arm is followed by a write that would overwrite the corrupt marker and destroy the only record of when the incident began. THE WITNESSES FOR IT NO LONGER LIVE IN THIS FILE. They moved to falsifier_alert_decision_witness_test when the forked throttle decision was deleted, and they execute there against alert_decision as a_decoded_malformed_marker_refuses_instead_of_starting_a_new_incident. This note is kept where the claim was first argued; a reader looking for its executing evidence should look there, not here."
+
+data receipt_strictness_claim_note: String = "Item C's claims. The count check is the one worth naming: the decoder previously IGNORED the wire component_count and recomputed it from the array, which is the recompute-instead-of-check pattern — it cannot disagree with itself, so it can never report that the producer and its own array are inconsistent. Checking the declared value against the decoded one is what makes the field mean anything."
+
+fn receipt_with(component_count: String, components: String, unsuccessful: String) -> String {
+  concat(concat(concat(concat(
+    "{\"schema\":\"floor-component-receipt/v1\",\"workflow_name\":\"affected-set-falsifier\",\"run_id\":\"31000000001\",\"head_sha\":\"0123456789abcdef0123456789abcdef01234567\",\"component_count\":",
+    component_count), ",\"affected_set_cold_control\":null,\"selection_degradation\":null,\"unsuccessful_components\":"),
+    unsuccessful), concat(",\"components\":", concat(components, "}")))
+}
+
+data one_component: String = "{\"index\":6,\"label\":\"witness discovery\",\"outcome\":\"failed\",\"error\":\"claim is false\",\"output\":\"\",\"failure_mode\":\"WitnessRed\"}"
+
+data one_done_component: String = "{\"index\":6,\"label\":\"witness discovery\",\"outcome\":\"done\",\"failure_mode\":\"none\"}"
+
+test fn a_declared_component_count_that_disagrees_with_the_array_refuses() -> Bool {
+  match floor_component_receipt_decode_with(
+    text: receipt_with(component_count: "7", components: concat(concat("[", one_done_component), "]"), unsuccessful: "[]"),
+    expected_schema: alert_expected_schema
+  ) {
+    ReceiptComponentCountMismatch { declared: d, decoded: n } => d == "7" && n == 1
+    _ => false
+  }
+}
+
+test fn an_agreeing_component_count_decodes() -> Bool {
+  match floor_component_receipt_decode_with(
+    text: receipt_with(component_count: "1", components: concat(concat("[", one_done_component), "]"), unsuccessful: "[]"),
+    expected_schema: alert_expected_schema
+  ) {
+    ReceiptDecoded { document: doc } => doc.component_count == 1
+    _ => false
+  }
+}
+
+test fn duplicate_unsuccessful_component_identities_refuse() -> Bool {
+  let two = concat(concat(concat("[", one_component), concat(",", one_component)), "]")
+  match floor_component_receipt_decode_with(
+    text: receipt_with(component_count: "2", components: concat(concat(concat("[", one_component), concat(",", one_component)), "]"), unsuccessful: two),
+    expected_schema: alert_expected_schema
+  ) {
+    ReceiptUnsuccessfulComponentIdentityNotUnique { count: n } => n == 2
+    _ => false
+  }
+}
+
+test fn the_alert_summary_decodes_the_four_signature_fields() -> Bool {
+  match floor_component_receipt_decode_with(
+    text: receipt_with(component_count: "1", components: concat(concat("[", one_component), "]"), unsuccessful: concat(concat("[", one_component), "]")),
+    expected_schema: alert_expected_schema
+  ) {
+    ReceiptDecoded { document: doc } =>
+      match doc.unsuccessful_summaries.first() {
+        Present { value: sm } =>
+          sm.index == 6
+            && (sm.label as String) == "witness discovery"
+            && summary_outcome_is_unsuccessful(s: sm)
+            && floor_component_failure_mode_tag(m: sm.failure_mode) == "WitnessRed"
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+test fn an_unsuccessful_component_missing_failure_mode_refuses_located() -> Bool {
+  let no_mode = "{\"index\":6,\"label\":\"witness discovery\",\"outcome\":\"failed\"}"
+  match floor_component_receipt_decode_with(
+    text: receipt_with(component_count: "1", components: concat(concat("[", no_mode), "]"), unsuccessful: concat(concat("[", no_mode), "]")),
+    expected_schema: alert_expected_schema
+  ) {
+    ReceiptMemberAbsent { member: m } => m == "failure_mode"
+    _ => false
+  }
+}
+
+test fn a_required_auxiliary_member_absent_refuses_rather_than_becoming_null() -> Bool {
+  match floor_component_receipt_decode_with(
+    text: "{\"schema\":\"floor-component-receipt/v1\",\"workflow_name\":\"affected-set-falsifier\",\"run_id\":\"1\",\"head_sha\":\"abc\",\"component_count\":0,\"unsuccessful_components\":[],\"components\":[]}",
+    expected_schema: alert_expected_schema
+  ) {
+    ReceiptMemberAbsent { member: m } => m == "affected_set_cold_control"
+    _ => false
+  }
+}
+
+test fn a_numeric_workflow_name_in_the_receipt_refuses() -> Bool {
+  match floor_component_receipt_decode_with(
+    text: "{\"schema\":\"floor-component-receipt/v1\",\"workflow_name\":42,\"run_id\":\"1\",\"head_sha\":\"abc\",\"component_count\":0,\"affected_set_cold_control\":null,\"selection_degradation\":null,\"unsuccessful_components\":[],\"components\":[]}",
+    expected_schema: alert_expected_schema
+  ) {
+    ReceiptMemberMalformed { member: m, detail: _ } => m == "workflow_name"
+    _ => false
+  }
+}
+
+data component_summary_strictness_note: String = "The component summary's string fields get the same numeric-plant treatment as the event envelope, because they are the same class and were the residue review 49571 found: one decoder served all four fields and widened numbers on all four while the note beside it claimed only index did. Each plant replaces a value in place — not appended as a duplicate — for the reason the event plants record."
+
+fn component_with(index: String, label: String, outcome: String, mode: String) -> String {
+  concat(concat(concat(concat(concat(concat(concat(
+    "{\"index\":", index), ",\"label\":"), label), ",\"outcome\":"), outcome), ",\"failure_mode\":"), concat(mode, "}"))
+}
+
+data csum_valid_index: String = "6"
+data csum_valid_label: String = "\"witness discovery\""
+data csum_valid_outcome: String = "\"done\""
+data csum_valid_mode: String = "\"none\""
+
+fn decode_receipt_with_component(component: String) -> FloorComponentReceiptDecoding {
+  floor_component_receipt_decode_with(
+    text: receipt_with(
+      component_count: "1",
+      components: concat(concat("[", component), "]"),
+      unsuccessful: "[]"
+    ),
+    expected_schema: alert_expected_schema
+  )
+}
+
+fn component_numeric_plant_refuses_at(field: String) -> Bool {
+  let c = if field == "label" {
+    component_with(index: csum_valid_index, label: plant_number, outcome: csum_valid_outcome, mode: csum_valid_mode)
+  } else if field == "outcome" {
+    component_with(index: csum_valid_index, label: csum_valid_label, outcome: plant_number, mode: csum_valid_mode)
+  } else {
+    component_with(index: csum_valid_index, label: csum_valid_label, outcome: csum_valid_outcome, mode: plant_number)
+  }
+  match decode_receipt_with_component(component: c) {
+    ReceiptMemberMalformed { member: m, detail: _ } => m == field
+    _ => false
+  }
+}
+
+test fn a_numeric_component_label_refuses_located() -> Bool {
+  component_numeric_plant_refuses_at(field: "label")
+}
+
+test fn a_numeric_component_outcome_refuses_located() -> Bool {
+  component_numeric_plant_refuses_at(field: "outcome")
+}
+
+test fn a_numeric_component_failure_mode_refuses_located() -> Bool {
+  component_numeric_plant_refuses_at(field: "failure_mode")
+}
+
+test fn the_component_index_still_accepts_its_numeric_wire_form() -> Bool {
+  match decode_receipt_with_component(component: component_with(index: csum_valid_index, label: csum_valid_label, outcome: csum_valid_outcome, mode: csum_valid_mode)) {
+    ReceiptDecoded { document: doc } =>
+      match doc.component_summaries.first() {
+        Present { value: sm } => sm.index == 6
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+data operator_strict_boundary_claims_note: String = "The operator verdict's four decision-grain corrections, each asserted on the arm that was NOT already working. Every one of these fixtures decoded cleanly before the corrections landed, which is the whole point: the boundary guaranteed the fields were PRESENT and it did not guarantee they MEANT anything, and presence is invisible to a witness that only ever feeds well-formed input."
+
+data component_with_text_index: String = "{\"index\":\"6\",\"label\":\"witness discovery\",\"outcome\":\"done\",\"failure_mode\":\"none\"}"
+
+test fn a_text_component_index_refuses_rather_than_being_read_as_an_identity() -> Bool {
+  match decode_receipt_with_component(component: component_with_text_index) {
+    ReceiptMemberMalformed { member: m, detail: _ } => m == "index"
+    _ => false
+  }
+}
+
+data component_with_invented_outcome: String = "{\"index\":6,\"label\":\"witness discovery\",\"outcome\":\"banana\",\"failure_mode\":\"none\"}"
+
+test fn an_outcome_outside_the_modelled_vocabulary_refuses() -> Bool {
+  match decode_receipt_with_component(component: component_with_invented_outcome) {
+    ReceiptMemberMalformed { member: m, detail: _ } => m == "outcome"
+    _ => false
+  }
+}
+
+data component_with_invented_mode: String = "{\"index\":6,\"label\":\"witness discovery\",\"outcome\":\"done\",\"failure_mode\":\"looks-plausible\"}"
+
+test fn a_failure_mode_outside_the_modelled_vocabulary_refuses() -> Bool {
+  match decode_receipt_with_component(component: component_with_invented_mode) {
+    ReceiptMemberMalformed { member: m, detail: _ } => m == "failure_mode"
+    _ => false
+  }
+}
+
+test fn a_failed_outcome_without_its_error_payload_refuses_rather_than_defaulting() -> Bool {
+  match decode_receipt_with_component(component: "{\"index\":6,\"label\":\"x\",\"outcome\":\"failed\",\"output\":\"\",\"failure_mode\":\"WitnessRed\"}") {
+    ReceiptMemberMalformed { member: m, detail: _ } => m == "outcome"
+    _ => false
+  }
+}
+
+data population_join_claims_note: String = "The identity join, asserted in BOTH directions, because the two failures are not symmetric in consequence. A row listed as unsuccessful that is not failing over-reports and is merely noisy; a failing row MISSING from the list under-reports, and the alert then tells an operator that a component is fine while the receipt beside it says otherwise. The second is the one a uniqueness check could never see, so it is the one written first."
+
+test fn a_failing_component_omitted_from_the_unsuccessful_list_refuses() -> Bool {
+  match floor_component_receipt_decode_with(
+    text: receipt_with(component_count: "1", components: concat(concat("[", one_component), "]"), unsuccessful: "[]"),
+    expected_schema: alert_expected_schema
+  ) {
+    ReceiptUnsuccessfulPopulationMismatch { listed: l, derived: d } => l == 0 && d == 1
+    _ => false
+  }
+}
+
+test fn a_successful_component_listed_as_unsuccessful_refuses() -> Bool {
+  match floor_component_receipt_decode_with(
+    text: receipt_with(component_count: "1", components: concat(concat("[", one_done_component), "]"), unsuccessful: concat(concat("[", one_done_component), "]")),
+    expected_schema: alert_expected_schema
+  ) {
+    ReceiptUnsuccessfulPopulationMismatch { listed: l, derived: d } => l == 1 && d == 0
+    _ => false
+  }
+}
+
+test fn an_unsuccessful_row_naming_an_absent_component_refuses() -> Bool {
+  let ghost = "{\"index\":99,\"label\":\"never ran\",\"outcome\":\"failed\",\"error\":\"e\",\"output\":\"\",\"failure_mode\":\"WitnessRed\"}"
+  match floor_component_receipt_decode_with(
+    text: receipt_with(component_count: "1", components: concat(concat("[", one_component), "]"), unsuccessful: concat(concat("[", ghost), "]")),
+    expected_schema: alert_expected_schema
+  ) {
+    ReceiptUnsuccessfulPopulationMismatch { listed: _, derived: _ } => true
+    _ => false
+  }
+}
+
+test fn the_matching_population_decodes() -> Bool {
+  match floor_component_receipt_decode_with(
+    text: receipt_with(component_count: "1", components: concat(concat("[", one_component), "]"), unsuccessful: concat(concat("[", one_component), "]")),
+    expected_schema: alert_expected_schema
+  ) {
+    ReceiptDecoded { document: doc } => count(doc.unsuccessful_summaries) == 1 && count(doc.component_summaries) == 1
+    _ => false
+  }
+}
+
+test fn a_string_component_count_refuses_rather_than_comparing_as_text() -> Bool {
+  match floor_component_receipt_decode_with(
+    text: receipt_with(component_count: "\"1\"", components: concat(concat("[", one_done_component), "]"), unsuccessful: "[]"),
+    expected_schema: alert_expected_schema
+  ) {
+    ReceiptMemberMalformed { member: m, detail: _ } => m == "component_count"
+    _ => false
+  }
+}
+
+test fn the_unrecorded_failure_mode_the_writer_emits_decodes() -> Bool {
+  match decode_receipt_with_component(component: "{\"index\":6,\"label\":\"x\",\"outcome\":\"done\",\"failure_mode\":\"unrecorded\"}") {
+    ReceiptDecoded { document: _ } => true
+    _ => false
+  }
+}
+
+data pair_and_strict_number_claims_note: String = "The operator's live-head items B and C. Every fixture below carries two individually VALID typed values, or a numeric lexeme JSON is happy to call a number — so each one decoded cleanly under the previous revision and would have flowed into routing and incident identity."
+
+test fn an_impossible_outcome_and_mode_pair_refuses_even_though_both_are_typed() -> Bool {
+  match decode_receipt_with_component(component: "{\"index\":6,\"label\":\"x\",\"outcome\":\"done\",\"failure_mode\":\"WitnessRed\"}") {
+    ReceiptMemberMalformed { member: m, detail: _ } => m == "outcome"
+    _ => false
+  }
+}
+
+test fn a_failed_outcome_claiming_no_failure_mode_refuses() -> Bool {
+  match decode_receipt_with_component(component: "{\"index\":6,\"label\":\"x\",\"outcome\":\"failed\",\"error\":\"e\",\"output\":\"\",\"failure_mode\":\"none\"}") {
+    ReceiptMemberMalformed { member: m, detail: _ } => m == "outcome"
+    _ => false
+  }
+}
+
+test fn the_unrecorded_mode_keeps_its_broader_relationship() -> Bool {
+  let c = "{\"index\":6,\"label\":\"x\",\"outcome\":\"failed\",\"error\":\"e\",\"output\":\"\",\"failure_mode\":\"unrecorded\"}"
+  match floor_component_receipt_decode_with(
+    text: receipt_with(component_count: "1", components: concat(concat("[", c), "]"), unsuccessful: concat(concat("[", c), "]")),
+    expected_schema: alert_expected_schema
+  ) {
+    ReceiptDecoded { document: _ } => true
+    _ => false
+  }
+}
+
+test fn a_failed_outcome_output_is_read_rather_than_fabricated() -> Bool {
+  match floor_component_receipt_decode_with(
+    text: receipt_with(
+      component_count: "1",
+      components: "[{\"index\":6,\"label\":\"x\",\"outcome\":\"failed\",\"error\":\"e\",\"output\":\"the real captured output\",\"failure_mode\":\"WitnessRed\"}]",
+      unsuccessful: "[{\"index\":6,\"label\":\"x\",\"outcome\":\"failed\",\"error\":\"e\",\"output\":\"the real captured output\",\"failure_mode\":\"WitnessRed\"}]"
+    ),
+    expected_schema: alert_expected_schema
+  ) {
+    ReceiptDecoded { document: doc } =>
+      match doc.unsuccessful_summaries.first() {
+        Present { value: sm } =>
+          match sm.outcome {
+            ComponentConcluded { outcome: o } =>
+              match o {
+                Failed { error: _, output: out } => out == "the real captured output"
+                _ => false
+              }
+            ComponentNotConcluded => false
+          }
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+test fn a_failed_outcome_missing_its_output_member_refuses() -> Bool {
+  match decode_receipt_with_component(component: "{\"index\":6,\"label\":\"x\",\"outcome\":\"failed\",\"error\":\"e\",\"failure_mode\":\"WitnessRed\"}") {
+    ReceiptMemberMalformed { member: m, detail: _ } => m == "outcome"
+    _ => false
+  }
+}
+
+data strict_natural_claims_note: String = "Four lexemes JSON calls numbers and a cardinal index cannot be. Under parse_int each produced a value — a truncation, a wrong magnitude, or a negative position — with nothing marking the input as outside what the field means."
+
+test fn a_negative_component_index_refuses() -> Bool {
+  match decode_receipt_with_component(component: "{\"index\":-1,\"label\":\"x\",\"outcome\":\"done\",\"failure_mode\":\"none\"}") {
+    ReceiptMemberMalformed { member: m, detail: _ } => m == "index"
+    _ => false
+  }
+}
+
+test fn a_fractional_component_index_refuses() -> Bool {
+  match decode_receipt_with_component(component: "{\"index\":6.5,\"label\":\"x\",\"outcome\":\"done\",\"failure_mode\":\"none\"}") {
+    ReceiptMemberMalformed { member: m, detail: _ } => m == "index"
+    _ => false
+  }
+}
+
+test fn an_exponent_component_index_refuses() -> Bool {
+  match decode_receipt_with_component(component: "{\"index\":6e3,\"label\":\"x\",\"outcome\":\"done\",\"failure_mode\":\"none\"}") {
+    ReceiptMemberMalformed { member: m, detail: _ } => m == "index"
+    _ => false
+  }
+}
+
+test fn a_negative_component_count_refuses() -> Bool {
+  match floor_component_receipt_decode_with(
+    text: receipt_with(component_count: "-1", components: "[]", unsuccessful: "[]"),
+    expected_schema: alert_expected_schema
+  ) {
+    ReceiptMemberMalformed { member: m, detail: _ } => m == "component_count"
     _ => false
   }
 }

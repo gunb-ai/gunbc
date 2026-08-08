@@ -1,6 +1,6 @@
 module gunbc.roadmap_serve
 
-import std.types { String, Int, Bool, List, HttpMethod, GET, POST, HttpStatus }
+import std.types { String, Int, Bool, List, CommitSha, HttpMethod, GET, POST, HttpStatus }
 import std.http_path { PathParamBinding, path_param_value }
 import std.markup { Fragment }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
@@ -37,14 +37,17 @@ import gunbc.roadmap_component {
   dispatch_client_js_source, roadmap_dispatch_asset_path,
   sandbox_client_js_source, sandbox_asset_path,
   instrument_tuner_client_js_source, instrument_tuner_asset_path,
+  instrument_motion_client_js_source, instrument_motion_asset_path, instrument_motion_page_path,
+  instrument_sandbox_page_path, instrument_tuner_page_path,
 }
 import gunbc.roadmap_sandbox { sandbox_page }
 import gunbc.roadmap_instrument_sandbox { instrument_sandbox_page }
 import gunbc.roadmap_instrument_tuner { instrument_tuner_page }
+import gunbc.roadmap_instrument_motion { instrument_motion_page }
 import gunbc.roadmap_static_site {
   roadmap_site_roadmap_md_body,
   roadmap_site_dispatch_json_body,
-  roadmap_site_healthz_body,
+  roadmap_site_healthz_body_for_release,
 }
 import gunbc.roadmap_site_surface_render { page_render_refusal_body }
 import gunbc.roadmap_belt_actuate {
@@ -75,6 +78,11 @@ import gunbc.roadmap_belt_actuate {
   belt_publish_outcome_json_value,
 }
 import gunbc.roadmap_dashboard_instance_apply { dashboard_provider_readiness_json }
+import gunbc.owned_ci_serve {
+  serve_ci_runs_page_response,
+  serve_ci_run_detail_response,
+  serve_ci_runs_json_response,
+}
 import gunbc.roadmap_dashboard_instance {
   dashboard_instance_health_schema,
   HostDashboardInstance,
@@ -118,6 +126,8 @@ type RoadmapServeHandler
   | InstrumentSandboxPageHandler
   | InstrumentTunerPageHandler
   | InstrumentTunerAssetHandler
+  | InstrumentMotionPageHandler
+  | InstrumentMotionAssetHandler
   | SandboxAssetHandler
   | SandboxEchoHandler
   | SessionsJsonHandler
@@ -125,6 +135,9 @@ type RoadmapServeHandler
   | WorkflowJsonHandler
   | BeltStopHandler
   | BeltPublishHandler
+  | CiRunsPageHandler
+  | CiRunDetailPageHandler
+  | CiRunsJsonHandler
 
 data roadmap_serve_table_build_note: String = "Fail-closed table construction (review 40286, the §5 catch: the earlier serve_tpl mapped MalformedPathTemplate to an EMPTY template, and an empty template matches exactly '/' — so a typo in any route literal would have silently become a second root matcher, a widen at the very seam §5 forbids). The build is now a typed fold: the FIRST malformed literal refuses the WHOLE table (RoadmapServeTableRefused carries raw/segment/reason — typed, located), and the serve entry answers EVERY request with a 500 naming the broken literal until it is fixed — a loudly broken dashboard, never silently wrong routing. The RED control is witness_malformed_route_literal_refuses_table (a bad literal through the same build fold -> Refused)."
 
@@ -152,15 +165,20 @@ fn roadmap_serve_route_specs() -> List<RoadmapServeRouteSpec> {
     RoadmapServeRouteSpec { method: GET, raw: "/workflow.json", handler: WorkflowJsonHandler },
     RoadmapServeRouteSpec { method: GET, raw: roadmap_dispatch_asset_path, handler: DispatchAssetHandler },
     RoadmapServeRouteSpec { method: GET, raw: "/sandbox", handler: SandboxPageHandler },
-    RoadmapServeRouteSpec { method: GET, raw: "/sandbox/instrument", handler: InstrumentSandboxPageHandler },
-    RoadmapServeRouteSpec { method: GET, raw: "/sandbox/instrument/tuner", handler: InstrumentTunerPageHandler },
+    RoadmapServeRouteSpec { method: GET, raw: instrument_sandbox_page_path, handler: InstrumentSandboxPageHandler },
+    RoadmapServeRouteSpec { method: GET, raw: instrument_tuner_page_path, handler: InstrumentTunerPageHandler },
     RoadmapServeRouteSpec { method: GET, raw: instrument_tuner_asset_path, handler: InstrumentTunerAssetHandler },
+    RoadmapServeRouteSpec { method: GET, raw: instrument_motion_page_path, handler: InstrumentMotionPageHandler },
+    RoadmapServeRouteSpec { method: GET, raw: instrument_motion_asset_path, handler: InstrumentMotionAssetHandler },
     RoadmapServeRouteSpec { method: GET, raw: sandbox_asset_path, handler: SandboxAssetHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/sandbox/echo", handler: SandboxEchoHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/dispatch/\{node_id\}", handler: BeltDispatchHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/publish/\{node_id\}", handler: BeltPublishHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/cleanup/\{node_id\}", handler: BeltStopHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/stop/\{node_id\}", handler: BeltStopHandler },
+    RoadmapServeRouteSpec { method: GET, raw: "/ci", handler: CiRunsPageHandler },
+    RoadmapServeRouteSpec { method: GET, raw: "/ci/runs.json", handler: CiRunsJsonHandler },
+    RoadmapServeRouteSpec { method: GET, raw: "/ci/run/\{run_id\}", handler: CiRunDetailPageHandler },
   ]
 }
 
@@ -244,14 +262,14 @@ data belt_dispatch_status_note: String = "TOTAL per-variant status mapping — e
 
 fn belt_dispatch_status(r: BeltDispatchResult) -> HttpStatus {
   match r {
-    DispatchSpawned { node_id: _, session_name: _ } => 200
+    DispatchSpawned { node_id: _, session_name: _, provider: _ } => 200
     DispatchAlreadyLive { node_id: _, session_name: _ } => 200
     DispatchDisabled { node_id: _, instance_id: _, reason: _ } => 403
     DispatchNodeNotFound { node_id: _ } => 404
     DispatchNodeAlreadyDone { node_id: _ } => 409
     DispatchObserveRefused { node_id: _, reason: _ } => 503
     DispatchAuthorityRefused { node_id: _, detail: _ } => 503
-    DispatchSpawnFailed { node_id: _, step: _, detail: _ } => 502
+    DispatchSpawnFailed { node_id: _, step: _, detail: _, provider: _ } => 502
   }
 }
 
@@ -382,13 +400,14 @@ fn roadmap_serve_invoke_for_instance(
   handler: RoadmapServeHandler,
   params: List<PathParamBinding>,
   request: ServeHttpRequest,
+  release_revision: CommitSha,
 ) -> ServeHttpResponse {
   match handler {
     RoadmapDailyPageHandler => serve_daily_page_response_for_instance(instance: instance)
     RoadmapFullPageHandler => serve_page_response(page: roadmap_page_for_authority())
     RoadmapMdHandler => serve_text_response(status: 200, content_type: text_plain_utf8, body: roadmap_site_roadmap_md_body())
     DispatchJsonHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_dispatch_json_body())
-    HealthzHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_healthz_body())
+    HealthzHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_healthz_body_for_release(release_revision: release_revision))
     DashboardInstanceHandler =>
       serve_text_response(
         status: 200,
@@ -408,6 +427,8 @@ fn roadmap_serve_invoke_for_instance(
     InstrumentSandboxPageHandler => serve_page_response(page: instrument_sandbox_page())
     InstrumentTunerPageHandler => serve_page_response(page: instrument_tuner_page())
     InstrumentTunerAssetHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: instrument_tuner_client_js_source())
+    InstrumentMotionPageHandler => serve_page_response(page: instrument_motion_page())
+    InstrumentMotionAssetHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: instrument_motion_client_js_source())
     SandboxAssetHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: sandbox_client_js_source())
     SandboxEchoHandler => sandbox_echo_response(request: request)
     SessionsJsonHandler => serve_sessions_response_for_instance(instance: instance)
@@ -415,6 +436,9 @@ fn roadmap_serve_invoke_for_instance(
     WorkflowJsonHandler => serve_workflow_response_for_instance(instance: instance)
     BeltStopHandler => serve_stop_handler_response_for_instance(instance: instance, params: params)
     BeltPublishHandler => serve_publish_handler_response_for_instance(instance: instance, params: params)
+    CiRunsPageHandler => serve_ci_runs_page_response()
+    CiRunsJsonHandler => serve_ci_runs_json_response()
+    CiRunDetailPageHandler => serve_ci_run_detail_response(params: params)
   }
 }
 
@@ -422,12 +446,14 @@ fn roadmap_serve_invoke(
   handler: RoadmapServeHandler,
   params: List<PathParamBinding>,
   request: ServeHttpRequest,
+  release_revision: CommitSha,
 ) -> ServeHttpResponse {
   roadmap_serve_invoke_for_instance(
     instance: srv1_live_dashboard_instance(),
     handler: handler,
     params: params,
     request: request,
+    release_revision: release_revision,
   )
 }
 
@@ -540,6 +566,7 @@ fn roadmap_serve_selection_response_for_instance(
   instance: HostDashboardInstance,
   sel: RouteSelection<RoadmapServeHandler>,
   request: ServeHttpRequest,
+  release_revision: CommitSha,
 ) -> ServeHttpResponse {
   match sel {
     SelectedDynamic { handler: h, params: ps } =>
@@ -548,6 +575,7 @@ fn roadmap_serve_selection_response_for_instance(
         handler: h,
         params: ps,
         request: request,
+        release_revision: release_revision,
       )
     SelectedStatic { route: r } =>
       ServeHttpResponse { status: r.status_on_hit, content_type: r.content_type, body: r.body }
@@ -565,11 +593,13 @@ fn roadmap_serve_selection_response_for_instance(
 fn roadmap_serve_selection_response(
   sel: RouteSelection<RoadmapServeHandler>,
   request: ServeHttpRequest,
+  release_revision: CommitSha,
 ) -> ServeHttpResponse {
   roadmap_serve_selection_response_for_instance(
     instance: srv1_live_dashboard_instance(),
     sel: sel,
     request: request,
+    release_revision: release_revision,
   )
 }
 
@@ -578,6 +608,7 @@ fn roadmap_serve_respond_for_instance(
   method_label: String,
   path: String,
   body: String,
+  release_revision: CommitSha,
 ) -> ServeHttpResponse {
   match parse_http_method_label(label: method_label) {
     UnknownMethod { label: l } =>
@@ -604,61 +635,98 @@ fn roadmap_serve_respond_for_instance(
             instance: instance,
             sel: serve_select_route(table: t, method: m, path: path),
             request: ServeHttpRequest { method: m, path: path, body: body },
+            release_revision: release_revision,
           )
       }
   }
 }
 
-fn roadmap_serve_respond(method_label: String, path: String, body: String) -> ServeHttpResponse {
+fn roadmap_serve_respond(
+  method_label: String,
+  path: String,
+  body: String,
+  release_revision: CommitSha,
+) -> ServeHttpResponse {
   roadmap_serve_respond_for_instance(
     instance: srv1_live_dashboard_instance(),
     method_label: method_label,
     path: path,
     body: body,
+    release_revision: release_revision,
   )
 }
 
-fn roadmap_serve_handle(method: String, path: String, body: String) -> ServeWireResponse {
+fn roadmap_serve_handle(
+  method: String,
+  path: String,
+  body: String,
+  release_revision: CommitSha,
+) -> ServeWireResponse {
   serve_wire_response(r: roadmap_serve_respond_for_instance(
     instance: srv1_live_dashboard_instance(),
     method_label: method,
     path: path,
     body: body,
+    release_revision: release_revision,
   ))
 }
 
-fn roadmap_serve_handle_srv1_green(method: String, path: String, body: String) -> ServeWireResponse {
+fn roadmap_serve_handle_srv1_green(
+  method: String,
+  path: String,
+  body: String,
+  release_revision: CommitSha,
+) -> ServeWireResponse {
   serve_wire_response(r: roadmap_serve_respond_for_instance(
     instance: srv1_green_dashboard_instance(),
     method_label: method,
     path: path,
     body: body,
+    release_revision: release_revision,
   ))
 }
 
-fn roadmap_serve_handle_srv1_lab(method: String, path: String, body: String) -> ServeWireResponse {
+fn roadmap_serve_handle_srv1_lab(
+  method: String,
+  path: String,
+  body: String,
+  release_revision: CommitSha,
+) -> ServeWireResponse {
   serve_wire_response(r: roadmap_serve_respond_for_instance(
     instance: srv1_lab_dashboard_instance(),
     method_label: method,
     path: path,
     body: body,
+    release_revision: release_revision,
   ))
 }
 
-fn roadmap_serve_handle_srv2_preview(method: String, path: String, body: String) -> ServeWireResponse {
+fn roadmap_serve_handle_srv2_preview(
+  method: String,
+  path: String,
+  body: String,
+  release_revision: CommitSha,
+) -> ServeWireResponse {
   serve_wire_response(r: roadmap_serve_respond_for_instance(
     instance: srv2_preview_dashboard_instance(),
     method_label: method,
     path: path,
     body: body,
+    release_revision: release_revision,
   ))
 }
 
-fn roadmap_serve_handle_srv2_lab(method: String, path: String, body: String) -> ServeWireResponse {
+fn roadmap_serve_handle_srv2_lab(
+  method: String,
+  path: String,
+  body: String,
+  release_revision: CommitSha,
+) -> ServeWireResponse {
   serve_wire_response(r: roadmap_serve_respond_for_instance(
     instance: srv2_lab_dashboard_instance(),
     method_label: method,
     path: path,
     body: body,
+    release_revision: release_revision,
   ))
 }

@@ -2,6 +2,9 @@ module test.claim.exact_witness_admission_witness
 
 import gunbc.explicit_witness_admission {
   ExplicitWitnessAdmission,
+  explicit_witness_admission_is_known_red,
+  explicit_witness_admission_requires_long_eval_budget,
+  witness_long_eval_budget_roster,
   explicit_witness_admissions,
   explicit_witness_admission_covers,
   explicit_witness_admission_covers_in,
@@ -11,9 +14,15 @@ import gunbc.explicit_witness_admission {
   known_red_probe,
   known_red_probe_corpus_roster,
   known_red_probe_v1_envelope_roster,
-  known_red_probe_execution_roster
+  known_red_probe_execution_roster,
+  known_red_probe_corpus_fast_budget_roster,
+  known_red_probe_corpus_long_budget_roster,
+  known_red_probe_corpus_pre_verdict_fast_budget_roster,
+  known_red_probe_corpus_pre_verdict_long_budget_roster,
+  known_red_pre_verdict_refusal_roster,
+  known_red_probe_expecting
 }
-import gunbc.ci_layer_roots { known_red_probe_roster }
+import gunbc.ci_layer_roots { known_red_probe_roster, witness_long_eval_budget_entries, witness_long_eval_budget_union_in, falsifier_substrate_long_lane_entries }
 import v2.workflow.witness_admission {
   explicit_witness_admission_uniqueness_holds,
   explicit_witness_admission_rows_well_formed_holds,
@@ -25,11 +34,25 @@ import v2.workflow.witness_admission {
 import std.realization_schedule {
   ScheduleWitnessEntry,
   CorpusWitnessKind,
-  ExecutionWitnessKind
+  ExecutionWitnessKind,
+  schedule_witness_entry_eq,
+  schedule_witness_entry_roster_contains
 }
-import std.witness_admission { OfflineLocalRecipe }
+import std.witness_admission {
+  OfflineLocalRecipe,
+  FalsifierSubstrateLongLane,
+  QuarantineProbeExpectRed,
+  SubstrateLongLaneEvalBudget,
+  FastLaneEvalBudget,
+  ExpectAssertionFalse,
+  ExpectTypedPreVerdictRefusal,
+  PreVerdictResolve,
+  UnboundImportedVariantConstructor,
+  ExpectWitnessHolds
+}
 import v2.std.algebra { length }
 import v2.std.collection { List }
+import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -56,6 +79,7 @@ fn fixture_exact_admission_rows() -> List<ExplicitWitnessAdmission> {
       entry: fixture_entry,
       f: fixture_expected_red_function,
       kind: CorpusWitnessKind,
+      budget: FastLaneEvalBudget,
       reason: "fixture: an expected-red witness sharing a file with an ordinary green one",
       dissolve_on: "fixture: never - this row is authored by the witness, not by the roster"
     )
@@ -68,6 +92,7 @@ fn fixture_file_grain_admission_rows() -> List<ExplicitWitnessAdmission> {
       entry: fixture_entry,
       f: "",
       kind: CorpusWitnessKind,
+      budget: FastLaneEvalBudget,
       reason: "fixture: the file-grain shape this authority replaced",
       dissolve_on: "fixture: never - control only"
     )
@@ -117,6 +142,7 @@ fn synthetic_admission(f: String) -> ExplicitWitnessAdmission {
     entry: "dag/test/claim/synthetic_admission_witness_test.dag",
     f: f,
     kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
     reason: "synthetic",
     dissolve_on: "synthetic"
   )
@@ -142,6 +168,8 @@ test fn red_control_admission_with_non_executing_cadence_reds() -> Bool {
           kind: CorpusWitnessKind
         },
         cadence: OfflineLocalRecipe,
+        budget: FastLaneEvalBudget,
+        expected: ExpectAssertionFalse,
         reason: "synthetic",
         dissolve_on: "synthetic"
       }
@@ -165,3 +193,220 @@ test fn red_control_file_grain_admission_would_reach_the_sibling() -> Bool {
 data red_control_file_grain_note: String = "red_control_file_grain_admission_would_reach_the_sibling is what keeps the discriminating claim from passing vacuously: it runs the SAME predicate over the file-grain shape and shows it DOES reach the sibling, so the false in the primary assertion is a decision about grain rather than a predicate that never matches. Both arms are synthetic, so neither can lose its subject when a live quarantine climbs out."
 
 data live_row_claims_are_population_independent_note: String = "every_live_admission_is_reached_by_its_own_row, every_admission_is_projected_into_exactly_one_cadence_roster and ci_layer_roots_probe_roster_is_the_corpus_projection are universals and identities over the live rows. They hold at any roster size, including zero, and they are deliberately NOT where the discrimination lives - a check whose strength depends on the live population having members is a check that goes quietly vacuous the moment the lane it guards succeeds."
+
+
+data axis_separation_witness_note: String = "THE AXIS-SEPARATION CLAIM, and the synthetic pair is the whole content of it. Polarity used to be read off the cadence, so the two facts could not disagree and any assertion about them was a tautology. These rows make them disagree on purpose: one row is expected-RED on a NON-quarantine cadence, the other is expected-HOLDS on the quarantine cadence. If anything still derives polarity from the cadence, exactly one of the two assertions below flips. The live-population claims that follow are universals and hold at any roster size — the discrimination lives here, in rows nobody can green by fixing a lane."
+
+fn synthetic_long_lane_cadence_but_expected_red() -> ExplicitWitnessAdmission {
+  ExplicitWitnessAdmission {
+    witness: ScheduleWitnessEntry {
+      entry: "dag/test/claim/synthetic_admission_witness_test.dag",
+      function: "a_holds",
+      kind: CorpusWitnessKind
+    },
+    cadence: FalsifierSubstrateLongLane,
+    budget: SubstrateLongLaneEvalBudget,
+    expected: ExpectAssertionFalse,
+    reason: "synthetic",
+    dissolve_on: "synthetic"
+  }
+}
+
+fn synthetic_quarantine_cadence_but_expected_holds() -> ExplicitWitnessAdmission {
+  ExplicitWitnessAdmission {
+    witness: ScheduleWitnessEntry {
+      entry: "dag/test/claim/synthetic_admission_witness_test.dag",
+      function: "b_holds",
+      kind: CorpusWitnessKind
+    },
+    cadence: QuarantineProbeExpectRed,
+    budget: FastLaneEvalBudget,
+    expected: ExpectWitnessHolds,
+    reason: "synthetic",
+    dissolve_on: "synthetic"
+  }
+}
+
+test fn expected_verdict_is_independent_of_cadence() -> Bool {
+  explicit_witness_admission_is_known_red(row: synthetic_long_lane_cadence_but_expected_red())
+    && !explicit_witness_admission_is_known_red(
+      row: synthetic_quarantine_cadence_but_expected_holds()
+    )
+}
+
+test fn eval_budget_is_independent_of_cadence_and_of_expected_verdict() -> Bool {
+  explicit_witness_admission_requires_long_eval_budget(
+    row: synthetic_long_lane_cadence_but_expected_red()
+  )
+    && !explicit_witness_admission_requires_long_eval_budget(
+      row: synthetic_quarantine_cadence_but_expected_holds()
+    )
+}
+
+data long_budget_union_note: String = "The scheduler ceiling reads the UNION, so a row that declares its own long budget is covered without appearing on the long-lane BATCH roster. The second clause is what makes that a real separation rather than a renaming: a declared-long row is genuinely absent from the batch roster, so it occupies one schedule position, not two. The union is an IDENTITY SET, and the counting clause below is stated as one-occurrence-per-declared-row rather than as a sum of the two input lengths — a sum is only correct while the inputs happen to be disjoint, which is a property of today's population and not of the mechanism, so it would go quietly wrong exactly when a row starts reaching the ceiling through both inputs."
+
+fn long_budget_union_occurrences(w: ScheduleWitnessEntry) -> Int {
+  fold(witness_long_eval_budget_entries(), init: 0, f: fn(n, x) {
+    if schedule_witness_entry_eq(a: x, b: w) { n + 1 } else { n }
+  })
+}
+
+test fn declared_long_budget_reaches_the_ceiling_roster_without_the_batch_roster() -> Bool {
+  let declared = witness_long_eval_budget_roster()
+  let batch = falsifier_substrate_long_lane_entries()
+  (length(xs: declared) > 0)
+    && fold(declared, init: true, f: fn(ok, w) {
+      ok
+        && (long_budget_union_occurrences(w: w) == 1)
+        && !any(xs: batch, predicate: fn(b) { schedule_witness_entry_eq(a: b, b: w) })
+    })
+    && fold(batch, init: true, f: fn(ok, b) { ok && (long_budget_union_occurrences(w: b) == 1) })
+}
+
+data long_budget_identity_set_control_note: String = "THE DISCRIMINATING CONTROL FOR THE DEDUP, and it drives the union fold with PLANTED inputs rather than observing the live one. A control that reads only the live union cannot see the dedup at all: today's two inputs are disjoint, so deleting the membership check changes nothing observable and the control passes either way — measured, not assumed (removing the check left both live clauses green). The plant supplies the overlap the population does not currently have, so the first clause fails the moment the fold stops joining on identity. Third clause is the negative pole: a row on neither input is absent, so membership is not answering true for everything. Fourth: a genuinely distinct row is kept, so the dedup is not collapsing on something coarser than identity."
+
+fn synthetic_union_row(f: String) -> ScheduleWitnessEntry {
+  ScheduleWitnessEntry {
+    entry: "dag/test/claim/synthetic_admission_witness_test.dag",
+    function: f,
+    kind: CorpusWitnessKind
+  }
+}
+
+fn planted_union_occurrences(
+  batch: List<ScheduleWitnessEntry>,
+  declared: List<ScheduleWitnessEntry>,
+  w: ScheduleWitnessEntry
+) -> Int {
+  fold(
+    witness_long_eval_budget_union_in(batch: batch, declared: declared),
+    init: 0,
+    f: fn(n, x) { if schedule_witness_entry_eq(a: x, b: w) { n + 1 } else { n } }
+  )
+}
+
+test fn red_control_long_budget_union_collapses_a_row_present_in_both_inputs() -> Bool {
+  let overlapping = synthetic_union_row(f: "reaches_the_ceiling_through_both_inputs")
+  let batch_only = synthetic_union_row(f: "on_the_batch_roster_only")
+  let declared_only = synthetic_union_row(f: "declares_its_own_budget_only")
+  let absent = synthetic_union_row(f: "never_enrolled_anywhere")
+  let batch = [batch_only, overlapping]
+  let declared = [overlapping, declared_only]
+  (planted_union_occurrences(batch: batch, declared: declared, w: overlapping) == 1)
+    && (length(xs: witness_long_eval_budget_union_in(batch: batch, declared: declared)) == 3)
+    && (planted_union_occurrences(batch: batch, declared: declared, w: absent) == 0)
+    && (planted_union_occurrences(batch: batch, declared: declared, w: declared_only) == 1)
+    && schedule_witness_entry_roster_contains(xs: batch, w: overlapping)
+    && !schedule_witness_entry_roster_contains(xs: batch, w: declared_only)
+}
+
+test fn every_declared_long_budget_row_is_also_expected_red_today() -> Bool {
+  fold(explicit_witness_admissions, init: true, f: fn(ok, row) {
+    if explicit_witness_admission_requires_long_eval_budget(row: row) {
+      ok && explicit_witness_admission_is_known_red(row: row)
+    } else {
+      ok
+    }
+  })
+}
+
+data both_axes_on_one_row_note: String = "every_declared_long_budget_row_is_also_expected_red_today is the live receipt that the previously inexpressible combination — expensive AND known-red — is now carried on ONE row. It is an observation of today's population, not a law: a green witness may declare a long budget, and when one does this claim retires rather than being relaxed."
+
+data budget_partition_witness_note: String = "THE RECUT CLAIM. Two facts have to hold together and neither alone is enough: the two batches must PARTITION the lane (every known-red corpus row on exactly one side, nothing invented, nothing dropped) and each side must be HOMOGENEOUS in declared budget. A partition alone would be satisfied by any split, including the mixed batch this replaces; homogeneity alone would be satisfied by dropping every row that does not fit. The population is derived, so these hold at any roster size including an empty long side."
+
+fn budget_partition_side_count(xs: List<ScheduleWitnessEntry>) -> Int {
+  length(xs: xs)
+}
+
+test fn budget_rosters_partition_the_known_red_corpus_lane() -> Bool {
+  let fast = known_red_probe_corpus_fast_budget_roster()
+  let long = known_red_probe_corpus_long_budget_roster()
+  let pv_fast = known_red_probe_corpus_pre_verdict_fast_budget_roster()
+  let pv_long = known_red_probe_corpus_pre_verdict_long_budget_roster()
+  let whole = known_red_probe_corpus_roster()
+  let split = budget_partition_side_count(xs: fast) +
+    budget_partition_side_count(xs: long) +
+    budget_partition_side_count(xs: pv_fast) +
+    budget_partition_side_count(xs: pv_long)
+  (split == budget_partition_side_count(xs: whole))
+    && fold(whole, init: true, f: fn(ok, w) {
+      let sides = (if schedule_witness_entry_roster_contains(xs: fast, w: w) { 1 } else { 0 }) +
+        (if schedule_witness_entry_roster_contains(xs: long, w: w) { 1 } else { 0 }) +
+        (if schedule_witness_entry_roster_contains(xs: pv_fast, w: w) { 1 } else { 0 }) +
+        (if schedule_witness_entry_roster_contains(xs: pv_long, w: w) { 1 } else { 0 })
+      ok && (sides == 1)
+    })
+}
+
+test fn no_batch_mixes_a_pre_verdict_row_with_an_assertion_false_row() -> Bool {
+  let pv = known_red_pre_verdict_refusal_roster()
+  let assertion_false_sides = concat(
+    known_red_probe_corpus_fast_budget_roster(),
+    known_red_probe_corpus_long_budget_roster()
+  )
+  let pre_verdict_sides = concat(
+    known_red_probe_corpus_pre_verdict_fast_budget_roster(),
+    known_red_probe_corpus_pre_verdict_long_budget_roster()
+  )
+  fold(assertion_false_sides, init: true, f: fn(ok, w) {
+    ok && !schedule_witness_entry_roster_contains(xs: pv, w: w)
+  })
+    && fold(pre_verdict_sides, init: true, f: fn(ok, w) {
+      ok && schedule_witness_entry_roster_contains(xs: pv, w: w)
+    })
+    && (length(xs: pre_verdict_sides) > 0)
+}
+
+test fn each_budget_roster_is_homogeneous_in_declared_budget() -> Bool {
+  let declared = witness_long_eval_budget_roster()
+  fold(concat(
+    known_red_probe_corpus_long_budget_roster(),
+    known_red_probe_corpus_pre_verdict_long_budget_roster()
+  ), init: true, f: fn(ok, w) {
+    ok && schedule_witness_entry_roster_contains(xs: declared, w: w)
+  })
+    && fold(concat(
+      known_red_probe_corpus_fast_budget_roster(),
+      known_red_probe_corpus_pre_verdict_fast_budget_roster()
+    ), init: true, f: fn(ok, w) {
+      ok && !schedule_witness_entry_roster_contains(xs: declared, w: w)
+    })
+}
+
+data pre_verdict_roster_witness_note: String = "known_red_pre_verdict_refusal_roster must be a STRICT SUBSET of the known-red roster and must not swallow it, because it is the only population allowed to turn a corpus-level refuse — which carries no per-witness outcome — into agreement. If it ever equals the known-red roster, the narrowing this claim exists to hold has been undone and any resolve failure in a known-red batch reports every quarantine as holding again. The synthetic pair below is the discrimination: the same predicate answers true for a declared pre-verdict row and false for an ordinary known-red row, so the live subset relation is a decision rather than a predicate that never matches."
+
+fn synthetic_pre_verdict_row() -> ExplicitWitnessAdmission {
+  known_red_probe_expecting(
+    entry: "dag/test/claim/synthetic_admission_witness_test.dag",
+    f: "cannot_resolve_at_all",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    expected: ExpectTypedPreVerdictRefusal {
+      phase: PreVerdictResolve,
+      cause: UnboundImportedVariantConstructor
+    },
+    reason: "synthetic",
+    dissolve_on: "synthetic"
+  )
+}
+
+fn synthetic_assertion_false_row() -> ExplicitWitnessAdmission {
+  known_red_probe_expecting(
+    entry: "dag/test/claim/synthetic_admission_witness_test.dag",
+    f: "runs_and_returns_false",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    expected: ExpectAssertionFalse,
+    reason: "synthetic",
+    dissolve_on: "synthetic"
+  )
+}
+
+test fn both_red_expectations_are_known_red_but_only_one_expects_a_pre_verdict_refusal() -> Bool {
+  let pre_verdict_count = budget_partition_side_count(xs: known_red_pre_verdict_refusal_roster())
+  let known_red_count = budget_partition_side_count(xs: known_red_probe_roster())
+  explicit_witness_admission_is_known_red(row: synthetic_pre_verdict_row())
+    && explicit_witness_admission_is_known_red(row: synthetic_assertion_false_row())
+    && (pre_verdict_count < known_red_count)
+    && (pre_verdict_count > 0)
+}

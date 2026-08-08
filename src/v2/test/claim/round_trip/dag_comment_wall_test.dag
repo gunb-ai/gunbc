@@ -66,8 +66,7 @@ test fn dag_leading_annotation_above_a_module_item_compiles() -> Bool {
   )
 }
 
-data body_grain_still_refused_note: String = "Body-grain prose stays refused, and this is the discriminating partner of the row above: the two sources differ ONLY in whether the comment sits above the declaration or inside its body, so acceptance cannot be coming from the comment being ignored — an ignored comment would make both compile."
-
+// Body-grain prose stays refused, and this is the discriminating partner of the row above: the two sources differ ONLY in whether the comment sits above the declaration or inside its body, so acceptance cannot be coming from the comment being ignored — an ignored comment would make both compile.
 test fn dag_annotation_inside_a_body_is_still_refused() -> Bool {
   !dag_comment_wall_probe_compiles(
     source: "module comment_wall_body\n\nfn probe() -> Bool {\n  // prose inside the body\n  true\n}\n",

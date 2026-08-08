@@ -2,6 +2,10 @@ module test.claim.floor_component_receipt_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { NonEmptyStr, String, Bool, List, Int, CommitSha }
+import gunbc.floor_component_receipt_document {
+  FloorComponentReceiptDecoding, ReceiptDecoded,
+  floor_component_receipt_decode_with
+}
 import std.nat { Nat }
 import std.measure { Millisecond, millisecond }
 import std.measure { ClockBasis, CpuClock, WallClock }
@@ -278,6 +282,28 @@ test fn fcr_not_reached_mode_is_skipped_not_failed() -> Bool {
   fcr_mode_outcome_is(mode: "not_reached" as NonEmptyStr, expected_outcome: "skipped")
 }
 
+data fcr_run_incomplete_note: String = "run_incomplete and not_reached share the Skipped outcome and MUST NOT share a mode — the same both-halves discipline fcr_failure_mode_edge_note states for Infra/WitnessRed, applied to the pair the checkpoint introduced. The outcomes agreeing is the record staying correct (neither produced a verdict); the modes differing is what lets a reader tell a run that was KILLED mid-flight from a plan that CONCLUDED and deliberately skipped the tail. Those route to different owners — one is 'find out why the run never finished', the other is 'fix the earlier component' — and the receipt is the only evidence a SIGKILLed run leaves, so getting this pair wrong tells a wrong causal story about precisely the incident the checkpoint exists to explain. Either half alone is satisfiable by a broken projection, so both are asserted."
+
+test fn fcr_run_incomplete_mode_is_skipped_like_not_reached() -> Bool {
+  fcr_mode_outcome_is(mode: "run_incomplete" as NonEmptyStr, expected_outcome: "skipped")
+}
+
+test fn fcr_deadline_reached_is_refused_not_skipped() -> Bool {
+  fcr_mode_outcome_is(mode: "deadline_reached" as NonEmptyStr, expected_outcome: "refused")
+    && !fcr_mode_outcome_is(mode: "deadline_reached" as NonEmptyStr, expected_outcome: "skipped")
+}
+
+test fn fcr_deadline_reached_is_distinct_from_both_skipped_causes() -> Bool {
+  fcr_mode_of(mode: "deadline_reached" as NonEmptyStr) == "deadline_reached"
+    && !(fcr_mode_of(mode: "deadline_reached" as NonEmptyStr) == fcr_mode_of(mode: "not_reached" as NonEmptyStr))
+    && !(fcr_mode_of(mode: "deadline_reached" as NonEmptyStr) == fcr_mode_of(mode: "run_incomplete" as NonEmptyStr))
+}
+
+test fn fcr_run_incomplete_is_a_distinct_mode_from_not_reached() -> Bool {
+  fcr_mode_of(mode: "run_incomplete" as NonEmptyStr) == "run_incomplete"
+    && !(fcr_mode_of(mode: "run_incomplete" as NonEmptyStr) == fcr_mode_of(mode: "not_reached" as NonEmptyStr))
+}
+
 test fn fcr_red_control_unmodelled_failure_mode_refuses_never_widens() -> Bool {
   let unknown = fcr_mode_row(mode: "SomeNewModeAddedLater" as NonEmptyStr)
   let budget = fcr_mode_row(mode: "BudgetExceeded" as NonEmptyStr)
@@ -366,7 +392,55 @@ test fn fcr_failure_mode_edge_agrees_with_the_outcome_mapping() -> Bool {
     && fcr_mode_of(mode: "BudgetExceeded" as NonEmptyStr) == "BudgetExceeded"
     && fcr_mode_of(mode: "Infra" as NonEmptyStr) == "Infra"
     && fcr_mode_of(mode: "WitnessRed" as NonEmptyStr) == "WitnessRed"
+    && fcr_mode_of(mode: "StaleKnownRed" as NonEmptyStr) == "StaleKnownRed"
+    && fcr_mode_of(mode: "ExpectedRedEvidenceAbsent" as NonEmptyStr) == "ExpectedRedEvidenceAbsent"
     && fcr_mode_of(mode: "not_reached" as NonEmptyStr) == "not_reached"
+}
+
+data fcr_stale_known_red_note: String = "A known-red witness that starts PASSING and a witness that regresses are opposite events with opposite remedies — delete the now-stale admission row, versus fix the code. This asserts the receipt keeps them apart in BOTH directions: StaleKnownRed carries its own mode AND its own outcome, so it can neither be read as an ordinary WitnessRed in the alert's class signature nor be mistaken for a component that is fine. The Done clause is the load-bearing half: an expected-red row that silently went green must not be admitted as success, or the roster accumulates rows nobody revisits."
+
+test fn fcr_stale_known_red_is_a_refusal_distinct_from_witness_red_and_from_done() -> Bool {
+  let stale_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "StaleKnownRed" as NonEmptyStr)])
+  let red_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "WitnessRed" as NonEmptyStr)])
+  let stale_doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: stale_rows)
+  let red_doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: red_rows)
+  count(stale_rows) == 1
+    && string_contains(s: stale_doc, pattern: "\"failure_mode\": \"StaleKnownRed\"")
+    && string_contains(s: stale_doc, pattern: "\"outcome\": \"refused\"")
+    && string_contains(s: stale_doc, pattern: "\"diagnostic\"")
+    && !string_contains(s: stale_doc, pattern: "\"outcome\": \"done\"")
+    && !(stale_doc == red_doc)
+}
+
+data fcr_pre_verdict_unverified_note: String = "The THIRD arm on this axis, and it must be distinguishable from BOTH of the others because all three demand different actions. StaleKnownRed says an executed row passed — DELETE the admission. ExpectedRedEvidenceAbsent says a rostered row produced no observation — make it RUN. ExpectedRedPreVerdictUnverified says the row stopped as declared, before any verdict, and nothing yet proves it stopped for the DECLARED REASON — the remedy is neither delete nor rerun but carrying the typed phase and cause across the execution boundary. It renders as refused, never done: a declaration classifies a stop, it does not verify one, and rendering it green was the defect this arm replaces."
+
+test fn fcr_pre_verdict_unverified_is_a_refusal_distinct_from_both_siblings() -> Bool {
+  let unverified_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "ExpectedRedPreVerdictUnverified" as NonEmptyStr)])
+  let absent_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "ExpectedRedEvidenceAbsent" as NonEmptyStr)])
+  let stale_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "StaleKnownRed" as NonEmptyStr)])
+  let unverified_doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: unverified_rows)
+  let absent_doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: absent_rows)
+  let stale_doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: stale_rows)
+  count(unverified_rows) == 1
+    && string_contains(s: unverified_doc, pattern: "\"failure_mode\": \"ExpectedRedPreVerdictUnverified\"")
+    && string_contains(s: unverified_doc, pattern: "\"outcome\": \"refused\"")
+    && !string_contains(s: unverified_doc, pattern: "\"outcome\": \"done\"")
+    && !(unverified_doc == absent_doc)
+    && !(unverified_doc == stale_doc)
+}
+
+data fcr_expected_red_evidence_absent_note: String = "The COVERAGE half of the same axis, and the discrimination is that it is neither of its neighbours: not done (a batch whose admitted red control produced no observation is not a batch that is fine), and not StaleKnownRed (nobody observed the witness passing — nobody observed it at all), so the two refusals must render differently or the alert cannot tell delete-the-row from make-the-row-run. Absence establishing neither agreement nor failure is exactly why it needs its own mode rather than being folded into either verdict arm."
+
+test fn fcr_expected_red_evidence_absent_is_a_refusal_distinct_from_stale_and_from_done() -> Bool {
+  let absent_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "ExpectedRedEvidenceAbsent" as NonEmptyStr)])
+  let stale_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "StaleKnownRed" as NonEmptyStr)])
+  let absent_doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: absent_rows)
+  let stale_doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: stale_rows)
+  count(absent_rows) == 1
+    && string_contains(s: absent_doc, pattern: "\"failure_mode\": \"ExpectedRedEvidenceAbsent\"")
+    && string_contains(s: absent_doc, pattern: "\"outcome\": \"refused\"")
+    && !string_contains(s: absent_doc, pattern: "\"outcome\": \"done\"")
+    && !(absent_doc == stale_doc)
 }
 
 test fn fcr_red_control_tag_built_row_records_no_mode_rather_than_guessing() -> Bool {
@@ -377,4 +451,19 @@ test fn fcr_red_control_tag_built_row_records_no_mode_rather_than_guessing() -> 
   count(rows) == 1
     && string_contains(s: doc, pattern: "\"failure_mode\": \"unrecorded\"")
     && !string_contains(s: doc, pattern: "\"failure_mode\": \"none\"")
+}
+
+data selection_degradation_round_trip_note: String = "The writer/reader round trip is witnessed on the NO-SELECTION path specifically, because that is the path that was broken: the selection path always emitted the member and would have passed a round-trip check that never exercised its sibling. A claim that only covers the arm which already worked is the shape that let this ship."
+
+test fn fcr_no_selection_receipt_decodes_through_the_strict_reader() -> Bool {
+  let doc = floor_component_receipt_document(
+    workflow_name: fcr_workflow_name,
+    run_id: fcr_run_id,
+    head_sha: fcr_head_sha,
+    rows: fcr_real_run_rows()
+  )
+  match floor_component_receipt_decode_with(text: doc, expected_schema: floor_component_receipt_schema as NonEmptyStr) {
+    ReceiptDecoded { document: d } => (d.subject.run_id as String) == (fcr_run_id as String)
+    _ => false
+  }
 }

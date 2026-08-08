@@ -20,8 +20,7 @@ import gunbc.physics.which_path_four_model_comparison {
   disclosure_axis_predictions_differ_at_coherent_composition,
 }
 
-data chapman_observation_layer_note: String = "Observing-layer receipts for Chapman et al. 1995 which-path distinguishability. Rows derive from extdeps.physics.chapman_et_al_1995_atom_interferometer_which_path.chapman_which_path_observations — sole population authority, no parallel copy."
-
+// Observing-layer receipts for Chapman et al. 1995 which-path distinguishability. Rows derive from extdeps.physics.chapman_et_al_1995_atom_interferometer_which_path.chapman_which_path_observations — sole population authority, no parallel copy.
 fn chapman_row_is_cited_apparatus(row: ChapmanWhichPathObservationRow) -> Bool {
   row.apparatus == chapman_et_al_1995_atom_interferometer
 }

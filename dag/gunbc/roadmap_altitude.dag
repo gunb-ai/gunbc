@@ -11,8 +11,7 @@ type RowAttention
   | RowWorking
   | RowAnomaly
 
-data status_attention_note: String = "The node-status projection: done and superseded are finished work (routine — they fold); open and review are the working set (present, never expanded by the machine — expansion is the operator's gesture); an UNMODELED status is an anomaly by fail-closed arm — a status this law has never heard of must shout, never quietly fold (DESIGN section 5: a failure arm refuses, it does not widen into routine)."
-
+// The node-status projection: done and superseded are finished work (routine — they fold); open and review are the working set (present, never expanded by the machine — expansion is the operator's gesture); an UNMODELED status is an anomaly by fail-closed arm — a status this law has never heard of must shout, never quietly fold (DESIGN section 5: a failure arm refuses, it does not widen into routine).
 fn status_attention(status: String) -> RowAttention {
   if status == "done" || status == "superseded" {
     RowRoutine
@@ -38,8 +37,7 @@ fn attention_density(a: RowAttention) -> RowDensity {
   }
 }
 
-data band_attention_note: String = "The dispatch-band projection (the client grain of the same law): ok is the machine reporting routine success — it folds; invite and in-progress are the working set; fail and loud are anomalies — the answer the operator must see expands. An unmodeled band key is an anomaly by the same fail-closed arm as an unmodeled status."
-
+// The dispatch-band projection (the client grain of the same law): ok is the machine reporting routine success — it folds; invite and in-progress are the working set; fail and loud are anomalies — the answer the operator must see expands. An unmodeled band key is an anomaly by the same fail-closed arm as an unmodeled status.
 fn band_attention(band_key: String) -> RowAttention {
   if band_key == "ok" {
     RowRoutine
@@ -83,8 +81,7 @@ fn section_counts(statuses: List<String>) -> SectionCounts {
     })
 }
 
-data section_counts_wire_note: String = "The band's count text: zero classes are OMITTED (a quiet band never says '0 review'), the classes render in working-first order (open, review, done, superseded), and the fail-closed other-bucket renders loudly as 'unknown' — an unmodeled status is never silently uncounted. An all-zero section renders an empty string; the caller decides whether such a section carries a band at all."
-
+// The band's count text: zero classes are OMITTED (a quiet band never says '0 review'), the classes render in working-first order (open, review, done, superseded), and the fail-closed other-bucket renders loudly as 'unknown' — an unmodeled status is never silently uncounted. An all-zero section renders an empty string; the caller decides whether such a section carries a band at all.
 fn count_phrase(n: Int, label: String) -> List<String> {
   if n == 0 {
     []
@@ -103,8 +100,7 @@ fn section_counts_wire(c: SectionCounts) -> String {
     " · ")
 }
 
-data statuses_all_routine_note: String = "The section fold predicate: a section folds when every node in it is routine — one anomalous or working member holds the whole section open, which is the law's altitude claim (the band summarizes; the anomaly refuses to be summarized). An empty status list is vacuously routine, and the section emitters do not wrap node-free sections at all, so the vacuous arm never decides a rendered fold."
-
+// The section fold predicate: a section folds when every node in it is routine — one anomalous or working member holds the whole section open, which is the law's altitude claim (the band summarizes; the anomaly refuses to be summarized). An empty status list is vacuously routine, and the section emitters do not wrap node-free sections at all, so the vacuous arm never decides a rendered fold.
 fn statuses_all_routine(statuses: List<String>) -> Bool {
   all(statuses, s => match status_attention(status: s) {
     RowRoutine => true

@@ -1,0 +1,212 @@
+module test.claim.provider_standing_probe_bridge_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import v2.std.algebra { list_head, HeadFound, HeadAbsent }
+import extdeps.llm.cli_lifecycle {
+  CodexCliProvider,
+  ProviderInstance,
+  ProviderInstanceFieldUnobserved,
+}
+import gunbc.provider_standing {
+  ProviderStandingFromFact,
+  ProviderStandingUnobserved,
+  AuthenticationAuthenticated,
+  AuthenticationCredentialsAbsent,
+  AuthenticationProfilePresentTokenAbsent,
+  EntitlementObservationUnobserved,
+  LimitObservationUnobserved,
+  InstallationStandingUnobserved,
+  ToolEnvironmentStandingUnobserved,
+  InstallationReady,
+  ToolEnvironmentReady,
+  LimitDispatchDrawAutomatic,
+  provider_standing_is_selection_eligible,
+  provider_standing_from_observed_bundle,
+  selection_fixture_standing_fact_id,
+}
+import gunbc.dispatch_selection {
+  dispatch_codex_default_model,
+}
+import gunbc.provider_standing_probe_bridge {
+  CodexProviderDashboardProbeObservation,
+  CodexStateRootPresent,
+  ClaudeCredentialControlProbeObservation,
+  ProviderDashboardExecProbeReported,
+  provider_standing_bundle_from_codex_dashboard_probes,
+  provider_standing_bundle_from_claude_credential_control_probe,
+  provider_standing_probe_bridge_limit_unobserved_reason,
+  provider_standing_probe_bridge_entitlement_unobserved_reason,
+  provider_standing_probe_bridge_claude_installation_unobserved_reason,
+  provider_standing_probe_bridge_claude_tool_environment_unobserved_reason,
+}
+
+fn fixture_codex_provider_instance() -> ProviderInstance {
+  ProviderInstance {
+    kind: CodexCliProvider,
+    host: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+    executable: "codex" as NonEmptyStr,
+    observed_version: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+    state_directory: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+    credential_storage_method: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+    service_identity: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+  }
+}
+
+fn witness_codex_bridge_successful_probe_observation() -> CodexProviderDashboardProbeObservation {
+  CodexProviderDashboardProbeObservation {
+    state_root: CodexStateRootPresent,
+    runtime: ProviderDashboardExecProbeReported {
+      succeeded: true,
+      stdout: "codex-cli 0.145.0" as String,
+      stderr: "" as String,
+    },
+    auth: ProviderDashboardExecProbeReported {
+      succeeded: true,
+      stdout: "" as String,
+      stderr: "Logged in using ChatGPT" as String,
+    },
+  }
+}
+
+test fn witness_bridge_codex_successful_probes_map_authenticated_not_entitled() -> Bool {
+  let bundle = provider_standing_bundle_from_codex_dashboard_probes(
+    observation: witness_codex_bridge_successful_probe_observation(),
+  )
+  match bundle.authentication {
+    AuthenticationAuthenticated => true
+    _ => false
+  }
+    && match bundle.entitlement {
+      EntitlementObservationUnobserved { reason } =>
+        reason == provider_standing_probe_bridge_entitlement_unobserved_reason
+      _ => false
+    }
+    && match list_head(xs: bundle.limits) {
+      HeadFound { value: LimitObservationUnobserved { reason } } =>
+        reason == provider_standing_probe_bridge_limit_unobserved_reason
+      HeadAbsent => false
+    }
+}
+
+test fn witness_bridge_codex_auth_failure_is_credentials_absent_not_authenticated() -> Bool {
+  let bundle = provider_standing_bundle_from_codex_dashboard_probes(
+    observation: CodexProviderDashboardProbeObservation {
+      state_root: CodexStateRootPresent,
+      runtime: ProviderDashboardExecProbeReported {
+        succeeded: true,
+        stdout: "codex-cli 0.145.0" as String,
+        stderr: "" as String,
+      },
+      auth: ProviderDashboardExecProbeReported {
+        succeeded: false,
+        stdout: "" as String,
+        stderr: "Not logged in" as String,
+      },
+    },
+  )
+  match bundle.authentication {
+    AuthenticationCredentialsAbsent => true
+    AuthenticationAuthenticated => false
+    _ => false
+  }
+}
+
+test fn witness_bridge_honest_limit_unobserved_blocks_even_when_authenticated() -> Bool {
+  !provider_standing_is_selection_eligible(
+    standing: provider_standing_from_observed_bundle(
+      fact_id: selection_fixture_standing_fact_id,
+      provider: fixture_codex_provider_instance(),
+      bundle: provider_standing_bundle_from_codex_dashboard_probes(
+        observation: witness_codex_bridge_successful_probe_observation(),
+      ),
+    ),
+    draw: LimitDispatchDrawAutomatic,
+  )
+}
+
+test fn witness_bridge_claude_control_probe_honest_installation_and_tool_unobserved() -> Bool {
+  let bundle = provider_standing_bundle_from_claude_credential_control_probe(
+    observation: ClaudeCredentialControlProbeObservation {
+      token_source: "oauth" as NonEmptyStr,
+      subscription_tier: "claude_max" as NonEmptyStr,
+    },
+  )
+  match bundle.installation {
+    InstallationStandingUnobserved { reason } =>
+      reason == provider_standing_probe_bridge_claude_installation_unobserved_reason
+    InstallationReady => false
+    _ => false
+  }
+    && match bundle.tool_environment {
+      ToolEnvironmentStandingUnobserved { reason } =>
+        reason == provider_standing_probe_bridge_claude_tool_environment_unobserved_reason
+      ToolEnvironmentReady => false
+      _ => false
+    }
+    && match bundle.authentication {
+      AuthenticationAuthenticated => true
+      _ => false
+    }
+}
+
+test fn witness_bridge_profile_present_token_absent_refuses_through_mapper() -> Bool {
+  let bundle = provider_standing_bundle_from_claude_credential_control_probe(
+    observation: ClaudeCredentialControlProbeObservation {
+      token_source: "none" as NonEmptyStr,
+      subscription_tier: "claude_max" as NonEmptyStr,
+    },
+  )
+  match bundle.authentication {
+    AuthenticationProfilePresentTokenAbsent {
+      subscription_tier: tier,
+      token_source: source,
+    } => tier == ("claude_max" as NonEmptyStr) && source == ("none" as NonEmptyStr)
+    AuthenticationAuthenticated => false
+    _ => false
+  }
+    && !provider_standing_is_selection_eligible(
+      standing: provider_standing_from_observed_bundle(
+        fact_id: selection_fixture_standing_fact_id,
+        provider: fixture_codex_provider_instance(),
+        bundle: bundle,
+      ),
+      draw: LimitDispatchDrawAutomatic,
+    )
+}
+
+test fn witness_bridge_profile_present_token_absent_not_authenticated_arm() -> Bool {
+  match provider_standing_bundle_from_claude_credential_control_probe(
+    observation: ClaudeCredentialControlProbeObservation {
+      token_source: "none" as NonEmptyStr,
+      subscription_tier: "claude_max" as NonEmptyStr,
+    },
+  ).authentication {
+    AuthenticationProfilePresentTokenAbsent { subscription_tier: _, token_source: _ } => true
+    AuthenticationAuthenticated => false
+    _ => false
+  }
+}
+
+test fn witness_bridge_standing_is_from_fact_not_inventory_unobserved() -> Bool {
+  match provider_standing_from_observed_bundle(
+    fact_id: selection_fixture_standing_fact_id,
+    provider: fixture_codex_provider_instance(),
+    bundle: provider_standing_bundle_from_codex_dashboard_probes(
+      observation: witness_codex_bridge_successful_probe_observation(),
+    ),
+  ) {
+    ProviderStandingFromFact { fact: _ } => true
+    ProviderStandingUnobserved { reason: _ } => false
+    _ => false
+  }
+}
+
+test fn provider_standing_probe_bridge_keystone_holds() -> Bool {
+  witness_bridge_codex_successful_probes_map_authenticated_not_entitled()
+    && witness_bridge_codex_auth_failure_is_credentials_absent_not_authenticated()
+    && witness_bridge_honest_limit_unobserved_blocks_even_when_authenticated()
+    && witness_bridge_claude_control_probe_honest_installation_and_tool_unobserved()
+    && witness_bridge_profile_present_token_absent_refuses_through_mapper()
+    && witness_bridge_profile_present_token_absent_not_authenticated_arm()
+    && witness_bridge_standing_is_from_fact_not_inventory_unobserved()
+}

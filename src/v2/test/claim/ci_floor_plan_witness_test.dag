@@ -72,7 +72,7 @@ import v2.workflow.ci_floor_plan {
   witness_floor_batch_clamp_rate_all_nonneg,
   v1_claim_scoped_known_red_probe_batch_enrolled,
 }
-import gunbc.explicit_witness_admission { known_red_probe_corpus_roster, known_red_probe_v1_envelope_roster }
+import gunbc.explicit_witness_admission { known_red_probe_corpus_roster, known_red_probe_v1_envelope_roster, known_red_probe_corpus_fast_budget_roster, known_red_probe_corpus_long_budget_roster, known_red_probe_corpus_pre_verdict_fast_budget_roster, known_red_probe_corpus_pre_verdict_long_budget_roster }
 import gunbc.ci_layer_roots { witness_layer_roots, witness_discovery_scan_dirs, v1_claim_scoped_witness_entries, v1_claim_scoped_witness_batch, scoped_witness_batches, known_red_probe_roster, falsifier_silent_pick_gate_entries, falsifier_substrate_long_lane_entries, bin_witness_wet_entries }
 import v2.compiler.self_host.wet_receipt_enrollment {
   falsifier_self_host_wet_entries,
@@ -92,7 +92,7 @@ import std.realization_schedule {
   SelectionOff, SelectionApplied, SelectionPredictOnly, NodeFrontierSelection,
   runnable_eq, runnable_resource_profile, runnable_memory_substantial,
   runnable_forbids_corpus_co_residence, runnable_heavy_whole_tree_resolve,
-  ScheduleWitnessEntry, schedule_witness_entry_eq,
+  ScheduleWitnessEntry, schedule_witness_entry_eq, schedule_witness_entry_roster_contains,
   CorpusWitnessKind, ExecutionWitnessKind
 }
 import std.realization_schedule { WalkPlan, NoWalkFinalization, NoFinalizationDeclared, NoPreWalkExecution }
@@ -342,9 +342,8 @@ fn runnable_batch_index(batches: List<List<Runnable>>, target: Runnable) -> Int 
 test fn witness_v1_claim_scoped_batch_is_file_grain_and_batch_owned() -> Bool {
   let target = RunnableScopedWitnessBatch { batch: v1_claim_scoped_witness_batch }
   (length(xs: scoped_witness_batches) == 1)
-    && (length(xs: v1_claim_scoped_witness_entries) == 4)
-    && (v1_claim_scoped_witness_entries.first().function == "")
-    && (v1_claim_scoped_witness_entries.skip(n: 1).first().function == "")
+    && ((v1_claim_scoped_witness_entries |> count) > 0)
+    && (v1_claim_scoped_witness_entries |> all(e => e.function == ""))
     && (v1_claim_scoped_witness_batch.source_roots == ["dag", "src/v1"])
     && (v1_claim_scoped_witness_batch.scan_dirs == [])
     && (v1_claim_scoped_witness_batch.node_frontier_selection == SelectionApplied)
@@ -604,7 +603,47 @@ fn falsifier_self_host_wet_batch_holds(r: Runnable) -> Bool {
   }
 }
 
-fn falsifier_known_red_probe_batch_holds(r: Runnable) -> Bool {
+data known_red_probe_lane_partition_witness_note: String = "The known-red probe lane carries ONE runnable PER (EXPECTATION KIND, DECLARED BUDGET) PAIR — at most four, never one runnable holding the whole roster. BUDGET because eval ceilings are scoped per batch, so a mixed batch could only obtain the long ceiling by widening every fast sibling with it. EXPECTATION KIND because a pre-verdict row stops the batch at RESOLVE before any witness produces an outcome, and that stop is admitted only when EVERY entry declared a pre-verdict refusal — so one such row mixed in with assertion-false rows reds siblings that were holding quarantine correctly (cursor review 50216). Both are the same axis conflation, one layer apart. What is pinned: the runnable count equals the number of NONEMPTY derived rosters, the batches match those rosters IN ORDER and each equals its roster as a SET (known_red_roster_set_eq — duplicate-free both sides, containment both ways), every runnable independently keeps the lane hermetic/no-host-compiler/SelectionApplied profile, and the union of all scheduled entries set-equals the whole corpus roster so the four-way split can neither drop a row nor double-count one. Pinning only the total would let rosters be swapped between runnables; pinning only the count would let either carry the wrong rows."
+
+data known_red_roster_set_eq_note: String = "SET equality, and the two-way half of it is load-bearing (defect found in review, 2026-08-07). The first shape of this witness asserted length agreement PLUS one-way containment (every actual entry appears in the expected roster), and called that an identity join. It is not: actual [A, A] against expected [A, B] satisfies both — the lengths agree at 2 and every actual entry is present — while B is DROPPED and A is DUPLICATED. So a same-sized wrong population passed, which is precisely the property the note claimed to establish and the PR's whole thesis (identity agreement replacing count agreement). The repair asserts duplicate-freedom on BOTH sides and containment in BOTH directions, which for rosters that are identity sets is set equality. Why one-way containment looked sufficient: the swap probe that verified this witness exchanges the two rosters, and one-way containment DOES catch that, because a fast entry is genuinely absent from the long roster. Multiplicity is an orthogonal axis the swap never perturbs — evidence that a clause is non-vacuous is not evidence that it is exact, and one discriminating RED can only establish the failure mode it actually drives."
+
+fn known_red_roster_occurrence_count(xs: List<ScheduleWitnessEntry>, w: ScheduleWitnessEntry) -> Int {
+  fold(xs, init: 0, f: fn(acc, x) {
+    if schedule_witness_entry_eq(a: x, b: w) { acc + 1 } else { acc }
+  })
+}
+
+fn known_red_roster_duplicate_free(xs: List<ScheduleWitnessEntry>) -> Bool {
+  fold(xs, init: true, f: fn(ok, x) {
+    ok && (known_red_roster_occurrence_count(xs: xs, w: x) == 1)
+  })
+}
+
+fn known_red_roster_subset(a: List<ScheduleWitnessEntry>, b: List<ScheduleWitnessEntry>) -> Bool {
+  fold(a, init: true, f: fn(ok, x) {
+    ok && schedule_witness_entry_roster_contains(xs: b, w: x)
+  })
+}
+
+fn known_red_roster_set_eq(a: List<ScheduleWitnessEntry>, b: List<ScheduleWitnessEntry>) -> Bool {
+  known_red_roster_duplicate_free(xs: a)
+    && known_red_roster_duplicate_free(xs: b)
+    && known_red_roster_subset(a: a, b: b)
+    && known_red_roster_subset(a: b, b: a)
+}
+
+test fn witness_known_red_roster_set_eq_is_exact_not_a_length_agreement() -> Bool {
+  let a = synthetic_corpus_row
+  let b = synthetic_execution_row
+  known_red_roster_set_eq(a: [a, b], b: [a, b])
+    && known_red_roster_set_eq(a: [a, b], b: [b, a])
+    && !known_red_roster_set_eq(a: [a, a], b: [a, b])
+    && !known_red_roster_set_eq(a: [a, b], b: [a, a])
+    && !known_red_roster_set_eq(a: [a], b: [a, b])
+    && !known_red_roster_set_eq(a: [a, b], b: [a])
+}
+
+fn known_red_probe_batch_matches_roster(r: Runnable, roster: List<ScheduleWitnessEntry>) -> Bool {
   match r {
     RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: entries, node_frontier_selection: mode, exclude_substrings: _, discovery_scope_dirs: _, profile: p } =>
       match mode {
@@ -613,13 +652,56 @@ fn falsifier_known_red_probe_batch_holds(r: Runnable) -> Bool {
         SelectionOff => false
       }
         && (length(xs: dirs) == 0)
-        && (length(xs: entries) == length(xs: known_red_probe_corpus_roster()))
+        && known_red_roster_set_eq(a: entries, b: roster)
         && discovery_batch_declares_hermetic(r: r)
         && (p.spawns_host_compiler == false)
     RunnableScopedWitnessBatch { batch: _ } => false
     RunnableSingleClaim { entry: _, function: _, profile: _ } => false
     RunnableKernelWorkload { fused_op_count: _ } => false
   }
+}
+
+fn known_red_expected_batch_rosters() -> List<List<ScheduleWitnessEntry>> {
+  fold(
+    [
+      known_red_probe_corpus_fast_budget_roster(),
+      known_red_probe_corpus_long_budget_roster(),
+      known_red_probe_corpus_pre_verdict_fast_budget_roster(),
+      known_red_probe_corpus_pre_verdict_long_budget_roster()
+    ],
+    init: [],
+    f: fn(acc, roster) {
+      if length(xs: roster) > 0 { list_snoc_item(xs: acc, item: roster) } else { acc }
+    }
+  )
+}
+
+fn known_red_batches_match_rosters_pairwise(b: List<Runnable>, rosters: List<List<ScheduleWitnessEntry>>) -> Bool {
+  let checked = fold(rosters, init: { ok: true, at: 0 }, f: fn(acc, roster) {
+    let remaining = skip(xs: b, n: acc.at)
+    let matched = if length(xs: remaining) > 0 {
+      known_red_probe_batch_matches_roster(r: remaining.first(), roster: roster)
+    } else {
+      false
+    }
+    { ok: acc.ok && matched, at: acc.at + 1 }
+  })
+  checked.ok && (checked.at == length(xs: b))
+}
+
+fn known_red_all_scheduled_entries() -> List<ScheduleWitnessEntry> {
+  fold(known_red_expected_batch_rosters(), init: [], f: fn(acc, roster) { concat(acc, roster) })
+}
+
+fn falsifier_known_red_probe_batches_hold(b: List<Runnable>) -> Bool {
+  let rosters = known_red_expected_batch_rosters()
+  let count_ok = length(xs: b) == length(xs: rosters)
+  let pairwise_ok = known_red_batches_match_rosters_pairwise(b: b, rosters: rosters)
+  let covers_lane = known_red_roster_set_eq(
+    a: known_red_all_scheduled_entries(),
+    b: known_red_probe_corpus_roster()
+  )
+  count_ok && pairwise_ok && covers_lane
 }
 
 fn falsifier_self_host_wet_known_red_batch_holds(r: Runnable) -> Bool {
@@ -739,8 +821,7 @@ fn falsifier_plan_structure_holds() -> Bool {
   let probe_ok = if probe_enrolled {
     let probe_offset = 1 + (if wet_enrolled { 1 } else { 0 }) + (if wet_known_red_enrolled { 1 } else { 0 })
     let probe_batch = skip(xs: batches, n: probe_offset).first()
-    (probe_batch.length() == 1)
-      && falsifier_known_red_probe_batch_holds(r: probe_batch.first())
+    falsifier_known_red_probe_batches_hold(b: probe_batch)
   } else {
     true
   }
@@ -835,7 +916,8 @@ test fn witness_live_floor_discovery_batch_count_is_four() -> Bool {
 }
 
 test fn ci_floor_plan_witnesses() -> Bool {
-  witness_floor_compile_gate_honest_heavy_profile() &&
+  witness_known_red_roster_set_eq_is_exact_not_a_length_agreement() &&
+    witness_floor_compile_gate_honest_heavy_profile() &&
     witness_cheap_gate_membership_declared() &&
     witness_cheap_gates_are_resource_anchors() &&
     witness_live_floor_discovery_tracks_optin_roster() &&

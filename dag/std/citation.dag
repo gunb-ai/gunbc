@@ -30,8 +30,7 @@ data citation_verifier_scope_note: String = "A citation verifier is not a truth 
 
 data citation_sha256_pin_rung_note: String = "citation_exact_pin accepts Sha256Digest at an ADMISSION boundary (caller supplies a digest value; reconcile routes non-Sha256 families to Incomparable). This is not a construction wall: Pin<CitedRepresentationIdentity> remains constructible with any Sha256Digest the caller authors. dissolve-on: sole-constructor or validating mint closes construction when the wet production path is modeled."
 
-data citation_expected_observed_separation_note: String = "Expected identity (Pin.expected_identity, authored) and observed identity (ObservedCitedRepresentation.observed_identity, wet-adapter minted) are independent facts. reconcile_citation_representation maximum conclusion is supplied-equals-supplied digest equality after identity join — the wet adapter mint is convention, not independent production evidence. A mock that echoes the expected pin into the observation arm passes only when bytes genuinely match; the echo itself is not verification. CitationVerificationReceipt names the join explicitly."
-
+// Expected identity (Pin.expected_identity, authored) and observed identity (ObservedCitedRepresentation.observed_identity, wet-adapter minted) are independent facts. reconcile_citation_representation maximum conclusion is supplied-equals-supplied digest equality after identity join — the wet adapter mint is convention, not independent production evidence. A mock that echoes the expected pin into the observation arm passes only when bytes genuinely match; the echo itself is not verification. CitationVerificationReceipt names the join explicitly.
 type CitedRepresentationIdentity {
   source: ExternalSubjectRef
   access_route: Uri
@@ -49,8 +48,7 @@ type RepresentationByteDomain
   | RenderedText
   | ExtractedPageContent
 
-data representation_byte_domain_note: String = "Names WHICH BYTES are hashed — not which algorithm. RawResponseBody is the exact octet sequence received after transfer decoding and before interpretation. Later domains (DecodedContent, RenderedText, ExtractedPageContent) are reserved for CIT-1+ profiles; CIT-0 admits the type names only."
-
+// Names WHICH BYTES are hashed — not which algorithm. RawResponseBody is the exact octet sequence received after transfer decoding and before interpretation. Later domains (DecodedContent, RenderedText, ExtractedPageContent) are reserved for CIT-1+ profiles; CIT-0 admits the type names only.
 type ObservedCitedRepresentation {
   identity: CitedRepresentationIdentity
   media_type: MediaType
@@ -114,16 +112,14 @@ data citation_refusal_cause_note: String = "Every refusal cause is a typed copro
 
 data text_position_selector_cross_field_note: String = "W3C Web Annotation TextPositionSelector start and end are non-negative character indices (std.integer.NonNegativeInt = Nat). end < start is refused by text_position_selector returning CitationSelectorRefused { cause: TextPositionEndBeforeStart } — VALIDATION at the constructor today, not a construction wall. dissolve-on: cross-field refinement or sole-constructor wall makes inverted ranges unwritable."
 
-data citation_fragment_selector_conforms_to_note: String = "W3C FragmentSelector conformsTo names the specification defining the SELECTOR VALUE syntax — for PDF open parameters that is RFC 8118 (extdeps.standards.rfc_8118), never Web Annotation itself. A missing governing fragment specification must refuse; there is no default_fragment_selector."
-
+// W3C FragmentSelector conformsTo names the specification defining the SELECTOR VALUE syntax — for PDF open parameters that is RFC 8118 (extdeps.standards.rfc_8118), never Web Annotation itself. A missing governing fragment specification must refuse; there is no default_fragment_selector.
 type SelectorRefusalCause
   = TextPositionEndBeforeStart { start: NonNegativeInt, end: NonNegativeInt }
 
 type CitationAccessRefusalCause
   = HttpAccessRefused { status: HttpStatus }
 
-data citation_unreachable_cause_note: String = "CitationUnreachableCause arms are class-countable transport failures. TransportUnreachable is NOT an unclassifiable catch-all — it means a transport-layer failure outside DNS, TLS handshake, connection refused, and request timeout. Unclassifiable observations must land on a separate explicit arm when the transport observation layer lands."
-
+// CitationUnreachableCause arms are class-countable transport failures. TransportUnreachable is NOT an unclassifiable catch-all — it means a transport-layer failure outside DNS, TLS handshake, connection refused, and request timeout. Unclassifiable observations must land on a separate explicit arm when the transport observation layer lands.
 type CitationUnreachableCause
   = DnsResolutionFailed
   | TlsHandshakeFailed

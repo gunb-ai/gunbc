@@ -54,8 +54,7 @@ test fn every_external_grounding_carries_at_least_one_citation() -> Bool {
   })
 }
 
-data derived_subject_note: String = "The construction wall restated as an executable property. registration_subject reads the subject OUT of the grounding, so there is no second field that could disagree with it; this asserts the projection is total over every registered row — every registration yields a subject whose module path is nonempty — which is the observable consequence of the subject having exactly one source."
-
+// The construction wall restated as an executable property. registration_subject reads the subject OUT of the grounding, so there is no second field that could disagree with it; this asserts the projection is total over every registered row — every registration yields a subject whose module path is nonempty — which is the observable consequence of the subject having exactly one source.
 test fn every_registration_derives_a_nonempty_subject() -> Bool {
   fold(registered_language_targets, init: true, f: fn(acc, r) {
     acc && registration_subject(registration: r).module_path != ""
@@ -121,16 +120,14 @@ test fn every_disposition_arm_is_inhabited() -> Bool {
     && disposition_arm_present(pick: fn(r) { match r.disposition { TargetGovernedByContracts { contract_ids: _ } => true, TargetActive => false, TargetParked { reason: _ } => false, TargetDecisionPending { decision_id: _ } => false, TargetMaintenanceOnly => false } })
 }
 
-data multi_citation_note: String = "Two independently governed documents may ground ONE subject — external_model_scope_law permits several citations per subject and forbids several subjects per module. Verilog is the specimen: IEEE 1364-2005 is the Verilog standard this repository's surface actually models, and that same IEEE page records it as superseded by the SystemVerilog standard, so both are carried. Collapsing them would either hide the supersession or silently claim SystemVerilog support."
-
+// Two independently governed documents may ground ONE subject — external_model_scope_law permits several citations per subject and forbids several subjects per module. Verilog is the specimen: IEEE 1364-2005 is the Verilog standard this repository's surface actually models, and that same IEEE page records it as superseded by the SystemVerilog standard, so both are carried. Collapsing them would either hide the supersession or silently claim SystemVerilog support.
 test fn a_subject_may_carry_more_than_one_citation() -> Bool {
   fold(registered_language_targets, init: false, f: fn(acc, r) {
     acc || registration_citation_count(r: r) > 1
   })
 }
 
-data verify_or_refuse_note: String = "THE EXECUTABLE HALF OF VERIFY-OR-REFUSE. Three targets whose upstream authorities could not be read are absent from the registry and present in the findings with their causes. The two assertions are deliberately opposed: absence alone could mean nobody tried, and a finding alone could sit beside a registration that quietly exists anyway. Together they say the target is unregistered AND the reason is recorded, which is the state a plausible-but-unverified locator would have destroyed."
-
+// THE EXECUTABLE HALF OF VERIFY-OR-REFUSE. Three targets whose upstream authorities could not be read are absent from the registry and present in the findings with their causes. The two assertions are deliberately opposed: absence alone could mean nobody tried, and a finding alone could sit beside a registration that quietly exists anyway. Together they say the target is unregistered AND the reason is recorded, which is the state a plausible-but-unverified locator would have destroyed.
 fn no_registration_mentions(module_fragment: String) -> Bool {
   fold(registered_language_targets, init: true, f: fn(acc, r) {
     acc && !string_contains(s: registration_subject(registration: r).module_path, pattern: module_fragment)
@@ -153,8 +150,7 @@ test fn unverified_upstreams_are_recorded_as_typed_findings() -> Bool {
        })
 }
 
-data projection_subject_note: String = "Each projection hangs off a subject that is actually registered, checked here on named rows rather than only in aggregate: ngspice and CommonMark are the two subjects whose DISPLAY NAME deliberately differs from the folder and the colloquial target name, because the honest upstream is the implementation (ngspice, not 'SPICE') and the specified dialect (CommonMark, not 'Markdown'). If a projection's subject ever drifted from its registration, these are the rows where a name-based reader would notice last."
-
+// Each projection hangs off a subject that is actually registered, checked here on named rows rather than only in aggregate: ngspice and CommonMark are the two subjects whose DISPLAY NAME deliberately differs from the folder and the colloquial target name, because the honest upstream is the implementation (ngspice, not 'SPICE') and the specified dialect (CommonMark, not 'Markdown'). If a projection's subject ever drifted from its registration, these are the rows where a name-based reader would notice last.
 fn registered_subject_refs() -> List<DeclarationRef> {
   fold(registered_language_targets, init: [], f: fn(acc, r) {
     concat(acc, [registration_subject(registration: r)])
@@ -192,8 +188,7 @@ test fn red_empty_cause_fields_are_detected() -> Bool {
   }
 }
 
-data legacy_label_finding_note: String = "The filed legacy-label findings are asserted NON-EMPTY and fully populated, so a row cannot be filed as a hollow placeholder. This is deliberately a weak assertion about strong content: the findings describe a defect in a prose table this change does not touch, so there is nothing here to prove green by execution — what the assertion prevents is a row that names a label while saying nothing about which subjects it fuses or why that matters, which is how a filed finding quietly becomes a checkbox."
-
+// The filed legacy-label findings are asserted NON-EMPTY and fully populated, so a row cannot be filed as a hollow placeholder. This is deliberately a weak assertion about strong content: the findings describe a defect in a prose table this change does not touch, so there is nothing here to prove green by execution — what the assertion prevents is a row that names a label while saying nothing about which subjects it fuses or why that matters, which is how a filed finding quietly becomes a checkbox.
 test fn filed_legacy_label_findings_are_populated() -> Bool {
   (legacy_frontier_label_findings |> count) > 0
     && fold(legacy_frontier_label_findings, init: true, f: fn(acc, r) {

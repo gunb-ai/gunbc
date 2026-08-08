@@ -28,8 +28,7 @@ import v2.std.grammar_choice_ambiguity {
 }
 import v2.std.optional { Optional, Present, optional_absent, optional_present }
 
-data parse_diagnostic_evidence_axis_note: String = "ParseDiagnosticEvidence is parse-stage evidence orthogonal to the universal Diagnostic carrier. Grammar-choice overlap rows live here — never on Correction, Locus, or Diagnostic itself."
-
+// ParseDiagnosticEvidence is parse-stage evidence orthogonal to the universal Diagnostic carrier. Grammar-choice overlap rows live here — never on Correction, Locus, or Diagnostic itself.
 type ParseDiagnosticEvidence
   = NoParseDiagnosticEvidence
   | GrammarChoiceAmbiguityEvidence { row: GrammarChoiceAmbiguityRow }

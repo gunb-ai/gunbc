@@ -1,8 +1,16 @@
 module v2.workflow.ci_floor_plan
 
 import std.execution_mode { Hermetic, Wet }
-import gunbc.explicit_witness_admission { known_red_probe_corpus_roster, known_red_probe_v1_envelope_roster }
-import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs, bin_witness_wet_entries, scoped_witness_batches, known_red_probe_roster, falsifier_silent_pick_gate_entries, falsifier_silent_pick_gate_roster, falsifier_rehomed_bin_wet_entries, falsifier_substrate_long_lane_entries }
+import gunbc.explicit_witness_admission {
+  known_red_probe_corpus_roster,
+  known_red_probe_corpus_fast_budget_roster,
+  known_red_probe_corpus_long_budget_roster,
+  known_red_probe_corpus_pre_verdict_fast_budget_roster,
+  known_red_probe_corpus_pre_verdict_long_budget_roster,
+  known_red_probe_v1_envelope_roster,
+  known_red_pre_verdict_refusal_roster
+}
+import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs, bin_witness_wet_entries, scoped_witness_batches, known_red_probe_roster, falsifier_silent_pick_gate_entries, falsifier_silent_pick_gate_roster, falsifier_rehomed_bin_wet_entries, falsifier_substrate_long_lane_entries, witness_long_eval_budget_entries }
 import v2.compiler.self_host.wet_receipt_enrollment {
   falsifier_self_host_wet_entries,
   falsifier_native_cache_cold_roster,
@@ -23,7 +31,7 @@ import gunbc.ci_spec {
   gunbc_ci_ordinary_floor_budget_minutes,
   gunbc_ci_admission_postcondition_budget_minutes,
 }
-import gunbc.falsifier_workflow { falsifier_plan_function }
+import gunbc.falsifier_workflow { falsifier_plan_function, gunbc_falsifier_soft_deadline_minutes }
 import gunbc.falsifier_lane {
   FalsifierLane,
   LanePredictOnly,
@@ -607,6 +615,12 @@ fn gunbc_falsifier_substrate_long_lane_eval_budget_ms() -> v2.std.nat.Nat {
   second_count(s: gunbc_falsifier_substrate_long_lane_witness_eval_budget) * 1000
 }
 
+data gunbc_falsifier_soft_deadline_projection_note: String = "A UNIT PROJECTION, NOT A SECOND BUDGET. The value is gunbc.falsifier_workflow gunbc_falsifier_soft_deadline_minutes, which is itself derived by subtracting the flush allowance from the step timeout the workflow declares — this function only converts that one authority's minutes into the milliseconds the seed's budget seam reads, exactly as gunbc_falsifier_substrate_long_lane_eval_budget_ms converts seconds beside it. Re-deriving the subtraction here, or writing the minute count as a literal, would be a second representation of a number whose whole correctness property is that it stays below the cap it is subtracted from."
+
+fn gunbc_falsifier_soft_deadline_ms() -> Int {
+  gunbc_falsifier_soft_deadline_minutes() * 60 * 1000
+}
+
 fn corpus_runnable_for(spec: CiSpec) -> Runnable {
   RunnableDiscoveryBatch {
     source_roots: corpus_source_roots(),
@@ -1017,11 +1031,15 @@ fn gunbc_falsifier_self_host_wet_known_red_batch() -> Runnable {
   }
 }
 
-fn gunbc_falsifier_known_red_probe_batch() -> Runnable {
+data falsifier_known_red_probe_budget_partition_note: String = "ONE lane, FOUR batches at most, each homogeneous in BOTH facts that govern it: the declared EVAL BUDGET and the declared EXPECTATION KIND. Neither is authored — every batch is derived from the admission rows, so a new admission moves itself into the right batch without editing this plan, and an empty side schedules no batch (an empty explicit-entry discovery batch would be a run over nothing reporting green — the vacuity DESIGN 6 names). BUDGET, because claim_executor arms an eval ceiling per BATCH, so a batch mixing fast and long rows gives every fast row the long ceiling. EXPECTATION KIND, because a pre-verdict row stops the batch at RESOLVE before any witness produces an outcome, and that stop is admitted only when EVERY entry declared a pre-verdict refusal — so one such row mixed in with assertion-false rows reds siblings that were holding quarantine correctly (cursor review 50216 found exactly this; the budget split alone reintroduced the batch-wide coupling this lane exists to remove, one axis over). Lane count and lane enrollment are unchanged: the outer FalsifierLaneBatch.batch was already a list."
+
+fn gunbc_falsifier_known_red_probe_batch_over(
+  entries: List<ScheduleWitnessEntry>
+) -> Runnable {
   RunnableDiscoveryBatch {
     source_roots: corpus_source_roots(),
     scan_dirs: [],
-    explicit_entries: known_red_probe_corpus_roster(),
+    explicit_entries: entries,
     node_frontier_selection: SelectionApplied,
     exclude_substrings: [],
     discovery_scope_dirs: [],
@@ -1032,6 +1050,35 @@ fn gunbc_falsifier_known_red_probe_batch() -> Runnable {
       execution_mode: Hermetic
     )
   }
+}
+
+fn gunbc_falsifier_known_red_probe_batch_if_nonempty(entries: List<ScheduleWitnessEntry>) -> List<Runnable> {
+  if length(xs: entries) > 0 {
+    [gunbc_falsifier_known_red_probe_batch_over(entries: entries)]
+  } else {
+    []
+  }
+}
+
+fn gunbc_falsifier_known_red_probe_batches() -> List<Runnable> {
+  concat(
+    concat(
+      gunbc_falsifier_known_red_probe_batch_if_nonempty(
+        entries: known_red_probe_corpus_fast_budget_roster()
+      ),
+      gunbc_falsifier_known_red_probe_batch_if_nonempty(
+        entries: known_red_probe_corpus_long_budget_roster()
+      )
+    ),
+    concat(
+      gunbc_falsifier_known_red_probe_batch_if_nonempty(
+        entries: known_red_probe_corpus_pre_verdict_fast_budget_roster()
+      ),
+      gunbc_falsifier_known_red_probe_batch_if_nonempty(
+        entries: known_red_probe_corpus_pre_verdict_long_budget_roster()
+      )
+    )
+  )
 }
 
 fn gunbc_falsifier_self_host_wet_batch() -> Runnable {
@@ -1173,7 +1220,7 @@ fn gunbc_falsifier_lane_batches() -> List<FalsifierLaneBatch> {
     FalsifierLaneBatch {
       lane: LaneKnownRedProbe,
       enrolled: falsifier_known_red_probe_batch_enrolled(),
-      batch: [gunbc_falsifier_known_red_probe_batch()]
+      batch: gunbc_falsifier_known_red_probe_batches()
     },
     FalsifierLaneBatch {
       lane: LaneSilentPickGate,

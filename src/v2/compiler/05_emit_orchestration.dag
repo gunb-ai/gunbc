@@ -18,7 +18,6 @@ import v2.std.orchestration_emit {
   orch_construct_if_block,
   orch_construct_if_else_block,
   orch_construct_while,
-  orch_construct_bounded_poll,
   orch_construct_procedure,
   orch_construct_call,
   orch_construct_cmdsubst_assign,
@@ -64,7 +63,6 @@ import v2.std.orchestration {
   Let,
   Call,
   While,
-  BoundedPoll,
   Pipeline,
   Procedure,
   Expr,
@@ -110,8 +108,6 @@ import v2.std.optional {
   optional_present,
   optional_absent
 }
-import v2.std.integer { integer_nat_to_decimal_string }
-import v2.std.nat { Nat }
 import v2.compiler.target_carriers { lossless_source }
 import v2.std.diagnostic {
   Accepted,
@@ -688,38 +684,6 @@ fn orch_emit_while_step(
   )
 }
 
-fn orch_emit_bounded_poll_step(
-  max_attempts: v2.std.nat.Nat,
-  body: Pipeline,
-  success: Predicate,
-  medium: OrchestrationEmitMedium
-) -> Outcome<extdeps.communication.medium.Medium<String>> {
-  bind_outcome(
-    o: orch_emit_pipeline(p: body, medium: medium),
-    f: fn(body_medium) {
-      bind_outcome(
-        o: orch_emit_predicate(p: success, medium: medium),
-        f: fn(success_spelling) {
-          bind_outcome(
-            o: medium.realize_bounded_poll(
-              integer_nat_to_decimal_string(value: max_attempts),
-              body_medium.carried,
-              success_spelling
-            ),
-            f: fn(target) {
-              orch_emit_from_registry(
-                medium: medium,
-                construct_tag: orch_construct_bounded_poll,
-                target: target
-              )
-            }
-          )
-        }
-      )
-    }
-  )
-}
-
 data orch_shell_test_operand_alphabet: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_./-@$\"{}"
 
 fn orch_shell_test_operand_char_ok(ch: String) -> Bool {
@@ -786,8 +750,6 @@ fn orch_emit_step(s: PipelineStep, medium: OrchestrationEmitMedium) -> Outcome<e
       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_step_for_unsupported))
     While { cond: c, body: b } =>
       orch_emit_while_step(cond: c, body: b, medium: medium)
-    BoundedPoll { max_attempts: m, body: b, success: s } =>
-      orch_emit_bounded_poll_step(max_attempts: m, body: b, success: s, medium: medium)
     Retry { body: b, escalations: e, on_exhausted: x } =>
       orch_emit_retry(body: b, escalations: e, on_exhausted: x, medium: medium)
     Let { name: n, value: v } =>
@@ -826,8 +788,6 @@ fn orch_retry_step_run(s: PipelineStep) -> Outcome<Run> {
     For { binder: _, over: _, body: _ } =>
       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
     While { cond: _, body: _ } =>
-      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
-    BoundedPoll { max_attempts: _, body: _, success: _ } =>
       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
     Retry { body: _, escalations: _, on_exhausted: _ } =>
       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
