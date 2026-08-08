@@ -1,0 +1,281 @@
+module tools.module_impact_query_front_door
+
+import v2.std.algebra { fold_list, list_reverse }
+import std.algebra { Cons }
+import v2.std.collection { List }
+import v2.std.text { String }
+import gunbc.namespace_reference_derived_closure_admission {
+  ReferenceDerivedClosureAdmission,
+  ReferenceDerivedClosureUnavailable,
+  RepeatedMentionsCollapseDependency,
+  UnrelatedLoadedFileExcluded,
+  P2aPoolIndependentDependencyProjection7515,
+  P2aReferenceDependencyProjection7515,
+}
+import v2.lens.module_graph {
+  ModuleDeclarationFact,
+  ModuleDependencyEdge,
+  ImportResolutionFact,
+  dependency_resolution_facts_live,
+  import_resolution_facts_live,
+  module_declaration_facts_live,
+  reference_resolution_facts_live,
+}
+import v2.lens.module_impact_query {
+  DependenciesOf,
+  DependentsOf,
+  ImpactCycle,
+  ImpactCycleReferenceAdmissible,
+  ImpactImportAcyclicityViolation,
+  ImpactReading,
+  ImpactStandingCause,
+  DeclaredTargetAbsentFromPool,
+  UndeclaredTargetModule,
+  ExactForGraphSubject,
+  Incomplete,
+  PoolIndependentProjectionUnavailable,
+  ProvisionalForObservedPool,
+  ModuleIdentity,
+  impact_paths_for_module,
+  impact_seeds_for_path,
+  module_impact_reading,
+}
+
+data front_door_note: String = "The real-corpus front door for the impact reading (operator ruling 2026-08-08, recut C): a person asks 'what depends on this?' about the LIVE tree and gets a rendered answer, so the reading's first consumer is not only its own witness suite. Run it with: gunbc run --source-root dag --source-root src/v2 --entry dag/tools/module_impact_query_front_door.dag --function dependents_of_module_graph_report (or dependents_of_path_report). This is a tools entry, not a new Rust CLI arm - no seed growth."
+
+data no_lines: List<String> = []
+
+data front_door_pool_roots: List<String> = ["dag", "src/v2"]
+
+data front_door_importer_roots: List<String> = ["dag", "src/v2"]
+
+data front_door_exclude_substrings: List<String> = []
+
+data front_door_admissions_note: String = "The standing the front door reports is NOT asserted here: these are the two dependency-projection capabilities that gunbc.namespace_reference_derived_closure_admission reports Unavailable, carried as the admission rows the reading consumes, so a live query renders PoolIndependentProjectionUnavailable with the trigger that owns the climb. When the namespace lane establishes pool-independent projection, this roster is what changes and the rendered standing follows automatically rather than this module being edited to say something new. Dissolve-on: the front door reads the production admissions directly once they are projectable under the dag/src-v2 source roots (they live under src/v1 today)."
+
+data front_door_admissions: List<ReferenceDerivedClosureAdmission> = [
+  ReferenceDerivedClosureUnavailable {
+    capability: UnrelatedLoadedFileExcluded,
+    trigger: P2aPoolIndependentDependencyProjection7515
+  },
+  ReferenceDerivedClosureUnavailable {
+    capability: RepeatedMentionsCollapseDependency,
+    trigger: P2aReferenceDependencyProjection7515
+  },
+]
+
+fn front_door_nodes() -> List<ModuleDeclarationFact> {
+  module_declaration_facts_live(pool_roots: front_door_pool_roots)
+}
+
+fn front_door_edges() -> List<ModuleDependencyEdge> {
+  dependency_resolution_facts_live(
+    pool_roots: front_door_pool_roots,
+    importer_roots: front_door_importer_roots,
+    exclude_substrings: front_door_exclude_substrings
+  )
+}
+
+fn front_door_import_facts() -> List<ImportResolutionFact> {
+  import_resolution_facts_live(
+    pool_roots: front_door_pool_roots,
+    importer_roots: front_door_importer_roots,
+    exclude_substrings: front_door_exclude_substrings
+  )
+}
+
+fn dependents_of_module(module_name: String) -> ImpactReading {
+  module_impact_reading(
+    seeds: [ModuleIdentity { name: module_name }],
+    direction: DependentsOf,
+    edges: front_door_edges(),
+    nodes: front_door_nodes(),
+    import_facts: front_door_import_facts(),
+    admissions: front_door_admissions
+  )
+}
+
+fn dependencies_of_module(module_name: String) -> ImpactReading {
+  module_impact_reading(
+    seeds: [ModuleIdentity { name: module_name }],
+    direction: DependenciesOf,
+    edges: front_door_edges(),
+    nodes: front_door_nodes(),
+    import_facts: front_door_import_facts(),
+    admissions: front_door_admissions
+  )
+}
+
+fn dependents_of_path(path: String) -> ImpactReading {
+  module_impact_reading(
+    seeds: impact_seeds_for_path(nodes: front_door_nodes(), path: path),
+    direction: DependentsOf,
+    edges: front_door_edges(),
+    nodes: front_door_nodes(),
+    import_facts: front_door_import_facts(),
+    admissions: front_door_admissions
+  )
+}
+
+fn render_standing(reading: ImpactReading) -> String {
+  match reading.standing {
+    ExactForGraphSubject => "ExactForGraphSubject"
+    ProvisionalForObservedPool => "ProvisionalForObservedPool — observed pool only; pool independence not established"
+    Incomplete { causes: _ } => "Incomplete — see causes below"
+    PoolIndependentProjectionUnavailable { trigger: _ } =>
+      "PoolIndependentProjectionUnavailable — the observed pool may contain SPURIOUS as well as missing edges, so this reading is neither an upper nor a lower bound. Trigger: P2a pool-independent dependency projection (namespace lane)."
+  }
+}
+
+fn render_cause(cause: ImpactStandingCause) -> String {
+  match cause {
+    UndeclaredTargetModule { dependent_module, target_module } =>
+      "    undeclared-target  {dependent_module.name} -> {target_module}"
+    DeclaredTargetAbsentFromPool { dependent_module, target_module } =>
+      "    declared-but-absent-from-pool  {dependent_module.name} -> {target_module}"
+  }
+}
+
+fn render_cycle(cycle: ImpactCycle) -> String {
+  match cycle {
+    ImpactImportAcyclicityViolation { members } =>
+      "    IMPORT-ACYCLICITY VIOLATION: {render_modules(modules: members)}"
+    ImpactCycleReferenceAdmissible { members } =>
+      "    reference-admissible cycle: {render_modules(modules: members)}"
+  }
+}
+
+fn render_modules(modules: List<ModuleIdentity>) -> String {
+  fold_list(
+    xs: modules,
+    empty: "",
+    cons: fn(acc, m) {
+      if acc == "" {
+        m.name
+      } else {
+        "{acc}, {m.name}"
+      }
+    }
+  )
+}
+
+fn render_lines(lines: List<String>) -> String {
+  fold_list(
+    xs: lines,
+    empty: "",
+    cons: fn(acc, line) {
+      if acc == "" {
+        line
+      } else {
+        "{acc}\n{line}"
+      }
+    }
+  )
+}
+
+fn render_reading(
+  subject: String,
+  reading: ImpactReading,
+  nodes: List<ModuleDeclarationFact>
+) -> String {
+  let reached_lines = list_reverse(xs: fold_list(
+    xs: reading.reached,
+    empty: no_lines,
+    cons: fn(acc, m) {
+      Cons {
+        head: "    {m.name}   [{render_modules_paths(paths: impact_paths_for_module(nodes: nodes, module_id: m))}]",
+        tail: acc
+      }
+    }
+  ))
+  let cause_lines = list_reverse(xs: fold_list(
+    xs: reading.causes,
+    empty: no_lines,
+    cons: fn(acc, c) { Cons { head: render_cause(cause: c), tail: acc } }
+  ))
+  let cycle_lines = list_reverse(xs: fold_list(
+    xs: reading.cycles,
+    empty: no_lines,
+    cons: fn(acc, c) { Cons { head: render_cycle(cycle: c), tail: acc } }
+  ))
+  render_lines(lines: [
+    "impact reading — dependents of {subject}",
+    "  standing: {render_standing(reading: reading)}",
+    "  reached ({count_text(xs: reading.reached)} module(s)):",
+    render_lines(lines: reached_lines),
+    "  causes ({count_text(xs: reading.causes)}):",
+    render_lines(lines: cause_lines),
+    "  cycles ({count_text(xs: reading.cycles)}):",
+    render_lines(lines: cycle_lines),
+  ])
+}
+
+fn render_modules_paths(paths: List<String>) -> String {
+  fold_list(
+    xs: paths,
+    empty: "",
+    cons: fn(acc, p) {
+      if acc == "" {
+        p
+      } else {
+        "{acc}, {p}"
+      }
+    }
+  )
+}
+
+fn count_text<T>(xs: List<T>) -> String {
+  fold_list(xs: xs, empty: 0, cons: fn(acc, _) { acc + 1 }) as String
+}
+
+data front_door_default_subject: String = "v2.lens.module_graph"
+
+data front_door_render_cost_note: String = "front_door_nodes() is evaluated ONCE per report and threaded into render_reading. An earlier draft called it inside the per-reached-module fold, which recomputed the live module-declaration facts once per reached module - the copied-accumulator cost shape DESIGN 6 forbids regardless of realized n, and on a corpus-sized reading that is hundreds of live fact scans for one report."
+
+fn dependents_of_module_graph_report() -> String {
+  render_reading(
+    subject: front_door_default_subject,
+    reading: dependents_of_module(module_name: front_door_default_subject),
+    nodes: front_door_nodes()
+  )
+}
+
+fn probe_count_nodes() -> String {
+  count_text(xs: front_door_nodes())
+}
+
+fn probe_count_import_facts() -> String {
+  count_text(xs: front_door_import_facts())
+}
+
+fn probe_count_edges() -> String {
+  count_text(xs: front_door_edges())
+}
+
+fn probe_count_reference_facts() -> String {
+  count_text(
+    xs: reference_resolution_facts_live(
+      pool_roots: front_door_pool_roots,
+      importer_roots: front_door_importer_roots,
+      exclude_substrings: front_door_exclude_substrings
+    )
+  )
+}
+
+data front_door_probe_note: String = "Scale probe: this module is imported by nothing, so its dependents reading reaches exactly itself and the cycle partition is trivial. It isolates whether a corpus-scale reading is limited by the fact scan and normalization (paid identically here) or by the reached-set-sized cycle partition."
+
+fn dependents_of_leaf_probe_report() -> String {
+  render_reading(
+    subject: "tools.module_impact_query_front_door",
+    reading: dependents_of_module(module_name: "tools.module_impact_query_front_door"),
+    nodes: front_door_nodes()
+  )
+}
+
+fn dependents_of_path_report() -> String {
+  render_reading(
+    subject: "src/v2/lens/module_graph.dag",
+    reading: dependents_of_path(path: "src/v2/lens/module_graph.dag"),
+    nodes: front_door_nodes()
+  )
+}
