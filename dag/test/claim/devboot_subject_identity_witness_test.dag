@@ -31,6 +31,17 @@ import extdeps.toolchain.types {
   Musl,
 }
 import extdeps.cargo { CargoTarget, Bin, Lib }
+import gunbc.devboot.produce {
+  BuildPlan,
+  BuildPlanReady,
+  BuildPlanRefused,
+  BuildPlanRefusalCause,
+  CargoTargetNotRealized,
+  ProfileNotRealized,
+  CrossTargetNotRealized,
+  BuildEnvironmentNotRealized,
+  build_plan_for_subject,
+}
 
 import gunbc.devboot.subject {
   BuildSubject,
@@ -647,5 +658,84 @@ test fn devboot_roots_are_preserved_across_a_slot_flip() -> Bool {
   match owned_artifact_retirement_disposition(kind: DevbootArtifactStoreRoot) {
     RetirementPreserves => true
     _ => false
+  }
+}
+
+data build_plan_derivation_doc: String = "THE DISCRIMINATING EVIDENCE THAT THE PRODUCER READS THE SUBJECT. Before these rows the producer computed a faithful subject digest and then ran a fixed `cargo build --release --bin gunbc` whatever had been admitted, so a request for the library or a debug profile would have been answered with the release CLI stored under the REQUESTING subject's digest -- and every later reuse would have served those wrong bytes as an exact match, because the record and the request really would have agreed.\\n\\nA test that only checked the happy path could not have caught that: the happy path is exactly the one case where the fixed argv was already right. So the positive row pins that the flags are DERIVED -- package, binary name and profile all reach the argv -- and the negative rows pin that an axis this producer cannot realize REFUSES rather than falling through to the fixed build. The refusals are the load-bearing half."
+
+fn plan_args_contain(plan: BuildPlan, needle: String) -> Bool {
+  match plan {
+    BuildPlanReady { args, artifact_path } =>
+      fold(args, init: false, f: (acc, a) => acc || a == needle)
+    BuildPlanRefused { cause } => false
+  }
+}
+
+fn plan_artifact_path(plan: BuildPlan) -> String {
+  match plan {
+    BuildPlanReady { args, artifact_path } => artifact_path
+    BuildPlanRefused { cause } => ""
+  }
+}
+
+fn plan_is_refused(plan: BuildPlan) -> Bool {
+  match plan {
+    BuildPlanReady { args, artifact_path } => false
+    BuildPlanRefused { cause } => true
+  }
+}
+
+test fn the_build_plan_is_derived_from_the_admitted_subject() -> Bool {
+  match witness_subject(tree_hex: clean_tree_hex, gnu_abi: true, features: []) {
+    Absent => false
+    Present { value: subject } =>
+      let plan = build_plan_for_subject(subject: subject)
+      plan_args_contain(plan: plan, needle: "--bin")
+        && plan_args_contain(plan: plan, needle: "gunbc")
+        && plan_args_contain(plan: plan, needle: "--release")
+        && plan_artifact_path(plan: plan) == "target/release/gunbc"
+  }
+}
+
+data build_plan_refusal_doc: String = "EACH AXIS THIS PRODUCER CANNOT REALIZE REFUSES, and each row here is a subject that differs from the buildable one along exactly ONE axis. A library has no single retrievable artifact file; a musl target is not this host; a rustflag changes the emitted bytes and is not yet threaded into the invocation. Any of them silently falling through to the fixed build is the false share these rows exist to make impossible."
+
+test fn a_subject_this_producer_cannot_realize_refuses_rather_than_building_something_else() -> Bool {
+  library_subject_refuses() && cross_target_subject_refuses() && rustflag_subject_refuses()
+}
+
+fn library_subject_refuses() -> Bool {
+  match witness_subject_full(
+    tree_hex: clean_tree_hex,
+    gnu_abi: true,
+    features: [],
+    package: "gunbc",
+    cargo_target: Lib,
+    profile: "release",
+    rustflags: [],
+  ) {
+    Absent => false
+    Present { value: subject } => plan_is_refused(plan: build_plan_for_subject(subject: subject))
+  }
+}
+
+fn cross_target_subject_refuses() -> Bool {
+  match witness_subject(tree_hex: clean_tree_hex, gnu_abi: false, features: []) {
+    Absent => false
+    Present { value: subject } => plan_is_refused(plan: build_plan_for_subject(subject: subject))
+  }
+}
+
+fn rustflag_subject_refuses() -> Bool {
+  match witness_subject_full(
+    tree_hex: clean_tree_hex,
+    gnu_abi: true,
+    features: [],
+    package: "gunbc",
+    cargo_target: Bin { name: "gunbc" },
+    profile: "release",
+    rustflags: ["-Copt-level=3"],
+  ) {
+    Absent => false
+    Present { value: subject } => plan_is_refused(plan: build_plan_for_subject(subject: subject))
   }
 }

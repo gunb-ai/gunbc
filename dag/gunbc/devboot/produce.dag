@@ -8,9 +8,10 @@ import extdeps.filesystem.filesystem_io
 import gunbc.output_policy { ExpectSuccess }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 
-import gunbc.devboot.lease { content_hash_ref_token }
+import gunbc.devboot.lease { content_hash_ref_token, lease_ref_namespace, artifact_ref_namespace }
 import gunbc.devboot.subject {
   BuildSubject,
+  BuildEnvironmentSpec,
   admit_build_subject,
   build_subject_digest,
   SubjectAdmitted,
@@ -18,7 +19,7 @@ import gunbc.devboot.subject {
 }
 import extdeps.git.object_store { git_object_id_from_untagged_hex }
 import extdeps.toolchain.types { TargetTriple, ToolchainRequirement, X86_64, UnknownVendor, Linux, Gnu }
-import extdeps.cargo { Bin }
+import extdeps.cargo { CargoTarget, Lib, Bin, CargoTest, Example, Bench }
 
 data devboot_produce_note: String = "THE PRODUCER, AND IT IS THE LIVE PATH RATHER THAN A WITNESS. This module is invoked through `gunbc run`, so the first consumer of the identity carriers is the ordinary CLI surface -- a witness suite proving the same functions in isolation would not have established that anything is ever actually built or retrieved.\\n\\nEVERY HOST PATH ARRIVES AS A PARAMETER. The store root is supplied by the caller, never spelled here: on srv1 the deploy supplies the gunbc.host_layout row, and a local run supplies a scratch directory. A literal here would be the layout-admission defect this vertical was explicitly told not to repeat, and it would also make the producer untestable anywhere but one host.\\n\\nTHE ORDER IS THE CONTRACT. Look for an existing artifact first, and only if none exists take the lease and build -- so a subject already produced never builds again, which is the product sentence this service exists to satisfy. The lease is taken with git's exact-value ref update, whose create-only form refuses when the ref already exists, so two callers racing the same subject cannot both become producers."
 
@@ -68,21 +69,24 @@ fn devboot_produce_report(store_root: String, repo_root: String, index_path: Str
             store_root: store_root,
             repo_root: repo_root,
             caller: caller,
+            subject: subject,
             token: content_hash_ref_token(hash: build_subject_digest(subject: subject)),
           )
       }
   }
 }
 
+data ref_namespace_single_authority_note: String = "THE NAMESPACES ARE CONSUMED, NOT RESPELLED. An earlier revision wrote the two ref prefixes as literals here while gunbc.devboot.lease already declared them, so one fact had two spellings that could drift apart independently -- and the drift would not have been loud. A producer writing under refs/devboot/artifact/ while the lease module looked under a renamed prefix would simply never find an existing artifact: every request would rebuild, the dedup this service exists to provide would be silently gone, and every individual run would still look correct.\\n\\nThese functions now append the token to the imported namespaces, so there is one authority for where a subject lives in the store and a rename reaches both readers at once."
+
 fn artifact_ref_of(token: String) -> String {
-  concat("refs/devboot/artifact/", token)
+  concat(artifact_ref_namespace, token)
 }
 
 fn lease_ref_of(token: String) -> String {
-  concat("refs/devboot/lease/", token)
+  concat(lease_ref_namespace, token)
 }
 
-fn devboot_produce_admitted(store_root: String, repo_root: String, caller: String, token: String) -> ProduceReport {
+fn devboot_produce_admitted(store_root: String, repo_root: String, caller: String, subject: BuildSubject, token: String) -> ProduceReport {
   let existing = gunbc.WitnessBin.Run(
     workdir: repo_root,
     bin_path: "git",
@@ -91,7 +95,7 @@ fn devboot_produce_admitted(store_root: String, repo_root: String, caller: Strin
   if existing.success {
     ProduceReused { token: token, artifact: trim(s: existing.stdout) }
   } else {
-    devboot_produce_build(store_root: store_root, repo_root: repo_root, caller: caller, token: token)
+    devboot_produce_build(store_root: store_root, repo_root: repo_root, caller: caller, subject: subject, token: token)
   }
 }
 
@@ -99,7 +103,7 @@ data devboot_lease_then_build_note: String = "THE LEASE IS TAKEN BEFORE THE BUIL
 
 data lease_claim_placement_note: String = "THE CLAIM OBJECT IS WRITTEN INTO THE SERVICE'S OWN ROOT, never into the source tree. A lease claim needs to become a git object, and the transport has no stdin, so it goes through a file first -- and an earlier revision put that file in the repository root, where it showed up as untracked working-tree pollution in the very tree whose oid is this service's identity axis. A producer that dirties the source it is building from is one careless index operation away from changing the subject it is producing.\\n\\nThe store root is the right home: it is this service's one durable root, it is where every other piece of its state already lives, and it is a path the caller supplied rather than one spelled here."
 
-fn devboot_produce_build(store_root: String, repo_root: String, caller: String, token: String) -> ProduceReport {
+fn devboot_produce_build(store_root: String, repo_root: String, caller: String, subject: BuildSubject, token: String) -> ProduceReport {
   let claim_path = concat(store_root, "/devboot-lease-claim")
   let claim_written = Filesystem.Write(path: claim_path, content: concat("producer=", caller))
 
@@ -118,21 +122,168 @@ fn devboot_produce_build(store_root: String, repo_root: String, caller: String, 
   if !taken.success {
     ProduceAttached { token: token }
   } else {
-    devboot_store_built_artifact(store_root: store_root, repo_root: repo_root, caller: caller, token: token)
+    devboot_store_built_artifact(store_root: store_root, repo_root: repo_root, caller: caller, subject: subject, token: token)
   }
 }
 
-fn devboot_store_built_artifact(store_root: String, repo_root: String, caller: String, token: String) -> ProduceReport {
+
+data build_plan_note: String = "THE BUILD IS DERIVED FROM THE ADMITTED SUBJECT, and the previous revision's failure to do so was a false share of the exact kind the identity carriers exist to prevent. It computed the subject digest faithfully and then ran a fixed `cargo build --release --bin gunbc` regardless of what had been admitted, so a caller asking for the library, a different binary, a debug profile, a feature set or another target would have received the release CLI STORED UNDER ITS OWN SUBJECT'S DIGEST. Every later reuse would then serve those wrong bytes as an exact match, because the record and the request really would agree -- the wall in gunbc.devboot.outcome compares subjects, and both sides would have been the subject nobody built.\\n\\nSO EVERY AXIS EITHER REACHES THE ARGV OR REFUSES. The product picks the cargo target flag and the artifact filename; the profile picks the flag and the output directory; features become --features. What this producer cannot yet realize faithfully is REFUSED with a located cause rather than silently ignored, which is the difference between a bounded capability and a lie: a refusal costs the caller a build it could not have had anyway, while ignoring the axis costs it correctness.\\n\\ndissolve-on, per axis rather than as one lump: cross-target builds land with the session-ABI capsule, which is precisely a request for a target this host is not; rustflags, linker and sysroot land when the environment is threaded into the invocation as configuration rather than argv."
+
+type BuildPlanRefusalCause
+  = CargoTargetNotRealized { detail: String }
+  | ProfileNotRealized { profile: String }
+  | CrossTargetNotRealized { detail: String }
+  | BuildEnvironmentNotRealized { detail: String }
+
+type BuildPlan
+  = BuildPlanReady { args: List<String>, artifact_path: String }
+  | BuildPlanRefused { cause: BuildPlanRefusalCause }
+
+fn cargo_target_flags(target: CargoTarget) -> List<String> {
+  match target {
+    Lib => ["--lib"]
+    Bin { name } => ["--bin", name]
+    CargoTest { name } => []
+    Example { name } => ["--example", name]
+    Bench { name } => []
+  }
+}
+
+fn cargo_target_artifact_name(target: CargoTarget) -> String {
+  match target {
+    Lib => ""
+    Bin { name } => name
+    CargoTest { name } => ""
+    Example { name } => name
+    Bench { name } => ""
+  }
+}
+
+fn features_flags(features: List<NonEmptyStr>) -> List<String> {
+  if is_empty(features) {
+    []
+  } else {
+    ["--features", join(features |> map(f => f as String), ",")]
+  }
+}
+
+fn environment_refusal_detail(environment: BuildEnvironmentSpec) -> String {
+  if !is_empty(environment.rustflags) {
+    "rustflags are carried in the subject identity but not yet threaded into the invocation"
+  } else {
+    match environment.linker {
+      Present { value: l } => "a linker is carried in the subject identity but not yet threaded into the invocation"
+      Absent =>
+        match environment.sysroot {
+          Present { value: r } => "a sysroot is carried in the subject identity but not yet threaded into the invocation"
+          Absent =>
+            if !is_empty(environment.cargo_config) {
+              "cargo config entries are carried in the subject identity but not yet threaded into the invocation"
+            } else {
+              ""
+            }
+        }
+    }
+  }
+}
+
+fn profile_output_dir(profile: String) -> String {
+  if profile == "release" { "release" } else { "debug" }
+}
+
+fn profile_flags(profile: String) -> List<String> {
+  if profile == "release" { ["--release"] } else { [] }
+}
+
+fn build_plan_for_subject(subject: BuildSubject) -> BuildPlan {
+  let env_detail = environment_refusal_detail(environment: subject.environment)
+  let artifact_name = cargo_target_artifact_name(target: subject.product.target)
+  let profile = subject.profile as String
+  if env_detail != "" {
+    BuildPlanRefused { cause: BuildEnvironmentNotRealized { detail: env_detail } }
+  } else {
+    if !(subject.target == host_target()) {
+      BuildPlanRefused {
+        cause: CrossTargetNotRealized {
+          detail: "the requested target is not this host; cross-target production lands with the session-ABI capsule",
+        },
+      }
+    } else {
+      if artifact_name == "" {
+        BuildPlanRefused {
+          cause: CargoTargetNotRealized {
+            detail: "only a named binary or example produces a single retrievable artifact file",
+          },
+        }
+      } else {
+        if !(profile == "release" || profile == "dev") {
+          BuildPlanRefused { cause: ProfileNotRealized { profile: profile } }
+        } else {
+          BuildPlanReady {
+            args: concat(
+              ["build"],
+              concat(
+                profile_flags(profile: profile),
+                concat(
+                  ["--package", subject.product.package as String],
+                  concat(
+                    cargo_target_flags(target: subject.product.target),
+                    features_flags(features: subject.features),
+                  ),
+                ),
+              ),
+            ),
+            artifact_path: join(["target/", profile_output_dir(profile: profile), "/", artifact_name], ""),
+          }
+        }
+      }
+    }
+  }
+}
+
+fn build_plan_refusal_reason(cause: BuildPlanRefusalCause) -> String {
+  match cause {
+    CargoTargetNotRealized { detail } => detail
+    ProfileNotRealized { profile } => concat("unrealized cargo profile: ", profile)
+    CrossTargetNotRealized { detail } => detail
+    BuildEnvironmentNotRealized { detail } => detail
+  }
+}
+
+fn devboot_store_built_artifact(store_root: String, repo_root: String, caller: String, subject: BuildSubject, token: String) -> ProduceReport {
+  match build_plan_for_subject(subject: subject) {
+    BuildPlanRefused { cause } =>
+      ProduceRefused { reason: build_plan_refusal_reason(cause: cause) }
+    BuildPlanReady { args, artifact_path } =>
+      devboot_run_build_plan(
+        store_root: store_root,
+        repo_root: repo_root,
+        caller: caller,
+        token: token,
+        args: args,
+        artifact_path: artifact_path,
+      )
+  }
+}
+
+fn devboot_run_build_plan(
+  store_root: String,
+  repo_root: String,
+  caller: String,
+  token: String,
+  args: List<String>,
+  artifact_path: String,
+) -> ProduceReport {
   let built = gunbc.WitnessBin.Run(
     workdir: repo_root,
     bin_path: "cargo",
-    args: ["build", "--release", "--bin", "gunbc"],
+    args: args,
     expect: ExpectSuccess,
   )
   let stored = gunbc.WitnessBin.Run(
     workdir: repo_root,
     bin_path: "git",
-    args: [concat("--git-dir=", store_root), "hash-object", "-w", "--", "target/release/gunbc"],
+    args: [concat("--git-dir=", store_root), "hash-object", "-w", "--", artifact_path],
     expect: ExpectSuccess,
   )
   let blob_oid = trim(s: stored.stdout)
