@@ -582,3 +582,40 @@ test fn witness_the_differential_control_can_fail() -> Bool {
     && module_in(xs: reverse_consumers_of(target: mod_c), m: mod_a)
     && count_where(xs: forward_closure_of(entry: mod_c), predicate: fn(_) { true }) == 1
 }
+
+
+data fully_unresolved_witness_note: String = "Addendum to the operator ruling (verification pass, 2026-08-08). The earlier fully-unresolved case asserted only that nothing was reached, which INSTITUTIONALISED the exact bug item 3 names: a surface where NO input resolved produced reached=0 and a result a machine consumer would read as affects-nothing. Reaching nothing and knowing nothing are different states. This asserts the whole-result arm."
+
+test fn witness_a_fully_unresolved_surface_is_partial_not_an_empty_answer() -> Bool {
+  let outcome = surface_outcome(changed: ["README.md", "docs/plans/x.md"], departed: no_departed)
+  outcome_is_partial(outcome: outcome)
+    && outcome_reached_count(outcome: outcome) == 0
+    && match outcome {
+      ChangedSurfacePartial { reading: _, unresolved_subjects } =>
+        count_where(xs: unresolved_subjects, predicate: fn(_) { true }) == 2
+      ChangedSurfaceComplete { reading: _ } => false
+      ChangedSurfaceRefused { reason: _ } => false
+    }
+}
+
+
+data departed_overlap_witness_note: String = "The earlier fixtures authored changed_paths and departed_paths as DISJOINT lists, which is not how git reports a deletion: touched_paths carries every entry's path including deleted ones, so a deleted path appears in both. The fixture was therefore not a model of the real observation, and the bug it hid - one deletion producing two subjects, a spurious NoModuleDeclaredAtPath beside the correct BaseGraphUnavailable - was found by a real-diff receipt instead. This witness authors the overlap the way git actually produces it."
+
+test fn witness_a_deleted_path_present_in_both_lists_yields_one_base_subject() -> Bool {
+  let outcome = surface_outcome(
+    changed: ["fixture/b.dag", "fixture/c.dag"],
+    departed: ["fixture/b.dag"]
+  )
+  match outcome {
+    ChangedSurfacePartial { reading: _, unresolved_subjects } =>
+      count_where(xs: unresolved_subjects, predicate: fn(_) { true }) == 1
+        && any(xs: unresolved_subjects, predicate: fn(u) {
+          match u.cause {
+            BaseGraphUnavailable => u.path == "fixture/b.dag"
+            NoModuleDeclaredAtPath => false
+          }
+        })
+    ChangedSurfaceComplete { reading: _ } => false
+    ChangedSurfaceRefused { reason: _ } => false
+  }
+}

@@ -217,8 +217,9 @@ fn render_reading(
     empty: no_lines,
     cons: fn(acc, c) { Cons { head: render_cause(cause: c), tail: acc } }
   ))
+  let analysis = module_cycle_analysis(reading: reading)
   let cycle_lines = list_reverse(xs: fold_list(
-    xs: reading.cycles,
+    xs: analysis.cycles,
     empty: no_lines,
     cons: fn(acc, c) { Cons { head: render_cycle(cycle: c), tail: acc } }
   ))
@@ -229,7 +230,7 @@ fn render_reading(
     render_lines(lines: reached_lines),
     "  causes ({count_text(xs: reading.causes)}):",
     render_lines(lines: cause_lines),
-    "  cycles ({count_text(xs: reading.cycles)}):",
+    "  cycles ({count_text(xs: analysis.cycles)}):",
     render_lines(lines: cycle_lines),
   ])
 }
@@ -264,38 +265,6 @@ fn dependents_of_module_graph_report() -> String {
   )
 }
 
-fn probe_count_nodes() -> String {
-  count_text(xs: front_door_nodes())
-}
-
-fn probe_count_import_facts() -> String {
-  count_text(xs: front_door_import_facts())
-}
-
-fn probe_count_edges() -> String {
-  count_text(xs: front_door_edges())
-}
-
-fn probe_count_reference_facts() -> String {
-  count_text(
-    xs: reference_resolution_facts_live(
-      pool_roots: front_door_pool_roots,
-      importer_roots: front_door_importer_roots,
-      exclude_substrings: front_door_exclude_substrings
-    )
-  )
-}
-
-data front_door_probe_note: String = "Scale probe: this module is imported by nothing, so its dependents reading reaches exactly itself and the cycle partition is trivial. It isolates whether a corpus-scale reading is limited by the fact scan and normalization (paid identically here) or by the reached-set-sized cycle partition."
-
-fn dependents_of_leaf_probe_report() -> String {
-  render_reading(
-    subject: "tools.module_impact_query_front_door",
-    reading: dependents_of_module(module_name: "tools.module_impact_query_front_door"),
-    nodes: front_door_nodes()
-  )
-}
-
 fn dependents_of_path_report() -> String {
   render_reading(
     subject: "src/v2/lens/module_graph.dag",
@@ -303,7 +272,6 @@ fn dependents_of_path_report() -> String {
     nodes: front_door_nodes()
   )
 }
-
 
 data changed_surface_front_door_note: String = "CAPSULE 2 applied consumer, reworked under the operator ruling 2026-08-08. Changed paths AND departed paths both come from v2.workflow.floor_diff_observe, the existing single authority for the CI diff observation - this adds no second diff producer. Deletions are no longer discarded: a departed path becomes a ResolveInBase subject, which cannot resolve against the head population and therefore lands as a typed BaseGraphUnavailable unresolved subject, contaminating the outcome to Partial. A diff-observation FAILURE refuses with the observation's own reason and computes NO impact - it never widens to the whole corpus. Run: gunbc run --source-root dag --source-root src/v2 --entry dag/tools/module_impact_query_front_door.dag --function changed_surface_impact_report"
 

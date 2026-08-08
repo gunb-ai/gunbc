@@ -993,18 +993,36 @@ fn impact_subject_resolvable_in_head(subject: ChangedSubject) -> Bool {
   }
 }
 
+data module_impact_departed_overlap_note: String = "git diff --name-status reports a DELETED path in BOTH projections: touched_paths carries every entry's path regardless of status (plus old_path for renames), while departed_paths carries deletions and rename old-paths. A deleted path is therefore in both lists, and building a subject from each produced TWO subjects for one deletion - a head-side one that resolves to nothing and reports NoModuleDeclaredAtPath, beside the correct base-side BaseGraphUnavailable. That inflated the unresolved count and misreported the cause for exactly the destructive case this rework exists to serve. A departed path is a deletion, so it is a base-side subject ONLY. A rename is unaffected and still yields two subjects, correctly: the old name in base and the distinct new name in head. Found by the real-diff deletion receipt (operator ruling item 7), not by a fixture - the fixtures authored the two lists as disjoint, which is not how git reports them."
+
+fn impact_path_is_departed(departed_set: Map<String, String>, path: String) -> Bool {
+  match map_lookup_where_rejected_unreachable(m: departed_set, key: path) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
 fn impact_changed_subjects(
   changed_paths: List<String>,
   departed_paths: List<String>
 ) -> List<ChangedSubject> {
+  let departed_set = fold_list(
+    xs: departed_paths,
+    empty: empty_map(),
+    cons: fn(acc, path) { map_insert(m: acc, key: path, value: path) }
+  )
   let with_head = fold_list(
     xs: changed_paths,
     empty: impact_no_changed_subjects,
     cons: fn(acc, path) {
-      impact_prepend_changed_subject(
-        acc: acc,
-        item: impact_changed_subject(path: path, side: ResolveInHead)
-      )
+      if impact_path_is_departed(departed_set: departed_set, path: path) {
+        acc
+      } else {
+        impact_prepend_changed_subject(
+          acc: acc,
+          item: impact_changed_subject(path: path, side: ResolveInHead)
+        )
+      }
     }
   )
   list_reverse(xs: fold_list(
