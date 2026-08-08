@@ -224,6 +224,14 @@ fn impulse_source_key(s: PhysicalImpulseSource) -> String {
   }
 }
 
+data superseded_impulse_authority_note: String = "THIS MODULE'S SOURCE AND AVAILABILITY VOCABULARY IS SUPERSEDED, AND THE ADAPTER BELOW IT IS A DECLARED SCAFFOLD RATHER THAN A SECOND AUTHORITY (review finding, 2026-08-06). PhysicalImpulseSource, SensorAvailability, ImpulseAdmission and admit_impulse were authored before the capability model existed, and they answer the same questions less exactly: a three-arm source enum cannot name WHICH interface produced a reading, and a five-state availability projection cannot distinguish a policy refusal from a permission refusal from a backend that would not connect, nor say anything about whether a stream was FIT for the interaction.
+
+The replacements live downstream: gunbc.capability_binding carries PhysicalImpulse with a symbolic source binding, the qualification receipt, and the per-host verdict; gunbc.web_motion_binding carries the exact web axes. The physics in this module CONSUMES a PhysicalImpulse and applies displacement; it no longer needs to know what a sensor is.
+
+WHY BOTH EXIST RIGHT NOW: the sandbox page still renders the old impulse matrix and is owned by an open change, so deleting these types in this change would break a page mid-flight for no gain. gunbc.web_motion_binding's project_sensor_availability is therefore the declared bridge — deliberately lossy, with its losses named at the projection — and it is a scaffold, not a design.
+
+DISSOLVE-ON, all three together and countable: when the sandbox page's physical section reads TargetCapabilityVerdict instead of SensorAvailability, then PhysicalImpulseSource, SensorAvailability, ImpulseAdmission, admit_impulse, source_availability, sensor_may_deliver_impulses and sensor_availability_key delete, and project_sensor_availability deletes with them. Nothing here is intended to survive that page's migration."
+
 data sensor_availability_note: String = "FIVE STATES, BECAUSE THE THREE THAT GET COLLAPSED ARE THE ONES THAT MATTER. A sensor that is absent, one that exists but has not been asked for, one whose permission was refused, and one we could not interrogate are four different worlds with four different remedies, and every one of them is routinely flattened into a single falsy 'no sensor' — the empty-observation narrow, rendering could-not-observe as the verdict nothing-is-there. SensorAvailabilityUnknown is therefore NOT a synonym for absent: sensor_may_deliver_impulses admits only SensorPresent, so an uninterrogated sensor delivers nothing while remaining visibly distinct from one that is genuinely missing, and a surface can honestly say which."
 
 type SensorAvailability
