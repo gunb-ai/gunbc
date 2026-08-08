@@ -10,6 +10,9 @@ import gunbc.falsifier_workflow {
   gunbc_falsifier_floor_job_backstop_timeout_minutes,
   gunbc_falsifier_step_timeout_minutes,
   gunbc_falsifier_step_timeout_basis_is_measured_not_composed,
+  gunbc_falsifier_receipt_flush_allowance_minutes,
+  gunbc_falsifier_soft_deadline_minutes,
+  gunbc_falsifier_soft_deadline_precedes_the_hard_kill,
   expected_falsifier_yml
 }
 import gunbc.falsifier_run_control {
@@ -68,6 +71,14 @@ test fn falsifier_backstop_is_step_sum_plus_prelude() -> Bool {
   gunbc_falsifier_job_backstop_timeout_minutes() == (gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_selection_control_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_falsifier_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_falsifier_compile_clean_cold_control_timeout_minutes + gunbc_falsifier_native_cache_cold_control_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes)
     && gunbc_falsifier_job_backstop_timeout_minutes() == (gunbc_falsifier_build_job_backstop_timeout_minutes() + gunbc_falsifier_floor_job_backstop_timeout_minutes())
     && !(gunbc_falsifier_job_backstop_timeout_minutes() == gunbc_falsifier_step_timeout_minutes)
+}
+
+data falsifier_soft_deadline_witness_note: String = "The soft deadline's ONE correctness property is an ordering, not a value: it must fall strictly inside the step cap it is subtracted from, because a deadline at or past the runner's SIGKILL cannot fire and would be a mechanism that exists without ever executing. Asserting the derivation rather than the number 167 is what makes that survive a re-basis of the cap — the pair below moves together by construction, and a witness pinned to a literal would have to be edited in the same change and could be edited wrongly. The strict-inequality half is the load-bearing one; the positive-allowance half is what forbids the degenerate derivation where allowance is zero and the two collapse onto the same instant."
+
+test fn falsifier_soft_deadline_is_derived_and_strictly_inside_the_hard_cap() -> Bool {
+  gunbc_falsifier_soft_deadline_precedes_the_hard_kill()
+    && gunbc_falsifier_soft_deadline_minutes() == (gunbc_falsifier_step_timeout_minutes - gunbc_falsifier_receipt_flush_allowance_minutes)
+    && gunbc_falsifier_soft_deadline_minutes() < gunbc_falsifier_step_timeout_minutes
 }
 
 data selection_control_step_name: String = "Affected-set selection control (floor_skip_discovery_witness)"
