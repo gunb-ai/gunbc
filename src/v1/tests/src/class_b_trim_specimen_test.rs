@@ -1,5 +1,19 @@
 //! Class B trim: explicit `import std.algebra { trim }` binds in narrow pools;
 //! coincidence binding remains a regression control only.
+//!
+//! SCAFFOLD (DESIGN §7 HAND-RUST GATE — explicit deferral): this module exercises
+//! the v1 compiler-test harness because Class B trim discrimination needs
+//! primary-precedence pool overlays (`fixtures/class_b_trim/narrow_pool/`) and
+//! `compile_declared_import_closure_only_with_pool` receipts that cannot be enrolled
+//! as discovered `dag/test/claim/*_test.dag` rows while the Class B gate observes only
+//! `item_registry` symbols (`run_class_b_import_closure_gate` / `rust_selection_policy_node`)
+//! and `trim` has no such registry row. Lane: import-strip witness-discovery cascade
+//! (#6985 Class B pool-membership coincidence; `import-strip-witness-discovery-cascade-diagnosis.md`
+//! §9, §12). Sole dissolution: the change landing closure-independent binding for bare
+//! free-call `trim` (dissolve trigger on `trim_free_function_authority_note` in
+//! `std.algebra` — bare trim without listed import refuses repo-wide) must migrate
+//! `fixtures/class_b_trim/*.dag` into enrolled `dag/test/claim/class_b_trim_*` witness
+//! rows on the floor roster and delete this Rust module in the same change.
 
 use v1_compiler::cli_run::{
     compile_declared_import_closure_only_with_pool,
