@@ -40622,4 +40622,34 @@ mod annotation_erased_scan_projection {
             "string content must survive erasure"
         );
     }
+
+    /// The second, independently discovered route into the same defect
+    /// (loyal-ram-550, found by writing a dotted module path in an annotation and
+    /// watching it become a real dependency edge in the source-loading fixpoint).
+    /// Different scanner, different token shape than the bare-identifier case
+    /// above, so it is its own discriminating input rather than a restatement.
+    #[test]
+    fn a_dotted_module_path_in_an_annotation_is_not_a_dependency_edge() {
+        let mut index: ModuleSourceIndex = HashMap::new();
+        index.insert(
+            "std.decl_ref".to_string(),
+            Rc::new(v1_compiler_compile::SourceFile {
+                path: "dag/std/decl_ref.dag".to_string(),
+                content: "module std.decl_ref\n".to_string(),
+            }),
+        );
+
+        let annotated = "module m\n// see std.decl_ref for the carrier\nfn f() -> Bool { true }\n";
+        assert!(
+            referenced_module_paths_in_text(annotated, &index).is_empty(),
+            "a module path named in an annotation must not become a dependency edge"
+        );
+
+        let referenced = "module m\nimport std.decl_ref { DeclarationRef }\n";
+        assert_eq!(
+            referenced_module_paths_in_text(referenced, &index),
+            vec!["std.decl_ref".to_string()],
+            "a real reference to the same module must still produce the edge"
+        );
+    }
 }
