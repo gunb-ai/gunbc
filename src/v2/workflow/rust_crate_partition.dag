@@ -216,6 +216,7 @@ fn stage0_std_core_modules() -> List<String> {
       "std_graph",
       "extdeps_uri",
       "extdeps_external_authority",
+      "std_process_termination",
       "extdeps_container_oci_digest",
       "extdeps_units_dimensionless",
       "extdeps_units_iec_80000_13",
