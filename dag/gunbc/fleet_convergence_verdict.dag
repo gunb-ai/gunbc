@@ -1,0 +1,150 @@
+module gunbc.fleet_convergence_verdict
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import product.placement_supply { HostIdentity }
+import std.upsert_decision {
+  ObservationVerdict,
+  Converged,
+  Absent,
+  Drifted,
+  Conflict,
+  Inaccessible,
+  UnknownRefused,
+}
+import gunbc.host_phase_status {
+  HostPhaseCellStatus,
+  host_phase_cells_for_enrollment,
+  host_phase_cell_verdict,
+}
+import gunbc.host_assimilation_program { HostEnrollmentIntent }
+import gunbc.fleet_converge_cli { ConvergeCliReceipt, converge_cli_receipt_converged }
+
+// THE fleet-atomic-convergence-verdict fold (operator directive 2026-08-08): ONE verdict
+// over the whole fleet, joining the knob-grain converge receipts (the slice1 circuit's
+// ConvergeCliReceipt) with the lifecycle-phase cells (the observe_host_phase matrix).
+// The load-bearing law is fail-closed at the CELL: a required cell nobody observed
+// PREVENTS fleet convergence — it never defaults green — and the not-converged causes
+// keep their remedies distinct (unobserved: build/run the producer; unreachable: fix
+// reach; refused/conflict: resolve the contradiction; drifted: run the converge). The
+// current defect this fold makes countable rather than prose: the fleet phase matrix has
+// exactly ONE real producer cell today (srv3, prefix:os-install-actuated), so every
+// other required cell reads unobserved and the fleet verdict is honestly NOT converged
+// until producers land receipts — that number going down IS the arc's progress.
+type RequiredCellStanding
+  = CellConverged { host: HostIdentity, phase_label: String }
+  | CellUnobserved { host: HostIdentity, phase_label: String }
+  | CellUnreachable { host: HostIdentity, phase_label: String }
+  | CellDrifted { host: HostIdentity, phase_label: String }
+  | CellConflict { host: HostIdentity, phase_label: String }
+
+// Projection keeps the full six-arm ObservationVerdict fidelity: Absent and
+// UnknownRefused are both "nobody observed this" (no producer, or a producer with no
+// committed observation) and land in CellUnobserved; Inaccessible is a producer that
+// ASKED and could not reach — a different remedy, kept distinct; Conflict is its own arm
+// (a wrong-machine or contradictory observation is neither drift nor unreachability).
+fn required_cell_standing(c: HostPhaseCellStatus) -> RequiredCellStanding {
+  let host = c.cell.host
+  let label = c.cell.phase_label
+  match host_phase_cell_verdict(c: c) {
+    Converged => CellConverged { host: host, phase_label: label }
+    Absent => CellUnobserved { host: host, phase_label: label }
+    UnknownRefused => CellUnobserved { host: host, phase_label: label }
+    Inaccessible => CellUnreachable { host: host, phase_label: label }
+    Drifted => CellDrifted { host: host, phase_label: label }
+    Conflict => CellConflict { host: host, phase_label: label }
+  }
+}
+
+fn cell_standing_is_converged(s: RequiredCellStanding) -> Bool {
+  match s {
+    CellConverged { host: _, phase_label: _ } => true
+    _ => false
+  }
+}
+
+// A host's knob-grain standing joins by IDENTITY with its lifecycle cells. A host with
+// no converge receipt at all is unobserved at knob grain — the same fail-closed arm as
+// an unobserved cell, never a default green.
+type HostKnobStanding
+  = KnobConverged { host: HostIdentity }
+  | KnobNotConverged { host: HostIdentity, reason: String }
+  | KnobUnobserved { host: HostIdentity }
+
+fn host_knob_standing(host: HostIdentity, receipts: List<ConvergeCliReceipt>) -> HostKnobStanding {
+  match fold(receipts, init: none, f: fn(acc, r) {
+    match acc {
+      Present { value: _ } => acc
+      _ => if r.host == (host as String) { Present { value: r } } else { none }
+    }
+  }) {
+    Present { value: r } =>
+      if converge_cli_receipt_converged(r: r) {
+        KnobConverged { host: host }
+      } else {
+        KnobNotConverged { host: host, reason: "converge receipt present but not converged" }
+      }
+    _ => KnobUnobserved { host: host }
+  }
+}
+
+fn host_knob_standing_is_converged(s: HostKnobStanding) -> Bool {
+  match s {
+    KnobConverged { host: _ } => true
+    _ => false
+  }
+}
+
+type HostConvergenceStanding {
+  host: HostIdentity
+  knob: HostKnobStanding
+  cells: List<RequiredCellStanding>
+}
+
+fn host_convergence_standing(
+  intent: HostEnrollmentIntent,
+  receipts: List<ConvergeCliReceipt>,
+) -> HostConvergenceStanding {
+  HostConvergenceStanding {
+    host: intent.host,
+    knob: host_knob_standing(host: intent.host, receipts: receipts),
+    cells: map(host_phase_cells_for_enrollment(intent: intent), c => required_cell_standing(c: c)),
+  }
+}
+
+fn host_standing_is_converged(s: HostConvergenceStanding) -> Bool {
+  host_knob_standing_is_converged(s: s.knob)
+    && fold(s.cells, init: true, f: fn(acc, c) { acc && cell_standing_is_converged(s: c) })
+}
+
+type FleetConvergenceVerdict
+  = FleetConverged { host_count: Int }
+  | FleetNotConverged { standings: List<HostConvergenceStanding> }
+
+// The atomic fold: converged only when EVERY enrolled host converges at BOTH grains.
+// The not-converged arm carries every host's full standing rather than a count, so the
+// blocking cells are readable without re-deriving anything — the verdict IS the work
+// list. An empty enrollment refuses convergence (a fleet of zero hosts is an observation
+// gap, not a converged fleet).
+fn fleet_convergence_verdict(
+  enrollments: List<HostEnrollmentIntent>,
+  receipts: List<ConvergeCliReceipt>,
+) -> FleetConvergenceVerdict {
+  let standings = map(enrollments, e => host_convergence_standing(intent: e, receipts: receipts))
+  if length(standings) > 0
+    && fold(standings, init: true, f: fn(acc, s) { acc && host_standing_is_converged(s: s) }) {
+    FleetConverged { host_count: length(standings) }
+  } else {
+    FleetNotConverged { standings: standings }
+  }
+}
+
+fn fleet_unobserved_cell_count(standings: List<HostConvergenceStanding>) -> Int {
+  fold(standings, init: 0, f: fn(acc, s) {
+    acc + fold(s.cells, init: 0, f: fn(a, c) {
+      match c {
+        CellUnobserved { host: _, phase_label: _ } => a + 1
+        _ => a
+      }
+    })
+  })
+}

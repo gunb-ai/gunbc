@@ -1,0 +1,143 @@
+module test.claim.host_reach_identity_probe_witness
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.upsert_decision { ObservationVerdict, Converged, Drifted, Conflict, Inaccessible, UnknownRefused }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3 }
+import gunbc.host_reach_identity_probe {
+  ReachProbeOutcome,
+  ProbeReachable,
+  ProbeTransportUnavailable,
+  ProbeAuthenticationRefused,
+  ProbeHostKeyMismatch,
+  HostReachIdentityProbeReceipt,
+  host_reach_identity_probe_receipt_for,
+  classify_reach_probe_wire,
+  reach_verdict_from_outcome,
+  identity_verdict_from_outcome,
+  observe_reach_secrets_network,
+  observe_host_identity_converge,
+  host_identity_desired_short_hostname,
+}
+import gunbc.host_phase_status {
+  observe_host_phase,
+  fleet_subsumption_enrollments,
+  host_phase_observation_coverage_count,
+}
+import gunbc.host_assimilation_program { HostEnrollmentIntent }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn fixture_subject() -> HostEnrollmentIntent {
+  fleet_subsumption_enrollments.first()
+}
+
+// The four wire classes land in four distinct outcome arms, fail-closed: an
+// unclassifiable failure is TransportUnavailable with the cause preserved, never a
+// fabricated Reachable.
+test fn probe_wire_classifies_four_distinct_outcomes() -> Bool {
+  match classify_reach_probe_wire(success: true, stdout: "srv1\n", stderr: "") {
+    ProbeReachable { observed_short_hostname: h } => h == "srv1"
+    _ => false
+  }
+    && match classify_reach_probe_wire(success: false, stdout: "", stderr: "briansrls@srv5: Permission denied (publickey).") {
+      ProbeAuthenticationRefused { cause: _ } => true
+      _ => false
+    }
+    && match classify_reach_probe_wire(success: false, stdout: "", stderr: "Host key verification failed.") {
+      ProbeHostKeyMismatch { expected_fingerprint: _, observed_fingerprint: _ } => true
+      _ => false
+    }
+    && match classify_reach_probe_wire(success: false, stdout: "", stderr: "ssh: connect to host srv5 port 22: Connection timed out") {
+      ProbeTransportUnavailable { cause: _ } => true
+      _ => false
+    }
+}
+
+// RED-shaped fail-closed control: empty stderr on failure is still TransportUnavailable
+// (unknown never widens to Reachable), and a success wire never lands in a failure arm.
+test fn probe_wire_unknown_failure_is_transport_unavailable_never_reachable() -> Bool {
+  match classify_reach_probe_wire(success: false, stdout: "srv1\n", stderr: "") {
+    ProbeTransportUnavailable { cause: _ } => true
+    _ => false
+  }
+}
+
+// Reach verdict projection: transport-unavailable and authentication-refused stay
+// DISTINCT outcome arms even though both project Inaccessible — the distinction lives on
+// the receipt, and this witness pins that both arms exist separately AND project the
+// same fail-closed verdict (neither is ever Converged or Absent).
+test fn reach_projection_covers_all_arms() -> Bool {
+  reach_verdict_from_outcome(o: ProbeReachable { observed_short_hostname: "srv1" }) == Converged
+    && reach_verdict_from_outcome(o: ProbeTransportUnavailable { cause: "timeout" }) == Inaccessible
+    && reach_verdict_from_outcome(o: ProbeAuthenticationRefused { cause: "denied" }) == Inaccessible
+    && reach_verdict_from_outcome(o: ProbeHostKeyMismatch { expected_fingerprint: "a", observed_fingerprint: "b" }) == Conflict
+}
+
+// Identity deduction: reachable-and-matching converges; reachable-but-different is
+// Drifted (the divergence SetHostnameCas corrects); unreachable/unauthenticated cannot
+// say (Inaccessible); a host-key mismatch is Conflict — the machine answering may not be
+// the enrolled host, so its hostname must never launder into an identity observation.
+test fn identity_projection_discriminates_match_drift_and_wrong_machine() -> Bool {
+  let desired = host_identity_desired_short_hostname(host: operator_host_srv1)
+  identity_verdict_from_outcome(host: operator_host_srv1, o: ProbeReachable { observed_short_hostname: desired }) == Converged
+    && identity_verdict_from_outcome(host: operator_host_srv1, o: ProbeReachable { observed_short_hostname: "altrad8ud-1l2t-1" }) == Drifted
+    && identity_verdict_from_outcome(host: operator_host_srv1, o: ProbeTransportUnavailable { cause: "x" }) == Inaccessible
+    && identity_verdict_from_outcome(host: operator_host_srv1, o: ProbeAuthenticationRefused { cause: "x" }) == Inaccessible
+    && identity_verdict_from_outcome(host: operator_host_srv1, o: ProbeHostKeyMismatch { expected_fingerprint: "a", observed_fingerprint: "b" }) == Conflict
+}
+
+// No committed receipt -> the producers answer none, the canonical seam answers none for
+// both P0 cells, and the coverage count stays exactly the one real producer cell
+// (srv3, prefix:os-install-actuated). Coverage grows ONLY when an executed probe lands a
+// receipt row — never by wiring alone.
+test fn no_receipt_means_none_and_coverage_stays_one() -> Bool {
+  match host_reach_identity_probe_receipt_for(host: operator_host_srv1) {
+    Present { value: _ } => false
+    _ => true
+  }
+    && match observe_reach_secrets_network(host: operator_host_srv1) {
+      Present { value: _ } => false
+      _ => true
+    }
+    && match observe_host_phase(subject: fixture_subject(), host: operator_host_srv1, phase_label: "P0:reach-secrets-network") {
+      Present { value: _ } => false
+      _ => true
+    }
+    && host_phase_observation_coverage_count(enrollments: fleet_subsumption_enrollments) == 1
+}
+
+// The canonical seam routes each label to its producer and answers none for a label with
+// no producer row; the srv3 lease producer is preserved and still host-scoped.
+test fn observe_host_phase_routes_by_label_and_stays_fail_closed() -> Bool {
+  match observe_host_phase(subject: fixture_subject(), host: operator_host_srv3, phase_label: "prefix:os-install-actuated") {
+    Present { value: _ } => true
+    _ => false
+  }
+    && match observe_host_phase(subject: fixture_subject(), host: operator_host_srv1, phase_label: "prefix:os-install-actuated") {
+      Present { value: _ } => false
+      _ => true
+    }
+    && match observe_host_phase(subject: fixture_subject(), host: operator_host_srv1, phase_label: "P1:runner-deploy-slot") {
+      Present { value: _ } => false
+      _ => true
+    }
+    && match observe_host_phase(subject: fixture_subject(), host: operator_host_srv1, phase_label: "P0:host-identity-converge") {
+      Present { value: _ } => false
+      _ => true
+    }
+}
+
+// With a synthetic receipt, both deductions produce verdicts from the SAME probe — one
+// observation, two cells (§2) — and the two Inaccessible-projecting arms remain
+// distinguishable at the receipt's outcome grain.
+test fn one_receipt_feeds_both_cells() -> Bool {
+  let r = HostReachIdentityProbeReceipt {
+    host: operator_host_srv1,
+    probed_at: "witness-fixture" as NonEmptyStr,
+    outcome: ProbeReachable { observed_short_hostname: host_identity_desired_short_hostname(host: operator_host_srv1) },
+  }
+  reach_verdict_from_outcome(o: r.outcome) == Converged
+    && identity_verdict_from_outcome(host: r.host, o: r.outcome) == Converged
+}

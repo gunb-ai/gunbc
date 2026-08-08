@@ -18,6 +18,10 @@ import gunbc.host_assimilation_program {
   ci_runner_enrollment_participation,
 }
 import gunbc.host_standup_assimilation_deduction { srv3_post_install_actuation_verdict }
+import gunbc.host_reach_identity_probe {
+  observe_host_identity_converge,
+  observe_reach_secrets_network,
+}
 import gunbc.membership_reconcile {
   MembershipPlan,
   MemberAction,
@@ -104,23 +108,48 @@ fn host_phase_cell_has_live_producer(c: HostPhaseCellStatus) -> Bool {
 
 data host_phase_observation_frontier_note: String = "The live-observation producer registry, and deliberately a TYPED, COUNTABLE FRONTIER rather than a table of hand-written facts (the self-host frontier shape, DESIGN §7: each cell is either produced or it is a declared absence, never a silent assumption). Exactly one cell has a real producer today — (srv3, prefix:os-install-actuated), which deduces its verdict from an observed DHCP lease table through gunbc.host_standup_assimilation_deduction; that deduction was ALREADY host-parameterized (deduce_os_install_actuation_verdict takes fleet_slot: HostIdentity), so generalizing it was reading the parameter it already had, not writing new machinery. Every other cell returns Absent, which host_phase_verdict_from renders UnknownRefused. What must NOT happen here is the shape this module exists to kill: hand-entering an observation because someone ssh'd a host once. A probe run by a person is not a modeled producer — encoding its result as a data row would rebuild the parallel ledger the gap-ledger dissolution just removed, and it would go stale in exactly the same way. A cell earns a row here when an effect produces its verdict by execution; until then UnknownRefused is the honest answer and host_phase_observation_coverage_count is the number that measures the debt."
 
-fn host_phase_observation(host: HostIdentity, step: HostStandupStep) -> ObservationVerdict? {
-  if (step.label as String) == "prefix:os-install-actuated" {
+// THE canonical observation seam (operator directive 2026-08-08): every lifecycle-phase
+// observation for every host routes through observe_host_phase — never a parallel
+// per-program observer beside it (a spark_* sibling would be the reconcile-spine §3
+// fork). The subject is the host's enrollment intent, so a producer can read what the
+// host is enrolled FOR without a second roster. Producers are PURE deductions over
+// committed typed observations (the srv3 lease-table pattern; gunbc.host_reach_identity_probe
+// for the two P0 cells) — the matrix never executes a transport, and observation never
+// repairs anything. A phase with no producer row returns none, which the verdict fold
+// renders UnknownRefused: absence of a producer is a counted debt, never a silent green.
+fn observe_host_phase(
+  subject: HostEnrollmentIntent,
+  host: HostIdentity,
+  phase_label: String,
+) -> ObservationVerdict? {
+  if phase_label == "prefix:os-install-actuated" {
     if host == operator_host_srv3 {
       Present { value: srv3_post_install_actuation_verdict(elapsed: millisecond(count: 0)) }
     } else {
       none
     }
   } else {
-    none
+    if phase_label == "P0:host-identity-converge" {
+      observe_host_identity_converge(host: host)
+    } else {
+      if phase_label == "P0:reach-secrets-network" {
+        observe_reach_secrets_network(host: host)
+      } else {
+        none
+      }
+    }
   }
 }
 
-fn host_phase_cell_status(host: HostIdentity, step: HostStandupStep) -> HostPhaseCellStatus {
+fn host_phase_observation(subject: HostEnrollmentIntent, host: HostIdentity, step: HostStandupStep) -> ObservationVerdict? {
+  observe_host_phase(subject: subject, host: host, phase_label: step.label as String)
+}
+
+fn host_phase_cell_status(subject: HostEnrollmentIntent, host: HostIdentity, step: HostStandupStep) -> HostPhaseCellStatus {
   HostPhaseCellStatus {
     cell: HostPhaseCell { host: host, phase_label: step.label as String },
     disposition: step.disposition,
-    observation: host_phase_observation(host: host, step: step),
+    observation: host_phase_observation(subject: subject, host: host, step: step),
   }
 }
 
@@ -129,7 +158,7 @@ data host_phase_program_scoping_note: String = "The cells of a host are the step
 fn host_phase_cells_for_enrollment(intent: HostEnrollmentIntent) -> List<HostPhaseCellStatus> {
   map(
     assimilation_program_for(intent: intent).steps,
-    s => host_phase_cell_status(host: intent.host, step: s),
+    s => host_phase_cell_status(subject: intent, host: intent.host, step: s),
   )
 }
 
