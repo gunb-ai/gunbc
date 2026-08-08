@@ -93,6 +93,10 @@ data nfr_reason_class_b_binding_projection: String = "Class B declared-import-cl
 
 data nfr_dissolve_class_b_binding_projection: String = "the observation carrier's verdict partition becomes derived from inhabitance (total match over BindingObserved vs BindingNotRunnable and over UnlistedImportBindingSource) and the wildcard arms delete with their rows"
 
+data nfr_reason_pool_independence_projection: String = "ReferenceDerivedDependencyProjection pool-independence comparison harness (match on Ready vs BindingRefused vs FileRefused with off-variant wildcard arms returning RefusalOutcomeMismatch or false) landed with N3-C #7996; the outer match partitions the clause-(e) carrier for baseline-vs-perturbed equality, not business policy; declared at landing so the ratchet re-arms"
+
+data nfr_dissolve_pool_independence_projection: String = "ReferenceDerivedDependencyProjection carrier equality becomes derived from inhabitance (total match over Ready, BindingRefused, and FileRefused with named refusal arms, or a single std projection-equality carrier) and the wildcard arms delete with their rows"
+
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
     subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::offer_matches_request" },
@@ -118,6 +122,16 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "dag/gunbc/namespace_reference_derived_closure_admission.dag::binding_outcome_from_resolution" },
     reason: nfr_reason_binding_outcome_resolution_wildcard,
     trigger: TriggerProse { text: nfr_dissolve_binding_outcome_resolution_wildcard },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/namespace_pool_independence.dag::assess_file_dependencies_only_equality" },
+    reason: nfr_reason_pool_independence_projection,
+    trigger: TriggerProse { text: nfr_dissolve_pool_independence_projection },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/namespace_pool_independence.dag::assess_pool_independent_projection_equality" },
+    reason: nfr_reason_pool_independence_projection,
+    trigger: TriggerProse { text: nfr_dissolve_pool_independence_projection },
   },
   FrontierRow {
     subject: PathSubject { path: "dag/gunbc/roadmap_dispatch_actuator.dag::live_session_row_with_process" },
