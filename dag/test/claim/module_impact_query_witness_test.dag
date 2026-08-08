@@ -11,6 +11,7 @@ import v2.lens.module_graph {
 }
 import v2.lens.module_impact_query {
   DependenciesOf,
+  ImpactCycle,
   DependentsOf,
   ImpactClosedProven,
   ImpactCycleReferenceAdmissible,
@@ -28,6 +29,7 @@ data fixture_nodes: List<ModuleDeclarationFact> = [
   ModuleDeclarationFact { module: "m.a", path: "fixture/a.dag" },
   ModuleDeclarationFact { module: "m.b", path: "fixture/b.dag" },
   ModuleDeclarationFact { module: "m.c", path: "fixture/c.dag" },
+  ModuleDeclarationFact { module: "m.d", path: "fixture/d.dag" },
 ]
 
 data chain_edges: List<ModuleDependencyEdge> = [
@@ -225,4 +227,89 @@ test fn witness_cycle_with_a_reference_derived_edge_is_admissible() -> Bool {
 
 test fn witness_acyclic_population_reports_no_cycle() -> Bool {
   count_where(xs: chain_reading_dependents().cycles, predicate: fn(_) { true }) == 0
+}
+
+data two_disjoint_cycles_note: String = "Regression witness for review 50459 on gunbc#8044. TWO disjoint cycles in ONE reading: a<->b entirely import-derived, c<->d carrying one reference-derived edge (d->c is absent from the import facts). The pre-fix implementation folded every cyclic node into one member list and emitted ONE verdict, so the reference edge in the second cycle suppressed the first cycle's ImportAcyclicityViolation and the reading answered a single ImpactCycleReferenceAdmissible. Import-acyclicity is a per-cycle law, so this is the discriminating shape a single-2-node-cycle fixture structurally cannot exercise."
+
+data two_cycle_nodes: List<ModuleDeclarationFact> = [
+  ModuleDeclarationFact { module: "m.a", path: "fixture/a.dag" },
+  ModuleDeclarationFact { module: "m.b", path: "fixture/b.dag" },
+  ModuleDeclarationFact { module: "m.c", path: "fixture/c.dag" },
+  ModuleDeclarationFact { module: "m.d", path: "fixture/d.dag" },
+]
+
+data two_disjoint_cycle_edges: List<ModuleDependencyEdge> = [
+  ModuleDependencyEdge { path: "fixture/a.dag", target_module: "m.b", target_declared: true },
+  ModuleDependencyEdge { path: "fixture/b.dag", target_module: "m.a", target_declared: true },
+  ModuleDependencyEdge { path: "fixture/c.dag", target_module: "m.d", target_declared: true },
+  ModuleDependencyEdge { path: "fixture/d.dag", target_module: "m.c", target_declared: true },
+]
+
+data two_disjoint_cycle_import_facts: List<ImportResolutionFact> = [
+  ImportResolutionFact { path: "fixture/a.dag", import_module: "m.b", target_declared: true },
+  ImportResolutionFact { path: "fixture/b.dag", import_module: "m.a", target_declared: true },
+  ImportResolutionFact { path: "fixture/c.dag", import_module: "m.d", target_declared: true },
+]
+
+fn two_disjoint_cycles_reading() -> ImpactReading {
+  module_impact_reading(
+    seeds: ["fixture/a.dag", "fixture/c.dag"],
+    direction: DependenciesOf,
+    edges: two_disjoint_cycle_edges,
+    nodes: two_cycle_nodes,
+    import_facts: two_disjoint_cycle_import_facts
+  )
+}
+
+fn cycle_has_member(cycle: ImpactCycle, wanted: String) -> Bool {
+  match cycle {
+    ImpactImportAcyclicityViolation { members } =>
+      any(xs: members, predicate: fn(m) { m == wanted })
+    ImpactCycleReferenceAdmissible { members } =>
+      any(xs: members, predicate: fn(m) { m == wanted })
+  }
+}
+
+test fn witness_two_disjoint_cycles_are_classified_separately() -> Bool {
+  count_where(xs: two_disjoint_cycles_reading().cycles, predicate: fn(_) { true }) == 2
+}
+
+test fn witness_all_import_cycle_survives_a_reference_cycle_elsewhere() -> Bool {
+  any(
+    xs: two_disjoint_cycles_reading().cycles,
+    predicate: fn(cycle) {
+      match cycle {
+        ImpactImportAcyclicityViolation { members } =>
+          count_where(xs: members, predicate: fn(_) { true }) == 2
+            && cycle_has_member(cycle: cycle, wanted: "fixture/a.dag")
+            && cycle_has_member(cycle: cycle, wanted: "fixture/b.dag")
+        ImpactCycleReferenceAdmissible { members: _ } => false
+      }
+    }
+  )
+}
+
+test fn witness_reference_cycle_stays_admissible_beside_an_import_cycle() -> Bool {
+  any(
+    xs: two_disjoint_cycles_reading().cycles,
+    predicate: fn(cycle) {
+      match cycle {
+        ImpactImportAcyclicityViolation { members: _ } => false
+        ImpactCycleReferenceAdmissible { members } =>
+          count_where(xs: members, predicate: fn(_) { true }) == 2
+            && cycle_has_member(cycle: cycle, wanted: "fixture/c.dag")
+            && cycle_has_member(cycle: cycle, wanted: "fixture/d.dag")
+      }
+    }
+  )
+}
+
+test fn witness_no_component_merges_nodes_from_distinct_cycles() -> Bool {
+  any(
+    xs: two_disjoint_cycles_reading().cycles,
+    predicate: fn(cycle) {
+      cycle_has_member(cycle: cycle, wanted: "fixture/a.dag")
+        && cycle_has_member(cycle: cycle, wanted: "fixture/c.dag")
+    }
+  ) == false
 }

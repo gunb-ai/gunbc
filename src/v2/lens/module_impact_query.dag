@@ -83,6 +83,8 @@ data impact_no_unaccounted: List<UnaccountedTarget> = []
 
 data impact_no_cycles: List<ImpactCycle> = []
 
+data impact_no_components: List<List<String>> = []
+
 fn impact_string_eq(a: String, b: String) -> Bool {
   a == b
 }
@@ -197,7 +199,7 @@ fn impact_completeness_from_unaccounted(
   }
 }
 
-data module_impact_walk_shape_note: String = "The walk is the recursive worklist shape v2.lens.module_graph already proves in import_closure_bfs_walk, over an adjacency built ONCE per reading, not a second traversal shape invented here (DESIGN 3). The first draft of this module re-expanded the whole reached set once per edge, which is the copied-accumulator cost shape DESIGN 6 bare-minimum-cost forbids regardless of realized n; it was replaced before landing rather than excused as small. RESIDUE with trigger: impact_cycle_members still runs one walk per member of the reached set, so cycle classification is quadratic in the reached set. That is bounded to the QUERIED reached set, never a whole-corpus SCC census, and its climb is a single-pass back-edge or Tarjan SCC producer."
+data module_impact_walk_shape_note: String = "The walk is the recursive worklist shape v2.lens.module_graph already proves in import_closure_bfs_walk, over an adjacency built ONCE per reading, not a second traversal shape invented here (DESIGN 3). The first draft of this module re-expanded the whole reached set once per edge, which is the copied-accumulator cost shape DESIGN 6 bare-minimum-cost forbids regardless of realized n; it was replaced before landing rather than excused as small. RESIDUE with trigger, stated at its real magnitude after the SCC partition landed: impact_cyclic_nodes runs one walk per member of the reached set, and impact_place_in_components runs two further walks per (cyclic node, candidate component) pair through impact_mutually_reachable, so cycle classification is quadratic in the reached set and superlinear again in the number of components. The partition made this term LARGER, and it was still the right trade because the union-level classification it replaced was fail-open on the import-acyclicity law (module_impact_cycle_partition_note) - correctness first, then cost. It stays bounded to the QUERIED reached set and is never a whole-corpus SCC census. Climb: a single-pass Tarjan SCC producer computes the same partition in one traversal and subsumes all three walk sites."
 
 type ImpactBfsState {
   reached: List<String>
@@ -315,7 +317,9 @@ fn impact_path_reaches_self(
   )
 }
 
-fn impact_cycle_members(
+data module_impact_cycle_partition_note: String = "Cycle classification partitions the cyclic nodes into strongly connected components and classifies EACH component independently. An earlier revision of this module folded every cyclic node in the reached set into ONE member list and emitted ONE verdict for the union, which was fail-open on precisely the law module_impact_cycle_law_note states: with two disjoint cycles in one reading, a single ReferenceDerivedEdge in the first made impact_cycle_all_edges_import_derived false for the whole union, so a genuine all-import cycle in the second reported as ImpactCycleReferenceAdmissible and its ImportAcyclicityViolation was suppressed. Import-acyclicity is a per-cycle law, so the partition is part of the law's meaning, not an optimisation. Components are built by mutual reachability (u and v share a component iff each reaches the other), which is the same walk this module already uses rather than a second traversal; a single-pass Tarjan producer remains the declared cost climb, and it does not change these verdicts. Caught by review 50459 on gunbc#8044."
+
+fn impact_cyclic_nodes(
   adjacency: Map<String, List<String>>,
   reached: List<String>
 ) -> List<String> {
@@ -328,6 +332,104 @@ fn impact_cycle_members(
       } else {
         acc
       }
+    }
+  )
+}
+
+fn impact_mutually_reachable(
+  adjacency: Map<String, List<String>>,
+  a: String,
+  b: String
+) -> Bool {
+  contains(
+    xs: impact_closure_from_seeds(adjacency: adjacency, seeds: [a]),
+    item: b,
+    eq: impact_string_eq
+  )
+    && contains(
+      xs: impact_closure_from_seeds(adjacency: adjacency, seeds: [b]),
+      item: a,
+      eq: impact_string_eq
+    )
+}
+
+fn impact_component_admits(
+  adjacency: Map<String, List<String>>,
+  component: List<String>,
+  path: String
+) -> Bool {
+  match component |> first {
+    Present { value: representative } =>
+      impact_mutually_reachable(
+        adjacency: adjacency,
+        a: representative,
+        b: path
+      )
+    Absent => false
+  }
+}
+
+type ImpactComponentAcc {
+  components: List<List<String>>
+  placed: Bool
+}
+
+fn impact_place_in_components(
+  adjacency: Map<String, List<String>>,
+  components: List<List<String>>,
+  path: String
+) -> List<List<String>> {
+  let acc = fold_list(
+    xs: components,
+    empty: ImpactComponentAcc { components: impact_no_components, placed: false },
+    cons: fn(state, component) {
+      if state.placed {
+        ImpactComponentAcc {
+          components: list_snoc_item(xs: state.components, item: component),
+          placed: true
+        }
+      } else {
+        if impact_component_admits(
+          adjacency: adjacency,
+          component: component,
+          path: path
+        ) {
+          ImpactComponentAcc {
+            components: list_snoc_item(
+              xs: state.components,
+              item: impact_add_unseen_path(acc: component, item: path)
+            ),
+            placed: true
+          }
+        } else {
+          ImpactComponentAcc {
+            components: list_snoc_item(xs: state.components, item: component),
+            placed: false
+          }
+        }
+      }
+    }
+  )
+  if acc.placed {
+    acc.components
+  } else {
+    list_snoc_item(xs: acc.components, item: [path])
+  }
+}
+
+fn impact_cycle_components(
+  adjacency: Map<String, List<String>>,
+  reached: List<String>
+) -> List<List<String>> {
+  fold_list(
+    xs: impact_cyclic_nodes(adjacency: adjacency, reached: reached),
+    empty: impact_no_components,
+    cons: fn(acc, path) {
+      impact_place_in_components(
+        adjacency: adjacency,
+        components: acc,
+        path: path
+      )
     }
   )
 }
@@ -357,22 +459,31 @@ fn impact_cycle_all_edges_import_derived(
   )
 }
 
-fn impact_classify_cycle(
+fn impact_classify_component(
   resolved: List<ImpactEdge>,
   members: List<String>
-) -> List<ImpactCycle> {
-  if any(xs: members, predicate: fn(_) { true }) {
-    if impact_cycle_all_edges_import_derived(
-      resolved: resolved,
-      members: members
-    ) {
-      [ImpactImportAcyclicityViolation { members: members }]
-    } else {
-      [ImpactCycleReferenceAdmissible { members: members }]
-    }
+) -> ImpactCycle {
+  if impact_cycle_all_edges_import_derived(resolved: resolved, members: members) {
+    ImpactImportAcyclicityViolation { members: members }
   } else {
-    impact_no_cycles
+    ImpactCycleReferenceAdmissible { members: members }
   }
+}
+
+fn impact_classify_cycles(
+  resolved: List<ImpactEdge>,
+  components: List<List<String>>
+) -> List<ImpactCycle> {
+  fold_list(
+    xs: components,
+    empty: impact_no_cycles,
+    cons: fn(acc, members) {
+      list_snoc_item(
+        xs: acc,
+        item: impact_classify_component(resolved: resolved, members: members)
+      )
+    }
+  )
 }
 
 fn module_impact_reading(
@@ -389,7 +500,7 @@ fn module_impact_reading(
   )
   let adjacency = impact_adjacency(resolved: resolved, direction: direction)
   let reached = impact_closure_from_seeds(adjacency: adjacency, seeds: seeds)
-  let members = impact_cycle_members(adjacency: adjacency, reached: reached)
+  let components = impact_cycle_components(adjacency: adjacency, reached: reached)
   ImpactReading {
     direction: direction,
     grain: ModulePathGrain,
@@ -399,6 +510,6 @@ fn module_impact_reading(
     completeness: impact_completeness_from_unaccounted(
       unaccounted: impact_unaccounted_targets(edges: edges)
     ),
-    cycles: impact_classify_cycle(resolved: resolved, members: members)
+    cycles: impact_classify_cycles(resolved: resolved, components: components)
   }
 }
