@@ -189,8 +189,8 @@ type GunbcBinaryProvenancePolicy {
 }
 
 // PerSlotMemoryCap is the per-slot systemd drop-in/property mechanism (dropin_path x
-// instance_glob x property x value), and the per_slot_tasks_max knob (TasksMax=512, a
-// pids-controller count) rides it because the mechanism is property-generic — forking a
+// instance_glob x property x value), and the per_slot_tasks_max knob (a pids-controller
+// count; desired value owned by gunbc.runner_slot_allocation) rides it because the mechanism is property-generic — forking a
 // parallel variant per property class would be the §2 duplication the shape exists to
 // avoid. The variant name and its bytes_value field over-narrow to the memory axis that
 // landed first: a §3 mislabel carried knowingly rather than a ~96-site mechanical rename
