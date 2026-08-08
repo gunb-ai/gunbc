@@ -50,6 +50,7 @@ type Scale =
   | Milli
   | One
   | Sixty
+  | RackUnitHeight
   | Kilo
   | Mega
   | Giga
@@ -72,6 +73,7 @@ fn scale_exponent(s: Scale) -> Int? {
     Milli =>  Present { value:  -3 }
     One   =>  Present { value:   0 }
     Sixty =>  none
+    RackUnitHeight => none
     Kilo  =>  Present { value:   3 }
     Mega  =>  Present { value:   6 }
     Giga  =>  Present { value:   9 }
@@ -110,6 +112,7 @@ fn time_scale_factor_seconds(s: Scale) -> Nat? {
   match s {
     One => Present { value: 1 }
     Sixty => Present { value: seconds_per_minute() }
+    RackUnitHeight => none
     Atto  => none
     Femto => none
     Pico  => none
@@ -143,6 +146,7 @@ fn memory_scale_factor_bytes(s: Scale) -> Nat? {
     Micro => none
     Milli => none
     Sixty => none
+    RackUnitHeight => none
     Kilo  => none
     Mega  => none
     Giga  => none
@@ -242,6 +246,12 @@ type Ampere = Measure<ElectricCurrent, One, Nat>
 
 type Millimeter = Measure<Length, Milli, Nat>
 
+// EIA-310 rack unit: 1U = 1.75 in = 44.45 mm EXACTLY, which is 44450 micrometres — an
+// integer, so the quantum is exact in the Nat carrier and needs no rounding. RackUnitHeight
+// is a non-decimal scale in the same sense Sixty is: scale_exponent has no answer for it and
+// the conversion lives in a domain factor function instead.
+type RackUnit = Measure<Length, RackUnitHeight, Nat>
+
 type Joule = Measure<Energy, One, Nat>
 
 type Celsius = Measure<Temperature, One, Int>
@@ -333,6 +343,18 @@ fn millimeter(count: Nat) -> Millimeter {
 
 fn millimeter_count(m: Millimeter) -> Nat {
   measure_count(m)
+}
+
+fn micrometers_per_rack_unit() -> Nat {
+  44450
+}
+
+fn rack_unit(count: Nat) -> RackUnit {
+  Measure { count: count }
+}
+
+fn rack_unit_count(u: RackUnit) -> Nat {
+  measure_count(u)
 }
 
 fn joule(count: Nat) -> Joule {

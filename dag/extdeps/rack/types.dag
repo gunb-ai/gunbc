@@ -1,6 +1,7 @@
 module extdeps.rack.types
 
 import std.types { NonEmptyStr, Int, Bool }
+import std.measure { RackUnit }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -29,7 +30,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 type RackCatalogRow {
   model: NonEmptyStr
   manufacturer: Vendor<Hardware>
-  rack_units: Int
+  rack_units: RackUnit
   post_count: Int
   open_frame: Bool
 }

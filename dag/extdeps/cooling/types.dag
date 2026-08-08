@@ -1,7 +1,7 @@
 module extdeps.cooling.types
 
 import std.types { NonEmptyStr, Int, Bool, List }
-import std.measure { Watt, watt }
+import std.measure { Watt, watt, RackUnit }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -33,7 +33,7 @@ type CpuCoolerCatalogRow {
   manufacturer: Vendor<Hardware>
   socket: CpuSocket
   active_passive_switchable: Bool
-  minimum_rack_units: Int
+  minimum_rack_units: RackUnit
   max_design_power: Watt
   supported_motherboards: List<NonEmptyStr>
 }

@@ -1,7 +1,7 @@
 module extdeps.chassis.types
 
 import std.types { NonEmptyStr, Int, List }
-import std.measure { Millimeter }
+import std.measure { Millimeter, RackUnit }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -32,7 +32,7 @@ type MotherboardFormFactor = Atx | MicroAtx | MiniItx
 type ChassisCatalogRow {
   model: NonEmptyStr
   manufacturer: Vendor<Hardware>
-  rack_units: Int
+  rack_units: RackUnit
   motherboard_support: List<MotherboardFormFactor>
   internal_35_bay_count: Int
   internal_525_bay_count: Int

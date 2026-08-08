@@ -1,7 +1,7 @@
 module extdeps.cooling.dynatron
 
 import std.types { NonEmptyStr, List }
-import std.measure { watt }
+import std.measure { watt, rack_unit }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.cooling.types { CpuCoolerCatalogRow }
 import extdeps.cpu.types { CpuSocket, LandGridArray }
@@ -21,7 +21,7 @@ data dynatron_w1_catalog: CpuCoolerCatalogRow = CpuCoolerCatalogRow {
   manufacturer: dynatron,
   socket: CpuSocket { package: LandGridArray, contact_count: 4926 },
   active_passive_switchable: true,
-  minimum_rack_units: 2,
+  minimum_rack_units: rack_unit(2),
   max_design_power: watt(250),
   supported_motherboards: ["ALTRAD8UD-1L2T"],
 }

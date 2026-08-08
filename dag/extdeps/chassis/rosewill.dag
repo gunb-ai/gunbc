@@ -1,7 +1,7 @@
 module extdeps.chassis.rosewill
 
 import std.types { NonEmptyStr, List }
-import std.measure { millimeter }
+import std.measure { millimeter, rack_unit }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.chassis.types {
   ChassisCatalogRow,
@@ -37,7 +37,7 @@ data rsv_z2600u_authority: ExternalAuthority = ExternalAuthority {
 data rosewill_rsv_r4000u_catalog: ChassisCatalogRow = ChassisCatalogRow {
   model: "RSV-R4000U",
   manufacturer: rosewill,
-  rack_units: 4,
+  rack_units: rack_unit(4),
   motherboard_support: [Atx, MicroAtx, MiniItx],
   internal_35_bay_count: 8,
   internal_525_bay_count: 3,
@@ -50,7 +50,7 @@ data rosewill_rsv_r4000u_catalog: ChassisCatalogRow = ChassisCatalogRow {
 data rosewill_rsv_z2600u_catalog: ChassisCatalogRow = ChassisCatalogRow {
   model: "RSV-Z2600U",
   manufacturer: rosewill,
-  rack_units: 2,
+  rack_units: rack_unit(2),
   motherboard_support: [MicroAtx, MiniItx],
   internal_35_bay_count: 4,
   internal_525_bay_count: 0,

@@ -1,6 +1,7 @@
 module extdeps.rack.navepoint
 
 import std.types { NonEmptyStr, String }
+import std.measure { rack_unit }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.rack.types { RackCatalogRow }
 import extdeps.vendor.navepoint { navepoint }
@@ -19,7 +20,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 data navepoint_18u_open_frame_catalog: RackCatalogRow = RackCatalogRow {
   model: "18U 4-post open-frame rack",
   manufacturer: navepoint,
-  rack_units: 18,
+  rack_units: rack_unit(18),
   post_count: 4,
   open_frame: true,
 }

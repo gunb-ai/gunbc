@@ -1,7 +1,7 @@
 module extdeps.power.eaton_tripp_lite
 
 import std.types { NonEmptyStr, String }
-import std.measure { volt, ampere, millimeter }
+import std.measure { volt, ampere, millimeter, rack_unit }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.power.types { PduCatalogRow }
 import extdeps.vendor.eaton { eaton }
@@ -26,7 +26,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 data eaton_tripp_lite_rs_1215_family_catalog: PduCatalogRow = PduCatalogRow {
   model_family: "RS-1215",
   manufacturer: eaton,
-  rack_units: 1,
+  rack_units: rack_unit(1),
   nominal_supply_voltage: volt(120),
   rated_current: ampere(15),
   outlet_count: 12,
