@@ -19,7 +19,7 @@ Two discriminating failure shapes:
 CTRL_BUILD_MODE=local RUSTC_WRAPPER= cargo test -p v1-compiler-tests class_b_trim_specimen -- --nocapture
 ```
 
-Five tests: narrow-pool failure, declared-pool compile, direct-import absence check, perturbation overlay stability, FreeMonoid receiver refusal.
+Eight tests: coincidence narrow-pool trim unbound (no `dag/std`), coincidence pool-coincidence trim binding when algebra is in closure, explicit-import narrow-pool refusal without `dag/std`, explicit-import narrow-pool compile with `dag/std`, coincidence compile success with `dag/std` present, direct-import census with coincidence pool, perturbation overlay stability, FreeMonoid receiver refusal.
 
 ## Relation to rust_test_fixtures Class B gate
 
