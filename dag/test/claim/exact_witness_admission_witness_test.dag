@@ -81,7 +81,7 @@ fn fixture_exact_admission_rows() -> List<ExplicitWitnessAdmission> {
       kind: CorpusWitnessKind,
       budget: FastLaneEvalBudget,
       reason: "fixture: an expected-red witness sharing a file with an ordinary green one",
-      dissolve_on: "fixture: never - this row is authored by the witness, not by the roster"
+      dissolution: unbound_dissolution(description: "fixture: never - this row is authored by the witness, not by the roster")
     )
   ]
 }
@@ -94,7 +94,7 @@ fn fixture_file_grain_admission_rows() -> List<ExplicitWitnessAdmission> {
       kind: CorpusWitnessKind,
       budget: FastLaneEvalBudget,
       reason: "fixture: the file-grain shape this authority replaced",
-      dissolve_on: "fixture: never - control only"
+      dissolution: unbound_dissolution(description: "fixture: never - control only")
     )
   ]
 }
@@ -144,7 +144,7 @@ fn synthetic_admission(f: String) -> ExplicitWitnessAdmission {
     kind: CorpusWitnessKind,
     budget: FastLaneEvalBudget,
     reason: "synthetic",
-    dissolve_on: "synthetic"
+    dissolution: unbound_dissolution(description: "synthetic")
   )
 }
 
@@ -171,7 +171,7 @@ test fn red_control_admission_with_non_executing_cadence_reds() -> Bool {
         budget: FastLaneEvalBudget,
         expected: ExpectAssertionFalse,
         reason: "synthetic",
-        dissolve_on: "synthetic"
+        dissolution: unbound_dissolution(description: "synthetic")
       }
     ]
   ) == false
@@ -208,7 +208,7 @@ fn synthetic_long_lane_cadence_but_expected_red() -> ExplicitWitnessAdmission {
     budget: SubstrateLongLaneEvalBudget,
     expected: ExpectAssertionFalse,
     reason: "synthetic",
-    dissolve_on: "synthetic"
+    dissolution: unbound_dissolution(description: "synthetic")
   }
 }
 
@@ -223,7 +223,7 @@ fn synthetic_quarantine_cadence_but_expected_holds() -> ExplicitWitnessAdmission
     budget: FastLaneEvalBudget,
     expected: ExpectWitnessHolds,
     reason: "synthetic",
-    dissolve_on: "synthetic"
+    dissolution: unbound_dissolution(description: "synthetic")
   }
 }
 
@@ -386,7 +386,7 @@ fn synthetic_pre_verdict_row() -> ExplicitWitnessAdmission {
       cause: UnboundImportedVariantConstructor
     },
     reason: "synthetic",
-    dissolve_on: "synthetic"
+    dissolution: unbound_dissolution(description: "synthetic")
   )
 }
 
@@ -398,7 +398,7 @@ fn synthetic_assertion_false_row() -> ExplicitWitnessAdmission {
     budget: FastLaneEvalBudget,
     expected: ExpectAssertionFalse,
     reason: "synthetic",
-    dissolve_on: "synthetic"
+    dissolution: unbound_dissolution(description: "synthetic")
   )
 }
 

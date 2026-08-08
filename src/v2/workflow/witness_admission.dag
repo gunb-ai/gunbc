@@ -408,12 +408,13 @@ data witness_exclusion_no_consumer_control_pattern: String = "synthetic_orphan_a
 
 data witness_exclusion_path_carrier_wall_note: String = "THE SEPARATION WALL. witness_exclusion_frontier is a PATH POLICY carrier, so a QuarantineProbeExpectRed row is malformed IN IT — not reconciled against a roster, refused. That classification names an exact executing consumer for one witness, which is an admission and belongs on gunbc.explicit_witness_admission; expressing it as a substring pattern is the fusion whose weakness this lane removed, since a pattern can only ever be checked for CONTAINMENT against a schedule row and containment proves neither identity nor multiplicity nor reverse coverage. The remaining executing cadences (BinWitnessWet, FalsifierRehomedBinWet, FalsifierSubstrateLongLane, FalsifierSelfHostWet) are still writable here and still reconciled by containment — a counted migration frontier, named in explicit_witness_admission_separation_note, whose dissolve-on is each roster moving to the admission authority and this predicate widening to refuse its cadence too."
 
+data exclusion_row_trigger_nonempty_is_structural_note: String = "The `!(row.dissolve_on == \"\")` clause is deleted because it became unsatisfiable-to-violate, not because the property stopped being required: WitnessExclusionRow.dissolution is a std.dissolution.DissolutionCondition whose unbound arm is NonEmptyStr and whose bound arm carries a DeclarationRef, so a row with an empty trigger has no constructor. pattern and reason are still bare Strings, so their checks remain real validation and stay (DESIGN §5: reserve the check for the residue that construction cannot carry)."
+
 fn witness_exclusion_row_well_formed(row: WitnessExclusionRow) -> Bool {
   !witness_exclusion_row_is_discovery_selection(row: row)
     && !witness_exclusion_row_is_known_red(row: row)
     && !(row.pattern == "")
     && !(row.reason == "")
-    && !(row.dissolve_on == "")
     && (
       !witness_exclusion_row_is_no_consumer(row: row)
         || (row.pattern == witness_exclusion_no_consumer_control_pattern)

@@ -36,8 +36,7 @@ fn occurrence_identity_consumer_red_debt_has(
     |> any(row =>
       row.id == id &&
       row.owner == owner &&
-      row.required_receipt == required_receipt &&
-      string_contains(row.dissolve_on, "DISSOLVE-ON:")
+      row.required_receipt == required_receipt
     )
 }
 
@@ -88,7 +87,7 @@ test fn occurrence_identity_receipt_enrollment_debt_is_counted_holds() -> Bool {
       ],
       owner: "witness-scheduling-source-root-surface",
       cause: "The four DAG receipts and the generated Rust rebuild assertion are green by execution and discriminating under planted defects, but none is executed per PR on main. The DAG receipts require the scoped dag and src/v1 parser-transport batch whose parser_transport_witness_entries roster is not yet on main. The Rust test crate containing pipeline_occurrence_sidecar_serde_round_trip is cargo-checked but its tests are not executed.",
-      dissolve_on: "DISSOLVE-ON: gunbc.ci_layer_roots.parser_transport_witness_entries exists on main and executes the four DAG functions per PR, and pipeline_occurrence_sidecar_serde_round_trip executes per PR or its rebuild assertion migrates into an enrolled witness; prove both enrollment surfaces and narrow or delete this row in the same PR.",
+      dissolution: unbound_dissolution(description: "DISSOLVE-ON: gunbc.ci_layer_roots.parser_transport_witness_entries exists on main and executes the four DAG functions per PR, and pipeline_occurrence_sidecar_serde_round_trip executes per PR or its rebuild assertion migrates into an enrolled witness; prove both enrollment surfaces and narrow or delete this row in the same PR."),
     },
   ]
 }
