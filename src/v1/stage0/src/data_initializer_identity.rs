@@ -291,33 +291,17 @@ fn type_item_from_importing_module_type_env(
 }
 
 fn coproduct_type_item_with_variant_children(
-    ctx: &InterpContext,
+    _ctx: &InterpContext,
     tm: &TypedModule,
     bare_name: &str,
     si: &SourceIndices,
 ) -> Option<(Rc<Node>, String)> {
-    for mod_tm in ctx.modules.iter() {
-        let mod_name = authored_name_at(si.clone(), mod_tm.module.clone());
-        for item in mod_tm.items.iter() {
-            if item_kind(item.clone()) != ItemKind::TypeItem
-                || item.connective != Connective::Disj
-                || item.children.is_empty()
-            {
-                continue;
-            }
-            if local_symbol_name(si, item) != bare_name {
-                continue;
-            }
-            return Some((item.clone(), mod_name));
-        }
-    }
     let node = type_item_from_importing_module_type_env(tm, bare_name, si)?;
-    if node.connective == Connective::Disj {
-        let importing_module = authored_name_at(si.clone(), tm.module.clone());
-        Some((node, importing_module))
-    } else {
-        None
+    if node.connective != Connective::Disj {
+        return None;
     }
+    let importing_module = authored_name_at(si.clone(), tm.module.clone());
+    Some((node, importing_module))
 }
 
 fn module_path_for_type_decl_node(
@@ -795,9 +779,7 @@ fn marshal_record_literal_projection(
             body,
             declared_type_bare,
             si,
-            coproduct_type_item_with_variant_children(ctx, tm, declared_type_bare, si)
-                .map(|(node, _)| node)
-                .unwrap_or(type_item),
+            type_item,
         )
     } else {
         marshal_plain_record_projection(
@@ -832,10 +814,7 @@ fn marshal_field_initializer_projection(
                 if let Some(tm) = tm {
                     let coproduct =
                         coproduct_type_item_with_variant_children(ctx, &tm, override_bare, si)
-                            .map(|(node, _)| node)
-                            .or_else(|| {
-                                type_item_from_importing_module_type_env(&tm, override_bare, si)
-                            });
+                            .map(|(node, _)| node);
                     if let Some(coproduct) =
                         coproduct.filter(|node| node.connective == Connective::Disj)
                     {
