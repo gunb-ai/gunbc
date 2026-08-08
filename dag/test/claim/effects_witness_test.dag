@@ -332,11 +332,11 @@ test fn effects_modifier_gcp_sites_witnesses() -> Bool {
     declared_readonly: true
   )
     && derived_raw_is_create(name: "AddVersion", method: POST, raw: "/v1/\{secret_name\}:addVersion")
-    && derived_raw_modifier_unknown(
+    && derived_raw_modifier_agrees(
       name: "AddVersion",
       method: POST,
       raw: "/v1/\{secret_name\}:addVersion",
-      declared_idempotent: true,
+      declared_idempotent: false,
       declared_readonly: false
     )
     && derived_raw_is_create(

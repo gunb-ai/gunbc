@@ -1,0 +1,329 @@
+module gunbc.namespace_pool_independence
+
+import std.types { FilePath, List }
+import gunbc.namespace_clause_e_projection_law {
+  lists_agree_at,
+  ListsAgree,
+  ListsDisagree,
+  ListStructureBroken,
+  direct_file_dependency_lists_eq,
+}
+import std.occurrence_binding_candidates {
+  ReferenceDerivedDependencyProjection,
+  ReferenceDerivedDependencyProjectionReady,
+  ReferenceDerivedDependencyProjectionBindingRefused,
+  ReferenceDerivedDependencyProjectionFileRefused,
+  CrossFileBindingProvenance,
+  DirectFileDependency,
+  BoundReferenceProvider,
+  BoundReferencePopulation,
+  AllReferencesBound,
+  ReferencePopulationRefused,
+}
+
+data namespace_pool_independence_note: String = "N3-C pool-independence comparison harness (namespace_pool_independence_lane_brief_note): compare two complete ReferenceDerivedDependencyProjection carriers for the same source subject — baseline versus perturbed with one unrelated loaded file added. Equality is over the full carrier (binding_provenance, file_dependencies, bound_population, refusal variant), never the deduplicated file list alone. Positive witnesses assemble baseline and perturbed closures independently via B0 assemble_cross_file_binding_closure and B1 reference_derived_dependency_projection_for_assembled_closure; per-clause RED controls remain hand-built."
+
+data namespace_pool_independence_section_4c_finding_note: String = "§4c COMMENT-PATH FINDING (executed 2026-08-07, sole carrier #7996 — B2 stopped; equality control deferred). DEFECT: referenced_module_paths_in_text in v1_compiler.cli_run byte-scans source and does not skip // comment lines, so a comment-only dotted module path changes closure discovery. EXECUTED EVIDENCE: index declares std.occurrence_binding_candidates; baseline source `module test.probe\\nimport std.types { Bool }\\n` yields referenced_module_paths_in_text=[]; same source with inserted line `// std.occurrence_binding_candidates.foo\\n` yields referenced_module_paths_in_text=[\"std.occurrence_binding_candidates\"]. BOTH CLOSURE CONSUMERS call this scanner: extend_with_reference_closure (bare reference closure fixpoint / load_reference_scan) and reference_pull_paths_for_source (reference-pull closure). REMEDIATION: route closure discovery through annotation-erased projection (B2, not this PR). This PR records the finding only — no inverted assert_ne! probe and no CI enrollment."
+
+type PoolIndependenceFailure
+  = SourceSubjectConsumerFileMismatch { expected: FilePath, found: FilePath }
+  | RefusalOutcomeMismatch
+  | BoundReferencePopulationMismatch
+  | ReferenceOccurrenceIdentityMismatch
+  | DeclarationOccurrenceIdentityMismatch
+  | BindingProvenanceMismatch
+  | FileDependencyMismatch
+
+type PoolIndependenceVerdict
+  = PoolIndependenceEstablished
+  | PoolIndependenceRefused { failure: PoolIndependenceFailure }
+
+fn bound_reference_provider_eq(
+  left: BoundReferenceProvider,
+  right: BoundReferenceProvider,
+) -> Bool {
+  left.reference_occurrence == right.reference_occurrence
+    && left.declaration_occurrence == right.declaration_occurrence
+    && left.consumer_module == right.consumer_module
+    && left.provider_module == right.provider_module
+}
+
+fn cross_file_binding_provenance_eq(
+  left: CrossFileBindingProvenance,
+  right: CrossFileBindingProvenance,
+) -> Bool {
+  left.reference_occurrence == right.reference_occurrence
+    && left.declaration_occurrence == right.declaration_occurrence
+    && left.consumer_file == right.consumer_file
+    && left.provider_file == right.provider_file
+}
+
+fn bound_reference_population_eq(
+  left: BoundReferencePopulation,
+  right: BoundReferencePopulation,
+) -> Bool {
+  match left {
+    AllReferencesBound { providers: left_providers } =>
+      match right {
+        AllReferencesBound { providers: right_providers } =>
+          match lists_agree_at(
+            left: left_providers,
+            right: right_providers,
+            agree: bound_reference_provider_eq,
+          ) {
+            ListsAgree => true
+            _ => false
+          }
+        ReferencePopulationRefused { first_failure: _, more_failures: _ } => false
+      }
+    ReferencePopulationRefused { first_failure: left_first, more_failures: left_more } =>
+      match right {
+        AllReferencesBound { providers: _ } => false
+        ReferencePopulationRefused {
+          first_failure: right_first,
+          more_failures: right_more,
+        } =>
+          left_first == right_first && left_more == right_more
+      }
+  }
+}
+
+fn reference_occurrence_lists_agree(
+  left: List<BoundReferenceProvider>,
+  right: List<BoundReferenceProvider>,
+) -> Bool {
+  match lists_agree_at(
+    left: left,
+    right: right,
+    agree: (a, b) => a.reference_occurrence == b.reference_occurrence,
+  ) {
+    ListsAgree => true
+    _ => false
+  }
+}
+
+fn declaration_occurrence_lists_agree(
+  left: List<BoundReferenceProvider>,
+  right: List<BoundReferenceProvider>,
+) -> Bool {
+  match lists_agree_at(
+    left: left,
+    right: right,
+    agree: (a, b) => a.declaration_occurrence == b.declaration_occurrence,
+  ) {
+    ListsAgree => true
+    _ => false
+  }
+}
+
+fn provenance_lists_agree(
+  left: List<CrossFileBindingProvenance>,
+  right: List<CrossFileBindingProvenance>,
+) -> Bool {
+  match lists_agree_at(
+    left: left,
+    right: right,
+    agree: cross_file_binding_provenance_eq,
+  ) {
+    ListsAgree => true
+    _ => false
+  }
+}
+
+fn pool_independence_source_subject_matches_provenance(
+  source_subject: FilePath,
+  provenances: List<CrossFileBindingProvenance>,
+) -> Bool {
+  fold(
+    provenances,
+    init: true,
+    f: (acc, row) =>
+      if acc && row.consumer_file == source_subject {
+        true
+      } else {
+        false
+      },
+  )
+}
+
+fn pool_independence_compare_ready_fields(
+  source_subject: FilePath,
+  baseline_provenances: List<CrossFileBindingProvenance>,
+  baseline_dependencies: List<DirectFileDependency>,
+  baseline_population: BoundReferencePopulation,
+  perturbed_provenances: List<CrossFileBindingProvenance>,
+  perturbed_dependencies: List<DirectFileDependency>,
+  perturbed_population: BoundReferencePopulation,
+) -> PoolIndependenceVerdict {
+  if !pool_independence_source_subject_matches_provenance(
+    source_subject: source_subject,
+    provenances: baseline_provenances,
+  ) {
+    match baseline_provenances |> first {
+      Present { value: first_row } =>
+        PoolIndependenceRefused {
+          failure: SourceSubjectConsumerFileMismatch {
+            expected: source_subject,
+            found: first_row.consumer_file,
+          },
+        }
+      Absent =>
+        PoolIndependenceRefused { failure: BindingProvenanceMismatch }
+    }
+  } else {
+    match baseline_population {
+      AllReferencesBound { providers: baseline_providers } =>
+        match perturbed_population {
+          AllReferencesBound { providers: perturbed_providers } =>
+            if !reference_occurrence_lists_agree(
+              left: baseline_providers,
+              right: perturbed_providers,
+            ) {
+              PoolIndependenceRefused {
+                failure: ReferenceOccurrenceIdentityMismatch,
+              }
+            } else if !declaration_occurrence_lists_agree(
+              left: baseline_providers,
+              right: perturbed_providers,
+            ) {
+              PoolIndependenceRefused {
+                failure: DeclarationOccurrenceIdentityMismatch,
+              }
+            } else if !provenance_lists_agree(
+              left: baseline_provenances,
+              right: perturbed_provenances,
+            ) {
+              PoolIndependenceRefused { failure: BindingProvenanceMismatch }
+            } else {
+              match direct_file_dependency_lists_eq(
+                left: baseline_dependencies,
+                right: perturbed_dependencies,
+              ) {
+                ListStructureBroken =>
+                  PoolIndependenceRefused { failure: FileDependencyMismatch }
+                ListsDisagree =>
+                  PoolIndependenceRefused { failure: FileDependencyMismatch }
+                ListsAgree =>
+                  if bound_reference_population_eq(
+                    left: baseline_population,
+                    right: perturbed_population,
+                  ) {
+                    PoolIndependenceEstablished
+                  } else {
+                    PoolIndependenceRefused {
+                      failure: BoundReferencePopulationMismatch,
+                    }
+                  }
+              }
+            }
+          ReferencePopulationRefused { first_failure: _, more_failures: _ } =>
+            PoolIndependenceRefused {
+              failure: BoundReferencePopulationMismatch,
+            }
+        }
+      ReferencePopulationRefused { first_failure: _, more_failures: _ } =>
+        PoolIndependenceRefused {
+          failure: BoundReferencePopulationMismatch,
+        }
+    }
+  }
+}
+
+fn assess_pool_independent_projection_equality(
+  source_subject: FilePath,
+  baseline: ReferenceDerivedDependencyProjection,
+  perturbed: ReferenceDerivedDependencyProjection,
+) -> PoolIndependenceVerdict {
+  match baseline {
+    ReferenceDerivedDependencyProjectionReady {
+      binding_provenance: baseline_provenances,
+      file_dependencies: baseline_dependencies,
+      bound_population: baseline_population,
+    } =>
+      match perturbed {
+        ReferenceDerivedDependencyProjectionReady {
+          binding_provenance: perturbed_provenances,
+          file_dependencies: perturbed_dependencies,
+          bound_population: perturbed_population,
+        } =>
+          pool_independence_compare_ready_fields(
+            source_subject: source_subject,
+            baseline_provenances: baseline_provenances,
+            baseline_dependencies: baseline_dependencies,
+            baseline_population: baseline_population,
+            perturbed_provenances: perturbed_provenances,
+            perturbed_dependencies: perturbed_dependencies,
+            perturbed_population: perturbed_population,
+          )
+        ReferenceDerivedDependencyProjectionBindingRefused { population: _ } =>
+          PoolIndependenceRefused { failure: RefusalOutcomeMismatch }
+        ReferenceDerivedDependencyProjectionFileRefused {
+          first_failure: _,
+          more_failures: _,
+        } =>
+          PoolIndependenceRefused { failure: RefusalOutcomeMismatch }
+      }
+    ReferenceDerivedDependencyProjectionBindingRefused { population: baseline_population } =>
+      match perturbed {
+        ReferenceDerivedDependencyProjectionBindingRefused {
+          population: perturbed_population,
+        } =>
+          if bound_reference_population_eq(
+            left: baseline_population,
+            right: perturbed_population,
+          ) {
+            PoolIndependenceEstablished
+          } else {
+            PoolIndependenceRefused {
+              failure: BoundReferencePopulationMismatch,
+            }
+          }
+        _ => PoolIndependenceRefused { failure: RefusalOutcomeMismatch }
+      }
+    ReferenceDerivedDependencyProjectionFileRefused {
+      first_failure: baseline_first,
+      more_failures: baseline_more,
+    } =>
+      match perturbed {
+        ReferenceDerivedDependencyProjectionFileRefused {
+          first_failure: perturbed_first,
+          more_failures: perturbed_more,
+        } =>
+          if baseline_first == perturbed_first && baseline_more == perturbed_more {
+            PoolIndependenceEstablished
+          } else {
+            PoolIndependenceRefused { failure: RefusalOutcomeMismatch }
+          }
+        _ => PoolIndependenceRefused { failure: RefusalOutcomeMismatch }
+      }
+  }
+}
+
+fn assess_file_dependencies_only_equality(
+  baseline: ReferenceDerivedDependencyProjection,
+  perturbed: ReferenceDerivedDependencyProjection,
+) -> Bool {
+  match baseline {
+    ReferenceDerivedDependencyProjectionReady {
+      file_dependencies: baseline_dependencies,
+      binding_provenance: _,
+      bound_population: _,
+    } =>
+      match perturbed {
+        ReferenceDerivedDependencyProjectionReady {
+          file_dependencies: perturbed_dependencies,
+          binding_provenance: _,
+          bound_population: _,
+        } =>
+          match direct_file_dependency_lists_eq(
+            left: baseline_dependencies,
+            right: perturbed_dependencies,
+          ) {
+            ListsAgree => true
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
