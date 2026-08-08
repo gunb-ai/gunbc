@@ -5,6 +5,9 @@ import v2.std.optional { Optional, Present, Absent }
 import std.types { Bool, List }
 import gunbc.witness_execution_class {
   NativeBlockedCause,
+  EmitterCarriage,
+  CarriedInEnrolledBundle,
+  NoEmitterCarriage,
   GeneralWitnessTargetModelUnavailable,
   HostCapabilityUnavailable,
   WitnessExecutionClass,
@@ -31,8 +34,8 @@ fn live_disposition() -> Optional<LiveTreeDisposition> {
 }
 
 test fn witness_classifier_precedence_effect_then_interpreter_subject() -> Bool {
-  let effect_wins = classify_witness(disposition: pure_disposition(), effect_obligation: true, interpreter_subject: true, emitter_carries: true, blocked_cause: GeneralWitnessTargetModelUnavailable)
-  let interp_wins = classify_witness(disposition: pure_disposition(), effect_obligation: false, interpreter_subject: true, emitter_carries: true, blocked_cause: GeneralWitnessTargetModelUnavailable)
+  let effect_wins = classify_witness(disposition: pure_disposition(), effect_obligation: true, interpreter_subject: true, carriage: CarriedInEnrolledBundle { bundle_identity: "09d7d2e53554c783", member: "meet" })
+  let interp_wins = classify_witness(disposition: pure_disposition(), effect_obligation: false, interpreter_subject: true, carriage: CarriedInEnrolledBundle { bundle_identity: "09d7d2e53554c783", member: "meet" })
   match effect_wins {
     EffectObligation => match interp_wins {
       InterpreterSubjectTest => true
@@ -43,8 +46,8 @@ test fn witness_classifier_precedence_effect_then_interpreter_subject() -> Bool 
 }
 
 test fn witness_classifier_live_and_undeclared_both_classify_as_live_observation() -> Bool {
-  let declared = classify_witness(disposition: live_disposition(), effect_obligation: false, interpreter_subject: false, emitter_carries: true, blocked_cause: GeneralWitnessTargetModelUnavailable)
-  let undeclared = classify_witness(disposition: Absent, effect_obligation: false, interpreter_subject: false, emitter_carries: true, blocked_cause: GeneralWitnessTargetModelUnavailable)
+  let declared = classify_witness(disposition: live_disposition(), effect_obligation: false, interpreter_subject: false, carriage: CarriedInEnrolledBundle { bundle_identity: "09d7d2e53554c783", member: "meet" })
+  let undeclared = classify_witness(disposition: Absent, effect_obligation: false, interpreter_subject: false, carriage: CarriedInEnrolledBundle { bundle_identity: "09d7d2e53554c783", member: "meet" })
   match declared {
     NativeLiveObservation => match undeclared {
       NativeLiveObservation => true
@@ -55,8 +58,8 @@ test fn witness_classifier_live_and_undeclared_both_classify_as_live_observation
 }
 
 test fn witness_classifier_hermetic_splits_on_emitter_carriage_with_typed_cause() -> Bool {
-  let carried = classify_witness(disposition: pure_disposition(), effect_obligation: false, interpreter_subject: false, emitter_carries: true, blocked_cause: GeneralWitnessTargetModelUnavailable)
-  let blocked = classify_witness(disposition: pure_disposition(), effect_obligation: false, interpreter_subject: false, emitter_carries: false, blocked_cause: HostCapabilityUnavailable { capability: "linux-only procfs read" })
+  let carried = classify_witness(disposition: pure_disposition(), effect_obligation: false, interpreter_subject: false, carriage: CarriedInEnrolledBundle { bundle_identity: "09d7d2e53554c783", member: "meet" })
+  let blocked = classify_witness(disposition: pure_disposition(), effect_obligation: false, interpreter_subject: false, carriage: NoEmitterCarriage { cause: HostCapabilityUnavailable { capability: "linux-only procfs read" } })
   match carried {
     NativeRequired => match blocked {
       NativeBlocked { cause: c } => match c {

@@ -30,12 +30,17 @@ type WitnessClassRow {
 
 data classify_witness_note: NonEmptyStr = "Precedence, and why it is this order: an effect obligation stays an effect (plan -> execution -> independent readback) no matter what else is true of it, so it is checked first; a test whose SUBJECT is the interpreter must stay interpreted by definition (native execution would test the wrong implementation), so it outranks the native axes; a live-tree reader may still be emitted native but its receipt must bind the observed subject, so it is its own class rather than NativeRequired; and only a hermetic, non-interpreter-subject, effect-free witness the emitter faithfully carries is NativeRequired. Everything else pure is NativeBlocked with its typed cause. The inputs are standing facts; a native execution FAILURE is deliberately not representable here."
 
+type EmitterCarriage
+  = CarriedInEnrolledBundle { bundle_identity: NonEmptyStr, member: NonEmptyStr }
+  | NoEmitterCarriage { cause: NativeBlockedCause }
+
+data emitter_carriage_note: NonEmptyStr = "Carriage is EVIDENCE, not an assertion (review 50550 finding 3): NativeRequired is reachable only through CarriedInEnrolledBundle, which must name the enrolled bundle identity and the member spelling — facts a consumer joins against the enrolled SelectedWitnessPlan roster, so a mis-supplied bare true cannot mint NativeRequired. The refusal arm carries its typed NativeBlockedCause on the same coproduct, so carried-with-a-cause and blocked-without-one are unrepresentable."
+
 fn classify_witness(
   disposition: Optional<LiveTreeDisposition>,
   effect_obligation: Bool,
   interpreter_subject: Bool,
-  emitter_carries: Bool,
-  blocked_cause: NativeBlockedCause
+  carriage: EmitterCarriage
 ) -> WitnessExecutionClass {
   if effect_obligation {
     EffectObligation
@@ -45,8 +50,10 @@ fn classify_witness(
     match disposition {
       Present { value: d } => match d {
         ReadsLiveTree => NativeLiveObservation
-        SubstrateInputsOnly =>
-          if emitter_carries { NativeRequired } else { NativeBlocked { cause: blocked_cause } }
+        SubstrateInputsOnly => match carriage {
+          CarriedInEnrolledBundle { bundle_identity: _, member: _ } => NativeRequired
+          NoEmitterCarriage { cause: c } => NativeBlocked { cause: c }
+        }
       }
       Absent => NativeLiveObservation
     }
@@ -101,13 +108,22 @@ fn row_identity(row: WitnessClassRow) -> String {
   concat(row.entry, concat("::", row.function))
 }
 
+type IdentityScanState {
+  prev: String
+  has_prev: Bool
+  duplicates: Int
+}
+
 fn duplicate_identity_count(rows: List<WitnessClassRow>) -> Int {
-  fold_list(xs: rows, empty: 0, cons: fn(acc, row) {
-    let matches = fold_list(xs: rows, empty: 0, cons: fn(inner, other) {
-      if row_identity(row: other) == row_identity(row: row) { inner + 1 } else { inner }
-    })
-    if matches > 1 { acc + 1 } else { acc }
+  let sorted = map(rows, row => row_identity(row: row)) |> sort_by(identity => identity)
+  let scanned = fold_list(xs: sorted, empty: IdentityScanState { prev: "", has_prev: false, duplicates: 0 }, cons: fn(acc, identity) {
+    if acc.has_prev && acc.prev == identity {
+      IdentityScanState { prev: identity, has_prev: true, duplicates: acc.duplicates + 1 }
+    } else {
+      IdentityScanState { prev: identity, has_prev: true, duplicates: acc.duplicates }
+    }
   })
+  scanned.duplicates
 }
 
 fn every_identity_classified_exactly_once(rows: List<WitnessClassRow>) -> Bool {

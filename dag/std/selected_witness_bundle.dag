@@ -325,6 +325,7 @@ type NativeWitnessProductionTransitionReceipt {
   native_count: Int
   interpreted_count: Int
   unavailable_count: Int
+  diverged_count: Int
   bundle_count: Int
   shard_count: Int
   cold_compile_wall_nanos: NanosecondDuration
@@ -350,13 +351,15 @@ fn native_production_transition_population_holds(
     && receipt.interpreted_count >= 0
     && receipt.unavailable_count >= 0
     && receipt.fallback_count >= 0
+    && receipt.diverged_count >= 0
     && receipt.interpreted_count == 0
     && receipt.fallback_count == 0
-    && receipt.native_count + receipt.unavailable_count == receipt.selected_count
+    && receipt.native_count + receipt.unavailable_count + receipt.diverged_count == receipt.selected_count
     && match receipt.verdict {
       NativeProductionTransitionAccepted =>
         receipt.native_count == receipt.selected_count
           && receipt.unavailable_count == 0
+          && receipt.diverged_count == 0
       NativeProductionTransitionRefused { reason: _ } => true
     }
 }

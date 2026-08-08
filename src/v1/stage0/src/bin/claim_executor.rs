@@ -2984,12 +2984,31 @@ fn native_transition_accepted(
     native_ok && oracle_green && planted_red_equivalent
 }
 
-fn native_transition_population_counts(selected: u64, native_ok: bool) -> (u64, u64, u64, u64) {
+/// A member that RAN natively but produced the wrong output is DIVERGED, not
+/// unavailable: the native realization exists and executed, so counting it in
+/// the outage column over-claims "unavailable" and hides the scarier defect
+/// (wrong answer) inside the milder one (no answer). The two columns carry
+/// different remedies — an outage is fixed in the transport/build environment,
+/// a divergence is a semantics defect in the emitted code.
+fn native_transition_population_counts(
+    selected: u64,
+    native_ok: bool,
+    native_diverged: bool,
+) -> (u64, u64, u64, u64, u64) {
     let native_count = if native_ok { selected } else { 0 };
-    let unavailable_count = if native_ok { 0 } else { selected };
+    let diverged_count = if !native_ok && native_diverged {
+        selected
+    } else {
+        0
+    };
+    let unavailable_count = if native_ok || native_diverged {
+        0
+    } else {
+        selected
+    };
     // interpreted_count and fallback_count: the interpreter is not a production
     // execution route for this population; both are structurally zero.
-    (native_count, 0, unavailable_count, 0)
+    (native_count, 0, unavailable_count, diverged_count, 0)
 }
 
 fn run_native_bundle_unit(
@@ -3150,8 +3169,8 @@ fn run_native_bundle_unit(
         );
     }
     let selected = primary.selected_count;
-    let (native_count, interpreted_count, unavailable_count, fallback_count) =
-        native_transition_population_counts(selected, native_ok);
+    let (native_count, interpreted_count, unavailable_count, diverged_count, fallback_count) =
+        native_transition_population_counts(selected, native_ok, native_diverged);
     let cold_compile_wall = cold
         .as_ref()
         .ok()
@@ -3188,7 +3207,7 @@ fn run_native_bundle_unit(
         .map(|c| format!("transport_cause\t{}\n", c.replace(['\t', '\n'], " ")))
         .collect();
     let receipt = format!(
-        "selected_witness_count\t{selected}\nnative_count\t{native_count}\ninterpreted_count\t{interpreted_count}\nunavailable_count\t{unavailable_count}\nbundle_count\t{}\nshard_count\t{}\ncold_compile_wall_nanos\t{cold_compile_wall}\nwarm_artifact_hit_wall_nanos\t{warm_artifact_hit_wall}\nnative_execution_wall_nanos\t{native_execution_wall}\ninterpreter_oracle_wall_nanos\t{interpreter_oracle_wall_nanos}\nfallback_count\t{fallback_count}\nrss_peak_bytes\t{rss_peak}\ncgroup_peak_bytes\t{cgroup_peak}\nverdict\t{verdict}\nplanted_red_equivalent\t{planted_red_equivalent}\nbundle_identity\t{}\n{cause_rows}",
+        "selected_witness_count\t{selected}\nnative_count\t{native_count}\ninterpreted_count\t{interpreted_count}\nunavailable_count\t{unavailable_count}\nbundle_count\t{}\nshard_count\t{}\ncold_compile_wall_nanos\t{cold_compile_wall}\nwarm_artifact_hit_wall_nanos\t{warm_artifact_hit_wall}\nnative_execution_wall_nanos\t{native_execution_wall}\ninterpreter_oracle_wall_nanos\t{interpreter_oracle_wall_nanos}\ndiverged_count\t{diverged_count}\nfallback_count\t{fallback_count}\nrss_peak_bytes\t{rss_peak}\ncgroup_peak_bytes\t{cgroup_peak}\nverdict\t{verdict}\nplanted_red_equivalent\t{planted_red_equivalent}\nbundle_identity\t{}\n{cause_rows}",
         primary.bundle_count, primary.shard_count, primary.bundle_identity
     );
     if let Err(e) = write_native_transition_receipt(&receipt) {
@@ -14584,9 +14603,21 @@ mod tests {
         assert!(!native_transition_accepted(true, true, false));
         // Full native bar: accepted.
         assert!(native_transition_accepted(true, true, true));
-        // Population counts: interpreted and fallback are structurally zero.
-        assert_eq!(native_transition_population_counts(3, true), (3, 0, 0, 0));
-        assert_eq!(native_transition_population_counts(3, false), (0, 0, 3, 0));
+        // Population counts: interpreted and fallback are structurally zero,
+        // and a divergence (ran, wrong output) is its own column — never
+        // laundered into "unavailable" (review 50560-class finding).
+        assert_eq!(
+            native_transition_population_counts(3, true, false),
+            (3, 0, 0, 0, 0)
+        );
+        assert_eq!(
+            native_transition_population_counts(3, false, false),
+            (0, 0, 3, 0, 0)
+        );
+        assert_eq!(
+            native_transition_population_counts(3, false, true),
+            (0, 0, 0, 3, 0)
+        );
     }
 
     /// A signalled process must not borrow an exit code it does not have. The seed
