@@ -6,6 +6,7 @@ import std.content_hash {
   Fnv1a64,
   Sha256Hash,
   Sha1Hash,
+  Sha512Hash,
 }
 
 import extdeps.git.object_store {
@@ -42,6 +43,7 @@ fn content_hash_ref_token(hash: ContentHash) -> String {
     Fnv1a64(s) => join(["fnv1a64-", s.digest as String], "")
     Sha256Hash(d) => join(["sha256-", d.hex as String], "")
     Sha1Hash(d) => join(["sha1-", d.hex as String], "")
+    Sha512Hash(d) => join(["sha512-", d.hex as String], "")
   }
 }
 
