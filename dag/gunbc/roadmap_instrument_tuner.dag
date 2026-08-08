@@ -32,7 +32,7 @@ import gunbc.design.instrument_audition {
 import gunbc.roadmap_instrument_sandbox {
   instrument_css, instrument_refusal_class,
   instrument_row_class, live_program_view_result, LiveViewDerived, LiveViewRefused,
-  cell, row, note,
+  fragment_cell, fragment_row, note,
 }
 import gunbc.roadmap_program_view { V1DeletionProgramView, RemainingShape }
 import gunbc.v1_deletion_plan { v1_exit_finish_lines, v1_finish_line_key, V1FinishLineSpec }
@@ -139,32 +139,32 @@ fn remaining_text(r: RemainingShape) -> String {
 
 fn render_reading(label: String, r: ProgramReading) -> Fragment {
   match r {
-    ReadingNoSubject => row(cells: [ cell(s: label), cell(s: "no subject selected") ])
+    ReadingNoSubject => fragment_row(cells: [ fragment_cell(s: label), fragment_cell(s: "no subject selected") ])
     ReadingProgramShape { remaining } =>
-      row(cells: [ cell(s: label), cell(s: "whole program"), cell(s: remaining_text(r: remaining)) ])
-    ReadingOutcomeStatus { name, node, accepted, open_fronts } => row(cells: [
-      cell(s: label),
-      cell(s: name),
-      cell(s: node),
-      cell(s: if accepted { "accepted" } else { "not accepted" }),
-      cell(s: join([to_string(open_fronts), " open fronts"], "")),
+      fragment_row(cells: [ fragment_cell(s: label), fragment_cell(s: "whole program"), fragment_cell(s: remaining_text(r: remaining)) ])
+    ReadingOutcomeStatus { name, node, accepted, open_fronts } => fragment_row(cells: [
+      fragment_cell(s: label),
+      fragment_cell(s: name),
+      fragment_cell(s: node),
+      fragment_cell(s: if accepted { "accepted" } else { "not accepted" }),
+      fragment_cell(s: join([to_string(open_fronts), " open fronts"], "")),
     ])
     ReadingOutcomeRemaining { name, remaining } =>
-      row(cells: [ cell(s: label), cell(s: name), cell(s: remaining_text(r: remaining)) ])
-    ReadingConstraint { subject, kind, headline, in_flight, depth } => row(cells: [
-      cell(s: label),
-      cell(s: join([kind, " constraint"], "")),
-      cell(s: subject),
-      cell(s: headline),
-      cell(s: if in_flight { "work observed" } else { "no work observed" }),
+      fragment_row(cells: [ fragment_cell(s: label), fragment_cell(s: name), fragment_cell(s: remaining_text(r: remaining)) ])
+    ReadingConstraint { subject, kind, headline, in_flight, depth } => fragment_row(cells: [
+      fragment_cell(s: label),
+      fragment_cell(s: join([kind, " constraint"], "")),
+      fragment_cell(s: subject),
+      fragment_cell(s: headline),
+      fragment_cell(s: if in_flight { "work observed" } else { "no work observed" }),
     ])
     ReadingNoConstraint { subject_key, reason } =>
-      row(cells: [ cell(s: label), cell(s: subject_key), cell(s: reason) ])
-    ReadingFront { key, name, closed, gates_accepted, gates_total } => row(cells: [
-      cell(s: label),
-      cell(s: name),
-      cell(s: join([to_string(gates_accepted), " of ", to_string(gates_total), " gates accepted"], "")),
-      cell(s: if closed { "closed" } else { "open" }),
+      fragment_row(cells: [ fragment_cell(s: label), fragment_cell(s: subject_key), fragment_cell(s: reason) ])
+    ReadingFront { key, name, closed, gates_accepted, gates_total } => fragment_row(cells: [
+      fragment_cell(s: label),
+      fragment_cell(s: name),
+      fragment_cell(s: join([to_string(gates_accepted), " of ", to_string(gates_total), " gates accepted"], "")),
+      fragment_cell(s: if closed { "closed" } else { "open" }),
     ])
     ReadingUnavailable { mode, subject_key, cause } =>
       el_class("div", instrument_refusal_class, [
@@ -214,9 +214,9 @@ fn subject_row(spec: V1FinishLineSpec) -> Fragment {
     attr(name: "tabindex", value: "0"),
     attr(name: "data-subject-key", value: key),
   ], [
-    cell(s: spec.name),
-    cell(s: key),
-    cell(s: spec.claim),
+    fragment_cell(s: spec.name),
+    fragment_cell(s: key),
+    fragment_cell(s: spec.claim),
   ])
 }
 
