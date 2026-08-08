@@ -1,0 +1,13 @@
+module test.claim.class_b_trim_coincidence_specimen
+
+import std.types { String, Bool }
+
+data class_b_trim_coincidence_specimen_note: String = "Regression control for Class B trim (#6985): trim free-call WITHOUT explicit std.algebra import. Compiles only when std.algebra is already in the compilation pool via unrelated transitive import (pool-membership coincidence). Explicit-import specimen is class_b_trim_specimen.dag."
+
+fn free_trim(s: String) -> String {
+  trim(s)
+}
+
+fn named_trim(s: String) -> String {
+  trim(s: s)
+}

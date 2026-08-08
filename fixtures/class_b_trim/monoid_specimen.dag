@@ -3,8 +3,8 @@ module test.claim.class_b_trim_monoid_specimen
 import std.types { String, Bool }
 import std.algebra { FreeMonoid, Cons, Empty }
 
-data class_b_trim_monoid_specimen_note: String = "Class B trim companion: trim is declared on the scalar FreeMonoid template in std.algebra (free_monoid_scalar_templates), not on the collection monoid. Free-call trim(xs) with xs: FreeMonoid<String> must refuse at compile time even when std.algebra is in the pool. Executing receipt: v1-compiler-tests trim_method_form_fails_on_freemonoid_receiver."
+data class_b_trim_monoid_specimen_note: String = "Class B trim companion: trim is declared on the scalar FreeMonoid template in std.algebra (free_monoid_scalar_templates), not on the collection monoid. Method trim on a FreeMonoid<String> receiver must refuse even when std.algebra is in the pool. Executing receipt: v1-compiler-tests trim_method_form_fails_on_freemonoid_receiver."
 
 fn trim_on_monoid_receiver(xs: FreeMonoid<String>) -> String {
-  trim(xs)
+  xs.trim()
 }

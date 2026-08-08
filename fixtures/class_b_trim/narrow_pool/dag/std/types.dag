@@ -313,7 +313,7 @@ type TopologyNode {
 type TopologyEdge {
   from: String
   to: String
-  port: String?
+  connector_label: String?
 }
 
 type DagDiff {

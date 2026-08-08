@@ -538,7 +538,7 @@ pub struct TopologyNode {
 pub struct TopologyEdge {
     pub from: String,
     pub to: String,
-    pub port: Option<String>,
+    pub connector_label: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

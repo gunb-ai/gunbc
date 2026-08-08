@@ -1,5 +1,7 @@
 module v2.workflow.floor_discovery_producer
 
+import std.algebra { trim }
+
 import v2.compiler.discovery_enumeration {
   OwnedBoolWitnessClaimInit,
   OwnedDataDeclInitializer,

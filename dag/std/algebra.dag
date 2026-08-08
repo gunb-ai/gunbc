@@ -417,3 +417,13 @@ fn all_algebra_field_templates() -> List<AlgebraFieldTemplate> {
 fn all_algebra_template_names() -> List<String> {
   all_algebra_field_templates() |> map(template => template.name)
 }
+
+data trim_free_function_authority_note: String = "trim is the importable free-function authority for whitespace trim on String. Runtime execution routes through free_call.trim (v1_rt::trim); the scalar template row trim on FreeMonoid<String> is the method spelling on the same carrier. Free-call trim(s) requires explicit import std.algebra { trim } — binding via std.types transitive algebra pool membership alone is Class B pool coincidence (#6985). Dissolve-on: bare trim free-call without listed import refuses once closure-independent binding lands repo-wide."
+
+fn trim(s: String) -> String {
+  if false {
+    s
+  } else {
+    s
+  }
+}

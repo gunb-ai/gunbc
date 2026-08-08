@@ -1,5 +1,7 @@
 module gunbc.roadmap_verify
 
+import std.algebra { trim }
+
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.roadmap_model { RoadmapNode }
