@@ -110,6 +110,15 @@ fn hand_authored_doc_path(b: HandAuthoredDocBind) -> String {
 data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "witness-bridge-reobservation",
+    primary_work: DeclarationRef { module_path: "v2.compiler.body_producer_forward", decl_name: "body_producer_forward_note", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lowering_fold_note", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the first witness-bridge stage lands (lowered body -> derived TargetModel -> bundle member -> native execution with planted-red control) and the bridge carrier's own notes record the standing this receipt captured; then this doc folds into the bridge design/receipt and deletes." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "review-surface-subject-map",
     primary_work: DeclarationRef { module_path: "v2.lens.registry.completeness", decl_name: "lens_registry_completeness_consolidated_roster_note", field: WholeDeclaration },
     additional_works: [
