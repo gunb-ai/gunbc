@@ -22,7 +22,7 @@ import v2.std.data_initializer_identity {
 }
 import v2.std.algebra { length }
 
-data decl_facts_reflection_witness_note: String = "Step-1 prerequisite (#7796), PARTIAL: outer record-constructor SPELLING (OuterRecordConstructorLexeme) is reflected and tested via executing witnesses. Exact parent-variant identity and nullary variant VALUE identity remain open — parse-only decl_facts cannot ground dissolves_to: SingleAuthority or field: WholeDeclaration; see decl_facts_nullary_variant_value_identity_gap_note. Rust tests in v1-compiler-tests are developer convenience only (compile-only in CI; nextest retired 2026-07-11)."
+data decl_facts_reflection_witness_note: String = "Step-1 prerequisite (#7796), PARTIAL: outer record-constructor SPELLING (OuterRecordConstructorLexeme) is reflected and tested via executing witnesses. Nullary variant VALUE identity is exercised by w_nullary_variant_value_absent_without_infer_stamping_top_level and w_nullary_variant_value_absent_without_infer_stamping_nested (resolved SingleAuthority projection). Exact parent-variant occurrence identity remains open — see decl_facts_nullary_variant_value_identity_gap_note for the parse-only population that still cannot ground dissolves_to: SingleAuthority without infer stamping. Rust tests in v1-compiler-tests are developer convenience only (compile-only in CI; nextest retired 2026-07-11)."
 
 data qn_planted_scaffold_specimen: String = "test.fixture.decl_facts_reflection.specimens.planted_scaffold_specimen"
 data qn_planted_terminal_specimen: String = "test.fixture.decl_facts_reflection.specimens.planted_terminal_specimen"
