@@ -37,7 +37,7 @@ test fn committed_width_fits_on_every_host() -> Bool {
   )
 }
 
-data boundary_is_pinned_on_the_memory_axis_note: String = "THE +1 CONTROL RUNS AGAINST host_memory_admitted_width, NOT AGAINST THE COMMITTED WIDTH, because this wall answers a question about RAM and the committed width is a minimum over more axes than RAM. srv4 is exactly where the two part company: memory admits 7 and its declared disk cap commits 5, so asserting that srv4's committed width plus one fails conservation would assert that six slots do not fit in srv4's RAM — which is false, and would be a test failing for a true reason.\n\nThe control keeps its discriminating power by moving to the axis it belongs on: for every host, one more slot than MEMORY admits must fail the memory wall. Passing srv4 would then require the memory model to be wrong, not the disk cap to be edited. The committed width keeps its own claim in the row above, which is the weaker and still necessary one — whatever is committed must fit."
+data boundary_is_pinned_on_the_memory_axis_note: String = "THE +1 CONTROL RUNS AGAINST host_memory_admitted_width, NOT AGAINST THE COMMITTED WIDTH, because this wall answers a question about RAM and the committed width is a minimum over more axes than RAM. srv4 no longer binds disk at allocation — disk is gated at apply via gunbc.runner_lifecycle runner_width_disk_preflight — so memory admission and committed width both read 7; the control stays on the memory axis where it belongs."
 
 test fn one_more_slot_than_memory_admits_refuses_on_every_host() -> Bool {
   all(
@@ -55,12 +55,16 @@ test fn committed_width_never_exceeds_memory_admission() -> Bool {
   )
 }
 
-data srv4_commits_below_its_memory_admission_note: String = "srv4 IS THE DISCRIMINATING CASE FOR THE WHOLE MINIMUM, and without it the two axes could be collapsed back into one without any witness noticing. It is the only host where a second constraint binds: memory admits 7, its declared disk cap admits 5, and it commits 5. A change that dropped the disk axis, or that folded it in with the wrong comparison, would raise srv4 to 7 and red here — which is the failure mode this pins, since that change is precisely the one that provisions two slots onto a 500GB disk."
+data srv4_disk_gated_at_apply_not_allocation_note: String = "srv4 COMMITS SEVEN AT THE MEMORY AXIS LIKE srv3; the retired disk row-pin no longer lowers allocation. Disk binding is apply-time via gunbc.runner_lifecycle runner_width_disk_preflight (~38GB/slot). host_disk_admitted_width stays DiskWidthUnconstrained at allocation so provisioning cannot silently skip the gate; unobservable disk at apply refuses rather than falling back to five."
 
-test fn srv4_commits_the_disk_cap_not_the_memory_admission() -> Bool {
+test fn srv4_commits_memory_width_disk_gated_at_apply() -> Bool {
   host_memory_admitted_width(host: operator_host_srv4) == 7
-    && gunbc_runner_slots_per_host(host: operator_host_srv4) == 5
+    && gunbc_runner_slots_per_host(host: operator_host_srv4) == 7
     && gunbc_runner_slots_per_host(host: operator_host_srv3) == 7
+    && match host_disk_admitted_width(host: operator_host_srv4) {
+      DiskWidthUnconstrained { reason: r } => string_contains(s: r, pattern: "runner_width_disk_preflight")
+      DiskAdmitsWidth { slots: _, provenance: _ } => false
+    }
 }
 
 test fn session_hosts_refuse_the_managed_width() -> Bool {

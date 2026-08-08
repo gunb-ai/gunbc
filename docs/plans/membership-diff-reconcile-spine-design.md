@@ -140,3 +140,66 @@ Pass 2 wired live_deploy onto the spine and refined the pre-commit design in thr
 2. **Verdict→decision DRY** (calm-ferret flagged it forked 4×): my partition works off diff HUNKS, not `ObservationVerdict`, so I do NOT need that map for pass 1. Consolidating the 4× fork is a related but separate §3 cleanup — fold in later, not here. Agree?
 3. **`Refuse: NonEmptyStr` upgrade**: R5 wants typed+located+counted refusals. I model `MemberTeardownRefused{member, cause}` (typed+located+counted) at the membership layer rather than upgrading `UpsertDecision.Refuse`. OK, or do you want the `UpsertDecision.Refuse` authority upgraded to carry a typed diagnostic?
 4. **royal-carp — grain-agnosticism check**: does the "diff takes Session without surgery" test pass on this shape (only a new instantiation + dispatch arms, no spine-type edit)? And is the R5 owned-only boundary (Removed∩¬Owned + Unknown both REFUSE, construction-walled) what you locked?
+
+## Pass 3 — LANDED (occurrence identity + typed replacement classification)
+
+Operator ruling: *"Identity should be declaration-owned and allocator-minted — not derived from unit/path, and not a closed operator-maintained `HostRole` enum."*
+
+### The arms
+
+`MemberAction<M>` is four arms, not three:
+
+```
+= MemberAdded          { to: M }
+| MemberChanged        { from: M, to: M }
+| MemberRemoved        { from: M }
+| MemberRemovalRefused { from: M, cause: TeardownRefusalCause }
+```
+
+Add and change were previously collapsed into one `MemberUpsert{member}` carrying only the `to` side. **The discarded `from` is the load-bearing loss**, and it is not a tidiness point: the prior value is what every safe realization of a change consumes. An SCM ref update is a compare-and-swap that *names the expected prior* (`git update-ref <ref> <new> <old>`); a host resource whose address moved must retire the prior endpoint. With only `to` in hand the sole reachable realization is the unconditional write — the atomicity the underlying capability already offers cannot be reached. `MemberEffect` splits the same way (`EffectAdd{to}` / `EffectReplace{from,to}` / `EffectRemove{from}`) so the apply grain can retire a prior realization rather than overwrite it blind.
+
+`MemberRemovalRefused` is a first-class **action**, not an absence — that is what keeps a refusal countable rather than a hunk that silently did not appear.
+
+### What is NOT here, and why (a withdrawn wall)
+
+An earlier draft of this pass also refused a Modified hunk whose `from` was not `Owned`, reading replacement as destruction and claiming a live fail-open in five of seven consumers. **That was built, refuted by execution, and withdrawn.** `gunbc.ownership` defines `Ensured` as *"requires present but does NOT own (never torn down)"* — a constraint on **removal**, not on update. `tool_readiness` classifies every pin `Ensured` and exists precisely to re-install a pin whose observed version drifted; `repo_local_git_config` likewise. The wall broke those modules where it fired, and was unreachable where it did not (`host_axis_caps` derives ownership from the path, so a Modified hunk cannot pair a managed desired row with a foreign observed one; foreign `authorized_keys` are absent from desired, so they are Removed, never Modified). The original asymmetry was correct.
+
+Per DESIGN §4c a carrier note is *not* evidence a machine claim holds, so the withdrawal is enrolled rather than written down: `w_ensured_member_converges_but_refuses_removal` puts one `Ensured` member through **both** arms in one plan — it converges when its value drifts and refuses when it is removed. Reintroducing the change-refusal arm turns it red (verified by planting exactly that perturbation; the unrelated rows stayed green).
+
+### Identity: minted, not derived
+
+`gunbc.host_resource`:
+
+```
+type HostResourceIdentity { host: HostIdentity, occurrence: ResourceOccurrenceId }
+type HostResource<R, V>   { identity: HostResourceIdentity, role: R, value: V }
+```
+
+The occurrence is **allocator-minted at declaration**, never computed from content, path, or unit name. This is the closed-system answer to renames: git does not track renames, it *infers* them from content similarity after the fact, and DESIGN §4 rules a heuristic never necessary in a closed system — a content- or path-derived `key_of` is that same inference wearing a bundle. Because the occurrence is allocated, a rename is ONE `MemberChanged` whose `from` and `to` share an identity and nothing has to be guessed. `role` is a **type parameter**, so `Jobserver` / `BuildCache` / `RunnerSlot` arrive as instantiations rather than edits to a central enum (the DESIGN §3 rule that adding Opera must not widen a browser-product enum). Unit name, FIFO, storage path and configuration are mutable **value** fields. `HostIdentity` is reused from `product.placement_supply`, not re-minted.
+
+**Why a distinct carrier from `std.occurrence_identity`** (decided by reading, recorded in-carrier): that module is specifically about *source* occurrences — `OccurrenceCategory` enumerates callable/type/constructor/field/method/namespace-segment, its carriers are `DeclarationOccurrence`/`ReferenceOccurrence` over containment paths, and its allocator is coupled through `occurrence_id_allocator_advance_to` to `AuthoredTokenOrdinalSpace`, a source-token watermark meaningless for a host resource. The subject-agnostic residue is only a monotone `Int` counter, and sharing one `Int` space across two subjects would let `occurrence_id_eq` answer `true` on a **numeric coincidence** between a host resource and a source occurrence — the exact cross-family comparison the `ContentHash` family grounding closed. The real §3 move (one subject-parameterized minted-identity carrier, the `Vendor<Domain>` shape) is registered as `resource_occurrence_generalization_trigger` rather than built, because `std.occurrence_identity` is load-bearing compiler substrate with stage0 work in flight.
+
+### The classification table
+
+`gunbc.change_realization.classify_change` is what makes `MemberChanged` useful rather than merely more faithful — four **different atomicity guarantees**, where picking the wrong row is how a safe transformation acquires an unsafe realization:
+
+| subject / condition | realization |
+| --- | --- |
+| SCM ref update | atomic compare-and-swap (`git update-ref <ref> <new> <old>`) |
+| source declaration move | atomic SCM tree transformation |
+| host resource, same runtime address | in-place update |
+| host resource, changed host address | staged replacement with **declared** intermediates |
+
+**The conflation this kills:** a `.dag` module re-home is an SCM tree transformation, **not** a host migration — it changes no runtime address, unlinks no socket, restarts no unit. Treating it as a migration is what made an ordinary source cleanup look like it needed an operational migration plan. The converse error is the dangerous one: renaming a systemd unit or moving a FIFO *is* a host replacement.
+
+**The srv4 specimen, made executable.** srv4's build-cache server died with its cgroup, never unlinked its socket, and ran uncached for weeks because nobody modeled the intermediate state. `gunbc.build_cache_instance` says in *prose* that a managed unit must clear a stale endpoint on start — the one place no machine can read it. `StagedIntermediates` is head + tail, so an empty intermediate plan **has no constructor** (§5 construction-over-validation; §4b: the invalid state is unrepresentable, not validated against). A staged replacement whose intermediates were never declared **refuses**, typed and located by `subject_label` — it does not degrade to an in-place update and does not proceed with an empty plan, both of which are the absorbing fallback §5 forbids and the second of which *is* the srv4 outcome. Verified discriminating: perturbing the refusal into an `InPlaceUpdate` fallback reds that row alone.
+
+### Consumer migration
+
+All seven consumers plus witnesses migrated; the compiler located every site by exhaustiveness. One real regression was caught in the process: `repo_local_git_config`'s apply fold has a `_ => acc` wildcard for its construction-unreachable removal arms, and a `MemberChanged` would have fallen into it — silently dropping exactly the drift that module exists to converge. Both write arms are now listed explicitly and routed through one `apply_repo_local_git_config_binding`. `live_deploy`'s `EffectReplace` arm is structurally unreachable at both degenerate poles, so per that module's established discipline it emits a loud typed poison rather than a fabricated no-op — and the poison names the staged-replacement requirement a real observed provider will have to satisfy.
+
+`membership_write_count` (adds + changes) is a **derived** projection replacing `membership_upsert_count` for consumers that used it as "how much work is left"; the split is never re-stored as one counter.
+
+### Open
+
+The `(key_of, key_eq, value_eq, ownership_of)` bundle still parameterizes the spine, so existing consumers are unchanged. Migrating them onto identity-carrying members is a separate lane — deliberately not bundled here, so the srv3 capacity work depending only on the `Added` arm is not blocked.

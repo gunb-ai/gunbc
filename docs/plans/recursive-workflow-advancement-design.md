@@ -267,7 +267,7 @@ related but not interchangeable.
 
 ### 6.4 Every realizer may recurse
 
-A `MemberUpsert` can be discharged by a direct modeled effect or by a child planned workflow.
+A `MemberAdded` or `MemberChanged` can be discharged by a direct modeled effect or by a child planned workflow.
 Examples:
 
 - “ensure Codex authenticated” may spawn a provider-provisioning workflow;

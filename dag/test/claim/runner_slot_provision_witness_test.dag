@@ -1,0 +1,123 @@
+module test.claim.runner_slot_provision
+
+import std.logic { Bool }
+import std.types { list_length, NonEmptyStr, List }
+import extdeps.toolchain.types { Aarch64 }
+import extdeps.github.actions_runner {
+  actions_runner_release_2_334_0,
+  actions_runner_binary_artifact_for_arch,
+  actions_runner_download_url,
+}
+import gunbc.runner_host_deploy {
+  srv3_runner_host_deploy,
+  srv4_runner_host_deploy,
+  runner_host_installer_command_argv,
+  runner_instance_names,
+}
+import gunbc.runner_slot_provision {
+  desired_runner_slot_members,
+  runner_slot_membership_reconcile,
+  runner_slot_provision_plan,
+  runner_slot_enumeration_postcondition,
+  RunnerSlotEnumerationMatched,
+  RunnerSlotEnumerationMismatch,
+  RunnerSlotMember,
+  runner_slot_provision_has_width_increase,
+}
+import gunbc.membership_reconcile { membership_added_count }
+import gunbc.fleet_host_budget { declared_runner_count_for }
+import gunbc.fleet_intent_network { operator_host_srv3 }
+import extdeps.exec.command { shell_command_render }
+
+test fn witness_actions_runner_release_cites_github_digest() -> Bool {
+  match actions_runner_binary_artifact_for_arch(binary_release: actions_runner_release_2_334_0, arch: Aarch64) {
+    Present { value: artifact } =>
+      string_contains(
+        s: actions_runner_download_url(artifact: artifact),
+        pattern: "github.com/actions/runner/releases/download/v2.334.0/actions-runner-linux-arm64-2.334.0.tar.gz",
+      )
+    Absent => false
+  }
+}
+
+test fn witness_runner_count_not_in_installer_argv() -> Bool {
+  let rendered = shell_command_render(
+    command: runner_host_installer_command_argv(
+      deploy: srv3_runner_host_deploy,
+      installer_path: "/tmp/install-actions-runner.sh",
+      pem_src_path: "/tmp/app.pem",
+    ),
+  )
+  string_contains(s: rendered, pattern: "CTRL_RUNNER_HOST_LABEL=srv3")
+    && (string_contains(s: rendered, pattern: "runner_count") == false)
+    && (string_contains(s: rendered, pattern: "CTRL_RUNNER_SLOT") == false)
+}
+
+test fn witness_srv3_deploy_row_names_seven_slots() -> Bool {
+  list_length(items: runner_instance_names(deploy: srv3_runner_host_deploy)) == 7
+    && string_contains(s: runner_instance_names(deploy: srv3_runner_host_deploy).first(), pattern: "srv3-01")
+    && string_contains(s: runner_instance_names(deploy: srv3_runner_host_deploy).skip(n: 6).first(), pattern: "srv3-07")
+}
+
+test fn witness_membership_reconcile_adds_delta_slots() -> Bool {
+  let observed: List<RunnerSlotMember> = [
+    RunnerSlotMember {
+      instance_name: "srv3-01" as NonEmptyStr,
+      slot_dir: "/opt/actions-runner/srv3-01" as NonEmptyStr,
+    },
+    RunnerSlotMember {
+      instance_name: "srv3-02" as NonEmptyStr,
+      slot_dir: "/opt/actions-runner/srv3-02" as NonEmptyStr,
+    },
+  ]
+  let plan = runner_slot_membership_reconcile(
+    desired: desired_runner_slot_members(deploy: srv3_runner_host_deploy),
+    observed: observed,
+  )
+  membership_added_count(plan: plan) == 5
+    && membership_added_count(plan: plan) == list_length(items: desired_runner_slot_members(deploy: srv3_runner_host_deploy)) - 2
+}
+
+test fn witness_provision_plan_extracts_only_upserts() -> Bool {
+  match actions_runner_binary_artifact_for_arch(binary_release: actions_runner_release_2_334_0, arch: Aarch64) {
+    Present { value: artifact } =>
+      let observed: List<RunnerSlotMember> = [
+        RunnerSlotMember {
+          instance_name: "srv3-01" as NonEmptyStr,
+          slot_dir: "/opt/actions-runner/srv3-01" as NonEmptyStr,
+        },
+      ]
+      let plan = runner_slot_provision_plan(
+        deploy: srv3_runner_host_deploy,
+        artifact: artifact,
+        observed: observed,
+      )
+      runner_slot_provision_has_width_increase(plan: plan)
+        && list_length(items: plan.upsert_extract_scripts) == 6
+        && string_contains(s: plan.base_dir_script, pattern: "/opt/actions-runner")
+        && string_contains(s: plan.upsert_extract_scripts.first(), pattern: "sha256sum -c")
+    Absent => false
+  }
+}
+
+test fn witness_enumeration_postcondition_red_on_under_count() -> Bool {
+  let observed: List<RunnerSlotMember> = [
+    RunnerSlotMember {
+      instance_name: "srv3-01" as NonEmptyStr,
+      slot_dir: "/opt/actions-runner/srv3-01" as NonEmptyStr,
+    },
+  ]
+  match runner_slot_enumeration_postcondition(host: operator_host_srv3, observed: observed) {
+    RunnerSlotEnumerationMismatch { host: h, declared_count: d, observed_count: o } =>
+      h == operator_host_srv3
+        && d == declared_runner_count_for(host: operator_host_srv3)
+        && o == 1
+        && d > o
+    RunnerSlotEnumerationMatched => false
+  }
+}
+
+test fn witness_srv4_runner_count_seven_materialization_target() -> Bool {
+  srv4_runner_host_deploy.runner_count == 7
+    && list_length(items: runner_instance_names(deploy: srv4_runner_host_deploy)) == 7
+}

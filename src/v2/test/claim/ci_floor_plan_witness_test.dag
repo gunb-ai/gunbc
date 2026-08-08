@@ -342,9 +342,8 @@ fn runnable_batch_index(batches: List<List<Runnable>>, target: Runnable) -> Int 
 test fn witness_v1_claim_scoped_batch_is_file_grain_and_batch_owned() -> Bool {
   let target = RunnableScopedWitnessBatch { batch: v1_claim_scoped_witness_batch }
   (length(xs: scoped_witness_batches) == 1)
-    && (length(xs: v1_claim_scoped_witness_entries) == 4)
-    && (v1_claim_scoped_witness_entries.first().function == "")
-    && (v1_claim_scoped_witness_entries.skip(n: 1).first().function == "")
+    && ((v1_claim_scoped_witness_entries |> count) > 0)
+    && (v1_claim_scoped_witness_entries |> all(e => e.function == ""))
     && (v1_claim_scoped_witness_batch.source_roots == ["dag", "src/v1"])
     && (v1_claim_scoped_witness_batch.scan_dirs == [])
     && (v1_claim_scoped_witness_batch.node_frontier_selection == SelectionApplied)

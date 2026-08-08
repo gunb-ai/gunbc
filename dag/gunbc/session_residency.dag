@@ -7,6 +7,12 @@ import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network {
   operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
 }
+import gunbc.fleet_shell_transport_observation {
+  fleet_shell_transport_observation,
+  ShellTransportSucceeded,
+  ShellTransportReachRefused,
+  ShellTransportUnobserved,
+}
 
 data session_residency_authority_disposition: Disposition = Terminal {
   reason: "Single authority for WHICH FLEET HOSTS RUN INTERACTIVE AGENT SESSIONS. It is a fleet-topology fact — where session containers are placed — and it is the fact that justifies charging a host a sessions reservation out of its RAM budget. Nothing declared it before; consumers inferred it from whatever nearby row happened to correlate."
@@ -93,8 +99,27 @@ fn operator_declared_absent_host_count() -> Int {
 data session_residency_negative_rows_dissolve_on: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.session_residency",
-    decl_name: "session_residency_observed_producer",
-    field: WholeDeclaration
+    module_path: "gunbc.host_effect",
+    decl_name: "HostEffectTransport",
+    field: WholeDeclaration,
+  }
+}
+
+// Interim transport gate — NOT the scaffold successor. session_residency_observed_producer (cgroup
+// census via host_effect_apply) is the real successor named in session_residency_scaffold_bind_note;
+// this fn only gates on shell transport and refuses until that lands.
+
+fn session_residency_shell_gated_census(host: HostIdentity) -> SessionResidencyEvidence {
+  match fleet_shell_transport_observation(host: host) {
+    ShellTransportSucceeded { observed_on: _, principal: _, detail: _ } =>
+      SessionsUnobserved {
+        reason: "shell transport available but sessions.slice container census has no host_effect producer yet; dissolve-on HostEffectTransport cgroup walk",
+      }
+    ShellTransportReachRefused { observed_on: _, principal: _, detail: d, gap: _ } =>
+      SessionsUnobserved {
+        reason: concat("session cgroup census refused: shell transport failed: ", d as String),
+      }
+    ShellTransportUnobserved { reason: r } =>
+      SessionsUnobserved { reason: concat("session cgroup census unobserved: ", r) }
   }
 }

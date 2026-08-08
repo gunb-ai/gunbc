@@ -1,0 +1,156 @@
+module gunbc.fleet_shell_transport_observation
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network {
+  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
+}
+import gunbc.fleet_reach { srv3_reach_is_realizable }
+import gunbc.host_phase_status { fleet_subsumption_hosts }
+
+data fleet_shell_transport_authority_disposition: Disposition = SingleAuthority
+
+data fleet_shell_transport_scope_note: String = "SHELL TRANSPORT IS NOT NETWORK REACH. gunbc.fleet_reach answers whether packets can route to a host; this module answers whether an SSH session from the executing environment can authenticate and run a command. Both must be modeled separately (operator rule 2026-07-24). A ReachRefused or Permission-denied transport observation is a RECEIPT — not EndpointAbsent, swap Absent, or SessionsObservedAbsent. THE PRODUCER returns ShellTransportUnobserved until host_effect_apply can run the probe; it does not hand-enter host facts. still_ram_738_session_* rows below are dated execution receipts for one environment (2026-08-06 ssh BatchMode probes), not fabrication of swap, disk, or session counts. Review 49656: interim only — downstream modules must not treat these as permanent authority; fleet_shell_transport_observed_producer_dissolve_on names HostEffectTransport as the successor."
+
+type HostShellTransportObservation
+  = ShellTransportSucceeded {
+      observed_on: NonEmptyStr
+      principal: NonEmptyStr
+      detail: NonEmptyStr
+    }
+  | ShellTransportReachRefused {
+      observed_on: NonEmptyStr
+      principal: NonEmptyStr
+      detail: NonEmptyStr
+      gap: NonEmptyStr
+    }
+  | ShellTransportUnobserved { reason: String }
+
+data still_ram_738_srv1_shell_transport: HostShellTransportObservation = ShellTransportReachRefused {
+  observed_on: "2026-08-06" as NonEmptyStr,
+  principal: "node@srv1" as NonEmptyStr,
+  detail: "Permission denied (publickey,password)" as NonEmptyStr,
+  gap: "A1/B2 fleet_subsumption_manual_gaps: fleet-automation key not available to this session principal" as NonEmptyStr,
+}
+
+data still_ram_738_srv2_shell_transport: HostShellTransportObservation = ShellTransportReachRefused {
+  observed_on: "2026-08-06" as NonEmptyStr,
+  principal: "node@srv2" as NonEmptyStr,
+  detail: "Permission denied (publickey,password)" as NonEmptyStr,
+  gap: "A1/B2 fleet_subsumption_manual_gaps: fleet-automation key not available to this session principal" as NonEmptyStr,
+}
+
+data still_ram_738_srv3_shell_transport: HostShellTransportObservation = ShellTransportReachRefused {
+  observed_on: "2026-08-06" as NonEmptyStr,
+  principal: "node@srv2 (jump) -> ubuntu@192.168.1.221" as NonEmptyStr,
+  detail: "jump host srv2: Permission denied (publickey,password); srv3 B2 gap: fleet-automation authorized for no user on srv3" as NonEmptyStr,
+  gap: "gunbc.plans.fleet_subsumption_manual_gaps B2 + A1 materialized secret for fleet-automation key" as NonEmptyStr,
+}
+
+data parent_probe_2026_08_07_srv3_shell_transport: HostShellTransportObservation = ShellTransportSucceeded {
+  observed_on: "2026-08-07" as NonEmptyStr,
+  principal: "srv2 (jump) -> ubuntu@192.168.1.221" as NonEmptyStr,
+  detail: "vivid-eagle-131 reached srv3 on this path (supersedes still_ram_738 2026-08-06 ReachRefused from srv1-as-briansrls direct attempt; srv4 remains only unreachable host)" as NonEmptyStr,
+}
+
+data srv3_shell_transport_observation_correction_note: String = "CORRECTION (2026-08-07): srv3 IS reachable via srv2->ubuntu@192.168.1.221. still_ram_738_srv3_shell_transport is a stale session receipt; parent_probe_2026_08_07_srv3_shell_transport is the current observation for planning."
+
+data still_ram_738_srv4_shell_transport: HostShellTransportObservation = ShellTransportReachRefused {
+  observed_on: "2026-08-06" as NonEmptyStr,
+  principal: "node@srv4" as NonEmptyStr,
+  detail: "Permission denied (publickey)" as NonEmptyStr,
+  gap: "A1 fleet_subsumption_manual_gaps: fleet-automation key not available to this session principal (distinct from srv4's prior ReachRefused over jump from srv2 with fleet key)" as NonEmptyStr,
+}
+
+fn still_ram_738_session_shell_transport(host: HostIdentity) -> HostShellTransportObservation {
+  if (host as String) == (operator_host_srv1 as String) {
+    still_ram_738_srv1_shell_transport
+  } else if (host as String) == (operator_host_srv2 as String) {
+    still_ram_738_srv2_shell_transport
+  } else if (host as String) == (operator_host_srv3 as String) {
+    still_ram_738_srv3_shell_transport
+  } else if (host as String) == (operator_host_srv4 as String) {
+    still_ram_738_srv4_shell_transport
+  } else {
+    ShellTransportUnobserved {
+      reason: "host is not enrolled in fleet_shell_transport_observation session receipts",
+    }
+  }
+}
+
+data fleet_shell_transport_observed_producer_note: String = "SUCCESSOR IS A HOST-EFFECT PROBE, not a session receipt table. fleet_shell_transport_observed_producer will run ssh (or nested ssh for srv3_reach) through host_effect_apply. Until it lands, enrolled hosts fall through to the session receipt when the producer returns ShellTransportUnobserved."
+
+fn fleet_shell_transport_observed_producer(host: HostIdentity) -> HostShellTransportObservation {
+  if (host as String) == (operator_host_srv3 as String) {
+    parent_probe_2026_08_07_srv3_shell_transport
+  } else {
+    ShellTransportUnobserved {
+      reason: "fleet_shell_transport_observed_producer is not wired through host_effect_apply: no typed ssh probe transport exists in the tree yet; dissolve-on HostEffectTransport generic argv materialization",
+    }
+  }
+}
+
+data still_ram_738_session_shell_transport_receipt_authority_note: String = "DATED SESSION RECEIPTS are pinned census rows for one principal/environment (2026-08-06). They are NOT the live observation authority: fleet_shell_transport_observation keeps producer-Unobserved as Unobserved and cites these rows only as non-authoritative provenance (review 49707 — inverted fallback would graduate stale ReachRefused for principals with keys)."
+
+fn still_ram_738_session_shell_transport_receipt_note(host: HostIdentity) -> String {
+  match still_ram_738_session_shell_transport(host: host) {
+    ShellTransportReachRefused { observed_on: o, principal: p, detail: d, gap: g } =>
+      concat(
+        concat(concat(concat(o as String, " "), p as String), concat(" ", d as String)),
+        concat("; gap: ", g as String),
+      )
+    ShellTransportSucceeded { observed_on: o, principal: p, detail: d } =>
+      concat(concat(concat(o as String, " "), p as String), concat(" ", d as String))
+    ShellTransportUnobserved { reason: r } => r
+  }
+}
+
+fn fleet_shell_transport_observation(host: HostIdentity) -> HostShellTransportObservation {
+  match fleet_shell_transport_observed_producer(host: host) {
+    ShellTransportUnobserved { reason: producer_reason } =>
+      ShellTransportUnobserved {
+        reason: concat(
+          concat(
+            producer_reason,
+            "; dated session receipt (principal-specific, not authoritative when producer unobserved): ",
+          ),
+          still_ram_738_session_shell_transport_receipt_note(host: host),
+        ),
+      }
+    ShellTransportSucceeded { observed_on: o, principal: p, detail: d } =>
+      ShellTransportSucceeded { observed_on: o, principal: p, detail: d }
+    ShellTransportReachRefused { observed_on: o, principal: p, detail: d, gap: g } =>
+      ShellTransportReachRefused { observed_on: o, principal: p, detail: d, gap: g }
+  }
+}
+
+fn shell_transport_unobserved_count(hosts: List<HostIdentity>) -> Int {
+  filter(
+    hosts,
+    h =>
+      match fleet_shell_transport_observation(host: h) {
+        ShellTransportUnobserved { reason: _ } => true
+        ShellTransportReachRefused { observed_on: _, principal: _, detail: _, gap: _ } => false
+        ShellTransportSucceeded { observed_on: _, principal: _, detail: _ } => false
+      },
+  ).length()
+}
+
+fn fleet_shell_transport_unobserved_count() -> Int {
+  shell_transport_unobserved_count(hosts: fleet_subsumption_hosts)
+}
+
+fn srv3_network_reach_realizable() -> Bool {
+  srv3_reach_is_realizable()
+}
+
+data fleet_shell_transport_observed_producer_dissolve_on: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_effect",
+    decl_name: "HostEffectTransport",
+    field: WholeDeclaration,
+  }
+}

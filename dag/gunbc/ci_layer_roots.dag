@@ -635,6 +635,12 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolve_on: excl_install_media_dissolve
   },
   WitnessExclusionRow {
+    pattern: "proc_self_cgroup_real_execution_witness_test.dag",
+    classification: BinWitnessWet,
+    reason: excl_install_media_reason,
+    dissolve_on: excl_install_media_dissolve
+  },
+  WitnessExclusionRow {
     pattern: "repo_local_git_config_real_execution_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_install_media_reason,
@@ -967,6 +973,11 @@ data v1_claim_scoped_witness_entries: List<ScheduleWitnessEntry> = [
     function: "",
     kind: CorpusWitnessKind,
   },
+  ScheduleWitnessEntry {
+    entry: "src/v1/tests/claim/ordinary_frontend_observation_test.dag",
+    function: "",
+    kind: CorpusWitnessKind,
+  },
 ]
 
 data v1_claim_scoped_witness_batch_note: String = "This is one INSTANCE of std.realization_schedule ScopedWitnessBatch, not a parser branch in the floor mechanism. The four file-grain rows expand through ScheduleWitnessEntry's empty-function authority, so adding or renaming a test fn changes no roster. Their dag plus src/v1 source-root envelope admits the v1 compiler closure without widening witness_layer_roots for unrelated witnesses. SelectionApplied is deliberate: normal affected-set selection avoids paying the measured closure materialization on unrelated PRs; every unselected roster row still emits an exact-head ScopedWitnessSelectionSkipped receipt with provenance, while a provenance failure refuses loudly and never widens. The executor's own module universe is a distinct fact carried by ScopedWitnessBatch.execution_authority as InheritedWalkSourceRoots: the worker resolves affected_set_floor_runner, witness_entry_eligibility_census, and post-discovery cost/attribution projectors from the enclosing walk's roots while the witness subject index remains exactly dag plus src/v1. Adding src/v2 to this batch's witness roots was considered and refused because it widens the subject envelope, moves the receipt digest, and invalidates the measured clamp basis; executor-authority dependencies never enter the witness roots as an absorbing fallback. The profile declares a substantial whole-tree resolve, Hermetic effects, a batch-owned 480-second clamp, and SequentialChildProcess isolation. RECEIPTED RAISE (2026-08-08, PR #7924 CI run 31223532865 @ 93b1373751): scoped child FLOOR-BATCH-OVER-BUDGET wall_ms=375553 clamp_ms=360000 units=27 — reproduced locally on the same commit after merge with main. Prior 360s basis (199.393s arm64 x 1.8 = 358.9s) is stale: post-merge scoped-worker stage wall is ~376s on x86_local with the full executor-authority projector path. Sizing follows gunbc.ci_spec gunbc_ci_floor_batch_clamp_note fleet-margin policy (measured worst wall x 1.2, not host roulette): 375.553s x 1.2 = 451s, rounded up to 480s whole-minute grain (+33% over the retired 360s row). THE ENROLLMENT THAT GREW THE BATCH: none — wall is closure-materialization dominated, not a roster edit. The earlier 180-second basis measured only 96 seconds before the cost projector and renderers were reachable from the narrow scoped envelope, so it no longer described the executing batch. COST DISPOSITION: the approximately 103-second increase correlated with making the cost projector, histogram, and slowest-attribution renderer reachable while witness row evaluations themselves remain negligible per-row; that reporting/closure cost has not been decomposed in this scoped-scheduling change and is tracked by the real ROADMAP module-grain-materialization lane. Its trigger is a per-projector resolve/materialization attribution showing whether the three projections recompute identical semantic facts, followed by cached-vs-cold receipts before any optimization claim. The larger clamp must not normalize that open cost question into proportionality. per_unit_ms remains zero because row evaluation is negligible; this catches closure growth and deliberately does not price row-count growth until a file brings a distinct closure. Exact-head run 30713632253 proves SharedWalkProcess cannot satisfy this instance: ordinary discovery completed at 7.113GB RSS, then the floor vanished while materializing this second root closure before a batch-start line. The kernel cause is unclassified, but additive same-process residency is established. SequentialChildProcess makes the ordinary worker exit before this worker starts, releasing the first live set without claiming the stronger fresh-cgroup semantics of FreshJobProcess. v1_claim_scoped_witness_dissolve_on fires when the v2 parser owns these claims."
@@ -1064,6 +1075,10 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/commit_writer_heal_admission_real_execution_witness_test.dag", f: "unmerged_index_with_no_markers_refuses_by_real_execution"),
   bin_wet(entry: "dag/test/claim/commit_writer_heal_admission_real_execution_witness_test.dag", f: "unclaimed_text_blob_with_markers_refuses_red_control_by_real_execution"),
   bin_wet(entry: "dag/test/claim/commit_writer_heal_admission_real_execution_witness_test.dag", f: "space_and_tab_named_paths_admit_by_real_execution"),
+  bin_wet(entry: "dag/test/claim/proc_self_cgroup_real_execution_witness_test.dag", f: "bash_assign_from_source_refuses_missing_shell_holds"),
+  bin_wet(entry: "dag/test/claim/proc_self_cgroup_real_execution_witness_test.dag", f: "bash_assign_from_source_refuses_ambiguous_shell_holds"),
+  bin_wet(entry: "dag/test/claim/proc_self_cgroup_real_execution_witness_test.dag", f: "bash_assign_from_source_refuses_malformed_shell_holds"),
+  bin_wet(entry: "dag/test/claim/proc_self_cgroup_real_execution_witness_test.dag", f: "bash_assign_from_source_observed_shell_holds"),
   bin_wet(entry: "dag/test/claim/stage0_rust_host_observation_live_witness_test.dag", f: "live_rust_observation_matches_actions_subject"),
   bin_wet(entry: "dag/test/claim/roadmap_receipt_continuity_live_witness_test.dag", f: "live_roadmap_acceptance_history_integrity_holds"),
   bin_wet(entry: "dag/test/claim/host_effect_plan_real_execution_witness_test.dag", f: "host_effect_plan_shell_witness_holds_by_real_execution"),
