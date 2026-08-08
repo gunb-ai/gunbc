@@ -1,6 +1,6 @@
 module tools.module_impact_query_front_door
 
-import v2.std.algebra { fold_list, list_reverse }
+import v2.std.algebra { any, fold_list, list_reverse }
 import std.algebra { Cons }
 import v2.std.collection { List }
 import v2.std.text { String }
@@ -21,7 +21,16 @@ import v2.lens.module_graph {
   module_declaration_facts_live,
   reference_resolution_facts_live,
 }
+import v2.workflow.floor_diff_observe {
+  FloorNameStatusDiffResult,
+  NameStatusDiffOk,
+  NameStatusDiffFail,
+  floor_observe_git_diff_name_status_for_ci,
+}
 import v2.lens.module_impact_query {
+  ChangedSurfaceImpact,
+  ChangedPathSeeds,
+  changed_surface_impact,
   DependenciesOf,
   DependentsOf,
   ImpactCycle,
@@ -278,4 +287,61 @@ fn dependents_of_path_report() -> String {
     reading: dependents_of_path(path: "src/v2/lens/module_graph.dag"),
     nodes: front_door_nodes()
   )
+}
+
+
+data changed_surface_front_door_note: String = "CAPSULE 2 — the applied consumer over a REAL changed surface. The changed paths come from v2.workflow.floor_diff_observe, the existing single authority for the CI diff observation; this adds no second diff producer. A diff-observation FAILURE refuses with the observation's own reason and computes NO impact — it never falls back to the whole corpus, which is the absorbing fallback DESIGN 5 names (can't compute the affected set -> rerun everything). Run it with: gunbc run --source-root dag --source-root src/v2 --entry dag/tools/module_impact_query_front_door.dag --function changed_surface_impact_report"
+
+fn render_changed_path_seeds(row: ChangedPathSeeds) -> String {
+  if any(xs: row.seeds, predicate: fn(_) { true }) {
+    "    {row.path}  ->  {render_modules(modules: row.seeds)}"
+  } else {
+    "    {row.path}  ->  (no module declared at this path — carried as unresolved, NOT dropped)"
+  }
+}
+
+fn render_changed_surface_impact(impact: ChangedSurfaceImpact) -> String {
+  let resolution_lines = list_reverse(xs: fold_list(
+    xs: impact.resolution,
+    empty: no_lines,
+    cons: fn(acc, row) { Cons { head: render_changed_path_seeds(row: row), tail: acc } }
+  ))
+  let reached_lines = list_reverse(xs: fold_list(
+    xs: impact.reading.reached,
+    empty: no_lines,
+    cons: fn(acc, m) { Cons { head: "    {m.name}", tail: acc } }
+  ))
+  let cause_lines = list_reverse(xs: fold_list(
+    xs: impact.reading.causes,
+    empty: no_lines,
+    cons: fn(acc, c) { Cons { head: render_cause(cause: c), tail: acc } }
+  ))
+  render_lines(lines: [
+    "change impact — what does this change impact?",
+    "  standing: {render_standing(reading: impact.reading)}",
+    "  changed surface ({count_text(xs: impact.changed_paths)} path(s)) resolved to semantic seeds:",
+    render_lines(lines: resolution_lines),
+    "  unresolved paths ({count_text(xs: impact.unresolved_paths)}): carried, never dropped",
+    "  may be affected — DependentsOf ({count_text(xs: impact.reading.reached)} module(s)):",
+    render_lines(lines: reached_lines),
+    "  causes ({count_text(xs: impact.reading.causes)}):",
+    render_lines(lines: cause_lines),
+  ])
+}
+
+fn changed_surface_impact_report() -> String {
+  match floor_observe_git_diff_name_status_for_ci() {
+    NameStatusDiffFail { reason } =>
+      "change impact REFUSED — the diff could not be observed, so no impact is computed and NOTHING is widened to the whole corpus. reason: {reason}"
+    NameStatusDiffOk { changed_paths, departed_paths: _ } =>
+      render_changed_surface_impact(
+        impact: changed_surface_impact(
+          changed_paths: changed_paths,
+          edges: front_door_edges(),
+          nodes: front_door_nodes(),
+          import_facts: front_door_import_facts(),
+          admissions: front_door_admissions
+        )
+      )
+  }
 }

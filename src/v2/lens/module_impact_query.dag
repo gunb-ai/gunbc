@@ -796,6 +796,98 @@ fn module_impact_reading(
   }
 }
 
+data module_impact_changed_surface_note: String = "CAPSULE 2 — the applied consumer. Capsule 1 delivered the typed reverse index; by the graph's own law a discovery with no applied acceptance is the inert-analysis tier, so this is the subject-bound consumer that answers what does this change impact over a REAL changed surface. The changed surface is a list of file paths, which is the shape a diff actually has, and it enters through impact_seeds_for_path — the adapter, not the core. A path may resolve to SEVERAL semantic seeds and that is the honest answer, not a defect to collapse; a path may resolve to NONE, and that is the state this carrier is most careful about."
+
+data module_impact_unresolved_path_note: String = "A changed path that resolves to zero modules is carried in unresolved_paths, never dropped. Dropping it is the empty-observation narrow DESIGN 5 names: bottom-as-answer conflated with bottom-as-ignorance. A .rs file, a workflow yml, a markdown doc and a .dag module whose declaration the pool does not carry all resolve to zero seeds here, and they are NOT the same fact — the first three are outside this graph's subject and the fourth is a pool gap — but this carrier can only observe that the SEMANTIC seed set is empty. So it reports the path as unresolved rather than classifying why, and a consumer that needs the distinction must join against its own subject universe. What it must never do is let the path vanish, because an impact answer computed from a silently smaller seed set reads as a confident small blast radius."
+
+type ChangedPathSeeds {
+  path: String
+  seeds: List<ModuleIdentity>
+}
+
+type ChangedSurfaceImpact {
+  changed_paths: List<String>
+  resolution: List<ChangedPathSeeds>
+  unresolved_paths: List<String>
+  reading: ImpactReading
+}
+
+data impact_no_changed_path_seeds: List<ChangedPathSeeds> = []
+
+fn impact_resolve_changed_surface(
+  nodes: List<ModuleDeclarationFact>,
+  changed_paths: List<String>
+) -> List<ChangedPathSeeds> {
+  list_reverse(xs: fold_list(
+    xs: changed_paths,
+    empty: impact_no_changed_path_seeds,
+    cons: fn(acc, path) {
+      Cons {
+        head: ChangedPathSeeds {
+          path: path,
+          seeds: impact_seeds_for_path(nodes: nodes, path: path)
+        },
+        tail: acc
+      }
+    }
+  ))
+}
+
+fn impact_prepend_path(acc: List<String>, path: String) -> List<String> {
+  Cons { head: path, tail: acc }
+}
+
+fn impact_unresolved_paths(resolution: List<ChangedPathSeeds>) -> List<String> {
+  list_reverse(xs: fold_list(
+    xs: resolution,
+    empty: impact_no_paths,
+    cons: fn(acc, row) {
+      if any(xs: row.seeds, predicate: fn(_) { true }) {
+        acc
+      } else {
+        impact_prepend_path(acc: acc, path: row.path)
+      }
+    }
+  ))
+}
+
+fn impact_seeds_of_resolution(resolution: List<ChangedPathSeeds>) -> List<ModuleIdentity> {
+  fold_list(
+    xs: resolution,
+    empty: impact_no_modules,
+    cons: fn(acc, row) {
+      fold_list(
+        xs: row.seeds,
+        empty: acc,
+        cons: fn(inner, m) { impact_add_unseen_module(acc: inner, item: m) }
+      )
+    }
+  )
+}
+
+fn changed_surface_impact(
+  changed_paths: List<String>,
+  edges: List<ModuleDependencyEdge>,
+  nodes: List<ModuleDeclarationFact>,
+  import_facts: List<ImportResolutionFact>,
+  admissions: List<ReferenceDerivedClosureAdmission>
+) -> ChangedSurfaceImpact {
+  let resolution = impact_resolve_changed_surface(nodes: nodes, changed_paths: changed_paths)
+  ChangedSurfaceImpact {
+    changed_paths: changed_paths,
+    resolution: resolution,
+    unresolved_paths: impact_unresolved_paths(resolution: resolution),
+    reading: module_impact_reading(
+      seeds: impact_seeds_of_resolution(resolution: resolution),
+      direction: DependentsOf,
+      edges: edges,
+      nodes: nodes,
+      import_facts: import_facts,
+      admissions: admissions
+    )
+  }
+}
+
 data module_impact_construction_justification_note: String = "The bad-state class is a consumer reading a pool-relative, per-component answer as if it were exact and whole-subgraph. Most of that class is unwritable by construction rather than validated after the fact: ImpactStanding makes ExactForGraphSubject reachable only when the admission carrier reports pool independence Established AND no cause was observed, so a pool-relative answer cannot present as exact; ModuleIdentity is a record, so a path cannot be passed where a semantic identity is required; the declared flag and pool membership are independent observations landing as distinct cause arms, so an inconsistent pool cannot silently answer complete; and cycle verdicts are per strongly connected component, so a per-cycle law cannot be answered at union grain. What is NOT yet walled, and is what the grounding supplies: edge provenance is derived at query time rather than carried, so a dual-backed edge classifies reference-derived and a change to the edge population could reclassify a cycle with no consumer edit. That dissolves to one authority - provenance stamped at the single construction site import_fact_to_dependency_edge - hence WallAfterGrounding rather than WallNow, and not RatchetForever, because it is decidable."
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
