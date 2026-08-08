@@ -1943,7 +1943,6 @@ fn merge_occurrence_transports(
   }
 }
 
-
 fn cross_file_binding_closure_row(
   transport: OccurrenceTransport,
   inputs: OccurrenceBindingCandidateInputs,
@@ -2590,8 +2589,6 @@ fn section13_population_law_id_eq(
 }
 
 data section13_module_path_is_symbolic_note: String = "Interim oracle only: refuses DeclarationRef.module_path strings that look positional (contain '/' or '.dag'). This is a §5 heuristic standing where a type should stand — the same class occurrence_module_path_convergence_note names. It is NOT the long-term authority for symbolic vs positional module identity."
-
-data section13_module_path_is_symbolic_dissolve_on: String = "feature:module-path-qualified-name — DISSOLVE-ON: DeclarationRef.module_path / OccurrenceModulePathRow.module_path become v2.std.qualified_name.QualifiedName (same trigger as occurrence_module_path_convergence_note / std.observation observation_segment_grounding_note); then positional file-path inhabitance is unwritable, this string-grep oracle deletes, and section13_adjudicate_row stops calling it."
 
 fn section13_module_path_is_symbolic(module_path: NonEmptyStr) -> Bool {
   let path = module_path as String

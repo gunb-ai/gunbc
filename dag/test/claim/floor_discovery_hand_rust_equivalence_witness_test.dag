@@ -30,7 +30,6 @@ import v2.workflow.floor_discovery_producer {
   floor_discovery_entry_live_tree_disposition_refusal_for_content,
   floor_discovery_sidecar_refusal_reason,
   floor_discovery_surface_text_scan_scaffold,
-  floor_discovery_surface_text_scan_dissolve_on
 }
 import v2.workflow.floor_naming_hygiene {
   floor_filename_hygiene_refusal_for_paths,
@@ -221,10 +220,6 @@ test fn floor_discovery_surface_text_scan_scaffold_on_carrier() -> Bool {
   }
 }
 
-test fn floor_discovery_surface_text_scan_dissolve_on_names_grammar_owned_reads() -> Bool {
-  string_contains(s: floor_discovery_surface_text_scan_dissolve_on, pattern: "dissolve-on")
-    && string_contains(s: floor_discovery_surface_text_scan_dissolve_on, pattern: "grammar-owned")
-}
 
 test fn floor_discovery_producer_entry_is_canonical() -> Bool {
   floor_discovery_producer_entry == "src/v2/workflow/floor_discovery_producer.dag"

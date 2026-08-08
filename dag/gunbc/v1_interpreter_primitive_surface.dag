@@ -18,7 +18,7 @@ type InterpreterPrimitiveArmId {
 
 type ArmEnumeration
   = AuthoredInRoster
-  | DeclaredHere { dissolve_on: NonEmptyStr }
+  | DeclaredHere
 
 type InterpreterDispatchEmitSite
   = EvalBuiltinInnerSite
@@ -93,9 +93,7 @@ fn v1_interpreter_declared_arms() -> List<InterpreterPrimitiveDispatchArm> {
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_method_call",
       dispatch_emit_site: EvalMethodCallShortCircuitSite,
-      enumeration: DeclaredHere {
-        dissolve_on: "eval_method_call's lookup short-circuit is an if-guard rather than a match arm, so it has no token authority to expand from. It dissolves when the short-circuit is either deleted in favour of the algebra arm it shadows, or rewritten as an arm of a v1_method_short_circuit_arms macro in the shape the other five sites now use.",
-      },
+      enumeration: DeclaredHere,
     },
     InterpreterPrimitiveDispatchArm {
       arm: InterpreterPrimitiveArmId { identity: "service_dispatch.Filesystem.Read" },
@@ -104,16 +102,16 @@ fn v1_interpreter_declared_arms() -> List<InterpreterPrimitiveDispatchArm> {
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_service_call",
       dispatch_emit_site: EvalServiceCallCarveOutSite,
-      enumeration: DeclaredHere {
-        dissolve_on: "the hermetic checkout carve-out in eval_service_call is the interpreter's only service-name dispatch of its own; every other service operation resolves against ctx.service_ops from the declared .dag corpus. This row dissolves when the carve-out does.",
-      },
+      enumeration: DeclaredHere,
     },
   ]
 }
 
-fn arm_declares_dissolution_trigger(arm: InterpreterPrimitiveDispatchArm) -> Bool {
+data declared_here_is_the_trigger_note: String = "DeclaredHere no longer carries a dissolve_on sentence, so this is a projection of the arm's enumeration and nothing else. The deleted field held one module-level condition restated per row, and the only thing reading it asserted the sentence contained the words \"dissolves when\" — a change detector over prose, not a check that a trigger existed. The transition this frontier tracks is the arm becoming AuthoredInRoster, which the coproduct already states; assertions of the form \"every declared arm declares a trigger\" became unfalsifiable when the field went, and were deleted with it rather than left as vacuous greens."
+
+fn arm_is_declared_here(arm: InterpreterPrimitiveDispatchArm) -> Bool {
   match arm.enumeration {
-    DeclaredHere { dissolve_on } => string_contains(s: dissolve_on, pattern: "dissolves when")
+    DeclaredHere => true
     AuthoredInRoster => false
   }
 }

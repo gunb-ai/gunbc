@@ -49,8 +49,6 @@ data occurrence_binding_parser_walk_witness_note: String = "Parser integration w
 
 data occurrence_binding_parser_walk_offline_recipe: String = "OFFLINE LOCAL RECIPE (requires v1 parser pool): target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/occurrence_binding_parser_walk_witness_test.dag --functions namespace_reference_derived_closure_parser_integration_holds"
 
-data occurrence_binding_parser_walk_dissolve_on: String = "DISSOLVE-ON: witness_layer_roots admits src/v1 for parser-transport witnesses without Node ambiguity, or execution corpus carries per-entry source roots — then this recipe deletes and discovery enrollment suffices."
-
 type ObcpwParsed
   = ObcpwParsedReady {
       transport: OccurrenceTransport,
@@ -436,7 +434,6 @@ test fn parser_same_text_distinct_identities_ambiguous_holds() -> Bool {
 data parser_repeated_bindings_projection_law_note: String = "Case 6 — projection law (A) under the same-module ruling (slice A / PR 7515): two BoundReferenceProvider rows for one declaration (greet + greet_again → format_greeting) are retained; DirectModuleDependency emits NO M→M self-edge from those providers (edges count 0). Uses per-reference resolve — not structural_binding_walk over the whole transport — so incidental unbound type/name refs in the fixture cannot refuse the population. Cross-module one-edge dedup stays a distinct fixture when a multi-module authored source is available. Does NOT discharge Section13RepeatedDiscoverySameIdentityCollapse; collector re-observation dedup (B) remains deferred on ProductionOccurrenceCollectorMissing."
 
 data parser_transport_scoped_identity_note: String = "Case 7 — single parse in one graph scope. Positive arm preserves the parser-minted reference occurrence; negative arm substitutes an occurrence id unknown within that same transport. OccurrenceId integers are allocator-local and must not be compared across standalone parses."
-
 
 fn obcpw_bound_providers_named(
   transport: OccurrenceTransport,

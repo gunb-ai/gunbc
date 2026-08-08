@@ -45,7 +45,7 @@ test fn witness_retained_rows_carry_typed_reason_and_trigger() -> Bool {
     init: true,
     f: fn(acc, row) {
       acc && match row.disposition {
-        InterpretedRetained { reason: _, dissolve_on: _ } => true
+        InterpretedRetained { reason: _} => true
         _ => false
       }
     }

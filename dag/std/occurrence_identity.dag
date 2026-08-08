@@ -7,8 +7,6 @@ data occurrence_identity_scope_law: String = "OccurrenceId values are unique onl
 
 data authored_token_ordinal_typed_bridge_note: String = "AuthoredTokenOrdinalSpace carries the opaque shared allocator state, not an arithmetic quantity: callers advance only through the shared allocator boundary and cannot substitute a bare scalar or a differently-denominated measure."
 
-data authored_token_ordinal_typed_bridge_dissolve_on: String = "feature:occurrence-ordinal-value-measure — DISSOLVE-ON: std.nat converges on the modeled Nat inhabitant and Measure<Count, One, Nat> has a compiled faithful/HostNative serde projection; then replace the allocator-backed space payload with that canonical measure and delete both typed-bridge rows."
-
 type AuthoredTokenOrdinalSpace {
   allocator: OccurrenceIdAllocator
 }
@@ -20,8 +18,6 @@ fn authored_token_ordinal_space_initial() -> AuthoredTokenOrdinalSpace {
 }
 
 data authored_token_ordinal_value_bridge_note: String = "AuthoredTokenOrdinal is the comparable source-order carrier (strictly-before gating for ModuleExposure). It is a bare Int brand today — not yet Measure<Count, One, Nat> — because the same feature:occurrence-ordinal-value-measure wall that gates AuthoredTokenOrdinalSpace still blocks a faithful HostNative measure projection. Single authority lives here beside AuthoredTokenOrdinalSpace; consumers import the brand, never re-mint a parallel Int wrapper."
-
-data authored_token_ordinal_value_bridge_dissolve_on: String = "feature:occurrence-ordinal-value-measure — DISSOLVE-ON: same trigger as authored_token_ordinal_typed_bridge_dissolve_on; replace AuthoredTokenOrdinal.value with Measure<Count, One, Nat> (or the converged Nat inhabitant) and delete both value-bridge rows with the space-bridge rows."
 
 type AuthoredTokenOrdinal {
   value: Int
@@ -46,8 +42,6 @@ type OccurrenceId {
 }
 
 data occurrence_containment_storage_projection_note: String = "OccurrenceContainmentPath is the concrete compact storage projection of std.occurrence_binding.ContainmentPath<OccurrenceId>. Generic stage0 emission of ContainmentPath<N> with #[derive] carriers needed v1.compiler.trait_derive_emit item-level Clone bounds (PR #7570); that emitter work is prerequisite but does not by itself dissolve this projection — std_occurrence_binding is not on the stage0 roster until PR #7515 lands and proves ContainmentPath<OccurrenceId> compiles there."
-
-data occurrence_containment_storage_projection_dissolve_on: String = "DISSOLVE-ON: PR #7515 lands std_occurrence_binding on the stage0 roster and proves ContainmentPath<OccurrenceId> compiles without supplemental derive bounds; then replace OccurrenceContainmentPath with std.occurrence_binding.ContainmentPath<OccurrenceId> across consumers and delete both storage-projection rows."
 
 type OccurrenceContainmentPath {
   ancestors: FreeMonoid<OccurrenceId>

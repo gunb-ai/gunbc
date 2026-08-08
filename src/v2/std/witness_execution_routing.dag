@@ -29,7 +29,7 @@ type InterpretedRetainedReason
 
 type WitnessExecutionDisposition
   = NativeRouted
-  | InterpretedRetained { reason: InterpretedRetainedReason, dissolve_on: String }
+  | InterpretedRetained { reason: InterpretedRetainedReason}
   | EmitIneligible { cause: EmitIneligibleCause, detail: String }
 
 type WitnessExecutionLeg

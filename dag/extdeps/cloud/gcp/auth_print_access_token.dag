@@ -62,8 +62,6 @@ data gcloud_auth_print_access_token_deficit_patterns: List<GcloudAuthDeficitPatt
   },
 ]
 
-data gcloud_auth_stderr_substring_classifier_dissolve_on: String = "🟡 dissolve-on: a cited structured gcloud auth-status surface (for example `gcloud auth print-access-token --format=json` with a typed exit-status / error envelope, or an SDK row that exposes machine-readable auth deficit codes) replaces English-locale stderr substring matching in gcloud_stderr_auth_deficit. Until then this classifier is a declared heuristic over unstable prose: unmatched stderr correctly routes to UnknownRefused via gunbc.auth.access_token_source (fail-closed, not fail-open), but gcloud wording or locale drift is counted debt. Pattern inventory authority: gcloud_auth_print_access_token_deficit_patterns."
-
 fn gcloud_auth_deficit_for_pattern(
   stderr: String,
   row: GcloudAuthDeficitPatternRow,

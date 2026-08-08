@@ -1,5 +1,7 @@
 module v2.test.claim.roster_registry_test
 
+
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.roster_registry {
   GroupMembership,
   ByContainment,
@@ -20,7 +22,7 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-data roster_registry_test_note: String = "GREEN: the enrolled registry holds (every registration ByContainment, ByDerivation, or DeclaredFrontier with nonempty reason+trigger). RED controls: a synthetic DeclaredFrontier registration with an empty dissolve_on reds, and a synthetic nickname-class registration (empty reason AND empty trigger) reds — both located to their roster ref."
+data roster_registry_test_note: String = "GREEN: the enrolled registry holds (every registration ByContainment, ByDerivation, or DeclaredFrontier with a nonempty reason). RED control: a synthetic nickname-class registration with an empty reason reds, located to its roster ref. The empty-TRIGGER control is DELETED, not ported: DeclaredFrontier carries a DissolutionCondition whose unbound arm is NonEmptyStr, so a frontier registration with an empty trigger has no constructor and the state the control asserted is unwritable rather than merely rejected (DESIGN §4b(4)). The nickname control keeps only the axis that is still writable — reason — and it still discriminates, which is what keeps this file evidence rather than decoration."
 
 fn synthetic_registration(membership: GroupMembership) -> RosterRegistration {
   RosterRegistration {
@@ -30,18 +32,10 @@ fn synthetic_registration(membership: GroupMembership) -> RosterRegistration {
   }
 }
 
-fn empty_trigger_registration() -> RosterRegistration {
-  synthetic_registration(
-    membership: DeclaredFrontier {
-      reason: "a reason without a trigger is not a frontier row",
-      dissolve_on: ""
-    }
-  )
-}
 
 fn nickname_registration() -> RosterRegistration {
   synthetic_registration(
-    membership: DeclaredFrontier { reason: "", dissolve_on: "" }
+    membership: DeclaredFrontier { reason: "", dissolution: unbound_dissolution(description: "nickname-class control: the reason axis is the writable one") }
   )
 }
 
@@ -53,11 +47,6 @@ test fn roster_registry_enrolls_known_rosters() -> Bool {
   length(xs: roster_registry) >= 26
 }
 
-test fn roster_registry_red_control_empty_trigger_reds() -> Bool {
-  roster_registry_nonstandard_count_from(
-    registrations: [empty_trigger_registration()]
-  ) == 1
-}
 
 test fn roster_registry_red_control_nickname_reds() -> Bool {
   let findings = nonstandard_registrations_from(
@@ -83,7 +72,7 @@ test fn roster_registry_green_control_standard_forms_pass() -> Bool {
       synthetic_registration(
         membership: DeclaredFrontier {
           reason: "declared with a reason",
-          dissolve_on: "and a trigger"
+          dissolution: unbound_dissolution(description: "and a trigger")
         }
       )
     ]

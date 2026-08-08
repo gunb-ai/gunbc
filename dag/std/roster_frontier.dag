@@ -8,6 +8,7 @@ import std.decl_ref {
   NamedField,
   decl_ref,
   decl_field_ref,
+  declaration_ref_display_key,
   declaration_ref_eq,
   declaration_ref_in_list,
 }
@@ -78,18 +79,6 @@ fn frontier_row_well_formed(row: FrontierRow) -> Bool {
 
 fn frontier_rows_well_formed(rows: List<FrontierRow>) -> Bool {
   fold(rows, init: true, f: fn(acc, row) { acc && frontier_row_well_formed(row: row) })
-}
-
-fn declaration_ref_display_key(ref: DeclarationRef) -> String {
-  match ref.field {
-    WholeDeclaration =>
-      concat(ref.module_path as String, concat("::", ref.decl_name as String))
-    NamedField { field_name: f } =>
-      concat(
-        ref.module_path as String,
-        concat("::", concat(ref.decl_name as String, concat("::", f as String))),
-      )
-  }
 }
 
 fn frontier_subject_eq(a: FrontierSubject, b: FrontierSubject) -> Bool {

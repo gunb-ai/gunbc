@@ -8,7 +8,6 @@ import gunbc.v1_interpreter_primitive_surface {
   InterpreterPrimitiveDispatchArm,
   MethodCall,
   NativeSpecial,
-  arm_declares_dissolution_trigger,
   decode_dispatch_form,
   duplicate_row_keys,
   form_has_no_shadowed_spelling,
@@ -154,9 +153,6 @@ test fn an_unrecognised_form_label_refuses_rather_than_defaulting() -> Bool {
   form_is_unknown(form: decode_dispatch_form(label: "NotAFormLabel")) && !form_is_unknown(form: decode_dispatch_form(label: "FreeCall"))
 }
 
-test fn every_declared_row_names_its_own_dissolution_trigger() -> Bool {
-  v1_interpreter_declared_arms() |> all(r => arm_declares_dissolution_trigger(arm: r))
-}
 
 test fn the_declared_residue_is_exactly_the_two_non_match_arm_sites() -> Bool {
   let expected = ["eval_method_call", "eval_service_call"]

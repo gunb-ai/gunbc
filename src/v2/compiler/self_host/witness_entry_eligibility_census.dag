@@ -65,30 +65,22 @@ fn census_entry_path_matches_emit_on_demand_family_grain(entry: String) -> Bool 
 
 fn census_pending_interpreted_retained(entry: String) -> WitnessExecutionDisposition {
   InterpretedRetained {
-    reason: BulkFlipPendingCensusIncomplete,
-    dissolve_on: "srvN cssl sweep receipt names first-error class for this entry; row flips to NativeRouted or EmitIneligible in bulk flip PR (ROADMAP 2a section 3)"
-  }
+    reason: BulkFlipPendingCensusIncomplete}
 }
 
 fn census_emit_on_demand_family_grain(entry: String) -> WitnessExecutionDisposition {
   InterpretedRetained {
-    reason: EmitOnDemandFamilyGrain,
-    dissolve_on: "native_routing_frontier flips owning family to NativeRouted with warm per-PR agreement receipt; entry-grain row derives NativeRouted from family membership"
-  }
+    reason: EmitOnDemandFamilyGrain}
 }
 
 fn census_host_fed_ceiling_retained(entry: String) -> WitnessExecutionDisposition {
   InterpretedRetained {
-    reason: HostFedCeiling,
-    dissolve_on: "native host-effect transport lane retires host_fed ceiling; row reclassifies from InterpretedRetained"
-  }
+    reason: HostFedCeiling}
 }
 
 fn census_reads_live_tree_carrier_retained(entry: String) -> WitnessExecutionDisposition {
   InterpretedRetained {
-    reason: RetainedReadsLiveTreeCarrier,
-    dissolve_on: "G2 live-read classification + native host-effect transport retire ReadsLiveTree carrier rows"
-  }
+    reason: RetainedReadsLiveTreeCarrier}
 }
 
 fn census_long_lane_ineligible(entry: String) -> WitnessExecutionDisposition {
@@ -124,7 +116,7 @@ fn census_disposition_for_entry(entry: String) -> WitnessExecutionDisposition {
 fn census_disposition_column_for_entry(entry: String) -> String {
   match census_disposition_for_entry(entry: entry) {
     NativeRouted => "NativeRouted"
-    InterpretedRetained { reason: _, dissolve_on: _ } => "InterpretedRetained"
+    InterpretedRetained { reason: _} => "InterpretedRetained"
     EmitIneligible { cause: _, detail: _ } => "EmitIneligible"
   }
 }
@@ -132,7 +124,7 @@ fn census_disposition_column_for_entry(entry: String) -> String {
 fn census_reason_column_for_entry(entry: String) -> String {
   match census_disposition_for_entry(entry: entry) {
     NativeRouted => "NativeRouted"
-    InterpretedRetained { reason: reason, dissolve_on: _ } =>
+    InterpretedRetained { reason: reason} =>
       match reason {
         BulkFlipPendingCensusIncomplete => "BulkFlipPendingCensusIncomplete"
         HostFedCeiling => "HostFedCeiling"

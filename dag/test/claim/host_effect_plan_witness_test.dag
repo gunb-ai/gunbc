@@ -13,7 +13,6 @@ import gunbc.host_effect_plan {
 import v2.std.effect_plan {
   EffectPlan,
   If,
-  effect_plan_orchestration_succession_dissolve_on,
 }
 import v2.std.orchestration {
   FailFast,
@@ -82,10 +81,4 @@ test fn witness_orchestration_to_effect_plan_dissolve_on_present() -> Bool {
   )
 }
 
-test fn witness_effect_plan_orchestration_succession_dissolve_on_present() -> Bool {
-  string_contains(
-    s: effect_plan_orchestration_succession_dissolve_on,
-    pattern: "dissolve-on: v2.std.orchestration parallel",
-  )
-}
 

@@ -37,10 +37,6 @@ data which_path_coverage_obligation_note: String = "Which-path distinguishabilit
 data bach_quantitative_path_additivity_gap_note: String = "Authored coverage gap (explicit gap rung, not a derived readiness verdict): bach_raw_count_additivity_not_evaluable_note grounds why no raw triplet exists to evaluate."
 
 // Authored coverage gap (explicit gap rung, not a derived readiness verdict): bach_which_path_evidence_requirement_unsatisfied_note grounds why which-path evidence is absent.
-data bach_raw_count_triplet_coverage_dissolve_on: String = "DISSOLVE-ON: extdeps carries raw matched-exposure arrival rows at a grain that supports left, right, and both counts under one exposure identity; then bach_quantitative_path_additivity_gap may gain a positive cited counterpart."
-
-data bach_which_path_evidence_dissolve_on: String = "DISSOLVE-ON: a cited upstream authority for which-path distinguishability evidence lands; then bach_which_path_evidence_gap may gain a positive cited counterpart."
-
 type BachRawCountPathAdditivityGap
   = BachRawCountTripletCoverageAbsent {}
 

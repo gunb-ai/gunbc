@@ -56,3 +56,15 @@ fn declaration_ref_eq(a: DeclarationRef, b: DeclarationRef) -> Bool {
 fn declaration_ref_in_list(target: DeclarationRef, refs: List<DeclarationRef>) -> Bool {
   fold(refs, init: false, f: fn(acc, r) { acc || declaration_ref_eq(a: target, b: r) })
 }
+
+fn declaration_ref_display_key(ref: DeclarationRef) -> String {
+  match ref.field {
+    WholeDeclaration =>
+      concat(ref.module_path as String, concat("::", ref.decl_name as String))
+    NamedField { field_name: f } =>
+      concat(
+        ref.module_path as String,
+        concat("::", concat(ref.decl_name as String, concat("::", f as String))),
+      )
+  }
+}

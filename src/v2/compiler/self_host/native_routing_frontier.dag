@@ -21,7 +21,7 @@ data native_routing_subject_key_note: String = "Subject re-key (group-of-units r
 
 type NativeRoutingDisposition
   = NativeRouted { observation_family: String, observations: List<ParityObservation> }
-  | InterpretedRetained { reason: String, dissolve_on: String }
+  | InterpretedRetained { reason: String}
 
 type NativeRoutingFrontierRow {
   subject: DeclarationRef
@@ -48,9 +48,7 @@ fn retained_no_cached_carrier(
     agreement_entry: entry,
     agreement_function: f,
     disposition: InterpretedRetained {
-      reason: "no_cached_no_evict_carrier",
-      dissolve_on: "a no-evict cached agreement leg exists for this family (the family_crate pr_native pattern) with one warm green agreement receipt; the equals_eval legs are UNCACHED (srv1 sweep receipt 2026-07-22: empty native-cache fields) so routing them would build every PR run. On flip the family enrolls in post-flip monitoring per v2.compiler.self_host.parity_window (no pre-flip streak is required — demotion 2026-07-28)"
-    }
+      reason: "no_cached_no_evict_carrier"}
   }
 }
 
@@ -97,9 +95,7 @@ data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
     agreement_entry: "src/v2/test/claim/execution/emit_on_demand_family_crate_witness_test.dag",
     agreement_function: "emit_on_demand_family_crate_pr_native_agreement_holds",
     disposition: InterpretedRetained {
-      reason: "agreement_red_on_main",
-      dissolve_on: "routed_flip_reverted_note receipt: divergence root-caused with member + both values NAMED (agreement loudness gap closed first), then a fresh warm per-host agreement receipt — re-flip via routed_via_family_crate"
-    }
+      reason: "agreement_red_on_main"}
   },
   retained_no_cached_carrier(
     subject: family_subject(
@@ -133,9 +129,7 @@ data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
     agreement_entry: "src/v2/test/claim/execution/emit_on_demand_family_crate_witness_test.dag",
     agreement_function: "emit_on_demand_family_crate_pr_native_agreement_holds",
     disposition: InterpretedRetained {
-      reason: "agreement_red_on_main",
-      dissolve_on: "routed_flip_reverted_note receipt: divergence root-caused with member + both values NAMED (agreement loudness gap closed first), then a fresh warm per-host agreement receipt — re-flip via routed_via_family_crate"
-    }
+      reason: "agreement_red_on_main"}
   },
   retained_no_cached_carrier(
     subject: family_subject(
@@ -181,7 +175,7 @@ fn routing_row_is_native(row: NativeRoutingFrontierRow) -> Bool {
   match row.disposition {
     NativeRouted { observation_family: f, observations: obs } =>
       parity_routing_admitted(family: f, observations: obs)
-    InterpretedRetained { reason: _, dissolve_on: _ } => false
+    InterpretedRetained { reason: _} => false
   }
 }
 

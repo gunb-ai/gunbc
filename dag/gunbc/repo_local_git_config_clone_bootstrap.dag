@@ -22,8 +22,6 @@ type RepoLocalGitConfigCloneBootstrapReceipt {
   observed_missing_count: Int
 }
 
-data repo_local_git_config_clone_bootstrap_dissolve_on: String = "dissolve-on: every supported clone-creation path invokes repo_local_git_config converge (observed_missing_count must stay zero); this carrier deletes when the population is fully enrolled and witnessed"
-
 data repo_local_git_config_clone_bootstrap_converge_invoke_entry: String = repo_local_git_config_converge_entry
 data repo_local_git_config_clone_bootstrap_converge_invoke_function: String = repo_local_git_config_converge_function
 

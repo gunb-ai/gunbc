@@ -11,8 +11,6 @@ data unlisted_import_use_enforcement_note: String = "Single policy authority for
 
 data compile_clean_unlisted_import_use_enforcement: UnlistedImportUseEnforcement = FloorNotYet
 
-data compile_clean_unlisted_import_use_enforcement_dissolve_on: String = "dissolve-on: compile_clean_unlisted_import_use_enforcement — DISSOLVES WHEN v1 04_resolve promotes UnlistedImportUse to an error (namespace_import_closure_behavioral_transport.dag:15 scaffold dissolution trigger); the row flips to Enforced and both consumers (floor_compile_clean_emit_ok_via_index + CLI) red together via compile_clean_unlisted_import_use_blocks()."
-
 data compile_clean_diagnostic_policy_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {

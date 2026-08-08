@@ -98,9 +98,7 @@ type InterpreterWetSurfaceMembership
   = NodeTreeDerived { authority: DeclarationRef }
   | DeclaredFrontier {
       authorities: List<DeclarationRef>,
-      reason: String,
-      dissolve_on: String
-    }
+      reason: String}
 
 type InterpreterWetSurface {
   id: String
@@ -131,9 +129,7 @@ data gunbc_serve_wet_surface: InterpreterWetSurface = InterpreterWetSurface {
       wet_surface_ref(module_path: "gunbc.roadmap_serve", decl_name: "roadmap_serve_handle"),
       wet_surface_ref(module_path: "gunbc.roadmap_belt_actuate", decl_name: "belt_dispatch_node")
     ],
-    reason: "the in-process belt dispatch is modeled, but the gunbc serve socket accept-loop remains a seed Rust seam and exact declaration-Node resolution is unavailable",
-    dissolve_on: "emit-on-demand materializes the serve closure and its host accept-loop, then the seed handle_serve seam deletes"
-  }
+    reason: "the in-process belt dispatch is modeled, but the gunbc serve socket accept-loop remains a seed Rust seam and exact declaration-Node resolution is unavailable"}
 }
 
 data main_wet_regen_surface: InterpreterWetSurface = InterpreterWetSurface {
@@ -142,9 +138,7 @@ data main_wet_regen_surface: InterpreterWetSurface = InterpreterWetSurface {
     authorities: [
       wet_surface_ref(module_path: "tools.generated_artifact_gate", decl_name: "main_wet")
     ],
-    reason: "main_wet is a .dag declaration, but its live Filesystem.Write dispatch still crosses the seed interpreter and exact declaration-Node resolution is unavailable",
-    dissolve_on: "generated-artifact emission runs through a v2-emitted per-grant HandlerBinding and the seed main_wet dispatch path deletes"
-  }
+    reason: "main_wet is a .dag declaration, but its live Filesystem.Write dispatch still crosses the seed interpreter and exact declaration-Node resolution is unavailable"}
 }
 
 data gunbc_ci_emission_surface: InterpreterWetSurface = InterpreterWetSurface {
@@ -153,9 +147,7 @@ data gunbc_ci_emission_surface: InterpreterWetSurface = InterpreterWetSurface {
     authorities: [
       wet_surface_ref(module_path: "tools.gunbc_ci", decl_name: "main")
     ],
-    reason: "gunbc ci is modeled, but its shell Exec.Run realization still dispatches through the seed interpreter and exact declaration-Node resolution is unavailable",
-    dissolve_on: "the typed CI plan runs through the v2-emitted shell handler selected from its covering grant"
-  }
+    reason: "gunbc ci is modeled, but its shell Exec.Run realization still dispatches through the seed interpreter and exact declaration-Node resolution is unavailable"}
 }
 
 data pre_push_transport_surface: InterpreterWetSurface = InterpreterWetSurface {
@@ -165,9 +157,7 @@ data pre_push_transport_surface: InterpreterWetSurface = InterpreterWetSurface {
       wet_surface_ref(module_path: "gunbc.githooks_pre_push_cli", decl_name: "githooks_pre_push_cli_stage0_receiver_disposition"),
       wet_surface_ref(module_path: "gunbc.githooks_pre_push_plan", decl_name: "pre_push_active_kinds")
     ],
-    reason: "the typed pre-push plan is modeled, while its on-demand claim_batch argv/stdin transport remains in seed Rust and exact declaration-Node resolution is unavailable",
-    dissolve_on: "the emitted crate partition deletes pre_push.rs and the on-demand seed transport, or a usage census proves the transport has no consumers"
-  }
+    reason: "the typed pre-push plan is modeled, while its on-demand claim_batch argv/stdin transport remains in seed Rust and exact declaration-Node resolution is unavailable"}
 }
 
 data probe_bins_surface: InterpreterWetSurface = InterpreterWetSurface {
@@ -176,9 +166,7 @@ data probe_bins_surface: InterpreterWetSurface = InterpreterWetSurface {
     authorities: [
       wet_surface_ref(module_path: "gunbc.ci_release_bins", decl_name: "witness_declared_release_bins")
     ],
-    reason: "witness_declared_release_bins is the exact production WitnessBin transport-name frontier; the binaries remain seed host transports and exact declaration-Node resolution is unavailable",
-    dissolve_on: "probe-bin consumers migrate to v2-emitted execution surfaces and witness_declared_release_bins reaches its host-census-derived form"
-  }
+    reason: "witness_declared_release_bins is the exact production WitnessBin transport-name frontier; the binaries remain seed host transports and exact declaration-Node resolution is unavailable"}
 }
 
 data interpreter_wet_surfaces: List<InterpreterWetSurface> = [

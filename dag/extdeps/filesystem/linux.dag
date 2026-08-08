@@ -70,8 +70,6 @@ type LinuxProcMountsParse
       cause: LinuxProcMountLineRefusal,
     }
 
-data linux_proc_mounts_parser_dissolve_on: String = "🟡 dissolve-on: a cited proc_mounts grammar row set lands in the shared grammar substrate with forward ingest and escape decoding. linux_proc_mount_row_from_line then becomes that grammar forward fold, and the same rows own any later serialization; until then this parser is the declared six-field Linux wire scaffold, fail-closed through LinuxProcMountLineRefusal rather than a second typed representation."
-
 type LinuxOverlayParseRefusal
   = LinuxOverlayProcMountsRefused {
       line_number: Int,
