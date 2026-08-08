@@ -46,6 +46,7 @@ import gunbc.falsifier_cold_corpus_execution {
   aggregate_shell_receipt_cold_skipped,
   aggregate_shell_receipt_cold_cancelled,
   aggregate_shell_receipt_cold_failed_before_receipt,
+  aggregate_shell_receipt_cold_receipt_artifact_absent,
   aggregate_shell_receipt_corpus_executed,
 }
 import gunbc.shell_bash_runner { shell_printf_line }
@@ -309,29 +310,51 @@ fn falsifier_aggregate_verdict_script() -> String {
                                                                                               "if [ \"$\{FLOOR_RECEIPT_PRESENT}\" != true ]; then\n",
                                                                                               concat(
                                                                                                 concat(
-                                                                                                  "  ",
+                                                                                                  "  if [ \"$\{COLD_RESULT}\" = \"success\" ]; then\n",
                                                                                                   concat(
-                                                                                                    falsifier_aggregate_verdict_write_receipt(json: aggregate_shell_receipt_cold_failed_before_receipt()),
                                                                                                     concat(
-                                                                                                      "  printf '%s\\n' \"::error::Cold corpus did not produce floor-component receipt (cold=$\{COLD_RESULT}) — infrastructure, not a falsifier regression finding\"\n",
+                                                                                                      "    ",
                                                                                                       concat(
-                                                                                                        "  exit 1\n",
+                                                                                                        falsifier_aggregate_verdict_write_receipt(json: aggregate_shell_receipt_cold_receipt_artifact_absent()),
                                                                                                         concat(
-                                                                                                          "fi\n",
+                                                                                                          "    printf '%s\\n' \"::error::Cold corpus succeeded but floor-component receipt artifact absent — transport or emit failure, not a falsifier regression finding\"\n",
                                                                                                           concat(
+                                                                                                            "    exit 1\n",
                                                                                                             concat(
-                                                                                                              "  ",
+                                                                                                              "  fi\n",
                                                                                                               concat(
-                                                                                                                falsifier_aggregate_verdict_write_receipt(json: aggregate_shell_receipt_corpus_executed()),
                                                                                                                 concat(
-                                                                                                                  "if [ \"$\{SELECTION_RESULT}\" != \"success\" ] || [ \"$\{COLD_RESULT}\" != \"success\" ]; then\n",
+                                                                                                                  "  ",
                                                                                                                   concat(
-                                                                                                                    "  printf '%s\\n' \"::error::Falsifier cadence red — selection=$\{SELECTION_RESULT} cold=$\{COLD_RESULT} (corpus executed; see target/falsifier-cold-corpus-execution.json)\"\n",
+                                                                                                                    falsifier_aggregate_verdict_write_receipt(json: aggregate_shell_receipt_cold_failed_before_receipt()),
                                                                                                                     concat(
-                                                                                                                      "  exit 1\n",
+                                                                                                                      "  printf '%s\\n' \"::error::Cold corpus did not produce floor-component receipt (cold=$\{COLD_RESULT}) — infrastructure, not a falsifier regression finding\"\n",
                                                                                                                       concat(
-                                                                                                                        "fi\n",
-                                                                                                                        "printf '%s\\n' \"FalsifierCadenceVerdict: cadence-green\"\n"
+                                                                                                                        "  exit 1\n",
+                                                                                                                        concat(
+                                                                                                                          "fi\n",
+                                                                                                                          concat(
+                                                                                                                            concat(
+                                                                                                                              "  ",
+                                                                                                                              concat(
+                                                                                                                                falsifier_aggregate_verdict_write_receipt(json: aggregate_shell_receipt_corpus_executed()),
+                                                                                                                                concat(
+                                                                                                                                  "if [ \"$\{SELECTION_RESULT}\" != \"success\" ] || [ \"$\{COLD_RESULT}\" != \"success\" ]; then\n",
+                                                                                                                                  concat(
+                                                                                                                                    "  printf '%s\\n' \"::error::Falsifier cadence red — selection=$\{SELECTION_RESULT} cold=$\{COLD_RESULT} (corpus executed; see target/falsifier-cold-corpus-execution.json)\"\n",
+                                                                                                                                    concat(
+                                                                                                                                      "  exit 1\n",
+                                                                                                                                      concat(
+                                                                                                                                        "fi\n",
+                                                                                                                                        "printf '%s\\n' \"FalsifierCadenceVerdict: cadence-green\"\n"
+                                                                                                                                      )
+                                                                                                                                    )
+                                                                                                                                  )
+                                                                                                                                )
+                                                                                                                              )
+                                                                                                                            )
+                                                                                                                          )
+                                                                                                                        )
                                                                                                                       )
                                                                                                                     )
                                                                                                                   )

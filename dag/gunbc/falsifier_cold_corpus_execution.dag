@@ -42,6 +42,7 @@ type CorpusNotRunCause
   | BuildJobSkipped
   | ColdCorpusJobCancelled
   | ColdCorpusJobSkipped { blocking_job: String }
+  | ColdCorpusReceiptArtifactAbsent
   | ColdCorpusFailedBeforeReceipt
   | ReleaseArtifactsUnavailable
   | EnvironmentUnavailable { detail: String }
@@ -61,7 +62,13 @@ fn classify_cold_corpus_execution(
         JobOutcomeCancelled => CorpusNotRun { cause: ColdCorpusJobCancelled }
         JobOutcomeSkipped => CorpusNotRun { cause: ColdCorpusJobSkipped { blocking_job: falsifier_cold_corpus_job_id } }
         JobOutcomeUnknown { raw: detail } => CorpusNotRun { cause: EnvironmentUnavailable { detail: detail } }
-        _ =>
+        JobOutcomeSuccess =>
+          if floor_receipt_present {
+            CorpusExecuted { receipt_path: floor_component_receipt_path }
+          } else {
+            CorpusNotRun { cause: ColdCorpusReceiptArtifactAbsent }
+          }
+        JobOutcomeFailure =>
           if floor_receipt_present {
             CorpusExecuted { receipt_path: floor_component_receipt_path }
           } else {
@@ -103,6 +110,8 @@ data corpus_not_run_cold_cancelled_tag: String = "cold-corpus-job-cancelled"
 
 data corpus_not_run_cold_skipped_tag: String = "cold-corpus-job-skipped"
 
+data corpus_not_run_cold_receipt_artifact_absent_tag: String = "cold-corpus-receipt-artifact-absent"
+
 data corpus_not_run_cold_failed_before_receipt_tag: String = "cold-corpus-failed-before-receipt"
 
 data corpus_not_run_release_artifacts_tag: String = "release-artifacts-unavailable"
@@ -116,6 +125,7 @@ fn corpus_not_run_cause_tag(cause: CorpusNotRunCause) -> String {
     BuildJobSkipped => corpus_not_run_build_skipped_tag
     ColdCorpusJobCancelled => corpus_not_run_cold_cancelled_tag
     ColdCorpusJobSkipped { blocking_job: _ } => corpus_not_run_cold_skipped_tag
+    ColdCorpusReceiptArtifactAbsent => corpus_not_run_cold_receipt_artifact_absent_tag
     ColdCorpusFailedBeforeReceipt => corpus_not_run_cold_failed_before_receipt_tag
     ReleaseArtifactsUnavailable => corpus_not_run_release_artifacts_tag
     EnvironmentUnavailable { detail: _ } => corpus_not_run_environment_tag
@@ -202,6 +212,12 @@ fn aggregate_shell_receipt_cold_skipped() -> String {
 fn aggregate_shell_receipt_cold_cancelled() -> String {
   cold_corpus_execution_receipt_json(
     c: classify_cold_corpus_execution(build: JobOutcomeSuccess, cold: JobOutcomeCancelled, floor_receipt_present: false)
+  )
+}
+
+fn aggregate_shell_receipt_cold_receipt_artifact_absent() -> String {
+  cold_corpus_execution_receipt_json(
+    c: classify_cold_corpus_execution(build: JobOutcomeSuccess, cold: JobOutcomeSuccess, floor_receipt_present: false)
   )
 }
 

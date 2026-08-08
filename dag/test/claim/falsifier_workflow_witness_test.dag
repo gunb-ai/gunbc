@@ -32,12 +32,14 @@ import gunbc.falsifier_cold_corpus_execution {
   corpus_not_run_build_cancelled_tag,
   corpus_not_run_build_skipped_tag,
   corpus_not_run_cold_failed_before_receipt_tag,
+  corpus_not_run_cold_receipt_artifact_absent_tag,
   aggregate_shell_receipt_build_failed,
   aggregate_shell_receipt_build_cancelled,
   aggregate_shell_receipt_build_skipped,
   aggregate_shell_receipt_cold_skipped,
   aggregate_shell_receipt_cold_cancelled,
   aggregate_shell_receipt_cold_failed_before_receipt,
+  aggregate_shell_receipt_cold_receipt_artifact_absent,
   aggregate_shell_receipt_corpus_executed,
   corpus_executed_tag,
   corpus_not_run_tag,
@@ -48,6 +50,7 @@ import gunbc.falsifier_cold_corpus_execution {
   JobOutcomeCancelled,
   BuildJobFailed,
   ColdCorpusFailedBeforeReceipt,
+  ColdCorpusReceiptArtifactAbsent,
   CorpusExecuted,
   CorpusNotRun,
 }
@@ -257,6 +260,7 @@ test fn aggregate_verdict_shell_receipt_literals_match_model() -> Bool {
     && string_contains(s: yml, pattern: aggregate_shell_receipt_cold_skipped())
     && string_contains(s: yml, pattern: aggregate_shell_receipt_cold_cancelled())
     && string_contains(s: yml, pattern: aggregate_shell_receipt_cold_failed_before_receipt())
+    && string_contains(s: yml, pattern: aggregate_shell_receipt_cold_receipt_artifact_absent())
     && string_contains(s: yml, pattern: aggregate_shell_receipt_corpus_executed())
 }
 
@@ -278,6 +282,9 @@ test fn aggregate_shell_receipt_builders_are_receipt_json_authority() -> Bool {
     )
     && aggregate_shell_receipt_cold_failed_before_receipt() == cold_corpus_execution_receipt_json(
       c: classify_cold_corpus_execution(build: JobOutcomeSuccess, cold: JobOutcomeFailure, floor_receipt_present: false)
+    )
+    && aggregate_shell_receipt_cold_receipt_artifact_absent() == cold_corpus_execution_receipt_json(
+      c: classify_cold_corpus_execution(build: JobOutcomeSuccess, cold: JobOutcomeSuccess, floor_receipt_present: false)
     )
     && aggregate_shell_receipt_corpus_executed() == cold_corpus_execution_receipt_json(
       c: classify_cold_corpus_execution(build: JobOutcomeSuccess, cold: JobOutcomeFailure, floor_receipt_present: true)
@@ -317,6 +324,29 @@ test fn cold_corpus_executed_when_cold_job_ran_even_if_red() -> Bool {
 
 test fn cold_corpus_not_run_when_failed_before_receipt() -> Bool {
   match classify_cold_corpus_execution(build: JobOutcomeSuccess, cold: JobOutcomeFailure, floor_receipt_present: false) {
+    CorpusNotRun { cause: ColdCorpusFailedBeforeReceipt } => true
+    _ => false
+  }
+}
+
+test fn cold_corpus_not_run_when_receipt_artifact_absent_on_success() -> Bool {
+  match classify_cold_corpus_execution(build: JobOutcomeSuccess, cold: JobOutcomeSuccess, floor_receipt_present: false) {
+    CorpusNotRun { cause: ColdCorpusReceiptArtifactAbsent } => true
+    _ => false
+  }
+}
+
+test fn cold_success_without_receipt_is_not_failed_before_receipt() -> Bool {
+  match classify_cold_corpus_execution(build: JobOutcomeSuccess, cold: JobOutcomeSuccess, floor_receipt_present: false) {
+    CorpusNotRun { cause: ColdCorpusFailedBeforeReceipt } => false
+    CorpusNotRun { cause: ColdCorpusReceiptArtifactAbsent } => true
+    _ => false
+  }
+}
+
+test fn cold_failure_without_receipt_is_not_receipt_artifact_absent() -> Bool {
+  match classify_cold_corpus_execution(build: JobOutcomeSuccess, cold: JobOutcomeFailure, floor_receipt_present: false) {
+    CorpusNotRun { cause: ColdCorpusReceiptArtifactAbsent } => false
     CorpusNotRun { cause: ColdCorpusFailedBeforeReceipt } => true
     _ => false
   }
@@ -387,6 +417,27 @@ test fn cold_corpus_execution_receipt_json_discriminates_failed_before_receipt()
     ),
     pattern: corpus_not_run_cold_failed_before_receipt_tag
   )
+    && !string_contains(
+      s: cold_corpus_execution_receipt_json(
+        c: classify_cold_corpus_execution(build: JobOutcomeSuccess, cold: JobOutcomeFailure, floor_receipt_present: false)
+      ),
+      pattern: corpus_not_run_cold_receipt_artifact_absent_tag
+    )
+}
+
+test fn cold_corpus_execution_receipt_json_discriminates_receipt_artifact_absent() -> Bool {
+  string_contains(
+    s: cold_corpus_execution_receipt_json(
+      c: classify_cold_corpus_execution(build: JobOutcomeSuccess, cold: JobOutcomeSuccess, floor_receipt_present: false)
+    ),
+    pattern: corpus_not_run_cold_receipt_artifact_absent_tag
+  )
+    && !string_contains(
+      s: cold_corpus_execution_receipt_json(
+        c: classify_cold_corpus_execution(build: JobOutcomeSuccess, cold: JobOutcomeSuccess, floor_receipt_present: false)
+      ),
+      pattern: corpus_not_run_cold_failed_before_receipt_tag
+    )
 }
 
 fn length_of(s: String) -> Int {
