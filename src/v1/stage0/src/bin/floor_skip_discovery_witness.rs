@@ -825,6 +825,112 @@ fn live_read_missing_classification_refuses() {
     );
 }
 
+/// THE DEFECT CONTROL: a declaration OUTSIDE the classification lens's own import closure must
+/// classify, not refuse.
+///
+/// This is the control the branch was missing, and its absence is why an earlier head claimed a
+/// narrowing it did not have. `fn_arrow_decl_facts_live()` reflects the eval context's modules, so
+/// when the manifest producer resolved the lens entry alone, the declaration population was the
+/// LENS'S closure. Every enrolled witness outside it failed to bind, every row was a modelled
+/// refusal, and consuming that manifest would have run the whole corpus on any nonempty diff —
+/// strictly more selection than the predicate the lane replaces.
+///
+/// The subject is deliberately a floor_skip fixture: it is a real enrolled witness entry and it is
+/// not imported by `v2.lens.live_read_classification`, so a classification for it can only come
+/// from a fact universe wider than the lens closure. Mutating the producer back to a lens-entry
+/// context makes this red — that mutation is the receipt that this control discriminates.
+fn live_read_classifies_a_declaration_outside_the_lens_closure() {
+    chdir_workspace();
+    let ws = workspace_root();
+    let roots = floor_skip_source_roots();
+    let index = build_multi_entry_index(&roots);
+    let disc_entry = ws
+        .join(SELECTION_CONTROL_NODE_PRECISE_REL)
+        .to_string_lossy()
+        .into_owned();
+    let roster = vec![DiscoveryRow {
+        label: "outside".to_string(),
+        entry: disc_entry.clone(),
+        function: "floor_disc_witness_a_only_holds".to_string(),
+        reads_live_tree: false,
+    }];
+    let live = LiveReadSelectionContext::build(&index, &roster).expect("manifest builds");
+
+    // An UNRELATED touched path. The declaration is a local read, so a working classification
+    // answers `false` — and answering at all is the point: an unbound root would have returned a
+    // typed refusal from the modelled-refusal arm instead.
+    let unrelated = vec![SELECTION_CONTROL_BUDGET_ROSTER_REL.to_string()];
+    let touched = live
+        .runtime_dependency_touched_for_entry(&index, &disc_entry, &unrelated)
+        .expect(
+            "a declaration outside the lens closure must CLASSIFY — a refusal here means the \
+             fact universe is narrower than the index the consumer decides over, which widens \
+             selection to the whole corpus while reporting green",
+        );
+    assert!(
+        !touched,
+        "a local-read declaration must not report the unrelated diff as touching a runtime read"
+    );
+}
+
+/// A PRESENT row carrying a modelled refusal must reach the consumer as a typed `Err`.
+///
+/// This is a different arm from `live_read_missing_classification_refuses`, and the difference is
+/// the one that matters. That control removes the entry from the context, so the refusal comes
+/// from the ROSTER lookup — it proves nothing about what happens when the manifest DOES carry a
+/// row and that row is `LiveReadSelectionRefused`. `touched_by` answers `true` for such a row,
+/// which is conservative for a path-intersection question but wrong for a consumer to act on:
+/// routed through the boolean, an undecidable classification is indistinguishable from a decided
+/// "this diff touches a runtime read", and a producer that cannot classify anything presents as
+/// `SelectionSuperset` — everything ran, slow but apparently valid — rather than as "the manifest
+/// cannot decide".
+///
+/// The request names a function that does not exist in its entry, so `bind_g2_root` answers
+/// `G2RootUnbound` and the producer emits a row that is present and refused. The consumer must
+/// stop the line on it.
+fn live_read_present_but_refused_row_propagates_refusal() {
+    chdir_workspace();
+    let ws = workspace_root();
+    let roots = floor_skip_source_roots();
+    let index = build_multi_entry_index(&roots);
+    let disc_entry = ws
+        .join(SELECTION_CONTROL_NODE_PRECISE_REL)
+        .to_string_lossy()
+        .into_owned();
+
+    let roster = vec![
+        DiscoveryRow {
+            label: "real".to_string(),
+            entry: disc_entry.clone(),
+            function: "floor_disc_witness_a_only_holds".to_string(),
+            reads_live_tree: false,
+        },
+        DiscoveryRow {
+            label: "unbindable".to_string(),
+            entry: disc_entry.clone(),
+            // No such declaration exists in this entry, so the root cannot bind and the producer
+            // emits a PRESENT row carrying LiveReadSelectionRefused.
+            function: "floor_disc_witness_no_such_declaration_exists".to_string(),
+            reads_live_tree: false,
+        },
+    ];
+    let live = LiveReadSelectionContext::build(&index, &roster)
+        .expect("the manifest builds; an unbindable root is a refused ROW, not a build failure");
+
+    let touched = vec![SELECTION_CONTROL_NODE_PRECISE_REL.to_string()];
+    let err = live
+        .runtime_dependency_touched_for_entry(&index, &disc_entry, &touched)
+        .expect_err(
+            "a present-but-refused row must stop the line, not answer `true` and read as a \
+             decided runtime-read touch",
+        );
+    assert!(
+        err.contains("LiveReadClassificationRefused"),
+        "the refusal must name the modelled-refusal cause so an incomplete producer is counted \
+         rather than absorbed into a superset run: {err}"
+    );
+}
+
 /// A manifest may not be attributed to an index it was not built against.
 ///
 /// The subject check is what makes the memo checkable rather than merely fast, so it needs an
@@ -948,6 +1054,14 @@ fn main() -> ExitCode {
         (
             "live_read_subject_mismatch_refuses",
             live_read_subject_mismatch_refuses,
+        ),
+        (
+            "live_read_present_but_refused_row_propagates_refusal",
+            live_read_present_but_refused_row_propagates_refusal,
+        ),
+        (
+            "live_read_classifies_a_declaration_outside_the_lens_closure",
+            live_read_classifies_a_declaration_outside_the_lens_closure,
         ),
     ];
 

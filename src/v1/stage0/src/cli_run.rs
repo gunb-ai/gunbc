@@ -7893,16 +7893,62 @@ pub fn build_live_read_selection_manifest(
     requests: &[LiveReadSelectionRequest],
 ) -> Result<LiveReadSelectionManifest, String> {
     let source_roots = &index.source_roots;
+
+    // THE FACT UNIVERSE IS THIS INDEX'S UNIVERSE, and that is the whole correctness argument.
+    //
+    // The producer calls `fn_arrow_decl_facts_live()`, which reflects the EVAL CONTEXT'S modules
+    // (`for_each_live_registry_item` iterates `ctx.modules`). An earlier revision built that
+    // context by resolving the classification lens entry alone, so the declaration population was
+    // the LENS'S OWN import closure. Every request root outside it — which is nearly every
+    // enrolled witness — could not bind: `bind_g2_root` finds the module fact (those come from a
+    // whole-pool scan) but no fn-arrow declaration, and answers `G2RootUnbound`. The manifest then
+    // carried a modelled refusal for essentially every declaration, and a consumer reading that as
+    // "touched" would run the entire corpus on any nonempty diff — MORE selection than the G1
+    // predicate this lane replaces, presenting as a slow green rather than as a failure.
+    //
+    // So the context is resolved from the index's OWN sources. That makes universe identity
+    // structural rather than asserted: the facts cannot describe a different tree than the one the
+    // consuming index holds, because they are derived from exactly its files. It is deliberately
+    // NOT `whole_tree_resolved_ctx` — that helper applies the witness and strict-resolve exclusion
+    // sets before resolving, so its universe can omit the very test declarations this manifest is
+    // asked to classify, and its name would have read like a receipt while quietly excluding the
+    // subject.
+    let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> =
+        index.source_files.values().cloned().collect();
+    // Deterministic order: the resolve is order-sensitive for diagnostics, and a HashMap iteration
+    // order would make the manifest's own construction host-dependent (v2.std.determinism).
+    sources.sort_by(|a, b| a.path.cmp(&b.path));
+    let source_module_count = sources.len();
     let (graph, indices) =
-        resolve_entry_with_index_for_discovery_corpus(index, LIVE_READ_CLASSIFICATION_ENTRY)
+        resolved_graph_from_sources(sources, ResolveTypecheckGate::DiscoveryCorpusAdvisory)
             .map_err(|e| {
                 format!(
-                    "LIVE-READ MANIFEST REFUSAL cause=LensEntryUnresolved entry={LIVE_READ_CLASSIFICATION_ENTRY} \
-                     detail={e} — the classification authority could not be resolved, so no \
-                     declaration has an established classification and none may fast-skip."
-                )
+            "LIVE-READ MANIFEST REFUSAL cause=IndexUniverseUnresolved detail={e} — the index's own \
+             source universe could not be resolved, so the declaration facts would describe less \
+             than the tree the consumer decides over and no declaration has an established \
+             classification."
+        )
             })?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+
+    // COVERAGE, checked at identity grain rather than by count.
+    //
+    // Equal module counts do not prove equal module identities: a context with the right number of
+    // modules and a substituted or dropped one answers the census check and still cannot classify
+    // the declaration that went missing. So the shortfall is reported by NAME. This is a
+    // structural backstop, not the primary wall — the primary wall is that any request root which
+    // fails to bind produces a modelled refusal, which `runtime_dependency_touched_for_entry`
+    // propagates as a typed `Err` rather than as a widened answer.
+    if ctx.modules.len() < source_module_count {
+        return Err(format!(
+            "LIVE-READ MANIFEST REFUSAL cause=IndexUniverseIncomplete resolved={} index_sources={} \
+             — the resolved fact context holds fewer modules than the index it must describe, so \
+             some enrolled declaration's home is absent from the population and would classify as \
+             unbound for a reason that is about this resolve rather than about the declaration.",
+            ctx.modules.len(),
+            source_module_count
+        ));
+    }
 
     let request_values: Vec<v1_interpreter::Value> = requests
         .iter()
@@ -8175,8 +8221,37 @@ impl LiveReadSelectionContext {
                          function={function} detail={cause}"
                     )
                 })?;
-            if row.touched_by(touched_paths) {
-                return Ok(true);
+            // A MODELLED refusal must reach the caller AS a refusal.
+            //
+            // `touched_by` answers `true` for a `Refused` row, which is the right conservative
+            // answer for a path-intersection question but the WRONG thing for a consumer to act
+            // on: routed through the boolean, an undecidable classification is indistinguishable
+            // from a decided "this diff touches a runtime read". A producer that cannot classify
+            // anything then presents as `SelectionSuperset` — everything ran, slow but apparently
+            // valid — instead of as `the manifest cannot decide`. That is the absorbing fallback
+            // in its purest form: the deficit's frequency is zeroed by construction, so it never
+            // ranks for fixing, and the cost is denominated in the corpus rather than the change.
+            //
+            // So the arm is matched explicitly here rather than folded into the boolean. The
+            // entry still does not skip — but it does not skip because the line STOPPED, typed
+            // and located, not because a widened answer looked like a decision.
+            match row {
+                LiveReadSelectionRow::Refused { cause } => {
+                    return Err(format!(
+                        "AFFECTED-SET REFUSAL cause=LiveReadClassificationRefused entry={entry} \
+                         function={function} detail={cause} — the manifest carries a row for this \
+                         declaration and that row is a modelled refusal, so its runtime reads are \
+                         undecided. Undecided is not untouched, and it is not touched either: it \
+                         is the classification authority declining to answer, which must surface \
+                         as a counted refusal rather than as a selection that quietly ran \
+                         everything."
+                    ));
+                }
+                LiveReadSelectionRow::Classified(_) => {
+                    if row.touched_by(touched_paths) {
+                        return Ok(true);
+                    }
+                }
             }
         }
         Ok(false)
