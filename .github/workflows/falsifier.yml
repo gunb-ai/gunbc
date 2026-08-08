@@ -344,4 +344,3 @@ jobs:
           fi
           printf '%s\n' "FalsifierCadenceVerdict: cadence-green"
         timeout-minutes: 5
-
