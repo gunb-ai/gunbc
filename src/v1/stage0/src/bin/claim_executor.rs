@@ -9994,7 +9994,6 @@ fn coordinator_report_worker_failure(worker: &ObservedFloorWorker, context: &str
         outcome.label,
         outcome.detail
     );
-    journal_floor_worker_observation(worker);
     coordinator_terminal_refusal(&detail)
 }
 
@@ -11204,6 +11203,40 @@ fn emit_floor_terminal_outcome(outcome: &str, detail: &str) {
     }
 }
 
+/// Pre-walk worker failures return through `main()` instead of `floor_terminal_fast_exit`.
+/// Mirror the walk-terminal journal/stderr emission so those refusals survive Actions log
+/// truncation the same way post-walk failures do.
+fn emit_worker_terminal_before_return(code: ExitCode) -> ExitCode {
+    let Some(path) = std::env::var_os(FLOOR_WORKER_TERMINAL_ENV) else {
+        return code;
+    };
+    if code == ExitCode::SUCCESS {
+        return code;
+    }
+    let path = PathBuf::from(path);
+    let (outcome, detail) = if path.exists() {
+        match fs::read_to_string(&path) {
+            Ok(body) => {
+                let line = body.trim_end_matches(['\r', '\n']);
+                let (label, detail) = line.split_once('\t').unwrap_or((line, ""));
+                let outcome = if label == "completed" {
+                    "completed"
+                } else {
+                    "failed"
+                };
+                (outcome, detail.to_string())
+            }
+            Err(e) => ("failed", format!("worker terminal receipt unreadable: {e}")),
+        }
+    } else {
+        let detail = "worker returned before producing a walk terminal receipt".to_string();
+        let _ = write_floor_worker_terminal("failed", &detail);
+        ("failed", detail)
+    };
+    emit_floor_terminal_outcome(outcome, &detail);
+    code
+}
+
 fn main() -> ExitCode {
     let coordinator_args: Vec<String> = std::env::args().skip(1).collect();
     if let Some(code) = maybe_run_floor_coordinator(&coordinator_args) {
@@ -11220,18 +11253,7 @@ fn main() -> ExitCode {
         Ok(code) => code,
         Err(code) => code,
     };
-    if std::env::var_os(FLOOR_WORKER_TERMINAL_ENV).is_some() {
-        let terminal_exists = std::env::var_os(FLOOR_WORKER_TERMINAL_ENV)
-            .map(PathBuf::from)
-            .is_some_and(|path| path.exists());
-        if !terminal_exists {
-            let _ = write_floor_worker_terminal(
-                "failed",
-                "worker returned before producing a walk terminal receipt",
-            );
-        }
-    }
-    code
+    emit_worker_terminal_before_return(code)
 }
 
 #[cfg(test)]
@@ -12317,6 +12339,36 @@ mod tests {
         assert!(details
             .iter()
             .any(|d| d.contains("floor component receipt write refused")));
+    }
+
+    #[test]
+    fn emit_worker_terminal_before_return_journals_pre_walk_refusal() {
+        let dir = std::env::temp_dir().join(format!(
+            "claim-executor-worker-terminal-before-return-{}",
+            std::process::id()
+        ));
+        let _ = fs::create_dir_all(&dir);
+        let terminal = dir.join("worker-terminal.tsv");
+        let journal = dir.join("floor-phase-journal.tsv");
+        let _ = fs::remove_file(&terminal);
+        let _ = fs::remove_file(&journal);
+        fs::write(
+            &terminal,
+            "refused\tscoped witness scheduling refusal: fixture detail\n",
+        )
+        .expect("write worker terminal fixture");
+        std::env::set_var(FLOOR_WORKER_TERMINAL_ENV, &terminal);
+        std::env::set_var(FLOOR_PHASE_JOURNAL_ENV, &journal);
+        let code = emit_worker_terminal_before_return(ExitCode::from(1));
+        std::env::remove_var(FLOOR_WORKER_TERMINAL_ENV);
+        std::env::remove_var(FLOOR_PHASE_JOURNAL_ENV);
+        assert_eq!(code, ExitCode::from(1));
+        let persisted = fs::read_to_string(&journal).expect("walk-terminal journal row");
+        let _ = fs::remove_dir_all(&dir);
+        assert!(
+            persisted.contains("\twalk-terminal\tfailed\tscoped witness scheduling refusal"),
+            "pre-walk worker refusal must reach the durable journal: {persisted:?}"
+        );
     }
 
     fn outcome(entry: &str, function: &str, o: ClaimOutcome) -> DiscoveryWitnessOutcome {
