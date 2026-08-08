@@ -7,6 +7,7 @@ import gunbc.auth.secret_ref_credential {
   SecretCredentialReady,
   SecretCredentialAccessUpsertRequired,
   SecretCredentialFetchRefused,
+  SecretCredentialWireDecodeRefused,
   fetch_secret_ref_credential,
 }
 import gunbc.auth.access_token_source { AccessTokenSource }
@@ -46,6 +47,10 @@ fn cursor_sdk_secure_api_key_from_secret_ref(
         SecretCredentialAccessUpsertRequired { plan: _ } =>
           CursorSdkSecureApiKeyInputRefused {
             reason: "secret access token upsert required before Cursor API key fetch" as NonEmptyStr,
+          }
+        SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } =>
+          CursorSdkSecureApiKeyInputRefused {
+            reason: "secret manager access version wire decode refused" as NonEmptyStr,
           }
         SecretCredentialReady { credential: credential } => {
           let local = CursorSdkApiKeySecretRef { secret_ref: admitted_ref }
