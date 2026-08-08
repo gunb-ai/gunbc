@@ -35,6 +35,8 @@ import gunbc.pr_delivery_check {
   DeliverySubjectVerdict,
   DeliveryUndecidable,
   SelfConsumedOnly,
+  Unconsumed,
+  WitnessEntryPoint,
   pr_delivery_check,
 }
 import v2.lens.module_impact_query {
@@ -389,6 +391,10 @@ fn render_delivery_verdict(row: DeliverySubjectVerdict) -> String {
       "    CONSUMER-PENDING       {row.subject.name}  <-  declared, awaiting {work_item}"
     DeclarationGrainUnavailable { path } =>
       "    DECLARATION-GRAIN-NA   {path}  —  modified existing module; module grain cannot see which declarations were added"
+    Unconsumed =>
+      "    UNCONSUMED             {row.subject.name}  —  NOTHING references it — not delivered"
+    WitnessEntryPoint { path } =>
+      "    WITNESS-ENTRY-POINT    {path}  —  harness-invoked; inbound references do not judge it"
     DeliveryUndecidable { cause } =>
       "    UNDECIDABLE            {row.subject.name}  —  {cause}"
   }
@@ -398,7 +404,7 @@ fn render_delivery_receipt(receipt: DeliveryReceipt) -> String {
   render_lines(lines: [
     "delivery check — does anything use what this PR added?",
     "  DECLARATION-GRAIN-UNAVAILABLE: {receipt.declaration_grain_unavailable_count}  (subjects this check CANNOT answer today — the priority argument for DeclarationGrain)",
-    "  consumed: {receipt.consumed_count}   self-consumed-only: {receipt.self_consumed_only_count}   consumer-pending: {receipt.consumer_pending_count}   undecidable: {receipt.undecidable_count}",
+    "  consumed: {receipt.consumed_count}   self-consumed-only: {receipt.self_consumed_only_count}   UNCONSUMED: {receipt.unconsumed_count}   consumer-pending: {receipt.consumer_pending_count}   undecidable: {receipt.undecidable_count}   witness-entry-points: {receipt.witness_entry_point_count}",
     "  subjects:",
     render_lines(lines: list_reverse(xs: fold_list(
       xs: receipt.subjects,

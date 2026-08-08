@@ -32,6 +32,10 @@ data pr_delivery_uses_grounding_note: String = "'Uses' means A RESOLVING REFEREN
 
 data pr_delivery_grain_note: String = "THE HONEST GRAIN, and the reason this check refuses more than it answers today. The reverse query is MODULE grain. For a newly added MODULE that is exactly right: its dependents are its consumers. For a new DECLARATION inside an EXISTING module it is not, and the failure direction is FAIL-OPEN: the module already has dependents, so a module-grain check would report the new declaration CONSUMED while nothing references it — the inert delivery this criterion exists to catch, waved through by the tool built to catch it, on the COMMON case, since most changes add declarations to existing modules. Such a check would manufacture evidence of delivery, which is worse than no check. So that case is a distinct typed arm, counted, never silently consumed. The decl-grain machinery in v2.lens.affected_set is deliberately NOT adopted: entry_file_touched_grain_interim_note records it as not live and carrying a decl-identity/output-type conflation (edit loci are decl.OUTPUT nodes, so every Bool-returning module reads as affected), and inheriting that into an acceptance gate is the trap, not the fix. Dissolve-on: the namespace lane's DeclarationGrain refinement, at which point DeclarationGrainUnavailable disappears and those subjects get real verdicts."
 
+data pr_delivery_unconsumed_split_note: String = "FOUND BY DOGFOODING THIS CHECK ON ITS OWN PR. The first revision had one arm for 'no non-test consumer', so a subject consumed by NOTHING AT ALL rendered as 'only its own witnesses ()' — an empty list described as if it were witnesses. Consumed-only-by-tests and consumed-by-nothing are different states with different remedies (the first has a consumer that is the wrong KIND, the second has none), and collapsing them is the state-space conflation DESIGN 5 forbids, which this carrier committed while being written to catch inert delivery. Unconsumed is now its own arm."
+
+data pr_delivery_witness_subject_note: String = "ALSO FOUND BY DOGFOODING. A newly added WITNESS module is a harness-invoked entry point: nothing imports a test, by construction, so judging it by inbound reference edges makes every new witness read as undelivered forever — a systematic false alarm that would train reviewers to ignore the receipt, which is worse than the check not existing. A test module subject is therefore WitnessEntryPoint: its consumer is the claim harness, an execution relation this graph does not carry, so the honest answer is that this check does not judge it rather than that it failed. This is NOT an exemption for untested delivery — the feature module still needs a real consumer, and a witness that nothing runs is the enrollment question the floor already owns, a different check with a different authority."
+
 data pr_delivery_dogfood_note: String = "DESIGNED-IN, stated up front so no reviewer meets it as a gotcha: this checker's own PR verdicts CONSUMED only because it lands as a NEW MODULE whose consumer is the acceptance flow that invokes it. Had it instead grown as declarations inside an existing module, its own verdict would be DeclarationGrainUnavailable — the check would be unable to prove its own delivery. That is not a defect to hide; it is the same grain limit the note above declares, applied to the tool itself, and it is the sharpest available argument for prioritising DeclarationGrain."
 
 type DeliveryVerdict
@@ -40,6 +44,10 @@ type DeliveryVerdict
     }
   | SelfConsumedOnly {
       test_consumers: List<ModuleIdentity>
+    }
+  | Unconsumed
+  | WitnessEntryPoint {
+      path: String
     }
   | ConsumerPending {
       work_item: String
@@ -63,6 +71,8 @@ type DeliveryReceipt {
   self_consumed_only_count: Int
   consumer_pending_count: Int
   undecidable_count: Int
+  unconsumed_count: Int
+  witness_entry_point_count: Int
 }
 
 data no_delivery_subject_verdicts: List<DeliverySubjectVerdict> = []
@@ -177,11 +187,32 @@ fn pr_delivery_verdict_for_module(
     subject: subject
   )
   let non_test = pr_delivery_non_test_consumers(nodes: nodes, consumers: consumers)
-  if any(xs: non_test, predicate: fn(_) { true }) {
-    Consumed { consumers: non_test }
+  if pr_delivery_module_is_test(nodes: nodes, module_id: subject) {
+    WitnessEntryPoint {
+      path: pr_delivery_first_path_of(nodes: nodes, module_id: subject)
+    }
   } else {
-    SelfConsumedOnly { test_consumers: consumers }
+    if any(xs: non_test, predicate: fn(_) { true }) {
+      Consumed { consumers: non_test }
+    } else {
+      if any(xs: consumers, predicate: fn(_) { true }) {
+        SelfConsumedOnly { test_consumers: consumers }
+      } else {
+        Unconsumed
+      }
+    }
   }
+}
+
+fn pr_delivery_first_path_of(
+  nodes: List<ModuleDeclarationFact>,
+  module_id: ModuleIdentity
+) -> String {
+  fold_list(
+    xs: pr_delivery_module_paths(nodes: nodes, module_id: module_id),
+    empty: module_id.name,
+    cons: fn(acc, path) { path }
+  )
 }
 
 data pr_delivery_added_module_note: String = "An added PATH yields a delivery subject only when it declares a module in the merged pool. An added path that declares no module — a .rs file, a workflow yml, a doc — is not a subject of this graph at all and is simply not carried; that is different from a .dag path whose declaration the pool does not carry, which is a genuine gap. The distinction this carrier CAN see is only 'resolved to a module or not', so an added path with no module produces no subject rather than a fabricated one."
@@ -273,49 +304,82 @@ fn pr_delivery_is_consumed(verdict: DeliveryVerdict) -> Bool {
     ConsumerPending { work_item: _ } => false
     DeclarationGrainUnavailable { path: _ } => false
     DeliveryUndecidable { cause: _ } => false
+    Unconsumed => false
+    WitnessEntryPoint { path: _ } => false
   }
 }
 
 fn pr_delivery_is_self_consumed(verdict: DeliveryVerdict) -> Bool {
   match verdict {
-    SelfConsumedOnly { test_consumers: _ } => true
     Consumed { consumers: _ } => false
+    SelfConsumedOnly { test_consumers: _ } => true
     ConsumerPending { work_item: _ } => false
     DeclarationGrainUnavailable { path: _ } => false
     DeliveryUndecidable { cause: _ } => false
+    Unconsumed => false
+    WitnessEntryPoint { path: _ } => false
   }
 }
 
 fn pr_delivery_is_pending(verdict: DeliveryVerdict) -> Bool {
   match verdict {
-    ConsumerPending { work_item: _ } => true
     Consumed { consumers: _ } => false
     SelfConsumedOnly { test_consumers: _ } => false
+    ConsumerPending { work_item: _ } => true
     DeclarationGrainUnavailable { path: _ } => false
     DeliveryUndecidable { cause: _ } => false
+    Unconsumed => false
+    WitnessEntryPoint { path: _ } => false
   }
 }
 
 fn pr_delivery_is_grain_unavailable(verdict: DeliveryVerdict) -> Bool {
   match verdict {
-    DeclarationGrainUnavailable { path: _ } => true
     Consumed { consumers: _ } => false
     SelfConsumedOnly { test_consumers: _ } => false
     ConsumerPending { work_item: _ } => false
+    DeclarationGrainUnavailable { path: _ } => true
     DeliveryUndecidable { cause: _ } => false
+    Unconsumed => false
+    WitnessEntryPoint { path: _ } => false
   }
 }
 
 fn pr_delivery_is_undecidable(verdict: DeliveryVerdict) -> Bool {
   match verdict {
-    DeliveryUndecidable { cause: _ } => true
     Consumed { consumers: _ } => false
     SelfConsumedOnly { test_consumers: _ } => false
     ConsumerPending { work_item: _ } => false
     DeclarationGrainUnavailable { path: _ } => false
+    DeliveryUndecidable { cause: _ } => true
+    Unconsumed => false
+    WitnessEntryPoint { path: _ } => false
   }
 }
 
+fn pr_delivery_is_unconsumed(verdict: DeliveryVerdict) -> Bool {
+  match verdict {
+    Consumed { consumers: _ } => false
+    SelfConsumedOnly { test_consumers: _ } => false
+    ConsumerPending { work_item: _ } => false
+    DeclarationGrainUnavailable { path: _ } => false
+    DeliveryUndecidable { cause: _ } => false
+    Unconsumed => true
+    WitnessEntryPoint { path: _ } => false
+  }
+}
+
+fn pr_delivery_is_witness_entry(verdict: DeliveryVerdict) -> Bool {
+  match verdict {
+    Consumed { consumers: _ } => false
+    SelfConsumedOnly { test_consumers: _ } => false
+    ConsumerPending { work_item: _ } => false
+    DeclarationGrainUnavailable { path: _ } => false
+    DeliveryUndecidable { cause: _ } => false
+    Unconsumed => false
+    WitnessEntryPoint { path: _ } => true
+  }
+}
 fn pr_delivery_receipt_of(subjects: List<DeliverySubjectVerdict>) -> DeliveryReceipt {
   DeliveryReceipt {
     subjects: subjects,
@@ -323,7 +387,9 @@ fn pr_delivery_receipt_of(subjects: List<DeliverySubjectVerdict>) -> DeliveryRec
     consumed_count: pr_delivery_count_verdicts(subjects: subjects, predicate: pr_delivery_is_consumed),
     self_consumed_only_count: pr_delivery_count_verdicts(subjects: subjects, predicate: pr_delivery_is_self_consumed),
     consumer_pending_count: pr_delivery_count_verdicts(subjects: subjects, predicate: pr_delivery_is_pending),
-    undecidable_count: pr_delivery_count_verdicts(subjects: subjects, predicate: pr_delivery_is_undecidable)
+    undecidable_count: pr_delivery_count_verdicts(subjects: subjects, predicate: pr_delivery_is_undecidable),
+    unconsumed_count: pr_delivery_count_verdicts(subjects: subjects, predicate: pr_delivery_is_unconsumed),
+    witness_entry_point_count: pr_delivery_count_verdicts(subjects: subjects, predicate: pr_delivery_is_witness_entry)
   }
 }
 
