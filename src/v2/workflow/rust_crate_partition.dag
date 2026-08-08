@@ -374,6 +374,7 @@ fn stage0_cross_unit_import_edges() -> List<ModuleDagEdge> {
     stage0_module_dag_edge(from: "std_interface_summary", to: "std_decl_ref"),
     stage0_module_dag_edge(from: "std_interface_summary", to: "std_disposition"),
     stage0_module_dag_edge(from: "std_pareto", to: "std_algebra"),
+    stage0_module_dag_edge(from: "std_realization_schedule", to: "std_decl_ref"),
     stage0_module_dag_edge(from: "std_realization_schedule", to: "std_execution_mode"),
     stage0_module_dag_edge(from: "std_realization_schedule", to: "std_measure"),
     stage0_module_dag_edge(from: "std_realization_schedule", to: "std_pareto"),

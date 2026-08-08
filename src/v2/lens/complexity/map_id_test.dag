@@ -69,7 +69,7 @@ fn map_id_actual_cost() -> Witness<SymbolicCost> {
   cost_lens(n: map_id_input)
 }
 
-fn map_id_actual_complexity() -> Witness<ComplexityBound> {
+fn map_id_actual_complexity() -> ComplexityBound {
   complexity_lens(n: map_id_input)
 }
 
@@ -81,8 +81,5 @@ test fn map_id_cost_projection_holds() -> Bool {
 }
 
 test fn map_id_complexity_projection_holds() -> Bool {
-  match map_id_actual_complexity() {
-    Holds { value: actual } => actual == map_id_claim.expected_complexity
-    Violates { diagnostic: _ } => false
-  }
+  map_id_actual_complexity() == map_id_claim.expected_complexity
 }

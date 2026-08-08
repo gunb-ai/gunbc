@@ -1,0 +1,85 @@
+module extdeps.llm.cursor_sdk_errors
+
+import std.types { String, NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cursor.com/docs/sdk/typescript"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.llm.cursor_sdk_errors",
+      decl_name: "CursorSdkErrorCode",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data cursor_sdk_error_codes_note: String = "Stable backend codes from @cursor/sdk errors.d.ts @ 1.0.26. RunError.code carries the wire spelling on terminal turns. Single authority for SDK wire codes — consumed by extdeps.llm.cursor_stream."
+
+type CursorSdkErrorCode
+  = CursorSdkAuthenticationError
+  | CursorSdkRateLimitError
+  | CursorSdkAgentNotFoundError
+  | CursorSdkAgentBusyError
+  | CursorSdkErrorCodeOther { raw: String }
+
+data cursor_sdk_error_authentication_wire: String = "authentication_error"
+data cursor_sdk_error_rate_limit_wire: String = "rate_limit_error"
+data cursor_sdk_error_agent_not_found_wire: String = "agent_not_found"
+data cursor_sdk_error_agent_busy_wire: String = "agent_busy"
+
+fn parse_cursor_sdk_error_code(raw: String) -> CursorSdkErrorCode {
+  if raw == cursor_sdk_error_authentication_wire {
+    CursorSdkAuthenticationError
+  } else if raw == cursor_sdk_error_rate_limit_wire {
+    CursorSdkRateLimitError
+  } else if raw == cursor_sdk_error_agent_not_found_wire {
+    CursorSdkAgentNotFoundError
+  } else if raw == cursor_sdk_error_agent_busy_wire {
+    CursorSdkAgentBusyError
+  } else {
+    CursorSdkErrorCodeOther { raw: raw }
+  }
+}
+
+fn cursor_sdk_error_code_label(code: CursorSdkErrorCode) -> String {
+  match code {
+    CursorSdkAuthenticationError => cursor_sdk_error_authentication_wire
+    CursorSdkRateLimitError => cursor_sdk_error_rate_limit_wire
+    CursorSdkAgentNotFoundError => cursor_sdk_error_agent_not_found_wire
+    CursorSdkAgentBusyError => cursor_sdk_error_agent_busy_wire
+    CursorSdkErrorCodeOther { raw: r } => r
+  }
+}
+
+fn cursor_sdk_error_code_is_authentication_failure(code: CursorSdkErrorCode) -> Bool {
+  match code {
+    CursorSdkAuthenticationError => true
+    CursorSdkRateLimitError => false
+    CursorSdkAgentNotFoundError => false
+    CursorSdkAgentBusyError => false
+    CursorSdkErrorCodeOther { raw: _ } => false
+  }
+}
+
+fn cursor_sdk_error_code_is_enumerated_non_authentication_failure(
+  code: CursorSdkErrorCode,
+) -> Bool {
+  match code {
+    CursorSdkRateLimitError => true
+    CursorSdkAgentNotFoundError => true
+    CursorSdkAgentBusyError => true
+    CursorSdkAuthenticationError => false
+    CursorSdkErrorCodeOther { raw: _ } => false
+  }
+}

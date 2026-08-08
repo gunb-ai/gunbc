@@ -101,7 +101,7 @@ fn nested_actual_cost() -> Witness<SymbolicCost> {
   cost_lens(n: nested_input)
 }
 
-fn nested_actual_complexity() -> Witness<ComplexityBound> {
+fn nested_actual_complexity() -> ComplexityBound {
   complexity_lens(n: nested_input)
 }
 
@@ -113,8 +113,5 @@ test fn nested_cost_projection_holds() -> Bool {
 }
 
 test fn nested_complexity_projection_holds() -> Bool {
-  match nested_actual_complexity() {
-    Holds { value: actual } => actual == nested_claim.expected_complexity
-    Violates { diagnostic: _ } => false
-  }
+  nested_actual_complexity() == nested_claim.expected_complexity
 }
