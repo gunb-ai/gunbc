@@ -9890,7 +9890,7 @@ fn spawn_floor_worker(
     command.env(FLOOR_WORKER_TERMINAL_ENV, &terminal_path);
     command.env("GUNBC_FLOOR_WALK_ATTEMPT_ID", walk_attempt_id);
     command.env(FLOOR_DISCOVERY_CONSUMER_ENV, discovery_consumer);
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     {
         use std::os::unix::process::CommandExt;
         // When the thin coordinator is killed by the foreign step timeout, workers must not
