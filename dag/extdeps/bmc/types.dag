@@ -333,8 +333,7 @@ type BmcFanDutyDecision
   = BmcFanDutyFromCurve { reading: Celsius, duty: Percent }
   | BmcFanDutyFromSensorFailsafe { duty: Percent }
 
-data bmc_fan_duty_decision_semantics_note: String = "The curve branch is the stateless base projection of the declared step points, clamped by minimum_duty below the first point. phosphor-pid-control's cited stepwise semantics only recompute after the input moves farther than positiveHysteresis or negativeHysteresis from the prior recomputation input; the effective emergency proof therefore includes rising hysteresis. A runtime observation must retain prior state when exact transition timing matters. The coproduct keeps a base-curve request distinct from the numerically identical sensor-unavailable fail-safe request."
-
+// The curve branch is the stateless base projection of the declared step points, clamped by minimum_duty below the first point. phosphor-pid-control's cited stepwise semantics only recompute after the input moves farther than positiveHysteresis or negativeHysteresis from the prior recomputation input; the effective emergency proof therefore includes rising hysteresis. A runtime observation must retain prior state when exact transition timing matters. The coproduct keeps a base-curve request distinct from the numerically identical sensor-unavailable fail-safe request.
 fn bmc_fan_curve_duty_at(
   validated: ValidatedBmcFanCurve,
   reading: Celsius,

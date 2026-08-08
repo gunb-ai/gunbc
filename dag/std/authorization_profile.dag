@@ -4,8 +4,7 @@ import std.types { Bool, List, Set, String }
 import std.access { AccessRequest, AccessContext, AccessEvidence }
 import std.disposition { Disposition, Terminal }
 
-data authorization_profile_note: String = "Typed authorization request profiles over the single std.access kernel. A profile is an exact product and a projection to AccessRequest; none declares an admitted/refused carrier or an allow/deny fold. EffectRequest carries an actor, effect, target, ambient context, and evidence. ReferenceRequest carries the referrer and referenced object separately. PublicationAdmissionRequest carries source, resource, audience, context, and evidence without publisher policy. DisclosureRequest adds the disclosed field set. SealedExecutionRequest keeps the sealed resource, operation, and execution context distinct."
-
+// Typed authorization request profiles over the single std.access kernel. A profile is an exact product and a projection to AccessRequest; none declares an admitted/refused carrier or an allow/deny fold. EffectRequest carries an actor, effect, target, ambient context, and evidence. ReferenceRequest carries the referrer and referenced object separately. PublicationAdmissionRequest carries source, resource, audience, context, and evidence without publisher policy. DisclosureRequest adds the disclosed field set. SealedExecutionRequest keeps the sealed resource, operation, and execution context distinct.
 type AudienceSet<P>
   = UniversalAudience
   | EnumeratedAudience { members: Set<P> }

@@ -37,8 +37,7 @@ data x86_64_abi_pdf_identity: CitedRepresentationIdentity = cited_representation
   byte_domain: RawResponseBody,
 )
 
-data x86_64_abi_pdf_draft_edition_note: String = "Document cover: Draft Version 0.99.6, dated July 2 2012 — NOT the filename 0.99. VersionIdentity carries the edition string 0.99.6."
-
+// Document cover: Draft Version 0.99.6, dated July 2 2012 — NOT the filename 0.99. VersionIdentity carries the edition string 0.99.6.
 data x86_64_abi_pdf_draft_version: VersionIdentity = "0.99.6" as VersionIdentity
 
 data x86_64_abi_application_pdf: MediaType = MediaType {

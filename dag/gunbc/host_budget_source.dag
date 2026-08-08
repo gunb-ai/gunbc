@@ -114,8 +114,7 @@ fn host_budget_source_admissible_on_kernel(s: HostBudgetSource, kernel: KernelFa
   }
 }
 
-data host_budget_source_for_kernel_note: String = "The source a host SHOULD read follows from its kernel, and stating it as a total match is what stops a platform being silently unserved. Darwin reads sysctl; the procfs kernels read their cgroup or meminfo path and are represented here by their weakest arm, MemTotal, because which of the stronger arms applies depends on runtime facts (is there a cgroup, is there an override) that no static row can answer. WindowsNt has no modeled source at all and therefore no arm — it returns none rather than a guess, and a consumer that reaches it refuses. That is the honest state: nobody has modeled Windows memory facts, and inventing one here would be the fabrication this whole change removes."
-
+// The source a host SHOULD read follows from its kernel, and stating it as a total match is what stops a platform being silently unserved. Darwin reads sysctl; the procfs kernels read their cgroup or meminfo path and are represented here by their weakest arm, MemTotal, because which of the stronger arms applies depends on runtime facts (is there a cgroup, is there an override) that no static row can answer. WindowsNt has no modeled source at all and therefore no arm — it returns none rather than a guess, and a consumer that reaches it refuses. That is the honest state: nobody has modeled Windows memory facts, and inventing one here would be the fabrication this whole change removes.
 fn host_budget_source_for_kernel(kernel: KernelFamily) -> HostBudgetSource? {
   match kernel {
     Darwin => Present { value: BudgetSourceDarwinPhysicalMemory }

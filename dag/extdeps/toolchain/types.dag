@@ -15,8 +15,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 type Architecture = X86_64 | X86 | Aarch64 | Arm | Armv7 | Mips | Mipsel | Mips64 | Mips64el | Riscv64 | Wasm32
 
-data architecture_diagnostic_name_note: String = "A total variant name for Architecture, for DIAGNOSTICS ONLY — a refusal that cannot say which architecture it refused is typed but not located (§5). Deliberately NOT a wire label: every upstream that names architectures does so differently (debian arm64, Go GOARCH, sccache's musl tarball token, grub EFI filenames), and each of those already lives with its own upstream as a partial projection that REFUSES the arches that upstream does not publish. Reusing this name as a wire label would re-coin those authorities and defeat their fail-closed arms, so it is named for its purpose."
-
+// A total variant name for Architecture, for DIAGNOSTICS ONLY — a refusal that cannot say which architecture it refused is typed but not located (§5). Deliberately NOT a wire label: every upstream that names architectures does so differently (debian arm64, Go GOARCH, sccache's musl tarball token, grub EFI filenames), and each of those already lives with its own upstream as a partial projection that REFUSES the arches that upstream does not publish. Reusing this name as a wire label would re-coin those authorities and defeat their fail-closed arms, so it is named for its purpose.
 fn architecture_diagnostic_name(arch: Architecture) -> NonEmptyStr {
   match arch {
     X86_64 => "X86_64" as NonEmptyStr

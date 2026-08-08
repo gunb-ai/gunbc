@@ -45,8 +45,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data test_module_hygiene_hand_rust_equivalence_note: String = "Pins gunbc.test_module_hygiene.orphan_plain_names_or_refuse against synthetic ModuleSurface fixtures matching cli_run/test_module_hygiene_bridge.rs equivalence tests (parse→surface→producer). Seed producer deleted; bridge is transport-only. RED: plain_data_not_enrollment must stay refused."
-
+// Pins gunbc.test_module_hygiene.orphan_plain_names_or_refuse against synthetic ModuleSurface fixtures matching cli_run/test_module_hygiene_bridge.rs equivalence tests (parse→surface→producer). Seed producer deleted; bridge is transport-only. RED: plain_data_not_enrollment must stay refused.
 fn orphans_are(module: ModuleSurface, expected: List<String>) -> Bool {
   match orphan_plain_names_or_refuse(module: module) {
     Orphans { names: names } => names_set_eq(left: names, right: expected)
@@ -186,8 +185,7 @@ test fn test_module_hygiene_equivalence_unparsable_refuse_discriminator_holds() 
     )
 }
 
-data test_module_hygiene_red_plain_data_control_note: String = "RED control: if plain data were wrongly treated as enrollment, fixture_plain_data_not_enrollment would go green with zero orphans — keep the refuse countable."
-
+// RED control: if plain data were wrongly treated as enrollment, fixture_plain_data_not_enrollment would go green with zero orphans — keep the refuse countable.
 test fn test_module_hygiene_red_plain_data_must_not_green_demotion() -> Bool {
   match orphan_plain_names_or_refuse(module: fixture_plain_data_not_enrollment) {
     Orphans { names: names } => length(xs: names) > 0

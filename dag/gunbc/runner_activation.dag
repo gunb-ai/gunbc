@@ -156,8 +156,7 @@ fn runner_activate_command(admission: RunnerActivationAdmission) -> RunnerComman
   }
 }
 
-data activation_readiness_blind_widen_sketch_note: String = "RED-control fixture modeling the arm this module exists to delete: an activation builder that consumes the host admission and ignores cache readiness entirely. It is not hypothetical — it is a faithful copy of gunbc.runner_host_deploy's runner_enable_command as it stood on main, which is the path every host in the fleet was actually activated through, and therefore the path that produced srv1's stranded server, srv2's and srv3's runner-owned ones, and srv4's stale-socket trap. runner_activation_gate_accepts rejects it on exactly the inputs the fleet hit live."
-
+// RED-control fixture modeling the arm this module exists to delete: an activation builder that consumes the host admission and ignores cache readiness entirely. It is not hypothetical — it is a faithful copy of gunbc.runner_host_deploy's runner_enable_command as it stood on main, which is the path every host in the fleet was actually activated through, and therefore the path that produced srv1's stranded server, srv2's and srv3's runner-owned ones, and srv4's stale-socket trap. runner_activation_gate_accepts rejects it on exactly the inputs the fleet hit live.
 fn runner_activation_readiness_blind_widen_sketch(
   host_admission: RunnerHostAdmission,
 ) -> RunnerCommandOrRefusal {

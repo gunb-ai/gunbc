@@ -47,8 +47,7 @@ type HostNetworkDiagnosis
   | ConfiguredLinkPresent { interface: NonEmptyStr }
   | LinkStateUnobserved { interface: NonEmptyStr }
 
-data diagnosis_layer_note: String = "Four outcomes because each names a different layer and therefore a different owner. NetworkConfigAbsent is a MODELLING failure — the subsumption workflow did not give this host a network configuration, which is the gap the fleet plan now tracks. ConfiguredLinkAbsent is a PHYSICAL failure — the model did its job and the cable, switch port or PHY did not; nothing in software will fix it, and saying so precisely is what stops hours being spent on config. ConfiguredLinkPresent is healthy. LinkStateUnobserved refuses rather than guessing, because carrier is only knowable from the host and a fleet-level reader that could not reach the host must not report either of the decisive answers."
-
+// Four outcomes because each names a different layer and therefore a different owner. NetworkConfigAbsent is a MODELLING failure — the subsumption workflow did not give this host a network configuration, which is the gap the fleet plan now tracks. ConfiguredLinkAbsent is a PHYSICAL failure — the model did its job and the cable, switch port or PHY did not; nothing in software will fix it, and saying so precisely is what stops hours being spent on config. ConfiguredLinkPresent is healthy. LinkStateUnobserved refuses rather than guessing, because carrier is only knowable from the host and a fleet-level reader that could not reach the host must not report either of the decisive answers.
 fn diagnose_host_network(
   config: NetplanConfigFile?,
   observed: InterfaceObservation,
@@ -76,8 +75,7 @@ fn diagnose_host_network(
   }
 }
 
-data generator_state_answers_ownership_not_effect_note: String = "The generator's disposition answers exactly one question, and it is not whether the network works. It decides whether the netplan file is regenerated each boot or FROZEN — i.e. whether a hand edit survives. On an ISO-installed Ubuntu host the installer always disables cloud-init, so the file is always frozen and always hand-authoritative, which is useful to know before editing it and irrelevant to why an interface has no carrier. Keeping this on its own function rather than as a branch inside diagnose_host_network is the structural form of that separation."
-
+// The generator's disposition answers exactly one question, and it is not whether the network works. It decides whether the netplan file is regenerated each boot or FROZEN — i.e. whether a hand edit survives. On an ISO-installed Ubuntu host the installer always disables cloud-init, so the file is always frozen and always hand-authoritative, which is useful to know before editing it and irrelevant to why an interface has no carrier. Keeping this on its own function rather than as a branch inside diagnose_host_network is the structural form of that separation.
 fn netplan_file_ownership(d: CloudInitDisposition) -> CloudInitGeneratedFileState {
   cloud_init_generated_file_state(d: d)
 }
@@ -150,8 +148,7 @@ fn diagnosis_gate_accepts(d: HostNetworkDiagnosis, observed: InterfaceObservatio
 
 data network_axis_cell_note: String = "What makes this fold a MECHANISM rather than a description of a past incident: the network becomes a per-host axis on the same status matrix the swap-backing and toolchain-completeness axes sit on, with the same three parts — a per-host verdict, routed through the read-back independence criterion, and a COUNTED fleet tally of the hosts it cannot see. The count is the load-bearing part. There is no live producer for interface observations today, so every host answers UnknownRefused and the tally is the full fleet; that is a typed, located, countable deficit which RANKS for fixing, and it is the opposite of the absorbing fallback this lane keeps refusing (DESIGN §5 — a masked cost displaces nothing, so a deficit whose frequency is zero by construction never gets fixed). When a producer lands, the tally falls on its own and the fall is the receipt."
 
-data diagnosis_verdict_collapse_note: String = "Both decisive failures map to Drifted, and the layer they name is deliberately NOT carried on the verdict. The status cell answers one question — is this host's network converged — and the answer for a missing config and for a dead cable is the same 'no'; what differs is the remedy, and the remedy lives on HostNetworkDiagnosis, which the fold returns and which every consumer that needs to act reads instead of the cell. Collapsing them on the CELL is a projection; collapsing them in the FOLD would be the state-space conflation, and that is why diagnose_host_network keeps them apart. LinkStateUnobserved maps to UnknownRefused rather than to either decisive verdict, because 'I could not see the link' and 'the link is down' are the ⊤-as-ignorance / ⊤-as-answer pair §5 names."
-
+// Both decisive failures map to Drifted, and the layer they name is deliberately NOT carried on the verdict. The status cell answers one question — is this host's network converged — and the answer for a missing config and for a dead cable is the same 'no'; what differs is the remedy, and the remedy lives on HostNetworkDiagnosis, which the fold returns and which every consumer that needs to act reads instead of the cell. Collapsing them on the CELL is a projection; collapsing them in the FOLD would be the state-space conflation, and that is why diagnose_host_network keeps them apart. LinkStateUnobserved maps to UnknownRefused rather than to either decisive verdict, because 'I could not see the link' and 'the link is down' are the ⊤-as-ignorance / ⊤-as-answer pair §5 names.
 fn network_diagnosis_verdict(d: HostNetworkDiagnosis) -> ObservationVerdict {
   match d {
     ConfiguredLinkPresent { interface: _ } => Converged

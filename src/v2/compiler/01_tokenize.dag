@@ -417,8 +417,7 @@ fn lex_try_rules(rules: List<CompiledLexRule>, source: String) -> LexRuleApply {
   )
 }
 
-data line_prefix_state_note: String = "The walk carries `line_prefix_indent_only` and advances it with the raw text of EVERY consumed lexeme — token, trivia, and annotation alike — through the shared std.source_annotation authority. It is not a `has a semantic token appeared on this line` flag, and the difference is not cosmetic: a token lexeme may itself contain line feeds, so a grammar whose tokens span lines has line boundaries INSIDE tokens rather than only in trivia. Resetting on trivia alone misclassifies every annotation following such a token."
-
+// The walk carries `line_prefix_indent_only` and advances it with the raw text of EVERY consumed lexeme — token, trivia, and annotation alike — through the shared std.source_annotation authority. It is not a `has a semantic token appeared on this line` flag, and the difference is not cosmetic: a token lexeme may itself contain line feeds, so a grammar whose tokens span lines has line boundaries INSIDE tokens rather than only in trivia. Resetting on trivia alone misclassifies every annotation following such a token.
 type LexWalkAcc {
   remaining: String
   tokens: List<Token>
@@ -589,8 +588,7 @@ fn lex_walk_source_algebra(file: Symbol, rules: LexRuleSet) -> SourceFold<LexWal
   }
 }
 
-data lex_walk_artifact_projection_note: String = "lex_walk_artifact is the authored result; lex_walk is its SEMANTIC PROJECTION and is what every existing caller keeps using. The direction matters: the projection is derived from the artifact by dropping the annotation channel, never the reverse, so a semantic consumer cannot reach annotation text and an annotation-aware consumer does not have to re-lex. Both fold the same walk exactly once — this is one traversal read two ways, not two traversals (DESIGN 4c erasure boundary at the lexical layer, mirroring AuthoredParseArtifact at the parse layer)."
-
+// lex_walk_artifact is the authored result; lex_walk is its SEMANTIC PROJECTION and is what every existing caller keeps using. The direction matters: the projection is derived from the artifact by dropping the annotation channel, never the reverse, so a semantic consumer cannot reach annotation text and an annotation-aware consumer does not have to re-lex. Both fold the same walk exactly once — this is one traversal read two ways, not two traversals (DESIGN 4c erasure boundary at the lexical layer, mirroring AuthoredParseArtifact at the parse layer).
 fn lex_walk_artifact(source: String, file: Symbol, rules: LexRuleSet) -> Outcome<LexArtifact> {
   let result = fold_source(
     src: source,

@@ -6,8 +6,7 @@ import gunbc.cli_invoke { release_bin_rel_path }
 import std.types { FilePath, String }
 import v2.std.collection { List }
 
-data merge_admission_capture_transport_note: String = "The pre-walk capture transport is a typed argv invocation, not shell-as-string and not an ad-hoc executor command. claim_executor resolves this narrow transport entry, supplies the plan-authored source roots and claim identity, and evaluates this function. gunbc.WitnessBin.Run launches the already-built claim_batch child; the child alone resolves and evaluates capture_tested_subject, so address-space death structurally reclaims its evaluator arena before discovery. A nonzero child exit returns false and the executor reports a located pre-walk refusal before batch 1."
-
+// The pre-walk capture transport is a typed argv invocation, not shell-as-string and not an ad-hoc executor command. claim_executor resolves this narrow transport entry, supplies the plan-authored source roots and claim identity, and evaluates this function. gunbc.WitnessBin.Run launches the already-built claim_batch child; the child alone resolves and evaluates capture_tested_subject, so address-space death structurally reclaims its evaluator arena before discovery. A nonzero child exit returns false and the executor reports a located pre-walk refusal before batch 1.
 fn source_root_argv(roots: List<String>) -> List<String> {
   fold(roots, init: [], f: fn(args, root) {
     concat(args, ["--source-root", root])

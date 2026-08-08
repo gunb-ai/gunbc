@@ -2,8 +2,7 @@ module gunbc.publication_policy
 
 import std.types { Bool, FilePath, List, NonEmptyStr, String }
 
-data publication_policy_note: String = "Subtree-prefix publication policy: default WithholdPrivate; explicit SubtreePublishRule rows override by most-specific matching prefix; unknown top-level roots refuse at construction. Duplicate identical rules are idempotent; conflicting rules at the same prefix refuse at construction — never a projection-wide ambiguity at admission time."
-
+// Subtree-prefix publication policy: default WithholdPrivate; explicit SubtreePublishRule rows override by most-specific matching prefix; unknown top-level roots refuse at construction. Duplicate identical rules are idempotent; conflicting rules at the same prefix refuse at construction — never a projection-wide ambiguity at admission time.
 type PublicationDisposition
   = PublishPublic
   | WithholdPrivate

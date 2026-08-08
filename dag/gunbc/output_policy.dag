@@ -112,8 +112,7 @@ type ExpectedOutcome = ExpectSuccess | ExpectFailure | OutcomeIsData
 
 type ObservedOutcome = ObservedSuccess | ObservedFailure { exit: Int }
 
-data stream_disposition_distinct_from_output_decision_note: String = "StreamDisposition is NOT a second spelling of OutputDecision (DESIGN 3 — the nicknaming check was run before minting it). They grade different payloads with different obligations: OutputDecision grades a trace LINE this repo authored (Condensed dims and truncates it to shell_trace_summary_max_columns), while StreamDisposition grades a captured SUBJECT stream this repo did not author (SummarizeCounts prints byte counts INSTEAD of content, and SurfaceContent carries the neutralization obligation a rendered line never needs). The third arm is StreamSuppressed rather than a reused Suppressed only because variant names share one namespace here; it is the same grade over the other payload."
-
+// StreamDisposition is NOT a second spelling of OutputDecision (DESIGN 3 — the nicknaming check was run before minting it). They grade different payloads with different obligations: OutputDecision grades a trace LINE this repo authored (Condensed dims and truncates it to shell_trace_summary_max_columns), while StreamDisposition grades a captured SUBJECT stream this repo did not author (SummarizeCounts prints byte counts INSTEAD of content, and SurfaceContent carries the neutralization obligation a rendered line never needs). The third arm is StreamSuppressed rather than a reused Suppressed only because variant names share one namespace here; it is the same grade over the other payload.
 type StreamDisposition = SurfaceContent | SummarizeCounts | StreamSuppressed
 
 fn observed_outcome_from_exit(exit: Int) -> ObservedOutcome {
@@ -164,8 +163,7 @@ fn effect_stream_disposition(
   }
 }
 
-data surface_effect_stream_sole_producer_note: String = "This is the ONLY producer of surfaced subject text, and it neutralizes on the SurfaceContent arm. That is what makes neutralization a property of the arm rather than a caller's duty: there is no route by which un-neutralized subject text reaches a log, so no caller can forget it and no reviewer has to check (DESIGN 5 — the bad state is unwritable, not caught after the fact). A Bool field on the arm would have been the validation shape instead: it can be set false at a call site, which is precisely the escape hatch construction removes."
-
+// This is the ONLY producer of surfaced subject text, and it neutralizes on the SurfaceContent arm. That is what makes neutralization a property of the arm rather than a caller's duty: there is no route by which un-neutralized subject text reaches a log, so no caller can forget it and no reviewer has to check (DESIGN 5 — the bad state is unwritable, not caught after the fact). A Bool field on the arm would have been the validation shape instead: it can be set false at a call site, which is precisely the escape hatch construction removes.
 fn surface_effect_stream(disposition: StreamDisposition, text: String) -> String? {
   match disposition {
     SurfaceContent => Present { value: neutralize_workflow_commands(text: text) }

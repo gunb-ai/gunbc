@@ -83,13 +83,21 @@ pub use crate::v1_compiler_infer_items::{inferred_to_outputs, item_kind};
 pub use crate::v1_compiler_infer_items::{
     ItemInfo, ItemKind, ModuleInterface, ResolvedGraph, TypedGraph, TypedModule,
 };
-pub use crate::v1_compiler_infer_lookup::KnownMethodResolution;
+use crate::v1_compiler_infer_lookup::ConstructorDeclarationLookup::{
+    AdmissionBearingDeclarationUnavailable, ExactConstructorDeclaration,
+    NotAdmissionBearingReference,
+};
+use crate::v1_compiler_infer_lookup::DeclarationLookupFailure::DeclarationNotIndexedAtQualifiedName;
 pub use crate::v1_compiler_infer_lookup::{
     field_summary_for_type, func_decl_binding_for_call, func_sig_if_resolved,
     global_bare_callable_node, lookup_coproduct_common_field_node, lookup_field_type_node,
     lookup_func_sig, lookup_in_scope, lookup_structural_method, map_key_type_in_env,
     map_value_type_in_env, product_field_result_type, resolve_known_method_node,
     resolve_method_receiver_type, resolve_scrutinee_type_node, set_element_type_in_env,
+};
+pub use crate::v1_compiler_infer_lookup::{
+    ConstructorDeclarationLookup, DeclarationLookupFailure, ExactDeclarationIdentity,
+    KnownMethodResolution,
 };
 pub use crate::v1_compiler_infer_method::{
     builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type,
@@ -113,7 +121,7 @@ pub use crate::v1_compiler_infer_service::{
 };
 pub use crate::v1_compiler_infer_service::{OpEntry, ServiceMethodResult, UniqueAccum};
 use crate::v1_compiler_infer_sigs::FuncSigLookup::{
-    FuncSigAmbiguous, FuncSigCallerNotAdmitted, FuncSigResolved, FuncSigUnresolved,
+    FuncSigAmbiguous, FuncSigResolved, FuncSigUnresolved,
 };
 pub use crate::v1_compiler_infer_sigs::{flatten_parent_envs, resolve_func_sigs};
 pub use crate::v1_compiler_infer_sigs::{
@@ -1029,6 +1037,18 @@ pub fn caller_decl_coords(scope: Rc<InferScope>) -> Option<Rc<DeclRefCoords>> {
     }
 }
 
+pub fn declaration_lookup_failure_label(cause: Rc<DeclarationLookupFailure>) -> String {
+    match (*cause.clone()).clone() {
+        DeclarationLookupFailure::DeclarationNotIndexedAtQualifiedName {
+            qualified_name: qn,
+            ..
+        } => v1_rt::concat(
+            v1_rt::concat("no declaration is indexed at '".to_string(), qn.clone()),
+            "'".to_string(),
+        ),
+    }
+}
+
 pub fn constructor_call_admission_diags(
     callee_name: String,
     scope: Rc<InferScope>,
@@ -1037,69 +1057,39 @@ pub fn constructor_call_admission_diags(
     if !constructor_reference_admission_enforced_now() {
         Rc::new(vec![])
     } else {
-        match func_decl_binding_for_call(
-            scope.func_env.clone(),
-            scope.type_env.clone(),
-            callee_name.clone(),
-        ) {
-            Some(bd) => {
-                match fn_admit_callers(
-                    bd.node.clone(),
-                    scope.type_env.clone().source_indices.clone(),
-                ) {
-                    Some(permitted) => {
-                        if (bd.owner_module_path.clone() == scope.module_name.clone()) {
-                            Rc::new(vec![])
-                        } else {
-                            match caller_decl_coords(scope.clone()) {
-                                Some(caller) => {
-                                    if {
-                                        let mut __found = false;
-                                        for p in permitted.clone().iter().cloned() {
-                                            if decl_ref_coords_equal(p.clone(), caller.clone()) {
-                                                __found = true;
-                                                break;
-                                            }
-                                        }
-                                        __found
-                                    } {
-                                        Rc::new(vec![])
-                                    } else {
-                                        Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::ConstructorCallAdmissionRefused {
-    constructor_module_path: bd.owner_module_path.clone(),
-    constructor_decl_name: callee_name.clone(),
+        match (*func_decl_binding_for_call(scope.func_env.clone(), scope.type_env.clone(), callee_name.clone())).clone() {
+    ConstructorDeclarationLookup::ExactConstructorDeclaration { identity, declaration: declaration_node, .. } => match fn_admit_callers(declaration_node.clone(), scope.type_env.clone().source_indices.clone()) {
+    Some(permitted) => if (identity.owner_module_path.clone() == scope.module_name.clone()) {
+            Rc::new(vec![])
+        } else {
+            match caller_decl_coords(scope.clone()) {
+    Some(caller) => if { let mut __found = false; for p in permitted.clone().iter().cloned() { if decl_ref_coords_equal(p.clone(), caller.clone()) { __found = true; break; } } __found } {
+                Rc::new(vec![])
+            } else {
+                Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::ConstructorCallAdmissionRefused {
+    constructor_module_path: identity.owner_module_path.clone(),
+    constructor_decl_name: identity.decl_name.clone(),
     caller_module_path: caller.module_path.clone(),
     caller_decl_name: caller.decl_name.clone(),
     permitted_callers: Rc::new({ let mut __result = Vec::new(); for p in permitted.clone().iter().cloned() { __result.push(decl_ref_coords_label(p.clone())); } __result }),
     span: span.clone(),
 }), scope.module_name.clone())])
-                                    }
-                                }
-                                None => Rc::new(vec![make_error_node(
-                                    Rc::new(CompilerDiagnostic::ConstructorCallAdmissionRefused {
-                                        constructor_module_path: bd.owner_module_path.clone(),
-                                        constructor_decl_name: callee_name.clone(),
-                                        caller_module_path: scope.module_name.clone(),
-                                        caller_decl_name: "<unknown>".to_string(),
-                                        permitted_callers: Rc::new({
-                                            let mut __result = Vec::new();
-                                            for p in permitted.clone().iter().cloned() {
-                                                __result.push(decl_ref_coords_label(p.clone()));
-                                            }
-                                            __result
-                                        }),
-                                        span: span.clone(),
-                                    }),
-                                    scope.module_name.clone(),
-                                )]),
-                            }
-                        }
-                    }
-                    None => Rc::new(vec![]),
-                }
-            }
-            None => Rc::new(vec![]),
-        }
+            },
+    None => Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::ConstructorCallAdmissionRefused {
+    constructor_module_path: identity.owner_module_path.clone(),
+    constructor_decl_name: identity.decl_name.clone(),
+    caller_module_path: scope.module_name.clone(),
+    caller_decl_name: "<unknown>".to_string(),
+    permitted_callers: Rc::new({ let mut __result = Vec::new(); for p in permitted.clone().iter().cloned() { __result.push(decl_ref_coords_label(p.clone())); } __result }),
+    span: span.clone(),
+}), scope.module_name.clone())]),
+}
+        },
+    None => Rc::new(vec![]),
+},
+    ConstructorDeclarationLookup::NotAdmissionBearingReference => Rc::new(vec![]),
+    ConstructorDeclarationLookup::AdmissionBearingDeclarationUnavailable { identity, cause, .. } => Rc::new(vec![inference_error(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("constructor reference admission cannot establish the declaration identity of '".to_string(), identity.decl_name.clone()), "' owned by '".to_string()), identity.owner_module_path.clone()), "': ".to_string()), declaration_lookup_failure_label(cause.clone())), " -- refusing rather than reading admission facts off a resolved value node".to_string()), span.clone(), scope.module_name.clone())]),
+}
     }
 }
 
@@ -1125,6 +1115,22 @@ pub fn constructor_reference_admission_refusal(
             span.clone(),
         ),
     })
+}
+
+pub fn constructor_reference_admission_unshadowed(
+    callee_name: String,
+    span: Rc<SourceSpan>,
+    scope: Rc<InferScope>,
+) -> Option<Rc<InferResult>> {
+    if v1_rt::map_has(&scope.body_locals.clone(), callee_name.clone()) {
+        None
+    } else {
+        constructor_reference_admission_early_refusal(
+            callee_name.clone(),
+            span.clone(),
+            scope.clone(),
+        )
+    }
 }
 
 pub fn constructor_reference_admission_early_refusal(
@@ -5078,30 +5084,24 @@ pub fn infer_expr_body(
             let name =
                 expr_var_name_at(texpr.clone(), scope.type_env.clone().source_indices.clone());
             let span = texpr.span.clone();
-            match v1_rt::map_get(&scope.locals.clone(), name.clone()) {
-                Some(binding) => {
-                    let scope_parent = lookup_variant_parent_enum(scope.clone(), name.clone());
-                    match scope_parent.clone() {
-                        Some(scope_enum) => ok_infer(make_named_expr_node(
-                            name.clone(),
-                            Rc::new(ExprData::ExprVar {
-                                binding_kind: Some(Rc::new(VarBindingKind::VariantValueBinding {
-                                    parent_enum: scope_enum.clone(),
-                                })),
-                            }),
-                            Rc::new(vec![]),
-                            Some(Rc::new(InferredNode::Resolved {
-                                node: binding.resolved.clone(),
-                            })),
-                            span.clone(),
-                            span.clone(),
-                        )),
-                        None => {
-                            let binding_kind = infer_var_binding_kind(scope.clone(), name.clone());
-                            ok_infer(make_named_expr_node(
+            match constructor_reference_admission_unshadowed(
+                name.clone(),
+                span.clone(),
+                scope.clone(),
+            ) {
+                Some(refusal) => refusal.clone(),
+                None => match v1_rt::map_get(&scope.locals.clone(), name.clone()) {
+                    Some(binding) => {
+                        let scope_parent = lookup_variant_parent_enum(scope.clone(), name.clone());
+                        match scope_parent.clone() {
+                            Some(scope_enum) => ok_infer(make_named_expr_node(
                                 name.clone(),
                                 Rc::new(ExprData::ExprVar {
-                                    binding_kind: Some(binding_kind.clone()),
+                                    binding_kind: Some(Rc::new(
+                                        VarBindingKind::VariantValueBinding {
+                                            parent_enum: scope_enum.clone(),
+                                        },
+                                    )),
                                 }),
                                 Rc::new(vec![]),
                                 Some(Rc::new(InferredNode::Resolved {
@@ -5109,26 +5109,35 @@ pub fn infer_expr_body(
                                 })),
                                 span.clone(),
                                 span.clone(),
-                            ))
+                            )),
+                            None => {
+                                let binding_kind =
+                                    infer_var_binding_kind(scope.clone(), name.clone());
+                                ok_infer(make_named_expr_node(
+                                    name.clone(),
+                                    Rc::new(ExprData::ExprVar {
+                                        binding_kind: Some(binding_kind.clone()),
+                                    }),
+                                    Rc::new(vec![]),
+                                    Some(Rc::new(InferredNode::Resolved {
+                                        node: binding.resolved.clone(),
+                                    })),
+                                    span.clone(),
+                                    span.clone(),
+                                ))
+                            }
                         }
                     }
-                }
-                None => match (*lookup_func_sig(
-                    scope.func_env.clone(),
-                    scope.type_env.clone(),
-                    name.clone(),
-                ))
-                .clone()
-                {
-                    FuncSigLookup::FuncSigResolved { sig: fsig, .. } => {
-                        match ((fsig.params.clone().len() as i64) == 0) {
-                            true => match constructor_reference_admission_early_refusal(
-                                name.clone(),
-                                span.clone(),
-                                scope.clone(),
-                            ) {
-                                Some(refusal) => refusal.clone(),
-                                None => ok_infer(make_named_expr_node(
+                    None => match (*lookup_func_sig(
+                        scope.func_env.clone(),
+                        scope.type_env.clone(),
+                        name.clone(),
+                    ))
+                    .clone()
+                    {
+                        FuncSigLookup::FuncSigResolved { sig: fsig, .. } => {
+                            match ((fsig.params.clone().len() as i64) == 0) {
+                                true => ok_infer(make_named_expr_node(
                                     name.clone(),
                                     Rc::new(ExprData::ExprCall {
                                         call_semantics: Some(CallSemantics::PlainCallSemantics),
@@ -5141,98 +5150,48 @@ pub fn infer_expr_body(
                                     span.clone(),
                                     span.clone(),
                                 )),
-                            },
-                            false => ok_infer(make_named_expr_node(
-                                name.clone(),
-                                Rc::new(ExprData::ExprVar {
-                                    binding_kind: Some(Rc::new(
-                                        VarBindingKind::FunctionValueBinding,
-                                    )),
-                                }),
-                                Rc::new(vec![]),
-                                Some(Rc::new(InferredNode::Resolved {
-                                    node: resolved_callable_type(
-                                        fsig.params.clone(),
-                                        fsig.inferred.clone(),
-                                    ),
-                                })),
-                                span.clone(),
-                                span.clone(),
-                            )),
+                                false => ok_infer(make_named_expr_node(
+                                    name.clone(),
+                                    Rc::new(ExprData::ExprVar {
+                                        binding_kind: Some(Rc::new(
+                                            VarBindingKind::FunctionValueBinding,
+                                        )),
+                                    }),
+                                    Rc::new(vec![]),
+                                    Some(Rc::new(InferredNode::Resolved {
+                                        node: resolved_callable_type(
+                                            fsig.params.clone(),
+                                            fsig.inferred.clone(),
+                                        ),
+                                    })),
+                                    span.clone(),
+                                    span.clone(),
+                                )),
+                            }
                         }
-                    }
-                    FuncSigLookup::FuncSigAmbiguous {
-                        candidates: ambiguous_fn_candidates,
-                        ..
-                    } => ambiguous_reference_refusal(
-                        name.clone(),
-                        ambiguous_fn_candidates.clone(),
-                        span.clone(),
-                        scope.clone(),
-                    ),
-                    FuncSigLookup::FuncSigCallerNotAdmitted {
-                        function_name: fname,
-                        owner_module_path: om,
-                        admitted: adm,
-                        ..
-                    } => Rc::new(InferResult {
-                        typed: semantic_expr_error_node(
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    "constructor call admission refused for '".to_string(),
-                                    fname.clone(),
-                                ),
-                                "'".to_string(),
-                            ),
+                        FuncSigLookup::FuncSigAmbiguous {
+                            candidates: ambiguous_fn_candidates,
+                            ..
+                        } => ambiguous_reference_refusal(
+                            name.clone(),
+                            ambiguous_fn_candidates.clone(),
                             span.clone(),
+                            scope.clone(),
                         ),
-                        diagnostics: Rc::new(vec![make_error_node(
-                            Rc::new(CompilerDiagnostic::ConstructorCallAdmissionRefused {
-                                constructor_module_path: om.clone(),
-                                constructor_decl_name: fname.clone(),
-                                caller_module_path: scope.module_name.clone(),
-                                caller_decl_name: if (scope.caller_decl_name.clone()
-                                    == "".to_string())
-                                {
-                                    "<unknown>".to_string()
-                                } else {
-                                    scope.caller_decl_name.clone()
-                                },
-                                permitted_callers: adm.clone(),
-                                span: span.clone(),
-                            }),
-                            scope.module_name.clone(),
-                        )]),
-                    }),
-                    FuncSigLookup::FuncSigUnresolved => {
-                        match lookup_binding_by_name(scope.type_env.clone(), name.clone()) {
-                            Some(gbinding) => {
-                                let scope_parent =
-                                    lookup_variant_parent_enum(scope.clone(), name.clone());
-                                match scope_parent.clone() {
-                                    Some(scope_enum) => ok_infer(make_named_expr_node(
-                                        name.clone(),
-                                        Rc::new(ExprData::ExprVar {
-                                            binding_kind: Some(Rc::new(
-                                                VarBindingKind::VariantValueBinding {
-                                                    parent_enum: scope_enum.clone(),
-                                                },
-                                            )),
-                                        }),
-                                        Rc::new(vec![]),
-                                        Some(Rc::new(InferredNode::Resolved {
-                                            node: gbinding.resolved.clone(),
-                                        })),
-                                        span.clone(),
-                                        span.clone(),
-                                    )),
-                                    None => {
-                                        let binding_kind =
-                                            infer_var_binding_kind(scope.clone(), name.clone());
-                                        ok_infer(make_named_expr_node(
+                        FuncSigLookup::FuncSigUnresolved => {
+                            match lookup_binding_by_name(scope.type_env.clone(), name.clone()) {
+                                Some(gbinding) => {
+                                    let scope_parent =
+                                        lookup_variant_parent_enum(scope.clone(), name.clone());
+                                    match scope_parent.clone() {
+                                        Some(scope_enum) => ok_infer(make_named_expr_node(
                                             name.clone(),
                                             Rc::new(ExprData::ExprVar {
-                                                binding_kind: Some(binding_kind.clone()),
+                                                binding_kind: Some(Rc::new(
+                                                    VarBindingKind::VariantValueBinding {
+                                                        parent_enum: scope_enum.clone(),
+                                                    },
+                                                )),
                                             }),
                                             Rc::new(vec![]),
                                             Some(Rc::new(InferredNode::Resolved {
@@ -5240,100 +5199,119 @@ pub fn infer_expr_body(
                                             })),
                                             span.clone(),
                                             span.clone(),
-                                        ))
-                                    }
-                                }
-                            }
-                            None => {
-                                let expected_variant_enum = match expected.clone() {
-                                    Some(exp) => {
-                                        let exp_enum = expand_scrut_type_for_variant_lookup(
-                                            exp.clone(),
-                                            scope.type_env.clone(),
-                                        );
-                                        match find_child_named(
-                                            exp_enum.clone(),
-                                            name.clone(),
-                                            scope.type_env.clone().source_indices.clone(),
-                                        ) {
-                                            Some(_) => Some(exp_enum.clone()),
-                                            None => None,
+                                        )),
+                                        None => {
+                                            let binding_kind =
+                                                infer_var_binding_kind(scope.clone(), name.clone());
+                                            ok_infer(make_named_expr_node(
+                                                name.clone(),
+                                                Rc::new(ExprData::ExprVar {
+                                                    binding_kind: Some(binding_kind.clone()),
+                                                }),
+                                                Rc::new(vec![]),
+                                                Some(Rc::new(InferredNode::Resolved {
+                                                    node: gbinding.resolved.clone(),
+                                                })),
+                                                span.clone(),
+                                                span.clone(),
+                                            ))
                                         }
                                     }
-                                    None => None,
-                                };
-                                match expected_variant_enum.clone() {
-                                    Some(exp_enum) => ok_infer(make_named_expr_node(
-                                        name.clone(),
-                                        Rc::new(ExprData::ExprVar {
-                                            binding_kind: Some(Rc::new(
-                                                VarBindingKind::VariantValueBinding {
-                                                    parent_enum: authored_name_at(
-                                                        scope
-                                                            .type_env
-                                                            .clone()
-                                                            .source_indices
-                                                            .clone(),
-                                                        exp_enum.clone(),
-                                                    ),
-                                                },
-                                            )),
-                                        }),
-                                        Rc::new(vec![]),
-                                        Some(Rc::new(InferredNode::Resolved {
-                                            node: exp_enum.clone(),
-                                        })),
-                                        span.clone(),
-                                        span.clone(),
-                                    )),
-                                    None => {
-                                        let var_ambiguity_cands =
-                                            global_bare_strict_ambiguity_candidates(
+                                }
+                                None => {
+                                    let expected_variant_enum = match expected.clone() {
+                                        Some(exp) => {
+                                            let exp_enum = expand_scrut_type_for_variant_lookup(
+                                                exp.clone(),
                                                 scope.type_env.clone(),
-                                                name.clone(),
                                             );
-                                        if ((var_ambiguity_cands.clone().len() as i64) > 0) {
-                                            ambiguous_reference_refusal(
+                                            match find_child_named(
+                                                exp_enum.clone(),
                                                 name.clone(),
-                                                var_ambiguity_cands.clone(),
-                                                span.clone(),
-                                                scope.clone(),
-                                            )
-                                        } else {
-                                            {
-                                                let err_texpr = make_named_expr_node(
-                                                    name.clone(),
-                                                    Rc::new(ExprData::ExprVar {
-                                                        binding_kind: None,
-                                                    }),
-                                                    Rc::new(vec![]),
-                                                    Some(Rc::new(InferredNode::Resolved {
-                                                        node: error_type(),
-                                                    })),
-                                                    span.clone(),
-                                                    span.clone(),
-                                                );
-                                                Rc::new(InferResult {
-                                                    typed: err_texpr.clone(),
-                                                    diagnostics: Rc::new(vec![inference_error(
-                                                        v1_rt::concat(
-                                                            v1_rt::concat(
-                                                                "undefined variable '".to_string(),
-                                                                name.clone(),
-                                                            ),
-                                                            "'".to_string(),
+                                                scope.type_env.clone().source_indices.clone(),
+                                            ) {
+                                                Some(_) => Some(exp_enum.clone()),
+                                                None => None,
+                                            }
+                                        }
+                                        None => None,
+                                    };
+                                    match expected_variant_enum.clone() {
+                                        Some(exp_enum) => ok_infer(make_named_expr_node(
+                                            name.clone(),
+                                            Rc::new(ExprData::ExprVar {
+                                                binding_kind: Some(Rc::new(
+                                                    VarBindingKind::VariantValueBinding {
+                                                        parent_enum: authored_name_at(
+                                                            scope
+                                                                .type_env
+                                                                .clone()
+                                                                .source_indices
+                                                                .clone(),
+                                                            exp_enum.clone(),
                                                         ),
+                                                    },
+                                                )),
+                                            }),
+                                            Rc::new(vec![]),
+                                            Some(Rc::new(InferredNode::Resolved {
+                                                node: exp_enum.clone(),
+                                            })),
+                                            span.clone(),
+                                            span.clone(),
+                                        )),
+                                        None => {
+                                            let var_ambiguity_cands =
+                                                global_bare_strict_ambiguity_candidates(
+                                                    scope.type_env.clone(),
+                                                    name.clone(),
+                                                );
+                                            if ((var_ambiguity_cands.clone().len() as i64) > 0) {
+                                                ambiguous_reference_refusal(
+                                                    name.clone(),
+                                                    var_ambiguity_cands.clone(),
+                                                    span.clone(),
+                                                    scope.clone(),
+                                                )
+                                            } else {
+                                                {
+                                                    let err_texpr = make_named_expr_node(
+                                                        name.clone(),
+                                                        Rc::new(ExprData::ExprVar {
+                                                            binding_kind: None,
+                                                        }),
+                                                        Rc::new(vec![]),
+                                                        Some(Rc::new(InferredNode::Resolved {
+                                                            node: error_type(),
+                                                        })),
                                                         span.clone(),
-                                                        scope.module_name.clone(),
-                                                    )]),
-                                                })
+                                                        span.clone(),
+                                                    );
+                                                    Rc::new(InferResult {
+                                                        typed: err_texpr.clone(),
+                                                        diagnostics: Rc::new(vec![
+                                                            inference_error(
+                                                                v1_rt::concat(
+                                                                    v1_rt::concat(
+                                                                        "undefined variable '"
+                                                                            .to_string(),
+                                                                        name.clone(),
+                                                                    ),
+                                                                    "'".to_string(),
+                                                                ),
+                                                                span.clone(),
+                                                                scope.module_name.clone(),
+                                                            ),
+                                                        ]),
+                                                    })
+                                                }
                                             }
                                         }
                                     }
                                 }
                             }
                         }
-                    }
+                    },
                 },
             }
         }
@@ -5556,41 +5534,8 @@ pub fn infer_expr_body(
                     span.clone(),
                     scope.clone(),
                 ),
-                FuncSigLookup::FuncSigCallerNotAdmitted {
-                    function_name: fname,
-                    owner_module_path: om,
-                    admitted: adm,
-                    ..
-                } => Rc::new(InferResult {
-                    typed: semantic_expr_error_node(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                "constructor call admission refused for '".to_string(),
-                                fname.clone(),
-                            ),
-                            "'".to_string(),
-                        ),
-                        span.clone(),
-                    ),
-                    diagnostics: Rc::new(vec![make_error_node(
-                        Rc::new(CompilerDiagnostic::ConstructorCallAdmissionRefused {
-                            constructor_module_path: om.clone(),
-                            constructor_decl_name: fname.clone(),
-                            caller_module_path: scope.module_name.clone(),
-                            caller_decl_name: if (scope.caller_decl_name.clone() == "".to_string())
-                            {
-                                "<unknown>".to_string()
-                            } else {
-                                scope.caller_decl_name.clone()
-                            },
-                            permitted_callers: adm.clone(),
-                            span: span.clone(),
-                        }),
-                        scope.module_name.clone(),
-                    )]),
-                }),
                 _ => {
-                    match constructor_reference_admission_early_refusal(
+                    match constructor_reference_admission_unshadowed(
                         func_name.clone(),
                         span.clone(),
                         scope.clone(),

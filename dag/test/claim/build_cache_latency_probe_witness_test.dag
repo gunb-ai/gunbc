@@ -76,8 +76,7 @@ test fn median_of_empty_population_is_absent() -> Bool {
   }
 }
 
-data unmeasured_is_not_converged_note: String = "A host with no samples must NOT read as converged, and this is the arm most likely to be got wrong by a fold that treats 'nothing exceeded the threshold' as passing. A quarantined host, or one whose every build failed, produces an empty population — and reporting it healthy is precisely how a host drops out of the fleet's attention while broken. Refusal is the only honest verdict on no evidence, and it is asserted as NOT-diverged AND NOT-converged, because a check for either alone would be satisfied by the wrong arm."
-
+// A host with no samples must NOT read as converged, and this is the arm most likely to be got wrong by a fold that treats 'nothing exceeded the threshold' as passing. A quarantined host, or one whose every build failed, produces an empty population — and reporting it healthy is precisely how a host drops out of the fleet's attention while broken. Refusal is the only honest verdict on no evidence, and it is asserted as NOT-diverged AND NOT-converged, because a check for either alone would be satisfied by the wrong arm.
 test fn empty_population_refuses_rather_than_passing() -> Bool {
   let v = build_latency_verdict(
     p: empty_population,
