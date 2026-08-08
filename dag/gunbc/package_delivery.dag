@@ -165,18 +165,6 @@ fn observe_package_archive_at_path(
   }
 }
 
-fn archive_basename_from_locator(locator: NonEmptyStr) -> NonEmptyStr {
-  match split(s: locator as String, delimiter: "/") |> last {
-    Present { value: name } =>
-      if name == "" {
-        "archive.tgz" as NonEmptyStr
-      } else {
-        name as NonEmptyStr
-      }
-    Absent => "archive.tgz" as NonEmptyStr
-  }
-}
-
 data codex_npm_registry_https_prefix: String = "https://registry.npmjs.org/"
 
 type CodexRegistryLocatorAdmission
