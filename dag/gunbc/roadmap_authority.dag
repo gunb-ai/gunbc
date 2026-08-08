@@ -2101,6 +2101,21 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The counted receipts, the split by cause, and the named condition under which this timer is deleted."
       )
     ),
+    active(
+      identity: "rn_HYV4E84MRC1MJ73EDJZYXP89S8",
+      id: "fleet-spark-host-enrollment",
+      owner: "fleet",
+      path: "dag/gunbc/dgx_spark_procurement.dag",
+      t: fields(
+        headline: "Turn the two Spark machines from hand-managed boxes into enrolled fleet members",
+        boundary: "srv5 and srv6 get endpoint rows and compute-host enrollment, with identity convergence and network reachability riding the installed fleet key. The endpoint is DERIVED from the cited reservation and slot-assignment rows the procurement authority already carries — re-typing the address literal into a second row is the §3 fork, and because procurement already imports the network intent, the join lives DOWNSTREAM of both authorities as a projection, never as a reverse import or a second host-identity authority. Enrollment carries an inference envelope for the GB10 class, not a hardware-thread capacity row borrowed from the runner hosts.",
+        displaced_cost: "Two machines are reserved, physically bound, and answerable by nobody: no fleet row knows they exist, so their state is whatever hands left there. Every later serving step — runtime, model revision, auth — lands on enrollment or lands on hand management; and the endpoint-derivation question already burned a session against an import cycle because the projection layer this row creates did not exist.",
+        first_slice: "The endpoint rows and ComputeHost enrollment as the downstream projection joining procurement identity and network allocation, then identity converge and reach over the fleet key with both hosts read back as members.",
+        red_control: "An endpoint row that re-types the reserved address literal refuses against the derivation. A second host-identity authority or a reverse import into the network intent refuses. An enrollment claiming runner-style hardware-thread capacity for the GB10 class refuses. A host enrolled but unreachable reads as an unreachable member, never as absent from the count.",
+        out_of_scope: "No serving runtime, model revision, API auth, or vendor image/driver collection — those are the serving row's and are sequenced separately. No build or runner role, ever.",
+        handback: "Both machines enrolled from derived rows, identity converged, reachability read back over the fleet key, and the serving row unblocked on real members instead of hand-managed boxes."
+      )
+    ),
     active_large(
       identity: "rn_3JQZN7WVPD1KXCB0RTMG84LHY6",
       id: "fleet-spark-inference-serving",
@@ -2132,14 +2147,29 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The reading with typed direction and standing, adapters above it, one real corpus query a person can run and read, and the judgment lane re-grounded on the packet this produces."
       )
     ),
+    active(
+      identity: "rn_NE8G0Q69BD0SZ24K26MVXXB2R2",
+      id: "abstraction-candidate-discovery",
+      owner: "confidence",
+      path: "src/v2/lens/module_graph.dag",
+      t: fields(
+        headline: "Find subjects that may deserve one shared abstraction by how they are constructed and consumed",
+        boundary: "Given an exact graph subject, a selected semantic universe, and a named lens over construction, consumption, effects, tests, lifecycle, or presentation, group observationally equivalent and near-equivalent subjects into grounded abstraction candidates. The result is DESCRIPTIVE evidence only: it does not mint an authority, rewrite code, or decide that a quotient is valid — similarity under a lens is evidence, and 'these should share one authority' is a separate normative ruling that crosses that bridge explicitly. Every candidate names its universe, context, lens, the equivalent observations, the distinctions the quotient would erase, existing nearby authorities, the consumers that would use the abstraction, and its over-collapse and demand standing. Deterministic: works with no model server provisioned.",
+        displaced_cost: "The grouping move — five things consumed the same way become one new layer — is how this repository forms layers at all, and today it happens only when a person notices: duplicates get minted beside existing authorities, boutique implementations accumulate until a consolidation pays the fork back at interest, and the judgment of which lens a similarity holds under is re-derived by hand every time. The candidate that is NOT an abstraction is half the value: the Spark endpoint question burned a session on topology surgery that a projection-missing classification — join the existing authorities downstream, mint nothing — would have answered in one line.",
+        first_slice: "One real population of at least three repository subjects with similar consumption profiles, producing one candidate common layer, one keep-distinct control, and one projection-missing control, each with explanation paths — then, in the same work item, the accepted candidate APPLIED: one real consumer migrated, one duplicated representation deleted, behavior and refusal standing preserved. Discovery without an applied acceptance is the inert-analysis tier this graph forbids.",
+        red_control: "A planted set of near-duplicates with one load-bearing distinction yields keep-distinct, never a merged candidate. A pair whose correct move is a downstream join yields projection-missing, never a new identity authority. A candidate that cannot name a current consumer reads demand-absent rather than ranking beside demanded ones. A cited subject that does not resolve refuses, never renders as a plausible sentence.",
+        out_of_scope: "No LLM and no Spark in this row — deterministic grouping and packet construction must work before the model server exists; ranking, critique and explanation are the judgment row's. No automatic commits: an application is a proposed patch under review.",
+        handback: "The candidate reading with its named-lens vocabulary, the three controls demonstrated on real corpus subjects, and one accepted candidate applied end to end — consumer migrated, duplicate deleted, receipts equal."
+      )
+    ),
     active_large(
       identity: "rn_0PGYW4KDNQ2BXR9TVCM6HJ3LZ5",
       id: "judgment-mechanical-review-service",
       owner: "judgment",
       path: "docs/plans/enforcement-intent-design.md",
       t: fields(
-        headline: "Make the repetitive review judgements something a machine can propose",
-        boundary: "The judgements made over and over by hand — this concept already exists under another name, this boundary is really two separable things, this evidence does not actually run, this claim is stronger than what was shown — become a service returning one of a fixed set of answers over an evidence packet assembled mechanically from the change. Every declaration it cites has to resolve. Anything it cannot ground comes back as unknown rather than as a plausible sentence.",
+        headline: "Make the repetitive review and abstraction judgements something a machine can propose",
+        boundary: "The judgements made over and over by hand — this concept already exists under another name, this boundary is really two separable things, this evidence does not actually run, this claim is stronger than what was shown, these five subjects deserve one shared layer while those two must stay distinct — become a service returning one of a fixed set of answers over an evidence packet assembled mechanically from the change. The answer vocabulary carries the abstraction rulings beside the duplicate ones: existing-authority, likely-duplicate, candidate-new-abstraction, projection-missing, reprime-candidate, keep-distinct, over-collapse-risk, missing-consumer, missing-actuator, missing-readback, unknown. Every declaration it cites has to resolve. Anything it cannot ground comes back as unknown rather than as a plausible sentence.",
         displaced_cost: "These judgements are the throughput limit on the whole board, they are all made by one person, and they are mechanical enough to describe — which is precisely why they are being repeated by hand rather than encoded.",
         first_slice: "The already-exists-under-another-name classification only, over the changed declarations and their candidate existing authorities, scored against past rulings.",
         red_control: "A cited declaration that does not exist is refused, never returned. A judgement with nothing resolvable behind it is unknown. A planted duplicate of an existing concept must be found, and a genuinely new concept must not be reported as a duplicate.",
@@ -2356,6 +2386,9 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
 
     edge(child: "judgment-mechanical-review-service", parent: "fleet-spark-inference-serving"),
     edge(child: "judgment-mechanical-review-service", parent: "confidence-semantic-impact-query"),
+    edge(child: "judgment-mechanical-review-service", parent: "abstraction-candidate-discovery"),
+    edge(child: "abstraction-candidate-discovery", parent: "confidence-semantic-impact-query"),
+    edge(child: "fleet-spark-inference-serving", parent: "fleet-spark-host-enrollment"),
 
     edge(child: "toolchain-single-resolver", parent: "toolchain-pin-model"),
     edge(child: "toolchain-rust-hermetic", parent: "toolchain-single-resolver"),
