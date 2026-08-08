@@ -7893,6 +7893,8 @@ pub fn build_live_read_selection_manifest(
     requests: &[LiveReadSelectionRequest],
 ) -> Result<LiveReadSelectionManifest, String> {
     let source_roots = &index.source_roots;
+    let build_started = std::time::Instant::now();
+    let cpu_started_ms = process_cpu_millis();
 
     // THE FACT UNIVERSE IS THIS INDEX'S UNIVERSE, and that is the whole correctness argument.
     //
@@ -8084,6 +8086,38 @@ pub fn build_live_read_selection_manifest(
             ));
         }
     }
+
+    // STEP-6 RECEIPT, emitted unconditionally rather than behind a verbose flag.
+    //
+    // This producer's cost is the open question on this lane: it resolves the union of the request
+    // roots' closures once per index, and that has to be paid back by the entry resolves selection
+    // elides. A cost claim argued from the shape of the code is worth nothing here — two of this
+    // lane's cost readings were already wrong — so the numbers are printed where any run that
+    // builds a manifest will carry them, and a reader can divide them by the resolves saved
+    // instead of taking a summary's word for it.
+    //
+    // RSS is the process resident set at this instant, not an attribution: other work shares the
+    // process. It bounds the manifest's footprint from above, which is the honest reading, and is
+    // labelled so nobody quotes it as the producer's own.
+    eprintln!(
+        "[live-read-manifest] requests={} rows={} closure_roots={} closure_sources={} \
+         resolved_modules={} wall_ms={} cpu_ms={} process_rss_mib={} (wall/cpu cover the closure \
+         load, the union resolve and the fold; process_rss is whole-process, an upper bound, not \
+         this producer's attribution)",
+        requests.len(),
+        rows.len(),
+        closure_roots.len(),
+        source_module_count,
+        ctx.modules.len(),
+        build_started.elapsed().as_millis(),
+        match (process_cpu_millis(), cpu_started_ms) {
+            (Some(now), Some(then)) => now.saturating_sub(then).to_string(),
+            _ => "unavailable".to_string(),
+        },
+        current_rss_bytes()
+            .map(|b| (b / (1024 * 1024)).to_string())
+            .unwrap_or_else(|| "unavailable".to_string()),
+    );
 
     Ok(LiveReadSelectionManifest {
         subject: index.generation,
@@ -18519,6 +18553,23 @@ fn proc_status_kb_field(prefix: &str) -> Option<u64> {
     let line = status.lines().find(|l| l.starts_with(prefix))?;
     let kb: u64 = line.split_whitespace().nth(1)?.parse().ok()?;
     Some(kb.saturating_mul(1024))
+}
+
+/// Process CPU time (user + system) in milliseconds, via `getrusage(RUSAGE_SELF)`.
+///
+/// Reported beside wall time because the two answer different questions on a shared runner: wall
+/// includes time this process spent descheduled behind co-resident jobs, so a wall figure alone
+/// cannot distinguish "this producer is expensive" from "this fleet host was busy". A cost claim
+/// that cannot tell those apart is not a measurement.
+pub fn process_cpu_millis() -> Option<u64> {
+    let mut ru: libc::rusage = unsafe { std::mem::zeroed() };
+    // SAFETY: `ru` is a live, fully-owned zeroed `rusage`; `getrusage` only writes it.
+    let rc = unsafe { libc::getrusage(libc::RUSAGE_SELF, &mut ru) };
+    if rc != 0 {
+        return None;
+    }
+    let ms = |sec: i64, usec: i64| (sec as u64).saturating_mul(1000) + (usec as u64) / 1000;
+    Some(ms(ru.ru_utime.tv_sec, ru.ru_utime.tv_usec) + ms(ru.ru_stime.tv_sec, ru.ru_stime.tv_usec))
 }
 
 /// Current resident set from `/proc/self/status` VmRSS, in bytes.
