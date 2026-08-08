@@ -2,8 +2,12 @@
 // Source module: std.witness_admission
 
 use self::FrozenBaselineStanding::*;
+use self::PreVerdictCause::*;
+use self::PreVerdictPhase::*;
 use self::WitnessConsumerCadence::*;
+use self::WitnessExecutionBudget::*;
 use self::WitnessExecutionStanding::*;
+use self::WitnessExpectedVerdict::*;
 pub use crate::std_content_hash::content_hash_atom;
 pub use crate::std_content_hash::Fnv1a64Structural;
 use crate::v1_rt;
@@ -172,6 +176,91 @@ pub fn witness_consumer_cadence_content_hash_structural(
     }
 }
 
+pub fn witness_admission_axis_separation_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "THREE INDEPENDENT AXES, because WHICH CONSUMER RUNS THIS, HOW MUCH TIME IT NEEDS and WHAT VERDICT IS EXPECTED are different facts about one witness, and until this change they were carried on one (operator stop-line, 2026-08-06).\n\nTHE MEASURED DEFECT. WitnessConsumerCadence carried QuarantineProbeExpectRed and FalsifierSubstrateLongLane as sibling arms of one coproduct, and every carrier stored exactly one cadence per witness. A witness that is BOTH expensive AND known-red was therefore inexpressible: the eval ceiling was armed only for a batch whose explicit entries intersected the long-lane batch roster, so an expensive known-red root earned its budget by ALSO joining that batch. gunbc.explicit_witness_admission stated this verbatim as a machinery deficit and paid for it three ways — direct_rust_door_group_root_is_scheduled_exactly_once was RED BY EXECUTION at 2 occurrences; the second occurrence sat on a batch that expects green, so the falsifier alert classified a witness that is red BY DESIGN as a component failure and paged the operator once per heartbeat window (gunbc#7737); and the expectation itself was decided batch-wide on entry PATHS, so file placement and batch homogeneity, not the witness, decided its polarity.\n\nAXIS ONE — WitnessConsumerCadence, above: which consumer executes this witness. A batch roster.\nAXIS TWO — WitnessExecutionBudget: how much eval time this witness requires to reach a verdict at all. It is a property of the WITNESS (what it walks), never of the batch that happens to hold it, so declaring a long budget must not require joining a second batch. The scheduler derives its ceiling from the union of the long-lane batch roster and the rows declaring SubstrateLongLaneEvalBudget here; the residual keeps the fast lane, so a lane that forgets to declare reds loudly at 5s rather than running unbounded (the arm narrows, never widens).\nAXIS THREE — WitnessExpectedVerdict: which result is AGREEMENT. ExpectAssertionFalse means an assertion that RAN and returned false is agreement and unexpected green is a STALE QUARANTINE REFUSAL naming the admission row to delete — never a quiet pass, or the roster accumulates rows nobody revisits, and never an ordinary WitnessRed, or an un-quarantine is indistinguishable from a regression in the alert signature. It is carried at FUNCTION grain on the admission row, so a green sibling in the same file and a mixed batch are both ordinary.\n\nRESIDUAL NICKNAME, COUNTED. The cadence arm is still spelled QuarantineProbeExpectRed while the expectation it names now lives on axis three. The arm remains a real distinct batch, so the name is a nickname for a fact it no longer carries, not a second representation of it: explicit_witness_admission_is_known_red reads the EXPECTATION, and nothing derives polarity from the cadence any more. Dissolve-on: the attempt/evidence algebra (docs/plans/witness-evidence-lifecycle-design.md) retires the arm together with batch-wide inversion, which is the same trigger gunbc.doc_graph_roots already records.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum WitnessExecutionBudget {
+    FastLaneEvalBudget,
+    SubstrateLongLaneEvalBudget,
+}
+
+pub fn witness_expected_verdict_split_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "ExpectWitnessRed SPLIT IN TWO (operator ruling, 2026-08-06). One arm meaning 'this witness is red' let a batch bless an ARBITRARY corpus resolve failure as agreement: with no per-witness outcomes on that path, the executor asked only whether every entry was expected-red and, if so, reported any resolution or evaluation failure as the quarantine holding. That contradicts the rule the same change had just established — agreement means the assertion RAN and returned false — and it is the widest possible reading of a narrow legacy fact.\n\nSome legacy rows genuinely do expect a stop BEFORE any verdict exists: the logic_ground_truth trio cannot resolve at all, because the resolver does not bind imported bare variant constructors in expression position, so there is no assertion to run. Those declare ExpectTypedPreVerdictRefusal and name the phase and cause. Everything else declares ExpectAssertionFalse, and for those a resolve failure proves neither the red nor the quarantine — it is an infrastructure fact about the run.\n\nTHE MATCH IS NOT EXACT YET, and that is a bounded compatibility arm rather than a claim. run_claim formats the typed InterpError into a String before ClaimOutcome exists, so the observed cause cannot be compared against the declared one without parsing that prose — which is the mechanism this whole lane exists to remove. So today the declaration GATES the inversion (a row that did not declare a pre-verdict refusal can never reach it) without VERIFYING the cause matches. Dissolve-on: the typed error survives the seam (gunbc.witness_row_cost witness_cost_timed_out_seed_deferral_note, the witness-realization lane), at which point the declared PreVerdictPhase and PreVerdictCause are matched against the observed refusal and a mismatch refuses.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum PreVerdictPhase {
+    PreVerdictResolve,
+    PreVerdictTypecheck,
+}
+
+pub fn pre_verdict_cause_vocabulary_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "A CLOSED VOCABULARY OF DOCUMENTED CAUSES, not a free-text field: a declared expectation whose cause is prose cannot be matched against an observation, which is the whole reason this axis exists. Both arms name a class this repository has diagnosed and owns. UnboundImportedVariantConstructor is the resolver gap the logic_ground_truth trio sits on — an imported bare variant constructor in expression position does not bind, while patterns-via-scrutinee do — owned by the namespace-only-resolution lane. UnresolvedModuleOutsideClosure is the Class B pool-membership defect DESIGN records under the import-strip witness-discovery cascade: a bare cross-module reference resolves only when some unrelated import elsewhere in the assembled closure has already dragged the target into the pool, so the same witness refuses or resolves depending on what else was loaded. No admission row declares the second arm today; it is here because the vocabulary is the set of causes we can name, and a cause we have diagnosed but cannot spell is a cause that gets spelled as prose the next time it appears.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum PreVerdictCause {
+    UnboundImportedVariantConstructor,
+    UnresolvedModuleOutsideClosure,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum WitnessExpectedVerdict {
+    ExpectWitnessHolds,
+    ExpectAssertionFalse,
+    ExpectTypedPreVerdictRefusal {
+        phase: PreVerdictPhase,
+        cause: PreVerdictCause,
+    },
+}
+impl WitnessExpectedVerdict {
+    pub fn phase(&self) -> PreVerdictPhase {
+        match self {
+            WitnessExpectedVerdict::ExpectWitnessHolds => panic!("no phase on unit variant"),
+            WitnessExpectedVerdict::ExpectAssertionFalse => panic!("no phase on unit variant"),
+            WitnessExpectedVerdict::ExpectTypedPreVerdictRefusal { phase: __val, .. } => {
+                __val.clone()
+            }
+        }
+    }
+    pub fn cause(&self) -> PreVerdictCause {
+        match self {
+            WitnessExpectedVerdict::ExpectWitnessHolds => panic!("no cause on unit variant"),
+            WitnessExpectedVerdict::ExpectAssertionFalse => panic!("no cause on unit variant"),
+            WitnessExpectedVerdict::ExpectTypedPreVerdictRefusal { cause: __val, .. } => {
+                __val.clone()
+            }
+        }
+    }
+}
+
 pub fn witness_execution_standing_axis_note() -> String {
     thread_local! {
         static CACHED: String = {
@@ -226,3 +315,15 @@ pub struct OfflineLocalRecipe;
 pub struct FixtureExplicitRoster;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct NoConsumer;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct FastLaneEvalBudget;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SubstrateLongLaneEvalBudget;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PreVerdictResolve;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PreVerdictTypecheck;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct UnboundImportedVariantConstructor;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct UnresolvedModuleOutsideClosure;
