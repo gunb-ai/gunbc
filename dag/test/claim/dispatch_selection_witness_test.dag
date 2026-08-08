@@ -1,6 +1,6 @@
 module test.claim.dispatch_selection_witness
 
-import std.types { Bool, String, NonEmptyStr }
+import std.types { Bool, String, NonEmptyStr, FilePath }
 import gunbc.roadmap_model {
   IntricacyHigh,
   IntricacyLow,
@@ -9,7 +9,7 @@ import gunbc.roadmap_model {
   Sized,
   Unsized,
 }
-import extdeps.llm.cli { ReasoningMedium }
+import extdeps.llm.cli { ReasoningMedium, ReasoningHigh }
 import extdeps.llm.cli_lifecycle {
   CodexCliProvider,
   CursorCliProvider,
@@ -62,12 +62,15 @@ import gunbc.dispatch_selection {
   DispatchSelectionResolved,
   DispatchSelectionRefused,
   ResolvedCodex,
+  ResolvedClaude,
   SelectAutomatically,
   SelectCodex,
   SelectCursor,
+  SelectClaude,
   ProviderInventory,
   OfferCodex,
   OfferCursor,
+  OfferClaude,
   CursorOffer,
   dispatch_cursor_process_fingerprint,
   CodexCredentialBinding,
@@ -90,12 +93,15 @@ import gunbc.dispatch_selection {
   provider_selection_request_for_kind,
   fixture_inventory_codex_only_available,
   fixture_inventory_codex_and_cursor_available,
+  fixture_inventory_codex_then_claude,
   fixture_codex_offer_with_standing,
   codex_offer_for_instance,
   codex_offer_for_instance_with_standing,
   dispatch_selection_shape_mismatch_reason,
   dispatch_selection_standing_ineligible_reason,
   dispatch_selection_automatic_native_bucket_join_undetermined_refusal,
+  ClaudeStateRootRef,
+  dispatch_claude_default_workflow_mode,
   Unsized,
 }
 
@@ -214,6 +220,45 @@ test fn witness_srv1_inventory_includes_codex() -> Bool {
       ],
     },
     kind: CodexCliProvider,
+  )
+}
+
+test fn witness_srv1_inventory_includes_claude() -> Bool {
+  inventory_includes_provider_kind(
+    inventory: fixture_inventory_codex_then_claude(
+      instance: srv1_live_dashboard_instance(),
+      codex_standing: provider_standing_inventory_unobserved(),
+      claude_standing: provider_standing_from_fixture_bundle(
+        provider: ProviderInstance {
+          kind: ClaudeCliProvider,
+          host: ProviderInstanceFieldUnobserved { reason: "fixture claude inventory row" as NonEmptyStr },
+          executable: "claude" as NonEmptyStr,
+          observed_version: ProviderInstanceFieldUnobserved {
+            reason: "fixture claude inventory row" as NonEmptyStr,
+          },
+          state_directory: ProviderInstanceFieldUnobserved {
+            reason: "fixture claude inventory row" as NonEmptyStr,
+          },
+          credential_storage_method: ProviderInstanceFieldUnobserved {
+            reason: "fixture claude inventory row" as NonEmptyStr,
+          },
+          service_identity: ProviderInstanceFieldUnobserved {
+            reason: "fixture claude inventory row" as NonEmptyStr,
+          },
+        },
+        bundle: fixture_standing_bundle_authenticated_available(),
+      ),
+    ),
+    kind: ClaudeCliProvider,
+  )
+}
+
+test fn witness_production_inventory_excludes_claude() -> Bool {
+  !inventory_includes_provider_kind(
+    inventory: provider_inventory_for_instance(
+      instance: srv1_live_dashboard_instance(),
+    ),
+    kind: ClaudeCliProvider,
   )
 }
 
@@ -392,9 +437,53 @@ test fn witness_probe_bridge_ineligible_standing_refuses_selection() -> Bool {
   }
 }
 
+test fn witness_srv1_claude_selection_resolves_with_fixture_standing() -> Bool {
+  let instance = srv1_live_dashboard_instance()
+  let claude_provider = ProviderInstance {
+    kind: ClaudeCliProvider,
+    host: ProviderInstanceFieldUnobserved { reason: "fixture claude inventory row" as NonEmptyStr },
+    executable: "claude" as NonEmptyStr,
+    observed_version: ProviderInstanceFieldUnobserved {
+      reason: "fixture claude inventory row" as NonEmptyStr,
+    },
+    state_directory: ProviderInstanceFieldUnobserved {
+      reason: "fixture claude inventory row" as NonEmptyStr,
+    },
+    credential_storage_method: ProviderInstanceFieldUnobserved {
+      reason: "fixture claude inventory row" as NonEmptyStr,
+    },
+    service_identity: ProviderInstanceFieldUnobserved {
+      reason: "fixture claude inventory row" as NonEmptyStr,
+    },
+  }
+  match resolve_dispatch_selection(
+    inventory: fixture_inventory_codex_then_claude(
+      instance: instance,
+      codex_standing: provider_standing_inventory_unobserved(),
+      claude_standing: provider_standing_from_fixture_bundle(
+        provider: claude_provider,
+        bundle: fixture_standing_bundle_authenticated_available(),
+      ),
+    ),
+    request: provider_selection_request_for_kind(kind: ClaudeCliProvider),
+    node_sizing: Unsized,
+  ) {
+    DispatchSelectionResolved { receipt } =>
+      match receipt.resolved_selection {
+        ResolvedClaude { selection: s, instance: _ } =>
+          receipt.provider_kind == ClaudeCliProvider
+            && s.effort == ReasoningMedium
+        _ => false
+      }
+    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
+  }
+}
+
 test fn witness_claude_request_refuses_on_codex_only_inventory() -> Bool {
-  match dispatch_selection_for_instance(
-    instance: srv1_live_dashboard_instance(),
+  match resolve_dispatch_selection(
+    inventory: fixture_inventory_codex_only_available(
+      instance: srv2_lab_dashboard_instance(),
+    ),
     request: provider_selection_request_for_kind(kind: ClaudeCliProvider),
     node_sizing: Unsized,
   ) {
@@ -458,13 +547,70 @@ test fn witness_explicit_override_bengalfox_admitted_from_same_inventory() -> Bo
   }
 }
 
+test fn witness_select_claude_automatic_honors_request_credential_and_model() -> Bool {
+  let instance = srv1_live_dashboard_instance()
+  let request_credential = ClaudeStateRootRef {
+    root: "/managed/claude-enrollment" as FilePath,
+  }
+  let request_model = "claude-managed-model" as NonEmptyStr
+  let claude_provider = ProviderInstance {
+    kind: ClaudeCliProvider,
+    host: ProviderInstanceFieldUnobserved { reason: "fixture claude inventory row" as NonEmptyStr },
+    executable: "claude" as NonEmptyStr,
+    observed_version: ProviderInstanceFieldUnobserved {
+      reason: "fixture claude inventory row" as NonEmptyStr,
+    },
+    state_directory: ProviderInstanceFieldUnobserved {
+      reason: "fixture claude inventory row" as NonEmptyStr,
+    },
+    credential_storage_method: ProviderInstanceFieldUnobserved {
+      reason: "fixture claude inventory row" as NonEmptyStr,
+    },
+    service_identity: ProviderInstanceFieldUnobserved {
+      reason: "fixture claude inventory row" as NonEmptyStr,
+    },
+  }
+  match resolve_dispatch_selection(
+    inventory: fixture_inventory_codex_then_claude(
+      instance: instance,
+      codex_standing: provider_standing_inventory_unobserved(),
+      claude_standing: provider_standing_from_fixture_bundle(
+        provider: claude_provider,
+        bundle: fixture_standing_bundle_authenticated_available(),
+      ),
+    ),
+    request: SelectClaude {
+      profile: ProfileAutomatic,
+      credential: request_credential,
+      model: request_model,
+      effort: ReasoningHigh,
+      workflow_mode: dispatch_claude_default_workflow_mode,
+    },
+    node_sizing: Unsized,
+  ) {
+    DispatchSelectionResolved { receipt } =>
+      match receipt.resolved_selection {
+        ResolvedClaude { selection: s, instance: _ } =>
+          s.credential == request_credential
+            && s.model == request_model
+            && s.effort == ReasoningMedium
+        _ => false
+      }
+    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
+  }
+}
+
 test fn dispatch_selection_keystone_holds() -> Bool {
   witness_automatic_codex_preserves_medium_effort()
     && witness_intricacy_does_not_change_automatic_effort()
     && witness_deep_profile_refuses_without_realization()
     && witness_srv1_inventory_includes_codex()
+    && witness_srv1_inventory_includes_claude()
+    && witness_production_inventory_excludes_claude()
     && witness_srv2_inventory_includes_cursor()
     && witness_srv2_cursor_selection_resolves()
+    && witness_srv1_claude_selection_resolves_with_fixture_standing()
+    && witness_select_claude_automatic_honors_request_credential_and_model()
     && witness_receipt_records_requested_and_resolved()
     && witness_carrier_notes_record_directive_addendum()
     && witness_wrong_selection_shape_refuses()

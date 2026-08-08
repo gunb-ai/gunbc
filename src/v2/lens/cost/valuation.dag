@@ -1,0 +1,378 @@
+module v2.lens.cost.valuation
+
+import std.algebra { Cons, Empty, FreeSemigroup }
+import std.decl_ref { DeclarationRef }
+import v2.lens.cost { SizeVariable }
+import v2.lens.cost.expr {
+  CostAdd,
+  CostConst,
+  CostEffect,
+  CostExpr,
+  CostExprRefusalCause,
+  CostLog,
+  CostMax,
+  CostMul,
+  CostRefused,
+  CostSum,
+  InvalidLogBase,
+  SizeAdd,
+  SizeConst,
+  SizeExpr,
+  SizeLength,
+  SizeMax,
+  SizeOf
+}
+import v2.std.algebra { fold_list, non_empty_append, non_empty_singleton }
+import v2.std.collection { List }
+import v2.std.diagnostic { Locus, textual_whole_file_locus }
+import v2.std.logic { Bool }
+import v2.std.nat { Nat, Succ, Zero, nat_add, nat_cata, nat_lte, nat_mul }
+import v2.std.optional { Absent, Optional, Present, optional_present }
+
+data cost_valuation_subject_note: String = "The subject of this module is SEMANTIC work, not hardware time: a CostExpr together with a COMPLETE valuation of its size variables yields how much modelled work the expression denotes. Cycles, nanoseconds and machine calibration belong to the parity plan's C5 realization bridge and are deliberately absent here, so nothing in this module may acquire a duration, a rate or a calibration constant."
+
+data cost_valuation_exact_core_scope_note: String = "SCOPED TO THE EXACT CORE BY OPERATOR RULING, and the two things held back are SEQUENCED rather than rejected. What is here: exact valuation at a complete binding set, CostSum binder scoping and shadowing, duplicate-binding refusal, effect refusal, logarithm refusal, and the earned-zero versus fabricated-zero distinction. What is held on branch session/deep-owl-215-partial-bounded-hold: PARTIAL evaluation - an unresolved state for a caller who never claimed completeness - and BOUNDED evaluation - a ceiling-valued binding and the interval arithmetic over it. The reason is that the program is converging on one end-to-end result, exact work and span as literal numbers for a real DAG section, and the exact core is all that milestone needs. Two constraints ride with the held work so that returning it cannot quietly undo decisions already taken. FIRST, complete and partial evaluation stay TWO ENTRY POINTS over one fold; that they are separate modes is sound and must not be collapsed back into a single evaluator, because a caller who swaps one for the other to make a refusal go away is running the author-side absorbing fallback and a single entry point would make that invisible. SECOND, the unresolved state must carry the residual COST EXPRESSION and not merely the names of the free variables: the held revision carried names only, so 3 + x lost the 3, lost the addition, and lost the shape, leaving a result no consumer could complete, lower-bound, render, or check for conservation of work. The residual must be the rich CostExpr rather than a normalized SymbolicCost, because normalization is precisely the step that discards the CostSum binder - see projection_path_binder_discard_debt_note."
+
+type CostValuationBinding {
+  variable: SizeVariable
+  value: Nat
+}
+
+type CostEvaluationRefusal
+  = MissingSizeBinding { variable: SizeVariable, at: Locus }
+  | DuplicateSizeBinding { variable: SizeVariable, at: Locus }
+  | UnmodeledEffectCost { operation: DeclarationRef, at: Locus }
+  | IntegerLogarithmUnavailable { base: Nat, argument: SizeExpr, at: Locus }
+  | ExpressionRefused { cause: CostExprRefusalCause, at: Locus }
+
+data cost_evaluation_nonempty_note: String = "The nonempty carrier (std.algebra FreeSemigroup) in the refused arm is load-bearing, not decoration: a refusal carrying no cause is a nonsense state, and the free-semigroup head field makes it unwritable rather than merely unlikely - construction over validation, DESIGN section 5. Do not weaken the field to List."
+
+type CostEvaluation
+  = ExactCost { value: Nat }
+  | CostEvaluationRefused { causes: FreeSemigroup<CostEvaluationRefusal> }
+
+data cost_evaluation_two_state_note: String = "Two states, because at the exact core there are exactly two honest answers: the work is this number, or here is why it cannot be. The four-state shape the design carries - adding a partial and a bounded state - is not abandoned; it returns with the work held on session/deep-owl-215-partial-bounded-hold, where each of those states will have a producer AND will carry what its consumer needs: a residual expression for the partial state, an input envelope for the bounded one. Declaring either arm here with no producer would have been rung inflation, a state named for a capability the module does not have, and the bounded arm in particular was carried through an earlier revision of this module while its arithmetic silently collapsed a two-endpoint envelope to its own ceiling."
+
+type CostValuationEnv {
+  bindings: List<CostValuationBinding>
+}
+
+type BindingScan {
+  seen: List<SizeVariable>
+  duplicates: List<SizeVariable>
+}
+
+fn cost_valuation_authority_locus() -> Locus {
+  textual_whole_file_locus(file: ^cost_valuation_authority_virtual_file)
+}
+
+fn size_variable_eq(a: SizeVariable, b: SizeVariable) -> Bool {
+  a.source == b.source
+}
+
+fn size_variable_in(xs: List<SizeVariable>, wanted: SizeVariable) -> Bool {
+  fold_list(
+    xs: xs,
+    empty: false,
+    cons: fn(acc, item) { acc || size_variable_eq(a: item, b: wanted) }
+  )
+}
+
+fn refuse(cause: CostEvaluationRefusal) -> CostEvaluation {
+  CostEvaluationRefused { causes: non_empty_singleton(item: cause) }
+}
+
+data env_scoping_note: String = "env_bind PREPENDS and lookup_bindings answers the HEAD-most match, so a CostSum binder shadows an outer binding of the same identity for the extent of the body and only for that extent. Removal on exit is structural rather than an unbind step: the extended environment is a local value, so the environment the caller holds is the one that was never modified. That is the scoping obligation discharged by construction rather than by remembering to undo something. The lookup is written as explicit head-first recursion instead of a fold precisely because the ANSWER DEPENDS ON DIRECTION, and a fold's direction is a property of fold_list rather than of this module."
+
+fn env_bind(env: CostValuationEnv, binding: CostValuationBinding) -> CostValuationEnv {
+  CostValuationEnv {
+    bindings: Cons { head: binding, tail: env.bindings }
+  }
+}
+
+fn lookup_bindings(
+  bindings: List<CostValuationBinding>,
+  variable: SizeVariable
+) -> Optional<Nat> {
+  match bindings {
+    Empty => Absent
+    Cons { head: h, tail: t } =>
+      if size_variable_eq(a: h.variable, b: variable) {
+        optional_present(value: h.value)
+      } else {
+        lookup_bindings(bindings: t, variable: variable)
+      }
+  }
+}
+
+fn env_lookup(env: CostValuationEnv, variable: SizeVariable) -> Optional<Nat> {
+  lookup_bindings(bindings: env.bindings, variable: variable)
+}
+
+data unbound_size_refusal_note: String = "At the exact core the caller has ASSERTED a complete valuation, so a variable with no binding is a caller defect and refuses with the variable NAMED. It may never answer zero: that is the fabricated-plausible-output class DESIGN section 5 forbids outright, and zero is exactly the value that reads as harmless in a cost report. The partial-valuation mode - for a caller who never claimed completeness, and for whom an unbound variable is an honest state rather than a defect - is held on session/deep-owl-215-partial-bounded-hold and returns as a SECOND ENTRY POINT over this same fold, never as a widening of this one."
+
+fn unbound_size(variable: SizeVariable) -> CostEvaluation {
+  refuse(
+    cause: MissingSizeBinding {
+      variable: variable,
+      at: cost_valuation_authority_locus()
+    }
+  )
+}
+
+data combine_evaluation_order_note: String = "A refusal dominates a known magnitude, which is forced rather than chosen: a refusal means the derivation is WRONG to continue, so it may not be masked by a sibling that happened to resolve. Causes ACCUMULATE when both sides refuse, because DESIGN section 5 requires each deficit's frequency to be countable and a discarded second cause is a deficit that never ranks for fixing. The op argument must be monotone for the arithmetic to be meaningful; add, mul and max are, and nothing else is passed."
+
+fn combine_evaluation(
+  a: CostEvaluation,
+  b: CostEvaluation,
+  op: fn(Nat, Nat) -> Nat
+) -> CostEvaluation {
+  match a {
+    CostEvaluationRefused { causes: ca } =>
+      match b {
+        CostEvaluationRefused { causes: cb } =>
+          CostEvaluationRefused { causes: non_empty_append(left: ca, right: cb) }
+        ExactCost { value: vb } => CostEvaluationRefused { causes: ca }
+      }
+    ExactCost { value: va } =>
+      match b {
+        CostEvaluationRefused { causes: cb } => CostEvaluationRefused { causes: cb }
+        ExactCost { value: vb } => ExactCost { value: op(va, vb) }
+      }
+  }
+}
+
+data multiply_evaluations_zero_note: String = "A zero factor gives exact zero on EITHER side, and it overrides the refusal dominance that governs every other combination. That is not the absorbing fallback DESIGN section 5 forbids, and the distinction is worth stating precisely because the shapes look alike. An absorbing fallback answers when it CANNOT compute - substituting a superset or a plausible number for an unknown. This answers because it CAN: a zero multiplicity means the other factor is executed zero times, so the work it denotes is zero regardless of what that factor is and regardless of how little is modelled about it. Refusing here would be the did-no-work versus could-not-model conflation that the earned-zero controls exist to prevent, one level out - zero times an unmodelled effect is not an unknown quantity, it is no work. The third discriminator is what keeps this from being a blanket zero: ONE times an unmodelled effect still refuses, because that factor IS executed. Symmetric by construction rather than by convention, since multiplication is commutative and an operand order that changed the answer would be a defect - the same one that was found and fixed in v2.lens.cost symbolic_product while landing this. THE ORDER OF THE ARMS IS LOAD-BEARING AND THIS PARAGRAPH IS WHAT PROTECTS IT: the annihilator is checked BEFORE any refusal handling, so a REFUSAL times zero answers ExactCost zero rather than refusing. The annihilator deliberately BEATS refusal-dominance, which governs every other combination in this module. Reordering these arms to check refusals first - which reads like tightening a fail-closed path and is therefore the tempting edit - silently restores the defect this function exists to fix, and it would do so while every other witness in the file stays green. Only zero_times_an_unmodelled_effect_is_exactly_zero and an_unmodelled_effect_times_zero_is_exactly_zero would red, and they are enrolled for exactly that reason. The delegation is also deliberate: the residual after annihilator handling is EXACTLY refusal-dominance - exact times exact multiplies, anything carrying a refusal refuses, causes accumulate - so it calls combine_evaluation rather than restating it. What must never move into that generic combiner is the annihilator itself, because addition and max do not have one."
+
+fn multiply_evaluations(a: CostEvaluation, b: CostEvaluation) -> CostEvaluation {
+  match a {
+    ExactCost { value: Zero } => ExactCost { value: Zero }
+    _ =>
+      match b {
+        ExactCost { value: Zero } => ExactCost { value: Zero }
+        _ => combine_evaluation(a: a, b: b, op: nat_mul)
+      }
+  }
+}
+
+fn evaluate_size_expr(size: SizeExpr, env: CostValuationEnv) -> CostEvaluation {
+  match size {
+    SizeConst { value: v } => ExactCost { value: v }
+    SizeOf { variable: v } =>
+      match env_lookup(env: env, variable: v) {
+        Present { value: n } => ExactCost { value: n }
+        Absent => unbound_size(variable: v)
+      }
+    SizeLength { of: v } =>
+      match env_lookup(env: env, variable: v) {
+        Present { value: n } => ExactCost { value: n }
+        Absent => unbound_size(variable: v)
+      }
+    SizeAdd { left: l, right: r } =>
+      combine_evaluation(
+        a: evaluate_size_expr(size: l, env: env),
+        b: evaluate_size_expr(size: r, env: env),
+        op: nat_add
+      )
+    SizeMax { left: l, right: r } =>
+      combine_evaluation(
+        a: evaluate_size_expr(size: l, env: env),
+        b: evaluate_size_expr(size: r, env: env),
+        op: v2.std.nat.nat_max
+      )
+  }
+}
+
+type SummationState {
+  index: Nat
+  accumulated: CostEvaluation
+}
+
+data summation_semantics_note: String = "CostSum with binder i, upper u and body b denotes the sum of b evaluated at i = 0, 1, .. u-1: u iterations with the binder taking a distinct value in each. It is therefore evaluated by ITERATING the body under an extended environment, never by multiplying one body evaluation by the iteration count - the latter is correct only when the body is invariant in the binder, and silently wrong when it is not. Zero iterations produce exact zero, which is the empty sum and the one place a zero here is earned; it is paired with the missing-binding refusal so that a zero in a cost report is never ambiguous between nothing to do and nothing modelled."
+
+data summation_settled_disposition_note: String = "Once the accumulator has refused, later iterations do not evaluate the body. This is a COST fix with a soundness argument, not an optimisation, and both halves matter. The cost: non_empty_append is linear in its left argument because list_append folds the left side, so accumulating one cause per iteration is quadratic in the iteration count - and CostEffect refuses unconditionally in this slice, so any loop containing an effect reaches it, at whatever size the bound happens to be. The standing bare-minimum-cost rule fixes a proven quadratic fold regardless of the realized n, because n is not a time-stable fact. The signal: those causes are IDENTICAL - the body expression is fixed across iterations and only the binder VALUE changes - so accumulating them amplified one deficit u times rather than counting u deficits, degrading the very countability the accumulate rule exists to protect. The soundness argument for skipping, stated so it can be re-checked rather than trusted: a refusal here is a property of the body EXPRESSION, not of the binder's value - unboundness, an unmodelled effect, an invalid log base and an unavailable integer logarithm are all value-independent - so a body that refuses at one iteration refuses at every one. Dissolve-on: the first value-DEPENDENT refusal cause, at which point this skip becomes unsound and the fix becomes cause-identity dedup instead."
+
+fn evaluate_summation(
+  binder: SizeVariable,
+  iterations: Nat,
+  env: CostValuationEnv,
+  evaluate_body: fn(CostValuationEnv) -> CostEvaluation
+) -> CostEvaluation {
+  nat_cata(
+    n: iterations,
+    zero: SummationState { index: Zero, accumulated: ExactCost { value: Zero } },
+    succ: fn(state) {
+      SummationState {
+        index: Succ { prev: state.index },
+        accumulated: match state.accumulated {
+          CostEvaluationRefused { causes: c } => CostEvaluationRefused { causes: c }
+          ExactCost { value: acc } => combine_evaluation(
+            a: state.accumulated,
+            b: evaluate_body(
+              env_bind(
+                env: env,
+                binding: CostValuationBinding { variable: binder, value: state.index }
+              )
+            ),
+            op: nat_add
+          )
+        }
+      }
+    }
+  ).accumulated
+}
+
+data cost_log_evaluation_note: String = "THREE distinct facts, reported as three distinct causes, because a logarithm can fail in three unrelated ways and collapsing them misdirects every reader of the diagnostic. An earlier revision of this arm ignored the base entirely and answered UngroundedLogArgument for every non-refusing case, which reported base 0 as an ARGUMENT problem and called a fully grounded argument UNGROUNDED - two paths disagreeing about one fact, while v2.lens.cost.expr's normalizer right beside this one already checked the base against its own InvalidLogBase vocabulary. (1) An INVALID BASE, 0 or 1, where no logarithm is defined, refuses through that expression authority's InvalidLogBase - the single authority for that fact, cited rather than re-minted. (2) An UNBOUND ARGUMENT refuses as MissingSizeBinding like any other unbound size, because the argument is an ordinary SizeExpr and nothing about a logarithm changes that. (3) A VALID base with an EXACT argument is a well-posed question this module cannot yet answer: an exact Nat-valued logarithm needs a floor-log authority std does not carry, and minting one inside a lens module would be the re-invention DESIGN section 2 calls a failed decomposition - so it refuses as IntegerLogarithmUnavailable, a cause that names the real gap and is countable against it. Dissolve-on: a cited integer-logarithm authority on std.nat, at which point case 3 answers ExactCost and IntegerLogarithmUnavailable is deleted with it."
+
+fn evaluate_cost_log(
+  base: Nat,
+  argument: SizeExpr,
+  env: CostValuationEnv
+) -> CostEvaluation {
+  if nat_lte(a: base, b: Succ { prev: Zero }) {
+    refuse(
+      cause: ExpressionRefused {
+        cause: InvalidLogBase {
+          base: base,
+          at: cost_valuation_authority_locus()
+        },
+        at: cost_valuation_authority_locus()
+      }
+    )
+  } else {
+    match evaluate_size_expr(size: argument, env: env) {
+      CostEvaluationRefused { causes: c } => CostEvaluationRefused { causes: c }
+      ExactCost { value: _ } =>
+        refuse(
+          cause: IntegerLogarithmUnavailable {
+            base: base,
+            argument: argument,
+            at: cost_valuation_authority_locus()
+          }
+        )
+    }
+  }
+}
+
+fn evaluate_cost_expr_in_env(expr: CostExpr, env: CostValuationEnv) -> CostEvaluation {
+  match expr {
+    CostConst { value: v } => ExactCost { value: v }
+    CostAdd { left: l, right: r } =>
+      combine_evaluation(
+        a: evaluate_cost_expr_in_env(expr: l, env: env),
+        b: evaluate_cost_expr_in_env(expr: r, env: env),
+        op: nat_add
+      )
+    CostMul { left: l, right: r } =>
+      multiply_evaluations(
+        a: evaluate_cost_expr_in_env(expr: l, env: env),
+        b: evaluate_cost_expr_in_env(expr: r, env: env)
+      )
+    CostMax { left: l, right: r } =>
+      combine_evaluation(
+        a: evaluate_cost_expr_in_env(expr: l, env: env),
+        b: evaluate_cost_expr_in_env(expr: r, env: env),
+        op: v2.std.nat.nat_max
+      )
+    CostSum { binder: bi, upper: u, body: bd } =>
+      match evaluate_size_expr(size: u, env: env) {
+        ExactCost { value: n } =>
+          evaluate_summation(
+            binder: bi,
+            iterations: n,
+            env: env,
+            evaluate_body: fn(inner) {
+              evaluate_cost_expr_in_env(expr: bd, env: inner)
+            }
+          )
+        CostEvaluationRefused { causes: c } => CostEvaluationRefused { causes: c }
+      }
+    CostLog { base: b, argument: a } =>
+      evaluate_cost_log(base: b, argument: a, env: env)
+    CostEffect { operation: op } =>
+      refuse(
+        cause: UnmodeledEffectCost {
+          operation: op,
+          at: cost_valuation_authority_locus()
+        }
+      )
+    CostRefused { cause: c } =>
+      refuse(
+        cause: ExpressionRefused {
+          cause: c,
+          at: cost_valuation_authority_locus()
+        }
+      )
+  }
+}
+
+fn scan_bindings(bindings: List<CostValuationBinding>) -> BindingScan {
+  fold_list(
+    xs: bindings,
+    empty: BindingScan { seen: [], duplicates: [] },
+    cons: fn(acc, item) {
+      if size_variable_in(xs: acc.seen, wanted: item.variable) {
+        BindingScan {
+          seen: acc.seen,
+          duplicates: Cons { head: item.variable, tail: acc.duplicates }
+        }
+      } else {
+        BindingScan {
+          seen: Cons { head: item.variable, tail: acc.seen },
+          duplicates: acc.duplicates
+        }
+      }
+    }
+  )
+}
+
+data duplicate_binding_note: String = "A duplicate binding for one variable is refused rather than resolved by a first-wins or last-wins rule, because both rules answer a number for a question the caller asked two ways. Note the scope precisely: this checks the CALLER-supplied valuation only. A CostSum binder that shadows an outer binding of the same identity is not a duplicate - it is correct lexical scoping - and the two are kept apart by scanning the supplied list ONCE at entry, before any binder extends the environment."
+
+fn refuse_duplicate(variable: SizeVariable) -> CostEvaluation {
+  refuse(
+    cause: DuplicateSizeBinding {
+      variable: variable,
+      at: cost_valuation_authority_locus()
+    }
+  )
+}
+
+fn duplicate_binding_refusal(
+  duplicates: List<SizeVariable>
+) -> Optional<CostEvaluation> {
+  fold_list(
+    xs: duplicates,
+    empty: Absent,
+    cons: fn(acc, item) {
+      match acc {
+        Absent => Present { value: refuse_duplicate(variable: item) }
+        Present { value: v } =>
+          Present {
+            value: combine_evaluation(
+              a: v,
+              b: refuse_duplicate(variable: item),
+              op: nat_add
+            )
+          }
+      }
+    }
+  )
+}
+
+data projection_path_binder_discard_debt_note: String = "TRACKED DEBT, on a path this module does not use. v2.lens.cost.expr normalize_cost_expr_to_symbolic matches CostSum with the binder DISCARDED, so a binder-dependent body projects a SymbolicCost naming a variable that is bound inside the sum; the magnitude may survive but the variable identity does not, and a consumer comparing on identity gets a well-formed wrong answer. It is reachable through a body of CostLog whose argument is SizeOf of the binder. This module's evaluator does not inherit the defect - it binds the binder and shadows lexically - so the two paths now disagree, which is why the defect is named HERE rather than left for the next reader to rediscover from the divergence. It is deliberately not fixed by the change that landed this evaluator: the projection feeds the enrolled Blocking cost wall and has its own consumers, so it is a separate subject with its own regression surface. It is also why the held partial-evaluation work must carry a rich CostExpr residual rather than a normalized SymbolicCost - normalization is exactly the lossy step. Trigger: fix normalize_cost_expr_to_symbolic to carry the binder, with a discriminating witness whose binder and bound variable are DISTINCT, since the existing bounded_summation fixture uses the same variable for both and therefore cannot see this class. This row dissolves when that witness is green."
+
+fn evaluate_cost_expr(
+  expr: CostExpr,
+  bindings: List<CostValuationBinding>
+) -> CostEvaluation {
+  match duplicate_binding_refusal(
+    duplicates: scan_bindings(bindings: bindings).duplicates
+  ) {
+    Present { value: refusal } => refusal
+    Absent =>
+      evaluate_cost_expr_in_env(
+        expr: expr,
+        env: CostValuationEnv { bindings: bindings }
+      )
+  }
+}

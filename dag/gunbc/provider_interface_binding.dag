@@ -1,0 +1,73 @@
+module gunbc.provider_interface_binding
+
+import std.types { NonEmptyStr, String, FilePath, Bool }
+import std.content_hash { ContentHash }
+import extdeps.llm.codex_app_server {
+  CodexAppServerTransport,
+  CodexAppServerStdio,
+  CodexAppServerExecutable,
+}
+import gunbc.package_delivery { CodexRuntimeBundle }
+import gunbc.codex_runtime_bundle {
+  codex_bundle_executable_path,
+  codex_bundle_identity,
+}
+import extdeps.shell
+
+data provider_interface_binding_note: String = "ONE nested ProviderInterfaceBinding. Provider identity is derived from the realization closure (runtime bundle + transport + lifecycle + protocol schema identity), never a writable sibling enum. project_codex_app_server_stdio_binding is hermetic path projection only. Live initialize authority lives in gunbc.codex_app_server_press.observe_codex_account_preflight — observe_bind_codex_app_server_stdio is demoted to projection plus executable presence check only."
+
+type ProviderControlInterface
+  = CodexAppServer {}
+
+type ProviderInterfaceBinding {
+  interface: ProviderControlInterface
+  transport: CodexAppServerTransport
+  executable: CodexAppServerExecutable
+  runtime_identity: ContentHash
+  protocol_schema_identity: ContentHash
+}
+
+type ProviderInterfaceResolution
+  = ProviderInterfaceResolved {
+      binding: ProviderInterfaceBinding
+    }
+  | RequiredProviderInterfaceUnavailable {
+      interface: ProviderControlInterface
+      reason: NonEmptyStr
+    }
+
+fn project_codex_app_server_stdio_binding(
+  bundle: CodexRuntimeBundle,
+) -> ProviderInterfaceResolution {
+  ProviderInterfaceResolved {
+    binding: ProviderInterfaceBinding {
+      interface: CodexAppServer {},
+      transport: CodexAppServerStdio,
+      executable: CodexAppServerExecutable {
+        path: codex_bundle_executable_path(bundle: bundle),
+      },
+      runtime_identity: codex_bundle_identity(bundle: bundle),
+      protocol_schema_identity: bundle.receipt.protocol_schema_identity,
+    },
+  }
+}
+
+fn observe_bind_codex_app_server_stdio(
+  bundle: CodexRuntimeBundle,
+) -> ProviderInterfaceResolution {
+  match project_codex_app_server_stdio_binding(bundle: bundle) {
+    ProviderInterfaceResolved { binding } => {
+      let present = shell.Test.IsFile(path: binding.executable.path)
+      if present.is_file == false {
+        RequiredProviderInterfaceUnavailable {
+          interface: CodexAppServer {},
+          reason: "bundled Codex native executable absent at binding path" as NonEmptyStr,
+        }
+      } else {
+        ProviderInterfaceResolved { binding: binding }
+      }
+    }
+    RequiredProviderInterfaceUnavailable { interface: i, reason: r } =>
+      RequiredProviderInterfaceUnavailable { interface: i, reason: r }
+  }
+}

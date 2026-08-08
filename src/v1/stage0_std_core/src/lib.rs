@@ -102,6 +102,9 @@ pub mod extdeps_uri;
 #[path = "../../stage0/src/extdeps_external_authority.rs"]
 pub mod extdeps_external_authority;
 #[rustfmt::skip]
+#[path = "../../stage0/src/std_process_termination.rs"]
+pub mod std_process_termination;
+#[rustfmt::skip]
 #[path = "../../stage0/src/extdeps_container_oci_digest.rs"]
 pub mod extdeps_container_oci_digest;
 #[rustfmt::skip]

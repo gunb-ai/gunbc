@@ -1,0 +1,147 @@
+module extdeps.llm.cursor_sdk
+
+import std.types { String, NonEmptyStr, FilePath, List }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.cloud.gcp.secret_ref { SecretRef }
+import extdeps.llm.cursor_cli {
+  CursorModelId,
+  cursor_api_key_env_var,
+  CursorEnvBinding,
+  cursor_argv_contains,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cursor.com/docs/sdk/typescript"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.llm.cursor_sdk",
+      decl_name: "CursorSdkLocalInvocation",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data cursor_sdk_authority_note: String = "Slice-E modeling only (provider-control-interface-audit §6, §12). No press trip, inventory wiring, or WorkerTurn fork — those wait on slices B/C. OBSERVED @cursor/sdk 1.0.26 via docs/probes/provider_interface_acquisition_2026-08-03.json. LocalAgentOptions.cwd is the belt-owned worktree; CloudAgentOptions is a separate workspace realization. RunStatus / Run.supports(operation) land with the press trip when slices B/C wire live SDK control — not modeled as dead types in this slice."
+
+data cursor_sdk_belt_worktree_note: String = "Belt-owned local worktree (audit slice E): LocalAgentOptions.cwd points at the dashboard attempt worktree. cursor-agent -w/--worktree is deliberately unused — recorded in extdeps.llm.cursor_cli."
+
+type CursorSdkLocalWorkspace {
+  cwd: FilePath
+}
+
+type CursorSdkLocalCredential
+  = CursorSdkApiKeySecretRef { secret_ref: SecretRef }
+
+data cursor_sdk_credential_note: String = "API key materializes INTO the SDK call (Agent.create / Agent.prompt apiKey or CURSOR_API_KEY at process env), NEVER into argv. CursorApiKeySecretRef is the automation path; CursorLocalLoginRef is interactive-only and refuses at SDK local binding. Contrast extdeps.llm.cursor_cli CursorApiKeyArgument which puts --api-key on argv for the legacy CLI — that path is not the SDK local interface."
+
+type CursorSdkApiKeyMaterialization
+  = CursorSdkApiKeyFromSecretRef {
+      secret_ref: SecretRef
+    }
+  | CursorSdkApiKeyFromEnvironment {
+      env_var: NonEmptyStr
+    }
+
+fn cursor_sdk_materialize_api_key(
+  credential: CursorSdkLocalCredential,
+) -> CursorSdkApiKeyMaterialization {
+  match credential {
+    CursorSdkApiKeySecretRef { secret_ref: ref } =>
+      CursorSdkApiKeyFromSecretRef { secret_ref: ref }
+  }
+}
+
+fn cursor_sdk_environment_api_key_materialization() -> CursorSdkApiKeyMaterialization {
+  CursorSdkApiKeyFromEnvironment { env_var: cursor_api_key_env_var }
+}
+
+data cursor_sdk_argv_projection_note: String = "SDK local credential delivery is in-call apiKey or process environment only. argv projection is structurally refused — contrast extdeps.llm.cursor_cli CursorApiKeyArgument, which is the legacy CLI argv leak surface and is not an admitted SDK-local arm."
+
+type CursorSdkCredentialProjection
+  = CursorSdkCredentialProjected {
+      argv: List<String>,
+      environment: List<CursorEnvBinding>,
+    }
+  | CursorSdkCredentialProjectionRefused { reason: NonEmptyStr }
+
+fn cursor_sdk_project_materialization(
+  materialization: CursorSdkApiKeyMaterialization,
+  environment_key_plaintext: NonEmptyStr,
+) -> CursorSdkCredentialProjection {
+  match materialization {
+    CursorSdkApiKeyFromSecretRef { secret_ref: _ } =>
+      CursorSdkCredentialProjected {
+        argv: [],
+        environment: [],
+      }
+    CursorSdkApiKeyFromEnvironment { env_var: var } =>
+      CursorSdkCredentialProjected {
+        argv: [],
+        environment: [
+          CursorEnvBinding { name: var, value: environment_key_plaintext },
+        ],
+      }
+  }
+}
+
+fn cursor_sdk_refuse_argv_api_key_projection(
+  _key: NonEmptyStr,
+) -> CursorSdkCredentialProjection {
+  CursorSdkCredentialProjectionRefused {
+    reason: "Cursor SDK local must not project API key material into argv tokens" as NonEmptyStr,
+  }
+}
+
+fn cursor_sdk_projection_argv_excludes_token(
+  projection: CursorSdkCredentialProjection,
+  forbidden_token: String,
+) -> Bool {
+  match projection {
+    CursorSdkCredentialProjected { argv: argv, environment: _ } =>
+      !cursor_argv_contains(argv: argv, token: forbidden_token)
+        && !cursor_argv_contains(argv: argv, token: "--api-key")
+    CursorSdkCredentialProjectionRefused { reason: _ } => false
+  }
+}
+
+fn cursor_sdk_projection_binds_environment(
+  projection: CursorSdkCredentialProjection,
+  env_var: NonEmptyStr,
+) -> Bool {
+  match projection {
+    CursorSdkCredentialProjected { argv: _, environment: environment } =>
+      any(environment, b => (b.name as String) == (env_var as String))
+    CursorSdkCredentialProjectionRefused { reason: _ } => false
+  }
+}
+
+type CursorSdkLocalInvocation {
+  credential: CursorSdkLocalCredential
+  model_id: CursorModelId
+  workspace: CursorSdkLocalWorkspace
+  prompt: NonEmptyStr
+}
+
+fn cursor_sdk_local_invocation(
+  credential: CursorSdkLocalCredential,
+  model_id: CursorModelId,
+  cwd: FilePath,
+  prompt: NonEmptyStr,
+) -> CursorSdkLocalInvocation {
+  CursorSdkLocalInvocation {
+    credential: credential,
+    model_id: model_id,
+    workspace: CursorSdkLocalWorkspace { cwd: cwd },
+    prompt: prompt,
+  }
+}

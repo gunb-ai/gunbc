@@ -228,6 +228,13 @@ pub struct PointwisePower<T> {
 
 pub type FreeMonoid<T> = Vec<T>;
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct FreeSemigroup<T: Clone> {
+    pub head: T,
+    pub tail: Rc<Vec<T>>,
+    pub _phantom: std::marker::PhantomData<T>,
+}
+
 #[derive(Clone)]
 pub struct PartialFunction<K, V> {
     pub lookup: Rc<dyn Fn(K) -> Option<V>>,

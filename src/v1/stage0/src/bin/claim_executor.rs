@@ -95,17 +95,90 @@ fn read_positive_budget_ms(
     }
 }
 
+/// Where a resolved floor-batch clamp came from — seed projection of the `authority: DeclarationRef`
+/// field on `std.realization_schedule` `RunnableBatchClamp`.
+///
+/// Two independently owned populations feed one aligned clamp list: the positional
+/// `gunbc.ci_spec` rows for ordinary batches, and the scoped witness batch's own row in
+/// `gunbc.ci_layer_roots`. This executor used to reconstruct the origin from the LIST POSITION and
+/// spell it in the refusal's format string, which is how a breach came to report `clamp_ms=360000`
+/// while citing `gunbc_ci_floor_batch_clamp_params[0]` — a row whose overhead is 240 seconds. The
+/// authority now travels WITH the value; the index is carried beside it because an offset into a
+/// list is the one part of the citation no symbol can name.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum FloorBatchClampAuthority {
+    PositionalCiSpecClamp {
+        module_path: String,
+        decl_name: String,
+        index: usize,
+    },
+    ScopedBatchOwnedClamp {
+        batch_id: String,
+        module_path: String,
+        decl_name: String,
+    },
+}
+
+impl FloorBatchClampAuthority {
+    /// The citation as it appears in the refusal. Symbol first (`module decl`), position only where
+    /// a position is what is being named — DESIGN §3.
+    fn render(&self) -> String {
+        match self {
+            FloorBatchClampAuthority::PositionalCiSpecClamp {
+                module_path,
+                decl_name,
+                index,
+            } => format!("{module_path} {decl_name}[{index}]"),
+            FloorBatchClampAuthority::ScopedBatchOwnedClamp {
+                module_path,
+                decl_name,
+                ..
+            } => format!("{module_path} {decl_name}"),
+        }
+    }
+
+    fn batch_id(&self) -> Option<&str> {
+        match self {
+            FloorBatchClampAuthority::PositionalCiSpecClamp { .. } => None,
+            FloorBatchClampAuthority::ScopedBatchOwnedClamp { batch_id, .. } => Some(batch_id),
+        }
+    }
+}
+
+/// A clamp plus the declaration that produced it. Constructing one without an authority is not
+/// expressible, which is what keeps the refusal's citation and its number from drifting apart.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ResolvedFloorBatchClamp {
+    overhead_ms: u128,
+    per_unit_ms: u128,
+    authority: FloorBatchClampAuthority,
+}
+
+impl ResolvedFloorBatchClamp {
+    fn clamp_ms(&self, units: u128) -> u128 {
+        self.overhead_ms + units * self.per_unit_ms
+    }
+
+    fn units_contribution_ms(&self, units: u128) -> u128 {
+        units * self.per_unit_ms
+    }
+}
+
 /// THE COST WALL (Piece 3 derived clamp — authority `gunbc.ci_spec.gunbc_ci_floor_batch_clamp_params`
 /// + `gunbc_ci_floor_batch_clamp_note`): the per-batch clamp is `overhead_seconds*1000 +
-/// runtime_unit_count * per_unit_ms`. This reads the two index-aligned param lists fail-closed at
+/// runtime_unit_count * per_unit_ms`. This reads the index-aligned param lists fail-closed at
 /// arm time (the fast-lane-budget pattern); the clamp itself is computed at enforcement, because the
 /// affected-set-selected unit count is a runtime datum the schedule does not hold. Clamps are
 /// admission/scheduling facts at the walk grain — witness verdicts never carry a wall-clock term
 /// (the ruling split reconciled in the carrier note).
+///
+/// The authority lists are read from the SAME rows the numbers come from
+/// (`gunbc_ci_floor_batch_clamp_authority_modules` / `..._decls` project `c.authority`), so a
+/// citation cannot stay correct while the value it names moves.
 fn read_floor_batch_clamp_params(
     plan_ctx: &InterpContext,
     batch_count: usize,
-) -> Result<Vec<(u128, u128)>, String> {
+) -> Result<Vec<ResolvedFloorBatchClamp>, String> {
     let overhead_items = match run_value(plan_ctx, "gunbc_ci_floor_batch_clamp_overhead_seconds") {
         Ok(Value::List(items)) => items,
         Ok(other) => {
@@ -154,15 +227,81 @@ fn read_floor_batch_clamp_params(
             }
         }
     }
-    if overheads_ms.len() != batch_count || rates_ms.len() != batch_count {
+    let authority_modules = read_floor_batch_clamp_authority_list(
+        plan_ctx,
+        "gunbc_ci_floor_batch_clamp_authority_modules",
+    )?;
+    let authority_decls = read_floor_batch_clamp_authority_list(
+        plan_ctx,
+        "gunbc_ci_floor_batch_clamp_authority_decls",
+    )?;
+    if overheads_ms.len() != batch_count
+        || rates_ms.len() != batch_count
+        || authority_modules.len() != batch_count
+        || authority_decls.len() != batch_count
+    {
         return Err(format!(
-            "claim_executor: floor batch clamp params (overhead {} row(s), rate {} row(s)) must each cover the {} scheduled batch(es) exactly (fail-closed; update gunbc.ci_spec beside the schedule change)",
+            "claim_executor: floor batch clamp params (overhead {} row(s), rate {} row(s), authority module {} row(s), authority decl {} row(s)) must each cover the {} scheduled batch(es) exactly (fail-closed; update gunbc.ci_spec beside the schedule change)",
             overheads_ms.len(),
             rates_ms.len(),
+            authority_modules.len(),
+            authority_decls.len(),
             batch_count
         ));
     }
-    Ok(overheads_ms.into_iter().zip(rates_ms).collect())
+    Ok(overheads_ms
+        .into_iter()
+        .zip(rates_ms)
+        .zip(authority_modules)
+        .zip(authority_decls)
+        .enumerate()
+        .map(
+            |(index, (((overhead_ms, per_unit_ms), module_path), decl_name))| {
+                ResolvedFloorBatchClamp {
+                    overhead_ms,
+                    per_unit_ms,
+                    authority: FloorBatchClampAuthority::PositionalCiSpecClamp {
+                        module_path,
+                        decl_name,
+                        index,
+                    },
+                }
+            },
+        )
+        .collect())
+}
+
+/// One of the two authority projections beside the clamp numbers. An empty name is refused rather
+/// than rendered: a citation that names nothing is worse than none, because it reads as located.
+fn read_floor_batch_clamp_authority_list(
+    plan_ctx: &InterpContext,
+    function: &str,
+) -> Result<Vec<String>, String> {
+    let items = match run_value(plan_ctx, function) {
+        Ok(Value::List(items)) => items,
+        Ok(other) => {
+            return Err(format!(
+                "claim_executor: {function} must be a List<String>, got {other:?} (fail-closed)"
+            ));
+        }
+        Err(msg) => {
+            return Err(format!(
+                "claim_executor: floor plan schedules batches but {function} is unavailable (fail-closed): {msg}"
+            ));
+        }
+    };
+    let mut out: Vec<String> = Vec::new();
+    for item in items.iter() {
+        match item {
+            Value::Str(s) if !s.is_empty() => out.push(s.to_string()),
+            other => {
+                return Err(format!(
+                    "claim_executor: {function} rows must be non-empty Strings, got {other:?} (fail-closed)"
+                ));
+            }
+        }
+    }
+    Ok(out)
 }
 
 /// The RED-control fault injection (`GUNBC_FLOOR_BATCH_BUDGET_TIGHTEN_MS`): lowers the COMPUTED
@@ -629,7 +768,7 @@ enum Runnable {
         node_frontier_selection: NodeFrontierSelectionMode,
         execution_authority: ScopedWitnessExecutionAuthority,
         profile: ParsedRunnableProfile,
-        clamp: (u128, u128),
+        clamp: ResolvedFloorBatchClamp,
         process_isolation: ScopedProcessIsolation,
     },
 }
@@ -1237,6 +1376,41 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 "ScopedWitnessBatch.resource_profile.clamp.per_unit",
                 ctx,
             )?;
+            // The batch's clamp declares its own home. Read it rather than inferring one from the
+            // batch's position in the aligned list — the inference is what printed a ci_spec
+            // citation beside a number ci_spec never produced.
+            let clamp_authority_fields = match ctx.field(clamp_fields, "authority") {
+                Some(Value::Record { fields, .. }) | Some(Value::Variant { fields, .. }) => fields,
+                Some(other) => {
+                    return Err(format!(
+                        "ScopedWitnessBatch.resource_profile.clamp.authority must be DeclarationRef, got {}",
+                        other.type_label_public()
+                    ))
+                }
+                None => {
+                    return Err(
+                        "ScopedWitnessBatch.resource_profile.clamp missing `authority`".to_string()
+                    )
+                }
+            };
+            let clamp_authority_module = str_field(
+                clamp_authority_fields,
+                "module_path",
+                "ScopedWitnessBatch.resource_profile.clamp.authority",
+                ctx,
+            )?;
+            let clamp_authority_decl = str_field(
+                clamp_authority_fields,
+                "decl_name",
+                "ScopedWitnessBatch.resource_profile.clamp.authority",
+                ctx,
+            )?;
+            if clamp_authority_module.is_empty() || clamp_authority_decl.is_empty() {
+                return Err(
+                    "ScopedWitnessBatch.resource_profile.clamp.authority must name a module and a declaration"
+                        .to_string(),
+                );
+            }
             let process_isolation = match ctx.field(resource, "process_isolation") {
                 Some(Value::Variant { variant_name, .. })
                     if ctx.sym_eq(*variant_name, "SharedWalkProcess") => ScopedProcessIsolation::SharedWalkProcess,
@@ -1253,7 +1427,7 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 None => return Err("ScopedWitnessBatch.resource_profile missing `process_isolation`".to_string()),
             };
             Ok(Runnable::ScopedWitnessBatch {
-                batch_id,
+                batch_id: batch_id.clone(),
                 source_roots,
                 source_roots_digest,
                 entries,
@@ -1261,7 +1435,15 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 node_frontier_selection,
                 execution_authority,
                 profile,
-                clamp: (overhead_seconds * 1000, per_unit_ms),
+                clamp: ResolvedFloorBatchClamp {
+                    overhead_ms: overhead_seconds * 1000,
+                    per_unit_ms,
+                    authority: FloorBatchClampAuthority::ScopedBatchOwnedClamp {
+                        batch_id: batch_id.clone(),
+                        module_path: clamp_authority_module,
+                        decl_name: clamp_authority_decl,
+                    },
+                },
                 process_isolation,
             })
         }
@@ -1284,14 +1466,14 @@ fn batches_from_plan(plan: &Value, ctx: &InterpContext) -> Result<Vec<Vec<Runnab
     Ok(batches)
 }
 
-fn scoped_batch_clamp(batch: &[Runnable]) -> Result<Option<(u128, u128)>, String> {
+fn scoped_batch_clamp(batch: &[Runnable]) -> Result<Option<ResolvedFloorBatchClamp>, String> {
     let mut owned = None;
     for runnable in batch {
         if let Runnable::ScopedWitnessBatch { clamp, .. } = runnable {
             if batch.len() != 1 {
                 return Err("RunnableScopedWitnessBatch must occupy a singleton batch".to_string());
             }
-            if owned.replace(*clamp).is_some() {
+            if owned.replace(clamp.clone()).is_some() {
                 return Err("batch carries more than one scoped witness clamp".to_string());
             }
         }
@@ -2514,9 +2696,45 @@ struct NativeTransportObservation {
     success: bool,
     compile_skipped: bool,
     stdout: Vec<u8>,
+    /// Which leg of the transport produced this observation — `build`, `run`, or
+    /// `run_cached`. Without it a refusal cannot say whether the bundle failed to
+    /// COMPILE or failed to RUN, which are different defects with different owners.
+    phase: String,
+    /// How the process ended. Carried rather than collapsed into `success` so a
+    /// signalled process (a runner OOM-kill is the live candidate) stays separable
+    /// from a process that reported a nonzero exit.
+    termination: ProcessTermination,
+    /// What the process said on stderr. This is the only channel that names the
+    /// actual failure — a missing toolchain, a compile error, a panic — and dropping
+    /// it is why the fleet's counted fallback has been undiagnosable.
+    stderr: Vec<u8>,
     artifact_lookup_nanos: u128,
     cold_compile_nanos: u128,
     native_execution_nanos: u128,
+}
+
+/// Last `MAX` bytes of a process stream, rendered for a one-line diagnostic. The tail
+/// rather than the head: a cargo build writes its error last, and a panic writes its
+/// message last. Bounded so one refusal cannot flood the floor's result stream.
+fn stream_excerpt(bytes: &[u8]) -> String {
+    const MAX: usize = 1200;
+    if bytes.is_empty() {
+        return "<empty>".to_string();
+    }
+    let start = bytes.len().saturating_sub(MAX);
+    // Trim BEFORE flattening: a stream almost always ends in a newline, and replacing
+    // first leaves a dangling line marker with nothing after it.
+    let tail = String::from_utf8_lossy(&bytes[start..])
+        .trim()
+        .replace(['\n', '\r'], " ⏎ ");
+    if tail.is_empty() {
+        return "<whitespace only>".to_string();
+    }
+    if start > 0 {
+        format!("…(last {MAX} of {} bytes) {tail}", bytes.len())
+    } else {
+        tail
+    }
 }
 
 fn native_bundle_u64_field(
@@ -2669,21 +2887,47 @@ fn native_transport_observation(
         _ => Err(format!("native transport result missing Bool `{name}`")),
     };
     let nanos = |name: &str| native_bundle_u64_field(fields, name, ctx).map(u128::from);
-    let stdout = free_monoid_elems(
-        ctx.field(fields, "stdout_octets")
-            .ok_or_else(|| "native transport result missing stdout".to_string())?,
-        ctx,
-    )?
-    .into_iter()
-    .map(|v| match v {
-        Value::Int(n) if (0..=255).contains(n) => Ok(*n as u8),
-        _ => Err("native transport stdout contains a non-octet".to_string()),
-    })
-    .collect::<Result<Vec<_>, _>>()?;
+    let octets = |name: &str| -> Result<Vec<u8>, String> {
+        free_monoid_elems(
+            ctx.field(fields, name)
+                .ok_or_else(|| format!("native transport result missing {name}"))?,
+            ctx,
+        )?
+        .into_iter()
+        .map(|v| match v {
+            Value::Int(n) if (0..=255).contains(n) => Ok(*n as u8),
+            _ => Err(format!("native transport {name} contains a non-octet")),
+        })
+        .collect::<Result<Vec<_>, _>>()
+    };
+    // The transport's phase vocabulary is closed; an unknown phase is malformed wire,
+    // not a new kind of leg the receipt should silently carry.
+    let phase = match ctx.field(fields, "phase") {
+        Some(Value::Str(s)) if matches!(s.as_str(), "build" | "run" | "run_cached") => s.clone(),
+        Some(Value::Str(s)) => {
+            return Err(format!(
+                "native transport phase `{s}` is outside build|run|run_cached"
+            ))
+        }
+        _ => return Err("native transport result missing String `phase`".to_string()),
+    };
+    let termination =
+        transport_termination(ctx.field(fields, "termination"), ctx).map_err(|refusal| {
+            format!(
+                "native transport termination wire refused: {}",
+                refusal.located
+            )
+        })?;
     Ok(NativeTransportObservation {
-        success: boolean("success")?,
+        // DERIVED, never a second field. The transport used to carry `success`
+        // alongside the exit code, which is one fact written twice; a receipt could
+        // then claim success beside a nonzero termination and nothing would notice.
+        success: matches!(termination, ProcessTermination::Exited(0)),
         compile_skipped: boolean("compile_skipped")?,
-        stdout,
+        stdout: octets("stdout_octets")?,
+        phase,
+        termination,
+        stderr: octets("stderr_octets")?,
         artifact_lookup_nanos: nanos("artifact_lookup_nanos")?,
         cold_compile_nanos: nanos("cold_compile_nanos")?,
         native_execution_nanos: nanos("native_execution_nanos")?,
@@ -2872,23 +3116,44 @@ fn run_native_bundle_unit(
     // them made CI's outage red opaque (run 30764923923 refused with no cause on the
     // wire). Rendered into the FAIL/fallback detail and stderr, never into the TSV
     // receipt (its shape is a parsed contract).
+    //
+    // A failed leg names its PHASE, its TERMINATION, and its STDERR. The three
+    // together are what makes a fleet refusal actionable: the phase says whether the
+    // bundle failed to compile or failed to run, the termination separates a
+    // signalled process (an OOM-kill) from one that reported a nonzero exit, and
+    // stderr carries the message the tool actually produced. Before this, every one
+    // of these collapsed into the four words "process failed", which is why a counted
+    // fallback could sit on the fleet indefinitely without ranking for a fix.
+    let process_failure = |name: &str, obs: &NativeTransportObservation| {
+        format!(
+            "{name}: process failed in phase `{}` ({}); stderr: {}",
+            obs.phase,
+            obs.termination.located(),
+            stream_excerpt(&obs.stderr)
+        )
+    };
     let leg_cause = |name: &str, leg: &Result<NativeTransportObservation, String>| match leg {
         Ok(obs) if obs.success && obs.stdout == primary.expected_stdout => None,
         Ok(obs) if obs.success => Some(format!(
-            "{name}: ran but diverged (stdout {} bytes != expected {} bytes)",
+            "{name}: ran but diverged (stdout {} bytes != expected {} bytes); stdout: {}",
             obs.stdout.len(),
-            primary.expected_stdout.len()
+            primary.expected_stdout.len(),
+            stream_excerpt(&obs.stdout)
         )),
-        Ok(_) => Some(format!("{name}: process failed")),
-        Err(e) => Some(format!("{name}: {e}")),
+        Ok(obs) => Some(process_failure(name, obs)),
+        Err(e) => Some(format!(
+            "{name}: transport refused before a process ran: {e}"
+        )),
     };
     let transport_causes: Vec<String> = [
         leg_cause("cold", &cold),
         leg_cause("warm", &warm),
         match &planted_native {
             Ok(obs) if obs.success => None,
-            Ok(_) => Some("planted-native: process failed".to_string()),
-            Err(e) => Some(format!("planted-native: {e}")),
+            Ok(obs) => Some(process_failure("planted-native", obs)),
+            Err(e) => Some(format!(
+                "planted-native: transport refused before a process ran: {e}"
+            )),
         },
     ]
     .into_iter()
@@ -2929,8 +3194,17 @@ fn run_native_bundle_unit(
     } else {
         "refused:equivalence_or_planted_red"
     };
+    // The located causes belong IN the persisted receipt, not only on stderr. The
+    // coordinator's own note records that the Actions stream drops worker stderr, so a
+    // cause that lives only there is a cause the fleet cannot be asked about after the
+    // fact. One row per failed leg, so the count of causes is readable too; a green run
+    // writes no such row rather than an empty one.
+    let cause_rows: String = transport_causes
+        .iter()
+        .map(|c| format!("transport_cause\t{}\n", c.replace(['\t', '\n'], " ")))
+        .collect();
     let receipt = format!(
-        "selected_witness_count\t{selected}\nnative_count\t{native_count}\ninterpreted_count\t{interpreted_count}\nunavailable_count\t{unavailable_count}\nbundle_count\t{}\nshard_count\t{}\ncold_compile_wall_nanos\t{cold_compile_wall}\nwarm_artifact_hit_wall_nanos\t{warm_artifact_hit_wall}\nnative_execution_wall_nanos\t{native_execution_wall}\ninterpreter_oracle_wall_nanos\t{interpreter_oracle_wall_nanos}\nfallback_count\t{fallback_count}\nrss_peak_bytes\t{rss_peak}\ncgroup_peak_bytes\t{cgroup_peak}\nverdict\t{verdict}\nplanted_red_equivalent\t{planted_red_equivalent}\nbundle_identity\t{}\n",
+        "selected_witness_count\t{selected}\nnative_count\t{native_count}\ninterpreted_count\t{interpreted_count}\nunavailable_count\t{unavailable_count}\nbundle_count\t{}\nshard_count\t{}\ncold_compile_wall_nanos\t{cold_compile_wall}\nwarm_artifact_hit_wall_nanos\t{warm_artifact_hit_wall}\nnative_execution_wall_nanos\t{native_execution_wall}\ninterpreter_oracle_wall_nanos\t{interpreter_oracle_wall_nanos}\nfallback_count\t{fallback_count}\nrss_peak_bytes\t{rss_peak}\ncgroup_peak_bytes\t{cgroup_peak}\nverdict\t{verdict}\nplanted_red_equivalent\t{planted_red_equivalent}\nbundle_identity\t{}\n{cause_rows}",
         primary.bundle_count, primary.shard_count, primary.bundle_identity
     );
     if let Err(e) = write_native_transition_receipt(&receipt) {
@@ -7569,7 +7843,7 @@ fn run_stage(
     governor: &Arc<MemoryGovernor>,
     fast_lane_eval_budget_ms: Option<u64>,
     falsifier_self_host_wet_budgets: &FalsifierSelfHostWetBudgets,
-    clamp_params: Option<(u128, u128)>,
+    clamp_params: Option<ResolvedFloorBatchClamp>,
     budget_tighten_ms: Option<u128>,
     obligation_subjects: Option<&ObligationSubjectSet>,
 ) -> StageRun {
@@ -7740,25 +8014,38 @@ fn run_stage(
             );
             (0u128, None)
         }
-        (FloorRuntimeUnitCount::Observed { units }, Some((overhead_ms, rate_ms))) => {
-            let mut clamp = overhead_ms + (*units * rate_ms);
+        (FloorRuntimeUnitCount::Observed { units }, Some(resolved)) => {
+            let mut clamp = resolved.clamp_ms(*units);
             if let Some(t) = budget_tighten_ms {
                 clamp = clamp.min(t);
             }
             let wall_ms = wall_nanos / 1_000_000;
             if wall_ms > clamp {
                 over_budget = true;
+                // Every term the reader needs to decide whether the units axis is even live:
+                // per_unit_ms and units_contribution_ms are printed beside the count, because a
+                // bare `units=27` invites trimming the roster on a row whose rate is zero — a
+                // remedy that cannot move the threshold by construction, and whose split form
+                // would hand the same work a second overhead allowance.
+                let batch_id_field = match resolved.authority.batch_id() {
+                    Some(id) => format!(" batch_id={id}"),
+                    None => String::new(),
+                };
                 println!(
                     "{}",
                     paint(
                         &format!(
-                            "✗ FLOOR-BATCH-OVER-BUDGET {}={} wall_ms={} clamp_ms={} units={}                                  (clamp = overhead + units*rate; authority gunbc.ci_spec                                  gunbc_ci_floor_batch_clamp_params[{}]; raising an overhead or rate requires                                  an operator-signed line per gunbc_ci_floor_batch_clamp_note — a refusal,                                  never a widen)",
+                            "✗ FLOOR-BATCH-OVER-BUDGET {}={}{} wall_ms={} clamp_ms={} overhead_ms={} units={} per_unit_ms={} units_contribution_ms={}                                  (clamp = overhead + units*rate; authority {}; raising an overhead or rate requires                                  an operator-signed line per gunbc_ci_floor_batch_clamp_note — a refusal,                                  never a widen)",
                             population.phase_slug(),
                             index + 1,
+                            batch_id_field,
                             wall_ms,
                             clamp,
+                            resolved.overhead_ms,
                             units,
-                            index
+                            resolved.per_unit_ms,
+                            resolved.units_contribution_ms(*units),
+                            resolved.authority.render(),
                         ),
                         sgr::ERROR
                     )
@@ -8095,7 +8382,7 @@ fn run_walk(
     fast_lane_eval_budget_ms: Option<u64>,
     falsifier_self_host_wet_budgets: FalsifierSelfHostWetBudgets,
     stop_policy: FloorBatchStopPolicy,
-    batch_clamp_params: Option<&[Option<(u128, u128)>]>,
+    batch_clamp_params: Option<&[Option<ResolvedFloorBatchClamp>]>,
     budget_tighten_ms: Option<u128>,
     falsifier_cadence: bool,
     witness_row_cost_basis_path: &Path,
@@ -8216,7 +8503,7 @@ fn run_walk(
             &falsifier_self_host_wet_budgets,
             batch_clamp_params
                 .and_then(|p| p.get(bi))
-                .copied()
+                .cloned()
                 .flatten(),
             budget_tighten_ms,
             obligation_subjects.as_ref(),
@@ -8457,6 +8744,19 @@ fn run_walk(
         || !selection_degradation_receipt_ok
         || !floor_component_receipt_ok
         || !materialization_receipt_ok;
+    push_ordinary_receipt_write_refusals(
+        &mut failure_details,
+        resolve_receipt_ok,
+        batch_wall_receipt_ok,
+        gate_warm_cost_receipt_ok,
+        witness_row_cost_receipt_ok,
+        wet_witness_row_outcome_receipt_ok,
+        witness_row_cost_drift_receipt_ok,
+        witness_row_cost_migration_disclosure_receipt_ok,
+        selection_degradation_receipt_ok,
+        floor_component_receipt_ok,
+        materialization_receipt_ok,
+    );
     // Floor finalization laws (the in-executor form of the deleted resolve/
     // materialization gate steps): validated AFTER the receipts wrote and BEFORE the
     // on-success stages, so a violation blocks admission instead of post-dating it.
@@ -8958,7 +9258,7 @@ fn run_perturb_check(
                         node_frontier_selection: *node_frontier_selection,
                         execution_authority: *execution_authority,
                         profile: *profile,
-                        clamp: *clamp,
+                        clamp: clamp.clone(),
                         process_isolation: *process_isolation,
                     },
                 })
@@ -9180,15 +9480,104 @@ enum FloorWorkerRole {
 
 struct ObservedFloorWorker {
     worker: String,
-    termination: FloorWorkerTermination,
+    termination: ProcessTermination,
     terminal_receipt: FloorWorkerTerminalReceipt,
 }
 
-#[derive(Debug, PartialEq, Eq)]
-enum FloorWorkerTermination {
+/// Seed projection of `std.process_termination` `ProcessTermination` — how an observed process
+/// ended. One carrier for both places the executor observes a child: the floor-worker
+/// coordinator (which spawns workers directly and reads an `ExitStatus`) and the native
+/// bundle transport (which reads the termination the interpreter transport carries).
+/// Named for the concept rather than for either subject so the second consumer did not
+/// mint a second spelling of it.
+#[derive(Debug, PartialEq, Eq, Clone)]
+enum ProcessTermination {
     Exited(i32),
     Signaled(i32),
     Unobserved,
+}
+
+impl ProcessTermination {
+    /// Located rendering for a diagnostic. A signalled process says so; it never
+    /// borrows an exit code it does not have.
+    fn located(&self) -> String {
+        match self {
+            ProcessTermination::Exited(code) => format!("exited {code}"),
+            ProcessTermination::Signaled(signal) => format!("killed by signal {signal}"),
+            ProcessTermination::Unobserved => "termination unobserved".to_string(),
+        }
+    }
+}
+
+/// The transport violated its own modeled wire: the `termination` value could not be
+/// decoded as a `std.process_termination` `ProcessTermination`. Deliberately a DIFFERENT state
+/// from `Unobserved` — Unobserved is the transport honestly reporting that the spawn
+/// never produced a status (an observation about the child), while this refusal means
+/// the transport or the interning under it is broken (a defect in the wire). The two
+/// have different owners and different fixes, so the decoder refuses instead of
+/// absorbing malformed wire into the legitimate arm.
+#[derive(Debug)]
+struct ProcessTerminationDecodeRefusal {
+    located: String,
+}
+
+/// Read the `std.process_termination` `ProcessTermination` the transport carries. ONLY the
+/// explicit modeled `ProcessTerminationUnobserved` arm decodes to `Unobserved`;
+/// absent, mistyped, unknown-variant, and missing/non-integer-field wire all carry a
+/// located decode refusal, never a fabricated exit code and never a borrowed
+/// legitimate arm.
+fn transport_termination(
+    value: Option<&Value>,
+    ctx: &InterpContext,
+) -> Result<ProcessTermination, ProcessTerminationDecodeRefusal> {
+    let refuse = |located: String| Err(ProcessTerminationDecodeRefusal { located });
+    let (variant_name, fields) = match value {
+        Some(Value::Variant {
+            variant_name,
+            fields,
+            ..
+        }) => (variant_name, fields),
+        Some(other) => {
+            return refuse(format!(
+                "termination is a {} where a ProcessTermination variant was modeled",
+                other.type_label_public()
+            ))
+        }
+        None => return refuse("termination field is absent from the transport record".to_string()),
+    };
+    let int_field = |name: &str, variant: &str| match ctx.field(fields, name) {
+        Some(Value::Int(n)) => i32::try_from(*n).map_err(|_| ProcessTerminationDecodeRefusal {
+            located: format!("{variant}.{name} {n} does not fit an i32"),
+        }),
+        Some(other) => Err(ProcessTerminationDecodeRefusal {
+            located: format!(
+                "{variant}.{name} is a {} where Int was modeled",
+                other.type_label_public()
+            ),
+        }),
+        None => Err(ProcessTerminationDecodeRefusal {
+            located: format!("{variant} is missing its `{name}` field"),
+        }),
+    };
+    if ctx.sym_eq(*variant_name, "ProcessExited") {
+        return Ok(ProcessTermination::Exited(int_field(
+            "code",
+            "ProcessExited",
+        )?));
+    }
+    if ctx.sym_eq(*variant_name, "ProcessSignaled") {
+        return Ok(ProcessTermination::Signaled(int_field(
+            "signal",
+            "ProcessSignaled",
+        )?));
+    }
+    if ctx.sym_eq(*variant_name, "ProcessTerminationUnobserved") {
+        return Ok(ProcessTermination::Unobserved);
+    }
+    refuse(format!(
+        "unknown ProcessTermination variant `{}`",
+        ctx.resolve(*variant_name)
+    ))
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -9282,25 +9671,25 @@ fn read_scoped_witness_batch_manifest() -> Result<Vec<String>, String> {
     Ok(ids)
 }
 
-fn exit_status_termination(status: &ExitStatus) -> FloorWorkerTermination {
+fn exit_status_termination(status: &ExitStatus) -> ProcessTermination {
     if let Some(code) = status.code() {
-        return FloorWorkerTermination::Exited(code);
+        return ProcessTermination::Exited(code);
     }
     #[cfg(unix)]
     {
         use std::os::unix::process::ExitStatusExt as _;
         if let Some(signal) = status.signal() {
-            return FloorWorkerTermination::Signaled(signal);
+            return ProcessTermination::Signaled(signal);
         }
     }
-    FloorWorkerTermination::Unobserved
+    ProcessTermination::Unobserved
 }
 
-fn floor_worker_termination_label(termination: &FloorWorkerTermination) -> String {
+fn floor_worker_termination_label(termination: &ProcessTermination) -> String {
     match termination {
-        FloorWorkerTermination::Exited(code) => format!("exited:{code}"),
-        FloorWorkerTermination::Signaled(signal) => format!("signaled:{signal}"),
-        FloorWorkerTermination::Unobserved => "termination-unobserved".to_string(),
+        ProcessTermination::Exited(code) => format!("exited:{code}"),
+        ProcessTermination::Signaled(signal) => format!("signaled:{signal}"),
+        ProcessTermination::Unobserved => "termination-unobserved".to_string(),
     }
 }
 
@@ -9324,13 +9713,13 @@ fn floor_worker_observation_outcome(row: &ObservedFloorWorker) -> DerivedFloorWo
             ),
         },
         FloorWorkerTerminalReceipt::Observed(report) => match (&row.termination, report) {
-            (FloorWorkerTermination::Exited(0), FloorWorkerTerminalReport::Completed(detail)) => {
+            (ProcessTermination::Exited(0), FloorWorkerTerminalReport::Completed(detail)) => {
                 DerivedFloorWorkerOutcome {
                     label: "completed",
                     detail: detail.clone(),
                 }
             }
-            (FloorWorkerTermination::Exited(code), FloorWorkerTerminalReport::Refused(detail))
+            (ProcessTermination::Exited(code), FloorWorkerTerminalReport::Refused(detail))
                 if *code != 0 =>
             {
                 DerivedFloorWorkerOutcome {
@@ -9343,7 +9732,7 @@ fn floor_worker_observation_outcome(row: &ObservedFloorWorker) -> DerivedFloorWo
                 label: "failed",
                 detail: detail.clone(),
             },
-            (FloorWorkerTermination::Signaled(signal), _) => DerivedFloorWorkerOutcome {
+            (ProcessTermination::Signaled(signal), _) => DerivedFloorWorkerOutcome {
                 label: "failed",
                 detail: format!(
                     "worker `{}` reported {} but died from signal {signal}",
@@ -9351,7 +9740,7 @@ fn floor_worker_observation_outcome(row: &ObservedFloorWorker) -> DerivedFloorWo
                     floor_worker_terminal_report_label(report)
                 ),
             },
-            (FloorWorkerTermination::Unobserved, _) => DerivedFloorWorkerOutcome {
+            (ProcessTermination::Unobserved, _) => DerivedFloorWorkerOutcome {
                 label: "failed",
                 detail: format!(
                     "worker `{}` reported {} but process termination was unobserved",
@@ -9359,7 +9748,7 @@ fn floor_worker_observation_outcome(row: &ObservedFloorWorker) -> DerivedFloorWo
                     floor_worker_terminal_report_label(report)
                 ),
             },
-            (FloorWorkerTermination::Exited(code), _) => DerivedFloorWorkerOutcome {
+            (ProcessTermination::Exited(code), _) => DerivedFloorWorkerOutcome {
                 label: "failed",
                 detail: format!(
                     "worker `{}` report {} contradicted exit code {code}",
@@ -9501,6 +9890,21 @@ fn spawn_floor_worker(
     command.env(FLOOR_WORKER_TERMINAL_ENV, &terminal_path);
     command.env("GUNBC_FLOOR_WALK_ATTEMPT_ID", walk_attempt_id);
     command.env(FLOOR_DISCOVERY_CONSUMER_ENV, discovery_consumer);
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::unix::process::CommandExt;
+        // When the thin coordinator is killed by the foreign step timeout, workers must not
+        // keep running as orphaned claim_executors (signature 2). SIGTERM on parent death
+        // gives the worker a chance to flush its terminal receipt before the runner reaps it.
+        unsafe {
+            command.pre_exec(|| {
+                if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM) != 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+    }
     // The worker's post-walk ledger harvest can spend minutes dropping its memo
     // contexts after the final discovery line.  A blocking `Command::status`
     // made that whole interval silent: the worker's own heartbeat shares its
@@ -9575,6 +9979,24 @@ fn floor_plan_function_arg(args: &[String]) -> Option<&str> {
         .map(|pair| pair[1].as_str())
 }
 
+fn coordinator_terminal_refusal(detail: &str) -> ExitCode {
+    append_floor_phase_journal("coordinator-terminal", "refused", detail);
+    eprintln!("claim_executor: floor coordinator refusal: {detail}");
+    ExitCode::from(1)
+}
+
+fn coordinator_report_worker_failure(worker: &ObservedFloorWorker, context: &str) -> ExitCode {
+    let outcome = floor_worker_observation_outcome(worker);
+    let detail = format!(
+        "{context}: worker={} termination={} outcome={} detail={}",
+        worker.worker,
+        floor_worker_termination_label(&worker.termination),
+        outcome.label,
+        outcome.detail
+    );
+    coordinator_terminal_refusal(&detail)
+}
+
 fn maybe_run_floor_coordinator(args: &[String]) -> Option<ExitCode> {
     if args.iter().any(|arg| arg == "--floor-worker-role")
         || floor_plan_function_arg(args) != Some("gunbc_ci_floor_plan")
@@ -9583,8 +10005,9 @@ fn maybe_run_floor_coordinator(args: &[String]) -> Option<ExitCode> {
     }
     if let Some(parent) = Path::new(FLOOR_WORKER_OBSERVATION_RECEIPT_PATH).parent() {
         if let Err(e) = fs::create_dir_all(parent) {
-            eprintln!("claim_executor: floor coordinator receipt directory refusal: {e}");
-            return Some(ExitCode::from(1));
+            return Some(coordinator_terminal_refusal(&format!(
+                "floor coordinator receipt directory refusal: {e}"
+            )));
         }
     }
     let _ = fs::remove_file(FLOOR_WORKER_OBSERVATION_RECEIPT_PATH);
@@ -9593,14 +10016,16 @@ fn maybe_run_floor_coordinator(args: &[String]) -> Option<ExitCode> {
         let _ = fs::remove_file(path);
     }
     if let Err(msg) = initialize_scoped_witness_receipt() {
-        eprintln!("claim_executor: floor coordinator receipt arm refusal: {msg}");
-        return Some(ExitCode::from(1));
+        return Some(coordinator_terminal_refusal(&format!(
+            "floor coordinator receipt arm refusal: {msg}"
+        )));
     }
     let walk_attempt_id = match observe_walk_attempt_id() {
         Ok(id) => id,
         Err(msg) => {
-            eprintln!("claim_executor: floor coordinator walk-attempt refusal: {msg}");
-            return Some(ExitCode::from(1));
+            return Some(coordinator_terminal_refusal(&format!(
+                "floor coordinator walk-attempt refusal: {msg}"
+            )));
         }
     };
     let ordinary = match spawn_floor_worker(args, "ordinary", None, 0, &walk_attempt_id, "producer")
@@ -9608,21 +10033,23 @@ fn maybe_run_floor_coordinator(args: &[String]) -> Option<ExitCode> {
         Ok(observed) => observed,
         Err(msg) => {
             replay_ordinary_floor_wet_witness_row_outcomes();
-            eprintln!("claim_executor: floor coordinator ordinary-worker refusal: {msg}");
-            return Some(ExitCode::from(1));
+            return Some(coordinator_terminal_refusal(&format!(
+                "floor coordinator ordinary-worker refusal: {msg}"
+            )));
         }
     };
     if !floor_worker_succeeded(&ordinary) {
-        eprintln!(
-            "claim_executor: floor coordinator stopping before scoped workers: ordinary worker did not complete"
-        );
-        return Some(ExitCode::from(1));
+        return Some(coordinator_report_worker_failure(
+            &ordinary,
+            "stopping before scoped workers because ordinary worker did not complete",
+        ));
     }
     let source_roots = match source_roots_from_executor_args(args) {
         Ok(roots) => roots,
         Err(msg) => {
-            eprintln!("claim_executor: floor coordinator source-roots refusal: {msg}");
-            return Some(ExitCode::from(1));
+            return Some(coordinator_terminal_refusal(&format!(
+                "floor coordinator source-roots refusal: {msg}"
+            )));
         }
     };
     let excludes = v1_compiler::cli_run::witness_exclusion_substrings();
@@ -9636,20 +10063,23 @@ fn maybe_run_floor_coordinator(args: &[String]) -> Option<ExitCode> {
     ) {
         Ok(request) => request,
         Err(msg) => {
-            eprintln!("claim_executor: floor coordinator pre-plan request refusal: {msg}");
-            return Some(ExitCode::from(1));
+            return Some(coordinator_terminal_refusal(&format!(
+                "floor coordinator pre-plan request refusal: {msg}"
+            )));
         }
     };
     let digest = request_identity_digest(&pre_plan_request);
     if let Err(msg) = verify_floor_discovery_terminal_for_coordinator(&walk_attempt_id, &digest) {
-        eprintln!("claim_executor: floor coordinator snapshot terminal refusal: {msg}");
-        return Some(ExitCode::from(1));
+        return Some(coordinator_terminal_refusal(&format!(
+            "floor coordinator snapshot terminal refusal: {msg}"
+        )));
     }
     let batch_ids = match read_scoped_witness_batch_manifest() {
         Ok(ids) => ids,
         Err(msg) => {
-            eprintln!("claim_executor: floor coordinator manifest refusal: {msg}");
-            return Some(ExitCode::from(1));
+            return Some(coordinator_terminal_refusal(&format!(
+                "floor coordinator manifest refusal: {msg}"
+            )));
         }
     };
     for (index, batch_id) in batch_ids.iter().enumerate() {
@@ -9663,17 +10093,30 @@ fn maybe_run_floor_coordinator(args: &[String]) -> Option<ExitCode> {
         ) {
             Ok(observed) => observed,
             Err(msg) => {
-                eprintln!("claim_executor: floor coordinator scoped-worker refusal: {msg}");
-                return Some(ExitCode::from(1));
+                return Some(coordinator_terminal_refusal(&format!(
+                    "floor coordinator scoped-worker `{batch_id}` refusal: {msg}"
+                )));
             }
         };
         if !floor_worker_succeeded(&scoped) {
-            eprintln!(
-                "claim_executor: floor coordinator stopping after scoped worker `{batch_id}` did not complete"
-            );
-            return Some(ExitCode::from(1));
+            return Some(coordinator_report_worker_failure(
+                &scoped,
+                &format!("stopping after scoped worker `{batch_id}` did not complete"),
+            ));
         }
     }
+    append_floor_phase_journal(
+        "coordinator-terminal",
+        "completed",
+        &format!(
+            "scoped_workers={} walk_attempt_id={walk_attempt_id}",
+            batch_ids.len()
+        ),
+    );
+    eprintln!(
+        "[floor-coordinator] outcome=completed scoped_workers={} walk_attempt_id={walk_attempt_id}",
+        batch_ids.len()
+    );
     Some(ExitCode::SUCCESS)
 }
 
@@ -10213,7 +10656,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     // fail-closed at arm time (the fast-lane-budget pattern). Scoped to the full floor plan only:
     // the plan-artifact shortcut runs a single batch of the same schedule and the falsifier
     // carries its own receipt budgets, so neither reads these lists.
-    let scoped_clamps: Vec<Option<(u128, u128)>> = match batches
+    let scoped_clamps: Vec<Option<ResolvedFloorBatchClamp>> = match batches
         .iter()
         .map(|batch| scoped_batch_clamp(batch))
         .collect::<Result<Vec<_>, _>>()
@@ -10236,7 +10679,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     } else {
         None
     };
-    let batch_clamp_params: Option<Vec<Option<(u128, u128)>>> =
+    let batch_clamp_params: Option<Vec<Option<ResolvedFloorBatchClamp>>> =
         if positional_clamps.is_some() || scoped_clamps.iter().any(|clamp| clamp.is_some()) {
             let mut positional_index = 0usize;
             let mut aligned = Vec::with_capacity(batches.len());
@@ -10244,7 +10687,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                 if let Some(clamp) = owned {
                     aligned.push(Some(clamp));
                 } else if let Some(rows) = &positional_clamps {
-                    aligned.push(rows.get(positional_index).copied());
+                    aligned.push(rows.get(positional_index).cloned());
                     positional_index += 1;
                 } else {
                     aligned.push(None);
@@ -10493,12 +10936,30 @@ fn run() -> Result<ExitCode, ExitCode> {
         &source_roots,
     );
     v1_compiler::v1_interpreter::group_end();
-    if outcome.any_failed {
-        emit_falsifier_failure_class(&outcome.failure_details, &outcome.infra_faults);
+    let mut terminal_failure_details = outcome.failure_details.clone();
+    if compile_clean_over_budget {
+        terminal_failure_details.push(
+            "post-walk compile_clean leg exceeded its declared clamp (FLOOR-COMPILE-CLEAN-OVER-BUDGET)"
+                .to_string(),
+        );
     }
-    floor_terminal_fast_exit(walk_exit_code(
-        outcome.any_failed || compile_clean_over_budget || !compile_clean_drift_receipt_ok,
-    ))
+    if !compile_clean_drift_receipt_ok {
+        terminal_failure_details
+            .push("post-walk compile_clean cost drift receipt refused or unwritable".to_string());
+    }
+    let any_failed =
+        outcome.any_failed || compile_clean_over_budget || !compile_clean_drift_receipt_ok;
+    if any_failed {
+        emit_falsifier_failure_class(&terminal_failure_details, &outcome.infra_faults);
+    }
+    let terminal_detail = walk_terminal_detail(
+        any_failed,
+        &terminal_failure_details,
+        &outcome.infra_faults,
+        compile_clean_over_budget,
+        compile_clean_drift_receipt_ok,
+    );
+    floor_terminal_fast_exit(walk_exit_code(any_failed), &terminal_detail)
 }
 
 /// Typed terminal failure class for the falsifier/floor walk (brief Step 2, 2026-07-25):
@@ -10602,6 +11063,104 @@ fn walk_exit_code(any_failed: bool) -> i32 {
     }
 }
 
+/// Located refusal lines for receipt-write failures that redden the ordinary floor without
+/// a witness batch failure. Without these, the walk can exit 1 with every batch green and
+/// an empty `failure_details` — the silent exit-1 class #8058's terminal receipt fix did
+/// not cover because the refusal lives only in the writer's eprintln.
+fn push_ordinary_receipt_write_refusals(
+    failure_details: &mut Vec<String>,
+    resolve_receipt_ok: bool,
+    batch_wall_receipt_ok: bool,
+    gate_warm_cost_receipt_ok: bool,
+    witness_row_cost_receipt_ok: bool,
+    wet_witness_row_outcome_receipt_ok: bool,
+    witness_row_cost_drift_receipt_ok: bool,
+    witness_row_cost_migration_disclosure_receipt_ok: bool,
+    selection_degradation_receipt_ok: bool,
+    floor_component_receipt_ok: bool,
+    materialization_receipt_ok: bool,
+) {
+    let mut push = |ok: bool, detail: &'static str| {
+        if !ok {
+            failure_details.push(detail.to_string());
+        }
+    };
+    push(
+        resolve_receipt_ok,
+        "ordinary-floor resolve realization receipt write refused",
+    );
+    push(
+        batch_wall_receipt_ok,
+        "ordinary-floor batch wall receipt write refused",
+    );
+    push(
+        gate_warm_cost_receipt_ok,
+        "ordinary-floor gate warm-cost receipt write refused",
+    );
+    push(
+        witness_row_cost_receipt_ok,
+        "ordinary-floor witness row-cost receipt write refused",
+    );
+    push(
+        wet_witness_row_outcome_receipt_ok,
+        "ordinary-floor wet witness row-outcome receipt write refused",
+    );
+    push(
+        witness_row_cost_drift_receipt_ok,
+        "ordinary-floor witness row-cost drift receipt write refused",
+    );
+    push(
+        witness_row_cost_migration_disclosure_receipt_ok,
+        "ordinary-floor witness row-cost migration disclosure receipt write refused",
+    );
+    push(
+        selection_degradation_receipt_ok,
+        "ordinary-floor selection degradation receipt write refused",
+    );
+    push(
+        floor_component_receipt_ok,
+        "ordinary-floor floor component receipt write refused",
+    );
+    push(
+        materialization_receipt_ok,
+        "ordinary-floor materialization demand receipt write refused",
+    );
+}
+
+/// Located refusal carried in the worker terminal receipt for the coordinator to replay.
+///
+/// `floor_terminal_fast_exit` used to write only `walk terminal exit code N`, which the
+/// thin coordinator then surfaced as the sole failure detail — a refusal that names
+/// nothing is worse than none (DESIGN §5; receipt: run 31263508328 printed
+/// `detail=walk terminal exit code 1` while the worker had already emitted the real
+/// witness-red batch line on stderr that Actions dropped).
+fn walk_terminal_detail(
+    any_failed: bool,
+    failure_details: &[String],
+    infra_faults: &[InfraFault],
+    compile_clean_over_budget: bool,
+    compile_clean_drift_receipt_ok: bool,
+) -> String {
+    if !any_failed {
+        return "walk terminal exit code 0".to_string();
+    }
+    let mode = falsifier_failure_mode_with_faults(failure_details, infra_faults);
+    let mut parts = vec![format!(
+        "walk terminal exit code 1 mode={mode} ci_failure_class_arm={}",
+        ci_failure_class_arm(mode)
+    )];
+    if !failure_details.is_empty() {
+        parts.push(failure_details.join(" | "));
+    }
+    if compile_clean_over_budget {
+        parts.push("compile_clean_over_budget".to_string());
+    }
+    if !compile_clean_drift_receipt_ok {
+        parts.push("compile_clean_cost_drift_receipt_refused".to_string());
+    }
+    scoped_wire_text(&parts.join(" "))
+}
+
 /// Terminal fast-exit for the floor walk (CI floor endgame D2): the executor retains a
 /// ~16GB store (process-shared index, typed caches, interner) whose Drop walk at process
 /// end measured 2.5–3.1 minutes, twice-confirmed (Pi bench: swap grows DURING Drop;
@@ -10613,13 +11172,17 @@ fn walk_exit_code(any_failed: bool) -> i32 {
 /// `run()`'s walk path — every plan walk (floor, plan-artifact, regen, falsifier) exits
 /// through it; every refusal/error path above returns normally. The exit CODE is exactly
 /// `walk_exit_code(any_failed)` — behavior-identical to the ExitCode return it replaces.
-fn floor_terminal_fast_exit(code: i32) -> ! {
+///
+/// #8058 carried the located refusal in the worker terminal receipt file only; Actions
+/// can drop inherited stderr after a large discovery run, and the phase journal had no
+/// terminal row — so a post-walk compile_clean refusal or a receipt-write failure looked
+/// like a silent exit-1 with every batch green. Emit the same detail on stderr and the
+/// durable journal before `process::exit`.
+fn floor_terminal_fast_exit(code: i32, detail: &str) -> ! {
     use std::io::Write as _;
     let terminal_outcome = if code == 0 { "completed" } else { "failed" };
-    let final_code = match write_floor_worker_terminal(
-        terminal_outcome,
-        &format!("walk terminal exit code {code}"),
-    ) {
+    emit_floor_terminal_outcome(terminal_outcome, detail);
+    let final_code = match write_floor_worker_terminal(terminal_outcome, detail) {
         Ok(()) => code,
         Err(msg) => {
             eprintln!("claim_executor: floor worker terminal receipt refusal: {msg}");
@@ -10629,6 +11192,49 @@ fn floor_terminal_fast_exit(code: i32) -> ! {
     let _ = std::io::stdout().flush();
     let _ = std::io::stderr().flush();
     std::process::exit(final_code)
+}
+
+fn emit_floor_terminal_outcome(outcome: &str, detail: &str) {
+    append_floor_phase_journal("walk-terminal", outcome, detail);
+    if outcome == "completed" {
+        eprintln!("[floor-terminal] outcome=completed detail={detail}");
+    } else {
+        eprintln!("[floor-terminal-refusal] outcome=failed detail={detail}");
+    }
+}
+
+/// Pre-walk worker failures return through `main()` instead of `floor_terminal_fast_exit`.
+/// Mirror the walk-terminal journal/stderr emission so those refusals survive Actions log
+/// truncation the same way post-walk failures do.
+fn emit_worker_terminal_before_return(code: ExitCode) -> ExitCode {
+    let Some(path) = std::env::var_os(FLOOR_WORKER_TERMINAL_ENV) else {
+        return code;
+    };
+    if code == ExitCode::SUCCESS {
+        return code;
+    }
+    let path = PathBuf::from(path);
+    let (outcome, detail) = if path.exists() {
+        match fs::read_to_string(&path) {
+            Ok(body) => {
+                let line = body.trim_end_matches(['\r', '\n']);
+                let (label, detail) = line.split_once('\t').unwrap_or((line, ""));
+                let outcome = if label == "completed" {
+                    "completed"
+                } else {
+                    "failed"
+                };
+                (outcome, detail.to_string())
+            }
+            Err(e) => ("failed", format!("worker terminal receipt unreadable: {e}")),
+        }
+    } else {
+        let detail = "worker returned before producing a walk terminal receipt".to_string();
+        let _ = write_floor_worker_terminal("failed", &detail);
+        ("failed", detail)
+    };
+    emit_floor_terminal_outcome(outcome, &detail);
+    code
 }
 
 fn main() -> ExitCode {
@@ -10647,18 +11253,7 @@ fn main() -> ExitCode {
         Ok(code) => code,
         Err(code) => code,
     };
-    if std::env::var_os(FLOOR_WORKER_TERMINAL_ENV).is_some() {
-        let terminal_exists = std::env::var_os(FLOOR_WORKER_TERMINAL_ENV)
-            .map(PathBuf::from)
-            .is_some_and(|path| path.exists());
-        if !terminal_exists {
-            let _ = write_floor_worker_terminal(
-                "failed",
-                "worker returned before producing a walk terminal receipt",
-            );
-        }
-    }
-    code
+    emit_worker_terminal_before_return(code)
 }
 
 #[cfg(test)]
@@ -11682,6 +12277,98 @@ mod tests {
     fn walk_exit_code_maps_failure_to_one_success_to_zero() {
         assert_eq!(walk_exit_code(true), 1);
         assert_eq!(walk_exit_code(false), 0);
+    }
+
+    #[test]
+    fn walk_terminal_detail_carries_located_refusal_not_bare_exit_code() {
+        let detail = walk_terminal_detail(
+            true,
+            &[
+                "batch=3 fn=discovery-corpus detail=25 of 8158 discovery witness(es) failed"
+                    .to_string(),
+            ],
+            &[],
+            false,
+            true,
+        );
+        assert!(
+            detail.contains("batch=3 fn=discovery-corpus"),
+            "the terminal receipt must carry the located batch refusal, got: {detail}"
+        );
+        assert!(
+            detail.contains("mode=WitnessRed"),
+            "the terminal receipt must carry the typed mode, got: {detail}"
+        );
+        assert!(
+            !detail.trim().eq("walk terminal exit code 1"),
+            "a bare exit-code string is not a located refusal: {detail}"
+        );
+        assert_eq!(
+            walk_terminal_detail(false, &[], &[], false, true),
+            "walk terminal exit code 0"
+        );
+    }
+
+    #[test]
+    fn walk_terminal_detail_surfaces_post_walk_compile_clean_refusals() {
+        let detail = walk_terminal_detail(true, &[], &[], true, false);
+        assert!(detail.contains("compile_clean_over_budget"));
+        assert!(detail.contains("compile_clean_cost_drift_receipt_refused"));
+    }
+
+    #[test]
+    fn push_ordinary_receipt_write_refusals_locates_each_failed_writer() {
+        let mut details = Vec::new();
+        push_ordinary_receipt_write_refusals(
+            &mut details,
+            true,
+            false,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            false,
+            true,
+        );
+        assert_eq!(details.len(), 2);
+        assert!(details
+            .iter()
+            .any(|d| d.contains("batch wall receipt write refused")));
+        assert!(details
+            .iter()
+            .any(|d| d.contains("floor component receipt write refused")));
+    }
+
+    #[test]
+    fn emit_worker_terminal_before_return_journals_pre_walk_refusal() {
+        let dir = std::env::temp_dir().join(format!(
+            "claim-executor-worker-terminal-before-return-{}",
+            std::process::id()
+        ));
+        let _ = fs::create_dir_all(&dir);
+        let terminal = dir.join("worker-terminal.tsv");
+        let journal = dir.join("floor-phase-journal.tsv");
+        let _ = fs::remove_file(&terminal);
+        let _ = fs::remove_file(&journal);
+        fs::write(
+            &terminal,
+            "refused\tscoped witness scheduling refusal: fixture detail\n",
+        )
+        .expect("write worker terminal fixture");
+        std::env::set_var(FLOOR_WORKER_TERMINAL_ENV, &terminal);
+        std::env::set_var(FLOOR_PHASE_JOURNAL_ENV, &journal);
+        let code = emit_worker_terminal_before_return(ExitCode::from(1));
+        std::env::remove_var(FLOOR_WORKER_TERMINAL_ENV);
+        std::env::remove_var(FLOOR_PHASE_JOURNAL_ENV);
+        assert_eq!(code, ExitCode::from(1));
+        let persisted = fs::read_to_string(&journal).expect("walk-terminal journal row");
+        let _ = fs::remove_dir_all(&dir);
+        assert!(
+            persisted.contains("\twalk-terminal\tfailed\tscoped witness scheduling refusal"),
+            "pre-walk worker refusal must reach the durable journal: {persisted:?}"
+        );
     }
 
     fn outcome(entry: &str, function: &str, o: ClaimOutcome) -> DiscoveryWitnessOutcome {
@@ -14264,6 +14951,136 @@ mod tests {
         );
     }
 
+    /// A signalled process must not borrow an exit code it does not have. The seed
+    /// rendered `.code().unwrap_or(-1)` for every leg before this, which made a runner
+    /// OOM-kill read exactly like a process that chose to exit -1.
+    #[test]
+    fn native_leg_signal_death_is_not_rendered_as_an_exit_code() {
+        assert_eq!(
+            ProcessTermination::Signaled(9).located(),
+            "killed by signal 9"
+        );
+        assert_eq!(ProcessTermination::Exited(101).located(), "exited 101");
+        assert_eq!(
+            ProcessTermination::Unobserved.located(),
+            "termination unobserved"
+        );
+        // The discriminating half: no termination renders as the old fabricated -1,
+        // and the signal arm shares no rendering with any exit arm.
+        for termination in [
+            ProcessTermination::Signaled(9),
+            ProcessTermination::Signaled(11),
+            ProcessTermination::Unobserved,
+        ] {
+            assert!(
+                !termination.located().contains("exited"),
+                "{termination:?} rendered as an exit"
+            );
+        }
+    }
+
+    /// Malformed transport wire must not borrow the legitimate `Unobserved` arm. "The
+    /// process never produced a status" and "the transport violated its own modeled
+    /// wire" have different owners and different fixes; collapsing them is the same
+    /// state-space conflation this change removes at the `ExitStatus` boundary, one
+    /// layer down. ONLY the explicit modeled `ProcessTerminationUnobserved` variant
+    /// decodes to `Unobserved` — every other shape carries a located refusal.
+    #[test]
+    fn malformed_termination_wire_refuses_instead_of_reading_as_unobserved() {
+        let graph = v1_compiler::v1_compiler_infer_items::ResolvedGraph {
+            modules: Rc::new(Default::default()),
+            item_registry: Rc::new(Default::default()),
+            diagnostics: Rc::new(Default::default()),
+            emit_graph_info: v1_compiler::v1_compiler_infer_emit_info::empty_emit_graph_info(),
+        };
+        let ctx = InterpContext::new(&graph, Rc::new(Default::default()), ExecutionMode::Hermetic);
+        let variant = |name: &str, fields: Vec<(&str, Value)>| Value::Variant {
+            type_name: ctx.sym("ProcessTermination"),
+            variant_name: ctx.sym(name),
+            fields: Rc::new(v1_compiler::v1_interpreter::sorted_fields(
+                fields.into_iter().map(|(k, v)| (ctx.sym(k), v)).collect(),
+            )),
+        };
+        // The modeled arms decode — including the ONE legitimate route to Unobserved.
+        assert_eq!(
+            transport_termination(Some(&variant("ProcessTerminationUnobserved", vec![])), &ctx)
+                .unwrap(),
+            ProcessTermination::Unobserved
+        );
+        assert_eq!(
+            transport_termination(
+                Some(&variant("ProcessExited", vec![("code", Value::Int(101))])),
+                &ctx
+            )
+            .unwrap(),
+            ProcessTermination::Exited(101)
+        );
+        assert_eq!(
+            transport_termination(
+                Some(&variant("ProcessSignaled", vec![("signal", Value::Int(9))])),
+                &ctx
+            )
+            .unwrap(),
+            ProcessTermination::Signaled(9)
+        );
+        // Every malformed shape refuses with a located cause, never Unobserved.
+        let malformed: Vec<(&str, Option<Value>)> = vec![
+            ("absent field", None),
+            ("non-variant value", Some(Value::Int(0))),
+            ("unknown variant", Some(variant("ProcessVanished", vec![]))),
+            ("missing code", Some(variant("ProcessExited", vec![]))),
+            (
+                "non-integer signal",
+                Some(variant(
+                    "ProcessSignaled",
+                    vec![("signal", Value::Str("9".to_string()))],
+                )),
+            ),
+        ];
+        for (label, value) in malformed {
+            let refusal = transport_termination(value.as_ref(), &ctx)
+                .err()
+                .unwrap_or_else(|| panic!("{label}: malformed wire decoded as legitimate"));
+            assert!(
+                !refusal.located.is_empty(),
+                "{label}: refusal carries no location"
+            );
+        }
+    }
+
+    /// The excerpt is the TAIL: cargo writes its error last and a panic writes its
+    /// message last, so a head-anchored excerpt would reliably carry the least useful
+    /// bytes. It is bounded so one refusal cannot flood the floor's result stream.
+    #[test]
+    fn stream_excerpt_keeps_the_tail_bounded_and_marks_truncation() {
+        assert_eq!(stream_excerpt(b""), "<empty>");
+        // An absent stream and a stream that said nothing are different observations
+        // and neither may read as a message.
+        assert_eq!(stream_excerpt(b"\n \n"), "<whitespace only>");
+        // A stream almost always ends in a newline; the trailing marker must not
+        // survive as a line the process never wrote.
+        assert_eq!(
+            stream_excerpt(b"error: no such command\n"),
+            "error: no such command"
+        );
+        assert_eq!(
+            stream_excerpt(b"first line\nsecond line\n"),
+            "first line ⏎ second line"
+        );
+        let long: Vec<u8> = std::iter::repeat(b'x')
+            .take(4000)
+            .chain(b"THE ACTUAL ERROR".iter().copied())
+            .collect();
+        let excerpt = stream_excerpt(&long);
+        assert!(excerpt.contains("THE ACTUAL ERROR"), "tail was dropped");
+        assert!(excerpt.starts_with('…'), "truncation was not marked");
+        assert!(
+            excerpt.len() < 1400,
+            "excerpt is unbounded: {}",
+            excerpt.len()
+        );
+    }
+
     #[test]
     fn grouping_preserves_every_claim_exactly_once() {
         // Verdict preservation: no claim dropped, duplicated, or invented — grouping only reorders
@@ -15688,7 +16505,7 @@ mod tests {
         std::env::set_var(FLOOR_PHASE_JOURNAL_ENV, &journal);
         journal_floor_worker_observation(&ObservedFloorWorker {
             worker: "scoped:batch-a".to_string(),
-            termination: FloorWorkerTermination::Exited(1),
+            termination: ProcessTermination::Exited(1),
             terminal_receipt: FloorWorkerTerminalReceipt::Observed(
                 FloorWorkerTerminalReport::Failed("witness row was red".to_string()),
             ),
@@ -15733,7 +16550,7 @@ mod tests {
         let status = Command::new("sh").arg("-c").arg("exit 7").status().unwrap();
         let observed = observe_floor_worker("scoped:batch-a", status, &terminal);
         let _ = fs::remove_file(&terminal);
-        assert_eq!(observed.termination, FloorWorkerTermination::Exited(7));
+        assert_eq!(observed.termination, ProcessTermination::Exited(7));
         assert!(matches!(
             observed.terminal_receipt,
             FloorWorkerTerminalReceipt::Observed(FloorWorkerTerminalReport::Completed(_))
@@ -15777,7 +16594,7 @@ mod tests {
         let observed = observe_floor_worker("scoped:batch-a", status, &terminal);
         assert!(matches!(
             observed.termination,
-            FloorWorkerTermination::Signaled(_)
+            ProcessTermination::Signaled(_)
         ));
         assert_eq!(
             floor_worker_observation_outcome(&observed).label,
@@ -15790,7 +16607,7 @@ mod tests {
     fn floor_worker_signal_overrules_a_completed_terminal_report() {
         let observed = ObservedFloorWorker {
             worker: "scoped:batch-a".to_string(),
-            termination: FloorWorkerTermination::Signaled(9),
+            termination: ProcessTermination::Signaled(9),
             terminal_receipt: FloorWorkerTerminalReceipt::Observed(
                 FloorWorkerTerminalReport::Completed("walk said complete".to_string()),
             ),

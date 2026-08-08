@@ -125,6 +125,8 @@ fn scope_placement_refused_paths(added: List<String>, carriers: List<String>, ma
 
 data scope_carrier_paths: List<String> = [
   "dag/extdeps/automation/playwright.dag",
+  "dag/extdeps/package.dag",
+  "dag/extdeps/npm.dag",
   "dag/extdeps/browser/chromium.dag",
   "dag/extdeps/container/oci/digest.dag",
   "dag/extdeps/git/publication_transport.dag",
@@ -191,6 +193,9 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/systems/nvidia_dgx_spark_setup.dag",
   "dag/extdeps/systems/types.dag",
   "dag/extdeps/tools/wc.dag",
+  "dag/extdeps/tools/sha512sum.dag",
+  "dag/extdeps/tools/npm.dag",
+  "dag/extdeps/tools/node.dag",
   "dag/extdeps/vendor/atlassian.dag",
   "dag/extdeps/vendor/microsoft.dag",
   "dag/extdeps/vendor/the_wand_company.dag",
@@ -204,8 +209,15 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/w3c/device_orientation_and_motion.dag",
   "dag/extdeps/w3c/generic_sensor.dag",
   "dag/extdeps/github/actions_runner.dag",
+  "dag/extdeps/llm/claude_agent_sdk_stream.dag",
   "dag/extdeps/llm/claude_sdk.dag",
-  "dag/extdeps/llm/codex_app_server.dag"
+  "dag/extdeps/llm/claude_setup_token_cli.dag",
+  "dag/extdeps/llm/codex_app_server.dag",
+  "dag/extdeps/llm/cursor_sdk.dag",
+  "dag/extdeps/llm/cursor_sdk_errors.dag",
+  "dag/extdeps/llm/cursor_sdk_facts.dag",
+  "dag/extdeps/llm/cursor_stream.dag",
+  "dag/extdeps/probes/provider_interface_acquisition.dag"
 ]
 
 data scope_machinery_exempt_paths: List<String> = [
