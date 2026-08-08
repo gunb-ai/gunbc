@@ -1,5 +1,0 @@
-module v2.test.fixture.variant_match_foreign_probe
-
-type ForeignTwoArm
-  = ForeignFirst { a: String }
-  | ForeignSecond { b: String }

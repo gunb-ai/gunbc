@@ -541,7 +541,6 @@ The row key is declaration grain — entry path plus function — because an ent
 
 type LiveReadSelectionRequest {
   entry_path: String
-  entry_module: String
   fn_name: String
 }
 
@@ -570,7 +569,6 @@ fn live_read_selection_manifest_over(
         key: live_read_manifest_row_key(entry_path: req.entry_path, fn_name: req.fn_name),
         projection: live_read_selection_projection_live(
           entry_path: req.entry_path,
-          entry_module: req.entry_module,
           fn_name: req.fn_name,
           subject: subject,
           edges: edges,
@@ -582,16 +580,17 @@ fn live_read_selection_manifest_over(
   })
 }
 
+data whole_tree_subject_mint_site_law: String = "THE COMPLETE SUBJECT IS MINTED WHERE THE WHOLE-TREE PRODUCERS ARE CALLED, AND NOWHERE ELSE. WholeTreeFactSubject carried a caller-supplied subject_id in an earlier revision, which meant the completeness claim was a string a caller wrote beside a fact list it also chose — the two were never related, so a fixture population could be labelled whole-tree and would then be permitted to decide LocalRead. Making the variant nullary removes the thing a caller could author. It is constructed at exactly one site, live_read_selection_manifest_live, which is also the only site that calls dependency_resolution_facts_live, module_declaration_facts_live and fn_arrow_decl_facts_live — so the subject and the facts have one origin by construction rather than by a caller pairing them correctly. RESIDUE, STATED RATHER THAN CLAIMED AWAY: this makes the subject unforgeable from outside, and it does NOT yet prove that fn_arrow_decl_facts_live covers every module the consuming index holds. Until a control shows a declaration outside the producer entry's own closure appearing in that population, the mint site is a construction wall around an unproven premise, not a proof of coverage. The seed-side identity check is the other half — the manifest is stamped with the producing index's generation and refuses a lookup from any other index."
+
 fn live_read_selection_manifest_live(
   requests: List<LiveReadSelectionRequest>,
-  subject_id: String,
   pool_roots: List<String>,
   importer_roots: List<String>,
   exclude_substrings: List<String>
 ) -> List<LiveReadSelectionManifestRow> {
   live_read_selection_manifest_over(
     requests: requests,
-    subject: WholeTreeFactSubject { subject_id: subject_id },
+    subject: WholeTreeFactSubject,
     edges: dependency_resolution_facts_live(
       pool_roots: pool_roots,
       importer_roots: importer_roots,
@@ -680,47 +679,61 @@ fn classification_is_local_read(c: LiveReadClassification) -> Bool {
   }
 }
 
+data partial_subject_never_decides_law: String = "PARTIAL POSITIVE EVIDENCE IS NOT A DECIDING CLASSIFICATION, and the earlier asymmetric gate got this exactly backwards on the arm that mattered. It refused LocalRead on a partial subject — correctly, since absence cannot be established from an incomplete view — and ACCEPTED RuntimeRead, on the reasoning that a carrier found is a carrier found. That reasoning holds for the EXISTENCE of a runtime read and fails for the SET of paths it reads, which is the fact selection actually consumes. A complete closure reading LiteralPath a.dag and LiteralPath b.dag, viewed partially, still classifies RuntimeRead while exposing only a.dag; a diff touching b.dag then misses the carrier set and licenses a skip. The accepted arm was therefore the under-selection direction wearing a safe-looking label — worse than the LocalRead arm it was paired against, because RuntimeRead reads as the cautious answer. So the law is one-sided: only a subject established complete for the exact tree may decide, and every partial, unbound, or mismatched subject refuses. The classification survives INSIDE the refusal as diagnostic payload, which is what keeps this a refusal carrying what it knew rather than an erasure."
+
+fn classification_diagnostic_label(c: LiveReadClassification) -> String {
+  match c {
+    LocalRead => "LocalRead"
+    RuntimeRead { carriers: _ } => "RuntimeRead"
+  }
+}
+
 fn live_read_selection_projection_for_subject(
   subject: G2FactSubject,
   classification: LiveReadClassification
 ) -> LiveReadSelectionProjection {
   match subject {
-    WholeTreeFactSubject { subject_id: _ } =>
+    WholeTreeFactSubject =>
       LiveReadSelectionClassified { classification: classification }
     PartialFactSubject { cause: cause } =>
-      if classification_is_local_read(c: classification) {
-        LiveReadSelectionRefused {
-          cause: concat(
-            "G2 reported LocalRead on a partial fact subject, which cannot establish absence: ",
-            cause
-          )
-        }
-      } else {
-        LiveReadSelectionClassified { classification: classification }
+      LiveReadSelectionRefused {
+        cause: concat(
+          concat(
+            "G2 ran against a partial fact subject, so no classification may decide a skip. ",
+            "Retained diagnostic classification: "
+          ),
+          concat(classification_diagnostic_label(c: classification), concat(" — ", cause))
+        )
       }
   }
 }
 
 fn live_read_selection_projection_live(
   entry_path: String,
-  entry_module: String,
   fn_name: String,
   subject: G2FactSubject,
   edges: List<ModuleDependencyEdge>,
   nodes: List<ModuleDeclarationFact>,
   decls: List<FnArrowDecl>
 ) -> LiveReadSelectionProjection {
-  live_read_selection_projection_for_subject(
-    subject: subject,
-    classification: live_read_classification_g2_from_edges(
-      entry_path: entry_path,
-      entry_module: entry_module,
-      fn_name: fn_name,
-      edges: edges,
-      nodes: nodes,
-      decls: decls
-    )
-  )
+  match bind_g2_root(entry_path: entry_path, fn_name: fn_name, nodes: nodes, decls: decls) {
+    G2RootUnbound { cause: cause } =>
+      LiveReadSelectionRefused {
+        cause: concat("G2 root is not exactly bound, so no classification was run: ", cause)
+      }
+    G2RootBound { entry_path: bound_path, entry_module: bound_module, decl: _ } =>
+      live_read_selection_projection_for_subject(
+        subject: subject,
+        classification: live_read_classification_g2_from_edges(
+          entry_path: bound_path,
+          entry_module: bound_module,
+          fn_name: fn_name,
+          edges: edges,
+          nodes: nodes,
+          decls: decls
+        )
+      )
+  }
 }
 
 fn live_read_selection_projection_from_facts(
@@ -932,4 +945,78 @@ fn runtime_read_touched_by_paths_g1(
 
 fn g2_implies_reads_live_tree(classification: LiveReadClassification) -> Bool {
   classification_has_runtime_read(classification: classification)
+}
+
+data g2_root_binding_law: String = "THE ROOT IS ONE BOUND DECLARATION, NOT THREE INDEPENDENTLY WRITABLE STRINGS. The earlier request carried entry_path, entry_module and fn_name side by side, and nothing related them: the dependency closure walked from the PATH while declaration seeding used the separately supplied MODULE and NAME, so a request naming module A's path, module B, and a function in B was constructible and would answer about a graph position it never occupied. The zero and many cases were worse than the mismatch, because both looked like success — zero matching declarations seeded an empty walk that reaches no carrier and therefore classifies LocalRead, which is the strongest answer the lens can give and the one that licenses a skip; many same-named declarations were all seeded and silently unioned, so an unrelated homonym's carrier reach could be attributed to this root, or conceal that the intended one was never found. Both are the empty-observation narrow: an observation that could not express what it was asked about, rendered as a verdict about it. So the binder is a chain of exact transitions — entry path to exactly one ModuleDeclarationFact, its module to exactly one FnArrowDecl — and zero or many at either step REFUSES with the count named. The module is DERIVED from the path rather than supplied, which is what makes the mismatch unwritable rather than merely detected."
+
+data empty_module_declaration_fact_list: List<ModuleDeclarationFact> = []
+
+type G2RootBinding
+  = G2RootBound { entry_path: String, entry_module: String, decl: FnArrowDecl }
+  | G2RootUnbound { cause: String }
+
+fn module_facts_for_path(path: String, nodes: List<ModuleDeclarationFact>) -> List<ModuleDeclarationFact> {
+  fold_list(xs: nodes, empty: empty_module_declaration_fact_list, cons: fn(acc, n) {
+    if string_eq(a: n.path, b: path) { list_snoc_item(xs: acc, item: n) } else { acc }
+  })
+}
+
+fn decls_with_qualified_name(qualified: String, decls: List<FnArrowDecl>) -> List<FnArrowDecl> {
+  fold_list(xs: decls, empty: empty_decl_list, cons: fn(acc, d) {
+    if string_eq(a: d.qualified_name, b: qualified) { list_snoc_item(xs: acc, item: d) } else { acc }
+  })
+}
+
+fn tail_module_facts(xs: List<ModuleDeclarationFact>) -> List<ModuleDeclarationFact> {
+  match list_tail(xs: xs) {
+    TailFound { tail: t } => t
+    TailAbsent => empty_module_declaration_fact_list
+  }
+}
+
+fn tail_decls(xs: List<FnArrowDecl>) -> List<FnArrowDecl> {
+  match list_tail(xs: xs) {
+    TailFound { tail: t } => t
+    TailAbsent => empty_decl_list
+  }
+}
+
+fn bind_g2_root(
+  entry_path: String,
+  fn_name: String,
+  nodes: List<ModuleDeclarationFact>,
+  decls: List<FnArrowDecl>
+) -> G2RootBinding {
+  let module_matches = module_facts_for_path(path: entry_path, nodes: nodes)
+  match list_head(xs: module_matches) {
+    HeadAbsent => G2RootUnbound {
+      cause: concat("no module declaration fact names entry path ", entry_path)
+    }
+    HeadFound { value: first_module } =>
+      match list_head(xs: tail_module_facts(xs: module_matches)) {
+        HeadFound { value: _ } => G2RootUnbound {
+          cause: concat("more than one module declaration fact names entry path ", entry_path)
+        }
+        HeadAbsent => {
+          let qualified = concat(concat(first_module.module, "."), fn_name)
+          let decl_matches = decls_with_qualified_name(qualified: qualified, decls: decls)
+          match list_head(xs: decl_matches) {
+            HeadAbsent => G2RootUnbound {
+              cause: concat("no fn-arrow declaration is named ", qualified)
+            }
+            HeadFound { value: first_decl } =>
+              match list_head(xs: tail_decls(xs: decl_matches)) {
+                HeadFound { value: _ } => G2RootUnbound {
+                  cause: concat("more than one fn-arrow declaration is named ", qualified)
+                }
+                HeadAbsent => G2RootBound {
+                  entry_path: entry_path,
+                  entry_module: first_module.module,
+                  decl: first_decl
+                }
+              }
+          }
+        }
+      }
+  }
 }
