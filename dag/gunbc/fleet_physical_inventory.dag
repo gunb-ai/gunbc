@@ -25,8 +25,13 @@ import extdeps.network.tp_link { tp_link_tl_sg1024s_catalog }
 import extdeps.rack.navepoint { navepoint_18u_open_frame_catalog }
 import extdeps.power.eaton_tripp_lite { eaton_tripp_lite_rs_1215_family_catalog }
 
-data fleet_physical_inventory_note: String = "SPATIAL-0 owned inventory bindings: extdeps rows cite vendor facts; this module binds allocated PhysicalAssetIdentity and HostIdentity instances to catalog declarations and rack residence. Mounting/shelf/U position stay UNOBSERVED until read or supplied. Amazon order IDs/URLs are procurement provenance, never asset identity. Nominal declared rackmount total 4+4+2+2+1+1 = 14U of 18U is arithmetic on catalog rack_units plus operator-declared 1U shelf for the desktop switch, not an observation. Raspberry Pi catalog identity remains unauthored until exact model/revision is observed."
-
+// SPATIAL-0 owned inventory bindings: extdeps rows cite vendor facts; this module binds allocated
+// PhysicalAssetIdentity and HostIdentity instances to catalog declarations and rack residence.
+// Mounting/shelf/U position stay UNOBSERVED until read or supplied. Amazon order IDs/URLs are
+// procurement provenance, never asset identity. Nominal declared rackmount total 4+4+2+2+1+1 = 14U
+// of 18U is arithmetic on catalog rack_units plus operator-declared 1U shelf for the desktop
+// switch, not an observation. Raspberry Pi catalog identity remains unauthored until exact
+// model/revision is observed.
 data operator_site: SiteIdentity = "operator-lab" as SiteIdentity
 data rack_01: RackIdentity = "rack-01" as RackIdentity
 
@@ -141,8 +146,9 @@ data fleet_host_spatial_facts: List<HostSpatialFacts> = [
   },
 ]
 
-data wifi_bootstrap_human_burden_deferred_note: String = "FleetOnce wifi-first-relay-standing human burden row is intentionally absent here — std.human_intervention authority is gunbc#7950; this module imports it and authors the burden row when that PR merges, not as a fourth fork of the carrier."
-
+// FleetOnce wifi-first-relay-standing human burden row is intentionally absent here —
+// std.human_intervention authority is gunbc#7950; this module imports it and authors the burden
+// row when that PR merges, not as a fourth fork of the carrier.
 data srv1_measured_wireless_note: String = "srv1 fleet controller measured WirelessAdapterAbsent: docker0 enP3p3s0f0 enP3p3s0f1 enP3p5s0 enx62a53617b395 lo tailscale0 veth*, no nmcli wireless interface — so no current fleet host can associate with a DGX OOBE hotspot without a dedicated relay."
 
 data dynatron_w1_installation_note: String = "srv3 and srv4 carry Dynatron W1 coolers on Ampere Altra / LGA4926 per operator inventory; cooler installation is a host-component fact not yet modeled as a separate PhysicalAsset row."

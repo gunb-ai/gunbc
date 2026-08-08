@@ -31,7 +31,6 @@ import product.placement_supply {
   same_rack,
   wireless_adapter_can_associate,
   wifi_target_needs_bootstrap,
-  BootstrapNeeded,
   BootstrapNeedUnobserved,
   wifi_relay_can_bootstrap,
   wifi_probe_is_candidate,
@@ -53,8 +52,14 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data spatial_placement_witness_note: String = "SPATIAL-0 green-by-execution proofs for product.placement_supply and gunbc.fleet_physical_inventory: RackResidence/same_rack (exact RackIdentity only; unobserved is Absent not false), WirelessAdapterStanding, WirelessReachStanding receipt-grounded reach, and the Wi-Fi bootstrap chain. The load-bearing fail-closed control is same_rack_without_receipt_refuses_bootstrap: co-rack placement makes a probe candidate but never establishes RF reach — bootstrap refuses until TargetAssociationObserved exists. The synthetic second-rack specimen proves same_rack returns Present(false) across different RackIdentity values. srv1 is the live WirelessAdapterAbsent specimen."
-
+// SPATIAL-0 green-by-execution proofs for product.placement_supply and
+// gunbc.fleet_physical_inventory: RackResidence/same_rack (exact RackIdentity only; unobserved is
+// Absent not false), WirelessAdapterStanding, WirelessReachStanding receipt-grounded reach, and
+// the Wi-Fi bootstrap chain. The load-bearing fail-closed control is
+// same_rack_without_receipt_refuses_bootstrap: co-rack placement makes a probe candidate but never
+// establishes RF reach — bootstrap refuses until TargetAssociationObserved exists. The synthetic
+// second-rack specimen proves same_rack returns Present(false) across different RackIdentity
+// values. srv1 is the live WirelessAdapterAbsent specimen.
 data rack_a: RackIdentity = "rack-a" as RackIdentity
 data rack_b: RackIdentity = "rack-b" as RackIdentity
 

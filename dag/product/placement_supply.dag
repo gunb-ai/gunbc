@@ -13,8 +13,19 @@ type RackIdentity = NonEmptyStr where brand("RackIdentity")
 type RackShelfIdentity = NonEmptyStr where brand("RackShelfIdentity")
 type ProcurementReceiptIdentity = NonEmptyStr where brand("ProcurementReceiptIdentity")
 
-data spatial_placement_note: String = "SPATIAL-0: physical placement and RF reachability — the product-layer authority for WHERE assets sit, whether they share a rack, and whether a wireless bootstrap step is admissible. Logical packet reach (extdeps.network.reach) and logical topology zones (product.network_topology.network_reachability) are separate facts. Rack identity is allocated — hostname, MAC, serial, and IP must never construct it. same_rack compares only exact RackIdentity on RackResidence rows; unobserved residence is unknown (Absent), not false. Same rack makes a Wi-Fi probe a sensible candidate only — only WirelessReachStanding with TargetAssociationObserved establishes reach. Physical colocation does not propagate beyond the rack unless another model supplies a broader relation. Unknown reach refuses bootstrap rather than widening (DESIGN section 5). Vendor/product facts live in extdeps; owned inventory and placement live here. DISSOLVE-ON: RackIdentity becomes OpaqueIdentity<RackSubject> when that carrier lands; observed RF survey receipts may add broader colocation arms when a cited propagation model lands in extdeps/, never by loosening the rack ceiling."
-
+// SPATIAL-0: physical placement and RF reachability — the product-layer authority for WHERE assets
+// sit, whether they share a rack, and whether a wireless bootstrap step is admissible. Logical
+// packet reach (extdeps.network.reach) and logical topology zones
+// (product.network_topology.network_reachability) are separate facts. Rack identity is allocated —
+// hostname, MAC, serial, and IP must never construct it. same_rack compares only exact
+// RackIdentity on RackResidence rows; unobserved residence is unknown (Absent), not false. Same
+// rack makes a Wi-Fi probe a sensible candidate only — only WirelessReachStanding with
+// TargetAssociationObserved establishes reach. Physical colocation does not propagate beyond the
+// rack unless another model supplies a broader relation. Unknown reach refuses bootstrap rather
+// than widening (DESIGN section 5). Vendor/product facts live in extdeps; owned inventory and
+// placement live here. DISSOLVE-ON: RackIdentity becomes OpaqueIdentity<RackSubject> when that
+// carrier lands; observed RF survey receipts may add broader colocation arms when a cited
+// propagation model lands in extdeps/, never by loosening the rack ceiling.
 // A rack POSITION and a rack HEIGHT are different quantities, the affine split DESIGN cites
 // for Temperature vs TemperatureDifference: first_u is an ordinal 1-based slot index (which U
 // the asset starts at), height is a cardinal magnitude (how many U it occupies). Only the
