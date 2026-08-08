@@ -83,6 +83,20 @@ fn gunbc_falsifier_step_timeout_basis_is_measured_not_composed() -> Bool {
   }
 }
 
+data gunbc_falsifier_receipt_flush_allowance_minutes: Int = 3
+
+fn gunbc_falsifier_soft_deadline_minutes() -> Int {
+  gunbc_falsifier_step_timeout_minutes - gunbc_falsifier_receipt_flush_allowance_minutes
+}
+
+fn gunbc_falsifier_soft_deadline_precedes_the_hard_kill() -> Bool {
+  gunbc_falsifier_soft_deadline_minutes() < gunbc_falsifier_step_timeout_minutes
+    && gunbc_falsifier_receipt_flush_allowance_minutes > 0
+    && gunbc_falsifier_soft_deadline_minutes() > 0
+}
+
+data gunbc_falsifier_soft_deadline_note: String = "THE INTERNAL DEADLINE, DERIVED FROM THE FOREIGN ONE — never a second independently authored number. gunbc_falsifier_step_timeout_minutes is a GitHub Actions step timeout: a SIGKILL delivered by the runner, which the executor cannot catch, cannot log, and cannot conclude through. Crossing it destroyed the run's evidence (the receipt was written once, after every batch), so the one failure mode most in need of a diagnosis was the one that erased its own. The checkpoint now keeps completed components' state on disk; this row is the other half — stop ADMITTING work early enough that the walk concludes itself, on its own terms, with a typed disposition per component, instead of vanishing mid-flight. The allowance is what the walk needs after its last batch to finish the receipt and let the artifact upload step run: the receipt write is a resolve (memoized, so paid once earlier in the run) plus a document eval over single-digit component rows, which is seconds, and 3 minutes is that with room for a loaded runner rather than a measured envelope. THE SUBTRACTION IS THE POINT: raising the step cap moves the soft deadline with it and the two can never cross, which is what makes this a derivation rather than the tuned second knob a bare 167 would be. IT IS NOT A COST BOUND AND MUST NOT BE READ AS ONE. Reaching it means the corpus did not finish in the time the lane has — a DeadlineReached disposition on every unadmitted component, counted, with the run red. That is a measurement of a cost problem, not a resolution of one, and the remedy stays what DESIGN's five-minute-CI-gate lane says it is: remove redundant computation, never raise the cap first."
+
 data gunbc_falsifier_step_timeout_note: String = "120 -> 170 (2026-07-11, run 29135185172 receipt): the first corpus-reaching cold run was TIME-killed at the 120-min step ceiling with the corpus incomplete (1970 rows, closure 1396 modules, width 1) and floor peak 16146612224 bytes against a 16GiB slot budget, still growing - so 120 censored the measurement without bounding anything real (the memory cap is the true wall). 170 lets a nightly run reach either completion (exact-labeled receipt) or the cap kill (censored-labeled receipt); both are the falsifier doing its measurement job, and the job backstop DERIVES from this value so it stretches in step. Revisit down when the resolver graph-major module split (S2a move 2) shrinks cold-resolve wall and residency."
 
 data falsifier_plan_function: String = plan_function_name(p: FalsifierPlan)
