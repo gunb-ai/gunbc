@@ -10736,7 +10736,9 @@ fn run() -> Result<ExitCode, ExitCode> {
         .collect();
     if !scoped_rows.is_empty() {
         let receipt_arm = scoped_witness_head_sha().and_then(|_| {
-            if floor_worker_role.is_none() {
+            if floor_worker_role.is_none()
+                || matches!(floor_worker_role, Some(FloorWorkerRole::Scoped { .. }))
+            {
                 initialize_scoped_witness_receipt()
             } else {
                 Ok(())
