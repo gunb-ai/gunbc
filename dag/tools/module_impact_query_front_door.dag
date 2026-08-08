@@ -28,9 +28,24 @@ import v2.workflow.floor_diff_observe {
   floor_observe_git_diff_name_status_for_ci,
 }
 import v2.lens.module_impact_query {
-  ChangedSurfaceImpact,
   ChangedPathSeeds,
-  changed_surface_impact,
+  ChangedSurfaceImpactOutcome,
+  ChangedSurfaceComplete,
+  ChangedSurfacePartial,
+  ChangedSurfaceRefused,
+  UnresolvedSubject,
+  NoModuleDeclaredAtPath,
+  BaseGraphUnavailable,
+  SkipAuthority,
+  SkipAuthorityGranted,
+  SkipAuthorityWithheld,
+  SkipWithheldUnresolvedSubjects,
+  SkipWithheldObservationRefused,
+  SkipWithheldStandingNotExact,
+  ModuleCycleAnalysis,
+  changed_surface_impact_outcome,
+  changed_surface_skip_authority,
+  module_cycle_analysis,
   DependenciesOf,
   DependentsOf,
   ImpactCycle,
@@ -290,66 +305,95 @@ fn dependents_of_path_report() -> String {
 }
 
 
-data changed_surface_front_door_note: String = "CAPSULE 2 — the applied consumer over a REAL changed surface. The changed paths come from v2.workflow.floor_diff_observe, the existing single authority for the CI diff observation; this adds no second diff producer. A diff-observation FAILURE refuses with the observation's own reason and computes NO impact — it never falls back to the whole corpus, which is the absorbing fallback DESIGN 5 names (can't compute the affected set -> rerun everything). Run it with: gunbc run --source-root dag --source-root src/v2 --entry dag/tools/module_impact_query_front_door.dag --function changed_surface_impact_report"
+data changed_surface_front_door_note: String = "CAPSULE 2 applied consumer, reworked under the operator ruling 2026-08-08. Changed paths AND departed paths both come from v2.workflow.floor_diff_observe, the existing single authority for the CI diff observation - this adds no second diff producer. Deletions are no longer discarded: a departed path becomes a ResolveInBase subject, which cannot resolve against the head population and therefore lands as a typed BaseGraphUnavailable unresolved subject, contaminating the outcome to Partial. A diff-observation FAILURE refuses with the observation's own reason and computes NO impact - it never widens to the whole corpus. Run: gunbc run --source-root dag --source-root src/v2 --entry dag/tools/module_impact_query_front_door.dag --function changed_surface_impact_report"
 
 fn render_changed_path_seeds(row: ChangedPathSeeds) -> String {
   if any(xs: row.seeds, predicate: fn(_) { true }) {
     "    {row.path}  ->  {render_modules(modules: row.seeds)}"
   } else {
-    "    {row.path}  ->  (no module declared at this path — carried as unresolved, NOT dropped)"
+    "    {row.path}  ->  (unresolved)"
   }
 }
 
-fn render_changed_surface_impact(impact: ChangedSurfaceImpact) -> String {
-  let resolution_lines = list_reverse(xs: fold_list(
-    xs: impact.resolution,
-    empty: no_lines,
-    cons: fn(acc, row) { Cons { head: render_changed_path_seeds(row: row), tail: acc } }
-  ))
-  let reached_lines = list_reverse(xs: fold_list(
-    xs: impact.reading.reached,
-    empty: no_lines,
-    cons: fn(acc, m) { Cons { head: "    {m.name}", tail: acc } }
-  ))
-  let cause_lines = list_reverse(xs: fold_list(
-    xs: impact.reading.causes,
-    empty: no_lines,
-    cons: fn(acc, c) { Cons { head: render_cause(cause: c), tail: acc } }
-  ))
-  render_lines(lines: [
-    "change impact — what does this change impact?",
-    "  standing: {render_standing(reading: impact.reading)}",
-    "  changed surface ({count_text(xs: impact.changed_paths)} path(s)) resolved to semantic seeds:",
-    render_lines(lines: resolution_lines),
-    "  unresolved paths ({count_text(xs: impact.unresolved_paths)}): carried, never dropped",
-    "  may be affected — DependentsOf ({count_text(xs: impact.reading.reached)} module(s)):",
-    render_lines(lines: reached_lines),
-    "  causes ({count_text(xs: impact.reading.causes)}):",
-    render_lines(lines: cause_lines),
-  ])
+fn render_unresolved_subject(subject: UnresolvedSubject) -> String {
+  match subject.cause {
+    NoModuleDeclaredAtPath =>
+      "    {subject.path}  —  no module declared at this path in the observed pool"
+    BaseGraphUnavailable =>
+      "    {subject.path}  —  DELETED: needs the BASE population, which no revision-scoped fact producer can supply today"
+  }
 }
 
-fn changed_surface_impact_report() -> String {
+fn render_skip_authority(authority: SkipAuthority) -> String {
+  match authority {
+    SkipAuthorityGranted { affected: _ } =>
+      "GRANTED — the answer is exact and whole for this subject"
+    SkipAuthorityWithheld { cause } =>
+      match cause {
+        SkipWithheldUnresolvedSubjects =>
+          "WITHHELD — the outcome is Partial (unresolved subjects); a partial answer may never authorize skipping work"
+        SkipWithheldObservationRefused =>
+          "WITHHELD — the diff observation refused"
+        SkipWithheldStandingNotExact =>
+          "WITHHELD — the reading is pool-relative, not exact"
+      }
+  }
+}
+
+fn render_outcome(outcome: ChangedSurfaceImpactOutcome) -> String {
+  match outcome {
+    ChangedSurfaceRefused { reason } =>
+      "change impact REFUSED — no impact computed and NOTHING widened to the whole corpus. reason: {reason}"
+    ChangedSurfaceComplete { reading } =>
+      render_lines(lines: [
+        "change impact — outcome: COMPLETE",
+        "  standing: {render_standing(reading: reading)}",
+        "  skip authority: {render_skip_authority(authority: changed_surface_skip_authority(outcome: outcome))}",
+        "  may be affected — DependentsOf ({count_text(xs: reading.reached)} module(s))",
+        "  causes ({count_text(xs: reading.causes)}):",
+        render_lines(lines: list_reverse(xs: fold_list(
+          xs: reading.causes,
+          empty: no_lines,
+          cons: fn(acc, c) { Cons { head: render_cause(cause: c), tail: acc } }
+        ))),
+      ])
+    ChangedSurfacePartial { reading, unresolved_subjects } =>
+      render_lines(lines: [
+        "change impact — outcome: PARTIAL (the answer is NOT whole; unresolved subjects below)",
+        "  standing: {render_standing(reading: reading)}",
+        "  skip authority: {render_skip_authority(authority: changed_surface_skip_authority(outcome: outcome))}",
+        "  may be affected — DependentsOf ({count_text(xs: reading.reached)} module(s))",
+        "  unresolved subjects ({count_text(xs: unresolved_subjects)}):",
+        render_lines(lines: list_reverse(xs: fold_list(
+          xs: unresolved_subjects,
+          empty: no_lines,
+          cons: fn(acc, u) { Cons { head: render_unresolved_subject(subject: u), tail: acc } }
+        ))),
+        "  causes ({count_text(xs: reading.causes)}):",
+        render_lines(lines: list_reverse(xs: fold_list(
+          xs: reading.causes,
+          empty: no_lines,
+          cons: fn(acc, c) { Cons { head: render_cause(cause: c), tail: acc } }
+        ))),
+      ])
+  }
+}
+
+fn front_door_changed_surface_outcome() -> ChangedSurfaceImpactOutcome {
   match floor_observe_git_diff_name_status_for_ci() {
-    NameStatusDiffFail { reason } =>
-      "change impact REFUSED — the diff could not be observed, so no impact is computed and NOTHING is widened to the whole corpus. reason: {reason}"
-    NameStatusDiffOk { changed_paths, departed_paths: _ } =>
-      render_changed_surface_impact(
-        impact: changed_surface_impact(
-          changed_paths: changed_paths,
-          edges: front_door_edges(),
-          nodes: front_door_nodes(),
-          import_facts: front_door_import_facts(),
-          admissions: front_door_admissions
-        )
+    NameStatusDiffFail { reason } => ChangedSurfaceRefused { reason: reason }
+    NameStatusDiffOk { changed_paths, departed_paths } =>
+      changed_surface_impact_outcome(
+        changed_paths: changed_paths,
+        departed_paths: departed_paths,
+        edges: front_door_edges(),
+        nodes: front_door_nodes(),
+        import_facts: front_door_import_facts(),
+        admissions: front_door_admissions
       )
   }
 }
 
-fn probe_dependents_count(module_name: String) -> String {
-  count_text(xs: dependents_of_module(module_name: module_name).reached)
-}
-
-fn probe_count_dependents_registry_completeness() -> String {
-  probe_dependents_count(module_name: "v2.lens.registry.completeness")
+fn changed_surface_impact_report() -> String {
+  render_outcome(outcome: front_door_changed_surface_outcome())
 }

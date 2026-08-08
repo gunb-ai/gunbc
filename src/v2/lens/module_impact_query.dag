@@ -98,7 +98,6 @@ type ImpactReading {
   explanation: List<ImpactEdge>
   standing: ImpactStanding
   causes: List<ImpactStandingCause>
-  cycles: List<ImpactCycle>
 }
 
 data impact_no_modules: List<ModuleIdentity> = []
@@ -876,14 +875,6 @@ fn module_impact_reading(
   )
   let adjacency = impact_adjacency(edges: normalized.edges, direction: direction)
   let reached = impact_closure_from_seeds(adjacency: adjacency, seeds: seeds)
-  let components = impact_cycle_components(
-    adjacency: adjacency,
-    reverse_adjacency: impact_adjacency(
-      edges: normalized.edges,
-      direction: impact_opposite_direction(direction: direction)
-    ),
-    reached: reached
-  )
   ImpactReading {
     direction: direction,
     seeds: seeds,
@@ -893,41 +884,172 @@ fn module_impact_reading(
       admissions: admissions,
       causes: normalized.causes
     ),
-    causes: normalized.causes,
-    cycles: impact_classify_cycles(edges: normalized.edges, components: components)
+    causes: normalized.causes
   }
 }
 
-data module_impact_changed_surface_note: String = "CAPSULE 2 — the applied consumer. Capsule 1 delivered the typed reverse index; by the graph's own law a discovery with no applied acceptance is the inert-analysis tier, so this is the subject-bound consumer that answers what does this change impact over a REAL changed surface. The changed surface is a list of file paths, which is the shape a diff actually has, and it enters through impact_seeds_for_path — the adapter, not the core. A path may resolve to SEVERAL semantic seeds and that is the honest answer, not a defect to collapse; a path may resolve to NONE, and that is the state this carrier is most careful about."
+data module_cycle_analysis_note: String = "OPERATOR RULING 2026-08-08, item 5: reachability and cycle analysis are SEPARATE questions and only the first answers what does this change impact. The reading previously ran peeling, exact cycle membership, component construction and per-component classification UNCONDITIONALLY on every query — that is what OOM-killed the first live run and dominated the 591s of the run that replaced it. Cycle analysis is now an optional projection computed ONLY on request over an already-selected reading, so the common path pays nothing for it. It is a projection rather than a second reading: it derives its adjacency from the reading's own explanation edges and direction, so there is no second edge population and no way for the two to disagree. The per-SCC classification review 50459 required is unchanged — it moved, it did not weaken."
 
-data module_impact_unresolved_path_note: String = "A changed path that resolves to zero modules is carried in unresolved_paths, never dropped. Dropping it is the empty-observation narrow DESIGN 5 names: bottom-as-answer conflated with bottom-as-ignorance. A .rs file, a workflow yml, a markdown doc and a .dag module whose declaration the pool does not carry all resolve to zero seeds here, and they are NOT the same fact — the first three are outside this graph's subject and the fourth is a pool gap — but this carrier can only observe that the SEMANTIC seed set is empty. So it reports the path as unresolved rather than classifying why, and a consumer that needs the distinction must join against its own subject universe. What it must never do is let the path vanish, because an impact answer computed from a silently smaller seed set reads as a confident small blast radius."
+type ModuleCycleAnalysis {
+  cycles: List<ImpactCycle>
+}
+
+fn module_cycle_analysis(reading: ImpactReading) -> ModuleCycleAnalysis {
+  let adjacency = impact_adjacency(edges: reading.explanation, direction: reading.direction)
+  ModuleCycleAnalysis {
+    cycles: impact_classify_cycles(
+      edges: reading.explanation,
+      components: impact_cycle_components(
+        adjacency: adjacency,
+        reverse_adjacency: impact_adjacency(
+          edges: reading.explanation,
+          direction: impact_opposite_direction(direction: reading.direction)
+        ),
+        reached: reading.reached
+      )
+    )
+  }
+}
+
+data module_impact_changed_surface_note: String = "CAPSULE 2, REWORKED under the operator ruling 2026-08-08. The consumer takes a changed surface - the shape a diff actually has - and answers what it impacts. Four things the first revision got wrong and this one does not. (1) DELETIONS were discarded: the front door threw away departed_paths, so the query could not answer what depends on the module I am DELETING, which is the most important destructive form of the question. (2) A deleted module is absent from the head population BY DEFINITION, so resolving every subject against head silently answers nothing-depends-on-it for exactly the case that most needs an answer. Each subject therefore carries the SIDE it must resolve against. (3) An unresolved subject was a side list beside the reading, so a machine consumer reading only the reading saw affects nothing with no typed signal - the outcome is now a coproduct and an unresolved subject CONTAMINATES the whole result. (4) Nothing prevented a partial answer being used to skip work."
+
+data module_impact_changed_side_note: String = "Which population a changed subject must resolve against is a fact about the EDIT, not about the graph: added -> head, deleted -> base, modified -> both, renamed -> old name in base and new name in head. Conservatively the dependent populations of both sides join. This carrier models that axis so a deletion can never be silently resolved against head; what it does NOT do is supply the base population, because no revision-scoped fact producer exists. module_declaration_facts / import_resolution_facts / reference_resolution_facts are host builtins over pool_roots that walk the WORKING TREE (cli_run pool_roots_abs) with no revision parameter, and the three ways to obtain a base graph are all gated: a revision-scoped builtin is new hand-Rust under gunbc.seed_growth; a base checkout is a heavy wet effect; reconstructing the graph from git show would be a SECOND edge producer, which the 2026-07-10 operator constraint in dependency_edge_source_migration_note forbids. So a base-side subject resolves to BaseGraphUnavailable, which is a typed, located, counted refusal that contaminates the outcome to Partial - never a fabricated head-side answer for a module that no longer exists there. Dissolve-on: a revision-scoped population becomes available to .dag, at which point ResolveInBase resolves against it and this cause disappears."
+
+type ChangedSubjectSide
+  = ResolveInHead
+  | ResolveInBase
+  | ResolveInBoth
+
+type ChangedSubject {
+  path: String
+  side: ChangedSubjectSide
+}
+
+type UnresolvedSubjectCause
+  = NoModuleDeclaredAtPath
+  | BaseGraphUnavailable
+
+type UnresolvedSubject {
+  path: String
+  cause: UnresolvedSubjectCause
+}
 
 type ChangedPathSeeds {
   path: String
   seeds: List<ModuleIdentity>
 }
 
-type ChangedSurfaceImpact {
-  changed_paths: List<String>
-  resolution: List<ChangedPathSeeds>
-  unresolved_paths: List<String>
-  reading: ImpactReading
-}
+data module_impact_outcome_note: String = "Complete | Partial | Refused, so a consumer cannot read a partial answer as a whole one. Partial carries the unresolved subjects rather than a flag, because the remedy differs per cause and a count cannot carry that. Refused is for an input that could not be observed at all - it computes no reading and widens nothing (DESIGN 5: a failure arm must refuse, never widen). Presentation is NOT a safety wall: the previous revision printed a warning line about unresolved paths while the typed result still said complete, and a machine consumer does not read terminal output."
+
+type ChangedSurfaceImpactOutcome
+  = ChangedSurfaceComplete {
+      reading: ImpactReading
+    }
+  | ChangedSurfacePartial {
+      reading: ImpactReading,
+      unresolved_subjects: List<UnresolvedSubject>
+    }
+  | ChangedSurfaceRefused {
+      reason: String
+    }
 
 data impact_no_changed_path_seeds: List<ChangedPathSeeds> = []
 
-fn impact_resolve_changed_surface(
+data impact_no_unresolved_subjects: List<UnresolvedSubject> = []
+
+data impact_no_changed_subjects: List<ChangedSubject> = []
+
+fn impact_changed_subject(path: String, side: ChangedSubjectSide) -> ChangedSubject {
+  ChangedSubject { path: path, side: side }
+}
+
+fn impact_prepend_unresolved(
+  acc: List<UnresolvedSubject>,
+  item: UnresolvedSubject
+) -> List<UnresolvedSubject> {
+  Cons { head: item, tail: acc }
+}
+
+fn impact_prepend_changed_subject(
+  acc: List<ChangedSubject>,
+  item: ChangedSubject
+) -> List<ChangedSubject> {
+  Cons { head: item, tail: acc }
+}
+
+fn impact_subject_needs_base(subject: ChangedSubject) -> Bool {
+  match subject.side {
+    ResolveInBase => true
+    ResolveInBoth => true
+    ResolveInHead => false
+  }
+}
+
+fn impact_subject_resolvable_in_head(subject: ChangedSubject) -> Bool {
+  match subject.side {
+    ResolveInHead => true
+    ResolveInBoth => true
+    ResolveInBase => false
+  }
+}
+
+fn impact_changed_subjects(
+  changed_paths: List<String>,
+  departed_paths: List<String>
+) -> List<ChangedSubject> {
+  let with_head = fold_list(
+    xs: changed_paths,
+    empty: impact_no_changed_subjects,
+    cons: fn(acc, path) {
+      impact_prepend_changed_subject(
+        acc: acc,
+        item: impact_changed_subject(path: path, side: ResolveInHead)
+      )
+    }
+  )
+  list_reverse(xs: fold_list(
+    xs: departed_paths,
+    empty: with_head,
+    cons: fn(acc, path) {
+      impact_prepend_changed_subject(
+        acc: acc,
+        item: impact_changed_subject(path: path, side: ResolveInBase)
+      )
+    }
+  ))
+}
+
+fn impact_resolve_subject_seeds(
   nodes: List<ModuleDeclarationFact>,
-  changed_paths: List<String>
+  subject: ChangedSubject
+) -> List<ModuleIdentity> {
+  if impact_subject_resolvable_in_head(subject: subject) {
+    impact_seeds_for_path(nodes: nodes, path: subject.path)
+  } else {
+    impact_no_modules
+  }
+}
+
+fn impact_unresolved_cause_for(subject: ChangedSubject) -> UnresolvedSubjectCause {
+  if impact_subject_needs_base(subject: subject) {
+    BaseGraphUnavailable
+  } else {
+    NoModuleDeclaredAtPath
+  }
+}
+
+fn impact_resolve_changed_subjects(
+  nodes: List<ModuleDeclarationFact>,
+  subjects: List<ChangedSubject>
 ) -> List<ChangedPathSeeds> {
   list_reverse(xs: fold_list(
-    xs: changed_paths,
+    xs: subjects,
     empty: impact_no_changed_path_seeds,
-    cons: fn(acc, path) {
+    cons: fn(acc, subject) {
       Cons {
         head: ChangedPathSeeds {
-          path: path,
-          seeds: impact_seeds_for_path(nodes: nodes, path: path)
+          path: subject.path,
+          seeds: impact_resolve_subject_seeds(nodes: nodes, subject: subject)
         },
         tail: acc
       }
@@ -935,19 +1057,27 @@ fn impact_resolve_changed_surface(
   ))
 }
 
-fn impact_prepend_path(acc: List<String>, path: String) -> List<String> {
-  Cons { head: path, tail: acc }
-}
-
-fn impact_unresolved_paths(resolution: List<ChangedPathSeeds>) -> List<String> {
+fn impact_unresolved_subjects(
+  nodes: List<ModuleDeclarationFact>,
+  subjects: List<ChangedSubject>
+) -> List<UnresolvedSubject> {
   list_reverse(xs: fold_list(
-    xs: resolution,
-    empty: impact_no_paths,
-    cons: fn(acc, row) {
-      if any(xs: row.seeds, predicate: fn(_) { true }) {
+    xs: subjects,
+    empty: impact_no_unresolved_subjects,
+    cons: fn(acc, subject) {
+      if any(
+        xs: impact_resolve_subject_seeds(nodes: nodes, subject: subject),
+        predicate: fn(_) { true }
+      ) {
         acc
       } else {
-        impact_prepend_path(acc: acc, path: row.path)
+        impact_prepend_unresolved(
+          acc: acc,
+          item: UnresolvedSubject {
+            path: subject.path,
+            cause: impact_unresolved_cause_for(subject: subject)
+          }
+        )
       }
     }
   ))
@@ -967,26 +1097,64 @@ fn impact_seeds_of_resolution(resolution: List<ChangedPathSeeds>) -> List<Module
   )
 }
 
-fn changed_surface_impact(
+fn changed_surface_impact_outcome(
   changed_paths: List<String>,
+  departed_paths: List<String>,
   edges: List<ModuleDependencyEdge>,
   nodes: List<ModuleDeclarationFact>,
   import_facts: List<ImportResolutionFact>,
   admissions: List<ReferenceDerivedClosureAdmission>
-) -> ChangedSurfaceImpact {
-  let resolution = impact_resolve_changed_surface(nodes: nodes, changed_paths: changed_paths)
-  ChangedSurfaceImpact {
+) -> ChangedSurfaceImpactOutcome {
+  let subjects = impact_changed_subjects(
     changed_paths: changed_paths,
-    resolution: resolution,
-    unresolved_paths: impact_unresolved_paths(resolution: resolution),
-    reading: module_impact_reading(
-      seeds: impact_seeds_of_resolution(resolution: resolution),
-      direction: DependentsOf,
-      edges: edges,
-      nodes: nodes,
-      import_facts: import_facts,
-      admissions: admissions
-    )
+    departed_paths: departed_paths
+  )
+  let resolution = impact_resolve_changed_subjects(nodes: nodes, subjects: subjects)
+  let unresolved = impact_unresolved_subjects(nodes: nodes, subjects: subjects)
+  let reading = module_impact_reading(
+    seeds: impact_seeds_of_resolution(resolution: resolution),
+    direction: DependentsOf,
+    edges: edges,
+    nodes: nodes,
+    import_facts: import_facts,
+    admissions: admissions
+  )
+  if any(xs: unresolved, predicate: fn(_) { true }) {
+    ChangedSurfacePartial { reading: reading, unresolved_subjects: unresolved }
+  } else {
+    ChangedSurfaceComplete { reading: reading }
+  }
+}
+
+data module_impact_skip_authority_note: String = "OPERATOR RULING 2026-08-08, item 4: a Partial answer must NEVER become a CI skip authority. This is the wall, and it is a construction wall rather than a check: the ONLY function that yields a skip authority pattern-matches the outcome, and the granting arm is reachable exclusively from ChangedSurfaceComplete whose reading ALSO carries ExactForGraphSubject. A Partial or Refused outcome has no path to SkipAuthorityGranted at all, so a consumer cannot obtain one by being careless with a field. Note what this means today: pool-independent projection is Unavailable, so no reading currently reaches ExactForGraphSubject and SkipAuthorityGranted is therefore UNREACHABLE on the live corpus. That is the honest state - this capability is a pool-relative module dependent query, not an affected set - and it is asserted by a witness rather than left as a claim."
+
+type SkipWithheldCause
+  = SkipWithheldUnresolvedSubjects
+  | SkipWithheldObservationRefused
+  | SkipWithheldStandingNotExact
+
+type SkipAuthority
+  = SkipAuthorityGranted {
+      affected: List<ModuleIdentity>
+    }
+  | SkipAuthorityWithheld {
+      cause: SkipWithheldCause
+    }
+
+fn changed_surface_skip_authority(outcome: ChangedSurfaceImpactOutcome) -> SkipAuthority {
+  match outcome {
+    ChangedSurfaceRefused { reason: _ } =>
+      SkipAuthorityWithheld { cause: SkipWithheldObservationRefused }
+    ChangedSurfacePartial { reading: _, unresolved_subjects: _ } =>
+      SkipAuthorityWithheld { cause: SkipWithheldUnresolvedSubjects }
+    ChangedSurfaceComplete { reading } =>
+      match reading.standing {
+        ExactForGraphSubject => SkipAuthorityGranted { affected: reading.reached }
+        ProvisionalForObservedPool => SkipAuthorityWithheld { cause: SkipWithheldStandingNotExact }
+        Incomplete { causes: _ } => SkipAuthorityWithheld { cause: SkipWithheldStandingNotExact }
+        PoolIndependentProjectionUnavailable { trigger: _ } =>
+          SkipAuthorityWithheld { cause: SkipWithheldStandingNotExact }
+      }
   }
 }
 
