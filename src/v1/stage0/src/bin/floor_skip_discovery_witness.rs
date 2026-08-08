@@ -748,8 +748,11 @@ fn stop_line_population_does_not_widen_incident_subject() {
 
     let unified =
         format!("+++ b/{disc_rel}\n@@ -{helper_line},0 +{helper_line},1 @@\n+// synthetic touch\n");
+    // The separator is the literal four-character sequence `\000`, not a NUL byte —
+    // `floor_diff_observe` splits the injected value on the string "\\000". An actual NUL here
+    // decodes as one unsplit path and the control would exercise a population it does not name.
     let name_status = format!(
-        "M\u{0}{disc_rel}\u{0}M\u{0}{}\u{0}M\u{0}{}\u{0}",
+        "M\\000{disc_rel}\\000M\\000{}\\000M\\000{}\\000",
         SELECTION_CONTROL_LIVE_TREE_DECLARED_REL, SELECTION_CONTROL_FALSIFIER_CONTROL_REL,
     );
     let _diff = EnvVarGuard::set("GUNBC_CI_DIFF_UNIFIED", &unified);
