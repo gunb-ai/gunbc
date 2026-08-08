@@ -70,7 +70,7 @@ import gunbc.ci_yaml_emit { expected_ci_yml }
 import gunbc.ci_workflow { ci_workflow }
 import gunbc.ci_materialization { step_display_name }
 import extdeps.github.actions { Step }
-import gunbc.generated_artifact { FalsifierYamlArtifact, artifact_path }
+import gunbc.shell_bash_runner { bash_escape_for_double_quotes }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -255,14 +255,14 @@ test fn aggregate_verdict_shell_has_dissolve_on_marker() -> Bool {
 
 test fn aggregate_verdict_shell_receipt_literals_match_model() -> Bool {
   let yml = expected_falsifier_yml()
-  string_contains(s: yml, pattern: aggregate_shell_receipt_build_failed())
-    && string_contains(s: yml, pattern: aggregate_shell_receipt_build_cancelled())
-    && string_contains(s: yml, pattern: aggregate_shell_receipt_build_skipped())
-    && string_contains(s: yml, pattern: aggregate_shell_receipt_cold_skipped())
-    && string_contains(s: yml, pattern: aggregate_shell_receipt_cold_cancelled())
-    && string_contains(s: yml, pattern: aggregate_shell_receipt_cold_failed_before_receipt())
-    && string_contains(s: yml, pattern: aggregate_shell_receipt_cold_receipt_artifact_absent())
-    && string_contains(s: yml, pattern: aggregate_shell_receipt_corpus_executed())
+  string_contains(s: yml, pattern: bash_escape_for_double_quotes(s: aggregate_shell_receipt_build_failed()))
+    && string_contains(s: yml, pattern: bash_escape_for_double_quotes(s: aggregate_shell_receipt_build_cancelled()))
+    && string_contains(s: yml, pattern: bash_escape_for_double_quotes(s: aggregate_shell_receipt_build_skipped()))
+    && string_contains(s: yml, pattern: bash_escape_for_double_quotes(s: aggregate_shell_receipt_cold_skipped()))
+    && string_contains(s: yml, pattern: bash_escape_for_double_quotes(s: aggregate_shell_receipt_cold_cancelled()))
+    && string_contains(s: yml, pattern: bash_escape_for_double_quotes(s: aggregate_shell_receipt_cold_failed_before_receipt()))
+    && string_contains(s: yml, pattern: bash_escape_for_double_quotes(s: aggregate_shell_receipt_cold_receipt_artifact_absent()))
+    && string_contains(s: yml, pattern: bash_escape_for_double_quotes(s: aggregate_shell_receipt_corpus_executed()))
 }
 
 test fn aggregate_shell_receipt_builders_are_receipt_json_authority() -> Bool {
