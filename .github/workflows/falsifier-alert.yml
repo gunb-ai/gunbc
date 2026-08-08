@@ -69,11 +69,36 @@
 # 🟡 dissolve-on: fold into gunbc.falsifier_workflow (dag/gunbc/falsifier_workflow.dag)
 # when the workflow emit seam models workflow_run triggers + issue effects; the
 # alert then becomes a typed effect row beside the batches it observes.
+#
+# THE ALERT DESCRIBES MAIN, AND ONLY MAIN. The issue is a live description of the
+# corpus's state at the tip of main, so the run it reads must be a run OF main.
+# The trigger carried no branch or event restriction and the job carried no guard,
+# so any session branch could dispatch affected-set-falsifier by hand and its
+# completion would rewrite the body, flip the signature, comment, or CLOSE the
+# issue as green — reporting a branch's state as main's. That is not a noisy
+# alert, it is a false one, and the failure is silent: nothing in the rendered
+# body said which ref produced it, so a reader could not tell an overwritten
+# window from a real transition. Receipt: three branch dispatches appeared among
+# the last twelve runs of the observed window.
+#
+# The restriction is stated TWICE on purpose, and the two are not redundant.
+# `branches:` filters delivery — the alert job never starts for a non-main run.
+# The `if:` is the fail-closed backstop at the consuming end: if the trigger
+# filter is ever widened, or a future trigger type is added beside workflow_run,
+# the guard still refuses rather than letting a foreign ref reach the issue. The
+# event allowlist is part of it — a schedule or a MAIN manual dispatch is the
+# cadence this alert reports; a pull_request-driven run is a different subject.
+#
+# Both conditions are on the TRIGGERING run's own fields, never on the alert
+# run's context: github.ref here is the default branch on every workflow_run
+# delivery regardless of what ran, so guarding on it would pass unconditionally
+# and read as a check while being none.
 name: falsifier-alert
 on:
   workflow_run:
     workflows: ["affected-set-falsifier"]
     types: [completed]
+    branches: [main]
 permissions:
   issues: write
   actions: read
@@ -82,6 +107,10 @@ jobs:
   alert:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 5
+    if: >-
+      github.event.workflow_run.head_branch == 'main' &&
+      (github.event.workflow_run.event == 'schedule' ||
+       github.event.workflow_run.event == 'workflow_dispatch')
     steps:
       - name: Download floor component receipt (from the triggering run)
         id: receipt
@@ -123,7 +152,15 @@ jobs:
             // notification after the first one. The mention therefore belongs on
             // every artifact that notifies, which is every comment.
             const ALERT_MENTION = '@briansrls';
-            const runLine = `[run ${run.id}](${run.html_url}) · started ${run.run_started_at} · conclusion **${conclusion}**`;
+            // The provenance of the run is rendered, not assumed. The trigger
+            // filter and the job guard above already make a non-main run
+            // undeliverable, so these fields are not the check — they are what
+            // lets a READER verify the check held, and what makes the ref and
+            // head of any given window recoverable from the issue itself rather
+            // than by opening the run. head_sha is the one that carries triage
+            // weight: a red window is only comparable to another red window at a
+            // known head, and the issue previously recorded none.
+            const runLine = `[run ${run.id}](${run.html_url}) · \`${run.head_branch}\` @ \`${(run.head_sha || '').slice(0, 10)}\` · event \`${run.event}\` · started ${run.run_started_at} · conclusion **${conclusion}**`;
 
             // ---- read the floor's own per-component receipt -------------------
             // Absence is a NAMED state carrying its cause. It never becomes a

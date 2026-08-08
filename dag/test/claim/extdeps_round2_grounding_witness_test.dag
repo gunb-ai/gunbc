@@ -1,5 +1,39 @@
 module test.claim.extdeps_round2_grounding_witness
 
+import extdeps.sql.migration {
+  sql_dialect_wire_label, Postgres, Mysql, Sqlite,
+  SqlMigrationStep, CreateTable,
+}
+import extdeps.http.server {
+  media_type_wire_label, text_html_utf8, text_plain_utf8,
+  TopLevelText, GET, ServedStaticRoute,
+}
+import std.http_path { PathTemplate }
+import extdeps.cloud.cloud {
+  aws_region_wire_label, UsEast1, aws_service_wire_label, S3,
+  SigV4, Protocol, OidcToken,
+}
+import extdeps.cloud.gcp.gcp {
+  GcpApiEndpoint, GcpStorage, GcpSts, gcp_service_wire_label,
+  GcpProject, GcpServiceAccount,
+}
+import extdeps.cloud.gcp.errors {
+  gcp_error_example, gcp_rpc_code_label, parse_gcp_rpc_code,
+  GcpRpcCodePermissionDenied, GcpRpcCodeNotFound, GcpRpcCodeOther,
+}
+import extdeps.gpu.types {
+  gpu_compute_capability_sm_label, GpuComputeCapability,
+  GpuCapabilityLabelOk, GpuCapabilityLabelRejected,
+  GpuFacts, AcceleratorFacts,
+}
+import extdeps.vendor.nvidia { nvidia }
+import extdeps.vendor.amd { amd }
+import extdeps.vendor.intel { intel }
+import extdeps.vendor.ampere { ampere }
+import extdeps.memory.types { MemoryFacts, Hbm }
+import std.measure { byte_size }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn w_sql_dialect_postgres_label() -> Bool {

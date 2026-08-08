@@ -5,3 +5,14 @@ type LocalValidated sole_constructor { n: Int }
 fn mint_local(n: Int) -> LocalValidated {
   LocalValidated { n: n }
 }
+
+// The caller-SEALED mint, the second half of the wall. mint_local above is exported to anyone, so it
+// proves only that a definer may hand out a construction route; this one proves the definer also
+// decides WHO gets it. The admitted caller is the sibling fixture module; any other module's call is a
+// ConstructorCallAdmissionRefused — the shape extdeps.shell.exec.transport_script_seal relies on in
+// production, exercised here on a fixture so the probe does not depend on a production roster.
+fn mint_sealed_local(n: Int) -> LocalValidated
+  admit_callers: [
+    decl_ref(module_path: "test.fixture.sole_constructor_sealed.admitted_caller", decl_name: "admitted_mint_call"),
+  ]
+  = LocalValidated { n: n }

@@ -1,0 +1,66 @@
+module extdeps.probes.provider_interface_acquisition
+
+import std.types { String, NonEmptyStr, Int }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/blob/main/docs/probes/provider_interface_acquisition_2026-08-03.json"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.probes.provider_interface_acquisition",
+      decl_name: "ProviderInterfaceAcquisitionCursorSdkClosureReceipt",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data provider_interface_acquisition_authority_note: String = "Cited rows from provider_interface_acquisition_2026-08-03.json — disposable npm acquisition probe receipt (2026-08-03). Independent oracle for @cursor/sdk package-closure witnesses; consumers must join here, never re-assert cursor_sdk_facts constructor inputs."
+
+data provider_interface_acquisition_lockfile_sha256: String = "d45372139f3b3cfec9b32728a1e6994d4a212d9d286854e795ad67ed12ee2d70"
+data provider_interface_acquisition_lockfile_package_entry_count: Int = 124
+data provider_interface_acquisition_lockfile_platform_gated_entry_count: Int = 13
+data provider_interface_acquisition_lockfile_install_script_count: Int = 0
+
+data provider_interface_acquisition_host_node_version: NonEmptyStr = "v22.23.2" as NonEmptyStr
+data provider_interface_acquisition_host_npm_version: NonEmptyStr = "10.9.8" as NonEmptyStr
+
+data provider_interface_acquisition_cursor_sdk_package_name: NonEmptyStr = "@cursor/sdk" as NonEmptyStr
+data provider_interface_acquisition_cursor_sdk_package_version: NonEmptyStr = "1.0.26" as NonEmptyStr
+data provider_interface_acquisition_cursor_sdk_package_integrity: NonEmptyStr = "sha512-dU3WpJwrxv8yoMjs0DxBgZr5btAJEO+NrvFutl08b6l2+jcuemfFWUlSPBQ2xZAH7zIZun+sqfHvjT5NxW8woQ==" as NonEmptyStr
+
+type ProviderInterfaceAcquisitionCursorSdkClosureReceipt {
+  package_name: NonEmptyStr
+  exact_version: NonEmptyStr
+  lockfile_sha256: String
+  root_integrity: NonEmptyStr
+  lock_entry_count: Int
+  platform_gated_entry_count: Int
+  install_script_count: Int
+  node_toolchain_version: NonEmptyStr
+  npm_toolchain_version: NonEmptyStr
+}
+
+fn provider_interface_acquisition_cursor_sdk_closure_receipt(
+) -> ProviderInterfaceAcquisitionCursorSdkClosureReceipt {
+  ProviderInterfaceAcquisitionCursorSdkClosureReceipt {
+    package_name: provider_interface_acquisition_cursor_sdk_package_name,
+    exact_version: provider_interface_acquisition_cursor_sdk_package_version,
+    lockfile_sha256: provider_interface_acquisition_lockfile_sha256,
+    root_integrity: provider_interface_acquisition_cursor_sdk_package_integrity,
+    lock_entry_count: provider_interface_acquisition_lockfile_package_entry_count,
+    platform_gated_entry_count: provider_interface_acquisition_lockfile_platform_gated_entry_count,
+    install_script_count: provider_interface_acquisition_lockfile_install_script_count,
+    node_toolchain_version: provider_interface_acquisition_host_node_version,
+    npm_toolchain_version: provider_interface_acquisition_host_npm_version,
+  }
+}

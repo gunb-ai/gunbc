@@ -1,5 +1,38 @@
 module test.claim.hardware_selection
 
+import extdeps.vendor.ampere { ampere }
+import extdeps.vendor.sk_hynix { sk_hynix }
+import extdeps.memory.types {
+  DramModuleCatalogRow, Registered, dram_generation_ddr4, bit_width,
+  dram_module_is_realizable, dram_module_required_die_density,
+}
+import extdeps.memory.jedec { ddr4_generation_catalog }
+import extdeps.cpu.ampere {
+  ampere_altra_l1_cache_geometry,
+  ampere_altra_l1_cache_citations,
+  ampere_altra_l2_cache_geometry,
+  ampere_altra_l2_cache_citations,
+  ampere_altra_max_l3_cache_geometry,
+  ampere_altra_max_l3_cache_citations,
+}
+import extdeps.cpu.types {
+  CpuModelCatalogRow, CpuSocket, LandGridArray,
+}
+import extdeps.toolchain.types { Aarch64 }
+import product.hardware_selection {
+  Platform, MemoryConfig, CpuCandidate, Motherboard, PsuModel, SystemConfig, HardwareAxes,
+  Gold,
+  effective_data_rate_mts, config_axes, dominates, axes_on_front,
+  psu_is_adequate, wall_draw_watts, config_is_realizable,
+  cost_micros_per_gib, bandwidth_per_watt,
+}
+import std.pareto { verdict_is_incomparable, verdict_dominates }
+import std.measure {
+  watt, watt_count, byte_size, byte_size_count,
+  hertz, hardware_thread_count, money_amount_micro,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data altra8: Platform = Platform {
@@ -60,13 +93,13 @@ data mod_1rx8_32g_impossible: DramModuleCatalogRow = DramModuleCatalogRow {
 }
 
 data mem_1rx8_2dpc: MemoryConfig = MemoryConfig {
-  module: mod_1rx8_16g, jedec: ddr4_generation_catalog, dimms_per_channel: 2, power_per_chip: milliwatt(count: 400), price_per_stick: money_amount_micro(count: 120000000)
+  module: mod_1rx8_16g, jedec: ddr4_generation_catalog, dimms_per_channel: 2, power_per_chip: product.hardware_selection.milliwatt(count: 400), price_per_stick: money_amount_micro(count: 120000000)
 }
 data mem_2rx8_2dpc: MemoryConfig = MemoryConfig {
-  module: mod_2rx8_16g, jedec: ddr4_generation_catalog, dimms_per_channel: 2, power_per_chip: milliwatt(count: 400), price_per_stick: money_amount_micro(count: 120000000)
+  module: mod_2rx8_16g, jedec: ddr4_generation_catalog, dimms_per_channel: 2, power_per_chip: product.hardware_selection.milliwatt(count: 400), price_per_stick: money_amount_micro(count: 120000000)
 }
 data mem_1rx8_1dpc: MemoryConfig = MemoryConfig {
-  module: mod_1rx8_16g, jedec: ddr4_generation_catalog, dimms_per_channel: 1, power_per_chip: milliwatt(count: 400), price_per_stick: money_amount_micro(count: 120000000)
+  module: mod_1rx8_16g, jedec: ddr4_generation_catalog, dimms_per_channel: 1, power_per_chip: product.hardware_selection.milliwatt(count: 400), price_per_stick: money_amount_micro(count: 120000000)
 }
 
 data cpu_catalog: CpuModelCatalogRow = CpuModelCatalogRow {

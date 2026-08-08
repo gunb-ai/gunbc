@@ -63,6 +63,7 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
         "std_graph",
         "extdeps_uri",
         "extdeps_external_authority",
+        "std_process_termination",
         "extdeps_container_oci_digest",
         "extdeps_units_dimensionless",
         "extdeps_units_iec_80000_13",
@@ -86,7 +87,8 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
         "std_interface_summary",
         "std_pareto",
         "std_realization_schedule",
-        "std_trait_derive_shape"
+        "std_trait_derive_shape",
+        "std_witness_admission"
       ],
       reexport_packages: [
         "v1-stage0-runtime",

@@ -1,0 +1,649 @@
+module test.claim.capability_binding_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { String, Bool, Int, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalSubjectRef }
+import std.integer { Nat }
+import gunbc.host_realization {
+  ApplicationContainerKind, BrowserDocument, NativeDesktopProcess, NativeMobileProcess,
+  EmbeddedWebView, container_kind_key,
+  HostRole, PrimaryInstrument, CompanionInput, host_role_key,
+  RendererKind, DomCssRenderer, WebGpuRenderer, NativeWidgetRenderer, GameEngineRenderer,
+  renderer_kind_key,
+  ResolvedRef, RefResolved, RefReducedByPolicy, RefNotProbed, RefUnpublishedByPlatform,
+  ref_is_resolved, resolved_ref_key,
+  HostRealization, host_identity_is_exact,
+  InstrumentContinuity, continuity_is_complete,
+}
+import gunbc.capability_binding {
+  ImpulseDirection, ImpulseUp, ImpulseDown, ImpulseDirectionUnresolved, impulse_direction_key,
+  PhysicalImpulse,
+  GravityHandling, GravityIncluded, GravityExcluded, GravityHandlingUnspecified,
+  PhysicalImpulseRequirement, bob_impulse_requirement_candidate,
+  RequirementStanding, AuditionProvisional, RequirementSigned, requirement_is_signed,
+  FrequencyObservation, FrequencyObserved, FrequencyUnobserved,
+  NoiseFloorObservation, NoiseFloorObserved, NoiseFloorUnobserved,
+  AxisCountObservation, AxisCountObserved, AxisCountUnobserved,
+  GravityNormalization, GravityNormalized, GravityNotNormalized, GravityNormalizationUnobserved,
+  NegativeControl, NegativeControlObserved, NegativeControlNotRun,
+  LatencyObservation, LatencyObserved, LatencyUnobserved,
+  CapabilityQualifiedAgainstProvisionalRequirement,
+  RequirementSigned, AuditionProvisional, PhysicalImpulseRequirement, GravityExcluded,
+  SampleReceipt,
+  TapQualificationCause, MagnitudeBelowFloor, LatencyAboveBudget, InsufficientAxes,
+  SampleRateBelowMinimum, GravityNotHandledAsRequired, NegativeControlNotSatisfied,
+  RequirementDimensionUnobserved, tap_cause_key,
+  TapQualification, TapQualified, TapRejected, qualify_tap, tap_rejection_causes,
+  CapabilityBinding, BoundCapabilityRequirement,
+  SampleLifecycle, LifecycleActivated, LifecycleActivationUnobserved, sample_lifecycle_key,
+  BindingStreamState, InterfaceUnavailable, PolicyRefused, PermissionRefused,
+  HardwareUnavailable, BackendConnectionRefused, NoSamplesObserved, HollowSamplesObserved,
+  SamplesObserved, TapOutcome, BindingStreamUnobserved,
+  binding_stream_key,
+  CapabilityBindingObservation,
+  CapabilityObstacle, ObstacleInterfaceUnavailable, ObstacleBackendConnectionRefused, obstacle_key,
+  DegradationCause, DegradedTapRejected, DegradedSamplesWithoutQualification,
+  DegradedSamplesCarryNoValues, DegradedNoSamplesInWindow, degradation_key,
+  TargetCapabilityVerdict, CapabilitySupported, CapabilityDegraded, CapabilityUnavailable,
+  CapabilityUnobserved, capability_verdict_key, derive_capability_verdict,
+  CapabilityVerdictRow, verdict_rows, row_supports_a_durable_claim,
+  SyntheticTapStrength, SyntheticTapLight, SyntheticTapFirm, SyntheticTapKnock,
+  synthetic_tap_strength_key, synthetic_tap_magnitude_milli, synthetic_tap_impulse,
+  synthetic_tap_provider, impulse_is_synthetic, synthetic_tap_clears_requirement,
+  BindingImplementationState, Implemented, NotImplemented, NotModelled,
+  BindingProbeState, ProbeRequired, ProbeObserved, ProbeBlocked, ProbeDeferred,
+  implementation_state_key, probe_state_key, coverage_state_key,
+  implementation_state_is_a_support_claim, probe_state_is_a_support_claim,
+  coverage_targets_asserting_support, deferred_targets_all_name_a_trigger,
+  probe_receipt_names_a_witness, every_probe_receipt_names_a_witness,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data capability_binding_witness_note: String = "The four-layer separation and the derived per-capability verdict, each law beside the control that reds it. The claims are mostly about what the model REFUSES to say: that an operating system supports something, that a readable sensor is a fit one, that a caller may declare a tap qualified, that a degradation needs no resolvable alternative, and that a synthetic source may stand in for hardware without saying so."
+
+fn a_host(container: ApplicationContainerKind, renderer: RendererKind) -> HostRealization {
+  HostRealization {
+    platform: ExternalSubjectRef {
+      declaration: DeclarationRef {
+        module_path: "extdeps.os.macos",
+        decl_name: "sequoia_15_catalog",
+        field: WholeDeclaration
+      }
+    },
+    platform_revision: RefReducedByPolicy { reported: "Mac OS X 10_15_7" },
+    device_identity: RefNotProbed,
+    role: PrimaryInstrument,
+    container_kind: container,
+    container_product: DeclarationRef {
+      module_path: "extdeps.browser.google_chrome",
+      decl_name: "google_chrome",
+      field: WholeDeclaration
+    },
+    container_product_build: RefReducedByPolicy { reported: "150.0.0.0" },
+    runtime_engine: RefResolved {
+      declaration: DeclarationRef {
+        module_path: "extdeps.browser.chromium",
+        decl_name: "chromium",
+        field: WholeDeclaration
+      }
+    },
+    runtime_engine_build: RefNotProbed,
+    renderer: renderer,
+  }
+}
+
+data orthogonality_note: String = "Container and renderer are independent axes, so every pairing is constructible and none is a variant of website. A native desktop process rendering DOM is the first native architecture worth building; a browser document rendering a WebGPU scene is a realization of the same projection. Fusing the axes would make both unspellable and the product would have silently become a website."
+
+fn witness_container_and_renderer_are_independent_axes() -> Bool {
+  let native_dom = a_host(container: NativeDesktopProcess, renderer: DomCssRenderer)
+  let browser_gpu = a_host(container: BrowserDocument, renderer: WebGpuRenderer)
+  let mobile_native = a_host(container: NativeMobileProcess, renderer: NativeWidgetRenderer)
+  container_kind_key(c: native_dom.container_kind) == "native-desktop-process"
+    && renderer_kind_key(r: native_dom.renderer) == "dom-css"
+    && container_kind_key(c: browser_gpu.container_kind) == "browser-document"
+    && renderer_kind_key(r: browser_gpu.renderer) == "webgpu"
+    && container_kind_key(c: mobile_native.container_kind) == "native-mobile-process"
+    && renderer_kind_key(r: mobile_native.renderer) == "native-widget"
+}
+
+data role_is_not_container_note: String = "A companion phone still runs its process somewhere. Role and container are orthogonal, so the same container kind carries both roles and a companion input host is expressible without inventing a container for it."
+
+fn witness_host_role_is_orthogonal_to_container() -> Bool {
+  let primary = a_host(container: NativeMobileProcess, renderer: NativeWidgetRenderer)
+  host_role_key(r: primary.role) == "primary-instrument"
+    && host_role_key(r: CompanionInput) == "companion-input"
+    && host_role_key(r: PrimaryInstrument) != host_role_key(r: CompanionInput)
+    && container_kind_key(c: BrowserDocument) != container_kind_key(c: EmbeddedWebView)
+}
+
+data continuity_note: String = "Continuity is a capability with independent parts, not a property assigned to a container by type. A shell may make some parts easier to realize; it does not make them different requirements, and a partial continuity is visibly partial."
+
+fn witness_continuity_is_a_capability_not_a_container_property() -> Bool {
+  continuity_is_complete(c: InstrumentContinuity {
+      preserve_local_camera: true,
+      preserve_last_projection: true,
+      preserve_preferences: true,
+      avoid_cold_start_replay: true,
+    })
+    && !continuity_is_complete(c: InstrumentContinuity {
+      preserve_local_camera: true,
+      preserve_last_projection: true,
+      preserve_preferences: true,
+      avoid_cold_start_replay: false,
+    })
+}
+
+data product_engine_note: String = "The Chrome receipt names Chrome as its product and Chromium as its separately resolved engine. The repository already ruled that a Chromium build is not a Google Chrome identity, and an earlier revision of this fixture reopened exactly that conflation by pointing the container at the Chromium project while carrying Chrome's version string."
+
+fn witness_the_browser_product_is_not_its_engine() -> Bool {
+  let h = a_host(container: BrowserDocument, renderer: DomCssRenderer)
+  h.container_product.module_path == "extdeps.browser.google_chrome"
+    && ref_is_resolved(r: h.runtime_engine)
+    && !ref_is_resolved(r: h.runtime_engine_build)
+    && !ref_is_resolved(r: h.container_product_build)
+    && !host_identity_is_exact(h: h)
+}
+
+fn witness_unresolved_identity_keeps_its_cause() -> Bool {
+  ref_is_resolved(r: RefResolved {
+      declaration: DeclarationRef { module_path: "extdeps.os.macos", decl_name: "sequoia_15_catalog", field: WholeDeclaration }
+    })
+    && !ref_is_resolved(r: RefReducedByPolicy { reported: "Mac OS X 10_15_7" })
+    && !ref_is_resolved(r: RefNotProbed)
+    && !ref_is_resolved(r: RefUnpublishedByPlatform)
+    && resolved_ref_key(r: RefReducedByPolicy { reported: "x" }) != resolved_ref_key(r: RefNotProbed)
+    && resolved_ref_key(r: RefNotProbed) != resolved_ref_key(r: RefUnpublishedByPlatform)
+}
+
+fn a_receipt(peak: Nat, latency: Milliseconds) -> SampleReceipt {
+  SampleReceipt {
+    count: 240,
+    frequency: FrequencyObserved { hz: 60 },
+    noise_floor: NoiseFloorObserved { magnitude_milli: 40 },
+    observed_axes: AxisCountObserved { n: 3 },
+    gravity: GravityNormalized,
+    peak_magnitude_milli: peak,
+    detection_latency_ms: LatencyObserved { ms: latency },
+    negative_control: NegativeControlObserved { idle_peak_milli: 300 },
+  }
+}
+
+data candidate_requirement_ref: DeclarationRef = DeclarationRef {
+  module_path: "gunbc.capability_binding",
+  decl_name: "bob_impulse_requirement_candidate",
+  field: WholeDeclaration
+}
+
+data signed_requirement_ref: DeclarationRef = DeclarationRef {
+  module_path: "test.claim.capability_binding_witness",
+  decl_name: "a_signed_requirement",
+  field: WholeDeclaration
+}
+
+fn an_observation_bound_to(
+  identity: DeclarationRef,
+  snapshot: PhysicalImpulseRequirement,
+  s: BindingStreamState,
+) -> CapabilityBindingObservation {
+  CapabilityBindingObservation {
+    binding: CapabilityBinding {
+      host: a_host(container: BrowserDocument, renderer: DomCssRenderer),
+      requirement: BoundCapabilityRequirement { identity: identity, snapshot: snapshot },
+      provider: DeclarationRef {
+        module_path: "extdeps.w3c.accelerometer",
+        decl_name: "LinearAccelerationSensor",
+        field: WholeDeclaration
+      },
+    },
+    stream: s,
+    observation_window_ms: 4000,
+  }
+}
+
+fn an_observation(s: BindingStreamState) -> CapabilityBindingObservation {
+  an_observation_bound_to(
+    identity: candidate_requirement_ref,
+    snapshot: bob_impulse_requirement_candidate,
+    s: s)
+}
+
+fn a_signed_observation(s: BindingStreamState) -> CapabilityBindingObservation {
+  an_observation_bound_to(
+    identity: signed_requirement_ref,
+    snapshot: a_signed_requirement,
+    s: s)
+}
+
+fn verdict_of(s: BindingStreamState) -> String {
+  capability_verdict_key(v: derive_capability_verdict(o: an_observation(s: s)))
+}
+
+fn signed_verdict_of(s: BindingStreamState) -> String {
+  capability_verdict_key(v: derive_capability_verdict(o: a_signed_observation(s: s)))
+}
+
+data qualification_is_minted_witness_note: String = "THE CENTRAL RED OF THIS FILE, AND IT EXISTS BECAUSE THE EARLIER MODEL FAILED IT. A caller used to be able to author a coproduct arm named qualified and receive a supported verdict, while the function that checked the requirement was never called by the verdict and checked only two of five dimensions. These claims plant a receipt that FAILS on each dimension in turn and assert that none of them qualifies — so a supported verdict is now reachable only through a total check."
+
+fn qualifies(r: SampleReceipt) -> Bool {
+  match qualify_tap(r: bob_impulse_requirement_candidate, s: r) {
+    TapQualified { receipt } => true
+    TapRejected { receipt, causes } => false
+  }
+}
+
+fn rejection_causes(r: SampleReceipt) -> List<TapQualificationCause> {
+  match qualify_tap(r: bob_impulse_requirement_candidate, s: r) {
+    TapQualified { receipt } => []
+    TapRejected { receipt, causes } => causes
+  }
+}
+
+fn causes_contain(cs: List<TapQualificationCause>, c: TapQualificationCause) -> Bool {
+  fold(cs, init: false, f: (acc, x) => acc || tap_cause_key(c: x) == tap_cause_key(c: c))
+}
+
+fn witness_a_clean_receipt_qualifies() -> Bool {
+  qualifies(r: a_receipt(peak: 3100, latency: 40))
+}
+
+fn witness_red_magnitude_below_the_floor_cannot_qualify() -> Bool {
+  let weak = a_receipt(peak: 1900, latency: 40)
+  !qualifies(r: weak)
+    && causes_contain(cs: rejection_causes(r: weak), c: MagnitudeBelowFloor)
+}
+
+fn witness_red_latency_above_the_budget_cannot_qualify() -> Bool {
+  let slow = a_receipt(peak: 3100, latency: 400)
+  !qualifies(r: slow)
+    && causes_contain(cs: rejection_causes(r: slow), c: LatencyAboveBudget)
+}
+
+data all_five_dimensions_note: String = "The three dimensions the earlier helper ignored entirely — axes, sample rate and gravity handling — each reject on their own, which is what makes the check total rather than a pair of comparisons wearing a requirement's name."
+
+fn witness_red_too_few_axes_cannot_qualify() -> Bool {
+  let flat = SampleReceipt {
+    count: 240,
+    frequency: FrequencyObserved { hz: 60 },
+    noise_floor: NoiseFloorObserved { magnitude_milli: 40 },
+    observed_axes: AxisCountObserved { n: 1 },
+    gravity: GravityNormalized,
+    peak_magnitude_milli: 3100,
+    detection_latency_ms: LatencyObserved { ms: 40 },
+    negative_control: NegativeControlObserved { idle_peak_milli: 300 },
+  }
+  !qualifies(r: flat) && causes_contain(cs: rejection_causes(r: flat), c: InsufficientAxes)
+}
+
+fn witness_red_a_slow_stream_cannot_qualify() -> Bool {
+  let slow = SampleReceipt {
+    count: 240,
+    frequency: FrequencyObserved { hz: 10 },
+    noise_floor: NoiseFloorObserved { magnitude_milli: 40 },
+    observed_axes: AxisCountObserved { n: 3 },
+    gravity: GravityNormalized,
+    peak_magnitude_milli: 3100,
+    detection_latency_ms: LatencyObserved { ms: 40 },
+    negative_control: NegativeControlObserved { idle_peak_milli: 300 },
+  }
+  !qualifies(r: slow) && causes_contain(cs: rejection_causes(r: slow), c: SampleRateBelowMinimum)
+}
+
+fn witness_red_gravity_left_in_cannot_qualify() -> Bool {
+  let heavy = SampleReceipt {
+    count: 240,
+    frequency: FrequencyObserved { hz: 60 },
+    noise_floor: NoiseFloorObserved { magnitude_milli: 40 },
+    observed_axes: AxisCountObserved { n: 3 },
+    gravity: GravityNotNormalized,
+    peak_magnitude_milli: 3100,
+    detection_latency_ms: LatencyObserved { ms: 40 },
+    negative_control: NegativeControlObserved { idle_peak_milli: 300 },
+  }
+  !qualifies(r: heavy) && causes_contain(cs: rejection_causes(r: heavy), c: GravityNotHandledAsRequired)
+}
+
+data unobserved_dimension_note: String = "A dimension nobody measured REFUSES rather than passing, which is the whole reason unobserved is distinct from zero. The web route supplies no noise floor and no axis count today, so a web sample receipt cannot qualify a tap on its own — exactly the honest result, and the reason the qualification must run over samples rather than being projected from a stream arm."
+
+fn witness_red_an_unobserved_dimension_refuses_rather_than_passing() -> Bool {
+  let partial = SampleReceipt {
+    count: 240,
+    frequency: FrequencyUnobserved,
+    noise_floor: NoiseFloorUnobserved,
+    observed_axes: AxisCountUnobserved,
+    gravity: GravityNormalizationUnobserved,
+    peak_magnitude_milli: 9000,
+    detection_latency_ms: LatencyObserved { ms: 10 },
+    negative_control: NegativeControlObserved { idle_peak_milli: 300 },
+  }
+  !qualifies(r: partial)
+    && causes_contain(cs: rejection_causes(r: partial), c: RequirementDimensionUnobserved)
+}
+
+data negative_control_witness_note: String = "A threshold with no negative control is sensitivity, not discrimination: nobody has checked that typing stays below it. An unrun control therefore rejects, and a failed one rejects too."
+
+fn witness_red_a_missing_negative_control_refuses() -> Bool {
+  let unrun = SampleReceipt {
+    count: 240,
+    frequency: FrequencyObserved { hz: 60 },
+    noise_floor: NoiseFloorObserved { magnitude_milli: 40 },
+    observed_axes: AxisCountObserved { n: 3 },
+    gravity: GravityNormalized,
+    peak_magnitude_milli: 3100,
+    detection_latency_ms: LatencyObserved { ms: 40 },
+    negative_control: NegativeControlNotRun,
+  }
+  let failed = SampleReceipt {
+    count: 240,
+    frequency: FrequencyObserved { hz: 60 },
+    noise_floor: NoiseFloorObserved { magnitude_milli: 40 },
+    observed_axes: AxisCountObserved { n: 3 },
+    gravity: GravityNormalized,
+    peak_magnitude_milli: 3100,
+    detection_latency_ms: LatencyObserved { ms: 40 },
+    negative_control: NegativeControlObserved { idle_peak_milli: 2500 },
+  }
+  !qualifies(r: unrun)
+    && causes_contain(cs: rejection_causes(r: unrun), c: NegativeControlNotSatisfied)
+    && !qualifies(r: failed)
+}
+
+data signed_requirement_note: String = "A signed twin of the candidate requirement, identical in every threshold, differing only in standing. It exists so the two verdicts can be compared on ONE variable: the same receipt against the same numbers reaches supported when the thresholds are signed and qualified-against-provisional when they are not."
+
+data a_signed_requirement: PhysicalImpulseRequirement = PhysicalImpulseRequirement {
+  axis_count: 3,
+  minimum_sample_rate_hz: 50,
+  maximum_detection_latency_ms: 120,
+  gravity_handling: GravityExcluded,
+  minimum_discriminating_magnitude_milli_m_per_s2: 2000,
+  standing: RequirementSigned {
+    audition_receipt: DeclarationRef {
+      module_path: "test.claim.capability_binding_witness",
+      decl_name: "a_signed_requirement",
+      field: WholeDeclaration
+    },
+  },
+}
+
+data supported_needs_a_receipt_note: String = "The seam claim, and it is now a claim about DERIVATION rather than about routing: the stream hands the verdict a raw requirement and a raw receipt, the verdict qualifies them itself, and there is no qualified value anyone could have authored instead. A rejected measurement degrades with its typed causes carried through rather than flattened to a sentence."
+
+fn witness_only_a_derived_qualification_reaches_supported() -> Bool {
+  signed_verdict_of(s: TapOutcome { receipt: a_receipt(peak: 3100, latency: 40) }) == "supported"
+    && signed_verdict_of(s: TapOutcome { receipt: a_receipt(peak: 1900, latency: 40) }) == "degraded"
+    && verdict_of(s: SamplesObserved { receipt: a_receipt(peak: 2600, latency: 40) }) == "degraded"
+    && verdict_of(s: HollowSamplesObserved { count: 12 }) == "degraded"
+    && verdict_of(s: NoSamplesObserved { lifecycle: LifecycleActivated }) == "degraded"
+}
+
+fn witness_a_rejected_tap_carries_its_typed_causes() -> Bool {
+  match derive_capability_verdict(o: a_signed_observation(s: TapOutcome {
+      receipt: a_receipt(peak: 1900, latency: 400)
+    })) {
+    CapabilityDegraded { missing, alternative } => match missing {
+      DegradedTapRejected { causes } =>
+        causes_contain(cs: causes, c: MagnitudeBelowFloor)
+          && causes_contain(cs: causes, c: LatencyAboveBudget)
+      DegradedSamplesWithoutQualification => false
+      DegradedSamplesCarryNoValues => false
+      DegradedNoSamplesInWindow { lifecycle } => false
+    }
+    CapabilitySupported { receipt } => false
+    CapabilityQualifiedAgainstProvisionalRequirement { receipt, pending } => false
+    CapabilityUnavailable { obstacle } => false
+    CapabilityUnobserved => false
+  }
+}
+
+data provisional_cannot_authorize_note: String = "The two blocking bypasses this file previously could not see, planted as the RED they need. A negative control whose observed idle peak sits ABOVE the discriminating floor must reject — under the old shape it passed because it was named Passed. And the live candidate requirement, whose own standing says its numbers are unproven, must NOT reach supported no matter how good the measurement is: the same receipt that reaches supported against signed thresholds lands on the provisional arm against unsigned ones, and its key is not the one the durable-claim gate reads."
+
+fn witness_red_a_negative_control_above_the_floor_rejects() -> Bool {
+  let noisy = SampleReceipt {
+    count: 240,
+    frequency: FrequencyObserved { hz: 60 },
+    noise_floor: NoiseFloorObserved { magnitude_milli: 40 },
+    observed_axes: AxisCountObserved { n: 3 },
+    gravity: GravityNormalized,
+    peak_magnitude_milli: 3100,
+    detection_latency_ms: LatencyObserved { ms: 40 },
+    negative_control: NegativeControlObserved { idle_peak_milli: 9000 },
+  }
+  !qualifies(r: noisy)
+    && causes_contain(cs: rejection_causes(r: noisy), c: NegativeControlNotSatisfied)
+    && qualifies(r: a_receipt(peak: 3100, latency: 40))
+}
+
+fn witness_red_provisional_thresholds_cannot_authorize_support() -> Bool {
+  let good = a_receipt(peak: 3100, latency: 40)
+  verdict_of(s: TapOutcome { receipt: good }) == "qualified-against-provisional-requirement"
+    && signed_verdict_of(s: TapOutcome { receipt: good }) == "supported"
+    && !row_supports_a_durable_claim(r: CapabilityVerdictRow {
+         binding: an_observation(s: TapOutcome { receipt: good }).binding,
+         verdict: derive_capability_verdict(o: an_observation(s: TapOutcome { receipt: good })),
+       })
+}
+
+data one_requirement_per_observation_note: String = "ONE REQUIREMENT, AND THE SNAPSHOT IS THE ONE THAT DECIDES (review finding, 2026-08-07). The observation used to carry two independently writable requirements — one on the binding, naming what this row is a claim about, and one on the tap outcome, naming what the measurement was taken against — with nothing making them the same requirement. A row whose binding pointed at signed thresholds while its outcome carried provisional ones was constructible and typechecked, and read from the outside as a signed claim.
+
+They are one field now: the binding carries the identity of the requirement declaration and the snapshot of its thresholds at measurement time, and the tap outcome carries only the receipt. The snapshot is what qualification reads, and this control asserts that in both directions — an identity naming the signed declaration does not lift provisional thresholds into support, and an identity naming the candidate does not push a signed measurement down. A label is not a threshold."
+
+fn witness_red_the_snapshot_decides_and_the_identity_does_not() -> Bool {
+  let good = a_receipt(peak: 3100, latency: 40)
+  capability_verdict_key(v: derive_capability_verdict(o: an_observation_bound_to(
+      identity: signed_requirement_ref,
+      snapshot: bob_impulse_requirement_candidate,
+      s: TapOutcome { receipt: good }))) == "qualified-against-provisional-requirement"
+    && capability_verdict_key(v: derive_capability_verdict(o: an_observation_bound_to(
+         identity: candidate_requirement_ref,
+         snapshot: a_signed_requirement,
+         s: TapOutcome { receipt: good }))) == "supported"
+    && an_observation(s: TapOutcome { receipt: good }).binding.requirement.identity.decl_name ==
+         "bob_impulse_requirement_candidate"
+}
+
+fn witness_red_an_unobserved_latency_refuses_rather_than_passing() -> Bool {
+  let no_latency = SampleReceipt {
+    count: 240,
+    frequency: FrequencyObserved { hz: 60 },
+    noise_floor: NoiseFloorObserved { magnitude_milli: 40 },
+    observed_axes: AxisCountObserved { n: 3 },
+    gravity: GravityNormalized,
+    peak_magnitude_milli: 3100,
+    detection_latency_ms: LatencyUnobserved,
+    negative_control: NegativeControlObserved { idle_peak_milli: 300 },
+  }
+  !qualifies(r: no_latency)
+}
+
+fn witness_every_obstacle_reaches_unavailable_with_its_own_typed_cause() -> Bool {
+  verdict_of(s: InterfaceUnavailable) == "unavailable"
+    && verdict_of(s: PolicyRefused) == "unavailable"
+    && verdict_of(s: PermissionRefused) == "unavailable"
+    && verdict_of(s: HardwareUnavailable) == "unavailable"
+    && match derive_capability_verdict(o: an_observation(s: BackendConnectionRefused { error_name: "NotReadableError" })) {
+         CapabilityUnavailable { obstacle } => obstacle_key(o: obstacle) == "backend-connection-refused"
+         CapabilitySupported { receipt } => false
+         CapabilityQualifiedAgainstProvisionalRequirement { receipt, pending } => false
+         CapabilityDegraded { missing, alternative } => false
+         CapabilityUnobserved => false
+       }
+}
+
+fn witness_red_an_unexercised_binding_is_not_a_failure() -> Bool {
+  verdict_of(s: BindingStreamUnobserved) == "unobserved"
+    && verdict_of(s: BindingStreamUnobserved) != verdict_of(s: HardwareUnavailable)
+    && verdict_of(s: BindingStreamUnobserved) !=
+         verdict_of(s: NoSamplesObserved { lifecycle: LifecycleActivationUnobserved })
+}
+
+data lifecycle_carried_note: String = "The two silences stay distinguishable in the neutral layer: an activated sensor that never read is a different key from a stream whose activation was never observed."
+
+fn witness_silence_carries_its_lifecycle() -> Bool {
+  binding_stream_key(s: NoSamplesObserved { lifecycle: LifecycleActivated }) !=
+      binding_stream_key(s: NoSamplesObserved { lifecycle: LifecycleActivationUnobserved })
+    && sample_lifecycle_key(l: LifecycleActivated) == "activated"
+}
+
+data alternative_is_resolvable_note: String = "The degradation's alternative is a REFERENCE to the declared synthetic binding, so that an alternative exists is a resolvable fact rather than a sentence asserting one."
+
+fn degraded_alternative_module(s: BindingStreamState) -> String {
+  match derive_capability_verdict(o: an_observation(s: s)) {
+    CapabilityDegraded { missing, alternative } => alternative.decl_name
+    CapabilitySupported { receipt } => ""
+    CapabilityQualifiedAgainstProvisionalRequirement { receipt, pending } => ""
+    CapabilityUnavailable { obstacle } => ""
+    CapabilityUnobserved => ""
+  }
+}
+
+fn witness_every_degradation_points_at_the_synthetic_binding() -> Bool {
+  degraded_alternative_module(s: SamplesObserved { receipt: a_receipt(peak: 2600, latency: 40) }) ==
+      synthetic_tap_provider.decl_name
+    && degraded_alternative_module(s: HollowSamplesObserved { count: 12 }) ==
+      synthetic_tap_provider.decl_name
+    && degraded_alternative_module(s: NoSamplesObserved { lifecycle: LifecycleActivated }) ==
+      synthetic_tap_provider.decl_name
+    && synthetic_tap_provider.decl_name == "synthetic_tap_impulse"
+}
+
+data verdict_row_note: String = "A verdict keeps its binding, so one supported row cannot answer for a list spanning different devices, requirements or providers — and a durable support claim additionally needs an exact host, which this reduced-identity fixture does not have."
+
+fn witness_verdict_rows_retain_their_binding_identity() -> Bool {
+  let rows = verdict_rows(rows: [
+    a_signed_observation(s: TapOutcome { receipt: a_receipt(peak: 3100, latency: 40) }),
+    an_observation(s: InterfaceUnavailable),
+  ])
+  rows.length() == 2
+    && fold(rows, init: false, f: (acc, r) => acc || capability_verdict_key(v: r.verdict) == "supported")
+    && fold(rows, init: false, f: (acc, r) => acc || capability_verdict_key(v: r.verdict) == "unavailable")
+    && fold(rows, init: true, f: (acc, r) => acc && r.binding.provider.module_path == "extdeps.w3c.accelerometer")
+}
+
+fn witness_red_a_reduced_host_cannot_carry_a_durable_support_claim() -> Bool {
+  let rows = verdict_rows(rows: [
+    a_signed_observation(s: TapOutcome { receipt: a_receipt(peak: 3100, latency: 40) }),
+  ])
+  fold(rows, init: true, f: (acc, r) => acc && !row_supports_a_durable_claim(r: r))
+    && fold(rows, init: false, f: (acc, r) => acc || capability_verdict_key(v: r.verdict) == "supported")
+}
+
+data provisional_note: String = "The thresholds are audition candidates and say so in the type. They become a signed requirement only after the three auditions run, so a reader cannot mistake reasoning for measurement."
+
+fn witness_the_bob_requirement_is_still_provisional() -> Bool {
+  !requirement_is_signed(s: bob_impulse_requirement_candidate.standing)
+    && requirement_is_signed(s: RequirementSigned {
+         audition_receipt: DeclarationRef {
+           module_path: "gunbc.capability_binding", decl_name: "x", field: WholeDeclaration
+         }
+       })
+    && bob_impulse_requirement_candidate.minimum_discriminating_magnitude_milli_m_per_s2 == 2000
+}
+
+fn witness_the_synthetic_tap_is_deterministic_and_straddles_the_requirement() -> Bool {
+  synthetic_tap_magnitude_milli(t: SyntheticTapLight) <
+      synthetic_tap_magnitude_milli(t: SyntheticTapFirm)
+    && synthetic_tap_magnitude_milli(t: SyntheticTapFirm) <
+         synthetic_tap_magnitude_milli(t: SyntheticTapKnock)
+    && !synthetic_tap_clears_requirement(t: SyntheticTapLight, r: bob_impulse_requirement_candidate)
+    && synthetic_tap_clears_requirement(t: SyntheticTapFirm, r: bob_impulse_requirement_candidate)
+    && synthetic_tap_clears_requirement(t: SyntheticTapKnock, r: bob_impulse_requirement_candidate)
+    && synthetic_tap_strength_key(t: SyntheticTapKnock) == "knock"
+}
+
+fn witness_red_a_synthetic_impulse_can_never_pass_as_hardware() -> Bool {
+  let synth = synthetic_tap_impulse(t: SyntheticTapFirm, at_ms: 1000)
+  let hardware = PhysicalImpulse {
+    source_provider: DeclarationRef {
+      module_path: "extdeps.w3c.accelerometer",
+      decl_name: "LinearAccelerationSensor",
+      field: WholeDeclaration
+    },
+    magnitude_milli_m_per_s2: synth.magnitude_milli_m_per_s2,
+    direction: ImpulseDown,
+    observed_at_ms: 1000,
+  }
+  impulse_is_synthetic(i: synth)
+    && !impulse_is_synthetic(i: hardware)
+    && synth.magnitude_milli_m_per_s2 == hardware.magnitude_milli_m_per_s2
+    && synthetic_tap_impulse(t: SyntheticTapFirm, at_ms: 1000).magnitude_milli_m_per_s2 ==
+         synthetic_tap_impulse(t: SyntheticTapFirm, at_ms: 99999).magnitude_milli_m_per_s2
+}
+
+data coverage_note: String = "Coverage states are obligations, never support claims — not even Implemented, which means the binding exists and can be probed. Both predicates are total and constantly false, so a state asserting support forces an author to write the arm.
+
+TWO AXES, AND THE CONTROL ASSERTS THEY ARE INDEPENDENT (review finding, 2026-08-07). The single coverage state fused two facts — whether the binding is written and whether anything has run against it — and it fused them at exactly the seam where the second was being forged: the implemented arm carried a field called receipt whose value was a reference to a producer function, so a declaration that had never executed read as an execution receipt. The last conjuncts here are what makes the split real rather than cosmetic: a written binding nobody has probed and an unwritten one nobody has probed are different rows, and so are a written binding whose probe was blocked and one whose probe is merely required."
+
+fn a_ref(name: String) -> DeclarationRef {
+  DeclarationRef { module_path: "gunbc.capability_binding", decl_name: name, field: WholeDeclaration }
+}
+
+fn witness_no_coverage_state_is_a_support_claim() -> Bool {
+  !implementation_state_is_a_support_claim(s: Implemented { implementation: a_ref(name: "synthetic_tap_impulse") })
+    && !implementation_state_is_a_support_claim(s: NotImplemented)
+    && !implementation_state_is_a_support_claim(s: NotModelled)
+    && !probe_state_is_a_support_claim(s: ProbeRequired)
+    && !probe_state_is_a_support_claim(s: ProbeObserved { receipt: a_ref(name: "qualify_tap") })
+    && !probe_state_is_a_support_claim(s: ProbeBlocked { cause: "no windows host" })
+    && !probe_state_is_a_support_claim(s: ProbeDeferred { trigger: "mobile instrument work begins" })
+    && witness_the_two_coverage_axes_vary_independently()
+    && witness_the_coverage_roster_claims_nothing_it_has_not_earned()
+}
+
+data roster_predicates_had_no_consumer_note: String = "THREE ROSTER PREDICATES EXISTED AND NOTHING RAN THEM. coverage_targets_asserting_support and deferred_targets_all_name_a_trigger were written to hold the roster honest and had zero executing consumers, which is the specification-without-execution trap in its plainest form: the rule was authored, the corpus was never measured against it, and a row that broke it would have landed green. They execute here, over the live roster rather than over a fixture, together with the receipt rule that is the actual repair for the misnamed field."
+
+fn witness_the_coverage_roster_claims_nothing_it_has_not_earned() -> Bool {
+  coverage_targets_asserting_support() == 0
+    && deferred_targets_all_name_a_trigger()
+    && every_probe_receipt_names_a_witness()
+    && !probe_receipt_names_a_witness(s: ProbeObserved { receipt: a_ref(name: "synthetic_tap_impulse") })
+    && probe_receipt_names_a_witness(s: ProbeObserved {
+         receipt: DeclarationRef {
+           module_path: "test.claim.instrument_bob_witness",
+           decl_name: "instrument_bob_keystone_holds",
+           field: WholeDeclaration
+         }
+       })
+}
+
+fn witness_the_two_coverage_axes_vary_independently() -> Bool {
+  let written = Implemented { implementation: a_ref(name: "synthetic_tap_impulse") }
+  coverage_state_key(implementation: written, probe: ProbeRequired) !=
+      coverage_state_key(implementation: NotImplemented, probe: ProbeRequired)
+    && coverage_state_key(implementation: written, probe: ProbeRequired) !=
+         coverage_state_key(implementation: written, probe: ProbeBlocked { cause: "no windows host" })
+    && coverage_state_key(implementation: NotImplemented, probe: ProbeRequired) !=
+         coverage_state_key(implementation: NotModelled, probe: ProbeRequired)
+    && probe_state_key(s: ProbeRequired) != probe_state_key(s: ProbeDeferred { trigger: "t" })
+}
+
+test fn capability_binding_keystone_holds() -> Bool {
+  witness_container_and_renderer_are_independent_axes()
+    && witness_host_role_is_orthogonal_to_container()
+    && witness_continuity_is_a_capability_not_a_container_property()
+    && witness_the_browser_product_is_not_its_engine()
+    && witness_unresolved_identity_keeps_its_cause()
+    && witness_a_clean_receipt_qualifies()
+    && witness_red_magnitude_below_the_floor_cannot_qualify()
+    && witness_red_latency_above_the_budget_cannot_qualify()
+    && witness_red_too_few_axes_cannot_qualify()
+    && witness_red_a_slow_stream_cannot_qualify()
+    && witness_red_gravity_left_in_cannot_qualify()
+    && witness_red_an_unobserved_dimension_refuses_rather_than_passing()
+    && witness_red_a_missing_negative_control_refuses()
+    && witness_only_a_derived_qualification_reaches_supported()
+    && witness_red_a_negative_control_above_the_floor_rejects()
+    && witness_red_provisional_thresholds_cannot_authorize_support()
+    && witness_red_the_snapshot_decides_and_the_identity_does_not()
+    && witness_red_an_unobserved_latency_refuses_rather_than_passing()
+    && witness_a_rejected_tap_carries_its_typed_causes()
+    && witness_every_obstacle_reaches_unavailable_with_its_own_typed_cause()
+    && witness_red_an_unexercised_binding_is_not_a_failure()
+    && witness_silence_carries_its_lifecycle()
+    && witness_every_degradation_points_at_the_synthetic_binding()
+    && witness_verdict_rows_retain_their_binding_identity()
+    && witness_red_a_reduced_host_cannot_carry_a_durable_support_claim()
+    && witness_the_bob_requirement_is_still_provisional()
+    && witness_the_synthetic_tap_is_deterministic_and_straddles_the_requirement()
+    && witness_red_a_synthetic_impulse_can_never_pass_as_hardware()
+    && witness_no_coverage_state_is_a_support_claim()
+}

@@ -86,7 +86,7 @@ import std.realization_schedule {
   SequentialChildProcess, InheritedWalkSourceRoots,
   ScopedWitnessExecutionReceiptDecoded, ScopedWitnessExecutionReceiptRefused,
   ScopedWitnessExecuted, ScopedWitnessSelectionSkipped, scoped_witness_execution_receipt_decode,
-  FloorWorkerObservation, OrdinaryFloorWorker, FloorWorkerExited, FloorWorkerSignaled,
+  FloorWorkerObservation, OrdinaryFloorWorker,
   FloorWorkerTerminalReceiptObserved, FloorWorkerReportedCompleted,
   FloorWorkerCompleted, FloorWorkerFailed, floor_worker_observation_outcome,
   SelectionOff, SelectionApplied, SelectionPredictOnly, NodeFrontierSelection,
@@ -96,6 +96,7 @@ import std.realization_schedule {
   CorpusWitnessKind, ExecutionWitnessKind
 }
 import std.realization_schedule { WalkPlan, NoWalkFinalization, NoFinalizationDeclared, NoPreWalkExecution }
+import std.process_termination { ProcessExited, ProcessSignaled }
 import gunbc.ci_materialization {
   FloorFinalization,
   ResolveObligation,
@@ -342,9 +343,8 @@ fn runnable_batch_index(batches: List<List<Runnable>>, target: Runnable) -> Int 
 test fn witness_v1_claim_scoped_batch_is_file_grain_and_batch_owned() -> Bool {
   let target = RunnableScopedWitnessBatch { batch: v1_claim_scoped_witness_batch }
   (length(xs: scoped_witness_batches) == 1)
-    && (length(xs: v1_claim_scoped_witness_entries) == 4)
-    && (v1_claim_scoped_witness_entries.first().function == "")
-    && (v1_claim_scoped_witness_entries.skip(n: 1).first().function == "")
+    && ((v1_claim_scoped_witness_entries |> count) > 0)
+    && (v1_claim_scoped_witness_entries |> all(e => e.function == ""))
     && (v1_claim_scoped_witness_batch.source_roots == ["dag", "src/v1"])
     && (v1_claim_scoped_witness_batch.scan_dirs == [])
     && (v1_claim_scoped_witness_batch.node_frontier_selection == SelectionApplied)
@@ -446,14 +446,14 @@ test fn scoped_witness_execution_receipt_decoder_refuses_sha256_digest_family() 
 test fn floor_worker_observation_outcome_is_derived_from_evidence() -> Bool {
   let completed = FloorWorkerObservation {
     worker: OrdinaryFloorWorker,
-    termination: FloorWorkerExited { code: 0 },
+    termination: ProcessExited { code: 0 },
     terminal_receipt: FloorWorkerTerminalReceiptObserved {
       report: FloorWorkerReportedCompleted { detail: "walk terminal exit code 0" }
     },
   }
   let contradicted = FloorWorkerObservation {
     worker: OrdinaryFloorWorker,
-    termination: FloorWorkerSignaled { signal: 9 },
+    termination: ProcessSignaled { signal: 9 },
     terminal_receipt: FloorWorkerTerminalReceiptObserved {
       report: FloorWorkerReportedCompleted { detail: "walk terminal exit code 0" }
     },

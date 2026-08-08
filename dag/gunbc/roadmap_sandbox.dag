@@ -38,6 +38,7 @@ import gunbc.roadmap_component {
   dispatch_state_class, dispatch_state_display_text,
   dispatch_caption_idle,
   sandbox_live_class, sandbox_asset_path, swatch_toggle_class,
+  InstrumentLabLink, instrument_lab_links,
 }
 import gunbc.roadmap_belt_actuate { belt_dispatch_all_status_labels }
 
@@ -397,6 +398,19 @@ fn family_fixture_section() -> Fragment {
   ])
 }
 
+data instrument_labs_section_note: String = "ONE CONTEXTUAL ENTRY, ON THE PAGE WHERE STUDIES LIVE, rather than three raw links in every shared header (review ruling, 2026-08-06). A header nav put development routes on the daily workspace and the roadmap, where they are noise to everyone not building the instrument. The sandbox is already the page for studies, so the labs belong here with a sentence saying what each one is for — and the rows come from gunbc.roadmap_component.instrument_lab_links, the same declaration the router builds its route specs from, so a link that resolves nowhere is caught by execution rather than by clicking."
+
+fn instrument_lab_entry(l: InstrumentLabLink) -> Fragment {
+  el("li", [ el_attrs("a", [ attr(name: "href", value: l.path) ], [ txt(l.label) ]) ])
+}
+
+fn instrument_labs_section() -> Fragment {
+  el("section", [
+    el("h2", [ txt("instrument labs") ]),
+    el("ul", map(instrument_lab_links, l => instrument_lab_entry(l: l))),
+  ])
+}
+
 fn sandbox_page() -> Fragment {
   Element {
     tag: "html",
@@ -416,6 +430,7 @@ fn sandbox_page() -> Fragment {
             ], []) ],
           map(workspace_band_paints(), p => band_chip(key: p.key)))),
         el_class("main", "sandbox", [
+          instrument_labs_section(),
           roles_section(),
           scales_section(),
           gallery_section(),

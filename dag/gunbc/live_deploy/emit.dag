@@ -52,7 +52,7 @@ import gunbc.ownership { Ownership }
 import v2.std.algebra { list_tail, TailFound, TailAbsent }
 import gunbc.membership_reconcile {
   MembershipPlan,
-  MemberEffect, EffectUpsert, EffectTeardown,
+  MemberEffect, EffectAdd, EffectReplace, EffectRemove,
   MemberRefusal,
   EffectsOrRefusal, EffectsReady, ApplyRefused,
   membership_reconcile, membership_effects,
@@ -561,9 +561,15 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
   }
 }
 
-data emit_deploy_member_effect_note: String = "The per-member realization HANDLER: share the DIFF (membership_reconcile), dispatch the APPLY (this). One handler for both fold directions — EffectUpsert dispatches on member kind to the artifact/dependency install fragments; EffectTeardown to the removal fragments. Orchestration is DERIVED from the effect kind, not an always-on envelope: a SystemdUnit upsert carries its own daemon-reload/enable/restart (once, part of the unit's realization); ServerScript carries the /opt/gunbc install -d it writes into. MemberEffect is a bidirectional sum, so each POLE has one structurally-unreachable direction (apply never Teardown, retract never Upsert) — those ARE reached across the two poles combined. The ONE arm unreachable across BOTH poles is EffectTeardown of a Dependency: a dependency is Ensured, so a Removed dependency is MemberTeardownRefused, never an EffectTeardown. That arm REFUSES loudly (emit_deploy_teardown_dependency_refusal — a typed/located poison step), it does NOT fabricate a no-op (DESIGN §5: an unreachable arm refuses, never a silent pass)."
+data emit_deploy_member_effect_note: String = "The per-member realization HANDLER: share the DIFF (membership_reconcile), dispatch the APPLY (this). One handler for both fold directions — EffectAdd dispatches on member kind to the artifact/dependency install fragments; EffectRemove to the removal fragments. Orchestration is DERIVED from the effect kind, not an always-on envelope: a SystemdUnit upsert carries its own daemon-reload/enable/restart (once, part of the unit's realization); ServerScript carries the /opt/gunbc install -d it writes into. MemberEffect is a bidirectional sum, so each POLE has one structurally-unreachable direction (apply never Remove, retract never Add) — those ARE reached across the two poles combined. TWO arms are unreachable across BOTH poles. EffectRemove of a Dependency: a dependency is Ensured, so a Removed dependency is MemberRemovalRefused, never an EffectRemove. And EffectReplace in either direction: both poles are DEGENERATE (apply observes nothing, retract desires nothing), so neither can produce a Modified hunk at all — a replace here would mean a pole stopped being degenerate, which is a real observed-provider arriving and needs its staged-replacement intermediates declared (gunbc.change_realization) before it may emit anything. That arm REFUSES loudly (emit_deploy_teardown_dependency_refusal — a typed/located poison step), it does NOT fabricate a no-op (DESIGN §5: an unreachable arm refuses, never a silent pass)."
 
-data live_deploy_teardown_dependency_unreachable_poison: String = "__GUNBC_DEPLOY_UNREACHABLE__ R5 wall breach — EffectTeardown of an Ensured dependency reached the emit dispatch. A dependency is Ensured, so a Removed dependency is MemberTeardownRefused (never an EffectTeardown); reaching this arm means deployment_step_ownership or membership_effects is broken. This marker is not valid deploy shell, so the golden drift gate reds — DESIGN §5: an unreachable arm REFUSES loudly (typed/located/counted), never fabricates a no-op. dependency="
+data live_deploy_replace_unreachable_poison: String = "__GUNBC_DEPLOY_UNREACHABLE__ EffectReplace reached the deploy emit dispatch. Both deploy poles are degenerate — apply observes the empty set, retract desires the empty set — so no Modified hunk can arise and no replace can be emitted. Reaching this arm means a NON-degenerate observed provider landed without its realization being modeled: a replace on a host resource is an in-place update only if the address survived, and a STAGED replacement with declared intermediates otherwise (gunbc.change_realization). Emitting an unconditional overwrite here would be the srv4 failure exactly — a transition that believed it had nothing to retire. This marker is not valid deploy shell, so the golden drift gate reds. member="
+
+fn emit_deploy_replace_unreachable_refusal(step: DeploymentStep) -> List<PipelineStep> {
+  [deploy_raw(command: concat(live_deploy_replace_unreachable_poison, deployment_step_key(step: step) as String))]
+}
+
+data live_deploy_teardown_dependency_unreachable_poison: String = "__GUNBC_DEPLOY_UNREACHABLE__ R5 wall breach — EffectRemove of an Ensured dependency reached the emit dispatch. A dependency is Ensured, so a Removed dependency is MemberRemovalRefused (never an EffectRemove); reaching this arm means deployment_step_ownership or membership_effects is broken. This marker is not valid deploy shell, so the golden drift gate reds — DESIGN §5: an unreachable arm REFUSES loudly (typed/located/counted), never fabricates a no-op. dependency="
 
 fn emit_deploy_teardown_dependency_refusal(dep: DeploymentDependencyStep) -> List<PipelineStep> {
   [deploy_raw(command: concat(live_deploy_teardown_dependency_unreachable_poison, dep.package))]
@@ -571,14 +577,15 @@ fn emit_deploy_teardown_dependency_refusal(dep: DeploymentDependencyStep) -> Lis
 
 fn emit_deploy_member_effect(effect: MemberEffect<DeploymentStep>, spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
   match effect {
-    EffectUpsert { member: step } =>
+    EffectAdd { to: step } =>
       match step {
         Dependency { step: dep } => [
           ensure_apt_package_step(pkg: dep.package, privileged: true),
         ]
         ArtifactStep { step: art } => emit_artifact_upsert(art: art, spec: spec, revision: revision)
       }
-    EffectTeardown { member: step } =>
+    EffectReplace { from: _, to: step } => emit_deploy_replace_unreachable_refusal(step: step)
+    EffectRemove { from: step } =>
       match step {
         ArtifactStep { step: art } => emit_artifact_teardown(art: art, spec: spec)
         Dependency { step: dep } => emit_deploy_teardown_dependency_refusal(dep: dep)

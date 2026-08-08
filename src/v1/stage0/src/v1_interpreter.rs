@@ -456,6 +456,55 @@ pub(crate) fn list_value(items: impl Into<RrbVector<Value>>) -> Value {
     Value::List(Rc::new(items.into()))
 }
 
+/// Project an observed child-process status onto `std.process_termination` `ProcessTermination`.
+///
+/// A signalled process has no exit code, so it gets the signal arm rather than a
+/// fabricated integer: the seed used to render `.code().unwrap_or(-1)` for both, which
+/// made a runner OOM-kill indistinguishable from a process that chose to exit -1.
+/// `ProcessTerminationUnobserved` is unreachable from an `ExitStatus` (having one means
+/// the process ran); it is the arm a caller supplies when the spawn itself refused.
+pub(crate) fn process_termination_value(
+    status: &std::process::ExitStatus,
+    ctx: &InterpContext,
+) -> Value {
+    let termination = |variant: &str, field: &str, value: i64| Value::Variant {
+        type_name: ctx.sym("ProcessTermination"),
+        variant_name: ctx.sym(variant),
+        fields: Rc::new(vec![(ctx.sym(field), Value::Int(value))]),
+    };
+    if let Some(code) = status.code() {
+        return termination("ProcessExited", "code", i64::from(code));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        if let Some(signal) = status.signal() {
+            return termination("ProcessSignaled", "signal", i64::from(signal));
+        }
+    }
+    Value::Variant {
+        type_name: ctx.sym("ProcessTermination"),
+        variant_name: ctx.sym("ProcessTerminationUnobserved"),
+        fields: Rc::new(Vec::new()),
+    }
+}
+
+/// Human-facing rendering of a termination for a build log line. Kept beside the
+/// projection above so the two spellings of one observation cannot drift.
+pub(crate) fn process_termination_label(status: &std::process::ExitStatus) -> String {
+    if let Some(code) = status.code() {
+        return format!("exit {code}");
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        if let Some(signal) = status.signal() {
+            return format!("signal {signal}");
+        }
+    }
+    "termination unobserved".to_string()
+}
+
 fn map_value(entries: HamtMap<CanonKey, Value>) -> Value {
     Value::Map(Rc::new(entries))
 }
@@ -2723,7 +2772,7 @@ fn cross_representation_numeric_straddle(a: &Value, b: &Value) -> Option<String>
 }
 
 fn is_content_hash_family_variant(name: &str) -> bool {
-    matches!(name, "Fnv1a64" | "Sha256Hash" | "Sha1Hash")
+    matches!(name, "Fnv1a64" | "Sha256Hash" | "Sha1Hash" | "Sha512Hash")
 }
 
 fn is_content_hash_value(v: &Value) -> bool {
@@ -2760,7 +2809,7 @@ fn cross_family_content_hash_straddle(a: &Value, b: &Value) -> Option<String> {
                 Some(format!(
                     "{} vs {} — ContentHash families are not comparable; bare `==` would \
                      silently fabricate `false` whereas structural fnv1a64 and cited \
-                     SHA-256/SHA-1 digests are different kinds with different remedies \
+                     SHA-256/SHA-1/SHA-512 digests are different kinds with different remedies \
                      (DESIGN §5 / feature:content-hash-family-grounded). Match on family \
                      and use per-family eq, or admit_pin_integrity at union carriers.",
                     describe_repr(a),
@@ -4870,6 +4919,91 @@ fn extract_field(
     }
 }
 
+/// HAND-RUST GATE explicit deferral (review 50372), covering this function and the
+/// keyed-collection branch it is dispatched from in `eval_record_lit`: bounded growth
+/// in the existing seed interpreter, not a new Rust authority. Every DECISION here is
+/// modeled and read back out of `.dag` — whether the literal is a keyed collection is
+/// `04_types` `node_is_keyed_collection`, whether its keys may be the authored field
+/// names is `05_emit_rust` `map_literal_key_is_string`, and both are the SAME functions
+/// the emitter consults about the same literal, which is the point: the seed is not
+/// deciding anything, it is projecting one modeled decision onto the interpreter's own
+/// `Value` representation. Removing this code without grounding that representation
+/// would reopen the fork it closes — infer saying map, eval building a record.
+///
+/// Lane: ROADMAP `v1-interpreter-quarantine` → `v1-interpreter-delete`, counted against
+/// `v1-honest-frontier`; the underlying class is DESIGN's model↔realization fork thread
+/// (every primitive modeled as a coproduct and realized as a native `Value`, reconciled
+/// by per-site bridges), of which this is one bridge repaired rather than added.
+///
+/// Checkable receipt, by execution: `w_map_typed_literal_is_a_map` in
+/// `src/v1/tests/claim/ordinary_frontend_observation_test.dag` goes RED without this
+/// code (`map_keys expects a map, got Record` — the refusal that made the ordinary front
+/// end unreachable), and `w_record_literal_is_still_a_record` goes RED if it
+/// over-converts. Both are enrolled on the v1 claim scoped roster, so the deferral is
+/// counted rather than asserted.
+///
+/// Deletion condition, narrower than the lane's: when a brace literal's representation
+/// is DERIVED from its inferred type rather than reconstructed per consumer — the
+/// grounding half of the model↔realization thread, the same move `#5428` made for the
+/// numeric tower — this function has nothing left to project and deletes outright. The
+/// witness above is then REPLACED by one over the grounded representation, not retired.
+///
+/// Build the `Value::Map` a keyed-collection literal denotes. Keys are the
+/// authored field names, and string-likeness must be POSITIVELY established
+/// before they may be: the test is `map_literal_key_is_string`, the very
+/// function `05_emit_rust` asks about the same literal when it decides whether
+/// to render the key quoted-and-owned or bare, so the interpreter and the
+/// emitter cannot disagree about one literal's keys. Anything it does not
+/// establish is a typed, located refusal rather than a guessed key — a
+/// deny-list of known-bad key types would let every unlisted one through, which
+/// is the partial refusal that later fails open (DESIGN §5, and codex review
+/// 50168 which caught exactly that shape here). The refusal arm itself has no
+/// witness: a refusing data initializer stops module evaluation rather than
+/// returning a Bool, so it cannot be an ordinary green arm. That is
+/// can-climb-now-but-unbuilt, not cannot-climb — the trigger is an
+/// expecting-red quarantine probe declaring a non-string-keyed map literal,
+/// the mechanism named beside the witnesses in
+/// `src/v1/tests/claim/ordinary_frontend_observation_test.dag`.
+fn eval_map_lit(
+    node: &Rc<Node>,
+    map_type: &Rc<Node>,
+    env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    if !crate::v1_compiler_emit_rust::map_literal_key_is_string(map_type.clone(), ctx.si()) {
+        let key_name = match map_type.children.iter().next() {
+            Some(key_type) => authored_name_at(
+                ctx.si(),
+                crate::v1_compiler_infer_types::normalize_access_type_node(key_type.clone()),
+            ),
+            None => String::new(),
+        };
+        return Err(InterpError::TypeError {
+            msg: format!(
+                "map literal key type '{}' is not established as string-like, so the authored \
+                 field names cannot be its keys; declared at {}:{}",
+                key_name, node.span.file, node.span.start
+            ),
+        });
+    }
+    let mut entries = HamtMap::new();
+    for child in node.children.iter() {
+        let fname = field_init_node_name_at(child.clone(), ctx.si());
+        let fval = eval_expr(&field_init_node_value(child.clone()), env, ctx)?;
+        match CanonKey::new(Value::Str(fname.clone())) {
+            Some(ck) => {
+                entries = entries.update(ck, fval);
+            }
+            None => {
+                return Err(InterpError::TypeError {
+                    msg: format!("map literal key '{}' is not a valid map key", fname),
+                })
+            }
+        }
+    }
+    Ok(map_value(entries))
+}
+
 fn eval_record_lit(
     node: &Rc<Node>,
     parent_enum: Option<&str>,
@@ -4877,6 +5011,24 @@ fn eval_record_lit(
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
     let type_name = record_lit_type_name_at(node.clone(), ctx.si()).unwrap_or_default();
+
+    // A brace literal in a keyed-collection position IS a map, and the single
+    // authority for that fact is the literal's own inferred type — the same
+    // `node_is_keyed_collection` relation `05_emit_rust` reads when it renders
+    // the identical literal as a `HashMap`. Reading it here is what stops the
+    // interpreter and the emitter disagreeing about one value's representation
+    // (DESIGN §3/§5: one authority, and the representation derived from it
+    // rather than reconciled per consumer). Before this, the interpreter built
+    // a `Record`, `map_get` limped through `raw_map_lookup`'s Record arm, and
+    // `map_keys(kernel_type_set)` refused — so the whole ordinary front end was
+    // unreachable from interpreted `.dag`.
+    if type_name.is_empty() {
+        if let Some(InferredNode::Resolved { node: ty, .. }) = node.inferred.as_deref() {
+            if crate::v1_compiler_infer_types::node_is_keyed_collection(ty.clone(), ctx.si()) {
+                return eval_map_lit(node, ty, env, ctx);
+            }
+        }
+    }
 
     let mut fields: Vec<(Symbol, Value)> = Vec::new();
     for child in node.children.iter() {
@@ -10102,8 +10254,7 @@ fn emit_host_run_transport_cached_in_workspace(
     );
 
     let transport_result = |phase: &str,
-                            success: bool,
-                            exit_code: i64,
+                            termination: Value,
                             stdout: &[u8],
                             stderr: &[u8],
                             build_log: Vec<Value>,
@@ -10118,8 +10269,7 @@ fn emit_host_run_transport_cached_in_workspace(
             // dependent and broke .success lookups when #6904 shifted interning.
             fields: Rc::new(sorted_fields(vec![
                 (ctx.sym("phase"), Value::Str(phase.to_string())),
-                (ctx.sym("success"), Value::Bool(success)),
-                (ctx.sym("exit_code"), Value::Int(exit_code)),
+                (ctx.sym("termination"), termination),
                 (ctx.sym("compile_skipped"), Value::Bool(compile_skipped)),
                 (
                     ctx.sym("artifact_lookup_nanos"),
@@ -10177,14 +10327,16 @@ fn emit_host_run_transport_cached_in_workspace(
         let compile_started = std::time::Instant::now();
         for argv in build_argvs {
             let out = run_command(argv)?;
-            let code = out.status.code().map(i64::from).unwrap_or(-1);
-            build_log.push(Value::Str(format!("{} -> exit {code}", argv.join(" "))));
+            build_log.push(Value::Str(format!(
+                "{} -> {}",
+                argv.join(" "),
+                process_termination_label(&out.status)
+            )));
             if !out.status.success() {
                 build_log.push(Value::Str(String::from_utf8_lossy(&out.stderr).to_string()));
                 return Ok(transport_result(
                     "build",
-                    false,
-                    code,
+                    process_termination_value(&out.status, ctx),
                     &out.stdout,
                     &out.stderr,
                     build_log,
@@ -10199,8 +10351,11 @@ fn emit_host_run_transport_cached_in_workspace(
         let native_started = std::time::Instant::now();
         let out = run_command(run_argv)?;
         let native_execution_nanos = native_started.elapsed().as_nanos();
-        let code = out.status.code().map(i64::from).unwrap_or(-1);
-        build_log.push(Value::Str(format!("{} -> exit {code}", run_argv.join(" "))));
+        build_log.push(Value::Str(format!(
+            "{} -> {}",
+            run_argv.join(" "),
+            process_termination_label(&out.status)
+        )));
         if out.status.success() {
             std::fs::write(&ready_marker, b"1").map_err(|e| InterpError::TypeError {
                 msg: format!("emit_host_run_transport_cached: ready marker write failed: {e}"),
@@ -10215,8 +10370,7 @@ fn emit_host_run_transport_cached_in_workspace(
         }
         return Ok(transport_result(
             "run",
-            out.status.success(),
-            code,
+            process_termination_value(&out.status, ctx),
             &out.stdout,
             &out.stderr,
             build_log,
@@ -10229,13 +10383,15 @@ fn emit_host_run_transport_cached_in_workspace(
     let native_started = std::time::Instant::now();
     let out = run_command(run_argv)?;
     let native_execution_nanos = native_started.elapsed().as_nanos();
-    let code = out.status.code().map(i64::from).unwrap_or(-1);
     let mut build_log: Vec<Value> = Vec::new();
-    build_log.push(Value::Str(format!("{} -> exit {code}", run_argv.join(" "))));
+    build_log.push(Value::Str(format!(
+        "{} -> {}",
+        run_argv.join(" "),
+        process_termination_label(&out.status)
+    )));
     Ok(transport_result(
         "run_cached",
-        out.status.success(),
-        code,
+        process_termination_value(&out.status, ctx),
         &out.stdout,
         &out.stderr,
         build_log,
@@ -10294,8 +10450,7 @@ fn emit_host_run_transport_in_workspace(
     };
 
     let transport_result = |phase: &str,
-                            success: bool,
-                            exit_code: i64,
+                            termination: Value,
                             stdout: &[u8],
                             stderr: &[u8],
                             build_log: Vec<Value>,
@@ -10308,8 +10463,7 @@ fn emit_host_run_transport_in_workspace(
             // dependent and broke .success lookups when #6904 shifted interning.
             fields: Rc::new(sorted_fields(vec![
                 (ctx.sym("phase"), Value::Str(phase.to_string())),
-                (ctx.sym("success"), Value::Bool(success)),
-                (ctx.sym("exit_code"), Value::Int(exit_code)),
+                (ctx.sym("termination"), termination),
                 (ctx.sym("compile_skipped"), Value::Bool(compile_skipped)),
                 (
                     ctx.sym("stdout_octets"),
@@ -10337,14 +10491,16 @@ fn emit_host_run_transport_in_workspace(
     let mut build_log: Vec<Value> = Vec::new();
     for argv in build_argvs {
         let out = run_command(argv)?;
-        let code = out.status.code().map(i64::from).unwrap_or(-1);
-        build_log.push(Value::Str(format!("{} -> exit {code}", argv.join(" "))));
+        build_log.push(Value::Str(format!(
+            "{} -> {}",
+            argv.join(" "),
+            process_termination_label(&out.status)
+        )));
         if !out.status.success() {
             build_log.push(Value::Str(String::from_utf8_lossy(&out.stderr).to_string()));
             return Ok(transport_result(
                 "build",
-                false,
-                code,
+                process_termination_value(&out.status, ctx),
                 &out.stdout,
                 &out.stderr,
                 build_log,
@@ -10354,12 +10510,14 @@ fn emit_host_run_transport_in_workspace(
     }
 
     let out = run_command(run_argv)?;
-    let code = out.status.code().map(i64::from).unwrap_or(-1);
-    build_log.push(Value::Str(format!("{} -> exit {code}", run_argv.join(" "))));
+    build_log.push(Value::Str(format!(
+        "{} -> {}",
+        run_argv.join(" "),
+        process_termination_label(&out.status)
+    )));
     Ok(transport_result(
         "run",
-        out.status.success(),
-        code,
+        process_termination_value(&out.status, ctx),
         &out.stdout,
         &out.stderr,
         build_log,
@@ -13674,5 +13832,48 @@ mod resolve_host_tool_program_tests {
             Ok(path) => panic!("expected refusal, got resolved path {path:?}"),
             Err(other) => panic!("expected HostToolUnresolved refusal, got {other:?}"),
         }
+    }
+}
+
+#[cfg(test)]
+mod process_termination_tests {
+    use super::process_termination_label;
+
+    /// The host transport observes a child; a child killed by a signal has NO exit
+    /// code. The seed used to render `.code().unwrap_or(-1)` for both, so an
+    /// OOM-killed cargo build and a process that chose to exit -1 produced the same
+    /// bytes. This is the discriminating control for that split: the same raw wait
+    /// status that carries a signal must never render as an exit.
+    #[cfg(unix)]
+    #[test]
+    fn signal_death_is_not_flattened_to_an_exit_code() {
+        use std::os::unix::process::ExitStatusExt;
+        use std::process::ExitStatus;
+
+        // Raw wait status encoding: low 7 bits are the terminating signal, and
+        // `code()` is None for those. 9 = SIGKILL (the OOM-killer's signal),
+        // 11 = SIGSEGV.
+        for signal in [9, 11] {
+            let status = ExitStatus::from_raw(signal);
+            assert_eq!(status.code(), None, "expected a signalled status");
+            assert_eq!(
+                process_termination_label(&status),
+                format!("signal {signal}")
+            );
+            assert!(
+                !process_termination_label(&status).contains("exit"),
+                "signal {signal} rendered as an exit"
+            );
+        }
+
+        // An ordinary exit still reports its code: status >> 8 is the exit code.
+        assert_eq!(
+            process_termination_label(&ExitStatus::from_raw(0)),
+            "exit 0"
+        );
+        assert_eq!(
+            process_termination_label(&ExitStatus::from_raw(101 << 8)),
+            "exit 101"
+        );
     }
 }

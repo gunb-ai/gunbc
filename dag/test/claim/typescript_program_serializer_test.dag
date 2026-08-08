@@ -221,3 +221,46 @@ test fn typescript_receiver_atom_stays_bare() -> Bool {
     args: [ts_ident(name: "cb")])
   serialize_typescript_program(p: precedence_const_program(value: e)) == "const x = document.querySelectorAll('.row').forEach(cb);"
 }
+
+data try_serialization_receipt_note: String = "THE TRY ARM'S OWN EXECUTION RECEIPT (review finding, 2026-08-07). The grammar grew a Try statement and the only thing exercising it was a witness asserting that two substrings appeared somewhere in a large emitted program — which proves the arm was reached and proves nothing about what it produced. A serializer arm is pinned by its bytes or it is not pinned: an arm that dropped the catch parameter, emitted the handler before the body, or lost a brace would satisfy a contains-check and produce a file no engine would parse.
+
+Three fixtures, each naming what would survive without it: the exact bytes of a try/catch; a nested try inside a catch, because serialize_ts_stmt_body routes Try back through serialize_ts_stmt and a missing arm there is a silent structural change; and a try whose body is a bare expression statement rather than a block, which is the shape that would emit an unbraced clause the grammar does not permit."
+
+fn try_program(body: TsStmt, catch_param: String, handler: TsStmt) -> TsProgram {
+  TsProgram {
+    ts_nocheck: false,
+    header_lines: [],
+    statements: [ts_try(body: body, catch_param: catch_param, handler: handler)],
+  }
+}
+
+test fn typescript_try_serializes_to_exact_bytes() -> Bool {
+  serialize_typescript_program(p: try_program(
+    body: ts_block(stmts: [ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "risky"), args: []))]),
+    catch_param: "err",
+    handler: ts_block(stmts: [ts_expr_stmt(expr: ts_call(
+      callee: ts_ident(name: "note"),
+      args: [ts_member(object: ts_ident(name: "err"), property: "name")],
+    ))]),
+  )) == "try {   risky(); } catch (err) {   note(err.name); }"
+}
+
+test fn typescript_try_nested_in_a_handler_serializes() -> Bool {
+  serialize_typescript_program(p: try_program(
+    body: ts_block(stmts: [ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "a"), args: []))]),
+    catch_param: "e1",
+    handler: ts_block(stmts: [ts_try(
+      body: ts_block(stmts: [ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "b"), args: []))]),
+      catch_param: "e2",
+      handler: ts_block(stmts: [ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "c"), args: []))]),
+    )]),
+  )) == "try {   a(); } catch (e1) {   try {   b(); } catch (e2) {   c(); } }"
+}
+
+test fn typescript_try_with_a_bare_body_still_braces_nothing_it_should_not() -> Bool {
+  serialize_typescript_program(p: try_program(
+    body: ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "a"), args: [])),
+    catch_param: "e",
+    handler: ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "b"), args: [])),
+  )) == "try a() catch (e) b()"
+}

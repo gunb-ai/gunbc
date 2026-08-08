@@ -1,0 +1,31 @@
+module gunbc.codex_runtime_bundle
+
+import std.types { NonEmptyStr, FilePath, String, List }
+import std.content_hash { ContentHash }
+import gunbc.package_delivery {
+  CodexRuntimeBundle,
+  CodexRuntimeMaterialization,
+  materialize_codex_runtime_bundle,
+  CodexRuntimeMaterialized,
+  AdmittedPackageArtifactReceipt,
+  codex_runtime_lock_path,
+  codex_runtime_manifest_path,
+}
+
+data codex_runtime_bundle_note: String = "Release-bundled Codex runtime. Built via gunbc.package_delivery.materialize_codex_runtime_bundle (exact wrapper+platform lock-nodes → admit HTTPS registry archives → isolated npm cache → offline ci → installed-tree+toolchain+canonical schema-bundle receipt → content-addressed release with sidecar read-back). Prefer the platform-native Codex binary for app-server --stdio; Node is not the runtime entry. Ambient PATH node must not satisfy binding."
+
+data codex_native_app_server_probe_note: String = "Measured 2026-08-05 on linux/arm64: vendor/.../bin/codex app-server --stdio accepts NDJSON initialize and returns a JSON-RPC result. Prefer that native executable over the JS wrapper+Node path."
+
+fn codex_bundle_executable_path(bundle: CodexRuntimeBundle) -> FilePath {
+  concat(bundle.root as String, concat("/", bundle.native_executable_rel as String)) as FilePath
+}
+
+fn codex_bundle_identity(bundle: CodexRuntimeBundle) -> ContentHash {
+  bundle.receipt.receipt_identity
+}
+
+fn codex_bundle_admitted_packages(
+  bundle: CodexRuntimeBundle,
+) -> List<AdmittedPackageArtifactReceipt> {
+  bundle.admitted_packages
+}
