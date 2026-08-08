@@ -2490,6 +2490,7 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "fleet-runner-host-convergence", parent: "fleet-atomic-convergence-verdict"),
     edge(child: "fleet-runner-host-convergence", parent: "placement-compile-pool-envelope"),
     edge(child: "fleet-runner-host-convergence", parent: "compute-exact-work-contract"),
+    edge(child: "fleet-runner-broker-recovery", parent: "fleet-runner-host-convergence"),
     edge(child: "fleet-spark-inference-serving", parent: "fleet-main-revision-authority"),
     edge(child: "fleet-spark-inference-serving", parent: "fleet-atomic-convergence-verdict"),
     edge(child: "fleet-spark-inference-serving", parent: "compute-exact-work-contract"),
