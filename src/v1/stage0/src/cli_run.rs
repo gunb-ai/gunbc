@@ -39639,9 +39639,36 @@ pub struct ExtdepsShapeTransportPolicyModuleFacts {
 }
 
 type ExtdepsParsedModule = (
+    Rc<crate::v1_std_core::Node>,
     Rc<im::Vector<Rc<crate::v1_std_core::Node>>>,
     Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 );
+
+fn try_resolve_extdeps_module_source_path(path: &str) -> Option<std::path::PathBuf> {
+    let candidate = std::path::Path::new(path);
+    if candidate.is_file() {
+        return Some(candidate.to_path_buf());
+    }
+    let rooted = workspace_root().join(path);
+    if rooted.is_file() {
+        return Some(rooted);
+    }
+    None
+}
+
+fn resolve_extdeps_module_source_path(path: &str) -> std::path::PathBuf {
+    try_resolve_extdeps_module_source_path(path).unwrap_or_else(|| {
+        panic!("resolve_extdeps_module_source_path: file not found: {path}");
+    })
+}
+
+fn read_extdeps_module_source_text(path: &str) -> String {
+    let resolved = resolve_extdeps_module_source_path(path);
+    let path_str = resolved.to_string_lossy();
+    std::fs::read_to_string(&resolved).unwrap_or_else(|e| {
+        panic!("read_extdeps_module_source_text: failed to read {path_str}: {e}")
+    })
+}
 
 thread_local! {
     /// Content-keyed memo for `parse_extdeps_module_items`. Keyed on the file's own
@@ -39663,23 +39690,14 @@ fn extdeps_source_content_hash(content: &str) -> u64 {
 pub fn parse_extdeps_module_items(
     path: &str,
 ) -> (
+    Rc<crate::v1_std_core::Node>,
     Rc<im::Vector<Rc<crate::v1_std_core::Node>>>,
     Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) {
     use crate::v1_compiler_parse::parse;
     use crate::v1_compiler_tokenize::tokenize;
     use crate::v1_std_core::build_newline_index;
-    let candidate = std::path::Path::new(path);
-    let resolved = if candidate.is_file() {
-        candidate.to_path_buf()
-    } else {
-        let rooted = workspace_root().join(path);
-        if rooted.is_file() {
-            rooted
-        } else {
-            panic!("parse_extdeps_module_items: file not found: {path}");
-        }
-    };
+    let resolved = resolve_extdeps_module_source_path(path);
     let path_str = resolved.to_string_lossy();
     let content = std::fs::read_to_string(&resolved)
         .unwrap_or_else(|e| panic!("parse_extdeps_module_items: failed to read {path_str}: {e}"));
@@ -39713,7 +39731,7 @@ pub fn parse_extdeps_module_items(
         .module
         .as_ref()
         .expect("parse_extdeps_module_items: missing module");
-    let parsed: ExtdepsParsedModule = (module.children.clone(), source_indices);
+    let parsed: ExtdepsParsedModule = (module.clone(), module.children.clone(), source_indices);
     EXTDEPS_PARSE_MEMO.with(|memo| {
         memo.borrow_mut()
             .insert(memo_key, (content_hash, parsed.clone()));
@@ -39756,7 +39774,7 @@ pub fn shell_transport_operation_declaration(
     service: &str,
     operation: &str,
 ) -> Option<OperationArgvDeclaration> {
-    let (items, source_indices) = parse_extdeps_module_items(path);
+    let (_module, items, source_indices) = parse_extdeps_module_items(path);
     for item in items.iter() {
         if item.name != service {
             continue;
@@ -39882,7 +39900,7 @@ pub fn shell_transport_operation_rows() -> Vec<ShellTransportOperationCensusRow>
             continue;
         };
         let rel = rel.to_string_lossy().to_string();
-        let (items, source_indices) = parse_extdeps_module_items(&rel);
+        let (_module, items, source_indices) = parse_extdeps_module_items(&rel);
         for item in items.iter() {
             for op in item.children.iter() {
                 let Some(transport) = op
@@ -40100,7 +40118,7 @@ pub fn extdeps_shape_transport_policy_module_facts(
     };
 
     let path = source_path_for_module_path(module_path.to_string());
-    let (items, source_indices) = parse_extdeps_module_items(&path);
+    let (_module, items, source_indices) = parse_extdeps_module_items(&path);
 
     let mut argv_facts: Vec<ExtdepsArgvFactRaw> = Vec::new();
     let mut input_facts: Vec<ExtdepsInputFactRaw> = Vec::new();
@@ -40241,6 +40259,9 @@ pub struct ExtdepsExternalAuthorityModuleFacts {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ExternalAuthorityAnchorProjection {
     Absent,
+    Refused {
+        cause: String,
+    },
     Present {
         scheme_identity: String,
         locator: String,
@@ -40268,12 +40289,145 @@ fn external_authority_scheme_identity_from_value_node(
     authored_name_at(source_indices.clone(), node.clone())
 }
 
-fn read_external_authority_anchor_from_items(
-    items: &Rc<im::Vector<Rc<crate::v1_std_core::Node>>>,
+fn extdeps_import_home_for_symbol(
+    module: &Rc<crate::v1_std_core::Node>,
+    symbol: &str,
     source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> Option<String> {
+    use crate::v1_std_core::{authored_name_at, expr_var_name_at, module_imports, ExprData};
+    for imp in module_imports(module.clone()).iter() {
+        if imp.body.is_some() {
+            continue;
+        }
+        let home = imp.name.clone();
+        for name_node in imp.children.iter() {
+            let imported = match name_node.expr_data.as_ref() {
+                ExprData::ExprVar { .. } => {
+                    let name = expr_var_name_at(name_node.clone(), source_indices.clone());
+                    if name.is_empty() {
+                        name_node.name.clone()
+                    } else {
+                        name
+                    }
+                }
+                _ => authored_name_at(source_indices.clone(), name_node.clone()),
+            };
+            if imported == symbol {
+                return Some(home);
+            }
+        }
+    }
+    None
+}
+
+fn external_authority_alias_symbol_name(
+    body: &Rc<crate::v1_std_core::Node>,
+    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> Option<String> {
+    use crate::v1_std_core::{authored_name_at, expr_var_name_at, ExprData};
+    match body.expr_data.as_ref() {
+        ExprData::ExprVar { .. } => {
+            let name = expr_var_name_at(body.clone(), source_indices.clone());
+            if !name.is_empty() {
+                Some(name)
+            } else if !body.name.is_empty() {
+                Some(body.name.clone())
+            } else {
+                None
+            }
+        }
+        _ => {
+            let variant = authored_name_at(source_indices.clone(), body.clone());
+            if variant.is_empty() {
+                None
+            } else {
+                Some(variant)
+            }
+        }
+    }
+}
+
+fn external_authority_anchor_from_data_body(
+    body: &Rc<crate::v1_std_core::Node>,
+    module: &Rc<crate::v1_std_core::Node>,
+    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    visited: &mut std::collections::HashSet<String>,
+) -> ExternalAuthorityAnchorProjection {
+    use crate::v1_std_core::authored_name_at;
+    let variant = authored_name_at(source_indices.clone(), body.clone());
+    if let Some(uri_node) =
+        external_authority_uri_record_from_anchor_body(body, variant.as_str(), source_indices)
+    {
+        let Some(scheme) = extdeps_record_field_value(&uri_node, "scheme", source_indices)
+            .map(|n| external_authority_scheme_identity_from_value_node(&n, source_indices))
+        else {
+            return ExternalAuthorityAnchorProjection::Refused {
+                cause: format!("anchor uri record has no `scheme` field in {variant}"),
+            };
+        };
+        let Some(locator) = extdeps_record_field_value(&uri_node, "locator", source_indices)
+            .and_then(|n| extdeps_literal_string_value(&n))
+        else {
+            return ExternalAuthorityAnchorProjection::Refused {
+                cause: format!("anchor uri record has no `locator` field in {variant}"),
+            };
+        };
+        if scheme.is_empty() {
+            return ExternalAuthorityAnchorProjection::Refused {
+                cause: format!("anchor uri record has an empty `scheme` in {variant}"),
+            };
+        }
+        return ExternalAuthorityAnchorProjection::Present {
+            scheme_identity: scheme,
+            locator,
+        };
+    }
+    let Some(symbol) = external_authority_alias_symbol_name(body, source_indices) else {
+        return ExternalAuthorityAnchorProjection::Absent;
+    };
+    if let Some(home) = extdeps_import_home_for_symbol(module, symbol.as_str(), source_indices) {
+        if !visited.insert(home.clone()) {
+            return ExternalAuthorityAnchorProjection::Refused {
+                cause: format!("alias cycle revisiting {home} for symbol {symbol}"),
+            };
+        }
+        return project_external_authority_named_data(&home, symbol.as_str(), visited);
+    }
+    ExternalAuthorityAnchorProjection::Absent
+}
+
+fn project_external_authority_named_data(
+    module_path: &str,
+    data_name: &str,
+    visited: &mut std::collections::HashSet<String>,
 ) -> ExternalAuthorityAnchorProjection {
     use crate::v1_compiler_emit_core_support::is_data_def_item;
-    use crate::v1_std_core::authored_name_at;
+    let path = source_path_for_module_path(module_path.to_string());
+    if try_resolve_extdeps_module_source_path(&path).is_none() {
+        return ExternalAuthorityAnchorProjection::Refused {
+            cause: format!("aliased anchor home {module_path} has no source file at {path}"),
+        };
+    }
+    let (module, items, source_indices) = parse_extdeps_module_items(&path);
+    for item in items.iter() {
+        if !is_data_def_item(item.clone()) || item.name != data_name {
+            continue;
+        }
+        let Some(body) = item.body.as_ref() else {
+            return ExternalAuthorityAnchorProjection::Absent;
+        };
+        return external_authority_anchor_from_data_body(body, &module, &source_indices, visited);
+    }
+    ExternalAuthorityAnchorProjection::Absent
+}
+
+fn read_external_authority_anchor_from_items(
+    items: &Rc<im::Vector<Rc<crate::v1_std_core::Node>>>,
+    module: &Rc<crate::v1_std_core::Node>,
+    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    visited: &mut std::collections::HashSet<String>,
+) -> ExternalAuthorityAnchorProjection {
+    use crate::v1_compiler_emit_core_support::is_data_def_item;
     for item in items.iter() {
         if !is_data_def_item(item.clone()) || item.name != "extdeps_external_authority_anchor" {
             continue;
@@ -40281,33 +40435,17 @@ fn read_external_authority_anchor_from_items(
         let Some(body) = item.body.as_ref() else {
             return ExternalAuthorityAnchorProjection::Absent;
         };
-        let variant = authored_name_at(source_indices.clone(), body.clone());
-        let Some(uri_node) =
-            external_authority_uri_record_from_anchor_body(body, variant.as_str(), source_indices)
-        else {
-            return ExternalAuthorityAnchorProjection::Absent;
-        };
-        let scheme = extdeps_record_field_value(&uri_node, "scheme", source_indices)
-            .map(|n| external_authority_scheme_identity_from_value_node(&n, source_indices))
-            .unwrap_or_default();
-        let locator = extdeps_record_field_value(&uri_node, "locator", source_indices)
-            .and_then(|n| extdeps_literal_string_value(&n))
-            .unwrap_or_default();
-        if scheme.is_empty() {
-            return ExternalAuthorityAnchorProjection::Absent;
-        }
-        return ExternalAuthorityAnchorProjection::Present {
-            scheme_identity: scheme,
-            locator,
-        };
+        return external_authority_anchor_from_data_body(body, module, source_indices, visited);
     }
     ExternalAuthorityAnchorProjection::Absent
 }
 
 fn project_external_authority_anchor(module_path: &str) -> ExternalAuthorityAnchorProjection {
     let path = source_path_for_module_path(module_path.to_string());
-    let (items, source_indices) = parse_extdeps_module_items(&path);
-    read_external_authority_anchor_from_items(&items, &source_indices)
+    let (module, items, source_indices) = parse_extdeps_module_items(&path);
+    let mut visited = std::collections::HashSet::new();
+    visited.insert(module_path.to_string());
+    read_external_authority_anchor_from_items(&items, &module, &source_indices, &mut visited)
 }
 
 fn external_authority_machinery_exempt_module_paths() -> &'static [&'static str] {
@@ -40341,6 +40479,9 @@ pub fn extdeps_external_authority_module_facts(
             ExternalAuthorityAnchorProjection::Absent => {
                 ("absent".to_string(), String::new(), String::new())
             }
+            ExternalAuthorityAnchorProjection::Refused { cause } => {
+                ("refused".to_string(), String::new(), cause)
+            }
             ExternalAuthorityAnchorProjection::Present {
                 scheme_identity,
                 locator,
@@ -40364,6 +40505,9 @@ fn external_authority_live_violation_module_paths() -> Vec<String> {
         }
         match project_external_authority_anchor(&path) {
             ExternalAuthorityAnchorProjection::Absent => violations.push(format!("missing:{path}")),
+            ExternalAuthorityAnchorProjection::Refused { cause } => {
+                violations.push(format!("refused:{path}:{cause}"))
+            }
             ExternalAuthorityAnchorProjection::Present {
                 scheme_identity, ..
             } if scheme_identity != "Http" && scheme_identity != "Https" => {
@@ -40384,6 +40528,51 @@ pub fn extdeps_external_authority_live_roster_module_count() -> i64 {
         .into_iter()
         .filter(|path| !external_authority_is_clean_tree_roster_excluded_for_module_path(path))
         .count() as i64
+}
+
+#[cfg(test)]
+mod extdeps_external_authority_anchor_projection_tests {
+    use super::*;
+
+    #[test]
+    fn extdeps_import_home_for_symbol_finds_setup_token_cli_anchor_import() {
+        let path = source_path_for_module_path("extdeps.llm.claude_setup_token_cli".to_string());
+        let (module, _items, source_indices) = parse_extdeps_module_items(&path);
+        assert_eq!(
+            extdeps_import_home_for_symbol(
+                &module,
+                "claude_cli_external_authority_anchor",
+                &source_indices,
+            ),
+            Some("extdeps.llm.cli".to_string())
+        );
+    }
+
+    #[test]
+    fn extdeps_import_home_for_symbol_handles_multiline_import_block() {
+        let path = source_path_for_module_path("extdeps.llm.claude_setup_token_cli".to_string());
+        let (module, _items, source_indices) = parse_extdeps_module_items(&path);
+        assert_eq!(
+            extdeps_import_home_for_symbol(&module, "String", &source_indices),
+            Some("std.types".to_string())
+        );
+    }
+
+    #[test]
+    fn aliased_extdeps_external_authority_anchor_projects_imported_literal() {
+        let facts = extdeps_external_authority_module_facts("extdeps.llm.claude_setup_token_cli");
+        assert_eq!(facts.anchor_kind, "present");
+        assert_eq!(facts.scheme_identity, "Https");
+        assert_eq!(
+            facts.locator,
+            "docs.claude.com/en/docs/claude-code/cli-reference"
+        );
+    }
+
+    #[test]
+    fn corpus_live_clean_tree_wall_holds_with_aliased_setup_token_cli_anchor() {
+        assert!(extdeps_external_authority_live_clean_tree_holds());
+    }
 }
 
 #[cfg(test)]

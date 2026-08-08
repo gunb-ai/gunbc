@@ -127,22 +127,29 @@ fn outcome_to_diagnostics(outcome: SynthesisOutcome) -> List<Diagnostic> {
   }
 }
 
+fn synthesis_lens_known_reports(n: Node, declared_technique: LowerBoundTechnique, realization: ComplexityBound) -> List<Report> {
+  match declared_technique {
+    DecisionTree =>
+      outcome_to_reports(outcome: assess_decision_tree(n: n, realization: realization))
+    AlgebraicRank =>
+      outcome_to_reports(outcome: SynthesisNoTechnique { diagnostic: synthesis_no_technique_diagnostic(n: n) })
+    AdversaryCommunication =>
+      outcome_to_reports(outcome: SynthesisNoTechnique { diagnostic: synthesis_no_technique_diagnostic(n: n) })
+    InformationTheoretic =>
+      outcome_to_reports(outcome: assess_information_theoretic(n: n, realization: realization))
+    ReductionConditional =>
+      outcome_to_reports(outcome: SynthesisNoTechnique { diagnostic: synthesis_no_technique_diagnostic(n: n) })
+  }
+}
+
 fn synthesis_lens(n: Node, declared_technique: LowerBoundTechnique) -> List<Report> {
-  match complexity_lens(n: n) {
-    Violates { diagnostic: _ } => Empty
-    Holds { value: realization } =>
-      match declared_technique {
-        DecisionTree =>
-          outcome_to_reports(outcome: assess_decision_tree(n: n, realization: realization))
-        AlgebraicRank =>
-          outcome_to_reports(outcome: SynthesisNoTechnique { diagnostic: synthesis_no_technique_diagnostic(n: n) })
-        AdversaryCommunication =>
-          outcome_to_reports(outcome: SynthesisNoTechnique { diagnostic: synthesis_no_technique_diagnostic(n: n) })
-        InformationTheoretic =>
-          outcome_to_reports(outcome: assess_information_theoretic(n: n, realization: realization))
-        ReductionConditional =>
-          outcome_to_reports(outcome: SynthesisNoTechnique { diagnostic: synthesis_no_technique_diagnostic(n: n) })
-      }
+  let realization = complexity_lens(n: n)
+  match realization {
+    UnknownComplexity { diagnostic: _ } => Empty
+    ConstantComplexity =>
+      synthesis_lens_known_reports(n: n, declared_technique: declared_technique, realization: realization)
+    SizedComplexity { class: _, variables: _ } =>
+      synthesis_lens_known_reports(n: n, declared_technique: declared_technique, realization: realization)
   }
 }
 
@@ -162,22 +169,29 @@ data information_theoretic_synthesis_advisory_lens: AdvisoryLens = AdvisoryLens 
   read: information_theoretic_synthesis_lens_read
 }
 
+fn synthesis_lens_known_diagnostics(n: Node, declared_technique: LowerBoundTechnique, realization: ComplexityBound) -> List<Diagnostic> {
+  match declared_technique {
+    DecisionTree =>
+      outcome_to_diagnostics(outcome: assess_decision_tree(n: n, realization: realization))
+    AlgebraicRank =>
+      outcome_to_diagnostics(outcome: SynthesisNoTechnique { diagnostic: synthesis_no_technique_diagnostic(n: n) })
+    AdversaryCommunication =>
+      outcome_to_diagnostics(outcome: SynthesisNoTechnique { diagnostic: synthesis_no_technique_diagnostic(n: n) })
+    InformationTheoretic =>
+      outcome_to_diagnostics(outcome: assess_information_theoretic(n: n, realization: realization))
+    ReductionConditional =>
+      outcome_to_diagnostics(outcome: SynthesisNoTechnique { diagnostic: synthesis_no_technique_diagnostic(n: n) })
+  }
+}
+
 fn synthesis_lens_diagnostics(n: Node, declared_technique: LowerBoundTechnique) -> List<Diagnostic> {
-  match complexity_lens(n: n) {
-    Violates { diagnostic: d } => Cons { head: d, tail: Empty }
-    Holds { value: realization } =>
-      match declared_technique {
-        DecisionTree =>
-          outcome_to_diagnostics(outcome: assess_decision_tree(n: n, realization: realization))
-        AlgebraicRank =>
-          outcome_to_diagnostics(outcome: SynthesisNoTechnique { diagnostic: synthesis_no_technique_diagnostic(n: n) })
-        AdversaryCommunication =>
-          outcome_to_diagnostics(outcome: SynthesisNoTechnique { diagnostic: synthesis_no_technique_diagnostic(n: n) })
-        InformationTheoretic =>
-          outcome_to_diagnostics(outcome: assess_information_theoretic(n: n, realization: realization))
-        ReductionConditional =>
-          outcome_to_diagnostics(outcome: SynthesisNoTechnique { diagnostic: synthesis_no_technique_diagnostic(n: n) })
-      }
+  let realization = complexity_lens(n: n)
+  match realization {
+    UnknownComplexity { diagnostic: d } => Cons { head: d, tail: Empty }
+    ConstantComplexity =>
+      synthesis_lens_known_diagnostics(n: n, declared_technique: declared_technique, realization: realization)
+    SizedComplexity { class: _, variables: _ } =>
+      synthesis_lens_known_diagnostics(n: n, declared_technique: declared_technique, realization: realization)
   }
 }
 

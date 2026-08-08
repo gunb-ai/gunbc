@@ -2723,7 +2723,7 @@ fn cross_representation_numeric_straddle(a: &Value, b: &Value) -> Option<String>
 }
 
 fn is_content_hash_family_variant(name: &str) -> bool {
-    matches!(name, "Fnv1a64" | "Sha256Hash" | "Sha1Hash")
+    matches!(name, "Fnv1a64" | "Sha256Hash" | "Sha1Hash" | "Sha512Hash")
 }
 
 fn is_content_hash_value(v: &Value) -> bool {
@@ -2760,7 +2760,7 @@ fn cross_family_content_hash_straddle(a: &Value, b: &Value) -> Option<String> {
                 Some(format!(
                     "{} vs {} — ContentHash families are not comparable; bare `==` would \
                      silently fabricate `false` whereas structural fnv1a64 and cited \
-                     SHA-256/SHA-1 digests are different kinds with different remedies \
+                     SHA-256/SHA-1/SHA-512 digests are different kinds with different remedies \
                      (DESIGN §5 / feature:content-hash-family-grounded). Match on family \
                      and use per-family eq, or admit_pin_integrity at union carriers.",
                     describe_repr(a),
