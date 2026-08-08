@@ -740,7 +740,7 @@ test fn reference_derived_dependency_projection_preserves_provenance_and_collaps
       }
         _ => false
       }
-    AssembledCrossFileBindingClosureRefused => false
+    AssembledCrossFileBindingClosureRefused { refusal: _ } => false
   }
 }
 
