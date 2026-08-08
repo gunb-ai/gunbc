@@ -705,6 +705,30 @@ fn live_read_selection_narrows_incident_subject_to_touched_entry() {
          reaches a live-read carrier home, which the retired G1 predicate treated as a hit on \
          any nonempty diff)"
     );
+
+    // The counter above proves B ran no witness. It does NOT prove B's cold entry resolve was
+    // elided, because a row skipped as assumed-green AFTER its entry resolved also records no
+    // outcome — and eliding that resolve is the entire cost win this axis exists to buy. So
+    // assert the provenance: B must have taken the skip-BEFORE-resolve fast path.
+    let runner_entry = workspace_root()
+        .join(SELECTION_CONTROL_FLOOR_RUNNER_TEST_REL)
+        .to_string_lossy()
+        .into_owned();
+    let b_skip = summary
+        .selection_skipped_rows
+        .iter()
+        .find(|r| r.entry == runner_entry)
+        .unwrap_or_else(|| {
+            panic!(
+                "the unrelated entry must appear as a selection-skipped row; skipped rows: {:?}",
+                summary.selection_skipped_rows
+            )
+        });
+    assert_eq!(
+        b_skip.provenance, "skip-before-resolve-fast-path",
+        "the unrelated entry must skip BEFORE resolving — a resolve-then-skip still pays the \
+         cold entry resolve this axis exists to elide, and reports identically in every count"
+    );
 }
 
 /// The stop-line population must not re-widen what selection narrowed.
