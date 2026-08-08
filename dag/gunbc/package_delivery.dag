@@ -1560,7 +1560,7 @@ fn validate_existing_codex_runtime_release(
               cause: "existing release native digest observation refused" as NonEmptyStr,
             }
           Present { value: observed } =>
-            if (observed.hex as String) != (receipt.native_executable_digest.hex as String) {
+            if observed.hex != receipt.native_executable_digest.hex {
               CodexRuntimeReleaseReuseMismatch {
                 existing_root: existing_root,
                 cause: "existing release native digest mismatch" as NonEmptyStr,
