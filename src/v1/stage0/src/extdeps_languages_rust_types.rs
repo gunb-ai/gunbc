@@ -186,15 +186,6 @@ pub fn trait_bound_template() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_types_name_catalog_dissolve_on() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "dissolve-on: rust.types.integer_types/float_types — deleted bare String name lists with zero consumers; sole type-name catalog authority is extdeps.languages.rust.primitives rust_grounding_primitives.target_name rows.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn rust_cast_syntax() -> Rc<CastSyntax> {
     thread_local! {
         static CACHED: Rc<CastSyntax> = {

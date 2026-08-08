@@ -19,13 +19,21 @@ type DissolutionStatus
 
 data dissolution_status_no_forge_note: String = "The UnboundDissolution arm takes no input other than the condition itself. present_decls cannot reach it, so there is no list a caller could supply — and no declaration it could contain — that makes an unbound condition report DissolutionFired. That is the property the discriminating witness pins in both directions, and it is the reason the fired/pending distinction is derived here rather than stored on the row."
 
+data dissolution_trigger_projection_note: String = "DissolutionTrigger is deliberately a one-arm coproduct — it is the extension point for trigger kinds beyond a declaration appearing, and naming the arm keeps the checkable/uncheckable distinction visible at the type rather than hiding a bare DeclarationRef inside BoundDissolution. The projection below exists because destructuring it INSIDE a BoundDissolution pattern lowers to an irrefutable `let ... else` in emitted Rust, which -D warnings rejects; a single-arm `match` in its own function does not. So the nesting is flattened at the source rather than suppressed with an allow attribute, and the shape stays correct for the day a second arm lands."
+
+fn dissolution_trigger_ref(trigger: DissolutionTrigger) -> DeclarationRef {
+  match trigger {
+    DeclarationAppears { ref: r } => r
+  }
+}
+
 fn dissolution_status(
   condition: DissolutionCondition,
   present_decls: List<DeclarationRef>,
 ) -> DissolutionStatus {
   match condition {
-    BoundDissolution { trigger: DeclarationAppears { ref: ref } } =>
-      if declaration_ref_in_list(target: ref, refs: present_decls) {
+    BoundDissolution { trigger: t } =>
+      if declaration_ref_in_list(target: dissolution_trigger_ref(trigger: t), refs: present_decls) {
         DissolutionFired
       } else {
         DissolutionPending

@@ -70,15 +70,6 @@ pub fn stage0_crate_plan_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn stage0_crate_plan_list_wrapper_dissolve_on() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "dissolve-on: stage0_crate_plan — deleted; receipt paths must call stage0_crate_plan_outcome (§5 empty-plan wrapper collapsed Stage0CratePlanRefused to crates:[]). workspace_members and regen_stage0 consume outcome surfaces only.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn stage0_crate_allow_block() -> String {
     Rc::new(vec![
         "#![allow(".to_string(),
