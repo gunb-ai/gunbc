@@ -1,6 +1,6 @@
 module v2.test.lens_synthesis.synthesis_gap_polynomial
 
-import v2.lens.complexity { ComplexityBound, complexity_lens }
+import v2.lens.complexity { ComplexityBound, ConstantComplexity, SizedComplexity, UnknownComplexity, complexity_lens }
 import v2.lens.synthesis {
   DecisionTree,
   SynthesisGap,
@@ -91,19 +91,24 @@ data claim_synthesis_gap_polynomial: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-fn synthesis_gap_poly_first_reason_node() -> Node {
-  match complexity_lens(n: synthesis_gap_poly_input) {
-    Violates { diagnostic: _ } => synthesis_gap_poly_sentinel
-    Holds { value: realization } =>
-      match assess_decision_tree(n: synthesis_gap_poly_input, realization: realization) {
-        SynthesisGap { realization_cost: _, lower_bound: _, report: r } =>
-          match r.reason {
-            SynthesisGapDecisionTree => synthesis_gap_poly_input
-            SynthesisGapInformationTheoretic => synthesis_gap_poly_sentinel
-          }
-        SynthesisOptimal { realization_cost: _, lower_bound: _ } => synthesis_gap_poly_sentinel
-        SynthesisNoTechnique { diagnostic: _ } => synthesis_gap_poly_sentinel
+fn synthesis_gap_poly_known_reason_node(realization: ComplexityBound) -> Node {
+  match assess_decision_tree(n: synthesis_gap_poly_input, realization: realization) {
+    SynthesisGap { realization_cost: _, lower_bound: _, report: r } =>
+      match r.reason {
+        SynthesisGapDecisionTree => synthesis_gap_poly_input
+        SynthesisGapInformationTheoretic => synthesis_gap_poly_sentinel
       }
+    SynthesisOptimal { realization_cost: _, lower_bound: _ } => synthesis_gap_poly_sentinel
+    SynthesisNoTechnique { diagnostic: _ } => synthesis_gap_poly_sentinel
+  }
+}
+
+fn synthesis_gap_poly_first_reason_node() -> Node {
+  let realization = complexity_lens(n: synthesis_gap_poly_input)
+  match realization {
+    UnknownComplexity { diagnostic: _ } => synthesis_gap_poly_sentinel
+    ConstantComplexity => synthesis_gap_poly_known_reason_node(realization: realization)
+    SizedComplexity { class: _, variables: _ } => synthesis_gap_poly_known_reason_node(realization: realization)
   }
 }
 

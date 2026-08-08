@@ -21,6 +21,7 @@ import std.content_hash {
   fnv1a64_structural_hex_digest
 }
 import std.algebra { Empty, Cons }
+import std.process_termination { ProcessTermination, ProcessExited, ProcessSignaled, ProcessTerminationUnobserved }
 import std.decl_ref { DeclarationRef }
 import std.witness_admission { WitnessConsumerCadence }
 
@@ -189,11 +190,6 @@ type FloorWorkerIdentity
   = OrdinaryFloorWorker
   | ScopedWitnessFloorWorker { batch_id: ScopedWitnessBatchId }
 
-type FloorWorkerTermination
-  = FloorWorkerExited { code: Int }
-  | FloorWorkerSignaled { signal: Int }
-  | FloorWorkerTerminationUnobserved
-
 type FloorWorkerTerminalReceipt
   = FloorWorkerTerminalReceiptObserved { report: FloorWorkerTerminalReport }
   | FloorWorkerTerminalReceiptMissing
@@ -212,7 +208,7 @@ type FloorWorkerObservationOutcome
 
 type FloorWorkerObservation {
   worker: FloorWorkerIdentity
-  termination: FloorWorkerTermination
+  termination: ProcessTermination
   terminal_receipt: FloorWorkerTerminalReceipt
 }
 
@@ -222,7 +218,7 @@ fn floor_worker_observation_outcome(observation: FloorWorkerObservation) -> Floo
       detail: "worker termination had no terminal report"
     }
     FloorWorkerTerminalReceiptObserved { report: report } => match observation.termination {
-      FloorWorkerExited { code: 0 } => match report {
+      ProcessExited { code: 0 } => match report {
         FloorWorkerReportedCompleted { detail: _ } => FloorWorkerCompleted
         FloorWorkerReportedRefused { detail: detail } => FloorWorkerFailed {
           detail: "refusal report contradicted exit code 0: " + detail
@@ -230,7 +226,7 @@ fn floor_worker_observation_outcome(observation: FloorWorkerObservation) -> Floo
         FloorWorkerReportedFailed { detail: detail } => FloorWorkerFailed { detail: detail }
         FloorWorkerTerminalReportMalformed { detail: detail } => FloorWorkerFailed { detail: detail }
       }
-      FloorWorkerExited { code: _ } => match report {
+      ProcessExited { code: _ } => match report {
         FloorWorkerReportedCompleted { detail: _ } => FloorWorkerFailed {
           detail: "completion report contradicted nonzero exit"
         }
@@ -238,10 +234,10 @@ fn floor_worker_observation_outcome(observation: FloorWorkerObservation) -> Floo
         FloorWorkerReportedFailed { detail: detail } => FloorWorkerFailed { detail: detail }
         FloorWorkerTerminalReportMalformed { detail: detail } => FloorWorkerFailed { detail: detail }
       }
-      FloorWorkerSignaled { signal: _ } => FloorWorkerFailed {
+      ProcessSignaled { signal: _ } => FloorWorkerFailed {
         detail: "terminal report contradicted signal death"
       }
-      FloorWorkerTerminationUnobserved => FloorWorkerFailed {
+      ProcessTerminationUnobserved => FloorWorkerFailed {
         detail: "terminal report exists but process termination was unobserved"
       }
     }

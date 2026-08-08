@@ -86,7 +86,7 @@ import std.realization_schedule {
   SequentialChildProcess, InheritedWalkSourceRoots,
   ScopedWitnessExecutionReceiptDecoded, ScopedWitnessExecutionReceiptRefused,
   ScopedWitnessExecuted, ScopedWitnessSelectionSkipped, scoped_witness_execution_receipt_decode,
-  FloorWorkerObservation, OrdinaryFloorWorker, FloorWorkerExited, FloorWorkerSignaled,
+  FloorWorkerObservation, OrdinaryFloorWorker,
   FloorWorkerTerminalReceiptObserved, FloorWorkerReportedCompleted,
   FloorWorkerCompleted, FloorWorkerFailed, floor_worker_observation_outcome,
   SelectionOff, SelectionApplied, SelectionPredictOnly, NodeFrontierSelection,
@@ -96,6 +96,7 @@ import std.realization_schedule {
   CorpusWitnessKind, ExecutionWitnessKind
 }
 import std.realization_schedule { WalkPlan, NoWalkFinalization, NoFinalizationDeclared, NoPreWalkExecution }
+import std.process_termination { ProcessExited, ProcessSignaled }
 import gunbc.ci_materialization {
   FloorFinalization,
   ResolveObligation,
@@ -445,14 +446,14 @@ test fn scoped_witness_execution_receipt_decoder_refuses_sha256_digest_family() 
 test fn floor_worker_observation_outcome_is_derived_from_evidence() -> Bool {
   let completed = FloorWorkerObservation {
     worker: OrdinaryFloorWorker,
-    termination: FloorWorkerExited { code: 0 },
+    termination: ProcessExited { code: 0 },
     terminal_receipt: FloorWorkerTerminalReceiptObserved {
       report: FloorWorkerReportedCompleted { detail: "walk terminal exit code 0" }
     },
   }
   let contradicted = FloorWorkerObservation {
     worker: OrdinaryFloorWorker,
-    termination: FloorWorkerSignaled { signal: 9 },
+    termination: ProcessSignaled { signal: 9 },
     terminal_receipt: FloorWorkerTerminalReceiptObserved {
       report: FloorWorkerReportedCompleted { detail: "walk terminal exit code 0" }
     },

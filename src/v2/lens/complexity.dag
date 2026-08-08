@@ -54,6 +54,8 @@ import v2.std.refinement {
 }
 import v2.std.witness { Holds, Violates, Witness }
 
+data complexity_variables_list_carrier_note: String = "ComplexityVariables is List<SizeVariable> with no Refined/Witness carrier. The admits predicate is vacuous, so refine+Holds rewrap added no admission fact and under discovery (PR 7765) Witness peels left Holds-wrapped lists that concat rejected as Record. complexity_lens returns ComplexityBound directly (UnknownComplexity on cost Violates) so discovery cannot nest an extra Holds around the bound. dissolve-on: root-cause the discovery shared-index path that injected the extra Holds layer."
+
 fn complexity_variables_admits(xs: List<SizeVariable>) -> Bool {
   true
 }
@@ -72,27 +74,7 @@ fn complexity_projection_locus() -> Locus {
   Textual { file: ^complexity_projection_virtual_file, extent: WholeFile }
 }
 
-fn complexity_variables_from_refine(xs: List<SizeVariable>) -> Witness<ComplexityVariables> {
-  match refine(base: xs, by: complexity_variables_validation, at: complexity_projection_locus()) {
-    Accepted { value: refined, diagnostics: _ } => Holds { value: refined }
-    Rejected { diagnostics } => Violates { diagnostic: diagnostics.head }
-  }
-}
-
-fn complexity_variables_unwrap_refine(xs: List<SizeVariable>) -> ComplexityVariables {
-  match complexity_variables_from_refine(xs: xs) {
-    Holds { value: variables } => variables
-
-    Violates { diagnostic: _ } =>
-      refined_vacuous_stub_pack(
-        base: xs,
-        by: complexity_variables_vacuous_validation,
-        at: complexity_projection_locus()
-      )
-  }
-}
-
-type ComplexityVariables = Refined<List<SizeVariable>>
+type ComplexityVariables = List<SizeVariable>
 
 type SizeIndexedAsymptoticClass
   = SizedLogClass
@@ -113,20 +95,18 @@ fn unknown_complexity() -> ComplexityBound {
 }
 
 fn single_complexity_variable(size_var: SizeVariable) -> ComplexityVariables {
-  complexity_variables_unwrap_refine(xs: [size_var])
+  [size_var]
 }
 
 fn empty_complexity_variables() -> ComplexityVariables {
-  complexity_variables_unwrap_refine(xs: Empty)
+  Empty
 }
 
 fn composite_complexity_variables(
   lhs: ComplexityVariables,
   rhs: ComplexityVariables
 ) -> ComplexityVariables {
-  complexity_variables_unwrap_refine(
-    xs: concat(refined_base(r: lhs), refined_base(r: rhs))
-  )
+  concat(lhs, rhs)
 }
 
 fn sized_complexity(
@@ -164,68 +144,26 @@ fn unknown_complexity_with_diagnostic(diagnostic: Diagnostic) -> ComplexityBound
   UnknownComplexity { diagnostic: diagnostic }
 }
 
-fn combine_complexity_variables(
-  lhs: Witness<ComplexityVariables>,
-  rhs: Witness<ComplexityVariables>
-) -> Witness<ComplexityVariables> {
-  match lhs {
-    Holds { value: lv } =>
-      match rhs {
-        Holds { value: rv } =>
-          Holds { value: composite_complexity_variables(lhs: lv, rhs: rv) }
-        Violates { diagnostic: d } => Violates { diagnostic: d }
-      }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
-  }
-}
-
-fn complexity_variables_from_cost(cost: SymbolicCost) -> Witness<ComplexityVariables> {
+fn complexity_variables_from_cost(cost: SymbolicCost) -> ComplexityVariables {
   match cost {
-    ConstantCost { value: _ } =>
-      Holds { value: empty_complexity_variables() }
-    LogCost { variable: v } =>
-      Holds { value: single_complexity_variable(size_var: v) }
-    LinearCost { variable: v } =>
-      Holds { value: single_complexity_variable(size_var: v) }
-    PolynomialCost { variable: v, degree: _ } =>
-      Holds { value: single_complexity_variable(size_var: v) }
-    PolyLogCost { variable: v, exponent: _ } =>
-      Holds { value: single_complexity_variable(size_var: v) }
-    ExponentialCost { variable: v, base: _ } =>
-      Holds { value: single_complexity_variable(size_var: v) }
-    FactorialCost { variable: v } =>
-      Holds { value: single_complexity_variable(size_var: v) }
+    ConstantCost { value: _ } => Empty
+    LogCost { variable: v } => [v]
+    LinearCost { variable: v } => [v]
+    PolynomialCost { variable: v, degree: _ } => [v]
+    PolyLogCost { variable: v, exponent: _ } => [v]
+    ExponentialCost { variable: v, base: _ } => [v]
+    FactorialCost { variable: v } => [v]
     SumCost { lhs: lhs, rhs: rhs } =>
-      combine_complexity_variables(
-        lhs: complexity_variables_from_cost(cost: lhs),
-        rhs: complexity_variables_from_cost(cost: rhs)
+      concat(
+        complexity_variables_from_cost(cost: lhs),
+        complexity_variables_from_cost(cost: rhs)
       )
     ProductCost { lhs: lhs, rhs: rhs } =>
-      combine_complexity_variables(
-        lhs: complexity_variables_from_cost(cost: lhs),
-        rhs: complexity_variables_from_cost(cost: rhs)
+      concat(
+        complexity_variables_from_cost(cost: lhs),
+        complexity_variables_from_cost(cost: rhs)
       )
-    UnknownCost { diagnostic: d } =>
-      Violates { diagnostic: d }
-  }
-}
-
-fn complexity_bound_from_class(
-  class: AsymptoticClass,
-  variables: Witness<ComplexityVariables>
-) -> ComplexityBound {
-  match class {
-    ClassConstant => ConstantComplexity
-    ClassUnknown =>
-      match variables {
-        Holds { value: _ } => unknown_complexity()
-        Violates { diagnostic: d } => unknown_complexity_with_diagnostic(diagnostic: d)
-      }
-    _ =>
-      match variables {
-        Holds { value: v } => complexity_bound_from_sized_class(class: class, variables: v)
-        Violates { diagnostic: d } => unknown_complexity_with_diagnostic(diagnostic: d)
-      }
+    UnknownCost { diagnostic: _ } => Empty
   }
 }
 
@@ -249,10 +187,15 @@ fn complexity_bound_from_sized_class(
 }
 
 fn complexity_bound_from_cost(cost: SymbolicCost) -> ComplexityBound {
-  complexity_bound_from_class(
-    class: asymptotic_class_of_cost(cost: cost),
-    variables: complexity_variables_from_cost(cost: cost)
-  )
+  match cost {
+    UnknownCost { diagnostic: d } =>
+      unknown_complexity_with_diagnostic(diagnostic: d)
+    _ =>
+      complexity_bound_from_sized_class(
+        class: asymptotic_class_of_cost(cost: cost),
+        variables: complexity_variables_from_cost(cost: cost)
+      )
+  }
 }
 
 fn complexity_projection_diagnostic() -> Diagnostic {
@@ -263,16 +206,16 @@ fn complexity_projection_diagnostic() -> Diagnostic {
   }
 }
 
-fn asymptotic_projection(cost_witness: Witness<SymbolicCost>) -> Witness<ComplexityBound> {
+fn asymptotic_projection(cost_witness: Witness<SymbolicCost>) -> ComplexityBound {
   match cost_witness {
     Holds { value: cost } =>
-      Holds { value: complexity_bound_from_cost(cost: cost) }
+      complexity_bound_from_cost(cost: cost)
     Violates { diagnostic: d } =>
-      Violates { diagnostic: d }
+      unknown_complexity_with_diagnostic(diagnostic: d)
   }
 }
 
-fn complexity_lens(n: Node) -> Witness<ComplexityBound> {
+fn complexity_lens(n: Node) -> ComplexityBound {
   asymptotic_projection(cost_witness: cost_lens(n: n))
 }
 
@@ -309,7 +252,7 @@ fn complexity_bound_dominates(a: ComplexityBound, b: ComplexityBound) -> Bool {
         UnknownComplexity { diagnostic: _ } => false
         ConstantComplexity => true
         SizedComplexity { class: bc, variables: bv } =>
-          if refined_base(r: av) == refined_base(r: bv) {
+          if av == bv {
             asymptotic_class_dominates(
               a: asymptotic_class_from_sized_class(class: ac),
               b: asymptotic_class_from_sized_class(class: bc)
