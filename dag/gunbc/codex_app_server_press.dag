@@ -124,6 +124,7 @@ type AccountTripFrameDisposition
   | AccountTripQuotaSignal
   | AccountTripMissing
   | AccountTripNativeCauseUnknown { message: NonEmptyStr }
+  | AccountTripNativeCauseNumericCode { code: Int }
 
 type AccountTripResponseObservation
   = AccountTripResponseAbsent
@@ -687,9 +688,7 @@ fn disposition_from_structured_rpc_error(err: JsonValue) -> AccountTripFrameDisp
         AccountTripNativeCauseUnknown { message: json_rpc_error_message(err: err) }
       }
     JsonMemberFound { value: JsonNumber { lexeme: n } } =>
-      AccountTripNativeCauseUnknown {
-        message: concat("json-rpc numeric error code ", n as String) as NonEmptyStr,
-      }
+      AccountTripNativeCauseNumericCode { code: n }
     _ =>
       AccountTripNativeCauseUnknown { message: json_rpc_error_message(err: err) }
   }
@@ -958,12 +957,14 @@ fn classify_account_trip(acc: AccountTripParseAcc) -> AccountStandingClassificat
       AccountTripLoginRequiredSignal => AccountStandingLoginRequired
       AccountTripQuotaSignal => AccountStandingIncomplete
       AccountTripNativeCauseUnknown { message: _ } => AccountStandingIncomplete
+      AccountTripNativeCauseNumericCode { code: _ } => AccountStandingIncomplete
       AccountTripResultOk =>
         match acct {
           AccountTripLoginRequiredSignal => AccountStandingLoginRequired
           AccountTripMissing => AccountStandingIncomplete
           AccountTripQuotaSignal => AccountStandingIncomplete
           AccountTripNativeCauseUnknown { message: _ } => AccountStandingIncomplete
+          AccountTripNativeCauseNumericCode { code: _ } => AccountStandingIncomplete
           AccountTripResultOk =>
             match rate {
               AccountTripResultOk =>
@@ -972,6 +973,7 @@ fn classify_account_trip(acc: AccountTripParseAcc) -> AccountStandingClassificat
               AccountTripLoginRequiredSignal => AccountStandingLoginRequired
               AccountTripMissing => AccountStandingIncomplete
               AccountTripNativeCauseUnknown { message: _ } => AccountStandingIncomplete
+              AccountTripNativeCauseNumericCode { code: _ } => AccountStandingIncomplete
             }
         }
     }
