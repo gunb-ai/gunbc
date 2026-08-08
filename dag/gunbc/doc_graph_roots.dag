@@ -192,6 +192,16 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "spark-standup-program-accounting",
+    primary_work: DeclarationRef { module_path: "gunbc.plans.fleet_subsumption_manual_gaps", decl_name: "fleet_subsumption_manual_gaps_plan", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "gunbc.dgx_spark_procurement", decl_name: "dgx_spark_arrival_standing", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.dgx_spark_procurement", decl_name: "dgx_spark_router_bindings", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the Spark standup lanes are carried as registered rows rather than by this note — the manual-gap items reach zero and srv5/srv6 are enrolled with their arrival obligations modeled where that arrival lives, at which point the accounting has no facts of its own and this bind deletes with the doc." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "floor-prep-tax-program",
     primary_work: DeclarationRef { module_path: "gunbc.executor_schedule_retention", decl_name: "schedule_retention_policy_note", field: WholeDeclaration },
     additional_works: [
