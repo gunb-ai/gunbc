@@ -1,0 +1,149 @@
+module v2.workflow.realization_attempt
+
+import v2.compiler.ingested_fixture_arrows { ingested_resolved_module_from_source }
+import v2.compiler.emit_produced { emit_produced_module_rust }
+import v2.extdeps.languages.rust { rust_target_model_staging }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.communication.medium { Medium }
+import v2.std.diagnostic { Accepted, Rejected, Outcome }
+import v2.std.node { Node, Edge, TypeNode, Arrow, Conj, Named, Symbol, node_synthetic }
+import v2.std.optional { Optional, Present, Absent }
+import v2.std.algebra { fold_list, length }
+import v2.std.logic { Bool }
+import std.types { Int, List, NonEmptyStr, String }
+
+data realization_attempt_note: String = "CI2-0 Commit B (operator mandate 2026-08-08): the ACTUAL canonical v2 realization attempt per identity — replacing the circular census whose capability verdict was bundle membership. One entry attempt runs the mandated pipeline over the entry's real authored source: Filesystem.Read -> tokenize -> parse_module -> normalize -> resolve (ingested_resolved_module_from_source, the SAME general ingest the wave1 census fixtures ride — not a witness-specific converter) -> Arrow extraction per declaration -> emit_produced_module_rust against rust_target_model_staging (the one general Rust TargetModel). The result is a typed standing per phase: the FIRST refusing phase is recorded with its exact diagnostic, and a green traversal is V2TranslateSerialized (RustCompile/NativeExecute are the transport stages, attempted by the bundle leg, not here). Bundle membership appears nowhere in this computation."
+
+type RealizationPhase
+  = PhaseRead
+  | PhaseFrontend
+  | PhaseNormalize
+  | PhaseResolve
+  | PhaseInfer
+  | PhaseTranslate
+  | PhaseSerialize
+  | PhaseRustCompile
+  | PhaseNativeExecute
+
+type RealizationAttemptStanding
+  = V2TranslateSerialized { emitted_nonempty: Bool }
+  | V2RealizationRefused { phase: RealizationPhase, exact_cause: Symbol }
+
+type EntryRealizationAttempt {
+  entry: String
+  arrow_count: Int
+  standing: RealizationAttemptStanding
+}
+
+fn attempt_refused(entry: String, phase: RealizationPhase, cause: Symbol) -> EntryRealizationAttempt {
+  EntryRealizationAttempt {
+    entry: entry,
+    arrow_count: 0,
+    standing: V2RealizationRefused { phase: phase, exact_cause: cause }
+  }
+}
+
+fn first_arrow_in(root: Node) -> Optional<Node> {
+  match root.kind {
+    TypeNode { connective: Arrow } => Present { value: root }
+    _ =>
+      fold(root.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => first_arrow_in(root: e.target)
+        }
+      })
+  }
+}
+
+fn collect_arrows(root: Node, acc: List<Node>) -> List<Node> {
+  fold(root.children, init: acc, f: fn(inner, e) {
+    match e.label {
+      Named { name: decl_name } =>
+        match first_arrow_in(root: e.target) {
+          Present { value: arrow } =>
+            concat(inner, [node_synthetic(
+              kind: TypeNode { connective: Conj },
+              children: [Edge { label: Named { name: decl_name }, target: arrow }]
+            )])
+          Absent => inner
+        }
+      _ => inner
+    }
+  })
+}
+
+fn attempt_entry_source(entry: String, source: String) -> EntryRealizationAttempt {
+  match ingested_resolved_module_from_source(source: source, file: ^realization_attempt_entry_file) {
+    Rejected { diagnostics: ds } =>
+      attempt_refused(
+        entry: entry,
+        phase: PhaseFrontend,
+        cause: ds.head.reason
+      )
+    Accepted { value: resolved, diagnostics: _ } => {
+      let arrows = collect_arrows(root: resolved, acc: [])
+      if length(xs: arrows) == 0 {
+        attempt_refused(entry: entry, phase: PhaseTranslate, cause: ^realization_attempt_no_arrow_declarations)
+      } else {
+        match emit_produced_module_rust(decls: arrows, target: rust_target_model_staging()) {
+          Accepted { value: medium, diagnostics: _ } =>
+            EntryRealizationAttempt {
+              entry: entry,
+              arrow_count: length(xs: arrows),
+              standing: V2TranslateSerialized { emitted_nonempty: !(medium.carried == "") }
+            }
+          Rejected { diagnostics: ds } =>
+            EntryRealizationAttempt {
+              entry: entry,
+              arrow_count: length(xs: arrows),
+              standing: V2RealizationRefused {
+                phase: PhaseTranslate,
+                exact_cause: ds.head.reason
+              }
+            }
+        }
+      }
+    }
+  }
+}
+
+fn attempt_entry(entry: String) -> EntryRealizationAttempt {
+  let read_out = Filesystem.Read(path: entry)
+  if !read_out.success {
+    attempt_refused(entry: entry, phase: PhaseRead, cause: ^realization_attempt_read_refused)
+  } else {
+    attempt_entry_source(entry: entry, source: read_out.content)
+  }
+}
+
+fn attempt_is_emitted(a: EntryRealizationAttempt) -> Bool {
+  match a.standing {
+    V2TranslateSerialized { emitted_nonempty: _ } => true
+    V2RealizationRefused { phase: _, exact_cause: _ } => false
+  }
+}
+
+fn attempt_phase_label(a: EntryRealizationAttempt) -> String {
+  match a.standing {
+    V2TranslateSerialized { emitted_nonempty: _ } => "emitted"
+    V2RealizationRefused { phase: p, exact_cause: _ } => match p {
+      PhaseRead => "read"
+      PhaseFrontend => "frontend"
+      PhaseNormalize => "normalize"
+      PhaseResolve => "resolve"
+      PhaseInfer => "infer"
+      PhaseTranslate => "translate"
+      PhaseSerialize => "serialize"
+      PhaseRustCompile => "rust_compile"
+      PhaseNativeExecute => "native_execute"
+    }
+  }
+}
+
+fn attempt_cause(a: EntryRealizationAttempt) -> Optional<Symbol> {
+  match a.standing {
+    V2TranslateSerialized { emitted_nonempty: _ } => Absent
+    V2RealizationRefused { phase: _, exact_cause: c } => Present { value: c }
+  }
+}

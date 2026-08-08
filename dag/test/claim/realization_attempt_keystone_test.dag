@@ -1,0 +1,53 @@
+module gunbc.test.claim.realization_attempt_keystone_test
+
+import v2.workflow.realization_attempt {
+  RealizationPhase,
+  PhaseRead,
+  PhaseFrontend,
+  PhaseTranslate,
+  RealizationAttemptStanding,
+  V2TranslateSerialized,
+  V2RealizationRefused,
+  EntryRealizationAttempt,
+  attempt_entry,
+  attempt_entry_source,
+  attempt_is_emitted,
+  attempt_phase_label
+}
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.logic { Bool }
+import std.types { String, Int }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data keystone_note: String = "CI2-0 Commit B keystone (operator mandate): the realization-attempt harness proven by execution in both directions BEFORE the sweep consumes it. Positive control: a planted minimal module emits through the canonical pipeline (tokenize->parse->normalize->resolve->emit against rust_target_model_staging) and reports V2TranslateSerialized with nonzero bytes. Negative control: planted garbage refuses at PhaseFrontend with a typed cause — the harness cannot report green on input the pipeline rejects. Live keystone: a REAL corpus entry produces a typed standing (either arm) with a nonempty phase label — the attempt never absorbs, never defaults, and bundle membership appears nowhere in the computation."
+
+data planted_minimal_source: String = "module m\n\nfn add(x: Int, y: Int) -> Int { x + y }\n"
+
+data planted_garbage_source: String = "module planted.garbage\n\nfn ((((\n"
+
+test fn witness_planted_minimal_module_emits() -> Bool {
+  let a = attempt_entry_source(entry: "planted://minimal", source: planted_minimal_source)
+  match a.standing {
+    V2TranslateSerialized { emitted_nonempty: ne } => ne && a.arrow_count == 1
+    V2RealizationRefused { phase: _, exact_cause: _ } => false
+  }
+}
+
+test fn witness_planted_garbage_refuses_frontend_RED() -> Bool {
+  let a = attempt_entry_source(entry: "planted://garbage", source: planted_garbage_source)
+  match a.standing {
+    V2TranslateSerialized { emitted_nonempty: _ } => false
+    V2RealizationRefused { phase: p, exact_cause: _ } => match p {
+      PhaseFrontend => true
+      _ => false
+    }
+  }
+}
+
+test fn witness_real_corpus_entry_produces_typed_standing() -> Bool {
+  let a = attempt_entry(entry: "dag/test/claim/witness_execution_class_test.dag")
+  let label = attempt_phase_label(a: a)
+  (label != "") && (label != "read")
+}
+
