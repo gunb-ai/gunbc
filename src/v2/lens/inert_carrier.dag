@@ -1,6 +1,7 @@
 module v2.lens.inert_carrier
 
-import std.roster_frontier { FrontierRow, frontier_row, frontier_units }
+import std.roster_frontier { FrontierRow, frontier_row_path, frontier_units }
+import std.dissolution { unbound_dissolution }
 import std.disposition { RealizationDispatch }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import v2.std.collection { fold_list }
@@ -10,7 +11,7 @@ data inert_carrier_local_alias_roster_note: String = "Floor hygiene: roster Loca
 data inert_carrier_row_dissolve: String = "a live consumer reads the carrier; the stale-roster check then forces this row's deletion"
 
 fn inert_row(unit: String, reason: String) -> FrontierRow {
-  frontier_row(unit: unit, reason: reason, dissolve_on: inert_carrier_row_dissolve)
+  frontier_row_path(path: unit, reason: reason, dissolution: unbound_dissolution(description: inert_carrier_row_dissolve))
 }
 
 data inert_carrier_roster: List<FrontierRow> = [
