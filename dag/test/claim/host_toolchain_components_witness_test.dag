@@ -83,8 +83,7 @@ test fn witness_red_control_self_repairing_probe_cannot_certify() -> Bool {
     && observation_verdict_eq(a: inert, b: std.upsert_decision.Converged)
 }
 
-data witness_component_naming_note: String = "The component vocabulary is cited to rustup and projects to the names rustup itself accepts, so a requirement row cannot drift from the string an ensure would pass to `rustup component add`."
-
+// The component vocabulary is cited to rustup and projects to the names rustup itself accepts, so a requirement row cannot drift from the string an ensure would pass to `rustup component add`.
 test fn witness_component_names_match_rustup() -> Bool {
   (rustup_component_name(c: Rustfmt) as String) == "rustfmt"
     && (rustup_component_name(c: Clippy) as String) == "clippy"

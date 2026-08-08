@@ -11,17 +11,21 @@ use std::time::Instant;
 #[cfg(test)]
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::cli_run::{
-    compute_histogram_data, enable_floor_compile_clean_lazy_install, heartbeat_feed_enter_batch,
+    build_floor_discovery_request, compute_histogram_data,
+    discover_floor_witness_roster_with_snapshot, enable_floor_compile_clean_lazy_install,
+    floor_discovery_consumer_role_from_env, heartbeat_feed_enter_batch,
     heartbeat_feed_entry_completed, heartbeat_feed_snapshot, install_floor_compile_clean_receipt,
     make_eval_context, project_witness_cost_receipt, record_resolution_divergence_phase,
-    render_selection_degradation_receipt_body, reset_resolution_divergence_phase_receipt,
-    resolution_divergence_parent_plan_capture_begin,
+    render_selection_degradation_receipt_body, request_identity_digest,
+    reset_resolution_divergence_phase_receipt, resolution_divergence_parent_plan_capture_begin,
     resolution_divergence_parent_plan_capture_finish, resolve_entry_graph,
     resolve_entry_graph_shared, run_claim, run_discovery_corpus_with_options, run_value, set_phase,
-    top_n_slowest_witnesses, BudgetKind, ClaimOutcome, DiscoveryCorpusOptions, DiscoverySummary,
-    DiscoveryWidthPolicy, FloorPhase, HistogramData, NodeFrontierSelectionMode, PhaseProfile,
-    ResolutionDivergencePhase, ResolutionDivergencePhaseState, SelectionDegradationSnapshot,
-    TimingPercentiles, WitnessRowCost, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
+    top_n_slowest_witnesses, verify_floor_discovery_terminal_for_coordinator, BudgetKind,
+    ClaimOutcome, DiscoveryCorpusOptions, DiscoverySummary, DiscoveryWidthPolicy,
+    DiscoveryWitnessOutcome, FloorDiscoveryConsumerRole, FloorPhase, HistogramData,
+    NodeFrontierSelectionMode, PhaseProfile, ResolutionDivergencePhase,
+    ResolutionDivergencePhaseState, SelectionDegradationSnapshot, TimingPercentiles,
+    WitnessRowCost, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N, FLOOR_DISCOVERY_CONSUMER_ENV,
 };
 use v1_compiler::memory_governor::{
     binding_cap_cgroup_dir, binding_high_cgroup_dir, floor_budget_below_minimum_footprint,
@@ -47,18 +51,33 @@ struct FalsifierSelfHostWetBudgets {
     interp_eval_budget_ms: Option<u64>,
     /// Entry paths from `falsifier_self_host_wet_entries` (green wet roster).
     roster_entry_paths: Vec<String>,
-    /// Entry paths from `falsifier_self_host_wet_known_red_entries` — Wet expect_red
-    /// quarantine; arms the same self-host wall budget + expect_red invert.
+    /// Entry paths from `falsifier_self_host_wet_known_red_entries` — the Wet quarantine's
+    /// WALL budget only. Its polarity comes from `expected_red_witnesses` like every other
+    /// witness's; the path-grain hermetic twin of this field was deleted when function-grain
+    /// expectation replaced it, rather than left beside its successor.
     known_red_entry_paths: Vec<String>,
-    /// Hermetic known-red probe paths (`known_red_probe_entries`) — expect_red only.
-    hermetic_known_red_entry_paths: Vec<String>,
     silent_pick_wall_budget_ms: Option<u64>,
     silent_pick_entry_paths: Vec<String>,
-    /// Hermetic substrate long-lane paths (`falsifier_substrate_long_lane_entries`) —
-    /// rows deliberately excluded from per-PR discovery precisely because their eval
-    /// exceeds the fast-lane budget, so they arm their own dated eval ceiling instead.
+    /// Paths requiring the long eval ceiling (`witness_long_eval_budget_entries`) — the
+    /// UNION of the long-lane batch roster and every admission row declaring
+    /// `SubstrateLongLaneEvalBudget`.
+    ///
+    /// It reads the union, not the batch roster, because how much eval time a witness needs
+    /// is a property of the WITNESS and batch membership is a property of the schedule.
+    /// While this read was the batch roster the two were one fact, so an expensive known-red
+    /// row could only obtain its ceiling by ALSO joining the long batch — a second schedule
+    /// occurrence, on a batch that expects green, for a witness that is red by design.
     substrate_long_lane_entry_paths: Vec<String>,
     substrate_long_lane_eval_budget_ms: Option<u64>,
+    /// The FUNCTION-grain expected-red roster: `(entry, function)` from both known-red
+    /// cadences. An empty function is the declared file-grain form.
+    expected_red_witnesses: Vec<(String, String)>,
+    /// The strict SUBSET of the above declaring `ExpectTypedPreVerdictRefusal` — witnesses whose
+    /// agreement is a typed stop BEFORE any assertion runs, so that a corpus resolve refuse is
+    /// their expected result rather than an infrastructure fact. Separate from
+    /// `expected_red_witnesses` because blessing an arbitrary resolve failure as every
+    /// quarantine holding is exactly what one undifferentiated red expectation did.
+    pre_verdict_refusal_witnesses: Vec<(String, String)>,
 }
 
 fn read_positive_budget_ms(
@@ -1712,6 +1731,16 @@ struct ClaimResult {
     /// as data on the path that needs it. It is a projection of `ClaimOutcome::TimedOut`,
     /// not a second authority: nothing sets it except the `TimedOut` arm below.
     budget_refusal: Option<BudgetRefusal>,
+    /// Set only when this batch contained a witness declared expected-RED that ran GREEN,
+    /// carrying the identities that must be un-quarantined.
+    ///
+    /// Same reason `budget_refusal` exists, one class over: without it the mode has to be
+    /// recovered from prose, and the fallback arm is `WitnessRed` — so an un-quarantine
+    /// would be indistinguishable from a genuine regression in the alert signature, with a
+    /// completely different remedy (delete the admission row vs. fix the code). It is
+    /// derived from ROSTER MEMBERSHIP joined against per-witness outcomes, never from a
+    /// message, so no rewording can move the class.
+    expectation_refusal: Option<ExpectationRefusal>,
     /// Discovery batch only: finalized selection-degradation facts for floor receipts.
     selection_degradation: Option<SelectionDegradationSnapshot>,
     /// Recorded at the reuse decision site for rostered obligation subjects only.
@@ -1741,6 +1770,411 @@ const RESOLVE_REALIZATION_DISPOSITION_WARM: &str = "SatisfiedFromSharedPool";
 /// Authority: `gunbc.floor_materialization` `floor_entry_walk_memo_provider_id`;
 /// drift gate: `floor_entry_walk_memo_provider_id_matches_dag_authority`.
 const FLOOR_ENTRY_WALK_MEMO_PROVIDER_ID: &str = "walk_memo";
+
+/// A refusal about the EXPECTATION machinery itself, as distinct from a witness verdict.
+///
+/// Every arm means the same class of thing — the known-red roster does not describe reality as
+/// observed — and NONE is an ordinary `WitnessRed`, because their remedies are edits to the
+/// admission authority or to the seam, never to a witness. They are separate arms because the
+/// edits differ: a stale quarantine means DELETE the row, an absent observation means make the
+/// row RUN, and an unverified pre-verdict declaration means carry the typed cause across the
+/// execution boundary.
+///
+/// This enum is also the ONLY structural route to a typed receipt mode. `batch_failure_mode_and_detail`
+/// reads it off the VALUE and otherwise falls through to `falsifier_failure_mode`, whose fallback
+/// arm is `"WitnessRed"` — so a mode carried only in prose (in `function`/`detail`) is not carried
+/// at all. That is exactly how the pre-verdict arm shipped half-wired: the `.dag` vocabulary and
+/// the non-green result existed while the receipt still said `WitnessRed`, which is the
+/// one-fact-two-representations defect this PR exists to remove, committed by the PR itself.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ExpectationRefusal {
+    /// Declared expected-red, ran GREEN. The quarantine is stale.
+    StaleKnownRed { witnesses: Vec<(String, String)> },
+    /// Declared expected-red and rostered onto this batch, but NO observation came back.
+    ///
+    /// This is a COVERAGE refusal, not a semantic one: it asserts nothing about whether the
+    /// witness would be red, only that nobody looked. It is a refusal rather than a log line
+    /// because the alternative — which this bin shipped in its first shape — is a batch passing
+    /// while an admitted known-red row silently stopped executing, which is precisely the
+    /// coverage-by-illusion tier: the roster claims a red control exists, the run produces no
+    /// evidence either way, and the green report is read as though it did.
+    ExpectedRedEvidenceAbsent { witnesses: Vec<(String, String)> },
+    /// Every entry DECLARED a typed pre-verdict refusal and the batch stopped before any
+    /// verdict — so the stop is real, but the observed phase/cause is unavailable at this seam
+    /// and the declaration cannot be checked against it. Neither agreement nor a witness red.
+    PreVerdictUnverified {
+        declared_entries: usize,
+        cause: String,
+    },
+}
+
+impl ExpectationRefusal {
+    fn mode(&self) -> &'static str {
+        match self {
+            Self::StaleKnownRed { .. } => STALE_KNOWN_RED_MODE,
+            Self::ExpectedRedEvidenceAbsent { .. } => EXPECTED_RED_EVIDENCE_ABSENT_MODE,
+            Self::PreVerdictUnverified { .. } => EXPECTED_RED_PRE_VERDICT_UNVERIFIED_MODE,
+        }
+    }
+
+    fn detail(&self) -> String {
+        match self {
+            Self::StaleKnownRed { witnesses } => format!(
+                "{STALE_KNOWN_RED_MODE}: {} witness(es) declared expected-red ran GREEN: {} — un-quarantine (delete the row from gunbc.explicit_witness_admission explicit_witness_admissions, the single authority both known-red cadences project from) or restore the discriminating red",
+                witnesses.len(),
+                render_witness_ids(witnesses)
+            ),
+            Self::ExpectedRedEvidenceAbsent { witnesses } => format!(
+                "{EXPECTED_RED_EVIDENCE_ABSENT_MODE}: {} witness(es) declared expected-red produced NO observation on this batch: {} — the red control did not execute, so neither agreement nor failure was established; restore its execution or delete the admission row",
+                witnesses.len(),
+                render_witness_ids(witnesses)
+            ),
+            Self::PreVerdictUnverified {
+                declared_entries,
+                cause,
+            } => format!(
+                "{EXPECTED_RED_PRE_VERDICT_UNVERIFIED_MODE}: {declared_entries} entry(ies) declare a typed pre-verdict refusal and the batch stopped before any verdict, but the observed phase/cause is unavailable at this seam so the declaration cannot be verified — non-green by construction until EXPECTED-RED-CAUSE-1 lands: {cause}"
+            ),
+        }
+    }
+}
+
+/// The failure-mode tag for an expected-red row that produced no observation. Must match the tag
+/// `gunbc.floor_component_receipt` `floor_component_failure_mode_of` parses.
+const EXPECTED_RED_EVIDENCE_ABSENT_MODE: &str = "ExpectedRedEvidenceAbsent";
+
+/// A batch whose entries all DECLARE a typed pre-verdict refusal, stopped before any verdict.
+/// Non-green: the declaration classifies the stop, it does not verify it. See the Err arm.
+const EXPECTED_RED_PRE_VERDICT_UNVERIFIED_MODE: &str = "ExpectedRedPreVerdictUnverified";
+
+/// The Err-path result for a batch whose entries ALL declare a typed pre-verdict refusal.
+///
+/// Extracted from the arm so `ok == false` is reachable by a test. Inline, the non-green
+/// property was asserted only by a doc comment: nothing executed `run_discovery_batch_node`,
+/// so flipping `ok` back to `true` left every assertion green — a stated regression control
+/// that did not exist, the same defect class as a stated identity join that was a length
+/// agreement. The arm has exactly one construction site and it is this function.
+fn pre_verdict_unverified_claim_result(
+    label: &str,
+    declared_entries: usize,
+    msg: &str,
+) -> ClaimResult {
+    // The mode must reach the receipt off the VALUE. Carried only in `function`/`detail` it is
+    // not carried at all: `batch_failure_mode_and_detail` reads `expectation_refusal`
+    // structurally and otherwise falls through to `falsifier_failure_mode`, whose fallback arm
+    // is "WitnessRed" — so these batches were reported as ordinary witness failures while the
+    // `.dag` vocabulary said `Refused`. Found by cursor review 50221.
+    let refusal = ExpectationRefusal::PreVerdictUnverified {
+        declared_entries,
+        cause: msg.to_string(),
+    };
+    ClaimResult {
+        function: format!("{label} ({EXPECTED_RED_PRE_VERDICT_UNVERIFIED_MODE})"),
+        entry: DISCOVERY_AGGREGATE_ENTRY.to_string(),
+        // NON-GREEN. A declaration classifies the stop; it does not verify it.
+        ok: false,
+        detail: refusal.detail(),
+        wall_nanos: 0,
+        resolve_nanos: 0,
+        corpus_resolve_nanos: 0,
+        corpus_eval_nanos: 0,
+        corpus_witnesses: 0,
+        // The seam that ate the typed cause also ate the unit count: nothing ran, so this is
+        // UNAVAILABLE rather than zero. Zero would assert a measurement nobody took.
+        runtime_unit_count: runtime_unit_count_unavailable(msg),
+        witness_row_costs: Vec::new(),
+        expectation_refusal: Some(refusal),
+        budget_refusal: None,
+        selection_degradation: None,
+        resolve_realization: None,
+    }
+}
+
+const STALE_KNOWN_RED_MODE: &str = "StaleKnownRed";
+
+/// Which verdict is AGREEMENT for one witness — `std.witness_admission`
+/// `WitnessExpectedVerdict`, matched at FUNCTION grain.
+///
+/// This replaces a batch-wide boolean derived from entry PATHS. That shape decided polarity
+/// from the batch a witness happened to sit in, so a mixed batch silently reverted to
+/// ordinary polarity (`.all()`), a green sibling in a quarantined file inherited the
+/// quarantine, and an expensive known-red row that joined a second batch to obtain its eval
+/// budget became expected-green there — which is how a witness that is red BY DESIGN reached
+/// the falsifier alert as a component failure (gunbc#7737). Expectation is a property of the
+/// witness; nothing about which batch runs it may change what counts as agreement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WitnessExpectedVerdict {
+    ExpectWitnessHolds,
+    ExpectWitnessRed,
+}
+
+/// `(entry, function)` from the admission authority. An empty `function` is
+/// `ScheduleWitnessEntry`'s declared file-grain form and covers every witness in the entry.
+fn expected_verdict_for(
+    expected_red: &[(String, String)],
+    entry: &str,
+    function: &str,
+) -> WitnessExpectedVerdict {
+    let matched = expected_red
+        .iter()
+        .any(|(e, f)| e == entry && (f == function || f.is_empty()));
+    if matched {
+        WitnessExpectedVerdict::ExpectWitnessRed
+    } else {
+        WitnessExpectedVerdict::ExpectWitnessHolds
+    }
+}
+
+/// What actually happened to ONE witness declared expected-red.
+///
+/// AGREEMENT MEANS THE ASSERTION RAN AND WAS FALSE — not merely that it was not `Pass`.
+/// The first shape of this classifier computed `green = (outcome == Pass)` and routed every
+/// other outcome into the agreement arm, which blessed a budget kill, an interpreter error, a
+/// non-Bool return and an unobserved row as though the business assertion had executed and
+/// returned false. That is the ⊥-as-ignorance conflation in the one place that decides whether
+/// a red is real: "the assertion was false" and "no verdict was produced" are different states
+/// with different remedies, and only the first is a quarantine holding. It also contradicted a
+/// recorded ruling outright — `BudgetExceeded` is an interruption plus a measured lower bound on
+/// cost, NEVER a semantic verdict on a witness — so a known-red witness that timed out reported
+/// its quarantine as intact while its real behaviour was unobserved.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ExpectedRedDisposition {
+    /// The assertion ran and returned false. THE ONLY AGREEMENT.
+    AgreementAssertionReturnedFalse,
+    /// The assertion ran and returned true — the quarantine is stale and its row must go.
+    StaleQuarantineAssertionReturnedTrue,
+    /// Killed at a declared budget: an interruption plus a lower bound on cost, no verdict.
+    BudgetFailure,
+    /// The interpreter raised, or the witness returned a non-Bool. No verdict was produced.
+    ///
+    /// `RuntimeError` and `NotBool` share this arm because the seam cannot tell them apart from
+    /// a REFUSAL BEFORE EVALUATION today: `run_claim` formats the typed `InterpError` into a
+    /// `String` at the point it builds `ClaimOutcome::RuntimeError`, so a pre-evaluation refusal
+    /// and a mid-evaluation fault arrive indistinguishable. They are not split here by sniffing
+    /// that message — recovering a class from prose the seed just formatted is the exact
+    /// mechanism `budget_refusal` exists to avoid, and it is the shape that let a reworded error
+    /// silently demote a budget refusal to a witness failure. Collapsing two states that cannot
+    /// be observed here, and saying so, is the honest rung; fabricating the distinction would be
+    /// rung inflation in a table whose whole purpose is rung honesty.
+    ///
+    /// Dissolve-on: NOT a separate trigger — the same one `gunbc.witness_row_cost`
+    /// `witness_cost_timed_out_seed_deferral_note` already carries for this seam, because it is
+    /// the same fact: the typed error does not survive the marshalling of `ClaimOutcome` across
+    /// the interpreter boundary. When witness execution is realized from `.dag` rather than
+    /// interpreted in the seed bin (the witness-realization lane), the typed error is in hand at
+    /// the point of judgement and this arm splits in two. Pointed at the existing note rather
+    /// than minting a second ledger entry for one cause (DESIGN §6, one fact one home).
+    InfrastructureOrReferentFailure,
+}
+
+impl ExpectedRedDisposition {
+    fn of(outcome: &ClaimOutcome) -> Self {
+        match outcome {
+            ClaimOutcome::Fail => Self::AgreementAssertionReturnedFalse,
+            ClaimOutcome::Pass => Self::StaleQuarantineAssertionReturnedTrue,
+            ClaimOutcome::TimedOut { .. } => Self::BudgetFailure,
+            ClaimOutcome::RuntimeError { .. } | ClaimOutcome::NotBool { .. } => {
+                Self::InfrastructureOrReferentFailure
+            }
+        }
+    }
+
+    fn label(&self) -> &'static str {
+        match self {
+            Self::AgreementAssertionReturnedFalse => "agreement",
+            Self::StaleQuarantineAssertionReturnedTrue => "stale-quarantine",
+            Self::BudgetFailure => "budget-failure",
+            Self::InfrastructureOrReferentFailure => "infrastructure-or-referent-failure",
+        }
+    }
+}
+
+/// The result of matching each executed witness against its own declared expectation.
+///
+/// Every cell is a distinct fact with a distinct remedy — collapsing any two is what the
+/// batch-wide boolean, and then the `!= Pass` shortcut, each did in turn.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct WitnessExpectationTally {
+    agreements: Vec<(String, String)>,
+    stale_known_red: Vec<(String, String)>,
+    /// Expected-red witnesses that produced NO verdict: budget kills and infra/referent faults.
+    /// Real failures, previously blessed as agreement.
+    expected_red_without_verdict: Vec<(String, String, ExpectedRedDisposition)>,
+    /// Rostered expected-red witnesses with no observation at all. Counted, never a verdict.
+    evidence_absent: Vec<(String, String)>,
+    /// Witnesses expected to hold that did not pass. Ordinary reds.
+    unexpected_failures: Vec<(String, String)>,
+    /// Every non-`Pass` outcome identity this classifier actually saw, whatever its expectation.
+    /// The population the admission join must exactly reproduce — identities, never a count.
+    classified_non_pass: Vec<(String, String)>,
+}
+
+impl WitnessExpectationTally {
+    /// Stale quarantine first: it is a statement about an executed witness, and it names an
+    /// edit that also removes the row from the absent-evidence population. Absent evidence is
+    /// reported when nothing ran green, so one batch reports the sharper of the two.
+    fn refusal(&self) -> Option<ExpectationRefusal> {
+        if !self.stale_known_red.is_empty() {
+            Some(ExpectationRefusal::StaleKnownRed {
+                witnesses: self.stale_known_red.clone(),
+            })
+        } else if !self.evidence_absent.is_empty() {
+            Some(ExpectationRefusal::ExpectedRedEvidenceAbsent {
+                witnesses: self.evidence_absent.clone(),
+            })
+        } else {
+            None
+        }
+    }
+
+    /// Failures that must red the batch: an expected-red witness that produced no verdict, and
+    /// an expected-to-hold witness that did not pass.
+    ///
+    /// Absent evidence is deliberately NOT counted here, and that is not the hole it looks like:
+    /// it refuses through `refusal()` above, on its own mode, so it stops the line without being
+    /// mislabelled as a semantic red. Counting it as a witness failure would put a coverage fact
+    /// into the verdict population and corrupt the exact failure accounting below, which joins
+    /// against outcomes that exist.
+    fn hard_failures(&self) -> usize {
+        self.expected_red_without_verdict.len() + self.unexpected_failures.len()
+    }
+
+    /// The identities this classifier actually placed into a non-`Pass` bucket.
+    ///
+    /// `stale_known_red` is deliberately absent: a stale quarantine is a witness that PASSED,
+    /// so it never enters the non-pass population — it refuses on its own arm instead.
+    fn accounted_non_pass(&self) -> Vec<(String, String)> {
+        let mut ids = self.agreements.clone();
+        ids.extend(
+            self.expected_red_without_verdict
+                .iter()
+                .map(|(e, f, _)| (e.clone(), f.clone())),
+        );
+        ids.extend(self.unexpected_failures.iter().cloned());
+        ids.sort();
+        ids
+    }
+
+    /// Completeness is an IDENTITY JOIN, not a count equality (operator oracle ruling,
+    /// 2026-08-01): every non-`Pass` outcome must appear in exactly one bucket, matched by
+    /// witness identity. A count agreeing while the identities differ is the same absorption
+    /// `<=` allowed, one layer in.
+    fn non_pass_join_is_complete(&self) -> bool {
+        let mut seen = self.classified_non_pass.clone();
+        seen.sort();
+        let accounted = self.accounted_non_pass();
+        seen == accounted
+    }
+}
+
+#[cfg(test)]
+fn classify_witness_expectations(
+    outcomes: &[DiscoveryWitnessOutcome],
+    expected_red: &[(String, String)],
+) -> WitnessExpectationTally {
+    classify_witness_expectations_in(outcomes, expected_red, &[])
+}
+
+/// `rostered` is the batch's explicit entries, used only to find expected-red rows that produced
+/// no observation at all. Empty means the absent-evidence axis is not being checked.
+fn classify_witness_expectations_in(
+    outcomes: &[DiscoveryWitnessOutcome],
+    expected_red: &[(String, String)],
+    rostered: &[(String, String)],
+) -> WitnessExpectationTally {
+    let mut tally = WitnessExpectationTally::default();
+    for row in outcomes {
+        let id = (row.entry.clone(), row.function.clone());
+        if !matches!(row.outcome, ClaimOutcome::Pass) {
+            tally.classified_non_pass.push(id.clone());
+        }
+        match expected_verdict_for(expected_red, &row.entry, &row.function) {
+            WitnessExpectedVerdict::ExpectWitnessRed => {
+                match ExpectedRedDisposition::of(&row.outcome) {
+                    ExpectedRedDisposition::AgreementAssertionReturnedFalse => {
+                        tally.agreements.push(id)
+                    }
+                    ExpectedRedDisposition::StaleQuarantineAssertionReturnedTrue => {
+                        tally.stale_known_red.push(id)
+                    }
+                    other => tally.expected_red_without_verdict.push((id.0, id.1, other)),
+                }
+            }
+            WitnessExpectedVerdict::ExpectWitnessHolds => {
+                if !matches!(row.outcome, ClaimOutcome::Pass) {
+                    tally.unexpected_failures.push(id);
+                }
+            }
+        }
+    }
+    // An expected-red row this batch was asked to run, for which no observation came back.
+    for (entry, function) in rostered {
+        let expected = matches!(
+            expected_verdict_for(expected_red, entry, function),
+            WitnessExpectedVerdict::ExpectWitnessRed
+        );
+        let observed = outcomes
+            .iter()
+            .any(|o| &o.entry == entry && &o.function == function);
+        if expected && !observed {
+            tally
+                .evidence_absent
+                .push((entry.clone(), function.clone()));
+        }
+    }
+    tally
+}
+
+/// The still-red pass arm, as a predicate so the accounting is testable rather than inline.
+///
+/// TWO independent conditions, because there are two populations and one cannot vouch for the
+/// other:
+///
+///   1. `non_pass_join_is_complete` — the ADMISSION authority. Every non-`Pass` witness outcome
+///      is matched, BY IDENTITY, to exactly one bucket (operator oracle ruling, 2026-08-01:
+///      completeness is an identity join, never a count equality).
+///   2. `summary_failure_count` — a residual guard over `summary.failures`, which is a `Vec` of
+///      RENDERED DIAGNOSTIC STRINGS carrying no witness identity. It is deliberately NOT the
+///      authority; it exists only so a failure that arrives with no per-witness outcome at all
+///      refuses rather than being read as "nothing failed" — the empty-observation narrow
+///      applied to the batch's own accounting, which the former `<=` admitted outright.
+///
+/// Dissolve-on for (2): `failures` carrying witness identities, at which point it folds into the
+/// join in (1) and stops being a separate count at all.
+fn still_red_batch_passes(tally: &WitnessExpectationTally, summary_failure_count: usize) -> bool {
+    tally.hard_failures() == 0
+        && tally.non_pass_join_is_complete()
+        && summary_failure_count == tally.classified_non_pass.len()
+}
+
+/// Absent evidence is counted and named on every path. This is the LOG beside the refusal, not
+/// instead of it: `WitnessExpectationTally::refusal` turns the same population into a typed
+/// `ExpectedRedEvidenceAbsent` batch failure. The first shape of this bin only logged, so a batch
+/// whose admitted known-red row stopped executing still reported green — the deficit's frequency
+/// was observable in stderr and nowhere the line could stop.
+fn report_absent_expected_red_evidence(tally: &WitnessExpectationTally) {
+    if !tally.evidence_absent.is_empty() {
+        eprintln!(
+            "[expect-red] EVIDENCE ABSENT for {} expected-red witness(es) — not agreement, not failure, no verdict: {}",
+            tally.evidence_absent.len(),
+            render_witness_ids(&tally.evidence_absent)
+        );
+    }
+}
+
+fn render_disposition_ids(ids: &[(String, String, ExpectedRedDisposition)]) -> String {
+    ids.iter()
+        .map(|(e, f, d)| format!("{e}::{f} [{}]", d.label()))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn render_witness_ids(ids: &[(String, String)]) -> String {
+    ids.iter()
+        .map(|(e, f)| format!("{e}::{f}"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
 
 /// The pair explaining a budget kill, kept alongside the flattened `ok`/`detail`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1961,6 +2395,7 @@ fn claim_result_for_outcome(
             corpus_witnesses: 0,
             runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
+            expectation_refusal: None,
             budget_refusal: None,
             selection_degradation: None,
             resolve_realization,
@@ -1985,6 +2420,7 @@ fn claim_result_for_outcome(
             corpus_witnesses: 0,
             runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
+            expectation_refusal: None,
             budget_refusal: None,
             selection_degradation: None,
             resolve_realization,
@@ -2001,6 +2437,7 @@ fn claim_result_for_outcome(
             corpus_witnesses: 0,
             runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
+            expectation_refusal: None,
             budget_refusal: None,
             selection_degradation: None,
             resolve_realization,
@@ -2017,6 +2454,7 @@ fn claim_result_for_outcome(
             corpus_witnesses: 0,
             runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
+            expectation_refusal: None,
             budget_refusal: None,
             selection_degradation: None,
             resolve_realization,
@@ -2047,6 +2485,7 @@ fn claim_result_for_outcome(
             corpus_witnesses: 0,
             runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
+            expectation_refusal: None,
             budget_refusal: Some(BudgetRefusal {
                 elapsed_ms,
                 budget_ms,
@@ -2338,6 +2777,7 @@ fn run_native_bundle_unit(
         corpus_witnesses: 3,
         runtime_unit_count: FloorRuntimeUnitCount::Observed { units: 3 },
         witness_row_costs: Vec::new(),
+        expectation_refusal: None,
         budget_refusal: None,
         selection_degradation: None,
         resolve_realization: None,
@@ -2369,6 +2809,7 @@ fn run_native_bundle_unit(
         corpus_witnesses: 3,
         runtime_unit_count: FloorRuntimeUnitCount::Observed { units: 3 },
         witness_row_costs: Vec::new(),
+        expectation_refusal: None,
         budget_refusal: None,
         selection_degradation: None,
         resolve_realization: resolve_observation(),
@@ -2522,6 +2963,7 @@ fn run_native_bundle_unit(
             units: selected as u128,
         },
         witness_row_costs: Vec::new(),
+        expectation_refusal: None,
         budget_refusal: None,
         selection_degradation: None,
         resolve_realization: Some(ResolveRealizationObservation::ColdResolvePerformed {
@@ -2563,6 +3005,7 @@ fn run_batch_unit(
             corpus_witnesses: 0,
             runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
+            expectation_refusal: None,
             budget_refusal: None,
             selection_degradation: None,
             resolve_realization: None,
@@ -2599,11 +3042,9 @@ fn run_batch_unit(
                 fast_lane_eval_budget_ms,
                 &falsifier_self_host_wet_budgets,
             );
-            let expect_red = discovery_entries_are_expect_red(
-                &explicit_entries,
-                &falsifier_self_host_wet_budgets.hermetic_known_red_entry_paths,
-                &falsifier_self_host_wet_budgets.known_red_entry_paths,
-            );
+            let expected_red = falsifier_self_host_wet_budgets
+                .expected_red_witnesses
+                .clone();
             let execution_authority_source_roots = roots.clone();
             vec![run_discovery_batch_node(
                 roots,
@@ -2619,7 +3060,10 @@ fn run_batch_unit(
                 effective_fast_lane,
                 wet_wall_budget_ms,
                 wet_interp_budget_ms,
-                expect_red,
+                expected_red,
+                falsifier_self_host_wet_budgets
+                    .pre_verdict_refusal_witnesses
+                    .clone(),
                 None,
             )]
         }
@@ -2654,7 +3098,16 @@ fn run_batch_unit(
                 fast_lane_eval_budget_ms,
                 None,
                 None,
-                false,
+                // Scoped batches never computed a polarity at all — the batch-wide flag was
+                // hardcoded false here, so a known-red witness reached by this route reddened
+                // its component. Function-grain matching makes the same roster correct on
+                // every route, which is the point of moving the fact onto the witness.
+                falsifier_self_host_wet_budgets
+                    .expected_red_witnesses
+                    .clone(),
+                falsifier_self_host_wet_budgets
+                    .pre_verdict_refusal_witnesses
+                    .clone(),
                 Some(ScopedReceiptBatch {
                     batch_id,
                     source_roots_digest,
@@ -2710,6 +3163,7 @@ fn run_shared_entry_claims(
                     corpus_witnesses: 0,
                     runtime_unit_count: single_claim_runtime_unit_count(),
                     witness_row_costs: Vec::new(),
+                    expectation_refusal: None,
                     budget_refusal: None,
                     selection_degradation: None,
                     resolve_realization: None,
@@ -2796,6 +3250,7 @@ fn run_memo_shared_claims(
                         corpus_witnesses: 0,
                         runtime_unit_count: single_claim_runtime_unit_count(),
                         witness_row_costs: Vec::new(),
+                        expectation_refusal: None,
                         budget_refusal: None,
                         selection_degradation: None,
                         resolve_realization: None,
@@ -3070,21 +3525,53 @@ fn emit_slowest_witness_attribution(source_roots: &[String], rows: &[WitnessRowC
     }
 }
 
-/// Known-red probe cadence (gunbc.ci_layer_roots known_red_probe_entries) and
-/// Wet assemble-red quarantine (falsifier_self_host_wet_known_red_entries): the
-/// batch EXPECTS RED. Greening is the un-quarantine event — so inverted verdict:
-/// still-red (Bool(false) / resolve refuse) ⇒ PASS; unexpected green ⇒ FAIL.
-fn discovery_entries_are_expect_red(
+/// Whether EVERY entry in this batch declared `ExpectTypedPreVerdictRefusal`.
+///
+/// THE NARROW ROSTER, NOT THE KNOWN-RED ROSTER. This gates the one arm where no per-witness
+/// outcome exists — a corpus resolve refuse — and reporting that arm as agreement is a real
+/// claim: it says the run stopped exactly where the admission row said it would. The first
+/// shape of this function asked whether every entry was expected-red at all, so ANY resolve or
+/// evaluation failure anywhere in a known-red batch reported every quarantine as holding, with
+/// `ok: true`. That contradicts the rule the same change established one screen up — agreement
+/// means the assertion RAN and returned false — and it is the widest possible reading of a
+/// narrow legacy fact: three witnesses that genuinely cannot resolve, because the resolver does
+/// not bind imported bare variant constructors in expression position.
+///
+/// So only rows that DECLARED a pre-verdict refusal, naming its phase and cause, can reach the
+/// inversion (`std.witness_admission` `ExpectTypedPreVerdictRefusal`, projected by
+/// `gunbc.explicit_witness_admission` `known_red_pre_verdict_refusal_roster`). An ordinary
+/// known-red row now keeps the refusal loud, because for it a resolve failure is an
+/// infrastructure fact about the run and proves neither the red nor the quarantine.
+///
+/// BOUNDED COMPATIBILITY ARM, stated rather than claimed: the declaration GATES the inversion
+/// but the OBSERVED cause is not yet compared against the declared one, because `run_claim`
+/// formats the typed `InterpError` into a `String` before any outcome exists and the only way
+/// to recover the class here would be to parse that prose — the mechanism this whole lane
+/// exists to remove. Dissolve-on is the same seam trigger `gunbc.witness_row_cost`
+/// `witness_cost_timed_out_seed_deferral_note` already carries: when the typed error survives
+/// into the judgement, `PreVerdictPhase` and `PreVerdictCause` are matched exactly and a
+/// mismatch refuses. The `all` form is on purpose — one entry outside the roster keeps the
+/// refusal loud — and an empty batch is never agreement.
+fn batch_entries_all_expect_pre_verdict_refusal(
     explicit_entries: &[(String, String)],
-    hermetic_known_red_paths: &[String],
-    wet_known_red_paths: &[String],
+    pre_verdict_refusal: &[(String, String)],
+) -> bool {
+    batch_entries_all_in(explicit_entries, pre_verdict_refusal)
+}
+
+/// Every entry of a nonempty batch appears on `roster`, at the roster's own grain (an empty
+/// `function` is `ScheduleWitnessEntry`'s file-grain form). An empty batch is never "all".
+fn batch_entries_all_in(
+    explicit_entries: &[(String, String)],
+    roster: &[(String, String)],
 ) -> bool {
     if explicit_entries.is_empty() {
         return false;
     }
-    explicit_entries.iter().all(|(entry, _)| {
-        hermetic_known_red_paths.iter().any(|p| p == entry)
-            || wet_known_red_paths.iter().any(|p| p == entry)
+    explicit_entries.iter().all(|(entry, function)| {
+        roster
+            .iter()
+            .any(|(e, f)| e == entry && (f == function || f.is_empty()))
     })
 }
 
@@ -3182,6 +3669,42 @@ fn discovery_entries_intersect_roster(
     explicit_entries
         .iter()
         .any(|(entry, _)| roster_entry_paths.iter().any(|p| p == entry))
+}
+
+/// `(entry, function)` identities from a `List<ScheduleWitnessEntry>` plan function.
+///
+/// The function slot is what makes expectation a per-WITNESS fact. `read_schedule_witness_entry_paths`
+/// drops it, and every consumer that reads polarity through the path-only form inherits file
+/// grain: a green sibling in a quarantined file gets quarantined with it.
+fn read_schedule_witness_entry_pairs(
+    plan_ctx: &InterpContext,
+    function: &str,
+) -> Result<Vec<(String, String)>, String> {
+    match run_value(plan_ctx, function) {
+        Ok(v) => {
+            let mut out = Vec::new();
+            for elem in free_monoid_elems(&v, plan_ctx)? {
+                let fields = match elem {
+                    Value::Record { fields, .. } => fields,
+                    Value::Variant { fields, .. } => fields,
+                    other => {
+                        return Err(format!(
+                            "claim_executor: {function} element is {}, not a record (fail-closed)",
+                            other.type_label_public()
+                        ))
+                    }
+                };
+                out.push((
+                    str_field(&fields, "entry", function, plan_ctx)?,
+                    str_field(&fields, "function", function, plan_ctx)?,
+                ));
+            }
+            Ok(out)
+        }
+        Err(msg) => Err(format!(
+            "claim_executor: {function} is unavailable (fail-closed): {msg}"
+        )),
+    }
 }
 
 fn read_schedule_witness_entry_paths(
@@ -3369,6 +3892,7 @@ fn discovery_claim_result(
     selection: NodeFrontierSelectionMode,
     summary: &DiscoverySummary,
     projected: Result<Vec<WitnessRowCost>, String>,
+    expectation_refusal: Option<ExpectationRefusal>,
 ) -> ClaimResult {
     // Per-row identity is load-bearing for the receipt spine: a compute failure OR an
     // incomplete row set must refuse the discovery claim (typed/located), never silently
@@ -3404,6 +3928,7 @@ fn discovery_claim_result(
                 corpus_witnesses: summary.total,
                 runtime_unit_count: discovery_runtime_unit_count_from_summary(summary.total),
                 witness_row_costs,
+                expectation_refusal,
                 budget_refusal: discovery_budget_refusal(summary),
                 selection_degradation: Some(SelectionDegradationSnapshot::from_summary(
                     selection, summary,
@@ -3438,6 +3963,7 @@ fn discovery_claim_result(
                 // erase the one already established. A batch that blew its budget and then
                 // failed to project its receipt is still a budget kill, and dropping that
                 // here would hand it back to the substring classifier.
+                expectation_refusal,
                 budget_refusal: discovery_budget_refusal(summary),
                 selection_degradation: Some(SelectionDegradationSnapshot::from_summary(
                     selection, summary,
@@ -3482,7 +4008,12 @@ fn run_discovery_batch_node(
     fast_lane_eval_budget_ms: Option<u64>,
     wet_receipt_wall_budget_ms: Option<u64>,
     wet_receipt_interp_eval_budget_ms: Option<u64>,
-    expect_red: bool,
+    // The FUNCTION-grain expected-red roster (`gunbc.explicit_witness_admission`), not a
+    // batch-wide polarity flag. Every executed witness is matched against its own row.
+    expected_red: Vec<(String, String)>,
+    // The strict subset of `expected_red` declaring `ExpectTypedPreVerdictRefusal`. Only these
+    // may turn a corpus-level refuse — which carries no per-witness outcome — into agreement.
+    pre_verdict_refusal: Vec<(String, String)>,
     scoped_receipt: Option<ScopedReceiptBatch>,
 ) -> ClaimResult {
     let corpus_kind = discovery_corpus_kind_label(&scan_dirs, execution_mode, spawns_host_compiler);
@@ -3498,7 +4029,11 @@ fn run_discovery_batch_node(
         "{corpus_kind}[{} root(s)+{} explicit, adaptive width{}]",
         source_roots.len(),
         explicit_entries.len(),
-        if expect_red { ", expect_red" } else { "" },
+        if batch_entries_all_in(&explicit_entries, &expected_red) {
+            ", expect_red"
+        } else {
+            ""
+        },
     );
     match run_discovery_corpus_with_options(
         &source_roots,
@@ -3540,6 +4075,7 @@ fn run_discovery_batch_node(
                             summary.total,
                         ),
                         witness_row_costs: Vec::new(),
+                        expectation_refusal: None,
                         budget_refusal: discovery_budget_refusal(&summary),
                         selection_degradation: Some(SelectionDegradationSnapshot::from_summary(
                             node_frontier_selection,
@@ -3661,28 +4197,34 @@ fn run_discovery_batch_node(
             if let Ok(rows) = &projected {
                 emit_slowest_witness_attribution(&execution_projection_source_roots, rows);
             }
-            if expect_red && summary.total > 0 {
-                // All green on an expect-red probe = stale quarantine (dissolve-on fired).
-                discovery_claim_result(
+            // Every witness green means every expected-RED witness here is a STALE
+            // quarantine — its dissolve-on fired. Named at function grain rather than
+            // counted, because the remedy is deleting those specific admission rows.
+            let tally = classify_witness_expectations_in(
+                &summary.witness_outcomes,
+                &expected_red,
+                &explicit_entries,
+            );
+            report_absent_expected_red_evidence(&tally);
+            match tally.refusal() {
+                Some(refusal) => discovery_claim_result(
                     label,
                     false,
-                    format!(
-                        "expect_red probe unexpectedly green: {} witness(es) passed — un-quarantine (delete the row from gunbc.explicit_witness_admission explicit_witness_admissions, which is the single authority both known-red cadences project from) or restore the discriminating red",
-                        summary.total
-                    ),
+                    refusal.detail(),
                     node_frontier_selection,
                     &summary,
                     projected,
-                )
-            } else {
-                discovery_claim_result(
+                    Some(refusal),
+                ),
+                None => discovery_claim_result(
                     format!("{label} ({} witnesses)", summary.total),
                     true,
                     String::new(),
                     node_frontier_selection,
                     &summary,
                     projected,
-                )
+                    None,
+                ),
             }
         }
         Ok(summary) => {
@@ -3708,6 +4250,7 @@ fn run_discovery_batch_node(
                             summary.total,
                         ),
                         witness_row_costs: Vec::new(),
+                        expectation_refusal: None,
                         budget_refusal: discovery_budget_refusal(&summary),
                         selection_degradation: Some(SelectionDegradationSnapshot::from_summary(
                             node_frontier_selection,
@@ -3719,34 +4262,71 @@ fn run_discovery_batch_node(
             }
             let projected =
                 project_witness_cost_receipt(&execution_projection_source_roots, &summary);
-            if expect_red {
+            // Per-witness, never per-batch: a red witness that declared ExpectWitnessRed is
+            // AGREEMENT and a green one that declared it is a stale-quarantine refusal, in
+            // the same batch, in either order. A mixed batch is ordinary rather than a trap.
+            let tally = classify_witness_expectations_in(
+                &summary.witness_outcomes,
+                &expected_red,
+                &explicit_entries,
+            );
+            report_absent_expected_red_evidence(&tally);
+            if !tally.agreements.is_empty() {
                 eprintln!(
-                    "[expect-red] known-red probe still red: {} of {} failed (agreement — quarantine holds)",
-                    summary.failures.len(),
-                    summary.total
+                    "[expect-red] {} known-red witness(es) still red (agreement — quarantine holds): {}",
+                    tally.agreements.len(),
+                    render_witness_ids(&tally.agreements)
                 );
-                discovery_claim_result(
-                    format!("{label} (expect_red still-red OK)"),
-                    true,
-                    String::new(),
+            }
+            match tally.refusal() {
+                Some(refusal) => discovery_claim_result(
+                    label,
+                    false,
+                    refusal.detail(),
                     node_frontier_selection,
                     &summary,
                     projected,
-                )
-            } else {
-                discovery_claim_result(
+                    Some(refusal),
+                ),
+                // ACCOUNTING, not just emptiness: the batch passes only when every failure
+                // in the summary is matched by an agreement. `witness_outcomes` and
+                // `failures` are pushed in lockstep today, so the counts agree — but if a
+                // failure ever arrives without a per-witness identity, this arm must refuse
+                // rather than read "no unexpected failures" as "nothing failed". That would
+                // be the empty-observation narrow: an unmatchable failure rendered as the
+                // verdict "nothing is wrong".
+                None if still_red_batch_passes(&tally, summary.failures.len()) => {
+                    discovery_claim_result(
+                        format!("{label} (expect_red still-red OK)"),
+                        true,
+                        String::new(),
+                        node_frontier_selection,
+                        &summary,
+                        projected,
+                        None,
+                    )
+                }
+                None => discovery_claim_result(
                     label,
                     false,
                     format!(
-                        "{} of {} discovery witness(es) failed: {}",
+                        "{} of {} discovery witness(es) failed ({} agreement(s) held; {} expected-red produced NO verdict{}): {}",
                         summary.failures.len(),
                         summary.total,
+                        tally.agreements.len(),
+                        tally.expected_red_without_verdict.len(),
+                        if tally.expected_red_without_verdict.is_empty() {
+                            String::new()
+                        } else {
+                            format!(" — {}", render_disposition_ids(&tally.expected_red_without_verdict))
+                        },
                         summary.failures.join("; ")
                     ),
                     node_frontier_selection,
                     &summary,
                     projected,
-                )
+                    None,
+                ),
             }
         }
         Err(msg) => {
@@ -3760,28 +4340,30 @@ fn run_discovery_batch_node(
                 )
                 .err()
             });
-            if expect_red {
-                // Resolve-refuse is the documented known-red shape for logic_ground_truth
-                // (imported bare variants unbound in expression position).
+            // No witness outcomes exist on this path, so per-witness matching has nothing
+            // to match. The batch-wide condition survives HERE ONLY, and deliberately in its
+            // narrow `all` form: a resolve refuse is agreement only when every entry in the
+            // batch declared expected-red, so one ordinary entry keeps the refusal loud.
+            if batch_entries_all_expect_pre_verdict_refusal(&explicit_entries, &pre_verdict_refusal)
+            {
+                // NON-GREEN, and the declaration only classifies WHY (operator ruling,
+                // 2026-08-07). This arm previously returned ok:true whenever every entry
+                // DECLARED a typed pre-verdict refusal. That made an unobserved fact
+                // verdict-bearing: no `ClaimOutcome` exists on this path, `run_claim` has
+                // already formatted the typed `InterpError` into a String, so the observed
+                // phase and cause cannot be matched against the declared ones — a row
+                // declaring `PreVerdictResolve`/`UnboundImportedVariantConstructor` was
+                // admitted when some entirely different pre-verdict fault occurred. A
+                // declaration may be expressible before typed observation survives the
+                // execution boundary; it may not flip the result green until it can be
+                // structurally matched. Dissolve-on: EXPECTED-RED-CAUSE-1 — `ClaimOutcome`
+                // preserves typed phase and cause, at which point this arm becomes
+                // agreement exactly when observed == declared, and refuses on either
+                // mismatch.
                 eprintln!(
-                    "[expect-red] known-red probe still red via resolve/eval refuse (agreement — quarantine holds): {msg}"
+                    "[expect-red] REFUSED: every entry declares a typed pre-verdict refusal, but no typed observation survives this path, so the declared phase/cause CANNOT be matched — declaration classifies, it does not verify: {msg}"
                 );
-                ClaimResult {
-                    function: format!("{label} (expect_red still-red OK)"),
-                    entry: DISCOVERY_AGGREGATE_ENTRY.to_string(),
-                    ok: true,
-                    detail: String::new(),
-                    wall_nanos: 0,
-                    resolve_nanos: 0,
-                    corpus_resolve_nanos: 0,
-                    corpus_eval_nanos: 0,
-                    corpus_witnesses: 0,
-                    runtime_unit_count: runtime_unit_count_unavailable(msg),
-                    witness_row_costs: Vec::new(),
-                    budget_refusal: None,
-                    selection_degradation: None,
-                    resolve_realization: None,
-                }
+                pre_verdict_unverified_claim_result(&label, explicit_entries.len(), &msg)
             } else {
                 let detail = match scoped_write_error {
                     Some(receipt) => format!(
@@ -3802,6 +4384,7 @@ fn run_discovery_batch_node(
                     corpus_witnesses: 0,
                     runtime_unit_count,
                     witness_row_costs: Vec::new(),
+                    expectation_refusal: None,
                     budget_refusal: None,
                     selection_degradation: None,
                     resolve_realization: None,
@@ -4478,6 +5061,23 @@ fn batch_failure_mode_and_detail(rec: &BatchRecord) -> (&'static str, String) {
     // outright; the string classifier stays only for the paths that still arrive as
     // RuntimeError prose (interpreter-raised budgets, infra strings) and dissolves as
     // those are typed at their own seams.
+    // Same rule, one class earlier: a stale quarantine is read off the VALUE. It must not
+    // fall through to `falsifier_failure_mode`, whose fallback arm is "WitnessRed" — that
+    // would make an un-quarantine indistinguishable from a genuine regression both in the
+    // component receipt and in the alert's class signature, while the two have opposite
+    // remedies (delete an admission row vs. fix the code). It is checked BEFORE the budget
+    // refusal because a batch cannot be both: a budget kill is a red, and this arm fires
+    // only where an expected-red witness actually returned green.
+    if let Some(refusal) = rec
+        .results
+        .iter()
+        .find_map(|r| r.expectation_refusal.as_ref())
+    {
+        return (
+            refusal.mode(),
+            refusal.detail().chars().take(600).collect::<String>(),
+        );
+    }
     if rec.results.iter().any(|r| r.budget_refusal.is_some()) {
         return (
             "BudgetExceeded",
@@ -5657,6 +6257,23 @@ fn observe_walk_attempt_id() -> Result<String, String> {
         &std::env::var("GITHUB_RUN_ATTEMPT").unwrap_or_default(),
         &std::env::var("GITHUB_JOB").unwrap_or_default(),
     )
+}
+
+/// Coordinator-spawned floor workers inherit `GUNBC_FLOOR_WALK_ATTEMPT_ID` so the scoped
+/// consumer reads the ordinary producer's attempt-scoped snapshot directory.
+fn floor_walk_attempt_id() -> Result<String, String> {
+    if let Ok(id) = std::env::var("GUNBC_FLOOR_WALK_ATTEMPT_ID") {
+        if !id.trim().is_empty() {
+            return if walk_attempt_id_segment_is_safe(&id) {
+                Ok(id)
+            } else {
+                Err(format!(
+                    "GUNBC_FLOOR_WALK_ATTEMPT_ID={id:?} is not a safe path segment (std.types path_segment_is_safe: non-empty, not `.`/`..`, no `/` `\\` CR LF NUL)"
+                ))
+            };
+        }
+    }
+    observe_walk_attempt_id()
 }
 
 /// The PURE half, split from the observation above for the same reason
@@ -8679,11 +9296,32 @@ fn journal_floor_worker_observation(row: &ObservedFloorWorker) {
     );
 }
 
+fn source_roots_from_executor_args(args: &[String]) -> Result<Vec<String>, String> {
+    let mut roots = Vec::new();
+    let mut i = 0;
+    while i < args.len() {
+        if args[i] == "--source-root" {
+            i += 1;
+            let Some(root) = args.get(i) else {
+                return Err("claim_executor: --source-root requires a value".to_string());
+            };
+            roots.push(root.clone());
+        }
+        i += 1;
+    }
+    if roots.is_empty() {
+        return Err("claim_executor: --source-root is required".to_string());
+    }
+    Ok(roots)
+}
+
 fn spawn_floor_worker(
     base_args: &[String],
     role: &str,
     batch_id: Option<&str>,
     ordinal: usize,
+    walk_attempt_id: &str,
+    discovery_consumer: &str,
 ) -> Result<ObservedFloorWorker, String> {
     let worker = match batch_id {
         Some(id) => format!("scoped:{id}"),
@@ -8701,6 +9339,8 @@ fn spawn_floor_worker(
         command.arg("--scoped-batch-id").arg(id);
     }
     command.env(FLOOR_WORKER_TERMINAL_ENV, &terminal_path);
+    command.env("GUNBC_FLOOR_WALK_ATTEMPT_ID", walk_attempt_id);
+    command.env(FLOOR_DISCOVERY_CONSUMER_ENV, discovery_consumer);
     // The worker's post-walk ledger harvest can spend minutes dropping its memo
     // contexts after the final discovery line.  A blocking `Command::status`
     // made that whole interval silent: the worker's own heartbeat shares its
@@ -8796,7 +9436,15 @@ fn maybe_run_floor_coordinator(args: &[String]) -> Option<ExitCode> {
         eprintln!("claim_executor: floor coordinator receipt arm refusal: {msg}");
         return Some(ExitCode::from(1));
     }
-    let ordinary = match spawn_floor_worker(args, "ordinary", None, 0) {
+    let walk_attempt_id = match observe_walk_attempt_id() {
+        Ok(id) => id,
+        Err(msg) => {
+            eprintln!("claim_executor: floor coordinator walk-attempt refusal: {msg}");
+            return Some(ExitCode::from(1));
+        }
+    };
+    let ordinary = match spawn_floor_worker(args, "ordinary", None, 0, &walk_attempt_id, "producer")
+    {
         Ok(observed) => observed,
         Err(msg) => {
             replay_ordinary_floor_wet_witness_row_outcomes();
@@ -8810,6 +9458,33 @@ fn maybe_run_floor_coordinator(args: &[String]) -> Option<ExitCode> {
         );
         return Some(ExitCode::from(1));
     }
+    let source_roots = match source_roots_from_executor_args(args) {
+        Ok(roots) => roots,
+        Err(msg) => {
+            eprintln!("claim_executor: floor coordinator source-roots refusal: {msg}");
+            return Some(ExitCode::from(1));
+        }
+    };
+    let excludes = v1_compiler::cli_run::witness_exclusion_substrings();
+    let pre_plan_request = match build_floor_discovery_request(
+        &source_roots,
+        &[],
+        &excludes,
+        &[],
+        "Hermetic",
+        &source_roots,
+    ) {
+        Ok(request) => request,
+        Err(msg) => {
+            eprintln!("claim_executor: floor coordinator pre-plan request refusal: {msg}");
+            return Some(ExitCode::from(1));
+        }
+    };
+    let digest = request_identity_digest(&pre_plan_request);
+    if let Err(msg) = verify_floor_discovery_terminal_for_coordinator(&walk_attempt_id, &digest) {
+        eprintln!("claim_executor: floor coordinator snapshot terminal refusal: {msg}");
+        return Some(ExitCode::from(1));
+    }
     let batch_ids = match read_scoped_witness_batch_manifest() {
         Ok(ids) => ids,
         Err(msg) => {
@@ -8818,14 +9493,20 @@ fn maybe_run_floor_coordinator(args: &[String]) -> Option<ExitCode> {
         }
     };
     for (index, batch_id) in batch_ids.iter().enumerate() {
-        let scoped =
-            match spawn_floor_worker(args, "scoped", Some(batch_id), index.saturating_add(1)) {
-                Ok(observed) => observed,
-                Err(msg) => {
-                    eprintln!("claim_executor: floor coordinator scoped-worker refusal: {msg}");
-                    return Some(ExitCode::from(1));
-                }
-            };
+        let scoped = match spawn_floor_worker(
+            args,
+            "scoped",
+            Some(batch_id),
+            index.saturating_add(1),
+            &walk_attempt_id,
+            "coordinated_consumer",
+        ) {
+            Ok(observed) => observed,
+            Err(msg) => {
+                eprintln!("claim_executor: floor coordinator scoped-worker refusal: {msg}");
+                return Some(ExitCode::from(1));
+            }
+        };
         if !floor_worker_succeeded(&scoped) {
             eprintln!(
                 "claim_executor: floor coordinator stopping after scoped worker `{batch_id}` did not complete"
@@ -9015,10 +9696,33 @@ fn run() -> Result<ExitCode, ExitCode> {
     // plan evaluation, so a naming violation is the cheapest possible failure.
     {
         let excludes = v1_compiler::cli_run::witness_exclusion_substrings();
-        if let Err(msg) =
-            v1_compiler::cli_run::discover_floor_witness_roster(&source_roots, &[], &excludes, &[])
-                .map(|_| ())
+        let walk_attempt_id = match floor_walk_attempt_id() {
+            Ok(id) => id,
+            Err(msg) => {
+                eprintln!("claim_executor: witness naming hygiene walk-attempt refusal: {msg}");
+                return Err(ExitCode::from(1));
+            }
+        };
+        if std::env::var("GUNBC_FLOOR_WALK_ATTEMPT_ID")
+            .map(|v| v.trim().is_empty())
+            .unwrap_or(true)
         {
+            std::env::set_var("GUNBC_FLOOR_WALK_ATTEMPT_ID", &walk_attempt_id);
+        }
+        let discovery_consumer = match floor_worker_role.as_ref() {
+            Some(FloorWorkerRole::Scoped { .. }) => floor_discovery_consumer_role_from_env(),
+            Some(FloorWorkerRole::Ordinary) | None => FloorDiscoveryConsumerRole::Producer,
+        };
+        if let Err(msg) = discover_floor_witness_roster_with_snapshot(
+            &source_roots,
+            &[],
+            &excludes,
+            &[],
+            &walk_attempt_id,
+            discovery_consumer,
+            "Hermetic",
+            &source_roots,
+        ) {
             eprintln!("claim_executor: witness naming hygiene (pre-plan walk): {msg}");
             return Err(ExitCode::from(1));
         }
@@ -9251,16 +9955,6 @@ fn run() -> Result<ExitCode, ExitCode> {
                     return Err(ExitCode::from(1));
                 }
             },
-            hermetic_known_red_entry_paths: match read_schedule_witness_entry_paths(
-                &plan_ctx,
-                "known_red_probe_roster",
-            ) {
-                Ok(v) => v,
-                Err(msg) => {
-                    eprintln!("{msg}");
-                    return Err(ExitCode::from(1));
-                }
-            },
             silent_pick_wall_budget_ms: match read_positive_budget_ms(
                 &plan_ctx,
                 "gunbc_falsifier_silent_pick_gate_receipt_wall_budget_ms",
@@ -9283,7 +9977,38 @@ fn run() -> Result<ExitCode, ExitCode> {
             },
             substrate_long_lane_entry_paths: match read_schedule_witness_entry_paths(
                 &plan_ctx,
-                "falsifier_substrate_long_lane_entries",
+                "witness_long_eval_budget_entries",
+            ) {
+                Ok(v) => v,
+                Err(msg) => {
+                    eprintln!("{msg}");
+                    return Err(ExitCode::from(1));
+                }
+            },
+            expected_red_witnesses: {
+                let mut pairs =
+                    match read_schedule_witness_entry_pairs(&plan_ctx, "known_red_probe_roster") {
+                        Ok(v) => v,
+                        Err(msg) => {
+                            eprintln!("{msg}");
+                            return Err(ExitCode::from(1));
+                        }
+                    };
+                match read_schedule_witness_entry_pairs(
+                    &plan_ctx,
+                    "falsifier_self_host_wet_known_red_roster",
+                ) {
+                    Ok(v) => pairs.extend(v),
+                    Err(msg) => {
+                        eprintln!("{msg}");
+                        return Err(ExitCode::from(1));
+                    }
+                }
+                pairs
+            },
+            pre_verdict_refusal_witnesses: match read_schedule_witness_entry_pairs(
+                &plan_ctx,
+                "known_red_pre_verdict_refusal_roster",
             ) {
                 Ok(v) => v,
                 Err(msg) => {
@@ -9880,6 +10605,7 @@ mod tests {
                     corpus_witnesses: 0,
                     runtime_unit_count: single_claim_runtime_unit_count(),
                     witness_row_costs: Vec::new(),
+                    expectation_refusal: None,
                     budget_refusal: None,
                     selection_degradation: None,
                     resolve_realization: None,
@@ -10089,6 +10815,7 @@ mod tests {
                     corpus_witnesses: 0,
                     runtime_unit_count: single_claim_runtime_unit_count(),
                     witness_row_costs: Vec::new(),
+                    expectation_refusal: None,
                     budget_refusal: None,
                     selection_degradation: None,
                     resolve_realization: resolve_observation_for_nanos(anchor_nanos),
@@ -10107,6 +10834,7 @@ mod tests {
                     corpus_witnesses: 0,
                     runtime_unit_count: single_claim_runtime_unit_count(),
                     witness_row_costs: Vec::new(),
+                    expectation_refusal: None,
                     budget_refusal: None,
                     selection_degradation: None,
                     resolve_realization: resolve_observation_for_nanos(native_nanos),
@@ -10135,6 +10863,7 @@ mod tests {
             corpus_witnesses: 0,
             runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
+            expectation_refusal: None,
             budget_refusal: None,
             selection_degradation: None,
             resolve_realization: None,
@@ -10173,6 +10902,7 @@ mod tests {
                 corpus_witnesses: 0,
                 runtime_unit_count: single_claim_runtime_unit_count(),
                 witness_row_costs: Vec::new(),
+                expectation_refusal: None,
                 budget_refusal: None,
                 selection_degradation: None,
                 resolve_realization: None,
@@ -10209,6 +10939,7 @@ mod tests {
             corpus_witnesses: 0,
             runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
+            expectation_refusal: None,
             budget_refusal: None,
             selection_degradation: None,
             resolve_realization: None,
@@ -10255,6 +10986,7 @@ mod tests {
                     corpus_witnesses: 0,
                     runtime_unit_count: single_claim_runtime_unit_count(),
                     witness_row_costs: Vec::new(),
+                    expectation_refusal: None,
                     budget_refusal: None,
                     selection_degradation: None,
                     resolve_realization: Some(
@@ -10283,6 +11015,7 @@ mod tests {
                     corpus_witnesses: 0,
                     runtime_unit_count: single_claim_runtime_unit_count(),
                     witness_row_costs: Vec::new(),
+                    expectation_refusal: None,
                     budget_refusal: None,
                     selection_degradation: None,
                     resolve_realization: Some(
@@ -10316,6 +11049,7 @@ mod tests {
                     corpus_witnesses: 0,
                     runtime_unit_count: single_claim_runtime_unit_count(),
                     witness_row_costs: Vec::new(),
+                    expectation_refusal: None,
                     budget_refusal: None,
                     selection_degradation: None,
                     resolve_realization: resolve_observation_for_nanos(3),
@@ -10363,6 +11097,7 @@ mod tests {
                     corpus_witnesses: 0,
                     runtime_unit_count: single_claim_runtime_unit_count(),
                     witness_row_costs: Vec::new(),
+                    expectation_refusal: None,
                     budget_refusal: None,
                     selection_degradation: None,
                     resolve_realization: Some(
@@ -10381,6 +11116,7 @@ mod tests {
                     corpus_witnesses: 0,
                     runtime_unit_count: single_claim_runtime_unit_count(),
                     witness_row_costs: Vec::new(),
+                    expectation_refusal: None,
                     budget_refusal: None,
                     selection_degradation: None,
                     resolve_realization: Some(
@@ -10770,44 +11506,585 @@ mod tests {
         assert_eq!(walk_exit_code(false), 0);
     }
 
+    fn outcome(entry: &str, function: &str, o: ClaimOutcome) -> DiscoveryWitnessOutcome {
+        DiscoveryWitnessOutcome {
+            entry: entry.to_string(),
+            module_path: "test.m".to_string(),
+            function: function.to_string(),
+            outcome: o,
+            execution_leg: "InterpretedLeg".to_string(),
+        }
+    }
+
+    fn stale_known_red_result(refusal: Option<ExpectationRefusal>) -> ClaimResult {
+        ClaimResult {
+            function: "discovery-corpus".to_string(),
+            entry: DISCOVERY_AGGREGATE_ENTRY.to_string(),
+            ok: refusal.is_none(),
+            detail: String::new(),
+            wall_nanos: 0,
+            resolve_nanos: 0,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
+            runtime_unit_count: runtime_unit_count_unavailable("test fixture"),
+            witness_row_costs: Vec::new(),
+            expectation_refusal: refusal,
+            budget_refusal: None,
+            selection_degradation: None,
+            resolve_realization: None,
+        }
+    }
+
+    /// THE DISCRIMINATING PAIR for the expectation axis. Either half alone is satisfiable by
+    /// a broken mechanism: a classifier that never refuses passes the still-red half, and one
+    /// that always refuses passes the unexpected-green half. Both must hold at once.
     #[test]
-    fn known_red_probe_entry_paths_detect_expect_red_batch() {
-        let hermetic = vec![
-            "src/v2/test/claim/emit/logic_ground_truth_test.dag".into(),
-            "src/v2/test/claim/manual/english_emit_add_test.dag".into(),
-            "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag".into(),
-        ];
-        let wet_known_red =
-            vec!["dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag".into()];
-        assert!(discovery_entries_are_expect_red(
-            &[(
-                "src/v2/test/claim/emit/logic_ground_truth_test.dag".into(),
-                "logic_complement_truth_table".into()
+    fn expected_red_still_red_is_agreement_and_unexpected_green_refuses() {
+        let expected_red = vec![(
+            "src/v2/test/claim/long/direct_rust_door_production_group_test.dag".to_string(),
+            "direct_rust_door_production_group_closing_expectation_holds".to_string(),
+        )];
+
+        // HALF ONE — still red is AGREEMENT: not a failure, no refusal, and the component
+        // receipt reports no failure mode at all, so the alert has nothing to notify on.
+        let still_red = classify_witness_expectations(
+            &[outcome(
+                "src/v2/test/claim/long/direct_rust_door_production_group_test.dag",
+                "direct_rust_door_production_group_closing_expectation_holds",
+                ClaimOutcome::Fail,
             )],
-            &hermetic,
-            &[]
-        ));
-        assert!(discovery_entries_are_expect_red(
-            &[(
-                "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag".into(),
-                "self_host_03_normalize_behavioral_receipt_holds".into()
+            &expected_red,
+        );
+        assert_eq!(still_red.agreements.len(), 1);
+        assert!(still_red.unexpected_failures.is_empty());
+        assert_eq!(still_red.refusal(), None);
+        let (mode, _) =
+            batch_failure_mode_and_detail(&batch_record_for_test(vec![stale_known_red_result(
+                still_red.refusal(),
+            )]));
+        assert_eq!(
+            mode, "none",
+            "a known-red witness holding its quarantine must not reach the alert as a failing component"
+        );
+
+        // HALF TWO — unexpected green REFUSES, typed and naming the row to delete. It must
+        // not be `WitnessRed`: an un-quarantine and a regression have opposite remedies and
+        // must not share a class signature.
+        let went_green = classify_witness_expectations(
+            &[outcome(
+                "src/v2/test/claim/long/direct_rust_door_production_group_test.dag",
+                "direct_rust_door_production_group_closing_expectation_holds",
+                ClaimOutcome::Pass,
             )],
+            &expected_red,
+        );
+        assert!(went_green.agreements.is_empty());
+        let refusal = went_green
+            .refusal()
+            .expect("an expected-red witness that ran green must refuse, never pass quietly");
+        assert!(
+            matches!(&refusal, ExpectationRefusal::StaleKnownRed { witnesses } if witnesses.len() == 1),
+            "the stale arm, not the coverage arm: this witness WAS observed, running green"
+        );
+        let (mode, detail) =
+            batch_failure_mode_and_detail(&batch_record_for_test(vec![stale_known_red_result(
+                Some(refusal),
+            )]));
+        assert_eq!(mode, STALE_KNOWN_RED_MODE);
+        assert_ne!(mode, "WitnessRed");
+        assert_ne!(mode, "none");
+        assert!(
+            detail.contains("direct_rust_door_production_group_closing_expectation_holds"),
+            "the refusal must name the identity to un-quarantine, got: {detail}"
+        );
+    }
+
+    /// ONE ROW PER DISPOSITION of the required result table, each discriminating.
+    ///
+    /// The table exists because the first classifier computed `green = (outcome == Pass)` and
+    /// swept every other outcome into the agreement arm. Each row below is an outcome that
+    /// arm would have blessed as "the quarantine held" while the assertion produced no verdict
+    /// at all.
+    #[test]
+    fn expected_red_disposition_table_distinguishes_every_outcome() {
+        let entry = "src/v2/test/claim/long/direct_rust_door_production_group_test.dag";
+        let f = "direct_rust_door_production_group_closing_expectation_holds";
+        let expected_red = vec![(entry.to_string(), f.to_string())];
+
+        let row = |o: ClaimOutcome| {
+            classify_witness_expectations_in(
+                &[outcome(entry, f, o)],
+                &expected_red,
+                &[(entry.to_string(), f.to_string())],
+            )
+        };
+
+        // ROW 1 — assertion executed, returned false: the ONLY agreement.
+        let t = row(ClaimOutcome::Fail);
+        assert_eq!(t.agreements.len(), 1);
+        assert_eq!(t.hard_failures(), 0);
+        assert!(t.evidence_absent.is_empty());
+
+        // ROW 2 — assertion executed, returned true: stale quarantine, a typed refusal.
+        let t = row(ClaimOutcome::Pass);
+        assert!(t.agreements.is_empty());
+        assert!(t.refusal().is_some());
+
+        // ROW 3 — timed out: a BUDGET failure. An interruption plus a lower bound on cost is
+        // never a semantic verdict, so it must not read as a quarantine holding.
+        let t = row(ClaimOutcome::TimedOut {
+            elapsed_ms: 5001,
+            budget_ms: 5000,
+            kind: BudgetKind::Cpu,
+        });
+        assert!(
+            t.agreements.is_empty(),
+            "a budget kill must never count as agreement — the assertion did not produce a verdict"
+        );
+        assert_eq!(
+            t.refusal(),
+            None,
+            "a budget kill is not a stale quarantine either"
+        );
+        assert_eq!(
+            t.expected_red_without_verdict,
+            vec![(
+                entry.to_string(),
+                f.to_string(),
+                ExpectedRedDisposition::BudgetFailure
+            )]
+        );
+        assert_eq!(t.hard_failures(), 1, "it must red the batch");
+
+        // ROW 4 — interpreter fault, and ROW 4b — non-Bool referent: no verdict produced.
+        // Row 5 of the table (refused BEFORE evaluation) shares this arm today because
+        // `run_claim` formats the typed error to a String; that is declared on the variant,
+        // not papered over by sniffing the message.
+        for o in [
+            ClaimOutcome::RuntimeError {
+                message: "undefined variable: X".into(),
+            },
+            ClaimOutcome::NotBool {
+                got: "Record".into(),
+            },
+        ] {
+            let t = row(o);
+            assert!(t.agreements.is_empty());
+            assert_eq!(
+                t.expected_red_without_verdict
+                    .iter()
+                    .map(|(_, _, d)| d.clone())
+                    .collect::<Vec<_>>(),
+                vec![ExpectedRedDisposition::InfrastructureOrReferentFailure]
+            );
+            assert_eq!(t.hard_failures(), 1);
+        }
+
+        // ROW 6 — no observation at all: ABSENT EVIDENCE, which is not a verdict in either
+        // direction. Not agreement and not a witness failure — but it REFUSES, on its own
+        // coverage mode. This row previously asserted `refusal() == None`, which is exactly the
+        // hole the coverage arm closes: absence is not a verdict, and it is also not silence.
+        let t = classify_witness_expectations_in(
             &[],
-            &wet_known_red
-        ));
-        assert!(!discovery_entries_are_expect_red(
-            &[(
-                "dag/test/claim/design_register_lift_parity_witness_test.dag".into(),
-                "design_register_lift_parity_holds".into()
+            &expected_red,
+            &[(entry.to_string(), f.to_string())],
+        );
+        assert!(t.agreements.is_empty());
+        assert_eq!(t.hard_failures(), 0, "the remedy is coverage, not code");
+        assert_eq!(t.evidence_absent, vec![(entry.to_string(), f.to_string())]);
+        assert!(
+            matches!(
+                t.refusal(),
+                Some(ExpectationRefusal::ExpectedRedEvidenceAbsent { .. })
+            ),
+            "the coverage arm, distinct from the stale arm rows 2 and 5 exercise"
+        );
+    }
+
+    /// The regression this table was written for, stated as one assertion: under the `!= Pass`
+    /// shortcut EVERY one of these blessed the quarantine. None may.
+    #[test]
+    fn no_verdict_outcome_is_ever_agreement_for_an_expected_red_witness() {
+        let entry = "e.dag";
+        let f = "witness_holds";
+        let expected_red = vec![(entry.to_string(), f.to_string())];
+        for o in [
+            ClaimOutcome::TimedOut {
+                elapsed_ms: 1,
+                budget_ms: 1,
+                kind: BudgetKind::Wall,
+            },
+            ClaimOutcome::RuntimeError {
+                message: "boom".into(),
+            },
+            ClaimOutcome::NotBool { got: "Int".into() },
+        ] {
+            let t = classify_witness_expectations(&[outcome(entry, f, o.clone())], &expected_red);
+            assert!(
+                t.agreements.is_empty() && t.hard_failures() == 1,
+                "{o:?} must produce no agreement and must red the batch"
+            );
+        }
+        // …while the one that genuinely ran and was false still does agree, so the fix is not
+        // simply "nothing agrees any more".
+        let t =
+            classify_witness_expectations(&[outcome(entry, f, ClaimOutcome::Fail)], &expected_red);
+        assert_eq!(t.agreements.len(), 1);
+        assert_eq!(t.hard_failures(), 0);
+    }
+
+    /// Expectation is a property of the WITNESS, so a quarantined function and a green
+    /// sibling in the SAME FILE are classified independently — and a mixed batch stays
+    /// ordinary instead of reverting to one polarity for everything in it.
+    #[test]
+    fn expected_red_is_function_grain_not_file_or_batch_grain() {
+        let entry = "src/v2/test/claim/emit/logic_ground_truth_test.dag";
+        let expected_red = vec![(
+            entry.to_string(),
+            "logic_complement_truth_table".to_string(),
+        )];
+
+        let tally = classify_witness_expectations(
+            &[
+                outcome(entry, "logic_complement_truth_table", ClaimOutcome::Fail),
+                outcome(entry, "logic_sibling_that_must_hold", ClaimOutcome::Pass),
+                outcome(
+                    "other/witness_test.dag",
+                    "unrelated_holds",
+                    ClaimOutcome::Fail,
+                ),
+            ],
+            &expected_red,
+        );
+        assert_eq!(tally.agreements.len(), 1, "the quarantined fn is agreement");
+        assert_eq!(
+            tally.refusal(),
+            None,
+            "its green sibling is not a stale quarantine"
+        );
+        assert_eq!(
+            tally.unexpected_failures.len(),
+            1,
+            "an ordinary red in a batch containing a known-red row is still an ordinary red — \
+             the batch-wide flag this replaced would have inverted it to a pass"
+        );
+
+        // The green SIBLING going red is an ordinary failure, not agreement: file placement
+        // never confers polarity.
+        let sibling_red = classify_witness_expectations(
+            &[outcome(
+                entry,
+                "logic_sibling_that_must_hold",
+                ClaimOutcome::Fail,
             )],
-            &hermetic,
-            &wet_known_red
+            &expected_red,
+        );
+        assert!(sibling_red.agreements.is_empty());
+        assert_eq!(sibling_red.unexpected_failures.len(), 1);
+    }
+
+    /// The one surviving batch-wide consult, kept narrow twice over: a corpus resolve refuse
+    /// produces no per-witness outcomes, so agreement requires that every entry declared
+    /// `ExpectTypedPreVerdictRefusal` — an ordinary known-red row is NOT enough.
+    ///
+    /// The discriminating half is the second block. A batch of ordinary known-red rows and a
+    /// batch of declared pre-verdict rows are both "all expected-red"; only the second may
+    /// invert a refuse. Without that block this test would pass against the defect it exists
+    /// to hold closed, because the defect's population is a superset of this one's.
+    /// The pre-verdict arm is NON-GREEN, and this OBSERVES the result rather than restating
+    /// the constant.
+    ///
+    /// The first shape of this test compared string constants to each other and to a literal,
+    /// while its doc comment claimed "if someone restores the green arm, the first assertion
+    /// fails". It did not: nothing executed the arm, so flipping `ok` back to `true` left every
+    /// assertion green — a stated regression control that did not exist. That is the same
+    /// defect class as a stated identity join that was really a length agreement, and it was
+    /// caught the same way, by someone checking the claim against what the code drives. The
+    /// arm's construction is now extracted to one function and this asserts its `ok`.
+    #[test]
+    fn declared_pre_verdict_refusal_is_non_green_and_carries_its_own_mode() {
+        let r = pre_verdict_unverified_claim_result("known-red probe", 3, "resolve refused");
+
+        // THE REGRESSION CONTROL, and it now observes the value: restoring the green arm
+        // flips this and the test fails.
+        assert!(
+            !r.ok,
+            "a declaration classifies a stop; it does not verify it"
+        );
+
+        // THE MODE MUST REACH THE RECEIPT OFF THE VALUE, not off the prose. Carried only in
+        // `function`/`detail`, `batch_failure_mode_and_detail` fell through to
+        // `falsifier_failure_mode` and reported these batches as ordinary "WitnessRed" while
+        // the .dag vocabulary said Refused — one mode in two representations, the second
+        // guessed back from a string, which is the defect this PR exists to remove.
+        // cursor review 50221 found it; this assertion is what would have caught it.
+        let (mode, receipt_detail) = batch_failure_mode_and_detail(&batch_record_for_test(vec![
+            pre_verdict_unverified_claim_result("known-red probe", 3, "resolve refused"),
+        ]));
+        assert_eq!(
+            mode, EXPECTED_RED_PRE_VERDICT_UNVERIFIED_MODE,
+            "the receipt must classify structurally, never as WitnessRed"
+        );
+        assert_ne!(mode, "WitnessRed");
+        assert!(receipt_detail.contains(EXPECTED_RED_PRE_VERDICT_UNVERIFIED_MODE));
+        assert!(matches!(
+            &r.expectation_refusal,
+            Some(ExpectationRefusal::PreVerdictUnverified { .. })
         ));
-        assert!(!discovery_entries_are_expect_red(
+        assert!(
+            r.detail.contains(EXPECTED_RED_PRE_VERDICT_UNVERIFIED_MODE),
+            "the refusal must be typed at the mode, not left as prose"
+        );
+        assert!(
+            r.detail.contains("resolve refused"),
+            "the located cause is carried"
+        );
+        assert!(
+            r.detail.contains('3'),
+            "the declared entry count is carried"
+        );
+        assert!(r
+            .function
+            .contains(EXPECTED_RED_PRE_VERDICT_UNVERIFIED_MODE));
+        // It is a refusal, not a verdict about any witness: no per-witness populations.
+        assert_eq!(r.expectation_refusal, None);
+        assert!(r.witness_row_costs.is_empty());
+
+        // Distinct from BOTH siblings on the same axis — different remedies, different modes.
+        assert_ne!(
+            EXPECTED_RED_PRE_VERDICT_UNVERIFIED_MODE,
+            EXPECTED_RED_EVIDENCE_ABSENT_MODE
+        );
+        assert_ne!(
+            EXPECTED_RED_PRE_VERDICT_UNVERIFIED_MODE,
+            ExpectationRefusal::StaleKnownRed {
+                witnesses: Vec::new()
+            }
+            .mode()
+        );
+    }
+
+    #[test]
+    fn resolve_refuse_agreement_requires_every_entry_expect_a_pre_verdict_refusal() {
+        let pre_verdict = (
+            "src/v2/test/claim/emit/logic_ground_truth_test.dag".to_string(),
+            "logic_complement_truth_table".to_string(),
+        );
+        let ordinary_known_red = (
+            "dag/test/claim/observation_raw_print_retirement_acceptance_test.dag".to_string(),
+            "observation_emit_frontier_is_zero".to_string(),
+        );
+        let ordinary = (
+            "dag/test/claim/design_register_lift_parity_witness_test.dag".to_string(),
+            "design_register_lift_parity_holds".to_string(),
+        );
+        let pre_verdict_roster = vec![pre_verdict.clone()];
+
+        assert!(batch_entries_all_expect_pre_verdict_refusal(
+            &[pre_verdict.clone()],
+            &pre_verdict_roster
+        ));
+        assert!(
+            !batch_entries_all_expect_pre_verdict_refusal(
+                &[pre_verdict.clone(), ordinary.clone()],
+                &pre_verdict_roster
+            ),
+            "one ordinary entry must keep a resolve refuse loud"
+        );
+        assert!(!batch_entries_all_expect_pre_verdict_refusal(
+            &[ordinary.clone()],
+            &pre_verdict_roster
+        ));
+        assert!(!batch_entries_all_expect_pre_verdict_refusal(
             &[],
-            &hermetic,
-            &wet_known_red
+            &pre_verdict_roster
         ));
+
+        // THE DISCRIMINATION. Both rows below are known-red; only one declared that its
+        // agreement is a stop before any verdict. An arbitrary resolve failure in a batch of
+        // the other must NOT report every quarantine as holding.
+        let expected_red = vec![pre_verdict.clone(), ordinary_known_red.clone()];
+        assert!(
+            batch_entries_all_in(&[ordinary_known_red.clone()], &expected_red),
+            "the ordinary row IS expected-red — this is the population the defect consulted"
+        );
+        assert!(
+            !batch_entries_all_expect_pre_verdict_refusal(
+                &[ordinary_known_red],
+                &pre_verdict_roster
+            ),
+            "but it did NOT declare a pre-verdict refusal, so a resolve failure in its batch is \
+             an infrastructure fact about the run and proves neither the red nor the quarantine"
+        );
+    }
+
+    /// THE BUDGET AXIS, separated. A witness obtains its long eval ceiling from its OWN
+    /// declared budget, without joining the long-lane BATCH roster — which is what forced an
+    /// expensive known-red root to occur twice in the schedule, the second time on a batch
+    /// that expects green.
+    #[test]
+    fn declared_long_budget_arms_ceiling_without_joining_the_long_lane_batch() {
+        let known_red_long = "src/v2/test/claim/long/direct_rust_door_production_group_test.dag";
+        // The union `witness_long_eval_budget_entries` produces: this path is present because
+        // its ADMISSION row declares SubstrateLongLaneEvalBudget, not because it is on the
+        // long-lane batch roster.
+        let budgets = FalsifierSelfHostWetBudgets {
+            substrate_long_lane_entry_paths: vec![known_red_long.to_string()],
+            substrate_long_lane_eval_budget_ms: Some(180_000),
+            expected_red_witnesses: vec![(
+                known_red_long.to_string(),
+                "direct_rust_door_production_group_closing_expectation_holds".to_string(),
+            )],
+            ..Default::default()
+        };
+        let batch = vec![(
+            known_red_long.to_string(),
+            "direct_rust_door_production_group_closing_expectation_holds".to_string(),
+        )];
+
+        // Both axes hold at once on one witness in one batch: the long ceiling AND
+        // expected-red polarity. Under the fused shape this pair was inexpressible.
+        assert_eq!(
+            select_discovery_batch_budgets(
+                ExecutionMode::Hermetic,
+                &batch,
+                Some(5_000),
+                &budgets
+            )
+            .eval_budget_ms,
+            Some(180_000),
+            "the declared budget must arm the ceiling, or a known-red row reds at 5s for the wrong reason"
+        );
+        assert!(batch_entries_all_in(
+            &batch,
+            &budgets.expected_red_witnesses
+        ));
+    }
+
+    /// P0-1. ABSENT EVIDENCE STOPS THE LINE. A rostered expected-red witness that produced no
+    /// observation is neither agreement nor failure — and the arm that matters is that it is
+    /// also not SILENCE. The first shape of this bin only wrote it to stderr, so a batch whose
+    /// admitted red control had quietly stopped executing still reported green: the roster
+    /// claimed a discriminating red existed, the run produced no evidence either way, and the
+    /// green report was read as though it had.
+    #[test]
+    fn absent_expected_red_evidence_refuses_as_coverage_never_as_a_verdict() {
+        let entry = "src/v2/test/claim/long/direct_rust_door_production_group_test.dag";
+        let f = "direct_rust_door_production_group_closing_expectation_holds";
+        let expected_red = vec![(entry.to_string(), f.to_string())];
+        let rostered = expected_red.clone();
+
+        // Nothing came back for the rostered row.
+        let tally = classify_witness_expectations_in(&[], &expected_red, &rostered);
+        assert_eq!(tally.evidence_absent.len(), 1);
+        assert!(
+            tally.agreements.is_empty() && tally.unexpected_failures.is_empty(),
+            "absence is not a verdict in either direction"
+        );
+        assert_eq!(
+            tally.hard_failures(),
+            0,
+            "and it must not be counted as a witness failure — the remedy is coverage, not code"
+        );
+
+        let refusal = tally
+            .refusal()
+            .expect("absence must refuse; logging it and passing is coverage by illusion");
+        assert!(matches!(
+            refusal,
+            ExpectationRefusal::ExpectedRedEvidenceAbsent { .. }
+        ));
+        let (mode, detail) =
+            batch_failure_mode_and_detail(&batch_record_for_test(vec![stale_known_red_result(
+                Some(refusal),
+            )]));
+        assert_eq!(mode, EXPECTED_RED_EVIDENCE_ABSENT_MODE);
+        assert_ne!(mode, STALE_KNOWN_RED_MODE, "nobody observed it passing");
+        assert_ne!(mode, "none");
+        assert!(detail.contains(f), "the refusal must name what did not run");
+
+        // POSITIVE CONTROL: the same roster, observed. No coverage refusal.
+        let observed = classify_witness_expectations_in(
+            &[outcome(entry, f, ClaimOutcome::Fail)],
+            &expected_red,
+            &rostered,
+        );
+        assert!(observed.evidence_absent.is_empty());
+        assert_eq!(observed.refusal(), None);
+        assert_eq!(observed.agreements.len(), 1);
+    }
+
+    /// P1, second half. The admission authority is an IDENTITY JOIN over witness outcomes, so a
+    /// bucket population that agrees in COUNT while disagreeing in identity must still refuse.
+    /// A count equality alone cannot see this; that is the whole reason the join replaced it.
+    #[test]
+    fn non_pass_join_matches_identities_not_merely_counts() {
+        let entry = "src/v2/test/claim/emit/logic_ground_truth_test.dag";
+        let expected_red = vec![(
+            entry.to_string(),
+            "logic_complement_truth_table".to_string(),
+        )];
+        let mut tally = classify_witness_expectations(
+            &[outcome(
+                entry,
+                "logic_complement_truth_table",
+                ClaimOutcome::Fail,
+            )],
+            &expected_red,
+        );
+        assert!(tally.non_pass_join_is_complete());
+        assert!(still_red_batch_passes(&tally, 1));
+
+        // Same COUNT on both sides — one seen non-pass, one agreement — but the agreement
+        // names a different witness. The count equality is satisfied; the join is not.
+        tally.agreements = vec![(entry.to_string(), "some_other_witness".to_string())];
+        assert_eq!(
+            tally.classified_non_pass.len(),
+            tally.accounted_non_pass().len()
+        );
+        assert!(
+            !tally.non_pass_join_is_complete(),
+            "equal counts over different identities must refuse"
+        );
+        assert!(
+            !still_red_batch_passes(&tally, 1),
+            "the join, not the count, is the admission authority"
+        );
+    }
+
+    /// P1. The still-red pass arm joins on an EXACT count, not `<=`. A failure that arrives
+    /// without a per-witness identity must refuse rather than be read as "nothing failed" —
+    /// the empty-observation narrow, applied to the batch's own accounting.
+    #[test]
+    fn still_red_pass_arm_requires_exact_failure_accounting() {
+        let entry = "src/v2/test/claim/emit/logic_ground_truth_test.dag";
+        let f = "logic_complement_truth_table";
+        let expected_red = vec![(entry.to_string(), f.to_string())];
+        let tally =
+            classify_witness_expectations(&[outcome(entry, f, ClaimOutcome::Fail)], &expected_red);
+
+        assert_eq!(tally.hard_failures(), 0);
+        assert_eq!(tally.classified_non_pass.len(), 1);
+
+        // Lockstep: one classified non-pass, one summary failure. Passes.
+        assert!(still_red_batch_passes(&tally, 1));
+        // An extra summary failure with no matching per-witness outcome must REFUSE. Under
+        // `<=` this returned true, so unjoinable failures were absorbed into a green batch.
+        assert!(
+            !still_red_batch_passes(&tally, 2),
+            "an unjoinable failure must refuse, never be absorbed"
+        );
+        // And fewer, which is the same accounting break in the other direction.
+        assert!(!still_red_batch_passes(&tally, 0));
+
+        // A real unexpected failure still reds regardless of the accounting.
+        let with_red = classify_witness_expectations(
+            &[outcome(entry, "an_ordinary_sibling", ClaimOutcome::Fail)],
+            &expected_red,
+        );
+        assert_eq!(with_red.hard_failures(), 1);
+        assert!(!still_red_batch_passes(&with_red, 1));
     }
 
     #[test]
@@ -10898,6 +12175,7 @@ mod tests {
             corpus_witnesses: 0,
             runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
+            expectation_refusal: None,
             budget_refusal: Some(BudgetRefusal {
                 elapsed_ms: 900_001,
                 budget_ms: 900_000,
@@ -10930,6 +12208,7 @@ mod tests {
             corpus_witnesses: 0,
             runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
+            expectation_refusal: None,
             budget_refusal: None,
             selection_degradation: None,
             resolve_realization: None,
@@ -13251,6 +14530,7 @@ mod tests {
                         detail: "affected-set".to_string(),
                     },
                 ],
+                expectation_refusal: None,
                 budget_refusal: None,
                 selection_degradation: None,
                 resolve_realization: None,
@@ -13351,6 +14631,7 @@ mod tests {
                         detail: "affected-set".to_string(),
                     },
                 ],
+                expectation_refusal: None,
                 budget_refusal: None,
                 selection_degradation: None,
                 resolve_realization: None,
@@ -13647,6 +14928,7 @@ mod tests {
                 NodeFrontierSelectionMode::Applied,
                 &summary_with(killed.clone()),
                 projected,
+                None,
             );
             assert!(
                 result.budget_refusal.is_some(),
@@ -13664,6 +14946,7 @@ mod tests {
             NodeFrontierSelectionMode::Applied,
             &summary_with(ClaimOutcome::Fail),
             Ok(Vec::new()),
+            None,
         );
         assert!(result.budget_refusal.is_none());
     }
@@ -13711,6 +14994,7 @@ mod tests {
             NodeFrontierSelectionMode::Applied,
             &summary,
             Err("[witness-row-cost] REFUSED: missing measured resolve parent for e.dag".into()),
+            None,
         );
         assert!(!result.ok);
         assert!(
@@ -13781,6 +15065,7 @@ mod tests {
             corpus_witnesses: 0,
             runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
+            expectation_refusal: None,
             budget_refusal: None,
             selection_degradation: None,
             resolve_realization: None,

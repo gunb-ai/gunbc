@@ -630,8 +630,7 @@ data gitlab_fy2026_purchase_obligation_due_next_year: FiledMonetaryFact = FiledM
   citation: gitlab_fy2026_year_end_citation,
 }
 
-data gitlab_operating_metrics_note: String = "Dollar-Based Net Retention Rate and ARR-threshold customer counts are Item 7 MD&A operating metrics (extdeps.sec.operating_metrics shapes), quoted from each fiscal year's own 10-K. GitLab disclosed DBNRR only as a floor ('above N%') through the FY2023 10-K and as an exact point from the FY2024 10-K on; the typed lower-bound arm keeps that distinction. The FY2020 floor (above 175 percent) and the FY2021/FY2022 year-end customer counts are disclosed in the FY2022 10-K."
-
+// Dollar-Based Net Retention Rate and ARR-threshold customer counts are Item 7 MD&A operating metrics (extdeps.sec.operating_metrics shapes), quoted from each fiscal year's own 10-K. GitLab disclosed DBNRR only as a floor ('above N%') through the FY2023 10-K and as an exact point from the FY2024 10-K on; the typed lower-bound arm keeps that distinction. The FY2020 floor (above 175 percent) and the FY2021/FY2022 year-end customer counts are disclosed in the FY2022 10-K.
 data gitlab_fy2020_dbnrr: DollarBasedNetRetentionRow = DollarBasedNetRetentionRow {
   rate: RateLowerBoundPercent { floor_percent: 175 },
   citation: gitlab_fy2020_year_end_citation,
@@ -703,8 +702,7 @@ data gitlab_fy2026_customers_100k_arr: ArrThresholdCustomerCountRow = ArrThresho
   citation: gitlab_fy2026_year_end_citation,
 }
 
-data gitlab_registered_users_note: String = "Item 1 Business platform-reach floors, quoted verbatim from each 10-K: 'we have more than 30 million registered users' (FY2023 and FY2024 filings) and 'we have more than 50 million registered users' (FY2025 and FY2026 filings). Registered users are overwhelmingly free-tier -- the paid base is the ARR customer rows above -- so cost-of-revenue divided by this floor upper-bounds average serving cost per (mostly free) user: gunbc.econ.free_tier_serving average_serving_cost_per_registered_user_year_micros_upper_bound."
-
+// Item 1 Business platform-reach floors, quoted verbatim from each 10-K: 'we have more than 30 million registered users' (FY2023 and FY2024 filings) and 'we have more than 50 million registered users' (FY2025 and FY2026 filings). Registered users are overwhelmingly free-tier -- the paid base is the ARR customer rows above -- so cost-of-revenue divided by this floor upper-bounds average serving cost per (mostly free) user: gunbc.econ.free_tier_serving average_serving_cost_per_registered_user_year_micros_upper_bound.
 data gitlab_fy2023_registered_users: RegisteredUserCountRow = RegisteredUserCountRow {
   registered_user_count_floor: 30000000,
   citation: gitlab_fy2023_year_end_citation,

@@ -408,8 +408,7 @@ fn page_script_census(page: Fragment) -> List<PageScriptViolation> {
 
 data a1_composition_provisional_note: String = "SCOPE STATEMENT for the A1 pass (operator feedback 2026-08-01): the flat row list, the head-line composition, and the visual style of this module are ONE PROVISIONAL RENDERER, not product ontology. What A1 fixed is which claims render and at what altitude (operational before narrative, local denominators, supporting facts demoted, routine chrome quieted); it deliberately did NOT choose the workspace's interaction model. The named misses carried forward to the presentation-seam slice (A2: WorkRowView/DailyWorkspaceView/ObservationImpactView, roadmap_page becomes serialize-only): the row's one purpose-specific supporting line (why-now / what-it-unlocks — deferred because no typed fact carries it yet, and truncating ticket prose by punctuation is exactly the heuristic class the seam exists to kill); the observation-refusal altitude split (one cause narrated once, not once per channel); availability-vs-priority on the dispatch control; family-once row grouping; routine-state collapse (open/ticket/idle lamps). Witnesses over this module assert per-claim semantics, never element order or adjacency — pinning the accidental composition would harden this renderer into the model."
 
-data node_head_row_note: String = "The row composition, on the declared archetype. The head line retains three derived tracks: status chip; node-mid title/meta flow; and one workflow-controls realization of ActuatorRegion carrying actions only (workflow_controls_actions_only_note). Activity — what is happening to the work — is the separate UnderHead ActivityRegion: the client creates it below this head when the decided /workflow.json view says an attempt exists, and removes it when the view says none, so the intrinsic-width third track can never again starve the title (the A2 falsifier). The li owns stable data-node identity independently of actuator presence; client observations locate the row first and only then its regions."
-
+// The row composition, on the declared archetype. The head line retains three derived tracks: status chip; node-mid title/meta flow; and one workflow-controls realization of ActuatorRegion carrying actions only (workflow_controls_actions_only_note). Activity — what is happening to the work — is the separate UnderHead ActivityRegion: the client creates it below this head when the decided /workflow.json view says an attempt exists, and removes it when the view says none, so the intrinsic-width third track can never again starve the title (the A2 falsifier). The li owns stable data-node identity independently of actuator presence; client observations locate the row first and only then its regions.
 fn dependency_line_nodes(view: WorkRowView) -> List<Fragment> {
   match scheduling_dependency_line(s: view.scheduling) {
     Present { value: line } => [ el_class("span", "dependencies", [ txt(line) ]) ]
@@ -580,8 +579,7 @@ fn element_markup(e: SectionElement, merged: List<Int>) -> List<Fragment> {
   }
 }
 
-data altitude_section_note: String = "Page altitude from the attention law (composition slice 3; gunbc.roadmap_altitude carries the law, this page is its renderer — the workspace as the third renderer of 'routine collapses, anomaly expands'). A node-bearing section renders as a BAND: a details.section-fold whose summary carries the section's title and its derived counts, open exactly when the section holds non-routine work — statuses_all_routine folds the finished lanes, one working or anomalous member holds the band open, and the open attribute is DERIVED, never authored per section. A section without nodes has no altitude axis and renders flat, so prose leads never fold themselves away."
-
+// Page altitude from the attention law (composition slice 3; gunbc.roadmap_altitude carries the law, this page is its renderer — the workspace as the third renderer of 'routine collapses, anomaly expands'). A node-bearing section renders as a BAND: a details.section-fold whose summary carries the section's title and its derived counts, open exactly when the section holds non-routine work — statuses_all_routine folds the finished lanes, one working or anomalous member holds the band open, and the open attribute is DERIVED, never authored per section. A section without nodes has no altitude axis and renders flat, so prose leads never fold themselves away.
 fn altitude_section(cls: String, title_nodes: List<Fragment>, statuses: List<String>, body: List<Fragment>) -> Fragment {
   if count(statuses) == 0 {
     el_class("section", cls, concat(title_nodes, body))
@@ -762,8 +760,7 @@ fn daily_row_activity(node_id: String, attempts: List<WorkflowAttemptProgress>, 
   }
 }
 
-data closing_contract_family_wiring_note: String = "The live family facts: one WorkFamilyDecl for the closing-contract family (claim = the authority's closing_contract_family_claim, stated once) and one member fact per generator pair, each carrying the gated node's typed headline as the row subject. Fixtures construct their own decls/members, so the grouping stays witnessable without live counts."
-
+// The live family facts: one WorkFamilyDecl for the closing-contract family (claim = the authority's closing_contract_family_claim, stated once) and one member fact per generator pair, each carrying the gated node's typed headline as the row subject. Fixtures construct their own decls/members, so the grouping stays witnessable without live counts.
 fn closing_contract_family_id() -> String { "closing-contract" }
 
 fn live_work_family_decls() -> List<WorkFamilyDecl> {
@@ -970,8 +967,7 @@ fn roadmap_daily_workspace_page(doc: RoadmapDocument, merged: List<Int>) -> Frag
   roadmap_daily_workspace_page_impl(doc: doc, merged: merged, main_prefix: [], attempts: [], attempts_refused: none)
 }
 
-data daily_page_observed_note: String = "The served daily workspace consumes the OBSERVED attempt evidence at render (the serve handler decomposes the belt observation and passes progress rows or the located refusal), so the active band and every server-rendered activity region are real facts, not placeholders — the same decided views the /workflow.json wire carries, giving the client poll an identical starting DOM (the parity obligation's server half). The zero-argument form stays pure (empty attempts, nominal observation) for witnesses that assert composition without observation."
-
+// The served daily workspace consumes the OBSERVED attempt evidence at render (the serve handler decomposes the belt observation and passes progress rows or the located refusal), so the active band and every server-rendered activity region are real facts, not placeholders — the same decided views the /workflow.json wire carries, giving the client poll an identical starting DOM (the parity obligation's server half). The zero-argument form stays pure (empty attempts, nominal observation) for witnesses that assert composition without observation.
 fn roadmap_daily_workspace_page_for_authority_observed(attempts: List<WorkflowAttemptProgress>, attempts_refused: String?) -> Fragment {
   roadmap_daily_workspace_page_for_projection_observed(
     proj: roadmap_authority_projection(),

@@ -27,8 +27,7 @@ import std.nat { Nat }
 
 data knowable_wedge_note: String = "Knowable wedge = publicly cited umbrella price minus a cost floor derivable from cited hardware rows, given explicitly declared utilization/amortization/exchange-rate assumptions. Opaque inputs refuse — never estimate around Unknown."
 
-data wedge_hardware_thread_count_note: String = "Per-thread cost allocation divides by HardwareThreadCount on both sides — umbrella_row.vcpus (GithubActionsRunnerPriceRow) and hetzner_dedicated_server_threads (CpuFacts catalog threads). The carrier grounds SMT-sibling counting; no parallel Bool assertion."
-
+// Per-thread cost allocation divides by HardwareThreadCount on both sides — umbrella_row.vcpus (GithubActionsRunnerPriceRow) and hetzner_dedicated_server_threads (CpuFacts catalog threads). The carrier grounds SMT-sibling counting; no parallel Bool assertion.
 data wedge_fx_assumption_frontier: String = "eur_to_usd_numerator/denominator are explicitly declared WedgeAssumptions inputs (refuses ExchangeRateUnknown on zero denominator), not cited extdeps facts. dissolve-on: extdeps.forex authority + MoneyRate<From,To> carrier when a second FX consumer appears."
 
 type WedgeAssumptions {

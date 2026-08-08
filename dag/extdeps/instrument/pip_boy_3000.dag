@@ -147,8 +147,7 @@ data pip_boy_3000_settings: List<PipBoy3000SettingRow> = [
   mute_speaker_row
 ]
 
-data glitch_mode_note: String = "GROUNDED, and an earlier revision of this corpus wrongly declared it uncited. The manual's Glitch on tap entry ends 'Once selected scroll to choose Off, Short or Persistent', so the three option values are the manual's own words. The first revision recorded them as an external analysis's invention and refused to model them — a refusal is not automatically the safe arm when the source does carry the fact, and the read path that produced that refusal was a search index rather than the manual."
-
+// GROUNDED, and an earlier revision of this corpus wrongly declared it uncited. The manual's Glitch on tap entry ends 'Once selected scroll to choose Off, Short or Persistent', so the three option values are the manual's own words. The first revision recorded them as an external analysis's invention and refused to model them — a refusal is not automatically the safe arm when the source does carry the fact, and the read path that produced that refusal was a search index rather than the manual.
 type PipBoy3000GlitchMode
   = GlitchOff
   | GlitchShort

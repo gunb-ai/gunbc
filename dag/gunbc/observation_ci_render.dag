@@ -89,8 +89,7 @@ data observation_ci_render_note: String = "P1 of the progress-and-observation la
 
 data observation_ci_render_tone_note: String = "Tone contract (operator, 2026-07-24). Arm's-length lines are plain sentences a human reads without decoding — not dense key-equals-value chains, which belong in receipt boxes and files. Magnitudes are in human units: gibibytes, minutes, percent. The named negative example is the floor memory heartbeat's current shape, sixty-plus context-free byte dumps an hour, each carrying a raw current=16106717184 and no subject at all; that line is what the operator watched for ten minutes while a single module typechecked, and it is the exact shape this renderer must not reproduce."
 
-data ci_unit_authority_note: String = "The scale factors are CONSUMED from std.measure, never respelled here. A renderer carrying its own copy of how many bytes are in a gibibyte is a second unit authority hiding inside a formatting helper, and the fork is easy to miss precisely because it looks like arithmetic rather than modelling."
-
+// The scale factors are CONSUMED from std.measure, never respelled here. A renderer carrying its own copy of how many bytes are in a gibibyte is a second unit authority hiding inside a formatting helper, and the fork is easy to miss precisely because it looks like arithmetic rather than modelling.
 data ci_one_decimal: Nat = 10
 
 fn ci_gibibyte_tenths(b: ByteSize) -> Nat {
@@ -103,8 +102,7 @@ fn ci_milliseconds_per_minute() -> Nat {
 
 data ci_minute_switch_seconds: Nat = 90
 
-data ci_minute_switch_note: String = "Where the sentence form switches from seconds to minutes is a DISPLAY policy, not a unit: ninety seconds reads better as ninety seconds than as one minute. It is named rather than buried as a literal so it stays visible as the judgement it is, distinct from the scale factors above, which are facts."
-
+// Where the sentence form switches from seconds to minutes is a DISPLAY policy, not a unit: ninety seconds reads better as ninety seconds than as one minute. It is named rather than buried as a literal so it stays visible as the judgement it is, distinct from the scale factors above, which are facts.
 fn ci_tenths_text(tenths: Nat) -> String {
   concat(to_string(tenths / 10), concat(".", to_string(tenths % 10)))
 }
@@ -139,8 +137,7 @@ fn ci_human_elapsed(d: Nanosecond) -> String {
 
 data ci_human_duration_note: String = "A second duration projection beside gunbc.ci_render.format_duration is deliberate and is not a fork: that one is the COMPACT technical form for receipt boxes and timing tables (230ms, 41s), this one is the SENTENCE form for arm's-length prose (10 minutes). Same fact, two surfaces, chosen by the tone contract rather than by taste. If a third caller wants a third spelling, that is the signal to unify them behind one carrier with a declared style axis rather than to add a fourth."
 
-data ci_human_elapsed_note: String = "ObservationEvent retains exact Nanosecond wall time through classification and ordering. Arm's-length lines keep existing millisecond-and-larger spelling byte-stable, while a sub-millisecond event prints its exact nanosecond count instead of fabricating 0ms. The floor conversion is confined to this named presentation boundary."
-
+// ObservationEvent retains exact Nanosecond wall time through classification and ordering. Arm's-length lines keep existing millisecond-and-larger spelling byte-stable, while a sub-millisecond event prints its exact nanosecond count instead of fabricating 0ms. The floor conversion is confined to this named presentation boundary.
 fn ci_measured_bytes_text(m: Measured<ByteSize>) -> String {
   match m {
     MeasuredValue { value: b } => ci_human_bytes(b: b)
@@ -172,8 +169,7 @@ type LinePlacement
   = InsideCollapsedGroup
   | OutsideGroup
 
-data observation_placement_note: String = "Law 4's asymmetry made structural. Placement is DERIVED from the line's attention, never chosen at the call site, so an anomaly cannot be written into a collapsed group: the group is exactly where a reader will not look, and burying a refusal there is how a stopped line reads as silence. This is the construction that replaces the review instruction not to hide refusals."
-
+// Law 4's asymmetry made structural. Placement is DERIVED from the line's attention, never chosen at the call site, so an anomaly cannot be written into a collapsed group: the group is exactly where a reader will not look, and burying a refusal there is how a stopped line reads as silence. This is the construction that replaces the review instruction not to hide refusals.
 fn ci_line_placement(attention: AttentionLevel) -> LinePlacement {
   match attention {
     Ambient => InsideCollapsedGroup
@@ -202,8 +198,7 @@ fn ci_subject_leaf_text(subject: ObservationSubject) -> String {
   }
 }
 
-data ci_leaf_text_note: String = "The deepest MEANINGFUL identity, not literally the last segment. A path ending in a phase segment renders as typecheck v2.compiler.normalized_tree rather than the bare word typecheck, because the phase alone names an activity without naming what it is being done to — which is the same half-answer the captured crawl window gave for ten minutes."
-
+// The deepest MEANINGFUL identity, not literally the last segment. A path ending in a phase segment renders as typecheck v2.compiler.normalized_tree rather than the bare word typecheck, because the phase alone names an activity without naming what it is being done to — which is the same half-answer the captured crawl window gave for ten minutes.
 type ObservationActivity {
   run: String
   batch: String
@@ -298,8 +293,7 @@ fn ci_duration_suffix(wall: Measured<Nanosecond>) -> String {
 
 data ci_duration_absence_note: String = "An unmeasured duration NAMES ITSELF rather than vanishing from the line. Dropping the clause would have been the model own fabrication rule broken by its first renderer: observation_measured_note says an absent measurement never prints a zero and never omits the field, because a silently omitted number reads as a fact that was never in question. A reader who sees no duration assumes nobody timed it; a reader who sees the cause knows why."
 
-data ci_outcome_duration_note: String = "Every outcome line carries its duration. The reference implementation studied for this lane omits them, which is why a reader cannot tell a fast green from a slow one without diffing timestamps by hand — and the slow green is the one that becomes next month's wall."
-
+// Every outcome line carries its duration. The reference implementation studied for this lane omits them, which is why a reader cannot tell a fast green from a slow one without diffing timestamps by hand — and the slow green is the one that becomes next month's wall.
 fn ci_event_line_at_attention(event: ObservationEvent, attention: AttentionLevel) -> RenderedLine {
   let presentation = observation_presentation(c: observation_event_class(event: event))
   let subject = ci_subject_leaf_text(subject: event.subject)
@@ -338,8 +332,7 @@ type HeartbeatSample {
   pressure: Measured<BasisPoint>
 }
 
-data ci_heartbeat_identity_note: String = "Law 2: the heartbeat carries IDENTITY, not just vitals — and identity comes first in the sentence, vitals last. The ordering is the whole point. A reader scanning a wall of heartbeats needs to know WHAT is running; the memory numbers only matter once they know that. The captured crawl window is the counter-example in the record: sixty heartbeats that named no subject at all while one module typechecked for ten minutes, so the operator could see the process was alive and could not see what it was doing."
-
+// Law 2: the heartbeat carries IDENTITY, not just vitals — and identity comes first in the sentence, vitals last. The ordering is the whole point. A reader scanning a wall of heartbeats needs to know WHAT is running; the memory numbers only matter once they know that. The captured crawl window is the counter-example in the record: sixty heartbeats that named no subject at all while one module typechecked for ten minutes, so the operator could see the process was alive and could not see what it was doing.
 fn ci_heartbeat_line(sample: HeartbeatSample) -> RenderedLine {
   let detail = ci_subject_detail_text(subject: sample.active)
   let position = concat(": entry ", concat(to_string(sample.entry_index), concat(" of ", to_string(sample.entry_total))))
@@ -370,8 +363,7 @@ fn ci_hold_cause_text(hold: SchedulerHold) -> String {
   }
 }
 
-data ci_escalation_note: String = "Law 3 rendered: quiet past T names the child, past 2T the grandchild, recursively to the leaf. The escalation APPENDS — it never repaints, because a CI log cannot be redrawn — so the reader watches attention walk down the tree in real time. Depth comes from std.observation, not from a threshold invented here."
-
+// Law 3 rendered: quiet past T names the child, past 2T the grandchild, recursively to the leaf. The escalation APPENDS — it never repaints, because a CI log cannot be redrawn — so the reader watches attention walk down the tree in real time. Depth comes from std.observation, not from a threshold invented here.
 fn ci_escalation_line(quiet_subject: ObservationSubject, active_leaf: ObservationSubject, quiet: Millisecond, t: DwellThreshold) -> RenderedLine {
   let surfaced = observation_escalation_subject(quiet_subject: quiet_subject, active_leaf: active_leaf, quiet: quiet, t: t)
   RenderedLine {
@@ -403,8 +395,7 @@ type EscalationScan {
   threshold: Nat
 }
 
-data ci_escalation_emission_note: String = "The escalation law has two rates and they are not the same number. The REVEAL DEPTH grows linearly — quiet over T — because the tree is walked one level per threshold. The EMISSION POINTS double — T, 2T, 4T, 8T — so a window that stays quiet does not turn into a per-minute drumbeat saying the same thing; each successive line costs twice the silence to earn and carries strictly more information than the last. That is law 4 and law 3 agreeing rather than competing: attention escalates, but the log stays quiet at arm's length. The exponent roster is bounded by construction, so a window that never ends emits a bounded number of lines instead of growing without limit."
-
+// The escalation law has two rates and they are not the same number. The REVEAL DEPTH grows linearly — quiet over T — because the tree is walked one level per threshold. The EMISSION POINTS double — T, 2T, 4T, 8T — so a window that stays quiet does not turn into a per-minute drumbeat saying the same thing; each successive line costs twice the silence to earn and carries strictly more information than the last. That is law 4 and law 3 agreeing rather than competing: attention escalates, but the log stays quiet at arm's length. The exponent roster is bounded by construction, so a window that never ends emits a bounded number of lines instead of growing without limit.
 fn ci_escalation_emission_count(quiet: Millisecond, t: DwellThreshold) -> Nat {
   let q = millisecond_count(m: quiet)
   let scanned = fold(
@@ -442,8 +433,7 @@ fn ci_collapsed_summary(green_count: Nat) -> String {
   concat("… ", concat(to_string(green_count), " more finished cleanly"))
 }
 
-data ci_collapsed_summary_note: String = "Law 4's quiet half: sub-threshold work collapses to a count rather than a line each. The count is a projection of the events that were collapsed, so the summary is true by construction and the reader can always expand the group to see them."
-
+// Law 4's quiet half: sub-threshold work collapses to a count rather than a line each. The count is a projection of the events that were collapsed, so the summary is true by construction and the reader can always expand the group to see them.
 type FloorRunSummary {
   entries_complete: Nat
   entries_total: Nat
@@ -462,8 +452,7 @@ fn ci_run_summary_glyph(summary: FloorRunSummary) -> SymbolId {
   }
 }
 
-data ci_summary_glyph_note: String = "The run summary keeps Refused and Failed apart, because a summary that collapses them undoes at the last line exactly what the outcome sum spends the model establishing. A run that only refused stopped deliberately and its glyph says so; a run carrying any failure is broken, and breakage dominates the summary glyph because it is the stronger claim about the run. Both counts appear in the text either way, so the glyph chooses emphasis and never hides a number."
-
+// The run summary keeps Refused and Failed apart, because a summary that collapses them undoes at the last line exactly what the outcome sum spends the model establishing. A run that only refused stopped deliberately and its glyph says so; a run carrying any failure is broken, and breakage dominates the summary glyph because it is the stronger claim about the run. Both counts appear in the text either way, so the glyph chooses emphasis and never hides a number.
 fn ci_run_summary_line(summary: FloorRunSummary) -> RenderedLine {
   let problems = summary.refusals + summary.failures
   RenderedLine {
@@ -479,8 +468,7 @@ fn ci_run_summary_line(summary: FloorRunSummary) -> RenderedLine {
   }
 }
 
-data ci_final_restate_note: String = "Refusals and failures are re-rendered at the end of the run as well as at the moment they happen. A GitHub Actions log is routinely truncated in the middle and is read from the bottom, so a refusal that appeared only at its own timestamp is a refusal the reader will not find. Restating it is not duplication of the FACT — it is the same event projected to a second position, which is what an append-only medium requires."
-
+// Refusals and failures are re-rendered at the end of the run as well as at the moment they happen. A GitHub Actions log is routinely truncated in the middle and is read from the bottom, so a refusal that appeared only at its own timestamp is a refusal the reader will not find. Restating it is not duplication of the FACT — it is the same event projected to a second position, which is what an append-only medium requires.
 fn ci_refusal_restate_line(subject: ObservationSubject, diagnostic: NonEmptyStr) -> RenderedLine {
   RenderedLine {
     glyph: StatusRefused,

@@ -135,8 +135,7 @@ fn resolve_diagnostics(reason: Symbol) -> NonEmptyDiagnostics {
   diagnostics_singleton(d: resolve_diagnostic(reason: reason))
 }
 
-data resolve_module_not_found_identity_note: String = "module_root_find refuses with the exact QualifiedName sought — rendered as a dotted string on the Textual diagnostic file locus (§3: structural QN is identity; dotted form is projection for display). ModuleRootLookup is the structural authority; diagnostics project from ModuleRootMissing rather than parsing display text back."
-
+// module_root_find refuses with the exact QualifiedName sought — rendered as a dotted string on the Textual diagnostic file locus (§3: structural QN is identity; dotted form is projection for display). ModuleRootLookup is the structural authority; diagnostics project from ModuleRootMissing rather than parsing display text back.
 type ModuleRootLookup
   = ModuleRootFound { root: Node }
   | ModuleRootMissing { requested: QualifiedName }

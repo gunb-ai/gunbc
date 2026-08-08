@@ -5,8 +5,7 @@ import std.content_hash { Sha256Digest }
 
 data falsifier_alert_residue_purpose_note: String = "ALERT-0. This module DECLARES the falsifier alert's residue and the laws its migration must satisfy. IT MOVES NO BEHAVIOR. The embedded program still runs exactly where it ran before; what changes is that it is now a counted row with a named disposition and a dissolution trigger rather than an undeclared fact of the tree. That ordering is deliberate — a residue that is not declared cannot be shown to have shrunk, and a migration that starts by moving behavior has no baseline to measure against."
 
-data language_normal_form_residue_note: String = "WHAT LANGUAGE-NORMAL-FORM RESIDUE MEANS, stated at the grain that makes it decidable. A .dag corpus that emits foreign artifacts will always contain foreign-language TEXT; that alone is not residue. Residue is foreign text that is in NORMAL FORM for its target language — already a program in that language, authored as such — as opposed to text DERIVED from a modeled structure by an emitter. `bash_build_*` constructors produce shell text and are not residue, because the authority is the Node tree and the text is its projection. A 232-line ECMAScript program pasted into a YAML scalar is residue, because the ECMAScript IS the authority: nothing upstream of it describes what it does, and the only way to change its behavior is to edit ECMAScript. The distinction is exactly the one DESIGN §5 draws between construction and validation, applied to emission: derived text has a single authority, normal-form text is the authority."
-
+// WHAT LANGUAGE-NORMAL-FORM RESIDUE MEANS, stated at the grain that makes it decidable. A .dag corpus that emits foreign artifacts will always contain foreign-language TEXT; that alone is not residue. Residue is foreign text that is in NORMAL FORM for its target language — already a program in that language, authored as such — as opposed to text DERIVED from a modeled structure by an emitter. `bash_build_*` constructors produce shell text and are not residue, because the authority is the Node tree and the text is its projection. A 232-line ECMAScript program pasted into a YAML scalar is residue, because the ECMAScript IS the authority: nothing upstream of it describes what it does, and the only way to change its behavior is to edit ECMAScript. The distinction is exactly the one DESIGN §5 draws between construction and validation, applied to emission: derived text has a single authority, normal-form text is the authority.
 type ResidueTarget
   = ECMAScript
   | Bash
@@ -17,8 +16,7 @@ type ResidueRuntime
   | GithubActionsRunStep
   | HostShell
 
-data residue_kind_note: String = "ExecutableSourceString is the kind where the residue is a PROGRAM carried as a string value — parsed and executed by a foreign interpreter at runtime, with no modeled structure behind it. It is distinguished from a configuration literal (a string the foreign runtime reads as data) because the remedies differ: a configuration literal wants a typed carrier projected into the same position, while an executable source string wants its BEHAVIOR remodeled and the string deleted. Naming the kind is what makes the disposition derivable rather than chosen per row."
-
+// ExecutableSourceString is the kind where the residue is a PROGRAM carried as a string value — parsed and executed by a foreign interpreter at runtime, with no modeled structure behind it. It is distinguished from a configuration literal (a string the foreign runtime reads as data) because the remedies differ: a configuration literal wants a typed carrier projected into the same position, while an executable source string wants its BEHAVIOR remodeled and the string deleted. Naming the kind is what makes the disposition derivable rather than chosen per row.
 type ResidueKind
   = ExecutableSourceString
   | ConfigurationLiteral
@@ -59,8 +57,7 @@ type FalsifierAlertRuntime {
   source_closure_digest: Sha256Digest
 }
 
-data falsifier_alert_runtime_verification_note: String = "VERIFICATION IS A REFUSAL, NOT A WARNING. The bundle is admitted only when the binary and the source closure both hash to the digests the manifest names for the selected controller revision. A mismatch on either is a typed, located refusal that stops the alert — it does not fall back to a different bundle, to a mutable path, or to running the binary anyway. The reasoning is DESIGN §5's absorbing-fallback rule at its sharpest: this controller holds issues: write, so an unverified binary is a thing with write access to the repository's issue tracker, and 'proceed as if verification had passed' is the escape hatch that makes the verification decorative. A refusal here means the alert does not run, which is a visible outage of the observer — and a visible outage is strictly better than an invisible compromise of it."
-
+// VERIFICATION IS A REFUSAL, NOT A WARNING. The bundle is admitted only when the binary and the source closure both hash to the digests the manifest names for the selected controller revision. A mismatch on either is a typed, located refusal that stops the alert — it does not fall back to a different bundle, to a mutable path, or to running the binary anyway. The reasoning is DESIGN §5's absorbing-fallback rule at its sharpest: this controller holds issues: write, so an unverified binary is a thing with write access to the repository's issue tracker, and 'proceed as if verification had passed' is the escape hatch that makes the verification decorative. A refusal here means the alert does not run, which is a visible outage of the observer — and a visible outage is strictly better than an invisible compromise of it.
 type FalsifierAlertRuntimeAdmission
   = RuntimeAdmitted { runtime: FalsifierAlertRuntime }
   | RuntimeManifestAbsent { detail: NonEmptyStr }

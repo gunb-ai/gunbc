@@ -334,10 +334,37 @@ not hand-edited. The rule it states: **prose is not forbidden; unclassified pros
 4. **Slice 4 — make recurrence unwritable.** **Path-scoped introduction wall landed; corpus-wide wall
    open.** `gunbc.prose_row_frontier` refuses new `data *_note` rows on enrolled paths; the roster grows
    with each migrated batch rather than waiting for directories to drain first.
-5. **Slice 5 — reconcile the mountain.** **M1C-0 merged; M1C-1 implemented in #7955; corpus drain
-   ongoing.** jwt.dag is prose-free; four grandfathered rows remain in oidc.dag; the three annotation
-   carrier modules self-apply with lifecycle/status facts retained in typed rows where no dedicated home
-   exists yet.
+5. **Slice 5 — reconcile the mountain.** **M1C-0 merged; M1C-1 implemented in #7955; first bulk pass is
+   M1C-BULK-0; corpus drain ongoing.** jwt.dag is prose-free; four grandfathered rows remain in
+   oidc.dag; the three annotation carrier modules self-apply with lifecycle/status facts retained in
+   typed rows where no dedicated home exists yet.
+
+   **M1C-BULK-0 — the first mechanical pass.** A fresh census over `dag/` and `src/` at the
+   post-#7977 tree finds **3,820** module-scope `data *_note: String = <literal>` rows. **443 rows in
+   259 files** satisfied every eligibility condition mechanically and migrated to authored `//`
+   annotations; the remaining **3,377** stayed in place as a classified residual. Both populations are
+   committed rather than described: `tools/m1c_bulk0_manifest.tsv` is the approved manifest the
+   actuator consumed (path, declaration name, subject, text digest, byte count, rendered block size,
+   first line) and `tools/m1c_bulk0_residual.tsv` gives every remaining row exactly one existing
+   representation classification plus one machine-readable residual reason. The actuator made no
+   classification decision of its own — it consumed manifest rows, decoded each literal through a
+   faithful port of `v1.compiler.tokenize` `process_escapes_loop` (any unknown escape or unescaped
+   brace refuses the row into the residual rather than being rewritten), and rendered through the
+   canonical spelling `v1.compiler.annotation_bind` `render_line_comment_delimiter` fixes: `// ` plus
+   the line, bare `//` for an empty one, no trim, no re-wrap, no re-indent. The proof is
+   `tools/m1c_bulk0_subject_map_receipt.txt`, produced by running the real tokenizer, parser and
+   binder over every touched file and joining actual bound subjects against the manifest.
+
+   **What the residual reasons measure** (a row may carry several; each is counted once per reason):
+   `ContainsHistoricalReceipt` 2,368 · `ActivePrOverlap` 1,107 · `HasSemanticConsumer` 757 ·
+   `AmbiguousSubject` 640 · `ContainsLifecycleFact` 415 · `PayloadOrFixture` 226 ·
+   `NoFollowingSubject` 176 · `RequiresSentenceSplit` 173 · `DocumentAuthority` 164. The marker set is
+   deliberately over-broad on the residual side, because §3b's finding — 56% of annotation bytes carry
+   a fact that goes stale untouched — makes a false migration strictly worse than a deferred one: `//`
+   must not become the new home for an operational fact. Stable historical *rationale* (why an earlier
+   revision of a shape was wrong) is not treated as a receipt; current-status text is. Marker absence
+   is not proof of rationale, which is why the eligibility conjunction also requires zero semantic
+   consumers, an exact unique following subject, and no overlap with any open PR's touched files.
 
 ---
 
@@ -374,8 +401,16 @@ ever having pretended it was program data.
   attachment without minting annotation identities; the D-C controls were written to prove the law directly
   rather than to rely on reasoning alone.
 - **Migration has started, not finished.** jwt.dag and the three self-applied annotation modules are
-  implemented in #7955; oidc.dag still carries four grandfathered prose rows; the §4 partition and corpus
-  drain remain open.
+  implemented in #7955; M1C-BULK-0 moves 443 of 3,820 rows (11.6% of sites); oidc.dag still carries four
+  grandfathered prose rows; the §4 partition and corpus drain remain open.
+- **The 3,592-site figure above is historical**, recorded at `64aed6007e` under a byte-weighted extractor
+  with its own ~3% over-count. M1C-BULK-0's 3,820 is a fresh count under a narrower and exactly stated
+  shape — module-scope `data *_note: String` opening a literal — so the two are different measurements of
+  overlapping populations and neither supersedes the other.
+- **The residual classification is conservative, not final.** A row classified `ContainsHistoricalReceipt`
+  is a statement that a marker was found in it, not that the whole row is operational fact; splitting the
+  irreducible rationale out of a mixed row is exactly the §3 MIXED mega-note work that needs a reader, and
+  it is deliberately outside a mechanical pass.
 - **This audit document remains until the deletion trigger closes.** The scaffold deletes when the
   source-annotation carrier, its executed controls, and the §4 partition are complete — at which point a
   lexical audit over prose is superseded by a fold over the annotation graph and the typed populations

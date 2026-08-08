@@ -125,8 +125,7 @@ test fn claim_validation_projects_exact_typed_argv() -> Bool {
   }
 }
 
-data unspecified_refusal_homed_note: String = "The 'unspecified is a refusal state' claim moved to where the decision lives: roadmap_dispatch_environment_witness_test proves ExecutionContractUnspecified and an empty-validation contract each refuse with their own located reason. Restating it here through the deleted execution_contract_is_specified predicate only re-asserted the coproduct's own shape, and rewriting it as a match of a literal against itself would have been vacuous. What is worth pinning here is the CONSTRUCTOR's output, which nothing else covers."
-
+// The 'unspecified is a refusal state' claim moved to where the decision lives: roadmap_dispatch_environment_witness_test proves ExecutionContractUnspecified and an empty-validation contract each refuse with their own located reason. Restating it here through the deleted execution_contract_is_specified predicate only re-asserted the coproduct's own shape, and rewriting it as a match of a literal against itself would have been vacuous. What is worth pinning here is the CONSTRUCTOR's output, which nothing else covers.
 test fn claim_contract_declares_exactly_one_claim_validation() -> Bool {
   match gunbc_claim_execution_contract(
     entry: "dag/test/claim/example_test.dag" as FilePath,

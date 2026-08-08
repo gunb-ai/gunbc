@@ -590,8 +590,7 @@ test fn dashboard_bootstrap_parent_writability_is_a_preflight_fact() -> Bool {
   ready_ok && refused_ok && unobserved_ok
 }
 
-data unreachable_root_never_reports_a_bootstrap_parent_note: String = "THE ROOT PROBE HAS THE SAME THREE ANSWERS, and it is the one whose collapse chose the WRONG PATH rather than the wrong verdict. Which directory is the bootstrap parent depends on whether the instance root exists — present means bootstrap into the root itself, absent means bootstrap into the provisioning parent — so a refused root observation does not merely lose a fact, it makes the subsequent question meaningless. The predecessor answered false and proceeded to describe the provisioning parent, which is a claim about a directory selected on evidence that was never gathered.\\n\\nThe claim asserts the refusal names the instance root, because that is the path whose observation actually failed."
-
+// THE ROOT PROBE HAS THE SAME THREE ANSWERS, and it is the one whose collapse chose the WRONG PATH rather than the wrong verdict. Which directory is the bootstrap parent depends on whether the instance root exists — present means bootstrap into the root itself, absent means bootstrap into the provisioning parent — so a refused root observation does not merely lose a fact, it makes the subsequent question meaningless. The predecessor answered false and proceeded to describe the provisioning parent, which is a claim about a directory selected on evidence that was never gathered.\n\nThe claim asserts the refusal names the instance root, because that is the path whose observation actually failed.
 test fn dashboard_unreachable_root_refuses_before_choosing_a_parent() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   match dashboard_bootstrap_preflight_decision(
@@ -608,8 +607,7 @@ test fn dashboard_unreachable_root_refuses_before_choosing_a_parent() -> Bool {
   }
 }
 
-data production_peer_witness_note: String = "THE ARM THAT MATTERS IS THE MIXED ONE. An unpeered host has no production liveness to compare, so the tempting shortcut is to let an absent reading compare equal to anything and move on — which would let an apply that STARTED with production served and ENDED with it unreachable report untouched, the precise reading the post-apply check exists to prevent. Equality is therefore required to agree on the arm as well as the contents: two reads compare their snapshots, two unpeered readings compare their hosts, and one of each is never equal regardless of what happened in between.\\n\\nThe isolation claim is the counterpart. NoProductionPeer discharges the disjointness obligation because there is no peer to overlap with, but it must not discharge the instance's OWN ownership requirement — an unowned path is unowned whether or not a production dashboard shares the machine, and preflight checks the two separately for that reason."
-
+// THE ARM THAT MATTERS IS THE MIXED ONE. An unpeered host has no production liveness to compare, so the tempting shortcut is to let an absent reading compare equal to anything and move on — which would let an apply that STARTED with production served and ENDED with it unreachable report untouched, the precise reading the post-apply check exists to prevent. Equality is therefore required to agree on the arm as well as the contents: two reads compare their snapshots, two unpeered readings compare their hosts, and one of each is never equal regardless of what happened in between.\n\nThe isolation claim is the counterpart. NoProductionPeer discharges the disjointness obligation because there is no peer to overlap with, but it must not discharge the instance's OWN ownership requirement — an unowned path is unowned whether or not a production dashboard shares the machine, and preflight checks the two separately for that reason.
 fn witness_peered() -> DashboardProductionPeer {
   ProductionPeer { instance: srv1_live_dashboard_instance() }
 }

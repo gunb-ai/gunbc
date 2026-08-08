@@ -29,8 +29,7 @@ type BuildLatencyPopulation {
   durations: List<Millisecond>
 }
 
-data observation_provenance_note: String = "Provenance sits on the POPULATION rather than on each sample, because the claim is distributional — 'every successful build job in this window' — and per-row run ids would not make it more checkable, only longer. The window string carries the query needed to reproduce the population exactly. Extreme samples are cited individually below, since claims about the fastest and slowest builds ARE per-run claims and must name their runs."
-
+// Provenance sits on the POPULATION rather than on each sample, because the claim is distributional — 'every successful build job in this window' — and per-row run ids would not make it more checkable, only longer. The window string carries the query needed to reproduce the population exactly. Extreme samples are cited individually below, since claims about the fastest and slowest builds ARE per-run claims and must name their runs.
 data build_latency_observation_window: NonEmptyStr = "workflow=ci.yml job=build conclusion=success, all runs on 2026-08-05 UTC reachable from `gh run list --workflow ci.yml --limit 600` (285 completed runs, 937 job placements); duration = completed_at - started_at from the Actions jobs API"
 
 data srv1_build_latency: BuildLatencyPopulation = BuildLatencyPopulation {
@@ -70,8 +69,9 @@ data srv1_build_latency_exemplars: List<BuildLatencySample> = [
   },
 ]
 
-data peer_population_summary_note: String = "The peer hosts are carried as their MEDIANS and sample counts rather than as raw populations, and the asymmetry is deliberate rather than convenient: srv1 is the subject under investigation, so its distribution is recorded in full for the bimodal gap to be checkable in-model, while the peers serve only as the reference the divergence ratio is taken against. Recording 201 further durations would triple this file to strengthen nothing. The window is identical for all four, so the comparison is like-for-like.\n\nONE CAVEAT ON THESE THREE NUMBERS, following the median convention correction above: they were computed during collection by an averaging median, so srv3's (n=86) and srv4's (n=58) are means of two middle samples rather than samples any build produced, while srv2's (n=57) is a real element. They are carried as CONTEXT and no verdict is taken against them individually. The number the verdict actually uses is peer_combined_median over all 201 peer samples, and 201 is odd, so that one is a real observation — which is the only reason this caveat is a footnote rather than a defect."
-
+// The peer hosts are carried as their MEDIANS and sample counts rather than as raw populations, and the asymmetry is deliberate rather than convenient: srv1 is the subject under investigation, so its distribution is recorded in full for the bimodal gap to be checkable in-model, while the peers serve only as the reference the divergence ratio is taken against. Recording 201 further durations would triple this file to strengthen nothing. The window is identical for all four, so the comparison is like-for-like.
+//
+// ONE CAVEAT ON THESE THREE NUMBERS, following the median convention correction above: they were computed during collection by an averaging median, so srv3's (n=86) and srv4's (n=58) are means of two middle samples rather than samples any build produced, while srv2's (n=57) is a real element. They are carried as CONTEXT and no verdict is taken against them individually. The number the verdict actually uses is peer_combined_median over all 201 peer samples, and 201 is odd, so that one is a real observation — which is the only reason this caveat is a footnote rather than a defect.
 type BuildLatencyReference {
   host: HostIdentity
   sample_count: Int
@@ -179,8 +179,7 @@ type ActionsBuildJobObservation {
   duration: Millisecond
 }
 
-data actions_job_observation_note: String = "Each row is ONE successful or attempted CI build job as returned by the Actions jobs API: runner_name carries the self-hosted label (srv1-01, srv2-05, …), duration is completed_at minus started_at in milliseconds already computed by the collector. This module does not parse ISO-8601 timestamps — that parsing belongs in the collector, not in the verdict fold."
-
+// Each row is ONE successful or attempted CI build job as returned by the Actions jobs API: runner_name carries the self-hosted label (srv1-01, srv2-05, …), duration is completed_at minus started_at in milliseconds already computed by the collector. This module does not parse ISO-8601 timestamps — that parsing belongs in the collector, not in the verdict fold.
 fn actions_build_job_matches(
   job: ActionsBuildJobObservation,
   job_name: NonEmptyStr,
