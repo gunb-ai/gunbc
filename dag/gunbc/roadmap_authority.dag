@@ -2432,6 +2432,8 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "phased-single-process-ci", parent: "ci-scoped-worker-shared-substrate"),
     edge(child: "ci-remote-build-containment", parent: "compute-artifact-return-and-materialization"),
     edge(child: "ci-check-projection", parent: "ci-owned-execution"),
+    edge(child: "ci-check-projection", parent: "ci-executed-coverage-receipt"),
+    edge(child: "ci-check-projection", parent: "ci-gate-contention-independent-verdict"),
     edge(child: "general-witness-body-producer", parent: "native-selected-witness-bundle"),
     edge(child: "ci-actions-runner-retirement", parent: "ci-check-projection"),
 
