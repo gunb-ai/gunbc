@@ -1138,14 +1138,11 @@ fn marshal_decl_fact_node(
             Ok(fn_arrow_output_skeleton(ctx, si, item).unwrap_or_else(|| unit_type_node(ctx)))
         }
         ItemKind::DataItem => {
-            if ctx.lookup_typed_item(qualified_name).is_some() {
-                crate::data_initializer_identity::marshal_data_initializer_projection(
-                    ctx,
-                    qualified_name,
-                )
-            } else {
-                Ok(crate::data_initializer_identity::typechecked_subject_absent_projection(ctx))
-            }
+            crate::data_initializer_identity::marshal_data_initializer_projection_for_item(
+                ctx,
+                item.clone(),
+                qualified_name,
+            )
         }
         _ => Ok(unit_type_node(ctx)),
     }

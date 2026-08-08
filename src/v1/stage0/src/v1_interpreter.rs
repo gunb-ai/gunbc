@@ -1766,7 +1766,7 @@ impl InterpContext {
         self.fn_nodes.get(name)
     }
 
-    pub fn lookup_typed_item(&self, qualified_name: &str) -> Option<Rc<Node>> {
+    pub fn lookup_fn_node(&self, qualified_name: &str) -> Option<Rc<Node>> {
         self.fn_nodes.get(qualified_name).cloned()
     }
 

@@ -1448,6 +1448,8 @@ data seed_retained_intrinsic_registrations: List<SeedRetainedIntrinsicRegistrati
   SeedRetainedIntrinsicRegistration { basename: "v2_compiler_use_site_verdict", has_pub_mod: false, is_dir: false }
 ]
 
+data data_initializer_identity_seed_retained_note: String = "SeedRetained hand-Rust for resolved data-initializer projection marshaling (decl_facts initializer identity lane, PR #7924). Reason: marshal requires InterpContext typechecked subjects, inferred Node stamps, and owning type-item lookup not yet modeled in .dag. Migration trigger: v2.std.data_initializer_identity projection carriers self-emit and coproduct_reflection routes through the modeled marshal surface; then this module deletes with its SeedRetainedIntrinsicRegistration row. Frontier row schema lacks reason/trigger fields — this note is the counted scaffold until the schema lands."
+
 data seed_retained_support_dir_registrations: List<SeedRetainedSupportDirRegistration> = [
   SeedRetainedSupportDirRegistration { basename: "cli_run" }
 ]

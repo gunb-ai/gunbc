@@ -1008,15 +1008,11 @@ fn marshal_coproduct_record_projection(
     projection_node_with_named_edges(ctx, "DataInitializerRecordProjection", &edges)
 }
 
-pub fn marshal_data_initializer_projection(
+pub fn marshal_data_initializer_projection_for_item(
     ctx: &InterpContext,
+    item: Rc<Node>,
     qualified_name: &str,
 ) -> InterpResult<Value> {
-    let item = match ctx.lookup_typed_item(qualified_name) {
-        Some(item) => item,
-        None => return Ok(typechecked_subject_absent_projection(ctx)),
-    };
-
     let si = ctx.source_indices.clone();
     let importing_module = {
         let decl_name = authored_name_at(si.clone(), item.clone());
@@ -1089,6 +1085,27 @@ pub fn marshal_data_initializer_projection(
             ctx,
             &DataInitializerValueResolution::NotVariantValue,
         )),
+    }
+}
+
+pub fn marshal_data_initializer_projection(
+    ctx: &InterpContext,
+    qualified_name: &str,
+) -> InterpResult<Value> {
+    match ctx.lookup_fn_node(qualified_name) {
+        Some(item) => marshal_data_initializer_projection_for_item(ctx, item, qualified_name),
+        None => {
+            let bare = bare_symbol_tail(qualified_name);
+            if ctx
+                .item_registry
+                .get(bare)
+                .is_some_and(|info| info.kind == ItemKind::DataItem)
+            {
+                Ok(constructor_resolution_refused_projection(ctx))
+            } else {
+                Ok(typechecked_subject_absent_projection(ctx))
+            }
+        }
     }
 }
 
