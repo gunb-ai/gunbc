@@ -61,7 +61,7 @@ pub fn generated_partition_crate_rows() -> Rc<Vec<Rc<GeneratedPartitionCrateRow>
         package_name: "v1-stage0-std-surface".to_string(),
         crate_dir: "src/v1/stage0_std_surface".to_string(),
         kind: GeneratedPartitionCrateKind::GeneratedLayeredCoreCrate,
-        modules: Rc::new(vec!["std_effects".to_string(), "std_execution_mode".to_string(), "std_interface_summary".to_string(), "std_pareto".to_string(), "std_realization_schedule".to_string(), "std_trait_derive_shape".to_string()]),
+        modules: Rc::new(vec!["std_effects".to_string(), "std_execution_mode".to_string(), "std_interface_summary".to_string(), "std_pareto".to_string(), "std_realization_schedule".to_string(), "std_trait_derive_shape".to_string(), "std_witness_admission".to_string()]),
         reexport_packages: Rc::new(vec!["v1-stage0-runtime".to_string(), "v1-stage0-std-core".to_string()]),
         carries_non_empty_wrappers: false,
     }), Rc::new(GeneratedPartitionCrateRow {

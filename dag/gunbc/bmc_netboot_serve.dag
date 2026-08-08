@@ -19,6 +19,7 @@ import extdeps.exec.command {
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.shell_bash_runner { shell_exec_via_bash }
+import gunbc.retained_shell_script { retained_runtime }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
@@ -146,7 +147,12 @@ func bmc_netboot_run_bmc(plan: BmcNetbootServePlan, argv: List<String>) -> Proce
   uses net: Network
 {
   let cmd = command_over_transport(command: ArgvCommand { argv: argv }, transport: bmc_transport(plan: plan))
-  let run = shell.Exec.Run(script: shell_exec_via_bash(body: shell_command_render(command: cmd)))
+  let run = shell.Exec.Run(
+    script: retained_runtime(
+      body: shell_exec_via_bash(body: shell_command_render(command: cmd)),
+      reason: "bmc-netboot pre-runtime bootstrap window: ssh/scp posture rendered through the heredoc transport" as NonEmptyStr,
+    )
+  )
   if run.success { ExitSuccess } else { exit_failure(reason: concat("bmc-netboot: ", run.stderr)) }
 }
 
@@ -163,7 +169,12 @@ func bmc_netboot_put_path(plan: BmcNetbootServePlan, local: NonEmptyStr, remote_
 {
   let remote_target = join([bmc_ssh_target(plan: plan) as String, ":", remote_path as String], "") as NonEmptyStr
   let cmd = scp_command(local_path: local, remote_target: remote_target)
-  let run = shell.Exec.Run(script: shell_exec_via_bash(body: shell_command_render(command: cmd)))
+  let run = shell.Exec.Run(
+    script: retained_runtime(
+      body: shell_exec_via_bash(body: shell_command_render(command: cmd)),
+      reason: "bmc-netboot pre-runtime bootstrap window: scp staging rendered through the heredoc transport" as NonEmptyStr,
+    )
+  )
   if run.success { ExitSuccess } else { exit_failure(reason: concat("bmc-netboot: scp failed for ", remote_path as String)) }
 }
 

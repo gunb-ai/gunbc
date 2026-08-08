@@ -116,8 +116,18 @@ test fn operation_argv_corpus_tally_is_total() -> Bool {
   (t.materialized + t.expression_residue + t.executable_position) == t.rows
 }
 
+// 7 -> 8: `shell.Exec.Check` joined the residue when `TransportScript` became a sole_constructor
+// record. Its argv element went from `{command}` — a bound name the materializer resolves — to
+// `{command.body}`, a field access, which materialization refuses as ArgvExpressionUnsupported.
+// That is a real, counted increment on a ratchet whose direction is down, and it is recorded here
+// rather than absorbed: the alternative shapes were widening Check's input back to a bare String
+// (deleting the construction wall to satisfy a census, which DESIGN forbids outright) or asserting
+// a smaller number than the corpus contains. The live path is unaffected — Check executes through
+// the interpreter's dispatch_shell, which evaluates argv expressions, and that is the path the
+// wall's transport witness exercises. Returns to 7 on the same trigger the residue note already
+// names: argv element evaluation in materialization, a separate lane.
 test fn operation_argv_corpus_expression_residue_is_pinned() -> Bool {
-  operation_argv_corpus_tally().expression_residue == 7
+  operation_argv_corpus_tally().expression_residue == 8
 }
 
 test fn operation_argv_corpus_executable_position_wall_fires_on_the_fixture_only() -> Bool {

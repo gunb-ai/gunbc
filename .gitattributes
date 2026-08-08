@@ -148,6 +148,7 @@ src/v1/stage0/src/std_termination.rs merge=generated-artifact
 src/v1/stage0/src/std_trait_derive_shape.rs merge=generated-artifact
 src/v1/stage0/src/std_types.rs merge=generated-artifact
 src/v1/stage0/src/std_unicode_types.rs merge=generated-artifact
+src/v1/stage0/src/std_witness_admission.rs merge=generated-artifact
 src/v1/stage0/src/v1_compiler_annotation_bind.rs merge=generated-artifact
 src/v1/stage0/src/v1_compiler_artifact.rs merge=generated-artifact
 src/v1/stage0/src/v1_compiler_closure_stub_v2_std_integer_rust.rs merge=generated-artifact
