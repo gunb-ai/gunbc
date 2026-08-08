@@ -200,8 +200,7 @@ fn realized_closure_for_v2_direct_rust_door_emit_run() -> RealizedEmitterClosure
   }
 }
 
-data realized_closure_for_v2_direct_rust_door_emit_run_note: String = "Post-emit-run closure authority for Lane B direct rust door: mint_provenanced_rust_artifact calls this ONLY after generate_rust_emission_candidate (the serialize_target run) succeeds — never as a caller-supplied parameter. Paths name modules on the v2 interpreted emit route excluding v1.compiler.emit_rust."
-
+// Post-emit-run closure authority for Lane B direct rust door: mint_provenanced_rust_artifact calls this ONLY after generate_rust_emission_candidate (the serialize_target run) succeeds — never as a caller-supplied parameter. Paths name modules on the v2 interpreted emit route excluding v1.compiler.emit_rust.
 fn v2_interpreted_emitter_closure_authority() -> RealizedEmitterClosure {
   realized_closure_for_v2_direct_rust_door_emit_run()
 }

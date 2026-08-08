@@ -202,8 +202,7 @@ test fn witness_exclusion_red_control_third_spelling_row_is_unclassified() -> Bo
     && !witness_exclusion_row_waits_on_wet_lane_undarken(row: row)
 }
 
-data witness_exclusion_control_matched_row_is_not_flagged_unclassified_note: String = "Positive control on the same synthetic-row path: a row that DOES match one of the positive arms must not be reported as unclassified by the net/positive-predicate pairing."
-
+// Positive control on the same synthetic-row path: a row that DOES match one of the positive arms must not be reported as unclassified by the net/positive-predicate pairing.
 test fn witness_exclusion_control_matched_row_is_not_flagged_unclassified() -> Bool {
   let row = synthetic_wet_lane_row(dissolve_on: "falsifier_self_host_wet_cadence_active flips true")
   witness_exclusion_row_mentions_wet_lane_dark_state(row: row)

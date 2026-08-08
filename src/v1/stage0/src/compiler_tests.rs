@@ -1284,6 +1284,255 @@ mod compiler_tests {
     }
 
     #[test]
+    fn constructor_call_admission_refuses_same_module_unlisted_sibling() {
+        let result = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let mint_mod = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "mint_mod.dag".to_string(),
+                    content: "module mint_mod\ntype Sealed sole_constructor { tag: String }\nfn mint(tag: String) -> Sealed admit_callers: [decl_ref(module_path: \"caller_ok\", decl_name: \"ok_call\")] = Sealed { tag: tag }\n".to_string(),
+                });
+                let caller_ok = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "caller_ok.dag".to_string(),
+                    content: "module caller_ok\nimport mint_mod { mint, Sealed }\nfn ok_call() -> Sealed { mint(\"ok\") }\nfn sneak_call() -> Sealed { mint(\"sneak\") }\n".to_string(),
+                });
+                let result = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(im::vector![mint_mod, caller_ok]),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                let admission_errors: Vec<_> = result.diagnostics.iter()
+                    .filter_map(|d| match &*d.diagnostic {
+                        crate::v1_std_core::CompilerDiagnostic::ConstructorCallAdmissionRefused {
+                            caller_decl_name, ..
+                        } => Some(caller_decl_name.clone()),
+                        _ => None,
+                    })
+                    .collect();
+                assert!(
+                    admission_errors.iter().any(|n| n == "sneak_call"),
+                    "expected ConstructorCallAdmissionRefused naming sneak_call (same module as the admitted sibling, but not admitted); got: {:?}",
+                    result.diagnostics
+                );
+                assert!(
+                    !admission_errors.iter().any(|n| n == "ok_call"),
+                    "ok_call is admitted by exact decl_ref and must not be refused; got: {:?}",
+                    admission_errors
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("constructor_call_admission_refuses_same_module_unlisted_sibling panicked");
+    }
+
+    #[test]
+    fn constructor_call_admission_refuses_unlisted_function_value_reference() {
+        let result = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let mint_mod = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "mint_mod.dag".to_string(),
+                    content: "module mint_mod\ntype Sealed sole_constructor { tag: String }\nfn mint(tag: String) -> Sealed admit_callers: [decl_ref(module_path: \"caller_ok\", decl_name: \"ok_call\")] = Sealed { tag: tag }\n".to_string(),
+                });
+                let caller_ok = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "caller_ok.dag".to_string(),
+                    content: "module caller_ok\nimport mint_mod { mint, Sealed }\nfn plain(n: String) -> String = n\nfn ok_call() -> Sealed { let f = mint  mint(\"ok\") }\nfn sneak_ref() -> String { let g = mint  \"x\" }\nfn use_plain() -> String { let h = plain  \"y\" }\n".to_string(),
+                });
+                let result = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(im::vector![mint_mod, caller_ok]),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                let refused: Vec<_> = result.diagnostics.iter()
+                    .filter_map(|d| match &*d.diagnostic {
+                        crate::v1_std_core::CompilerDiagnostic::ConstructorCallAdmissionRefused {
+                            caller_decl_name, ..
+                        } => Some(caller_decl_name.clone()),
+                        _ => None,
+                    })
+                    .collect();
+                assert!(
+                    refused.iter().any(|n| n == "sneak_ref"),
+                    "an unlisted caller taking the sealed constructor as a FUNCTION VALUE must be refused; got: {:?}",
+                    result.diagnostics
+                );
+                assert!(
+                    !refused.iter().any(|n| n == "ok_call"),
+                    "the listed caller must still be able to reference the constructor as a value; got: {:?}",
+                    refused
+                );
+                assert!(
+                    !refused.iter().any(|n| n == "use_plain"),
+                    "an ordinary non-sealed function must remain usable as a value; got: {:?}",
+                    refused
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect(
+            "constructor_call_admission_refuses_unlisted_function_value_reference panicked",
+        );
+    }
+
+    #[test]
+    fn constructor_call_admission_decides_zero_arity_references() {
+        let result = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let seal_mod = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "seal_mod.dag".to_string(),
+                    content: "module seal_mod\ntype Token sole_constructor { tag: String }\nfn token() -> Token admit_callers: [decl_ref(module_path: \"z_caller\", decl_name: \"ok_bare\"), decl_ref(module_path: \"z_caller\", decl_name: \"ok_call\")] = Token { tag: \"t\" }\nfn plain() -> String = \"p\"\n".to_string(),
+                });
+                let z_caller = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "z_caller.dag".to_string(),
+                    content: "module z_caller\nimport seal_mod { token, Token, plain }\nfn ok_bare() -> Token { token }\nfn bad_bare() -> Token { token }\nfn ok_call() -> Token { token() }\nfn bad_call() -> Token { token() }\nfn bad_qual() -> Token { seal_mod.token() }\nfn ordinary() -> String { plain }\n".to_string(),
+                });
+                let result = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(im::vector![seal_mod, z_caller]),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                let refused: Vec<_> = result.diagnostics.iter()
+                    .filter_map(|d| match &*d.diagnostic {
+                        crate::v1_std_core::CompilerDiagnostic::ConstructorCallAdmissionRefused {
+                            caller_decl_name, constructor_decl_name, ..
+                        } => Some((caller_decl_name.clone(), constructor_decl_name.clone())),
+                        _ => None,
+                    })
+                    .collect();
+                let refused_callers: Vec<String> = refused.iter().map(|(c, _)| c.clone()).collect();
+                for unlisted in ["bad_bare", "bad_call", "bad_qual"] {
+                    assert!(
+                        refused_callers.iter().any(|n| n == unlisted),
+                        "unlisted caller {} of a ZERO-ARITY sealed constructor must be refused; got: {:?}",
+                        unlisted,
+                        result.diagnostics
+                    );
+                }
+                for permitted in ["ok_bare", "ok_call", "ordinary"] {
+                    assert!(
+                        !refused_callers.iter().any(|n| n == permitted),
+                        "{} must NOT be refused -- a wall that refuses listed callers or ordinary \
+                         zero-arity functions is a fabricated refusal, not a fix; got: {:?}",
+                        permitted,
+                        refused_callers
+                    );
+                }
+                let qualified: Vec<&String> = refused.iter()
+                    .filter(|(c, _)| c == "bad_qual")
+                    .map(|(_, k)| k)
+                    .collect();
+                assert!(
+                    qualified.iter().all(|k| *k == "token"),
+                    "a qualified zero-arity call must report the exact constructor identity \
+                     'token', not a doubled or call-site spelling; got: {:?}",
+                    qualified
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("constructor_call_admission_decides_zero_arity_references panicked");
+    }
+
+    #[test]
+    fn constructor_call_admission_lets_a_body_binding_shadow_the_constructor() {
+        let result = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let seal_mod = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "seal_mod.dag".to_string(),
+                    content: "module seal_mod\ntype Token sole_constructor { tag: String }\nfn token() -> Token admit_callers: [decl_ref(module_path: \"z_caller\", decl_name: \"ok_use\")] = Token { tag: \"t\" }\n".to_string(),
+                });
+                let z_caller = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "z_caller.dag".to_string(),
+                    content: "module z_caller\nimport seal_mod { token, Token }\nfn ok_use() -> Token { token }\nfn shadowed_param(token: String) -> String { token }\nfn shadowed_let() -> String { let token = \"x\"  token }\n".to_string(),
+                });
+                let result = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(im::vector![seal_mod, z_caller]),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                let refused: Vec<_> = result.diagnostics.iter()
+                    .filter_map(|d| match &*d.diagnostic {
+                        crate::v1_std_core::CompilerDiagnostic::ConstructorCallAdmissionRefused {
+                            caller_decl_name, ..
+                        } => Some(caller_decl_name.clone()),
+                        _ => None,
+                    })
+                    .collect();
+                for shadowing in ["shadowed_param", "shadowed_let"] {
+                    assert!(
+                        !refused.iter().any(|n| n == shadowing),
+                        "{} binds its own token, so the sealed constructor of that spelling is not \
+                         referenced at all; refusing it is a fabricated refusal. got: {:?}",
+                        shadowing,
+                        result.diagnostics
+                    );
+                }
+                assert!(
+                    !refused.iter().any(|n| n == "ok_use"),
+                    "the listed caller must still succeed; got: {:?}",
+                    refused
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect(
+            "constructor_call_admission_lets_a_body_binding_shadow_the_constructor panicked",
+        );
+    }
+
+    #[test]
+    fn constructor_call_admission_qualified_caller_reports_undoubled_identity() {
+        let result = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let mint_mod = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "mint_mod.dag".to_string(),
+                    content: "module mint_mod\ntype Sealed sole_constructor { tag: String }\nfn mint(tag: String) -> Sealed admit_callers: [decl_ref(module_path: \"caller_ok\", decl_name: \"ok_call\")] = Sealed { tag: tag }\n".to_string(),
+                });
+                let caller_bare = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "caller_bare.dag".to_string(),
+                    content: "module caller_bare\nfn bare_qualified() -> mint_mod.Sealed { mint_mod.mint(\"bare\") }\n".to_string(),
+                });
+                let result = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(im::vector![mint_mod, caller_bare]),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                let refusals: Vec<(String, String, String)> = result.diagnostics.iter()
+                    .filter_map(|d| match &*d.diagnostic {
+                        crate::v1_std_core::CompilerDiagnostic::ConstructorCallAdmissionRefused {
+                            constructor_module_path, constructor_decl_name, caller_decl_name, ..
+                        } => Some((
+                            constructor_module_path.clone(),
+                            constructor_decl_name.clone(),
+                            caller_decl_name.clone(),
+                        )),
+                        _ => None,
+                    })
+                    .collect();
+                let hit = refusals.iter().find(|(_, _, caller)| caller == "bare_qualified");
+                assert!(
+                    hit.is_some(),
+                    "an unlisted caller reaching the constructor by qualified projection must be refused; got: {:?}",
+                    result.diagnostics
+                );
+                let (module_path, decl_name, _) = hit.unwrap();
+                assert_eq!(
+                    module_path, "mint_mod",
+                    "constructor_module_path must be the owning module; got: {:?}",
+                    refusals
+                );
+                assert_eq!(
+                    decl_name, "mint",
+                    "constructor_decl_name must be the declaration's own name, not the call-site spelling -- a qualified call must not render as mint_mod.mint_mod.mint; got: {:?}",
+                    refusals
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect(
+            "constructor_call_admission_qualified_caller_reports_undoubled_identity panicked",
+        );
+    }
+
+    #[test]
     fn sole_constructor_fieldless_newtype_witness() {
         // Discriminating witness: a field-less (empty-body) sole_constructor record.
         // EmittableGraph is Conj (multi-field) so the phantom property is inert there.

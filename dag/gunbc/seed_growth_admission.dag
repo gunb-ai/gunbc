@@ -39,8 +39,7 @@ data seed_growth_forward_freeze_policy_note: String = "FORWARD-FREEZE POLICY (en
 
 data seed_growth_justification_roster_note: String = "CLOSED ROSTER of every SeedGrowthJustification row in the corpus. G1 joins new/modified hand items against this list. Rows are authored beside the obligation they declare; the roster is derived by enumeration, never by grep. Today: stage0_rust_observation_seed_growth_justification (gunbc.stage0_rust_host_observation) and observation_scoped_run_seed_growth_justification (gunbc.roadmap_authority). Each new justification adds one row here AND one data row in its owning module."
 
-data seed_growth_uncitable_items_note: String = "UNCITABLE ITEMS (prose-only until std.decl_ref gains ImplMethod). stage0_rust_observation_seed_growth_justification documents one: impl std::fmt::Display for Stage0CargoBinManifestParseRefusal in v1_compiler.cli_run — seven hand items, six citable DeclarationRef rows. G1 reports uncitable_items separately; they do NOT satisfy the forward-freeze enumeration via DeclarationRef alone."
-
+// UNCITABLE ITEMS (prose-only until std.decl_ref gains ImplMethod). stage0_rust_observation_seed_growth_justification documents one: impl std::fmt::Display for Stage0CargoBinManifestParseRefusal in v1_compiler.cli_run — seven hand items, six citable DeclarationRef rows. G1 reports uncitable_items separately; they do NOT satisfy the forward-freeze enumeration via DeclarationRef alone.
 data seed_growth_admission_join_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {

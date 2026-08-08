@@ -26,8 +26,7 @@ fn rusage_who_label(w: RusageWho) -> NonEmptyStr {
   }
 }
 
-data rusage_maxrss_unit_is_implementation_defined_note: String = "The two arms are not a preference and not a portability workaround — they are the two answers conforming implementations actually give, and the corpus must carry both because it runs on both. MaxrssKibibytes is what Linux returns; MaxrssBytes is what the BSD-derived kernels including Darwin return. Anything reading ru_maxrss without pairing it to a unit is off by 1024x on one of the two, and in the dangerous direction: a Linux value misread as bytes UNDERSTATES peak residency by three orders of magnitude, so a budget derived from it would look comfortable on a host about to be OOM-killed."
-
+// The two arms are not a preference and not a portability workaround — they are the two answers conforming implementations actually give, and the corpus must carry both because it runs on both. MaxrssKibibytes is what Linux returns; MaxrssBytes is what the BSD-derived kernels including Darwin return. Anything reading ru_maxrss without pairing it to a unit is off by 1024x on one of the two, and in the dangerous direction: a Linux value misread as bytes UNDERSTATES peak residency by three orders of magnitude, so a budget derived from it would look comfortable on a host about to be OOM-killed.
 type RusageMaxrssUnit
   = MaxrssBytes
   | MaxrssKibibytes

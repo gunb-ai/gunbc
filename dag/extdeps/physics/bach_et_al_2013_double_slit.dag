@@ -38,8 +38,7 @@ data figures_one_and_two_normalized_distributions_note: String = "Figures 1 and 
 
 data slit_mask_control_not_which_path_readout_note: String = "Bach et al. 2013 controlled which slits were open via the movable mask; the cited experiment did not perform a which-path distinguishability readout condition."
 
-data slit_mask_note: String = "Mask can block slit 1, slit 2, both, or neither (figure caption). BothSlitsBlocked is an apparatus configuration only — not an arrival observation."
-
+// Mask can block slit 1, slit 2, both, or neither (figure caption). BothSlitsBlocked is an apparatus configuration only — not an arrival observation.
 type SlitMaskConfiguration
   = BothSlitsOpen
   | SlitOneOpen

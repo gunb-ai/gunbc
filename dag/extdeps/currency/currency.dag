@@ -12,8 +12,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data iso_4217_version_note: String = "ISO 4217:2015 authority for std.currency.CurrencyCode and currency_minor_unit_exponent."
-
+// ISO 4217:2015 authority for std.currency.CurrencyCode and currency_minor_unit_exponent.
 data iso_4217_cited_rows_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {

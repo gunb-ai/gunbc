@@ -177,8 +177,7 @@ test fn w_shell_trace_stream_policy_projects_the_four_corners() -> Bool {
   p.subject_line_guard == "| "
 }
 
-data outcome_is_data_discrimination_note: String = "The two OutcomeIsData corners above both assert counts-not-surface, which on its own is the shape a rubber stamp would also have — so it is NOT the discriminating claim. The claim that discriminates is w_outcome_is_data_is_exit_invariant below: under ExpectSuccess and ExpectFailure the disposition FLIPS between the two observed poles, and under OutcomeIsData it must NOT, because the exit is an answer rather than a verdict. An implementation that quietly treated OutcomeIsData as an alias for ExpectSuccess would pass the corner assertions and fail this one."
-
+// The two OutcomeIsData corners above both assert counts-not-surface, which on its own is the shape a rubber stamp would also have — so it is NOT the discriminating claim. The claim that discriminates is w_outcome_is_data_is_exit_invariant below: under ExpectSuccess and ExpectFailure the disposition FLIPS between the two observed poles, and under OutcomeIsData it must NOT, because the exit is an answer rather than a verdict. An implementation that quietly treated OutcomeIsData as an alias for ExpectSuccess would pass the corner assertions and fail this one.
 fn disp_surfaces(d: StreamDisposition) -> Bool {
   disp_is(d: d, surface: true, counts: false, suppressed: false)
 }

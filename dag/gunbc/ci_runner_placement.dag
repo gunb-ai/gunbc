@@ -165,8 +165,7 @@ fn host_fixed_overhead_bytes(o: HostFixedOverhead) -> ByteSize {
   }
 }
 
-data host_fixed_overhead_unmeasured_is_refusal_not_zero_note: String = "host_fixed_overhead_bytes maps Unmeasured to ZERO BYTES, and that arm is a fail-open this module must not consume directly. Zero overhead makes a host look like it has its entire RAM available for runners, which is the most permissive possible answer to a question nobody answered — the absorbing fallback in the input to a conservation wall. The arm is retained because the function is a total projection and callers legitimately fold over it, but accumulate_conservation_deployment refuses on Unmeasured BEFORE reaching it (host_overhead_or_refusal), so the zero is unreachable on the plan path. Retained rather than deleted because deleting it would only move the totality problem to every caller."
-
+// host_fixed_overhead_bytes maps Unmeasured to ZERO BYTES, and that arm is a fail-open this module must not consume directly. Zero overhead makes a host look like it has its entire RAM available for runners, which is the most permissive possible answer to a question nobody answered — the absorbing fallback in the input to a conservation wall. The arm is retained because the function is a total projection and callers legitimately fold over it, but accumulate_conservation_deployment refuses on Unmeasured BEFORE reaching it (host_overhead_or_refusal), so the zero is unreachable on the plan path. Retained rather than deleted because deleting it would only move the totality problem to every caller.
 type HostOverheadResolution
   = HostOverheadResolved { bytes: ByteSize }
   | HostOverheadUnresolved { reason: String }

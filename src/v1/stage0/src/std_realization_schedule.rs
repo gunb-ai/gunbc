@@ -1458,6 +1458,27 @@ pub fn schedule_witness_entry_eq(a: Rc<ScheduleWitnessEntry>, b: Rc<ScheduleWitn
         && witness_kind_eq(a.kind.clone(), b.kind.clone()))
 }
 
+pub fn schedule_witness_entry_roster_contains_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Roster membership at the ONE identity grain (entry, function, kind), beside the equality it folds, so every consumer joining two witness rosters — the eval-ceiling union, the budget partition of a known-red lane — asks the same question of the same authority. It exists because the first shape of the ceiling union carried its own private membership fold in gunbc.ci_layer_roots and the budget partition was about to author a second one; two folds over one relation is the fork DESIGN 3 names, and a roster join by bare name rather than by identity is the weaker check the schedule-multiplicity wall already refuses.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn schedule_witness_entry_roster_contains(
+    xs: Rc<Vec<Rc<ScheduleWitnessEntry>>>,
+    w: Rc<ScheduleWitnessEntry>,
+) -> bool {
+    xs.clone()
+        .iter()
+        .cloned()
+        .fold(false, |found: bool, x: Rc<ScheduleWitnessEntry>| {
+            (found || schedule_witness_entry_eq(x.clone(), w.clone()))
+        })
+}
+
 pub fn string_list_eq(mut left: Rc<Vec<String>>, mut right: Rc<Vec<String>>) -> bool {
     loop {
         if ((left.clone().len() as i64) != (right.clone().len() as i64)) {

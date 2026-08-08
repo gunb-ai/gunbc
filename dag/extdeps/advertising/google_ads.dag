@@ -35,8 +35,7 @@ type GoogleAdsBillableUnitRow {
   citation: NonEmptyStr
 }
 
-data google_ads_billable_unit_note: String = "The four cost units the bid-strategy page names, wire labels verbatim: cost-per-click (CPC) for clicks, cost-per-thousand impressions (CPM) and cost-per-thousand viewable impressions (vCPM) for impressions, and cost-per-view (CPV) for video views. Conversions are an OPTIMIZATION target in Google's model (Target CPA, Target ROAS, Maximize Conversions), not a fifth billable unit on this page -- the strategy roster below carries those names; fusing the two axes would misstate the documented interface."
-
+// The four cost units the bid-strategy page names, wire labels verbatim: cost-per-click (CPC) for clicks, cost-per-thousand impressions (CPM) and cost-per-thousand viewable impressions (vCPM) for impressions, and cost-per-view (CPV) for video views. Conversions are an OPTIMIZATION target in Google's model (Target CPA, Target ROAS, Maximize Conversions), not a fifth billable unit on this page -- the strategy roster below carries those names; fusing the two axes would misstate the documented interface.
 data google_cpc_unit: GoogleAdsBillableUnitRow = GoogleAdsBillableUnitRow {
   unit: GoogleCostPerClick,
   unit_wire_label: "CPC",
@@ -100,8 +99,7 @@ type GoogleAdsAuctionTimeSignal
   | GoogleSignalLanguage
   | GoogleSignalOperatingSystem
 
-data google_ads_auction_time_signal_note: String = "Coarse-grain targeting dimensions exactly as the anchor page enumerates them, quoted: Smart Bidding 'factors in a wide range of auction-time signals such as device, location, time of day, language, and operating system to capture the unique context of every search.' The page says 'such as' -- this enum models the five signals the vendor names, and is deliberately NOT claimed closed over everything the auction reads."
-
+// Coarse-grain targeting dimensions exactly as the anchor page enumerates them, quoted: Smart Bidding 'factors in a wide range of auction-time signals such as device, location, time of day, language, and operating system to capture the unique context of every search.' The page says 'such as' -- this enum models the five signals the vendor names, and is deliberately NOT claimed closed over everything the auction reads.
 data google_ads_media_rate: AdPriceDetermination = AuctionDetermined {
   mechanism_citation: "support.google.com/google-ads/answer/142918",
 }

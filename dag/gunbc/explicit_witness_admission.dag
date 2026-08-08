@@ -5,7 +5,8 @@ import std.realization_schedule {
   WitnessKind,
   CorpusWitnessKind,
   ExecutionWitnessKind,
-  witness_kind_eq
+  witness_kind_eq,
+  schedule_witness_entry_roster_contains
 }
 import std.witness_admission {
   WitnessConsumerCadence,
@@ -17,7 +18,18 @@ import std.witness_admission {
   QuarantineProbeExpectRed,
   OfflineLocalRecipe,
   FixtureExplicitRoster,
-  NoConsumer
+  NoConsumer,
+  WitnessExecutionBudget,
+  FastLaneEvalBudget,
+  SubstrateLongLaneEvalBudget,
+  WitnessExpectedVerdict,
+  ExpectWitnessHolds,
+  ExpectAssertionFalse,
+  ExpectTypedPreVerdictRefusal,
+  PreVerdictPhase,
+  PreVerdictResolve,
+  PreVerdictCause,
+  UnboundImportedVariantConstructor
 }
 import std.types { NonEmptyStr, String, List, Bool, Int }
 import std.algebra { Cons, Empty }
@@ -26,49 +38,108 @@ data explicit_witness_admission_authority_note: String = "THE function-grain aut
 
 data explicit_witness_admission_separation_note: String = "SEPARATION FROM PATH POLICY (operator ruling, this lane). Exact witness admission and broad path policy are different kinds of fact and must not share a substring-based representation — that fusion is the root of the substring-overlap weakness above. Directory- and file-wide policies (`test/claim/long/` is the long-test home; `test/manual/` is offline) stay in gunbc.ci_layer_roots witness_exclusion_frontier, which is now a PATH POLICY carrier only: witness_exclusion_row_well_formed REFUSES a QuarantineProbeExpectRed row there, so the fused representation is unwritable for this cadence rather than merely reconciled. PRECEDENCE, and it is total: a function with an exact admission is decided by that admission; path policy applies only to functions with none. That is why a path-offline file may legitimately contain an exact-admitted function (self_host_03_normalize_behavioral_witness_test.dag: the receipt is quarantined here, its sibling is offline by the file's path row) without either fact restating the other. THE REMAINING FUSION IS COUNTED, NOT SILENT: BinWitnessWet, FalsifierRehomedBinWet, FalsifierSubstrateLongLane and FalsifierSelfHostWet still author a path row beside their function-grain rosters. Their populations are not the bad state today — every one is either a file-grain roster row (ScheduleWitnessEntry's empty-function form, which covers every function in the entry by construction) or fully enumerated, measured on this change's tree — so they are a migration frontier, not a live defect. Dissolve-on: each cadence's roster moves into explicit_witness_admissions and its path rows delete, at which point witness_exclusion_row_well_formed refuses that cadence too and the last enum arm that can appear in the path carrier is gone."
 
+data explicit_witness_admission_axis_note: String = "One row carries all three axes of std.witness_admission independently: cadence (which consumer runs it), budget (how much eval time IT needs, never a property of the batch holding it) and expected (which verdict is agreement, at FUNCTION grain). The row is the single authority for each; the batch rosters, the scheduler ceiling and the expectation the executor matches per result are all DERIVED from it. Before this split a row declaring a long budget had to join a second batch to obtain one — see witness_admission_axis_separation_note for the measurement that produced the correction."
+
 type ExplicitWitnessAdmission {
   witness: ScheduleWitnessEntry
   cadence: WitnessConsumerCadence
+  budget: WitnessExecutionBudget
+  expected: WitnessExpectedVerdict
   reason: NonEmptyStr
   dissolve_on: NonEmptyStr
 }
 
-fn known_red_probe(
+fn known_red_probe_expecting(
   entry: NonEmptyStr,
   f: String,
   kind: WitnessKind,
+  budget: WitnessExecutionBudget,
+  expected: WitnessExpectedVerdict,
   reason: NonEmptyStr,
   dissolve_on: NonEmptyStr
 ) -> ExplicitWitnessAdmission {
   ExplicitWitnessAdmission {
     witness: ScheduleWitnessEntry { entry: entry, function: f, kind: kind },
     cadence: QuarantineProbeExpectRed,
+    budget: budget,
+    expected: expected,
     reason: reason,
     dissolve_on: dissolve_on
   }
 }
 
+fn known_red_probe(
+  entry: NonEmptyStr,
+  f: String,
+  kind: WitnessKind,
+  budget: WitnessExecutionBudget,
+  reason: NonEmptyStr,
+  dissolve_on: NonEmptyStr
+) -> ExplicitWitnessAdmission {
+  known_red_probe_expecting(
+    entry: entry,
+    f: f,
+    kind: kind,
+    budget: budget,
+    expected: ExpectAssertionFalse,
+    reason: reason,
+    dissolve_on: dissolve_on
+  )
+}
+
+data known_red_pre_verdict_probe_note: String = "The narrow arm: a witness whose assertion never RUNS, because the run stops in an earlier phase. Its agreement is a typed refusal at the declared phase and cause, not a false verdict, and separating it is what stops an arbitrary corpus resolve failure from reading as every quarantine holding — see std.witness_admission witness_expected_verdict_split_note for the defect and for the bound on how exactly the observed cause is matched today. A row belongs here only when the phase and the cause are BOTH known and named; a witness that merely happens to be failing to resolve for an undiagnosed reason is ordinary known_red_probe, and its resolve failure is an infrastructure fact rather than agreement."
+
+fn known_red_pre_verdict_probe(
+  entry: NonEmptyStr,
+  f: String,
+  kind: WitnessKind,
+  budget: WitnessExecutionBudget,
+  phase: PreVerdictPhase,
+  cause: PreVerdictCause,
+  reason: NonEmptyStr,
+  dissolve_on: NonEmptyStr
+) -> ExplicitWitnessAdmission {
+  known_red_probe_expecting(
+    entry: entry,
+    f: f,
+    kind: kind,
+    budget: budget,
+    expected: ExpectTypedPreVerdictRefusal { phase: phase, cause: cause },
+    reason: reason,
+    dissolve_on: dissolve_on
+  )
+}
+
 data known_red_class_note: String = "WHAT A KNOWN-RED ADMISSION IS: a witness red on main for a feature gap owned by a named lane. It is a RED CONTROL for that lane, not a broken test — deleting it would discard the discriminating input, while leaving it in per-PR discovery would red every wide PR on a debt that PR did not create. Greening is the counted un-quarantine event of std.witness_admission: the row deletes in the SAME change that lands the fix, which promotes the unchanged witness to ordinary DiscoverySelection as a permanent regression control (DESIGN 4b(4) — the climb deletes the quarantine machinery, never the evidence). The roster must not grow silently: a new admission carries a reason naming the diagnosis and owner plus a dissolve_on, both refused empty by NonEmptyStr, and a row whose witness runs green locally is stale and deletes. Local recipe per row: claim_batch --source-root dag --source-root src/v2 --entry <entry> --functions <function>. CorpusWitnessKind rows run on the hermetic falsifier probe batch; ExecutionWitnessKind rows run on the falsifier wet quarantine batch."
 
 data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
-  known_red_probe(
+  known_red_pre_verdict_probe(
     entry: "src/v2/test/claim/emit/logic_ground_truth_test.dag",
     f: "logic_complement_truth_table",
     kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    phase: PreVerdictResolve,
+    cause: UnboundImportedVariantConstructor,
     reason: "the v1 resolver does not bind imported bare variant constructors in EXPRESSION position (import v2.std.logic { True } then gt_complement(a: True) -> undefined variable: True; patterns-via-scrutinee work). Owner: the namespace-only-resolution lane, whose containment SymbolIndex covers exactly this class.",
     dissolve_on: "that lane lands imported-variant value bindings, this witness runs green, and this row deletes"
   ),
-  known_red_probe(
+  known_red_pre_verdict_probe(
     entry: "src/v2/test/claim/emit/logic_ground_truth_test.dag",
     f: "logic_meet_truth_table",
     kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    phase: PreVerdictResolve,
+    cause: UnboundImportedVariantConstructor,
     reason: "same imported-bare-variant-constructor resolver gap as its logic_complement sibling. Owner: the namespace-only-resolution lane.",
     dissolve_on: "that lane lands imported-variant value bindings, this witness runs green, and this row deletes"
   ),
-  known_red_probe(
+  known_red_pre_verdict_probe(
     entry: "src/v2/test/claim/emit/logic_ground_truth_test.dag",
     f: "logic_join_truth_table",
     kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    phase: PreVerdictResolve,
+    cause: UnboundImportedVariantConstructor,
     reason: "same imported-bare-variant-constructor resolver gap as its logic_complement sibling. Owner: the namespace-only-resolution lane.",
     dissolve_on: "that lane lands imported-variant value bindings, this witness runs green, and this row deletes"
   ),
@@ -76,6 +147,7 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     entry: "src/v2/test/claim/manual/english_emit_add_test.dag",
     f: "english_emit_add_ingest_round_trip_holds",
     kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
     reason: "the english-language emit-ingest round trip returns false undiagnosed. Owner: the S2 emit family / behavioral-closure lane.",
     dissolve_on: "the S2 behavioral-closure lane greens it locally, then this row deletes"
   ),
@@ -83,6 +155,7 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     entry: "src/v2/test/claim/manual/english_emit_add_test.dag",
     f: "english_emit_add_prose_holds",
     kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
     reason: "the english emit prose projection, same S2 emit-family root as its round-trip sibling. Owner: the S2 behavioral-closure lane.",
     dissolve_on: "the S2 behavioral-closure lane greens it locally, then this row deletes"
   ),
@@ -90,6 +163,7 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     entry: "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag",
     f: "compiler_closure_scoped_ingest_module_count_ok_holds",
     kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
     reason: "asserts COMPLETE ingest coverage for the src/v2/compiler/00_compile.dag closure, which is 91 source reads against MANIFEST_INLINE_LIST_MAX (64), so the emitted carrier is legitimately Empty. It was GREEN until 2026-07-19 only because the receipt fabricated its own numbers; making the elision the typed, counted SourceRootManifestElided turned a fabricated green into a true red. Admitted rather than deleted because it is the discriminating input for the carrier deficit — its gate did not go vacuous, compiler_closure_ingest_receipt_describes_carrier_holds replaced it as the live claim. Owner: wise-bee-768 / the module-identity storage-binding lane.",
     dissolve_on: "manifest rows carry a source ref plus content hash instead of inlined text, the parse oracle reads through the ref with hash verification, the cap stops binding, this witness greens and this row deletes"
   ),
@@ -97,6 +171,7 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     entry: "dag/test/claim/legacy_test_behavior_disposition_acceptance_test.dag",
     f: "legacy_test_behavior_unclassified_frontier_is_zero",
     kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
     reason: "the discriminating closing validation for roadmap node v1-test-migration, RED BY DESIGN while any independently discovered legacy #[test] function has no typed behavior disposition. Unlike the diff-scoped deletion guard it cannot pass on zero progress; stale, duplicate, unresolved and unclassified identities all refuse.",
     dissolve_on: "the derived unclassified legacy-behavior set reaches zero with every disposition admitted — this row deletes in the completing change, promoting the unchanged acceptance witness to ordinary DiscoverySelection as the permanent migration regression wall"
   ),
@@ -104,6 +179,7 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     entry: "dag/test/claim/observation_raw_print_retirement_acceptance_test.dag",
     f: "observation_emit_frontier_is_zero",
     kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
     reason: "the acceptance test for roadmap node observation-raw-print-retirement, red BY DESIGN: it asserts observation_emit_frontier_count() == 0 while the census still counts unmigrated emit sites. It is the discriminating validation on that node's WorkItemExecutionContract, so dispatch's Verify segment has a target that can actually FAIL — without a red validation somewhere, a green Verify proves only that the plumbing ran. Not relaxable: the only edit that may green it is migrating the sites it counts.",
     dissolve_on: "the frontier reaches zero — this row MUST delete in the same change that lands the last migration, promoting the witness to ordinary DiscoverySelection as a standing regression ratchet"
   ),
@@ -111,6 +187,7 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     entry: "dag/test/claim/source_integration_proof_kernel_acceptance_test.dag",
     f: "witness_p1_proof_kernel_acceptance_contract_holds",
     kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
     reason: "the discriminating closing validation for roadmap node 2-scm-p1-proof-kernel, RED BY DESIGN while the derived KernelAcceptanceCapability frontier is nonzero. The first slice supplies the bounded candidate-generation model check; the one public fold, occurrence dedup, context transport, commuting squares, batch invariance, n-way safety, all seven closure certificates and data-only invariant extension stay missing until executing scenarios establish them. Bound directly by scm_p1_proof_kernel_execution_contract, so it cannot pass on zero progress.",
     dissolve_on: "every required KernelAcceptanceCapability has a passing executing scenario — this row deletes in the completing change, promoting the unchanged acceptance witness to ordinary DiscoverySelection as the permanent P1 regression wall"
   ),
@@ -118,27 +195,23 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     entry: "dag/test/claim/namespace_reference_derived_closure_acceptance_test.dag",
     f: "witness_namespace_reference_derived_closure_closing_contract_holds",
     kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
     reason: "the discriminating closing validation for roadmap node namespace-reference-derived-closure, RED BY DESIGN while its six-clause production admission frontier carries typed unavailable rows naming #7515 and the Class-B pool-independence wall. The separately discovered fixture suite executes P1 and proves every clause rejects its planted wrong output; this witness imports no fixture admissions and is bound directly by namespace_reference_derived_closure_execution_contract, so zero implementation progress cannot verify as complete.",
     dissolve_on: "the production candidate producer and dependency projection establish all six ReferenceDerivedClosureCapability rows by execution — this row deletes in the completing change, promoting the unchanged acceptance witness to ordinary DiscoverySelection as the permanent namespace-derived-closure regression wall"
-  ),
-  known_red_probe(
-    entry: "src/v2/test/claim/schedule_occurrence_multiplicity_test.dag",
-    f: "direct_rust_door_group_root_is_scheduled_exactly_once",
-    kind: CorpusWitnessKind,
-    reason: "RED BY EXECUTION at 2, and the 2 is a MACHINERY DEFICIT, not a rostering mistake. An expensive AND known-red witness cannot be expressed in one batch today: select_discovery_batch_budgets arms the 180s ceiling only for a batch whose explicit entries intersect falsifier_substrate_long_lane_entries, and that roster IS batch 6, so a known-red root earns its budget by ALSO joining the long batch. Known-red-only would BudgetExceed at 5s and go red for the wrong reason, masking the real red; long-lane-only would fail a batch that expects green. Both are worse than a counted red, so the duplicate is declared here rather than papered over. Its sibling multiplicity_counter_discriminates_a_planted_duplicate is green and proves the counter can fail, so this row is a real measurement rather than a constant.",
-    dissolve_on: "the witness-lifecycle split separates the execution-requirement/budget authority from the batch roster, so a root can declare a long budget without joining a second batch — then this root drops to one occurrence, this witness greens, and this row deletes"
   ),
   known_red_probe(
     entry: "src/v2/test/claim/long/direct_rust_door_production_group_test.dag",
     f: "direct_rust_door_production_group_closing_expectation_holds",
     kind: CorpusWitnessKind,
-    reason: "THE canonical closing validation for roadmap node v2-emitter-direct-rust-door, RED BY EXECUTION. Say the location claim exactly: ONE production implementation authority, ONE production walk per group construction, TWO scheduled group constructions today, and the IN-MEMORY group locates EmissionRejected while the SCHEDULED executor receipt remains an unlocated Bool. Inside that group the observation stops at EmissionRejected, so the four artifact leaves report LeafNotReached carrying that stage while the missing-rule leaf is green. That one green leaf is what proves the red is located rather than uniform — for a consumer holding the group, not for anyone reading the falsifier receipt. It replaces three superseded rows deleted in the same change, whose fold answered SeedEmitterRequiredForWrittenSource for BOTH a rejected pipeline and a seed-dependent artifact. Not relaxable: the only edit that may green it is making the real inferred tree survive emission.",
+    budget: SubstrateLongLaneEvalBudget,
+    reason: "THE canonical closing validation for roadmap node v2-emitter-direct-rust-door, RED BY EXECUTION. Say the location claim exactly: ONE production implementation authority, ONE production walk per group construction, ONE scheduled group construction (the second occurrence was the budget-by-batch-membership deficit, closed 2026-08-06 when the eval budget became its own declared axis; direct_rust_door_group_root_is_scheduled_exactly_once is the executing receipt), and the IN-MEMORY group locates EmissionRejected while the SCHEDULED executor receipt remains an unlocated Bool. Inside that group the observation stops at EmissionRejected, so the four artifact leaves report LeafNotReached carrying that stage while the missing-rule leaf is green. That one green leaf is what proves the red is located rather than uniform — for a consumer holding the group, not for anyone reading the falsifier receipt. It replaces three superseded rows deleted in the same change, whose fold answered SeedEmitterRequiredForWrittenSource for BOTH a rejected pipeline and a seed-dependent artifact. Not relaxable: the only edit that may green it is making the real inferred tree survive emission.",
     dissolve_on: "every leaf reaches LeafEstablished by execution — this row deletes in the completing change, promoting the unchanged group root to ordinary DiscoverySelection as the lane's permanent regression wall"
   ),
   known_red_probe(
     entry: "dag/test/claim/self_host_parse_engine_hooks_behavioral_witness_test.dag",
     f: "self_host_parse_engine_hooks_behavioral_receipt_holds",
     kind: ExecutionWitnessKind,
+    budget: FastLaneEvalBudget,
     reason: "SelfEmitted wet behavioral receipt, red on assemble (cargo/shim closure refuse — unresolved std_algebra/std_types/std_nat/List; cadence run 30126573464). Phase-0 forbids SelfEmitted-with-zero-executing-consumer, so it runs Wet expect_red on the falsifier quarantine batch; still-red is agreement. Owner: #7199 falsifier lane / self-host assemble.",
     dissolve_on: "the local wet receipt greens under gunbc_falsifier_self_host_wet_receipt_wall_budget; this row deletes and the green wet SelfHostWetReceiptBinding restores"
   ),
@@ -146,6 +219,7 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     entry: "dag/test/claim/self_host_use_site_verdict_behavioral_witness_test.dag",
     f: "self_host_use_site_verdict_behavioral_receipt_holds",
     kind: ExecutionWitnessKind,
+    budget: FastLaneEvalBudget,
     reason: "SelfEmitted wet behavioral receipt, red on assemble (same cargo/shim closure refuse class as its parse_engine_hooks peer; cadence run 30126573464). Owner: #7199 falsifier lane / self-host assemble.",
     dissolve_on: "the local wet receipt greens under gunbc_falsifier_self_host_wet_receipt_wall_budget; this row deletes and the green wet SelfHostWetReceiptBinding restores"
   ),
@@ -153,6 +227,7 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     entry: "dag/test/claim/self_host_discovery_enumeration_behavioral_witness_test.dag",
     f: "self_host_discovery_enumeration_behavioral_receipt_holds",
     kind: ExecutionWitnessKind,
+    budget: FastLaneEvalBudget,
     reason: "SelfEmitted wet behavioral receipt, red on assemble (same cargo/shim closure refuse class as its parse_engine_hooks peer; cadence run 30126573464). Owner: #7199 falsifier lane / self-host assemble.",
     dissolve_on: "the local wet receipt greens under gunbc_falsifier_self_host_wet_receipt_wall_budget; this row deletes and the green wet SelfHostWetReceiptBinding restores"
   ),
@@ -160,6 +235,7 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     entry: "dag/test/claim/self_host_target_carriers_behavioral_witness_test.dag",
     f: "self_host_target_carriers_behavioral_receipt_holds",
     kind: ExecutionWitnessKind,
+    budget: FastLaneEvalBudget,
     reason: "SelfEmitted wet behavioral receipt, red on assemble (target_carriers type-shape refuse; cadence run 30126573464). Owner: #7199 falsifier lane / self-host assemble.",
     dissolve_on: "the local wet receipt greens under gunbc_falsifier_self_host_wet_receipt_wall_budget; this row deletes and the green wet SelfHostWetReceiptBinding restores"
   ),
@@ -167,6 +243,7 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     entry: "dag/test/claim/self_host_body_producer_behavioral_witness_test.dag",
     f: "self_host_body_producer_behavioral_receipt_holds",
     kind: ExecutionWitnessKind,
+    budget: FastLaneEvalBudget,
     reason: "SelfEmitted wet behavioral receipt, red on assemble (same cargo/shim closure refuse class as its parse_engine_hooks peer; cadence run 30126573464). Owner: #7199 falsifier lane / self-host assemble.",
     dissolve_on: "the local wet receipt greens under gunbc_falsifier_self_host_wet_receipt_wall_budget; this row deletes and the green wet SelfHostWetReceiptBinding restores"
   ),
@@ -174,6 +251,7 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     entry: "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag",
     f: "self_host_03_normalize_behavioral_receipt_holds",
     kind: ExecutionWitnessKind,
+    budget: FastLaneEvalBudget,
     reason: "SelfEmitted wet behavioral receipt, red on assemble (same cargo/shim closure refuse class as its parse_engine_hooks peer; cadence run 30126573464). Owner: #7199 falsifier lane / self-host assemble. This is the row whose file-grain pairing forced the documented workaround: the file's sibling declared_source_refs_complete_holds is offline, so classifying the FILE QuarantineProbeExpectRed would have orphaned it and the file was downgraded to OfflineLocalRecipe in prose instead. At exact grain the receipt is admitted here and the sibling keeps the file's path policy, with neither fact restating the other.",
     dissolve_on: "the local wet receipt greens under gunbc_falsifier_self_host_wet_receipt_wall_budget; this row deletes and the green wet SelfHostWetReceiptBinding restores"
   ),
@@ -181,6 +259,7 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     entry: "src/v2/test/claim/long/production_qualification_origin_probe_witness_test.dag",
     f: "witness_live_scope_fixture_origin_discoverable_in_entry_closure_reds",
     kind: CorpusWitnessKind,
+    budget: SubstrateLongLaneEvalBudget,
     reason: "Admitted RED (review 48255): retired 0==0 policy-oracle equality — live FixtureDerived mint sites not discoverable in entry closure until G2 marshal exposes callee atoms. Owner: witness-evidence-lifecycle / marshal frontier.",
     dissolve_on: "G2 fn-arrow marshal exposes live fixture mint callees in fn_arrow_decl_facts_live entry closure, known_fixture_origin_mint_surface_count_in_scope() > 0, witness_live_scope_fixture_origin_discoverable_in_entry_closure_reds greens, and this row deletes — re-enroll with closed-subject expected population or monotone debt contract, never a tree-copied literal"
   ),
@@ -188,6 +267,7 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     entry: "src/v2/test/claim/long/production_qualification_origin_probe_witness_test.dag",
     f: "witness_live_structural_fixture_mint_site_discovered_reds",
     kind: CorpusWitnessKind,
+    budget: SubstrateLongLaneEvalBudget,
     reason: "Admitted RED: G2 fn-arrow marshal yields empty skeleton for live structural_red_control_mint_site_probe mint body today — classifier cannot discover the exact FixtureDerived SourceProduced row. Owner: witness-evidence-lifecycle / call-occurrence derivation frontier.",
     dissolve_on: "live structural_red_control_mint_site_probe body exposes mint callee atoms in fn_arrow_decl_facts_live output, structural_red_control_live_fixture_mint_site_discovered returns true for the test fixture qualified name without a taught qualified-name pin, this witness greens, and this row deletes"
   ),
@@ -195,6 +275,7 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     entry: "src/v2/test/claim/long/production_qualification_origin_probe_witness_test.dag",
     f: "witness_ingest_mint_surface_requires_call_occurrence_frontier_reds",
     kind: CorpusWitnessKind,
+    budget: SubstrateLongLaneEvalBudget,
     reason: "Admitted RED: generate_provenanced_rust_candidate_from_ingest calls mint_provenanced_rust_artifact at fn-arrow skeleton grain; G2 marshal prunes that ExprCall today. Owner: witness-evidence-lifecycle lane.",
     dissolve_on: "G2 fn-arrow marshal exposes mint_provenanced_rust_artifact on generate_provenanced_rust_candidate_from_ingest, ingest_mint_surface_discovered_in_live_scope() is true, witness_ingest_mint_surface_requires_call_occurrence_frontier_reds greens, and this row deletes"
   ),
@@ -202,6 +283,7 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     entry: "src/v2/test/claim/long/production_qualification_origin_probe_witness_test.dag",
     f: "witness_direct_door_smoke_requires_closure_or_call_occurrence_frontier_reds",
     kind: CorpusWitnessKind,
+    budget: SubstrateLongLaneEvalBudget,
     reason: "Admitted RED: direct-door smoke is outside witness entry import closure without roster imports — repository-wide discovery requires call-occurrence substrate. Owner: witness-evidence-lifecycle lane.",
     dissolve_on: "whole-tree or call-occurrence substrate includes direct-door smoke without witness-import roster, this witness greens, and this row deletes"
   )
@@ -288,18 +370,37 @@ fn explicit_witness_admission_duplicate_count() -> Int {
   explicit_witness_admission_duplicate_count_in(rows: explicit_witness_admissions)
 }
 
+data explicit_witness_admission_polarity_source_note: String = "POLARITY IS READ FROM THE EXPECTATION AXIS, NOT THE CADENCE. This predicate matched row.cadence until the axis split: QuarantineProbeExpectRed => true, every other arm false. That made the batch a witness's polarity — an expensive known-red row moved onto a long batch to obtain its budget silently became expected-GREEN, which is exactly how a witness that is red BY DESIGN reached the falsifier alert as a component failure. Reading row.expected instead means moving a row between consumers cannot change what counts as agreement, and a mixed batch is ordinary rather than a trap."
+
 fn explicit_witness_admission_is_known_red(row: ExplicitWitnessAdmission) -> Bool {
-  match row.cadence {
-    QuarantineProbeExpectRed => true
-    DiscoverySelection => false
-    FalsifierSelfHostWet => false
-    FalsifierRehomedBinWet => false
-    FalsifierSubstrateLongLane => false
-    BinWitnessWet => false
-    OfflineLocalRecipe => false
-    FixtureExplicitRoster => false
-    NoConsumer => false
+  match row.expected {
+    ExpectAssertionFalse => true
+    ExpectTypedPreVerdictRefusal { phase: _, cause: _ } => true
+    ExpectWitnessHolds => false
   }
+}
+
+fn explicit_witness_admission_requires_long_eval_budget(row: ExplicitWitnessAdmission) -> Bool {
+  match row.budget {
+    SubstrateLongLaneEvalBudget => true
+    FastLaneEvalBudget => false
+  }
+}
+
+data explicit_witness_admission_long_budget_roster_note: String = "The budget half of the split, derived. gunbc.ci_layer_roots unions this with the long-lane BATCH roster to give the scheduler its ceiling condition, so a row obtains its required eval time from its own declaration and never by joining a second batch. The union is the whole mechanism: batch membership still routes execution, this roster only sizes the ceiling, and the residual (declared by neither) keeps the fast lane so an undeclared lane reds at 5s rather than running unbounded."
+
+fn witness_long_eval_budget_roster() -> List<ScheduleWitnessEntry> {
+  reverse(fold(
+    explicit_witness_admissions,
+    init: Empty,
+    f: fn(acc, row) {
+      if explicit_witness_admission_requires_long_eval_budget(row: row) {
+        Cons { head: row.witness, tail: acc }
+      } else {
+        acc
+      }
+    }
+  ))
 }
 
 fn known_red_probe_roster_of_kind(kind: WitnessKind) -> List<ScheduleWitnessEntry> {
@@ -347,6 +448,126 @@ fn known_red_probe_corpus_roster() -> List<ScheduleWitnessEntry> {
         acc
       } else {
         Cons { head: witness, tail: acc }
+      }
+    }
+  ))
+}
+
+data known_red_probe_budget_partition_note: String = "The known-red probe lane partitions into BUDGET-HOMOGENEOUS batches, and the partition is DERIVED from each row's declared budget rather than naming any witness (operator ruling, 2026-08-06). The first shape of the budget separation left the lane one mixed batch and let the eval ceiling be armed for it as a whole, because claim_executor scopes a ceiling to a batch; that raised the ceiling for every fast row sharing the batch with one declared-long row — a real widening, disclosed but still a widening, and the ceiling is the only thing standing between a runaway fast witness and the step budget. Two batches over the same roster remove it: each batch is homogeneous in declared budget, so the ceiling it arms is the budget its rows actually declared and no row is widened by a neighbour. Nothing here is a singleton and nothing names direct_rust — the long population is whatever declares SubstrateLongLaneEvalBudget, so it grows and shrinks with the admission rows and an empty side schedules no batch at all. Dissolve-on is unchanged and shared with witness_long_eval_budget_entries_note: per-witness declared cost envelopes replace the lane ceiling entirely, at which point the partition collapses back to one batch because every row carries its own bound."
+
+data known_red_probe_expectation_partition_note: String = "The lane partitions on BOTH axes, and the second half was missing until review caught it (cursor review 50216, 2026-08-07). Budget homogeneity alone still let an ExpectTypedPreVerdictRefusal row share a batch with ExpectAssertionFalse rows, and those two cannot coexist: a pre-verdict row stops the whole batch at RESOLVE, so no per-witness outcome exists for anyone, and the Err arm admits that stop only when EVERY entry declared a pre-verdict refusal. One pre-verdict row in a mixed batch therefore reds its siblings, which were holding quarantine correctly — the batch-wide coupling this PR exists to remove, reintroduced one axis over. So the corpus lane splits first by EXPECTATION KIND and then by DECLARED BUDGET: a batch is homogeneous in the fact that decides its verdict AND in the ceiling it needs. Note the pre-verdict batches are non-green by construction today (a declaration classifies a stop, it does not verify it), so the point of isolating them is not to make them pass — it is that their refusal stays THEIR refusal, located and countable, instead of being spread over rows it says nothing about."
+
+fn known_red_probe_corpus_assertion_false_roster() -> List<ScheduleWitnessEntry> {
+  reverse(fold(
+    known_red_probe_corpus_roster(),
+    init: Empty,
+    f: fn(acc, witness) {
+      if schedule_witness_entry_roster_contains(
+        xs: known_red_pre_verdict_refusal_roster(),
+        w: witness
+      ) {
+        acc
+      } else {
+        Cons { head: witness, tail: acc }
+      }
+    }
+  ))
+}
+
+fn known_red_probe_corpus_pre_verdict_roster() -> List<ScheduleWitnessEntry> {
+  reverse(fold(
+    known_red_probe_corpus_roster(),
+    init: Empty,
+    f: fn(acc, witness) {
+      if schedule_witness_entry_roster_contains(
+        xs: known_red_pre_verdict_refusal_roster(),
+        w: witness
+      ) {
+        Cons { head: witness, tail: acc }
+      } else {
+        acc
+      }
+    }
+  ))
+}
+
+fn known_red_probe_corpus_pre_verdict_long_budget_roster() -> List<ScheduleWitnessEntry> {
+  reverse(fold(
+    known_red_probe_corpus_pre_verdict_roster(),
+    init: Empty,
+    f: fn(acc, witness) {
+      if schedule_witness_entry_roster_contains(
+        xs: witness_long_eval_budget_roster(),
+        w: witness
+      ) {
+        Cons { head: witness, tail: acc }
+      } else {
+        acc
+      }
+    }
+  ))
+}
+
+fn known_red_probe_corpus_pre_verdict_fast_budget_roster() -> List<ScheduleWitnessEntry> {
+  reverse(fold(
+    known_red_probe_corpus_pre_verdict_roster(),
+    init: Empty,
+    f: fn(acc, witness) {
+      if schedule_witness_entry_roster_contains(
+        xs: witness_long_eval_budget_roster(),
+        w: witness
+      ) {
+        acc
+      } else {
+        Cons { head: witness, tail: acc }
+      }
+    }
+  ))
+}
+
+fn known_red_probe_corpus_long_budget_roster() -> List<ScheduleWitnessEntry> {
+  reverse(fold(
+    known_red_probe_corpus_assertion_false_roster(),
+    init: Empty,
+    f: fn(acc, witness) {
+      if schedule_witness_entry_roster_contains(
+        xs: witness_long_eval_budget_roster(),
+        w: witness
+      ) {
+        Cons { head: witness, tail: acc }
+      } else {
+        acc
+      }
+    }
+  ))
+}
+
+fn known_red_probe_corpus_fast_budget_roster() -> List<ScheduleWitnessEntry> {
+  reverse(fold(
+    known_red_probe_corpus_assertion_false_roster(),
+    init: Empty,
+    f: fn(acc, witness) {
+      if schedule_witness_entry_roster_contains(
+        xs: witness_long_eval_budget_roster(),
+        w: witness
+      ) {
+        acc
+      } else {
+        Cons { head: witness, tail: acc }
+      }
+    }
+  ))
+}
+
+fn known_red_pre_verdict_refusal_roster() -> List<ScheduleWitnessEntry> {
+  reverse(fold(
+    explicit_witness_admissions,
+    init: Empty,
+    f: fn(acc, row) {
+      match row.expected {
+        ExpectTypedPreVerdictRefusal { phase: _, cause: _ } => Cons { head: row.witness, tail: acc }
+        ExpectAssertionFalse => acc
+        ExpectWitnessHolds => acc
       }
     }
   ))
