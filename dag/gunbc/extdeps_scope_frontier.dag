@@ -182,6 +182,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/darwin/rusage.dag",
   "dag/extdeps/darwin/sysctl.dag",
   "dag/extdeps/linux/procfs.dag",
+  "dag/extdeps/github/actions_runner.dag",
   "dag/extdeps/llm/claude_sdk.dag",
   "dag/extdeps/llm/codex_app_server.dag"
 ]

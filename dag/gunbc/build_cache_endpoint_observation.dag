@@ -1,0 +1,101 @@
+module gunbc.build_cache_endpoint_observation
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_shell_transport_observation {
+  fleet_shell_transport_observation,
+  ShellTransportSucceeded,
+  ShellTransportReachRefused,
+  ShellTransportUnobserved,
+}
+import gunbc.build_cache_instance {
+  BuildCacheInstance,
+  BuildCacheEndpointObservation,
+  ci_cache_instance,
+  EndpointObservationUnavailable,
+  ReachRefused,
+  ProcTableUnreadable,
+  placement_of_endpoint_observation,
+  BuildCacheServerPlacement,
+  ServerPlacementUnknown,
+}
+import gunbc.host_phase_status { fleet_subsumption_hosts }
+
+data build_cache_endpoint_observation_authority_disposition: Disposition = SingleAuthority
+
+// THE CI CACHE ENDPOINT PRODUCER for units, caps, and owner context. gunbc.build_cache_instance carries
+// desired intent and placement derivation; this module will walk /proc for listener ownership, cgroup
+// memory limits, and unit names. It gates on shell transport and returns EndpointObservationUnavailable
+// with ReachRefused when transport fails — never EndpointAbsent (unreachable ≠ no listener).
+
+fn build_cache_ci_endpoint_observed_producer(host: HostIdentity) -> BuildCacheEndpointObservation {
+  let instance = ci_cache_instance(host: host)
+  match fleet_shell_transport_observation(host: host) {
+    ShellTransportSucceeded { observed_on: _, principal: _, detail: _ } =>
+      EndpointObservationUnavailable {
+        instance: instance,
+        reason: ProcTableUnreadable {
+          detail: "shell transport available but /proc endpoint-owner walk has no host_effect producer yet" as NonEmptyStr,
+        },
+      }
+    ShellTransportReachRefused { observed_on: _, principal: _, detail: d, gap: _ } =>
+      EndpointObservationUnavailable {
+        instance: instance,
+        reason: ReachRefused { detail: d },
+      }
+    ShellTransportUnobserved { reason: r } =>
+      EndpointObservationUnavailable {
+        instance: instance,
+        reason: ReachRefused {
+          detail: concat("shell transport unobserved: ", r) as NonEmptyStr,
+        },
+      }
+  }
+}
+
+fn build_cache_ci_endpoint_observation(host: HostIdentity) -> BuildCacheEndpointObservation {
+  build_cache_ci_endpoint_observed_producer(host: host)
+}
+
+fn build_cache_ci_placement_observation(host: HostIdentity) -> BuildCacheServerPlacement {
+  placement_of_endpoint_observation(
+    observed: build_cache_ci_endpoint_observation(host: host),
+  )
+}
+
+fn build_cache_ci_endpoint_unavailable_count(hosts: List<HostIdentity>) -> Int {
+  filter(
+    hosts,
+    h =>
+      match build_cache_ci_endpoint_observation(host: h) {
+        EndpointObservationUnavailable { instance: _, reason: _ } => true
+        _ => false
+      },
+  ).length()
+}
+
+fn build_cache_ci_endpoint_fleet_unavailable_count() -> Int {
+  build_cache_ci_endpoint_unavailable_count(hosts: fleet_subsumption_hosts)
+}
+
+fn build_cache_ci_placement_unknown_count(hosts: List<HostIdentity>) -> Int {
+  filter(
+    hosts,
+    h =>
+      match build_cache_ci_placement_observation(host: h) {
+        ServerPlacementUnknown { detail: _ } => true
+        _ => false
+      },
+  ).length()
+}
+
+data build_cache_ci_endpoint_observed_producer_dissolve_on: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_effect",
+    decl_name: "HostEffectTransport",
+    field: WholeDeclaration,
+  }
+}

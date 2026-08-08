@@ -24,7 +24,7 @@ fn hccr_done() -> List<MarkdownBlock> {
     h3(text: "P1 core — PerSlotMemoryCap axis on the membership_reconcile spine (4 receipts, GREEN)"),
     ul(items: [
       li(text: "dag/gunbc/host_axis_caps.dag: the first NON-DEGENERATE membership_reconcile in the repo (desired vs a real observed set, not observed=[]). One spine instantiation with a (key_of, key_eq, value_eq, ownership_of) bundle; ownership DERIVED from the drop-in path (managed -> Owned, foreign -> Ensured), never stored."),
-      li(text: "Interference domain = the drop-in directory, realized through the SAME spine: a foreign occupant is Removed + not-owned -> MemberTeardownRefused (R5, no effect arm, never deleted) -> ApplyRefused wholesale."),
+      li(text: "Interference domain = the drop-in directory, realized through the SAME spine: a foreign occupant is Removed + not-owned -> MemberRemovalRefused (R5, no effect arm, never deleted) -> ApplyRefused wholesale."),
       li(text: "Four hermetic receipts, each with a RED control, all GREEN, auto-discovered as a CI corpus consumer (not inert): idempotence (zero effects), perturb-and-heal (exactly the drifted row Upsert), foreign occupant (ApplyRefused + zero teardowns; RED = an owned removed file DOES teardown), derived content ([Service]/property/bytes derived, no hand strings)."),
     ]),
     h3(text: "P1a — interpreter closed + realize executes for real (loop closed at the live entry)"),

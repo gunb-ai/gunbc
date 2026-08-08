@@ -149,6 +149,7 @@ pub mod wt_b;
 pub mod wt_common;
 #[macro_use]
 pub mod v1_interpreter_dispatch_generated;
+pub mod ci_control_plane;
 pub mod cli_run;
 pub mod coproduct_reflection;
 pub mod memory_governor;
