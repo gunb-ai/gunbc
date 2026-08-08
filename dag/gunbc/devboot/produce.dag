@@ -1,0 +1,248 @@
+module gunbc.devboot.produce
+
+import std.types { String, Bool, List, NonEmptyStr }
+
+import extdeps.shell
+import extdeps.gunbc
+import extdeps.filesystem.filesystem_io
+import gunbc.output_policy { ExpectSuccess }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+
+import gunbc.devboot.lease { content_hash_ref_token }
+import gunbc.devboot.subject {
+  BuildSubject,
+  admit_build_subject,
+  build_subject_digest,
+  SubjectAdmitted,
+  SubjectRefused,
+}
+import extdeps.git.object_store { git_object_id_from_untagged_hex }
+import extdeps.toolchain.types { TargetTriple, ToolchainRequirement, X86_64, UnknownVendor, Linux, Gnu }
+import extdeps.cargo { Bin }
+
+data devboot_produce_note: String = "THE PRODUCER, AND IT IS THE LIVE PATH RATHER THAN A WITNESS. This module is invoked through `gunbc run`, so the first consumer of the identity carriers is the ordinary CLI surface -- a witness suite proving the same functions in isolation would not have established that anything is ever actually built or retrieved.\\n\\nEVERY HOST PATH ARRIVES AS A PARAMETER. The store root is supplied by the caller, never spelled here: on srv1 the deploy supplies the gunbc.host_layout row, and a local run supplies a scratch directory. A literal here would be the layout-admission defect this vertical was explicitly told not to repeat, and it would also make the producer untestable anywhere but one host.\\n\\nTHE ORDER IS THE CONTRACT. Look for an existing artifact first, and only if none exists take the lease and build -- so a subject already produced never builds again, which is the product sentence this service exists to satisfy. The lease is taken with git's exact-value ref update, whose create-only form refuses when the ref already exists, so two callers racing the same subject cannot both become producers."
+
+data producer_lease_realization_note: String = "THE MODELED TRANSITION AND THE REAL ONE, kept honestly apart. gunbc.devboot.lease derives the lease DECISION from the upstream object store's pure transition model, whose exact-old form covers advancing a ref that already exists and returns LeaseCreateNotModeled for the absent case.\\n\\nGit itself does cover that case -- `update-ref <ref> <new> \\\"\\\"` is create-only and fails with 'reference already exists' when it loses -- and that is what this realization calls, verified by execution against a real bare repository: one caller acquired, the second was refused, and the holder did not move. So the gap is in the R0 MODEL, not in the transport, and the refusal arm in the model is a statement about what has been modeled rather than about what git can do. Recording which is which is the whole point; the arm dissolves when the model gains a create-only transition, and the realization does not change when it does."
+
+fn devboot_subject_tree_oid_argv(index_path: String) -> List<String> {
+  [concat("GIT_INDEX_FILE=", index_path), "git", "write-tree"]
+}
+
+fn witness_toolchain() -> ToolchainRequirement {
+  ToolchainRequirement { name: "rustup" as NonEmptyStr, version: "1.89.0" as NonEmptyStr }
+}
+
+fn host_target() -> TargetTriple {
+  TargetTriple { arch: X86_64, vendor: UnknownVendor, os: Linux, env: Present { value: Gnu } }
+}
+
+data devboot_produce_report_note: String = "The report is a rendered String because `gunbc run` prints a value and a caller reads it; the TYPED outcome is what the carriers hold, and this rendering is a projection of it rather than a second representation. It names the subject digest, the decision taken, and the artifact address, which is exactly what a caller needs to fetch."
+
+fn devboot_produce_report(store_root: String, repo_root: String, index_path: String, caller: String) -> ProduceReport {
+  let tree_out = gunbc.WitnessBin.Run(
+    workdir: repo_root,
+    bin_path: "env",
+    args: devboot_subject_tree_oid_argv(index_path: index_path),
+    expect: ExpectSuccess,
+  )
+  let tree_hex = trim(s: tree_out.stdout)
+  match git_object_id_from_untagged_hex(hex: tree_hex) {
+    Absent => ProduceRefused { reason: concat("unusable tree oid from git write-tree: ", tree_hex) }
+    Present { value: tree_oid } =>
+      match admit_build_subject(
+        tree_oid: tree_oid,
+        package: "gunbc",
+        cargo_target: Bin { name: "gunbc" },
+        toolchain: witness_toolchain(),
+        target: host_target(),
+        profile: "release",
+        features: [],
+        rustflags: [],
+        linker: none,
+        sysroot: none,
+        cargo_config: [],
+      ) {
+        SubjectRefused { cause } => ProduceRefused { reason: "build subject was not admitted" }
+        SubjectAdmitted { subject } =>
+          devboot_produce_admitted(
+            store_root: store_root,
+            repo_root: repo_root,
+            caller: caller,
+            token: content_hash_ref_token(hash: build_subject_digest(subject: subject)),
+          )
+      }
+  }
+}
+
+fn artifact_ref_of(token: String) -> String {
+  concat("refs/devboot/artifact/", token)
+}
+
+fn lease_ref_of(token: String) -> String {
+  concat("refs/devboot/lease/", token)
+}
+
+fn devboot_produce_admitted(store_root: String, repo_root: String, caller: String, token: String) -> ProduceReport {
+  let existing = gunbc.WitnessBin.Run(
+    workdir: repo_root,
+    bin_path: "git",
+    args: [concat("--git-dir=", store_root), "rev-parse", "--verify", "--quiet", artifact_ref_of(token: token)],
+  )
+  if existing.success {
+    ProduceReused { token: token, artifact: trim(s: existing.stdout) }
+  } else {
+    devboot_produce_build(store_root: store_root, repo_root: repo_root, caller: caller, token: token)
+  }
+}
+
+data devboot_lease_then_build_note: String = "THE LEASE IS TAKEN BEFORE THE BUILD, not after, because a lease acquired afterwards would protect nothing -- both callers would already have paid for the same compile, which is the duplicate work this service exists to remove. Losing the lease is reported as an attach rather than as a failure: the subject IS being produced, and the correct move for the loser is to wait for the winner's artifact, never to start a second build of the same thing."
+
+data lease_claim_placement_note: String = "THE CLAIM OBJECT IS WRITTEN INTO THE SERVICE'S OWN ROOT, never into the source tree. A lease claim needs to become a git object, and the transport has no stdin, so it goes through a file first -- and an earlier revision put that file in the repository root, where it showed up as untracked working-tree pollution in the very tree whose oid is this service's identity axis. A producer that dirties the source it is building from is one careless index operation away from changing the subject it is producing.\\n\\nThe store root is the right home: it is this service's one durable root, it is where every other piece of its state already lives, and it is a path the caller supplied rather than one spelled here."
+
+fn devboot_produce_build(store_root: String, repo_root: String, caller: String, token: String) -> ProduceReport {
+  let claim_path = concat(store_root, "/devboot-lease-claim")
+  let claim_written = Filesystem.Write(path: claim_path, content: concat("producer=", caller))
+
+  let claim = gunbc.WitnessBin.Run(
+    workdir: repo_root,
+    bin_path: "git",
+    args: [concat("--git-dir=", store_root), "hash-object", "-w", "--", claim_path],
+    expect: ExpectSuccess,
+  )
+  let claim_oid = trim(s: claim.stdout)
+  let taken = gunbc.WitnessBin.Run(
+    workdir: repo_root,
+    bin_path: "git",
+    args: [concat("--git-dir=", store_root), "update-ref", lease_ref_of(token: token), claim_oid, ""],
+  )
+  if !taken.success {
+    ProduceAttached { token: token }
+  } else {
+    devboot_store_built_artifact(store_root: store_root, repo_root: repo_root, caller: caller, token: token)
+  }
+}
+
+fn devboot_store_built_artifact(store_root: String, repo_root: String, caller: String, token: String) -> ProduceReport {
+  let built = gunbc.WitnessBin.Run(
+    workdir: repo_root,
+    bin_path: "cargo",
+    args: ["build", "--release", "--bin", "gunbc"],
+    expect: ExpectSuccess,
+  )
+  let stored = gunbc.WitnessBin.Run(
+    workdir: repo_root,
+    bin_path: "git",
+    args: [concat("--git-dir=", store_root), "hash-object", "-w", "--", "target/release/gunbc"],
+    expect: ExpectSuccess,
+  )
+  let blob_oid = trim(s: stored.stdout)
+  let bound = gunbc.WitnessBin.Run(
+    workdir: repo_root,
+    bin_path: "git",
+    args: [concat("--git-dir=", store_root), "update-ref", artifact_ref_of(token: token), blob_oid, ""],
+    expect: ExpectSuccess,
+  )
+  ProduceProduced { token: token, artifact: blob_oid }
+}
+
+data devboot_materialize_note: String = "THE CONSUMER SIDE, AND IT VERIFIES INDEPENDENTLY. The bytes are fetched out of the object database by address, and then their sha256 is computed over the fetched file -- a digest whose preimage is the content alone, so the store cannot satisfy it by agreeing with itself. Re-deriving the git oid instead would only re-read the store's own answer and would establish nothing.\\n\\nThe caller compares the reported digest against the one it was promised. This function reports what it measured rather than deciding the comparison, because the promise lives with the requester."
+
+fn devboot_materialize(store_root: String, repo_root: String, artifact_oid: String, out_path: String) -> String {
+  let unpacked = gunbc.WitnessBin.Run(
+    workdir: repo_root,
+    bin_path: "git",
+    args: [concat("--git-dir=", store_root), "unpack-file", artifact_oid],
+    expect: ExpectSuccess,
+  )
+  let temp_name = trim(s: unpacked.stdout)
+  let moved = gunbc.WitnessBin.Run(
+    workdir: repo_root,
+    bin_path: "/bin/mv",
+    args: [temp_name, out_path],
+    expect: ExpectSuccess,
+  )
+  let made_executable = gunbc.WitnessBin.Run(
+    workdir: repo_root,
+    bin_path: "/bin/chmod",
+    args: ["+x", out_path],
+    expect: ExpectSuccess,
+  )
+  let digest = gunbc.WitnessBin.Run(
+    workdir: repo_root,
+    bin_path: "sha256sum",
+    args: [out_path],
+    expect: ExpectSuccess,
+  )
+  let executed = gunbc.WitnessBin.Run(
+    workdir: repo_root,
+    bin_path: out_path,
+    args: ["--help"],
+    expect: ExpectSuccess,
+  )
+  join([
+    "MATERIALIZED path=", out_path,
+    " sha256=", first_field(text: trim(s: digest.stdout)),
+    " executed_exit=", to_string(executed.exit_code),
+  ], "")
+}
+
+data materialize_binary_safety_note: String = "THE BYTES NEVER PASS THROUGH A STRING, and that is a correctness constraint rather than a performance one. An earlier draft of this function read the blob to stdout and wrote that value to a file, which would have routed twenty-four megabytes of executable through a text carrier -- any byte sequence that is not valid UTF-8 would have been mangled, and the corruption would have surfaced as a binary that refuses to execute rather than as an error at the point it happened.\\n\\n`git unpack-file` writes the blob to a temporary file itself and prints only the NAME, so the bytes travel from the object database to the filesystem entirely inside git. Verified by execution: the unpacked file's sha256 equals the built binary's exactly.\\n\\nEXECUTION IS PART OF MATERIALIZING, not a separate check a caller may skip. A digest match proves the bytes arrived; it does not prove they run, and this vertical exists to hand an agent a binary it can actually use. So the last step runs the thing and reports its exit code."
+
+fn first_field(text: String) -> String {
+  fold(
+    split(s: text, sep: " "),
+    init: "",
+    f: (acc, part) => if acc == "" { part } else { acc },
+  )
+}
+
+data produce_report_typing_note: String = "THE ENTRY RETURNS A TYPED OUTCOME, NOT A SENTENCE, and the sentence is derived from it. An earlier revision returned the rendered String directly, which had two consequences worth recording. The harness treats a non-ProcessExit return as a refusal, so a run that had genuinely PRODUCED an artifact exited nonzero and printed the word refused -- a success reported as a failure, which is the reporting half of the same honesty rule this vertical enforces everywhere else. And a caller wanting the artifact address had to parse prose.\\n\\nNow the decision is a closed sum, the sentence is one projection of it, and the exit code is another. A caller reads the receipt file for the address; the shell reads the exit code for the verdict; neither is derived by scraping the other."
+
+type ProduceReport
+  = ProduceProduced { token: String, artifact: String }
+  | ProduceReused { token: String, artifact: String }
+  | ProduceAttached { token: String }
+  | ProduceRefused { reason: String }
+
+fn render_produce_report(report: ProduceReport, caller: String) -> String {
+  match report {
+    ProduceProduced { token, artifact } =>
+      join(["PRODUCED subject=", token, " artifact=", artifact, " caller=", caller], "")
+    ProduceReused { token, artifact } =>
+      join(["REUSED subject=", token, " artifact=", artifact, " caller=", caller], "")
+    ProduceAttached { token } =>
+      join(["ATTACHED subject=", token, " caller=", caller, " (another producer holds the lease)"], "")
+    ProduceRefused { reason } => concat("REFUSED: ", reason)
+  }
+}
+
+fn produce_report_exit(report: ProduceReport) -> ProcessExit {
+  match report {
+    ProduceProduced { token, artifact } => ExitSuccess
+    ProduceReused { token, artifact } => ExitSuccess
+    ProduceAttached { token } => ExitSuccess
+    ProduceRefused { reason } => exit_failure(reason: reason)
+  }
+}
+
+data produce_entry_note: String = "The live entry point. It writes the rendered receipt to a caller-supplied path -- there is no stdout facility in the substrate, so a file is how a result leaves a run -- and returns the exit code the verdict implies. The receipt path is a parameter for the same reason the store root is: a path spelled inside the service is a fact about one host smuggled into a program that runs on many."
+
+fn devboot_produce_entry(
+  store_root: String,
+  repo_root: String,
+  index_path: String,
+  caller: String,
+  receipt_path: String,
+) -> ProcessExit {
+  let report = devboot_produce_report(
+    store_root: store_root,
+    repo_root: repo_root,
+    index_path: index_path,
+    caller: caller,
+  )
+  let written = Filesystem.Write(
+    path: receipt_path,
+    content: render_produce_report(report: report, caller: caller),
+  )
+  produce_report_exit(report: report)
+}
