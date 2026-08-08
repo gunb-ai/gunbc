@@ -1,5 +1,6 @@
 module std.witness_admission
 
+import std.content_hash { Fnv1a64Structural, content_hash_atom }
 
 data witness_admission_authority_note: String = "Phase 0(b) admission invariant (docs/plans/module-identity-storage-binding-design.md): every enrolled witness row names an executing consumer — discovery rows run per selection; SelfEmitted receipts run on the falsifier wet cadence; known-red quarantined rows run on a probe cadence expecting red (greening is a counted un-quarantine event); operator-ruled OFFLINE rows carry an explicit local-recipe consumer. Enrolled-with-zero-consumers is a typed refusal, never silent. The prior dissolve-on FIRED 2026-07-22: witness exclusion rows now carry derived consumer classification on this module's WitnessConsumerCadence authority (gunbc.ci_layer_roots.witness_exclusion_frontier; group-of-units ruling, gunbc.roster_registry). Homed in dag/std (std.witness_admission) so dag-tree consumers resolve it in dag-only closures — the authority moved here from src/v2/std 2026-07-23 when gunbc.ci_layer_roots became a consumer. This module remains the cadence vocabulary authority; dissolves into the enforcement-intent registry when that thread lands."
 
@@ -13,6 +14,133 @@ type WitnessConsumerCadence
   | OfflineLocalRecipe
   | FixtureExplicitRoster
   | NoConsumer
+
+fn witness_consumer_cadence_eq(a: WitnessConsumerCadence, b: WitnessConsumerCadence) -> Bool {
+  match a {
+    DiscoverySelection =>
+      match b {
+        DiscoverySelection => true
+        FalsifierSelfHostWet => false
+        FalsifierRehomedBinWet => false
+        FalsifierSubstrateLongLane => false
+        BinWitnessWet => false
+        QuarantineProbeExpectRed => false
+        OfflineLocalRecipe => false
+        FixtureExplicitRoster => false
+        NoConsumer => false
+      }
+    FalsifierSelfHostWet =>
+      match b {
+        DiscoverySelection => false
+        FalsifierSelfHostWet => true
+        FalsifierRehomedBinWet => false
+        FalsifierSubstrateLongLane => false
+        BinWitnessWet => false
+        QuarantineProbeExpectRed => false
+        OfflineLocalRecipe => false
+        FixtureExplicitRoster => false
+        NoConsumer => false
+      }
+    FalsifierRehomedBinWet =>
+      match b {
+        DiscoverySelection => false
+        FalsifierSelfHostWet => false
+        FalsifierRehomedBinWet => true
+        FalsifierSubstrateLongLane => false
+        BinWitnessWet => false
+        QuarantineProbeExpectRed => false
+        OfflineLocalRecipe => false
+        FixtureExplicitRoster => false
+        NoConsumer => false
+      }
+    FalsifierSubstrateLongLane =>
+      match b {
+        DiscoverySelection => false
+        FalsifierSelfHostWet => false
+        FalsifierRehomedBinWet => false
+        FalsifierSubstrateLongLane => true
+        BinWitnessWet => false
+        QuarantineProbeExpectRed => false
+        OfflineLocalRecipe => false
+        FixtureExplicitRoster => false
+        NoConsumer => false
+      }
+    BinWitnessWet =>
+      match b {
+        DiscoverySelection => false
+        FalsifierSelfHostWet => false
+        FalsifierRehomedBinWet => false
+        FalsifierSubstrateLongLane => false
+        BinWitnessWet => true
+        QuarantineProbeExpectRed => false
+        OfflineLocalRecipe => false
+        FixtureExplicitRoster => false
+        NoConsumer => false
+      }
+    QuarantineProbeExpectRed =>
+      match b {
+        DiscoverySelection => false
+        FalsifierSelfHostWet => false
+        FalsifierRehomedBinWet => false
+        FalsifierSubstrateLongLane => false
+        BinWitnessWet => false
+        QuarantineProbeExpectRed => true
+        OfflineLocalRecipe => false
+        FixtureExplicitRoster => false
+        NoConsumer => false
+      }
+    OfflineLocalRecipe =>
+      match b {
+        DiscoverySelection => false
+        FalsifierSelfHostWet => false
+        FalsifierRehomedBinWet => false
+        FalsifierSubstrateLongLane => false
+        BinWitnessWet => false
+        QuarantineProbeExpectRed => false
+        OfflineLocalRecipe => true
+        FixtureExplicitRoster => false
+        NoConsumer => false
+      }
+    FixtureExplicitRoster =>
+      match b {
+        DiscoverySelection => false
+        FalsifierSelfHostWet => false
+        FalsifierRehomedBinWet => false
+        FalsifierSubstrateLongLane => false
+        BinWitnessWet => false
+        QuarantineProbeExpectRed => false
+        OfflineLocalRecipe => false
+        FixtureExplicitRoster => true
+        NoConsumer => false
+      }
+    NoConsumer =>
+      match b {
+        DiscoverySelection => false
+        FalsifierSelfHostWet => false
+        FalsifierRehomedBinWet => false
+        FalsifierSubstrateLongLane => false
+        BinWitnessWet => false
+        QuarantineProbeExpectRed => false
+        OfflineLocalRecipe => false
+        FixtureExplicitRoster => false
+        NoConsumer => true
+      }
+  }
+}
+
+fn witness_consumer_cadence_content_hash_structural(cadence: WitnessConsumerCadence) -> Fnv1a64Structural {
+  match cadence {
+    DiscoverySelection => content_hash_atom(value: "DiscoverySelection")
+    FalsifierSelfHostWet => content_hash_atom(value: "FalsifierSelfHostWet")
+    FalsifierRehomedBinWet => content_hash_atom(value: "FalsifierRehomedBinWet")
+    FalsifierSubstrateLongLane => content_hash_atom(value: "FalsifierSubstrateLongLane")
+    BinWitnessWet => content_hash_atom(value: "BinWitnessWet")
+    QuarantineProbeExpectRed => content_hash_atom(value: "QuarantineProbeExpectRed")
+    OfflineLocalRecipe => content_hash_atom(value: "OfflineLocalRecipe")
+    FixtureExplicitRoster => content_hash_atom(value: "FixtureExplicitRoster")
+    NoConsumer => content_hash_atom(value: "NoConsumer")
+  }
+}
 
 data witness_admission_axis_separation_note: String = "THREE INDEPENDENT AXES, because WHICH CONSUMER RUNS THIS, HOW MUCH TIME IT NEEDS and WHAT VERDICT IS EXPECTED are different facts about one witness, and until this change they were carried on one (operator stop-line, 2026-08-06).
 

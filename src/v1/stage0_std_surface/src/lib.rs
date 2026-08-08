@@ -39,3 +39,6 @@ pub mod std_realization_schedule;
 #[rustfmt::skip]
 #[path = "../../stage0/src/std_trait_derive_shape.rs"]
 pub mod std_trait_derive_shape;
+#[rustfmt::skip]
+#[path = "../../stage0/src/std_witness_admission.rs"]
+pub mod std_witness_admission;
