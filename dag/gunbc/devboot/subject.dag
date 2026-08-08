@@ -495,3 +495,79 @@ data build_subject_equality_note: String = "THE EQUALITY AUTHORITY, kept apart f
 fn build_subject_equal(left: BuildSubject, right: BuildSubject) -> Bool {
   left == right
 }
+
+data render_build_subject_note: String = "A TOTAL, INJECTIVE RENDERING OF THE WHOLE SUBJECT, which exists so a stored artifact can carry the request it was built for into a future process. The digest cannot do that job: it is an index, and recovering a subject from one is impossible by construction.\\n\\nWHY A RENDERING RATHER THAN A PARSER. Comparing two subjects exactly needs only that the rendering be injective -- distinct subjects render distinctly -- not that it be reversible. So the stored text is compared against the rendering of the request, and equal renderings mean equal subjects without any need to reconstruct a value. That keeps the reuse law exact while adding one function instead of a serializer and a parser that could disagree.\\n\\nINJECTIVITY IS WHY EVERY FIELD APPEARS AND WHY THE SEPARATORS ARE NOT SHARED WITH THE DATA. Each axis is emitted with its own label and a newline separator, and list members are indexed, so no reordering or concatenation of one field can impersonate another. A rendering that dropped an axis would silently make two different subjects equal -- the false share this whole identity scheme exists to prevent, reintroduced at the storage layer."
+
+fn render_optional(value: NonEmptyStr?) -> String {
+  match value {
+    Present { value: text } => text as String
+    Absent => "<absent>"
+  }
+}
+
+fn render_cargo_target(target: CargoTarget) -> String {
+  match target {
+    Lib => "lib"
+    Bin { name } => concat("bin:", name)
+    CargoTest { name } => concat("test:", name)
+    Example { name } => concat("example:", name)
+    Bench { name } => concat("bench:", name)
+  }
+}
+
+fn render_indexed_list(label: String, values: List<NonEmptyStr>) -> String {
+  fold(
+    values,
+    init: IndexedRender { index: 0, text: "" },
+    f: (acc, value) =>
+      IndexedRender {
+        index: acc.index + 1,
+        text: join([acc.text, label, ".", to_string(acc.index), "=", value as String, "\n"], ""),
+      },
+  ).text
+}
+
+type IndexedRender {
+  index: Int
+  text: String
+}
+
+fn render_cargo_config(entries: List<CargoConfigEntry>) -> String {
+  fold(
+    entries,
+    init: IndexedRender { index: 0, text: "" },
+    f: (acc, entry) =>
+      IndexedRender {
+        index: acc.index + 1,
+        text: join([acc.text, "cargo_config.", to_string(acc.index), "=", entry.key as String, "=", entry.value, "\n"], ""),
+      },
+  ).text
+}
+
+fn render_build_subject(subject: BuildSubject) -> String {
+  join([
+    "devboot.subject.v1\n",
+    "tree=", git_object_id_wire_hex(oid: subject.tree_oid) as String, "\n",
+    "package=", subject.product.package as String, "\n",
+    "target=", render_cargo_target(target: subject.product.target), "\n",
+    "toolchain.name=", subject.toolchain.name as String, "\n",
+    "toolchain.version=", subject.toolchain.version as String, "\n",
+    "arch=", architecture_identity_tag(arch: subject.target.arch) as String, "\n",
+    "vendor=", triple_vendor_identity_tag(vendor: subject.target.vendor) as String, "\n",
+    "os=", os_identity_tag(os: subject.target.os) as String, "\n",
+    "abi=", render_abi(env: subject.target.env), "\n",
+    "profile=", subject.profile as String, "\n",
+    render_indexed_list(label: "feature", values: subject.features),
+    render_indexed_list(label: "rustflag", values: subject.environment.rustflags),
+    "linker=", render_optional(value: subject.environment.linker), "\n",
+    "sysroot=", render_optional(value: subject.environment.sysroot), "\n",
+    render_cargo_config(entries: subject.environment.cargo_config),
+  ], "")
+}
+
+fn render_abi(env: AbiEnv?) -> String {
+  match env {
+    Present { value: e } => abi_env_identity_tag(env: e) as String
+    Absent => "absent"
+  }
+}

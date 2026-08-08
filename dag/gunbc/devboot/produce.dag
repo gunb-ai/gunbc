@@ -1,6 +1,8 @@
 module gunbc.devboot.produce
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.measure { byte_size }
+import std.content_hash { sha256_hex_digest }
 
 import extdeps.shell
 import extdeps.gunbc
@@ -9,17 +11,45 @@ import gunbc.output_policy { ExpectSuccess }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 
 import gunbc.devboot.lease { content_hash_ref_token, lease_ref_namespace, artifact_ref_namespace }
+import gunbc.devboot.outcome {
+  ReuseDecision,
+  ReuseGranted,
+  ReuseNoCandidate,
+  ReuseSubjectMismatch,
+  ReuseUnavailable,
+  SubjectMatch,
+  SubjectMatches,
+  SubjectDiffers,
+  ArtifactAvailability,
+  ArtifactAvailable,
+  ArtifactMissing,
+  ArtifactUnreadable,
+  ArtifactCorrupt,
+  StoredArtifact,
+  reuse_decision_from_match,
+}
 import gunbc.devboot.subject {
   BuildSubject,
   BuildEnvironmentSpec,
+  BuildSubjectRefusalCause,
+  FeatureNameEmpty,
+  DuplicateFeature,
+  ProfileNameEmpty,
+  PackageNameEmpty,
+  RustflagEmpty,
+  CargoConfigKeyEmpty,
+  LinkerEmpty,
+  SysrootEmpty,
   admit_build_subject,
   build_subject_digest,
+  render_build_subject,
   SubjectAdmitted,
   SubjectRefused,
 }
 import extdeps.git.object_store { git_object_id_from_untagged_hex }
 import extdeps.git { git_ref_missing_exit_code }
-import extdeps.toolchain.types { TargetTriple, ToolchainRequirement, X86_64, UnknownVendor, Linux, Gnu }
+import extdeps.toolchain.types { TargetTriple, ToolchainRequirement }
+import extdeps.rust.target_triple { parse_rust_target_triple }
 import extdeps.cargo { CargoTarget, Lib, Bin, CargoTest, Example, Bench }
 
 data devboot_produce_note: String = "THE PRODUCER, AND IT IS THE LIVE PATH RATHER THAN A WITNESS. This module is invoked through `gunbc run`, so the first consumer of the identity carriers is the ordinary CLI surface -- a witness suite proving the same functions in isolation would not have established that anything is ever actually built or retrieved.\\n\\nEVERY HOST PATH ARRIVES AS A PARAMETER. The store root is supplied by the caller, never spelled here: on srv1 the deploy supplies the gunbc.host_layout row, and a local run supplies a scratch directory. A literal here would be the layout-admission defect this vertical was explicitly told not to repeat, and it would also make the producer untestable anywhere but one host.\\n\\nTHE ORDER IS THE CONTRACT. Look for an existing artifact first, and only if none exists take the lease and build -- so a subject already produced never builds again, which is the product sentence this service exists to satisfy. The lease is taken with git's exact-value ref update, whose create-only form refuses when the ref already exists, so two callers racing the same subject cannot both become producers."
@@ -30,12 +60,89 @@ fn devboot_subject_tree_oid_argv(index_path: String) -> List<String> {
   [concat("GIT_INDEX_FILE=", index_path), "git", "write-tree"]
 }
 
-fn witness_toolchain() -> ToolchainRequirement {
-  ToolchainRequirement { name: "rustup" as NonEmptyStr, version: "1.89.0" as NonEmptyStr }
+data observed_toolchain_note: String = "THE TOOLCHAIN AND HOST ARE OBSERVED, NOT ASSERTED, and the previous revision asserting them was a live false share rather than a tidiness problem. It declared the toolchain as rustup 1.89.0 and the host as x86_64-unknown-linux-gnu. Measured on the machine that actually ran it: rustc 1.93.0, host aarch64-unknown-linux-gnu. Both hardcoded values were simply wrong.\\n\\nEACH ERROR HAD ITS OWN FAILURE. A fixed toolchain version means upgrading the compiler does not change the subject digest, so the same tree after a rustc upgrade REUSES the binary the old compiler built -- forever, because nothing about the identity ever moves. A fixed host triple is worse: the digest claimed x86_64 while the stored artifact was an aarch64 binary, so a genuine x86_64 consumer fetching that digest would receive something its machine cannot execute, with every identity check agreeing.\\n\\nSo both are read from the toolchain that is about to do the work. The triple is parsed through the cited Rust spelling in extdeps.rust.target_triple, which is partial and refuses anything it does not publish -- an unrecognized host refuses rather than being assembled from parts, because a triple composed by concatenation looks plausible for combinations Rust does not support."
+
+type ObservedToolchain
+  = ToolchainObserved { toolchain: ToolchainRequirement, host: TargetTriple }
+  | ToolchainObservationRefused { detail: String }
+
+fn second_field(text: String) -> String {
+  fold(
+    split(s: text, sep: " "),
+    init: FieldScan { index: 0, found: "" },
+    f: (acc, part) => scan_field(acc: acc, part: part, wanted: 1),
+  ).found
 }
 
-fn host_target() -> TargetTriple {
-  TargetTriple { arch: X86_64, vendor: UnknownVendor, os: Linux, env: Present { value: Gnu } }
+type FieldScan {
+  index: Int
+  found: String
+}
+
+fn scan_field(acc: FieldScan, part: String, wanted: Int) -> FieldScan {
+  if acc.index == wanted {
+    FieldScan { index: acc.index + 1, found: part }
+  } else {
+    FieldScan { index: acc.index + 1, found: acc.found }
+  }
+}
+
+fn observe_toolchain(repo_root: String) -> ObservedToolchain {
+  let version_out = gunbc.WitnessBin.Run(
+    workdir: repo_root,
+    bin_path: "rustc",
+    args: ["--version"],
+  )
+  let host_out = gunbc.WitnessBin.Run(
+    workdir: repo_root,
+    bin_path: "rustc",
+    args: ["-vV"],
+  )
+  if !version_out.success {
+    ToolchainObservationRefused { detail: "rustc --version could not be read" }
+  } else {
+    if !host_out.success {
+      ToolchainObservationRefused { detail: "rustc -vV could not be read" }
+    } else {
+      observe_toolchain_from_text(
+        version_text: trim(s: version_out.stdout),
+        verbose_text: host_out.stdout,
+      )
+    }
+  }
+}
+
+fn host_line_triple(verbose_text: String) -> String {
+  fold(
+    split(s: verbose_text, sep: "\n"),
+    init: "",
+    f: (acc, line) =>
+      if starts_with(s: trim(s: line), prefix: "host: ") {
+        trim(s: second_field(text: trim(s: line)))
+      } else {
+        acc
+      },
+  )
+}
+
+fn observe_toolchain_from_text(version_text: String, verbose_text: String) -> ObservedToolchain {
+  let version = second_field(text: version_text)
+  let host_spelling = host_line_triple(verbose_text: verbose_text)
+  if version == "" {
+    ToolchainObservationRefused { detail: concat("could not read a version out of: ", version_text) }
+  } else {
+    match parse_rust_target_triple(spelling: host_spelling) {
+      Absent =>
+        ToolchainObservationRefused {
+          detail: join(["this host reports the target triple ", host_spelling, ", which extdeps.rust.target_triple does not publish a row for"], ""),
+        }
+      Present { value: triple } =>
+        ToolchainObserved {
+          toolchain: ToolchainRequirement { name: "rustc" as NonEmptyStr, version: version as NonEmptyStr },
+          host: triple,
+        }
+    }
+  }
 }
 
 data devboot_produce_report_note: String = "The report is a rendered String because `gunbc run` prints a value and a caller reads it; the TYPED outcome is what the carriers hold, and this rendering is a projection of it rather than a second representation. It names the subject digest, the decision taken, and the artifact address, which is exactly what a caller needs to fetch."
@@ -48,6 +155,28 @@ fn devboot_produce_report(store_root: String, repo_root: String, index_path: Str
     expect: ExpectSuccess,
   )
   let tree_hex = trim(s: tree_out.stdout)
+  match observe_toolchain(repo_root: repo_root) {
+    ToolchainObservationRefused { detail } => ProduceRefused { reason: detail }
+    ToolchainObserved { toolchain, host } =>
+      devboot_produce_with_toolchain(
+        store_root: store_root,
+        repo_root: repo_root,
+        caller: caller,
+        tree_hex: tree_hex,
+        toolchain: toolchain,
+        host: host,
+      )
+  }
+}
+
+fn devboot_produce_with_toolchain(
+  store_root: String,
+  repo_root: String,
+  caller: String,
+  tree_hex: String,
+  toolchain: ToolchainRequirement,
+  host: TargetTriple,
+) -> ProduceReport {
   match git_object_id_from_untagged_hex(hex: tree_hex) {
     Absent => ProduceRefused { reason: concat("unusable tree oid from git write-tree: ", tree_hex) }
     Present { value: tree_oid } =>
@@ -55,8 +184,8 @@ fn devboot_produce_report(store_root: String, repo_root: String, index_path: Str
         tree_oid: tree_oid,
         package: "gunbc",
         cargo_target: Bin { name: "gunbc" },
-        toolchain: witness_toolchain(),
-        target: host_target(),
+        toolchain: toolchain,
+        target: host,
         profile: "release",
         features: [],
         rustflags: [],
@@ -64,12 +193,14 @@ fn devboot_produce_report(store_root: String, repo_root: String, index_path: Str
         sysroot: none,
         cargo_config: [],
       ) {
-        SubjectRefused { cause } => ProduceRefused { reason: "build subject was not admitted" }
+        SubjectRefused { cause } =>
+          ProduceRefused { reason: build_subject_refusal_reason(cause: cause) }
         SubjectAdmitted { subject } =>
           devboot_produce_admitted(
             store_root: store_root,
             repo_root: repo_root,
             caller: caller,
+            host: host,
             subject: subject,
             token: content_hash_ref_token(hash: build_subject_digest(subject: subject)),
           )
@@ -77,10 +208,31 @@ fn devboot_produce_report(store_root: String, repo_root: String, index_path: Str
   }
 }
 
+data subject_ref_namespace: String = "refs/devboot/subject/"
+
 data ref_namespace_single_authority_note: String = "THE NAMESPACES ARE CONSUMED, NOT RESPELLED. An earlier revision wrote the two ref prefixes as literals here while gunbc.devboot.lease already declared them, so one fact had two spellings that could drift apart independently -- and the drift would not have been loud. A producer writing under refs/devboot/artifact/ while the lease module looked under a renamed prefix would simply never find an existing artifact: every request would rebuild, the dedup this service exists to provide would be silently gone, and every individual run would still look correct.\\n\\nThese functions now append the token to the imported namespaces, so there is one authority for where a subject lives in the store and a rename reaches both readers at once."
+
+data admission_refusal_rendering_note: String = "THE TYPED CAUSE SURVIVES TO THE CALLER. An earlier revision matched SubjectRefused and threw the cause away, rendering every admission failure as the same sentence -- so a duplicate feature, an empty profile and an empty package name were indistinguishable to whoever had to fix one. That is the located half of a located refusal discarded at the last step, in a module whose whole subject is that refusals carry their reason.\\n\\nThe match below is total, so a new refusal cause cannot inherit a generic sentence by omission."
+
+fn build_subject_refusal_reason(cause: BuildSubjectRefusalCause) -> String {
+  match cause {
+    FeatureNameEmpty => "a requested feature name was empty"
+    DuplicateFeature { name } => concat("a feature was requested twice: ", name)
+    ProfileNameEmpty => "the requested cargo profile was empty"
+    PackageNameEmpty => "the requested package name was empty"
+    RustflagEmpty => "a requested rustflag was empty"
+    CargoConfigKeyEmpty => "a requested cargo config entry had an empty key"
+    LinkerEmpty => "the requested linker was empty"
+    SysrootEmpty => "the requested sysroot was empty"
+  }
+}
 
 fn artifact_ref_of(token: String) -> String {
   concat(artifact_ref_namespace, token)
+}
+
+fn subject_ref_of(token: String) -> String {
+  concat(subject_ref_namespace, token)
 }
 
 fn lease_ref_of(token: String) -> String {
@@ -117,12 +269,147 @@ fn artifact_lookup(store_root: String, repo_root: String, token: String) -> Arti
   ref_lookup(store_root: store_root, repo_root: repo_root, ref_name: artifact_ref_of(token: token))
 }
 
-fn devboot_produce_admitted(store_root: String, repo_root: String, caller: String, subject: BuildSubject, token: String) -> ProduceReport {
+data live_reuse_law_note: String = "THE LIVE PATH DECIDES REUSE THROUGH THE SAME FOLD THE MODEL DEFINES, which it did not before. An earlier revision reused on artifact-ref PRESENCE alone: the ref existed, so the bytes were served. The reuse law this capsule introduced -- retrieve the stored request, compare it exactly, confirm the bytes are there -- was stated in gunbc.devboot.outcome and exercised by witnesses, while the code that actually answered callers never called it. A model and its realization disagreeing about the model own central law is the fork this repository treats as a correctness defect, and the witnesses could not have caught it because they tested the fold rather than the path.\\n\\nWHAT MAKES THE COMPARISON POSSIBLE is that the producer now stores the rendered subject beside the artifact, under its own ref. On reuse, that text is read back and compared with the rendering of the request; the rendering is injective, so equal text means equal subjects. Bytes are then confirmed present in the object database before anything is served. A digest collision therefore costs a rebuild instead of a wrong binary, and a pruned object refuses instead of being reported as retrievable -- both on the live path, not only in the model."
+
+fn stored_record_text(store_root: String, repo_root: String, token: String) -> String {
+  let stored = gunbc.WitnessBin.Run(
+    workdir: repo_root,
+    bin_path: "git",
+    args: [concat("--git-dir=", store_root), "cat-file", "blob", subject_ref_of(token: token)],
+  )
+  if stored.success { stored.stdout } else { "" }
+}
+
+fn stored_subject_match(record_text: String, subject: BuildSubject) -> SubjectMatch {
+  if record_text == "" {
+    SubjectDiffers
+  } else {
+    if starts_with(s: record_text, prefix: render_build_subject(subject: subject)) {
+      SubjectMatches
+    } else {
+      SubjectDiffers
+    }
+  }
+}
+
+data unpack_temp_file_note: String = "THE TEMPORARY FILE IS REMOVED, because git unpack-file writes it into the CURRENT DIRECTORY and the current directory here is the repository whose tree oid is this service's identity axis. Leaving them behind litters the working tree with one file per verification -- the same class as the lease claim file that was written into the repo root, caught the same way, by looking at git status after a run.\\n\\nIt does not change the subject today, because the index this producer writes its tree from is read from HEAD rather than from the working directory, so untracked files are invisible to it. That is a property of how the subject is computed, not a licence to leave debris in someone else's checkout."
+
+data availability_is_measured_note: String = "AVAILABILITY IS MEASURED, NOT ASSUMED, and that is why this costs a read. The available arm carries a StoredArtifact, and there is no way to inhabit it without the observation that produced it -- so confirming a ref exists is not enough, and constructing an artifact record with an invented digest to satisfy the type would be precisely the fabrication the carrier exists to prevent.\\n\\nSo the bytes are fetched and their sha256 computed over the fetched file, whose preimage is the content alone. That digest is then checked against the one the record stored at production time: equal means available, different means CORRUPT rather than missing, because bytes that are present and wrong are an integrity failure and must never be retried as though they were a cache miss.\\n\\nThe cost is one read of the artifact on the reuse path. That is the honest price of the contract this vertical was given -- a reuse that skipped it would be reporting retrievability it had not established, which is the one thing there is no arm for."
+
+fn observed_artifact_sha256(store_root: String, repo_root: String, oid: String) -> String {
+  let unpacked = gunbc.WitnessBin.Run(
+    workdir: repo_root,
+    bin_path: "git",
+    args: [concat("--git-dir=", store_root), "unpack-file", oid],
+  )
+  if !unpacked.success {
+    ""
+  } else {
+    let temp_name = trim(s: unpacked.stdout)
+    let digest = gunbc.WitnessBin.Run(
+      workdir: repo_root,
+      bin_path: "sha256sum",
+      args: [temp_name],
+    )
+    let removed = gunbc.WitnessBin.Run(
+      workdir: repo_root,
+      bin_path: "rm",
+      args: ["-f", temp_name],
+    )
+    if digest.success { first_field(text: trim(s: digest.stdout)) } else { "" }
+  }
+}
+
+fn observe_artifact_availability(
+  store_root: String,
+  repo_root: String,
+  oid: String,
+  record_text: String,
+  subject: BuildSubject,
+) -> ArtifactAvailability {
+  let present = gunbc.WitnessBin.Run(
+    workdir: repo_root,
+    bin_path: "git",
+    args: [concat("--git-dir=", store_root), "cat-file", "-e", oid],
+  )
+  if !present.success {
+    ArtifactMissing
+  } else {
+    let observed = observed_artifact_sha256(store_root: store_root, repo_root: repo_root, oid: oid)
+    if observed == "" {
+      ArtifactUnreadable { detail: "the artifact blob could not be read back for verification" }
+    } else {
+      if string_contains(s: record_text, pattern: sha256_record_marker(hex: observed)) {
+        observed_stored_artifact(
+          subject: subject,
+          oid: oid,
+          sha256_hex: observed,
+          bytes_text: trim(s: gunbc.WitnessBin.Run(
+            workdir: repo_root,
+            bin_path: "git",
+            args: [concat("--git-dir=", store_root), "cat-file", "-s", oid],
+          ).stdout),
+        )
+      } else {
+        ArtifactUnreadable {
+          detail: "the artifact bytes do not match the sha256 recorded when they were produced",
+        }
+      }
+    }
+  }
+}
+
+data sha256_record_line_note: String = "THE DIGEST LINE IS SPELLED ONCE AND SEARCHED FOR WITHOUT ITS TERMINATOR, which is a distinction the first version got wrong and paid for immediately. The writer emits the line with a trailing newline, because it is a line. The reader must not look for that newline: the command transport returns process stdout with the trailing newline stripped, so a record whose last line is the digest comes back WITHOUT it, and a search including the terminator never matches.\\n\\nThe symptom was worth the lesson -- a correctly produced and correctly stored artifact was refused on reuse as though its bytes were unretrievable, which is a false refusal rather than a false share, so it fails safe. It still had to be found by running it, because both halves looked right in isolation and only disagreed at the seam.\\n\\nBoth forms come from one marker so the writer and the reader cannot drift apart; only the terminator differs, and it differs for a stated reason."
+
+fn sha256_record_marker(hex: String) -> String {
+  concat("artifact.sha256=", hex)
+}
+
+fn sha256_record_line(hex: String) -> String {
+  join([sha256_record_marker(hex: hex), "\n"], "")
+}
+
+data observed_stored_artifact_note: String = "EVERY FIELD IS MEASURED OR THE OBSERVATION REFUSES. A first draft of this function filled the byte count with zero and the subject digest with a hash of the object id, purely so the record would typecheck -- two invented values wearing the shape of measurements, which is the fabrication this whole carrier exists to make impossible, committed in the act of satisfying it.\\n\\nNow the subject digest is the digest of the subject actually requested, the blob id is the address the store answered to, the sha256 is computed over the fetched bytes, and the size comes from the store. Anything that cannot be established refuses through the availability sum instead of being supplied."
+
+fn observed_stored_artifact(
+  subject: BuildSubject,
+  oid: String,
+  sha256_hex: String,
+  bytes_text: String,
+) -> ArtifactAvailability {
+  match git_object_id_from_untagged_hex(hex: oid) {
+    Absent => ArtifactUnreadable { detail: concat("the store returned an unusable object id: ", oid) }
+    Present { value: blob } =>
+      match sha256_hex_digest(hex: sha256_hex) {
+        Absent => ArtifactUnreadable { detail: concat("the observed digest is not a sha256: ", sha256_hex) }
+        Present { value: digest } =>
+          ArtifactAvailable {
+            artifact: StoredArtifact {
+              subject_digest: build_subject_digest(subject: subject),
+              blob_oid: blob,
+              sha256: digest,
+              bytes: byte_size(count: parse_int(bytes_text)),
+            },
+          }
+      }
+  }
+}
+
+fn devboot_produce_admitted(store_root: String, repo_root: String, caller: String, host: TargetTriple, subject: BuildSubject, token: String) -> ProduceReport {
   match artifact_lookup(store_root: store_root, repo_root: repo_root, token: token) {
     ArtifactLookupRefused { detail } => ProduceRefused { reason: detail }
-    ArtifactRefPresent { oid } => ProduceReused { token: token, artifact: oid }
+    ArtifactRefPresent { oid } =>
+      live_reuse_report(
+        store_root: store_root,
+        repo_root: repo_root,
+        caller: caller,
+        host: host,
+        subject: subject,
+        token: token,
+        oid: oid,
+      )
     ArtifactRefAbsent =>
-      devboot_produce_build(store_root: store_root, repo_root: repo_root, caller: caller, subject: subject, token: token)
+      devboot_produce_build(store_root: store_root, repo_root: repo_root, caller: caller, host: host, subject: subject, token: token)
   }
 }
 
@@ -144,7 +431,7 @@ fn lease_failure_report(store_root: String, repo_root: String, token: String, de
   }
 }
 
-fn devboot_produce_build(store_root: String, repo_root: String, caller: String, subject: BuildSubject, token: String) -> ProduceReport {
+fn devboot_produce_build(store_root: String, repo_root: String, caller: String, host: TargetTriple, subject: BuildSubject, token: String) -> ProduceReport {
   let claim_path = join([store_root, "/devboot-lease-claim-", token], "")
   let claim_written = Filesystem.Write(path: claim_path, content: concat("producer=", caller))
 
@@ -163,7 +450,7 @@ fn devboot_produce_build(store_root: String, repo_root: String, caller: String, 
   if !taken.success {
     lease_failure_report(store_root: store_root, repo_root: repo_root, token: token, detail: trim(s: taken.stderr))
   } else {
-    devboot_store_built_artifact(store_root: store_root, repo_root: repo_root, caller: caller, subject: subject, token: token)
+    devboot_store_built_artifact(store_root: store_root, repo_root: repo_root, caller: caller, host: host, subject: subject, token: token)
   }
 }
 
@@ -236,14 +523,14 @@ fn profile_flags(profile: String) -> List<String> {
   if profile == "release" { ["--release"] } else { [] }
 }
 
-fn build_plan_for_subject(subject: BuildSubject) -> BuildPlan {
+fn build_plan_for_subject(subject: BuildSubject, host: TargetTriple) -> BuildPlan {
   let env_detail = environment_refusal_detail(environment: subject.environment)
   let artifact_name = cargo_target_artifact_name(target: subject.product.target)
   let profile = subject.profile as String
   if env_detail != "" {
     BuildPlanRefused { cause: BuildEnvironmentNotRealized { detail: env_detail } }
   } else {
-    if !(subject.target == host_target()) {
+    if !(subject.target == host) {
       BuildPlanRefused {
         cause: CrossTargetNotRealized {
           detail: "the requested target is not this host; cross-target production lands with the session-ABI capsule",
@@ -291,8 +578,8 @@ fn build_plan_refusal_reason(cause: BuildPlanRefusalCause) -> String {
   }
 }
 
-fn devboot_store_built_artifact(store_root: String, repo_root: String, caller: String, subject: BuildSubject, token: String) -> ProduceReport {
-  match build_plan_for_subject(subject: subject) {
+fn devboot_store_built_artifact(store_root: String, repo_root: String, caller: String, host: TargetTriple, subject: BuildSubject, token: String) -> ProduceReport {
+  match build_plan_for_subject(subject: subject, host: host) {
     BuildPlanRefused { cause } =>
       ProduceRefused { reason: build_plan_refusal_reason(cause: cause) }
     BuildPlanReady { args, artifact_path } =>
@@ -300,6 +587,7 @@ fn devboot_store_built_artifact(store_root: String, repo_root: String, caller: S
         store_root: store_root,
         repo_root: repo_root,
         caller: caller,
+        subject: subject,
         token: token,
         args: args,
         artifact_path: artifact_path,
@@ -311,6 +599,7 @@ fn devboot_run_build_plan(
   store_root: String,
   repo_root: String,
   caller: String,
+  subject: BuildSubject,
   token: String,
   args: List<String>,
   artifact_path: String,
@@ -328,6 +617,24 @@ fn devboot_run_build_plan(
     expect: ExpectSuccess,
   )
   let blob_oid = trim(s: stored.stdout)
+  let artifact_sha256 = observed_artifact_sha256(store_root: store_root, repo_root: repo_root, oid: blob_oid)
+  let record_path = join([store_root, "/devboot-record-", token], "")
+  let record_written = Filesystem.Write(
+    path: record_path,
+    content: join([render_build_subject(subject: subject), sha256_record_line(hex: artifact_sha256)], ""),
+  )
+  let record_blob = gunbc.WitnessBin.Run(
+    workdir: repo_root,
+    bin_path: "git",
+    args: [concat("--git-dir=", store_root), "hash-object", "-w", "--", record_path],
+    expect: ExpectSuccess,
+  )
+  let record_bound = gunbc.WitnessBin.Run(
+    workdir: repo_root,
+    bin_path: "git",
+    args: [concat("--git-dir=", store_root), "update-ref", subject_ref_of(token: token), trim(s: record_blob.stdout), ""],
+    expect: ExpectSuccess,
+  )
   let bound = gunbc.WitnessBin.Run(
     workdir: repo_root,
     bin_path: "git",
@@ -437,4 +744,48 @@ fn devboot_produce_entry(
     content: render_produce_report(report: report, caller: caller),
   )
   produce_report_exit(report: report)
+}
+
+data availability_refusal_rendering_note: String = "THE AVAILABILITY ARM SURVIVES INTO THE MESSAGE. An earlier revision rendered every unavailable outcome as the same sentence about bytes not being retrievable, which flattened the one distinction that matters most here: bytes that are ABSENT are a routine prune and a rebuild fixes them, while bytes that are PRESENT AND WRONG are an integrity failure and rebuilding over them without saying so would bury it. The match is total, so a new availability arm cannot inherit a generic sentence."
+
+fn availability_refusal_reason(availability: ArtifactAvailability) -> String {
+  match availability {
+    ArtifactAvailable { artifact } => "the artifact is available"
+    ArtifactMissing => "the artifact ref exists but its bytes are absent from the store"
+    ArtifactCorrupt { expected, observed } => "the artifact bytes do not match their recorded digest"
+    ArtifactUnreadable { detail } => detail
+  }
+}
+
+fn live_reuse_report(
+  store_root: String,
+  repo_root: String,
+  caller: String,
+  host: TargetTriple,
+  subject: BuildSubject,
+  token: String,
+  oid: String,
+) -> ProduceReport {
+  match reuse_decision_from_match(
+    candidate_digest: Present { value: build_subject_digest(subject: subject) },
+    requested: subject,
+    subject_match: stored_subject_match(record_text: stored_record_text(store_root: store_root, repo_root: repo_root, token: token), subject: subject),
+    availability: observe_artifact_availability(
+      store_root: store_root,
+      repo_root: repo_root,
+      oid: oid,
+      record_text: stored_record_text(store_root: store_root, repo_root: repo_root, token: token),
+      subject: subject,
+    ),
+  ) {
+    ReuseGranted { artifact } => ProduceReused { token: token, artifact: oid }
+    ReuseNoCandidate =>
+      devboot_produce_build(store_root: store_root, repo_root: repo_root, caller: caller, host: host, subject: subject, token: token)
+    ReuseSubjectMismatch { candidate_digest, requested_digest } =>
+      ProduceRefused {
+        reason: "the artifact stored under this subject digest was built for a different subject; refusing to serve it",
+      }
+    ReuseUnavailable { availability } =>
+      ProduceRefused { reason: availability_refusal_reason(availability: availability) }
+  }
 }

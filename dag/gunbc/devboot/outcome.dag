@@ -111,18 +111,21 @@ type ReuseDecision
   | ReuseSubjectMismatch { candidate_digest: ContentHash, requested_digest: ContentHash }
   | ReuseUnavailable { availability: ArtifactAvailability }
 
-fn reuse_decision(
-  candidate: StoredArtifactRecord?,
+data reuse_fold_single_authority_note: String = "ONE FOLD, TWO WAYS OF ESTABLISHING THE MATCH, because the callers genuinely differ in what they hold and must not differ in what they DECIDE. A caller with a reconstructed record compares subject values directly. The live producer holds a rendering read out of the store, and compares that against the rendering of the request -- injective, so equal renderings mean equal subjects -- because a value cannot be reconstructed from storage without a parser that could disagree with the writer.\\n\\nBoth arrive at a SubjectMatch and hand it to the same fold, so the ordering the ruling fixed -- candidate, then exact match, then observed bytes -- has exactly one implementation. An earlier revision let the live path reuse on ref presence alone, which is how a model and its realization end up disagreeing about the law the model exists to state: the witnesses exercised this fold while the code that actually served callers never called it."
+
+fn reuse_decision_from_match(
+  candidate_digest: ContentHash?,
   requested: BuildSubject,
+  subject_match: SubjectMatch,
   availability: ArtifactAvailability,
 ) -> ReuseDecision {
-  match candidate {
+  match candidate_digest {
     Absent => ReuseNoCandidate
-    Present { value: record } =>
-      match record_matches_request(record: record, requested: requested) {
+    Present { value: digest } =>
+      match subject_match {
         SubjectDiffers =>
           ReuseSubjectMismatch {
-            candidate_digest: record.artifact.subject_digest,
+            candidate_digest: digest,
             requested_digest: build_subject_digest(subject: requested),
           }
         SubjectMatches =>
@@ -133,6 +136,29 @@ fn reuse_decision(
             ArtifactUnreadable { detail } => ReuseUnavailable { availability: availability }
           }
       }
+  }
+}
+
+fn reuse_decision(
+  candidate: StoredArtifactRecord?,
+  requested: BuildSubject,
+  availability: ArtifactAvailability,
+) -> ReuseDecision {
+  match candidate {
+    Absent =>
+      reuse_decision_from_match(
+        candidate_digest: none,
+        requested: requested,
+        subject_match: SubjectDiffers,
+        availability: availability,
+      )
+    Present { value: record } =>
+      reuse_decision_from_match(
+        candidate_digest: Present { value: record.artifact.subject_digest },
+        requested: requested,
+        subject_match: record_matches_request(record: record, requested: requested),
+        availability: availability,
+      )
   }
 }
 
