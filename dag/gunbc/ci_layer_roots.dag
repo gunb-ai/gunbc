@@ -1113,7 +1113,7 @@ data falsifier_rehomed_bin_wet_rows: List<RehomedBinWetRow> = [
   RehomedBinWetRow {
     entry: "dag/test/claim/floor_skip_discovery_witness_test.dag",
     function: "floor_skip_discovery_keystone_holds",
-    reason: "289s measured on run 30009199696 (4.8x the per-row budget), AND a per-PR duplicate: the row runs the floor_skip_discovery_witness binary that the ci job's own Affected-set selection control step already runs on every PR — the per-PR widen-detector coverage is the step, so the row's per-PR seat bought a second copy of the same suite",
+    reason: "289s measured on run 30009199696 (4.8x the per-row budget). The rehome stands on that measured wall alone. A second clause once stood here claiming the row was ALSO a per-PR duplicate because the ci job runs the floor_skip_discovery_witness binary on every PR; #7446 (Demote the affected-set selection control to the falsifier cadence) moved that step out of ci.yml into falsifier.yml, so the per-PR coverage it cited stopped existing and the sentence became a justification pointing at a step that no longer runs per-PR. The binary now executes on the falsifier cadence only, which means this suite — including the affected-set incident controls — is caught within one cadence window rather than at merge. That is the honest coverage grain, stated rather than implied by a stale duplicate claim.",
     dissolve_on: "the selection-control suite's shared-index rework lands the binary under bin_witness_wet_per_row_wall_budget_seconds on a measured run — then either re-enroll per-PR consciously or delete this row as a duplicate of the step (whichever the measured wall admits)"
   },
   RehomedBinWetRow {
