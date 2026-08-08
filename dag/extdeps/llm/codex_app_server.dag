@@ -1,9 +1,17 @@
 module extdeps.llm.codex_app_server
 
-import std.types { NonEmptyStr, String, FilePath }
+import std.types { NonEmptyStr, String, FilePath, Int }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import extdeps.languages.json.emit {
+  JsonValue,
+  json_kv,
+  json_int,
+  json_string,
+  json_object,
+  serialize_json,
+}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -55,23 +63,68 @@ type CodexAppServerExecutable {
   path: FilePath
 }
 
-fn codex_app_server_initialize_request_line() -> NonEmptyStr {
-  concat(
-    "\{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":",
-    "\{\"clientInfo\":\{\"name\":\"gunbc\",\"title\":\"gunbc\",\"version\":\"0\"\},\"capabilities\":\{\}\}\}",
+data codex_app_server_request_line_emit_note: String = "Request lines are BUILT through extdeps.languages.json.emit, not hand-authored as escaped string literals (review 50540). The literals they replace carried their own JSON grammar — braces, quoting and separators spelled out in \\{ and \\\" escapes — which is a second JSON representation sitting beside the module that already owns one (DESIGN §3 dual representation), and it is the representation that cannot escape a value: a method name or client field containing a quote would have produced a malformed frame with nothing to refuse it. serialize_json applies the escaping, so the wire bytes are a consequence of the modeled value rather than of an author getting the backslashes right."
+
+fn codex_app_server_jsonrpc_request(id: Int, method: String, params: JsonValue) -> NonEmptyStr {
+  serialize_json(
+    v: json_object(
+      members: [
+        json_kv(key: "jsonrpc", value: json_string(s: "2.0")),
+        json_kv(key: "id", value: json_int(n: id)),
+        json_kv(key: "method", value: json_string(s: method)),
+        json_kv(key: "params", value: params),
+      ],
+    ),
   ) as NonEmptyStr
 }
 
+fn codex_app_server_initialize_request_line() -> NonEmptyStr {
+  codex_app_server_jsonrpc_request(
+    id: 1,
+    method: "initialize",
+    params: json_object(
+      members: [
+        json_kv(
+          key: "clientInfo",
+          value: json_object(
+            members: [
+              json_kv(key: "name", value: json_string(s: "gunbc")),
+              json_kv(key: "title", value: json_string(s: "gunbc")),
+              json_kv(key: "version", value: json_string(s: "0")),
+            ],
+          ),
+        ),
+        json_kv(key: "capabilities", value: json_object(members: [])),
+      ],
+    ),
+  )
+}
+
 fn codex_app_server_initialized_notification_line() -> NonEmptyStr {
-  "\{\"jsonrpc\":\"2.0\",\"method\":\"initialized\"\}" as NonEmptyStr
+  serialize_json(
+    v: json_object(
+      members: [
+        json_kv(key: "jsonrpc", value: json_string(s: "2.0")),
+        json_kv(key: "method", value: json_string(s: "initialized")),
+      ],
+    ),
+  ) as NonEmptyStr
 }
 
 fn codex_app_server_account_read_request_line() -> NonEmptyStr {
-  "\{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"account/read\",\"params\":\{\}\}" as NonEmptyStr
+  codex_app_server_jsonrpc_request(
+    id: 2,
+    method: "account/read",
+    params: json_object(members: []),
+  )
 }
 
 fn codex_app_server_rate_limits_read_request_line() -> NonEmptyStr {
-  "\{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"account/rateLimits/read\",\"params\":\{\}\}" as NonEmptyStr
+  codex_app_server_jsonrpc_request(
+    id: 3,
+    method: "account/rateLimits/read",
+    params: json_object(members: []),
+  )
 }
 
 data codex_app_server_initialized_handshake_note: String = "After initialize succeeds the client MUST send the initialized ClientNotification (method initialized, no id) before account/rateLimits/read. Without it the server may return no id=3 response at all — a missing-handshake Incomplete, not a wrong method name."
