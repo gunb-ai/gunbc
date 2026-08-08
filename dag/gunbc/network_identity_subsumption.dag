@@ -25,7 +25,7 @@ import extdeps.dns.domain_name {
 import extdeps.router.verizon_cr1000a { Cr1000aDhcpLeaseRow, Cr1000aDhcpLeaseTable }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv3 }
-import gunbc.deployed_intent_v1 { deployed_intent_v1_desired_hostname_short }
+import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
 
 data gunbc_network_identity_subsumption_scope_disposition: Disposition = Terminal {
   reason: "Slice-1 network-identity subsumption: DHCP option-12 dynamic lease client_hostname short label must subsume fleet_intent HostIdentity slot — discriminates BMC static reservation labels (operator-typed) from OS self-report (option-12). Pre-install: no dynamic row subsumes srv3; post-install: dynamic row with hostname srv3 subsumes operator_host_srv3."
@@ -60,7 +60,7 @@ fn network_identity_subsumes_fleet_slot(
 ) -> Bool {
   match lease {
     DynamicDhcpLease { client_hostname: Present { value: reported }, lease_time_remaining: _, status: Active } =>
-      match deployed_intent_v1_desired_hostname_short(fleet_slot: fleet_slot) {
+      match canonical_hostname_for_fleet_slot(fleet_slot: fleet_slot) {
         Present { value: desired } =>
           domain_name_wire(name: reported.name) == (desired as String)
         Absent => false

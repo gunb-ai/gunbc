@@ -233,7 +233,8 @@ fn stage0_std_surface_modules() -> List<String> {
     "std_interface_summary",
     "std_pareto",
     "std_realization_schedule",
-    "std_trait_derive_shape"
+    "std_trait_derive_shape",
+    "std_witness_admission"
   ]
 }
 
@@ -377,6 +378,7 @@ fn stage0_cross_unit_import_edges() -> List<ModuleDagEdge> {
     stage0_module_dag_edge(from: "std_realization_schedule", to: "std_execution_mode"),
     stage0_module_dag_edge(from: "std_realization_schedule", to: "std_measure"),
     stage0_module_dag_edge(from: "std_realization_schedule", to: "std_pareto"),
+    stage0_module_dag_edge(from: "std_realization_schedule", to: "std_witness_admission"),
     stage0_module_dag_edge(from: "extdeps_uri", to: "std_unicode_types"),
     stage0_module_dag_edge(from: "std_unicode_types", to: "std_types"),
     stage0_module_dag_edge(from: "extdeps_external_authority", to: "extdeps_uri"),

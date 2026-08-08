@@ -1,0 +1,49 @@
+module extdeps.browser.google_chrome
+
+import std.types { String, Bool, NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.chromium.org/updates/ua-reduction/"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.browser.google_chrome",
+      decl_name: "google_chrome",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data google_chrome_note: String = "Google Chrome the DISTRIBUTION, which is not Chromium the project. extdeps.browser.chromium's own chromium_identity_boundary_note already draws this line from the other side — a Chromium build is not a Google Chrome, Opera, Edge, or Playwright identity — and this module is the counterpart it implies: an observation taken in Chrome names Chrome here, and names its Chromium engine revision separately and usually unresolved.
+
+The module is deliberately narrow. It carries the distribution's identity and the one behaviour a motion receipt actually depends on, which is User-Agent reduction. Everything else Chrome does belongs to a fact row someone needs."
+
+type GoogleChrome
+  = | GoogleChromeDistribution
+
+data google_chrome: GoogleChrome = GoogleChromeDistribution
+
+data ua_reduction_note: String = "THE CITED FACT THAT KEEPS A RECEIPT HONEST. Under User-Agent reduction Chrome freezes the platform and operating-system portions of its User-Agent string and reports only a major version: on macOS the string carries the literal 'Mac OS X 10_15_7' and navigator.platform reports the literal 'MacIntel', regardless of the machine's real operating system version or architecture, and the version reads as MAJOR.0.0.0.
+
+So those three values are CONSTANTS, not measurements. A receipt that records them as host identity has recorded what Chrome always says rather than anything about the machine, which is why the observing layer carries them as reduced-by-policy rather than resolved. Recovering real identity needs User-Agent Client Hints where available, or a host-side observation."
+
+data frozen_macos_platform_token: String = "MacIntel"
+data frozen_macos_os_version_token: String = "Mac OS X 10_15_7"
+
+fn value_is_frozen_ua_token(v: String) -> Bool {
+  v == frozen_macos_platform_token || v == frozen_macos_os_version_token
+}
+
+data minor_version_is_zeroed: Bool = true
+
+data identity_boundary_note: String = "A Google Chrome build is not a Chromium build, not Microsoft Edge, not Opera, and not a Playwright-driven browser, even where all of them share an engine revision. A platform limitation observed in Chrome is attributable to Chrome and to whatever engine revision was separately resolved; it is not attributable to the Chromium project unless the engine identity was actually read."

@@ -27,6 +27,9 @@ import gunbc.guarantee_probe_corpus {
   sole_ctor_forged_red_probe,
   sole_ctor_green_probe,
   sole_ctor_mint_fn_hole_probe,
+  sole_ctor_cast_red_probe,
+  sole_ctor_unadmitted_caller_red_probe,
+  sole_ctor_admitted_caller_green_probe,
   v2_frontier_red_probe,
   v2_frontier_green_probe,
   ProbeExpectation,
@@ -154,6 +157,12 @@ data sole_ctor_forged_source: String = "module probe_uri_sole_ctor_forged\nimpor
 data sole_ctor_green_source: String = "module probe_sealed_green\nimport test.fixture.sole_constructor_sealed.definer { mint_local, LocalValidated }\nfn legal() -> LocalValidated { mint_local(n: 65) }\n"
 
 data sole_ctor_mint_fn_hole_source: String = "module probe_uri_sole_ctor_mint_hole\nimport extdeps.uri {\n  uri_validated_scalar_construction,\n  UriValidatedScalarConstructed,\n  UriValidatedScalarSurrogateRefused,\n  UriValidatedScalarOutOfRangeRefused,\n}\nfn bypass_via_mint() -> String {\n  match uri_validated_scalar_construction(cp: 55296) {\n    UriValidatedScalarConstructed(_) => \"constructed\"\n    UriValidatedScalarSurrogateRefused { cp: _ } => \"surrogate\"\n    UriValidatedScalarOutOfRangeRefused { cp: _ } => \"range\"\n  }\n}\n"
+
+data sole_ctor_cast_source: String = "module probe_sealed_cast\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated }\nfn forged() -> LocalValidated { 7 as LocalValidated }\n"
+
+data sole_ctor_unadmitted_caller_source: String = "module probe_sealed_unadmitted_caller\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated, mint_sealed_local }\nfn unadmitted_mint_call(n: Int) -> LocalValidated { mint_sealed_local(n: n) }\n"
+
+data sole_ctor_admitted_caller_source: String = "module probe_sealed_admitted_caller\nimport test.fixture.sole_constructor_sealed.admitted_caller { admitted_mint_call }\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated }\nfn through_the_admitted_caller() -> LocalValidated { admitted_mint_call(n: 65) }\n"
 
 data sole_constructor_probe_scope_note: String = "UriValidatedScalar (#7790) enrolled on the guarantee probe corpus, not a parallel compile_dag_rust_emit_check fork. RED: cross-module record literal UriValidatedScalar { admitted_cp: 55296 } must refuse SoleConstructorViolation. Green control: cross-module mint-via-exported-fn through test.fixture.sole_constructor_sealed.definer — the sanctioned construction form that must stay zero-diagnostics; UriValidatedScalar's runtime witnesses carry the domain-specific legal paths. Known hole, expecting-red: cross-module uri_validated_scalar_construction(55296) still compile-accepts without blocking SoleConstructorViolation; runtime refusal is not compile evidence. sole_constructor_mint_fn_hole_still_compile_clean witnesses the hole until the wall extends."
 
@@ -339,6 +348,40 @@ test fn sole_constructor_sanctioned_mint_green_control_has_zero_diagnostics() ->
   match active_probe_row(probe: sole_ctor_green_probe) {
     Present { value: row } =>
       probe_row_expectation_holds(census: census_of(source: sole_ctor_green_source), row: row)
+    Absent => false
+  }
+}
+
+test fn sole_constructor_cross_module_cast_red_refuses() -> Bool {
+  let census = census_of(source: sole_ctor_cast_source)
+  match active_probe_row(probe: sole_ctor_cast_red_probe) {
+    Present { value: row } =>
+      probe_row_expectation_holds(census: census, row: row)
+        && match census_blocking_count_for_class(census: census, wanted: "SoleConstructorViolation") {
+          Present { value: n } => n >= 1
+          Absent => false
+        }
+    Absent => false
+  }
+}
+
+test fn sole_constructor_unadmitted_caller_red_refuses() -> Bool {
+  let census = census_of(source: sole_ctor_unadmitted_caller_source)
+  match active_probe_row(probe: sole_ctor_unadmitted_caller_red_probe) {
+    Present { value: row } =>
+      probe_row_expectation_holds(census: census, row: row)
+        && match census_blocking_count_for_class(census: census, wanted: "ConstructorCallAdmissionRefused") {
+          Present { value: n } => n >= 1
+          Absent => false
+        }
+    Absent => false
+  }
+}
+
+test fn sole_constructor_admitted_caller_green_control_has_zero_diagnostics() -> Bool {
+  match active_probe_row(probe: sole_ctor_admitted_caller_green_probe) {
+    Present { value: row } =>
+      probe_row_expectation_holds(census: census_of(source: sole_ctor_admitted_caller_source), row: row)
     Absent => false
   }
 }
@@ -685,6 +728,18 @@ test fn dark_suite_dispositions_cover_migrated_v1_probes() -> Bool {
   let disposed_ids_have_no_internal_duplicates =
     distinct_string_count(values: disposition_probe_ids) == count(disposition_probe_ids)
   let known_v1_migration_gap_ids: List<String> = [sole_ctor_mint_fn_hole_probe as String]
+  // Probes authored directly against the v1 compile path with no Rust witness behind them. The
+  // migration law below quantifies over every v1-compile row on the assumption that each descends
+  // from a Rust witness that must be disposed; these do not, so disposing them would assert a
+  // migration that never happened and listing them as gaps would assert a hole that is not there.
+  // Both are the rung-inflation failure in miniature, one in each direction, so they get their own
+  // arm. Membership here is not an exemption from evidence: each row still carries a discriminating
+  // RED or a positive control executed by a test in this file.
+  let dag_native_v1_compile_probe_ids: List<String> = [
+    sole_ctor_admitted_caller_green_probe as String,
+    sole_ctor_cast_red_probe as String,
+    sole_ctor_unadmitted_caller_red_probe as String,
+  ]
   let known_gaps_are_not_disposed = known_v1_migration_gap_ids
     |> all(gap => !string_list_contains(xs: disposition_probe_ids, wanted: gap))
   let every_v1_compile_probe_is_disposed_or_a_named_gap = guarantee_probe_rows()
@@ -693,11 +748,17 @@ test fn dark_suite_dispositions_cover_migrated_v1_probes() -> Bool {
       let id = row.probe as String
       string_list_contains(xs: disposition_probe_ids, wanted: id)
         || string_list_contains(xs: known_v1_migration_gap_ids, wanted: id)
+        || string_list_contains(xs: dag_native_v1_compile_probe_ids, wanted: id)
     })
+  // The three arms must partition, or a row could claim two contradictory standings at once.
+  let dag_native_ids_are_not_disposed_or_gaps = dag_native_v1_compile_probe_ids
+    |> all(id => !string_list_contains(xs: disposition_probe_ids, wanted: id)
+      && !string_list_contains(xs: known_v1_migration_gap_ids, wanted: id))
   disposed_ids_are_sound
     && disposed_ids_have_no_internal_duplicates
     && dispositions_name_the_finite_classification_gate
     && known_gaps_are_not_disposed
+    && dag_native_ids_are_not_disposed_or_gaps
     && every_v1_compile_probe_is_disposed_or_a_named_gap
 }
 

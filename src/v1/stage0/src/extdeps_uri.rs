@@ -32,6 +32,7 @@ use std::rc::Rc;
 pub enum UriScheme {
     Http,
     Https,
+    Tftp,
     File,
     Ftp,
     Javascript,
@@ -50,6 +51,7 @@ pub fn uri_scheme_is_http(s: UriScheme) -> bool {
     match s.clone() {
         UriScheme::Http => true,
         UriScheme::Https => true,
+        UriScheme::Tftp => false,
         UriScheme::File => false,
         UriScheme::Ftp => false,
         UriScheme::Javascript => false,
@@ -67,6 +69,7 @@ pub fn uri_scheme_wire(s: UriScheme) -> String {
     match s.clone() {
         UriScheme::Http => "http://".to_string(),
         UriScheme::Https => "https://".to_string(),
+        UriScheme::Tftp => "tftp://".to_string(),
         UriScheme::File => "file://".to_string(),
         UriScheme::Ftp => "ftp://".to_string(),
         UriScheme::Javascript => "javascript:".to_string(),
@@ -149,14 +152,22 @@ pub fn parse_href_scheme(url: String) -> Rc<ParsedHrefScheme> {
                                         scheme: UriScheme::Http,
                                     })
                                 } else {
-                                    if (v1_rt::starts_with(s.clone(), "mailto:".to_string())
-                                        || v1_rt::starts_with(s.clone(), "MAILTO:".to_string()))
+                                    if (v1_rt::starts_with(s.clone(), "tftp://".to_string())
+                                        || v1_rt::starts_with(s.clone(), "TFTP://".to_string()))
                                     {
                                         Rc::new(ParsedHrefScheme::HrefScheme {
-                                            scheme: UriScheme::Mailto,
+                                            scheme: UriScheme::Tftp,
                                         })
                                     } else {
-                                        Rc::new(ParsedHrefScheme::UnknownHref)
+                                        if (v1_rt::starts_with(s.clone(), "mailto:".to_string())
+                                            || v1_rt::starts_with(s.clone(), "MAILTO:".to_string()))
+                                        {
+                                            Rc::new(ParsedHrefScheme::HrefScheme {
+                                                scheme: UriScheme::Mailto,
+                                            })
+                                        } else {
+                                            Rc::new(ParsedHrefScheme::UnknownHref)
+                                        }
                                     }
                                 }
                             }
@@ -961,6 +972,8 @@ pub fn uri_percent_encode_code_points(code_points: Rc<Vec<i64>>) -> Rc<UriPercen
 pub struct Http;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Https;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Tftp;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct File;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

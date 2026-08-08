@@ -3,7 +3,7 @@ module extdeps.uri_validation
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri {
   Uri, Https,
-  UriScheme, Http, File, Ftp, Javascript, Data, Vbscript, Mailto,
+  UriScheme, Http, File, Ftp, Tftp, Javascript, Data, Vbscript, Mailto,
   ParsedHrefScheme, HrefScheme, RelativeHref, UnknownHref,
   parse_href_scheme,
 }
@@ -45,6 +45,7 @@ fn validate_href(url: String) -> HrefValidation {
         Vbscript => RejectedHref { reason: DangerousScheme { scheme: VbscriptScheme } }
         File => RejectedHref { reason: SchemeNotAllowlisted }
         Ftp => RejectedHref { reason: SchemeNotAllowlisted }
+        Tftp => RejectedHref { reason: SchemeNotAllowlisted }
       }
     UnknownHref => RejectedHref { reason: SchemeNotAllowlisted }
   }
