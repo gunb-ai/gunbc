@@ -1,0 +1,236 @@
+module gunbc.namespace_clause_e_projection_law
+
+import std.types { Int, List }
+import std.occurrence_binding_candidates {
+  ReferenceDerivedClauseEProduction,
+  ReferenceDerivedClauseEProductionReady,
+  ReferenceDerivedClauseEProductionRefused,
+  ReferenceDerivedClauseEProductionRefusal,
+  ReferenceDerivedDependencyProjection,
+  ReferenceDerivedDependencyProjectionReady,
+  ReferenceDerivedDependencyProjectionBindingRefused,
+  ReferenceDerivedDependencyProjectionFileRefused,
+  CrossFileBindingProvenanceProjection,
+  CrossFileBindingProvenance,
+  DirectFileDependency,
+  BoundReferenceProvider,
+  BoundReferencePopulation,
+  AllReferencesBound,
+  ReferencePopulationRefused,
+  direct_file_dependencies_from_provenances,
+}
+
+data namespace_clause_e_projection_law_note: String = "Clause-(e) projection law carrier (N3-B1): assess_controlled_two_mention_provenance_projection proves the controlled two-mention / one-declaration / one-file-dependency projection law on hand-built ReferenceDerivedClauseEProduction carriers. Returns NamespaceClauseEProjectionVerdict over the neutral ReferenceDerivedDependencyProjection seam — never the parent ReferenceDerivedClosureAdmission ontology (N3-D translates child evidence into RepeatedMentionsCollapseDependency). Row closure over OrdinaryLoadedCompilationClosure is B2's axis and is excluded from this module."
+
+data lists_agree_at_nfr_disposition_note: String = "NFR census disposition (review 48425/48733): lists_agree_at is not separately rostered on gunbc.non_fold_residue.non_fold_residue_frontier. nfr_residue_sites attributes only match-on-closed-coproduct-param sites carrying a top-level wildcard arm; this helper's list-head Option projection arms (left |> first Absent) are not a param scrutinee, so a roster row is scan-invisible and would count permanently stale (receipt: row landed 6dcf9289a67, deleted a4f53019847 when stale_roster_count=1). Structural head/tail recursion (review 49368) maps length mismatch to ListsDisagree; assess_controlled_two_mention routes provenance |> first Absent to ProjectionListStructureBroken separately. assess_controlled_two_mention_provenance_projection routes ReferencePopulationRefused to ProjectionBindingRefused before population agreement. Dissolve lists_agree_at when list agreement becomes a total std carrier (algebra-derived zip fold) and delete this note with the row."
+
+type NamespaceClauseEProjectionFailure
+  = ProjectionBindingRefused { population: BoundReferencePopulation }
+  | ProjectionFileRefused {
+      first_failure: CrossFileBindingProvenanceProjection,
+      more_failures: List<CrossFileBindingProvenanceProjection>,
+    }
+  | BindingProvenanceCountWrong { expected: Int, found: Int }
+  | FileDependencyCountWrong { expected: Int, found: Int }
+  | ReferenceOccurrencesNotDistinct
+  | DeclarationOccurrencesNotShared
+  | ProvenanceProjectionInconsistent
+  | BoundPopulationInconsistentWithProvenance
+  | ProjectionListStructureBroken
+
+type ListsAgreementAtVerdict
+  = ListsAgree
+  | ListsDisagree
+  | ListStructureBroken
+
+fn lists_agree_at<A, B>(
+  left: List<A>,
+  right: List<B>,
+  agree: fn(A, B) -> Bool,
+) -> ListsAgreementAtVerdict {
+  match left |> first {
+    Absent =>
+      match right |> first {
+        Absent => ListsAgree
+        Present { value: _ } => ListsDisagree
+      }
+    Present { value: left_head } =>
+      match right |> first {
+        Absent => ListsDisagree
+        Present { value: right_head } =>
+          if agree(left_head, right_head) {
+            lists_agree_at(
+              left: left.skip(n: 1),
+              right: right.skip(n: 1),
+              agree: agree,
+            )
+          } else {
+            ListsDisagree
+          }
+      }
+  }
+}
+
+type NamespaceClauseEProjectionVerdict
+  = NamespaceClauseEProjectionEstablished
+  | NamespaceClauseEProjectionRefused {
+      failure: NamespaceClauseEProjectionFailure,
+    }
+  | NamespaceClauseEProductionRefused {
+      refusal: ReferenceDerivedClauseEProductionRefusal,
+    }
+
+fn direct_file_dependency_eq(
+  a: DirectFileDependency,
+  b: DirectFileDependency
+) -> Bool {
+  a.consumer_file == b.consumer_file
+    && a.provider_file == b.provider_file
+}
+
+fn direct_file_dependency_lists_eq(
+  left: List<DirectFileDependency>,
+  right: List<DirectFileDependency>
+) -> ListsAgreementAtVerdict {
+  lists_agree_at(left: left, right: right, agree: direct_file_dependency_eq)
+}
+
+fn reference_derived_file_dependencies_match_provenances(
+  provenances: List<CrossFileBindingProvenance>,
+  file_dependencies: List<DirectFileDependency>
+) -> ListsAgreementAtVerdict {
+  direct_file_dependency_lists_eq(
+    left: direct_file_dependencies_from_provenances(provenances: provenances),
+    right: file_dependencies,
+  )
+}
+
+fn cross_file_binding_provenance_matches_provider(
+  a: CrossFileBindingProvenance,
+  b: BoundReferenceProvider,
+) -> Bool {
+  a.reference_occurrence == b.reference_occurrence
+    && a.declaration_occurrence == b.declaration_occurrence
+}
+
+fn provenance_provider_lists_agree(
+  provenances: List<CrossFileBindingProvenance>,
+  providers: List<BoundReferenceProvider>
+) -> ListsAgreementAtVerdict {
+  lists_agree_at(
+    left: provenances,
+    right: providers,
+    agree: cross_file_binding_provenance_matches_provider,
+  )
+}
+
+fn assess_controlled_two_mention_provenance_projection(
+  production: ReferenceDerivedClauseEProduction,
+) -> NamespaceClauseEProjectionVerdict {
+  match production {
+    ReferenceDerivedClauseEProductionReady {
+      projection: projection,
+      consumer_file: _,
+    } =>
+      match projection {
+        ReferenceDerivedDependencyProjectionReady {
+          binding_provenance: provenances,
+          file_dependencies: dependencies,
+          bound_population: bound_population,
+        } =>
+          if (provenances |> count) != 2 {
+            NamespaceClauseEProjectionRefused {
+              failure: BindingProvenanceCountWrong {
+                expected: 2,
+                found: provenances |> count,
+              },
+            }
+          } else if (dependencies |> count) != 1 {
+            NamespaceClauseEProjectionRefused {
+              failure: FileDependencyCountWrong {
+                expected: 1,
+                found: dependencies |> count,
+              },
+            }
+          } else {
+            match provenances |> first {
+              Present { value: first_provenance } =>
+                match provenances.skip(n: 1) |> first {
+                  Present { value: second_provenance } =>
+                    if first_provenance.declaration_occurrence != second_provenance.declaration_occurrence {
+                      NamespaceClauseEProjectionRefused {
+                        failure: DeclarationOccurrencesNotShared,
+                      }
+                    } else if first_provenance.reference_occurrence == second_provenance.reference_occurrence {
+                      NamespaceClauseEProjectionRefused {
+                        failure: ReferenceOccurrencesNotDistinct,
+                      }
+                    } else {
+                      match reference_derived_file_dependencies_match_provenances(
+                        provenances: provenances,
+                        file_dependencies: dependencies,
+                      ) {
+                        ListStructureBroken =>
+                          NamespaceClauseEProjectionRefused {
+                            failure: ProjectionListStructureBroken,
+                          }
+                        ListsDisagree =>
+                          NamespaceClauseEProjectionRefused {
+                            failure: ProvenanceProjectionInconsistent,
+                          }
+                        ListsAgree => {
+                          match bound_population {
+                            ReferencePopulationRefused { first_failure: _, more_failures: _ } =>
+                              NamespaceClauseEProjectionRefused {
+                                failure: ProjectionBindingRefused { population: bound_population },
+                              }
+                            AllReferencesBound { providers: providers } =>
+                              match provenance_provider_lists_agree(
+                                provenances: provenances,
+                                providers: providers,
+                              ) {
+                                ListStructureBroken =>
+                                  NamespaceClauseEProjectionRefused {
+                                    failure: ProjectionListStructureBroken,
+                                  }
+                                ListsDisagree =>
+                                  NamespaceClauseEProjectionRefused {
+                                    failure: BoundPopulationInconsistentWithProvenance,
+                                  }
+                                ListsAgree =>
+                                  NamespaceClauseEProjectionEstablished
+                              }
+                          }
+                        }
+                      }
+                    }
+                  Absent =>
+                    NamespaceClauseEProjectionRefused {
+                      failure: ProjectionListStructureBroken,
+                    }
+                }
+              Absent =>
+                NamespaceClauseEProjectionRefused {
+                  failure: ProjectionListStructureBroken,
+                }
+            }
+          }
+        ReferenceDerivedDependencyProjectionBindingRefused { population: population } =>
+          NamespaceClauseEProjectionRefused {
+            failure: ProjectionBindingRefused { population: population },
+          }
+        ReferenceDerivedDependencyProjectionFileRefused {
+          first_failure: first_failure,
+          more_failures: more_failures,
+        } =>
+          NamespaceClauseEProjectionRefused {
+            failure: ProjectionFileRefused {
+              first_failure: first_failure,
+              more_failures: more_failures,
+            },
+          }
+      }
+    ReferenceDerivedClauseEProductionRefused { refusal: refusal } =>
+      NamespaceClauseEProductionRefused { refusal: refusal }
+  }
+}

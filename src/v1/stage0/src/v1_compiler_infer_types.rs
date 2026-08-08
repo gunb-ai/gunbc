@@ -136,16 +136,16 @@ pub fn node_is_keyed_collection(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    (node_is_collection(n.clone(), source_indices.clone())
-        && ((n.children.clone().len() as i64) == 2))
+    (((n.children.clone().len() as i64) == 2)
+        && node_is_collection(n.clone(), source_indices.clone()))
 }
 
 pub fn node_is_element_collection(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    (node_is_collection(n.clone(), source_indices.clone())
-        && ((n.children.clone().len() as i64) == 1))
+    (((n.children.clone().len() as i64) == 1)
+        && node_is_collection(n.clone(), source_indices.clone()))
 }
 
 pub fn node_is_set_collection(
