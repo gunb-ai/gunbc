@@ -5,7 +5,7 @@ import v2.compiler.emit_module { emit_module }
 import v2.compiler.infer { InferredTree }
 import v2.compiler.build_transport_admission { build_transport_admissible }
 import std.access { AccessDecision, Permit, Deny }
-import std.process { ProcessTermination, ProcessExited, ProcessSignaled, ProcessTerminationUnobserved }
+import std.process_termination { ProcessTermination, ProcessExited, ProcessSignaled, ProcessTerminationUnobserved }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.compiler.eval {

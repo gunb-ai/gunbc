@@ -96,7 +96,7 @@ import std.realization_schedule {
   CorpusWitnessKind, ExecutionWitnessKind
 }
 import std.realization_schedule { WalkPlan, NoWalkFinalization, NoFinalizationDeclared, NoPreWalkExecution }
-import std.process { ProcessExited, ProcessSignaled }
+import std.process_termination { ProcessExited, ProcessSignaled }
 import gunbc.ci_materialization {
   FloorFinalization,
   ResolveObligation,

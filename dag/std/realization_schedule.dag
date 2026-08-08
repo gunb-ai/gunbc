@@ -20,7 +20,7 @@ import std.content_hash {
   fnv1a64_structural_hex_digest
 }
 import std.algebra { Empty, Cons }
-import std.process { ProcessTermination, ProcessExited, ProcessSignaled, ProcessTerminationUnobserved }
+import std.process_termination { ProcessTermination, ProcessExited, ProcessSignaled, ProcessTerminationUnobserved }
 
 type CostBasis
   = Predicted

@@ -456,7 +456,7 @@ pub(crate) fn list_value(items: impl Into<RrbVector<Value>>) -> Value {
     Value::List(Rc::new(items.into()))
 }
 
-/// Project an observed child-process status onto `std.process` `ProcessTermination`.
+/// Project an observed child-process status onto `std.process_termination` `ProcessTermination`.
 ///
 /// A signalled process has no exit code, so it gets the signal arm rather than a
 /// fabricated integer: the seed used to render `.code().unwrap_or(-1)` for both, which

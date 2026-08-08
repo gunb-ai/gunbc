@@ -8499,7 +8499,7 @@ struct ObservedFloorWorker {
     terminal_receipt: FloorWorkerTerminalReceipt,
 }
 
-/// Seed projection of `std.process` `ProcessTermination` — how an observed process
+/// Seed projection of `std.process_termination` `ProcessTermination` — how an observed process
 /// ended. One carrier for both places the executor observes a child: the floor-worker
 /// coordinator (which spawns workers directly and reads an `ExitStatus`) and the native
 /// bundle transport (which reads the termination the interpreter transport carries).
@@ -8525,7 +8525,7 @@ impl ProcessTermination {
 }
 
 /// The transport violated its own modeled wire: the `termination` value could not be
-/// decoded as a `std.process` `ProcessTermination`. Deliberately a DIFFERENT state
+/// decoded as a `std.process_termination` `ProcessTermination`. Deliberately a DIFFERENT state
 /// from `Unobserved` — Unobserved is the transport honestly reporting that the spawn
 /// never produced a status (an observation about the child), while this refusal means
 /// the transport or the interning under it is broken (a defect in the wire). The two
@@ -8536,7 +8536,7 @@ struct ProcessTerminationDecodeRefusal {
     located: String,
 }
 
-/// Read the `std.process` `ProcessTermination` the transport carries. ONLY the
+/// Read the `std.process_termination` `ProcessTermination` the transport carries. ONLY the
 /// explicit modeled `ProcessTerminationUnobserved` arm decodes to `Unobserved`;
 /// absent, mistyped, unknown-variant, and missing/non-integer-field wire all carry a
 /// located decode refusal, never a fabricated exit code and never a borrowed

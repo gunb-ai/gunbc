@@ -102,14 +102,8 @@ pub mod extdeps_uri;
 #[path = "../../stage0/src/extdeps_external_authority.rs"]
 pub mod extdeps_external_authority;
 #[rustfmt::skip]
-#[path = "../../stage0/src/extdeps_process_posix_exit.rs"]
-pub mod extdeps_process_posix_exit;
-#[rustfmt::skip]
-#[path = "../../stage0/src/extdeps_process_gnu_bash_exit.rs"]
-pub mod extdeps_process_gnu_bash_exit;
-#[rustfmt::skip]
-#[path = "../../stage0/src/std_process.rs"]
-pub mod std_process;
+#[path = "../../stage0/src/std_process_termination.rs"]
+pub mod std_process_termination;
 #[rustfmt::skip]
 #[path = "../../stage0/src/extdeps_container_oci_digest.rs"]
 pub mod extdeps_container_oci_digest;

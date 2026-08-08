@@ -39,8 +39,8 @@ pub use crate::std_measure::{ByteSize, ClockBasis, Measure, Millisecond, Quantit
 pub use crate::std_nat::Nat;
 pub use crate::std_pareto::AxisGoal;
 use crate::std_pareto::AxisGoal::*;
-pub use crate::std_process::ProcessTermination;
-use crate::std_process::ProcessTermination::{
+pub use crate::std_process_termination::ProcessTermination;
+use crate::std_process_termination::ProcessTermination::{
     ProcessExited, ProcessSignaled, ProcessTerminationUnobserved,
 };
 use crate::std_types::Bool::*;
