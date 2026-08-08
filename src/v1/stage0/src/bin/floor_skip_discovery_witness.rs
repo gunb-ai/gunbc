@@ -5,13 +5,13 @@ use std::process::ExitCode;
 
 use v1_compiler::cli_run::{
     build_multi_entry_index, resolve_entry_graph_shared, resolve_entry_with_index,
-    run_discovery_corpus_with_options, workspace_root, DiscoveryCorpusOptions, DiscoverySummary,
-    DiscoveryWidthPolicy, NodeFrontierSelectionMode, SELECTION_CONTROL_BUDGET_ROSTER_REL,
-    SELECTION_CONTROL_CI_FLOOR_PLAN_REL, SELECTION_CONTROL_DOC_REACHABILITY_REL,
-    SELECTION_CONTROL_FALSIFIER_CONTROL_REL, SELECTION_CONTROL_FLOOR_RUNNER_REL,
-    SELECTION_CONTROL_FLOOR_RUNNER_TEST_REL, SELECTION_CONTROL_LIVE_TREE_DECLARED_REL,
-    SELECTION_CONTROL_NODE_PRECISE_REL, SELECTION_CONTROL_REALIZATION_SCHEDULE_REL,
-    SELECTION_CONTROL_SHARED_HELPER_REL,
+    run_discovery_corpus_with_options, workspace_root, DiscoveryCorpusOptions, DiscoveryRow,
+    DiscoverySummary, DiscoveryWidthPolicy, LiveReadSelectionContext, NodeFrontierSelectionMode,
+    SELECTION_CONTROL_BUDGET_ROSTER_REL, SELECTION_CONTROL_CI_FLOOR_PLAN_REL,
+    SELECTION_CONTROL_DOC_REACHABILITY_REL, SELECTION_CONTROL_FALSIFIER_CONTROL_REL,
+    SELECTION_CONTROL_FLOOR_RUNNER_REL, SELECTION_CONTROL_FLOOR_RUNNER_TEST_REL,
+    SELECTION_CONTROL_LIVE_TREE_DECLARED_REL, SELECTION_CONTROL_NODE_PRECISE_REL,
+    SELECTION_CONTROL_REALIZATION_SCHEDULE_REL, SELECTION_CONTROL_SHARED_HELPER_REL,
 };
 use v1_compiler::v1_interpreter::ExecutionMode;
 
@@ -649,6 +649,190 @@ fn frontier_warmup_does_not_poison_corpus_resolution() {
     );
 }
 
+/// The two-entry incident subject, named once so every control below decides the SAME subject.
+///
+/// A = the node-precise discriminator fixture (the entry the diff touches).
+/// B = the affected-set floor runner test (the unrelated entry whose 474-module closure reaches a
+/// live-read carrier home). B is what the retired predicate made unskippable on any nonempty
+/// `.dag` diff, which is the `2 selected / 1 expected` incident.
+fn incident_subject_roster() -> Vec<(String, String)> {
+    let ws = workspace_root();
+    vec![
+        (
+            ws.join(SELECTION_CONTROL_NODE_PRECISE_REL)
+                .to_string_lossy()
+                .into_owned(),
+            "floor_disc_witness_a_only_holds".to_string(),
+        ),
+        (
+            ws.join(SELECTION_CONTROL_FLOOR_RUNNER_TEST_REL)
+                .to_string_lossy()
+                .into_owned(),
+            "floor_test_untouched_skips_assumed_green_holds".to_string(),
+        ),
+    ]
+}
+
+/// THE INCIDENT CONTROL, at the grain the incident was measured in.
+///
+/// `entry_file_helper_fn_edit_scopes_runs_to_touched_entry_only` already asserts the row totals
+/// (2/1/1). This asserts the ENTRY-GROUP selection those totals are supposed to come from:
+/// exactly one of the two entry groups is selected. The distinction is the whole finding — a
+/// summary can report one skipped row while both entry groups were selected and resolved, which
+/// is `SelectionSuperset` wearing a passing row count. Under the retired carrier-home predicate
+/// this assertion reads 2, which is the `2 selected / 1 expected` line from the incident.
+fn live_read_selection_narrows_incident_subject_to_touched_entry() {
+    chdir_workspace();
+    let ws = workspace_root();
+    let disc_rel = SELECTION_CONTROL_NODE_PRECISE_REL;
+    let text = std::fs::read_to_string(ws.join(disc_rel)).expect("discriminator fixture readable");
+    let helper_line = fixture_line(&text, "fn floor_disc_helper_fn");
+
+    let summary = run_injected_diff_roster(disc_rel, helper_line, &incident_subject_roster());
+    assert!(
+        summary.failures.is_empty(),
+        "incident-subject roster failures: {:?}",
+        summary.failures
+    );
+    assert_eq!(
+        summary.total_entry_groups, 2,
+        "the incident subject is two entry groups"
+    );
+    assert_eq!(
+        summary.selected_entry_groups, 1,
+        "affected-set selection must narrow the incident subject to the touched entry \
+         (selected/expected — 2 here is the incident: the unrelated entry's import closure \
+         reaches a live-read carrier home, which the retired G1 predicate treated as a hit on \
+         any nonempty diff)"
+    );
+}
+
+/// The stop-line population must not re-widen what selection narrowed.
+///
+/// The incident trace carried `stopline_n=1` beside the carrier-home hit, so both facts were
+/// present and either could have been the cause. This separates them: the unified diff still
+/// touches only A, while the name-status population additionally names two floor_skip fixtures
+/// that are not in B's closure. B must still skip. If a later change routes the stop-line
+/// population into the runtime-dependency axis, this reds while the narrowing control above
+/// stays green, so the two axes report separately rather than as one aggregate.
+fn stop_line_population_does_not_widen_incident_subject() {
+    chdir_workspace();
+    let ws = workspace_root();
+    let disc_rel = SELECTION_CONTROL_NODE_PRECISE_REL;
+    let text = std::fs::read_to_string(ws.join(disc_rel)).expect("discriminator fixture readable");
+    let helper_line = fixture_line(&text, "fn floor_disc_helper_fn");
+
+    let unified =
+        format!("+++ b/{disc_rel}\n@@ -{helper_line},0 +{helper_line},1 @@\n+// synthetic touch\n");
+    let name_status = format!(
+        "M\u{0}{disc_rel}\u{0}M\u{0}{}\u{0}M\u{0}{}\u{0}",
+        SELECTION_CONTROL_LIVE_TREE_DECLARED_REL, SELECTION_CONTROL_FALSIFIER_CONTROL_REL,
+    );
+    let _diff = EnvVarGuard::set("GUNBC_CI_DIFF_UNIFIED", &unified);
+    let _ns = EnvVarGuard::set("GUNBC_CI_DIFF_NAME_STATUS", &name_status);
+
+    let summary = run_discovery_corpus_with_options(
+        &floor_skip_source_roots(),
+        &[],
+        &incident_subject_roster(),
+        ExecutionMode::Wet,
+        DiscoveryWidthPolicy::Serial,
+        discovery_options(true),
+    )
+    .expect("stop-line population must not error");
+    assert!(
+        summary.failures.is_empty(),
+        "stop-line population roster failures: {:?}",
+        summary.failures
+    );
+    assert_eq!(summary.total_entry_groups, 2);
+    assert_eq!(
+        summary.selected_entry_groups, 1,
+        "a wider stop-line population must not re-select the unrelated entry — axis (iv) is \
+         decided by classified runtime reads, not by how many paths the diff names"
+    );
+}
+
+/// A missing classification REFUSES; it never licenses a skip.
+///
+/// Executed rather than argued, because the failure mode this guards is precisely the one that
+/// looks green: an entry whose classification is unavailable answering "no runtime read touched"
+/// is the under-selection direction, which presents as a faster floor rather than as a failure.
+fn live_read_missing_classification_refuses() {
+    chdir_workspace();
+    let ws = workspace_root();
+    let roots = floor_skip_source_roots();
+    let index = build_multi_entry_index(&roots);
+    let disc_entry = ws
+        .join(SELECTION_CONTROL_NODE_PRECISE_REL)
+        .to_string_lossy()
+        .into_owned();
+    let runner_entry = ws
+        .join(SELECTION_CONTROL_FLOOR_RUNNER_TEST_REL)
+        .to_string_lossy()
+        .into_owned();
+
+    // A context built from a roster that names only A.
+    let roster = vec![DiscoveryRow {
+        label: "a".to_string(),
+        entry: disc_entry.clone(),
+        function: "floor_disc_witness_a_only_holds".to_string(),
+        reads_live_tree: false,
+    }];
+    let live = LiveReadSelectionContext::build(&index, &roster)
+        .expect("context builds over its own complete roster");
+
+    let touched = vec![SELECTION_CONTROL_NODE_PRECISE_REL.to_string()];
+    // POSITIVE CONTROL: the enrolled entry answers rather than refusing, so the refusal below is
+    // a fact about the missing entry and not about the context being broken.
+    live.runtime_dependency_touched_for_entry(&index, &disc_entry, &touched)
+        .expect("an enrolled entry is decidable");
+
+    // THE REFUSAL: B is outside the roster the context was built from.
+    let err = live
+        .runtime_dependency_touched_for_entry(&index, &runner_entry, &touched)
+        .expect_err("an entry absent from the context must refuse, never answer 'untouched'");
+    assert!(
+        err.contains("LiveReadEntryAbsent"),
+        "the refusal must name its cause, not merely be an error: {err}"
+    );
+}
+
+/// A manifest may not be attributed to an index it was not built against.
+///
+/// The subject check is what makes the memo checkable rather than merely fast, so it needs an
+/// executed control: a second index over byte-identical roots is a different subject, and serving
+/// it the first index's classifications would license a skip derived from another tree.
+fn live_read_subject_mismatch_refuses() {
+    chdir_workspace();
+    let ws = workspace_root();
+    let roots = floor_skip_source_roots();
+    let first = build_multi_entry_index(&roots);
+    let second = build_multi_entry_index(&roots);
+    let disc_entry = ws
+        .join(SELECTION_CONTROL_NODE_PRECISE_REL)
+        .to_string_lossy()
+        .into_owned();
+    let roster = vec![DiscoveryRow {
+        label: "a".to_string(),
+        entry: disc_entry.clone(),
+        function: "floor_disc_witness_a_only_holds".to_string(),
+        reads_live_tree: false,
+    }];
+    let live = LiveReadSelectionContext::build(&first, &roster).expect("context builds");
+    let touched = vec![SELECTION_CONTROL_NODE_PRECISE_REL.to_string()];
+
+    live.runtime_dependency_touched_for_entry(&first, &disc_entry, &touched)
+        .expect("its own index decides");
+    let err = live
+        .runtime_dependency_touched_for_entry(&second, &disc_entry, &touched)
+        .expect_err("a different index must refuse, never be served another tree's rows");
+    assert!(
+        err.contains("LiveReadContextSubjectMismatch"),
+        "the refusal must name its cause: {err}"
+    );
+}
+
 fn main() -> ExitCode {
     let _workspace_marker: PathBuf = workspace_root();
 
@@ -721,6 +905,22 @@ fn main() -> ExitCode {
         (
             "frontier_warmup_does_not_poison_corpus_resolution",
             frontier_warmup_does_not_poison_corpus_resolution,
+        ),
+        (
+            "live_read_selection_narrows_incident_subject_to_touched_entry",
+            live_read_selection_narrows_incident_subject_to_touched_entry,
+        ),
+        (
+            "stop_line_population_does_not_widen_incident_subject",
+            stop_line_population_does_not_widen_incident_subject,
+        ),
+        (
+            "live_read_missing_classification_refuses",
+            live_read_missing_classification_refuses,
+        ),
+        (
+            "live_read_subject_mismatch_refuses",
+            live_read_subject_mismatch_refuses,
         ),
     ];
 
