@@ -137,6 +137,7 @@ src/v1/stage0/src/std_occurrence_binding_candidates.rs merge=generated-artifact
 src/v1/stage0/src/std_occurrence_binding_resolve.rs merge=generated-artifact
 src/v1/stage0/src/std_occurrence_identity.rs merge=generated-artifact
 src/v1/stage0/src/std_pareto.rs merge=generated-artifact
+src/v1/stage0/src/std_process_termination.rs merge=generated-artifact
 src/v1/stage0/src/std_realization_schedule.rs merge=generated-artifact
 src/v1/stage0/src/std_reference_binding_observation.rs merge=generated-artifact
 src/v1/stage0/src/std_roster_frontier.rs merge=generated-artifact

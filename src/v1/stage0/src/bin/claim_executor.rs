@@ -2696,9 +2696,45 @@ struct NativeTransportObservation {
     success: bool,
     compile_skipped: bool,
     stdout: Vec<u8>,
+    /// Which leg of the transport produced this observation — `build`, `run`, or
+    /// `run_cached`. Without it a refusal cannot say whether the bundle failed to
+    /// COMPILE or failed to RUN, which are different defects with different owners.
+    phase: String,
+    /// How the process ended. Carried rather than collapsed into `success` so a
+    /// signalled process (a runner OOM-kill is the live candidate) stays separable
+    /// from a process that reported a nonzero exit.
+    termination: ProcessTermination,
+    /// What the process said on stderr. This is the only channel that names the
+    /// actual failure — a missing toolchain, a compile error, a panic — and dropping
+    /// it is why the fleet's counted fallback has been undiagnosable.
+    stderr: Vec<u8>,
     artifact_lookup_nanos: u128,
     cold_compile_nanos: u128,
     native_execution_nanos: u128,
+}
+
+/// Last `MAX` bytes of a process stream, rendered for a one-line diagnostic. The tail
+/// rather than the head: a cargo build writes its error last, and a panic writes its
+/// message last. Bounded so one refusal cannot flood the floor's result stream.
+fn stream_excerpt(bytes: &[u8]) -> String {
+    const MAX: usize = 1200;
+    if bytes.is_empty() {
+        return "<empty>".to_string();
+    }
+    let start = bytes.len().saturating_sub(MAX);
+    // Trim BEFORE flattening: a stream almost always ends in a newline, and replacing
+    // first leaves a dangling line marker with nothing after it.
+    let tail = String::from_utf8_lossy(&bytes[start..])
+        .trim()
+        .replace(['\n', '\r'], " ⏎ ");
+    if tail.is_empty() {
+        return "<whitespace only>".to_string();
+    }
+    if start > 0 {
+        format!("…(last {MAX} of {} bytes) {tail}", bytes.len())
+    } else {
+        tail
+    }
 }
 
 fn native_bundle_u64_field(
@@ -2851,21 +2887,47 @@ fn native_transport_observation(
         _ => Err(format!("native transport result missing Bool `{name}`")),
     };
     let nanos = |name: &str| native_bundle_u64_field(fields, name, ctx).map(u128::from);
-    let stdout = free_monoid_elems(
-        ctx.field(fields, "stdout_octets")
-            .ok_or_else(|| "native transport result missing stdout".to_string())?,
-        ctx,
-    )?
-    .into_iter()
-    .map(|v| match v {
-        Value::Int(n) if (0..=255).contains(n) => Ok(*n as u8),
-        _ => Err("native transport stdout contains a non-octet".to_string()),
-    })
-    .collect::<Result<Vec<_>, _>>()?;
+    let octets = |name: &str| -> Result<Vec<u8>, String> {
+        free_monoid_elems(
+            ctx.field(fields, name)
+                .ok_or_else(|| format!("native transport result missing {name}"))?,
+            ctx,
+        )?
+        .into_iter()
+        .map(|v| match v {
+            Value::Int(n) if (0..=255).contains(n) => Ok(*n as u8),
+            _ => Err(format!("native transport {name} contains a non-octet")),
+        })
+        .collect::<Result<Vec<_>, _>>()
+    };
+    // The transport's phase vocabulary is closed; an unknown phase is malformed wire,
+    // not a new kind of leg the receipt should silently carry.
+    let phase = match ctx.field(fields, "phase") {
+        Some(Value::Str(s)) if matches!(s.as_str(), "build" | "run" | "run_cached") => s.clone(),
+        Some(Value::Str(s)) => {
+            return Err(format!(
+                "native transport phase `{s}` is outside build|run|run_cached"
+            ))
+        }
+        _ => return Err("native transport result missing String `phase`".to_string()),
+    };
+    let termination =
+        transport_termination(ctx.field(fields, "termination"), ctx).map_err(|refusal| {
+            format!(
+                "native transport termination wire refused: {}",
+                refusal.located
+            )
+        })?;
     Ok(NativeTransportObservation {
-        success: boolean("success")?,
+        // DERIVED, never a second field. The transport used to carry `success`
+        // alongside the exit code, which is one fact written twice; a receipt could
+        // then claim success beside a nonzero termination and nothing would notice.
+        success: matches!(termination, ProcessTermination::Exited(0)),
         compile_skipped: boolean("compile_skipped")?,
-        stdout,
+        stdout: octets("stdout_octets")?,
+        phase,
+        termination,
+        stderr: octets("stderr_octets")?,
         artifact_lookup_nanos: nanos("artifact_lookup_nanos")?,
         cold_compile_nanos: nanos("cold_compile_nanos")?,
         native_execution_nanos: nanos("native_execution_nanos")?,
@@ -3054,23 +3116,44 @@ fn run_native_bundle_unit(
     // them made CI's outage red opaque (run 30764923923 refused with no cause on the
     // wire). Rendered into the FAIL/fallback detail and stderr, never into the TSV
     // receipt (its shape is a parsed contract).
+    //
+    // A failed leg names its PHASE, its TERMINATION, and its STDERR. The three
+    // together are what makes a fleet refusal actionable: the phase says whether the
+    // bundle failed to compile or failed to run, the termination separates a
+    // signalled process (an OOM-kill) from one that reported a nonzero exit, and
+    // stderr carries the message the tool actually produced. Before this, every one
+    // of these collapsed into the four words "process failed", which is why a counted
+    // fallback could sit on the fleet indefinitely without ranking for a fix.
+    let process_failure = |name: &str, obs: &NativeTransportObservation| {
+        format!(
+            "{name}: process failed in phase `{}` ({}); stderr: {}",
+            obs.phase,
+            obs.termination.located(),
+            stream_excerpt(&obs.stderr)
+        )
+    };
     let leg_cause = |name: &str, leg: &Result<NativeTransportObservation, String>| match leg {
         Ok(obs) if obs.success && obs.stdout == primary.expected_stdout => None,
         Ok(obs) if obs.success => Some(format!(
-            "{name}: ran but diverged (stdout {} bytes != expected {} bytes)",
+            "{name}: ran but diverged (stdout {} bytes != expected {} bytes); stdout: {}",
             obs.stdout.len(),
-            primary.expected_stdout.len()
+            primary.expected_stdout.len(),
+            stream_excerpt(&obs.stdout)
         )),
-        Ok(_) => Some(format!("{name}: process failed")),
-        Err(e) => Some(format!("{name}: {e}")),
+        Ok(obs) => Some(process_failure(name, obs)),
+        Err(e) => Some(format!(
+            "{name}: transport refused before a process ran: {e}"
+        )),
     };
     let transport_causes: Vec<String> = [
         leg_cause("cold", &cold),
         leg_cause("warm", &warm),
         match &planted_native {
             Ok(obs) if obs.success => None,
-            Ok(_) => Some("planted-native: process failed".to_string()),
-            Err(e) => Some(format!("planted-native: {e}")),
+            Ok(obs) => Some(process_failure("planted-native", obs)),
+            Err(e) => Some(format!(
+                "planted-native: transport refused before a process ran: {e}"
+            )),
         },
     ]
     .into_iter()
@@ -3111,8 +3194,17 @@ fn run_native_bundle_unit(
     } else {
         "refused:equivalence_or_planted_red"
     };
+    // The located causes belong IN the persisted receipt, not only on stderr. The
+    // coordinator's own note records that the Actions stream drops worker stderr, so a
+    // cause that lives only there is a cause the fleet cannot be asked about after the
+    // fact. One row per failed leg, so the count of causes is readable too; a green run
+    // writes no such row rather than an empty one.
+    let cause_rows: String = transport_causes
+        .iter()
+        .map(|c| format!("transport_cause\t{}\n", c.replace(['\t', '\n'], " ")))
+        .collect();
     let receipt = format!(
-        "selected_witness_count\t{selected}\nnative_count\t{native_count}\ninterpreted_count\t{interpreted_count}\nunavailable_count\t{unavailable_count}\nbundle_count\t{}\nshard_count\t{}\ncold_compile_wall_nanos\t{cold_compile_wall}\nwarm_artifact_hit_wall_nanos\t{warm_artifact_hit_wall}\nnative_execution_wall_nanos\t{native_execution_wall}\ninterpreter_oracle_wall_nanos\t{interpreter_oracle_wall_nanos}\nfallback_count\t{fallback_count}\nrss_peak_bytes\t{rss_peak}\ncgroup_peak_bytes\t{cgroup_peak}\nverdict\t{verdict}\nplanted_red_equivalent\t{planted_red_equivalent}\nbundle_identity\t{}\n",
+        "selected_witness_count\t{selected}\nnative_count\t{native_count}\ninterpreted_count\t{interpreted_count}\nunavailable_count\t{unavailable_count}\nbundle_count\t{}\nshard_count\t{}\ncold_compile_wall_nanos\t{cold_compile_wall}\nwarm_artifact_hit_wall_nanos\t{warm_artifact_hit_wall}\nnative_execution_wall_nanos\t{native_execution_wall}\ninterpreter_oracle_wall_nanos\t{interpreter_oracle_wall_nanos}\nfallback_count\t{fallback_count}\nrss_peak_bytes\t{rss_peak}\ncgroup_peak_bytes\t{cgroup_peak}\nverdict\t{verdict}\nplanted_red_equivalent\t{planted_red_equivalent}\nbundle_identity\t{}\n{cause_rows}",
         primary.bundle_count, primary.shard_count, primary.bundle_identity
     );
     if let Err(e) = write_native_transition_receipt(&receipt) {
@@ -9375,15 +9467,104 @@ enum FloorWorkerRole {
 
 struct ObservedFloorWorker {
     worker: String,
-    termination: FloorWorkerTermination,
+    termination: ProcessTermination,
     terminal_receipt: FloorWorkerTerminalReceipt,
 }
 
-#[derive(Debug, PartialEq, Eq)]
-enum FloorWorkerTermination {
+/// Seed projection of `std.process_termination` `ProcessTermination` — how an observed process
+/// ended. One carrier for both places the executor observes a child: the floor-worker
+/// coordinator (which spawns workers directly and reads an `ExitStatus`) and the native
+/// bundle transport (which reads the termination the interpreter transport carries).
+/// Named for the concept rather than for either subject so the second consumer did not
+/// mint a second spelling of it.
+#[derive(Debug, PartialEq, Eq, Clone)]
+enum ProcessTermination {
     Exited(i32),
     Signaled(i32),
     Unobserved,
+}
+
+impl ProcessTermination {
+    /// Located rendering for a diagnostic. A signalled process says so; it never
+    /// borrows an exit code it does not have.
+    fn located(&self) -> String {
+        match self {
+            ProcessTermination::Exited(code) => format!("exited {code}"),
+            ProcessTermination::Signaled(signal) => format!("killed by signal {signal}"),
+            ProcessTermination::Unobserved => "termination unobserved".to_string(),
+        }
+    }
+}
+
+/// The transport violated its own modeled wire: the `termination` value could not be
+/// decoded as a `std.process_termination` `ProcessTermination`. Deliberately a DIFFERENT state
+/// from `Unobserved` — Unobserved is the transport honestly reporting that the spawn
+/// never produced a status (an observation about the child), while this refusal means
+/// the transport or the interning under it is broken (a defect in the wire). The two
+/// have different owners and different fixes, so the decoder refuses instead of
+/// absorbing malformed wire into the legitimate arm.
+#[derive(Debug)]
+struct ProcessTerminationDecodeRefusal {
+    located: String,
+}
+
+/// Read the `std.process_termination` `ProcessTermination` the transport carries. ONLY the
+/// explicit modeled `ProcessTerminationUnobserved` arm decodes to `Unobserved`;
+/// absent, mistyped, unknown-variant, and missing/non-integer-field wire all carry a
+/// located decode refusal, never a fabricated exit code and never a borrowed
+/// legitimate arm.
+fn transport_termination(
+    value: Option<&Value>,
+    ctx: &InterpContext,
+) -> Result<ProcessTermination, ProcessTerminationDecodeRefusal> {
+    let refuse = |located: String| Err(ProcessTerminationDecodeRefusal { located });
+    let (variant_name, fields) = match value {
+        Some(Value::Variant {
+            variant_name,
+            fields,
+            ..
+        }) => (variant_name, fields),
+        Some(other) => {
+            return refuse(format!(
+                "termination is a {} where a ProcessTermination variant was modeled",
+                other.type_label_public()
+            ))
+        }
+        None => return refuse("termination field is absent from the transport record".to_string()),
+    };
+    let int_field = |name: &str, variant: &str| match ctx.field(fields, name) {
+        Some(Value::Int(n)) => i32::try_from(*n).map_err(|_| ProcessTerminationDecodeRefusal {
+            located: format!("{variant}.{name} {n} does not fit an i32"),
+        }),
+        Some(other) => Err(ProcessTerminationDecodeRefusal {
+            located: format!(
+                "{variant}.{name} is a {} where Int was modeled",
+                other.type_label_public()
+            ),
+        }),
+        None => Err(ProcessTerminationDecodeRefusal {
+            located: format!("{variant} is missing its `{name}` field"),
+        }),
+    };
+    if ctx.sym_eq(*variant_name, "ProcessExited") {
+        return Ok(ProcessTermination::Exited(int_field(
+            "code",
+            "ProcessExited",
+        )?));
+    }
+    if ctx.sym_eq(*variant_name, "ProcessSignaled") {
+        return Ok(ProcessTermination::Signaled(int_field(
+            "signal",
+            "ProcessSignaled",
+        )?));
+    }
+    if ctx.sym_eq(*variant_name, "ProcessTerminationUnobserved") {
+        return Ok(ProcessTermination::Unobserved);
+    }
+    refuse(format!(
+        "unknown ProcessTermination variant `{}`",
+        ctx.resolve(*variant_name)
+    ))
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -9477,25 +9658,25 @@ fn read_scoped_witness_batch_manifest() -> Result<Vec<String>, String> {
     Ok(ids)
 }
 
-fn exit_status_termination(status: &ExitStatus) -> FloorWorkerTermination {
+fn exit_status_termination(status: &ExitStatus) -> ProcessTermination {
     if let Some(code) = status.code() {
-        return FloorWorkerTermination::Exited(code);
+        return ProcessTermination::Exited(code);
     }
     #[cfg(unix)]
     {
         use std::os::unix::process::ExitStatusExt as _;
         if let Some(signal) = status.signal() {
-            return FloorWorkerTermination::Signaled(signal);
+            return ProcessTermination::Signaled(signal);
         }
     }
-    FloorWorkerTermination::Unobserved
+    ProcessTermination::Unobserved
 }
 
-fn floor_worker_termination_label(termination: &FloorWorkerTermination) -> String {
+fn floor_worker_termination_label(termination: &ProcessTermination) -> String {
     match termination {
-        FloorWorkerTermination::Exited(code) => format!("exited:{code}"),
-        FloorWorkerTermination::Signaled(signal) => format!("signaled:{signal}"),
-        FloorWorkerTermination::Unobserved => "termination-unobserved".to_string(),
+        ProcessTermination::Exited(code) => format!("exited:{code}"),
+        ProcessTermination::Signaled(signal) => format!("signaled:{signal}"),
+        ProcessTermination::Unobserved => "termination-unobserved".to_string(),
     }
 }
 
@@ -9519,13 +9700,13 @@ fn floor_worker_observation_outcome(row: &ObservedFloorWorker) -> DerivedFloorWo
             ),
         },
         FloorWorkerTerminalReceipt::Observed(report) => match (&row.termination, report) {
-            (FloorWorkerTermination::Exited(0), FloorWorkerTerminalReport::Completed(detail)) => {
+            (ProcessTermination::Exited(0), FloorWorkerTerminalReport::Completed(detail)) => {
                 DerivedFloorWorkerOutcome {
                     label: "completed",
                     detail: detail.clone(),
                 }
             }
-            (FloorWorkerTermination::Exited(code), FloorWorkerTerminalReport::Refused(detail))
+            (ProcessTermination::Exited(code), FloorWorkerTerminalReport::Refused(detail))
                 if *code != 0 =>
             {
                 DerivedFloorWorkerOutcome {
@@ -9538,7 +9719,7 @@ fn floor_worker_observation_outcome(row: &ObservedFloorWorker) -> DerivedFloorWo
                 label: "failed",
                 detail: detail.clone(),
             },
-            (FloorWorkerTermination::Signaled(signal), _) => DerivedFloorWorkerOutcome {
+            (ProcessTermination::Signaled(signal), _) => DerivedFloorWorkerOutcome {
                 label: "failed",
                 detail: format!(
                     "worker `{}` reported {} but died from signal {signal}",
@@ -9546,7 +9727,7 @@ fn floor_worker_observation_outcome(row: &ObservedFloorWorker) -> DerivedFloorWo
                     floor_worker_terminal_report_label(report)
                 ),
             },
-            (FloorWorkerTermination::Unobserved, _) => DerivedFloorWorkerOutcome {
+            (ProcessTermination::Unobserved, _) => DerivedFloorWorkerOutcome {
                 label: "failed",
                 detail: format!(
                     "worker `{}` reported {} but process termination was unobserved",
@@ -9554,7 +9735,7 @@ fn floor_worker_observation_outcome(row: &ObservedFloorWorker) -> DerivedFloorWo
                     floor_worker_terminal_report_label(report)
                 ),
             },
-            (FloorWorkerTermination::Exited(code), _) => DerivedFloorWorkerOutcome {
+            (ProcessTermination::Exited(code), _) => DerivedFloorWorkerOutcome {
                 label: "failed",
                 detail: format!(
                     "worker `{}` report {} contradicted exit code {code}",
@@ -10688,12 +10869,19 @@ fn run() -> Result<ExitCode, ExitCode> {
         &source_roots,
     );
     v1_compiler::v1_interpreter::group_end();
+    let any_failed =
+        outcome.any_failed || compile_clean_over_budget || !compile_clean_drift_receipt_ok;
     if outcome.any_failed {
         emit_falsifier_failure_class(&outcome.failure_details, &outcome.infra_faults);
     }
-    floor_terminal_fast_exit(walk_exit_code(
-        outcome.any_failed || compile_clean_over_budget || !compile_clean_drift_receipt_ok,
-    ))
+    let terminal_detail = walk_terminal_detail(
+        any_failed,
+        &outcome.failure_details,
+        &outcome.infra_faults,
+        compile_clean_over_budget,
+        compile_clean_drift_receipt_ok,
+    );
+    floor_terminal_fast_exit(walk_exit_code(any_failed), &terminal_detail)
 }
 
 /// Typed terminal failure class for the falsifier/floor walk (brief Step 2, 2026-07-25):
@@ -10797,6 +10985,40 @@ fn walk_exit_code(any_failed: bool) -> i32 {
     }
 }
 
+/// Located refusal carried in the worker terminal receipt for the coordinator to replay.
+///
+/// `floor_terminal_fast_exit` used to write only `walk terminal exit code N`, which the
+/// thin coordinator then surfaced as the sole failure detail — a refusal that names
+/// nothing is worse than none (DESIGN §5; receipt: run 31263508328 printed
+/// `detail=walk terminal exit code 1` while the worker had already emitted the real
+/// witness-red batch line on stderr that Actions dropped).
+fn walk_terminal_detail(
+    any_failed: bool,
+    failure_details: &[String],
+    infra_faults: &[InfraFault],
+    compile_clean_over_budget: bool,
+    compile_clean_drift_receipt_ok: bool,
+) -> String {
+    if !any_failed {
+        return "walk terminal exit code 0".to_string();
+    }
+    let mode = falsifier_failure_mode_with_faults(failure_details, infra_faults);
+    let mut parts = vec![format!(
+        "walk terminal exit code 1 mode={mode} ci_failure_class_arm={}",
+        ci_failure_class_arm(mode)
+    )];
+    if !failure_details.is_empty() {
+        parts.push(failure_details.join(" | "));
+    }
+    if compile_clean_over_budget {
+        parts.push("compile_clean_over_budget".to_string());
+    }
+    if !compile_clean_drift_receipt_ok {
+        parts.push("compile_clean_cost_drift_receipt_refused".to_string());
+    }
+    scoped_wire_text(&parts.join(" "))
+}
+
 /// Terminal fast-exit for the floor walk (CI floor endgame D2): the executor retains a
 /// ~16GB store (process-shared index, typed caches, interner) whose Drop walk at process
 /// end measured 2.5–3.1 minutes, twice-confirmed (Pi bench: swap grows DURING Drop;
@@ -10808,13 +11030,10 @@ fn walk_exit_code(any_failed: bool) -> i32 {
 /// `run()`'s walk path — every plan walk (floor, plan-artifact, regen, falsifier) exits
 /// through it; every refusal/error path above returns normally. The exit CODE is exactly
 /// `walk_exit_code(any_failed)` — behavior-identical to the ExitCode return it replaces.
-fn floor_terminal_fast_exit(code: i32) -> ! {
+fn floor_terminal_fast_exit(code: i32, detail: &str) -> ! {
     use std::io::Write as _;
     let terminal_outcome = if code == 0 { "completed" } else { "failed" };
-    let final_code = match write_floor_worker_terminal(
-        terminal_outcome,
-        &format!("walk terminal exit code {code}"),
-    ) {
+    let final_code = match write_floor_worker_terminal(terminal_outcome, detail) {
         Ok(()) => code,
         Err(msg) => {
             eprintln!("claim_executor: floor worker terminal receipt refusal: {msg}");
@@ -11877,6 +12096,43 @@ mod tests {
     fn walk_exit_code_maps_failure_to_one_success_to_zero() {
         assert_eq!(walk_exit_code(true), 1);
         assert_eq!(walk_exit_code(false), 0);
+    }
+
+    #[test]
+    fn walk_terminal_detail_carries_located_refusal_not_bare_exit_code() {
+        let detail = walk_terminal_detail(
+            true,
+            &[
+                "batch=3 fn=discovery-corpus detail=25 of 8158 discovery witness(es) failed"
+                    .to_string(),
+            ],
+            &[],
+            false,
+            true,
+        );
+        assert!(
+            detail.contains("batch=3 fn=discovery-corpus"),
+            "the terminal receipt must carry the located batch refusal, got: {detail}"
+        );
+        assert!(
+            detail.contains("mode=WitnessRed"),
+            "the terminal receipt must carry the typed mode, got: {detail}"
+        );
+        assert!(
+            !detail.trim().eq("walk terminal exit code 1"),
+            "a bare exit-code string is not a located refusal: {detail}"
+        );
+        assert_eq!(
+            walk_terminal_detail(false, &[], &[], false, true),
+            "walk terminal exit code 0"
+        );
+    }
+
+    #[test]
+    fn walk_terminal_detail_surfaces_post_walk_compile_clean_refusals() {
+        let detail = walk_terminal_detail(true, &[], &[], true, false);
+        assert!(detail.contains("compile_clean_over_budget"));
+        assert!(detail.contains("compile_clean_cost_drift_receipt_refused"));
     }
 
     fn outcome(entry: &str, function: &str, o: ClaimOutcome) -> DiscoveryWitnessOutcome {
@@ -14459,6 +14715,136 @@ mod tests {
         );
     }
 
+    /// A signalled process must not borrow an exit code it does not have. The seed
+    /// rendered `.code().unwrap_or(-1)` for every leg before this, which made a runner
+    /// OOM-kill read exactly like a process that chose to exit -1.
+    #[test]
+    fn native_leg_signal_death_is_not_rendered_as_an_exit_code() {
+        assert_eq!(
+            ProcessTermination::Signaled(9).located(),
+            "killed by signal 9"
+        );
+        assert_eq!(ProcessTermination::Exited(101).located(), "exited 101");
+        assert_eq!(
+            ProcessTermination::Unobserved.located(),
+            "termination unobserved"
+        );
+        // The discriminating half: no termination renders as the old fabricated -1,
+        // and the signal arm shares no rendering with any exit arm.
+        for termination in [
+            ProcessTermination::Signaled(9),
+            ProcessTermination::Signaled(11),
+            ProcessTermination::Unobserved,
+        ] {
+            assert!(
+                !termination.located().contains("exited"),
+                "{termination:?} rendered as an exit"
+            );
+        }
+    }
+
+    /// Malformed transport wire must not borrow the legitimate `Unobserved` arm. "The
+    /// process never produced a status" and "the transport violated its own modeled
+    /// wire" have different owners and different fixes; collapsing them is the same
+    /// state-space conflation this change removes at the `ExitStatus` boundary, one
+    /// layer down. ONLY the explicit modeled `ProcessTerminationUnobserved` variant
+    /// decodes to `Unobserved` — every other shape carries a located refusal.
+    #[test]
+    fn malformed_termination_wire_refuses_instead_of_reading_as_unobserved() {
+        let graph = v1_compiler::v1_compiler_infer_items::ResolvedGraph {
+            modules: Rc::new(Default::default()),
+            item_registry: Rc::new(Default::default()),
+            diagnostics: Rc::new(Default::default()),
+            emit_graph_info: v1_compiler::v1_compiler_infer_emit_info::empty_emit_graph_info(),
+        };
+        let ctx = InterpContext::new(&graph, Rc::new(Default::default()), ExecutionMode::Hermetic);
+        let variant = |name: &str, fields: Vec<(&str, Value)>| Value::Variant {
+            type_name: ctx.sym("ProcessTermination"),
+            variant_name: ctx.sym(name),
+            fields: Rc::new(v1_compiler::v1_interpreter::sorted_fields(
+                fields.into_iter().map(|(k, v)| (ctx.sym(k), v)).collect(),
+            )),
+        };
+        // The modeled arms decode — including the ONE legitimate route to Unobserved.
+        assert_eq!(
+            transport_termination(Some(&variant("ProcessTerminationUnobserved", vec![])), &ctx)
+                .unwrap(),
+            ProcessTermination::Unobserved
+        );
+        assert_eq!(
+            transport_termination(
+                Some(&variant("ProcessExited", vec![("code", Value::Int(101))])),
+                &ctx
+            )
+            .unwrap(),
+            ProcessTermination::Exited(101)
+        );
+        assert_eq!(
+            transport_termination(
+                Some(&variant("ProcessSignaled", vec![("signal", Value::Int(9))])),
+                &ctx
+            )
+            .unwrap(),
+            ProcessTermination::Signaled(9)
+        );
+        // Every malformed shape refuses with a located cause, never Unobserved.
+        let malformed: Vec<(&str, Option<Value>)> = vec![
+            ("absent field", None),
+            ("non-variant value", Some(Value::Int(0))),
+            ("unknown variant", Some(variant("ProcessVanished", vec![]))),
+            ("missing code", Some(variant("ProcessExited", vec![]))),
+            (
+                "non-integer signal",
+                Some(variant(
+                    "ProcessSignaled",
+                    vec![("signal", Value::Str("9".to_string()))],
+                )),
+            ),
+        ];
+        for (label, value) in malformed {
+            let refusal = transport_termination(value.as_ref(), &ctx)
+                .err()
+                .unwrap_or_else(|| panic!("{label}: malformed wire decoded as legitimate"));
+            assert!(
+                !refusal.located.is_empty(),
+                "{label}: refusal carries no location"
+            );
+        }
+    }
+
+    /// The excerpt is the TAIL: cargo writes its error last and a panic writes its
+    /// message last, so a head-anchored excerpt would reliably carry the least useful
+    /// bytes. It is bounded so one refusal cannot flood the floor's result stream.
+    #[test]
+    fn stream_excerpt_keeps_the_tail_bounded_and_marks_truncation() {
+        assert_eq!(stream_excerpt(b""), "<empty>");
+        // An absent stream and a stream that said nothing are different observations
+        // and neither may read as a message.
+        assert_eq!(stream_excerpt(b"\n \n"), "<whitespace only>");
+        // A stream almost always ends in a newline; the trailing marker must not
+        // survive as a line the process never wrote.
+        assert_eq!(
+            stream_excerpt(b"error: no such command\n"),
+            "error: no such command"
+        );
+        assert_eq!(
+            stream_excerpt(b"first line\nsecond line\n"),
+            "first line ⏎ second line"
+        );
+        let long: Vec<u8> = std::iter::repeat(b'x')
+            .take(4000)
+            .chain(b"THE ACTUAL ERROR".iter().copied())
+            .collect();
+        let excerpt = stream_excerpt(&long);
+        assert!(excerpt.contains("THE ACTUAL ERROR"), "tail was dropped");
+        assert!(excerpt.starts_with('…'), "truncation was not marked");
+        assert!(
+            excerpt.len() < 1400,
+            "excerpt is unbounded: {}",
+            excerpt.len()
+        );
+    }
+
     #[test]
     fn grouping_preserves_every_claim_exactly_once() {
         // Verdict preservation: no claim dropped, duplicated, or invented — grouping only reorders
@@ -15883,7 +16269,7 @@ mod tests {
         std::env::set_var(FLOOR_PHASE_JOURNAL_ENV, &journal);
         journal_floor_worker_observation(&ObservedFloorWorker {
             worker: "scoped:batch-a".to_string(),
-            termination: FloorWorkerTermination::Exited(1),
+            termination: ProcessTermination::Exited(1),
             terminal_receipt: FloorWorkerTerminalReceipt::Observed(
                 FloorWorkerTerminalReport::Failed("witness row was red".to_string()),
             ),
@@ -15928,7 +16314,7 @@ mod tests {
         let status = Command::new("sh").arg("-c").arg("exit 7").status().unwrap();
         let observed = observe_floor_worker("scoped:batch-a", status, &terminal);
         let _ = fs::remove_file(&terminal);
-        assert_eq!(observed.termination, FloorWorkerTermination::Exited(7));
+        assert_eq!(observed.termination, ProcessTermination::Exited(7));
         assert!(matches!(
             observed.terminal_receipt,
             FloorWorkerTerminalReceipt::Observed(FloorWorkerTerminalReport::Completed(_))
@@ -15972,7 +16358,7 @@ mod tests {
         let observed = observe_floor_worker("scoped:batch-a", status, &terminal);
         assert!(matches!(
             observed.termination,
-            FloorWorkerTermination::Signaled(_)
+            ProcessTermination::Signaled(_)
         ));
         assert_eq!(
             floor_worker_observation_outcome(&observed).label,
@@ -15985,7 +16371,7 @@ mod tests {
     fn floor_worker_signal_overrules_a_completed_terminal_report() {
         let observed = ObservedFloorWorker {
             worker: "scoped:batch-a".to_string(),
-            termination: FloorWorkerTermination::Signaled(9),
+            termination: ProcessTermination::Signaled(9),
             terminal_receipt: FloorWorkerTerminalReceipt::Observed(
                 FloorWorkerTerminalReport::Completed("walk said complete".to_string()),
             ),
