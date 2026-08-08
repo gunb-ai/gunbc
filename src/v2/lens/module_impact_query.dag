@@ -1,0 +1,404 @@
+module v2.lens.module_impact_query
+
+import v2.std.algebra {
+  any,
+  contains,
+  fold_list,
+  list_snoc_item,
+}
+import v2.std.collection { List, Map, empty_map, map_insert }
+import v2.std.optional { Absent, Optional, Present }
+import v2.std.text { String }
+import v2.lens.module_graph {
+  ModuleDeclarationFact,
+  ModuleDependencyEdge,
+  ImportResolutionFact,
+  map_lookup_where_rejected_unreachable,
+}
+
+data module_impact_query_subject_note: String = "CONFIDENCE-0 capsule 1. THE reverse-direction reading over the module-graph edge population. This module adds NO edge producer: it consumes v2.lens.module_graph's ModuleDependencyEdge rows and ModuleDeclarationFact rows as data, exactly as dependency_closure does, and honours the 2026-07-10 operator constraint in dependency_edge_source_migration_note (do not add a second edge producer beside dependency_resolution_facts_live). What is new here is DIRECTION: before this module the corpus had only forward closure, and every consumer that wanted dependents simulated it with N forward closures. ImpactDirection makes the reverse reading first-class by inverting the same population once."
+
+data module_impact_query_grain_honesty_note: String = "The reading is ModulePathGrain and says so in its own type. Declaration grain is NOT claimed: gunbc.namespace_reference_derived_closure_admission reports RepeatedMentionsCollapseDependency and UnrelatedLoadedFileExcluded as ReferenceDerivedClosureUnavailable (triggers P2aReferenceDependencyProjection7515 / P2aPoolIndependentDependencyProjection7515), re-observed 4/4 PASS on 6f4bc24444. Presenting a path-grain reading as declaration grain would be the rung inflation DESIGN 4b names. ImpactGrain is carried in the reading so a consumer cannot lose the distinction."
+
+type ImpactDirection
+  = DependenciesOf
+  | DependentsOf
+
+data module_impact_grain_refinement_note: String = "DeclarationGrain is the DECLARED REFINEMENT and is deliberately never constructed in this capsule: gunbc.namespace_reference_derived_closure_admission reports the two dependency-projection capabilities Unavailable against triggers P2aReferenceDependencyProjection7515 and P2aPoolIndependentDependencyProjection7515, so producing a DeclarationGrain reading today would be rung inflation, not progress. The arm exists so that a consumer must match on the grain rather than assume it, and so the refinement lands as a new producer rather than as a silent reinterpretation of this one. The v1 seed does not check match exhaustiveness, so every consumer here matches both arms explicitly."
+
+type ImpactGrain
+  = ModulePathGrain
+  | DeclarationGrain
+
+type EdgeProvenance
+  = ImportDerivedEdge
+  | ReferenceDerivedEdge
+
+type ImpactEdge {
+  source_path: String
+  target_path: String
+  provenance: EdgeProvenance
+}
+
+type UnaccountedTarget {
+  source_path: String
+  target_module: String
+}
+
+data module_impact_completeness_note: String = "Completeness is a lower bound plus a typed unaccounted set, never a closed set by default (DESIGN 5 empty-observation narrow). The unaccounted population is NOT invented here: ModuleDependencyEdge.target_declared already carries it. An edge whose target module is not declared in the observed pool means the graph continues outside the universe this reading can see, so every reading that touched such an edge is a lower bound. ImpactClosedProven is reserved for a reading with an empty unaccounted set."
+
+type ImpactCompleteness
+  = ImpactClosedProven
+  | ImpactLowerBound {
+      unaccounted: List<UnaccountedTarget>
+    }
+
+data module_impact_cycle_law_note: String = "Operator refinement 2026-08-08. Cycle membership is computed over the UNION edge population, where reference-derived cycles are legitimate and carry no violation. A cycle whose every participating edge is import-derived additionally violates the import-acyclicity law and must surface as its own typed diagnostic, not merely as SCC membership. The two are therefore distinct arms, not one arm with a flag."
+
+type ImpactCycle
+  = ImpactCycleReferenceAdmissible {
+      members: List<String>
+    }
+  | ImpactImportAcyclicityViolation {
+      members: List<String>
+    }
+
+data module_impact_provenance_derivation_note: String = "Edge provenance is DERIVED at query time by membership in the import-only population, not read off the edge. ModuleDependencyEdge carries no provenance field, and dependency_resolution_facts_live erases it by construction: it unions import and reference facts as ImportResolutionFact BEFORE mapping to edges, and union_import_resolution_fact_lists dedups reference-first, so a fact backed by both survives as the reference copy. Deriving the classification from the producer's own already-public component (import_resolution_facts_live) stores no second representation. RESIDUE with trigger: stamping provenance at the single construction site import_fact_to_dependency_edge is the construction-grade climb, and it edits the single edge producer under the 2026-07-10 constraint, so it is escalated rather than taken inside this capsule."
+
+type ImpactReading {
+  direction: ImpactDirection
+  grain: ImpactGrain
+  seeds: List<String>
+  reached: List<String>
+  explanation: List<ImpactEdge>
+  completeness: ImpactCompleteness
+  cycles: List<ImpactCycle>
+}
+
+data impact_no_paths: List<String> = []
+
+data impact_no_edges: List<ImpactEdge> = []
+
+data impact_no_unaccounted: List<UnaccountedTarget> = []
+
+data impact_no_cycles: List<ImpactCycle> = []
+
+fn impact_string_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn impact_add_unseen_path(acc: List<String>, item: String) -> List<String> {
+  if contains(xs: acc, item: item, eq: impact_string_eq) {
+    acc
+  } else {
+    list_snoc_item(xs: acc, item: item)
+  }
+}
+
+fn impact_edge_is_import_derived(
+  edge: ModuleDependencyEdge,
+  import_facts: List<ImportResolutionFact>
+) -> Bool {
+  any(
+    xs: import_facts,
+    predicate: fn(fact) {
+      fact.path == edge.path && fact.import_module == edge.target_module
+    }
+  )
+}
+
+fn impact_provenance_of_edge(
+  edge: ModuleDependencyEdge,
+  import_facts: List<ImportResolutionFact>
+) -> EdgeProvenance {
+  if impact_edge_is_import_derived(edge: edge, import_facts: import_facts) {
+    ImportDerivedEdge
+  } else {
+    ReferenceDerivedEdge
+  }
+}
+
+fn impact_target_path_of_edge(
+  edge: ModuleDependencyEdge,
+  nodes: List<ModuleDeclarationFact>
+) -> List<String> {
+  fold_list(
+    xs: nodes,
+    empty: impact_no_paths,
+    cons: fn(acc, node) {
+      if node.module == edge.target_module {
+        impact_add_unseen_path(acc: acc, item: node.path)
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn impact_edges_resolved(
+  edges: List<ModuleDependencyEdge>,
+  nodes: List<ModuleDeclarationFact>,
+  import_facts: List<ImportResolutionFact>
+) -> List<ImpactEdge> {
+  fold_list(
+    xs: edges,
+    empty: impact_no_edges,
+    cons: fn(acc, edge) {
+      fold_list(
+        xs: impact_target_path_of_edge(edge: edge, nodes: nodes),
+        empty: acc,
+        cons: fn(inner, target_path) {
+          list_snoc_item(
+            xs: inner,
+            item: ImpactEdge {
+              source_path: edge.path,
+              target_path: target_path,
+              provenance: impact_provenance_of_edge(
+                edge: edge,
+                import_facts: import_facts
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn impact_unaccounted_targets(
+  edges: List<ModuleDependencyEdge>
+) -> List<UnaccountedTarget> {
+  fold_list(
+    xs: edges,
+    empty: impact_no_unaccounted,
+    cons: fn(acc, edge) {
+      if edge.target_declared {
+        acc
+      } else {
+        list_snoc_item(
+          xs: acc,
+          item: UnaccountedTarget {
+            source_path: edge.path,
+            target_module: edge.target_module
+          }
+        )
+      }
+    }
+  )
+}
+
+fn impact_completeness_from_unaccounted(
+  unaccounted: List<UnaccountedTarget>
+) -> ImpactCompleteness {
+  if any(xs: unaccounted, predicate: fn(_) { true }) {
+    ImpactLowerBound { unaccounted: unaccounted }
+  } else {
+    ImpactClosedProven
+  }
+}
+
+data module_impact_walk_shape_note: String = "The walk is the recursive worklist shape v2.lens.module_graph already proves in import_closure_bfs_walk, over an adjacency built ONCE per reading, not a second traversal shape invented here (DESIGN 3). The first draft of this module re-expanded the whole reached set once per edge, which is the copied-accumulator cost shape DESIGN 6 bare-minimum-cost forbids regardless of realized n; it was replaced before landing rather than excused as small. RESIDUE with trigger: impact_cycle_members still runs one walk per member of the reached set, so cycle classification is quadratic in the reached set. That is bounded to the QUERIED reached set, never a whole-corpus SCC census, and its climb is a single-pass back-edge or Tarjan SCC producer."
+
+type ImpactBfsState {
+  reached: List<String>
+  queue: List<String>
+}
+
+fn impact_adjacency_from(edge: ImpactEdge, direction: ImpactDirection) -> String {
+  match direction {
+    DependenciesOf => edge.source_path
+    DependentsOf => edge.target_path
+  }
+}
+
+fn impact_adjacency_to(edge: ImpactEdge, direction: ImpactDirection) -> String {
+  match direction {
+    DependenciesOf => edge.target_path
+    DependentsOf => edge.source_path
+  }
+}
+
+fn impact_neighbors_of(
+  adjacency: Map<String, List<String>>,
+  path: String
+) -> List<String> {
+  match map_lookup_where_rejected_unreachable(m: adjacency, key: path) {
+    Present { value: paths } => paths
+    Absent => impact_no_paths
+  }
+}
+
+fn impact_adjacency(
+  resolved: List<ImpactEdge>,
+  direction: ImpactDirection
+) -> Map<String, List<String>> {
+  fold_list(
+    xs: resolved,
+    empty: empty_map(),
+    cons: fn(acc, edge) {
+      let from = impact_adjacency_from(edge: edge, direction: direction)
+      map_insert(
+        m: acc,
+        key: from,
+        value: impact_add_unseen_path(
+          acc: impact_neighbors_of(adjacency: acc, path: from),
+          item: impact_adjacency_to(edge: edge, direction: direction)
+        )
+      )
+    }
+  )
+}
+
+fn impact_bfs_absorb(state: ImpactBfsState, path: String) -> ImpactBfsState {
+  if contains(xs: state.reached, item: path, eq: impact_string_eq) {
+    state
+  } else {
+    ImpactBfsState {
+      reached: list_snoc_item(xs: state.reached, item: path),
+      queue: list_snoc_item(xs: state.queue, item: path)
+    }
+  }
+}
+
+fn impact_bfs_absorb_all(
+  state: ImpactBfsState,
+  neighbors: List<String>
+) -> ImpactBfsState {
+  fold_list(
+    xs: neighbors,
+    empty: state,
+    cons: fn(acc, path) { impact_bfs_absorb(state: acc, path: path) }
+  )
+}
+
+fn impact_bfs_walk(
+  state: ImpactBfsState,
+  adjacency: Map<String, List<String>>
+) -> List<String> {
+  match state.queue |> first {
+    Present { value: path } =>
+      impact_bfs_walk(
+        state: impact_bfs_absorb_all(
+          state: ImpactBfsState {
+            reached: state.reached,
+            queue: state.queue |> skip(1)
+          },
+          neighbors: impact_neighbors_of(adjacency: adjacency, path: path)
+        ),
+        adjacency: adjacency
+      )
+    Absent => state.reached
+  }
+}
+
+fn impact_closure_from_seeds(
+  adjacency: Map<String, List<String>>,
+  seeds: List<String>
+) -> List<String> {
+  impact_bfs_walk(
+    state: ImpactBfsState { reached: seeds, queue: seeds },
+    adjacency: adjacency
+  )
+}
+
+fn impact_path_reaches_self(
+  adjacency: Map<String, List<String>>,
+  path: String
+) -> Bool {
+  contains(
+    xs: impact_closure_from_seeds(
+      adjacency: adjacency,
+      seeds: impact_neighbors_of(adjacency: adjacency, path: path)
+    ),
+    item: path,
+    eq: impact_string_eq
+  )
+}
+
+fn impact_cycle_members(
+  adjacency: Map<String, List<String>>,
+  reached: List<String>
+) -> List<String> {
+  fold_list(
+    xs: reached,
+    empty: impact_no_paths,
+    cons: fn(acc, path) {
+      if impact_path_reaches_self(adjacency: adjacency, path: path) {
+        impact_add_unseen_path(acc: acc, item: path)
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn impact_edge_joins_members(edge: ImpactEdge, members: List<String>) -> Bool {
+  contains(xs: members, item: edge.source_path, eq: impact_string_eq)
+    && contains(xs: members, item: edge.target_path, eq: impact_string_eq)
+}
+
+fn impact_cycle_all_edges_import_derived(
+  resolved: List<ImpactEdge>,
+  members: List<String>
+) -> Bool {
+  fold_list(
+    xs: resolved,
+    empty: true,
+    cons: fn(acc, edge) {
+      if impact_edge_joins_members(edge: edge, members: members) {
+        match edge.provenance {
+          ImportDerivedEdge => acc
+          ReferenceDerivedEdge => false
+        }
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn impact_classify_cycle(
+  resolved: List<ImpactEdge>,
+  members: List<String>
+) -> List<ImpactCycle> {
+  if any(xs: members, predicate: fn(_) { true }) {
+    if impact_cycle_all_edges_import_derived(
+      resolved: resolved,
+      members: members
+    ) {
+      [ImpactImportAcyclicityViolation { members: members }]
+    } else {
+      [ImpactCycleReferenceAdmissible { members: members }]
+    }
+  } else {
+    impact_no_cycles
+  }
+}
+
+fn module_impact_reading(
+  seeds: List<String>,
+  direction: ImpactDirection,
+  edges: List<ModuleDependencyEdge>,
+  nodes: List<ModuleDeclarationFact>,
+  import_facts: List<ImportResolutionFact>
+) -> ImpactReading {
+  let resolved = impact_edges_resolved(
+    edges: edges,
+    nodes: nodes,
+    import_facts: import_facts
+  )
+  let adjacency = impact_adjacency(resolved: resolved, direction: direction)
+  let reached = impact_closure_from_seeds(adjacency: adjacency, seeds: seeds)
+  let members = impact_cycle_members(adjacency: adjacency, reached: reached)
+  ImpactReading {
+    direction: direction,
+    grain: ModulePathGrain,
+    seeds: seeds,
+    reached: reached,
+    explanation: resolved,
+    completeness: impact_completeness_from_unaccounted(
+      unaccounted: impact_unaccounted_targets(edges: edges)
+    ),
+    cycles: impact_classify_cycle(resolved: resolved, members: members)
+  }
+}

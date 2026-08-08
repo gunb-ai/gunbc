@@ -1,0 +1,228 @@
+module test.claim.module_impact_query_witness_test
+
+import std.algebra { Empty }
+import v2.std.algebra { any, contains, count_where }
+import v2.std.collection { List }
+import v2.std.text { String }
+import v2.lens.module_graph {
+  ModuleDeclarationFact,
+  ModuleDependencyEdge,
+  ImportResolutionFact,
+}
+import v2.lens.module_impact_query {
+  DependenciesOf,
+  DependentsOf,
+  ImpactClosedProven,
+  ImpactCycleReferenceAdmissible,
+  ImpactImportAcyclicityViolation,
+  ImpactLowerBound,
+  ImpactReading,
+  DeclarationGrain,
+  ModulePathGrain,
+  module_impact_reading,
+}
+
+data module_impact_query_witness_note: String = "Controlled fixtures: every input population and every expected population is authored here, so no assertion is a measurement of the current tree copied back onto itself (DESIGN 5 oracle rule). The discriminating pair is all_import_cycle vs mixed_cycle — identical cycle topology, different edge provenance, different required arm — so an implementation that reported SCC membership alone and skipped the import-acyclicity law would go red on witness_all_import_cycle_is_an_acyclicity_violation while still passing the plain cycle witness."
+
+data fixture_nodes: List<ModuleDeclarationFact> = [
+  ModuleDeclarationFact { module: "m.a", path: "fixture/a.dag" },
+  ModuleDeclarationFact { module: "m.b", path: "fixture/b.dag" },
+  ModuleDeclarationFact { module: "m.c", path: "fixture/c.dag" },
+]
+
+data chain_edges: List<ModuleDependencyEdge> = [
+  ModuleDependencyEdge {
+    path: "fixture/a.dag",
+    target_module: "m.b",
+    target_declared: true
+  },
+  ModuleDependencyEdge {
+    path: "fixture/b.dag",
+    target_module: "m.c",
+    target_declared: true
+  },
+]
+
+data chain_import_facts: List<ImportResolutionFact> = [
+  ImportResolutionFact {
+    path: "fixture/a.dag",
+    import_module: "m.b",
+    target_declared: true
+  },
+  ImportResolutionFact {
+    path: "fixture/b.dag",
+    import_module: "m.c",
+    target_declared: true
+  },
+]
+
+fn chain_reading_dependents() -> ImpactReading {
+  module_impact_reading(
+    seeds: ["fixture/c.dag"],
+    direction: DependentsOf,
+    edges: chain_edges,
+    nodes: fixture_nodes,
+    import_facts: chain_import_facts
+  )
+}
+
+fn chain_reading_dependencies() -> ImpactReading {
+  module_impact_reading(
+    seeds: ["fixture/a.dag"],
+    direction: DependenciesOf,
+    edges: chain_edges,
+    nodes: fixture_nodes,
+    import_facts: chain_import_facts
+  )
+}
+
+test fn witness_dependents_of_walks_the_edge_population_backwards() -> Bool {
+  let reached = chain_reading_dependents().reached
+  contains(xs: reached, item: "fixture/c.dag", eq: fn(a, b) { a == b })
+    && contains(xs: reached, item: "fixture/b.dag", eq: fn(a, b) { a == b })
+    && contains(xs: reached, item: "fixture/a.dag", eq: fn(a, b) { a == b })
+    && count_where(xs: reached, predicate: fn(_) { true }) == 3
+}
+
+test fn witness_dependencies_of_is_the_opposite_direction() -> Bool {
+  let reached = chain_reading_dependencies().reached
+  contains(xs: reached, item: "fixture/a.dag", eq: fn(a, b) { a == b })
+    && contains(xs: reached, item: "fixture/b.dag", eq: fn(a, b) { a == b })
+    && contains(xs: reached, item: "fixture/c.dag", eq: fn(a, b) { a == b })
+    && count_where(xs: reached, predicate: fn(_) { true }) == 3
+}
+
+test fn witness_dependents_of_a_leaf_source_reaches_only_itself() -> Bool {
+  let reading = module_impact_reading(
+    seeds: ["fixture/a.dag"],
+    direction: DependentsOf,
+    edges: chain_edges,
+    nodes: fixture_nodes,
+    import_facts: chain_import_facts
+  )
+  count_where(xs: reading.reached, predicate: fn(_) { true }) == 1
+}
+
+test fn witness_reading_declares_module_path_grain() -> Bool {
+  match chain_reading_dependents().grain {
+    ModulePathGrain => true
+    DeclarationGrain => false
+  }
+}
+
+test fn witness_all_declared_targets_prove_a_closed_reading() -> Bool {
+  match chain_reading_dependents().completeness {
+    ImpactClosedProven => true
+    ImpactLowerBound { unaccounted: _ } => false
+  }
+}
+
+data undeclared_target_edges: List<ModuleDependencyEdge> = [
+  ModuleDependencyEdge {
+    path: "fixture/a.dag",
+    target_module: "m.b",
+    target_declared: true
+  },
+  ModuleDependencyEdge {
+    path: "fixture/b.dag",
+    target_module: "m.outside_the_pool",
+    target_declared: false
+  },
+]
+
+test fn witness_undeclared_target_forces_a_lower_bound_with_the_named_row() -> Bool {
+  let reading = module_impact_reading(
+    seeds: ["fixture/a.dag"],
+    direction: DependenciesOf,
+    edges: undeclared_target_edges,
+    nodes: fixture_nodes,
+    import_facts: chain_import_facts
+  )
+  match reading.completeness {
+    ImpactClosedProven => false
+    ImpactLowerBound { unaccounted } =>
+      count_where(xs: unaccounted, predicate: fn(_) { true }) == 1
+        && any(
+          xs: unaccounted,
+          predicate: fn(row) { row.target_module == "m.outside_the_pool" }
+        )
+  }
+}
+
+data cycle_edges: List<ModuleDependencyEdge> = [
+  ModuleDependencyEdge {
+    path: "fixture/a.dag",
+    target_module: "m.b",
+    target_declared: true
+  },
+  ModuleDependencyEdge {
+    path: "fixture/b.dag",
+    target_module: "m.a",
+    target_declared: true
+  },
+]
+
+data all_import_cycle_facts: List<ImportResolutionFact> = [
+  ImportResolutionFact {
+    path: "fixture/a.dag",
+    import_module: "m.b",
+    target_declared: true
+  },
+  ImportResolutionFact {
+    path: "fixture/b.dag",
+    import_module: "m.a",
+    target_declared: true
+  },
+]
+
+data mixed_cycle_facts: List<ImportResolutionFact> = [
+  ImportResolutionFact {
+    path: "fixture/a.dag",
+    import_module: "m.b",
+    target_declared: true
+  },
+]
+
+fn cycle_reading(facts: List<ImportResolutionFact>) -> ImpactReading {
+  module_impact_reading(
+    seeds: ["fixture/a.dag"],
+    direction: DependenciesOf,
+    edges: cycle_edges,
+    nodes: fixture_nodes,
+    import_facts: facts
+  )
+}
+
+test fn witness_all_import_cycle_is_an_acyclicity_violation() -> Bool {
+  let cycles = cycle_reading(facts: all_import_cycle_facts).cycles
+  count_where(xs: cycles, predicate: fn(_) { true }) == 1
+    && any(
+      xs: cycles,
+      predicate: fn(cycle) {
+        match cycle {
+          ImpactImportAcyclicityViolation { members } =>
+            count_where(xs: members, predicate: fn(_) { true }) == 2
+          ImpactCycleReferenceAdmissible { members: _ } => false
+        }
+      }
+    )
+}
+
+test fn witness_cycle_with_a_reference_derived_edge_is_admissible() -> Bool {
+  let cycles = cycle_reading(facts: mixed_cycle_facts).cycles
+  count_where(xs: cycles, predicate: fn(_) { true }) == 1
+    && any(
+      xs: cycles,
+      predicate: fn(cycle) {
+        match cycle {
+          ImpactImportAcyclicityViolation { members: _ } => false
+          ImpactCycleReferenceAdmissible { members } =>
+            count_where(xs: members, predicate: fn(_) { true }) == 2
+        }
+      }
+    )
+}
+
+test fn witness_acyclic_population_reports_no_cycle() -> Bool {
+  count_where(xs: chain_reading_dependents().cycles, predicate: fn(_) { true }) == 0
+}
