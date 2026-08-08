@@ -1,66 +1,78 @@
 module test.claim.devboot_subject_identity_witness
 
-import std.types { Bool, NonEmptyStr, String }
+import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { byte_size }
 import std.content_hash {
   ContentHash,
-  compare_content_hash,
+  Sha256Digest,
   sha256_hex_digest,
+  compare_content_hash,
   ContentHashEqual,
   ContentHashDifferent,
   ContentHashCrossFamilyIncomparable,
 }
 
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
-import gunbc.host_layout { srv1_devboot_artifact_store_root, srv1_devboot_state_root }
+import gunbc.host_layout { srv1_devboot_artifact_store_root }
 import gunbc.live_deploy.spec {
   DeploymentArtifactStep,
   DevbootArtifactStoreRoot,
-  DevbootStateRoot,
   devboot_owned_steps,
   owned_artifact_retirement_disposition,
   RetirementPreserves,
-  RetiresRuntime,
 }
 import extdeps.toolchain.types {
   TargetTriple,
   ToolchainRequirement,
-  Aarch64,
+  X86_64,
   UnknownVendor,
   Linux,
   Gnu,
   Musl,
 }
+import extdeps.cargo { CargoTarget, Bin, Lib }
 
 import gunbc.devboot.subject {
   BuildSubject,
-  BuildSubjectAdmission,
+  RawCargoConfigEntry,
+  admit_build_subject,
+  build_subject_digest,
+  build_subject_equal,
   SubjectAdmitted,
   SubjectRefused,
   FeatureNameEmpty,
   DuplicateFeature,
-  admit_build_subject,
-  build_subject_digest,
+  ProfileNameEmpty,
+  RustflagEmpty,
 }
 import gunbc.devboot.outcome {
   StoredArtifact,
-  DevbootWorkId,
-  BuildOutcome,
-  Produced,
-  Reused,
-  AttachedToExistingProducer,
-  BuildFailed,
-  InfrastructureRefused,
-  OutputUnavailable,
+  StoredArtifactRecord,
+  ArtifactAvailability,
+  ArtifactAvailable,
+  ArtifactMissing,
+  ArtifactCorrupt,
+  ArtifactUnreadable,
+  BuildExecutionOutcome,
+  ExecutionProduced,
+  ExecutionFailed,
+  ExecutionRefused,
+  ExecutionInterrupted,
   CompilationFailed,
-  ArtifactStoreRootAbsent,
-  ArtifactBytesMissing,
-  artifact_matches_subject,
-  outcome_reports_retrievable_artifact,
-  outcome_is_terminal,
+  DevbootWorkStatus,
+  DevbootWorkId,
+  availability_permits_retrieval,
+  status_reports_retrievable_artifact,
+  execution_is_settled,
+  record_matches_request,
   SubjectMatches,
   SubjectDiffers,
-  SubjectIncomparable,
+  reuse_decision,
+  reuse_grants_artifact,
+  ReuseGranted,
+  ReuseNoCandidate,
+  ReuseSubjectMismatch,
+  ReuseUnavailable,
 }
 
 data witness_grounding_doc: String = "The tree object ids below are REAL, read out of this repository during the DEVBOOT re-observation rather than invented to look plausible. clean_tree_hex is `git write-tree` over a temp index holding HEAD's content and equals the tree HEAD points at; parent_tree_hex is the tree of HEAD~1; dirty_tree_hex is the same index with one untracked file staged. blob_hex and pack_sha256_hex are the object id and content digest of an actual downloaded release pack.\\n\\nUsing measured values matters here beyond tidiness: the claim under test is that this identity scheme distinguishes and collapses the RIGHT things, and a fixture invented to satisfy it could not have falsified it. These three trees really do stand in the relations the tests assert -- same content same id, different content different id."
@@ -72,12 +84,12 @@ data blob_hex: String = "2d964d3995eb862e98255555d858bb970bac1b99"
 data pack_sha256_hex: String = "c145cdcad67185c86b487c5d1e9caed689a5b4efd4c8512268ea6f4ae085e47b"
 
 fn witness_toolchain() -> ToolchainRequirement {
-  ToolchainRequirement { name: "rustc" as NonEmptyStr, version: "1.83.0" as NonEmptyStr }
+  ToolchainRequirement { name: "rustup" as NonEmptyStr, version: "1.89.0" as NonEmptyStr }
 }
 
 fn witness_target(gnu_abi: Bool) -> TargetTriple {
   TargetTriple {
-    arch: Aarch64,
+    arch: X86_64,
     vendor: UnknownVendor,
     os: Linux,
     env: if gnu_abi { Present { value: Gnu } } else { Present { value: Musl } },
@@ -88,71 +100,232 @@ fn witness_oid(hex: String) -> GitObjectId? {
   git_object_id_from_untagged_hex(hex: hex)
 }
 
-fn witness_subject_digest(tree_hex: String, gnu_abi: Bool, features: List<String>) -> ContentHash? {
+data witness_subject_builder_doc: String = "One builder every row goes through, so a test that means to vary ONE axis cannot accidentally vary another. Each parameter is an axis of the subject identity, and the defaults are the same on both sides of every comparison below."
+
+fn witness_subject_full(
+  tree_hex: String,
+  gnu_abi: Bool,
+  features: List<String>,
+  package: String,
+  cargo_target: CargoTarget,
+  profile: String,
+  rustflags: List<String>,
+) -> BuildSubject? {
   match witness_oid(hex: tree_hex) {
     Absent => none
     Present { value: oid } =>
       match admit_build_subject(
         tree_oid: oid,
+        package: package,
+        cargo_target: cargo_target,
         toolchain: witness_toolchain(),
         target: witness_target(gnu_abi: gnu_abi),
-        profile: "release",
+        profile: profile,
         features: features,
+        rustflags: rustflags,
+        linker: none,
+        sysroot: none,
+        cargo_config: [],
       ) {
-        SubjectRefused { cause: _ } => none
-        SubjectAdmitted { subject } => Present { value: build_subject_digest(subject: subject) }
+        SubjectRefused { cause } => none
+        SubjectAdmitted { subject } => Present { value: subject }
       }
   }
 }
 
-fn digests_equal(left: ContentHash?, right: ContentHash?) -> Bool {
+fn witness_subject(tree_hex: String, gnu_abi: Bool, features: List<String>) -> BuildSubject? {
+  witness_subject_full(
+    tree_hex: tree_hex,
+    gnu_abi: gnu_abi,
+    features: features,
+    package: "gunbc",
+    cargo_target: Bin { name: "gunbc" },
+    profile: "release",
+    rustflags: [],
+  )
+}
+
+fn witness_subject_digest(tree_hex: String, gnu_abi: Bool, features: List<String>) -> ContentHash? {
+  match witness_subject(tree_hex: tree_hex, gnu_abi: gnu_abi, features: features) {
+    Absent => none
+    Present { value: subject } => Present { value: build_subject_digest(subject: subject) }
+  }
+}
+
+data three_valued_comparison_doc: String = "WHY THIS IS THREE-VALUED, AND WHY THE EARLIER TWO-VALUED HELPER MADE EVERY NEGATIVE TEST BELOW A LIE. The previous revision compared two optional digests with a helper that answered false whenever either side was absent. Absent is what construction FAILURE produces here -- a bad object id, a refused admission -- so 'the two digests differ' and 'I could not build either digest' returned the same answer.\\n\\nEvery discriminating negative asserts the NOT of that helper, so each one passed whenever construction broke. Had admit_build_subject started refusing everything, the ABI false-share test, the different-trees test and the features test would all have gone GREEN while proving nothing whatsoever. That is the specification-without-execution failure wearing a passing suite, and it is worse than an absent test because it actively reports coverage.\\n\\nThe fix is to keep 'could not compare' as its own answer that satisfies NEITHER polarity. A positive row demands BothPresentEqual and a negative row demands BothPresentDifferent, so both directions now require that construction succeeded on both sides -- the comparison can no longer be satisfied by failing."
+
+type DigestComparison
+  = BothPresentEqual
+  | BothPresentDifferent
+  | ComparisonUnavailable
+
+fn compare_optional_digests(left: ContentHash?, right: ContentHash?) -> DigestComparison {
   match left {
-    Absent => false
+    Absent => ComparisonUnavailable
     Present { value: l } =>
       match right {
-        Absent => false
+        Absent => ComparisonUnavailable
         Present { value: r } =>
           match compare_content_hash(left: l, right: r) {
-            ContentHashEqual => true
-            ContentHashDifferent => false
-            ContentHashCrossFamilyIncomparable => false
+            ContentHashEqual => BothPresentEqual
+            ContentHashDifferent => BothPresentDifferent
+            ContentHashCrossFamilyIncomparable => ComparisonUnavailable
           }
       }
   }
 }
 
+fn digests_are_equal(left: ContentHash?, right: ContentHash?) -> Bool {
+  match compare_optional_digests(left: left, right: right) {
+    BothPresentEqual => true
+    BothPresentDifferent => false
+    ComparisonUnavailable => false
+  }
+}
+
+fn digests_are_different(left: ContentHash?, right: ContentHash?) -> Bool {
+  match compare_optional_digests(left: left, right: right) {
+    BothPresentEqual => false
+    BothPresentDifferent => true
+    ComparisonUnavailable => false
+  }
+}
+
+data comparison_control_doc: String = "THE CONTROL THAT PROVES THE FIX IS REAL. An unconstructable subject must satisfy neither polarity -- not equal AND not different -- which is exactly what the broken two-valued helper could not express. If this row ever goes red, the three-valued comparison has collapsed back into a boolean and every negative test above has quietly stopped discriminating."
+
+test fn an_unconstructable_digest_satisfies_neither_polarity() -> Bool {
+  let broken = witness_subject_digest(tree_hex: "not-a-valid-object-id", gnu_abi: true, features: [])
+  let good = witness_subject_digest(tree_hex: clean_tree_hex, gnu_abi: true, features: [])
+  !digests_are_equal(left: broken, right: good)
+    && !digests_are_different(left: broken, right: good)
+    && digests_are_equal(left: good, right: good)
+}
+
 test fn identical_subjects_share_one_digest() -> Bool {
-  digests_equal(
+  digests_are_equal(
     left: witness_subject_digest(tree_hex: clean_tree_hex, gnu_abi: true, features: []),
     right: witness_subject_digest(tree_hex: clean_tree_hex, gnu_abi: true, features: []),
   )
 }
 
 test fn different_trees_never_collide() -> Bool {
-  !digests_equal(
+  digests_are_different(
     left: witness_subject_digest(tree_hex: clean_tree_hex, gnu_abi: true, features: []),
     right: witness_subject_digest(tree_hex: parent_tree_hex, gnu_abi: true, features: []),
   )
-    && !digests_equal(
+    && digests_are_different(
       left: witness_subject_digest(tree_hex: clean_tree_hex, gnu_abi: true, features: []),
       right: witness_subject_digest(tree_hex: dirty_tree_hex, gnu_abi: true, features: []),
     )
 }
 
-data abi_false_share_red_doc: String = "THE DISCRIMINATING RED FOR THE FALSE-SHARE CLASS. Gnu and Musl builds of one tree differ in exactly the property that decides whether the artifact runs on a given host, and a subject key blind to the ABI axis would report them as one subject -- handing a requester a binary its libc cannot load while every record claimed a hit. This test goes red the moment abi_env_diagnostic_name stops reaching the digest, which is the failure a reviewer cannot see by reading the fold."
+data abi_false_share_red_doc: String = "THE DISCRIMINATING RED FOR THE FALSE-SHARE CLASS. Gnu and Musl builds of one tree differ in exactly the property that decides whether the artifact runs on a given host, and a subject key blind to the ABI axis would report them as one subject -- handing a requester a binary its libc cannot load while every record claimed a hit. This test goes red the moment the ABI identity tag stops reaching the digest, which is the failure a reviewer cannot see by reading the fold."
 
 test fn gnu_and_musl_are_different_subjects() -> Bool {
-  !digests_equal(
+  digests_are_different(
     left: witness_subject_digest(tree_hex: clean_tree_hex, gnu_abi: true, features: []),
     right: witness_subject_digest(tree_hex: clean_tree_hex, gnu_abi: false, features: []),
   )
 }
 
 test fn features_participate_in_identity() -> Bool {
-  !digests_equal(
+  digests_are_different(
     left: witness_subject_digest(tree_hex: clean_tree_hex, gnu_abi: true, features: []),
     right: witness_subject_digest(tree_hex: clean_tree_hex, gnu_abi: true, features: ["tracing"]),
   )
+}
+
+data product_axis_red_doc: String = "THE RED FOR THE MISSING-PRODUCT CLASS. One tree at one toolchain, target, profile and feature set can still produce entirely different bytes depending on WHICH artifact was asked for -- the CLI binary, another binary, or the library. Before the product axis existed these were one subject, so a request for one could be answered with another's bytes while every modeled axis agreed. Both rows must differ, and they differ on the two distinct ways a product can vary: the target KIND, and the target NAME at one kind."
+
+test fn the_product_being_built_participates_in_identity() -> Bool {
+  let cli = witness_subject_full(
+    tree_hex: clean_tree_hex,
+    gnu_abi: true,
+    features: [],
+    package: "gunbc",
+    cargo_target: Bin { name: "gunbc" },
+    profile: "release",
+    rustflags: [],
+  )
+  let other_bin = witness_subject_full(
+    tree_hex: clean_tree_hex,
+    gnu_abi: true,
+    features: [],
+    package: "gunbc",
+    cargo_target: Bin { name: "claim_executor" },
+    profile: "release",
+    rustflags: [],
+  )
+  let library = witness_subject_full(
+    tree_hex: clean_tree_hex,
+    gnu_abi: true,
+    features: [],
+    package: "gunbc",
+    cargo_target: Lib,
+    profile: "release",
+    rustflags: [],
+  )
+  digests_are_different(
+    left: optional_digest(subject: cli),
+    right: optional_digest(subject: other_bin),
+  )
+    && digests_are_different(
+      left: optional_digest(subject: cli),
+      right: optional_digest(subject: library),
+    )
+}
+
+fn optional_digest(subject: BuildSubject?) -> ContentHash? {
+  match subject {
+    Absent => none
+    Present { value: s } => Present { value: build_subject_digest(subject: s) }
+  }
+}
+
+data environment_axis_red_doc: String = "THE RED FOR THE BUILD-ENVIRONMENT CLASS. A codegen flag changes the emitted bytes while leaving source, toolchain, target, profile, features and product all identical, so a key blind to it would serve an optimized artifact against a request that asked for a debuggable one and vice versa -- with every visible axis agreeing.\\n\\nThe second row is the one that would be easy to get wrong: rustc resolves repeated codegen options last-one-wins, so the SAME flags in a different ORDER are genuinely a different build. A digest that folded flags order-insensitively would report these two as one subject."
+
+test fn build_environment_participates_in_identity() -> Bool {
+  let bare = witness_subject_full(
+    tree_hex: clean_tree_hex,
+    gnu_abi: true,
+    features: [],
+    package: "gunbc",
+    cargo_target: Bin { name: "gunbc" },
+    profile: "release",
+    rustflags: [],
+  )
+  let flagged = witness_subject_full(
+    tree_hex: clean_tree_hex,
+    gnu_abi: true,
+    features: [],
+    package: "gunbc",
+    cargo_target: Bin { name: "gunbc" },
+    profile: "release",
+    rustflags: ["-Copt-level=3"],
+  )
+  let reordered = witness_subject_full(
+    tree_hex: clean_tree_hex,
+    gnu_abi: true,
+    features: [],
+    package: "gunbc",
+    cargo_target: Bin { name: "gunbc" },
+    profile: "release",
+    rustflags: ["-Cdebuginfo=2", "-Copt-level=3"],
+  )
+  let original_order = witness_subject_full(
+    tree_hex: clean_tree_hex,
+    gnu_abi: true,
+    features: [],
+    package: "gunbc",
+    cargo_target: Bin { name: "gunbc" },
+    profile: "release",
+    rustflags: ["-Copt-level=3", "-Cdebuginfo=2"],
+  )
+  digests_are_different(left: optional_digest(subject: bare), right: optional_digest(subject: flagged))
+    && digests_are_different(
+      left: optional_digest(subject: original_order),
+      right: optional_digest(subject: reordered),
+    )
 }
 
 test fn duplicate_feature_refuses() -> Bool {
@@ -161,14 +334,23 @@ test fn duplicate_feature_refuses() -> Bool {
     Present { value: oid } =>
       match admit_build_subject(
         tree_oid: oid,
+        package: "gunbc",
+        cargo_target: Bin { name: "gunbc" },
         toolchain: witness_toolchain(),
         target: witness_target(gnu_abi: true),
         profile: "release",
         features: ["tracing", "tracing"],
+        rustflags: [],
+        linker: none,
+        sysroot: none,
+        cargo_config: [],
       ) {
-        SubjectRefused { cause: DuplicateFeature { name } } => name == "tracing"
-        SubjectRefused { cause: _ } => false
-        SubjectAdmitted { subject: _ } => false
+        SubjectAdmitted { subject } => false
+        SubjectRefused { cause } =>
+          match cause {
+            DuplicateFeature { name } => name == "tracing"
+            _ => false
+          }
       }
   }
 }
@@ -179,158 +361,291 @@ test fn empty_feature_name_refuses() -> Bool {
     Present { value: oid } =>
       match admit_build_subject(
         tree_oid: oid,
+        package: "gunbc",
+        cargo_target: Bin { name: "gunbc" },
         toolchain: witness_toolchain(),
         target: witness_target(gnu_abi: true),
         profile: "release",
         features: [""],
+        rustflags: [],
+        linker: none,
+        sysroot: none,
+        cargo_config: [],
       ) {
-        SubjectRefused { cause: FeatureNameEmpty } => true
-        SubjectRefused { cause: _ } => false
-        SubjectAdmitted { subject: _ } => false
+        SubjectAdmitted { subject } => false
+        SubjectRefused { cause } =>
+          match cause {
+            FeatureNameEmpty => true
+            _ => false
+          }
       }
   }
 }
 
-fn witness_subject(tree_hex: String) -> BuildSubject? {
-  match witness_oid(hex: tree_hex) {
-    Absent => none
+data admission_wall_doc: String = "THE ADMISSION IS THE ONLY DOOR, asserted per field rather than assumed from one sample. Each of these strings is non-empty by TYPE inside BuildSubject, so an empty one arriving from a request must be refused at admission or it becomes a cast that asserts what was never checked -- the fabrication class this carrier was reworked to remove. A field that stopped being scanned would show up here and nowhere else."
+
+test fn every_required_string_is_refused_when_empty() -> Bool {
+  empty_profile_refuses() && empty_rustflag_refuses()
+}
+
+fn empty_profile_refuses() -> Bool {
+  match witness_oid(hex: clean_tree_hex) {
+    Absent => false
     Present { value: oid } =>
       match admit_build_subject(
         tree_oid: oid,
+        package: "gunbc",
+        cargo_target: Bin { name: "gunbc" },
+        toolchain: witness_toolchain(),
+        target: witness_target(gnu_abi: true),
+        profile: "",
+        features: [],
+        rustflags: [],
+        linker: none,
+        sysroot: none,
+        cargo_config: [],
+      ) {
+        SubjectAdmitted { subject } => false
+        SubjectRefused { cause } =>
+          match cause {
+            ProfileNameEmpty => true
+            _ => false
+          }
+      }
+  }
+}
+
+fn empty_rustflag_refuses() -> Bool {
+  match witness_oid(hex: clean_tree_hex) {
+    Absent => false
+    Present { value: oid } =>
+      match admit_build_subject(
+        tree_oid: oid,
+        package: "gunbc",
+        cargo_target: Bin { name: "gunbc" },
         toolchain: witness_toolchain(),
         target: witness_target(gnu_abi: true),
         profile: "release",
         features: [],
+        rustflags: [""],
+        linker: none,
+        sysroot: none,
+        cargo_config: [],
       ) {
-        SubjectRefused { cause: _ } => none
-        SubjectAdmitted { subject } => Present { value: subject }
+        SubjectAdmitted { subject } => false
+        SubjectRefused { cause } =>
+          match cause {
+            RustflagEmpty => true
+            _ => false
+          }
       }
   }
 }
 
-fn witness_artifact(for_tree_hex: String) -> StoredArtifact? {
-  match witness_subject(tree_hex: for_tree_hex) {
+fn witness_artifact(for_subject: BuildSubject) -> StoredArtifact? {
+  match witness_oid(hex: blob_hex) {
     Absent => none
-    Present { value: subject } =>
-      match witness_oid(hex: blob_hex) {
+    Present { value: blob } =>
+      match sha256_hex_digest(hex: pack_sha256_hex) {
         Absent => none
-        Present { value: blob } =>
-          match sha256_hex_digest(hex: pack_sha256_hex) {
-            Absent => none
-            Present { value: digest } =>
-              Present {
-                value: StoredArtifact {
-                  subject_digest: build_subject_digest(subject: subject),
-                  blob_oid: blob,
-                  sha256: digest,
-                  bytes: byte_size(count: 97365738),
-                },
+        Present { value: digest } =>
+          Present {
+            value: StoredArtifact {
+              subject_digest: build_subject_digest(subject: for_subject),
+              blob_oid: blob,
+              sha256: digest,
+              bytes: byte_size(count: 97371648),
+            },
+          }
+      }
+  }
+}
+
+fn witness_record(for_subject: BuildSubject) -> StoredArtifactRecord? {
+  match witness_artifact(for_subject: for_subject) {
+    Absent => none
+    Present { value: artifact } =>
+      Present { value: StoredArtifactRecord { subject: for_subject, artifact: artifact } }
+  }
+}
+
+data structural_equality_red_doc: String = "THE RULING'S REUSE ORDER, ASSERTED AS BEHAVIOUR. A stored record is offered against a request naming a different tree; it must answer SubjectDiffers and the reuse path must refuse, no matter that bytes were sitting right there and available. This is the 'use what's there' failure the hard stop forbids, and it is the arm a cache is most tempted to take.\\n\\nThe row also pins the ORDER the ruling fixed: the mismatch arm is reached with availability set to Available, so a reuse that consulted only the digest and the bytes would grant here. Only a comparison of the full retrieved subject refuses."
+
+test fn a_record_built_for_another_subject_is_refused_even_when_bytes_are_available() -> Bool {
+  match witness_subject(tree_hex: clean_tree_hex, gnu_abi: true, features: []) {
+    Absent => false
+    Present { value: built_for } =>
+      match witness_subject(tree_hex: parent_tree_hex, gnu_abi: true, features: []) {
+        Absent => false
+        Present { value: requested } =>
+          match witness_record(for_subject: built_for) {
+            Absent => false
+            Present { value: record } =>
+              match record_matches_request(record: record, requested: requested) {
+                SubjectMatches => false
+                SubjectDiffers =>
+                  !reuse_grants_artifact(
+                    decision: reuse_decision(
+                      candidate: Present { value: record },
+                      requested: requested,
+                      availability: ArtifactAvailable { artifact: record.artifact },
+                    ),
+                  )
               }
           }
       }
   }
 }
 
-test fn artifact_matches_the_subject_it_was_built_for() -> Bool {
-  match witness_artifact(for_tree_hex: clean_tree_hex) {
+test fn a_record_built_for_the_request_reuses_when_bytes_are_available() -> Bool {
+  match witness_subject(tree_hex: clean_tree_hex, gnu_abi: true, features: []) {
     Absent => false
-    Present { value: artifact } =>
-      match witness_subject(tree_hex: clean_tree_hex) {
+    Present { value: subject } =>
+      match witness_record(for_subject: subject) {
         Absent => false
-        Present { value: subject } =>
-          match artifact_matches_subject(artifact: artifact, subject: subject) {
-            SubjectMatches => true
-            SubjectDiffers => false
-            SubjectIncomparable => false
+        Present { value: record } =>
+          reuse_grants_artifact(
+            decision: reuse_decision(
+              candidate: Present { value: record },
+              requested: subject,
+              availability: ArtifactAvailable { artifact: record.artifact },
+            ),
+          )
+      }
+  }
+}
+
+data reuse_requires_all_three_doc: String = "REUSE NEEDS A CANDIDATE, AN EXACT MATCH, AND PRESENT BYTES -- never two out of three. The matching record with MISSING bytes is the row that matters: every identity check passes, and reuse must still refuse, because the contract law is about retrievability rather than about records. A service that granted here would report success for bytes nobody can fetch."
+
+test fn a_matching_record_without_bytes_does_not_reuse() -> Bool {
+  match witness_subject(tree_hex: clean_tree_hex, gnu_abi: true, features: []) {
+    Absent => false
+    Present { value: subject } =>
+      match witness_record(for_subject: subject) {
+        Absent => false
+        Present { value: record } =>
+          !reuse_grants_artifact(
+            decision: reuse_decision(
+              candidate: Present { value: record },
+              requested: subject,
+              availability: ArtifactMissing,
+            ),
+          )
+            && !reuse_grants_artifact(
+              decision: reuse_decision(
+                candidate: none,
+                requested: subject,
+                availability: ArtifactAvailable { artifact: record.artifact },
+              ),
+            )
+      }
+  }
+}
+
+data split_axes_doc: String = "THE STATE THE FUSED SUM COULD NOT SAY. Execution Produced with artifact Missing is a real and common situation -- the build ran and succeeded, the bytes were later pruned -- and under a single outcome sum it could only be expressed by overwriting the success, destroying the record that the build had ever run.\\n\\nBoth halves are asserted here: the status is simultaneously a settled Produced execution AND not retrievable. A collapse back into one axis makes one of the two conjuncts unrepresentable and this row goes red."
+
+fn witness_status(
+  subject: BuildSubject,
+  id: String,
+  execution: BuildExecutionOutcome,
+  availability: ArtifactAvailability,
+) -> DevbootWorkStatus {
+  DevbootWorkStatus {
+    work_id: id as NonEmptyStr as DevbootWorkId,
+    subject: subject,
+    execution: execution,
+    availability: availability,
+  }
+}
+
+fn produced_but_missing_status_holds(subject: BuildSubject) -> Bool {
+  let status = witness_status(
+    subject: subject,
+    id: "w-1",
+    execution: ExecutionProduced,
+    availability: ArtifactMissing,
+  )
+  execution_is_settled(execution: status.execution)
+    && !status_reports_retrievable_artifact(status: status)
+}
+
+test fn produced_yesterday_with_missing_bytes_today_is_representable() -> Bool {
+  match witness_subject(tree_hex: clean_tree_hex, gnu_abi: true, features: []) {
+    Absent => false
+    Present { value: subject } => produced_but_missing_status_holds(subject: subject)
+  }
+}
+
+data retrievability_law_doc: String = "THE CONTRACT LAW ASSERTED OVER EVERY ARM: only observed-available bytes permit a caller to believe it holds an artifact. Corrupt bytes are the arm most likely to be mishandled -- they exist, they are the right length, and they are the wrong content -- so a service that treated presence as availability would serve them."
+
+test fn only_observed_available_bytes_permit_retrieval() -> Bool {
+  match witness_subject(tree_hex: clean_tree_hex, gnu_abi: true, features: []) {
+    Absent => false
+    Present { value: subject } =>
+      match witness_artifact(for_subject: subject) {
+        Absent => false
+        Present { value: artifact } =>
+          match sha256_hex_digest(hex: pack_sha256_hex) {
+            Absent => false
+            Present { value: digest } =>
+              availability_permits_retrieval(
+                availability: ArtifactAvailable { artifact: artifact },
+              )
+                && !availability_permits_retrieval(availability: ArtifactMissing)
+                && !availability_permits_retrieval(
+                  availability: ArtifactCorrupt { expected: digest, observed: digest },
+                )
+                && !availability_permits_retrieval(
+                  availability: ArtifactUnreadable { detail: "store unreadable" },
+                )
           }
       }
   }
 }
 
-data wrong_subject_red_doc: String = "THE REQUESTED-SUBJECT WALL'S RED. An artifact built for one tree, offered against a request naming a different tree, must answer SubjectDiffers -- never SubjectMatches, and never a quiet success on the grounds that bytes were available. This is the 'use what's there' failure the hard stop forbids, and it is the arm a cache is most tempted to take."
+fn failed_build_status_holds(subject: BuildSubject) -> Bool {
+  let status = witness_status(
+    subject: subject,
+    id: "w-2",
+    execution: ExecutionFailed { cause: CompilationFailed { detail: "type error" } },
+    availability: ArtifactMissing,
+  )
+  !status_reports_retrievable_artifact(status: status)
+    && execution_is_settled(execution: status.execution)
+}
 
-test fn artifact_for_another_subject_is_refused() -> Bool {
-  match witness_artifact(for_tree_hex: clean_tree_hex) {
+test fn a_failed_build_never_reports_retrievable() -> Bool {
+  match witness_subject(tree_hex: clean_tree_hex, gnu_abi: true, features: []) {
     Absent => false
-    Present { value: artifact } =>
-      match witness_subject(tree_hex: parent_tree_hex) {
-        Absent => false
-        Present { value: other_subject } =>
-          match artifact_matches_subject(artifact: artifact, subject: other_subject) {
-            SubjectMatches => false
-            SubjectDiffers => true
-            SubjectIncomparable => false
-          }
-      }
+    Present { value: subject } => failed_build_status_holds(subject: subject)
   }
 }
 
-data retrievable_arm_doc: String = "THE CONTRACT LAW, ASSERTED RATHER THAN ASSUMED: only the two arms carrying a StoredArtifact may report a retrievable artifact. OutputUnavailable is the arm that exists precisely so a terminal record of a past success cannot be replayed as a present retrieval, so it answering true would defeat the reason it was introduced."
-
-test fn only_artifact_bearing_outcomes_report_retrievable() -> Bool {
-  match witness_artifact(for_tree_hex: clean_tree_hex) {
-    Absent => false
-    Present { value: artifact } =>
-      outcome_reports_retrievable_artifact(outcome: Produced { artifact: artifact })
-        && outcome_reports_retrievable_artifact(outcome: Reused { artifact: artifact })
-        && !outcome_reports_retrievable_artifact(
-          outcome: BuildFailed { cause: CompilationFailed { detail: "type error" } },
-        )
-        && !outcome_reports_retrievable_artifact(
-          outcome: InfrastructureRefused {
-            cause: ArtifactStoreRootAbsent { path: "/var/lib/gunbc/artifacts.git" },
-          },
-        )
-        && !outcome_reports_retrievable_artifact(
-          outcome: AttachedToExistingProducer { work_id: "w-1" as DevbootWorkId },
-        )
-  }
+test fn an_interrupted_build_is_not_settled() -> Bool {
+  !execution_is_settled(execution: ExecutionInterrupted { detail: "producer died" })
 }
 
-test fn output_unavailable_never_reports_retrievable() -> Bool {
-  match witness_oid(hex: blob_hex) {
-    Absent => false
-    Present { value: blob } =>
-      !outcome_reports_retrievable_artifact(
-        outcome: OutputUnavailable { cause: ArtifactBytesMissing { blob_oid: blob } },
-      )
-        && outcome_is_terminal(
-          outcome: OutputUnavailable { cause: ArtifactBytesMissing { blob_oid: blob } },
-        )
-  }
-}
-
-test fn attached_producer_is_not_terminal() -> Bool {
-  !outcome_is_terminal(outcome: AttachedToExistingProducer { work_id: "w-2" as DevbootWorkId })
-}
-
-data devboot_membership_witness_doc: String = "THE PROJECTION HAS AN EXECUTING CONSUMER, which is a weaker claim than provisioning and is stated as the weaker one. These rows prove that devboot_owned_steps projects the gunbc.host_layout authority rather than spelling paths a second time, and that neither root is disturbed by a blue/green slot flip. They do NOT prove anything is created on a host; no applier exists in this capsule, and the bootstrap job is where that lands.\\n\\nThe reason to assert it at all is that a projection nothing evaluates is indistinguishable from a projection that is wrong. A path re-spelled here instead of imported would be the exact defect the host_layout admission note records, and it would be invisible until a deploy went looking for a directory nobody created."
+data devboot_membership_witness_doc: String = "THE PROJECTION HAS AN EXECUTING CONSUMER, which is a weaker claim than provisioning and is stated as the weaker one. These rows prove that devboot_owned_steps projects the gunbc.host_layout authority rather than spelling the path a second time, and that the root is not disturbed by a blue/green slot flip. They do NOT prove anything is created on a host.\\n\\nThe reason to assert it at all is that a projection nothing evaluates is indistinguishable from a projection that is wrong. A path re-spelled here instead of imported would be the exact defect the host_layout admission note records, and it would be invisible until a deploy went looking for a directory nobody created."
 
 fn devboot_step_projects_layout(acc: Int, step: DeploymentArtifactStep) -> Int {
   match step.kind {
     DevbootArtifactStoreRoot =>
-      if (step.path as String) == (srv1_devboot_artifact_store_root as String) { acc + 1 } else { acc }
-    DevbootStateRoot =>
-      if (step.path as String) == (srv1_devboot_state_root as String) { acc + 1 } else { acc }
+      if (step.path as String) == (srv1_devboot_artifact_store_root as String) {
+        acc + 1
+      } else {
+        acc
+      }
     _ => acc
   }
 }
 
 test fn devboot_owned_steps_project_the_host_layout_rows() -> Bool {
-  fold(
-    devboot_owned_steps(),
-    init: 0,
-    f: (acc, step) => devboot_step_projects_layout(acc: acc, step: step),
-  ) == 2
+  fold(devboot_owned_steps(), init: 0, f: (acc, step) => devboot_step_projects_layout(acc: acc, step: step)) == 1
 }
 
 test fn devboot_roots_are_preserved_across_a_slot_flip() -> Bool {
   match owned_artifact_retirement_disposition(kind: DevbootArtifactStoreRoot) {
     RetirementPreserves => true
-    RetiresRuntime => false
+    _ => false
   }
-    && match owned_artifact_retirement_disposition(kind: DevbootStateRoot) {
-      RetirementPreserves => true
-      RetiresRuntime => false
-    }
 }

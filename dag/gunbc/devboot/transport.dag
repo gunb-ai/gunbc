@@ -13,31 +13,43 @@ type SubjectUploadChannel
   = SyntheticCommitWipRefViaOrigin { remote: NonEmptyStr, ref_namespace: NonEmptyStr }
   | DirectUploadUnavailable { detail: String }
 
-fn wip_ref_for_subject(channel: SubjectUploadChannel, subject_hex: NonEmptyStr) -> GitRef? {
+data transport_projection_refusal_note: String = "WHY THESE RETURN TYPED ARMS RATHER THAN AN OPTIONAL. The channel types already carry a located reason on their unavailable arm -- the detail saying WHICH channel is missing and why -- and projecting them through an Optional threw that reason away at the first step, handing every caller a bare absence. A caller then had exactly two things it could do: fabricate a default, or report an unlocated failure. Both are the outcomes this vertical's refusals exist to prevent, and the information needed to avoid them had been discarded one function earlier.\\n\\nSo each projection returns its own sum whose refusal arm carries the detail through. The absence stays typed and located all the way to whoever must act on it, which is the difference between a refusal and a shrug."
+
+type WipRefProjection
+  = WipRefAvailable { ref_name: GitRef }
+  | WipRefUnavailable { detail: String }
+
+fn wip_ref_for_subject(channel: SubjectUploadChannel, subject_hex: NonEmptyStr) -> WipRefProjection {
   match channel {
     SyntheticCommitWipRefViaOrigin { remote: _, ref_namespace } =>
-      Present { value: join([ref_namespace as String, "/", subject_hex as String], "") as GitRef }
-    DirectUploadUnavailable { detail: _ } => none
+      WipRefAvailable {
+        ref_name: join([ref_namespace as String, "/", subject_hex as String], "") as GitRef,
+      }
+    DirectUploadUnavailable { detail } => WipRefUnavailable { detail: detail }
   }
 }
+
+type SubjectUploadProjection
+  = SubjectUploadReady { request: GitPushRequest }
+  | SubjectUploadUnavailable { detail: String }
 
 fn subject_upload_push_request(
   channel: SubjectUploadChannel,
   subject_hex: NonEmptyStr,
-) -> GitPushRequest? {
+) -> SubjectUploadProjection {
   match channel {
     SyntheticCommitWipRefViaOrigin { remote, ref_namespace } =>
       match wip_ref_for_subject(channel: channel, subject_hex: subject_hex) {
-        Present { value: ref_name } =>
-          Present {
-            value: GitPushRequest {
+        WipRefAvailable { ref_name } =>
+          SubjectUploadReady {
+            request: GitPushRequest {
               remote: remote,
               ref_updates: [GitRefUpdateSpec { local_ref: ref_name, remote_ref: ref_name }],
             },
           }
-        Absent => none
+        WipRefUnavailable { detail } => SubjectUploadUnavailable { detail: detail }
       }
-    DirectUploadUnavailable { detail: _ } => none
+    DirectUploadUnavailable { detail } => SubjectUploadUnavailable { detail: detail }
   }
 }
 
@@ -47,11 +59,17 @@ type ArtifactFetchChannel
   = LocalFileUri { store_root: FilePath }
   | CrossHostFetchUnavailable { detail: String }
 
-fn artifact_fetch_uri(channel: ArtifactFetchChannel) -> Uri? {
+type ArtifactFetchProjection
+  = ArtifactFetchReady { uri: Uri }
+  | ArtifactFetchUnavailable { detail: String }
+
+fn artifact_fetch_uri(channel: ArtifactFetchChannel) -> ArtifactFetchProjection {
   match channel {
     LocalFileUri { store_root } =>
-      Present { value: Uri { scheme: File, locator: store_root as String as NonEmptyStr } }
-    CrossHostFetchUnavailable { detail: _ } => none
+      ArtifactFetchReady {
+        uri: Uri { scheme: File, locator: store_root as String as NonEmptyStr },
+      }
+    CrossHostFetchUnavailable { detail } => ArtifactFetchUnavailable { detail: detail }
   }
 }
 

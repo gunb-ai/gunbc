@@ -32,7 +32,6 @@ import gunbc.host_layout {
   srv1_dispatch_worktree_root,
   srv1_dispatch_attempt_state_root,
   srv1_devboot_artifact_store_root,
-  srv1_devboot_state_root,
 }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
@@ -60,7 +59,6 @@ type OwnedArtifactKind =
   | BeltTimerUnit
   | TailscaleServeMapping
   | DevbootArtifactStoreRoot
-  | DevbootStateRoot
 
 type EnsuredDependencyKind =
     TailscalePackage
@@ -106,7 +104,6 @@ fn owned_artifact_teardown_disposition(kind: OwnedArtifactKind) -> TeardownDispo
     BeltTimerUnit => TeardownActs
     TailscaleServeMapping => TeardownActs
     DevbootArtifactStoreRoot => TeardownActs
-    DevbootStateRoot => TeardownActs
   }
 }
 
@@ -281,7 +278,6 @@ data devboot_root_membership_note: String = "THE BUILD SERVICE'S ROOTS ARE MEMBE
 fn devboot_owned_steps() -> List<DeploymentArtifactStep> {
   [
     DeploymentArtifactStep { kind: DevbootArtifactStoreRoot, path: srv1_devboot_artifact_store_root as String as NonEmptyStr },
-    DeploymentArtifactStep { kind: DevbootStateRoot, path: srv1_devboot_state_root as String as NonEmptyStr },
   ]
 }
 
@@ -407,7 +403,6 @@ fn owned_artifact_retirement_disposition(kind: OwnedArtifactKind) -> RetirementD
     BeltTimerUnit => RetiresRuntime
     TailscaleServeMapping => RetirementPreserves
     DevbootArtifactStoreRoot => RetirementPreserves
-    DevbootStateRoot => RetirementPreserves
   }
 }
 

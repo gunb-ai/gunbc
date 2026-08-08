@@ -35,7 +35,7 @@ import gunbc.live_deploy.spec {
   DeploymentDependencyStep,
   DeploymentArtifactStep,
   ServeBinary, GunbcSourceTree, DispatchWorktreeRoot, AttemptStateRoot, SystemdUnit, BeltTimerUnit, TailscaleServeMapping,
-  DevbootArtifactStoreRoot, DevbootStateRoot,
+  DevbootArtifactStoreRoot,
   deployment_belt_service_unit_name,
   deployment_belt_timer_unit_name,
   deployment_belt_service_unit_path,
@@ -512,18 +512,11 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
     ]
     DevbootArtifactStoreRoot => [
       deploy_raw(command: install_d_owned_command(spec: spec, path: art.path as String)),
-      deploy_raw(command: join([
-        "sudo -n -u ", spec.service.service_user,
-        " git init --bare --quiet ", art.path as String,
-      ], "")),
-    ]
-    DevbootStateRoot => [
-      deploy_raw(command: install_d_owned_command(spec: spec, path: art.path as String)),
     ]
   }
 }
 
-data devboot_root_realization_note: String = "REALIZATION FOR THE BUILD SERVICE'S TWO ROOTS, and the two are deliberately not the same fragment. The state root is an ordinary owned directory, identical to DispatchWorktreeRoot. The artifact store is a BARE GIT OBJECT DATABASE, so creating the directory is only half of it -- an empty directory is not a repository, and a service that found one would have to either refuse or initialize it at request time, which is provisioning work leaking into the request path. `git init --bare` is idempotent by upstream contract, so it re-runs safely on every converge, which is what makes it correct for a convergence step rather than a one-shot install.\\n\\nBOTH TEARDOWNS ARE `rm -d`, EMPTY-DIRECTORY ONLY, for the reason teardown_worktree_rmdir_note gives for the worktree root: a non-empty root means state someone still needs, and a retract that silently destroyed it would be the widest possible failure. For the state root that is the same live-evidence argument as AttemptStateRoot. For the artifact store it is STRONGER, and the consequence is stated plainly rather than discovered: a bare repository always contains HEAD, objects/ and refs/, so this teardown REFUSES from the moment the store is created, not merely once an artifact is produced. That is intended -- produced artifacts are the one thing this deployment must never delete, and a retract that quietly discarded a content-addressed store would destroy exactly the work the service exists to avoid repeating.\\n\\nWhat that costs, so nobody meets it as a surprise: a full retract of a host carrying a devboot store cannot complete without an operator deciding what happens to the stored artifacts. Dissolve-on: the CAS retention and GC policy, which is where that decision belongs; until it exists, refusing is the honest arm and an automatic answer would be a fabricated one."
+data devboot_root_realization_note: String = "REALIZATION FOR THE BUILD SERVICE'S ARTIFACT STORE ROOT, which the deploy creates as an ordinary owned directory and nothing more. Initializing the bare object database is deliberately NOT emitted here, and the reason is a real constraint rather than a preference: the deploy principal's sudo roster grants exactly six commands -- apt-get, install, visudo, systemctl, tailscale, rm -- and git is not among them, so a `sudo -n -u <service> git init --bare` step would be refused by sudoers and would red every deploy of this host. An earlier revision of this arm emitted precisely that line.\\n\\nThe repository is therefore initialized by the SERVICE, running as the account that owns the directory, so no privilege boundary is crossed and no grant needs widening. `git init --bare` is idempotent by upstream contract, so the service converges it at startup rather than depending on a one-shot install having happened. If a grant ever does turn out to be required, it lands as a modeled row on fleet_posix_ci_runner_sudo_grants with its reason -- never as an ad-hoc sudoers edit.\\n\\nTEARDOWN IS `rm -d`, EMPTY-DIRECTORY ONLY, for the reason teardown_worktree_rmdir_note gives for the worktree root: a non-empty root means state someone still needs, and a retract that silently destroyed it would be the widest possible failure. Here the consequence is stronger and is stated plainly rather than discovered: a bare repository always contains HEAD, objects/ and refs/, so once the service has initialized the store this teardown REFUSES -- not merely once an artifact is produced. That is intended. Produced artifacts are the one thing this deployment must never delete, and a retract that quietly discarded a content-addressed store would destroy exactly the work the service exists to avoid repeating.\\n\\nWhat that costs, so nobody meets it as a surprise: a full retract of a host carrying a devboot store cannot complete without an operator deciding what happens to the stored artifacts. Dissolve-on: the CAS retention and GC policy, which is where that decision belongs; until it exists, refusing is the honest arm and an automatic answer would be a fabricated one."
 
 data teardown_worktree_rmdir_note: String = "DispatchWorktreeRoot teardown is rm -d (empty-directory removal via the granted rm — the unprivileged principal has no rmdir grant and no write on the root-owned parent), NEVER rm -rf: a non-empty worktree root means live agent worktrees exist, so the retract FAILS LOUDLY there instead of silently destroying sessions (DESIGN 5 — the refusal is the empty-dir precondition itself, identical to the former rmdir). GunbcSourceTree teardown runs AFTER the worktree rm -d succeeds, so the repo the worktrees are registered in is never deleted from under them."
 
@@ -563,9 +556,6 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
       deploy_raw(command: concat("sudo -n rm -rf ", art.path as String)),
     ]
     DevbootArtifactStoreRoot => [
-      deploy_raw(command: concat("sudo -n rm -d ", art.path as String)),
-    ]
-    DevbootStateRoot => [
       deploy_raw(command: concat("sudo -n rm -d ", art.path as String)),
     ]
   }

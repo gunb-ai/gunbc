@@ -1,0 +1,129 @@
+module gunbc.devboot.lease
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.content_hash {
+  ContentHash,
+  Fnv1a64,
+  Sha256Hash,
+  Sha1Hash,
+}
+
+import extdeps.git.object_store {
+  GitObjectId,
+  GitRefName,
+  GitRepositoryState,
+  GitUpdateRefOutcome,
+  GitRefTransitionModeled,
+  GitRefAdvanceRepositoryInvalid,
+  GitRefAdvanceStale,
+  GitRefAdvanceMissing,
+  GitRefAdvanceDuplicate,
+  GitRefAdvanceSymbolicCycle,
+  GitRefAdvanceFormatMismatch,
+  GitRefAdvanceTargetUnavailable,
+  GitRefAdvanceTargetKindRefused,
+  git_model_update_ref_exact,
+}
+
+import gunbc.devboot.subject { BuildSubject, build_subject_digest }
+
+data devboot_durable_state_note: String = "WHY THERE IS NO DATABASE HERE, and why that is a correction rather than a shortcut. The dispatch that opened this vertical named durable state as SQLite plus a content-addressed artifact directory. Re-observing before building found no SQLite store realization anywhere in the tree -- extdeps.sql.migration models schema change and extdeps.formats.sql models the language, and neither is a store -- while the artifact store this service already needs is a bare Git repository, whose object database IS the content-addressed directory and whose refs ARE durable named state.\\n\\nSo the store was already present, and adding a database beside it would have been a second durable representation of one fact set: which subjects have artifacts, and who is producing what. That is the parallel representation this program's third law forbids, and it would have been introduced for no capability that Git refs lack.\\n\\nTHE STRONGER REASON IS THE LEASE. A producer lease needs one thing that is hard to get right and easy to fake: an atomic compare-and-swap, so that exactly one requester becomes the producer and the losers learn they lost rather than quietly becoming second producers. Git already provides it as a primitive -- update-ref with an exact expected-old OID -- and this repository already models the decision, with a named arm for losing the race. Implementing a lock over a database would have been a second, weaker realization of a guarantee the substrate already carries structurally.\\n\\nThe consequence for the roots the previous capsule admitted: everything durable lives in the artifact store, so the separate state root has no remaining consumer. It is retired below rather than left standing as an unused path."
+
+data devboot_state_root_retirement_note: String = "The previous capsule admitted two host-layout roots because the dispatch named two durable stores. One of them was the database's home. With the database dissolved into the artifact store's refs and object database, the state root would be an admitted path that nothing ever writes -- a directory the deploy creates, the teardown removes, and no code consults.\\n\\nAn unused admitted root is not harmless. It reads as though state lives there, so the next author looking for the work records would look in the wrong place, and a reconciliation would keep converging an empty directory forever. It is retired at the same commit that removes its reason to exist, which is the only honest moment to do it: the predecessor is demoted by the capsule that supersedes it, never left beside it."
+
+data lease_ref_namespace: String = "refs/devboot/lease/"
+
+data artifact_ref_namespace: String = "refs/devboot/artifact/"
+
+data content_hash_ref_token_note: String = "A ref name is a PATH, and Git rejects several characters that the natural wire form of a content hash contains -- the sha256 wire form carries a colon, which is illegal in a ref name. So the ref token is derived here rather than reusing serialize_content_hash, and the derivation keeps the one property the wire form has that matters: the FAMILY stays visible.\\n\\nDropping the family and keeping only the hex would let two hashes from different families produce the same ref name whenever their hex happened to coincide, which is exactly the cross-family collapse the content-hash family grounding exists to prevent. The token separates family from digest with a hyphen, so the ref namespace inherits the same cross-family distinctness the type carries."
+
+fn content_hash_ref_token(hash: ContentHash) -> String {
+  match hash {
+    Fnv1a64(s) => join(["fnv1a64-", s.digest as String], "")
+    Sha256Hash(d) => join(["sha256-", d.hex as String], "")
+    Sha1Hash(d) => join(["sha1-", d.hex as String], "")
+  }
+}
+
+fn lease_ref_for_subject(subject: BuildSubject) -> GitRefName {
+  join([lease_ref_namespace, content_hash_ref_token(hash: build_subject_digest(subject: subject))], "") as NonEmptyStr as GitRefName
+}
+
+fn artifact_ref_for_subject(subject: BuildSubject) -> GitRefName {
+  join([artifact_ref_namespace, content_hash_ref_token(hash: build_subject_digest(subject: subject))], "") as NonEmptyStr as GitRefName
+}
+
+data lease_outcome_note: String = "THE ONLY THREE THINGS A REQUESTER MAY LEARN, and the middle one is why this type exists at all. It won the lease and must build; it lost to a producer that already holds it and must attach to that producer; or the attempt refused for a reason that is neither, and it must not build.\\n\\nTHERE IS NO ARM FOR PROCEEDING ANYWAY. The failure arms do not widen into LeaseAcquired, so a requester that could not establish sole producership has no representable way to become a second producer. That is the exactly-one-producer property held by construction rather than by a check, because the alternative -- observing the lease and then deciding -- leaves the bad state writable in the gap between the two.\\n\\nLeaseLostToProducer is distinguished from every refusal because its remedy differs completely. Losing the race is a SUCCESS of the protocol: the subject is being produced, and the caller's correct move is to attach and wait. A refusal is a deficit, and the caller's correct move is to surface it. Fusing them would make a healthy race look like a failure and would make every attach path indistinguishable from a broken store."
+
+type LeaseRefusalCause
+  = LeaseStoreInvalid { detail: String }
+  | LeaseRefNameAmbiguous { name: GitRefName }
+  | LeaseRefSymbolicCycle { name: GitRefName }
+  | LeaseObjectFormatMismatch { oid: GitObjectId }
+  | LeaseTargetUnavailable { oid: GitObjectId }
+  | LeaseTargetKindRefused { oid: GitObjectId }
+  | LeaseCreateNotModeled { name: GitRefName }
+
+type LeaseOutcome
+  = LeaseAcquired { name: GitRefName, holder: GitObjectId }
+  | LeaseLostToProducer { name: GitRefName, holder: GitObjectId }
+  | LeaseRefused { cause: LeaseRefusalCause }
+
+data lease_create_residue_note: String = "THE ONE HONEST GAP, named rather than papered over. Acquiring a lease that nobody holds is a CREATE -- in Git, update-ref with an empty expected-old, which refuses if the ref already exists -- and that is a different transition from advancing a ref whose current value is known. The modeled transition in the upstream object store proves the advance case only; a ref that is absent returns its own arm and there is no create-only decision to consume.\\n\\nSo the absent case refuses here with LeaseCreateNotModeled instead of being treated as an acquisition. Treating it as one would be the fabrication this repository forbids most sharply: the requester would be told it holds sole producership on the strength of a transition that was never modeled, and two requesters arriving together would both be told it, which is precisely the invariant the lease exists to hold. A refusal costs a first build; a fabricated acquisition costs the guarantee.\\n\\ndissolve-on: the upstream object store gains an exact create-only transition (expected-old absent, refusing when the ref exists). At that point this arm is deleted and the absent case becomes a real LeaseAcquired -- the arm is not permanent, and naming its trigger is what separates a staged gap from an accepted one."
+
+fn lease_outcome_from_ref_transition(outcome: GitUpdateRefOutcome) -> LeaseOutcome {
+  match outcome {
+    GitRefTransitionModeled { repository, transition } =>
+      LeaseAcquired { name: transition.advanced_name, holder: transition.new }
+    GitRefAdvanceStale { repository, name, expected_old, observed } =>
+      LeaseLostToProducer { name: name, holder: observed }
+    GitRefAdvanceMissing { repository, name } =>
+      LeaseRefused { cause: LeaseCreateNotModeled { name: name } }
+    GitRefAdvanceRepositoryInvalid { repository, cause } =>
+      LeaseRefused { cause: LeaseStoreInvalid { detail: "artifact store did not decode as a repository" } }
+    GitRefAdvanceDuplicate { repository, name, count } =>
+      LeaseRefused { cause: LeaseRefNameAmbiguous { name: name } }
+    GitRefAdvanceSymbolicCycle { repository, name, chain } =>
+      LeaseRefused { cause: LeaseRefSymbolicCycle { name: name } }
+    GitRefAdvanceFormatMismatch { repository, repository_format, oid } =>
+      LeaseRefused { cause: LeaseObjectFormatMismatch { oid: oid } }
+    GitRefAdvanceTargetUnavailable { repository, oid, lookup } =>
+      LeaseRefused { cause: LeaseTargetUnavailable { oid: oid } }
+    GitRefAdvanceTargetKindRefused { repository, name, oid, object_type } =>
+      LeaseRefused { cause: LeaseTargetKindRefused { oid: oid } }
+  }
+}
+
+data acquire_producer_lease_note: String = "The lease decision, composed from the modeled transition rather than from an observation followed by a choice. The caller supplies the value it currently believes the lease holds; winning means that belief was correct at the moment of the swap, and losing means it was not. Nothing between the read and the write can change the answer, because there is nothing between them.\\n\\nThis is the pure decision only. It mints no execution receipt, exactly as the modeled transition it consumes does not: a real producer must perform the update through a transport and read the result back. Promoting this outcome to a claim that the lease is held on a live host would be the specification-without-execution failure -- the model would be green while no process had ever taken a lease."
+
+fn acquire_producer_lease(
+  store: GitRepositoryState,
+  subject: BuildSubject,
+  expected_holder: GitObjectId,
+  claim: GitObjectId,
+) -> LeaseOutcome {
+  lease_outcome_from_ref_transition(
+    outcome: git_model_update_ref_exact(
+      repo: store,
+      name: lease_ref_for_subject(subject: subject),
+      new_oid: claim,
+      expected_old: expected_holder,
+    ),
+  )
+}
+
+fn lease_permits_building(outcome: LeaseOutcome) -> Bool {
+  match outcome {
+    LeaseAcquired { name, holder } => true
+    LeaseLostToProducer { name, holder } => false
+    LeaseRefused { cause } => false
+  }
+}
+
+fn lease_directs_attach(outcome: LeaseOutcome) -> Bool {
+  match outcome {
+    LeaseAcquired { name, holder } => false
+    LeaseLostToProducer { name, holder } => true
+    LeaseRefused { cause } => false
+  }
+}
