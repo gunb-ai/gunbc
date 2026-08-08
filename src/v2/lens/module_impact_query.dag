@@ -596,6 +596,93 @@ fn impact_module_reaches_self(
   )
 }
 
+data module_impact_cycle_peel_note: String = "MEASURED cost-shape fix (capsule 2). Cycle detection previously ran a full closure PER reached module (impact_module_reaches_self over every node), plus two more per pairwise component placement — O(V) closures at best and O(V^2) with placement. That is correct and affordable at a small reading (231 modules rendered in 290s) and fatal at an ordinary one: an impact query over a real 37-path diff (33 .dag modules as seeds) was OOM-killed after 1649s. The fix is a PEEL, not a different partition: a module can lie on a cycle only if it has at least one predecessor AND at least one successor INSIDE the candidate set, so iteratively dropping modules that fail that test leaves exactly the union of the non-trivial strongly connected components. On an acyclic population it peels to empty in O(V+E) with ZERO closures, and the exact per-component partition then runs only on the residue. Semantics are unchanged by construction: a peeled module provably cannot participate in a cycle, so no component and no acyclicity verdict can differ — the peel decides membership candidacy, never the verdict, and the per-SCC classification that review 50459 required is untouched. Self-loops survive the peel because a self-edge is both an in- and an out-edge."
+
+fn impact_opposite_direction(direction: ImpactDirection) -> ImpactDirection {
+  match direction {
+    DependenciesOf => DependentsOf
+    DependentsOf => DependenciesOf
+  }
+}
+
+fn impact_module_in_set(set: Map<String, String>, module_id: ModuleIdentity) -> Bool {
+  match map_lookup_where_rejected_unreachable(m: set, key: module_id.name) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn impact_set_of_modules(modules: List<ModuleIdentity>) -> Map<String, String> {
+  fold_list(
+    xs: modules,
+    empty: empty_map(),
+    cons: fn(acc, m) { map_insert(m: acc, key: m.name, value: m.name) }
+  )
+}
+
+fn impact_has_neighbor_in_set(
+  adjacency: Map<String, List<ModuleIdentity>>,
+  set: Map<String, String>,
+  module_id: ModuleIdentity
+) -> Bool {
+  any(
+    xs: impact_neighbors_of(adjacency: adjacency, module_id: module_id),
+    predicate: fn(n) { impact_module_in_set(set: set, module_id: n) }
+  )
+}
+
+fn impact_count_modules(modules: List<ModuleIdentity>) -> Int {
+  fold_list(xs: modules, empty: 0, cons: fn(acc, _) { acc + 1 })
+}
+
+fn impact_prepend_module(
+  acc: List<ModuleIdentity>,
+  module_id: ModuleIdentity
+) -> List<ModuleIdentity> {
+  Cons { head: module_id, tail: acc }
+}
+
+fn impact_peel_round(
+  adjacency: Map<String, List<ModuleIdentity>>,
+  reverse_adjacency: Map<String, List<ModuleIdentity>>,
+  candidates: List<ModuleIdentity>
+) -> List<ModuleIdentity> {
+  let set = impact_set_of_modules(modules: candidates)
+  list_reverse(xs: fold_list(
+    xs: candidates,
+    empty: impact_no_modules,
+    cons: fn(acc, module_id) {
+      if impact_has_neighbor_in_set(adjacency: adjacency, set: set, module_id: module_id)
+        && impact_has_neighbor_in_set(adjacency: reverse_adjacency, set: set, module_id: module_id) {
+        impact_prepend_module(acc: acc, module_id: module_id)
+      } else {
+        acc
+      }
+    }
+  ))
+}
+
+fn impact_peel_fixpoint(
+  adjacency: Map<String, List<ModuleIdentity>>,
+  reverse_adjacency: Map<String, List<ModuleIdentity>>,
+  candidates: List<ModuleIdentity>
+) -> List<ModuleIdentity> {
+  let peeled = impact_peel_round(
+    adjacency: adjacency,
+    reverse_adjacency: reverse_adjacency,
+    candidates: candidates
+  )
+  if impact_count_modules(modules: peeled) == impact_count_modules(modules: candidates) {
+    peeled
+  } else {
+    impact_peel_fixpoint(
+      adjacency: adjacency,
+      reverse_adjacency: reverse_adjacency,
+      candidates: peeled
+    )
+  }
+}
+
 fn impact_cyclic_modules(
   adjacency: Map<String, List<ModuleIdentity>>,
   reached: List<ModuleIdentity>
@@ -696,10 +783,18 @@ fn impact_place_in_components(
 
 fn impact_cycle_components(
   adjacency: Map<String, List<ModuleIdentity>>,
+  reverse_adjacency: Map<String, List<ModuleIdentity>>,
   reached: List<ModuleIdentity>
 ) -> List<List<ModuleIdentity>> {
   fold_list(
-    xs: impact_cyclic_modules(adjacency: adjacency, reached: reached),
+    xs: impact_cyclic_modules(
+      adjacency: adjacency,
+      reached: impact_peel_fixpoint(
+        adjacency: adjacency,
+        reverse_adjacency: reverse_adjacency,
+        candidates: reached
+      )
+    ),
     empty: impact_no_components,
     cons: fn(acc, module_id) {
       impact_place_in_components(
@@ -781,7 +876,14 @@ fn module_impact_reading(
   )
   let adjacency = impact_adjacency(edges: normalized.edges, direction: direction)
   let reached = impact_closure_from_seeds(adjacency: adjacency, seeds: seeds)
-  let components = impact_cycle_components(adjacency: adjacency, reached: reached)
+  let components = impact_cycle_components(
+    adjacency: adjacency,
+    reverse_adjacency: impact_adjacency(
+      edges: normalized.edges,
+      direction: impact_opposite_direction(direction: direction)
+    ),
+    reached: reached
+  )
   ImpactReading {
     direction: direction,
     seeds: seeds,

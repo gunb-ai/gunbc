@@ -345,3 +345,11 @@ fn changed_surface_impact_report() -> String {
       )
   }
 }
+
+fn probe_dependents_count(module_name: String) -> String {
+  count_text(xs: dependents_of_module(module_name: module_name).reached)
+}
+
+fn probe_count_dependents_registry_completeness() -> String {
+  probe_dependents_count(module_name: "v2.lens.registry.completeness")
+}
