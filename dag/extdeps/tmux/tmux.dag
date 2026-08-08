@@ -234,8 +234,7 @@ type TmuxAttemptPanesFold {
   refused_reason: String
 }
 
-data tmux_attempt_pane_parse_note: String = "The attempt observer uses tmux_attempt_panes_format: four tab-delimited fields (session_name, pane_dead, pane_dead_status, pane_current_command). Parsing is total and fail-closed. A live pane must report dead=0; a retained pane must report dead=1 plus an integer exit status. The first malformed non-empty row refuses the whole observation with its 1-based line and raw evidence."
-
+// The attempt observer uses tmux_attempt_panes_format: four tab-delimited fields (session_name, pane_dead, pane_dead_status, pane_current_command). Parsing is total and fail-closed. A live pane must report dead=0; a retained pane must report dead=1 plus an integer exit status. The first malformed non-empty row refuses the whole observation with its 1-based line and raw evidence.
 fn tmux_attempt_pane_field(parts: List<String>, n: Int) -> String {
   match parts.skip(n: n).first() {
     Present { value } => value

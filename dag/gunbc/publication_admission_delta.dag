@@ -10,8 +10,7 @@ import gunbc.public_projection {
   projection_digest_from_subjects,
 }
 
-data publication_admission_delta_note: String = "Change-local publication admission compares current published projection vs candidate derived projection. Slice-1 classifies NewlyPublic, NewlyWithheld, and PolicyChanged only. Audience widenings and private-to-public references defer until audience/reference carriers land; digest mismatch refuses at admission via CandidateDigestInconsistent, not a delta class. Whole-projection audit is a separate centrally-owned main-health job, never inherited by unrelated PRs."
-
+// Change-local publication admission compares current published projection vs candidate derived projection. Slice-1 classifies NewlyPublic, NewlyWithheld, and PolicyChanged only. Audience widenings and private-to-public references defer until audience/reference carriers land; digest mismatch refuses at admission via CandidateDigestInconsistent, not a delta class. Whole-projection audit is a separate centrally-owned main-health job, never inherited by unrelated PRs.
 type ProjectionDeltaClass
   = NewlyPublic { subject: PublicationSubject }
   | NewlyWithheld { subject: PublicationSubject }

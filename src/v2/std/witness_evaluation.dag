@@ -35,8 +35,7 @@ fn evaluate_in_witness_frame<A>(
   WitnessRefused { diagnostic: witness_frame_unrealized_diagnostic() }
 }
 
-data witness_evaluation_frame_active_note: String = "An executing-scope observation proves that a temporary frame was removed. The pure/default answer is false; the interpreter realization returns true only while evaluate_in_witness_frame is applying its subject."
-
+// An executing-scope observation proves that a temporary frame was removed. The pure/default answer is false; the interpreter realization returns true only while evaluate_in_witness_frame is applying its subject.
 fn witness_evaluation_frame_active() -> Bool {
   false
 }

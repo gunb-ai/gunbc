@@ -73,8 +73,7 @@ test fn an_empty_advertisement_reads_as_zero_branches_not_a_refusal() -> Bool {
   observed_branch_count(o: read_ok(advertised: [])) == 0
 }
 
-data transport_refusal_note: String = "The claim that motivates the whole slice. A nonzero exit from the ref advertisement must NOT arrive as an empty branch list: an empty list is the same value a successful read of a remote with no branches produces, so a consumer handed one for both reports the branch unpublished when the truth is that nothing was learned. That is ignorance-as-answer arriving in the direction that looks like an ordinary negative result, and it is the reason the observation is a coproduct."
-
+// The claim that motivates the whole slice. A nonzero exit from the ref advertisement must NOT arrive as an empty branch list: an empty list is the same value a successful read of a remote with no branches produces, so a consumer handed one for both reports the branch unpublished when the truth is that nothing was learned. That is ignorance-as-answer arriving in the direction that looks like an ordinary negative result, and it is the reason the observation is a coproduct.
 test fn a_failed_ref_advertisement_refuses_rather_than_reading_empty() -> Bool {
   let o = remote_branch_observation_of(
     remote: origin(),
@@ -142,8 +141,7 @@ test fn an_unreadable_advertisement_line_refuses_and_locates_itself() -> Bool {
   }
 }
 
-data empty_branch_red_note: String = "The discriminating claim for the guard that exists because the brand does not enforce itself. RemoteBranch.branch is NonEmptyStr and `as NonEmptyStr` does not check - the compiler says so out loud, emitting `where-refinement unenforced: predicate 'non_empty'` at the cast site. So a ref advertised as exactly the heads prefix projects to the empty string and would be cast into a type whose entire content is the claim that it is not empty. Deleting the pre-cast guard turns this claim red while every other claim in this file stays green, because the empty name is well-formed at every other layer."
-
+// The discriminating claim for the guard that exists because the brand does not enforce itself. RemoteBranch.branch is NonEmptyStr and `as NonEmptyStr` does not check - the compiler says so out loud, emitting `where-refinement unenforced: predicate 'non_empty'` at the cast site. So a ref advertised as exactly the heads prefix projects to the empty string and would be cast into a type whose entire content is the claim that it is not empty. Deleting the pre-cast guard turns this claim red while every other claim in this file stays green, because the empty name is well-formed at every other layer.
 test fn a_ref_projecting_to_an_empty_branch_name_refuses() -> Bool {
   let o = read_ok(advertised: [
     line_of(sha: fixture_sha_a, ref_name: "refs/heads/"),

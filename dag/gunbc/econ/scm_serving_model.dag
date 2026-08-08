@@ -23,8 +23,7 @@ import std.types { Bool, List, NonEmptyStr, list_length }
 
 data scm_serving_model_note: String = "How to compute an SCM's serving bill from workload primitives instead of guessing at a monthly number. Four axes, each derived from the profile and each priced by its own cited vendor row (extdeps.pricing.object_storage): CAPACITY held (stored bytes after dedup, times a billing month), NETWORK moved (egress bytes -- clones and fetches leaving the network), OPERATIONS counted (object reads and writes, the axis most models forget entirely), and COMPUTE, which is deliberately NOT modeled here because it already has carriers: gunbc.econ.knowable_wedge prices CI minutes against cited runner rows and gunbc.econ.free_tier_serving prices self-managed boxes. Storing a second compute model here would be the dual representation DESIGN section 3 forbids."
 
-data replication_double_count_note: String = "The replica-count multiplication that gunbc.econ.free_tier_serving applies to Hetzner DEDICATED boxes must NOT be applied to these object-storage rates. A cited object-storage GB-month already buys eleven-nines durability (extdeps.pricing.object_storage durability_standard_note), i.e. the vendor's own erasure-coded redundancy across facilities; multiplying it by a replica count charges twice for redundancy already purchased. Self-managed block storage is the opposite case -- one box is one copy, so replicas are the modeler's responsibility. Two storage realizations, two different cost shapes, one reason: who owns the durability."
-
+// The replica-count multiplication that gunbc.econ.free_tier_serving applies to Hetzner DEDICATED boxes must NOT be applied to these object-storage rates. A cited object-storage GB-month already buys eleven-nines durability (extdeps.pricing.object_storage durability_standard_note), i.e. the vendor's own erasure-coded redundancy across facilities; multiplying it by a replica count charges twice for redundancy already purchased. Self-managed block storage is the opposite case -- one box is one copy, so replicas are the modeler's responsibility. Two storage realizations, two different cost shapes, one reason: who owns the durability.
 type ScmWorkloadProfile {
   user_count: Nat
   stored_bytes_per_user_after_dedup: ByteSize
@@ -75,8 +74,7 @@ fn binary_gibibyte_bytes() -> Nat {
   1073741824
 }
 
-data billing_unit_rounding_note: String = "Vendors round a partial billing unit UP (Cloudflare states it outright: 'Cloudflare rounds up your usage to the next billing unit'), so bytes convert to billing units by ceiling division, never truncation. Truncating would under-state every bill by up to one unit per axis -- small at these sizes, wrong at every size."
-
+// Vendors round a partial billing unit UP (Cloudflare states it outright: 'Cloudflare rounds up your usage to the next billing unit'), so bytes convert to billing units by ceiling division, never truncation. Truncating would under-state every bill by up to one unit per axis -- small at these sizes, wrong at every size.
 fn bytes_to_billing_units(bytes: Nat, basis: ByteBasis) -> Nat? {
   match basis {
     DecimalGigabyte => {
@@ -198,8 +196,7 @@ fn derive_scm_monthly_cost(
   }
 }
 
-data vendor_mismatch_guard_note: String = "A bill assembled from one vendor's storage rate and another's egress rate is the cheapest-looking and most wrong number in this whole area -- it is how 'S3 with free egress' gets into a spreadsheet. The four rows must name ONE vendor or the derivation refuses, so that blend is unwritable rather than merely discouraged (DESIGN section 5, construction over validation)."
-
+// A bill assembled from one vendor's storage rate and another's egress rate is the cheapest-looking and most wrong number in this whole area -- it is how 'S3 with free egress' gets into a spreadsheet. The four rows must name ONE vendor or the derivation refuses, so that blend is unwritable rather than merely discouraged (DESIGN section 5, construction over validation).
 fn all_rows_same_vendor(
   storage_row: ObjectStorageClassRow,
   egress_row: ObjectStorageEgressRow,
@@ -230,8 +227,7 @@ data egress_dominance_note: String = "The reason this model separates network fr
 
 data progressive_tier_note: String = "Flat-rate multiplication is correct only below the first tier boundary, and an SCM crosses those boundaries exactly when it starts to matter: at a million users on this profile the workload holds 100 TB and moves 500 TB a month, which is past AWS's 50 TB storage step and past all three of its egress steps. Vendor tiers are PROGRESSIVE (each rate applies only to the slice inside its own band, like tax brackets), so pricing the whole volume at the top band's rate under-states the bill and pricing it at the first band's rate over-states it. This fold applies each band to its own slice; a ladder is a list of rows ascending by lower bound, and the last band runs to the workload's actual volume."
 
-data saturating_sub_note: String = "Nat subtraction below zero is not representable, and a tier slice legitimately goes negative when the workload never reaches that band -- so the clamp is explicit rather than an if-branch returning a bare literal (which types as Int and would fork the carrier)."
-
+// Nat subtraction below zero is not representable, and a tier slice legitimately goes negative when the workload never reaches that band -- so the clamp is explicit rather than an if-branch returning a bare literal (which types as Int and would fork the carrier).
 fn saturating_sub(a: Nat, b: Nat) -> Nat {
   nat_max(a: a, b: b) - b
 }
@@ -315,8 +311,7 @@ type ProviderQuote {
   quoted_basis: ByteBasis
 }
 
-data quoted_basis_note: String = "A quote carries the byte basis its own vendor states (BinaryGibibyte for Google, which says 'per 1 gibibyte'), or ByteBasisUnstated when the vendor does not say -- in which case the caller's declared assumption fills in. The vendor OUTRANKS the modeler: a stated basis is never overridden by an assumption, which is why the matrix can hold Google beside AWS without pretending they quote the same unit."
-
+// A quote carries the byte basis its own vendor states (BinaryGibibyte for Google, which says 'per 1 gibibyte'), or ByteBasisUnstated when the vendor does not say -- in which case the caller's declared assumption fills in. The vendor OUTRANKS the modeler: a stated basis is never overridden by an assumption, which is why the matrix can hold Google beside AWS without pretending they quote the same unit.
 fn effective_basis(quoted: ByteBasis, assumption: ByteBasisAssumption) -> ByteBasis? {
   match quoted {
     ByteBasisUnstated => assumed_basis(assumption: assumption)
@@ -377,8 +372,7 @@ fn quote_provider_monthly(
   }
 }
 
-data magnitude_scaling_note: String = "The matrix scales ONE profile by user count rather than re-authoring a profile per magnitude, so a rate difference across columns is always a tier effect and never a quietly different workload. Per-user behaviour is held constant by construction; if real per-user behaviour changes with scale (it does -- large installations have more forks per user and better cache hit rates), that is a change to the profile, made explicitly and visibly, not an adjustment hidden inside the matrix."
-
+// The matrix scales ONE profile by user count rather than re-authoring a profile per magnitude, so a rate difference across columns is always a tier effect and never a quietly different workload. Per-user behaviour is held constant by construction; if real per-user behaviour changes with scale (it does -- large installations have more forks per user and better cache hit rates), that is a change to the profile, made explicitly and visibly, not an adjustment hidden inside the matrix.
 fn profile_at_user_count(profile: ScmWorkloadProfile, user_count: Nat) -> ScmWorkloadProfile {
   ScmWorkloadProfile {
     user_count: user_count,
@@ -399,8 +393,7 @@ fn quote_total_micros(result: ProviderMonthlyQuoteResult) -> Nat? {
 
 data agentic_request_amplification_note: String = "The read/write counts in a human-authored profile are the wrong order of magnitude for agent-driven development, and the axis they load is the one that looks negligible at human rates: operations. A human developer reads a few hundred objects a month; an agent working continuously reads thousands an HOUR, and it writes far more often because it commits intermediate states a human would never bother to save. Multiply that by the node grain a .dag-native SCM actually wants -- where a read is a NODE, not a file -- and the object count amplifies again. Operations are ~0.4 percent of a request-metered bill at human rates and can exceed 99 percent at agent rates, which means the vendor ranking computed on a human profile does not survive contact with the workload this SCM is being built for."
 
-data packing_policy_note: String = "The mitigation, and the load-bearing design decision it exposes: per-request billing punishes fine granularity, so a node-grain store that maps one node to one object pays a request fee per node. Packing many nodes into one stored object (git's own packfile move, and the reason git does not store one file per blob on the wire) divides the operation count by the packing factor while leaving the byte count alone. The policy is modeled rather than assumed because it is a real architectural choice with a real cost consequence, and because UnpackedNodeGrain is the shape a naive content-addressed store falls into by default -- the expensive default is exactly the one worth making visible."
-
+// The mitigation, and the load-bearing design decision it exposes: per-request billing punishes fine granularity, so a node-grain store that maps one node to one object pays a request fee per node. Packing many nodes into one stored object (git's own packfile move, and the reason git does not store one file per blob on the wire) divides the operation count by the packing factor while leaving the byte count alone. The policy is modeled rather than assumed because it is a real architectural choice with a real cost consequence, and because UnpackedNodeGrain is the shape a naive content-addressed store falls into by default -- the expensive default is exactly the one worth making visible.
 type PackingPolicy
   = UnpackedNodeGrain
   | PackedObjects { nodes_per_object: Nat }
@@ -413,8 +406,7 @@ fn packed_object_count(logical_node_ops: Nat, policy: PackingPolicy) -> Nat {
   }
 }
 
-data agentic_profile_construction_note: String = "Builds a priced profile from LOGICAL node operations plus a packing policy, so the workload is stated in the terms the SCM actually thinks in (nodes touched) and the billing consequence is derived rather than hand-entered. Storage and egress pass through unchanged: packing changes how many OBJECTS carry the bytes, not how many bytes there are."
-
+// Builds a priced profile from LOGICAL node operations plus a packing policy, so the workload is stated in the terms the SCM actually thinks in (nodes touched) and the billing consequence is derived rather than hand-entered. Storage and egress pass through unchanged: packing changes how many OBJECTS carry the bytes, not how many bytes there are.
 fn profile_with_packed_ops(
   base: ScmWorkloadProfile,
   logical_node_reads_per_user: Nat,

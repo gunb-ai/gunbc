@@ -19,8 +19,7 @@ import v2.compiler.tokenize {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data annotation_channel_witness_note: String = "The exhaustiveness arms added to lex_match_thunk_claims prove only that a new variant was handled; they never CONSTRUCT an AnnotationRule, so they establish nothing about whether the third channel works. These do: every claim below routes real source through the real walk and asserts where the lexeme landed. Pre-regen by design — the whole point is evidence before a long regen cycle, so nothing here needs a rebuilt stage0."
-
+// The exhaustiveness arms added to lex_match_thunk_claims prove only that a new variant was handled; they never CONSTRUCT an AnnotationRule, so they establish nothing about whether the third channel works. These do: every claim below routes real source through the real walk and asserts where the lexeme landed. Pre-regen by design — the whole point is evidence before a long regen cycle, so nothing here needs a rebuilt stage0.
 fn annotation_pattern() -> LexPattern {
   SequencePattern {
     left: LiteralPattern { text: "//" },
@@ -38,8 +37,7 @@ fn test_rules() -> LexRuleSet {
   }
 }
 
-data no_fabricated_artifact_note: String = "There is deliberately no `Rejected => empty artifact` arm. Such a fallback makes refusal indistinguishable from success on a clean source: `captures none` would pass because lexing FAILED, and a token-equivalence claim would degenerate into comparing two fabricated empties to each other. Every reader below renders the Outcome itself, so a refusal produces a string no expectation matches — the claim fails loudly instead of passing vacuously."
-
+// There is deliberately no `Rejected => empty artifact` arm. Such a fallback makes refusal indistinguishable from success on a clean source: `captures none` would pass because lexing FAILED, and a token-equivalence claim would degenerate into comparing two fabricated empties to each other. Every reader below renders the Outcome itself, so a refusal produces a string no expectation matches — the claim fails loudly instead of passing vacuously.
 fn annotation_count_rendered(source: String) -> String {
   match lex_walk_artifact(source: source, file: ^probe, rules: test_rules()) {
     v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
@@ -48,8 +46,7 @@ fn annotation_count_rendered(source: String) -> String {
   }
 }
 
-data token_identity_note: String = "Renders the semantic stream as an exact ordered (class, lexeme) sequence rather than a count or a concatenation. A count admits a leaked annotation that REPLACES another token while preserving cardinality; a concatenation admits any reordering that preserves total text. The identity sequence admits neither."
-
+// Renders the semantic stream as an exact ordered (class, lexeme) sequence rather than a count or a concatenation. A count admits a leaked annotation that REPLACES another token while preserving cardinality; a concatenation admits any reordering that preserves total text. The identity sequence admits neither.
 fn token_identity(source: String) -> String {
   match lex_walk_artifact(source: source, file: ^probe, rules: test_rules()) {
     v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
@@ -82,8 +79,7 @@ test fn walk_captures_the_annotation() -> Bool {
   annotation_count_rendered(source: "a\n// note\nb\n") == "1"
 }
 
-data identity_non_vacuity_note: String = "The equality is anchored by a control rather than by a transcribed literal. A rendering that collapsed every stream to one constant — the failure mode a count or a fabricated empty already showed is real here — would satisfy the equality and prove nothing, so the second conjunct requires the SAME rendering to distinguish two streams that differ only in one token's text. Pinning an exact expected string instead would assert the class symbol's spelling, which is not what this claim is about."
-
+// The equality is anchored by a control rather than by a transcribed literal. A rendering that collapsed every stream to one constant — the failure mode a count or a fabricated empty already showed is real here — would satisfy the equality and prove nothing, so the second conjunct requires the SAME rendering to distinguish two streams that differ only in one token's text. Pinning an exact expected string instead would assert the class symbol's spelling, which is not what this claim is about.
 test fn semantic_tokens_are_unchanged_by_the_annotation() -> Bool {
   token_identity(source: "a\n// note\nb\n") == token_identity(source: "a\nb\n") &&
     token_identity(source: "a\nb\n") != token_identity(source: "a\nc\n")

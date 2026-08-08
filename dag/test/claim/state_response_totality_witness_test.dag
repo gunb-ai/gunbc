@@ -23,8 +23,7 @@ test fn state_response_family_census_clean_on_live_emission() -> Bool {
   return family_census_clean(css: roadmap_css(), f: dispatch_state_family, channels: dispatch_stateful_channels)
 }
 
-data census_count_note: String = "The counted product: 5 family members (rest + requested/ok/refused/loud) x 4 per-family channels (rest ink, rest fill, rest border, press fill) = 20 cells, plus 2 signed constants (approach emphasis, engage sound) each carrying a located ruling ref. A widening family or channel table moves these numbers — the assertion is the count being CONSCIOUS, not the count being eternal."
-
+// The counted product: 5 family members (rest + requested/ok/refused/loud) x 4 per-family channels (rest ink, rest fill, rest border, press fill) = 20 cells, plus 2 signed constants (approach emphasis, engage sound) each carrying a located ruling ref. A widening family or channel table moves these numbers — the assertion is the count being CONSCIOUS, not the count being eternal.
 test fn state_response_census_counts_hold() -> Bool {
   return family_census_cell_count(f: dispatch_state_family, channels: dispatch_stateful_channels) == 20
     && count(constant_by_law_rulings(channels: dispatch_stateful_channels)) == 2

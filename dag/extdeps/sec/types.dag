@@ -15,8 +15,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data edgar_cik_zero_pad_digit_count_note: String = "SEC EDGAR CIK display width: ten decimal digits with leading zeros in browse-edgar URLs, submissions API paths, and XBRL companyfacts endpoints (e.g. CIK0001653482). Grounded on the module's EDGAR API authority anchor."
-
+// SEC EDGAR CIK display width: ten decimal digits with leading zeros in browse-edgar URLs, submissions API paths, and XBRL companyfacts endpoints (e.g. CIK0001653482). Grounded on the module's EDGAR API authority anchor.
 fn edgar_cik_zero_pad_digit_count() -> Nat {
   10
 }
@@ -105,8 +104,7 @@ type XbrlConceptRef {
   tag: NonEmptyStr
 }
 
-data edgar_calendar_date_note: String = "ISO 8601 calendar date (YYYY-MM-DD) on SEC XBRL fact rows — upstream JSON keys include filed, start, end, and frame period bounds on companyfacts/companyconcept responses."
-
+// ISO 8601 calendar date (YYYY-MM-DD) on SEC XBRL fact rows — upstream JSON keys include filed, start, end, and frame period bounds on companyfacts/companyconcept responses.
 type EdgarCalendarDate = String
 
 type XbrlFact {

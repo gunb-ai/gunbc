@@ -7,8 +7,7 @@ import std.disposition { Disposition, RealizationDispatch, Scaffold }
 import v2.std.collection { List }
 import v2.std.text { String }
 
-data roadmap_acceptance_event_history_carrier_note: String = "Append-only JSONL carrier for roadmap acceptance events. gunbc.roadmap_authority loads current history from this file; gunbc.roadmap_acceptance_history_observation git.Core.Shows the same path at HEAD and merge-base and parses each revision independently. When the carrier is absent at merge-base (introduction on main), observation bootstraps prior_history from inline authority history via gunbc.roadmap_acceptance_history_projection. Authored seal count/digest in roadmap_authority.dag are deleted; prefix law is enforced by observed prior_history."
-
+// Append-only JSONL carrier for roadmap acceptance events. gunbc.roadmap_authority loads current history from this file; gunbc.roadmap_acceptance_history_observation git.Core.Shows the same path at HEAD and merge-base and parses each revision independently. When the carrier is absent at merge-base (introduction on main), observation bootstraps prior_history from inline authority history via gunbc.roadmap_acceptance_history_projection. Authored seal count/digest in roadmap_authority.dag are deleted; prefix law is enforced by observed prior_history.
 data roadmap_acceptance_event_history_carrier_repo_path: String = "dag/gunbc/roadmap_acceptance_event_history.jsonl"
 
 type RoadmapAcceptanceEventHistoryParse

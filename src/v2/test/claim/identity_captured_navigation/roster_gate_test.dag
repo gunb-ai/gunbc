@@ -57,8 +57,7 @@ test fn green_control_sanctioned_reader_body_has_no_findings_at_all() -> Bool {
 
 data unrelated_caret_literal_snippet: String = "module unrelated_caret_literal_probe\n\nfn other_named_lookup(node: Node) -> Optional<Node> {\n  match find_named_child(root: node, name: ^grammar_production_captured_node_projection) {\n    Accepted { value: v, diagnostics: _ } => Present { value: v }\n    Rejected { diagnostics: _ } => Absent\n  }\n}\n"
 
-data unrelated_caret_literal_note: String = "Pins the caret-literal text-recovery fix (node_source_symbol) against a false positive: a find_named_child(name: ^grammar_production_captured_node_projection) call - a DIFFERENT caret literal, same StampClass token shape as the identity-edge name - must not be misclassified as the identity-escape shape this lens targets."
-
+// Pins the caret-literal text-recovery fix (node_source_symbol) against a false positive: a find_named_child(name: ^grammar_production_captured_node_projection) call - a DIFFERENT caret literal, same StampClass token shape as the identity-edge name - must not be misclassified as the identity-escape shape this lens targets.
 test fn unrelated_caret_literal_call_not_flagged() -> Bool {
   source_has_suspect(source_text: unrelated_caret_literal_snippet) == false
 }

@@ -363,8 +363,7 @@ type DurationEstimateInterval {
 
 type TotalWork { duration: DurationEstimateInterval }
 
-data total_work_semantics_note: String = "TotalWork is the capacity-independent sum of per-node calibrated open-to-merge baseline durations. It applies no review-cycle multiplier and adds no merge latency because both are already inseparable inside the observed interval. It is an absolute cycle-time cost, not an observation of labor hours. Only CapacityConstrainedMinimum interprets that sum as belt slot-time, and it structurally carries the occupancy assumption required for that interpretation."
-
+// TotalWork is the capacity-independent sum of per-node calibrated open-to-merge baseline durations. It applies no review-cycle multiplier and adds no merge latency because both are already inseparable inside the observed interval. It is an absolute cycle-time cost, not an observation of labor hours. Only CapacityConstrainedMinimum interprets that sum as belt slot-time, and it structurally carries the occupancy assumption required for that interpretation.
 type CriticalPathMinimum { duration: DurationEstimateInterval }
 
 type CapacityConstrainedMinimum {

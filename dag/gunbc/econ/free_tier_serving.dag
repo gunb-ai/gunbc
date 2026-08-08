@@ -93,8 +93,7 @@ fn derive_free_tier_serving_floor(
   }
 }
 
-data registered_user_glean_note: String = "Top-down glean: annual cost of revenue divided by the filed registered-user FLOOR ('more than N million registered users', Item 1) is an UPPER BOUND on average serving cost per registered user -- actual users >= floor, so cost/floor >= cost/actual -- and the average itself is inflated by enterprise SaaS compute and support personnel inside cost of revenue. The marginal free git user sits far below it."
-
+// Top-down glean: annual cost of revenue divided by the filed registered-user FLOOR ('more than N million registered users', Item 1) is an UPPER BOUND on average serving cost per registered user -- actual users >= floor, so cost/floor >= cost/actual -- and the average itself is inflated by enterprise SaaS compute and support personnel inside cost of revenue. The marginal free git user sits far below it.
 fn average_serving_cost_per_registered_user_year_micros_upper_bound(
   annual_cost_of_revenue: FiledMonetaryFact,
   registered_users: RegisteredUserCountRow

@@ -36,8 +36,7 @@ data floor_gate_component_requirements: List<ToolchainComponentRequirement> = [
   },
 ]
 
-data resolved_toolchain_note: String = "What a probe can honestly report: WHICH toolchain the job principal's shim resolves to, and which components THAT toolchain carries. The principal is named on the row because it is not the same account that owns the runner unit — srv2's unit runs as root while workflow steps deprivilege to ghrunner via CTRL_RUNNER_JOB_USER — and a completeness reading taken as the wrong user is a reading of the wrong toolchain. This is the field an earlier draft of this module would have omitted, and omitting it is how the host-shaped question sneaks back in."
-
+// What a probe can honestly report: WHICH toolchain the job principal's shim resolves to, and which components THAT toolchain carries. The principal is named on the row because it is not the same account that owns the runner unit — srv2's unit runs as root while workflow steps deprivilege to ghrunner via CTRL_RUNNER_JOB_USER — and a completeness reading taken as the wrong user is a reading of the wrong toolchain. This is the field an earlier draft of this module would have omitted, and omitting it is how the host-shaped question sneaks back in.
 type ResolvedToolchain {
   principal: NonEmptyStr
   toolchain: NonEmptyStr
