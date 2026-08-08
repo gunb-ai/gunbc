@@ -193,11 +193,12 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: PlanDoc,
     slug: "spark-standup-program-accounting",
-    primary_work: DeclarationRef { module_path: "gunbc.dgx_spark_procurement", decl_name: "spark_a3ee_reservation", field: WholeDeclaration },
+    primary_work: DeclarationRef { module_path: "gunbc.plans.fleet_subsumption_manual_gaps", decl_name: "fleet_subsumption_manual_gaps_plan", field: WholeDeclaration },
     additional_works: [
-      DeclarationRef { module_path: "gunbc.dgx_spark_procurement", decl_name: "spark_3bd5_reservation", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.dgx_spark_procurement", decl_name: "dgx_spark_arrival_standing", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.dgx_spark_procurement", decl_name: "dgx_spark_router_bindings", field: WholeDeclaration },
     ],
-    dissolution: HasTrigger { text: "the Spark standup program lands as roadmap rows (host enrollment as fleet members, then serving) and the accounting's findings migrate to their typed carriers — the doc then registers as a plan or deletes, and this bind deletes with it. Bind added 2026-08-08: the doc landed in the #7972 omega with no bind and no inbound link, so the doc-reachability wall correctly refused every main push since; the wall found it, this row files it." },
+    dissolution: HasTrigger { text: "the Spark standup lanes are carried as registered rows rather than by this note — the manual-gap items reach zero and srv5/srv6 are enrolled with their arrival obligations modeled where that arrival lives, at which point the accounting has no facts of its own and this bind deletes with the doc." },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
