@@ -7654,6 +7654,11 @@ if ((call_ambiguity_cands.clone().len() as i64) > 0) {
                 Some(d) => Rc::new(vec![d.clone()]),
                 None => Rc::new(vec![]),
             };
+            let cast_sole_ctor_diags = sole_constructor_construction_diags(
+                target_name.clone(),
+                span.clone(),
+                scope.clone(),
+            );
             let cast_refinement_diags = where_refinement_mismatch_diags(
                 target_type.clone(),
                 inner_typed.clone(),
@@ -7672,7 +7677,10 @@ if ((call_ambiguity_cands.clone().len() as i64) > 0) {
             Rc::new(InferResult {
                 typed: cast_texpr.clone(),
                 diagnostics: v1_rt::concat(
-                    v1_rt::concat(inner_diags.clone(), cast_diags.clone()),
+                    v1_rt::concat(
+                        v1_rt::concat(inner_diags.clone(), cast_diags.clone()),
+                        cast_sole_ctor_diags.clone(),
+                    ),
                     cast_refinement_diags.clone(),
                 ),
             })
@@ -8592,6 +8600,33 @@ pub fn type_has_sole_constructor(type_name: String, scope: Rc<InferScope>) -> bo
     }
 }
 
+pub fn sole_constructor_construction_diags(
+    type_name: String,
+    span: Rc<SourceSpan>,
+    scope: Rc<InferScope>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    if type_has_sole_constructor(type_name.clone(), scope.clone()) {
+        match lookup_type_by_name(scope.type_env.clone(), type_name.clone()) {
+            Some(decl) => {
+                if (decl.span.clone().file.clone() == span.file.clone()) {
+                    Rc::new(vec![])
+                } else {
+                    Rc::new(vec![make_error_node(
+                        Rc::new(CompilerDiagnostic::SoleConstructorViolation {
+                            type_name: type_name.clone(),
+                            span: span.clone(),
+                        }),
+                        scope.module_name.clone(),
+                    )])
+                }
+            }
+            None => Rc::new(vec![]),
+        }
+    } else {
+        Rc::new(vec![])
+    }
+}
+
 pub fn zero_field_variant_tag_reference_frontier_note() -> String {
     thread_local! {
         static CACHED: String = {
@@ -9322,30 +9357,11 @@ pub fn infer_record_lit_structural(
                         scope.module_name.clone(),
                     )]),
                 };
-                let sole_ctor_diags =
-                    if type_has_sole_constructor(type_name.clone().unwrap(), scope.clone()) {
-                        match lookup_type_by_name(
-                            scope.type_env.clone(),
-                            type_name.clone().unwrap(),
-                        ) {
-                            Some(decl) => {
-                                if (decl.span.clone().file.clone() == span.file.clone()) {
-                                    Rc::new(vec![])
-                                } else {
-                                    Rc::new(vec![make_error_node(
-                                        Rc::new(CompilerDiagnostic::SoleConstructorViolation {
-                                            type_name: type_name.clone().unwrap(),
-                                            span: span.clone(),
-                                        }),
-                                        scope.module_name.clone(),
-                                    )])
-                                }
-                            }
-                            None => Rc::new(vec![]),
-                        }
-                    } else {
-                        Rc::new(vec![])
-                    };
+                let sole_ctor_diags = sole_constructor_construction_diags(
+                    type_name.clone().unwrap(),
+                    span.clone(),
+                    scope.clone(),
+                );
                 let typed_field_nodes2 = typed_fields.clone();
                 let rl_name = match type_name.clone() {
                     Some(tn_val) => tn_val.clone(),

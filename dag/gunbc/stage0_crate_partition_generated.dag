@@ -86,7 +86,8 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
         "std_interface_summary",
         "std_pareto",
         "std_realization_schedule",
-        "std_trait_derive_shape"
+        "std_trait_derive_shape",
+        "std_witness_admission"
       ],
       reexport_packages: [
         "v1-stage0-runtime",

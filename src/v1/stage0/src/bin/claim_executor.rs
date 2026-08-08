@@ -95,17 +95,90 @@ fn read_positive_budget_ms(
     }
 }
 
+/// Where a resolved floor-batch clamp came from — seed projection of the `authority: DeclarationRef`
+/// field on `std.realization_schedule` `RunnableBatchClamp`.
+///
+/// Two independently owned populations feed one aligned clamp list: the positional
+/// `gunbc.ci_spec` rows for ordinary batches, and the scoped witness batch's own row in
+/// `gunbc.ci_layer_roots`. This executor used to reconstruct the origin from the LIST POSITION and
+/// spell it in the refusal's format string, which is how a breach came to report `clamp_ms=360000`
+/// while citing `gunbc_ci_floor_batch_clamp_params[0]` — a row whose overhead is 240 seconds. The
+/// authority now travels WITH the value; the index is carried beside it because an offset into a
+/// list is the one part of the citation no symbol can name.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum FloorBatchClampAuthority {
+    PositionalCiSpecClamp {
+        module_path: String,
+        decl_name: String,
+        index: usize,
+    },
+    ScopedBatchOwnedClamp {
+        batch_id: String,
+        module_path: String,
+        decl_name: String,
+    },
+}
+
+impl FloorBatchClampAuthority {
+    /// The citation as it appears in the refusal. Symbol first (`module decl`), position only where
+    /// a position is what is being named — DESIGN §3.
+    fn render(&self) -> String {
+        match self {
+            FloorBatchClampAuthority::PositionalCiSpecClamp {
+                module_path,
+                decl_name,
+                index,
+            } => format!("{module_path} {decl_name}[{index}]"),
+            FloorBatchClampAuthority::ScopedBatchOwnedClamp {
+                module_path,
+                decl_name,
+                ..
+            } => format!("{module_path} {decl_name}"),
+        }
+    }
+
+    fn batch_id(&self) -> Option<&str> {
+        match self {
+            FloorBatchClampAuthority::PositionalCiSpecClamp { .. } => None,
+            FloorBatchClampAuthority::ScopedBatchOwnedClamp { batch_id, .. } => Some(batch_id),
+        }
+    }
+}
+
+/// A clamp plus the declaration that produced it. Constructing one without an authority is not
+/// expressible, which is what keeps the refusal's citation and its number from drifting apart.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ResolvedFloorBatchClamp {
+    overhead_ms: u128,
+    per_unit_ms: u128,
+    authority: FloorBatchClampAuthority,
+}
+
+impl ResolvedFloorBatchClamp {
+    fn clamp_ms(&self, units: u128) -> u128 {
+        self.overhead_ms + units * self.per_unit_ms
+    }
+
+    fn units_contribution_ms(&self, units: u128) -> u128 {
+        units * self.per_unit_ms
+    }
+}
+
 /// THE COST WALL (Piece 3 derived clamp — authority `gunbc.ci_spec.gunbc_ci_floor_batch_clamp_params`
 /// + `gunbc_ci_floor_batch_clamp_note`): the per-batch clamp is `overhead_seconds*1000 +
-/// runtime_unit_count * per_unit_ms`. This reads the two index-aligned param lists fail-closed at
+/// runtime_unit_count * per_unit_ms`. This reads the index-aligned param lists fail-closed at
 /// arm time (the fast-lane-budget pattern); the clamp itself is computed at enforcement, because the
 /// affected-set-selected unit count is a runtime datum the schedule does not hold. Clamps are
 /// admission/scheduling facts at the walk grain — witness verdicts never carry a wall-clock term
 /// (the ruling split reconciled in the carrier note).
+///
+/// The authority lists are read from the SAME rows the numbers come from
+/// (`gunbc_ci_floor_batch_clamp_authority_modules` / `..._decls` project `c.authority`), so a
+/// citation cannot stay correct while the value it names moves.
 fn read_floor_batch_clamp_params(
     plan_ctx: &InterpContext,
     batch_count: usize,
-) -> Result<Vec<(u128, u128)>, String> {
+) -> Result<Vec<ResolvedFloorBatchClamp>, String> {
     let overhead_items = match run_value(plan_ctx, "gunbc_ci_floor_batch_clamp_overhead_seconds") {
         Ok(Value::List(items)) => items,
         Ok(other) => {
@@ -154,15 +227,81 @@ fn read_floor_batch_clamp_params(
             }
         }
     }
-    if overheads_ms.len() != batch_count || rates_ms.len() != batch_count {
+    let authority_modules = read_floor_batch_clamp_authority_list(
+        plan_ctx,
+        "gunbc_ci_floor_batch_clamp_authority_modules",
+    )?;
+    let authority_decls = read_floor_batch_clamp_authority_list(
+        plan_ctx,
+        "gunbc_ci_floor_batch_clamp_authority_decls",
+    )?;
+    if overheads_ms.len() != batch_count
+        || rates_ms.len() != batch_count
+        || authority_modules.len() != batch_count
+        || authority_decls.len() != batch_count
+    {
         return Err(format!(
-            "claim_executor: floor batch clamp params (overhead {} row(s), rate {} row(s)) must each cover the {} scheduled batch(es) exactly (fail-closed; update gunbc.ci_spec beside the schedule change)",
+            "claim_executor: floor batch clamp params (overhead {} row(s), rate {} row(s), authority module {} row(s), authority decl {} row(s)) must each cover the {} scheduled batch(es) exactly (fail-closed; update gunbc.ci_spec beside the schedule change)",
             overheads_ms.len(),
             rates_ms.len(),
+            authority_modules.len(),
+            authority_decls.len(),
             batch_count
         ));
     }
-    Ok(overheads_ms.into_iter().zip(rates_ms).collect())
+    Ok(overheads_ms
+        .into_iter()
+        .zip(rates_ms)
+        .zip(authority_modules)
+        .zip(authority_decls)
+        .enumerate()
+        .map(
+            |(index, (((overhead_ms, per_unit_ms), module_path), decl_name))| {
+                ResolvedFloorBatchClamp {
+                    overhead_ms,
+                    per_unit_ms,
+                    authority: FloorBatchClampAuthority::PositionalCiSpecClamp {
+                        module_path,
+                        decl_name,
+                        index,
+                    },
+                }
+            },
+        )
+        .collect())
+}
+
+/// One of the two authority projections beside the clamp numbers. An empty name is refused rather
+/// than rendered: a citation that names nothing is worse than none, because it reads as located.
+fn read_floor_batch_clamp_authority_list(
+    plan_ctx: &InterpContext,
+    function: &str,
+) -> Result<Vec<String>, String> {
+    let items = match run_value(plan_ctx, function) {
+        Ok(Value::List(items)) => items,
+        Ok(other) => {
+            return Err(format!(
+                "claim_executor: {function} must be a List<String>, got {other:?} (fail-closed)"
+            ));
+        }
+        Err(msg) => {
+            return Err(format!(
+                "claim_executor: floor plan schedules batches but {function} is unavailable (fail-closed): {msg}"
+            ));
+        }
+    };
+    let mut out: Vec<String> = Vec::new();
+    for item in items.iter() {
+        match item {
+            Value::Str(s) if !s.is_empty() => out.push(s.to_string()),
+            other => {
+                return Err(format!(
+                    "claim_executor: {function} rows must be non-empty Strings, got {other:?} (fail-closed)"
+                ));
+            }
+        }
+    }
+    Ok(out)
 }
 
 /// The RED-control fault injection (`GUNBC_FLOOR_BATCH_BUDGET_TIGHTEN_MS`): lowers the COMPUTED
@@ -629,7 +768,7 @@ enum Runnable {
         node_frontier_selection: NodeFrontierSelectionMode,
         execution_authority: ScopedWitnessExecutionAuthority,
         profile: ParsedRunnableProfile,
-        clamp: (u128, u128),
+        clamp: ResolvedFloorBatchClamp,
         process_isolation: ScopedProcessIsolation,
     },
 }
@@ -1237,6 +1376,41 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 "ScopedWitnessBatch.resource_profile.clamp.per_unit",
                 ctx,
             )?;
+            // The batch's clamp declares its own home. Read it rather than inferring one from the
+            // batch's position in the aligned list — the inference is what printed a ci_spec
+            // citation beside a number ci_spec never produced.
+            let clamp_authority_fields = match ctx.field(clamp_fields, "authority") {
+                Some(Value::Record { fields, .. }) | Some(Value::Variant { fields, .. }) => fields,
+                Some(other) => {
+                    return Err(format!(
+                        "ScopedWitnessBatch.resource_profile.clamp.authority must be DeclarationRef, got {}",
+                        other.type_label_public()
+                    ))
+                }
+                None => {
+                    return Err(
+                        "ScopedWitnessBatch.resource_profile.clamp missing `authority`".to_string()
+                    )
+                }
+            };
+            let clamp_authority_module = str_field(
+                clamp_authority_fields,
+                "module_path",
+                "ScopedWitnessBatch.resource_profile.clamp.authority",
+                ctx,
+            )?;
+            let clamp_authority_decl = str_field(
+                clamp_authority_fields,
+                "decl_name",
+                "ScopedWitnessBatch.resource_profile.clamp.authority",
+                ctx,
+            )?;
+            if clamp_authority_module.is_empty() || clamp_authority_decl.is_empty() {
+                return Err(
+                    "ScopedWitnessBatch.resource_profile.clamp.authority must name a module and a declaration"
+                        .to_string(),
+                );
+            }
             let process_isolation = match ctx.field(resource, "process_isolation") {
                 Some(Value::Variant { variant_name, .. })
                     if ctx.sym_eq(*variant_name, "SharedWalkProcess") => ScopedProcessIsolation::SharedWalkProcess,
@@ -1253,7 +1427,7 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 None => return Err("ScopedWitnessBatch.resource_profile missing `process_isolation`".to_string()),
             };
             Ok(Runnable::ScopedWitnessBatch {
-                batch_id,
+                batch_id: batch_id.clone(),
                 source_roots,
                 source_roots_digest,
                 entries,
@@ -1261,7 +1435,15 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 node_frontier_selection,
                 execution_authority,
                 profile,
-                clamp: (overhead_seconds * 1000, per_unit_ms),
+                clamp: ResolvedFloorBatchClamp {
+                    overhead_ms: overhead_seconds * 1000,
+                    per_unit_ms,
+                    authority: FloorBatchClampAuthority::ScopedBatchOwnedClamp {
+                        batch_id: batch_id.clone(),
+                        module_path: clamp_authority_module,
+                        decl_name: clamp_authority_decl,
+                    },
+                },
                 process_isolation,
             })
         }
@@ -1284,14 +1466,14 @@ fn batches_from_plan(plan: &Value, ctx: &InterpContext) -> Result<Vec<Vec<Runnab
     Ok(batches)
 }
 
-fn scoped_batch_clamp(batch: &[Runnable]) -> Result<Option<(u128, u128)>, String> {
+fn scoped_batch_clamp(batch: &[Runnable]) -> Result<Option<ResolvedFloorBatchClamp>, String> {
     let mut owned = None;
     for runnable in batch {
         if let Runnable::ScopedWitnessBatch { clamp, .. } = runnable {
             if batch.len() != 1 {
                 return Err("RunnableScopedWitnessBatch must occupy a singleton batch".to_string());
             }
-            if owned.replace(*clamp).is_some() {
+            if owned.replace(clamp.clone()).is_some() {
                 return Err("batch carries more than one scoped witness clamp".to_string());
             }
         }
@@ -5106,11 +5288,67 @@ fn batch_witness_count(rec: &BatchRecord) -> u128 {
 /// boundary, exactly as `render_phase_concluded_line` does for progress lines. Returns
 /// false on any refusal or write failure so the walk fails closed — a receipt that
 /// silently did not appear is the blindness the alert defect was made of.
+/// Why a planned component carries no verdict in the receipt being written.
+///
+/// This is the WRITE's own state, not a per-component judgement, which is why it is a
+/// parameter of the writer rather than a field on `BatchRecord`: a record exists only for
+/// a batch that ran, and the question here is what to say about the ones that did not.
+/// `gunbc.floor_component_receipt` `floor_component_run_incomplete_note` owns the
+/// distinction; the seed only reports which of the two situations it is in, and it knows
+/// that from the call site rather than by inspecting anything.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum UnreachedCause {
+    /// The plan concluded. A component with no record was deliberately not run because an
+    /// earlier one stopped the line under the stop policy.
+    StopPolicy,
+    /// The run was still in progress when these bytes were written. A component with no
+    /// record has an UNKNOWN fate — it may be running right now — so the receipt must not
+    /// claim the plan decided anything about it.
+    RunIncomplete,
+    /// The walk stopped admitting work at its internal soft deadline
+    /// (`gunbc.falsifier_workflow` `gunbc_falsifier_soft_deadline_minutes`). A component
+    /// with no record was never STARTED because the RUN ran out of time — a deliberate,
+    /// located stop at a declared ceiling, which is why this one is Refused rather than
+    /// Skipped on the `.dag` side.
+    DeadlineReached,
+}
+
+impl UnreachedCause {
+    /// The `.dag` failure-mode tag. Kept as a method rather than inlined at the two call
+    /// sites so the seed spells each tag exactly once; an unknown tag is refused by
+    /// `floor_component_failure_mode_of`, so a typo here stops the line rather than
+    /// dropping a component.
+    fn failure_mode(self) -> &'static str {
+        match self {
+            UnreachedCause::StopPolicy => "not_reached",
+            UnreachedCause::RunIncomplete => "run_incomplete",
+            UnreachedCause::DeadlineReached => "deadline_reached",
+        }
+    }
+
+    fn detail(self) -> &'static str {
+        match self {
+            UnreachedCause::StopPolicy => {
+                "batch not reached — an earlier batch failed under the stop policy"
+            }
+            UnreachedCause::RunIncomplete => {
+                "batch not concluded — checkpoint written while the run was still in \
+                 progress; this component's fate is unknown at write time"
+            }
+            UnreachedCause::DeadlineReached => {
+                "batch not admitted — the walk reached its internal soft deadline before \
+                 starting this component; the corpus did not fit the lane's time budget"
+            }
+        }
+    }
+}
+
 fn write_floor_component_receipt_at(
     base: &std::path::Path,
     source_roots: &[String],
     batch_records: &[BatchRecord],
     batches: &[Vec<Runnable>],
+    unreached: UnreachedCause,
 ) -> bool {
     let total_batches = batches.len();
     let Some(entry) = source_roots
@@ -5189,8 +5427,8 @@ fn write_floor_component_receipt_at(
             &batch_heartbeat_label(&batches[bi]),
             batch_selection_tag(&batches[bi]),
             0,
-            "not_reached",
-            "batch not reached — an earlier batch failed under the stop policy",
+            unreached.failure_mode(),
+            unreached.detail(),
             0,
         ) {
             Some(v) => rows.push(v),
@@ -5286,7 +5524,27 @@ fn write_floor_component_receipt_at(
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    match std::fs::write(&path, doc) {
+    // WRITE-THEN-RENAME, because this path is now written repeatedly WHILE the run is
+    // subject to a foreign SIGKILL. `std::fs::write` truncates and then fills, so a kill
+    // landing between those two leaves a truncated or empty file at the exact path the
+    // alert reads — and a half-written receipt is strictly worse than an absent one: the
+    // absent case is already reported as a named unknown, while a torn one decodes as a
+    // malformed receipt or, worse, as a shorter component list that reads like a real
+    // observation. The rename is atomic within the directory, so a reader at any instant
+    // sees either the previous complete checkpoint or the new complete one, never a
+    // partial write. The temp file is per-process so two executors cannot interleave.
+    let tmp = base.join(format!(
+        "floor-component-receipt.json.tmp.{}",
+        std::process::id()
+    ));
+    if let Err(e) = std::fs::write(&tmp, doc) {
+        eprintln!(
+            "claim_executor: floor component receipt REFUSED — write {}: {e}",
+            tmp.display()
+        );
+        return false;
+    }
+    match std::fs::rename(&tmp, &path) {
         Ok(()) => {
             eprintln!(
                 "[receipt] floor component receipt: {} component(s) ({})",
@@ -5296,8 +5554,10 @@ fn write_floor_component_receipt_at(
             true
         }
         Err(e) => {
+            let _ = std::fs::remove_file(&tmp);
             eprintln!(
-                "claim_executor: floor component receipt REFUSED — write {}: {e}",
+                "claim_executor: floor component receipt REFUSED — rename {} -> {}: {e}",
+                tmp.display(),
                 path.display()
             );
             false
@@ -7491,7 +7751,7 @@ fn run_stage(
     governor: &Arc<MemoryGovernor>,
     fast_lane_eval_budget_ms: Option<u64>,
     falsifier_self_host_wet_budgets: &FalsifierSelfHostWetBudgets,
-    clamp_params: Option<(u128, u128)>,
+    clamp_params: Option<ResolvedFloorBatchClamp>,
     budget_tighten_ms: Option<u128>,
     obligation_subjects: Option<&ObligationSubjectSet>,
 ) -> StageRun {
@@ -7662,25 +7922,38 @@ fn run_stage(
             );
             (0u128, None)
         }
-        (FloorRuntimeUnitCount::Observed { units }, Some((overhead_ms, rate_ms))) => {
-            let mut clamp = overhead_ms + (*units * rate_ms);
+        (FloorRuntimeUnitCount::Observed { units }, Some(resolved)) => {
+            let mut clamp = resolved.clamp_ms(*units);
             if let Some(t) = budget_tighten_ms {
                 clamp = clamp.min(t);
             }
             let wall_ms = wall_nanos / 1_000_000;
             if wall_ms > clamp {
                 over_budget = true;
+                // Every term the reader needs to decide whether the units axis is even live:
+                // per_unit_ms and units_contribution_ms are printed beside the count, because a
+                // bare `units=27` invites trimming the roster on a row whose rate is zero — a
+                // remedy that cannot move the threshold by construction, and whose split form
+                // would hand the same work a second overhead allowance.
+                let batch_id_field = match resolved.authority.batch_id() {
+                    Some(id) => format!(" batch_id={id}"),
+                    None => String::new(),
+                };
                 println!(
                     "{}",
                     paint(
                         &format!(
-                            "✗ FLOOR-BATCH-OVER-BUDGET {}={} wall_ms={} clamp_ms={} units={}                                  (clamp = overhead + units*rate; authority gunbc.ci_spec                                  gunbc_ci_floor_batch_clamp_params[{}]; raising an overhead or rate requires                                  an operator-signed line per gunbc_ci_floor_batch_clamp_note — a refusal,                                  never a widen)",
+                            "✗ FLOOR-BATCH-OVER-BUDGET {}={}{} wall_ms={} clamp_ms={} overhead_ms={} units={} per_unit_ms={} units_contribution_ms={}                                  (clamp = overhead + units*rate; authority {}; raising an overhead or rate requires                                  an operator-signed line per gunbc_ci_floor_batch_clamp_note — a refusal,                                  never a widen)",
                             population.phase_slug(),
                             index + 1,
+                            batch_id_field,
                             wall_ms,
                             clamp,
+                            resolved.overhead_ms,
                             units,
-                            index
+                            resolved.per_unit_ms,
+                            resolved.units_contribution_ms(*units),
+                            resolved.authority.render(),
                         ),
                         sgr::ERROR
                     )
@@ -8007,11 +8280,17 @@ fn run_walk(
     finalization_sink: &mut dyn std::io::Write,
     ordinary_budget_ms: Option<u64>,
     on_success_budget_ms: Option<u64>,
+    // The walk's own deadline, derived from the foreign step timeout the runner enforces
+    // (`gunbc.falsifier_workflow` `gunbc_falsifier_soft_deadline_minutes`). Armed only for
+    // the falsifier, which is the plan carrying no `ordinary_budget` and running under a
+    // SIGKILL it cannot conclude through. `None` leaves the walk's admission unbounded,
+    // exactly as before.
+    soft_deadline_ms: Option<u64>,
     governor: &Arc<MemoryGovernor>,
     fast_lane_eval_budget_ms: Option<u64>,
     falsifier_self_host_wet_budgets: FalsifierSelfHostWetBudgets,
     stop_policy: FloorBatchStopPolicy,
-    batch_clamp_params: Option<&[Option<(u128, u128)>]>,
+    batch_clamp_params: Option<&[Option<ResolvedFloorBatchClamp>]>,
     budget_tighten_ms: Option<u128>,
     falsifier_cadence: bool,
     witness_row_cost_basis_path: &Path,
@@ -8037,6 +8316,13 @@ fn run_walk(
         ordinary_budget_ms,
         ordinary_budget_progress.clone(),
     );
+    // WHY the walk stopped admitting components, which is what the final receipt reports
+    // about every component with no record. It starts at StopPolicy — the pre-existing
+    // meaning, "the plan concluded and an earlier batch stopped the line" — and each break
+    // that is NOT that sets its own cause. Carrying it as one variable rather than deciding
+    // at the write site is what keeps the receipt's story and the loop's actual exit from
+    // drifting apart.
+    let mut walk_stop_cause = UnreachedCause::StopPolicy;
     let mut batch_records: Vec<BatchRecord> = Vec::new();
     // Cross-batch resolve memo: SharedClaims whose runnable does a heavy whole-tree resolve
     // run on the main thread and share a single resolved InterpContext per entry across all batches.
@@ -8064,6 +8350,39 @@ fn run_walk(
                 "claim_executor: ORDINARY-FLOOR-OVER-BUDGET before batch {} — budget_ms={budget}; admission postcondition allowance remains reserved",
                 bi + 1
             );
+            // This break is a deadline stop, not a stop-policy skip: the components below
+            // were never started because the RUN ran out of time, not because an earlier
+            // one failed. It previously reported the stop-policy cause, which named the
+            // wrong reason on the ordinary floor for the same reason it would have on the
+            // falsifier.
+            walk_stop_cause = UnreachedCause::DeadlineReached;
+            break;
+        }
+        // THE WALK'S OWN DEADLINE. Distinct from the population budget above: that one
+        // bounds the ordinary floor's cost, this one exists because the falsifier runs
+        // under a foreign SIGKILL (a GitHub Actions step timeout) that the process cannot
+        // catch, log, or conclude through — crossing it destroyed the run's evidence
+        // entirely. Stopping admission a flush allowance early lets the walk conclude
+        // ITSELF, with a typed disposition on every unadmitted component and the receipt
+        // written on the ordinary path. It refuses; it never widens or absorbs: the run is
+        // red, every skipped component is counted, and reaching it is a measurement of a
+        // cost problem rather than a resolution of one.
+        if soft_deadline_ms
+            .is_some_and(|deadline| walk_start.elapsed().as_millis() >= u128::from(deadline))
+        {
+            let deadline = soft_deadline_ms.expect("checked Some above");
+            let elapsed_ms = walk_start.elapsed().as_millis();
+            any_failed = true;
+            failure_details.push(format!(
+                "walk reached its soft deadline before batch {}: deadline_ms={deadline} elapsed_ms={elapsed_ms}",
+                bi + 1
+            ));
+            eprintln!(
+                "claim_executor: WALK-SOFT-DEADLINE before batch {} — deadline_ms={deadline} elapsed_ms={elapsed_ms}; \
+                 admitting no further components so the receipt concludes before the step's hard kill",
+                bi + 1
+            );
+            walk_stop_cause = UnreachedCause::DeadlineReached;
             break;
         }
         batches_run = bi + 1;
@@ -8092,7 +8411,7 @@ fn run_walk(
             &falsifier_self_host_wet_budgets,
             batch_clamp_params
                 .and_then(|p| p.get(bi))
-                .copied()
+                .cloned()
                 .flatten(),
             budget_tighten_ms,
             obligation_subjects.as_ref(),
@@ -8158,6 +8477,40 @@ fn run_walk(
             selection_tag: batch_selection_tag(batch),
             is_wet: batch_is_wet(batch),
         });
+        // CHECKPOINT. The receipt used to be written once, after every batch, so the one
+        // failure mode that most needs evidence destroyed all of it: the falsifier's floor
+        // step carries a foreign 170-minute SIGKILL and a run that crossed it produced no
+        // file at all, leaving the alert to report ENOENT while every completed component's
+        // real state — including green ones — was lost. Receipt: the two longest failing
+        // runs of the 2026-08-03 window both landed there.
+        //
+        // Written after the RECORD lands, so a checkpoint always includes the batch that
+        // just finished; the tail carries RunIncomplete, which is a distinct mode from the
+        // stop-policy not_reached the final write uses (floor_component_run_incomplete_note
+        // — the two route to different owners, so collapsing them would misattribute a kill
+        // as a deliberate skip).
+        //
+        // COST: the writer resolves `gunbc/floor_component_receipt.dag` through
+        // `resolve_entry_graph_shared`, which memoizes on (source_roots, entry) in
+        // PROCESS_RESOLVE_STORE — so the first checkpoint pays the resolve and every later
+        // one hits the memo. What repeats is the document eval, which is proportional to the
+        // batch COUNT (single digits), not to the witness population. Checkpointing at
+        // batch grain rather than per witness is what keeps that true.
+        //
+        // A failed checkpoint does NOT stop the line: the batch it describes has already
+        // run, the final write is still ahead, and refusing the whole floor because an
+        // intermediate snapshot could not be written would turn a diagnostic aid into a new
+        // failure mode. It is loud (the writer prints its own refusal) and the final write
+        // remains fail-closed, so a persistent write fault still reds the run there.
+        if emit_ordinary_floor_receipts {
+            let _ = write_floor_component_receipt_at(
+                std::path::Path::new("target"),
+                source_roots,
+                &batch_records,
+                &batches,
+                UnreachedCause::RunIncomplete,
+            );
+        }
         // LOCAL, not aggregate. This used to test the cumulative `any_failed`, so under
         // FullLedger every batch after the first failure was announced as "batch N had
         // failures" whether or not it had any — the same local-versus-aggregate
@@ -8267,6 +8620,7 @@ fn run_walk(
             source_roots,
             &batch_records,
             &batches,
+            walk_stop_cause,
         );
     trace_floor_phase("floor-component-receipt", "completed", "");
     // Memo contexts absorb their ledger totals into the process accumulator on
@@ -8799,7 +9153,7 @@ fn run_perturb_check(
                         node_frontier_selection: *node_frontier_selection,
                         execution_authority: *execution_authority,
                         profile: *profile,
-                        clamp: *clamp,
+                        clamp: clamp.clone(),
                         process_isolation: *process_isolation,
                     },
                 })
@@ -8824,6 +9178,7 @@ fn run_perturb_check(
         // than one of the two named causes, but is still visible.
         FloorFinalizationAbsenceReason::Undeclared,
         &mut std::io::stderr(),
+        None,
         None,
         None,
         &Arc::new(MemoryGovernor::from_environment(1)),
@@ -10030,12 +10385,30 @@ fn run() -> Result<ExitCode, ExitCode> {
     } else {
         FalsifierSelfHostWetBudgets::default()
     };
+    // THE WALK'S OWN DEADLINE, armed for the falsifier only. It is the plan with no
+    // `ordinary_budget` (so nothing bounds admission today) AND the one running under a
+    // foreign step timeout the process cannot conclude through, which is the exact pair
+    // that made a crossing destroy the run's evidence. Read fail-closed through the same
+    // seam as every other budget: an unavailable or non-positive value stops the line
+    // rather than silently leaving admission unbounded, because a deadline that quietly
+    // failed to arm is indistinguishable from the state it was added to fix.
+    let falsifier_soft_deadline_ms = if plan_function == "gunbc_falsifier_plan" {
+        match read_positive_budget_ms(&plan_ctx, "gunbc_falsifier_soft_deadline_ms") {
+            Ok(v) => v,
+            Err(msg) => {
+                eprintln!("{msg}");
+                return Err(ExitCode::from(1));
+            }
+        }
+    } else {
+        None
+    };
     let batch_stop_policy = resolve_floor_batch_stop_policy(&plan_ctx, &plan_function);
     // THE COST WALL (Piece 3 derived clamp): the floor plan's per-batch clamp params, read
     // fail-closed at arm time (the fast-lane-budget pattern). Scoped to the full floor plan only:
     // the plan-artifact shortcut runs a single batch of the same schedule and the falsifier
     // carries its own receipt budgets, so neither reads these lists.
-    let scoped_clamps: Vec<Option<(u128, u128)>> = match batches
+    let scoped_clamps: Vec<Option<ResolvedFloorBatchClamp>> = match batches
         .iter()
         .map(|batch| scoped_batch_clamp(batch))
         .collect::<Result<Vec<_>, _>>()
@@ -10058,7 +10431,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     } else {
         None
     };
-    let batch_clamp_params: Option<Vec<Option<(u128, u128)>>> =
+    let batch_clamp_params: Option<Vec<Option<ResolvedFloorBatchClamp>>> =
         if positional_clamps.is_some() || scoped_clamps.iter().any(|clamp| clamp.is_some()) {
             let mut positional_index = 0usize;
             let mut aligned = Vec::with_capacity(batches.len());
@@ -10066,7 +10439,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                 if let Some(clamp) = owned {
                     aligned.push(Some(clamp));
                 } else if let Some(rows) = &positional_clamps {
-                    aligned.push(rows.get(positional_index).copied());
+                    aligned.push(rows.get(positional_index).cloned());
                     positional_index += 1;
                 } else {
                     aligned.push(None);
@@ -10262,6 +10635,7 @@ fn run() -> Result<ExitCode, ExitCode> {
         &mut std::io::stderr(),
         ordinary_budget_ms,
         on_success_budget_ms,
+        falsifier_soft_deadline_ms,
         &governor,
         fast_lane_eval_budget_ms,
         falsifier_self_host_wet_budgets,
@@ -11449,6 +11823,7 @@ mod tests {
             &mut sink,
             None,
             None,
+            None,
             &Arc::new(MemoryGovernor::from_environment(1)),
             None,
             FalsifierSelfHostWetBudgets::default(),
@@ -12488,6 +12863,7 @@ mod tests {
             &source_roots,
             &batch_records,
             &batches,
+            UnreachedCause::StopPolicy,
         ));
         let body = fs::read_to_string(base.join("floor-component-receipt.json")).unwrap();
 
@@ -12536,6 +12912,7 @@ mod tests {
             runtime_unit_count: runtime_unit_count_unavailable("resolve refused"),
             witness_row_costs: Vec::new(),
             budget_refusal: None,
+            expectation_refusal: None,
             selection_degradation: None,
             resolve_realization: None,
         };
@@ -12558,6 +12935,7 @@ mod tests {
             runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
             budget_refusal: None,
+            expectation_refusal: None,
             selection_degradation: None,
             resolve_realization: None,
         };
@@ -12603,6 +12981,110 @@ mod tests {
         assert!(body.contains("batch_3_verdict=ClampRefused"));
         assert!(!body.contains("OverBudget"));
         assert!(body.contains("over_budget_batches=0"));
+
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    /// A CHECKPOINT is not a CONCLUSION, and the receipt must say which one it is.
+    ///
+    /// Both causes collapse to the same `skipped` outcome by design, so asserting the
+    /// outcome proves nothing about this distinction — the whole claim lives in the
+    /// failure_mode, and it is asserted in BOTH directions on the same plan and the same
+    /// records. Without the negative halves this test would pass on a writer that emitted
+    /// one constant mode for every unreached row, which is precisely the pre-existing
+    /// behaviour being corrected.
+    ///
+    /// Why it matters: a 170-minute SIGKILL leaves the last checkpoint on disk as the
+    /// alert's only evidence. If its tail read `not_reached`, the alert would report a
+    /// killed run as a plan that deliberately skipped those components under the stop
+    /// policy — a wrong causal story about the exact incident the checkpoint exists to
+    /// explain, and one that routes to the wrong owner.
+    #[test]
+    fn checkpoint_tail_is_run_incomplete_and_final_tail_is_not_reached() {
+        let root = workspace_root();
+        let source_roots = vec![
+            root.join("src/v2").to_string_lossy().into_owned(),
+            root.join("dag").to_string_lossy().into_owned(),
+        ];
+        let base = std::env::temp_dir().join(format!(
+            "claim-executor-checkpoint-{}-{}",
+            std::process::id(),
+            "cause"
+        ));
+        let _ = fs::remove_dir_all(&base);
+
+        let batches: Vec<Vec<Runnable>> = vec![
+            vec![Runnable::SingleClaim {
+                entry: "dag/test/claim/some_gate_test.dag".to_string(),
+                function: "some_gate_holds".to_string(),
+                profile: ParsedRunnableProfile::undeclared(),
+            }],
+            vec![Runnable::SingleClaim {
+                entry: "dag/test/claim/other_gate_test.dag".to_string(),
+                function: "other_gate_holds".to_string(),
+                profile: ParsedRunnableProfile::undeclared(),
+            }],
+        ];
+        let batch_records = vec![BatchRecord {
+            batch_index: 0,
+            wall_nanos: 1_000_000_000,
+            clamp_ms: None,
+            runtime_units: FloorRuntimeUnitCount::Observed { units: 1 },
+            unit_count: 1,
+            results: Vec::new(),
+            label: batch_heartbeat_label(&batches[0]),
+            selection_tag: batch_selection_tag(&batches[0]),
+            is_wet: false,
+        }];
+
+        // MID-RUN: batch 1 has not concluded, and its fate is unknown.
+        assert!(write_floor_component_receipt_at(
+            &base,
+            &source_roots,
+            &batch_records,
+            &batches,
+            UnreachedCause::RunIncomplete,
+        ));
+        let checkpoint = fs::read_to_string(base.join("floor-component-receipt.json")).unwrap();
+        assert!(
+            checkpoint.contains("\"failure_mode\": \"run_incomplete\""),
+            "a checkpoint's unreached tail carries run_incomplete: {checkpoint}"
+        );
+        assert!(
+            !checkpoint.contains("\"failure_mode\": \"not_reached\""),
+            "a checkpoint must NOT claim the plan decided to skip the tail: {checkpoint}"
+        );
+
+        // CONCLUDED: the same records, but the plan is over — the tail was genuinely skipped.
+        assert!(write_floor_component_receipt_at(
+            &base,
+            &source_roots,
+            &batch_records,
+            &batches,
+            UnreachedCause::StopPolicy,
+        ));
+        let concluded = fs::read_to_string(base.join("floor-component-receipt.json")).unwrap();
+        assert!(
+            concluded.contains("\"failure_mode\": \"not_reached\""),
+            "a concluded walk's unreached tail carries not_reached: {concluded}"
+        );
+        assert!(
+            !concluded.contains("\"failure_mode\": \"run_incomplete\""),
+            "a concluded walk must not report itself as still in progress: {concluded}"
+        );
+
+        // The rename left no temp file behind for the artifact upload to trip over.
+        let strays: Vec<_> = fs::read_dir(&base)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n.contains(".tmp."))
+            .collect();
+        assert!(
+            strays.is_empty(),
+            "temp receipts must not survive: {strays:?}"
+        );
+
         let _ = fs::remove_dir_all(&base);
     }
 
@@ -13521,6 +14003,97 @@ mod tests {
         });
     }
 
+    /// The deadline must FIRE, not merely be derivable.
+    ///
+    /// `falsifier_soft_deadline_is_derived_and_strictly_inside_the_hard_cap` proves the
+    /// arithmetic; a number that no code ever compares against would satisfy it completely.
+    /// This runs a real walk with the deadline already elapsed (0ms) and asserts the three
+    /// things the mechanism actually owes: admission stops, the run is RED rather than
+    /// silently short, and the unadmitted tail is reported as `deadline_reached` — not as
+    /// the stop-policy skip it would have been misattributed as before.
+    ///
+    /// The `None` control is the discriminating half: the SAME two batches with no deadline
+    /// run to completion. Without it this test would pass on a walk that was broken in some
+    /// unrelated way and stopped early for a different reason.
+    #[test]
+    fn soft_deadline_stops_admission_and_reports_deadline_reached() {
+        let root = workspace_root();
+        let roots = vec![
+            root.join("src/v2").to_string_lossy().into_owned(),
+            root.join("dag").to_string_lossy().into_owned(),
+        ];
+        let entry = root
+            .join("src/v2/test/fixture/floor_skip/falsifier_divergence_control_test.dag")
+            .to_string_lossy()
+            .into_owned();
+        let batch = || {
+            vec![Runnable::SingleClaim {
+                entry: entry.clone(),
+                function: "falsifier_green_control_holds".to_string(),
+                profile: ParsedRunnableProfile::undeclared(),
+            }]
+        };
+        let batches = vec![batch(), batch()];
+
+        let walk = |deadline: Option<u64>| {
+            run_walk(
+                &roots,
+                "test::soft_deadline_fixture",
+                &batches,
+                &[],
+                None,
+                FloorFinalizationAbsenceReason::Undeclared,
+                &mut std::io::stderr(),
+                None,
+                None,
+                deadline,
+                &Arc::new(MemoryGovernor::from_environment(1)),
+                None,
+                FalsifierSelfHostWetBudgets::default(),
+                FloorBatchStopPolicy::StopBeforeDependents,
+                None,
+                None,
+                false,
+                Path::new("dag/gunbc/witness_row_cost_basis.tsv"),
+                false,
+                None,
+            )
+        };
+
+        // CONTROL: no deadline — both components are admitted and the walk is green.
+        let unbounded = walk(None);
+        assert!(
+            !unbounded.any_failed,
+            "control walk must be green: {:?}",
+            unbounded.failure_details
+        );
+
+        // ARMED: a deadline already in the past stops admission at the FIRST batch.
+        let bounded = walk(Some(0));
+        assert!(
+            bounded.any_failed,
+            "a walk that could not admit its components must be RED, never silently short"
+        );
+        assert!(
+            bounded
+                .failure_details
+                .iter()
+                .any(|d| d.contains("soft deadline")),
+            "the refusal must name the deadline as the cause: {:?}",
+            bounded.failure_details
+        );
+        // NEGATIVE: it must not be reported as the population budget, which is a different
+        // ceiling with a different remedy.
+        assert!(
+            !bounded
+                .failure_details
+                .iter()
+                .any(|d| d.contains("population budget")),
+            "a deadline stop must not masquerade as the ordinary population budget: {:?}",
+            bounded.failure_details
+        );
+    }
+
     fn parse_materialization_receipt_field(body: &str, key: &str) -> Option<u64> {
         body.lines()
             .find_map(|line| line.strip_prefix(key))
@@ -13555,6 +14128,7 @@ mod tests {
             None,
             FloorFinalizationAbsenceReason::Undeclared,
             &mut std::io::stderr(),
+            None,
             None,
             None,
             &Arc::new(MemoryGovernor::from_environment(1)),
