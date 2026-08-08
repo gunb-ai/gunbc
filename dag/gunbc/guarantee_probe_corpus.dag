@@ -130,6 +130,19 @@ data conformance_green_probe: GuaranteeProbeId = "declared-conformance-ground-gr
 data sole_ctor_forged_red_probe: GuaranteeProbeId = "sole-constructor-cross-module-forged-red" as GuaranteeProbeId
 data sole_ctor_green_probe: GuaranteeProbeId = "sole-constructor-cross-module-green-control" as GuaranteeProbeId
 data sole_ctor_mint_fn_hole_probe: GuaranteeProbeId = "sole-constructor-mint-fn-cross-module-hole" as GuaranteeProbeId
+// The CAST construction form. It was the named unknown in the capability audit (`casts like
+// as TransportScript`) and it was a real hole: validate_cast judges only casts whose source and target
+// both sit in std.coercion's primitive domain, so a cast into a sealed record was unjudged entirely.
+// The probe casts a bare Int into the sealed fixture record from another module — a shape whose SOURCE
+// is a cast-domain type and whose TARGET is not, so nothing but the sole_constructor check can refuse
+// it, which is what makes it discriminating rather than incidentally red.
+data sole_ctor_cast_red_probe: GuaranteeProbeId = "sole-constructor-cross-module-cast-red" as GuaranteeProbeId
+// The CALLER-SEALED mint. sole_constructor confines construction to the definer; admit_callers confines
+// who may call the definer's exported mint. The two are the wall only together: without the second, a
+// sealed type with any exported mint is sealed in name only. This probe calls the sealed fixture mint
+// from a module its admit_callers list does not name; the green counterpart is the admitted caller.
+data sole_ctor_unadmitted_caller_red_probe: GuaranteeProbeId = "sole-constructor-unadmitted-caller-red" as GuaranteeProbeId
+data sole_ctor_admitted_caller_green_probe: GuaranteeProbeId = "sole-constructor-admitted-caller-green-control" as GuaranteeProbeId
 
 data v2_frontier_red_probe: GuaranteeProbeId = "v2-self-grounding-frontier-value-red" as GuaranteeProbeId
 data v2_frontier_green_probe: GuaranteeProbeId = "v2-self-grounding-frontier-derived-green" as GuaranteeProbeId
@@ -389,6 +402,18 @@ fn guarantee_probe_rows() -> List<GuaranteeProbeRow> {
       expectation: ExpectBlockingRefusal { diagnostic_class: "MethodNotFound" as NonEmptyStr },
     },
     GuaranteeProbeRow {
+      probe: sole_ctor_admitted_caller_green_probe,
+      class: sole_constructor_cross_module_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectZeroDiagnostics,
+    },
+    GuaranteeProbeRow {
+      probe: sole_ctor_cast_red_probe,
+      class: sole_constructor_cross_module_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectBlockingRefusal { diagnostic_class: "SoleConstructorViolation" as NonEmptyStr },
+    },
+    GuaranteeProbeRow {
       probe: sole_ctor_forged_red_probe,
       class: sole_constructor_cross_module_class,
       path: v1_compile_rust_path_id,
@@ -405,6 +430,12 @@ fn guarantee_probe_rows() -> List<GuaranteeProbeRow> {
       class: sole_constructor_cross_module_class,
       path: v1_compile_rust_path_id,
       expectation: ExpectBlockingRefusal { diagnostic_class: "SoleConstructorViolation" as NonEmptyStr },
+    },
+    GuaranteeProbeRow {
+      probe: sole_ctor_unadmitted_caller_red_probe,
+      class: sole_constructor_cross_module_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectBlockingRefusal { diagnostic_class: "ConstructorCallAdmissionRefused" as NonEmptyStr },
     },
     GuaranteeProbeRow {
       probe: v2_frontier_green_probe,

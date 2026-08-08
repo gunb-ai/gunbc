@@ -17,10 +17,10 @@ data srvn_takeover_ref: DeclarationRef = DeclarationRef {
 test fn witness_retained_transport_mints_from_record() -> Bool {
   let t = retained_transport(
     body: "echo hi",
-    reason: "witness: cross-module as TransportScript mint",
+    reason: "witness: retained_transport mints through the sealed transport_script_seal",
     dissolves_to: srvn_takeover_ref,
   )
-  (t as String) == "echo hi"
+  t.body == "echo hi"
 }
 
 test fn witness_converter_preserves_body() -> Bool {
@@ -29,6 +29,6 @@ test fn witness_converter_preserves_body() -> Bool {
     reason: "witness: record -> transport",
     dissolves_to: srvn_takeover_ref,
   }
-  (retained_shell_script_to_transport(rss: rss) as String) == "systemctl daemon-reload"
+  retained_shell_script_to_transport(rss: rss).body == "systemctl daemon-reload"
 }
 
