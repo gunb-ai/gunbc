@@ -2514,6 +2514,14 @@ struct NativeTransportObservation {
     success: bool,
     compile_skipped: bool,
     stdout: Vec<u8>,
+    /// Bounded tail of the failing process's stderr plus the transport's build
+    /// log. The transport has always carried both (`stderr_octets`, `build_log`);
+    /// dropping them here left every non-accepted verdict located only as
+    /// "process failed" — four days of identical main-run cold failures never
+    /// named their cause (CI2-0 re-observation, 2026-08-08). Rendered into the
+    /// FAIL/fallback detail and stderr, never into the TSV receipt.
+    stderr_tail: String,
+    build_log: Vec<String>,
     artifact_lookup_nanos: u128,
     cold_compile_nanos: u128,
     native_execution_nanos: u128,
@@ -2680,10 +2688,32 @@ fn native_transport_observation(
         _ => Err("native transport stdout contains a non-octet".to_string()),
     })
     .collect::<Result<Vec<_>, _>>()?;
+    let stderr_octets = free_monoid_elems(
+        ctx.field(fields, "stderr_octets")
+            .ok_or_else(|| "native transport result missing stderr".to_string())?,
+        ctx,
+    )?
+    .into_iter()
+    .map(|v| match v {
+        Value::Int(n) if (0..=255).contains(n) => Ok(*n as u8),
+        _ => Err("native transport stderr contains a non-octet".to_string()),
+    })
+    .collect::<Result<Vec<_>, _>>()?;
+    const STDERR_TAIL_BYTES: usize = 2000;
+    let tail_start = stderr_octets.len().saturating_sub(STDERR_TAIL_BYTES);
+    let stderr_tail = String::from_utf8_lossy(&stderr_octets[tail_start..])
+        .trim()
+        .to_string();
+    let build_log = match ctx.field(fields, "build_log") {
+        Some(v) => str_list_from_value(v, ctx)?,
+        None => return Err("native transport result missing build_log".to_string()),
+    };
     Ok(NativeTransportObservation {
         success: boolean("success")?,
         compile_skipped: boolean("compile_skipped")?,
         stdout,
+        stderr_tail,
+        build_log,
         artifact_lookup_nanos: nanos("artifact_lookup_nanos")?,
         cold_compile_nanos: nanos("cold_compile_nanos")?,
         native_execution_nanos: nanos("native_execution_nanos")?,
@@ -2872,6 +2902,18 @@ fn run_native_bundle_unit(
     // them made CI's outage red opaque (run 30764923923 refused with no cause on the
     // wire). Rendered into the FAIL/fallback detail and stderr, never into the TSV
     // receipt (its shape is a parsed contract).
+    // A failed process's located cause is its build log + stderr tail; "process
+    // failed" alone left the deterministic cold failure unnameable for four days
+    // of main runs (every verdict since enrollment was the counted fallback).
+    let process_failure_detail = |obs: &NativeTransportObservation| {
+        let log = obs.build_log.join(" ;; ");
+        let stderr = if obs.stderr_tail.is_empty() {
+            "<empty stderr>".to_string()
+        } else {
+            obs.stderr_tail.replace('\n', " ⏎ ")
+        };
+        format!("process failed; build_log: [{log}]; stderr tail: {stderr}")
+    };
     let leg_cause = |name: &str, leg: &Result<NativeTransportObservation, String>| match leg {
         Ok(obs) if obs.success && obs.stdout == primary.expected_stdout => None,
         Ok(obs) if obs.success => Some(format!(
@@ -2879,7 +2921,7 @@ fn run_native_bundle_unit(
             obs.stdout.len(),
             primary.expected_stdout.len()
         )),
-        Ok(_) => Some(format!("{name}: process failed")),
+        Ok(obs) => Some(format!("{name}: {}", process_failure_detail(obs))),
         Err(e) => Some(format!("{name}: {e}")),
     };
     let transport_causes: Vec<String> = [
@@ -2887,7 +2929,7 @@ fn run_native_bundle_unit(
         leg_cause("warm", &warm),
         match &planted_native {
             Ok(obs) if obs.success => None,
-            Ok(_) => Some("planted-native: process failed".to_string()),
+            Ok(obs) => Some(format!("planted-native: {}", process_failure_detail(obs))),
             Err(e) => Some(format!("planted-native: {e}")),
         },
     ]
