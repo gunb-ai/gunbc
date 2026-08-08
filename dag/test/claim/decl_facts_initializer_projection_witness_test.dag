@@ -15,6 +15,7 @@ import test.claim.decl_facts_reflection_witness_support {
   decl_facts_reflection_projection_variant_label_optional,
   decl_facts_reflection_resolved_nullary_parent,
   decl_facts_reflection_resolved_nullary_variant_name,
+  decl_facts_reflection_nullary_value_projection,
   decl_facts_reflection_plain_record_parent,
 }
 import v2.std.data_initializer_identity {
