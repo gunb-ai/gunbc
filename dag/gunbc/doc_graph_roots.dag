@@ -600,6 +600,14 @@ fn doc_graph_roots_all() -> List<String> {
   concat(plan_doc_graph_roots(), hand_authored_doc_graph_roots())
 }
 
+fn doc_graph_floor_orphan_clean_holds() -> Bool {
+  doc_graph_orphan_count(doc_graph_roots_all()) == 0
+}
+
+fn doc_graph_floor_clean_holds() -> Bool {
+  doc_graph_floor_orphan_clean_holds() && doc_graph_dangling_link_count() == 0
+}
+
 fn hand_authored_plan_slug_is_unregistered(b: HandAuthoredDocBind) -> Bool {
   match b.home {
     PlanDoc => all(all_plans, p => p.slug != b.slug)
