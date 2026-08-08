@@ -192,6 +192,15 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "spark-standup-program-accounting",
+    primary_work: DeclarationRef { module_path: "gunbc.dgx_spark_procurement", decl_name: "spark_a3ee_reservation", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "gunbc.dgx_spark_procurement", decl_name: "spark_3bd5_reservation", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the Spark standup program lands as roadmap rows (host enrollment as fleet members, then serving) and the accounting's findings migrate to their typed carriers — the doc then registers as a plan or deletes, and this bind deletes with it. Bind added 2026-08-08: the doc landed in the #7972 omega with no bind and no inbound link, so the doc-reachability wall correctly refused every main push since; the wall found it, this row files it." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "floor-prep-tax-program",
     primary_work: DeclarationRef { module_path: "gunbc.executor_schedule_retention", decl_name: "schedule_retention_policy_note", field: WholeDeclaration },
     additional_works: [
