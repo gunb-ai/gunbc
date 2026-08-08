@@ -215,6 +215,24 @@ fn git_diff_status_entries_touched_paths(entries: List<GitDiffStatusEntry>) -> L
   fold(entries, init: [], f: git_diff_status_touched_paths_step)
 }
 
+fn git_diff_status_entry_added_path(entry: GitDiffStatusEntry) -> FilePath? {
+  match entry.status {
+    DiffAddedStatus => Present { value: entry.path }
+    _ => Absent
+  }
+}
+
+fn git_diff_status_added_paths_step(acc: List<FilePath>, entry: GitDiffStatusEntry) -> List<FilePath> {
+  match git_diff_status_entry_added_path(entry: entry) {
+    Present { value: path } => append(acc, items: [path])
+    Absent => acc
+  }
+}
+
+fn git_diff_status_entries_added_paths(entries: List<GitDiffStatusEntry>) -> List<FilePath> {
+  fold(entries, init: [], f: git_diff_status_added_paths_step)
+}
+
 fn git_diff_status_entry_departed_path(entry: GitDiffStatusEntry) -> FilePath? {
   match entry.status {
     DiffDeletedStatus => Present { value: entry.path }

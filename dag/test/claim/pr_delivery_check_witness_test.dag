@@ -1,0 +1,203 @@
+module test.claim.pr_delivery_check_witness_test
+
+import v2.std.algebra { any, count_where }
+import v2.std.collection { List }
+import v2.std.text { String }
+import gunbc.namespace_reference_derived_closure_admission {
+  ReferenceDerivedClosureAdmission,
+  ReferenceDerivedClosureUnavailable,
+  RepeatedMentionsCollapseDependency,
+  P2aReferenceDependencyProjection7515,
+}
+import v2.lens.module_graph {
+  ModuleDeclarationFact,
+  ModuleDependencyEdge,
+  ImportResolutionFact,
+}
+import v2.lens.module_impact_query {
+  ChangedSurfaceComplete,
+  ChangedSurfaceRefused,
+  ChangedSurfaceImpactOutcome,
+  ModuleIdentity,
+  changed_surface_impact_outcome,
+}
+import gunbc.pr_delivery_check {
+  Consumed,
+  ConsumerPending,
+  DeclarationGrainUnavailable,
+  DeliveryReceipt,
+  DeliveryUndecidable,
+  SelfConsumedOnly,
+  pr_delivery_check,
+}
+
+data pr_delivery_witness_note: String = "Controlled fixtures: every population and every expected verdict is authored here, so no assertion is a measurement of the current tree copied back onto itself. The two controls that matter most are NEGATIVE: a newly added module consumed only by its own witness must NOT read as delivered (that is the inert-analysis tier the criterion exists to catch), and a modification to an existing module that already has dependents must NOT read as CONSUMED (that is the fail-open this check would have shipped at module grain, on the common case)."
+
+data delivery_nodes: List<ModuleDeclarationFact> = [
+  ModuleDeclarationFact { module: "m.feature", path: "src/v2/lens/feature.dag" },
+  ModuleDeclarationFact { module: "m.consumer", path: "src/v2/lens/consumer.dag" },
+  ModuleDeclarationFact { module: "m.feature_test", path: "dag/test/claim/feature_test.dag" },
+  ModuleDeclarationFact { module: "m.existing", path: "src/v2/lens/existing.dag" },
+  ModuleDeclarationFact { module: "m.existing_user", path: "src/v2/lens/existing_user.dag" },
+]
+
+data delivery_edges: List<ModuleDependencyEdge> = [
+  ModuleDependencyEdge { path: "src/v2/lens/consumer.dag", target_module: "m.feature", target_declared: true },
+  ModuleDependencyEdge { path: "dag/test/claim/feature_test.dag", target_module: "m.feature", target_declared: true },
+  ModuleDependencyEdge { path: "src/v2/lens/existing_user.dag", target_module: "m.existing", target_declared: true },
+]
+
+data delivery_import_facts: List<ImportResolutionFact> = [
+  ImportResolutionFact { path: "src/v2/lens/consumer.dag", import_module: "m.feature", target_declared: true },
+  ImportResolutionFact { path: "dag/test/claim/feature_test.dag", import_module: "m.feature", target_declared: true },
+  ImportResolutionFact { path: "src/v2/lens/existing_user.dag", import_module: "m.existing", target_declared: true },
+]
+
+data delivery_admissions: List<ReferenceDerivedClosureAdmission> = [
+  ReferenceDerivedClosureUnavailable {
+    capability: RepeatedMentionsCollapseDependency,
+    trigger: P2aReferenceDependencyProjection7515
+  },
+]
+
+data no_paths: List<String> = []
+
+fn delivery_receipt(
+  changed: List<String>,
+  added: List<String>
+) -> DeliveryReceipt {
+  pr_delivery_check(
+    outcome: changed_surface_impact_outcome(
+      changed_paths: changed,
+      departed_paths: no_paths,
+      edges: delivery_edges,
+      nodes: delivery_nodes,
+      import_facts: delivery_import_facts,
+      admissions: delivery_admissions
+    ),
+    changed_paths: changed,
+    added_paths: added,
+    edges: delivery_edges,
+    nodes: delivery_nodes,
+    import_facts: delivery_import_facts,
+    admissions: delivery_admissions
+  )
+}
+
+test fn witness_a_new_module_with_a_real_consumer_is_consumed() -> Bool {
+  let receipt = delivery_receipt(
+    changed: ["src/v2/lens/feature.dag"],
+    added: ["src/v2/lens/feature.dag"]
+  )
+  receipt.consumed_count == 1
+    && receipt.self_consumed_only_count == 0
+    && receipt.declaration_grain_unavailable_count == 0
+    && any(xs: receipt.subjects, predicate: fn(row) {
+      match row.verdict {
+        Consumed { consumers } =>
+          any(xs: consumers, predicate: fn(c) { c.name == "m.consumer" })
+            && count_where(xs: consumers, predicate: fn(c) { c.name == "m.feature_test" }) == 0
+        SelfConsumedOnly { test_consumers: _ } => false
+        ConsumerPending { work_item: _ } => false
+        DeclarationGrainUnavailable { path: _ } => false
+        DeliveryUndecidable { cause: _ } => false
+      }
+    })
+}
+
+data self_consumed_nodes: List<ModuleDeclarationFact> = [
+  ModuleDeclarationFact { module: "m.inert", path: "src/v2/lens/inert.dag" },
+  ModuleDeclarationFact { module: "m.inert_test", path: "dag/test/claim/inert_test.dag" },
+]
+
+data self_consumed_edges: List<ModuleDependencyEdge> = [
+  ModuleDependencyEdge { path: "dag/test/claim/inert_test.dag", target_module: "m.inert", target_declared: true },
+]
+
+data self_consumed_import_facts: List<ImportResolutionFact> = [
+  ImportResolutionFact { path: "dag/test/claim/inert_test.dag", import_module: "m.inert", target_declared: true },
+]
+
+test fn witness_a_new_module_used_only_by_its_own_witness_is_not_delivered() -> Bool {
+  let receipt = pr_delivery_check(
+    outcome: changed_surface_impact_outcome(
+      changed_paths: ["src/v2/lens/inert.dag"],
+      departed_paths: no_paths,
+      edges: self_consumed_edges,
+      nodes: self_consumed_nodes,
+      import_facts: self_consumed_import_facts,
+      admissions: delivery_admissions
+    ),
+    changed_paths: ["src/v2/lens/inert.dag"],
+    added_paths: ["src/v2/lens/inert.dag"],
+    edges: self_consumed_edges,
+    nodes: self_consumed_nodes,
+    import_facts: self_consumed_import_facts,
+    admissions: delivery_admissions
+  )
+  receipt.self_consumed_only_count == 1
+    && receipt.consumed_count == 0
+}
+
+test fn witness_a_modified_existing_module_is_never_silently_consumed() -> Bool {
+  let receipt = delivery_receipt(
+    changed: ["src/v2/lens/existing.dag"],
+    added: no_paths
+  )
+  receipt.consumed_count == 0
+    && receipt.declaration_grain_unavailable_count == 1
+    && any(xs: receipt.subjects, predicate: fn(row) {
+      match row.verdict {
+        DeclarationGrainUnavailable { path } => path == "src/v2/lens/existing.dag"
+        Consumed { consumers: _ } => false
+        SelfConsumedOnly { test_consumers: _ } => false
+        ConsumerPending { work_item: _ } => false
+        DeliveryUndecidable { cause: _ } => false
+      }
+    })
+}
+
+test fn witness_a_partial_surface_makes_every_verdict_undecidable() -> Bool {
+  let receipt = delivery_receipt(
+    changed: ["src/v2/lens/feature.dag", "README.md"],
+    added: ["src/v2/lens/feature.dag"]
+  )
+  receipt.undecidable_count == 1
+    && receipt.consumed_count == 0
+    && receipt.self_consumed_only_count == 0
+}
+
+test fn witness_a_refused_observation_makes_every_verdict_undecidable() -> Bool {
+  let receipt = pr_delivery_check(
+    outcome: ChangedSurfaceRefused { reason: "diff observation failed" },
+    changed_paths: ["src/v2/lens/feature.dag"],
+    added_paths: ["src/v2/lens/feature.dag"],
+    edges: delivery_edges,
+    nodes: delivery_nodes,
+    import_facts: delivery_import_facts,
+    admissions: delivery_admissions
+  )
+  receipt.undecidable_count == 1
+    && receipt.consumed_count == 0
+}
+
+test fn witness_an_added_non_module_path_yields_no_fabricated_subject() -> Bool {
+  let receipt = delivery_receipt(
+    changed: ["src/v2/lens/feature.dag"],
+    added: ["src/v2/lens/feature.dag", "src/v1/stage0/src/cli_run.rs"]
+  )
+  count_where(xs: receipt.subjects, predicate: fn(_) { true }) == 1
+    && receipt.consumed_count == 1
+}
+
+data delivery_counting_note: String = "The receipt's counts are DERIVED from the verdict list by folding the same subjects, not stored alongside it, so a count cannot disagree with the rows it summarises. This witness pins that: the summary the operator reads must equal the rows a reviewer can inspect."
+
+test fn witness_receipt_counts_equal_the_rows_they_summarise() -> Bool {
+  let receipt = delivery_receipt(
+    changed: ["src/v2/lens/feature.dag", "src/v2/lens/existing.dag"],
+    added: ["src/v2/lens/feature.dag"]
+  )
+  let rows = count_where(xs: receipt.subjects, predicate: fn(_) { true })
+  let summed = receipt.consumed_count + receipt.self_consumed_only_count + receipt.consumer_pending_count + receipt.declaration_grain_unavailable_count + receipt.undecidable_count
+  rows == summed
+}

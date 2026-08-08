@@ -1,0 +1,435 @@
+module gunbc.pr_delivery_check
+
+import v2.std.algebra { any, contains, fold_list, list_reverse }
+import std.algebra { Cons }
+import v2.std.collection { List, Map, empty_map, map_insert }
+import v2.std.optional { Absent, Present }
+import v2.std.text { String }
+import v2.std.logic { Bool }
+import gunbc.namespace_reference_derived_closure_admission {
+  ReferenceDerivedClosureAdmission,
+}
+import v2.lens.module_graph {
+  ModuleDeclarationFact,
+  ModuleDependencyEdge,
+  ImportResolutionFact,
+  map_lookup_where_rejected_unreachable,
+}
+import v2.lens.module_impact_query {
+  ChangedSurfaceComplete,
+  ChangedSurfacePartial,
+  ChangedSurfaceRefused,
+  ChangedSurfaceImpactOutcome,
+  DependentsOf,
+  ModuleIdentity,
+  impact_seeds_for_path,
+  module_impact_reading,
+}
+
+data pr_delivery_check_subject_note: String = "'Someone actually uses the feature we built' as a PR-closing criterion (operator directive 2026-08-08), and the first machine consumer of the CONFIDENCE-0 reverse query. The tool polices delivery, including its own. A declaration that nothing references is the inert-analysis tier: it typechecks, it is reviewed, it merges, and no behaviour anywhere depends on it. This check makes that state VISIBLE at acceptance rather than discovered later, by taking the PR's newly added subjects and asking the reverse query who consumes them."
+
+data pr_delivery_uses_grounding_note: String = "'Uses' means A RESOLVING REFERENCE IN THE MERGED TREE, and nothing stronger. It does NOT mean the code executes, is reachable at runtime, or is exercised by a test — the module graph cannot ground any of those, and a check that claimed them would be asserting a rung it has no evidence for. The merged-tree part is not an aspiration either: CI checks out github.sha, which on a pull_request event IS the merge commit, so the pool this resolves against already carries base plus PR. Reading the PR branch alone would race cross-PR consumers — a consumer landing in a sibling PR would read as absent — which is why the merged state is the required view rather than a nicety."
+
+data pr_delivery_grain_note: String = "THE HONEST GRAIN, and the reason this check refuses more than it answers today. The reverse query is MODULE grain. For a newly added MODULE that is exactly right: its dependents are its consumers. For a new DECLARATION inside an EXISTING module it is not, and the failure direction is FAIL-OPEN: the module already has dependents, so a module-grain check would report the new declaration CONSUMED while nothing references it — the inert delivery this criterion exists to catch, waved through by the tool built to catch it, on the COMMON case, since most changes add declarations to existing modules. Such a check would manufacture evidence of delivery, which is worse than no check. So that case is a distinct typed arm, counted, never silently consumed. The decl-grain machinery in v2.lens.affected_set is deliberately NOT adopted: entry_file_touched_grain_interim_note records it as not live and carrying a decl-identity/output-type conflation (edit loci are decl.OUTPUT nodes, so every Bool-returning module reads as affected), and inheriting that into an acceptance gate is the trap, not the fix. Dissolve-on: the namespace lane's DeclarationGrain refinement, at which point DeclarationGrainUnavailable disappears and those subjects get real verdicts."
+
+data pr_delivery_dogfood_note: String = "DESIGNED-IN, stated up front so no reviewer meets it as a gotcha: this checker's own PR verdicts CONSUMED only because it lands as a NEW MODULE whose consumer is the acceptance flow that invokes it. Had it instead grown as declarations inside an existing module, its own verdict would be DeclarationGrainUnavailable — the check would be unable to prove its own delivery. That is not a defect to hide; it is the same grain limit the note above declares, applied to the tool itself, and it is the sharpest available argument for prioritising DeclarationGrain."
+
+type DeliveryVerdict
+  = Consumed {
+      consumers: List<ModuleIdentity>
+    }
+  | SelfConsumedOnly {
+      test_consumers: List<ModuleIdentity>
+    }
+  | ConsumerPending {
+      work_item: String
+    }
+  | DeclarationGrainUnavailable {
+      path: String
+    }
+  | DeliveryUndecidable {
+      cause: String
+    }
+
+type DeliverySubjectVerdict {
+  subject: ModuleIdentity
+  verdict: DeliveryVerdict
+}
+
+type DeliveryReceipt {
+  subjects: List<DeliverySubjectVerdict>
+  declaration_grain_unavailable_count: Int
+  consumed_count: Int
+  self_consumed_only_count: Int
+  consumer_pending_count: Int
+  undecidable_count: Int
+}
+
+data no_delivery_subject_verdicts: List<DeliverySubjectVerdict> = []
+
+data no_delivery_modules: List<ModuleIdentity> = []
+
+data pr_delivery_test_path_markers: List<String> = [
+  "/test/",
+  "_test.dag",
+  "/tests/",
+]
+
+data pr_delivery_self_consumption_note: String = "A consumer that is only the subject's own witness suite is NOT delivery — it is the inert-analysis tier the operator named: the thing exists, it is tested, and nothing in the system depends on it. SelfConsumedOnly is therefore a distinct verdict rather than a flavour of Consumed, and it refuses closure as 'delivered'. Test membership is decided by path markers, which is a heuristic over PRESENTATION rather than a structural fact — a module is a test because of where it lives, not because the graph says so. That is declared here rather than hidden: the honest structural form is a declared witness role on the module, and until that exists this axis is convention. It is deliberately conservative in the direction that matters: a non-test consumer misread as a test would understate delivery (refusing a PR that is fine), never overstate it."
+
+fn pr_delivery_path_is_test(path: String) -> Bool {
+  any(
+    xs: pr_delivery_test_path_markers,
+    predicate: fn(marker) { string_contains(path, marker) }
+  )
+}
+
+fn pr_delivery_module_paths(
+  nodes: List<ModuleDeclarationFact>,
+  module_id: ModuleIdentity
+) -> List<String> {
+  list_reverse(xs: fold_list(
+    xs: nodes,
+    empty: pr_delivery_no_paths,
+    cons: fn(acc, node) {
+      if node.module == module_id.name {
+        pr_delivery_prepend_path(acc: acc, path: node.path)
+      } else {
+        acc
+      }
+    }
+  ))
+}
+
+data pr_delivery_no_paths: List<String> = []
+
+fn pr_delivery_prepend_path(acc: List<String>, path: String) -> List<String> {
+  Cons { head: path, tail: acc }
+}
+
+fn pr_delivery_prepend_module(
+  acc: List<ModuleIdentity>,
+  module_id: ModuleIdentity
+) -> List<ModuleIdentity> {
+  Cons { head: module_id, tail: acc }
+}
+
+fn pr_delivery_module_is_test(
+  nodes: List<ModuleDeclarationFact>,
+  module_id: ModuleIdentity
+) -> Bool {
+  any(
+    xs: pr_delivery_module_paths(nodes: nodes, module_id: module_id),
+    predicate: fn(path) { pr_delivery_path_is_test(path: path) }
+  )
+}
+
+fn pr_delivery_consumers_excluding_self(
+  reached: List<ModuleIdentity>,
+  subject: ModuleIdentity
+) -> List<ModuleIdentity> {
+  list_reverse(xs: fold_list(
+    xs: reached,
+    empty: no_delivery_modules,
+    cons: fn(acc, m) {
+      if m.name == subject.name {
+        acc
+      } else {
+        pr_delivery_prepend_module(acc: acc, module_id: m)
+      }
+    }
+  ))
+}
+
+fn pr_delivery_non_test_consumers(
+  nodes: List<ModuleDeclarationFact>,
+  consumers: List<ModuleIdentity>
+) -> List<ModuleIdentity> {
+  list_reverse(xs: fold_list(
+    xs: consumers,
+    empty: no_delivery_modules,
+    cons: fn(acc, m) {
+      if pr_delivery_module_is_test(nodes: nodes, module_id: m) {
+        acc
+      } else {
+        pr_delivery_prepend_module(acc: acc, module_id: m)
+      }
+    }
+  ))
+}
+
+fn pr_delivery_verdict_for_module(
+  subject: ModuleIdentity,
+  edges: List<ModuleDependencyEdge>,
+  nodes: List<ModuleDeclarationFact>,
+  import_facts: List<ImportResolutionFact>,
+  admissions: List<ReferenceDerivedClosureAdmission>
+) -> DeliveryVerdict {
+  let consumers = pr_delivery_consumers_excluding_self(
+    reached: module_impact_reading(
+      seeds: [subject],
+      direction: DependentsOf,
+      edges: edges,
+      nodes: nodes,
+      import_facts: import_facts,
+      admissions: admissions
+    ).reached,
+    subject: subject
+  )
+  let non_test = pr_delivery_non_test_consumers(nodes: nodes, consumers: consumers)
+  if any(xs: non_test, predicate: fn(_) { true }) {
+    Consumed { consumers: non_test }
+  } else {
+    SelfConsumedOnly { test_consumers: consumers }
+  }
+}
+
+data pr_delivery_added_module_note: String = "An added PATH yields a delivery subject only when it declares a module in the merged pool. An added path that declares no module — a .rs file, a workflow yml, a doc — is not a subject of this graph at all and is simply not carried; that is different from a .dag path whose declaration the pool does not carry, which is a genuine gap. The distinction this carrier CAN see is only 'resolved to a module or not', so an added path with no module produces no subject rather than a fabricated one."
+
+fn pr_delivery_subjects_for_added_paths(
+  nodes: List<ModuleDeclarationFact>,
+  added_paths: List<String>
+) -> List<ModuleIdentity> {
+  list_reverse(xs: fold_list(
+    xs: added_paths,
+    empty: no_delivery_modules,
+    cons: fn(acc, path) {
+      fold_list(
+        xs: impact_seeds_for_path(nodes: nodes, path: path),
+        empty: acc,
+        cons: fn(inner, m) { pr_delivery_prepend_module(acc: inner, module_id: m) }
+      )
+    }
+  ))
+}
+
+data pr_delivery_modified_subject_note: String = "A changed path that is NOT newly added is a modification to an existing module, so anything this PR added inside it is a DECLARATION, which module grain cannot see. Those paths become DeclarationGrainUnavailable subjects — counted, visible, never silently consumed. This is where the fail-open would have been."
+
+fn pr_delivery_modified_dag_paths(
+  changed_paths: List<String>,
+  added_paths: List<String>,
+  nodes: List<ModuleDeclarationFact>
+) -> List<String> {
+  let added_set = fold_list(
+    xs: added_paths,
+    empty: empty_map(),
+    cons: fn(acc, path) { map_insert(m: acc, key: path, value: path) }
+  )
+  list_reverse(xs: fold_list(
+    xs: changed_paths,
+    empty: pr_delivery_no_paths,
+    cons: fn(acc, path) {
+      if pr_delivery_path_in_set(set: added_set, path: path) {
+        acc
+      } else {
+        if any(
+          xs: impact_seeds_for_path(nodes: nodes, path: path),
+          predicate: fn(_) { true }
+        ) {
+          pr_delivery_prepend_path(acc: acc, path: path)
+        } else {
+          acc
+        }
+      }
+    }
+  ))
+}
+
+fn pr_delivery_path_in_set(set: Map<String, String>, path: String) -> Bool {
+  match map_lookup_where_rejected_unreachable(m: set, key: path) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn pr_delivery_prepend_verdict(
+  acc: List<DeliverySubjectVerdict>,
+  item: DeliverySubjectVerdict
+) -> List<DeliverySubjectVerdict> {
+  Cons { head: item, tail: acc }
+}
+
+fn pr_delivery_count_verdicts(
+  subjects: List<DeliverySubjectVerdict>,
+  predicate: fn(DeliveryVerdict) -> Bool
+) -> Int {
+  fold_list(
+    xs: subjects,
+    empty: 0,
+    cons: fn(acc, row) {
+      if predicate(row.verdict) {
+        acc + 1
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn pr_delivery_is_consumed(verdict: DeliveryVerdict) -> Bool {
+  match verdict {
+    Consumed { consumers: _ } => true
+    SelfConsumedOnly { test_consumers: _ } => false
+    ConsumerPending { work_item: _ } => false
+    DeclarationGrainUnavailable { path: _ } => false
+    DeliveryUndecidable { cause: _ } => false
+  }
+}
+
+fn pr_delivery_is_self_consumed(verdict: DeliveryVerdict) -> Bool {
+  match verdict {
+    SelfConsumedOnly { test_consumers: _ } => true
+    Consumed { consumers: _ } => false
+    ConsumerPending { work_item: _ } => false
+    DeclarationGrainUnavailable { path: _ } => false
+    DeliveryUndecidable { cause: _ } => false
+  }
+}
+
+fn pr_delivery_is_pending(verdict: DeliveryVerdict) -> Bool {
+  match verdict {
+    ConsumerPending { work_item: _ } => true
+    Consumed { consumers: _ } => false
+    SelfConsumedOnly { test_consumers: _ } => false
+    DeclarationGrainUnavailable { path: _ } => false
+    DeliveryUndecidable { cause: _ } => false
+  }
+}
+
+fn pr_delivery_is_grain_unavailable(verdict: DeliveryVerdict) -> Bool {
+  match verdict {
+    DeclarationGrainUnavailable { path: _ } => true
+    Consumed { consumers: _ } => false
+    SelfConsumedOnly { test_consumers: _ } => false
+    ConsumerPending { work_item: _ } => false
+    DeliveryUndecidable { cause: _ } => false
+  }
+}
+
+fn pr_delivery_is_undecidable(verdict: DeliveryVerdict) -> Bool {
+  match verdict {
+    DeliveryUndecidable { cause: _ } => true
+    Consumed { consumers: _ } => false
+    SelfConsumedOnly { test_consumers: _ } => false
+    ConsumerPending { work_item: _ } => false
+    DeclarationGrainUnavailable { path: _ } => false
+  }
+}
+
+fn pr_delivery_receipt_of(subjects: List<DeliverySubjectVerdict>) -> DeliveryReceipt {
+  DeliveryReceipt {
+    subjects: subjects,
+    declaration_grain_unavailable_count: pr_delivery_count_verdicts(subjects: subjects, predicate: pr_delivery_is_grain_unavailable),
+    consumed_count: pr_delivery_count_verdicts(subjects: subjects, predicate: pr_delivery_is_consumed),
+    self_consumed_only_count: pr_delivery_count_verdicts(subjects: subjects, predicate: pr_delivery_is_self_consumed),
+    consumer_pending_count: pr_delivery_count_verdicts(subjects: subjects, predicate: pr_delivery_is_pending),
+    undecidable_count: pr_delivery_count_verdicts(subjects: subjects, predicate: pr_delivery_is_undecidable)
+  }
+}
+
+data pr_delivery_undecidable_note: String = "The same law the reverse query obeys, applied one level up: an incomplete view may never prove emptiness. If the changed-surface outcome is Partial or Refused, this check cannot conclude that nothing consumes a subject, because the population it would be reasoning over is itself admittedly incomplete. Every subject is therefore Undecidable, carrying the reason — never a confident SelfConsumedOnly derived from a view that was missing inputs. Getting this backwards is how a delivery gate turns into a delivery fabricator."
+
+fn pr_delivery_undecidable_receipt(
+  subjects: List<ModuleIdentity>,
+  cause: String
+) -> DeliveryReceipt {
+  pr_delivery_receipt_of(
+    subjects: list_reverse(xs: fold_list(
+      xs: subjects,
+      empty: no_delivery_subject_verdicts,
+      cons: fn(acc, m) {
+        pr_delivery_prepend_verdict(
+          acc: acc,
+          item: DeliverySubjectVerdict {
+            subject: m,
+            verdict: DeliveryUndecidable { cause: cause }
+          }
+        )
+      }
+    ))
+  )
+}
+
+fn pr_delivery_check(
+  outcome: ChangedSurfaceImpactOutcome,
+  changed_paths: List<String>,
+  added_paths: List<String>,
+  edges: List<ModuleDependencyEdge>,
+  nodes: List<ModuleDeclarationFact>,
+  import_facts: List<ImportResolutionFact>,
+  admissions: List<ReferenceDerivedClosureAdmission>
+) -> DeliveryReceipt {
+  let added_subjects = pr_delivery_subjects_for_added_paths(
+    nodes: nodes,
+    added_paths: added_paths
+  )
+  match outcome {
+    ChangedSurfaceRefused { reason } =>
+      pr_delivery_undecidable_receipt(
+        subjects: added_subjects,
+        cause: "the changed surface was refused: {reason}"
+      )
+    ChangedSurfacePartial { reading: _, unresolved_subjects: _ } =>
+      pr_delivery_undecidable_receipt(
+        subjects: added_subjects,
+        cause: "the changed-surface outcome is Partial — an incomplete view may not prove that nothing consumes a subject"
+      )
+    ChangedSurfaceComplete { reading: _ } =>
+      pr_delivery_receipt_of(
+        subjects: pr_delivery_verdicts_for_subjects(
+          added_subjects: added_subjects,
+          modified_paths: pr_delivery_modified_dag_paths(
+            changed_paths: changed_paths,
+            added_paths: added_paths,
+            nodes: nodes
+          ),
+          edges: edges,
+          nodes: nodes,
+          import_facts: import_facts,
+          admissions: admissions
+        )
+      )
+  }
+}
+
+fn pr_delivery_verdicts_for_subjects(
+  added_subjects: List<ModuleIdentity>,
+  modified_paths: List<String>,
+  edges: List<ModuleDependencyEdge>,
+  nodes: List<ModuleDeclarationFact>,
+  import_facts: List<ImportResolutionFact>,
+  admissions: List<ReferenceDerivedClosureAdmission>
+) -> List<DeliverySubjectVerdict> {
+  let added_rows = fold_list(
+    xs: added_subjects,
+    empty: no_delivery_subject_verdicts,
+    cons: fn(acc, m) {
+      pr_delivery_prepend_verdict(
+        acc: acc,
+        item: DeliverySubjectVerdict {
+          subject: m,
+          verdict: pr_delivery_verdict_for_module(
+            subject: m,
+            edges: edges,
+            nodes: nodes,
+            import_facts: import_facts,
+            admissions: admissions
+          )
+        }
+      )
+    }
+  )
+  list_reverse(xs: fold_list(
+    xs: modified_paths,
+    empty: added_rows,
+    cons: fn(acc, path) {
+      pr_delivery_prepend_verdict(
+        acc: acc,
+        item: DeliverySubjectVerdict {
+          subject: ModuleIdentity { name: path },
+          verdict: DeclarationGrainUnavailable { path: path }
+        }
+      )
+    }
+  ))
+}

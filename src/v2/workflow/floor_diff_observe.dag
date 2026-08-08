@@ -39,6 +39,7 @@ import extdeps.git {
   ThreeDot,
   git_diff_name_status_parse,
   git_diff_status_entries_touched_paths,
+  git_diff_status_entries_added_paths,
   git_diff_status_entries_departed_paths,
   git_diff_status_entries_any_unknown,
   git_diff_name_status_field_separator,
@@ -66,7 +67,11 @@ type FloorUnifiedDiffResult
   | UnifiedDiffFail { reason: String }
 
 type FloorNameStatusDiffResult
-  = NameStatusDiffOk { changed_paths: List<String>, departed_paths: List<String> }
+  = NameStatusDiffOk {
+      changed_paths: List<String>,
+      departed_paths: List<String>,
+      added_paths: List<String>
+    }
   | NameStatusDiffFail { reason: String }
 
 fn floor_env_override_or(env_name: NonEmptyStr, default: String) -> String {
@@ -345,7 +350,8 @@ fn floor_name_status_from_raw(raw: String) -> FloorNameStatusDiffResult {
       } else {
         NameStatusDiffOk {
           changed_paths: git_diff_status_entries_touched_paths(entries: entries),
-          departed_paths: git_diff_status_entries_departed_paths(entries: entries)
+          departed_paths: git_diff_status_entries_departed_paths(entries: entries),
+          added_paths: git_diff_status_entries_added_paths(entries: entries)
         }
       }
   }

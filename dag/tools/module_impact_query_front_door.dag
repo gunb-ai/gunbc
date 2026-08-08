@@ -27,6 +27,16 @@ import v2.workflow.floor_diff_observe {
   NameStatusDiffFail,
   floor_observe_git_diff_name_status_for_ci,
 }
+import gunbc.pr_delivery_check {
+  Consumed,
+  ConsumerPending,
+  DeclarationGrainUnavailable,
+  DeliveryReceipt,
+  DeliverySubjectVerdict,
+  DeliveryUndecidable,
+  SelfConsumedOnly,
+  pr_delivery_check,
+}
 import v2.lens.module_impact_query {
   ChangedPathSeeds,
   ChangedSurfaceImpactOutcome,
@@ -350,7 +360,7 @@ fn render_outcome(outcome: ChangedSurfaceImpactOutcome) -> String {
 fn front_door_changed_surface_outcome() -> ChangedSurfaceImpactOutcome {
   match floor_observe_git_diff_name_status_for_ci() {
     NameStatusDiffFail { reason } => ChangedSurfaceRefused { reason: reason }
-    NameStatusDiffOk { changed_paths, departed_paths } =>
+    NameStatusDiffOk { changed_paths, departed_paths, added_paths: _ } =>
       changed_surface_impact_outcome(
         changed_paths: changed_paths,
         departed_paths: departed_paths,
@@ -364,4 +374,62 @@ fn front_door_changed_surface_outcome() -> ChangedSurfaceImpactOutcome {
 
 fn changed_surface_impact_report() -> String {
   render_outcome(outcome: front_door_changed_surface_outcome())
+}
+
+
+data pr_delivery_front_door_note: String = "The observe-and-report front door for the PR-close delivery check (operator directive 2026-08-08). It is the acceptance flow's entry point and therefore this checker's own consumer — which is what lets the checker pass its own check. First landing observes and reports; it gates nothing until the enforcement wiring is agreed. Run: gunbc run --source-root dag --source-root src/v2 --entry dag/tools/module_impact_query_front_door.dag --function pr_delivery_report"
+
+fn render_delivery_verdict(row: DeliverySubjectVerdict) -> String {
+  match row.verdict {
+    Consumed { consumers } =>
+      "    CONSUMED               {row.subject.name}  <-  {render_modules(modules: consumers)}"
+    SelfConsumedOnly { test_consumers } =>
+      "    SELF-CONSUMED-ONLY     {row.subject.name}  <-  only its own witnesses ({render_modules(modules: test_consumers)}) — NOT delivered"
+    ConsumerPending { work_item } =>
+      "    CONSUMER-PENDING       {row.subject.name}  <-  declared, awaiting {work_item}"
+    DeclarationGrainUnavailable { path } =>
+      "    DECLARATION-GRAIN-NA   {path}  —  modified existing module; module grain cannot see which declarations were added"
+    DeliveryUndecidable { cause } =>
+      "    UNDECIDABLE            {row.subject.name}  —  {cause}"
+  }
+}
+
+fn render_delivery_receipt(receipt: DeliveryReceipt) -> String {
+  render_lines(lines: [
+    "delivery check — does anything use what this PR added?",
+    "  DECLARATION-GRAIN-UNAVAILABLE: {receipt.declaration_grain_unavailable_count}  (subjects this check CANNOT answer today — the priority argument for DeclarationGrain)",
+    "  consumed: {receipt.consumed_count}   self-consumed-only: {receipt.self_consumed_only_count}   consumer-pending: {receipt.consumer_pending_count}   undecidable: {receipt.undecidable_count}",
+    "  subjects:",
+    render_lines(lines: list_reverse(xs: fold_list(
+      xs: receipt.subjects,
+      empty: no_lines,
+      cons: fn(acc, row) { Cons { head: render_delivery_verdict(row: row), tail: acc } }
+    ))),
+  ])
+}
+
+fn pr_delivery_report() -> String {
+  match floor_observe_git_diff_name_status_for_ci() {
+    NameStatusDiffFail { reason } =>
+      "delivery check REFUSED — the diff could not be observed, so no delivery verdict is computed and nothing is assumed delivered. reason: {reason}"
+    NameStatusDiffOk { changed_paths, departed_paths, added_paths } =>
+      render_delivery_receipt(
+        receipt: pr_delivery_check(
+          outcome: changed_surface_impact_outcome(
+            changed_paths: changed_paths,
+            departed_paths: departed_paths,
+            edges: front_door_edges(),
+            nodes: front_door_nodes(),
+            import_facts: front_door_import_facts(),
+            admissions: front_door_admissions
+          ),
+          changed_paths: changed_paths,
+          added_paths: added_paths,
+          edges: front_door_edges(),
+          nodes: front_door_nodes(),
+          import_facts: front_door_import_facts(),
+          admissions: front_door_admissions
+        )
+      )
+  }
 }

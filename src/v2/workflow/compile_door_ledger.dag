@@ -184,7 +184,7 @@ fn affected_ledger_from_diff(
 ) -> AffectedLedgerResult {
   match diff {
     NameStatusDiffFail { reason: r } => AffectedDiffRefused { reason: r }
-    NameStatusDiffOk { changed_paths: changed, departed_paths: _ } =>
+    NameStatusDiffOk { changed_paths: changed, departed_paths: _, added_paths: _ } =>
       AffectedLedgered {
         rows: door_ledger(paths: dag_module_paths(paths: changed), pool_roots: pool_roots)
       }
