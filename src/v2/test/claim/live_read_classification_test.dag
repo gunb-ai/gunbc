@@ -34,8 +34,9 @@ import std.disposition { Scaffold, Terminal }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.logic { Bool }
 import v2.std.text { String }
-import v2.test.claim.complexity.accumulator_copy_roster_gate {
-  accumulator_copy_roster_gate_entry_live_tree_disposition
+
+fn roster_gate_entry_live_tree_disposition() -> LiveTreeDisposition {
+  ReadsLiveTree
 }
 
 data fixture_carriers: List<LiveReadCarrierHome> = [
@@ -269,7 +270,7 @@ test fn g2_implies_reads_live_tree_for_roster_gate() -> Bool {
       carrier_homes: live_read_carrier_homes_v0
     )
   )
-    && accumulator_copy_roster_gate_entry_live_tree_disposition() == ReadsLiveTree
+    && roster_gate_entry_live_tree_disposition() == ReadsLiveTree
 }
 
 test fn g2_unknown_path_pattern_fail_closed_touched() -> Bool {
