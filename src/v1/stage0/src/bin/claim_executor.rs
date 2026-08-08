@@ -95,17 +95,90 @@ fn read_positive_budget_ms(
     }
 }
 
+/// Where a resolved floor-batch clamp came from — seed projection of the `authority: DeclarationRef`
+/// field on `std.realization_schedule` `RunnableBatchClamp`.
+///
+/// Two independently owned populations feed one aligned clamp list: the positional
+/// `gunbc.ci_spec` rows for ordinary batches, and the scoped witness batch's own row in
+/// `gunbc.ci_layer_roots`. This executor used to reconstruct the origin from the LIST POSITION and
+/// spell it in the refusal's format string, which is how a breach came to report `clamp_ms=360000`
+/// while citing `gunbc_ci_floor_batch_clamp_params[0]` — a row whose overhead is 240 seconds. The
+/// authority now travels WITH the value; the index is carried beside it because an offset into a
+/// list is the one part of the citation no symbol can name.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum FloorBatchClampAuthority {
+    PositionalCiSpecClamp {
+        module_path: String,
+        decl_name: String,
+        index: usize,
+    },
+    ScopedBatchOwnedClamp {
+        batch_id: String,
+        module_path: String,
+        decl_name: String,
+    },
+}
+
+impl FloorBatchClampAuthority {
+    /// The citation as it appears in the refusal. Symbol first (`module decl`), position only where
+    /// a position is what is being named — DESIGN §3.
+    fn render(&self) -> String {
+        match self {
+            FloorBatchClampAuthority::PositionalCiSpecClamp {
+                module_path,
+                decl_name,
+                index,
+            } => format!("{module_path} {decl_name}[{index}]"),
+            FloorBatchClampAuthority::ScopedBatchOwnedClamp {
+                module_path,
+                decl_name,
+                ..
+            } => format!("{module_path} {decl_name}"),
+        }
+    }
+
+    fn batch_id(&self) -> Option<&str> {
+        match self {
+            FloorBatchClampAuthority::PositionalCiSpecClamp { .. } => None,
+            FloorBatchClampAuthority::ScopedBatchOwnedClamp { batch_id, .. } => Some(batch_id),
+        }
+    }
+}
+
+/// A clamp plus the declaration that produced it. Constructing one without an authority is not
+/// expressible, which is what keeps the refusal's citation and its number from drifting apart.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ResolvedFloorBatchClamp {
+    overhead_ms: u128,
+    per_unit_ms: u128,
+    authority: FloorBatchClampAuthority,
+}
+
+impl ResolvedFloorBatchClamp {
+    fn clamp_ms(&self, units: u128) -> u128 {
+        self.overhead_ms + units * self.per_unit_ms
+    }
+
+    fn units_contribution_ms(&self, units: u128) -> u128 {
+        units * self.per_unit_ms
+    }
+}
+
 /// THE COST WALL (Piece 3 derived clamp — authority `gunbc.ci_spec.gunbc_ci_floor_batch_clamp_params`
 /// + `gunbc_ci_floor_batch_clamp_note`): the per-batch clamp is `overhead_seconds*1000 +
-/// runtime_unit_count * per_unit_ms`. This reads the two index-aligned param lists fail-closed at
+/// runtime_unit_count * per_unit_ms`. This reads the index-aligned param lists fail-closed at
 /// arm time (the fast-lane-budget pattern); the clamp itself is computed at enforcement, because the
 /// affected-set-selected unit count is a runtime datum the schedule does not hold. Clamps are
 /// admission/scheduling facts at the walk grain — witness verdicts never carry a wall-clock term
 /// (the ruling split reconciled in the carrier note).
+///
+/// The authority lists are read from the SAME rows the numbers come from
+/// (`gunbc_ci_floor_batch_clamp_authority_modules` / `..._decls` project `c.authority`), so a
+/// citation cannot stay correct while the value it names moves.
 fn read_floor_batch_clamp_params(
     plan_ctx: &InterpContext,
     batch_count: usize,
-) -> Result<Vec<(u128, u128)>, String> {
+) -> Result<Vec<ResolvedFloorBatchClamp>, String> {
     let overhead_items = match run_value(plan_ctx, "gunbc_ci_floor_batch_clamp_overhead_seconds") {
         Ok(Value::List(items)) => items,
         Ok(other) => {
@@ -154,15 +227,81 @@ fn read_floor_batch_clamp_params(
             }
         }
     }
-    if overheads_ms.len() != batch_count || rates_ms.len() != batch_count {
+    let authority_modules = read_floor_batch_clamp_authority_list(
+        plan_ctx,
+        "gunbc_ci_floor_batch_clamp_authority_modules",
+    )?;
+    let authority_decls = read_floor_batch_clamp_authority_list(
+        plan_ctx,
+        "gunbc_ci_floor_batch_clamp_authority_decls",
+    )?;
+    if overheads_ms.len() != batch_count
+        || rates_ms.len() != batch_count
+        || authority_modules.len() != batch_count
+        || authority_decls.len() != batch_count
+    {
         return Err(format!(
-            "claim_executor: floor batch clamp params (overhead {} row(s), rate {} row(s)) must each cover the {} scheduled batch(es) exactly (fail-closed; update gunbc.ci_spec beside the schedule change)",
+            "claim_executor: floor batch clamp params (overhead {} row(s), rate {} row(s), authority module {} row(s), authority decl {} row(s)) must each cover the {} scheduled batch(es) exactly (fail-closed; update gunbc.ci_spec beside the schedule change)",
             overheads_ms.len(),
             rates_ms.len(),
+            authority_modules.len(),
+            authority_decls.len(),
             batch_count
         ));
     }
-    Ok(overheads_ms.into_iter().zip(rates_ms).collect())
+    Ok(overheads_ms
+        .into_iter()
+        .zip(rates_ms)
+        .zip(authority_modules)
+        .zip(authority_decls)
+        .enumerate()
+        .map(
+            |(index, (((overhead_ms, per_unit_ms), module_path), decl_name))| {
+                ResolvedFloorBatchClamp {
+                    overhead_ms,
+                    per_unit_ms,
+                    authority: FloorBatchClampAuthority::PositionalCiSpecClamp {
+                        module_path,
+                        decl_name,
+                        index,
+                    },
+                }
+            },
+        )
+        .collect())
+}
+
+/// One of the two authority projections beside the clamp numbers. An empty name is refused rather
+/// than rendered: a citation that names nothing is worse than none, because it reads as located.
+fn read_floor_batch_clamp_authority_list(
+    plan_ctx: &InterpContext,
+    function: &str,
+) -> Result<Vec<String>, String> {
+    let items = match run_value(plan_ctx, function) {
+        Ok(Value::List(items)) => items,
+        Ok(other) => {
+            return Err(format!(
+                "claim_executor: {function} must be a List<String>, got {other:?} (fail-closed)"
+            ));
+        }
+        Err(msg) => {
+            return Err(format!(
+                "claim_executor: floor plan schedules batches but {function} is unavailable (fail-closed): {msg}"
+            ));
+        }
+    };
+    let mut out: Vec<String> = Vec::new();
+    for item in items.iter() {
+        match item {
+            Value::Str(s) if !s.is_empty() => out.push(s.to_string()),
+            other => {
+                return Err(format!(
+                    "claim_executor: {function} rows must be non-empty Strings, got {other:?} (fail-closed)"
+                ));
+            }
+        }
+    }
+    Ok(out)
 }
 
 /// The RED-control fault injection (`GUNBC_FLOOR_BATCH_BUDGET_TIGHTEN_MS`): lowers the COMPUTED
@@ -629,7 +768,7 @@ enum Runnable {
         node_frontier_selection: NodeFrontierSelectionMode,
         execution_authority: ScopedWitnessExecutionAuthority,
         profile: ParsedRunnableProfile,
-        clamp: (u128, u128),
+        clamp: ResolvedFloorBatchClamp,
         process_isolation: ScopedProcessIsolation,
     },
 }
@@ -1237,6 +1376,41 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 "ScopedWitnessBatch.resource_profile.clamp.per_unit",
                 ctx,
             )?;
+            // The batch's clamp declares its own home. Read it rather than inferring one from the
+            // batch's position in the aligned list — the inference is what printed a ci_spec
+            // citation beside a number ci_spec never produced.
+            let clamp_authority_fields = match ctx.field(clamp_fields, "authority") {
+                Some(Value::Record { fields, .. }) | Some(Value::Variant { fields, .. }) => fields,
+                Some(other) => {
+                    return Err(format!(
+                        "ScopedWitnessBatch.resource_profile.clamp.authority must be DeclarationRef, got {}",
+                        other.type_label_public()
+                    ))
+                }
+                None => {
+                    return Err(
+                        "ScopedWitnessBatch.resource_profile.clamp missing `authority`".to_string()
+                    )
+                }
+            };
+            let clamp_authority_module = str_field(
+                clamp_authority_fields,
+                "module_path",
+                "ScopedWitnessBatch.resource_profile.clamp.authority",
+                ctx,
+            )?;
+            let clamp_authority_decl = str_field(
+                clamp_authority_fields,
+                "decl_name",
+                "ScopedWitnessBatch.resource_profile.clamp.authority",
+                ctx,
+            )?;
+            if clamp_authority_module.is_empty() || clamp_authority_decl.is_empty() {
+                return Err(
+                    "ScopedWitnessBatch.resource_profile.clamp.authority must name a module and a declaration"
+                        .to_string(),
+                );
+            }
             let process_isolation = match ctx.field(resource, "process_isolation") {
                 Some(Value::Variant { variant_name, .. })
                     if ctx.sym_eq(*variant_name, "SharedWalkProcess") => ScopedProcessIsolation::SharedWalkProcess,
@@ -1253,7 +1427,7 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 None => return Err("ScopedWitnessBatch.resource_profile missing `process_isolation`".to_string()),
             };
             Ok(Runnable::ScopedWitnessBatch {
-                batch_id,
+                batch_id: batch_id.clone(),
                 source_roots,
                 source_roots_digest,
                 entries,
@@ -1261,7 +1435,15 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 node_frontier_selection,
                 execution_authority,
                 profile,
-                clamp: (overhead_seconds * 1000, per_unit_ms),
+                clamp: ResolvedFloorBatchClamp {
+                    overhead_ms: overhead_seconds * 1000,
+                    per_unit_ms,
+                    authority: FloorBatchClampAuthority::ScopedBatchOwnedClamp {
+                        batch_id: batch_id.clone(),
+                        module_path: clamp_authority_module,
+                        decl_name: clamp_authority_decl,
+                    },
+                },
                 process_isolation,
             })
         }
@@ -1284,14 +1466,14 @@ fn batches_from_plan(plan: &Value, ctx: &InterpContext) -> Result<Vec<Vec<Runnab
     Ok(batches)
 }
 
-fn scoped_batch_clamp(batch: &[Runnable]) -> Result<Option<(u128, u128)>, String> {
+fn scoped_batch_clamp(batch: &[Runnable]) -> Result<Option<ResolvedFloorBatchClamp>, String> {
     let mut owned = None;
     for runnable in batch {
         if let Runnable::ScopedWitnessBatch { clamp, .. } = runnable {
             if batch.len() != 1 {
                 return Err("RunnableScopedWitnessBatch must occupy a singleton batch".to_string());
             }
-            if owned.replace(*clamp).is_some() {
+            if owned.replace(clamp.clone()).is_some() {
                 return Err("batch carries more than one scoped witness clamp".to_string());
             }
         }
@@ -7491,7 +7673,7 @@ fn run_stage(
     governor: &Arc<MemoryGovernor>,
     fast_lane_eval_budget_ms: Option<u64>,
     falsifier_self_host_wet_budgets: &FalsifierSelfHostWetBudgets,
-    clamp_params: Option<(u128, u128)>,
+    clamp_params: Option<ResolvedFloorBatchClamp>,
     budget_tighten_ms: Option<u128>,
     obligation_subjects: Option<&ObligationSubjectSet>,
 ) -> StageRun {
@@ -7662,25 +7844,38 @@ fn run_stage(
             );
             (0u128, None)
         }
-        (FloorRuntimeUnitCount::Observed { units }, Some((overhead_ms, rate_ms))) => {
-            let mut clamp = overhead_ms + (*units * rate_ms);
+        (FloorRuntimeUnitCount::Observed { units }, Some(resolved)) => {
+            let mut clamp = resolved.clamp_ms(*units);
             if let Some(t) = budget_tighten_ms {
                 clamp = clamp.min(t);
             }
             let wall_ms = wall_nanos / 1_000_000;
             if wall_ms > clamp {
                 over_budget = true;
+                // Every term the reader needs to decide whether the units axis is even live:
+                // per_unit_ms and units_contribution_ms are printed beside the count, because a
+                // bare `units=27` invites trimming the roster on a row whose rate is zero — a
+                // remedy that cannot move the threshold by construction, and whose split form
+                // would hand the same work a second overhead allowance.
+                let batch_id_field = match resolved.authority.batch_id() {
+                    Some(id) => format!(" batch_id={id}"),
+                    None => String::new(),
+                };
                 println!(
                     "{}",
                     paint(
                         &format!(
-                            "✗ FLOOR-BATCH-OVER-BUDGET {}={} wall_ms={} clamp_ms={} units={}                                  (clamp = overhead + units*rate; authority gunbc.ci_spec                                  gunbc_ci_floor_batch_clamp_params[{}]; raising an overhead or rate requires                                  an operator-signed line per gunbc_ci_floor_batch_clamp_note — a refusal,                                  never a widen)",
+                            "✗ FLOOR-BATCH-OVER-BUDGET {}={}{} wall_ms={} clamp_ms={} overhead_ms={} units={} per_unit_ms={} units_contribution_ms={}                                  (clamp = overhead + units*rate; authority {}; raising an overhead or rate requires                                  an operator-signed line per gunbc_ci_floor_batch_clamp_note — a refusal,                                  never a widen)",
                             population.phase_slug(),
                             index + 1,
+                            batch_id_field,
                             wall_ms,
                             clamp,
+                            resolved.overhead_ms,
                             units,
-                            index
+                            resolved.per_unit_ms,
+                            resolved.units_contribution_ms(*units),
+                            resolved.authority.render(),
                         ),
                         sgr::ERROR
                     )
@@ -8011,7 +8206,7 @@ fn run_walk(
     fast_lane_eval_budget_ms: Option<u64>,
     falsifier_self_host_wet_budgets: FalsifierSelfHostWetBudgets,
     stop_policy: FloorBatchStopPolicy,
-    batch_clamp_params: Option<&[Option<(u128, u128)>]>,
+    batch_clamp_params: Option<&[Option<ResolvedFloorBatchClamp>]>,
     budget_tighten_ms: Option<u128>,
     falsifier_cadence: bool,
     witness_row_cost_basis_path: &Path,
@@ -8092,7 +8287,7 @@ fn run_walk(
             &falsifier_self_host_wet_budgets,
             batch_clamp_params
                 .and_then(|p| p.get(bi))
-                .copied()
+                .cloned()
                 .flatten(),
             budget_tighten_ms,
             obligation_subjects.as_ref(),
@@ -8799,7 +8994,7 @@ fn run_perturb_check(
                         node_frontier_selection: *node_frontier_selection,
                         execution_authority: *execution_authority,
                         profile: *profile,
-                        clamp: *clamp,
+                        clamp: clamp.clone(),
                         process_isolation: *process_isolation,
                     },
                 })
@@ -10035,7 +10230,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     // fail-closed at arm time (the fast-lane-budget pattern). Scoped to the full floor plan only:
     // the plan-artifact shortcut runs a single batch of the same schedule and the falsifier
     // carries its own receipt budgets, so neither reads these lists.
-    let scoped_clamps: Vec<Option<(u128, u128)>> = match batches
+    let scoped_clamps: Vec<Option<ResolvedFloorBatchClamp>> = match batches
         .iter()
         .map(|batch| scoped_batch_clamp(batch))
         .collect::<Result<Vec<_>, _>>()
@@ -10058,7 +10253,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     } else {
         None
     };
-    let batch_clamp_params: Option<Vec<Option<(u128, u128)>>> =
+    let batch_clamp_params: Option<Vec<Option<ResolvedFloorBatchClamp>>> =
         if positional_clamps.is_some() || scoped_clamps.iter().any(|clamp| clamp.is_some()) {
             let mut positional_index = 0usize;
             let mut aligned = Vec::with_capacity(batches.len());
@@ -10066,7 +10261,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                 if let Some(clamp) = owned {
                     aligned.push(Some(clamp));
                 } else if let Some(rows) = &positional_clamps {
-                    aligned.push(rows.get(positional_index).copied());
+                    aligned.push(rows.get(positional_index).cloned());
                     positional_index += 1;
                 } else {
                     aligned.push(None);

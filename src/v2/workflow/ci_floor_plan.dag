@@ -545,6 +545,19 @@ fn gunbc_ci_floor_batch_clamp_per_unit_ms() -> List<Int> {
   map(gunbc_ci_floor_batch_clamp_params, c => millisecond_count(m: c.per_unit))
 }
 
+// The positional clamp's citation is PROJECTED from the same rows the numbers come from, never
+// spelled in the executor's format string. That is the difference between a diagnostic whose
+// authority is derived and one that merely agrees with the model until someone edits one of them:
+// a hardcoded citation stays green while the value it names moves, which is exactly the failure
+// this pair exists to make unwritable (std.realization_schedule RunnableBatchClamp).
+fn gunbc_ci_floor_batch_clamp_authority_modules() -> List<String> {
+  map(gunbc_ci_floor_batch_clamp_params, c => c.authority.module_path)
+}
+
+fn gunbc_ci_floor_batch_clamp_authority_decls() -> List<String> {
+  map(gunbc_ci_floor_batch_clamp_params, c => c.authority.decl_name)
+}
+
 fn gunbc_ci_compile_clean_clamp_overhead_seconds() -> Int {
   second_count(s: gunbc_ci_compile_clean_clamp.overhead)
 }

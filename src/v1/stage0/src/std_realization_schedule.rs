@@ -28,13 +28,15 @@ pub use crate::std_content_hash::{
     fnv1a64_structural_hex_digest, serialize_content_hash,
 };
 pub use crate::std_content_hash::{ContentHash, Fnv1a64Structural};
+pub use crate::std_decl_ref::DeclarationRef;
 pub use crate::std_execution_mode::execution_mode_eq;
 pub use crate::std_execution_mode::ExecutionMode;
 use crate::std_execution_mode::ExecutionMode::Hermetic;
 use crate::std_measure::ClockBasis::{CpuClock, WallClock};
 use crate::std_measure::Quantity::Time;
 pub use crate::std_measure::{
-    byte_size, byte_size_count, clock_basis_eq, measure_count, time_measure, watt,
+    byte_size, byte_size_count, clock_basis_eq, measure_count, millisecond_count, second_count,
+    time_measure, watt,
 };
 pub use crate::std_measure::{ByteSize, ClockBasis, Measure, Millisecond, Quantity, Second, Watt};
 pub use crate::std_nat::Nat;
@@ -249,6 +251,12 @@ pub struct RunnableResourceProfile {
 pub struct RunnableBatchClamp {
     pub overhead: Second,
     pub per_unit: Millisecond,
+    pub authority: Rc<DeclarationRef>,
+}
+
+pub fn runnable_batch_clamp_ms(clamp: Rc<RunnableBatchClamp>, units: i64) -> i64 {
+    ((second_count(clamp.overhead.clone()) * 1000)
+        + (units.clone() * millisecond_count(clamp.per_unit.clone())))
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

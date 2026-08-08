@@ -9,6 +9,7 @@ import std.realization_schedule {
 }
 import std.execution_mode { Hermetic }
 import std.measure { second, millisecond }
+import std.decl_ref { decl_ref }
 import gunbc.cli_invoke {
   source_roots_shell_flags,
   SourceRootBare,
@@ -984,7 +985,14 @@ data v1_claim_scoped_witness_batch: ScopedWitnessBatch = scoped_witness_batch(
       memory: runnable_memory_substantial(),
       execution_mode: Hermetic,
     ),
-    clamp: RunnableBatchClamp { overhead: second(count: 360), per_unit: millisecond(count: 0) },
+    clamp: RunnableBatchClamp {
+      overhead: second(count: 360),
+      per_unit: millisecond(count: 0),
+      authority: decl_ref(
+        module_path: "gunbc.ci_layer_roots",
+        decl_name: "v1_claim_scoped_witness_batch",
+      ),
+    },
     process_isolation: SequentialChildProcess,
   },
 )
