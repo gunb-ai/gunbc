@@ -5,6 +5,7 @@ import v2.compiler.emit_module { emit_module }
 import v2.compiler.infer { InferredTree }
 import v2.compiler.build_transport_admission { build_transport_admissible }
 import std.access { AccessDecision, Permit, Deny }
+import std.process_termination { ProcessTermination, ProcessExited, ProcessSignaled, ProcessTerminationUnobserved }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.compiler.eval {
@@ -480,10 +481,17 @@ fn run_host_process_admitted(
           }
           let exit = HostExit {
             outcome: Accepted {
-              value: if result.success {
-                Holds { value: ExitOk { code: result.exit_code } }
-              } else {
-                Violates { diagnostic: emit_host_exit_not_ok_diagnostic() }
+              value: match result.termination {
+                ProcessExited { code: code } =>
+                  if code == 0 {
+                    Holds { value: ExitOk { code: code } }
+                  } else {
+                    Violates { diagnostic: emit_host_exit_not_ok_diagnostic() }
+                  }
+                ProcessSignaled { signal: _ } =>
+                  Violates { diagnostic: emit_host_exit_not_ok_diagnostic() }
+                ProcessTerminationUnobserved =>
+                  Violates { diagnostic: emit_host_exit_not_ok_diagnostic() }
               },
               diagnostics: None
             }

@@ -1,0 +1,185 @@
+module test.claim.codex_package_delivery_wet_witness_test
+
+import extdeps.filesystem.filesystem_io
+import extdeps.shell
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.types { Bool, String, NonEmptyStr, FilePath }
+import std.content_hash { Sha512Hash }
+import gunbc.package_delivery {
+  codex_runtime_lock_path,
+  codex_runtime_manifest_path,
+  admit_codex_package_lock_text,
+  CodexPackageLockAdmitted,
+  codex_wrapper_lookup,
+  CodexWrapperUnique,
+  acquire_and_admit_registry_artifact,
+  RegistryArtifactAdmitted,
+  materialize_codex_runtime_bundle,
+  AdmittedCodexRuntimeSource,
+  CodexRuntimeMaterialized,
+  observe_codex_npm_runtime_target,
+  CodexNpmRuntimeTargetObserved,
+  select_codex_exact_target_closure,
+  CodexExactTargetClosureSelected,
+  acquire_and_admit_selected_pair,
+  TargetClosureAcquisitionOk,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data witness_note: String = "WET: exact wrapper+platform lock-nodes → admit HTTPS registry archives into isolated cache → npm ci --offline → native Codex executable read-back. Release parent is an isolated mktemp root (not hardcoded /opt) so CI hosts and local runners share one path. Excluded from hermetic discovery and from the per-PR wet floor (integration job)."
+
+data openai_codex_integrity_hex: String = "c86dec3d635d6bfd980084080eaf4caeb8e8093210eebc5833921ab2b1b754172e8422d39207a0fc9cea989ab557df11138309e630b10d75d094e8eb762b4547"
+
+fn committed_codex_lock_text() -> String {
+  filesystem_read(path: codex_runtime_lock_path as String).content
+}
+
+fn committed_admitted_codex_runtime_source() -> AdmittedCodexRuntimeSource {
+  AdmittedCodexRuntimeSource {
+    manifest_bytes: filesystem_read(path: codex_runtime_manifest_path as String).content,
+    lock_bytes: committed_codex_lock_text(),
+  }
+}
+
+fn isolated_release_parent() -> FilePath? {
+  let d = shell.Mktemp.Dir()
+  if d.success == false {
+    none
+  } else {
+    Present { value: d.path }
+  }
+}
+
+test fn acquire_required_codex_tarball_sha512_matches_lock() -> Bool {
+  match admit_codex_package_lock_text(text: committed_codex_lock_text()) {
+    CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
+      match codex_wrapper_lookup(graph: graph) {
+        CodexWrapperUnique { node: _, artifact } => {
+          let staging = shell.Mktemp.Dir()
+          if staging.success == false {
+            false
+          } else {
+            match acquire_and_admit_registry_artifact(
+              artifact: artifact,
+              lock_node_key: "node_modules/@openai/codex" as NonEmptyStr,
+              dest_dir: staging.path,
+            ) {
+              RegistryArtifactAdmitted { staged } =>
+                (staged.receipt.observed_digest.hex as String) == openai_codex_integrity_hex
+              _ => false
+            }
+          }
+        }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn acquire_exact_target_pair_admits_wrapper_and_platform() -> Bool {
+  match admit_codex_package_lock_text(text: committed_codex_lock_text()) {
+    CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
+      match observe_codex_npm_runtime_target() {
+        CodexNpmRuntimeTargetObserved { target } =>
+          match select_codex_exact_target_closure(graph: graph, target: target) {
+            CodexExactTargetClosureSelected {
+              wrapper,
+              platform,
+              target: _,
+              platform_lock_key: _,
+              native_executable_rel: _,
+            } => {
+              let staging = shell.Mktemp.Dir()
+              if staging.success == false {
+                false
+              } else {
+                match acquire_and_admit_selected_pair(
+                  wrapper: wrapper,
+                  platform: platform,
+                  dest_dir: staging.path,
+                ) {
+                  TargetClosureAcquisitionOk { admitted } => count(admitted) == 2
+                  _ => false
+                }
+              }
+            }
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn materialize_codex_runtime_bundle_produces_native_executable() -> Bool {
+  match isolated_release_parent() {
+    Absent => false
+    Present { value: release_parent } =>
+      match materialize_codex_runtime_bundle(
+        source: committed_admitted_codex_runtime_source(),
+        release_parent: release_parent,
+      ) {
+        CodexRuntimeMaterialized { bundle } =>
+          count(bundle.admitted_packages) == 2
+            && (bundle.platform_package_rel as String).starts_with(
+              prefix: "node_modules/@openai/codex-",
+            )
+            && (bundle.native_executable_rel as String).contains("/vendor/")
+            && (bundle.root as String).starts_with(prefix: (release_parent as String))
+            && match bundle.admitted_package_set_identity {
+              Sha512Hash(_) => true
+              _ => false
+            }
+            && match bundle.receipt.receipt_identity {
+              Sha512Hash(_) => true
+              _ => false
+            }
+            && match bundle.receipt.protocol_schema_identity {
+              Sha512Hash(_) => true
+              _ => false
+            }
+            && match bundle.receipt.materialized_tree.tree_identity {
+              Sha512Hash(_) => true
+              _ => false
+            }
+            && (bundle.receipt.toolchain.npm_cli_version as String) != ""
+            && (bundle.receipt.toolchain.node_version as String) != ""
+            && shell.Test.IsFile(
+              path: concat(
+                bundle.root as String,
+                "/.gunbc-codex-runtime-receipt",
+              ) as FilePath,
+            ).is_file
+        _ => false
+      }
+  }
+}
+
+test fn materialize_identical_input_twice_reuses_same_release_identity() -> Bool {
+  match isolated_release_parent() {
+    Absent => false
+    Present { value: release_parent } => {
+      let source = committed_admitted_codex_runtime_source()
+      match materialize_codex_runtime_bundle(
+        source: source,
+        release_parent: release_parent,
+      ) {
+        CodexRuntimeMaterialized { bundle: first } =>
+          match materialize_codex_runtime_bundle(
+            source: source,
+            release_parent: release_parent,
+          ) {
+            CodexRuntimeMaterialized { bundle: second } => {
+              let same_root = (first.root as String) == (second.root as String)
+              let same_receipt = (first.receipt.receipt_identity as String) == (second.receipt.receipt_identity as String)
+              let same_tree = (first.receipt.materialized_tree.tree_identity as String) == (second.receipt.materialized_tree.tree_identity as String)
+              same_root && same_receipt && same_tree
+            }
+            _ => false
+          }
+        _ => false
+      }
+    }
+  }
+}

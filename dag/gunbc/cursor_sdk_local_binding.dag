@@ -1,0 +1,72 @@
+module gunbc.cursor_sdk_local_binding
+
+import std.types { Bool, NonEmptyStr, String }
+import gunbc.cursor_sdk_secret_admission {
+  CursorSdkSecretRefVersionAdmitted,
+  CursorSdkSecretRefVersionRefused,
+  cursor_sdk_admit_exact_secret_ref_version,
+}
+import extdeps.llm.cursor_sdk {
+  CursorSdkLocalCredential,
+  CursorSdkApiKeySecretRef,
+  CursorSdkApiKeyMaterialization,
+  CursorSdkApiKeyFromSecretRef,
+  CursorSdkApiKeyFromEnvironment,
+  cursor_sdk_materialize_api_key,
+  cursor_sdk_environment_api_key_materialization,
+}
+import extdeps.llm.cursor_sdk_facts {
+  cursor_sdk_local_account_usage_unobservable,
+  CursorSdkLocalAccountUsageUnobservable,
+}
+import extdeps.llm.cursor_cli { cursor_api_key_env_var }
+import gunbc.dispatch_selection {
+  CursorCredentialRef,
+  CursorApiKeySecretRef,
+  CursorLocalLoginRef,
+}
+
+data cursor_sdk_local_binding_note: String = "Slice-E bridge only — no live wiring. Maps dispatch CursorCredentialRef to SDK-local credential materialization. API key flows INTO the SDK call via SecretRef, never argv. CursorLocalLoginRef refuses because interactive login is not the SDK automation path."
+
+type CursorSdkLocalCredentialAdmission
+  = CursorSdkLocalCredentialAdmitted {
+      credential: CursorSdkLocalCredential
+      materialization: CursorSdkApiKeyMaterialization
+    }
+  | CursorSdkLocalCredentialRefused { reason: NonEmptyStr }
+
+fn cursor_sdk_local_credential_from_dispatch(
+  credential: CursorCredentialRef,
+) -> CursorSdkLocalCredentialAdmission {
+  match credential {
+    CursorApiKeySecretRef { secret_ref: ref } =>
+      match cursor_sdk_admit_exact_secret_ref_version(ref: ref) {
+        CursorSdkSecretRefVersionRefused { reason } =>
+          CursorSdkLocalCredentialRefused { reason: reason }
+        CursorSdkSecretRefVersionAdmitted { secret_ref: admitted_ref } => {
+          let local = CursorSdkApiKeySecretRef { secret_ref: admitted_ref }
+          CursorSdkLocalCredentialAdmitted {
+            credential: local,
+            materialization: cursor_sdk_materialize_api_key(credential: local),
+          }
+        }
+      }
+    CursorLocalLoginRef =>
+      CursorSdkLocalCredentialRefused {
+        reason: "Cursor SDK local automation requires CursorApiKeySecretRef, not interactive login" as NonEmptyStr,
+      }
+  }
+}
+
+fn cursor_sdk_local_usage_standing() -> CursorSdkLocalAccountUsageUnobservable {
+  cursor_sdk_local_account_usage_unobservable()
+}
+
+fn cursor_sdk_materialization_uses_secret_ref(
+  materialization: CursorSdkApiKeyMaterialization,
+) -> Bool {
+  match materialization {
+    CursorSdkApiKeyFromSecretRef { secret_ref: _ } => true
+    CursorSdkApiKeyFromEnvironment { env_var: _ } => false
+  }
+}

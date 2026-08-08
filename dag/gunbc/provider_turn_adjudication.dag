@@ -1,0 +1,53 @@
+module gunbc.provider_turn_adjudication
+
+import std.types { Bool, NonEmptyStr, String }
+
+data provider_turn_adjudication_note: String = "Terminal disposition and native cause are distinct axes (provider-control-interface-audit §3.2). A turn may be terminally failed while its cause stays unclassified. Automatic recovery is OUT OF SCOPE for this press specimen: no native decoder, retry budget, retry-after, previous-attempt set, or loop control exists yet — classified RetryableTransient MUST NOT authorize recovery. Cross-provider recovery is explicitly deferred."
+
+type ProviderCauseClass
+  = QuotaExhausted
+  | AuthenticationRequired
+  | RetryableTransient
+  | NonRetryableRejected
+
+type ProviderTurnCause
+  = ProviderNativeCauseClassified {
+      class: ProviderCauseClass
+      evidence: NonEmptyStr
+    }
+  | ProviderNativeCauseUnknown {
+      evidence: NonEmptyStr
+    }
+
+type ProviderTurnDisposition
+  = ProviderTurnCompleted
+  | ProviderTurnFailed {
+      cause: ProviderTurnCause
+    }
+  | ProviderTurnNotObserved
+
+data press_start_is_not_turn_note: String = "Codex account preflight (CodexAccountPreflightSubject / observe_codex_account_preflight) is provider/runtime standing — NOT a turn observation and NOT a roadmap AttemptKey. ProviderTurnNotObserved is the honest standing until a native terminal event is retained on a WorkerTurn."
+
+fn automatic_recovery_authorized(disposition: ProviderTurnDisposition) -> Bool {
+  match disposition {
+    ProviderTurnCompleted => false
+    ProviderTurnNotObserved => false
+    ProviderTurnFailed { cause: _ } => false
+  }
+}
+
+fn press_display_finished(disposition: ProviderTurnDisposition) -> Bool {
+  match disposition {
+    ProviderTurnCompleted => true
+    ProviderTurnFailed { cause: _ } => true
+    ProviderTurnNotObserved => false
+  }
+}
+
+fn press_display_running(disposition: ProviderTurnDisposition) -> Bool {
+  match disposition {
+    ProviderTurnNotObserved => false
+    ProviderTurnCompleted => false
+    ProviderTurnFailed { cause: _ } => false
+  }
+}

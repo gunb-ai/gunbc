@@ -317,6 +317,8 @@ pub struct SourceSpan {
 
 pub type Timestamp = String;
 
+pub type EpochSecs = i64;
+
 pub type EpochMs = i64;
 
 pub type Duration = i64;

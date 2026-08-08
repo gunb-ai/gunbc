@@ -1,0 +1,79 @@
+module extdeps.tools.sha512sum
+
+import std.types { NonEmptyStr, String, Bool, FilePath }
+import std.content_hash { Sha512Digest, sha512_hex_digest }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.tools { CliTool, SourceCoreutils }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.gnu.org/software/coreutils/manual/coreutils.html"
+  }
+}
+
+data sha512sum_cli_tool: CliTool = CliTool {
+  name: "sha512sum",
+  min_version: none,
+  installable_via: [SourceCoreutils],
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.tools.sha512sum",
+      decl_name: "sha512sum_cli_tool",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.tools.sha512sum.extdeps_external_authority_anchor,
+  further_citations: [extdeps.crypto.hash.extdeps_external_authority_anchor]
+}
+
+data sha512_algorithm_authority_consumed_note: String = "The FIPS 180-4 algorithm citation is CONSUMED from extdeps.crypto.hash, never re-minted here (DESIGN §3 single authority; review 50411 caught the fork). This module's own extdeps_external_authority_anchor is the coreutils manual — the tool that prints the digest — which is a different upstream subject from the algorithm it implements, so the two rows are distinct facts rather than a nickname pair. The anchor keeps a literal ExternalAuthority body deliberately: mandatory-tag enrollment reads the value subtree structurally and a datum alias reds as missing (extdeps.cache.pin sccache_pin_instantiation_note, review 44866). A further_citation carries no such constraint, so it references the owning module's row directly."
+
+data sha512_observe_shape_note: String = "INTERFACE: observe file bytes → Sha512Digest. Transport: coreutils sha512sum printing lowercase hex. This is an OBSERVATION, not digest_shell_verify_line (which assembles a check script from an expected digest). gunbc.package_delivery compares the observed digest to the lock expectation in admit_observed_archive_digest. dissolve-on: a native/library Sha512Digest realization as a second handler."
+
+service sha512sum.Sha512 {
+  operation DigestFile {
+    input { path: FilePath }
+    output {
+      stdout: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["sha512sum", "{path}"] }
+    exit {
+      0 => Unit "digest observed"
+      nonzero => Unit "sha512sum failed"
+    }
+  }
+}
+
+type Sha512FileObservation
+  = Sha512FileObserved { digest: Sha512Digest }
+  | Sha512FileObservationRefused { cause: NonEmptyStr }
+
+fn sha512sum_observe_file(path: FilePath) -> Sha512FileObservation {
+  let read = sha512sum.Sha512.DigestFile(path: path)
+  if !read.success {
+    Sha512FileObservationRefused { cause: "sha512sum DigestFile failed" as NonEmptyStr }
+  } else {
+    match split(s: trim(read.stdout), delimiter: " ") |> first {
+      Present { value: hex } =>
+        match sha512_hex_digest(hex: hex) {
+          Present { value: digest } => Sha512FileObserved { digest: digest }
+          Absent =>
+            Sha512FileObservationRefused {
+              cause: "sha512sum stdout hex failed Sha512Digest refinement" as NonEmptyStr,
+            }
+        }
+      Absent =>
+        Sha512FileObservationRefused {
+          cause: "sha512sum stdout empty" as NonEmptyStr,
+        }
+    }
+  }
+}

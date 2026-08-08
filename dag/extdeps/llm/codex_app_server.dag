@@ -1,9 +1,17 @@
 module extdeps.llm.codex_app_server
 
-import std.types { NonEmptyStr, String }
+import std.types { NonEmptyStr, String, FilePath, Int }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import extdeps.languages.json.emit {
+  JsonValue,
+  json_kv,
+  json_int,
+  json_string,
+  json_object,
+  serialize_json,
+}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -21,15 +29,130 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: extdeps.llm.codex_app_server.extdeps_external_authority_anchor,
-  further_citations: [],
+  further_citations: []
 }
+
+data codex_app_server_subject_note: String = "THE SUBJECT IS the Codex app-server control interface (stdio/JSON-RPC methods) — not exec --json and not gunbc product policy. Method strings below are cited from `codex app-server generate-json-schema` against @openai/codex 0.146.0 (ClientRequest oneOf enum values). Wire request/response shapes land with the JSON-AST reader next; do not invent alternate method spellings."
 
 type CodexAppServerTransport
   = CodexAppServerStdio
-  | CodexAppServerUnixSocket
+  | CodexAppServerUnixSocket {
+      path: FilePath
+    }
 
+type CodexAppServerMethod
+  = CodexAppServerInitialize
+  | CodexAppServerAccountRead
+  | CodexAppServerAccountRateLimitsRead
+  | CodexAppServerThreadStart
+  | CodexAppServerTurnStart
+
+fn codex_app_server_method_wire_name(method: CodexAppServerMethod) -> NonEmptyStr {
+  match method {
+    CodexAppServerInitialize => "initialize" as NonEmptyStr
+    CodexAppServerAccountRead => "account/read" as NonEmptyStr
+    CodexAppServerAccountRateLimitsRead => "account/rateLimits/read" as NonEmptyStr
+    CodexAppServerThreadStart => "thread/start" as NonEmptyStr
+    CodexAppServerTurnStart => "turn/start" as NonEmptyStr
+  }
+}
+
+data codex_app_server_method_note: String = "FIRST PRESS SLICE method sequence from the generated ClientRequest schema: initialize → account/read → account/rateLimits/read → thread/start → turn/start. There is no `thread/turn` or bare `rateLimits/read` method in 0.146.0."
+
+type CodexAppServerExecutable {
+  path: FilePath
+}
+
+data codex_app_server_request_line_emit_note: String = "Request lines are BUILT through extdeps.languages.json.emit, not hand-authored as escaped string literals (review 50540). The literals they replace carried their own JSON grammar — braces, quoting and separators spelled out in \\{ and \\\" escapes — which is a second JSON representation sitting beside the module that already owns one (DESIGN §3 dual representation), and it is the representation that cannot escape a value: a method name or client field containing a quote would have produced a malformed frame with nothing to refuse it. serialize_json applies the escaping, so the wire bytes are a consequence of the modeled value rather than of an author getting the backslashes right."
+
+fn codex_app_server_jsonrpc_request(id: Int, method: String, params: JsonValue) -> NonEmptyStr {
+  serialize_json(
+    v: json_object(
+      members: [
+        json_kv(key: "jsonrpc", value: json_string(s: "2.0")),
+        json_kv(key: "id", value: json_int(n: id)),
+        json_kv(key: "method", value: json_string(s: method)),
+        json_kv(key: "params", value: params),
+      ],
+    ),
+  ) as NonEmptyStr
+}
+
+fn codex_app_server_initialize_request_line() -> NonEmptyStr {
+  codex_app_server_jsonrpc_request(
+    id: 1,
+    method: "initialize",
+    params: json_object(
+      members: [
+        json_kv(
+          key: "clientInfo",
+          value: json_object(
+            members: [
+              json_kv(key: "name", value: json_string(s: "gunbc")),
+              json_kv(key: "title", value: json_string(s: "gunbc")),
+              json_kv(key: "version", value: json_string(s: "0")),
+            ],
+          ),
+        ),
+        json_kv(key: "capabilities", value: json_object(members: [])),
+      ],
+    ),
+  )
+}
+
+fn codex_app_server_initialized_notification_line() -> NonEmptyStr {
+  serialize_json(
+    v: json_object(
+      members: [
+        json_kv(key: "jsonrpc", value: json_string(s: "2.0")),
+        json_kv(key: "method", value: json_string(s: "initialized")),
+      ],
+    ),
+  ) as NonEmptyStr
+}
+
+fn codex_app_server_account_read_request_line() -> NonEmptyStr {
+  codex_app_server_jsonrpc_request(
+    id: 2,
+    method: "account/read",
+    params: json_object(members: []),
+  )
+}
+
+fn codex_app_server_rate_limits_read_request_line() -> NonEmptyStr {
+  codex_app_server_jsonrpc_request(
+    id: 3,
+    method: "account/rateLimits/read",
+    params: json_object(members: []),
+  )
+}
+
+data codex_app_server_initialized_handshake_note: String = "After initialize succeeds the client MUST send the initialized ClientNotification (method initialized, no id) before account/rateLimits/read. Without it the server may return no id=3 response at all — a missing-handshake Incomplete, not a wrong method name."
+
+data codex_app_server_response_shape_note: String = "Response carriers for initialize / account/read / account/rateLimits/read are grounded here as cited wire field keys from the 0.146 generate-json-schema ClientRequest companion responses. Full AST decoder types that bind protocol_schema_identity are the dissolve-on; until then product modules MUST consume these keys rather than invent alternate spellings."
+
+data codex_initialize_result_user_agent_key: NonEmptyStr = "userAgent" as NonEmptyStr
+data codex_account_read_result_requires_openai_auth_key: NonEmptyStr = "requiresOpenaiAuth" as NonEmptyStr
+data codex_account_read_result_account_key: NonEmptyStr = "account" as NonEmptyStr
+data codex_rate_limits_result_rate_limits_key: NonEmptyStr = "rateLimits" as NonEmptyStr
+data codex_rate_limits_result_by_limit_id_key: NonEmptyStr = "rateLimitsByLimitId" as NonEmptyStr
+data codex_rate_limits_snapshot_limit_id_key: NonEmptyStr = "limitId" as NonEmptyStr
+data codex_rate_limits_snapshot_primary_key: NonEmptyStr = "primary" as NonEmptyStr
+data codex_rate_limits_snapshot_secondary_key: NonEmptyStr = "secondary" as NonEmptyStr
+data codex_rate_limits_snapshot_spend_control_reached_key: NonEmptyStr = "spendControlReached" as NonEmptyStr
+data codex_rate_limits_snapshot_rate_limit_reached_type_key: NonEmptyStr = "rateLimitReachedType" as NonEmptyStr
+data codex_rate_limits_window_used_percent_key: NonEmptyStr = "usedPercent" as NonEmptyStr
+data codex_rate_limits_window_resets_at_key: NonEmptyStr = "resetsAt" as NonEmptyStr
 data codex_default_rate_limit_id: NonEmptyStr = "codex" as NonEmptyStr
 
 data codex_bengalfox_rate_limit_id: NonEmptyStr = "codex_bengalfox" as NonEmptyStr
+data codex_structured_error_code_rate_limit_reached: NonEmptyStr = "rate_limit_reached" as NonEmptyStr
+data codex_structured_error_code_quota_exceeded: NonEmptyStr = "quota_exceeded" as NonEmptyStr
+data codex_structured_error_code_authentication_required: NonEmptyStr = "authentication_required" as NonEmptyStr
+
+data codex_rate_limits_capacity_decode_note: String = "GetAccountRateLimitsResponse carries rateLimits (backward-compatible single-bucket mirror) AND rateLimitsByLimitId (multi-bucket map keyed by limit_id, e.g. codex vs codex_bengalfox). Live exhausted Pro accounts can have codex at usedPercent 100 with rateLimitReachedType rate_limit_reached while another limit_id remains at 0 — a single account-level Ready|QuotaReached is therefore false. Decode every by-limit-id entry; keep native limit tokens open. spendControlReached true is an exhaustion signal when present, but live exhaustion often has spendControlReached false — usedPercent 100 and rateLimitReachedType are the operative facts. Empty rateLimits:\{\} answers the endpoint without proving capacity."
+
+data codex_rate_limit_subject_encoding_note: String = "Standing bridge subject encoding (coord with gunbc.provider_standing / #7926, deep-raven-684 2026-08-06): each rateLimitsByLimitId entry projects to ProviderNativeLimitBucket \{ native_key: limit_id \} — NEVER ProviderAccountLimit. Promoting an exhausted codex bucket to account scope would block for the wrong reason, erase bucket identity, and wrongly refuse work that a sibling bucket (e.g. codex_bengalfox) could serve. If a truthful native-bucket observation does not block a dispatch that draws on that bucket, the defect is in limit_observation_blocks_selection coverage, not in this encoding. Discriminating control from the live capture: one inventory with codex at 100 percent and codex_bengalfox at 0 percent must refuse a dispatch that draws on codex and allow a dispatch that draws on codex_bengalfox."
 
 data codex_model_to_limit_bucket_gap_note: String = "TYPED GAP — model → native limit_id is NOT observable on the 0.146 app-server surface. Model has no limitId; TurnStartParams.model is a free string with no bucket edge; RateLimitSnapshot carries limitId/limitName but no model join. Live limitName GPT-5.3-Codex-Spark on codex_bengalfox is suggestive folklore, not a cited join. dissolve-on: an upstream field or documented map that binds turn model (or service tier) to metered limit_id. Until then, consumers must not invent a closed mapping. The symbol codex_default_rate_limit_id names the backward-compatible rateLimits mirror's native key (live limitId=codex), which is the press AccountReady gate key — not a proven claim that every unspecified-model turn/start consumes that bucket."
+
