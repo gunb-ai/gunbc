@@ -98,10 +98,6 @@ fn discovery_class_rows(state: FloorDiscoveryWalkState) -> List<WitnessClassRow>
   })
 }
 
-fn live_census_rows() -> List<WitnessClassRow> {
-  concat(discovery_class_rows(state: live_discovery_state()), plan_member_rows(plan: selected_logic_primary_plan()))
-}
-
 test fn witness_live_roster_census_holds() -> Bool {
   let state = live_discovery_state()
   let walk_loud = state.walk_failures == 0
