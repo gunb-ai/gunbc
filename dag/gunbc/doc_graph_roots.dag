@@ -181,6 +181,17 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "spark-standup-program-accounting",
+    primary_work: DeclarationRef { module_path: "gunbc.dgx_spark_procurement", decl_name: "dgx_spark_router_bindings", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "gunbc.dgx_spark_procurement", decl_name: "dgx_spark_router_binding_operator_allocation", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.dgx_spark_procurement", decl_name: "srv5_router_binding", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.dgx_spark_procurement", decl_name: "srv6_router_binding", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the Spark program's lanes reach a registered home — the RoadmapNode rows this note calls its own follow-up are authored, so ROADMAP.md names the program instead of this file being its only durable record — and the wind-down lane accounting it carries is either merged or honestly retired; then the surviving hardware facts live on gunbc.dgx_spark_procurement and gunbc.fleet_intent_network and this bind deletes with the doc." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "owned-ci-control-plane-design",
     primary_work: DeclarationRef { module_path: "gunbc.owned_ci_seed", decl_name: "owned_ci_control_plane_seed_scaffold", field: WholeDeclaration },
     additional_works: [
