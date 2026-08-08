@@ -881,11 +881,23 @@ fn resolve_claude_offer(
           }
         }
       }
-    _ =>
+    SelectCodex {
+      profile: _,
+      account: _,
+      model: _,
+      effort: _,
+      operator_asserted_native_limit_bucket: _,
+    } =>
       DispatchSelectionRefused {
         node_sizing: node_sizing,
         requested_selection: request,
-        reason: "selection request shape does not match Claude offer" as NonEmptyStr,
+        reason: "Codex selection request does not match a Claude offer" as NonEmptyStr,
+      }
+    SelectCursor { profile: _, credential: _, model: _, agent_mode: _ } =>
+      DispatchSelectionRefused {
+        node_sizing: node_sizing,
+        requested_selection: request,
+        reason: "Cursor selection request does not match a Claude offer" as NonEmptyStr,
       }
   }
 }

@@ -480,8 +480,10 @@ test fn witness_srv1_claude_selection_resolves_with_fixture_standing() -> Bool {
 }
 
 test fn witness_claude_request_refuses_on_codex_only_inventory() -> Bool {
-  match dispatch_selection_for_instance(
-    instance: srv2_lab_dashboard_instance(),
+  match resolve_dispatch_selection(
+    inventory: fixture_inventory_codex_only_available(
+      instance: srv2_lab_dashboard_instance(),
+    ),
     request: provider_selection_request_for_kind(kind: ClaudeCliProvider),
     node_sizing: Unsized,
   ) {
