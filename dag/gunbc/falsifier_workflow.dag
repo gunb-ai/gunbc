@@ -49,7 +49,7 @@ import gunbc.falsifier_cold_corpus_execution {
   aggregate_shell_receipt_cold_receipt_artifact_absent,
   aggregate_shell_receipt_corpus_executed,
 }
-import gunbc.shell_bash_runner { shell_printf_line }
+import gunbc.shell_bash_runner { bash_escape_for_double_quotes }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.cli_invoke {
@@ -218,7 +218,7 @@ data falsifier_aggregate_verdict_shell_emit_dissolution_trigger: String = "🟡 
 
 fn falsifier_aggregate_verdict_write_receipt(json: String) -> String {
   concat(
-    shell_printf_line(line: json),
+    concat("printf '%s\\n' \"", concat(bash_escape_for_double_quotes(s: json), "\"")),
     concat(" > ", concat(falsifier_cold_corpus_execution_receipt_path, "\n"))
   )
 }
@@ -300,7 +300,7 @@ fn falsifier_aggregate_verdict_script() -> String {
                                                                                   concat(
                                                                                     floor_component_receipt_schema,
                                                                                     concat(
-                                                                                      " target/floor-component-receipt.json ]; then\n",
+                                                                                      " target/floor-component-receipt.json; then\n",
                                                                                       concat(
                                                                                         "  FLOOR_RECEIPT_PRESENT=true\n",
                                                                                         concat(

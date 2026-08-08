@@ -297,53 +297,45 @@ jobs:
           SELECTION_RESULT="${{ needs.selection-control.result }}"
           COLD_RESULT="${{ needs.cold-corpus.result }}"
           if [ "${BUILD_RESULT}" = "cancelled" ]; then
-          printf '%s\n' "{\"schema\":\"falsifier-cold-corpus-execution/v1\",\"execution\":\"corpus-not-run\",\"cause\":\"build-job-cancelled\"}"
-           > target/falsifier-cold-corpus-execution.json
+          printf '%s\n' "{\"schema\":\"falsifier-cold-corpus-execution/v1\",\"execution\":\"corpus-not-run\",\"cause\":\"build-job-cancelled\"}" > target/falsifier-cold-corpus-execution.json
             printf '%s\n' "::error::Cold corpus did not run — build cancelled; infrastructure, not a falsifier regression finding"
             exit 1
           fi
           if [ "${BUILD_RESULT}" = "skipped" ]; then
-          printf '%s\n' "{\"schema\":\"falsifier-cold-corpus-execution/v1\",\"execution\":\"corpus-not-run\",\"cause\":\"build-job-skipped\"}"
-           > target/falsifier-cold-corpus-execution.json
+          printf '%s\n' "{\"schema\":\"falsifier-cold-corpus-execution/v1\",\"execution\":\"corpus-not-run\",\"cause\":\"build-job-skipped\"}" > target/falsifier-cold-corpus-execution.json
             printf '%s\n' "::error::Cold corpus did not run — build skipped; infrastructure, not a falsifier regression finding"
             exit 1
           fi
           if [ "${BUILD_RESULT}" != "success" ]; then
-          printf '%s\n' "{\"schema\":\"falsifier-cold-corpus-execution/v1\",\"execution\":\"corpus-not-run\",\"cause\":\"build-job-failed\"}"
-           > target/falsifier-cold-corpus-execution.json
+          printf '%s\n' "{\"schema\":\"falsifier-cold-corpus-execution/v1\",\"execution\":\"corpus-not-run\",\"cause\":\"build-job-failed\"}" > target/falsifier-cold-corpus-execution.json
             printf '%s\n' "::error::Cold corpus did not run — build unavailable (${BUILD_RESULT}); infrastructure, not a falsifier regression finding"
             exit 1
           fi
           if [ "${COLD_RESULT}" = "skipped" ]; then
-          printf '%s\n' "{\"schema\":\"falsifier-cold-corpus-execution/v1\",\"execution\":\"corpus-not-run\",\"cause\":\"cold-corpus-job-skipped\",\"blocking_job\":\"cold-corpus\"}"
-           > target/falsifier-cold-corpus-execution.json
+          printf '%s\n' "{\"schema\":\"falsifier-cold-corpus-execution/v1\",\"execution\":\"corpus-not-run\",\"cause\":\"cold-corpus-job-skipped\",\"blocking_job\":\"cold-corpus\"}" > target/falsifier-cold-corpus-execution.json
             printf '%s\n' "::error::Cold corpus skipped despite successful build — topology violation"
             exit 1
           fi
           if [ "${COLD_RESULT}" = "cancelled" ]; then
-          printf '%s\n' "{\"schema\":\"falsifier-cold-corpus-execution/v1\",\"execution\":\"corpus-not-run\",\"cause\":\"cold-corpus-job-cancelled\"}"
-           > target/falsifier-cold-corpus-execution.json
+          printf '%s\n' "{\"schema\":\"falsifier-cold-corpus-execution/v1\",\"execution\":\"corpus-not-run\",\"cause\":\"cold-corpus-job-cancelled\"}" > target/falsifier-cold-corpus-execution.json
             printf '%s\n' "::error::Cold corpus cancelled — environment unavailability"
             exit 1
           fi
           FLOOR_RECEIPT_PRESENT=false
-          if [ -f target/floor-component-receipt.json ] && grep -q floor-component-receipt/v1 target/floor-component-receipt.json ]; then
+          if [ -f target/floor-component-receipt.json ] && grep -q floor-component-receipt/v1 target/floor-component-receipt.json; then
             FLOOR_RECEIPT_PRESENT=true
           fi
           if [ "${FLOOR_RECEIPT_PRESENT}" != true ]; then
             if [ "${COLD_RESULT}" = "success" ]; then
-              printf '%s\n' "{\"schema\":\"falsifier-cold-corpus-execution/v1\",\"execution\":\"corpus-not-run\",\"cause\":\"cold-corpus-receipt-artifact-absent\"}"
-           > target/falsifier-cold-corpus-execution.json
+              printf '%s\n' "{\"schema\":\"falsifier-cold-corpus-execution/v1\",\"execution\":\"corpus-not-run\",\"cause\":\"cold-corpus-receipt-artifact-absent\"}" > target/falsifier-cold-corpus-execution.json
               printf '%s\n' "::error::Cold corpus succeeded but floor-component receipt artifact absent — transport or emit failure, not a falsifier regression finding"
               exit 1
             fi
-            printf '%s\n' "{\"schema\":\"falsifier-cold-corpus-execution/v1\",\"execution\":\"corpus-not-run\",\"cause\":\"cold-corpus-failed-before-receipt\"}"
-           > target/falsifier-cold-corpus-execution.json
+            printf '%s\n' "{\"schema\":\"falsifier-cold-corpus-execution/v1\",\"execution\":\"corpus-not-run\",\"cause\":\"cold-corpus-failed-before-receipt\"}" > target/falsifier-cold-corpus-execution.json
             printf '%s\n' "::error::Cold corpus did not produce floor-component receipt (cold=${COLD_RESULT}) — infrastructure, not a falsifier regression finding"
             exit 1
           fi
-            printf '%s\n' "{\"schema\":\"falsifier-cold-corpus-execution/v1\",\"execution\":\"corpus-executed\",\"receipt_path\":\"target/floor-component-receipt.json\"}"
-           > target/falsifier-cold-corpus-execution.json
+            printf '%s\n' "{\"schema\":\"falsifier-cold-corpus-execution/v1\",\"execution\":\"corpus-executed\",\"receipt_path\":\"target/floor-component-receipt.json\"}" > target/falsifier-cold-corpus-execution.json
           if [ "${SELECTION_RESULT}" != "success" ] || [ "${COLD_RESULT}" != "success" ]; then
             printf '%s\n' "::error::Falsifier cadence red — selection=${SELECTION_RESULT} cold=${COLD_RESULT} (corpus executed; see target/falsifier-cold-corpus-execution.json)"
             exit 1

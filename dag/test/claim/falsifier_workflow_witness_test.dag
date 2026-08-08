@@ -14,6 +14,7 @@ import gunbc.falsifier_workflow {
   gunbc_falsifier_step_timeout_basis_is_measured_not_composed,
   falsifier_aggregate_verdict_if,
   falsifier_aggregate_verdict_shell_emit_dissolution_trigger,
+  falsifier_aggregate_verdict_write_receipt,
   expected_falsifier_yml
 }
 import gunbc.falsifier_run_control {
@@ -313,6 +314,20 @@ test fn aggregate_verdict_downloads_floor_component_receipt() -> Bool {
 test fn aggregate_verdict_shell_checks_floor_receipt_schema() -> Bool {
   string_contains(s: expected_falsifier_yml(), pattern: floor_component_receipt_schema)
     && string_contains(s: expected_falsifier_yml(), pattern: corpus_not_run_cold_failed_before_receipt_tag)
+}
+
+test fn aggregate_verdict_floor_receipt_presence_test_has_no_spurious_bracket() -> Bool {
+  string_contains(
+    s: expected_falsifier_yml(),
+    pattern: concat("grep -q ", concat(floor_component_receipt_schema, " target/floor-component-receipt.json; then"))
+  )
+    && !string_contains(s: expected_falsifier_yml(), pattern: "floor-component-receipt.json ]; then")
+}
+
+test fn aggregate_verdict_write_receipt_redirects_printf_on_same_line() -> Bool {
+  let line = falsifier_aggregate_verdict_write_receipt(json: "{\"schema\":\"test\"}")
+  string_contains(s: line, pattern: "> target/falsifier-cold-corpus-execution.json")
+    && !string_contains(s: line, pattern: "\n > ")
 }
 
 test fn cold_corpus_executed_when_cold_job_ran_even_if_red() -> Bool {
