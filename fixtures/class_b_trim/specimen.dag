@@ -1,0 +1,13 @@
+module test.claim.class_b_trim_specimen
+
+import std.types { String, Bool }
+
+data class_b_trim_specimen_note: String = "Class B live specimen (#6985): trim is absent from the substrate free-call builtin registry and binds only when std.algebra is already in the compilation pool. This module lists only std.types in its import block; std.algebra enters the pool transitively via types.dag's import edge, so trim free-call compiles without a direct std.algebra import — pool-membership coincidence, not ListedImport. Executing receipt: v1-compiler-tests class_b_trim_specimen_test (narrow pool fails; declared pool compiles; direct-import check; FreeMonoid receiver refuses). Dissolve-on: bare-reference closure binding construction-backed repo-wide."
+
+fn free_trim(s: String) -> String {
+  trim(s)
+}
+
+fn named_trim(s: String) -> String {
+  trim(s: s)
+}
