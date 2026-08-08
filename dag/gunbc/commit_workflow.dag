@@ -12,7 +12,7 @@ import gunbc.generated_artifact {
   GeneratedArtifact, CiYamlArtifact, FalsifierYamlArtifact, GithooksPrePushArtifact, artifact_path
 }
 import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
-import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField }
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, declaration_ref_eq, declaration_ref_in_list }
 import std.types { NonEmptyStr, FilePath }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import extdeps.git
@@ -2150,38 +2150,13 @@ fn declaration_field_is_whole(field: DeclField) -> Bool {
   }
 }
 
-fn declaration_field_eq(a: DeclField, b: DeclField) -> Bool {
-  match a {
-    WholeDeclaration => match b {
-      WholeDeclaration => true
-      NamedField { field_name: _ } => false
-    }
-    NamedField { field_name } => match b {
-      WholeDeclaration => false
-      NamedField { field_name: other } => field_name == other
-    }
-  }
-}
-
-fn declaration_ref_eq(a: DeclarationRef, b: DeclarationRef) -> Bool {
-  a.module_path == b.module_path
-    && a.decl_name == b.decl_name
-    && declaration_field_eq(a: a.field, b: b.field)
-}
-
-fn declaration_ref_in_list(target: DeclarationRef, declarations: List<DeclarationRef>) -> Bool {
-  fold(declarations, init: false, f: fn(acc, declaration) {
-    acc || declaration_ref_eq(a: target, b: declaration)
-  })
-}
-
 fn declaration_refs_unique(declarations: List<DeclarationRef>) -> Bool {
   if declarations.count() == 0 {
     true
   } else {
     !declaration_ref_in_list(
       target: declarations.first(),
-      declarations: declarations.skip(n: 1)
+      refs: declarations.skip(n: 1)
     ) && declaration_refs_unique(declarations: declarations.skip(n: 1))
   }
 }
@@ -2191,10 +2166,10 @@ fn declaration_ref_lists_eq(left: List<DeclarationRef>, right: List<DeclarationR
     && declaration_refs_unique(declarations: right)
     && left.count() == right.count()
     && fold(left, init: true, f: fn(acc, declaration) {
-      acc && declaration_ref_in_list(target: declaration, declarations: right)
+      acc && declaration_ref_in_list(target: declaration, refs: right)
     })
     && fold(right, init: true, f: fn(acc, declaration) {
-      acc && declaration_ref_in_list(target: declaration, declarations: left)
+      acc && declaration_ref_in_list(target: declaration, refs: left)
     })
 }
 
@@ -2426,7 +2401,7 @@ fn demand_row_overlaps(
     overlaps || fold(rows, init: false, f: fn(found, other) {
       found || declaration_ref_in_list(
         target: declaration,
-        declarations: other.declarations
+        refs: other.declarations
       )
     })
   })

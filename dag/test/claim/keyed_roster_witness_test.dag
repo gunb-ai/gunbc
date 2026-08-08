@@ -12,16 +12,8 @@ import std.keyed_roster {
   keyed_roster_insert,
   keyed_roster_union,
 }
-import std.roster_frontier {
-  FrontierRow,
-  PathSubject,
-  TriggerProse,
-  decl_field_ref,
-  decl_ref,
-  frontier_row_decl,
-  frontier_rows_keyed_roster_build,
-  frontier_rows_well_formed,
-}
+import std.roster_frontier { FrontierRow, PathSubject, decl_field_ref, decl_ref, frontier_row_decl, frontier_rows_keyed_roster_build, frontier_rows_well_formed }
+import std.dissolution { unbound_dissolution }
 import std.types { Bool, String, List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -68,12 +60,12 @@ fn fixture_frontier_rows_unique() -> List<FrontierRow> {
     FrontierRow {
       subject: PathSubject { path: "synthetic/a.dag::f" },
       reason: "r1",
-      trigger: TriggerProse { text: "d1" },
+      dissolution: unbound_dissolution(description: "d1"),
     },
     FrontierRow {
       subject: PathSubject { path: "synthetic/b.dag::g" },
       reason: "r2",
-      trigger: TriggerProse { text: "d2" },
+      dissolution: unbound_dissolution(description: "d2"),
     },
   ]
 }
@@ -83,12 +75,12 @@ fn fixture_frontier_rows_duplicate_path() -> List<FrontierRow> {
     FrontierRow {
       subject: PathSubject { path: "synthetic/a.dag::f" },
       reason: "r1",
-      trigger: TriggerProse { text: "d1" },
+      dissolution: unbound_dissolution(description: "d1"),
     },
     FrontierRow {
       subject: PathSubject { path: "synthetic/a.dag::f" },
       reason: "r2",
-      trigger: TriggerProse { text: "d2" },
+      dissolution: unbound_dissolution(description: "d2"),
     },
   ]
 }
@@ -190,7 +182,7 @@ test fn frontier_rows_keyed_build_admits_distinct_decl_fields() -> Bool {
       frontier_row_decl(
         ref: decl_ref(module_path: "synthetic.mod", decl_name: "HostConfig"),
         reason: "whole-decl row",
-        trigger: TriggerProse { text: "d1" },
+        dissolution: unbound_dissolution(description: "d1"),
       ),
       frontier_row_decl(
         ref: decl_field_ref(
@@ -199,7 +191,7 @@ test fn frontier_rows_keyed_build_admits_distinct_decl_fields() -> Bool {
           field_name: "memory_swap",
         ),
         reason: "field-level row",
-        trigger: TriggerProse { text: "d2" },
+        dissolution: unbound_dissolution(description: "d2"),
       ),
     ],
   ) {
