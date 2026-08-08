@@ -12,6 +12,16 @@ import std.content_hash {
 }
 
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
+import gunbc.host_layout { srv1_devboot_artifact_store_root, srv1_devboot_state_root }
+import gunbc.live_deploy.spec {
+  DeploymentArtifactStep,
+  DevbootArtifactStoreRoot,
+  DevbootStateRoot,
+  devboot_owned_steps,
+  owned_artifact_retirement_disposition,
+  RetirementPreserves,
+  RetiresRuntime,
+}
 import extdeps.toolchain.types {
   TargetTriple,
   ToolchainRequirement,
@@ -292,4 +302,35 @@ test fn output_unavailable_never_reports_retrievable() -> Bool {
 
 test fn attached_producer_is_not_terminal() -> Bool {
   !outcome_is_terminal(outcome: AttachedToExistingProducer { work_id: "w-2" as DevbootWorkId })
+}
+
+data devboot_membership_witness_doc: String = "THE PROJECTION HAS AN EXECUTING CONSUMER, which is a weaker claim than provisioning and is stated as the weaker one. These rows prove that devboot_owned_steps projects the gunbc.host_layout authority rather than spelling paths a second time, and that neither root is disturbed by a blue/green slot flip. They do NOT prove anything is created on a host; no applier exists in this capsule, and the bootstrap job is where that lands.\\n\\nThe reason to assert it at all is that a projection nothing evaluates is indistinguishable from a projection that is wrong. A path re-spelled here instead of imported would be the exact defect the host_layout admission note records, and it would be invisible until a deploy went looking for a directory nobody created."
+
+fn devboot_step_projects_layout(acc: Int, step: DeploymentArtifactStep) -> Int {
+  match step.kind {
+    DevbootArtifactStoreRoot =>
+      if (step.path as String) == (srv1_devboot_artifact_store_root as String) { acc + 1 } else { acc }
+    DevbootStateRoot =>
+      if (step.path as String) == (srv1_devboot_state_root as String) { acc + 1 } else { acc }
+    _ => acc
+  }
+}
+
+test fn devboot_owned_steps_project_the_host_layout_rows() -> Bool {
+  fold(
+    devboot_owned_steps(),
+    init: 0,
+    f: (acc, step) => devboot_step_projects_layout(acc: acc, step: step),
+  ) == 2
+}
+
+test fn devboot_roots_are_preserved_across_a_slot_flip() -> Bool {
+  match owned_artifact_retirement_disposition(kind: DevbootArtifactStoreRoot) {
+    RetirementPreserves => true
+    RetiresRuntime => false
+  }
+    && match owned_artifact_retirement_disposition(kind: DevbootStateRoot) {
+      RetirementPreserves => true
+      RetiresRuntime => false
+    }
 }

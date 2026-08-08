@@ -35,6 +35,7 @@ import gunbc.live_deploy.spec {
   DeploymentDependencyStep,
   DeploymentArtifactStep,
   ServeBinary, GunbcSourceTree, DispatchWorktreeRoot, AttemptStateRoot, SystemdUnit, BeltTimerUnit, TailscaleServeMapping,
+  DevbootArtifactStoreRoot, DevbootStateRoot,
   deployment_belt_service_unit_name,
   deployment_belt_timer_unit_name,
   deployment_belt_service_unit_path,
