@@ -1409,6 +1409,21 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     ),
 
     active(
+      identity: "rn_0PJXVP9KNDXZFHXMDM9XQ7TTSX",
+      id: "commit-writer-admission",
+      owner: "generated-artifact",
+      path: "docs/plans/generated-file-conflict-policy.md",
+      t: fields(
+        headline: "One admission predicate that every commit writer must pass before it may write",
+        boundary: "Admission consumes a complete staged-index observation — never a caller-selected list — whose population must equal the exact staged index, with two independent refusal arms: any unmerged index stage refuses typed and located with the affected path, and the exact staged blobs are inspected for the complete conflict-marker grammar, so a file collapsed to stage zero with the markers still inside refuses too. Text classification is observed, never caller-declared, and a fixture exemption is a provenance receipt bound to the same staged path and blob, never a path allowlist. The pre-commit hook stays fast local feedback; the predicate at the writer's own boundary is the enforcement.",
+        displaced_cost: "An automated writer has already committed and pushed literal conflict-marker blocks to main by committing through an unresolved merge, and the refusing merge driver raised that class only to mechanically preventable — the repository's own config authority states that commit-writer admission remains the boundary a writer cannot pass. Until this lane lands, the other lanes shrink how many files can be caught by textual adjacency while every writer stays one absorbing fallback away from repeating the incident on the files that remain.",
+        first_slice: "The predicate with the unmerged-index refusal, consumed by one real writer, with the historical incident's exact shape reproduced as the discriminating red.",
+        red_control: "A merge with unmerged index entries refuses typed and located; the staged-marker-text variant refuses separately; an observation population that differs from the staged index refuses in both directions; a freely constructed provenance value whose path happens to match a staged file refuses; a clean tree admits.",
+        out_of_scope: "The infrastructure-side daemon binding is reported for operator routing, not landed from this repository. No repo-wide raw text scan, and no new stringly conflicted-tree fact — the Git model already carries the index-stage and diff-status facts this consumes.",
+        handback: "The predicate consumed by every repo-lane commit writer, the incident witness pair red then green, and the two writer bindings carried as countable work rows rather than prose."
+      )
+    ),
+    active(
       identity: "rn_7VNBH0KXR5ZQWD2PLGT3MJ86CY",
       id: "generated-projection-registry-containment",
       owner: "generated-artifact",
@@ -2252,6 +2267,7 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "ci-check-projection", parent: "ci-owned-execution"),
     edge(child: "ci-actions-runner-retirement", parent: "ci-check-projection"),
 
+    edge(child: "generated-projection-registry-containment", parent: "commit-writer-admission"),
     edge(child: "generated-commit-policy-census", parent: "generated-projection-registry-containment"),
 
     edge(child: "v1-emitter-fixed-point", parent: "pderive-error-movement-receipt"),
