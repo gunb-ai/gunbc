@@ -192,6 +192,17 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "spark-standup-program-accounting",
+    primary_work: DeclarationRef { module_path: "gunbc.dgx_spark_procurement", decl_name: "dgx_spark_router_binding_operator_allocation", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "gunbc.dgx_spark_procurement", decl_name: "dgx_spark_procurement_intent", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.host_assimilation_program", decl_name: "host_assimilation_program_note", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.host_assimilation_program", decl_name: "inference_serving_enrollment_participation", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "RoadmapNode rows for the Spark standup program land in ROADMAP authority, SPARK-CANARY-POST-OOBE-0 is spawned and either lands or is honestly retired, and every lane row in the wind-down accounting table is merged or retired — then this interim note deletes with the bind." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "floor-prep-tax-program",
     primary_work: DeclarationRef { module_path: "gunbc.executor_schedule_retention", decl_name: "schedule_retention_policy_note", field: WholeDeclaration },
     additional_works: [
