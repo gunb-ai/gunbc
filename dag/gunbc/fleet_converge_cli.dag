@@ -143,6 +143,28 @@ fn converge_cli_slice1_srv1_receipt() -> ConvergeCliReceipt {
           },
         }
       }
+    HostConvergeSlice1TasksConverged { applied_knobs: n, receipt: r } =>
+      if host_converge_slice1_tasks_receipt_is_valid(receipt: r) {
+        ConvergeCliReceipt {
+          host: operator_host_srv1 as String,
+          applied: n,
+          drifted: 0,
+          verdict: VerdictConverged,
+          reason: none,
+        }
+      } else {
+        ConvergeCliReceipt {
+          host: operator_host_srv1 as String,
+          applied: 0,
+          drifted: 0,
+          verdict: Absent,
+          reason: Present {
+            value: KnobFrontier {
+              reason: "host_converge_slice1: tasks receipt validity gate failed (read_back_converged && reapply_noop && verdict=converged)",
+            },
+          },
+        }
+      }
     HostConvergeSlice1Refused { reason: why } =>
       ConvergeCliReceipt {
         host: operator_host_srv1 as String,

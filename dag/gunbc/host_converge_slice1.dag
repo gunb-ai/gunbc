@@ -11,6 +11,14 @@ import extdeps.systemd {
   MemoryLimitBytes,
   MemoryLimitUnbounded,
   MemoryLimitAbsent,
+  systemd_tasks_max_property,
+  TasksMax,
+  TasksCurrent,
+  SystemdCgroupTaskLimit,
+  parse_systemd_task_limit_show,
+  TaskLimitCount,
+  TaskLimitUnbounded,
+  TaskLimitAbsent,
 }
 import gunbc.systemctl_show_read {
   systemctl_show_property_read_local,
@@ -56,6 +64,28 @@ data host_converge_slice1_probe_unit: NonEmptyStr = "actions-runner@srv1-01.serv
 
 data host_converge_slice1_knob_name: String = "per_slot_memory_max_bytes"
 
+data host_converge_slice1_tasks_knob_name: String = "per_slot_tasks_max"
+
+// TasksMax=512 (gunbc.runner_slot_allocation gunbc_runner_slot_desired) is the second
+// knob realized on this circuit: same typed systemctl show/set-property transports, same
+// fail-closed order (live read -> Drifted verdict -> pre-apply TasksCurrent guard ->
+// apply -> independent read-back -> reapply-noop), a pids-controller count instead of a
+// byte size. The guard refuses when live TasksCurrent exceeds the target cap — lowering
+// TasksMax below live usage would not kill tasks but would starve every new clone() with
+// EAGAIN, the compute_envelope_model failure class — typed and retryable, never applied
+// past it.
+type HostConvergeSlice1TasksMaxReceipt {
+  host: HostIdentity
+  unit: NonEmptyStr
+  knob: ConvergeKnob
+  limit: SystemdCgroupTaskLimit
+  verdict: ConvergeVerdict
+  probed_at: NonEmptyStr
+  applied: Bool
+  read_back_converged: Bool
+  reapply_noop: Bool
+}
+
 type HostConvergeSlice1MemoryCapReceipt {
   host: HostIdentity
   unit: NonEmptyStr
@@ -70,6 +100,7 @@ type HostConvergeSlice1MemoryCapReceipt {
 
 type HostConvergeSlice1ConvergeResult
   = HostConvergeSlice1Converged { applied_knobs: Int, receipt: HostConvergeSlice1MemoryCapReceipt }
+  | HostConvergeSlice1TasksConverged { applied_knobs: Int, receipt: HostConvergeSlice1TasksMaxReceipt }
   | HostConvergeSlice1Refused { reason: String }
 
 fn host_converge_identity(h: HostConverge) -> HostIdentity {
@@ -304,6 +335,7 @@ fn host_converge_slice1_cross_check_enumeration(host: HostIdentity, units: List<
 
 type HostConvergeSlice1UnitOutcome
   = HostConvergeSlice1UnitConverged { unit: NonEmptyStr, applied: Bool, receipt: HostConvergeSlice1MemoryCapReceipt }
+  | HostConvergeSlice1UnitTasksConverged { unit: NonEmptyStr, applied: Bool, receipt: HostConvergeSlice1TasksMaxReceipt }
   | HostConvergeSlice1UnitRefused { unit: NonEmptyStr, reason: String }
   | HostConvergeSlice1UnitUsageGuardRefused { unit: NonEmptyStr, current_bytes: ByteSize, target_cap_bytes: ByteSize }
 
@@ -399,20 +431,263 @@ fn host_converge_slice1_converge_unit(host: HostIdentity, unit: NonEmptyStr, kno
   }
 }
 
+fn host_converge_slice1_tasks_knob(host: HostIdentity) -> ConvergeKnob? {
+  match host_converge_from_policy(policy: fleet_converge_policy(), host: host) {
+    Present { value: hc } =>
+      match converge_knob_by_name(host: hc, name: host_converge_slice1_tasks_knob_name) {
+        Present { value: knob } =>
+          match knob.target {
+            PerSlotMemoryCap { dropin_path: _, instance_glob: _, property: p, bytes_value: b } =>
+              if p == (systemd_tasks_max_property as String) && b == knob.desired {
+                Present { value: knob }
+              } else {
+                none
+              }
+            _ => none
+          }
+        _ => none
+      }
+    _ => none
+  }
+}
+
+fn host_converge_slice1_read_tasks_max_raw(unit: NonEmptyStr) -> String? {
+  match systemctl_show_property_read_local(unit: unit, property: TasksMax) {
+    SystemdPropertyCaptured { value: raw } => Present { value: raw }
+    SystemdPropertyCaptureRefused { reason: _ } => none
+  }
+}
+
+fn host_converge_slice1_read_tasks_current_raw(unit: NonEmptyStr) -> String? {
+  match systemctl_show_property_read_local(unit: unit, property: TasksCurrent) {
+    SystemdPropertyCaptured { value: raw } => Present { value: raw }
+    SystemdPropertyCaptureRefused { reason: _ } => none
+  }
+}
+
+// Verdict over the live TasksMax read against the knob's desired count. An empty or
+// unparseable wire is the Absent verdict (untyped wire, refused upstream), never Drifted:
+// Drifted is reserved for a real limit that disagrees, because Drifted is the arm that
+// arms the apply path.
+fn host_converge_slice1_tasks_verdict(limit: SystemdCgroupTaskLimit, knob: ConvergeKnob) -> ConvergeVerdict {
+  match limit {
+    TaskLimitCount { count: n } =>
+      if to_string(n) == knob.desired { VerdictConverged } else { Drifted }
+    TaskLimitUnbounded => Drifted
+    TaskLimitAbsent => Absent
+  }
+}
+
+fn host_converge_slice1_apply_tasks_max(unit: NonEmptyStr, value: String) -> Bool {
+  systemctl_set_property_local(
+    unit: unit,
+    property: systemd_tasks_max_property,
+    value: value as NonEmptyStr,
+  )
+}
+
+type HostConvergeSlice1TasksGuardOutcome
+  = HostConvergeSlice1TasksSafe { unit: NonEmptyStr, current_count: Int }
+  | HostConvergeSlice1TasksUnsafe { unit: NonEmptyStr, current_count: Int, target_count: Int }
+  | HostConvergeSlice1TasksUnknown { unit: NonEmptyStr, reason: String }
+
+fn host_converge_slice1_tasks_guard(unit: NonEmptyStr, target_value: String) -> HostConvergeSlice1TasksGuardOutcome {
+  match parse_int(s: target_value) {
+    Present { value: target } =>
+      match host_converge_slice1_read_tasks_current_raw(unit: unit) {
+        Present { value: raw } =>
+          match parse_systemd_task_limit_show(raw: raw) {
+            TaskLimitCount { count: current } =>
+              if current > target {
+                HostConvergeSlice1TasksUnsafe { unit: unit, current_count: current, target_count: target }
+              } else {
+                HostConvergeSlice1TasksSafe { unit: unit, current_count: current }
+              }
+            _ =>
+              HostConvergeSlice1TasksUnknown {
+                unit: unit,
+                reason: "host_converge_slice1: live TasksCurrent read unbounded or unparseable; cannot bound usage against target cap; fail-closed",
+              }
+          }
+        _ =>
+          HostConvergeSlice1TasksUnknown {
+            unit: unit,
+            reason: "host_converge_slice1: live systemctl show TasksCurrent read absent; fail-closed",
+          }
+      }
+    _ =>
+      HostConvergeSlice1TasksUnknown {
+        unit: unit,
+        reason: "host_converge_slice1: target TasksMax value did not parse as Int; fail-closed",
+      }
+  }
+}
+
+fn host_converge_slice1_tasks_receipt(
+  host: HostIdentity,
+  unit: NonEmptyStr,
+  knob: ConvergeKnob,
+  limit: SystemdCgroupTaskLimit,
+  probed_at: NonEmptyStr,
+  applied: Bool,
+  read_back_converged: Bool,
+  reapply_noop: Bool,
+) -> HostConvergeSlice1TasksMaxReceipt {
+  HostConvergeSlice1TasksMaxReceipt {
+    host: host,
+    unit: unit,
+    knob: knob,
+    limit: limit,
+    verdict: host_converge_slice1_tasks_verdict(limit: limit, knob: knob),
+    probed_at: probed_at,
+    applied: applied,
+    read_back_converged: read_back_converged,
+    reapply_noop: reapply_noop,
+  }
+}
+
+fn host_converge_slice1_tasks_receipt_is_valid(receipt: HostConvergeSlice1TasksMaxReceipt) -> Bool {
+  receipt.read_back_converged
+    && receipt.reapply_noop
+    && receipt.verdict == VerdictConverged
+}
+
+fn host_converge_slice1_tasks_read_limit(unit: NonEmptyStr) -> SystemdCgroupTaskLimit? {
+  match host_converge_slice1_read_tasks_max_raw(unit: unit) {
+    Present { value: raw } => Present { value: parse_systemd_task_limit_show(raw: raw) }
+    _ => none
+  }
+}
+
+fn host_converge_slice1_prove_tasks_reapply_noop(unit: NonEmptyStr, knob: ConvergeKnob) -> String? {
+  if !host_converge_slice1_apply_tasks_max(unit: unit, value: knob.desired) {
+    Present {
+      value: "host_converge_slice1: tasks reapply-noop second apply (systemctl set-property TasksMax) failed; fail-closed",
+    }
+  } else {
+    match host_converge_slice1_tasks_read_limit(unit: unit) {
+      Present { value: limit } =>
+        match host_converge_slice1_tasks_verdict(limit: limit, knob: knob) {
+          VerdictConverged => none
+          Drifted =>
+            Present {
+              value: "host_converge_slice1: tasks reapply-noop failed — still drifted after second apply; fail-closed",
+            }
+          Absent =>
+            Present {
+              value: "host_converge_slice1: tasks reapply-noop read returned Absent verdict after second apply; fail-closed",
+            }
+        }
+      _ =>
+        Present {
+          value: "host_converge_slice1: tasks reapply-noop independent read after second apply absent; fail-closed",
+        }
+    }
+  }
+}
+
+fn host_converge_slice1_converge_unit_tasks(host: HostIdentity, unit: NonEmptyStr, knob: ConvergeKnob) -> HostConvergeSlice1UnitOutcome {
+  match host_converge_slice1_probed_at() {
+    Present { value: probed_at } =>
+      match host_converge_slice1_tasks_read_limit(unit: unit) {
+        Present { value: limit } =>
+          match host_converge_slice1_tasks_verdict(limit: limit, knob: knob) {
+            VerdictConverged =>
+              match host_converge_slice1_prove_tasks_reapply_noop(unit: unit, knob: knob) {
+                Present { value: why } => HostConvergeSlice1UnitRefused { unit: unit, reason: why }
+                _ =>
+                  HostConvergeSlice1UnitTasksConverged {
+                    unit: unit,
+                    applied: false,
+                    receipt: host_converge_slice1_tasks_receipt(
+                      host: host, unit: unit, knob: knob, limit: limit, probed_at: probed_at,
+                      applied: false, read_back_converged: true, reapply_noop: true,
+                    ),
+                  }
+              }
+            Drifted =>
+              match host_converge_slice1_tasks_guard(unit: unit, target_value: knob.desired) {
+                HostConvergeSlice1TasksUnsafe { unit: _, current_count: cc, target_count: tc } =>
+                  HostConvergeSlice1UnitRefused {
+                    unit: unit,
+                    reason: concat(
+                      concat(concat("host_converge_slice1: tasks guard refused apply for ", unit as String), concat(" current_tasks=", to_string(cc))),
+                      concat(concat(" exceeds target_tasks_max=", to_string(tc)), "; retryable once the slot is quiet"),
+                    ),
+                  }
+                HostConvergeSlice1TasksUnknown { unit: _, reason: r } =>
+                  HostConvergeSlice1UnitRefused { unit: unit, reason: concat("host_converge_slice1: tasks guard could not prove safety before apply, fail-closed: ", r) }
+                HostConvergeSlice1TasksSafe { unit: _, current_count: _ } =>
+                  if !host_converge_slice1_apply_tasks_max(unit: unit, value: knob.desired) {
+                    HostConvergeSlice1UnitRefused {
+                      unit: unit,
+                      reason: concat(
+                        concat("host_converge_slice1: systemctl set-property TasksMax failed for ", unit as String),
+                        concat(" desired=", knob.desired)
+                      ),
+                    }
+                  } else {
+                    match host_converge_slice1_probed_at() {
+                      Present { value: readback_at } =>
+                        match host_converge_slice1_tasks_read_limit(unit: unit) {
+                          Present { value: read_back } =>
+                            match host_converge_slice1_tasks_verdict(limit: read_back, knob: knob) {
+                              VerdictConverged =>
+                                match host_converge_slice1_prove_tasks_reapply_noop(unit: unit, knob: knob) {
+                                  Present { value: why } => HostConvergeSlice1UnitRefused { unit: unit, reason: why }
+                                  _ =>
+                                    HostConvergeSlice1UnitTasksConverged {
+                                      unit: unit,
+                                      applied: true,
+                                      receipt: host_converge_slice1_tasks_receipt(
+                                        host: host, unit: unit, knob: knob, limit: read_back, probed_at: readback_at,
+                                        applied: true, read_back_converged: true, reapply_noop: true,
+                                      ),
+                                    }
+                                }
+                              Drifted =>
+                                HostConvergeSlice1UnitRefused { unit: unit, reason: "host_converge_slice1: tasks independent read-back after apply still drifted; fail-closed" }
+                              Absent =>
+                                HostConvergeSlice1UnitRefused { unit: unit, reason: "host_converge_slice1: tasks read-back after apply returned Absent verdict; fail-closed" }
+                            }
+                          _ => HostConvergeSlice1UnitRefused { unit: unit, reason: "host_converge_slice1: tasks independent read-back after apply returned absent; fail-closed" }
+                        }
+                      _ => HostConvergeSlice1UnitRefused { unit: unit, reason: host_converge_slice1_probed_at_refusal_reason }
+                    }
+                  }
+              }
+            Absent =>
+              HostConvergeSlice1UnitRefused { unit: unit, reason: concat("host_converge_slice1: live TasksMax parsed Absent (empty/untyped wire) for ", unit as String) }
+          }
+        _ => HostConvergeSlice1UnitRefused { unit: unit, reason: concat("host_converge_slice1: live systemctl show TasksMax read absent for ", unit as String) }
+      }
+    _ => HostConvergeSlice1UnitRefused { unit: unit, reason: host_converge_slice1_probed_at_refusal_reason }
+  }
+}
+
 fn host_converge_slice1_converge_host(host: HostIdentity, instance_glob: String) -> HostConvergeSlice1HostResult {
   match host_converge_slice1_per_slot_memory_max_knob(host: host) {
     Present { value: knob } =>
-      match host_converge_slice1_enumerate_units(instance_glob: instance_glob) {
-        Present { value: units } =>
-          match host_converge_slice1_cross_check_enumeration(host: host, units: units) {
-            Present { value: mismatch } => HostConvergeSlice1HostEnumerationMismatch { mismatch: mismatch }
-            _ =>
-              HostConvergeSlice1HostEnumerated {
-                host: host,
-                outcomes: map(units, u => host_converge_slice1_converge_unit(host: host, unit: u, knob: knob)),
+      match host_converge_slice1_tasks_knob(host: host) {
+        Present { value: tasks_knob } =>
+          match host_converge_slice1_enumerate_units(instance_glob: instance_glob) {
+            Present { value: units } =>
+              match host_converge_slice1_cross_check_enumeration(host: host, units: units) {
+                Present { value: mismatch } => HostConvergeSlice1HostEnumerationMismatch { mismatch: mismatch }
+                _ =>
+                  HostConvergeSlice1HostEnumerated {
+                    host: host,
+                    outcomes: fold(units, init: [], f: fn(acc, u) {
+                      concat(acc, [
+                        host_converge_slice1_converge_unit(host: host, unit: u, knob: knob),
+                        host_converge_slice1_converge_unit_tasks(host: host, unit: u, knob: tasks_knob),
+                      ])
+                    }),
+                  }
               }
+            _ => HostConvergeSlice1HostRefused { reason: concat("host_converge_slice1: live unit enumeration absent for glob ", instance_glob) }
           }
-        _ => HostConvergeSlice1HostRefused { reason: concat("host_converge_slice1: live unit enumeration absent for glob ", instance_glob) }
+        _ => HostConvergeSlice1HostRefused { reason: "host_converge_slice1: per_slot_tasks_max knob absent from fleet_converge_policy for host; fail-closed" }
       }
     _ => HostConvergeSlice1HostRefused { reason: "host_converge_slice1: per_slot_memory_max_bytes knob absent from fleet_converge_policy for host; fail-closed" }
   }
@@ -471,6 +746,8 @@ fn host_converge_slice1_unit_outcome_to_legacy_result(outcome: HostConvergeSlice
   match outcome {
     HostConvergeSlice1UnitConverged { unit: _, applied: a, receipt: r } =>
       HostConvergeSlice1Converged { applied_knobs: if a { 1 } else { 0 }, receipt: r }
+    HostConvergeSlice1UnitTasksConverged { unit: _, applied: a, receipt: r } =>
+      HostConvergeSlice1TasksConverged { applied_knobs: if a { 1 } else { 0 }, receipt: r }
     HostConvergeSlice1UnitRefused { unit: _, reason: reason } =>
       HostConvergeSlice1Refused { reason: reason }
     HostConvergeSlice1UnitUsageGuardRefused { unit: u, current_bytes: cb, target_cap_bytes: tb } =>
@@ -489,6 +766,7 @@ fn host_converge_slice1_host_result_applied_count(result: HostConvergeSlice1Host
       fold(os, init: 0, f: fn(acc, o) {
         match host_converge_slice1_unit_outcome_to_legacy_result(o) {
           HostConvergeSlice1Converged { applied_knobs: n, receipt: _ } => acc + n
+          HostConvergeSlice1TasksConverged { applied_knobs: n, receipt: _ } => acc + n
           _ => acc
         }
       })
@@ -504,6 +782,7 @@ fn host_converge_slice1_host_result_all_valid(result: HostConvergeSlice1HostResu
           acc
             && match o {
               HostConvergeSlice1UnitConverged { unit: _, applied: _, receipt: r } => host_converge_slice1_receipt_is_valid(receipt: r)
+              HostConvergeSlice1UnitTasksConverged { unit: _, applied: _, receipt: r } => host_converge_slice1_tasks_receipt_is_valid(receipt: r)
               _ => false
             }
         })
@@ -535,12 +814,42 @@ fn host_converge_slice1_host_result_refusal_reason(result: HostConvergeSlice1Hos
   }
 }
 
+// srv1 probe-unit loop, both knobs: the memory outcome carries the legacy receipt shape;
+// the tasks outcome must ALSO be valid-converged for the loop to report converged — an
+// invalid or refused tasks outcome refuses the whole loop (never silently dropped), and a
+// converged one adds its applied count.
 fn host_converge_slice1_converge_loop() -> HostConvergeSlice1ConvergeResult {
   match host_converge_slice1_srv1_per_slot_memory_max_knob() {
     Present { value: knob } =>
-      host_converge_slice1_unit_outcome_to_legacy_result(
-        host_converge_slice1_converge_unit(host: operator_host_srv1, unit: host_converge_slice1_probe_unit, knob: knob)
-      )
+      match host_converge_slice1_tasks_knob(host: operator_host_srv1) {
+        Present { value: tasks_knob } =>
+          match host_converge_slice1_unit_outcome_to_legacy_result(
+            host_converge_slice1_converge_unit(host: operator_host_srv1, unit: host_converge_slice1_probe_unit, knob: knob)
+          ) {
+            HostConvergeSlice1Converged { applied_knobs: n, receipt: r } =>
+              match host_converge_slice1_converge_unit_tasks(host: operator_host_srv1, unit: host_converge_slice1_probe_unit, knob: tasks_knob) {
+                HostConvergeSlice1UnitTasksConverged { unit: _, applied: a, receipt: tr } =>
+                  if host_converge_slice1_tasks_receipt_is_valid(receipt: tr) {
+                    HostConvergeSlice1Converged { applied_knobs: n + (if a { 1 } else { 0 }), receipt: r }
+                  } else {
+                    HostConvergeSlice1Refused { reason: "host_converge_slice1: tasks receipt validity gate failed on srv1 probe unit; fail-closed" }
+                  }
+                HostConvergeSlice1UnitConverged { unit: _, applied: _, receipt: _ } =>
+                  HostConvergeSlice1Refused { reason: "host_converge_slice1: tasks converge returned a memory-cap outcome; fail-closed" }
+                HostConvergeSlice1UnitRefused { unit: _, reason: why } =>
+                  HostConvergeSlice1Refused { reason: why }
+                HostConvergeSlice1UnitUsageGuardRefused { unit: _, current_bytes: _, target_cap_bytes: _ } =>
+                  HostConvergeSlice1Refused { reason: "host_converge_slice1: tasks converge returned a memory usage-guard outcome; fail-closed" }
+              }
+            HostConvergeSlice1TasksConverged { applied_knobs: _, receipt: _ } =>
+              HostConvergeSlice1Refused { reason: "host_converge_slice1: memory converge returned a tasks outcome; fail-closed" }
+            HostConvergeSlice1Refused { reason: why } => HostConvergeSlice1Refused { reason: why }
+          }
+        _ =>
+          HostConvergeSlice1Refused {
+            reason: "host_converge_slice1: per_slot_tasks_max knob absent from fleet_converge_policy for srv1; fail-closed",
+          }
+      }
     _ =>
       HostConvergeSlice1Refused {
         reason: "host_converge_slice1: per_slot_memory_max_bytes knob absent from fleet_converge_policy for srv1; fail-closed",
