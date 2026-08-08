@@ -1,0 +1,127 @@
+module extdeps.w3c.generic_sensor
+
+import std.types { String, Bool, Int, List }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.w3.org/TR/generic-sensor/"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.w3c.generic_sensor",
+      decl_name: "SensorLifecycleState",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data generic_sensor_note: String = "Cited upstream: W3C Generic Sensor API, Candidate Recommendation Draft, 14 May 2026. This models the BOUNDED grain a motion consumer needs — the Sensor interface surface, the three lifecycle states, the exact error taxonomy with each error's own triggering condition, and the specification's own warning about feature detection. It contains NO browser and NO platform behavior: whether a particular engine can connect to a particular machine's hardware is an execution fact about that engine and that host, and it belongs downstream (DESIGN §3 external upstream decomposition)."
+
+data spec_edition: String = "Candidate Recommendation Draft, 14 May 2026"
+
+data sensor_interface: String = "Sensor"
+data sensor_error_event_interface: String = "SensorErrorEvent"
+data sensor_activated_property: String = "activated"
+data sensor_has_reading_property: String = "hasReading"
+data sensor_timestamp_property: String = "timestamp"
+data sensor_start_method: String = "start"
+data sensor_stop_method: String = "stop"
+data sensor_onreading_handler: String = "onreading"
+data sensor_onactivate_handler: String = "onactivate"
+data sensor_onerror_handler: String = "onerror"
+data sensor_error_event_error_property: String = "error"
+
+data interfaces_are_secure_context_only: Bool = true
+
+data secure_context_note: String = "The IDL declares [SecureContext, Exposed=(DedicatedWorker, Window)] and the spec states that all interfaces defined by it or by its extension specifications are only available within a secure context."
+
+data construction_is_not_availability_note: String = "THE SPECIFICATION ITSELF WARNS AGAINST THE INFERENCE, WHICH IS WHY THIS MODULE REFUSES TO SUPPORT IT. Quoting the spec on feature detection: 'They do not tell you anything, however, about whether that API is actually connected to a real hardware sensor, whether that sensor works, if it is still connected, or even whether the user is going to allow you to access it.' So the presence of a constructor on the global object is exposure of an interface and NOTHING MORE — not hardware, not permission, not connectivity. The spec's recommended posture is the one this module encodes: combine feature detection with construction, with start(), and with handling every error the taxonomy below can produce. A probe that enumerates constructor names and stops has performed the exact non-observation the upstream calls out; reaching any conclusion about a machine requires actually running the lifecycle."
+
+data feature_detection_alone_establishes_availability: Bool = false
+
+data lifecycle_note: String = "The three states the spec defines, and the transition start() drives: idle -> (start()) -> activating -> activated, and stop() returns to idle. Activation is asynchronous and can fail after the state has already left idle, which is why activating is a state a consumer can genuinely observe and report rather than an instant that can be assumed away. A sensor that reaches activated has connected; it has not necessarily produced a reading, which is a further, separate fact carried by hasReading."
+
+type SensorLifecycleState
+  = SensorIdle
+  | SensorActivating
+  | SensorActivated
+
+fn sensor_lifecycle_key(s: SensorLifecycleState) -> String {
+  match s {
+    SensorIdle => "idle"
+    SensorActivating => "activating"
+    SensorActivated => "activated"
+  }
+}
+
+fn sensor_is_connected(s: SensorLifecycleState) -> Bool {
+  match s {
+    SensorIdle => false
+    SensorActivating => false
+    SensorActivated => true
+  }
+}
+
+data activated_is_not_reading_note: String = "activated and hasReading are separate attributes in the IDL and a consumer must keep them separate. A sensor can be connected and never deliver a value within the observation window; reporting that as either a failure or a success is a fabrication in one direction or the other, so it gets its own outcome."
+
+data sensor_error_taxonomy_note: String = "THE ERROR NAMES CARRY THE DIAGNOSIS, AND THIS IS THE WHOLE REASON TO RUN start(). Each name in the spec has its own triggering condition, so an executed lifecycle answers WHICH obstacle stood in the way rather than returning a bare failure: SecurityError means sensor construction was blocked by the Permissions Policy; NotAllowedError means permission was denied via the Permissions API during start(); NotReadableError means the implementation could not connect to the sensor hardware during start(); ReferenceError means the sensor is not supported by the user agent; NotSupportedError means unsupported sensor options were passed to the constructor. A consumer that never starts the sensor learns none of these and can only report that it did not look."
+
+type SensorAccessOutcome
+  = SensorConstructionBlockedByPolicy
+  | SensorAccessNotAllowed
+  | SensorHardwareConnectionFailed
+  | SensorUnsupportedByUserAgent
+  | SensorOptionsUnsupported
+  | SensorActivatedWithoutReading
+  | SensorReadingDelivered
+
+fn sensor_access_outcome_key(o: SensorAccessOutcome) -> String {
+  match o {
+    SensorConstructionBlockedByPolicy => "construction-blocked-by-policy"
+    SensorAccessNotAllowed => "permission-denied"
+    SensorHardwareConnectionFailed => "hardware-connection-failed"
+    SensorUnsupportedByUserAgent => "unsupported-by-user-agent"
+    SensorOptionsUnsupported => "options-unsupported"
+    SensorActivatedWithoutReading => "activated-without-reading"
+    SensorReadingDelivered => "reading-delivered"
+  }
+}
+
+data sensor_access_outcome_exception_note: String = "The upstream exception name each outcome corresponds to, kept as the spec spells it so a consumer surfacing a caught DOMException maps it rather than re-coining it. SensorActivatedWithoutReading and SensorReadingDelivered correspond to no exception: they are the two ways a lifecycle that threw nothing can still end differently, and having them in the same coproduct as the failures is what stops a consumer from treating did-not-throw as success."
+
+fn sensor_access_outcome_exception_name(o: SensorAccessOutcome) -> String {
+  match o {
+    SensorConstructionBlockedByPolicy => "SecurityError"
+    SensorAccessNotAllowed => "NotAllowedError"
+    SensorHardwareConnectionFailed => "NotReadableError"
+    SensorUnsupportedByUserAgent => "ReferenceError"
+    SensorOptionsUnsupported => "NotSupportedError"
+    SensorActivatedWithoutReading => ""
+    SensorReadingDelivered => ""
+  }
+}
+
+fn sensor_access_outcome_delivered_a_value(o: SensorAccessOutcome) -> Bool {
+  match o {
+    SensorConstructionBlockedByPolicy => false
+    SensorAccessNotAllowed => false
+    SensorHardwareConnectionFailed => false
+    SensorUnsupportedByUserAgent => false
+    SensorOptionsUnsupported => false
+    SensorActivatedWithoutReading => false
+    SensorReadingDelivered => true
+  }
+}
+
+data policy_tokens_are_extension_defined_note: String = "A HONEST ABSENCE, RECORDED SO NOBODY FILLS IT IN FROM MEMORY. The base Generic Sensor specification defines NO concrete policy-controlled feature tokens. It requires each extension specification to define 'a non-empty ordered set of associated policy-controlled feature tokens referred to as sensor feature names', and states only that 'sensor readings are only available for the documents which are allowed to use the policy-controlled features for the given sensor type'. So the token strings accelerometer and gyroscope are NOT cited from this module — they are cited from extdeps.w3c.device_orientation_and_motion, whose own text names them for the devicemotion dispatch precondition. Anything that needs the Accelerometer or Gyroscope extension specifications as an authority must cite those specifications, in their own module, rather than attributing their tokens to this one."
+
+data base_spec_defines_feature_tokens: Bool = false
