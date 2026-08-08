@@ -1,0 +1,32 @@
+module std.process_termination
+
+// HOW A SPAWNED PROCESS ENDED, AS OBSERVED — a different concept from std.process ProcessExit, which is
+// an exit this program DECLARES for itself. An observation cannot be constructed from intent, so the two
+// do not share a carrier.
+//
+// WHY THIS IS ITS OWN MODULE AND NOT A ROW IN std.process. An observation of a child's death needs no
+// exit-code authority: it reads a status, it does not choose one. std.process cites the POSIX and GNU
+// bash exit-code tables because DECLARING an exit requires them, and homing this type beside it pulled
+// that platform-exit closure into every consumer of the observation — measurably, into the stage0 seed
+// partition and the scoped floor batch's reach, for a type that imports nothing. The carrier is
+// dependency-free by construction, which is the property that keeps it that way rather than a comment
+// asking future edits to be careful.
+//
+// WHY THE SIGNAL ARM EXISTS. A signal death has no exit code. The seed transport used to render one
+// anyway, flattening every signalled process to the fabricated literal -1 (v1_interpreter
+// emit_host_run_transport_cached_in_workspace), so a runner OOM-killing a build was indistinguishable
+// from a build choosing to exit -1 and both read as an ordinary nonzero exit. That is the DESIGN section
+// 5 fabricated-plausible-output class at the process boundary: the observation that could not be
+// expressed was rendered as a neighbouring one that could. std.realization_schedule already states the
+// same law for floor workers (its Rust control is named
+// floor_worker_signal_death_is_not_flattened_to_an_exit_code); this carrier is that law where a HOST
+// transport observes a child, and it is deliberately the one authority for the concept rather than a
+// second spelling of it.
+//
+// ProcessTerminationUnobserved is not an error arm. It is the honest state when the spawn itself never
+// produced a status — the transport refused before the process existed — and it is what keeps an outage
+// separable from a failure the process actually reported.
+type ProcessTermination
+  = ProcessExited { code: Int }
+  | ProcessSignaled { signal: Int }
+  | ProcessTerminationUnobserved
