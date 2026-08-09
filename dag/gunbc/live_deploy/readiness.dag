@@ -294,12 +294,18 @@ fn ground_service_ready_from_healthz(
   expected_revision: CommitSha,
   expected_surface_identity: Fnv1a64Structural,
 ) -> Grounding<ServiceReadyEvidence> {
-  ground_service_ready_from_healthz_with_bundle(
-    read: read,
-    bundle: materialize_live_roadmap_site_surface_bundle(),
-    expected_revision: expected_revision,
-    expected_surface_identity: expected_surface_identity,
-  )
+  if read.probe_error != "" {
+    DoesNotGround {
+      reason: healthz_refusal_reason(cause: HealthzProbeFailed { detail: read.probe_error }),
+    }
+  } else {
+    ground_service_ready_from_healthz_with_bundle(
+      read: read,
+      bundle: materialize_live_roadmap_site_surface_bundle(),
+      expected_revision: expected_revision,
+      expected_surface_identity: expected_surface_identity,
+    )
+  }
 }
 
 fn show_healthz_read_for_deploy(
