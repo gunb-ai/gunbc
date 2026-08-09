@@ -29,7 +29,6 @@ import v2.workflow.floor_diff_observe {
 }
 import gunbc.pr_delivery_check {
   Consumed,
-  ConsumerPending,
   DeclarationGrainUnavailable,
   DeliveryReceipt,
   DeliverySubjectVerdict,
@@ -390,8 +389,6 @@ fn render_delivery_verdict(row: DeliverySubjectVerdict) -> String {
       "    CONSUMED               {pr_delivery_subject_label(subject: row.subject)}  <-  {render_modules(modules: consumers)}"
     SelfConsumedOnly { test_consumers } =>
       "    SELF-CONSUMED-ONLY     {pr_delivery_subject_label(subject: row.subject)}  <-  only its own witnesses ({render_modules(modules: test_consumers)}) — NOT delivered"
-    ConsumerPending { work_item } =>
-      "    CONSUMER-PENDING       {pr_delivery_subject_label(subject: row.subject)}  <-  declared, awaiting {work_item}"
     DeclarationGrainUnavailable { path } =>
       "    DECLARATION-GRAIN-NA   {path}  —  modified existing module; module grain cannot see which declarations were added"
     Unconsumed =>
@@ -407,7 +404,7 @@ fn render_delivery_receipt(receipt: DeliveryReceipt) -> String {
   render_lines(lines: [
     "delivery check — does anything use what this PR added?",
     "  DECLARATION-GRAIN-UNAVAILABLE: {receipt.declaration_grain_unavailable_count}  (subjects this check CANNOT answer today — the priority argument for DeclarationGrain)",
-    "  consumed: {receipt.consumed_count}   self-consumed-only: {receipt.self_consumed_only_count}   UNCONSUMED: {receipt.unconsumed_count}   consumer-pending: {receipt.consumer_pending_count}   undecidable: {receipt.undecidable_count}   witness-entry-points: {receipt.witness_entry_point_count}",
+    "  consumed: {receipt.consumed_count}   self-consumed-only: {receipt.self_consumed_only_count}   UNCONSUMED: {receipt.unconsumed_count}   undecidable: {receipt.undecidable_count}   witness-entry-points: {receipt.witness_entry_point_count}",
     "  subjects:",
     render_lines(lines: list_reverse(xs: fold_list(
       xs: receipt.subjects,

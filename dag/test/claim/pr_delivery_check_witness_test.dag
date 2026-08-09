@@ -23,7 +23,6 @@ import v2.lens.module_impact_query {
 }
 import gunbc.pr_delivery_check {
   Consumed,
-  ConsumerPending,
   DeclarationGrainUnavailable,
   DeliveryReceipt,
   DeliveryUndecidable,
@@ -103,7 +102,6 @@ test fn witness_a_new_module_with_a_real_consumer_is_consumed() -> Bool {
           any(xs: consumers, predicate: fn(c) { c.name == "m.consumer" })
             && count_where(xs: consumers, predicate: fn(c) { c.name == "m.feature_test" }) == 0
         SelfConsumedOnly { test_consumers: _ } => false
-        ConsumerPending { work_item: _ } => false
         DeclarationGrainUnavailable { path: _ } => false
         DeliveryUndecidable { cause: _ } => false
         Unconsumed => false
@@ -158,7 +156,6 @@ test fn witness_a_modified_existing_module_is_never_silently_consumed() -> Bool 
         DeclarationGrainUnavailable { path } => path == "src/v2/lens/existing.dag"
         Consumed { consumers: _ } => false
         SelfConsumedOnly { test_consumers: _ } => false
-        ConsumerPending { work_item: _ } => false
         DeliveryUndecidable { cause: _ } => false
         Unconsumed => false
         WitnessEntryPoint { path: _ } => false
@@ -207,7 +204,7 @@ test fn witness_receipt_counts_equal_the_rows_they_summarise() -> Bool {
     added: ["src/v2/lens/feature.dag"]
   )
   let rows = count_where(xs: receipt.subjects, predicate: fn(_) { true })
-  let summed = receipt.consumed_count + receipt.self_consumed_only_count + receipt.consumer_pending_count + receipt.declaration_grain_unavailable_count + receipt.undecidable_count + receipt.unconsumed_count + receipt.witness_entry_point_count
+  let summed = receipt.consumed_count + receipt.self_consumed_only_count + receipt.declaration_grain_unavailable_count + receipt.undecidable_count + receipt.unconsumed_count + receipt.witness_entry_point_count
   rows == summed
 }
 
@@ -268,7 +265,6 @@ test fn witness_a_partial_surface_still_reports_the_grain_unavailable_rows() -> 
         DeclarationGrainUnavailable { path } => path == "src/v2/lens/existing.dag"
         Consumed { consumers: _ } => false
         SelfConsumedOnly { test_consumers: _ } => false
-        ConsumerPending { work_item: _ } => false
         DeliveryUndecidable { cause: _ } => false
         Unconsumed => false
         WitnessEntryPoint { path: _ } => false

@@ -26,6 +26,8 @@ import v2.lens.module_impact_query {
   module_impact_reading,
 }
 
+data pr_delivery_consumer_pending_deleted_note: String = "DELETED, found in carrier reconciliation with calm-newt-575 (2026-08-09). ConsumerPending { work_item: String } was declared, rendered and counted, and NOTHING ANYWHERE COULD PRODUCE IT — an arm with no constructor, which is a promise the carrier cannot keep. Their objection names what it would have become the moment a producer appeared: a bare String obligation is a graveyard, because any dead declaration is laundered by being pending forever, and 'pending' with no named ACTIVE obligation and no refusal when the activation condition is REACHED is a permanent parking space rather than a deferral. The right shape is theirs, not a second one here: an obligation naming a RoadmapNodeIdentity with intended consumer, purpose, structural activation condition, acceptance and dissolution, whose DissolutionStanding REFUSES once the condition is reached rather than omitting silently. So the arm is removed rather than grounded speculatively, and when that carrier exists this check consumes it instead of minting a parallel one. Removing unproducible vocabulary is not a feature loss: a state nothing constructs is not a capability, and leaving it in the coproduct would have made every consumer's match claim to handle a case that could not occur."
+
 data pr_delivery_check_subject_note: String = "'Someone actually uses the feature we built' as a PR-closing criterion (operator directive 2026-08-08), and the first machine consumer of the CONFIDENCE-0 reverse query. The tool polices delivery, including its own. A declaration that nothing references is the inert-analysis tier: it typechecks, it is reviewed, it merges, and no behaviour anywhere depends on it. This check makes that state VISIBLE at acceptance rather than discovered later, by taking the PR's newly added subjects and asking the reverse query who consumes them."
 
 data pr_delivery_uses_grounding_note: String = "'Uses' means A RESOLVING REFERENCE IN THE MERGED TREE, and nothing stronger. It does NOT mean the code executes, is reachable at runtime, or is exercised by a test — the module graph cannot ground any of those, and a check that claimed them would be asserting a rung it has no evidence for. The merged-tree part is not an aspiration either: CI checks out github.sha, which on a pull_request event IS the merge commit, so the pool this resolves against already carries base plus PR. Reading the PR branch alone would race cross-PR consumers — a consumer landing in a sibling PR would read as absent — which is why the merged state is the required view rather than a nicety."
@@ -48,9 +50,6 @@ type DeliveryVerdict
   | Unconsumed
   | WitnessEntryPoint {
       path: String
-    }
-  | ConsumerPending {
-      work_item: String
     }
   | DeclarationGrainUnavailable {
       path: String
@@ -86,7 +85,6 @@ type DeliveryReceipt {
   declaration_grain_unavailable_count: Int
   consumed_count: Int
   self_consumed_only_count: Int
-  consumer_pending_count: Int
   undecidable_count: Int
   unconsumed_count: Int
   witness_entry_point_count: Int
@@ -320,7 +318,6 @@ fn pr_delivery_is_consumed(verdict: DeliveryVerdict) -> Bool {
   match verdict {
     Consumed { consumers: _ } => true
     SelfConsumedOnly { test_consumers: _ } => false
-    ConsumerPending { work_item: _ } => false
     DeclarationGrainUnavailable { path: _ } => false
     DeliveryUndecidable { cause: _ } => false
     Unconsumed => false
@@ -332,7 +329,6 @@ fn pr_delivery_is_self_consumed(verdict: DeliveryVerdict) -> Bool {
   match verdict {
     Consumed { consumers: _ } => false
     SelfConsumedOnly { test_consumers: _ } => true
-    ConsumerPending { work_item: _ } => false
     DeclarationGrainUnavailable { path: _ } => false
     DeliveryUndecidable { cause: _ } => false
     Unconsumed => false
@@ -340,23 +336,11 @@ fn pr_delivery_is_self_consumed(verdict: DeliveryVerdict) -> Bool {
   }
 }
 
-fn pr_delivery_is_pending(verdict: DeliveryVerdict) -> Bool {
-  match verdict {
-    Consumed { consumers: _ } => false
-    SelfConsumedOnly { test_consumers: _ } => false
-    ConsumerPending { work_item: _ } => true
-    DeclarationGrainUnavailable { path: _ } => false
-    DeliveryUndecidable { cause: _ } => false
-    Unconsumed => false
-    WitnessEntryPoint { path: _ } => false
-  }
-}
 
 fn pr_delivery_is_grain_unavailable(verdict: DeliveryVerdict) -> Bool {
   match verdict {
     Consumed { consumers: _ } => false
     SelfConsumedOnly { test_consumers: _ } => false
-    ConsumerPending { work_item: _ } => false
     DeclarationGrainUnavailable { path: _ } => true
     DeliveryUndecidable { cause: _ } => false
     Unconsumed => false
@@ -368,7 +352,6 @@ fn pr_delivery_is_undecidable(verdict: DeliveryVerdict) -> Bool {
   match verdict {
     Consumed { consumers: _ } => false
     SelfConsumedOnly { test_consumers: _ } => false
-    ConsumerPending { work_item: _ } => false
     DeclarationGrainUnavailable { path: _ } => false
     DeliveryUndecidable { cause: _ } => true
     Unconsumed => false
@@ -380,7 +363,6 @@ fn pr_delivery_is_unconsumed(verdict: DeliveryVerdict) -> Bool {
   match verdict {
     Consumed { consumers: _ } => false
     SelfConsumedOnly { test_consumers: _ } => false
-    ConsumerPending { work_item: _ } => false
     DeclarationGrainUnavailable { path: _ } => false
     DeliveryUndecidable { cause: _ } => false
     Unconsumed => true
@@ -392,7 +374,6 @@ fn pr_delivery_is_witness_entry(verdict: DeliveryVerdict) -> Bool {
   match verdict {
     Consumed { consumers: _ } => false
     SelfConsumedOnly { test_consumers: _ } => false
-    ConsumerPending { work_item: _ } => false
     DeclarationGrainUnavailable { path: _ } => false
     DeliveryUndecidable { cause: _ } => false
     Unconsumed => false
@@ -405,7 +386,6 @@ fn pr_delivery_receipt_of(subjects: List<DeliverySubjectVerdict>) -> DeliveryRec
     declaration_grain_unavailable_count: pr_delivery_count_verdicts(subjects: subjects, predicate: pr_delivery_is_grain_unavailable),
     consumed_count: pr_delivery_count_verdicts(subjects: subjects, predicate: pr_delivery_is_consumed),
     self_consumed_only_count: pr_delivery_count_verdicts(subjects: subjects, predicate: pr_delivery_is_self_consumed),
-    consumer_pending_count: pr_delivery_count_verdicts(subjects: subjects, predicate: pr_delivery_is_pending),
     undecidable_count: pr_delivery_count_verdicts(subjects: subjects, predicate: pr_delivery_is_undecidable),
     unconsumed_count: pr_delivery_count_verdicts(subjects: subjects, predicate: pr_delivery_is_unconsumed),
     witness_entry_point_count: pr_delivery_count_verdicts(subjects: subjects, predicate: pr_delivery_is_witness_entry)
