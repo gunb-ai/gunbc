@@ -27,6 +27,7 @@ pub enum EvalBuiltinArm {
     FreeCallCharAt,
     FreeCallStringContains,
     FreeCallStartsWith,
+    FreeCallTrim,
     FreeCallLength,
     FreeCallContains,
     FreeCallReplace,
@@ -162,6 +163,7 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "char_at" => Some(EvalBuiltinArm::FreeCallCharAt),
         "string_contains" => Some(EvalBuiltinArm::FreeCallStringContains),
         "starts_with" => Some(EvalBuiltinArm::FreeCallStartsWith),
+        "trim" => Some(EvalBuiltinArm::FreeCallTrim),
         "length" => Some(EvalBuiltinArm::FreeCallLength),
         "contains" => Some(EvalBuiltinArm::FreeCallContains),
         "replace" => Some(EvalBuiltinArm::FreeCallReplace),
@@ -301,6 +303,7 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.char_at") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCharAt };
     ("free_call.string_contains") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallStringContains };
     ("free_call.starts_with") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallStartsWith };
+    ("free_call.trim") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallTrim };
     ("free_call.length") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallLength };
     ("free_call.contains") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallContains };
     ("free_call.replace") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallReplace };

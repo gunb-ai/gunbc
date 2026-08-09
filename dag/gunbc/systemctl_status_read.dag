@@ -1,5 +1,7 @@
 module gunbc.systemctl_status_read
 
+import std.algebra { trim }
+
 import std.types { String, NonEmptyStr, List }
 import extdeps.systemd.systemctl
 import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell, EmitArtifactThenThinRun }

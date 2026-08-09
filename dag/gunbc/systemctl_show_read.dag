@@ -1,5 +1,7 @@
 module gunbc.systemctl_show_read
 
+import std.algebra { trim }
+
 import std.types { String, NonEmptyStr, List }
 import extdeps.systemd.systemctl
 import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire }
