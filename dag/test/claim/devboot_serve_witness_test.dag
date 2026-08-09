@@ -1,16 +1,46 @@
 module test.claim.devboot_serve_witness
 
-import std.types { String, Bool }
+import std.types { String, Bool, Present, Absent }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.devboot.lease { request_ref_namespace }
 import gunbc.devboot.serve {
   token_from_request_ref,
   RequestRefTokenParsed,
   RequestRefTokenMalformed,
+  RequestListRefused,
+  RequestListObserved,
+  ServeOnceIdle,
+  ServeOnceRefused,
+  ServeOnceHandled,
+  serve_once_from_request_list,
+  serve_once_outcome_exit,
+  request_pending_status_from_lookups,
+  RefPresent,
+  RefAbsent,
+  RefLookupRefused,
+  RequestPending,
+  RequestSettled,
+  RequestPendingRefused,
 }
+import gunbc.devboot.build {
+  ServeRefused,
+  ServeProduced,
+  ProducedRefLookupRefused,
+  ProducedRefPresent,
+  ProducedRefAbsent,
+  serve_if_produced_from_lookup,
+  serve_report_from_digest_entry,
+  RequestEntryAbsent,
+  RequestEntryPresent,
+  RequestEntryReadFailed,
+}
+import std.content_hash { sha256_hex_digest }
 
 data witness_subject_token: String = "fnv1a64-0b101ca4d5635461"
 
 data witness_request_ref: String = "refs/devboot/request/fnv1a64-0b101ca4d5635461"
+
+data witness_digest_hex: String = "5af0bd8e00000000000000000000000000000000000000000000000000000000"
 
 // THE BUG THAT SHIPPED: positional scanning at index 2 returned the literal 'request' instead of the subject token.
 test fn a_request_ref_parses_its_subject_token_not_the_namespace_segment() -> Bool {
@@ -47,5 +77,125 @@ test fn a_ref_outside_the_request_namespace_refuses() -> Bool {
     RequestRefTokenParsed { token: _ } => false
     RequestRefTokenMalformed { ref_name: _, cause } =>
       string_contains(s: cause, pattern: request_ref_namespace)
+  }
+}
+
+// FOR-EACH-REF FAILURE IS SERVE-ONCE REFUSED, NOT IDLE. Store listing failure must not masquerade as an empty queue.
+test fn a_request_list_refusal_is_serve_once_refused_not_idle() -> Bool {
+  match serve_once_from_request_list(
+    observation: RequestListRefused { cause: "git for-each-ref died" },
+    store_root: "/store",
+    repo_root: "/store",
+    work_root: "/work",
+    cargo_bin: "cargo",
+    rustup_home: "/rustup",
+    cargo_home: "/cargo",
+    build_jobs: "1",
+  ) {
+    ServeOnceRefused { detail } => detail == "git for-each-ref died"
+    ServeOnceIdle => false
+    ServeOnceHandled { report: _ } => false
+  }
+}
+
+// POSITIVE CONTROL: an empty observed list is IDLE, not refused.
+test fn an_empty_request_list_is_serve_once_idle() -> Bool {
+  match serve_once_from_request_list(
+    observation: RequestListObserved { tokens: [] },
+    store_root: "/store",
+    repo_root: "/store",
+    work_root: "/work",
+    cargo_bin: "cargo",
+    rustup_home: "/rustup",
+    cargo_home: "/cargo",
+    build_jobs: "1",
+  ) {
+    ServeOnceIdle => true
+    ServeOnceRefused { detail: _ } => false
+    ServeOnceHandled { report: _ } => false
+  }
+}
+
+// PRODUCED-REF LOOKUP FAILURE IS SERVE REFUSED, NOT SETTLED/PENDING ABSORPTION.
+test fn a_produced_ref_lookup_refusal_is_serve_refused_not_absent() -> Bool {
+  match serve_if_produced_from_lookup(
+    lookup: ProducedRefLookupRefused { detail: "rev-parse exploded" },
+    token: witness_subject_token,
+    refusal_entry: RequestEntryAbsent,
+    digest_entry: RequestEntryAbsent,
+  ) {
+    Present { value: ServeRefused { token, detail } } => token == witness_subject_token && detail == "rev-parse exploded"
+    Absent => false
+  }
+}
+
+// PENDING-STATUS LOOKUP FAILURE IS REFUSED, NOT SETTLED OR PENDING.
+test fn a_pending_status_lookup_refusal_is_not_settled_or_pending() -> Bool {
+  match request_pending_status_from_lookups(
+    request_lookup: RefPresent,
+    produced_lookup: RefLookupRefused { detail: "store unreadable" },
+  ) {
+    RequestPendingRefused { cause } => cause == "store unreadable"
+    RequestSettled => false
+    RequestPending => false
+  }
+}
+
+// PRODUCED REF WITH ABSENT DIGEST REFUSES WITHOUT IMPLYING A FRESH COMPILE PATH.
+test fn a_produced_ref_with_absent_digest_refuses_without_build() -> Bool {
+  match serve_if_produced_from_lookup(
+    lookup: ProducedRefPresent,
+    token: witness_subject_token,
+    refusal_entry: RequestEntryAbsent,
+    digest_entry: RequestEntryAbsent,
+  ) {
+    Present { value: ServeRefused { token, detail } } =>
+      token == witness_subject_token
+        && string_contains(s: detail, pattern: "digest entry is absent")
+    Absent => false
+  }
+}
+
+// THE DIGEST ENTRY DECISION ALONE REFUSES WHEN ABSENT — THE REUSE ARM NEVER REACHES cargo.
+test fn an_absent_digest_entry_alone_refuses() -> Bool {
+  match serve_report_from_digest_entry(
+    token: witness_subject_token,
+    entry: RequestEntryAbsent,
+  ) {
+    ServeRefused { token, detail } =>
+      token == witness_subject_token && string_contains(s: detail, pattern: "digest entry is absent")
+    ServeProduced { token: _, sha256: _ } => false
+  }
+}
+
+// SERVE-ONCE EXIT: handled success maps to ExitSuccess.
+test fn a_handled_serve_maps_to_exit_success() -> Bool {
+  match sha256_hex_digest(hex: witness_digest_hex) {
+    Present { value: digest } =>
+      match serve_once_outcome_exit(
+        outcome: ServeOnceHandled {
+          report: ServeProduced { token: witness_subject_token, sha256: digest },
+        },
+      ) {
+        ExitSuccess => true
+        ExitFailure { code: _, reason: _ } => false
+      }
+    Absent => false
+  }
+}
+
+// SERVE-ONCE EXIT: store listing refusal maps to ExitFailure.
+test fn a_serve_once_refusal_maps_to_exit_failure() -> Bool {
+  match serve_once_outcome_exit(outcome: ServeOnceRefused { detail: "store down" }) {
+    ExitSuccess => false
+    ExitFailure { code: _, reason } => reason == "store down"
+  }
+}
+
+// SERVE-ONCE EXIT: idle maps to ExitSuccess for systemd oneshot semantics.
+test fn serve_once_idle_maps_to_exit_success() -> Bool {
+  match serve_once_outcome_exit(outcome: ServeOnceIdle) {
+    ExitSuccess => true
+    ExitFailure { code: _, reason: _ } => false
   }
 }

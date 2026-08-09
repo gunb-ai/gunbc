@@ -87,6 +87,11 @@ data retained_devboot_git_rev_parse: RetainedWitnessRun = RetainedWitnessRun {
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
+data retained_devboot_git_for_each_ref: RetainedWitnessRun = RetainedWitnessRun {
+  reason: "devboot serve loop lists pending request refs from the artifact store" as NonEmptyStr,
+  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
+}
+
 data retained_devboot_git_update_ref: RetainedWitnessRun = RetainedWitnessRun {
   reason: "devboot publishes the produced answer ref after commit-tree" as NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,

@@ -994,13 +994,18 @@ fn produced_ref_lookup(store_root: String, work_root: String, token: String) -> 
 }
 
 // THE ONE-COMPILE LAW IS MODELED HERE, NOT IN A SHELL LOOP. If the produced ref already names a complete answer tree, the producer returns it without recompiling — the same skip the belt timer's outer harness used to enforce out-of-band.
-fn serve_if_produced_already(store_root: String, work_root: String, token: String) -> ServeReport? {
-  match produced_ref_lookup(store_root: store_root, work_root: work_root, token: token) {
+// PURE DECISION: produced-ref observation + staged entry reads → reuse report without compile transport.
+fn serve_if_produced_from_lookup(
+  lookup: ProducedRefLookup,
+  token: String,
+  refusal_entry: RequestEntryOutcome,
+  digest_entry: RequestEntryOutcome,
+) -> ServeReport? {
+  match lookup {
     ProducedRefAbsent => none
     ProducedRefLookupRefused { detail } => Present { value: ServeRefused { token: token, detail: detail } }
     ProducedRefPresent =>
-      let ref_name = produced_ref_of(token: token)
-      match read_request_entry(repo_root: store_root, ref_name: ref_name, entry: produced_refusal_entry) {
+      match refusal_entry {
         RequestEntryReadFailed { exit_code, stderr } =>
           Present {
             value: ServeRefused {
@@ -1012,41 +1017,58 @@ fn serve_if_produced_already(store_root: String, work_root: String, token: Strin
           if trim(s: refusal_text) != "" {
             Present { value: ServeRefused { token: token, detail: refusal_text } }
           } else {
-            serve_existing_produced_digest(store_root: store_root, token: token)
+            Present { value: serve_report_from_digest_entry(token: token, entry: digest_entry) }
           }
-        RequestEntryAbsent => serve_existing_produced_digest(store_root: store_root, token: token)
+        RequestEntryAbsent =>
+          Present { value: serve_report_from_digest_entry(token: token, entry: digest_entry) }
       }
   }
 }
 
-fn serve_existing_produced_digest(store_root: String, token: String) -> ServeReport? {
-  let ref_name = produced_ref_of(token: token)
-  match read_request_entry(repo_root: store_root, ref_name: ref_name, entry: produced_digest_entry) {
+fn serve_report_from_digest_entry(
+  token: String,
+  entry: RequestEntryOutcome,
+) -> ServeReport {
+  match entry {
     RequestEntryReadFailed { exit_code, stderr } =>
-      Present {
-        value: ServeRefused {
-          token: token,
-          detail: join(["could not read an existing produced digest: ", stderr], ""),
-        },
+      ServeRefused {
+        token: token,
+        detail: join(["could not read an existing produced digest: ", stderr], ""),
       }
     RequestEntryAbsent =>
-      Present {
-        value: ServeRefused {
-          token: token,
-          detail: "the produced ref exists but its digest entry is absent",
-        },
+      ServeRefused {
+        token: token,
+        detail: "the produced ref exists but its digest entry is absent",
       }
     RequestEntryPresent { text: digest_hex } =>
       match sha256_hex_digest(hex: trim(s: digest_hex)) {
         Absent =>
-          Present {
-            value: ServeRefused {
-              token: token,
-              detail: join(["an existing produced digest is invalid: ", digest_hex], ""),
-            },
+          ServeRefused {
+            token: token,
+            detail: join(["an existing produced digest is invalid: ", digest_hex], ""),
           }
-        Present { value: digest } => Present { value: ServeProduced { token: token, sha256: digest } }
+        Present { value: digest } => ServeProduced { token: token, sha256: digest }
       }
+  }
+}
+
+fn serve_if_produced_already(store_root: String, work_root: String, token: String) -> ServeReport? {
+  let ref_name = produced_ref_of(token: token)
+  serve_if_produced_from_lookup(
+    lookup: produced_ref_lookup(store_root: store_root, work_root: work_root, token: token),
+    token: token,
+    refusal_entry: read_request_entry(repo_root: store_root, ref_name: ref_name, entry: produced_refusal_entry),
+    digest_entry: read_request_entry(repo_root: store_root, ref_name: ref_name, entry: produced_digest_entry),
+  )
+}
+
+fn serve_existing_produced_digest(store_root: String, token: String) -> ServeReport? {
+  let ref_name = produced_ref_of(token: token)
+  Present {
+    value: serve_report_from_digest_entry(
+      token: token,
+      entry: read_request_entry(repo_root: store_root, ref_name: ref_name, entry: produced_digest_entry),
+    ),
   }
 }
 

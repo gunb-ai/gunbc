@@ -1,15 +1,16 @@
 module gunbc.devboot.serve
 
-import std.types { String, Bool, List, NonEmptyStr }
-import std.measure { Second, second, second_count }
+import std.types { String, Bool, List, Present, Absent }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io
 
-import extdeps.gunbc
-import extdeps.git { git_ref_missing_exit_code }
-import gunbc.devboot.lease {
-  request_ref_namespace,
-  produced_ref_namespace,
-  content_hash_ref_token,
+import gunbc.devboot.transport {
+  devboot_witness_run,
+  retained_devboot_git_rev_parse,
+  retained_devboot_git_for_each_ref,
 }
+import extdeps.git { git_ref_missing_exit_code }
+import gunbc.devboot.lease { request_ref_namespace }
 import gunbc.devboot.build {
   ServeReport,
   ServeProduced,
@@ -19,7 +20,9 @@ import gunbc.devboot.build {
   request_ref_of,
   produced_ref_of,
   render_sha256_digest,
+  serve_report_exit,
 }
+import gunbc.devboot.produce { receipt_write_refusal }
 
 // THE PRODUCER SIDE OF gunbc build, ONE REQUEST PER INVOCATION. The product path is git-only: a caller pushes a parentless request commit under refs/devboot/request/<token> and polls refs/devboot/produced/<token>. This module is the other half — it observes the store, serves any request that has no answer yet, and exits. A long-running accept loop is deliberately not modeled here; the belt timer pattern (oneshot + OnUnitInactiveSec) is the host seam, because a stuck compile must not hold a process that owns the whole service.
 //
@@ -72,7 +75,8 @@ type RefLookup
   | RefLookupRefused { detail: String }
 
 fn ref_exists(store_root: String, repo_root: String, ref_name: String) -> RefLookup {
-  let out = gunbc.WitnessBin.Run(
+  let out = devboot_witness_run(
+    site: retained_devboot_git_rev_parse,
     workdir: repo_root,
     bin_path: "git",
     args: [concat("--git-dir=", store_root), "rev-parse", "--verify", "--quiet", ref_name],
@@ -93,10 +97,14 @@ type RequestPendingStatus
   | RequestSettled
   | RequestPendingRefused { cause: String }
 
-fn request_pending_status(store_root: String, repo_root: String, token: String) -> RequestPendingStatus {
-  match ref_exists(store_root: store_root, repo_root: repo_root, ref_name: request_ref_of(token: token)) {
+// PURE DECISION: maps two ref observations to pending/settled/refused without shell transport.
+fn request_pending_status_from_lookups(
+  request_lookup: RefLookup,
+  produced_lookup: RefLookup,
+) -> RequestPendingStatus {
+  match request_lookup {
     RefPresent =>
-      match ref_exists(store_root: store_root, repo_root: repo_root, ref_name: produced_ref_of(token: token)) {
+      match produced_lookup {
         RefPresent => RequestSettled
         RefAbsent => RequestPending
         RefLookupRefused { detail } => RequestPendingRefused { cause: detail }
@@ -104,6 +112,13 @@ fn request_pending_status(store_root: String, repo_root: String, token: String) 
     RefAbsent => RequestSettled
     RefLookupRefused { detail } => RequestPendingRefused { cause: detail }
   }
+}
+
+fn request_pending_status(store_root: String, repo_root: String, token: String) -> RequestPendingStatus {
+  request_pending_status_from_lookups(
+    request_lookup: ref_exists(store_root: store_root, repo_root: repo_root, ref_name: request_ref_of(token: token)),
+    produced_lookup: ref_exists(store_root: store_root, repo_root: repo_root, ref_name: produced_ref_of(token: token)),
+  )
 }
 
 type RequestListObservation
@@ -161,7 +176,8 @@ fn pending_tokens_from_ref_lines(
 }
 
 fn list_request_tokens(store_root: String, repo_root: String) -> RequestListObservation {
-  let out = gunbc.WitnessBin.Run(
+  let out = devboot_witness_run(
+    site: retained_devboot_git_for_each_ref,
     workdir: repo_root,
     bin_path: "git",
     args: [
@@ -190,7 +206,9 @@ type ServeOnceOutcome
   | ServeOnceHandled { report: ServeReport }
   | ServeOnceRefused { detail: String }
 
-fn devboot_serve_once(
+// PURE DECISION: observation → serve-once outcome without listing transport.
+fn serve_once_from_request_list(
+  observation: RequestListObservation,
   store_root: String,
   repo_root: String,
   work_root: String,
@@ -199,7 +217,7 @@ fn devboot_serve_once(
   cargo_home: String,
   build_jobs: String,
 ) -> ServeOnceOutcome {
-  match list_request_tokens(store_root: store_root, repo_root: repo_root) {
+  match observation {
     RequestListRefused { cause } => ServeOnceRefused { detail: cause }
     RequestListObserved { tokens } =>
       if is_empty(tokens) {
@@ -229,6 +247,27 @@ fn devboot_serve_once(
   }
 }
 
+fn devboot_serve_once(
+  store_root: String,
+  repo_root: String,
+  work_root: String,
+  cargo_bin: String,
+  rustup_home: String,
+  cargo_home: String,
+  build_jobs: String,
+) -> ServeOnceOutcome {
+  serve_once_from_request_list(
+    observation: list_request_tokens(store_root: store_root, repo_root: repo_root),
+    store_root: store_root,
+    repo_root: repo_root,
+    work_root: work_root,
+    cargo_bin: cargo_bin,
+    rustup_home: rustup_home,
+    cargo_home: cargo_home,
+    build_jobs: build_jobs,
+  )
+}
+
 fn render_serve_once(outcome: ServeOnceOutcome) -> String {
   match outcome {
     ServeOnceIdle => "IDLE"
@@ -241,7 +280,15 @@ fn render_serve_once(outcome: ServeOnceOutcome) -> String {
   }
 }
 
-// Flat argv entry for systemd oneshot + timer, matching devboot_serve_entry's toolchain parameters.
+fn serve_once_outcome_exit(outcome: ServeOnceOutcome) -> ProcessExit {
+  match outcome {
+    ServeOnceIdle => ExitSuccess
+    ServeOnceHandled { report } => serve_report_exit(report: report)
+    ServeOnceRefused { detail } => exit_failure(reason: detail)
+  }
+}
+
+// Flat argv entry for systemd oneshot + timer. Returns ProcessExit so the host maps success/failure correctly; prose is written to the receipt file first.
 fn devboot_serve_once_entry(
   store_root: String,
   repo_root: String,
@@ -250,16 +297,24 @@ fn devboot_serve_once_entry(
   rustup_home: String,
   cargo_home: String,
   build_jobs: String,
-) -> String {
-  render_serve_once(
-    outcome: devboot_serve_once(
-      store_root: store_root,
-      repo_root: repo_root,
-      work_root: work_root,
-      cargo_bin: cargo_bin,
-      rustup_home: rustup_home,
-      cargo_home: cargo_home,
-      build_jobs: build_jobs,
-    ),
+  receipt_path: String,
+) -> ProcessExit {
+  let outcome = devboot_serve_once(
+    store_root: store_root,
+    repo_root: repo_root,
+    work_root: work_root,
+    cargo_bin: cargo_bin,
+    rustup_home: rustup_home,
+    cargo_home: cargo_home,
+    build_jobs: build_jobs,
   )
+  let written = Filesystem.Write(
+    path: receipt_path,
+    content: render_serve_once(outcome: outcome),
+  )
+  if !written.success {
+    receipt_write_refusal(receipt_path: receipt_path, detail: written.error)
+  } else {
+    serve_once_outcome_exit(outcome: outcome)
+  }
 }

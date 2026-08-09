@@ -15902,30 +15902,30 @@ pub fn handle_devboot_build(
             std::process::exit(1);
         }
     };
-    let converged = matches!(
-        ctx.field(fields, "converged"),
-        Some(v1_interpreter::Value::Bool(true))
-    );
-    let reason = match ctx.field(fields, "reason") {
-        Some(v1_interpreter::Value::Variant {
-            variant_name,
-            fields: vf,
-            ..
-        }) if ctx.sym_eq(*variant_name, "Present") => match ctx.field(vf, "value") {
-            Some(v1_interpreter::Value::Str(s)) => Some(s.clone()),
-            _ => None,
-        },
-        _ => None,
+    let exit_val = match ctx.field(fields, "exit") {
+        Some(v) => v,
+        None => {
+            eprintln!("error: devboot_build_cli_output.exit missing");
+            std::process::exit(1);
+        }
     };
+    let exit_class = classify_exit(exit_val, &ctx);
     print!("{line}");
     if !line.ends_with('\n') {
         println!();
     }
-    if let Some(reason) = &reason {
-        eprintln!("{reason}");
-    }
-    if !converged {
-        std::process::exit(1);
+    match exit_class {
+        ExitClass::Success => {}
+        ExitClass::Failure { code, reason } => {
+            if let Some(reason) = reason {
+                eprintln!("{reason}");
+            }
+            std::process::exit(code);
+        }
+        ExitClass::NotProcessExit { type_name } => {
+            eprintln!("error: devboot_build_cli_output.exit was not ProcessExit (got {type_name})");
+            std::process::exit(1);
+        }
     }
 }
 
