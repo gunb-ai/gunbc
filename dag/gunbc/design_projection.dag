@@ -8,8 +8,10 @@ import gunbc.design_truth {
   AuthoredDesignStanding,
   AuthoredDeclared,
   AuthoredRealized,
+  AuthoredRealizedProofUnmeasured,
   AuthoredAmbiguous,
   AuthoredRetired,
+  AuthoredDuplicateRetirement,
   DesignContract,
   DesignRealization,
   DesignRetirementEvent,
@@ -17,7 +19,7 @@ import gunbc.design_truth {
   design_subject_identity_key,
 }
 
-data design_projection_note: String = "THE ONLY WAY A MIGRATED SECTION MAY SAY WHAT EXISTS. Every sentence this module produces is a function of typed rows -- a subject identity, a contract's requirement reference, a realization's implementation and production-consumer references, and the arm of a fold over the realization population. There is no parameter through which a caller could supply a status, so a migrated section cannot carry 'gated on X', 'landed', or 'remains open' as authored text; it can carry durable rationale, or it can carry this.\n\nTHAT IS THE CONSTRUCTOR-LEVEL CUT, and it is why this is a wall rather than a check. A lens reading the generated Markdown would have to infer from English whether a sentence had become false, after the false sentence was already writable -- and gunbc.roadmap_authority already demonstrates the ceiling of that approach in tree, where witness_authority_contains_no_mutable_execution_ledger blacklists the substrings 'PR #', 'session/' and 'CI run' in TicketFields.current_state and is structurally unable to catch a stale claim spelled without them.\n\nSCOPE, STATED HONESTLY: the projection renders the AUTHORED fold, which sees the realization population and retirement events but not whether the contract has moved or the implementation has become unreachable. Those arms need live declaration facts, they belong to the gate rather than to artifact generation, and gunbc.design_truth design_authored_standing_split_note records why fusing them would either put a corpus walk inside expected_design_md or drop the arms that make the wall real."
+data design_projection_note: String = "THE ONLY WAY A MIGRATED SECTION MAY SAY WHAT EXISTS. Every sentence this module produces is a function of typed rows -- a subject identity, a contract's requirement reference, a realization's implementation and production-consumer references, and the arm of a fold over the realization population. There is no parameter through which a caller could supply a status, so a migrated section cannot carry 'gated on X', 'landed', or 'remains open' as authored text; it can carry durable rationale, or it can carry this.\n\nTHAT IS THE CONSTRUCTOR-LEVEL CUT, and it is why this is a wall rather than a check. A lens reading the generated Markdown would have to infer from English whether a sentence had become false, after the false sentence was already writable -- and gunbc.roadmap_authority already demonstrates the ceiling of that approach in tree, where witness_authority_contains_no_mutable_execution_ledger blacklists the substrings 'PR #', 'session/' and 'CI run' in TicketFields.current_state and is structurally unable to catch a stale claim spelled without them.\n\nTHE RUNG THIS ACTUALLY OCCUPIES, CORRECTED IN REVIEW (cursor/composer-2.5 on gunbc#8066). An earlier revision of this note called the module a construction wall without qualification, and that overstated it: gunbc.design_document can still call p(text:) and li(text:) with any literal string, so a status sentence remains WRITABLE there and nothing in this module prevents it. What is unwritable is a status sentence PRODUCED BY THIS PROJECTION -- there is no parameter through which a caller supplies one -- so the guarantee is scoped to migrated sections and reads: a section that consumes design_subject_standing_sentence cannot carry an authored standing, and a section that does not consume it is simply unmigrated. That is structural at the seam and merely monotone across the corpus, which is why gunbc.design_subject_registry describes the population as growing one thread at a time rather than claiming coverage. The corpus-wide rung climbs when the element carrier restricts what a migrated section may build at all; until then, calling this a wall over DESIGN.md would be the rung inflation DESIGN 4b names.\n\nSCOPE, STATED HONESTLY: the projection renders the AUTHORED fold, which sees the realization population and retirement events but not whether the contract has moved or the implementation has become unreachable. Those arms need live declaration facts, they belong to the gate rather than to artifact generation, and gunbc.design_truth design_authored_standing_split_note records why fusing them would either put a corpus walk inside expected_design_md or drop the arms that make the wall real."
 
 fn design_ref_text(reference: DeclarationRef) -> String {
   concat("`", reference.module_path as String, " ", reference.decl_name as String, "`")
@@ -34,10 +36,22 @@ fn design_authored_standing_text(standing: AuthoredDesignStanding) -> String {
         ", reached in production from ",
         design_ref_text(reference: realization.production_consumer)
       )
+    AuthoredRealizedProofUnmeasured { subject: _, realization, trigger } =>
+      concat(
+        "realized by ",
+        design_ref_text(reference: realization.implementation),
+        ", reached in production from ",
+        design_ref_text(reference: realization.production_consumer),
+        " — contract proof UNMEASURED, so drift detection is inactive for this row (dissolves on: ",
+        trigger,
+        ")"
+      )
     AuthoredAmbiguous { subject: _, realizations: _ } =>
       "AMBIGUOUS — more than one realization claims this subject; the gate refuses rather than selecting one"
     AuthoredRetired { subject: _, successor } =>
       concat("retired; superseded by ", design_subject_identity_key(subject: successor))
+    AuthoredDuplicateRetirement { subject: _, retirements: _ } =>
+      "CONTRADICTORY — more than one retirement event claims this subject; the gate refuses rather than taking the first"
   }
 }
 

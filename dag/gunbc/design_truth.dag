@@ -210,12 +210,75 @@ fn design_realization_reach(
   }
 }
 
+data declaration_presence_note: String = "MODULE-ABSENT IS NOT DECLARATION-ABSENT, and collapsing them is the fail-open this repository's own holed-universe finding predicts. resolve_declaration_ref returns five arms; only DeclarationRefDeclarationAbsent means 'the module is declared and the declaration is genuinely not in it'. Module-absent means the module never entered THIS pool, which on a corpus that does not whole-tree-resolve is routinely a universe hole rather than a deletion -- treating it as deliberate absence would let an excluded import target retire live work. Field-absent and ambiguous are likewise unreadable rather than absent: a reference resolving to two declarations has not established that anything was removed.\n\nTHE FUNCTION THIS REPLACES RETURNED Optional, so all four failure arms collapsed to Absent, and DeclarationAbsentCondition then read every one of them as DissolutionReached. An ambiguous or malformed reference could therefore retire a plan as though its declaration had been deliberately deleted. Found in review (cursor/composer-2.5 on gunbc#8066); it is the exact state-space conflation this carrier exists to remove, committed inside it."
+
+type DeclarationPresence
+  = DeclarationPresent { rel_path: String }
+  | DeclarationDefinitelyAbsent { reference: DeclarationRef }
+  | DeclarationResolutionUnreadable {
+      reference: DeclarationRef,
+      resolution: DeclarationRefResolution,
+    }
+
+fn design_declaration_presence(
+  reference: DeclarationRef,
+  facts: List<DeclFact>,
+  modules: List<ModuleDeclarationFact>,
+) -> DeclarationPresence {
+  let resolution = resolve_declaration_ref(ref: reference, facts: facts, modules: modules)
+  match resolution {
+    DeclarationRefResolved { declaration_identity } =>
+      DeclarationPresent { rel_path: declaration_identity.rel_path }
+    DeclarationRefDeclarationAbsent { reference: _ } =>
+      DeclarationDefinitelyAbsent { reference: reference }
+    DeclarationRefModuleAbsent { reference: _ } =>
+      DeclarationResolutionUnreadable { reference: reference, resolution: resolution }
+    DeclarationRefFieldAbsent { reference: _ } =>
+      DeclarationResolutionUnreadable { reference: reference, resolution: resolution }
+    DeclarationRefAmbiguous { reference: _, candidates: _ } =>
+      DeclarationResolutionUnreadable { reference: reference, resolution: resolution }
+  }
+}
+
 fn design_realization_reach_admits(reach: RealizationReach) -> Bool {
   match reach {
     RealizationReachedFromConsumer { consumer_path: _, implementation_path: _ } => true
     RealizationUnreachableFromConsumer { consumer_path: _, implementation_path: _ } => false
     RealizationReachUnreadable { reference: _, resolution: _ } => false
   }
+}
+
+data realization_evidence_admission_note: String = "EVIDENCE IS PART OF ADMISSION, BECAUSE A STORED-AND-UNREAD FIELD IS PROSE WITH A TYPE. The first revision carried DesignRealization.evidence and no fold ever looked at it, so a row could name a witness that had been renamed, moved, or never written and the standing would still read DesignRealized -- the specification-without-execution failure committed inside the carrier built to close it, and the same failure the production_consumer field was added to avoid one field over. Found in review (cursor/composer-2.5 on gunbc#8066).\n\nSO A REALIZATION IS ADMITTED ONLY IF ITS EVIDENCE DECLARATION IS PRESENT, and the three-way presence answer is preserved rather than collapsed: a missing evidence declaration and an unreadable reference are different states with different remedies, exactly as declaration_presence_note argues for dissolution conditions.\n\nWHAT THIS DOES NOT CLAIM: presence is not execution. That the named witness declaration EXISTS is checkable from declaration facts; that it RUNS and is green is the CI floor's enrollment question, and asserting it here would be a rung this fold cannot support. Presence closes the rot channel (a renamed or deleted witness now reds); enrollment closes the execution channel and is the gate's obligation."
+
+fn design_realization_evidence(
+  realization: DesignRealization,
+  facts: List<DeclFact>,
+  modules: List<ModuleDeclarationFact>,
+) -> DeclarationPresence {
+  design_declaration_presence(reference: realization.evidence, facts: facts, modules: modules)
+}
+
+fn design_declaration_presence_admits(presence: DeclarationPresence) -> Bool {
+  match presence {
+    DeclarationPresent { rel_path: _ } => true
+    DeclarationDefinitelyAbsent { reference: _ } => false
+    DeclarationResolutionUnreadable { reference: _, resolution: _ } => false
+  }
+}
+
+fn design_realization_admits(
+  realization: DesignRealization,
+  facts: List<DeclFact>,
+  modules: List<ModuleDeclarationFact>,
+  edges: List<ModuleDependencyEdge>,
+) -> Bool {
+  design_realization_reach_admits(
+    reach: design_realization_reach(
+      realization: realization, facts: facts, modules: modules, edges: edges,
+    )
+  ) && design_declaration_presence_admits(
+    presence: design_realization_evidence(realization: realization, facts: facts, modules: modules)
+  )
 }
 
 data design_retirement_event_note: String = "RETIREMENT IS AN EXPLICIT EVENT NAMING A SUCCESSOR, never the absence of a realization. Absence already means DesignDeclared -- a subject whose implementation was deleted must not read as retired, and a retired subject must not read as unstarted. The same shape gunbc.roadmap_model chose for acceptance after the 2026-07-28 verdict: the fact is recorded, never expressed by removing a row."
@@ -244,24 +307,81 @@ type DesignStanding
     }
   | DesignRetired { subject: DesignSubjectIdentity, successor: DesignSubjectIdentity }
   | DesignStandingUnreadable { subject: DesignSubjectIdentity, requirement: DeclarationRef }
+  | DesignRealizationUnreachable {
+      subject: DesignSubjectIdentity,
+      realization: DesignRealization,
+      reach: RealizationReach,
+    }
+  | DesignRealizationUnreadable {
+      subject: DesignSubjectIdentity,
+      realization: DesignRealization,
+      reach: RealizationReach,
+    }
+  | DesignMixedValidAndInvalidRealizations {
+      subject: DesignSubjectIdentity,
+      valid: List<DesignRealization>,
+      invalid: List<DesignRealization>,
+    }
+  | DesignRetiredWithLiveRealization {
+      subject: DesignSubjectIdentity,
+      successor: DesignSubjectIdentity,
+      realizations: List<DesignRealization>,
+    }
+  | DesignDuplicateRetirement {
+      subject: DesignSubjectIdentity,
+      retirements: List<DesignRetirementEvent>,
+    }
+  | DesignRealizationEvidenceMissing {
+      subject: DesignSubjectIdentity,
+      realization: DesignRealization,
+      evidence: DeclarationRef,
+    }
+  | DesignRealizationEvidenceUnreadable {
+      subject: DesignSubjectIdentity,
+      realization: DesignRealization,
+      evidence: DeclarationRef,
+      resolution: DeclarationRefResolution,
+    }
 
 data design_authored_standing_split_note: String = "TWO FOLDS, BECAUSE A GENERATED DOCUMENT CANNOT AFFORD A CORPUS WALK AND MUST NOT PRETEND TO HAVE DONE ONE. design_standing below reads live declaration facts -- it resolves the requirement, hashes its Node, and walks the dependency closure -- which is the right cost for a gate and the wrong cost for expected_design_md, whose output must also stay a deterministic function of authored rows so the generated-artifact drift wall keeps meaning what it says.\n\nSO THE DOC RENDERS THIS ONE. AuthoredDesignStanding is a pure fold over the authored rows: retirement events, then the admitted realization count at zero, one, or many. Those arms cannot be authored directly and cannot disagree with the rows, which is the property the projection needs -- a section can no longer carry 'this prerequisite remains open' as a sentence, because the only standing it can build is a fold over the population.\n\nWHAT THIS DELIBERATELY DOES NOT CLAIM, stated rather than left for a reader to discover: the authored fold cannot see that a contract has MOVED or that an implementation has become unreachable, because both are facts about the tree rather than about the rows. Those arms live in design_standing and are the GATE's job, so the honest rung for the doc projection alone is mechanically preventable -- the document is corrected when the gate reds, not prevented from being wrong in the window before it runs. Collapsing the two folds into one would either put a corpus walk inside artifact generation or silently drop the arms that make the wall real."
+
+data authored_unmeasured_arm_note: String = "THE PROOF STATE IS AUTHORED DATA, SO THE PURE FOLD CAN SEE IT AND MUST. An earlier revision of this coproduct had no unmeasured arm: design_authored_standing returned AuthoredRealized for a row carrying ContractProofUnmeasured, and design_projection rendered it with the same 'realized by X, reached in production from Y' sentence as a fully proven row. That directly contradicted the registry note declaring this subject's honest standing to be DesignRealizedContractProofUnmeasured with drift detection inactive -- two folds disagreeing about one row, with the WEAKER claim in the carrier nobody reads and the STRONGER one in the generated document. Caught in review (cursor/composer-2.5 on gunbc#8066).\n\nIT WAS RUNG INFLATION IN THE DOCUMENT-FACING DIRECTION, which is the direction that matters: a reader of DESIGN.md would have seen a proof strength no measurement supported. The reason the collapse happened is worth keeping, because it was a plausible mistake -- the authored fold exists to avoid live declaration facts, and contract DRIFT genuinely needs them. But whether a realization was ever MEASURED is not a fact about the tree; it is a field on the row. Nothing forced the collapse, and separating the two questions costs nothing."
 
 type AuthoredDesignStanding
   = AuthoredDeclared { subject: DesignSubjectIdentity }
   | AuthoredRealized { subject: DesignSubjectIdentity, realization: DesignRealization }
+  | AuthoredRealizedProofUnmeasured {
+      subject: DesignSubjectIdentity,
+      realization: DesignRealization,
+      trigger: String,
+    }
   | AuthoredAmbiguous { subject: DesignSubjectIdentity, realizations: List<DesignRealization> }
   | AuthoredRetired { subject: DesignSubjectIdentity, successor: DesignSubjectIdentity }
+  | AuthoredDuplicateRetirement {
+      subject: DesignSubjectIdentity,
+      retirements: List<DesignRetirementEvent>,
+    }
 
 fn design_authored_standing(
   contract: DesignContract,
   realizations: List<DesignRealization>,
   retirements: List<DesignRetirementEvent>,
 ) -> AuthoredDesignStanding {
-  match design_retirement_for_subject(subject: contract.subject, retirements: retirements) {
-    Present { value: event } =>
-      AuthoredRetired { subject: contract.subject, successor: event.successor }
-    Absent => {
+  let my_retirements = design_retirements_for_subject(
+    subject: contract.subject,
+    retirements: retirements,
+  )
+  let retirement_count = length(xs: my_retirements)
+  if retirement_count > 1 {
+    AuthoredDuplicateRetirement { subject: contract.subject, retirements: my_retirements }
+  } else if retirement_count == 1 {
+    match list_head(xs: my_retirements) {
+      HeadAbsent => AuthoredDeclared { subject: contract.subject }
+      HeadFound { value: event } =>
+        AuthoredRetired { subject: contract.subject, successor: event.successor }
+    }
+  } else {
+    {
       let mine = design_realizations_for_subject(subject: contract.subject, realizations: realizations)
       let n = length(xs: mine)
       if n == 0 {
@@ -272,7 +392,16 @@ fn design_authored_standing(
         match list_head(xs: mine) {
           HeadAbsent => AuthoredDeclared { subject: contract.subject }
           HeadFound { value: sole } =>
-            AuthoredRealized { subject: contract.subject, realization: sole }
+            match sole.contract_proof {
+              ContractProofUnmeasured { reason: _, trigger } =>
+                AuthoredRealizedProofUnmeasured {
+                  subject: contract.subject,
+                  realization: sole,
+                  trigger: trigger,
+                }
+              ProvenAgainstContract { digest: _ } =>
+                AuthoredRealized { subject: contract.subject, realization: sole }
+            }
         }
       }
     }
@@ -292,21 +421,19 @@ fn design_realizations_for_subject(
   })
 }
 
-fn design_retirement_for_subject(
+data registry_cardinality_note: String = "AUTHORITY ROWS ARE COUNTED, NEVER list_head-SELECTED. An earlier revision took the first matching retirement and the first matching contract, so a second row for one subject was silently ignored -- the same defect the ambiguity arm exists to catch for realizations, left open one level up on the rows that DECIDE the standing. Two retirements naming different successors is a contradiction, not a tie to break, and picking the first would have made the answer depend on authoring order. Found in review (cursor/composer-2.5 on gunbc#8066)."
+
+fn design_retirements_for_subject(
   subject: DesignSubjectIdentity,
   retirements: List<DesignRetirementEvent>,
-) -> DesignRetirementEvent? {
-  let matches = fold(retirements, init: std.algebra.Empty, f: fn(acc, e) {
+) -> List<DesignRetirementEvent> {
+  fold(retirements, init: std.algebra.Empty, f: fn(acc, e) {
     if design_subject_identity_eq(left: e.subject, right: subject) {
       list_snoc_item(xs: acc, item: e)
     } else {
       acc
     }
   })
-  match list_head(xs: matches) {
-    HeadFound { value } => Present { value: value }
-    HeadAbsent => Absent
-  }
 }
 
 fn design_standing(
@@ -317,29 +444,91 @@ fn design_standing(
   modules: List<ModuleDeclarationFact>,
   edges: List<ModuleDependencyEdge>,
 ) -> DesignStanding {
-  match design_retirement_for_subject(subject: contract.subject, retirements: retirements) {
-    Present { value: event } =>
-      DesignRetired { subject: contract.subject, successor: event.successor }
-    Absent =>
+  let mine = design_realizations_for_subject(subject: contract.subject, realizations: realizations)
+  let my_retirements = design_retirements_for_subject(
+    subject: contract.subject,
+    retirements: retirements,
+  )
+  let retirement_count = length(xs: my_retirements)
+  if retirement_count > 1 {
+    DesignDuplicateRetirement { subject: contract.subject, retirements: my_retirements }
+  } else if retirement_count == 1 {
+    match list_head(xs: my_retirements) {
+      HeadAbsent => DesignDeclared { subject: contract.subject }
+      HeadFound { value: event } =>
+        if length(xs: mine) > 0 {
+          DesignRetiredWithLiveRealization {
+            subject: contract.subject,
+            successor: event.successor,
+            realizations: mine,
+          }
+        } else {
+          DesignRetired { subject: contract.subject, successor: event.successor }
+        }
+    }
+  } else {
       match design_contract_digest(contract: contract, facts: facts, modules: modules) {
         ContractRequirementUnreadable { requirement, resolution: _ } =>
           DesignStandingUnreadable { subject: contract.subject, requirement: requirement }
         ContractDigestDerived { digest } => {
-          let admitted = fold(
-            design_realizations_for_subject(subject: contract.subject, realizations: realizations),
-            init: std.algebra.Empty,
-            f: fn(acc, r) {
-              if design_realization_reach_admits(
-                reach: design_realization_reach(realization: r, facts: facts, modules: modules, edges: edges)
-              ) {
-                list_snoc_item(xs: acc, item: r)
-              } else {
-                acc
+          let admitted = fold(mine, init: std.algebra.Empty, f: fn(acc, r) {
+            if design_realization_admits(realization: r, facts: facts, modules: modules, edges: edges) {
+              list_snoc_item(xs: acc, item: r)
+            } else { acc }
+          })
+          let rejected = fold(mine, init: std.algebra.Empty, f: fn(acc, r) {
+            if design_realization_admits(realization: r, facts: facts, modules: modules, edges: edges) {
+              acc
+            } else { list_snoc_item(xs: acc, item: r) }
+          })
+          let n = length(xs: admitted)
+          let bad = length(xs: rejected)
+          if bad > 0 && n > 0 {
+            DesignMixedValidAndInvalidRealizations {
+              subject: contract.subject,
+              valid: admitted,
+              invalid: rejected,
+            }
+          } else if bad > 0 {
+            match list_head(xs: rejected) {
+              HeadAbsent => DesignDeclared { subject: contract.subject }
+              HeadFound { value: broken } => {
+                let reach = design_realization_reach(
+                  realization: broken, facts: facts, modules: modules, edges: edges,
+                )
+                match reach {
+                  RealizationUnreachableFromConsumer { consumer_path: _, implementation_path: _ } =>
+                    DesignRealizationUnreachable {
+                      subject: contract.subject, realization: broken, reach: reach,
+                    }
+                  RealizationReachUnreadable { reference: _, resolution: _ } =>
+                    DesignRealizationUnreadable {
+                      subject: contract.subject, realization: broken, reach: reach,
+                    }
+                  RealizationReachedFromConsumer { consumer_path: _, implementation_path: _ } =>
+                    match design_realization_evidence(
+                      realization: broken, facts: facts, modules: modules,
+                    ) {
+                      DeclarationDefinitelyAbsent { reference } =>
+                        DesignRealizationEvidenceMissing {
+                          subject: contract.subject, realization: broken, evidence: reference,
+                        }
+                      DeclarationResolutionUnreadable { reference, resolution } =>
+                        DesignRealizationEvidenceUnreadable {
+                          subject: contract.subject,
+                          realization: broken,
+                          evidence: reference,
+                          resolution: resolution,
+                        }
+                      DeclarationPresent { rel_path: _ } =>
+                        DesignRealizationUnreadable {
+                          subject: contract.subject, realization: broken, reach: reach,
+                        }
+                    }
+                }
               }
             }
-          )
-          let n = length(xs: admitted)
-          if n == 0 {
+          } else if n == 0 {
             DesignDeclared { subject: contract.subject }
           } else if n > 1 {
             DesignAmbiguous { subject: contract.subject, realizations: admitted }
@@ -399,6 +588,15 @@ fn design_standing_is_realized(standing: DesignStanding) -> Bool {
     DesignContractChanged { subject: _, stale_realization: _, current_digest: _ } => false
     DesignRetired { subject: _, successor: _ } => false
     DesignStandingUnreadable { subject: _, requirement: _ } => false
+    DesignRealizationUnreachable { subject: _, realization: _, reach: _ } => false
+    DesignRealizationUnreadable { subject: _, realization: _, reach: _ } => false
+    DesignMixedValidAndInvalidRealizations { subject: _, valid: _, invalid: _ } => false
+    DesignRetiredWithLiveRealization { subject: _, successor: _, realizations: _ } => false
+    DesignRealizationEvidenceMissing { subject: _, realization: _, evidence: _ } => false
+    DesignRealizationEvidenceUnreadable {
+      subject: _, realization: _, evidence: _, resolution: _,
+    } => false
+    DesignDuplicateRetirement { subject: _, retirements: _ } => false
   }
 }
 
@@ -413,6 +611,15 @@ fn design_standing_is_retired(standing: DesignStanding) -> Bool {
     DesignAmbiguous { subject: _, realizations: _ } => false
     DesignContractChanged { subject: _, stale_realization: _, current_digest: _ } => false
     DesignStandingUnreadable { subject: _, requirement: _ } => false
+    DesignRealizationUnreachable { subject: _, realization: _, reach: _ } => false
+    DesignRealizationUnreadable { subject: _, realization: _, reach: _ } => false
+    DesignMixedValidAndInvalidRealizations { subject: _, valid: _, invalid: _ } => false
+    DesignRetiredWithLiveRealization { subject: _, successor: _, realizations: _ } => false
+    DesignRealizationEvidenceMissing { subject: _, realization: _, evidence: _ } => false
+    DesignRealizationEvidenceUnreadable {
+      subject: _, realization: _, evidence: _, resolution: _,
+    } => false
+    DesignDuplicateRetirement { subject: _, retirements: _ } => false
   }
 }
 
@@ -428,8 +635,10 @@ fn design_dissolution_standing(
   match condition {
     SubjectRealizedCondition { subject } =>
       match design_contract_for_subject(subject: subject, contracts: contracts) {
-        Absent => DissolutionUnreadable { condition: condition }
-        Present { value: contract } =>
+        ContractSubjectUnregistered { subject: _ } => DissolutionUnreadable { condition: condition }
+        ContractSubjectDuplicated { subject: _, contracts: _ } =>
+          DissolutionUnreadable { condition: condition }
+        ContractSelected { contract } =>
           if design_standing_is_realized(
             standing: design_standing(
               contract: contract,
@@ -447,8 +656,10 @@ fn design_dissolution_standing(
       }
     SubjectRetiredCondition { subject } =>
       match design_contract_for_subject(subject: subject, contracts: contracts) {
-        Absent => DissolutionUnreadable { condition: condition }
-        Present { value: contract } =>
+        ContractSubjectUnregistered { subject: _ } => DissolutionUnreadable { condition: condition }
+        ContractSubjectDuplicated { subject: _, contracts: _ } =>
+          DissolutionUnreadable { condition: condition }
+        ContractSelected { contract } =>
           if design_standing_is_retired(
             standing: design_standing(
               contract: contract,
@@ -465,29 +676,56 @@ fn design_dissolution_standing(
           }
       }
     DeclarationAbsentCondition { declaration } =>
-      match design_declaration_rel_path(reference: declaration, facts: facts, modules: modules) {
-        Absent => DissolutionReached { condition: condition }
-        Present { value: _ } => DissolutionNotReached { condition: condition }
+      match design_declaration_presence(reference: declaration, facts: facts, modules: modules) {
+        DeclarationDefinitelyAbsent { reference: _ } => DissolutionReached { condition: condition }
+        DeclarationPresent { rel_path: _ } => DissolutionNotReached { condition: condition }
+        DeclarationResolutionUnreadable { reference: _, resolution: _ } =>
+          DissolutionUnreadable { condition: condition }
       }
     DeclarationReplacedByCondition { old, replacement } =>
-      match design_declaration_rel_path(reference: replacement, facts: facts, modules: modules) {
-        Absent => DissolutionUnreadable { condition: condition }
-        Present { value: _ } =>
-          match design_declaration_rel_path(reference: old, facts: facts, modules: modules) {
-            Absent => DissolutionReached { condition: condition }
-            Present { value: _ } => DissolutionNotReached { condition: condition }
+      match design_declaration_presence(reference: replacement, facts: facts, modules: modules) {
+        DeclarationDefinitelyAbsent { reference: _ } => DissolutionUnreadable { condition: condition }
+        DeclarationResolutionUnreadable { reference: _, resolution: _ } =>
+          DissolutionUnreadable { condition: condition }
+        DeclarationPresent { rel_path: _ } =>
+          match design_declaration_presence(reference: old, facts: facts, modules: modules) {
+            DeclarationDefinitelyAbsent { reference: _ } => DissolutionReached { condition: condition }
+            DeclarationPresent { rel_path: _ } => DissolutionNotReached { condition: condition }
+            DeclarationResolutionUnreadable { reference: _, resolution: _ } =>
+              DissolutionUnreadable { condition: condition }
           }
       }
   }
 }
 
+data contract_selection_note: String = "SELECTING A SUBJECT'S CONTRACT IS A CARDINALITY QUESTION, AND THE PREVIOUS REVISION ANSWERED IT WITH Optional. Absent then meant both 'no contract is registered for this subject' and nothing else -- while TWO registered contracts for one subject, which is a genuine authority fork, silently produced the first one and made every downstream standing depend on authoring order. The realization population already refuses that shape via DesignAmbiguous; the rows that DECIDE the standing were left unguarded one level up. Found in review (cursor/composer-2.5 on gunbc#8066).\n\nIT ALSO USED A BARE filter, which is the exact capture hazard design_truth_bare_name_capture_note documents for this module's own pool. Both defects are removed by the same rewrite: a named-argument fold with a typed three-arm result."
+
+type DesignContractSelection
+  = ContractSelected { contract: DesignContract }
+  | ContractSubjectUnregistered { subject: DesignSubjectIdentity }
+  | ContractSubjectDuplicated {
+      subject: DesignSubjectIdentity,
+      contracts: List<DesignContract>,
+    }
+
 fn design_contract_for_subject(
   subject: DesignSubjectIdentity,
   contracts: List<DesignContract>,
-) -> DesignContract? {
-  let matches = filter(contracts, c => design_subject_identity_eq(left: c.subject, right: subject))
-  match list_head(xs: matches) {
-    HeadFound { value } => Present { value: value }
-    HeadAbsent => Absent
+) -> DesignContractSelection {
+  let matches = fold(contracts, init: std.algebra.Empty, f: fn(acc, c) {
+    if design_subject_identity_eq(left: c.subject, right: subject) {
+      list_snoc_item(xs: acc, item: c)
+    } else {
+      acc
+    }
+  })
+  let n = length(xs: matches)
+  if n > 1 {
+    ContractSubjectDuplicated { subject: subject, contracts: matches }
+  } else {
+    match list_head(xs: matches) {
+      HeadAbsent => ContractSubjectUnregistered { subject: subject }
+      HeadFound { value } => ContractSelected { contract: value }
+    }
   }
 }

@@ -210,17 +210,21 @@ unresolvable callee still refuses).
   scaffold dissolution, staged behind the typed wrapper-retained frontier (lowered |
   wrapper-retained{cause}, counted, corpus stays green).
 
-  **The prerequisite this section used to state as an open gate is discharged, and its standing is
-  no longer written here.** The sentence removed from this position read *gated on the namespace
-  lane's containment `SymbolIndex`* (decl names bind via module-root edges / the namespace
-  authority, not decl subtrees). It stayed after the gate closed, and a slice was nearly
-  commissioned against it. The binding is now a registered design subject —
-  `gunbc.design_subject_registry` `namespace_symbol_index_binding_contract` — whose contract is
-  `v2.std.symbol_index` `SymbolIndex`, whose realization is `v2.std.symbol_index`
-  `symbol_index_lexical_lookup`, and whose production consumer is `v2.compiler.resolve`
-  `lookup_symbol_index_atom_identity`. Standing is derived from those rows by
-  `gunbc.design_truth` `design_authored_standing` and rendered into DESIGN.md by
-  `gunbc.design_projection`; it is not restated in this file, so it cannot go stale here again.
+  **The prerequisite this section used to state as an open gate is discharged, and neither its
+  standing nor its bindings are written here.** The sentence removed from this position read
+  *gated on the namespace lane's containment `SymbolIndex`*. It stayed after the gate closed, and
+  a slice was nearly commissioned against it. The binding is now the registered design subject
+  `gunbc.design_subject_registry` `namespace_symbol_index_binding_contract`; standing is derived
+  by `gunbc.design_truth` `design_authored_standing` and rendered into DESIGN.md by
+  `gunbc.design_projection`.
+
+  This paragraph deliberately names **only that one symbol**. An earlier revision of it also
+  restated the contract, implementation and production-consumer declarations in prose, which
+  recreated the exact stale-copy class this migration removes — a repoint in the registry would
+  have left this file false while the typed rows stayed correct. Caught in review of the PR that
+  removed the other four copies, which is a fair demonstration that the habit is the hard part and
+  the wall is what actually holds.
+
   *Deliberately unchanged:* Stage A itself remains open — the producer rows are unwritten and the
   scaffold undissolved. Only the gate claim is retired.
 
