@@ -1,6 +1,5 @@
 module gunbc.live_deploy.emit
 
-import gunbc.fleet_converge_cli { fleet_converge_receipt_dir }
 import gunbc.fleet_converge_timer {
   fleet_converge_timer_on_calendar,
   fleet_converge_timer_randomized_delay,
@@ -56,7 +55,7 @@ import gunbc.live_deploy.spec {
   TeardownDisposition, TeardownActs, TeardownRefuses,
   tree_sync_unit_path,
 }
-import gunbc.host_layout { belt_spawn_workdir_env_var }
+import gunbc.host_layout { belt_spawn_workdir_env_var, fleet_converge_receipt_dir }
 import gunbc.ownership { Ownership }
 import v2.std.algebra { list_tail, TailFound, TailAbsent }
 import gunbc.membership_reconcile {

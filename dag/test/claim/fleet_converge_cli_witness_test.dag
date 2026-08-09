@@ -28,6 +28,7 @@ test fn witness_converge_cli_run_srv2_fails_closed_on_knob_frontier() -> Bool {
           KnobFrontier { reason: why } => string_contains(s: why, pattern: "host_converge_realize")
           PolicyUnsound { reason: _ } => false
           UnknownHost { host: _ } => false
+          SparkPreEnrollment { host: _ } => false
           ComputeInventoryAbsent { host: _ } => false
         }
       _ => false
@@ -47,6 +48,7 @@ test fn witness_converge_cli_run_unknown_host_refuses() -> Bool {
           UnknownHost { host: h } => h == "no-such-fleet-host"
           PolicyUnsound { reason: _ } => false
           KnobFrontier { reason: _ } => false
+          SparkPreEnrollment { host: _ } => false
           ComputeInventoryAbsent { host: _ } => false
         }
       _ => false
@@ -63,10 +65,12 @@ test fn witness_converge_cli_unknown_host_and_compute_inventory_absent_are_disti
         UnknownHost { host: _ } => false
         PolicyUnsound { reason: _ } => false
         KnobFrontier { reason: _ } => false
+        SparkPreEnrollment { host: _ } => false
       }
     ComputeInventoryAbsent { host: _ } => false
     PolicyUnsound { reason: _ } => false
     KnobFrontier { reason: _ } => false
+    SparkPreEnrollment { host: _ } => false
   }
     && converge_cli_refusal_message(cause: unknown) != converge_cli_refusal_message(cause: inventory_absent)
     && string_contains(s: converge_cli_refusal_message(cause: unknown), pattern: "unknown fleet host identity")
@@ -89,10 +93,12 @@ test fn witness_converge_cli_refusal_causes_discriminate() -> Bool {
                 UnknownHost { host: _ } => true
                 PolicyUnsound { reason: _ } => false
                 KnobFrontier { reason: _ } => false
+                SparkPreEnrollment { host: _ } => false
                 ComputeInventoryAbsent { host: _ } => false
               }
             PolicyUnsound { reason: _ } => false
             UnknownHost { host: _ } => false
+            SparkPreEnrollment { host: _ } => false
             ComputeInventoryAbsent { host: _ } => false
           }
         _ => false
@@ -124,3 +130,27 @@ test fn witness_converge_cli_output_projects_receipt_and_exit_signal() -> Bool {
     }
 }
 
+
+// Join 3 (operator verdict): applicability is TOTAL over the fleet — srv5/srv6 are a
+// typed pre-enrollment refusal DISTINCT from UnknownHost (they are known fleet
+// identities awaiting SPARK-SERVE-0), and every enrolled host lands one arm.
+test fn witness_spark_pre_enrollment_is_typed_and_distinct_from_unknown() -> Bool {
+  let r = converge_cli_run(host: "srv5")
+  !converge_cli_receipt_converged(r: r)
+    && match r.reason {
+      Present { value: cause } =>
+        match cause {
+          SparkPreEnrollment { host: h } => h == "srv5"
+          _ => false
+        }
+      _ => false
+    }
+    && match converge_cli_run(host: "no-such-fleet-host").reason {
+      Present { value: c2 } =>
+        match c2 {
+          UnknownHost { host: _ } => true
+          _ => false
+        }
+      _ => false
+    }
+}

@@ -4,6 +4,8 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import std.algebra { trim }
 
 import extdeps.linux.procfs { ProcSysKernelHostname, procfs_path_literal }
+import gunbc.fleet_converge_apply { converge_apply_for_host }
+import gunbc.host_layout { fleet_converge_receipt_dir }
 
 
 data gunbc_converge_cli_stage0_receiver_disposition: Disposition = Terminal {
@@ -13,6 +15,7 @@ data gunbc_converge_cli_stage0_receiver_disposition: Disposition = Terminal {
 type ConvergeCliRefusalCause
   = PolicyUnsound { reason: String }
   | UnknownHost { host: String }
+  | SparkPreEnrollment { host: String }
   | ComputeInventoryAbsent { host: String }
   | KnobFrontier { reason: String }
 
@@ -28,6 +31,7 @@ fn converge_cli_refusal_message(cause: ConvergeCliRefusalCause) -> String {
   match cause {
     PolicyUnsound { reason: why } => concat("gunbc converge: fleet policy unsound — ", why)
     UnknownHost { host: h } => converge_cli_unknown_host_reason(host: h)
+    SparkPreEnrollment { host: h } => concat(concat("gunbc converge: ", h), " is a Spark pre-enrollment host — no runner slots or host layout exist yet (SPARK-SERVE-0 owns the repair); reach is probed at its modeled endpoint, and no converge route exists until enrollment")
     ComputeInventoryAbsent { host: h } => converge_cli_compute_inventory_absent_reason(host: h)
     KnobFrontier { reason: why } => why
   }
@@ -95,6 +99,36 @@ fn converge_cli_applied_knob_count(intent: HostEffectIntent, fallback: Int) -> I
 
 fn converge_cli_routes_to_slice1(host: String) -> Bool {
   host == (operator_host_srv1 as String) || host == (operator_host_srv3 as String)
+}
+
+// APPLICABILITY, total over the fleet (operator verdict on PR 8045, join 3): every
+// enrolled host identity has exactly one arm — a real converge route, or a TYPED
+// frontier refusal naming what unblocks it. "Applicable" = a slice1 circuit exists for
+// the host's knobs today. srv2/srv4 are knob-frontier (whole-host typed refusal, the
+// pre-existing arm, dissolving as slice1 realizes their knobs); srv5/srv6 are
+// PRE-ENROLLMENT (no runner slots, no host layout yet — SPARK-SERVE-0 owns the repair;
+// their reach is probed at the modeled endpoint, gunbc.fleet_reach_endpoint) — a state
+// DISTINCT from UnknownHost, which now means only an identity outside the fleet.
+type FleetConvergeApplicability
+  = ConvergeSlice1Route
+  | ConvergeKnobFrontier
+  | ConvergeSparkPreEnrollment
+  | ConvergeOutsideFleet
+
+fn fleet_converge_applicability(host: String) -> FleetConvergeApplicability {
+  if converge_cli_routes_to_slice1(host: host) {
+    ConvergeSlice1Route
+  } else {
+    if host == (operator_host_srv2 as String) || host == (operator_host_srv4 as String) {
+      ConvergeKnobFrontier
+    } else {
+      if host == "srv5" || host == "srv6" {
+        ConvergeSparkPreEnrollment
+      } else {
+        ConvergeOutsideFleet
+      }
+    }
+  }
 }
 
 fn converge_cli_slice1_srv3_receipt() -> ConvergeCliReceipt {
@@ -292,8 +326,6 @@ fn converge_cli_verify_run(host: String) -> ConvergeCliReceipt {
 // product is the published receipt, so an unpublished converge must not report success.
 // Non-self routes (operator/CI supervised runs against a named host) are unchanged —
 // no write is attempted, because nothing guarantees the receipts directory there.
-data fleet_converge_receipt_dir: String = "/opt/gunbc/receipts"
-
 fn fleet_converge_receipt_path(host: String) -> String {
   join([fleet_converge_receipt_dir, "/", host, "-converge-receipt.txt"], "")
 }
@@ -326,8 +358,12 @@ fn converge_cli_verify_output(host: String) -> ConvergeCliOutput {
 
 // MACHINE-ID HAZARD, checked (msg_1c4e0bce): self identity here derives from the
 // kernel hostname — NEVER /etc/machine-id, which both Sparks share from one baked DGX
-// image (and their factory SSH host keys shipped identical), so machine-id and host-key
-// are non-anchors until repaired (SPARK-SERVE-0, bold-eagle). Hostname is itself only
+// image — machine-id is the duplicated non-anchor. Their SSH HOST KEYS ARE DISTINCT
+// (bold-eagle measured all three algorithms differing on both hosts, 2026-08-09 — an
+// earlier revision of this note claimed identical factory keys, which was FALSE), so
+// host-key IS a valid identity anchor for srv5/srv6 today and the fingerprint
+// enrollment registry can proceed against the two distinct keys with no repair
+// prerequisite; do not plan around host-key regeneration. Hostname is itself only
 // sound AFTER P0:host-identity-converge has set it; before that, two machines can
 // resolve one name — which is why the fleet fold classifies duplicate receipts for one
 // identity as a named ambiguity (never first-wins), so a collision surfaces as
@@ -380,20 +416,28 @@ fn converge_cli_run(host: String) -> ConvergeCliReceipt {
         reason: Present { value: PolicyUnsound { reason: why } },
       }
     ConvergePolicyDerived { hosts: hosts } =>
-      if converge_cli_routes_to_slice1(host: host) {
-        converge_cli_slice1_receipt(host: host)
-      } else {
-        match host_converge_for_identity(hosts: hosts, identity: host as HostIdentity) {
-        Present { value: hc } => converge_cli_receipt_for_host(host_converge: hc)
-        Absent =>
+      match fleet_converge_applicability(host: host) {
+        ConvergeSlice1Route => converge_cli_slice1_receipt(host: host)
+        ConvergeSparkPreEnrollment =>
           ConvergeCliReceipt {
             host: host,
             applied: 0,
             drifted: 0,
             verdict: Absent,
-            reason: Present { value: UnknownHost { host: host } },
+            reason: Present { value: SparkPreEnrollment { host: host } },
           }
-        }
+        _ =>
+          match host_converge_for_identity(hosts: hosts, identity: host as HostIdentity) {
+          Present { value: hc } => converge_cli_receipt_for_host(host_converge: hc)
+          Absent =>
+            ConvergeCliReceipt {
+              host: host,
+              applied: 0,
+              drifted: 0,
+              verdict: Absent,
+              reason: Present { value: UnknownHost { host: host } },
+            }
+          }
       }
   }
 }

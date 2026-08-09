@@ -48,18 +48,19 @@ import std.upsert_decision {
 // enabled until a ProbeReachable receipt exists for the fleet key — the fallback is
 // never disabled before the primary is proven. That disable is a separate effect with
 // its own receipt, never a side effect of observation.
-// ProbeHostKeyMismatch.expected_fingerprint is Optional BY MEANING, not convenience
-// (review 50695): Present = an enrolled expectation existed and the observed key
-// contradicts it ("wrong machine OR rotated key — compare and decide"); Absent = no
-// fingerprint enrollment exists yet for this host, so the only honest claim is "the
-// transport itself flagged verification failure". An empty-string expected would
-// conflate those two remedies — the exact state-space conflation the srv5/srv6
-// identical-factory-keys class needs kept apart.
+// Two SEPARATE constructors for the two host-key states (operator verdict on PR 8045):
+// ProbeHostKeyUnenrolled — the transport flagged verification failure and NO expectation
+// is enrolled, so first-contact and changed-key are indistinguishable; remedy = enroll
+// the fingerprint registry; carries only the raw transport diagnostic. ProbeHostKeyMismatch
+// — an enrolled expectation EXISTS and the observed key contradicts it; remedy =
+// investigate wrong-machine vs rotated-key; expected is REQUIRED here by construction
+// (the earlier String? field let one constructor carry both remedies).
 type ReachProbeOutcome
   = ProbeReachable { observed_short_hostname: String }
   | ProbeTransportUnavailable { cause: String }
   | ProbeAuthenticationRefused { cause: String }
-  | ProbeHostKeyMismatch { expected_fingerprint: String?, observed_fingerprint: String }
+  | ProbeHostKeyUnenrolled { transport_diagnostic: String }
+  | ProbeHostKeyMismatch { expected_fingerprint: String, observed_fingerprint: String }
 
 type HostReachIdentityProbeReceipt {
   host: HostIdentity
@@ -96,8 +97,11 @@ fn classify_reach_probe_wire_with_expectation(
   expected_fingerprint: String?,
 ) -> ReachProbeOutcome {
   match classify_reach_probe_wire(success: success, stdout: stdout, stderr: stderr) {
-    ProbeHostKeyMismatch { expected_fingerprint: _, observed_fingerprint: obs } =>
-      ProbeHostKeyMismatch { expected_fingerprint: expected_fingerprint, observed_fingerprint: obs }
+    ProbeHostKeyUnenrolled { transport_diagnostic: obs } =>
+      match expected_fingerprint {
+        Present { value: e } => ProbeHostKeyMismatch { expected_fingerprint: e, observed_fingerprint: obs }
+        _ => ProbeHostKeyUnenrolled { transport_diagnostic: obs }
+      }
     other => other
   }
 }
@@ -115,7 +119,7 @@ fn classify_reach_probe_wire(
     } else {
       if string_contains(s: stderr, pattern: "HOST IDENTIFICATION HAS CHANGED")
         || string_contains(s: stderr, pattern: "Host key verification failed") {
-        ProbeHostKeyMismatch { expected_fingerprint: none, observed_fingerprint: stderr }
+        ProbeHostKeyUnenrolled { transport_diagnostic: stderr }
       } else {
         ProbeTransportUnavailable { cause: stderr }
       }
@@ -138,11 +142,8 @@ fn reach_verdict_from_outcome(o: ReachProbeOutcome) -> ObservationVerdict {
     ProbeReachable { observed_short_hostname: _ } => Converged
     ProbeTransportUnavailable { cause: _ } => Inaccessible
     ProbeAuthenticationRefused { cause: _ } => Inaccessible
-    ProbeHostKeyMismatch { expected_fingerprint: e, observed_fingerprint: _ } =>
-      match e {
-        Present { value: _ } => Conflict
-        _ => Inaccessible
-      }
+    ProbeHostKeyUnenrolled { transport_diagnostic: _ } => Inaccessible
+    ProbeHostKeyMismatch { expected_fingerprint: _, observed_fingerprint: _ } => Conflict
   }
 }
 
@@ -174,11 +175,8 @@ fn identity_verdict_from_outcome(host: HostIdentity, o: ReachProbeOutcome) -> Ob
       }
     ProbeTransportUnavailable { cause: _ } => Inaccessible
     ProbeAuthenticationRefused { cause: _ } => Inaccessible
-    ProbeHostKeyMismatch { expected_fingerprint: e, observed_fingerprint: _ } =>
-      match e {
-        Present { value: _ } => Conflict
-        _ => Inaccessible
-      }
+    ProbeHostKeyUnenrolled { transport_diagnostic: _ } => Inaccessible
+    ProbeHostKeyMismatch { expected_fingerprint: _, observed_fingerprint: _ } => Conflict
   }
 }
 
