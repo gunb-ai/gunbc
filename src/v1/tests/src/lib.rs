@@ -19,6 +19,8 @@ mod c_compilation_unit_witness_test;
 #[cfg(test)]
 mod cache_purity_oracle_test;
 #[cfg(test)]
+mod class_b_trim_specimen_test;
+#[cfg(test)]
 mod compile_clean_diagnostic_authority_test;
 #[cfg(test)]
 mod constructor_owner_ruling_test;
@@ -33,6 +35,8 @@ mod cross_representation_equality_test;
 mod data_cache_scoping_test;
 #[cfg(test)]
 mod data_def_brand_alias_type_test;
+#[cfg(test)]
+mod decl_facts_dimensionless_projection_test;
 #[cfg(test)]
 mod dependency_pool_index_compile_test;
 #[cfg(test)]
@@ -79,7 +83,6 @@ mod group_completion_construction_test;
 mod gunbhub_serve_program_test;
 #[cfg(test)]
 mod html_markup_smoke_test;
-#[cfg(test)]
 mod import_visibility_pool_coincidence_test;
 #[cfg(test)]
 mod int_pow_bounded_test;
@@ -123,7 +126,6 @@ mod namespace_alias_decl_test;
 mod namespace_unique_on_chain_policy_test;
 #[cfg(test)]
 mod nested_fold_generic_param_emit_test;
-#[cfg(test)]
 mod nested_list_alias_emit_test;
 #[cfg(test)]
 mod node_keyed_graph_artifact_codec_test;

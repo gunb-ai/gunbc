@@ -1,5 +1,7 @@
 module v2.workflow.floor_discovery_producer
 
+import std.algebra { trim }
+
 import v2.compiler.discovery_enumeration {
   OwnedBoolWitnessClaimInit,
   OwnedDataDeclInitializer,
@@ -208,7 +210,7 @@ fn floor_discovery_initializer_rest_is_strict_single_token(rest: String, token: 
 }
 
 fn floor_discovery_disposition_row_variant(line: String) -> Optional<LiveTreeDisposition> {
-  let init_rest = trim(seg: floor_discovery_after_first_equals(s: line))
+  let init_rest = trim(s: floor_discovery_after_first_equals(s: line))
   let first_token = floor_discovery_first_token_before_space(seg: init_rest)
   if (first_token == "")
     || !floor_discovery_initializer_rest_is_strict_single_token(rest: init_rest, token: first_token)

@@ -1,5 +1,7 @@
 module gunbc.roadmap_dashboard_instance_apply
 
+import std.algebra { trim }
+
 import std.types { String, NonEmptyStr, Bool, Int, Seconds, List, FilePath, GitRef, CommitSha }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.output_policy { OutcomeIsData }

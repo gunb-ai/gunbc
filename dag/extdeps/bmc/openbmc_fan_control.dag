@@ -1,5 +1,7 @@
 module extdeps.bmc.openbmc_fan_control
 
+import std.algebra { trim }
+
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Https, Uri }
 import extdeps.ssh.password_session {

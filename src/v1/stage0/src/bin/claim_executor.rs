@@ -8742,6 +8742,19 @@ fn run_walk(
         || !selection_degradation_receipt_ok
         || !floor_component_receipt_ok
         || !materialization_receipt_ok;
+    push_ordinary_receipt_write_refusals(
+        &mut failure_details,
+        resolve_receipt_ok,
+        batch_wall_receipt_ok,
+        gate_warm_cost_receipt_ok,
+        witness_row_cost_receipt_ok,
+        wet_witness_row_outcome_receipt_ok,
+        witness_row_cost_drift_receipt_ok,
+        witness_row_cost_migration_disclosure_receipt_ok,
+        selection_degradation_receipt_ok,
+        floor_component_receipt_ok,
+        materialization_receipt_ok,
+    );
     // Floor finalization laws (the in-executor form of the deleted resolve/
     // materialization gate steps): validated AFTER the receipts wrote and BEFORE the
     // on-success stages, so a violation blocks admission instead of post-dating it.
@@ -9875,6 +9888,21 @@ fn spawn_floor_worker(
     command.env(FLOOR_WORKER_TERMINAL_ENV, &terminal_path);
     command.env("GUNBC_FLOOR_WALK_ATTEMPT_ID", walk_attempt_id);
     command.env(FLOOR_DISCOVERY_CONSUMER_ENV, discovery_consumer);
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::unix::process::CommandExt;
+        // When the thin coordinator is killed by the foreign step timeout, workers must not
+        // keep running as orphaned claim_executors (signature 2). SIGTERM on parent death
+        // gives the worker a chance to flush its terminal receipt before the runner reaps it.
+        unsafe {
+            command.pre_exec(|| {
+                if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM) != 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+    }
     // The worker's post-walk ledger harvest can spend minutes dropping its memo
     // contexts after the final discovery line.  A blocking `Command::status`
     // made that whole interval silent: the worker's own heartbeat shares its
@@ -9949,6 +9977,24 @@ fn floor_plan_function_arg(args: &[String]) -> Option<&str> {
         .map(|pair| pair[1].as_str())
 }
 
+fn coordinator_terminal_refusal(detail: &str) -> ExitCode {
+    append_floor_phase_journal("coordinator-terminal", "refused", detail);
+    eprintln!("claim_executor: floor coordinator refusal: {detail}");
+    ExitCode::from(1)
+}
+
+fn coordinator_report_worker_failure(worker: &ObservedFloorWorker, context: &str) -> ExitCode {
+    let outcome = floor_worker_observation_outcome(worker);
+    let detail = format!(
+        "{context}: worker={} termination={} outcome={} detail={}",
+        worker.worker,
+        floor_worker_termination_label(&worker.termination),
+        outcome.label,
+        outcome.detail
+    );
+    coordinator_terminal_refusal(&detail)
+}
+
 fn maybe_run_floor_coordinator(args: &[String]) -> Option<ExitCode> {
     if args.iter().any(|arg| arg == "--floor-worker-role")
         || floor_plan_function_arg(args) != Some("gunbc_ci_floor_plan")
@@ -9957,8 +10003,9 @@ fn maybe_run_floor_coordinator(args: &[String]) -> Option<ExitCode> {
     }
     if let Some(parent) = Path::new(FLOOR_WORKER_OBSERVATION_RECEIPT_PATH).parent() {
         if let Err(e) = fs::create_dir_all(parent) {
-            eprintln!("claim_executor: floor coordinator receipt directory refusal: {e}");
-            return Some(ExitCode::from(1));
+            return Some(coordinator_terminal_refusal(&format!(
+                "floor coordinator receipt directory refusal: {e}"
+            )));
         }
     }
     let _ = fs::remove_file(FLOOR_WORKER_OBSERVATION_RECEIPT_PATH);
@@ -9967,14 +10014,16 @@ fn maybe_run_floor_coordinator(args: &[String]) -> Option<ExitCode> {
         let _ = fs::remove_file(path);
     }
     if let Err(msg) = initialize_scoped_witness_receipt() {
-        eprintln!("claim_executor: floor coordinator receipt arm refusal: {msg}");
-        return Some(ExitCode::from(1));
+        return Some(coordinator_terminal_refusal(&format!(
+            "floor coordinator receipt arm refusal: {msg}"
+        )));
     }
     let walk_attempt_id = match observe_walk_attempt_id() {
         Ok(id) => id,
         Err(msg) => {
-            eprintln!("claim_executor: floor coordinator walk-attempt refusal: {msg}");
-            return Some(ExitCode::from(1));
+            return Some(coordinator_terminal_refusal(&format!(
+                "floor coordinator walk-attempt refusal: {msg}"
+            )));
         }
     };
     let ordinary = match spawn_floor_worker(args, "ordinary", None, 0, &walk_attempt_id, "producer")
@@ -9982,21 +10031,23 @@ fn maybe_run_floor_coordinator(args: &[String]) -> Option<ExitCode> {
         Ok(observed) => observed,
         Err(msg) => {
             replay_ordinary_floor_wet_witness_row_outcomes();
-            eprintln!("claim_executor: floor coordinator ordinary-worker refusal: {msg}");
-            return Some(ExitCode::from(1));
+            return Some(coordinator_terminal_refusal(&format!(
+                "floor coordinator ordinary-worker refusal: {msg}"
+            )));
         }
     };
     if !floor_worker_succeeded(&ordinary) {
-        eprintln!(
-            "claim_executor: floor coordinator stopping before scoped workers: ordinary worker did not complete"
-        );
-        return Some(ExitCode::from(1));
+        return Some(coordinator_report_worker_failure(
+            &ordinary,
+            "stopping before scoped workers because ordinary worker did not complete",
+        ));
     }
     let source_roots = match source_roots_from_executor_args(args) {
         Ok(roots) => roots,
         Err(msg) => {
-            eprintln!("claim_executor: floor coordinator source-roots refusal: {msg}");
-            return Some(ExitCode::from(1));
+            return Some(coordinator_terminal_refusal(&format!(
+                "floor coordinator source-roots refusal: {msg}"
+            )));
         }
     };
     let excludes = v1_compiler::cli_run::witness_exclusion_substrings();
@@ -10010,20 +10061,23 @@ fn maybe_run_floor_coordinator(args: &[String]) -> Option<ExitCode> {
     ) {
         Ok(request) => request,
         Err(msg) => {
-            eprintln!("claim_executor: floor coordinator pre-plan request refusal: {msg}");
-            return Some(ExitCode::from(1));
+            return Some(coordinator_terminal_refusal(&format!(
+                "floor coordinator pre-plan request refusal: {msg}"
+            )));
         }
     };
     let digest = request_identity_digest(&pre_plan_request);
     if let Err(msg) = verify_floor_discovery_terminal_for_coordinator(&walk_attempt_id, &digest) {
-        eprintln!("claim_executor: floor coordinator snapshot terminal refusal: {msg}");
-        return Some(ExitCode::from(1));
+        return Some(coordinator_terminal_refusal(&format!(
+            "floor coordinator snapshot terminal refusal: {msg}"
+        )));
     }
     let batch_ids = match read_scoped_witness_batch_manifest() {
         Ok(ids) => ids,
         Err(msg) => {
-            eprintln!("claim_executor: floor coordinator manifest refusal: {msg}");
-            return Some(ExitCode::from(1));
+            return Some(coordinator_terminal_refusal(&format!(
+                "floor coordinator manifest refusal: {msg}"
+            )));
         }
     };
     for (index, batch_id) in batch_ids.iter().enumerate() {
@@ -10037,17 +10091,30 @@ fn maybe_run_floor_coordinator(args: &[String]) -> Option<ExitCode> {
         ) {
             Ok(observed) => observed,
             Err(msg) => {
-                eprintln!("claim_executor: floor coordinator scoped-worker refusal: {msg}");
-                return Some(ExitCode::from(1));
+                return Some(coordinator_terminal_refusal(&format!(
+                    "floor coordinator scoped-worker `{batch_id}` refusal: {msg}"
+                )));
             }
         };
         if !floor_worker_succeeded(&scoped) {
-            eprintln!(
-                "claim_executor: floor coordinator stopping after scoped worker `{batch_id}` did not complete"
-            );
-            return Some(ExitCode::from(1));
+            return Some(coordinator_report_worker_failure(
+                &scoped,
+                &format!("stopping after scoped worker `{batch_id}` did not complete"),
+            ));
         }
     }
+    append_floor_phase_journal(
+        "coordinator-terminal",
+        "completed",
+        &format!(
+            "scoped_workers={} walk_attempt_id={walk_attempt_id}",
+            batch_ids.len()
+        ),
+    );
+    eprintln!(
+        "[floor-coordinator] outcome=completed scoped_workers={} walk_attempt_id={walk_attempt_id}",
+        batch_ids.len()
+    );
     Some(ExitCode::SUCCESS)
 }
 
@@ -10667,7 +10734,9 @@ fn run() -> Result<ExitCode, ExitCode> {
         .collect();
     if !scoped_rows.is_empty() {
         let receipt_arm = scoped_witness_head_sha().and_then(|_| {
-            if floor_worker_role.is_none() {
+            if floor_worker_role.is_none()
+                || matches!(floor_worker_role, Some(FloorWorkerRole::Scoped { .. }))
+            {
                 initialize_scoped_witness_receipt()
             } else {
                 Ok(())
@@ -10867,14 +10936,25 @@ fn run() -> Result<ExitCode, ExitCode> {
         &source_roots,
     );
     v1_compiler::v1_interpreter::group_end();
+    let mut terminal_failure_details = outcome.failure_details.clone();
+    if compile_clean_over_budget {
+        terminal_failure_details.push(
+            "post-walk compile_clean leg exceeded its declared clamp (FLOOR-COMPILE-CLEAN-OVER-BUDGET)"
+                .to_string(),
+        );
+    }
+    if !compile_clean_drift_receipt_ok {
+        terminal_failure_details
+            .push("post-walk compile_clean cost drift receipt refused or unwritable".to_string());
+    }
     let any_failed =
         outcome.any_failed || compile_clean_over_budget || !compile_clean_drift_receipt_ok;
-    if outcome.any_failed {
-        emit_falsifier_failure_class(&outcome.failure_details, &outcome.infra_faults);
+    if any_failed {
+        emit_falsifier_failure_class(&terminal_failure_details, &outcome.infra_faults);
     }
     let terminal_detail = walk_terminal_detail(
         any_failed,
-        &outcome.failure_details,
+        &terminal_failure_details,
         &outcome.infra_faults,
         compile_clean_over_budget,
         compile_clean_drift_receipt_ok,
@@ -10983,6 +11063,70 @@ fn walk_exit_code(any_failed: bool) -> i32 {
     }
 }
 
+/// Located refusal lines for receipt-write failures that redden the ordinary floor without
+/// a witness batch failure. Without these, the walk can exit 1 with every batch green and
+/// an empty `failure_details` — the silent exit-1 class #8058's terminal receipt fix did
+/// not cover because the refusal lives only in the writer's eprintln.
+fn push_ordinary_receipt_write_refusals(
+    failure_details: &mut Vec<String>,
+    resolve_receipt_ok: bool,
+    batch_wall_receipt_ok: bool,
+    gate_warm_cost_receipt_ok: bool,
+    witness_row_cost_receipt_ok: bool,
+    wet_witness_row_outcome_receipt_ok: bool,
+    witness_row_cost_drift_receipt_ok: bool,
+    witness_row_cost_migration_disclosure_receipt_ok: bool,
+    selection_degradation_receipt_ok: bool,
+    floor_component_receipt_ok: bool,
+    materialization_receipt_ok: bool,
+) {
+    let mut push = |ok: bool, detail: &'static str| {
+        if !ok {
+            failure_details.push(detail.to_string());
+        }
+    };
+    push(
+        resolve_receipt_ok,
+        "ordinary-floor resolve realization receipt write refused",
+    );
+    push(
+        batch_wall_receipt_ok,
+        "ordinary-floor batch wall receipt write refused",
+    );
+    push(
+        gate_warm_cost_receipt_ok,
+        "ordinary-floor gate warm-cost receipt write refused",
+    );
+    push(
+        witness_row_cost_receipt_ok,
+        "ordinary-floor witness row-cost receipt write refused",
+    );
+    push(
+        wet_witness_row_outcome_receipt_ok,
+        "ordinary-floor wet witness row-outcome receipt write refused",
+    );
+    push(
+        witness_row_cost_drift_receipt_ok,
+        "ordinary-floor witness row-cost drift receipt write refused",
+    );
+    push(
+        witness_row_cost_migration_disclosure_receipt_ok,
+        "ordinary-floor witness row-cost migration disclosure receipt write refused",
+    );
+    push(
+        selection_degradation_receipt_ok,
+        "ordinary-floor selection degradation receipt write refused",
+    );
+    push(
+        floor_component_receipt_ok,
+        "ordinary-floor floor component receipt write refused",
+    );
+    push(
+        materialization_receipt_ok,
+        "ordinary-floor materialization demand receipt write refused",
+    );
+}
+
 /// Located refusal carried in the worker terminal receipt for the coordinator to replay.
 ///
 /// `floor_terminal_fast_exit` used to write only `walk terminal exit code N`, which the
@@ -11028,9 +11172,16 @@ fn walk_terminal_detail(
 /// `run()`'s walk path — every plan walk (floor, plan-artifact, regen, falsifier) exits
 /// through it; every refusal/error path above returns normally. The exit CODE is exactly
 /// `walk_exit_code(any_failed)` — behavior-identical to the ExitCode return it replaces.
+///
+/// #8058 carried the located refusal in the worker terminal receipt file only; Actions
+/// can drop inherited stderr after a large discovery run, and the phase journal had no
+/// terminal row — so a post-walk compile_clean refusal or a receipt-write failure looked
+/// like a silent exit-1 with every batch green. Emit the same detail on stderr and the
+/// durable journal before `process::exit`.
 fn floor_terminal_fast_exit(code: i32, detail: &str) -> ! {
     use std::io::Write as _;
     let terminal_outcome = if code == 0 { "completed" } else { "failed" };
+    emit_floor_terminal_outcome(terminal_outcome, detail);
     let final_code = match write_floor_worker_terminal(terminal_outcome, detail) {
         Ok(()) => code,
         Err(msg) => {
@@ -11041,6 +11192,49 @@ fn floor_terminal_fast_exit(code: i32, detail: &str) -> ! {
     let _ = std::io::stdout().flush();
     let _ = std::io::stderr().flush();
     std::process::exit(final_code)
+}
+
+fn emit_floor_terminal_outcome(outcome: &str, detail: &str) {
+    append_floor_phase_journal("walk-terminal", outcome, detail);
+    if outcome == "completed" {
+        eprintln!("[floor-terminal] outcome=completed detail={detail}");
+    } else {
+        eprintln!("[floor-terminal-refusal] outcome=failed detail={detail}");
+    }
+}
+
+/// Pre-walk worker failures return through `main()` instead of `floor_terminal_fast_exit`.
+/// Mirror the walk-terminal journal/stderr emission so those refusals survive Actions log
+/// truncation the same way post-walk failures do.
+fn emit_worker_terminal_before_return(code: ExitCode) -> ExitCode {
+    let Some(path) = std::env::var_os(FLOOR_WORKER_TERMINAL_ENV) else {
+        return code;
+    };
+    if code == ExitCode::SUCCESS {
+        return code;
+    }
+    let path = PathBuf::from(path);
+    let (outcome, detail) = if path.exists() {
+        match fs::read_to_string(&path) {
+            Ok(body) => {
+                let line = body.trim_end_matches(['\r', '\n']);
+                let (label, detail) = line.split_once('\t').unwrap_or((line, ""));
+                let outcome = if label == "completed" {
+                    "completed"
+                } else {
+                    "failed"
+                };
+                (outcome, detail.to_string())
+            }
+            Err(e) => ("failed", format!("worker terminal receipt unreadable: {e}")),
+        }
+    } else {
+        let detail = "worker returned before producing a walk terminal receipt".to_string();
+        let _ = write_floor_worker_terminal("failed", &detail);
+        ("failed", detail)
+    };
+    emit_floor_terminal_outcome(outcome, &detail);
+    code
 }
 
 fn main() -> ExitCode {
@@ -11059,18 +11253,7 @@ fn main() -> ExitCode {
         Ok(code) => code,
         Err(code) => code,
     };
-    if std::env::var_os(FLOOR_WORKER_TERMINAL_ENV).is_some() {
-        let terminal_exists = std::env::var_os(FLOOR_WORKER_TERMINAL_ENV)
-            .map(PathBuf::from)
-            .is_some_and(|path| path.exists());
-        if !terminal_exists {
-            let _ = write_floor_worker_terminal(
-                "failed",
-                "worker returned before producing a walk terminal receipt",
-            );
-        }
-    }
-    code
+    emit_worker_terminal_before_return(code)
 }
 
 #[cfg(test)]
@@ -12131,6 +12314,61 @@ mod tests {
         let detail = walk_terminal_detail(true, &[], &[], true, false);
         assert!(detail.contains("compile_clean_over_budget"));
         assert!(detail.contains("compile_clean_cost_drift_receipt_refused"));
+    }
+
+    #[test]
+    fn push_ordinary_receipt_write_refusals_locates_each_failed_writer() {
+        let mut details = Vec::new();
+        push_ordinary_receipt_write_refusals(
+            &mut details,
+            true,
+            false,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            false,
+            true,
+        );
+        assert_eq!(details.len(), 2);
+        assert!(details
+            .iter()
+            .any(|d| d.contains("batch wall receipt write refused")));
+        assert!(details
+            .iter()
+            .any(|d| d.contains("floor component receipt write refused")));
+    }
+
+    #[test]
+    fn emit_worker_terminal_before_return_journals_pre_walk_refusal() {
+        let dir = std::env::temp_dir().join(format!(
+            "claim-executor-worker-terminal-before-return-{}",
+            std::process::id()
+        ));
+        let _ = fs::create_dir_all(&dir);
+        let terminal = dir.join("worker-terminal.tsv");
+        let journal = dir.join("floor-phase-journal.tsv");
+        let _ = fs::remove_file(&terminal);
+        let _ = fs::remove_file(&journal);
+        fs::write(
+            &terminal,
+            "refused\tscoped witness scheduling refusal: fixture detail\n",
+        )
+        .expect("write worker terminal fixture");
+        std::env::set_var(FLOOR_WORKER_TERMINAL_ENV, &terminal);
+        std::env::set_var(FLOOR_PHASE_JOURNAL_ENV, &journal);
+        let code = emit_worker_terminal_before_return(ExitCode::from(1));
+        std::env::remove_var(FLOOR_WORKER_TERMINAL_ENV);
+        std::env::remove_var(FLOOR_PHASE_JOURNAL_ENV);
+        assert_eq!(code, ExitCode::from(1));
+        let persisted = fs::read_to_string(&journal).expect("walk-terminal journal row");
+        let _ = fs::remove_dir_all(&dir);
+        assert!(
+            persisted.contains("\twalk-terminal\tfailed\tscoped witness scheduling refusal"),
+            "pre-walk worker refusal must reach the durable journal: {persisted:?}"
+        );
     }
 
     fn outcome(entry: &str, function: &str, o: ClaimOutcome) -> DiscoveryWitnessOutcome {

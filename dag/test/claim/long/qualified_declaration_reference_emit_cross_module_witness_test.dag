@@ -4,13 +4,13 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data qualified_declaration_reference_emit_cross_module_witness_note: String = "Long-lane half of qualified_declaration_reference_emit_witness_test: w_cross_module_qualified_reference_emits_call exercises std.emit_on_demand.interpreter_surviving_roles_ceiling through compile_dag_rust_emit_check. Measured ~4125ms thread-CPU warm locally; PR CI run 31198854678 discovery batch 3 killed at 5544ms > 5000ms fast-lane budget. Same-module fixture stays per-PR in dag/test/claim/qualified_declaration_reference_emit_witness_test.dag. dissolve_on: eval lands under gunbc_ci_fast_lane_witness_eval_budget on measured cold run and re-enrolls per-PR discovery."
+data qualified_declaration_reference_emit_cross_module_witness_note: String = "Long-lane half of qualified_declaration_reference_emit_witness_test.dag: w_cross_module_qualified_reference_emits_call exercises a genuine cross-module qualified data reference (std.unicode.types.unicode_scalar_max_code_point — minimal std closure, not the heavy std.emit_on_demand roster the prior fixture dragged in) through compile_dag_rust_emit_check. Re-homed to test/claim/long/ after falsifier discovery batch 3 BudgetExceeded kills (5436-5544ms thread-CPU vs 5000ms fast-lane cap on srv_fleet_arm64; chronic on main, unrelated to decl_facts work). Same-module control stays per-PR in dag/test/claim/qualified_declaration_reference_emit_witness_test.dag. dissolve-on: eval under gunbc_ci_fast_lane_witness_eval_budget on fleet hardware, then row re-enrolls per-PR and this file deletes."
 
 fn w_cross_module_qualified_reference_emits_call() -> Bool {
   compile_dag_rust_emit_check(
-    "module qdref_cross\n\nimport std.emit_on_demand { interpreter_surviving_roles_ceiling }\nimport std.types { Int }\n\ndata qdref_cross_derived: Int = std.emit_on_demand.interpreter_surviving_roles_ceiling\n",
+    "module qdref_cross\n\nimport std.unicode.types { unicode_scalar_max_code_point }\nimport std.types { Int }\n\ndata qdref_cross_derived: Int = std.unicode.types.unicode_scalar_max_code_point\n",
     "src/qdref_cross.rs",
-    ["interpreter_surviving_roles_ceiling()"],
+    ["unicode_scalar_max_code_point()"],
     []
   )
 }
