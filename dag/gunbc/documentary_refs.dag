@@ -8,14 +8,11 @@ data documentary_refs_note: String = "THE SYSTEMS A GENERATED DOCUMENT NAMES, CA
 
 data generated_document_ref_rows_note: String = "ONE ROW PER SYSTEM THE GENERATED DESIGN DOCUMENT NAMES IN A MIGRATED PARAGRAPH, and the rendered bytes come from these rows rather than beside them. A row typed here while the paragraph independently spells the same name would be two representations of one fact, which is the shape this program exists to remove -- so the paragraph builds its symbol text by rendering the row, and a rename that moves the row moves the document."
 
-data body_lowering_symbol_index_ref: DeclarationRef =
-  decl_ref(module_path: "v2.std.symbol_index", decl_name: "SymbolIndex")
+data body_lowering_symbol_index_ref: DeclarationRef = decl_ref(module_path: "v2.std.symbol_index", decl_name: "SymbolIndex")
 
-data body_lowering_lexical_lookup_ref: DeclarationRef =
-  decl_ref(module_path: "v2.std.symbol_index", decl_name: "symbol_index_lexical_lookup")
+data body_lowering_lexical_lookup_ref: DeclarationRef = decl_ref(module_path: "v2.std.symbol_index", decl_name: "symbol_index_lexical_lookup")
 
-data body_lowering_production_consumer_ref: DeclarationRef =
-  decl_ref(module_path: "v2.compiler.resolve", decl_name: "lookup_symbol_index_atom_identity")
+data body_lowering_production_consumer_ref: DeclarationRef = decl_ref(module_path: "v2.compiler.resolve", decl_name: "lookup_symbol_index_atom_identity")
 
 data body_lowering_named_row_note: String = "THE THREE ROWS ARE NAMED AND THE LIST IS BUILT FROM THEM, not the other way round. The document renders a specific system in a specific sentence position, so it needs to name one row rather than index a list -- and a positional index would be a second, silent way to get the wrong symbol into the right sentence if the list order ever changed. The list below is the enrollment projection of the same three rows, so the population the lens resolves and the symbols the document prints cannot diverge."
 
@@ -25,8 +22,7 @@ data body_lowering_system_refs: List<DeclarationRef> = [
   body_lowering_production_consumer_ref,
 ]
 
-data five_minute_ci_gate_authority_ref: DeclarationRef =
-  decl_ref(module_path: "gunbc.roadmap_authority", decl_name: "five_minute_ci_gate_program_note")
+data five_minute_ci_gate_authority_ref: DeclarationRef = decl_ref(module_path: "gunbc.roadmap_authority", decl_name: "five_minute_ci_gate_program_note")
 
 data cite_by_symbol_only_note: String = "THE ROADMAP AUTHORITY IS CITED AND NOT SUMMARIZED, DELIBERATELY. The reference below names the symbol that owns the five-minute CI programme's scope and ordering, and the document asserts nothing about its contents. The reason is on record as a measured failure: DESIGN carried its own numbered six-step copy of that sequence, the roadmap authority was later recut, and the copy went on presenting a superseded order inside the canonical design document. A citation that summarises what it cites has become a second copy of it, and a second copy is what goes stale."
 
