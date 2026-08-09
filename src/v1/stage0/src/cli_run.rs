@@ -8697,16 +8697,22 @@ pub fn decode_manifest_row_collection(
     })
 }
 
-/// The whole-roster live-read selection state, built ONCE per index before any per-entry
-/// decision runs.
+/// One invocation's live-read selection view over the index's per-declaration cache.
 ///
-/// Why it is a context rather than a call: the manifest producer needs the dependency-edge,
-/// module-declaration, and fn-arrow fact populations for the whole tree, and the memo that keeps
-/// that to one evaluation is index-scoped and request-set insensitive. So the request population
-/// must be COMPLETE at the first call — which makes "the complete roster" a property of the
-/// object, not a discipline at each call site. Holding the roster's function list beside the
-/// manifest is what lets the decision below be entry-grain while the classification stays
-/// declaration-grain.
+/// THE COMPLETE-ROSTER CONVENTION IS DELETED, and this comment used to be its charter: it said
+/// the request population "must be COMPLETE at the first call", because a single immutable
+/// manifest was built once and every later decision read it. That design was disproved by
+/// disjoint-roster use -- two callers legitimately ask different questions of one index -- and
+/// replaced by a cache keyed on resolved declaration identity. With an incremental cache the
+/// premise is gone: a caller asks about its own demand, a later caller asking about a row this
+/// one skipped simply classifies it then, and nothing needs priming.
+///
+/// Keeping the convention after its mechanism changed was not merely stale prose. It kept the
+/// first consumer in the run building from every enrolled row, which is how 8538 requests entered
+/// one classification that never returned while the phases showed the stall.
+///
+/// Holding the roster's function list beside the rows is what lets the decision be entry-grain
+/// while the classification stays declaration-grain.
 #[derive(Debug, Clone)]
 pub struct LiveReadSelectionContext {
     /// The rows this invocation's roster resolved to. Held directly rather than as a manifest
@@ -8804,7 +8810,9 @@ impl LiveReadSelectionContext {
             format!(
                 "AFFECTED-SET REFUSAL cause=LiveReadEntryAbsent entry={entry} — the entry is not in \
                  the roster the selection context was built from, so no declaration of it is \
-                 classified. The context must be built from the COMPLETE roster."
+                 classified. Callers ask about their own demand, so this means the entry was \
+                 not among the rows THIS view was built for -- not that the roster was \
+                 incomplete."
             )
         })?;
         if functions.is_empty() {
@@ -23570,6 +23578,49 @@ fn discovery_rows_runtime_dependency_touched_count(
 /// Deliberately excludes the G2 axis. That is the whole point -- it answers "can a live-read
 /// verdict still change this row's outcome", and the answer is no exactly when some other axis
 /// has already said "do not skip".
+/// The rows whose verdict a live-read classification can still change.
+///
+/// One definition, used by every site that builds a `LiveReadSelectionContext`. It exists as a
+/// function rather than a line at each call site because the first consumer in the run used to be
+/// handed the COMPLETE roster on the theory that it primed a memo for everyone else -- and that
+/// convention outlived the memo it justified. The cache is per-declaration and incremental now,
+/// so a later caller asking about a row this one skipped simply classifies it then; priming is
+/// not required, and paying for the whole roster up front is what put 8538 requests into a single
+/// classification that never returned.
+fn live_read_candidate_rows(
+    rows: &[DiscoveryRow],
+    index: &MultiEntryIndex,
+    diff_edits: &FloorDiffEdits,
+    changed_paths: &[String],
+) -> Result<Vec<DiscoveryRow>, String> {
+    let declared_paths = index.module_graph_facts.declared_repo_paths();
+    let touched: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
+    let mut candidates = Vec::new();
+    for row in rows {
+        if entry_blocked_by_cheap_axes(
+            &row.entry,
+            row.reads_live_tree,
+            &index.module_graph_facts,
+            &declared_paths,
+            &touched,
+            changed_paths,
+            diff_edits,
+        )? {
+            continue;
+        }
+        candidates.push(row.clone());
+    }
+    eprintln!(
+        "[live-read-candidates] roster_rows={} candidate_rows={} excluded_by_cheap_axes={} \
+         (excluded rows are already forced to run by an independent axis, so a G2 answer cannot \
+         change their verdict; counted rather than silently narrowed)",
+        rows.len(),
+        candidates.len(),
+        rows.len().saturating_sub(candidates.len())
+    );
+    Ok(candidates)
+}
+
 fn entry_blocked_by_cheap_axes(
     entry_path: &str,
     reads_live_tree: bool,
@@ -24555,9 +24606,14 @@ fn run_discovery_corpus_with_options_inner(
         let live_row_count = discovery_rows_live_tree_count(&rows);
         match floor_runner_ctx.as_ref() {
             Some(ctx) => {
-                // First consumer of the manifest in the run, and it is handed the COMPLETE
-                // roster — the index-scoped memo it fills is what every later decision reads.
-                let live = LiveReadSelectionContext::build(&index, &rows)?;
+                // Candidates only. This was the site that made the whole roster a prerequisite:
+                // it built the context from every row on the theory that it primed a memo for
+                // later decisions. The memo is per-declaration and incremental, so nothing
+                // downstream depends on being primed here, and the complete-roster build is what
+                // put 8538 requests into one classification that never returned.
+                let candidates =
+                    live_read_candidate_rows(&rows, &index, &diff_edits, &changed_paths)?;
+                let live = LiveReadSelectionContext::build(&index, &candidates)?;
                 let touched_runtime_dependency_entry_count =
                     discovery_rows_runtime_dependency_touched_count(
                         &rows,
@@ -24616,7 +24672,8 @@ fn run_discovery_corpus_with_options_inner(
         if options.node_frontier_selection == NodeFrontierSelectionMode::Applied {
             let declared_paths = index.module_graph_facts.declared_repo_paths();
             let touched: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
-            match LiveReadSelectionContext::build(&index, &rows).and_then(|live| {
+            let candidates = live_read_candidate_rows(&rows, &index, &diff_edits, &changed_paths)?;
+            match LiveReadSelectionContext::build(&index, &candidates).and_then(|live| {
                 discovery_entry_fast_skip_without_resolve(
                     &rows,
                     &index,
@@ -25692,33 +25749,10 @@ fn run_discovery_rows(
     // last for the same reason, which is what makes excluding a non-candidate safe -- a
     // short-circuit reaches the classifier only for rows still in play.
     let live_read_candidates: Vec<DiscoveryRow> = if skip_enabled {
-        let mut candidates = Vec::new();
-        for row in roster.iter() {
-            if entry_blocked_by_cheap_axes(
-                &row.entry,
-                row.reads_live_tree,
-                &index.module_graph_facts,
-                &module_graph_declared_paths,
-                &touched_entry_paths,
-                changed_paths,
-                diff_edits,
-            )? {
-                continue;
-            }
-            candidates.push(row.clone());
-        }
-        candidates
+        live_read_candidate_rows(roster, index, diff_edits, changed_paths)?
     } else {
         Vec::new()
     };
-    if skip_enabled {
-        eprintln!(
-            "[live-read-candidates] roster_rows={} candidate_rows={} excluded_by_cheap_axes={}              (excluded rows are already forced to run by an independent axis, so a G2 answer              cannot change their verdict; counted rather than silently narrowed)",
-            roster.len(),
-            live_read_candidates.len(),
-            roster.len().saturating_sub(live_read_candidates.len())
-        );
-    }
     let live_read_selection = if skip_enabled {
         Some(LiveReadSelectionContext::build(
             index,
