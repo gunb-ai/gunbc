@@ -87,6 +87,7 @@ import gunbc.bmc_fan_projection {
   bmc_fan_witness_digest_mismatch_sentinel,
 }
 import std.state_durability {
+  symbol_index_subtree_digest_dissolution,
   CallerAssertedDefinitionLinkage,
   DurabilityDefinitionLinkageUnavailable,
   DurabilityPerturbationGenerationMismatch,
@@ -979,6 +980,7 @@ test fn reboot_durability_evidence_refuses_relabeled_perturbation_capability_dig
         version: "relabelled-capability",
         definition_linkage: CallerAssertedDefinitionLinkage {
           reason: "relabelled-capability-linkage" as NonEmptyStr,
+    dissolution: symbol_index_subtree_digest_dissolution,
         },
       },
       publication_protocol: srv4_bmc_fan_projection_capability.publication_protocol,
@@ -1194,6 +1196,7 @@ test fn linux_synchronized_publication_admits_commit_barrier() -> Bool {
     && match srv4_bmc_fan_durability_capability_version.definition_linkage {
       CallerAssertedDefinitionLinkage {
         reason: reason,
+    dissolution: symbol_index_subtree_digest_dissolution,
       } =>
         reason as String == "linux synchronized rename-replace publication capability is caller-asserted until SymbolIndex subtree digest"
     }

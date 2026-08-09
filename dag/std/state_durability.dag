@@ -12,6 +12,7 @@ import std.types {
   String,
   list_length,
 }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 data state_durability_boundary_contract: Disposition = Terminal {
   reason: "Desired world-state lifetime is explicit before realization: RuntimeLifetimeOnly or DurableAcross named lifecycle boundaries. The closed boundary coproduct prevents a generic Persistent label from standing in for service restart, control-plane restart, host restart, power loss, software replacement, or factory reset."
@@ -96,9 +97,16 @@ type StateRealizationIdentity {
   definition_linkages: StateRealizationDefinitionLinkages
 }
 
+// Authored ONCE and projected through every row. The condition is one fact
+// about the whole class -- caller-asserted linkage retires when the namespace
+// lane lands its content-addressed SymbolIndex subtree digest -- so copying the
+// sentence per row would be the same prose duplication this migration removes.
+data symbol_index_subtree_digest_dissolution: DissolutionCondition = unbound_dissolution(description: "namespace content-addressed SymbolIndex subtree digest")
+
 type StateDefinitionLinkage
   = CallerAssertedDefinitionLinkage {
       reason: NonEmptyStr,
+      dissolution: DissolutionCondition,
     }
 
 type StateDefinitionRole
@@ -112,6 +120,7 @@ type StateDefinitionRole
 type StateDefinitionCallerAssertion {
   role: StateDefinitionRole
   reason: NonEmptyStr
+  dissolution: DissolutionCondition
 }
 
 type StateRealizationDefinitionLinkages {
@@ -145,11 +154,13 @@ fn state_definition_linkage_verdict(
   match linkage {
     CallerAssertedDefinitionLinkage {
       reason: reason,
+      dissolution: dissolution,
     } =>
       StateDefinitionLinkageUnavailable {
         assertion: StateDefinitionCallerAssertion {
           role: role,
           reason: reason,
+          dissolution: dissolution,
         },
       }
   }

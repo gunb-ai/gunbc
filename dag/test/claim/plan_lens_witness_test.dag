@@ -11,6 +11,10 @@ fn plan_without_trigger() -> Plan {
   Plan { slug: "y", title: "y", body: [], retirement: PlanHasNoRetirement }
 }
 
+fn plan_with_empty_retirement() -> Plan {
+  Plan { slug: "w", title: "w", body: [], retirement: PlanRetiresWhen { condition: "" } }
+}
+
 fn plan_untitled() -> Plan {
   Plan { slug: "z", title: "", body: [], retirement: PlanRetiresWhen { condition: "t" } }
 }
@@ -26,7 +30,9 @@ test fn every_registered_plan_is_titled() -> Bool {
 test fn missing_retirement_is_detected() -> Bool {
   plan_has_retirement(p: plan_with_trigger())
     && (plan_has_retirement(p: plan_without_trigger()) == false)
+    && (plan_has_retirement(p: plan_with_empty_retirement()) == false)
     && (plans_all_have_retirement(plans: [plan_with_trigger(), plan_without_trigger()]) == false)
+    && (plans_all_have_retirement(plans: [plan_with_trigger(), plan_with_empty_retirement()]) == false)
 }
 
 test fn missing_title_is_detected() -> Bool {

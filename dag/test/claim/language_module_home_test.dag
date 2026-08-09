@@ -78,7 +78,7 @@ test fn every_frontier_row_moves_somewhere_else() -> Bool {
 }
 
 test fn every_frontier_row_carries_a_dissolution_trigger() -> Bool {
-  all(legacy_language_module_homes, r => r.dissolves_on != "")
+  all(legacy_language_module_homes, r => r.dissolution != "")
 }
 
 test fn every_declared_home_carries_a_canonical_prefix() -> Bool {

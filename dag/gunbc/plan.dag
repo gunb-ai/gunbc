@@ -39,9 +39,13 @@ fn plan_to_document(p: Plan) -> MarkdownDocument {
   MarkdownDocument { blocks: plan_to_blocks(p: p) }
 }
 
+// The nonempty check is NOT redundant with the NonEmptyStr carrier. An earlier
+// revision deleted it believing construction enforced emptiness; it does not on
+// this path, so an empty condition is still writable and this is the check that
+// refuses it.
 fn plan_has_retirement(p: Plan) -> Bool {
   match p.retirement {
-    PlanRetiresWhen { condition: _ } => true
+    PlanRetiresWhen { condition: c } => (c as String).length() > 0
     PlanHasNoRetirement => false
   }
 }

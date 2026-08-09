@@ -14,6 +14,7 @@ import v2.lens.module_graph {
   import_closure_bfs_walk,
   ImportClosureBfsState
 }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 data native_routing_frontier_note: String = "Per-family execution-routing frontier (P6 cutover mechanism, planned 2026-07-22): each enrolled emit-on-demand witness family is EXACTLY one of NativeRouted (its equals_eval agreement legs run native in the per-PR floor via gunbc_pr_native_batch, warm against GUNBC_NATIVE_CACHE_ROOT) or InterpretedRetained (a declared row with reason + dissolve_on — countable, prioritizable, never a silent default; the self-host-frontier pattern applied to execution routing). The flip NativeRouted is DATA, and since 2026-07-28 it is NOT pre-gated by a parity streak (demotion — see parity_window_note and routed_flip_reverted_note): the flip bar is a no-evict cached agreement leg for the family plus one warm green agreement receipt, and v2.compiler.self_host.parity_window is the LAW a post-flip revert decision is judged by — a red cadence window (agreement red, or warm compile_skipped=false) LATCHES ParityRevertRequired naming the first red window (a later green never clears it; only an explicit RevertAcknowledged observation opens a new epoch — operator rework ruling 2026-07-28), and the row reverts by one data edit while the investigation proceeds off the merge-critical path (the reverted-first-flip incident below, promoted to law). THE VERDICT CONTROLS ROUTING BY CONSTRUCTION (reviews 44206 and 44216, 2026-07-29 — the monitor is a production consumer, not authoring guidance): NativeRouted CARRIES its evidence (observation_family + observations), so a routed claim and the receipt justifying it are one inseparable value, and routing_row_is_native — the single predicate native_routed_rows and interpreted_retained_rows both fold — ADMITS only when parity_routing_admitted holds on that carried evidence. Every other state denies: a latched red (a recorded red observation, even with later greens appended — the intermittent case an agreement leg alone cannot catch), an empty history (Unobserved), and refused evidence (mixed-family or out-of-cadence) all fall to interpreted. So 'NativeRouted with red-or-absent parity' is UNWRITABLE — not flagged after the fact, not dependent on someone remembering to edit the roster (DESIGN section 5, construction over validation). Denial degrades to interpreted rather than to nothing: the two fold complements partition the roster, and the agreement entries are discovered under the corpus scan regardless, so a denied family loses NATIVE execution and keeps its coverage — a refusal that narrows, never a silent widen and never a dropped witness. The evidence a row carries is authored from observed runs (parity_receipts_local is the operator-sourced example, the sibling shape realize_advisory_soundness names); its freshness is therefore an authoring fact, and DISSOLVE-ON stays: when falsifier-derived observations land, the carried lists become projections of that feed and the admission predicate above keeps its exact shape — the wall is already in place, only the evidence source moves. One authority decides both sides of the floor: the per-PR native batch enrolls NativeRouted families and interpreted discovery drops exactly those — no dual representation."
 
@@ -21,7 +22,7 @@ data native_routing_subject_key_note: String = "Subject re-key (group-of-units r
 
 type NativeRoutingDisposition
   = NativeRouted { observation_family: String, observations: List<ParityObservation> }
-  | InterpretedRetained { reason: String}
+  | InterpretedRetained { reason: String, dissolution: DissolutionCondition }
 
 type NativeRoutingFrontierRow {
   subject: DeclarationRef
@@ -48,7 +49,9 @@ fn retained_no_cached_carrier(
     agreement_entry: entry,
     agreement_function: f,
     disposition: InterpretedRetained {
-      reason: "no_cached_no_evict_carrier"}
+      reason: "no_cached_no_evict_carrier",
+      dissolution: unbound_dissolution(description: "a no-evict cached agreement leg exists for this family (the family_crate pr_native pattern) with one warm green agreement receipt; the equals_eval legs are UNCACHED (srv1 sweep receipt 2026-07-22: empty native-cache fields) so routing them would build every PR run. On flip the family enrolls in post-flip monitoring per v2.compiler.self_host.parity_window (no pre-flip streak is required — demotion 2026-07-28)")
+    }
   }
 }
 
@@ -95,7 +98,9 @@ data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
     agreement_entry: "src/v2/test/claim/execution/emit_on_demand_family_crate_witness_test.dag",
     agreement_function: "emit_on_demand_family_crate_pr_native_agreement_holds",
     disposition: InterpretedRetained {
-      reason: "agreement_red_on_main"}
+      reason: "agreement_red_on_main",
+      dissolution: unbound_dissolution(description: "routed_flip_reverted_note receipt: divergence root-caused with member + both values NAMED (agreement loudness gap closed first), then a fresh warm per-host agreement receipt — re-flip via routed_via_family_crate")
+    }
   },
   retained_no_cached_carrier(
     subject: family_subject(
@@ -129,7 +134,9 @@ data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
     agreement_entry: "src/v2/test/claim/execution/emit_on_demand_family_crate_witness_test.dag",
     agreement_function: "emit_on_demand_family_crate_pr_native_agreement_holds",
     disposition: InterpretedRetained {
-      reason: "agreement_red_on_main"}
+      reason: "agreement_red_on_main",
+      dissolution: unbound_dissolution(description: "routed_flip_reverted_note receipt: divergence root-caused with member + both values NAMED (agreement loudness gap closed first), then a fresh warm per-host agreement receipt — re-flip via routed_via_family_crate")
+    }
   },
   retained_no_cached_carrier(
     subject: family_subject(
@@ -175,7 +182,7 @@ fn routing_row_is_native(row: NativeRoutingFrontierRow) -> Bool {
   match row.disposition {
     NativeRouted { observation_family: f, observations: obs } =>
       parity_routing_admitted(family: f, observations: obs)
-    InterpretedRetained { reason: _} => false
+    InterpretedRetained { reason: _, dissolution: _ } => false
   }
 }
 

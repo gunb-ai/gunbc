@@ -7,6 +7,7 @@ import v2.std.algebra { length, any }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.realization_schedule { ScheduleWitnessEntry }
 import v2.compiler.self_host.wet_receipt_enrollment { falsifier_self_host_wet_template_entries }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 data emit_coverage_frontier_note: String = "Kernel-D Stage 3 (session loyal-raven-94, 2026-07-24): a typed, counted roster over the emit_host_*/rust_*_equals_eval witness families tracking NATIVE-EVAL CONSTRUCT COVERAGE — each row is exactly one of SelfEmittedNative (a real ingest to emit to compile to run witness exists and its body is decoded stdout, eval() never called) or InterpreterRetained (the family's coverage witness is an equals_eval AGREEMENT test — it calls v1_interpreter eval() as one of its two legs, so the construct is not yet proven native standalone). This is a DIFFERENT authority from v2.compiler.self_host.native_routing_frontier (that frontier tracks CI EXECUTION ROUTING COST for agreement legs that already run native in the floor — a family can be InterpretedRetained there for cost reasons while its underlying construct is already SelfEmittedNative here, or vice versa) and from v2.compiler.self_host.frontier (that frontier tracks COMPILER MODULE self-emission, a meta-level fact about the host pipeline, not about witness bodies). Reused shape (DESIGN section 2, horizontal): DeclarationRef subject + disposition enum with reason/dissolve_on + count-based census, the same pattern as both siblings."
 
@@ -14,7 +15,7 @@ data emit_coverage_frontier_two_axis_note: String = "TWO AXES, do not conflate (
 
 type EmitCoverageDisposition
   = SelfEmittedNative { backing_entry: String, backing_function: String }
-  | InterpreterRetained { reason: String}
+  | InterpreterRetained { reason: String, dissolution: DissolutionCondition }
 
 type EmitCoverageFrontierRow {
   subject: DeclarationRef
@@ -41,7 +42,9 @@ fn retained_via_eval_agreement(
     witness_entry: entry,
     witness_function: f,
     disposition: InterpreterRetained {
-      reason: "witness_body_calls_eval"}
+      reason: "witness_body_calls_eval",
+      dissolution: unbound_dissolution(description: "a native_only-verdict-style witness (real ingest to emit to compile to run native, verdict decoded from stdout, eval() never called — the emit_host_native_only_verdict_test.dag pattern) lands for this family and is enrolled in falsifier_self_host_wet_template_entries")
+    }
   }
 }
 
@@ -181,7 +184,7 @@ fn coverage_frontier_total_holds() -> Bool {
 fn coverage_row_is_native(row: EmitCoverageFrontierRow) -> Bool {
   match row.disposition {
     SelfEmittedNative { backing_entry: _, backing_function: _ } => true
-    InterpreterRetained { reason: _} => false
+    InterpreterRetained { reason: _, dissolution: _ } => false
   }
 }
 
@@ -247,7 +250,7 @@ fn coverage_row_backing_is_enrolled(row: EmitCoverageFrontierRow) -> Bool {
       xs: falsifier_self_host_wet_template_entries,
       predicate: fn(entry) { schedule_entry_matches(entry: entry, backing_entry: be, backing_function: bf) }
     )
-    InterpreterRetained { reason: _} => true
+    InterpreterRetained { reason: _, dissolution: _ } => true
   }
 }
 

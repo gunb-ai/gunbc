@@ -10,6 +10,7 @@ import std.content_hash {
   content_hash_eq_structural,
   content_hash_tagged_structural,
 }
+import std.dissolution { DissolutionCondition }
 
 data selected_witness_bundle_note: NonEmptyStr = "Selected-entry native execution authority (native-selected-witness-bundle, 2026-08-01). Selection and realization remain separate facts: SelectedWitnessPlan records the complete production-selected population; each member is either NativeSelected or a counted InterpreterFrontier row with a reason and dissolution trigger. A native bundle contains only NativeSelected members, runs them as direct calls in one process, and returns a typed receipt. InterpreterFrontier is coverage-preserving compatibility, never an uncounted skip. During cutover the interpreter is the equivalence oracle; a family enters native-consumed production only after every selected member has executed verdict equivalence and the family has a live discriminating RED. Native-vs-interpreter divergence is a hard refusal, never an auto-pick."
 
@@ -37,6 +38,7 @@ type SelectedWitnessMember
       witness: SelectedWitnessIdentity
       cause: NativeUnavailableCause
       reason: NonEmptyStr
+      dissolution: DissolutionCondition
     }
 
 type NativeBundleShardPolicy
@@ -169,7 +171,7 @@ fn selected_witness_plan_native_members(plan: SelectedWitnessPlan) -> List<Nativ
           witness: witness,
           realization: realization
         }], acc)
-      InterpreterFrontier { witness: _, cause: _, reason: _ } => acc
+      InterpreterFrontier { witness: _, cause: _, reason: _, dissolution: _ } => acc
     }
   ))
 }
@@ -180,7 +182,7 @@ fn selected_witness_plan_interpreter_frontier_count(plan: SelectedWitnessPlan) -
     init: 0,
     f: (count, member) => match member {
       NativeSelected { witness: _, realization: _ } => count
-      InterpreterFrontier { witness: _, cause: _, reason: _ } => count + 1
+      InterpreterFrontier { witness: _, cause: _, reason: _, dissolution: _ } => count + 1
     }
   )
 }

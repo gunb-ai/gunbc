@@ -61,6 +61,7 @@ import std.measure {
 }
 import std.nat { Nat }
 import std.state_durability {
+  symbol_index_subtree_digest_dissolution,
   CallerAssertedDefinitionLinkage,
   StateDurabilityCapabilityVersion,
   StateDefinitionLinkage,
@@ -219,6 +220,7 @@ fn bmc_fan_caller_asserted_definition_linkage(
 ) -> StateDefinitionLinkage {
   CallerAssertedDefinitionLinkage {
     reason: reason,
+    dissolution: symbol_index_subtree_digest_dissolution,
   }
 }
 

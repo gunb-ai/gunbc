@@ -1,0 +1,113 @@
+module v2.lens.lifecycle_carrier
+
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Unavailable,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.witness { Holds, Witness }
+import v2.std.node {
+  ComputationNode,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode
+}
+import v2.std.node_query { edge_field_type_name }
+import v2.std.collection { List, Map, empty_map, map_insert, map_get }
+import v2.std.logic { Bool }
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present,
+  optional_absent,
+  optional_present,
+  optional_prefer_first_present
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The field-name class this wall holds at zero. These are the spellings the
+// authored corpus actually used for "the code change that retires this carve-out"
+// before std.dissolution existed; a new spelling is a new row here, not a silent
+// escape. Scope is deliberately the FIELD/PARAM class only -- a top-level
+// `data x_dissolution_trigger: String = "..."` prose declaration is a different
+// population (DESIGN 4c modeling debt) and is not a record field, so it is
+// structurally outside this predicate rather than exempted by it.
+data lifecycle_field_name_rows: List<Symbol> = [
+  ^dissolve_on,
+  ^dissolves_on,
+  ^dissolves_when,
+  ^dissolve_trigger,
+  ^dissolution_trigger,
+  ^retirement_trigger,
+  ^retire_on,
+  ^retires_when
+]
+
+fn lifecycle_field_name_set() -> Map<Symbol, Symbol> {
+  fold(lifecycle_field_name_rows, init: empty_map(), f: fn(acc, nm) {
+    map_insert(m: acc, key: nm, value: nm)
+  })
+}
+
+fn name_is_lifecycle_field(name: Symbol) -> Bool {
+  match map_get(m: lifecycle_field_name_set(), key: name) {
+    Accepted { value: Present { value: _ } } => true
+    _ => false
+  }
+}
+
+fn type_is_bare_string(target: Node) -> Bool {
+  let nm = edge_field_type_name(target: target)
+  (nm == ^String) || (nm == ^NonEmptyStr)
+}
+
+fn lifecycle_carrier_diagnostic(carrier: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^lifecycle_carrier_raw_prose_field,
+    at: node_locus(node: carrier),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn field_lifecycle_violation(carrier: Node, edge: Edge) -> Optional<Diagnostic> {
+  match edge.label {
+    Named { name: nm } =>
+      if name_is_lifecycle_field(name: nm) && type_is_bare_string(target: edge.target) {
+        optional_present(value: lifecycle_carrier_diagnostic(carrier: carrier))
+      } else {
+        optional_absent()
+      }
+    Positional => optional_absent()
+  }
+}
+
+fn carrier_first_lifecycle_violation(carrier: Node) -> Optional<Diagnostic> {
+  match carrier.kind {
+    TypeNode { connective: _ } =>
+      fold(carrier.children, init: optional_absent(), f: fn(acc, edge) {
+        optional_prefer_first_present(left: acc, right: field_lifecycle_violation(carrier: carrier, edge: edge))
+      })
+    ComputationNode { behavior: _ } => Absent
+  }
+}
+
+// Node-local, same grain as unit_modeling_gate: reads only the node's direct
+// children so it does not stack with run_required_lens_gates_on_subtree's
+// fold_node into O(n^2).
+fn lifecycle_carrier_gate(node: Node) -> Outcome<Witness<Node>> {
+  match carrier_first_lifecycle_violation(carrier: node) {
+    Present { value: d } => outcome_rejected(d)
+    Absent => outcome_accepted(value: Holds { value: node })
+  }
+}

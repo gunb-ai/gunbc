@@ -62,6 +62,7 @@ import gunbc.ci_layer_roots { witness_layer_roots }
 import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import std.types { NonEmptyStr }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 type FalsifierStepTimeoutBasis {
   single_step_cap_minutes: Int
@@ -69,7 +70,7 @@ type FalsifierStepTimeoutBasis {
   current_cap_minutes: Int
   measurement_github_actions_run_id: NonEmptyStr
   not_algebraically_closed_from: NonEmptyStr
-  dissolution_trigger: NonEmptyStr
+  dissolution: DissolutionCondition
 }
 
 data gunbc_falsifier_step_timeout_basis: FalsifierStepTimeoutBasis = FalsifierStepTimeoutBasis {
@@ -78,7 +79,7 @@ data gunbc_falsifier_step_timeout_basis: FalsifierStepTimeoutBasis = FalsifierSt
   current_cap_minutes: 170,
   measurement_github_actions_run_id: "29135185172",
   not_algebraically_closed_from: "gunbc.ci_spec floor batch-clamp overheads (per-batch wall at execution time; no composed sum closes to the single-step cap)",
-  dissolution_trigger: "gunbc.ci_spec batch-clamp overheads algebraically compose to gunbc_falsifier_step_timeout_minutes, replacing the measured-envelope basis"
+  dissolution: unbound_dissolution(description: "gunbc.ci_spec batch-clamp overheads algebraically compose to gunbc_falsifier_step_timeout_minutes, replacing the measured-envelope basis")
 }
 
 data gunbc_falsifier_step_timeout_minutes: Int = 170
@@ -91,7 +92,7 @@ fn gunbc_falsifier_step_timeout_basis_is_measured_not_composed() -> Bool {
       current_cap_minutes: 170,
       measurement_github_actions_run_id: run,
       not_algebraically_closed_from: _,
-      dissolution_trigger: _
+      dissolution: _
     } =>
       cap == gunbc_falsifier_step_timeout_minutes
         && run == "29135185172"
