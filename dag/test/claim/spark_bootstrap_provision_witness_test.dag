@@ -2,71 +2,85 @@ module test.claim.spark_bootstrap_provision_witness
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// Controls over the parts of gunbc.spark_bootstrap_provision that are decidable without a
-// network. The patterns themselves dispatch real Secret Manager operations and are proven by the
-// applied receipts recorded in the module, not here; what is provable here is the SHAPE of the
-// grant, and that is worth proving separately because a privilege defect is not visible in a
-// successful apply. An over-broad binding applies exactly as cleanly as a correct one.
+// Controls over the Spark credential population model. The prior revision of this witness proved
+// least-privilege properties of an IAM binding set that has since been deleted along with the
+// patterns that applied it; those controls are not carried forward, because the thing they
+// constrained no longer exists and a control retained past its subject is a green assertion about
+// nothing. What replaces them constrains the population and the classification of legacy state.
 
-data spark_provision_witness_scope_note: String = "These controls cover the grant shape and the secret-identity distinctness, not the dispatch. The distinction matters for reading a green run: a successful apply proves the operations were accepted by the API and proves nothing about whether the roles granted were the least ones sufficient, because an owner-level binding would also apply successfully. So least privilege has to be asserted structurally rather than inferred from the apply having worked."
+data spark_witness_scope_note: String = "These controls cover the credential population, the pending state of every external allocation, and the refusal of the two legacy containers as authorities. They do not cover actuation, which this module no longer performs. The prior least-privilege controls were deleted with the binding set they described rather than kept: they would have continued passing while constraining code that had been removed."
 
-data spark_role_admin: String = "roles/secretmanager.admin"
-data spark_role_owner: String = "roles/owner"
-
-fn spark_role_allowed(role: String) -> Bool {
-  role == role_secretmanager_secret_accessor
-    || role == role_secretmanager_secret_version_adder
+fn spark_population_has(host: HostIdentity, kind: SparkCredentialKind) -> Bool {
+  fold(spark_credential_population(), init: false, f: (acc, o) =>
+    acc || (o.host == host && spark_credential_kind_eq(a: o.kind, b: kind)))
 }
 
-fn spark_binding_targets_only_assimilator(b: GcpBinding) -> Bool {
-  b.members.length() == 1
-    && fold(b.members, init: true, f: (acc, m) => acc && m == bmc_assimilator_sa_member())
+fn spark_allocation_is_pending(a: SparkSecretAllocation) -> Bool {
+  match a {
+    SparkSecretAllocated { occurrence: _, handle: _ } => false
+    SparkSecretAllocationPending { occurrence: _ } => true
+  }
 }
 
-fn spark_bindings_contain_role(role: String) -> Bool {
-  fold(spark_secret_iam_bindings(), init: false, f: (acc, b) => acc || b.role == role)
+// CONTROL 1: the population is exactly the four host-by-kind occurrences. This is the control that
+// reds on the specific error the prior revision shipped -- two globally-named credentials standing
+// for a per-device population.
+test fn spark_population_is_four_host_scoped_occurrences() -> Bool {
+  spark_credential_population().length() == 4
+    && spark_population_has(host: spark_srv5(), kind: FactoryHotspotCredential)
+    && spark_population_has(host: spark_srv5(), kind: AdministratorCredential)
+    && spark_population_has(host: spark_srv6(), kind: FactoryHotspotCredential)
+    && spark_population_has(host: spark_srv6(), kind: AdministratorCredential)
 }
 
-// CONTROL 1: exactly two bindings, each naming exactly the assimilator service account, each
-// carrying a role from the allowed pair. All three conjuncts matter: a third binding, a widened
-// member list, or a substituted role each defeats least privilege independently.
-test fn spark_bindings_are_least_privilege() -> Bool {
-  let bs = spark_secret_iam_bindings()
-  bs.length() == 2
-    && fold(bs, init: true, f: (acc, b) => acc && spark_binding_targets_only_assimilator(b: b))
-    && fold(bs, init: true, f: (acc, b) => acc && spark_role_allowed(role: b.role))
+// CONTROL 2: occurrences are distinguished by BOTH axes. A kind-only or host-only identity would
+// still satisfy control 1's count while fusing two real credentials, and fusing them is the exact
+// failure that makes one AddVersion silently become a prior version of another credential.
+test fn spark_occurrence_identity_uses_both_axes() -> Bool {
+  let a = spark_credential_occurrence(host: spark_srv5(), kind: FactoryHotspotCredential)
+  let b = spark_credential_occurrence(host: spark_srv6(), kind: FactoryHotspotCredential)
+  let c = spark_credential_occurrence(host: spark_srv5(), kind: AdministratorCredential)
+  !spark_occurrence_eq(a: a, b: b)
+    && !spark_occurrence_eq(a: a, b: c)
+    && spark_occurrence_eq(a: a, b: spark_credential_occurrence(host: spark_srv5(), kind: FactoryHotspotCredential))
 }
 
-// CONTROL 2: both intended roles are actually present. Control 1 alone is satisfied by a binding
-// set that granted secretAccessor twice and never granted secretVersionAdder, which would pass
-// every least-privilege conjunct while leaving the producer unable to write a version.
-test fn spark_bindings_carry_both_intended_roles() -> Bool {
-  spark_bindings_contain_role(role: role_secretmanager_secret_accessor)
-    && spark_bindings_contain_role(role: role_secretmanager_secret_version_adder)
+// CONTROL 3: no occurrence carries an allocated external handle. Pending is the honest state while
+// nothing has allocated one, and this control reds if a plausible-looking secret id is ever
+// authored here rather than allocated -- the fabrication the carried-never-derived naming law
+// forbids.
+test fn spark_allocations_are_all_pending() -> Bool {
+  fold(spark_credential_population(), init: true, f: (acc, o) =>
+    acc && spark_allocation_is_pending(a: spark_secret_allocation(occurrence: o)))
 }
 
-// CONTROL 3, the discriminating negative: the escalated roles are ABSENT. This is the control that
-// goes red if someone "fixes" a permission error by reaching for admin, which is the realistic
-// failure mode -- an admin binding makes every symptom disappear at once and looks like a fix.
-test fn spark_bindings_exclude_escalated_roles() -> Bool {
-  !spark_bindings_contain_role(role: spark_role_admin)
-    && !spark_bindings_contain_role(role: spark_role_owner)
+// CONTROL 4: the cloud principal is unallocated. The discriminating negative for the cross-domain
+// expansion: this reds the moment the BMC assimilator, or any other borrowed identity, is bound as
+// the Spark authority.
+test fn spark_cloud_principal_is_unallocated() -> Bool {
+  match fleet_cloud_convergence_principal {
+    FleetCloudPrincipalAllocated { member: _ } => false
+    FleetCloudPrincipalUnallocated => true
+  }
 }
 
-// CONTROL 4: the two secrets are distinct identities. If these ids ever collide, the two patterns
-// would create one secret and then write BOTH credentials into it as successive versions, and
-// because AddVersion never overwrites, that failure is silent -- the second write succeeds and the
-// hotspot password simply becomes the administrator secret's previous version.
-test fn spark_secret_identities_are_distinct() -> Bool {
-  spark_hotspot_secret_id != spark_administrator_secret_id
-    && spark_bootstrap_secret_ids.length() == 2
+// CONTROL 5: both legacy containers classify as observed-unbound, and there are exactly two of
+// them. They are starting state, never accepted output; this reds if either is promoted into the
+// allocation path.
+fn spark_legacy_is_unbound(c: SparkLegacyContainerStanding) -> Bool {
+  match c {
+    ObservedLegacyUnbound { handle: h } => h != ""
+  }
 }
 
-// CONTROL 5: neither Spark secret collides with the BMC secret that shares this project and this
-// service account. A collision here would point the Spark producer at the srv3 BMC credential and
-// add a version to it, and the assimilator holds versionAdder on that secret, so the write would
-// be permitted rather than refused.
-test fn spark_secrets_do_not_collide_with_bmc_secret() -> Bool {
-  spark_hotspot_secret_id != bmc_srv3_secret_name
-    && spark_administrator_secret_id != bmc_srv3_secret_name
+test fn spark_legacy_containers_are_observed_unbound() -> Bool {
+  spark_legacy_containers.length() == 2
+    && fold(spark_legacy_containers, init: true, f: (acc, c) => acc && spark_legacy_is_unbound(c: c))
+}
+
+// CONTROL 6: the legacy population is strictly smaller than the credential population. Stated as a
+// standing inequality rather than as prose, because "two containers exist" reads like progress
+// toward four and is not: neither can be the authority for a per-device hotspot credential.
+test fn spark_legacy_containers_do_not_cover_the_population() -> Bool {
+  spark_legacy_containers.length() < spark_credential_population().length()
 }

@@ -1,164 +1,156 @@
 module gunbc.spark_bootstrap_provision
 
-// THE PRODUCER for the Spark bootstrap secrets. gunbc.spark_bootstrap_credential names two
-// SecretRefs and records that nothing creates them; this module is the thing that creates them,
-// so that the refs become materialized by an APPLY rather than by a human opening a console and
-// pasting a password into a form. That distinction is the whole point: a hand-placed secret has
-// no receipt, no idempotence, and no readback, and the srv4 subsumption session is the record of
-// what that costs.
+// The Spark bootstrap credential population, as convergence subjects rather than as callable
+// mutation tools. An earlier revision of this module carried two patterns that dispatched
+// CreateSecret / SetSecretIamPolicy / AddVersion unconditionally from whatever process invoked
+// them. Those are deleted here rather than kept beside the model, because a pattern that mutates
+// a cloud resource with no observe step, no membership diff, no attempt identity and no
+// independent readback is not a convergence member — it is a terminal tool, and leaving it
+// callable is what made the manual apply possible in the first place.
 //
-// Shape is taken verbatim from gunbc.assimilate.bmc_bootstrap_provision, which is proven live
-// against this same project. Only the resources differ. What deliberately does NOT match is token
-// acquisition: the BMC pattern calls shell.GCloud.AuthPrintAccessToken() directly and carries a
-// marked fork for it, so copying that call would have minted a THIRD authority for one concept.
-// This pattern takes the resolved token as a parameter, which is what
-// gunbc.auth.access_token_source.ensure_access_token already returns.
+// What this module now owns: the exact credential population, the allocation of an external
+// secret handle to each occurrence, and the classification of the two containers that already
+// exist in Secret Manager. What it deliberately does NOT own: actuation. The cloud executor is
+// the OIDC/WIF-authenticated workflow, and it consumes this model.
 
-data spark_provision_authority_note: String = "Three operations, three different idempotence characters, kept in separate patterns rather than behind one convenient verb. MEASURED, not assumed: CreateSecret does NOT converge at this seam — a second run answers HTTP 409 ALREADY_EXISTS and the pattern fails, because 409 is a declared error response and nothing here turns it into a success. An earlier revision of this note claimed the opposite ('a second run answers 409 and the desired state is reached either way'), which was an assertion about the API written without executing the re-run; the re-run was then executed and refuted it. AddVersion does not converge either, for a different reason: every call mints a new version, so a retry sprawls versions rather than settling, which is the property gunbc.auth.secret_rotation names. SetSecretIamPolicy DOES converge — it sets a policy to a desired value, so repeating it is a no-op on an already-correct binding. That asymmetry is why IAM convergence is its own pattern: bundling it behind CreateSecret meant a re-run died on 409 before reaching the bindings, so drifted bindings were unrepairable by re-running the only thing that set them. The container create is therefore a ONE-SHOT with a typed failure on re-run, and binding convergence is separately re-runnable."
+data spark_provision_scope_note: String = "This module models subjects and allocations; it does not actuate. The prior revision's spark_secret_containers_create / spark_secret_iam_converge / spark_secret_material_write patterns were deleted rather than repaired in place, because each was unconditional: create with no prior Get, SetIamPolicy with no GetIamPolicy and no etag (which REPLACES a policy rather than amending it, so unrelated bindings on any secret that had them would have been dropped), and AddVersion with no attempt identity (which mints a version per call, so an interrupted run sprawls). Repairing them as patterns would have preserved the shape whose availability was the defect."
 
-// 🟡 dissolve-on: spark_secret_containers_create is one-shot rather than convergent — a re-run
-// fails on 409 ALREADY_EXISTS instead of classifying 'already present' as the desired state
-// reached. The rung here is mitigatable (the failure is typed, located, and loud; it cannot
-// silently double-create) and NOT mechanically preventable, because nothing stops a caller
-// re-running it and taking the abort. DISSOLVES WHEN the create routes through an upsert
-// classification that reads 409 as Converged/Noop the way gunbc.auth.access_token_source
-// classifies its ensure, at which point this pattern and spark_secret_iam_converge can rejoin.
-// Next-rung trigger named rather than left implicit, per the guarantee ladder's no-untracked-stall
-// obligation.
-data spark_container_create_not_convergent_dissolve_on: String = "🟡 dissolve-on: spark_secret_containers_create aborts on HTTP 409 ALREADY_EXISTS rather than classifying an existing secret as the desired state reached. DISSOLVES WHEN CreateSecret dispatch routes through an UpsertClassification that maps 409 to Noop, letting create and IAM convergence rejoin into one re-runnable pattern. Measured on 2026-08-09: first apply returned both secret names and both binding etags; immediate reapply failed with 409 on the first secret."
+// ── The population ────────────────────────────────────────────────────────────────────────
+// FOUR occurrences, not two. An earlier revision carried two global secret ids -- one hotspot,
+// one administrator -- which cannot represent this population: the factory hotspot value differs
+// per device (the two SSIDs are distinct rows in gunbc.spark_bootstrap_credential), so one global
+// hotspot secret would have to hold two different credentials, and because AddVersion never
+// overwrites, the second write would silently become a new version of the first rather than a
+// separate credential. This is the same host-scope error the POSIX principal split already fixed
+// one carrier over: an account is per host, and so is a bootstrap credential.
 
-data spark_hotspot_secret_id: NonEmptyStr = "spark-hotspot-password"
-data spark_administrator_secret_id: NonEmptyStr = "spark-administrator-password"
+type SparkCredentialKind
+  = FactoryHotspotCredential
+  | AdministratorCredential
 
-// The two secrets the bootstrap actually needs, as the names the store will carry. They are
-// separate secrets rather than two versions of one because they are two different credentials with
-// different lifetimes: the hotspot password is a factory-network fact that dies when the Spark
-// joins the fleet network, and the administrator password outlives it.
-data spark_bootstrap_secret_ids: List<NonEmptyStr> = [
-  spark_hotspot_secret_id,
-  spark_administrator_secret_id
-]
+type SparkCredentialOccurrence {
+  host: HostIdentity
+  kind: SparkCredentialKind
+}
 
-// Least privilege, and the same two roles the BMC secret carries: read the version, and add a
-// version. Neither role can delete a secret or read any OTHER secret in the project, because the
-// binding is set on the secret RESOURCE rather than on the project.
-fn spark_secret_iam_bindings() -> List<GcpBinding> {
+fn spark_srv5() -> HostIdentity { "srv5" }
+fn spark_srv6() -> HostIdentity { "srv6" }
+
+fn spark_credential_occurrence(host: HostIdentity, kind: SparkCredentialKind) -> SparkCredentialOccurrence {
+  SparkCredentialOccurrence { host: host, kind: kind }
+}
+
+fn spark_credential_population() -> List<SparkCredentialOccurrence> {
   [
-    GcpBinding {
-      role: role_secretmanager_secret_accessor,
-      members: [bmc_assimilator_sa_member()]
-    },
-    GcpBinding {
-      role: role_secretmanager_secret_version_adder,
-      members: [bmc_assimilator_sa_member()]
-    }
+    SparkCredentialOccurrence { host: spark_srv5(), kind: FactoryHotspotCredential },
+    SparkCredentialOccurrence { host: spark_srv5(), kind: AdministratorCredential },
+    SparkCredentialOccurrence { host: spark_srv6(), kind: FactoryHotspotCredential },
+    SparkCredentialOccurrence { host: spark_srv6(), kind: AdministratorCredential }
   ]
 }
 
-// Create the CONTAINERS only. No payload crosses this pattern, so it needs no credential material
-// at all — only the admin token — and an operator can apply it before the Spark passwords exist.
-// ONE-SHOT: see spark_container_create_not_convergent_dissolve_on. A re-run against existing
-// secrets fails loudly on 409 rather than doing anything silent, which is the acceptable form of
-// this deficit; the unacceptable form would be swallowing the 409 and reporting success.
-pattern spark_secret_containers_create(access_token: Secret) -> {
-  hotspot_name: String,
-  administrator_name: String
+fn spark_occurrence_eq(a: SparkCredentialOccurrence, b: SparkCredentialOccurrence) -> Bool {
+  a.host == b.host && spark_credential_kind_eq(a: a.kind, b: b.kind)
 }
-  uses net: std.resources.Network
-{
-  node hotspot: gcp.SecretManager.CreateSecret(
-    access_token: access_token,
-    project_id: bmc_secrets_project_id,
-    secret_id: spark_hotspot_secret_id
-  )
 
-  node administrator: gcp.SecretManager.CreateSecret(
-    access_token: access_token,
-    project_id: bmc_secrets_project_id,
-    secret_id: spark_administrator_secret_id
-  )
-
-  return {
-    hotspot_name: hotspot.name,
-    administrator_name: administrator.name
+fn spark_credential_kind_is_hotspot(k: SparkCredentialKind) -> Bool {
+  match k {
+    FactoryHotspotCredential => true
+    AdministratorCredential => false
   }
 }
 
-// Converge the BINDINGS. Separated from creation because SetSecretIamPolicy sets a policy to a
-// desired value and is therefore genuinely re-runnable, while creation is not. Keeping them in one
-// pattern made the convergent half unreachable on any host where the containers already existed,
-// which is every host after the first apply — so the only operation that could repair drifted
-// least-privilege bindings was gated behind an operation guaranteed to abort.
+fn spark_credential_kind_eq(a: SparkCredentialKind, b: SparkCredentialKind) -> Bool {
+  spark_credential_kind_is_hotspot(k: a) == spark_credential_kind_is_hotspot(k: b)
+}
+
+// ── The external handle ───────────────────────────────────────────────────────────────────
+// A Secret Manager resource name is an ALLOCATED external handle for an occurrence. It is not
+// the occurrence identity, and it must not be reverse-parsed to recover the host or the kind.
+// gunbc.spark_bootstrap_credential already settled the naming law this obeys -- names are
+// carried, never computed from a rendered HostIdentity -- because a computed name makes the
+// secret namespace a function of how a host happens to be spelled today.
 //
-// MEASURED, and stated at the strength the measurement supports: re-running this against secrets
-// that already carry the correct bindings SUCCEEDS and leaves the binding content byte-identical.
-// It is NOT a no-op — the policy etag advances on every run, because this writes the desired policy
-// rather than comparing first and skipping. Re-runnable and idempotent-in-result is the claim;
-// idempotent-in-effect is not, and a caller reasoning about write volume or audit-log noise needs
-// the difference. Receipt 2026-08-09: etags moved BwZYnwVip+g= -> BwZYny9Ox7I= and
-// BwZYnwVp5OE= -> BwZYny9WBCY= while both secrets kept exactly secretAccessor + secretVersionAdder
-// for the assimilator service account.
-pattern spark_secret_iam_converge(access_token: Secret) -> {
-  hotspot_binding_etag: String,
-  administrator_binding_etag: String
-}
-  uses net: std.resources.Network
-{
-  node hotspot_bind: gcp.SecretManager.SetSecretIamPolicy(
-    access_token: access_token,
-    project_id: bmc_secrets_project_id,
-    secret: spark_hotspot_secret_id,
-    bindings: spark_secret_iam_bindings()
-  )
+// No allocation has been made for any of the four occurrences, and Pending is therefore the only
+// honest arm. Authoring four plausible ids here would be exactly the fabrication the naming law
+// forbids: a name nobody allocated, asserted as though it referred to something.
+type SparkSecretAllocation
+  = SparkSecretAllocated { occurrence: SparkCredentialOccurrence, handle: NonEmptyStr }
+  | SparkSecretAllocationPending { occurrence: SparkCredentialOccurrence }
 
-  node administrator_bind: gcp.SecretManager.SetSecretIamPolicy(
-    access_token: access_token,
-    project_id: bmc_secrets_project_id,
-    secret: spark_administrator_secret_id,
-    bindings: spark_secret_iam_bindings()
-  )
-
-  return {
-    hotspot_binding_etag: hotspot_bind.ok_etag,
-    administrator_binding_etag: administrator_bind.ok_etag
-  }
+fn spark_secret_allocation(occurrence: SparkCredentialOccurrence) -> SparkSecretAllocation {
+  SparkSecretAllocationPending { occurrence: occurrence }
 }
 
-// Write the MATERIAL, and read back the exact version that was written. The payloads are
-// PARAMETERS and never data rows: a credential authored into this file would be a credential
-// published to everyone who can read the repository, which is the one outcome the whole secret
-// boundary exists to prevent.
+// ── The two containers that already exist ─────────────────────────────────────────────────
+// Created 2026-08-09 by an interactive apply that this module no longer admits. They are real
+// starting-state observations and they are NOT accepted convergence output, so they are named as
+// legacy state rather than adopted as the authority for any occurrence. In particular the single
+// hotspot container cannot be the authority for a hotspot credential, because there are two
+// distinct factory values and it can hold only one of them without the other becoming a silent
+// prior version.
 //
-// The readback names the version it verifies rather than reading `latest`. That is not caution
-// about the store — it is that `latest` is a moving alias, so a success proved through it is
-// compatible with some other writer having landed a different version in between, and the receipt
-// would then attest to a payload this run did not write.
-pattern spark_secret_material_write(
-  access_token: Secret,
-  hotspot_name: String,
-  administrator_name: String,
-  hotspot_payload_b64: String,
-  administrator_payload_b64: String
-) -> {
-  hotspot_version: SmResolvedVersionIdentity,
-  administrator_version: SmResolvedVersionIdentity
-}
-  uses net: std.resources.Network
-{
-  node hotspot_v: gcp.SecretManager.AddVersion(
-    access_token: access_token,
-    secret_name: hotspot_name,
-    payload_b64: hotspot_payload_b64
-  )
+// They are not edited or deleted from here. Retirement runs through the same convergence workflow
+// once the four correct resources exist and no consumer references these.
+type SparkLegacyContainerStanding
+  = ObservedLegacyUnbound { handle: NonEmptyStr }
 
-  node administrator_v: gcp.SecretManager.AddVersion(
-    access_token: access_token,
-    secret_name: administrator_name,
-    payload_b64: administrator_payload_b64
-  )
+data spark_legacy_hotspot_container: SparkLegacyContainerStanding = ObservedLegacyUnbound { handle: "spark-hotspot-password" }
 
-  return {
-    hotspot_version: hotspot_v.name,
-    administrator_version: administrator_v.name
-  }
-}
+data spark_legacy_administrator_container: SparkLegacyContainerStanding = ObservedLegacyUnbound { handle: "spark-administrator-password" }
+
+data spark_legacy_containers: List<SparkLegacyContainerStanding> = [
+  spark_legacy_hotspot_container,
+  spark_legacy_administrator_container
+]
+
+data spark_legacy_container_note: String = "Two containers exist in gunbai-secrets from an interactive apply on 2026-08-09, each carrying secretAccessor + secretVersionAdder for the BMC assimilator service account. They classify ObservedLegacyUnbound: real observations of starting state, not accepted output, and not the authority for any occurrence. Neither carries a version -- no payload was ever written -- so nothing depends on them. Two independent reasons they cannot simply be adopted: the population is four and these are two, and the principal bound on them is the BMC assimilator, which is the wrong authority per spark_cloud_principal_note."
+
+// ── The principal ─────────────────────────────────────────────────────────────────────────
+// The deleted patterns granted access to the BMC assimilator service account. That was a
+// cross-domain privilege expansion, not a convenient reuse: that principal is declared as a BMC
+// assimilator scoped to the srv3 BMC secret, so binding it to Spark bootstrap credentials makes
+// BMC assimilation the authority for Spark provisioning. It is also the nickname trap in its
+// usual form -- one identity acquiring a second meaning because it happened to be nearby.
+//
+// The replacement is a semantic identity for the fleet's cloud convergence executor. It carries
+// no allocated service-account handle yet, and the pending arm is the honest state: allocating
+// one is a cloud mutation, which is precisely what this module no longer performs.
+type FleetCloudConvergencePrincipal
+  = FleetCloudPrincipalAllocated { member: NonEmptyStr }
+  | FleetCloudPrincipalUnallocated
+
+data fleet_cloud_convergence_principal: FleetCloudConvergencePrincipal = FleetCloudPrincipalUnallocated
+
+data spark_cloud_principal_note: String = "The Spark secret population must be bound to a fleet cloud-convergence principal with an independently allocated service-account identity and the minimum permissions for exactly this population -- never to bmc_assimilator_sa_member(), which is declared as the BMC assimilator for the srv3 BMC secret. Reusing it would make BMC assimilation the authority for Spark provisioning and would widen a principal scoped to one secret into one holding versionAdder across two domains. The GitHub-to-GCP federation facts are likewise a repository-level authority to be extracted and consumed by both domains, not copied out of the BMC rows, since copying is how the second authority gets minted."
+
+// ── The convergence shape this model is consumed by ───────────────────────────────────────
+// Declared as the required sequence rather than implemented as callable mutation, because the
+// executor is the OIDC/WIF workflow. Each arm names why it exists.
+//
+//   observe container        Get before Create. Absent -> create then read back the exact
+//                            resource; matching -> Noop; conflicting -> Refuse with the exact
+//                            differences; unreadable -> Refuse. Never "call Create and read 409
+//                            as already-done", which is what the prior revision did and what its
+//                            own measured receipt refuted.
+//
+//   reconcile IAM            GetIamPolicy -> membership diff -> preserve unrelated admitted
+//                            bindings -> amend only owned members -> SetIamPolicy carrying the
+//                            observed etag -> GetIamPolicy readback. The etag is not politeness:
+//                            setIamPolicy replaces the policy, so a blind write drops bindings it
+//                            never saw, and a concurrent update overwrites silently without the
+//                            read-modify-write cycle.
+//
+//   materialize              At most one AddVersion per attempt identity. A durable receipt names
+//                            the exact version created, so an interrupted run resumes by
+//                            ACCESSING that version rather than minting another. Never retry
+//                            AddVersion because a process outcome was lost -- a lost outcome is
+//                            not evidence the write did not land.
+//
+//   read back                A separate AccessVersion against the exact recorded version,
+//                            compared by payload identity. The writer reporting its own returned
+//                            value is not a readback, and `latest` is a moving alias that cannot
+//                            witness which version this run wrote.
+data spark_convergence_shape_note: String = "observe container (Get before Create; absent/matching/conflicting/unreadable are four distinct verdicts) -> reconcile IAM (GetIamPolicy, membership diff, preserve unrelated bindings, SetIamPolicy with observed etag, readback) -> materialize (at most one AddVersion per attempt identity, receipt naming the exact version) -> independent readback (AccessVersion at that exact version, compared by payload identity). Secret material never crosses a string-shaped CLI boundary: base64 is wire encoding, not confidentiality, and gunbc.spark_bootstrap_credential's sensitive-input policy already refuses secrets appearing in argv or standard streams. Material is generated or fetched inside the admitted run and projected to base64 at the REST boundary."
+
+data spark_provision_frontier_note: String = "NOT BUILT, and named so the absence is countable rather than implied: the four secret allocations, the container observe/classify operation, the IAM membership diff, the materialization attempt identity and receipt, the independent payload-identity readback, the allocated fleet cloud-convergence principal, the shared GitHub-to-GCP federation authority, and the generated workflow that executes all of it under OIDC/WIF. Until those exist the Spark cloud population converges 0 of 4 occurrences, and the two existing containers do not reduce that number."
