@@ -15812,7 +15812,12 @@ pub fn handle_converge(host: String) {
 
 /// Thin CLI transport handler for `gunbc build <program>`: argv parse ->
 /// in-process `.dag` interpreter call -> stdout/exit-code projection.
-pub fn handle_devboot_build(program: String, endpoint: Option<String>, out: Option<String>) {
+pub fn handle_devboot_build(
+    program: String,
+    endpoint: Option<String>,
+    repo_root: Option<String>,
+    out: Option<String>,
+) {
     let endpoint = endpoint
         .or_else(|| std::env::var("DEVBOOT_ENDPOINT").ok())
         .unwrap_or_else(|| {
@@ -15821,13 +15826,15 @@ pub fn handle_devboot_build(program: String, endpoint: Option<String>, out: Opti
             );
             std::process::exit(1);
         });
-    let repo_root = std::env::current_dir()
-        .unwrap_or_else(|e| {
-            eprintln!("error: could not read current directory: {e}");
-            std::process::exit(1);
-        })
-        .to_string_lossy()
-        .into_owned();
+    let repo_root = repo_root.unwrap_or_else(|| {
+        std::env::current_dir()
+            .unwrap_or_else(|e| {
+                eprintln!("error: could not read current directory: {e}");
+                std::process::exit(1);
+            })
+            .to_string_lossy()
+            .into_owned()
+    });
     let work_root = std::env::temp_dir()
         .join(format!("gunbc-devboot-{}", std::process::id()))
         .to_string_lossy()

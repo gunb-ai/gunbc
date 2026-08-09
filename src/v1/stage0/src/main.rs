@@ -90,6 +90,9 @@ enum Commands {
         /// Git artifact store endpoint (git://host:port/store.git). Overrides DEVBOOT_ENDPOINT.
         #[arg(long)]
         endpoint: Option<String>,
+        /// Source tree to snapshot for the build subject (default: current directory)
+        #[arg(long)]
+        repo_root: Option<String>,
         /// Output path for the built executable (default: <program> in the current directory)
         #[arg(long)]
         out: Option<String>,
@@ -675,9 +678,10 @@ fn main() {
         Commands::Build {
             program,
             endpoint,
+            repo_root,
             out,
         } => {
-            cli_run::handle_devboot_build(program, endpoint, out);
+            cli_run::handle_devboot_build(program, endpoint, repo_root, out);
         }
 
         Commands::Serve {
