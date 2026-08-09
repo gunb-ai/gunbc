@@ -1,0 +1,72 @@
+module test.claim.spark_bootstrap_provision_witness
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Controls over the parts of gunbc.spark_bootstrap_provision that are decidable without a
+// network. The patterns themselves dispatch real Secret Manager operations and are proven by the
+// applied receipts recorded in the module, not here; what is provable here is the SHAPE of the
+// grant, and that is worth proving separately because a privilege defect is not visible in a
+// successful apply. An over-broad binding applies exactly as cleanly as a correct one.
+
+data spark_provision_witness_scope_note: String = "These controls cover the grant shape and the secret-identity distinctness, not the dispatch. The distinction matters for reading a green run: a successful apply proves the operations were accepted by the API and proves nothing about whether the roles granted were the least ones sufficient, because an owner-level binding would also apply successfully. So least privilege has to be asserted structurally rather than inferred from the apply having worked."
+
+data spark_role_admin: String = "roles/secretmanager.admin"
+data spark_role_owner: String = "roles/owner"
+
+fn spark_role_allowed(role: String) -> Bool {
+  role == role_secretmanager_secret_accessor
+    || role == role_secretmanager_secret_version_adder
+}
+
+fn spark_binding_targets_only_assimilator(b: GcpBinding) -> Bool {
+  b.members.length() == 1
+    && fold(b.members, init: true, f: (acc, m) => acc && m == bmc_assimilator_sa_member())
+}
+
+fn spark_bindings_contain_role(role: String) -> Bool {
+  fold(spark_secret_iam_bindings(), init: false, f: (acc, b) => acc || b.role == role)
+}
+
+// CONTROL 1: exactly two bindings, each naming exactly the assimilator service account, each
+// carrying a role from the allowed pair. All three conjuncts matter: a third binding, a widened
+// member list, or a substituted role each defeats least privilege independently.
+test fn spark_bindings_are_least_privilege() -> Bool {
+  let bs = spark_secret_iam_bindings()
+  bs.length() == 2
+    && fold(bs, init: true, f: (acc, b) => acc && spark_binding_targets_only_assimilator(b: b))
+    && fold(bs, init: true, f: (acc, b) => acc && spark_role_allowed(role: b.role))
+}
+
+// CONTROL 2: both intended roles are actually present. Control 1 alone is satisfied by a binding
+// set that granted secretAccessor twice and never granted secretVersionAdder, which would pass
+// every least-privilege conjunct while leaving the producer unable to write a version.
+test fn spark_bindings_carry_both_intended_roles() -> Bool {
+  spark_bindings_contain_role(role: role_secretmanager_secret_accessor)
+    && spark_bindings_contain_role(role: role_secretmanager_secret_version_adder)
+}
+
+// CONTROL 3, the discriminating negative: the escalated roles are ABSENT. This is the control that
+// goes red if someone "fixes" a permission error by reaching for admin, which is the realistic
+// failure mode -- an admin binding makes every symptom disappear at once and looks like a fix.
+test fn spark_bindings_exclude_escalated_roles() -> Bool {
+  !spark_bindings_contain_role(role: spark_role_admin)
+    && !spark_bindings_contain_role(role: spark_role_owner)
+}
+
+// CONTROL 4: the two secrets are distinct identities. If these ids ever collide, the two patterns
+// would create one secret and then write BOTH credentials into it as successive versions, and
+// because AddVersion never overwrites, that failure is silent -- the second write succeeds and the
+// hotspot password simply becomes the administrator secret's previous version.
+test fn spark_secret_identities_are_distinct() -> Bool {
+  spark_hotspot_secret_id != spark_administrator_secret_id
+    && spark_bootstrap_secret_ids.length() == 2
+}
+
+// CONTROL 5: neither Spark secret collides with the BMC secret that shares this project and this
+// service account. A collision here would point the Spark producer at the srv3 BMC credential and
+// add a version to it, and the assimilator holds versionAdder on that secret, so the write would
+// be permitted rather than refused.
+test fn spark_secrets_do_not_collide_with_bmc_secret() -> Bool {
+  spark_hotspot_secret_id != bmc_srv3_secret_name
+    && spark_administrator_secret_id != bmc_srv3_secret_name
+}
