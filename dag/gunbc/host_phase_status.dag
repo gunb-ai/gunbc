@@ -16,6 +16,7 @@ import gunbc.host_assimilation_program {
   HostEnrollmentIntent,
   assimilation_program_for,
   ci_runner_enrollment_participation,
+  inference_serving_enrollment_participation,
 }
 import gunbc.host_standup_assimilation_deduction { srv3_post_install_actuation_verdict }
 import gunbc.membership_reconcile {
@@ -29,7 +30,7 @@ import gunbc.membership_reconcile {
   membership_write_count,
 }
 import gunbc.ownership { Ownership, Owned }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv5, operator_host_srv6 }
 import product.placement_supply { HostIdentity }
 import std.measure { millisecond }
 
@@ -144,6 +145,8 @@ data fleet_subsumption_enrollments: List<HostEnrollmentIntent> = [
   HostEnrollmentIntent { host: operator_host_srv2, participation: ci_runner_enrollment_participation },
   HostEnrollmentIntent { host: operator_host_srv3, participation: ci_runner_enrollment_participation },
   HostEnrollmentIntent { host: operator_host_srv4, participation: ci_runner_enrollment_participation },
+  HostEnrollmentIntent { host: operator_host_srv5, participation: inference_serving_enrollment_participation },
+  HostEnrollmentIntent { host: operator_host_srv6, participation: inference_serving_enrollment_participation },
 ]
 
 data fleet_subsumption_hosts_projection_note: String = "The bare host list is DERIVED from the enrollments, never authored beside them. Consumers that legitimately care only about WHICH hosts exist -- toolchain components, network diagnosis, swap backing -- keep reading a List of HostIdentity and are untouched by program scoping, while the enrollment rows stay the single authority for who is in the fleet and what they are in it for. Authoring both lists would rebuild the parallel representation this refactor removes."
