@@ -1790,6 +1790,54 @@ pub enum DeclaredImportClosureBindingObservation {
     NotRunnable(String),
 }
 
+/// The ONE named accidental-coverage exception for the Class B declared-import-closure
+/// observation (operator ruling 2026-08-09, via the parent lane).
+///
+/// `src/v2/std/grounding.dag` carries ZERO imports and reaches these types by dotted path,
+/// so they bind only when some unrelated importer has already pulled `v2.std.host_run` /
+/// `v2.std.verdict` into the assembled closure — a live Class B pool-membership-coincidence
+/// specimen, the class the import-strip cascade diagnosis says blocks further `dag/**`
+/// stripping. Three options were weighed and two rejected: widening
+/// `class_b_declared_import_pool_roots` is pool-coincidence promoted to gate policy and
+/// would blind the gate to the very class it exists to observe; restoring the module's
+/// import closure UN-STRIPS an already-stripped module, which is motion against the
+/// namespace lane whose terminal state is deleting the import grammar outright — paid now
+/// and unwound later.
+///
+/// So this file becomes a COUNTED member of the accidental-coverage population instead of
+/// an invisible one. That is strictly more honest than the prior state, where it sat in
+/// exactly the same condition with nobody counting it.
+///
+/// This is deliberately a roster of EXACT (file, type name) pairs and never a pattern: it
+/// must not weaken the observation for any other file, and a new unresolved type in this
+/// same file still refuses. Adding a row here is a visible edit, not a policy that silently
+/// absorbs future breakage.
+///
+/// 🟡 dissolve-on: the closure-independent binding fix, or the provable-coverage
+/// construction check, that the import-strip witness-discovery cascade diagnosis names as
+/// the condition for unblocking `dag/**` stripping. When either lands, `grounding.dag`
+/// binds from its own declared closure and this roster goes to zero rows.
+const CLASS_B_ACCIDENTAL_COVERAGE_EXCEPTIONS: &[(&str, &str)] = &[
+    (
+        "src/v2/std/grounding.dag",
+        "v2.std.host_run.EmitHostRunReceipt",
+    ),
+    ("src/v2/std/grounding.dag", "v2.std.verdict.VerdictTally"),
+];
+
+/// True when this diagnostic is an exact named row above — same file AND same unresolved
+/// type. Any other diagnostic, including a different unresolved type in the same file,
+/// is not exempt.
+fn class_b_diagnostic_is_named_exception(d: &Rc<ErrorNode>) -> bool {
+    use crate::v1_std_core::CompilerDiagnostic;
+    let CompilerDiagnostic::UnresolvedType { name, span } = d.diagnostic.as_ref() else {
+        return false;
+    };
+    CLASS_B_ACCIDENTAL_COVERAGE_EXCEPTIONS
+        .iter()
+        .any(|(file, ty)| span.file == *file && name == ty)
+}
+
 fn declared_import_closure_hard_diagnostic_count(
     resolved: &v1_compiler_compile::ResolvedPipelineResult,
 ) -> i64 {
@@ -1797,6 +1845,22 @@ fn declared_import_closure_hard_diagnostic_count(
         .diagnostics
         .iter()
         .filter(|d| compile_clean_diagnostic_is_hard(d))
+        .filter(|d| !class_b_diagnostic_is_named_exception(d))
+        .count() as i64
+}
+
+/// How many hard diagnostics were exempted by the named roster. Reported beside the
+/// observation rather than dropped: an exemption that leaves no trace is indistinguishable
+/// from a clean compile, and the whole point of the roster is that this population is
+/// COUNTED instead of invisible.
+fn declared_import_closure_exempted_diagnostic_count(
+    resolved: &v1_compiler_compile::ResolvedPipelineResult,
+) -> i64 {
+    resolved
+        .diagnostics
+        .iter()
+        .filter(|d| compile_clean_diagnostic_is_hard(d))
+        .filter(|d| class_b_diagnostic_is_named_exception(d))
         .count() as i64
 }
 
@@ -1818,11 +1882,40 @@ pub fn declared_import_closure_binding_observation_from_resolved(
             );
         }
     };
+    let exempted = declared_import_closure_exempted_diagnostic_count(resolved);
+    if exempted > 0 {
+        eprintln!(
+            "[class-b-accidental-coverage] {exempted} hard diagnostic(s) exempted by the \
+             named roster (import-free modules binding by pool membership); \
+             dissolve-on: closure-independent binding or the provable-coverage check"
+        );
+    }
     let hard_count = declared_import_closure_hard_diagnostic_count(resolved);
     if hard_count > 0 {
-        return DeclaredImportClosureBindingObservation::NotRunnable(format!(
-            "declared-import-closure compile produced {hard_count} hard diagnostic(s); binding observation refused"
-        ));
+        // NAME THE DIAGNOSTICS, do not merely count them. A bare count cannot tell a
+        // consumer "all of these are the one known accidental-coverage specimen" from
+        // "a new regression is hiding among them", so every downstream row had to treat
+        // the two identically — the state-space conflation DESIGN names. The identities
+        // are what a counted exception row must join against, so the refusal carries them.
+        let mut named: Vec<String> = resolved
+            .diagnostics
+            .iter()
+            .filter(|d| compile_clean_diagnostic_is_hard(d))
+            .map(|d| format!("{:?}", d.diagnostic))
+            .collect();
+        named.sort();
+        named.dedup();
+        let cause = format!(
+            "declared-import-closure compile produced {hard_count} hard diagnostic(s); \
+             binding observation refused; identities: {}",
+            named.join(" | ")
+        );
+        // Stopped-line audit read: the gate's Bool collapses refused and genuinely-unlisted
+        // into one false, so without this the cause is unobservable from outside.
+        if std::env::var("GUNBC_CLASS_B_REFUSAL_TRACE").as_deref() == Ok("1") {
+            eprintln!("[class-b-refusal] {cause}");
+        }
+        return DeclaredImportClosureBindingObservation::NotRunnable(cause);
     }
     let definer = definer_module_for_name(graph, symbol);
     let symbol_resolves = definer.is_some();
