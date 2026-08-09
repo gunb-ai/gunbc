@@ -640,252 +640,282 @@ path is [containment binding for cross-module type references](containment-bindi
 (import-deletion graph node N2; depends on N1 refusal floor).
 
 
-## 15. Whole-corpus re-measurement (2026-08-09) — the residue splits into corpus hygiene and one missing production edge
+## 15. Whole-corpus re-measurement (2026-08-09) — a ranked residual, not a countdown
 
 §14 measured Class B on eight scoped probes. This section measures the **whole
 corpus at once**, so the classes are denominated against each other rather than
 each against itself.
 
-**It establishes nothing about whether `import` can be deleted.** The standing
-blocker is unchanged and is structural, not a backlog of corpus repairs: the
-roadmap's closing frontier is **2** — clauses A–D (structural binding) establish,
-clauses **E** (repeated accepted references project one provider-file dependency)
-and **F** (the answer does not change because an unrelated file happened to load
-the provider into the pool) remain **unavailable**. The compiler can increasingly
-decide *which declaration a reference means* without imports; it cannot yet derive
-*which provider files must be loaded* from those accepted bindings on the ordinary
-compilation path. Everything below is a worklist and a ranking, not a countdown.
+**It establishes nothing about whether `import` can be deleted, and it is not an
+exact worklist.** Of its 3,050 residual rows, 1,656 carry a probable but
+*unobserved* mechanism and a further 1,109 are explicitly unclassified or
+downstream; only 152 are corpus hygiene today. What follows is a ranking and a
+set of obligations.
+
+### 15.0 Maturity — three levels, not one frontier
+
+An earlier revision of this section said "the closing frontier is 2 — A–D
+establish, E and F remain unavailable." **That is withdrawn.** It was taken from
+roadmap prose that is ahead of its own executable closing authority. Read the
+authority instead: `gunbc.namespace_reference_derived_closure_contract`
+`namespace_reference_derived_closure_acceptance_admissions` returns **six**
+`ReferenceDerivedClosureUnavailable` rows — all six capabilities, including the
+four A–D ones, whose trigger is `P2aStructuralCandidateProducer7515` — and
+`reference_derived_closure_closing_contract_holds` is false for anything but a
+frontier of zero.
+
+The honest description separates three maturity levels the single-frontier
+phrasing collapsed:
+
+| level | subject | standing |
+| --- | --- | --- |
+| candidate/binding mechanics on authored parser fixtures | A–D | evidence exists |
+| dependency projection and pool comparison on constructed carriers | E/F machinery | fixture evidence exists |
+| the permanent ordinary-compiler closing contract | A–F | **all six unavailable** |
+
+The carriers say this themselves, and cite-the-symbol beats paraphrase:
+`gunbc.namespace_clause_e_projection_law` `namespace_clause_e_projection_law_note`
+records that clause E is proven "on hand-built `ReferenceDerivedClauseEProduction`
+carriers" and that "row closure over `OrdinaryLoadedCompilationClosure` is B2's
+axis and is excluded from this module";
+`std.occurrence_binding_candidates` `module_path_file_row_dissolution_note`
+carries `ModulePathFileRow` as a scaffold "until B2 wires
+`OrdinaryLoadedCompilationClosure` through `source_authority` directly"; and
+`gunbc.roadmap_authority` `namespace_cross_file_provenance_lane_integration_note`
+states the progress standard outright — "B0 exposure/assembly and B1
+fixture-proven projection carriers do not close
+namespace-cross-file-provenance; only the bound closing witness greens when
+`OrdinaryLoadedCompilationClosure` production lands (B2)."
+
+So the missing work is **an integration vertical**, not two remaining algebra
+arms: the ordinary front-end must emit the same occurrence/declaration
+identities it currently produces from hand-authored fixture strings, the
+production type-reference changeover must thread the binding context into the
+real resolve path, the loader must consume the dependency projection instead of
+scanning imports and bare-name census guesses, and pool independence must be
+proven against the loader's own output rather than against independently
+assembled fixture closures.
 
 ### 15.1 What was run
 
-Release `gunbc` built from main at `1eadad4af25` — rebuilt deliberately, because
-#7924 (`decl_facts` explicit-import resolution) landed after the last strip
-attempt and a stale binary would have measured a substrate that no longer exists
-(DESIGN "Current state — stale binary phantom breakage"). Two scratch copies of
-`dag` + `src`; one left intact as the known-positive control, one stripped with a
-**brace-depth-aware** pass over every `.dag` file under `dag/` and `src/v2/`
-(`sed '/^import /d'` orphans the multi-line `import x { … }` blocks and inflates
-the reading roughly tenfold — the trap recorded in §5's repro notes).
-
-```
-gunbc compile --source-root dag --source-root src/v2 \
-  --dependency-pool-index primary-precedence --target dag --output-dir <tmp>
-```
+Release `gunbc` built from `1eadad4af25`; no `.rs` changed between that commit
+and the measured base, which is why the same binary is current for the measured
+tree. (It was rebuilt for this lane because #7924 changed explicit-import
+resolution after the previous strip attempt — measuring with a binary older than
+the substrate it judges reports a compiler that no longer exists.) Two scratch
+copies of `dag` + `src`; one left intact as the known-positive control, one
+stripped with a **brace-depth-aware** pass (`sed '/^import /d'` orphans the
+multi-line `import x { … }` blocks and inflates the reading roughly tenfold —
+the trap recorded in §5's repro notes).
 
 Strip completeness is denominated, not assumed: **16,315 import declarations
-across 2,574 files, zero `import` residue** in the stripped tree.
+across 2,574 files, zero `import` residue**, with a per-file manifest.
+
+The full reproducer — scripts, raw diagnostic logs, manifest, declaration
+census, corpus hash and measured commit — is committed at
+[`import-strip-measurement/`](import-strip-measurement/README.md), including the
+deterministic command sequence that regenerates every number below. It is a
+registered scaffold carrying its own dissolution trigger: when B2 lands, the
+ledger becomes a projection of the loader's accepted-binding output and the
+scripts delete.
 
 ### 15.2 The two readings
 
 | tree | hard diagnostics | exit |
 | --- | --- | --- |
 | control (unstripped) | 12 | 1 |
-| stripped | 5,827 | 1 |
+| stripped | 3,062 | 1 |
 
-The exit code is **not** the discriminator — both trees exit 1, because the
-control's 12 pre-existing annotation-grain diagnostics are themselves hard. Only
-the count and the per-name join separate them; a reading keyed on exit status
-alone would call these two trees identical.
+Both exit 1 — the control's 12 pre-existing annotation-grain diagnostics are
+themselves hard, so exit status does not discriminate; only the count and the
+per-name join do. The control is the operand, not a formality: an unstripped
+compile reporting zero would have made those 12 read as strip damage. ("Known
+positive" is this document's term for the unstripped control, not DESIGN's;
+DESIGN §5's requirement is a real consumer **green by execution** plus a
+discriminating input that goes *red* when the behavior is wrong, and the
+stripped/unstripped pair is what supplies both halves here.)
 
-The control's 12 appear identically in both runs, so the strip-attributable
-population is **5,815 diagnostics over 801 files and 486 distinct names**. Per
-DESIGN ("absence claims need a known-positive"), the control is the operand: an
-unstripped compile reporting zero would have made those 12 read as strip damage.
-
-This is **not** comparable to the 1,096 figure in the pool-pull receipt: that run
-stripped 1,447 files, this one 2,574, and the corpus grew between them. Treating
-the two as a trend would be a change detector, not a measurement.
-
-### 15.3 Classification — and the ledger identity it must satisfy
-
-Each failing name was joined against a corpus declaration index (top-level
-`fn`/`func`/`type`/`data`/`service` declarations plus coproduct variant tags), so
-the class is derived from declaration multiplicity rather than from diagnostic
-text. The census must reconcile exactly, with no unexplained residual:
+The strip-attributable population is **3,050 diagnostics**, and the ledger
+identity is checked by the classifier rather than asserted:
 
 ```
-stripped_hard (5,827) = control_hard (12) + attributable_hard (5,815)
-attributable_hard (5,815) = Σ classified rows (5,803) + unclassified rows (12)
+stripped_hard (3,062) = control_hard (12) + attributable (3,050)
+attributable (3,050)  = Σ ledger rows (3,050)      [reconciliation: OK]
 ```
 
-| class | diagnostics | share | distinct names |
-| --- | --- | --- | --- |
-| A — homonym (name declared in >1 module) | 2,917 | 50.2% | 32 |
-| B — unique declaration, provider not discovered | 1,656 | 28.5% | 293 |
-| C — variant tag, mechanism unproven | 599 | 10.3% | 55 |
-| D — derived/cascade | 631 | 10.8% | 92 |
-| unclassified (no name in the diagnostic) | 12 | 0.2% | — |
-| **total attributable** | **5,815** | **100%** | — |
+**These numbers are base-specific and supersede this section's first revision.**
+That revision measured 5,815 attributable at `1eadad4af25`, before #8056 landed
+the `cell`/`row` disambiguation; re-measuring at the current base gives 3,050.
+Reading the two as a trend would be a change detector — the strip set, the
+corpus and the base all differ. For the same reason the earlier 1,096 figure
+from the pool-pull receipt (1,447 files stripped) is not comparable to either.
 
-An earlier revision of this section published the four classes without the
-unclassified row, so the columns summed to 5,803 against a stated 5,815. The
-missing 12 are diagnostics that carry **no quoted name** for the join to key on:
-eight `indexing is only supported for String, keyed collection, and list values`
-and four `if branches resolve to incompatible types`. Their count coinciding with
-the control's 12 is exactly that — a coincidence — and the arithmetic above is
-what makes the two independently checkable instead of confusable. One of the four
-is `Primitive(std.types.NonEmptyStr) vs Product(<anon>)`, which is the §14
-fabrication shape, so at least part of this row is Class-B damage wearing a
-type-mismatch diagnostic rather than a separate defect.
+### 15.3 The residual, by disposition
 
-**Class A is not one bucket, and global textual uniqueness is not the goal.** The
-namespace model deliberately preserves distinct same-spelled declarations and
-feeds the whole candidate population to the ambiguity fold; renaming every
-legitimate same-leaf declaration to force global uniqueness would be working
-against it. The 32 names split four ways, and only the first two are corpus work:
+Every failing name is joined against a corpus declaration index, so the class
+derives from declaration multiplicity and first-failure shape rather than from
+diagnostic prose. **No disposition claims a cause that was not observed**, and
+the ones that would carry `_unobserved` in the name:
 
-| subclass | treatment |
-| --- | --- |
-| two declarations of one concept | consolidate onto one authority; delete the other home |
-| two concepts sharing an over-generic leaf | rename semantically |
-| two legitimate equal leaves on separate containment paths | preserve; qualify or bind structurally |
-| the wrong declaration entering the pool | Class B, not naming |
+| disposition | rows | what it means |
+| --- | --- | --- |
+| `unique_decl_unresolved_mechanism_unobserved` | 1,656 | one indexed declaration, reference unresolved, mechanism not established |
+| `variant_mechanism_unobserved` | 599 | variant-shaped, prior mechanism refuted, re-proof owed |
+| `variant_owner_unindexed` | 249 | capitalised name the index missed (likely inline `type X = A \| B`) |
+| `corpus_hygiene` | 152 | name declared in more than one module |
+| `cascade` | 138 | type-expression / downstream mismatch |
+| `ordinary_callee_unindexed` | 133 | call to a name the index does not carry (builtin, primitive, or generated) |
+| `field_on_unresolved_or_wrong_type` | 88 | field access downstream of an unresolved or wrong receiver |
+| `method_on_unresolved_receiver` | 22 | method on a receiver that never resolved |
+| `record_shape_cascade` | 12 | missing required field in a literal |
+| `unindexed_symbol_candidate` | 1 | residue |
+| **total** | **3,050** | |
 
-Not every multiply-declared name is a defect regardless of subclass:
-`extdeps_external_authority_anchor` (497 declarations) and `extdeps_model_scope`
-(94) are per-module convention rows, one per `extdeps` module by design. They
-contribute 8 diagnostics between them and are excluded from the actionable set.
+**The 1,656 are not clause E, and the previous revision was wrong to say so.**
+It labelled them "unique declaration, provider not discovered" and dispositioned
+them `E` while every row simultaneously recorded
+`provider_in_loaded_closure = unobserved`. Those two statements cannot both
+stand. What is actually established is: one indexed declaration, plus a stripped
+compile reporting an unresolved reference. That is consistent with the provider
+never entering the closure, with the provider entering but the occurrence not
+being admitted into the referencing environment, with a wrong occurrence
+category taking a legacy path, with a fail-open/fabrication arm rewriting the
+downstream error, and with the index having matched a plausible declaration that
+is not the intended binding. Promotion to clause E requires loader
+instrumentation that observes the accepted declaration and whether its provider
+entered the closure. Until then the disposition names its own ignorance.
 
-**Class B is the central hard class**, and its head is unchanged from §14:
-`LiveTreeDisposition` (503) and `SubstrateInputsOnly` (440) — 943 of the 1,656 —
-declared together in `src/v2/std/live_tree.dag`. Neither is ambiguous. The
-stripped consumer simply has no structural mechanism guaranteeing that
-`v2.std.live_tree` joins its closure and then becomes the accepted source of
-those references, which is a direct specimen of clauses E and F. §12 already
-proved the mechanism is **pool-membership coincidence**: a stripped file resolves
-only when some unrelated surviving edge has already dragged its provider into the
-pool. It must not be attacked with imports, renames, or per-file
-qualifications — each of those makes one specimen green while preserving the
-missing production edge.
+**The strongest lead survives that correction intact.**
+`LiveTreeDisposition` (503) and `SubstrateInputsOnly` (440) — **943 rows, 31% of
+the entire residual and 57% of the 1,656** — are declared together in
+`src/v2/std/live_tree.dag`. Hundreds of stripped files losing one provider
+family is strong evidence that the missing cross-file provider/closure path is
+load-bearing. It is a lead of exactly that strength: strong, and not yet a
+measured seam.
 
-**Class C's label is withdrawn, not asserted.** An earlier revision of this
-section described these 599 rows as "the arity-zero/variant-tag population §3
-describes." That was a re-assertion of a hypothesis **this document's own §5
-refutes by execution**: the tested nullary variants *were* pulled, because a
-variant's `global_bare` binding points at its owning `Disj`, whose connective
-satisfies `pullable()`. Only the zero-argument fn/data-by-value case remains
-untested. Citing §3 while §5 refutes it is the stale-citation class DESIGN §3
-names, in the very document that recorded the refutation. These rows are
-therefore **not** evidence for a separate language feature until re-proven, and
-the re-proof must classify each row by owning coproduct, provider module, whether
-that provider entered the stripped closure, whether the first failure is at the
-tag / the parent type / downstream inference, and whether the row disappears once
-its Class-B provider is available. The expectation on the table is that most
-collapse into Class B or into secondary cascades.
+**`variant_mechanism_unobserved` carries a re-proof obligation, not a feature.**
+An earlier revision described these 599 rows as "the arity-zero/variant-tag
+population §3 describes" — a hypothesis **this document's own §5 refutes by
+execution** (a variant's `global_bare` binding points at its owning `Disj`,
+whose connective satisfies `pullable()`; only the zero-arg fn/data-by-value case
+is untested). Citing the refuted section in the document that recorded the
+refutation is the stale-citation class DESIGN §3 names. No variant-tag feature
+should be opened from this count. The re-proof must classify each row by owning
+coproduct, provider module, whether that provider entered the stripped closure,
+whether the first failure is at the tag / the parent type / downstream
+inference, and whether the row disappears once its Class-B provider is
+available. Likely outcomes are that most collapse into the provider-closure
+problem, some are missing owner-type bindings, some are genuine zero-arg
+by-value gaps, and some are wrong candidate assignments from same-leaf matching.
 
-**Class D is not independently actionable** and should be recomputed, not
-repaired: an unknown name or argument mismatch downstream of an absent provider
-is not its own migration item.
+**Candidate providers are candidates.** The ledger no longer writes a single
+`provider_module` for a row whose binding was never observed. It carries
+`candidate_provider_modules` and `candidate_count` alongside
+`intended_provider = unobserved` and `accepted_binding = unobserved`, because a
+same-spelled index hit is a name match, and a single provider column launders it
+into a binding fact.
+
+**The index-miss buckets are mixed by construction and split accordingly.** The
+previous revision put 505 rows in one `no_declaration_found` bucket and
+described them all as "the index needs widening." Some are (`ReadsLiveTree`,
+`Do`, `FailFast`, `Empty` are inline variant tags; `trim` is a primitive — the
+same name #8062 is making import-explicit). Many are not: `count`, `first`,
+`split` and `ends_with` are method resolutions on receivers that never resolved,
+and `steps`, `argv_input_refs`, `content_identity`, `subject_identity`, `kind`
+and `qualified_name` are field failures downstream of a missing parent type.
+Those are symptoms of a missing provider, not separate index gaps, and the six
+sub-dispositions above keep them apart.
 
 ### 15.4 Why 69% of stripped files compiling clean is weak evidence
 
-1,773 of the 2,574 stripped files (69%) produce no diagnostic. That is **not**
-proof their references are independently resolvable. The production type-reference
-discriminator is measurement-only — normal compile, resolve, run and emit remain
-on the fail-open path with the measurement mode off — and §14 confirmed that a
-type present in the pool but not structurally bound can be **fabricated as an
-anonymous product** rather than refused, passing through real consumers without a
-blocking error. A clean file may therefore be clean because its provider happened
-to be in the pool, or because a fabrication arm absorbed the failure. So the
-terminal test is not `delete imports → compile exits 0`. It is: every cross-module
-occurrence has exactly one accepted declaration identity; every accepted identity
-projects its provider file; the loader closure equals that provider projection;
-adding unrelated loaded modules changes neither binding nor closure; type, value,
-callee and emitter consumers all consume the accepted edge; no fallback or
-fabrication arm is reachable; and compile *and execution* are green.
+1,773 of the 2,574 stripped files produce no diagnostic. That is **not** proof
+their references are independently resolvable. The production type-reference
+discriminator is measurement-only — normal compile, resolve, run and emit stay
+on the legacy fail-open path unless measurement mode is armed — and §14
+confirmed that a type present in the pool but not structurally bound can be
+**fabricated as an anonymous product** rather than refused, passing real
+consumers without a blocking error. A clean file may be clean because its
+provider happened to be in the pool, or because a fabrication arm absorbed the
+failure. The ledger marks `binding_outcome = suspected_fabricated` wherever the
+diagnostic mentions `Product(<anon>)`, so those specimens are greppable rather
+than buried in the cascade bucket.
 
-### 15.5 What this changes — a ranking, not a countdown
+The terminal test is therefore not `delete imports → compile exits 0`. It is:
+every cross-module occurrence has exactly one accepted declaration identity;
+every accepted identity projects its provider file; the loader closure equals
+that provider projection; adding or removing an unrelated loaded module changes
+neither binding nor closure; type, value, callee and emitter consumers all
+consume the accepted edge; no fallback or fabrication arm is reachable; and
+compile *and execution* are green.
 
-§13's wave rule stands. What changes is that the residue is no longer one
-undifferentiated compiler deficit:
+### 15.5 A flat one-row-per-diagnostic ledger cannot size the work
 
-- **~48% corpus hygiene**, removable today without substrate change and demanded
-  by §3 whether or not the strip ever resumes;
-- **~39% the documented mechanisms** (Class B, plus whatever survives Class C's
-  re-proof) — unchanged, and the actual blocker;
-- **~11% cascade** downstream of the other three;
-- **0.2% unclassified**, at least partly Class-B damage in disguise.
+The mixed buckets above are the proof of it: one missing `EffectPlan`,
+`PublicationSubject` or `DeclFact` surfaces as many independent method, field
+and record-shape failures, each occupying its own row. The ledger carries
+`downstream_diagnostic_count` per (consumer, name) pair, which is a partial
+grouping only — it does not link a field failure to the *provider* whose absence
+caused it. Causal grouping (root occurrence → root provider/binding result →
+dependent diagnostics) needs the same loader instrumentation clause E/F needs,
+so it lands with that vertical rather than before it.
 
-The consequence worth keeping: a corpus-authored resolution defect and a loader
-deficit produce the *same* diagnostic text, so a raw count over a stripped tree
-cannot rank the work. The declaration-multiplicity join is what separates them,
-and it is cheap enough to re-run on every future strip attempt.
+### 15.6 The one measured corpus result, and its ownership
 
-### 15.6 The Class A head, measured — and owned by #8056, not here
+Disambiguating the `cell`/`row` collision was measured, not predicted: at
+`1eadad4af25` the strip-attributable count was 5,815, and with the collision
+removed it is 3,047 — **2,768 rows, 47.6%**, three more than the classification
+predicted because dependent cascades went with them. Almost half of the initial
+strip failure was **one pool-sensitive homonym family**, not a broad namespace
+deficit.
 
-Disambiguating the `cell`/`row`/`note` trio predicts a 2,765-diagnostic drop.
-That is arithmetic over the classification, not a result, so it was measured:
-the strip was re-run against a tree carrying the rename, same binary, same
-brace-depth-aware pass, same 16,315 declarations across 2,574 files.
-
-| tree | strip-attributable diagnostics |
-| --- | --- |
-| before the rename | 5,815 |
-| after the rename | 3,047 |
-
-**Removed: 2,768 (47.6%)** — three more than predicted, the difference being
-cascade rows downstream of the three names. No `cell`, `row` or `note` failure
-survives, so the subclass is closed rather than reduced. The drop follows from
-the names becoming corpus-unique, so it is independent of which disambiguating
-name is chosen.
-
-**Ownership: the `cell`/`row` rename belongs to #8056**, which authored it first
-(`fragment_cell` / `fragment_row`) after independently observing explicit imports
-losing to pool coincidence. This session measured the same repair under different
-names before finding that PR, and has withdrawn its competing edit rather than
-carry two repairs of one defect to the same two files. `note` — declared twice
+**That repair is #8056's, not this session's.** #8056 authored it first
+(`fragment_cell` / `fragment_row`) after independently observing explicit
+imports losing to pool coincidence; this session measured the same repair under
+different names before finding that PR, and withdrew its competing edit rather
+than carry two repairs of one defect. #8056 landed as `0ee2d85de2a`, which is
+why the current base measures 3,050 rather than 5,815. `note` — declared twice
 across `gunbc.roadmap_instrument_sandbox` and `gunbc.roadmap_instrument_motion`,
-both returning `Fragment` — is **not** covered by #8056 and remains open as the
-uncovered sibling of the same subclass.
+both returning `Fragment` — is **not** covered by #8056 and remains open.
 
-The remaining Class A tail is ~150 diagnostics across ~30 names and is **not**
-uniformly mechanical. Roughly half are same-concept forks needing a consolidation
+The corpus-hygiene tail is now **152 of 3,050 rows (5.0%)**, and it is not
+uniformly mechanical. Roughly half are same-concept forks needing consolidation
 onto one authority (`nid` has six identical declarations; `declaration_ref_eq`,
 `declaration_ref_in_list`, `runner_slot_unit_name`,
 `accelerometer_permission_name`, `srv3_nbd_proxy_local_port` and
 `shape_from_catalog` are duplicated logic). The other half are homonyms across
 unrelated domains (`NetworkInterface` in docker stats vs network topology,
 `ChangeClassification`, `ampere` as a vendor row vs a unit constructor,
-`PublicationSubject`, `site_artifact_digest`) where which declaration keeps the
-name — or whether both legitimately keep it — is a modeling decision rather than
-a rename.
+`PublicationSubject`, `site_artifact_digest`), where which declaration keeps the
+name — or whether both legitimately keep it — is a modeling decision.
 
-One property of the fork half worth stating, because it reads as a contradiction:
-consolidating a fork today requires **adding** an import to the module that loses
-its local copy — the very edge this lane deletes. That is an ordering artifact,
-since a corpus-unique name resolves bare once the E/F changeover lands, but it
-does mean fork consolidation must not be scored as import growth. The same
-caveat applies to #8058 and #8062, which correctly add explicit imports to close
-fail-open pool reliance under *today's* compiler: those are interim containment
-and need a dissolution trigger tied to the production E/F changeover, or the
-temporary mechanism becomes the concept the lane exists to delete.
+**Global textual uniqueness is not the goal.** The namespace model deliberately
+preserves distinct same-spelled declarations and feeds the whole candidate
+population to the ambiguity fold; renaming every legitimate same-leaf
+declaration to force uniqueness works against it. Class A splits four ways and
+only the first two are corpus work:
 
-### 15.7 The residual ledger
+| subclass | treatment |
+| --- | --- |
+| two declarations of one concept | consolidate onto one authority |
+| two concepts sharing an over-generic leaf | rename semantically |
+| two legitimate equal leaves on separate containment paths | preserve; qualify or bind structurally |
+| the wrong declaration entering the pool | provider/closure work, not naming |
 
-The exact post-rename worklist is
-[`import-strip-residual-ledger.tsv`](import-strip-residual-ledger.tsv) — one row
-per residual diagnostic (3,047), keyed by consumer file and occurrence name, with
-occurrence category, provider module, provider declaration, declaration count,
-binding outcome, root diagnostic text, downstream count, and disposition. The
-dispositions sum exactly to the row count: E 1,656 · C-reclassify 599 ·
-no_declaration_found 505 · corpus_hygiene 149 · cascade 138.
+Not every multiply-declared name is a defect regardless of subclass:
+`extdeps_external_authority_anchor` (497 declarations) and `extdeps_model_scope`
+(94) are per-module convention rows by design.
 
-Two honest limits, stated because a ledger reads as authoritative:
+So the easy work is now small, and it is no longer plausible that deleting name
+collisions makes the imports disappear.
 
-- **`provider_in_loaded_closure` is `unobserved` on every row.** Whether a
-  provider entered the stripped closure is exactly the E/F question, and it is
-  not readable from diagnostic output — it needs loader instrumentation. Filling
-  that column with a guess would fabricate the measurement the lane exists to
-  make, so it is carried as unobserved rather than inferred.
-- **`no_declaration_found` means the index missed it, not that the name has no
-  declaration.** The declaration index reads line-anchored `fn`/`func`/`type`/
-  `data`/`service` declarations plus variant tags in the `|`-per-line coproduct
-  form. It does not see inline `type X = A | B` variants, builtins, or primitives,
-  so `ReadsLiveTree`, `Do`, `FailFast`, `Empty` (variant tags) and `trim` (a
-  primitive, the same name #8062 is making import-explicit) land in that bucket.
-  Those 505 rows need the index widened before they can be dispositioned; they
-  are not a fifth defect class.
+### 15.7 One ordering property of the fork half
 
-`binding_outcome` marks `suspected_fabricated` wherever the diagnostic mentions
-`Product(<anon>)` — the §14 fabrication shape — so the fail-open specimens are
-greppable rather than buried in the cascade bucket.
+Consolidating a fork today requires **adding** an import to the module that
+loses its local copy — the very edge this lane deletes. That is an ordering
+artifact, since a corpus-unique name resolves bare once the ordinary-path
+changeover lands, but it means fork consolidation must not be scored as import
+growth. The same caveat applies to #8058 and #8062, which correctly add explicit
+imports to close fail-open pool reliance under *today's* compiler: those are
+interim containment and need a dissolution trigger tied to the production
+changeover, or the temporary mechanism hardens into the concept this lane exists
+to delete.

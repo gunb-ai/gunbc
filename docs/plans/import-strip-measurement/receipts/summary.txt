@@ -1,0 +1,15 @@
+ledger rows: 3050
+  unique_decl_unresolved_mechanism_unobserved 1656
+  variant_mechanism_unobserved               599
+  variant_owner_unindexed                    249
+  corpus_hygiene                             152
+  cascade                                    138
+  ordinary_callee_unindexed                  133
+  field_on_unresolved_or_wrong_type          88
+  method_on_unresolved_receiver              22
+  record_shape_cascade                       12
+  unindexed_symbol_candidate                 1
+  SUM                                        3050
+
+reconciliation: stripped_hard=3062 = control_hard=12 + attributable=3050
+ledger rows 3050 vs attributable 3050: OK
