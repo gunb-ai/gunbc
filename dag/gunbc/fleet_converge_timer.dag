@@ -22,6 +22,13 @@ data fleet_converge_timer_randomized_delay_sec: Int = 90
 data fleet_converge_binary_path: String = "/opt/gunbc/bin/gunbc"
 data fleet_converge_env_file_path: String = "/etc/gunbc/fleet-converge.env"
 
+// 🟡 scaffold: string-built medium. Unit INI text is rendered by string concat rather than
+// as a Node emitted through grammar rows — the medium-as-string shape the shell→intent
+// lane's containment exists to stop spreading. Tolerated only while this module is
+// tests-only (no production emitter consumes it); dissolve-on: a systemd-unit grammar-rows
+// emit (the same one-grammar-read-backward move as bash/YAML) or the emit-on-demand serve
+// closure, whichever lands first — at which point these builders become row-derived and
+// the concat bodies delete.
 fn fleet_converge_service_content(host_arg: String) -> String {
   join([
     "[Unit]\n",
