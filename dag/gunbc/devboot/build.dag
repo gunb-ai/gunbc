@@ -3,6 +3,7 @@ module gunbc.devboot.build
 import std.types { String, Bool, Int, List }
 import std.measure { Second, second, second_count }
 import std.content_hash { Sha256Digest, sha256_hex_digest, content_hash_eq_cryptographic }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.gunbc
 import extdeps.filesystem.filesystem_io
 import extdeps.git { git_ref_missing_exit_code, git_repository_unusable_exit_code }
@@ -57,6 +58,7 @@ import gunbc.devboot.produce {
   devboot_target_dir,
   snapshot_step_refusal,
   observe_platform_c_library,
+  receipt_write_refusal,
 }
 import gunbc.devboot.program {
   ProgramSelected,
@@ -1163,21 +1165,9 @@ fn observed_producer_host(repo_root: String) -> String {
   if !named.success { "unknown-host" } else { trim(s: named.stdout) }
 }
 
-// THE ENTRY POINTS ARE FLAT BECAUSE THE COMMAND LINE IS. A named argument arrives as a String, so a record cannot cross that boundary; the producer's home is assembled here from the four strings that describe it rather than being spelled inside the operation, which keeps every host fact on the outside of the model.
-fn devboot_build_entry(
-  program: String,
-  repo_root: String,
-  work_root: String,
-  endpoint: String,
-  out_path: String,
-) -> String {
-  match devboot_build(
-    program: program,
-    repo_root: repo_root,
-    work_root: work_root,
-    endpoint: endpoint,
-    out_path: out_path,
-  ) {
+// THE ENTRY POINTS RETURN PROCESS EXIT CODES, NOT SENTENCES. gunbc run treats a non-ProcessExit return as a refusal, so a String-returning entry that had genuinely built an executable exited nonzero and printed BUILT underneath REFUSED -- success reported as failure (DESIGN section 5). The typed outcome is decided first; prose is written to the receipt file; the shell reads the exit code.
+fn render_build_outcome(outcome: BuildOutcome) -> String {
+  match outcome {
     BuildRefused { cause } => join(["REFUSED: ", build_refusal_sentence(cause: cause)], "")
     Built { program_subject, artifact, receipt } =>
       join([
@@ -1189,6 +1179,55 @@ fn devboot_build_entry(
   }
 }
 
+fn build_outcome_exit(outcome: BuildOutcome) -> ProcessExit {
+  match outcome {
+    Built { program_subject, artifact, receipt } => ExitSuccess
+    BuildRefused { cause } => exit_failure(reason: build_refusal_sentence(cause: cause))
+  }
+}
+
+fn render_serve_report(report: ServeReport) -> String {
+  match report {
+    ServeProduced { token, sha256 } =>
+      join(["SERVED ", token, " sha256=", render_sha256_digest(digest: sha256)], "")
+    ServeRefused { token, detail } => join(["SERVE-REFUSED ", token, ": ", detail], "")
+  }
+}
+
+fn serve_report_exit(report: ServeReport) -> ProcessExit {
+  match report {
+    ServeProduced { token, sha256 } => ExitSuccess
+    ServeRefused { token, detail } => exit_failure(reason: detail)
+  }
+}
+
+// THE ENTRY POINTS ARE FLAT BECAUSE THE COMMAND LINE IS. A named argument arrives as a String, so a record cannot cross that boundary; the producer's home is assembled here from the four strings that describe it rather than being spelled inside the operation, which keeps every host fact on the outside of the model.
+fn devboot_build_entry(
+  program: String,
+  repo_root: String,
+  work_root: String,
+  endpoint: String,
+  out_path: String,
+  receipt_path: String,
+) -> ProcessExit {
+  let outcome = devboot_build(
+    program: program,
+    repo_root: repo_root,
+    work_root: work_root,
+    endpoint: endpoint,
+    out_path: out_path,
+  )
+  let written = Filesystem.Write(
+    path: receipt_path,
+    content: render_build_outcome(outcome: outcome),
+  )
+  if !written.success {
+    receipt_write_refusal(receipt_path: receipt_path, detail: written.error)
+  } else {
+    build_outcome_exit(outcome: outcome)
+  }
+}
+
 fn devboot_serve_entry(
   repo_root: String,
   work_root: String,
@@ -1197,8 +1236,9 @@ fn devboot_serve_entry(
   rustup_home: String,
   cargo_home: String,
   build_jobs: String,
-) -> String {
-  match devboot_serve_request(
+  receipt_path: String,
+) -> ProcessExit {
+  let report = devboot_serve_request(
     repo_root: repo_root,
     work_root: work_root,
     home: ProducerHome {
@@ -1208,10 +1248,15 @@ fn devboot_serve_entry(
       build_jobs: build_jobs,
     },
     token: token,
-  ) {
-    ServeProduced { token: produced, sha256 } =>
-      join(["SERVED ", produced, " sha256=", render_sha256_digest(digest: sha256)], "")
-    ServeRefused { token: refused, detail } => join(["SERVE-REFUSED ", refused, ": ", detail], "")
+  )
+  let written = Filesystem.Write(
+    path: receipt_path,
+    content: render_serve_report(report: report),
+  )
+  if !written.success {
+    receipt_write_refusal(receipt_path: receipt_path, detail: written.error)
+  } else {
+    serve_report_exit(report: report)
   }
 }
 
