@@ -1,0 +1,57 @@
+module extdeps.gnu.libc
+
+import std.types { String, Bool, NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// THE GNU C LIBRARY, cited because it is a real upstream dependency of every artifact this repository links dynamically, and because the alternative to citing it was proven wrong by execution rather than argued.
+//
+// THE MEASUREMENT THAT PRODUCED THIS MODULE (2026-08-09, DEVBOOT-0 proof stage): a build service produced an artifact on a host running glibc 2.39 and delivered it to a caller running glibc 2.36. Both hosts are aarch64-unknown-linux-gnu. The Rust target triple was therefore IDENTICAL on both sides, the exact-subject comparison passed, the content digest verified independently at both ends, and the twenty-four megabytes that arrived failed at the dynamic linker with `version GLIBC_2.39 not found`. Every check in the system agreed on an answer that could not run. That is the displaced cost this module exists to remove: the triple names the ABI family and says nothing about the version of the C library an artifact was linked against, so a build environment is not identified by its triple.
+//
+// WHAT UPSTREAM ACTUALLY PUBLISHES. The library reports its own version through ldd, whose first output line ends with the version string on both the Debian and Ubuntu spellings -- the vendor text between them differs, which is why a consumer reads the trailing field positionally rather than matching a distribution's phrasing. The version is upstream's own numbering (2.36, 2.39); it is kept verbatim as the string the library reports rather than being re-encoded into an internal ordering, because a re-encoding would be a second naming scheme for a fact upstream already names.
+//
+// WHY A COPRODUCT AND NOT A BARE STRING. An unobserved C library and a C library observed to be absent are different states with different remedies, and the state that must never exist is a build environment silently identified without one. LibcUnobserved is representable so that a consumer must handle it explicitly; it is never the same value as any observed version, so an environment carrying it can never collide with one that was actually measured.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "sourceware.org/glibc/wiki/Glibc%20Timeline"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.gnu.libc",
+      decl_name: "PlatformCLibrary",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+type PlatformCLibrary
+  = GnuLibc { version: NonEmptyStr }
+  | LibcUnobserved
+
+fn render_platform_c_library(library: PlatformCLibrary) -> String {
+  match library {
+    GnuLibc { version } => concat("glibc-", version as String)
+    LibcUnobserved => "<unobserved>"
+  }
+}
+
+fn platform_c_library_identity_tag(library: PlatformCLibrary) -> NonEmptyStr {
+  match library {
+    GnuLibc { version } => concat("gnu.libc.v1.", version as String) as NonEmptyStr
+    LibcUnobserved => "gnu.libc.v1.unobserved" as NonEmptyStr
+  }
+}
+
+fn platform_c_library_is_observed(library: PlatformCLibrary) -> Bool {
+  match library {
+    GnuLibc { version } => true
+    LibcUnobserved => false
+  }
+}

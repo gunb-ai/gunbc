@@ -1,6 +1,6 @@
 module test.claim.devboot_reuse_seams_witness
 
-import std.types { String, Bool, Int }
+import std.types { String, Bool, Int, NonEmptyStr }
 
 import gunbc.devboot.subject {
   BuildSubject,
@@ -35,6 +35,7 @@ import gunbc.devboot.produce {
 import extdeps.git.object_store { git_object_id_from_untagged_hex }
 import extdeps.toolchain.types { ToolchainRequirement, TargetTriple }
 import extdeps.rust.target_triple { parse_rust_target_triple }
+import extdeps.gnu.libc { PlatformCLibrary, GnuLibc, LibcUnobserved }
 import extdeps.cargo { Bin }
 
 // THE THREE SEAMS A REGRESSION WOULD SILENTLY REOPEN. Each of these was proven once by hand against a live store, and a manual run is evidence that a mechanism worked on one afternoon rather than evidence that it still works. These are the arms whose failure is invisible: a reuse comparison that stops discriminating serves the wrong binary, a wait that stops absorbing overwrites a settled result, and a recovery that stops refusing breaks a lease somebody else holds.
@@ -60,6 +61,7 @@ fn probe_subject(profile: String) -> BuildSubject? {
             linker: none,
             sysroot: none,
             cargo_config: [],
+            platform_c_library: GnuLibc { version: "2.36" as NonEmptyStr },
           ) {
             SubjectRefused { cause } => none
             SubjectAdmitted { subject } => Present { value: subject }

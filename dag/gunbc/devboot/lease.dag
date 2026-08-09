@@ -50,6 +50,11 @@ data subject_ref_namespace: String = "refs/devboot/subject/"
 
 data digest_ref_namespace: String = "refs/devboot/digest/"
 
+// THE REMOTE EXCHANGE ADDS TWO MORE, and they belong beside the other four for the reason the paragraph above gives rather than beside the transport that first needed them. A request ref carries a caller's snapshot INTO the store; a produced ref carries one producer's answer back out. They are the only two namespaces a caller on another host ever names, and a caller never sees either -- the operation spells them, the outcome does not.
+data request_ref_namespace: String = "refs/devboot/request/"
+
+data produced_ref_namespace: String = "refs/devboot/produced/"
+
 // A ref name is a PATH, and Git rejects several characters that the natural wire form of a content hash contains -- the sha256 wire form carries a colon, which is illegal in a ref name. So the ref token is derived here rather than reusing serialize_content_hash, and the derivation keeps the one property the wire form has that matters: the FAMILY stays visible.
 //
 // Dropping the family and keeping only the hex would let two hashes from different families produce the same ref name whenever their hex happened to coincide, which is exactly the cross-family collapse the content-hash family grounding exists to prevent. The token separates family from digest with a hyphen, so the ref namespace inherits the same cross-family distinctness the type carries.

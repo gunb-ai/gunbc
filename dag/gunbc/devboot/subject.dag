@@ -57,6 +57,7 @@ import extdeps.toolchain.types {
   Eabi,
   Eabihf,
 }
+import extdeps.gnu.libc { PlatformCLibrary, LibcUnobserved, platform_c_library_identity_tag, render_platform_c_library, platform_c_library_is_observed }
 import extdeps.cargo { CargoTarget, Lib, Bin, CargoTest, Example, Bench }
 
 // WHAT A BUILD IS OF, carried so that two requests naming the same thing are the same request and two requests naming different things never collide. Every field is a fact about the COMPUTATION; nothing here can be a fact about the requester.
@@ -87,6 +88,7 @@ type BuildEnvironmentSpec {
   linker: NonEmptyStr?
   sysroot: NonEmptyStr?
   cargo_config: List<CargoConfigEntry>
+  platform_c_library: PlatformCLibrary
 }
 
 type BuildSubject {
@@ -118,6 +120,7 @@ type BuildSubjectRefusalCause
   | CargoConfigKeyEmpty
   | LinkerEmpty
   | SysrootEmpty
+  | PlatformCLibraryUnobserved
 
 type BuildSubjectAdmission
   = SubjectAdmitted { subject: BuildSubject }
@@ -218,13 +221,21 @@ fn first_refusal(left: BuildSubjectRefusalCause?, right: BuildSubjectRefusalCaus
   }
 }
 
+// AN UNOBSERVED C LIBRARY REFUSES rather than being admitted as a distinct-looking environment. LibcUnobserved is representable so a consumer must handle it, and the handling is this: an environment whose platform ABI was never measured cannot identify an artifact, because the whole point of the axis is that two hosts differing only in their C library are two environments. Admitting the unobserved value would let every unmeasured host collapse into one identity -- exactly the collision the axis was added to prevent, reintroduced through its own absent case.
+fn platform_c_library_refusal(library: PlatformCLibrary) -> BuildSubjectRefusalCause? {
+  if platform_c_library_is_observed(library: library) { none } else { Present { value: PlatformCLibraryUnobserved } }
+}
+
 fn environment_refusal(
   rustflags: List<String>,
   linker: String?,
   sysroot: String?,
   cargo_config: List<RawCargoConfigEntry>,
+  platform_c_library: PlatformCLibrary,
 ) -> BuildSubjectRefusalCause? {
   first_refusal(
+    left: platform_c_library_refusal(library: platform_c_library),
+    right: first_refusal(
     left: scan_rustflags(flags: rustflags),
     right: first_refusal(
       left: optional_nonempty_refusal(value: linker, cause: LinkerEmpty),
@@ -233,7 +244,7 @@ fn environment_refusal(
         right: scan_cargo_config(entries: cargo_config),
       ),
     ),
-  )
+  ))
 }
 
 fn scalar_refusal(package: String, profile: String) -> BuildSubjectRefusalCause? {
@@ -260,6 +271,7 @@ fn admit_build_subject(
   linker: String?,
   sysroot: String?,
   cargo_config: List<RawCargoConfigEntry>,
+  platform_c_library: PlatformCLibrary,
 ) -> BuildSubjectAdmission {
   match first_refusal(
     left: scalar_refusal(package: package, profile: profile),
@@ -274,6 +286,7 @@ fn admit_build_subject(
         linker: linker,
         sysroot: sysroot,
         cargo_config: cargo_config,
+        platform_c_library: platform_c_library,
       ),
     ),
   ) {
@@ -291,6 +304,7 @@ fn admit_build_subject(
           profile: profile as NonEmptyStr,
           features: admitted_nonempty_names(values: features),
           environment: BuildEnvironmentSpec {
+            platform_c_library: platform_c_library,
             rustflags: admitted_nonempty_names(values: rustflags),
             linker: admitted_optional_nonempty(value: linker),
             sysroot: admitted_optional_nonempty(value: sysroot),
@@ -477,7 +491,10 @@ fn build_environment_digest(environment: BuildEnvironmentSpec) -> Fnv1a64Structu
   content_hash_tagged_structural(
     tag: "devboot.subject.environment" as NonEmptyStr,
     payload: content_hash_combine_structural(
-      left: features_digest(features: environment.rustflags),
+      left: content_hash_combine_structural(
+        left: features_digest(features: environment.rustflags),
+        right: content_hash_atom(value: platform_c_library_identity_tag(library: environment.platform_c_library)),
+      ),
       right: content_hash_combine_structural(
         left: optional_atom(value: environment.linker, absent_tag: "devboot.subject.linker.absent" as NonEmptyStr),
         right: content_hash_combine_structural(
@@ -608,6 +625,7 @@ fn render_build_subject(subject: BuildSubject) -> String {
     "profile=", subject.profile as String, "\n",
     render_indexed_list(label: "feature", values: subject.features),
     render_indexed_list(label: "rustflag", values: subject.environment.rustflags),
+    "platform_c_library=", render_platform_c_library(library: subject.environment.platform_c_library), "\n",
     "linker=", render_optional(value: subject.environment.linker), "\n",
     "sysroot=", render_optional(value: subject.environment.sysroot), "\n",
     render_cargo_config(entries: subject.environment.cargo_config),

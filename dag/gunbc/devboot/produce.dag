@@ -56,6 +56,7 @@ import extdeps.git.object_store { git_object_id_from_untagged_hex, git_object_id
 import extdeps.git { git_ref_missing_exit_code }
 import extdeps.toolchain.types { TargetTriple, ToolchainRequirement }
 import extdeps.rust.target_triple { parse_rust_target_triple }
+import extdeps.gnu.libc { PlatformCLibrary, GnuLibc, LibcUnobserved }
 import extdeps.cargo { CargoTarget, Lib, Bin, CargoTest, Example, Bench }
 
 // THE PRODUCER, AND IT IS THE LIVE PATH RATHER THAN A WITNESS. This module is invoked through `gunbc run`, so the first consumer of the identity carriers is the ordinary CLI surface -- a witness suite proving the same functions in isolation would not have established that anything is ever actually built or retrieved.
@@ -353,6 +354,7 @@ fn devboot_produce_with_toolchain(
         linker: none,
         sysroot: none,
         cargo_config: [],
+        platform_c_library: observe_platform_c_library(repo_root: repo_root),
       ) {
         SubjectRefused { cause } =>
           ProduceRefused { reason: build_subject_refusal_reason(cause: cause) }
@@ -386,6 +388,7 @@ fn build_subject_refusal_reason(cause: BuildSubjectRefusalCause) -> String {
     CargoConfigKeyEmpty => "a requested cargo config entry had an empty key"
     LinkerEmpty => "the requested linker was empty"
     SysrootEmpty => "the requested sysroot was empty"
+    PlatformCLibraryUnobserved => "the platform C library could not be observed, so the build environment has no identity"
   }
 }
 
@@ -1389,4 +1392,48 @@ fn devboot_break_stranded_lease(
     token: token,
     expected_holder: expected_holder,
   )
+}
+
+// THE PLATFORM C LIBRARY IS OBSERVED HERE, once, because both the producer and the caller need the same reading and a second implementation of it would be a second answer to one question. ldd reports the version as the trailing field of its first line; the vendor text ahead of it differs between distributions, so the field is taken from the end positionally rather than by matching any distribution's phrasing. A reading that fails yields LibcUnobserved, which the subject then refuses -- never a fabricated version, because a wrong version here is exactly a wrong artifact identity.
+type LastTextField {
+  found: String
+}
+
+fn last_text_field(acc: LastTextField, part: String) -> LastTextField {
+  if part == "" { acc } else { LastTextField { found: part } }
+}
+
+type FirstTextLine {
+  taken: Bool
+  text: String
+}
+
+fn first_text_line_step(acc: FirstTextLine, part: String) -> FirstTextLine {
+  if acc.taken { acc } else { FirstTextLine { taken: true, text: part } }
+}
+
+fn first_text_line(text: String) -> String {
+  fold(
+    split(s: text, sep: "\n"),
+    init: FirstTextLine { taken: false, text: "" },
+    f: (acc, part) => first_text_line_step(acc: acc, part: part),
+  ).text
+}
+
+fn libc_version_from_ldd_text(text: String) -> String {
+  fold(
+    split(s: trim(s: first_text_line(text: text)), sep: " "),
+    init: LastTextField { found: "" },
+    f: (acc, part) => last_text_field(acc: acc, part: part),
+  ).found
+}
+
+fn observe_platform_c_library(repo_root: String) -> PlatformCLibrary {
+  let reported = gunbc.WitnessBin.Run(workdir: repo_root, bin_path: "ldd", args: ["--version"])
+  if !reported.success {
+    LibcUnobserved
+  } else {
+    let version = libc_version_from_ldd_text(text: reported.stdout)
+    if version == "" { LibcUnobserved } else { GnuLibc { version: version as NonEmptyStr } }
+  }
 }

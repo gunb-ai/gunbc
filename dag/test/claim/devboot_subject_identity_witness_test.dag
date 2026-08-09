@@ -39,6 +39,7 @@ import extdeps.toolchain.types {
   Gnu,
   Musl,
 }
+import extdeps.gnu.libc { PlatformCLibrary, GnuLibc, LibcUnobserved }
 import extdeps.cargo { CargoTarget, Bin, Lib }
 import gunbc.devboot.produce {
   BuildPlan,
@@ -146,6 +147,7 @@ fn witness_subject_full(
         linker: none,
         sysroot: none,
         cargo_config: [],
+        platform_c_library: GnuLibc { version: "2.36" as NonEmptyStr },
       ) {
         SubjectRefused { cause } => none
         SubjectAdmitted { subject } => Present { value: subject }
@@ -364,6 +366,7 @@ test fn duplicate_feature_refuses() -> Bool {
         linker: none,
         sysroot: none,
         cargo_config: [],
+        platform_c_library: GnuLibc { version: "2.36" as NonEmptyStr },
       ) {
         SubjectAdmitted { subject } => false
         SubjectRefused { cause } =>
@@ -391,6 +394,7 @@ test fn empty_feature_name_refuses() -> Bool {
         linker: none,
         sysroot: none,
         cargo_config: [],
+        platform_c_library: GnuLibc { version: "2.36" as NonEmptyStr },
       ) {
         SubjectAdmitted { subject } => false
         SubjectRefused { cause } =>
@@ -424,6 +428,7 @@ fn empty_profile_refuses() -> Bool {
         linker: none,
         sysroot: none,
         cargo_config: [],
+        platform_c_library: GnuLibc { version: "2.36" as NonEmptyStr },
       ) {
         SubjectAdmitted { subject } => false
         SubjectRefused { cause } =>
@@ -451,6 +456,7 @@ fn empty_rustflag_refuses() -> Bool {
         linker: none,
         sysroot: none,
         cargo_config: [],
+        platform_c_library: GnuLibc { version: "2.36" as NonEmptyStr },
       ) {
         SubjectAdmitted { subject } => false
         SubjectRefused { cause } =>
