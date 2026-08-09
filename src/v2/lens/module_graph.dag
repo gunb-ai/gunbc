@@ -68,7 +68,7 @@ fn import_resolution_facts_live(
   )
 }
 
-fn import_resolution_facts_live(
+fn reference_derived_import_resolution_facts_live(
   pool_roots: List<String>,
   importer_roots: List<String>,
   exclude_substrings: List<String>

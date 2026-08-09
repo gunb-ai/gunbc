@@ -65,7 +65,7 @@ imports_removed	file
 3	compiler/use_site_verdict.dag
 6	compiler/wrap_decision.dag
 3	examples/html_markup_smoke/html_markup_smoke.dag
-3	extdeps/access/posix_effective_principal.dag
+4	extdeps/access/posix_effective_principal.dag
 4	extdeps/access/posix_effective_principal_read_op.dag
 4	extdeps/accessibility/wcag_contrast.dag
 4	extdeps/accounting/budget.dag
@@ -80,7 +80,7 @@ imports_removed	file
 3	extdeps/bmc/capability.dag
 6	extdeps/bmc/lifecycle_fidelity.dag
 1	extdeps/bmc/mock_corpus.dag
-11	extdeps/bmc/openbmc_fan_control.dag
+12	extdeps/bmc/openbmc_fan_control.dag
 4	extdeps/bmc/openbmc_operation.dag
 4	extdeps/bmc/openbmc_password_ssh_transport.dag
 6	extdeps/bmc/types.dag
@@ -105,6 +105,7 @@ imports_removed	file
 9	extdeps/cache/types.dag
 7	extdeps/chassis/rosewill.dag
 7	extdeps/chassis/types.dag
+1	extdeps/clock/clock.dag
 1	extdeps/cloud/gcp/auth_print_access_token.dag
 3	extdeps/cloud/gcp/secret_manager.dag
 5	extdeps/cloud/gcp/secret_ref.dag
@@ -152,7 +153,7 @@ imports_removed	file
 3	extdeps/exec/xargs.dag
 4	extdeps/external_authority.dag
 3	extdeps/file_system.dag
-3	extdeps/filesystem/linux.dag
+4	extdeps/filesystem/linux.dag
 3	extdeps/firmware/kernel_cmdline.dag
 3	extdeps/firmware/uefi_http_boot.dag
 4	extdeps/firmware/uefi_shell.dag
@@ -181,7 +182,7 @@ imports_removed	file
 3	extdeps/git/hooks.dag
 3	extdeps/git/inspect.dag
 1	extdeps/git/mock_corpus.dag
-12	extdeps/git/object_store.dag
+13	extdeps/git/object_store.dag
 4	extdeps/git/publication_transport.dag
 7	extdeps/git/versioning.dag
 6	extdeps/github/actions.dag
@@ -237,7 +238,7 @@ imports_removed	file
 13	extdeps/languages/bash_orch_if.dag
 6	extdeps/languages/bash_orch_tier2.dag
 14	extdeps/languages/bash_orchestration_emit.dag
-4	extdeps/languages/bash_proc_self_cgroup.dag
+5	extdeps/languages/bash_proc_self_cgroup.dag
 16	extdeps/languages/c.dag
 3	extdeps/languages/c/emit.dag
 4	extdeps/languages/c/subject.dag
@@ -264,7 +265,7 @@ imports_removed	file
 3	extdeps/languages/go/syntax.dag
 3	extdeps/languages/go/types.dag
 8	extdeps/languages/gpu/wgsl/kernel.dag
-5	extdeps/languages/html.dag
+6	extdeps/languages/html.dag
 4	extdeps/languages/html/subject.dag
 4	extdeps/languages/html_fragment.dag
 14	extdeps/languages/java.dag
@@ -324,7 +325,7 @@ imports_removed	file
 2	extdeps/languages/yaml/types.dag
 1	extdeps/linux/mock_corpus.dag
 5	extdeps/linux/proc_meminfo.dag
-4	extdeps/linux/proc_self_cgroup.dag
+5	extdeps/linux/proc_self_cgroup.dag
 5	extdeps/linux/procfs.dag
 5	extdeps/linux/rusage.dag
 3	extdeps/linux/usb_gadget.dag
@@ -334,8 +335,8 @@ imports_removed	file
 5	extdeps/llm/anthropic_rest.dag
 7	extdeps/llm/claude_agent_sdk_stream.dag
 4	extdeps/llm/claude_sdk.dag
-6	extdeps/llm/claude_setup_token_cli.dag
-4	extdeps/llm/cli.dag
+7	extdeps/llm/claude_setup_token_cli.dag
+5	extdeps/llm/cli.dag
 4	extdeps/llm/cli_lifecycle.dag
 5	extdeps/llm/codex_app_server.dag
 8	extdeps/llm/codex_auth.dag
@@ -381,7 +382,7 @@ imports_removed	file
 3	extdeps/package_managers/dpkg.dag
 5	extdeps/physics/bach_et_al_2013_double_slit.dag
 4	extdeps/physics/chapman_et_al_1995_atom_interferometer_which_path.dag
-4	extdeps/pijul.dag
+5	extdeps/pijul.dag
 6	extdeps/pin.dag
 7	extdeps/posix.dag
 5	extdeps/posix/rusage.dag
@@ -487,7 +488,7 @@ imports_removed	file
 5	extdeps/storage/western_digital.dag
 3	extdeps/sudo/nopasswd_execute_probe.dag
 5	extdeps/sudo/nopasswd_execute_probe_check_op.dag
-5	extdeps/systemd/oomd.dag
+6	extdeps/systemd/oomd.dag
 4	extdeps/systemd/systemctl.dag
 6	extdeps/systemd/systemd.dag
 4	extdeps/systemd/systemd_contracts.dag
@@ -507,7 +508,7 @@ imports_removed	file
 2	extdeps/test/http_pilot.dag
 1	extdeps/test/mock_corpus.dag
 3	extdeps/time/rfc3339.dag
-3	extdeps/tmux/tmux.dag
+4	extdeps/tmux/tmux.dag
 6	extdeps/toolchain/architecture_profile.dag
 4	extdeps/toolchain/types.dag
 9	extdeps/tools.dag
@@ -528,10 +529,10 @@ imports_removed	file
 3	extdeps/tools/rustfmt.dag
 4	extdeps/tools/sed.dag
 9	extdeps/tools/sha256sum.dag
-6	extdeps/tools/sha512sum.dag
+7	extdeps/tools/sha512sum.dag
 7	extdeps/tools/sleep.dag
 6	extdeps/tools/socat.dag
-6	extdeps/tools/wc.dag
+7	extdeps/tools/wc.dag
 5	extdeps/tools/websocat.dag
 6	extdeps/tools/xorriso.dag
 8	extdeps/transports/fidelity.dag
@@ -546,7 +547,7 @@ imports_removed	file
 4	extdeps/units/dimensionless.dag
 4	extdeps/units/iec_80000_13.dag
 4	extdeps/units/iso8601.dag
-2	extdeps/uri.dag
+3	extdeps/uri.dag
 3	extdeps/uri_path.dag
 3	extdeps/uri_validation.dag
 3	extdeps/uuid/uuid.dag
@@ -603,7 +604,7 @@ imports_removed	file
 4	gunbc/bach_double_slit_path_additivity_synthetic_fixture.dag
 2	gunbc/bash_materialized_transport.dag
 13	gunbc/bmc_converge.dag
-30	gunbc/bmc_fan_converge.dag
+31	gunbc/bmc_fan_converge.dag
 2	gunbc/bmc_fan_monitor.dag
 9	gunbc/bmc_fan_projection.dag
 7	gunbc/bmc_intent.dag
@@ -626,10 +627,10 @@ imports_removed	file
 5	gunbc/ci_compile_jobs.dag
 3	gunbc/ci_compile_measurement.dag
 3	gunbc/ci_cost_arc_closeout_receipt.dag
-14	gunbc/ci_deploy_access.dag
+15	gunbc/ci_deploy_access.dag
 9	gunbc/ci_deploy_access_observe.dag
 6	gunbc/ci_deploy_sudoers.dag
-12	gunbc/ci_deploy_target_host.dag
+13	gunbc/ci_deploy_target_host.dag
 8	gunbc/ci_execution_plan.dag
 10	gunbc/ci_failure_class.dag
 13	gunbc/ci_fleet.dag
@@ -663,7 +664,7 @@ imports_removed	file
 12	gunbc/codex_app_server_press.dag
 3	gunbc/codex_runtime_bundle.dag
 9	gunbc/command_runner.dag
-16	gunbc/commit_workflow.dag
+17	gunbc/commit_workflow.dag
 2	gunbc/compile_clean_diagnostic_policy.dag
 3	gunbc/compile_diagnostic_census.dag
 8	gunbc/compile_pool_ensure.dag
@@ -732,6 +733,7 @@ imports_removed	file
 13	gunbc/fleet_runner_connectivity.dag
 1	gunbc/fleet_secrets_config.dag
 7	gunbc/fleet_shell_transport_observation.dag
+1	gunbc/fleet_show_effective_read.dag
 6	gunbc/fleet_ssh_access.dag
 3	gunbc/float_add_associativity_observation.dag
 8	gunbc/floor_component_receipt.dag
@@ -743,7 +745,7 @@ imports_removed	file
 20	gunbc/generated_artifact_emit.dag
 5	gunbc/generated_artifact_observation.dag
 3	gunbc/generated_projection_paths.dag
-6	gunbc/git_diff_change_window.dag
+7	gunbc/git_diff_change_window.dag
 1	gunbc/gitattributes_emit.dag
 3	gunbc/githooks_pre_commit_emit.dag
 3	gunbc/githooks_pre_push_cli.dag
@@ -774,12 +776,13 @@ imports_removed	file
 21	gunbc/host_effect.dag
 11	gunbc/host_effect_nbd_proxy_serve.dag
 8	gunbc/host_effect_plan.dag
-56	gunbc/host_effect_realize.dag
+57	gunbc/host_effect_realize.dag
 4	gunbc/host_hygiene_liveness.dag
 4	gunbc/host_hygiene_liveness_script.dag
 5	gunbc/host_hygiene_reaper.dag
 4	gunbc/host_hygiene_reaper_script.dag
 14	gunbc/host_identity_converge.dag
+1	gunbc/host_identity_observation.dag
 2	gunbc/host_layout.dag
 7	gunbc/host_network_diagnosis.dag
 12	gunbc/host_phase_status.dag
@@ -792,7 +795,7 @@ imports_removed	file
 9	gunbc/host_toolchain_components.dag
 16	gunbc/host_toolchain_ensure.dag
 5	gunbc/hostname_allocation.dag
-5	gunbc/hostname_read.dag
+6	gunbc/hostname_read.dag
 6	gunbc/hostname_set.dag
 2	gunbc/infer_occurrence_binding_scaffold.dag
 6	gunbc/install_server_emit.dag
@@ -800,7 +803,7 @@ imports_removed	file
 1	gunbc/language_subject_scope_scaffold.dag
 29	gunbc/language_target_registry.dag
 1	gunbc/legacy_test_behavior_disposition.dag
-2	gunbc/legacy_test_inflow.dag
+3	gunbc/legacy_test_inflow.dag
 16	gunbc/live_deploy/apply.dag
 7	gunbc/live_deploy/candidate.dag
 1	gunbc/live_deploy/deployed_tree_scope.dag
@@ -819,7 +822,7 @@ imports_removed	file
 9	gunbc/materialization_provider_targets.dag
 6	gunbc/membership_reconcile.dag
 15	gunbc/merge_admission.dag
-8	gunbc/merge_admission_produce.dag
+9	gunbc/merge_admission_produce.dag
 3	gunbc/merge_admission_subject.dag
 6	gunbc/merge_lifecycle.dag
 3	gunbc/namespace_census_receipt.dag
@@ -946,7 +949,7 @@ imports_removed	file
 3	gunbc/readback_independence.dag
 7	gunbc/realization_vocab_confinement_census.dag
 2	gunbc/repo_identity.dag
-9	gunbc/repo_local_git_config.dag
+10	gunbc/repo_local_git_config.dag
 1	gunbc/repo_local_git_config_clone_bootstrap.dag
 2	gunbc/repository.dag
 5	gunbc/repository_census_coverage.dag
@@ -954,15 +957,15 @@ imports_removed	file
 3	gunbc/resolved_graph_cache_hand_rust_scaffold.dag
 3	gunbc/retained_shell_script.dag
 6	gunbc/roadmap_acceptance_history_carrier.dag
-10	gunbc/roadmap_acceptance_history_observation.dag
+11	gunbc/roadmap_acceptance_history_observation.dag
 5	gunbc/roadmap_acceptance_history_projection.dag
 1	gunbc/roadmap_altitude.dag
 11	gunbc/roadmap_authority.dag
 9	gunbc/roadmap_belt.dag
-43	gunbc/roadmap_belt_actuate.dag
+44	gunbc/roadmap_belt_actuate.dag
 18	gunbc/roadmap_component.dag
 7	gunbc/roadmap_dashboard_instance.dag
-15	gunbc/roadmap_dashboard_instance_apply.dag
+16	gunbc/roadmap_dashboard_instance_apply.dag
 23	gunbc/roadmap_dispatch_actuator.dag
 10	gunbc/roadmap_dispatch_environment.dag
 3	gunbc/roadmap_document.dag
@@ -979,8 +982,8 @@ imports_removed	file
 17	gunbc/roadmap_page.dag
 10	gunbc/roadmap_presentation.dag
 6	gunbc/roadmap_program_view.dag
-4	gunbc/roadmap_provider_events.dag
-6	gunbc/roadmap_publish.dag
+5	gunbc/roadmap_provider_events.dag
+7	gunbc/roadmap_publish.dag
 8	gunbc/roadmap_publish_observe.dag
 14	gunbc/roadmap_sandbox.dag
 21	gunbc/roadmap_serve.dag
@@ -995,8 +998,8 @@ imports_removed	file
 2	gunbc/roadmap_status.dag
 14	gunbc/roadmap_style.dag
 8	gunbc/roadmap_validation_oracle.dag
-9	gunbc/roadmap_verification_receipt.dag
-11	gunbc/roadmap_verify.dag
+10	gunbc/roadmap_verification_receipt.dag
+12	gunbc/roadmap_verify.dag
 3	gunbc/roadmap_workflow_command.dag
 11	gunbc/roadmap_workflow_progress.dag
 1	gunbc/roadmap_workflow_stage.dag
@@ -1033,7 +1036,7 @@ imports_removed	file
 2	gunbc/session_lease.dag
 6	gunbc/session_residency.dag
 3	gunbc/shell_bash_runner.dag
-5	gunbc/shell_target_conformance.dag
+6	gunbc/shell_target_conformance.dag
 11	gunbc/site/accent_study.dag
 1	gunbc/site/constellation.dag
 1	gunbc/site/interaction.dag
@@ -1057,7 +1060,7 @@ imports_removed	file
 10	gunbc/srv3_os_install_actuate_scope.dag
 4	gunbc/srv3_os_install_actuate_workflow.dag
 7	gunbc/srv3_os_install_actuator_toolchain_ensure.dag
-15	gunbc/srv3_os_install_diagnostic.dag
+16	gunbc/srv3_os_install_diagnostic.dag
 6	gunbc/srv3_seeded_install_media_artifact.dag
 1	gunbc/srv3_ubuntu_install_media_artifact.dag
 6	gunbc/srv4_seeded_install_media_artifact.dag
@@ -1073,15 +1076,15 @@ imports_removed	file
 1	gunbc/stage0_emit_plan_generated.dag
 7	gunbc/stage0_rust_honest_frontier_integration.dag
 5	gunbc/stage0_rust_honest_frontier_projection.dag
-12	gunbc/stage0_rust_host_observation.dag
+13	gunbc/stage0_rust_host_observation.dag
 7	gunbc/stage0_rust_lifecycle_totality.dag
 6	gunbc/stage0_rust_maintenance_census_report.dag
 6	gunbc/stage0_rust_product_reachability.dag
 16	gunbc/stage0_rust_source_lifecycle_scaffold.dag
-2	gunbc/systemctl_list_units.dag
+3	gunbc/systemctl_list_units.dag
 2	gunbc/systemctl_set_property.dag
-6	gunbc/systemctl_show_read.dag
-5	gunbc/systemctl_status_read.dag
+7	gunbc/systemctl_show_read.dag
+6	gunbc/systemctl_status_read.dag
 3	gunbc/test_module_hygiene.dag
 3	gunbc/test_module_hygiene_scaffold.dag
 9	gunbc/tool_readiness.dag
@@ -1273,6 +1276,7 @@ imports_removed	file
 12	lens/wiring_liveness_preflight.dag
 9	lens/wiring_liveness_preflight_test.dag
 2	product/budget_tree.dag
+1	product/hardware_selection.dag
 4	product/network_topology.dag
 4	product/placement_supply.dag
 20	program.dag
@@ -1324,7 +1328,7 @@ imports_removed	file
 2	std/decimal.dag
 7	std/decl_facts_skeleton.dag
 1	std/decl_ref.dag
-3	std/decl_ref_resolution.dag
+4	std/decl_ref_resolution.dag
 4	std/dependency.dag
 4	std/dependents.dag
 4	std/dependents/dependents_test.dag
@@ -1641,7 +1645,7 @@ imports_removed	file
 8	test/claim/dispatch_presentation_witness_test.dag
 11	test/claim/dispatch_selection_witness_test.dag
 12	test/claim/dispatch_stop_witness_test.dag
-4	test/claim/dissolution_census_a_projection_witness_test.dag
+5	test/claim/dissolution_census_a_projection_witness_test.dag
 4	test/claim/doc_reachability_witness_test.dag
 6	test/claim/duplicate_computation/duplicate_computation_test.dag
 3	test/claim/e0599_emitter_decision_census_witness_test.dag
@@ -1650,7 +1654,7 @@ imports_removed	file
 6	test/claim/effect_axes_witness_test.dag
 6	test/claim/effect_grant_witness_test.dag
 7	test/claim/effect_io_host_grant_witness_test.dag
-6	test/claim/effect_plan_bash_materialize_real_execution_witness_test.dag
+7	test/claim/effect_plan_bash_materialize_real_execution_witness_test.dag
 6	test/claim/effect_plan_bash_materialize_test.dag
 8	test/claim/effect_reach_test.dag
 5	test/claim/effects_witness_test.dag
@@ -2102,7 +2106,7 @@ imports_removed	file
 5	test/claim/primitive_identity_join_witness_test.dag
 7	test/claim/principal_projection_witness_test.dag
 2	test/claim/proactive_verification_ledger_witness_test.dag
-8	test/claim/proc_self_cgroup_real_execution_witness_test.dag
+9	test/claim/proc_self_cgroup_real_execution_witness_test.dag
 7	test/claim/proc_self_cgroup_witness_test.dag
 10	test/claim/program_assembly/real_ingest_test.dag
 4	test/claim/prose_row_introduction_witness_test.dag
@@ -2273,6 +2277,7 @@ imports_removed	file
 5	test/claim/session_auto_publish_harness_witness_test.dag
 6	test/claim/session_residency_witness_test.dag
 7	test/claim/sessions_panel_witness_test.dag
+6	test/claim/shared_pool_encoding_control_test.dag
 6	test/claim/shell_dag_census_5a_typed_ops_witness_test.dag
 3	test/claim/shell_emission_authorization_test.dag
 8	test/claim/shell_exec_run_argv_embed_witness_test.dag
@@ -2411,10 +2416,10 @@ imports_removed	file
 2	test/fixture/walk_plan_stage/plan.dag
 2	test/fixture/walk_plan_stage/receipt_refusal_poison_test.dag
 2	test/fixture/walk_plan_stage/stage2_marker_test.dag
-9	test/manual/git_upstream_model_execution_test.dag
-9	test/manual/mercurial_upstream_model_execution_test.dag
+10	test/manual/git_upstream_model_execution_test.dag
+10	test/manual/mercurial_upstream_model_execution_test.dag
 1	test/manual/ownership_movable_test.dag
-6	test/manual/pijul_upstream_model_execution_test.dag
+7	test/manual/pijul_upstream_model_execution_test.dag
 1	tools/auth_declared_but_unwired_witness_transport.dag
 1	tools/bootstrap_witness_transport.dag
 3	tools/build.dag
@@ -2423,7 +2428,7 @@ imports_removed	file
 2	tools/cheap_claim_pool_gate.dag
 4	tools/cheap_gate_pool.dag
 11	tools/ci_gates.dag
-5	tools/ci_heal_dispatch.dag
+6	tools/ci_heal_dispatch.dag
 2	tools/codegen.dag
 1	tools/dag_collect_fingerprint_witness_transport.dag
 1	tools/dag_compile_clean_cli_floor_agreement.dag
@@ -2457,9 +2462,9 @@ imports_removed	file
 1	tools/infer_semantics_witness_transport.dag
 2	tools/interp_recorded_fixture_witness_transport.dag
 4	tools/interpreter_dispatch_bijection_real_roster_transport.dag
-6	tools/merge_admission_capture.dag
+7	tools/merge_admission_capture.dag
 5	tools/merge_admission_capture_transport.dag
-11	tools/merge_admission_current_context.dag
+12	tools/merge_admission_current_context.dag
 14	tools/merge_admission_walk.dag
 7	tools/module_impact_query_front_door.dag
 8	tools/namespace_import_closure_behavioral_transport.dag
@@ -2524,8 +2529,8 @@ imports_removed	file
 1	workflow/floor_compile_clean_predicates.dag
 11	workflow/floor_diff_observe.dag
 4	workflow/floor_discovery.dag
-12	workflow/floor_discovery_producer.dag
-3	workflow/floor_naming_hygiene.dag
+13	workflow/floor_discovery_producer.dag
+4	workflow/floor_naming_hygiene.dag
 3	workflow/floor_skip_proof_plan.dag
 7	workflow/frontier_probe_survey_transport.dag
 4	workflow/gha_expression_fidelity.dag

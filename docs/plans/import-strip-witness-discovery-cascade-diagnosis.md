@@ -719,6 +719,11 @@ registered scaffold carrying its own dissolution trigger: when B2 lands, the
 ledger becomes a projection of the loader's accepted-binding output and the
 scripts delete.
 
+**Sections 15.1–15.5 record the measurement as it stood BEFORE the corpus repair
+(control 12, attributable 5,815 at `1eadad4af25`, then 3,047 after #8056). They
+are kept as the reasoning that ranked the work. The current numbers, measured on
+the head that carries the repair, are in §15.6 and §15.7 and supersede them.**
+
 ### 15.2 The two readings
 
 | tree | hard diagnostics | exit |
@@ -859,40 +864,79 @@ caused it. Causal grouping (root occurrence → root provider/binding result →
 dependent diagnostics) needs the same loader instrumentation clause E/F needs,
 so it lands with that vertical rather than before it.
 
-### 15.6 The one measured corpus result, and its ownership
+### 15.6 The hygiene bucket is closed — 152 actionable rows to 0
 
-Disambiguating the `cell`/`row` collision was measured, not predicted: at
-`1eadad4af25` the strip-attributable count was 5,815, and with the collision
-removed it is 3,047 — **2,768 rows, 47.6%**, three more than the classification
-predicted because dependent cascades went with them. Almost half of the initial
-strip failure was **one pool-sensitive homonym family**, not a broad namespace
-deficit.
+Everything above was measured before the corpus repair. This section records the
+repair and re-measures on the same head, so the ledger and the fix no longer
+disagree inside one PR (they did in an earlier revision: the receipts pinned a
+pre-repair commit while the diff consolidated the very forks the ledger listed
+as open — caught in review 50740).
 
-**That repair is #8056's, not this session's.** #8056 authored it first
-(`fragment_cell` / `fragment_row`) after independently observing explicit
-imports losing to pool coincidence; this session measured the same repair under
-different names before finding that PR, and withdrew its competing edit rather
-than carry two repairs of one defect. #8056 landed as `0ee2d85de2a`, which is
-why the current base measures 3,050 rather than 5,815. `note` — declared twice
-across `gunbc.roadmap_instrument_sandbox` and `gunbc.roadmap_instrument_motion`,
-both returning `Fragment` — is **not** covered by #8056 and remains open.
+**Before and after, both measured, both on the head that carries the repair:**
 
-The corpus-hygiene tail is now **152 of 3,050 rows (5.0%)**, and it is not
-uniformly mechanical. Roughly half are same-concept forks needing consolidation
-onto one authority (`nid` has six identical declarations; `declaration_ref_eq`,
-`declaration_ref_in_list`, `runner_slot_unit_name`,
-`accelerometer_permission_name`, `srv3_nbd_proxy_local_port` and
-`shape_from_catalog` are duplicated logic). The other half are homonyms across
-unrelated domains (`NetworkInterface` in docker stats vs network topology,
-`ChangeClassification`, `ampere` as a vendor row vs a unit constructor,
-`PublicationSubject`, `site_artifact_digest`), where which declaration keeps the
-name — or whether both legitimately keep it — is a modeling decision.
+| | actionable `corpus_hygiene` diagnostics |
+| --- | --- |
+| before | 152 |
+| after | **0** |
 
-**Global textual uniqueness is not the goal.** The namespace model deliberately
-preserves distinct same-spelled declarations and feeds the whole candidate
-population to the ambiguity fold; renaming every legitimate same-leaf
-declaration to force uniqueness works against it. Class A splits four ways and
-only the first two are corpus work:
+The bucket does not survive as a smaller number; the disposition is absent from
+the ledger. What replaced it is four kinds of row, each named:
+
+| disposition | rows | why it is not hygiene debt |
+| --- | --- | --- |
+| `per_module_convention_population` | 8 | one row per module by design (`extdeps_external_authority_anchor` ×497, `extdeps_model_scope` ×94) |
+| `intentional_ambiguity_fixture` | 3 | fixtures that exist *so that* two declarations collide; renaming them deletes the test subject |
+| `field_on_unresolved_or_wrong_type` | 71 | first failure is the receiver, not the name |
+| `method_on_unresolved_receiver` | 66 | same |
+
+The convention rule is derived, not a list: a threshold sits in the gap between
+fork counts (2–6) and convention counts (94, 497), so a newly authored
+convention row classifies itself instead of waiting to be allow-listed.
+
+**What was done, by treatment.** Consolidated onto one authority:
+`declaration_ref_eq` and `declaration_ref_in_list` (44 rows, the largest family)
+onto `std.roster_frontier`; `Milliwatt`/`milliwatt`/`milliwatt_count` onto
+`std.measure`; `srv3_nbd_proxy_local_port` onto its cited
+`extdeps.bmc.webui.nbd_proxy_serve` row; `decl_facts_matching_qualified_name`
+onto `v2.std.decl_facts_skeleton`; `gnu_bash_subject_ref` onto the derived row in
+`gunbc.language_target_registry`, deleting the hardcoded `DeclarationRef`
+literal. Renamed as genuine homonyms: `PublicationSubject` →
+`RoadmapPublicationSubject` / `PublicProjectionSubject` (31 rows);
+`NetworkInterface` → `DockerContainerNetworkInterfaceStats`; `ampere` →
+`ampere_vendor` (the SI constructor keeps the name); `shape_from_catalog` →
+`cpu_`/`gpu_`; `ChangeClassification` → `Bootstrap…`/`ChangeRealization…`;
+`path_has_prefix` → `rust_source_path_has_prefix`; `note` → `instrument_note` /
+`motion_note`. Renamed as fixture-locals: five witness-local `nid` helpers,
+`authored` → `authored_status_fixture`, `site_artifact_digest` →
+`fixture_site_artifact_digest`, `fixture_repository` →
+`git_`/`mercurial_`/`pijul_`, `decl_facts_reflection_fixture_facts` →
+`decl_facts_reflection_witness_support_facts`.
+
+**`cell`/`row` are #8056's**, not this lane's: that PR authored the
+`fragment_cell` / `fragment_row` disambiguation first, and landed as
+`0ee2d85de2a`. This session measured the same repair under different names
+before finding it and withdrew the competing edit.
+
+**Two families were renamed on BOTH sides because their bodies diverge**, and
+that is a finding rather than a cleanup: `runner_slot_unit_name` and
+`RunnerReplacementCause` exist twice with different behaviour — two different
+systemd unit-name constructions and two different cause vocabularies — and
+`current_walk_attempt_id` differs in its absent-variable arm (`none` vs the empty
+string). `gunbc.runner_lifecycle` carries `Disposition = SingleAuthority`, so it
+keeps the names and `gunbc.runner_connectivity_recovery`'s copies are prefixed.
+**Renaming makes the fork visible; it does not fix it.** Two functions still
+compute a unit name differently, and that is a latent defect this section
+records rather than resolves.
+
+**Per-spec tokens stay with their spec.** `extdeps.w3c.accelerometer` keeps
+`accelerometer_permission_name` because that is its own spec's token; the
+DeviceMotion copy becomes `device_motion_accelerometer_permission_name`. Each
+upstream spec module owns its own facts, so a shared literal is not consolidated
+across specs.
+
+**Global textual uniqueness was never the goal.** The namespace model preserves
+distinct same-spelled declarations and feeds the candidate population to the
+ambiguity fold. Class A split four ways and only the first two were corpus work:
 
 | subclass | treatment |
 | --- | --- |
@@ -901,14 +945,67 @@ only the first two are corpus work:
 | two legitimate equal leaves on separate containment paths | preserve; qualify or bind structurally |
 | the wrong declaration entering the pool | provider/closure work, not naming |
 
-Not every multiply-declared name is a defect regardless of subclass:
-`extdeps_external_authority_anchor` (497 declarations) and `extdeps_model_scope`
-(94) are per-module convention rows by design.
+**A specimen the repair produced, worth more than the cleanup.** Renaming the git
+fixture made another module's bare `fixture_repository` bind to an unrelated
+declaration in a different witness file, producing five spurious "no field on
+type `Repository`" errors. That is **pool coincidence reproduced on the
+unstripped tree** — the same mechanism as the residual's largest class, visible
+in ordinary compilation. A second one came from the measurement itself: the first
+regeneration reported `corpus_hygiene: 2`, which turned out to be a rename of
+mine colliding with an existing `import_resolution_facts_live` in
+`v2.lens.module_graph`. It was named for its return type when the distinguishing
+fact is its source, and is now
+`reference_derived_import_resolution_facts_live`. The ledger caught a defect its
+own author introduced, which is the argument for running it rather than
+predicting it.
 
-So the easy work is now small, and it is no longer plausible that deleting name
-collisions makes the imports disappear.
+### 15.7 What the residual is now, and what it is not
 
-### 15.7 One ordering property of the fork half
+Re-measured on the head carrying the repair, with the reconciliation checked by
+the classifier:
+
+```
+stripped_hard (3,100) = control_hard (22) + attributable (3,078)
+attributable (3,078)  = Σ ledger rows (3,078)      [reconciliation: OK]
+```
+
+| disposition | rows |
+| --- | --- |
+| `unique_decl_unresolved_mechanism_unobserved` | 1,885 |
+| `variant_mechanism_unobserved` | 600 |
+| `variant_owner_unindexed` | 249 |
+| `cascade` | 138 |
+| `field_on_unresolved_or_wrong_type` | 71 |
+| `method_on_unresolved_receiver` | 66 |
+| `ordinary_callee_unindexed` | 45 |
+| `record_shape_cascade` | 12 |
+| `per_module_convention_population` | 8 |
+| `intentional_ambiguity_fixture` | 3 |
+| `unindexed_symbol_candidate` | 1 |
+
+Three numbers moved for reasons that are not this repair, and saying so is the
+difference between a measurement and a scoreboard. The unstripped control rose
+12 → 22: all ten are the annotation-grain class in
+`dag/test/claim/host_phase_status_witness_test.dag`, and compiling `origin/main`
+alone reproduces 22, so the hygiene batch adds **zero** diagnostics. The corpus
+grew (16,375 imports across 2,579 files, from 16,315/2,574) because main landed
+#8062, #8061 and #8068 during the work. And
+`unique_decl_unresolved_mechanism_unobserved` rose 1,656 → 1,885 across that same
+main advance, not across the renames.
+
+**This does not close import deletion, and nothing here should be read as
+progress toward it.** The remaining residual is not a naming tail. It is one
+integration vertical:
+
+> the ordinary compiler must produce accepted occurrence bindings, project
+> provider-file dependencies from them, and load the same closure independently
+> of ambient pool membership.
+
+What the close does buy is that **no one can point at a miscellaneous naming
+tail to justify a workaround**. The corpus excuse is gone; §15.0's maturity
+matrix is what remains, with the permanent closing contract still reporting all
+six capabilities unavailable.
+### 15.8 One ordering property of the fork half
 
 Consolidating a fork today requires **adding** an import to the module that
 loses its local copy — the very edge this lane deletes. That is an ordering

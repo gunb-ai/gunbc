@@ -1,12 +1,12 @@
-indexed 3403 modules from 2 source roots
-resolved 2273 sources (transitive import closure)
+indexed 3404 modules from 2 source roots
+resolved 2274 sources (transitive import closure)
 [census] 1130 indexed modules outside the closure enter the name census only (not compiled)
 ◐ started compile.frontend
-✓ compile.frontend done in 26 seconds
+✓ compile.frontend done in 23 seconds
 ✓ compile.normalize done in 1 seconds
 ✓ compile.reconcile done in 5 minutes
 ✓ compile.analyses done in 1 seconds
-v2 self-compile produced 12 hard diagnostic(s):
+v2 self-compile produced 22 hard diagnostic(s):
 source annotation sits inside a declaration body. Only module-item grain is modeled; move it above the declaration it describes. (dag/test/claim/cross_file_binding_assembly_witness_test.dag:11371-11459)
 source annotation sits inside a declaration body. Only module-item grain is modeled; move it above the declaration it describes. (dag/test/claim/cross_file_binding_assembly_witness_test.dag:11462-11551)
 source annotation sits inside a declaration body. Only module-item grain is modeled; move it above the declaration it describes. (dag/test/claim/cross_file_binding_assembly_witness_test.dag:11554-11644)
@@ -19,3 +19,13 @@ source annotation sits inside a declaration body. Only module-item grain is mode
 source annotation sits inside a declaration body. Only module-item grain is modeled; move it above the declaration it describes. (dag/test/claim/guarantee_probe_corpus_witness_test.dag:34178-34276)
 source annotation sits inside a declaration body. Only module-item grain is modeled; move it above the declaration it describes. (dag/test/claim/guarantee_probe_corpus_witness_test.dag:34279-34340)
 source annotation sits inside a declaration body. Only module-item grain is modeled; move it above the declaration it describes. (dag/test/claim/guarantee_probe_corpus_witness_test.dag:35141-35232)
+source annotation sits inside a declaration body. Only module-item grain is modeled; move it above the declaration it describes. (dag/test/claim/host_phase_status_witness_test.dag:25791-25884)
+source annotation sits inside a declaration body. Only module-item grain is modeled; move it above the declaration it describes. (dag/test/claim/host_phase_status_witness_test.dag:25887-25981)
+source annotation sits inside a declaration body. Only module-item grain is modeled; move it above the declaration it describes. (dag/test/claim/host_phase_status_witness_test.dag:25984-26079)
+source annotation sits inside a declaration body. Only module-item grain is modeled; move it above the declaration it describes. (dag/test/claim/host_phase_status_witness_test.dag:26082-26131)
+source annotation sits inside a declaration body. Only module-item grain is modeled; move it above the declaration it describes. (dag/test/claim/host_phase_status_witness_test.dag:27117-27219)
+source annotation sits inside a declaration body. Only module-item grain is modeled; move it above the declaration it describes. (dag/test/claim/host_phase_status_witness_test.dag:27222-27321)
+source annotation sits inside a declaration body. Only module-item grain is modeled; move it above the declaration it describes. (dag/test/claim/host_phase_status_witness_test.dag:27324-27349)
+source annotation sits inside a declaration body. Only module-item grain is modeled; move it above the declaration it describes. (dag/test/claim/host_phase_status_witness_test.dag:27449-27548)
+source annotation sits inside a declaration body. Only module-item grain is modeled; move it above the declaration it describes. (dag/test/claim/host_phase_status_witness_test.dag:27551-27651)
+source annotation sits inside a declaration body. Only module-item grain is modeled; move it above the declaration it describes. (dag/test/claim/host_phase_status_witness_test.dag:27654-27752)

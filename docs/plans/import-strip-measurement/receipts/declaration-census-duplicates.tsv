@@ -1,8 +1,8 @@
 # Multiply-declared names only (declaration_count > 1) — the actionable slice.
-# The FULL census (49,447 names) is regenerable by the command in ../README.md;
+# The FULL census is regenerable by the command in ../README.md;
 # it is not committed because it is derivable and large.
 count	name
-1013	live_tree_disposition
+1014	live_tree_disposition
 497	extdeps_external_authority_anchor
 94	extdeps_model_scope
 79	construction_justification
@@ -17,7 +17,6 @@ count	name
 8	github
 7	witness_red_control_note
 7	gcp
-6	nid
 6	is_refused
 6	is_admitted
 6	empty_string_list
@@ -83,7 +82,6 @@ count	name
 4	flat_10
 4	flat_1
 4	flat_0
-4	fixture_repository
 4	else_if_chain
 4	decl_belongs_to_module
 4	count_matching
@@ -118,7 +116,6 @@ count	name
 3	live_tree_disposition_correction_note
 3	line_of
 3	lex_literal
-3	interfaces_are_secure_context_only
 3	Inner
 3	flat_90
 3	flat_89
@@ -274,7 +271,6 @@ count	name
 2	storj_quote
 2	step_index_of
 2	ssh
-2	srv3_nbd_proxy_local_port
 2	srv3_actuator_target
 2	srv1_host_observation
 2	src_type_decl
@@ -291,10 +287,8 @@ count	name
 2	source_has_suspect
 2	source_findings
 2	sized
-2	site_artifact_digest
 2	SharedBareArm
 2	ShapeFromCatalogInput
-2	shape_from_catalog
 2	seven_slot_indices
 2	set_subset
 2	set_equal
@@ -324,8 +318,6 @@ count	name
 2	sample_doc
 2	sample_decl
 2	RustPrimitive
-2	runner_slot_unit_name
-2	RunnerReplacementCause
 2	RosterVerdict
 2	rostered_import_facts
 2	review_pr
@@ -345,7 +337,6 @@ count	name
 2	refused
 2	reflect_connective_type
 2	reflect_behavior_type
-2	reference_resolution_facts_live
 2	reduced_motion_note
 2	record_construct_target_model
 2	reconcile
@@ -355,7 +346,6 @@ count	name
 2	RankingDimension
 2	r2_quote
 2	quality_is_identity
-2	PublicationSubject
 2	PublicationDisposition
 2	PublicationContext
 2	projection_note
@@ -377,7 +367,6 @@ count	name
 2	perturbed_bullet_spellings
 2	perturb
 2	per_element_eq
-2	path_has_prefix
 2	path_has_any_prefix
 2	parent_node
 2	param_names_of
@@ -396,7 +385,6 @@ count	name
 2	OccurrenceId
 2	ObservationGrain
 2	nullary_inhabitant_discriminants
-2	note
 2	no_silent_pick_note
 2	NonNegativeInt
 2	non_empty_diagnostics_contain_reason
@@ -405,7 +393,6 @@ count	name
 2	no_edges
 2	nodes
 2	node_callee_symbol
-2	NetworkInterface
 2	nest_l2
 2	nat_max
 2	nat_compare
@@ -413,9 +400,6 @@ count	name
 2	named_child_optional
 2	msb_fixture_qn
 2	models
-2	milliwatt_count
-2	Milliwatt
-2	milliwatt
 2	Middle
 2	MemoryStats
 2	manufacturer_edge_note
@@ -481,7 +465,6 @@ count	name
 2	green_control_note
 2	grammar_relation_row_token_spine_classes
 2	GoFloatWidth
-2	gnu_bash_subject_ref
 2	git_refusal_detail
 2	GeneratedArtifact
 2	gate_plan_refuses
@@ -656,14 +639,9 @@ count	name
 2	decl_module_prefix
 2	decl_in_list
 2	decl_field_eq
-2	decl_facts_reflection_fixture_facts
-2	decl_facts_matching_qualified_name
-2	declaration_ref_in_list
-2	declaration_ref_eq
 2	decision_is_permit
 2	decision_is_deny
 2	cursor_sdk_authority_note
-2	current_walk_attempt_id
 2	c_run_source
 2	c_run_probe_node
 2	c_run_inputs
@@ -698,7 +676,6 @@ count	name
 2	child_id
 2	char_in_class
 2	ChangeKind
-2	ChangeClassification
 2	chained_field
 2	cgroup_walk_var
 2	cgroup_mount_root
@@ -716,18 +693,15 @@ count	name
 2	bash_build_module
 2	aws_quote
 2	authority_page_html
-2	authored
 2	arg_value_symbol
 2	arg_symbols_from_nodes
 2	ApproximateField
 2	appropriation_of
 2	anchor_only_obligations
 2	anchor_atom_node
-2	ampere
 2	alert_expected_schema
 2	AdmissionState
 2	admission_of
 2	add_arrow_swapped_operand_body
 2	act_ts
 2	accepted_node
-2	accelerometer_permission_name

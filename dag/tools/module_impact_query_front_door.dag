@@ -19,7 +19,7 @@ import v2.lens.module_graph {
   dependency_resolution_facts_live,
   import_resolution_facts_live,
   module_declaration_facts_live,
-  import_resolution_facts_live,
+  reference_derived_import_resolution_facts_live,
 }
 import v2.lens.module_impact_query {
   DependenciesOf,
@@ -254,7 +254,7 @@ fn probe_count_edges() -> String {
 
 fn probe_count_reference_facts() -> String {
   count_text(
-    xs: import_resolution_facts_live(
+    xs: reference_derived_import_resolution_facts_live(
       pool_roots: front_door_pool_roots,
       importer_roots: front_door_importer_roots,
       exclude_substrings: front_door_exclude_substrings
