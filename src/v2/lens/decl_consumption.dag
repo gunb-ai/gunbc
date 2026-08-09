@@ -12,6 +12,12 @@ import v2.std.algebra {
 import v2.std.optional { Optional, Present, Absent }
 import std.decl_ref { DeclarationRef, decl_ref }
 import v2.std.node { Node, NodeFold, Symbol, Atom, TypeNode, fold_node }
+import v2.lens.common.construction_justification {
+  ConstructionJustification,
+  ConstructionClass,
+  WallAfterGrounding,
+}
+import std.disposition { SingleAuthority }
 import v2.std.decl_index { DeclFact }
 import v2.std.decl_ref_resolution {
   DeclarationIdentity,
@@ -276,4 +282,10 @@ fn declaration_consumers(
           }
       }
   }
+}
+
+data construction_justification_note: String = "WHY THIS IS A READER AND NOT YET A WALL, classified rather than assumed. The bad state -- an authored declaration that no live consumer reaches, and a documentary claim that outlives the structure grounding it -- is DECIDABLE given the declaration universe, so §5 forbids calling it a ratchet: the word never is the trap, and there is a real path to unwritability here rather than an undecidable residue.\n\nWHAT BLOCKS THE WALL TODAY IS THAT CONSUMPTION IS NOT A LOCAL PROPERTY. A declaration and its consumer can be authored in one commit, so nothing at the authoring site distinguishes the good case from the bad one; only a whole-corpus read decides it, and a whole-corpus read is a reader. That is why this module is honestly a lens even though the class it serves is decidable.\n\nDISSOLVES TO SingleAuthority: when the containment tree becomes the single naming authority, a reference is an edge in one structure the compiler already walks, and an unreached declaration is refusable at compile time the way an unbound name already is -- at which point the bad state has no Accepted program containing it and this reader is replaced rather than supplemented. That is the same trigger the universe note and the precision frontier name, which is the argument for one grounding rather than three local repairs."
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
