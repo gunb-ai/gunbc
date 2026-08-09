@@ -8994,6 +8994,139 @@ mod live_read_selection_manifest_producer_tests {
         );
     }
 
+    // FAST PROBE: does the bundle actually CONTAIN an enrolled witness declaration?
+    //
+    // Written because the floor takes ten minutes to answer this, and two rounds of reasoning
+    // about why a root would not bind were both refuted by execution. This isolates the bundle
+    // from the lens, the floor and the interpreter: it asks only whether the parse-derived
+    // population holds the declaration a discovery row names, and whether binding resolves it to
+    // exactly one identity.
+    //
+    // The subject is the one CI named (`LiveReadRootUnbound` on this exact declaration), so the
+    // probe reds for the reason the floor did rather than for a reason of its own.
+    #[test]
+    fn the_fact_bundle_contains_an_enrolled_witness_declaration() {
+        enter_workspace();
+        let index = build_multi_entry_index(&source_roots());
+        let bundle = index
+            .g2_fact_bundle()
+            .expect("the index population must be observable");
+
+        let rel = "dag/test/claim/accelerator_demo_execution_witness_test.dag";
+        let function = "accelerator_demo_execution_lane_witnesses";
+
+        // (1) the FILE is in the population at all.
+        assert!(
+            bundle.module_identities.iter().any(|p| p == rel),
+            "the index pool does not carry {rel} (pool={}); the walk, not the projection, is the \
+             defect",
+            bundle.module_identities.len()
+        );
+        assert!(
+            !bundle.parse_refusals.contains_key(rel),
+            "{rel} failed to parse: {:?}",
+            bundle.parse_refusals.get(rel)
+        );
+
+        // (2) the DECLARATION is in the population, and its kind is what the fn-arrow projection
+        // selects. Reported separately because "absent" and "present but the wrong kind" have
+        // different repairs, and a single assertion would conflate them.
+        let for_file: Vec<_> = bundle
+            .decl_facts
+            .iter()
+            .filter(|f| f.rel_path == rel)
+            .collect();
+        assert!(
+            !for_file.is_empty(),
+            "{rel} contributed no declarations at all, though it parsed"
+        );
+        let named: Vec<_> = for_file.iter().filter(|f| f.name == function).collect();
+        assert_eq!(
+            named.len(),
+            1,
+            "expected exactly one declaration named {function} in {rel}, found {} (kinds present \
+             in this file: {:?})",
+            named.len(),
+            for_file
+                .iter()
+                .map(|f| (f.name.as_str(), f.kind))
+                .collect::<Vec<_>>()
+        );
+        let fact = named[0];
+        assert!(
+            matches!(fact.kind, crate::v1_compiler_infer_items::ItemKind::FnItem)
+                || matches!(
+                    fact.kind,
+                    crate::v1_compiler_infer_items::ItemKind::FuncItem
+                ),
+            "{function} has kind {:?}, which the fn-arrow projection does not select",
+            fact.kind
+        );
+
+        // (3) the module path is the AUTHORED one, unstripped. A stripped `v2.` here is the
+        // defect that made every root unbindable under a name the lens never asks for.
+        assert!(
+            !fact.module_path.is_empty(),
+            "{function} carries no module path, so its qualified name cannot be built"
+        );
+
+        // (4) binding resolves it to exactly one identity.
+        let locator = super::MultiEntryIndex::bind_live_read_request(&bundle, rel, function)
+            .expect("an enrolled declaration must bind to exactly one identity");
+        assert_eq!(locator.name, function);
+        assert_eq!(locator.rel_path, rel);
+    }
+
+    /// The `v2.` layer prefix survives on `module_path` and is absent from `qualified_name`.
+    ///
+    /// These two names are deliberately different and were, for four failing runs, treated as one:
+    /// `decl_logical_qualified_name` drops `v2.` for `decl_index` consumers, so a projection that
+    /// reconstructs a module by un-stripping the declaration's own name from `qualified_name`
+    /// yields `test.workflow.x` where the fn-arrow root is authored `v2.test.workflow.x`. Every
+    /// such root then reports G2RootUnbound -- not because the declaration is missing, but because
+    /// the population is filed under a name no root ever asks for. The two directions are asserted
+    /// TOGETHER because either alone is satisfied by the defect: with the un-strip in place,
+    /// `qualified_name` lacked `v2.` exactly as it does now.
+    #[test]
+    fn v2_layer_facts_keep_the_authored_module_path_and_drop_it_from_the_qualified_name() {
+        enter_workspace();
+        let index = build_multi_entry_index(&source_roots());
+        let bundle = index
+            .g2_fact_bundle()
+            .expect("the index substrate must yield a fact bundle");
+
+        let v2_facts: Vec<_> = bundle
+            .decl_facts
+            .iter()
+            .filter(|f| f.module_path.starts_with("v2."))
+            .collect();
+        assert!(
+            !v2_facts.is_empty(),
+            "no fact carries a v2.-authored module path, so this control proves nothing; the \
+             bundle covers {} modules",
+            bundle.module_identities.len()
+        );
+
+        for fact in v2_facts.iter().take(200) {
+            assert!(
+                !fact.qualified_name.starts_with("v2."),
+                "{} kept the v2. layer in its qualified_name; decl_index consumers expect it \
+                 stripped",
+                fact.qualified_name
+            );
+            let unstripped = format!(
+                "{}.{}",
+                fact.module_path.trim_start_matches("v2."),
+                fact.name
+            );
+            assert_eq!(
+                fact.qualified_name, unstripped,
+                "the two names disagree on more than the layer prefix, so neither can be derived \
+                 from the other"
+            );
+        }
+    }
+
     // INCREMENTALITY + CACHE HIT (proof-ladder gates 1 and 2).
     //
     // The predecessor of this test asserted `Rc::ptr_eq` on one whole manifest, which is exactly

@@ -929,15 +929,10 @@ pub fn fn_arrow_decl_rows_from_facts(ctx: &InterpContext, facts: &[DeclFactRaw])
         if fact.kind != ItemKind::FnItem && fact.kind != ItemKind::FuncItem {
             continue;
         }
-        let module_name = fact
-            .qualified_name
-            .strip_suffix(&format!(".{}", fact.name))
-            .unwrap_or("")
-            .to_string();
         if let Some(row) = fn_arrow_decl_record(
             ctx,
             &fact.source_indices,
-            &module_name,
+            &fact.module_path,
             &fact.name,
             &fact.node,
         ) {
@@ -1055,6 +1050,12 @@ pub fn eval_data_init_decl_facts_live(
 #[derive(Debug, Clone)]
 pub struct DeclFactRaw {
     pub qualified_name: String,
+    /// The module's own authored path, UNSTRIPPED. `qualified_name` above passes through
+    /// `decl_logical_qualified_name`, which drops the `v2.` layer prefix for `decl_index`
+    /// consumers -- so it cannot be un-stripped back into a module identity. fn-arrow and concept
+    /// reflection keep the full path, and a consumer that reconstructs the module from the
+    /// stripped name produces facts under a name no root ever asks for.
+    pub module_path: String,
     pub name: String,
     pub kind: ItemKind,
     pub node: Rc<Node>,
@@ -1123,6 +1124,7 @@ fn push_decl_facts_from_parsed(
         let kind = item_kind(item.clone());
         out.push(DeclFactRaw {
             qualified_name: decl_logical_qualified_name(module_path, &name),
+            module_path: module_path.to_string(),
             name,
             kind,
             node: item.clone(),
