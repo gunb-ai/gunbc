@@ -1,0 +1,136 @@
+module gunbc.test.claim.dag_sum_decl_leading_pipe_witness_test
+
+import v2.std.text { String }
+import v2.std.logic { Bool }
+import v2.std.algebra { fold_list, length }
+import std.algebra { Cons, Empty }
+import v2.std.grammar { GrammarRoot, GrammarProduction, GrammarExpr, ParseGrammar, ModeledGrammar, VoidGrammar }
+import v2.std.compilers.lexing { lex_artifact_semantic_tokens }
+import v2.compiler.tokenize { lex_walk_artifact }
+import v2.compiler.parse { parse_module }
+import v2.extdeps.languages.dag {
+  dag_lex_rules,
+  dag_grammar,
+  dag_grammar_sequence,
+  dag_grammar_terminal,
+  dag_grammar_nonterminal,
+  dag_grammar_repeat
+}
+
+data leading_pipe_witness_note: String = "CI2-0 second-construct proof obligation (operator repair msg_2a8e30e8 item a): discriminating controls for the optional leading pipe in dag_grammar_type_alias_rhs_expr, on the PRODUCTION grammar. The rule-removed RED rebuilds the grammar with the type_alias_rhs production's EXPRESSION swapped back to the pre-repair shape, selected by DECLARED production identity (^dag_production_type_alias_rhs) with the replacement count asserted — so the discrimination is single-variable at the production grain, and the positive control under the SAME pre-repair grammar proves the swap touched only the leading-pipe admission."
+
+fn parse_accepts_with(source: String, grammar: ParseGrammar) -> Bool {
+  match lex_walk_artifact(source: source, file: ^pipe_probe, rules: dag_lex_rules()) {
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
+      match parse_module(tokens: lex_artifact_semantic_tokens(artifact: a), grammar: grammar) {
+        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+fn parse_accepts(source: String) -> Bool {
+  parse_accepts_with(source: source, grammar: dag_grammar())
+}
+
+data single_line_no_pipe_source: String = "module zz_pipe_probe\n\ntype AlgX = AlphaX | BetaX\n"
+
+data single_line_leading_pipe_source: String = "module zz_pipe_probe\n\ntype AlgX = | AlphaX | BetaX\n"
+
+data multi_line_leading_pipe_source: String = "module zz_pipe_probe\n\ntype AlgX =\n  | AlphaX\n  | BetaX\n"
+
+data bare_pipe_source: String = "module zz_pipe_probe\n\ntype AlgX = |\n"
+
+data double_pipe_source: String = "module zz_pipe_probe\n\ntype AlgX = || AlphaX\n"
+
+data authored_extdeps_shape_source: String = "module zz_pipe_probe\n\ntype HashAlgorithmX =\n  | Sha256X\n  | Sha512X\n\ntype DigestX {\n  algorithm: HashAlgorithmX\n}\n"
+
+fn pre_repair_type_alias_rhs_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_nonterminal(production: ^dag_production_type_variant),
+    right: dag_grammar_repeat(
+      element: dag_grammar_sequence(
+        left: dag_grammar_terminal(token_class: ^dag_token_pipe),
+        right: dag_grammar_nonterminal(production: ^dag_production_type_variant)
+      )
+    )
+  )
+}
+
+fn swap_type_alias_rhs(productions: List<GrammarProduction>) -> List<GrammarProduction> {
+  fold_list(xs: productions, empty: no_productions(), cons: fn(acc, prod) {
+    match prod.name == ^dag_production_type_alias_rhs {
+      true => concat(acc, [GrammarProduction {
+        name: prod.name,
+        expression: pre_repair_type_alias_rhs_expr(),
+        emitted: prod.emitted
+      }])
+      false => concat(acc, [prod])
+    }
+  })
+}
+
+fn no_productions() -> List<GrammarProduction> {
+  []
+}
+
+fn swapped_count(productions: List<GrammarProduction>) -> Int {
+  fold_list(xs: productions, empty: 0, cons: fn(acc, prod) {
+    match prod.name == ^dag_production_type_alias_rhs {
+      true => acc + 1
+      false => acc
+    }
+  })
+}
+
+fn pre_repair_grammar() -> ParseGrammar {
+  match dag_grammar() {
+    ModeledGrammar { root: r } =>
+      ModeledGrammar {
+        root: GrammarRoot {
+          start: r.start,
+          productions: swap_type_alias_rhs(productions: r.productions),
+          sync_tokens: r.sync_tokens
+        }
+      }
+    VoidGrammar => VoidGrammar
+  }
+}
+
+fn pre_repair_swap_targeted_exactly_one() -> Bool {
+  match dag_grammar() {
+    ModeledGrammar { root: r } => swapped_count(productions: r.productions) == 1
+    VoidGrammar => false
+  }
+}
+
+test fn witness_single_line_sum_parses() -> Bool {
+  parse_accepts(source: single_line_no_pipe_source)
+}
+
+test fn witness_single_line_leading_pipe_parses() -> Bool {
+  parse_accepts(source: single_line_leading_pipe_source)
+}
+
+test fn witness_multi_line_leading_pipe_parses() -> Bool {
+  parse_accepts(source: multi_line_leading_pipe_source)
+}
+
+test fn witness_bare_pipe_refuses_RED() -> Bool {
+  parse_accepts(source: bare_pipe_source) == false
+}
+
+test fn witness_double_pipe_refuses_RED() -> Bool {
+  parse_accepts(source: double_pipe_source) == false
+}
+
+test fn witness_authored_extdeps_shape_parses() -> Bool {
+  parse_accepts(source: authored_extdeps_shape_source)
+}
+
+test fn witness_pre_repair_grammar_restores_the_RED() -> Bool {
+  pre_repair_swap_targeted_exactly_one()
+    && (parse_accepts_with(source: multi_line_leading_pipe_source, grammar: pre_repair_grammar()) == false)
+    && parse_accepts_with(source: single_line_no_pipe_source, grammar: pre_repair_grammar())
+}

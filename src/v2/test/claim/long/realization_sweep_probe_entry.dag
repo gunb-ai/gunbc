@@ -5,7 +5,8 @@ import v2.workflow.realization_sweep {
   sweep_rows_from_refs,
   member_parse_rows_from_refs,
   sweep_receipt_tsv,
-  sweep_histogram_tsv
+  sweep_histogram_tsv,
+  sweep_body_census_tsv
 }
 import v2.test.workflow.host_source_root_ingest_manifest {
   frontier_probe_entry_module_path,
@@ -37,6 +38,15 @@ fn realization_sweep_entry_receipt() -> String {
 
 fn realization_sweep_member_scan_receipt() -> String {
   sweep_receipt_tsv(rows: member_parse_rows_from_refs(refs: host_source_root_closure_refs))
+}
+
+fn realization_sweep_body_census_receipt() -> String {
+  sweep_body_census_tsv(
+    refs: host_source_root_closure_refs,
+    admission: host_compiler_closure_admission,
+    entry: frontier_probe_entry_module_path,
+    identities: realization_sweep_entry_identities
+  )
 }
 
 fn realization_sweep_entry_histogram() -> String {

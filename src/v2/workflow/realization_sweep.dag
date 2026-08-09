@@ -6,6 +6,7 @@ import v2.workflow.realization_attempt {
   V2TranslateSerialized,
   V2RealizationRefused,
   attempt_closure_rows,
+  census_rows,
   attempt_phase_label,
   entry_witness_source
 }
@@ -312,6 +313,27 @@ fn member_parse_rows_from_refs(refs: List<SourceRef>) -> List<RealizationSweepRo
 
 fn no_sweep_rows() -> List<RealizationSweepRow> {
   []
+}
+
+fn sweep_body_census_tsv(refs: List<SourceRef>, admission: Admission, entry: String, identities: List<String>) -> String {
+  match source_root_ingest_build_from_source_refs(refs: refs) {
+    SourceRootIngestBuildReadFailed { result: _ } =>
+      concat(entry, "	(census)	realization_sweep_closure_read_refused")
+    SourceRootIngestBuildOk { ingest: ingest } => {
+      let lines = census_rows(
+        ingest: ingest,
+        admission: admission,
+        fn_names: fold_list(xs: identities, empty: no_fn_symbols(), cons: fn(acc, n) {
+          concat(acc, [symbol_intern_lexeme(lexeme: n)])
+        }),
+        entry: entry
+      )
+      fold_list(xs: lines, empty: "", cons: fn(acc, line) {
+        if acc == "" { line } else { concat(acc, concat("
+", line)) }
+      })
+    }
+  }
 }
 
 fn sweep_receipt_tsv(rows: List<RealizationSweepRow>) -> String {

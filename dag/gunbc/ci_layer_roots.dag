@@ -1352,6 +1352,48 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     dissolve_on: "same as sibling row"
   },
   SubstrateLongLaneRow {
+    entry: "dag/test/claim/dag_sum_decl_leading_pipe_witness_test.dag",
+    function: "witness_single_line_sum_parses",
+    reason: "~15s measured eval (valiant-boar-65, 2026-08-09): interpreted production dag_lex_rules + dag_grammar lex+parse per control — the CI2-0 leading-pipe sum-decl proof matrix (operator repair msg_2a8e30e8 item a), incl. the identity-swapped pre-repair grammar RED",
+    dissolve_on: "witness realization lands the lex/parse natively or eval drops under gunbc_ci_fast_lane_witness_eval_budget on a measured run — then re-enroll per-PR discovery and delete this row"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/dag_sum_decl_leading_pipe_witness_test.dag",
+    function: "witness_single_line_leading_pipe_parses",
+    reason: "same interpreted lex/parse wall as sibling witness_single_line_sum_parses (~15s measured)",
+    dissolve_on: "witness realization lands the lex/parse natively or eval drops under gunbc_ci_fast_lane_witness_eval_budget on a measured run — then re-enroll per-PR discovery and delete this row"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/dag_sum_decl_leading_pipe_witness_test.dag",
+    function: "witness_multi_line_leading_pipe_parses",
+    reason: "same interpreted lex/parse wall as sibling witness_single_line_sum_parses (~15s measured)",
+    dissolve_on: "witness realization lands the lex/parse natively or eval drops under gunbc_ci_fast_lane_witness_eval_budget on a measured run — then re-enroll per-PR discovery and delete this row"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/dag_sum_decl_leading_pipe_witness_test.dag",
+    function: "witness_bare_pipe_refuses_RED",
+    reason: "same interpreted lex/parse wall as sibling witness_single_line_sum_parses (~15s measured)",
+    dissolve_on: "witness realization lands the lex/parse natively or eval drops under gunbc_ci_fast_lane_witness_eval_budget on a measured run — then re-enroll per-PR discovery and delete this row"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/dag_sum_decl_leading_pipe_witness_test.dag",
+    function: "witness_double_pipe_refuses_RED",
+    reason: "same interpreted lex/parse wall as sibling witness_single_line_sum_parses (~15s measured)",
+    dissolve_on: "witness realization lands the lex/parse natively or eval drops under gunbc_ci_fast_lane_witness_eval_budget on a measured run — then re-enroll per-PR discovery and delete this row"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/dag_sum_decl_leading_pipe_witness_test.dag",
+    function: "witness_authored_extdeps_shape_parses",
+    reason: "same interpreted lex/parse wall as sibling witness_single_line_sum_parses (~15s measured)",
+    dissolve_on: "witness realization lands the lex/parse natively or eval drops under gunbc_ci_fast_lane_witness_eval_budget on a measured run — then re-enroll per-PR discovery and delete this row"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/dag_sum_decl_leading_pipe_witness_test.dag",
+    function: "witness_pre_repair_grammar_restores_the_RED",
+    reason: "same interpreted lex/parse wall as sibling witness_single_line_sum_parses (~15s measured)",
+    dissolve_on: "witness realization lands the lex/parse natively or eval drops under gunbc_ci_fast_lane_witness_eval_budget on a measured run — then re-enroll per-PR discovery and delete this row"
+  },
+  SubstrateLongLaneRow {
     entry: "dag/test/claim/witness_execution_class_live_census_test.dag",
     function: "witness_live_roster_census_holds",
     reason: "~150s measured single-walk eval (valiant-boar-65, 2026-08-08): the CI-0 live-roster classification census — a full floor_discovery_producer walk over witness_discovery_scan_dirs (~1k file reads through the interpreted producer) joined against the enrolled bundle plan. Corpus-breadth census, not a fixture-shaped defect (DESIGN witness-cost ruling: the census is irreducible, the mechanism never is); the mechanism fixtures stay per-PR in witness_execution_class_test",

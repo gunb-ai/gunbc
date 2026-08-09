@@ -26,6 +26,7 @@ use v1_compiler::v1_interpreter::{self, ExecutionMode, InterpContext, Value};
 const PROBE_ENTRY: &str = "src/v2/test/claim/long/realization_sweep_probe_entry.dag";
 const PROBE_RECEIPT_FN: &str = "realization_sweep_entry_receipt";
 const MEMBER_SCAN_FN: &str = "realization_sweep_member_scan_receipt";
+const BODY_CENSUS_FN: &str = "realization_sweep_body_census_receipt";
 const WITNESS_LAYER_ROOTS: &[&str] = &["dag", "src/v2"];
 const DEFAULT_SURVEY_DIR: &str = "target/realization-sweep";
 // Cites gunbc.ci_layer_roots `witness_discovery_scan_dirs` — the enrolled discovery homes the
@@ -235,6 +236,10 @@ fn main() -> ExitCode {
                 receipt_fn = MEMBER_SCAN_FN;
                 i += 1;
             }
+            "--body-census" => {
+                receipt_fn = BODY_CENSUS_FN;
+                i += 1;
+            }
             "--singleton" => {
                 singleton = true;
                 i += 1;
@@ -276,48 +281,59 @@ fn main() -> ExitCode {
 
     let mut histogram: BTreeMap<(String, String), u64> = BTreeMap::new();
     let mut located: BTreeMap<String, u64> = BTreeMap::new();
+    // Exact-identity accounting (operator repair msg_2a8e30e8 item 1): the verdict is SET
+    // equality between the canonical enrolled identity set and the observed identity set at
+    // (entry, declaration_identity) grain, both directions, with duplicates and malformed
+    // rows refused. Counts below are presentation only — never acceptance.
+    let mut canonical_set: std::collections::BTreeSet<(String, String)> =
+        std::collections::BTreeSet::new();
     let mut seen: BTreeMap<(String, String), u64> = BTreeMap::new();
     let mut identity_rows: u64 = 0;
     let mut host_error_rows: u64 = 0;
-    let mut canonical_total: u64 = 0;
-    let mut missing_rows: u64 = 0;
+    let mut malformed_rows: u64 = 0;
     for entry in &entries {
-        let canonical: Vec<String> = if receipt_fn == PROBE_RECEIPT_FN {
+        if receipt_fn == PROBE_RECEIPT_FN {
             match canonical_identities_for(entry) {
-                Ok(ids) => ids,
+                Ok(ids) => {
+                    for f in ids {
+                        canonical_set.insert((entry.clone(), f));
+                    }
+                }
                 Err(e) => {
                     eprintln!("[sweep-host-error] {entry}: canonical roster: {e}");
                     host_error_rows += 1;
-                    Vec::new()
                 }
             }
-        } else {
-            Vec::new()
-        };
-        canonical_total += canonical.len() as u64;
+        }
         match sweep_rows_for_entry(&survey_dir, entry, receipt_fn, singleton) {
             Ok(tsv) => {
                 for line in tsv.lines().filter(|l| !l.is_empty()) {
                     println!("[sweep-row] {line}");
                     let cols: Vec<&str> = line.split('\t').collect();
-                    let phase = cols.get(2).unwrap_or(&"").to_string();
-                    let cause = cols.get(3).unwrap_or(&"").to_string();
-                    let at = cols.get(4).unwrap_or(&"").to_string();
+                    if cols.len() != 5 {
+                        eprintln!(
+                            "[sweep-malformed-row] {entry}: expected 5 columns, got {}: {line}",
+                            cols.len()
+                        );
+                        malformed_rows += 1;
+                        continue;
+                    }
+                    let row_entry = cols[0].to_string();
+                    let fn_name = cols[1].to_string();
+                    let phase = cols[2].to_string();
+                    let cause = cols[3].to_string();
+                    let at = cols[4].to_string();
                     if !at.is_empty() {
                         *located.entry(at).or_insert(0) += 1;
                     }
-                    let fn_name = cols.get(1).unwrap_or(&"").to_string();
-                    if cause == "realization_sweep_attempt_row_missing" {
-                        missing_rows += 1;
-                    }
-                    *seen.entry((entry.clone(), fn_name)).or_insert(0) += 1;
+                    *seen.entry((row_entry, fn_name)).or_insert(0) += 1;
                     *histogram.entry((phase, cause)).or_insert(0) += 1;
                     identity_rows += 1;
                 }
             }
             Err(e) => {
                 // A host-side failure is a counted row, never a silently skipped entry.
-                println!("[sweep-row] {entry}\t\thost\trealization_sweep_host_error");
+                println!("[sweep-row] {entry}\t\thost\trealization_sweep_host_error\t{entry}");
                 eprintln!("[sweep-host-error] {entry}: {e}");
                 *histogram
                     .entry((
@@ -330,6 +346,21 @@ fn main() -> ExitCode {
         }
     }
 
+    let canonical_total: u64 = canonical_set.len() as u64;
+    let observed_set: std::collections::BTreeSet<(String, String)> = seen.keys().cloned().collect();
+    let missing: Vec<&(String, String)> = canonical_set.difference(&observed_set).collect();
+    let unexpected: Vec<&(String, String)> = observed_set.difference(&canonical_set).collect();
+    let missing_rows: u64 = missing.len() as u64;
+    let unexpected_rows: u64 = unexpected.len() as u64;
+    for (e, f) in &missing {
+        println!("[sweep-missing] {e}\t{f}");
+    }
+    for (e, f) in &unexpected {
+        println!("[sweep-unexpected] {e}\t{f}");
+    }
+    for ((e, f), c) in seen.iter().filter(|(_, c)| **c > 1) {
+        println!("[sweep-duplicate] {e}\t{f}\t{c}");
+    }
     let duplicate_rows: u64 = seen.values().filter(|c| **c > 1).map(|c| *c - 1).sum();
     println!(
         "[sweep-summary] entries {} identity_rows {identity_rows} host_error_rows {host_error_rows} canonical_total {canonical_total} duplicate_rows {duplicate_rows} missing_rows {missing_rows}",
@@ -347,15 +378,15 @@ fn main() -> ExitCode {
     // held twenty tests. Member-scan mode is diagnosis-only and carries no accounting verdict.
     if receipt_fn == PROBE_RECEIPT_FN {
         let holds = host_error_rows == 0
+            && malformed_rows == 0
             && duplicate_rows == 0
-            && missing_rows == 0
-            && identity_rows == canonical_total;
+            && canonical_set == observed_set;
         if holds {
             println!("[sweep-verdict] accepted");
             ExitCode::SUCCESS
         } else {
             println!(
-                "[sweep-verdict] refused canonical {canonical_total} accounted {identity_rows} host_errors {host_error_rows} duplicates {duplicate_rows} missing {missing_rows}"
+                "[sweep-verdict] refused canonical {canonical_total} accounted {identity_rows} host_errors {host_error_rows} malformed {malformed_rows} duplicates {duplicate_rows} missing {missing_rows} unexpected {unexpected_rows}"
             );
             ExitCode::FAILURE
         }

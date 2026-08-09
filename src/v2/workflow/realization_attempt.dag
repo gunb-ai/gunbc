@@ -8,9 +8,10 @@ import v2.compiler.infer { infer, InferredTree }
 import v2.compiler.compile { compile_inferred, TranslateTo, TranslateResult, EvalResult, CompileMode }
 import v2.compiler.emit_produced { emit_produced_module_rust }
 import v2.extdeps.languages.rust { rust_target_model_staging }
-import v2.extdeps.languages.dag { dag_language_model }
+import v2.extdeps.languages.dag { dag_language_model, parse_production_emitted_identity_optional, qualified_name_from_module_node }
 import v2.std.collection { list_at_optional }
 import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.qualified_name { QualifiedName }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.communication.medium { Medium }
 import v2.std.diagnostic { Accepted, Rejected, Outcome, Diagnostic, NonEmptyDiagnostics, Textual }
@@ -28,6 +29,8 @@ data attempt_probe_supersession_note: String = "OPERATOR VERDICT (msg_9dec74f7, 
 
 type RealizationPhase
   = PhaseRead
+  | PhaseAssembly
+  | PhaseUnclassified
   | PhaseFrontend
   | PhaseNormalize
   | PhaseResolve
@@ -212,6 +215,8 @@ fn attempt_phase_label(a: EntryRealizationAttempt) -> String {
     V2TranslateSerialized { emitted_nonempty: _ } => "emitted"
     V2RealizationRefused { phase: p, exact_cause: _, located: _ } => match p {
       PhaseRead => "read"
+      PhaseAssembly => "assembly"
+      PhaseUnclassified => "unclassified"
       PhaseFrontend => "frontend"
       PhaseNormalize => "normalize"
       PhaseResolve => "resolve"
@@ -233,28 +238,7 @@ fn attempt_cause(a: EntryRealizationAttempt) -> Optional<Symbol> {
 
 data attempt_assembled_note: String = "The CANONICAL closure attempt (operator seven-findings contract, msg_9dec74f7): exact ingest (real file reads as DagSourceReadWitness rows) -> assemble_program_from_ingest (the SAME multi-module assembly the source-root-ingest gate rides — imports resolve against the closure, finding 2; no fixture bridge, finding 1) -> EXACTLY-ONE identity join against the resolved program for the required declaration name (zero and many both refuse with typed causes — finding 6, never a synthetic wrapper) -> infer (finding 3, its own phase) -> compile_inferred TranslateTo (finding 4: assembly, join, infer, translate each report their own phase; the exact cause Symbol locates the true stage inside assembly refusals). rust_target_model_staging remains the target pending the finding-5 canonicality ruling, surfaced in the sweep receipt."
 
-fn decl_edges_named(root: Node, fn_name: Symbol, acc: List<Node>) -> List<Node> {
-  let here = fold(root.children, init: acc, f: fn(inner, e) {
-    match e.label {
-      Named { name: n } =>
-        if n == fn_name {
-          match first_arrow_in(root: e.target) {
-            Present { value: _ } => concat(inner, [node_synthetic(
-              kind: TypeNode { connective: Conj },
-              children: [Edge { label: Named { name: n }, target: e.target }]
-            )])
-            Absent => inner
-          }
-        } else { inner }
-      _ => inner
-    }
-  })
-  fold(root.children, init: here, f: fn(inner, e) {
-    decl_edges_named(root: e.target, fn_name: fn_name, acc: inner)
-  })
-}
-
-data phase_for_reason_note: String = "Finding 4 (per-stage phase precision): an assembly rejection carries the TRUE originating stage inside its reason symbol — parse/tokenize reasons are PhaseFrontend, body_lowering reasons are PhaseNormalize, resolve reasons are PhaseResolve — so the harness classifies the located reason's family instead of flattening every assembly refusal into one phase. An unrecognized family keeps the harness stage's fallback rather than fabricating a stage (§5: never a guessed label)."
+data phase_for_reason_note: String = "Per-stage phase precision (finding 4, tightened per operator repair msg_2a8e30e8 item 3): an assembly rejection carries the TRUE originating stage inside its reason symbol — parse/tokenize reasons are PhaseFrontend, body_lowering reasons are PhaseNormalize, resolve reasons are PhaseResolve — and an UNRECOGNIZED family is PhaseUnclassified, never a guessed stage and never a fallback that silently lands in resolve. Resolve is not the other bucket."
 
 fn phase_for_reason(reason: Symbol, fallback: RealizationPhase) -> RealizationPhase {
   let lexeme = symbol_lexeme(sym: reason)
@@ -267,12 +251,56 @@ fn phase_for_reason(reason: Symbol, fallback: RealizationPhase) -> RealizationPh
   } else if starts_with(s: lexeme, prefix: "infer_") || starts_with(s: lexeme, prefix: "type_") {
     PhaseInfer
   } else {
-    fallback
+    PhaseUnclassified
   }
 }
 
-fn attempt_joined(program: Node, fn_name: Symbol, entry: String) -> EntryRealizationAttempt {
-  let joined = decl_edges_named(root: program, fn_name: fn_name, acc: [])
+data attempt_exact_join_note: String = "Exact-identity join (operator repair msg_2a8e30e8 item 2 — MORE URGENT than the next wall, because a bare-name corpus-wide query can green the WRONG declaration): the required test identity is (entry module identity x declaration identity). The entry module identity comes from the admission subject the entry's own source derived; the join first selects the exactly-one program root whose QualifiedName equals it, then the exactly-one declaration edge named fn_name WITHIN that module subtree, and passes the REAL declaration edge target onward — no bare-name query over the whole assembled program, no synthetic wrapper node."
+
+fn module_roots_matching(program: Node, module_qn: QualifiedName) -> List<Node> {
+  fold(program.children, init: [], f: fn(acc, e) {
+    match qualified_name_from_module_node(root: e.target) {
+      Accepted { value: qn, diagnostics: _ } =>
+        if qn == module_qn { concat(acc, [e.target]) } else { acc }
+      Rejected { diagnostics: _ } => acc
+    }
+  })
+}
+
+fn decl_targets_named_in(root: Node, fn_name: Symbol) -> List<Node> {
+  let here = fold(root.children, init: [], f: fn(acc, e) {
+    match e.label {
+      Named { name: n } =>
+        if n == fn_name {
+          match first_arrow_in(root: e.target) {
+            Present { value: _ } => concat(acc, [e.target])
+            Absent => acc
+          }
+        } else { acc }
+      _ => acc
+    }
+  })
+  fold(root.children, init: here, f: fn(acc, e) {
+    concat(acc, decl_targets_named_in(root: e.target, fn_name: fn_name))
+  })
+}
+
+fn attempt_joined(program: Node, module_qn: QualifiedName, fn_name: Symbol, entry: String) -> EntryRealizationAttempt {
+  let roots = module_roots_matching(program: program, module_qn: module_qn)
+  if length(xs: roots) == 0 {
+    attempt_refused(entry: entry, phase: PhaseAssembly, cause: ^realization_attempt_entry_module_absent)
+  } else if length(xs: roots) > 1 {
+    attempt_refused(entry: entry, phase: PhaseAssembly, cause: ^realization_attempt_entry_module_ambiguous)
+  } else {
+    match list_at_optional(xs: roots, index: 0) {
+      Absent => attempt_refused(entry: entry, phase: PhaseAssembly, cause: ^realization_attempt_entry_module_absent)
+      Present { value: module_root } => attempt_joined_in_module(module_root: module_root, fn_name: fn_name, entry: entry)
+    }
+  }
+}
+
+fn attempt_joined_in_module(module_root: Node, fn_name: Symbol, entry: String) -> EntryRealizationAttempt {
+  let joined = decl_targets_named_in(root: module_root, fn_name: fn_name)
   if length(xs: joined) == 0 {
     attempt_refused(entry: entry, phase: PhaseResolve, cause: ^realization_attempt_identity_absent)
   } else if length(xs: joined) > 1 {
@@ -317,7 +345,7 @@ fn attempt_assembled(
       attempt_refused_at(entry: entry, phase: phase_for_reason(reason: cause, fallback: PhaseResolve), cause: cause, located: first_located_file(ds: ds))
     }
     Accepted { value: program, diagnostics: _ } =>
-      attempt_joined(program: program, fn_name: fn_name, entry: entry)
+      attempt_joined(program: program, module_qn: admission.subject.name, fn_name: fn_name, entry: entry)
   }
 }
 
@@ -359,6 +387,54 @@ fn no_attempt_rows() -> List<EntryRealizationAttempt> {
   []
 }
 
+// CI2-0 normalize-wall sizing census (parent directive msg_0a017e48): after the partial body
+// lowering normalize performs, a retained shell still carries its grammar production identity —
+// so the production identities remaining under a joined test-fn declaration ARE the exact
+// construct set the general-body-producer fragment must cover for that body. Walking the joined
+// decl subtree and counting emitted identities buckets the wrapper-retained population by
+// construct, with no second parser and no text scan.
+fn census_collect(root: Node, acc: List<String>) -> List<String> {
+  let here = match parse_production_emitted_identity_optional(node: root) {
+    Present { value: id } => concat(acc, [symbol_lexeme(sym: id)])
+    Absent => acc
+  }
+  fold(root.children, init: here, f: fn(inner, e) { census_collect(root: e.target, acc: inner) })
+}
+
+fn census_lines_for_decl(decl: Node, entry: String, fn_name: Symbol) -> List<String> {
+  fold_list(xs: census_collect(root: decl, acc: []), empty: no_census_lines(), cons: fn(acc, prod) {
+    concat(acc, [concat(entry, concat("	", concat(symbol_lexeme(sym: fn_name), concat("	", prod))))])
+  })
+}
+
+fn no_census_lines() -> List<String> {
+  []
+}
+
+fn census_rows(
+  ingest: SourceRootIngest,
+  admission: Admission,
+  fn_names: List<Symbol>,
+  entry: String
+) -> List<String> {
+  match assemble_program_from_ingest(ingest: capture_markers_ingest(ingest: ingest), admission: admission, lm: dag_language_model()) {
+    Rejected { diagnostics: ds } =>
+      [concat(entry, concat("	(census)	assembly_refused_", symbol_lexeme(sym: first_located_cause(ds: ds))))]
+    Accepted { value: program, diagnostics: _ } =>
+      match list_at_optional(xs: module_roots_matching(program: program, module_qn: admission.subject.name), index: 0) {
+        Absent => [concat(entry, "	(census)	entry_module_absent")]
+        Present { value: module_root } =>
+          fold_list(xs: fn_names, empty: no_census_lines(), cons: fn(acc, fn_name) {
+            let joined = decl_targets_named_in(root: module_root, fn_name: fn_name)
+            match list_at_optional(xs: joined, index: 0) {
+              Absent => concat(acc, [concat(entry, concat("	", concat(symbol_lexeme(sym: fn_name), "	identity_absent")))])
+              Present { value: decl } => concat(acc, census_lines_for_decl(decl: decl, entry: entry, fn_name: fn_name))
+            }
+          })
+      }
+  }
+}
+
 fn attempt_closure_rows(
   ingest: SourceRootIngest,
   admission: Admission,
@@ -368,7 +444,7 @@ fn attempt_closure_rows(
   match assemble_program_from_ingest(ingest: capture_markers_ingest(ingest: ingest), admission: admission, lm: dag_language_model()) {
     Rejected { diagnostics: ds } => {
       let cause = first_located_cause(ds: ds)
-      let phase = phase_for_reason(reason: cause, fallback: PhaseResolve)
+      let phase = phase_for_reason(reason: cause, fallback: PhaseAssembly)
       let located = first_located_file(ds: ds)
       fold_list(xs: fn_names, empty: no_attempt_rows(), cons: fn(acc, _name) {
         concat(acc, [attempt_refused_at(entry: entry, phase: phase, cause: cause, located: located)])
@@ -376,7 +452,7 @@ fn attempt_closure_rows(
     }
     Accepted { value: program, diagnostics: _ } =>
       fold_list(xs: fn_names, empty: no_attempt_rows(), cons: fn(acc, name) {
-        concat(acc, [attempt_joined(program: program, fn_name: name, entry: entry)])
+        concat(acc, [attempt_joined(program: program, module_qn: admission.subject.name, fn_name: name, entry: entry)])
       })
   }
 }
