@@ -13,7 +13,7 @@ import gunbc.roadmap_status { DerivableLine, Unsigned }
 import gunbc.roadmap_publish {
   PublicationReceiptSource,
   ReceiptSourceAbsent, ReceiptSourcePresent, ReceiptSourceUnreadable,
-  PublicationSubject,
+  RoadmapPublicationSubject,
   PublicationSubjectObservation,
   PublicationSubjectObserved, PublicationSubjectUnobserved,
   PublicationOutcome, PublicationBound,
@@ -150,12 +150,12 @@ import gunbc.git_diff_change_window { git_diff_window_absent_identity }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn nid(s: String) -> RoadmapNodeId { s }
+fn roadmap_belt_actuate_nid(s: String) -> RoadmapNodeId { s }
 
 fn ready_node(id: String) -> RoadmapNode {
   RoadmapNode {
     identity: "rnfx_RWT4XRCGS4GR90YZXK0Y" as RoadmapNodeIdentity,
-    node: nid(s: id),
+    node: roadmap_belt_actuate_nid(s: id),
     line: DerivableLine { prs: [1], title: id, description: "" },
     carriers: [],
     sizing: Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
@@ -442,7 +442,7 @@ test fn witness_find_node_misses() -> Bool {
 fn owned_node(id: String, owner: String) -> RoadmapNode {
   RoadmapNode {
     identity: "rnfx_F2RWDMNTDKS0ZR1P4VNZ" as RoadmapNodeIdentity,
-    node: nid(s: id),
+    node: roadmap_belt_actuate_nid(s: id),
     line: DerivableLine { prs: [1], title: id, description: "" },
     carriers: [],
     sizing: Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
@@ -863,7 +863,7 @@ fn completed_attempt_progress(node_id: String) -> WorkflowAttemptProgress {
     },
     verification_source: VerificationReceiptAbsent,
     publication_subject: PublicationSubjectObserved {
-      subject: PublicationSubject {
+      subject: RoadmapPublicationSubject {
         node_id: "pub-fixture-node",
         attempt_key: "feedfacefeedface",
         repository: Repository {
@@ -940,7 +940,7 @@ test fn agent_incomplete_attempt_defers_verification() -> Bool {
       verification_selection: SelectionAbsent,
       verification_source: VerificationReceiptAbsent,
       publication_subject: PublicationSubjectObserved {
-        subject: PublicationSubject {
+        subject: RoadmapPublicationSubject {
           node_id: "pub-fixture-node",
           attempt_key: "feedfacefeedface",
           repository: Repository {
@@ -1312,8 +1312,8 @@ data belt_publish_producer_witness_note: String = "THE PRODUCER'S DECISION, EXER
 data belt_pub_head: CommitSha = "1111111111111111111111111111111111111111"
 data belt_pub_other_head: CommitSha = "2222222222222222222222222222222222222222"
 
-fn belt_pub_subject(head: CommitSha, node_id: String) -> PublicationSubject {
-  PublicationSubject {
+fn belt_pub_subject(head: CommitSha, node_id: String) -> RoadmapPublicationSubject {
+  RoadmapPublicationSubject {
     node_id: node_id,
     attempt_key: "feedfacefeedface",
     repository: Repository {

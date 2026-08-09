@@ -93,7 +93,7 @@ fn devicemotion_may_be_dispatched(p: DeviceMotionDispatchPrecondition) -> Bool {
   p.accelerometer_permission_granted && p.gyroscope_permission_granted
 }
 
-data accelerometer_permission_name: String = "accelerometer"
+data device_motion_accelerometer_permission_name: String = "accelerometer"
 data gyroscope_permission_name: String = "gyroscope"
 
 data permission_state_note: String = "The spec's own PermissionState enum, returned by the static requestPermission() declared on BOTH DeviceOrientationEvent and DeviceMotionEvent as `static Promise<PermissionState> requestPermission()`. Recorded because a consumer must distinguish a denied answer from an unasked question, and because an engine that does not expose the method has not thereby made permission unnecessary — it has only made the spec's asking route unavailable, which is a fact about that engine and belongs in its own module."

@@ -20,7 +20,7 @@ import gunbc.worker_lifecycle { WorkerProcessEvidence, WorkerProcessExited }
 import gunbc.roadmap_publish {
   PublicationReceiptSource,
   ReceiptSourceAbsent, ReceiptSourcePresent, ReceiptSourceUnreadable,
-  PublicationSubject,
+  RoadmapPublicationSubject,
   PublicationSubjectObserved,
 }
 import extdeps.github.github { Repository }
@@ -744,7 +744,7 @@ fn verify_lamp_evidence(receipt: String) -> WorkflowAttemptEvidence {
       VerificationReceiptPresent { text: receipt }
     },
     publication_subject: PublicationSubjectObserved {
-      subject: PublicationSubject {
+      subject: RoadmapPublicationSubject {
         node_id: "pub-fixture-node",
         attempt_key: "feedfacefeedface",
         repository: Repository {

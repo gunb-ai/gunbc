@@ -84,7 +84,7 @@ type RunnerSlotConnectivitySnapshot {
 
 type HostReachAdmissionRefusedCause { reason: NonEmptyStr }
 
-type RunnerReplacementCause
+type RecoveryRunnerReplacementCause
   = RemoteRegistrationOfflineWhileLocalAlive
   | RemoteRegistrationAbsentWhileLocalAlive
   | AcquireJobWedgeSessionDead
@@ -120,7 +120,7 @@ type RunnerConnectivityAction
   | RunnerIncarnationReplace {
       slot: RunnerSlotIdentity,
       from: RunnerLocalIncarnation,
-      cause: RunnerReplacementCause,
+      cause: RecoveryRunnerReplacementCause,
     }
   | RunnerRepairRefused {
       slot: RunnerSlotIdentity,
@@ -173,7 +173,7 @@ data runner_connectivity_rebind_healthy_note: Disposition = Scaffold {
 
 data timestamp_comparison_scaffold_note: String = "HONEST SCAFFOLD: Timestamp is String today and this module compares equality only until PR A lands a parsed observation clock. Freshness and cooldown therefore use same-moment equality as the zero-age case in witnesses and refuse when act_at differs from confirmed_at without a parseable ordering — the wall is real, the parser is deferred to the observation carrier."
 
-fn runner_slot_unit_name(slot: RunnerSlotIdentity) -> NonEmptyStr {
+fn recovery_runner_slot_unit_name(slot: RunnerSlotIdentity) -> NonEmptyStr {
   let idx = if slot.slot_index < 10 {
     concat("0", slot.slot_index as String)
   } else {
@@ -235,7 +235,7 @@ fn repair_decision_receipt_from_prior(
 fn replacement_cause_for_watchdog(
   reg: RunnerRemoteRegistration,
   silence_seconds: Duration,
-) -> RunnerReplacementCause {
+) -> RecoveryRunnerReplacementCause {
   if match reg {
     RunnerRemoteOffline => true
     RunnerRemoteAbsent => true
@@ -248,7 +248,7 @@ fn replacement_cause_for_watchdog(
   }
 }
 
-fn replacement_cause_for_remote(reg: RunnerRemoteRegistration) -> RunnerReplacementCause {
+fn replacement_cause_for_remote(reg: RunnerRemoteRegistration) -> RecoveryRunnerReplacementCause {
   match reg {
     RunnerRemoteOffline => RemoteRegistrationOfflineWhileLocalAlive
     RunnerRemoteAbsent => RemoteRegistrationAbsentWhileLocalAlive

@@ -405,7 +405,7 @@ data offers_the_expected_head_note: String = "The single question a downstream o
 
 data publication_subject_note: String = "ONE SUBJECT VALUE, CARRIED BY EVERY STAGE, BECAUSE THE ALTERNATIVE ALREADY FAILED HERE. A publication judgment is about one exact commit, on one branch, of one repository, for one attempt of one node. Before this type those six facts travelled as separate parameters that each stage re-derived, which is how the receipt consumer came to hold a stored head and a rendered sentence and no way to tell whether either was about the row it was painting.\\n\\nTHE REPOSITORY IS THE GITHUB IDENTITY, not the derived clone URL. The URL is one projection of owner and name (extdeps.github.github repository_remote_url_note) and projecting it is lossy in the direction that matters: two Repository values can share a URL spelling, and a consumer that stored the URL could not ask the pull-request API anything. The subject stores what identifies the repository and derives the URL where a git remote is needed.\\n\\nWHY expected_base IS PART OF THE SUBJECT and not a loose argument: adjudicate_publication uses it to decide which pull requests are even candidates, so two runs with different bases can reach different outcomes about the same head. A receipt that did not record it would be unfalsifiable about the question it answered."
 
-type PublicationSubject {
+type RoadmapPublicationSubject {
   node_id: String
   attempt_key: String
   repository: Repository
@@ -414,14 +414,14 @@ type PublicationSubject {
   expected_head: CommitSha
 }
 
-fn publication_subject_remote(subject: PublicationSubject) -> NonEmptyStr {
+fn publication_subject_remote(subject: RoadmapPublicationSubject) -> NonEmptyStr {
   github_https_clone_url(repo: subject.repository)
 }
 
 data publication_subject_observation_note: String = "THE CONSUMER CANNOT CHECK A RECEIPT AGAINST A SUBJECT IT DOES NOT HAVE, so not having one is a state and gets a name. The exact head of an attempt is READ from the attempt's worktree, and that read can fail: the worktree may be gone, git may refuse, the attempt may exist only as a branch name. Under those conditions a consumer holds a receipt and nothing to compare it to.\\n\\nTHE ARM THAT MATTERS IS UNOBSERVED, and it must not resolve to `treat the receipt as evidence`. That is the exact move this whole module was rewritten to eliminate, arriving through the back door: a projection that cannot establish its subject and paints from the document anyway has looked the answer up by path, which is the branch lookup with a file name standing in for the branch. So an unobserved subject REFUSES, and the refusal names what could not be read.\\n\\nIt is deliberately not an Optional. `no subject` and `subject present` are the two cases, but the reason the subject is missing is what a reader acts on, and an Optional discards it at the moment it is known."
 
 type PublicationSubjectObservation
-  = PublicationSubjectObserved { subject: PublicationSubject }
+  = PublicationSubjectObserved { subject: RoadmapPublicationSubject }
   | PublicationSubjectUnobserved { reason: String }
 
 data publication_receipt_outcome_note: String = "THE RECEIPT PRESERVES THE VARIANT'S FIELDS, NOT A KEY AND A SENTENCE. An earlier cut of this module serialized every PublicationOutcome to an outcome key plus publication_detail's rendered prose, discarding pr_number, pr_head, url, draft, the observed remote head, and the ambiguous sets - all of which existed in the typed value at the moment of serialization.\\n\\nWHAT THAT COST, concretely and not hypothetically: Review's whole input is the pull-request binding this module establishes. A Review producer reading that receipt could recover the PR number only by parsing an English sentence, or by asking GitHub again and re-deriving a fact Publication had already decided. Re-deriving it is worse than it sounds, because the second query can disagree with the first - which is the divergence this module exists to catch, reintroduced by the carrier meant to record it.\\n\\nSO detail IS A PROJECTION, NEVER DURABLE AUTHORITY. publication_detail renders from these fields; nothing reads the rendered string back. That also collapses the three-way string fork the earlier cut carried - an outcome-key writer, a key allow-list, and a key-to-segment-state mapper, three places spelling the same eight constructors - into one coproduct that a consumer matches exhaustively."
@@ -504,12 +504,12 @@ fn publication_offers_the_expected_head(outcome: PublicationOutcome) -> Bool {
 
 
 type PublicationReceipt {
-  subject: PublicationSubject
+  subject: RoadmapPublicationSubject
   outcome: PublicationReceiptOutcome
 }
 
 fn publication_receipt_of(
-  subject: PublicationSubject,
+  subject: RoadmapPublicationSubject,
   outcome: PublicationOutcome,
 ) -> PublicationReceipt {
   PublicationReceipt {
@@ -587,7 +587,7 @@ fn publication_repository_json(repo: Repository) -> JsonValue {
   ])
 }
 
-fn publication_subject_json(subject: PublicationSubject) -> JsonValue {
+fn publication_subject_json(subject: RoadmapPublicationSubject) -> JsonValue {
   json_object(members: [
     json_kv(key: "node_id", value: json_string(s: subject.node_id)),
     json_kv(key: "attempt_key", value: json_string(s: subject.attempt_key)),
@@ -818,7 +818,7 @@ fn publication_receipt_outcome_decode(doc: JsonValue) -> PublicationOutcomeDecod
 data repository_survives_the_round_trip_note: String = "THE REPOSITORY IS STORED, NOT RECONSTRUCTED. An earlier cut of this decoder wrote only owner and name and then rebuilt the rest: full_name by concatenation, private as false, and default_branch from the subject's expected_base. The last one is the defect and the first two are how it hid - for this repository the base IS the default branch, so the round trip compared equal and nothing was visibly wrong.\\n\\nWHERE IT WOULD HAVE BITTEN: a subject whose expected_base is not the default branch. The decoded repository would then carry a default_branch nobody recorded, the subject comparison would find a repository mismatch, and a perfectly good receipt would be reported as being about another subject - a fabricated value causing a false refusal in the one function whose whole job is to tell those apart.\\n\\nSo all five fields are written and read back. The receipt records the Repository the judgment was made against, which is what a later reader needs, rather than a plausible reconstruction of it."
 
 type PublicationSubjectDecode
-  = SubjectDecoded { subject: PublicationSubject }
+  = SubjectDecoded { subject: RoadmapPublicationSubject }
   | SubjectUndecodable { reason: String }
 
 fn subject_member_missing(member: String) -> PublicationSubjectDecode {
@@ -884,7 +884,7 @@ fn publication_subject_decode(doc: JsonValue) -> PublicationSubjectDecode {
                               subject_member_missing(member: "expected_head")
                             ReceiptMemberRead { value: head } =>
                               SubjectDecoded {
-                                subject: PublicationSubject {
+                                subject: RoadmapPublicationSubject {
                                   node_id: node_id,
                                   attempt_key: attempt_key,
                                   repository: repository,
@@ -962,8 +962,8 @@ type PublicationSubjectMatch
   | SubjectDiffers { field: NonEmptyStr, expected: String, found: String }
 
 fn publication_receipt_subject_match(
-  expected: PublicationSubject,
-  found: PublicationSubject,
+  expected: RoadmapPublicationSubject,
+  found: RoadmapPublicationSubject,
 ) -> PublicationSubjectMatch {
   if found.node_id != expected.node_id {
     SubjectDiffers { field: "node_id", expected: expected.node_id, found: found.node_id }
@@ -1026,7 +1026,7 @@ type PublicationReceiptSource
   | ReceiptSourceUnreadable { detail: String }
 
 fn publication_evidence_for(
-  expected: PublicationSubject,
+  expected: RoadmapPublicationSubject,
   source: PublicationReceiptSource,
 ) -> PublicationEvidence {
   match source {

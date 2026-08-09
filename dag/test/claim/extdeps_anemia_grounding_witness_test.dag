@@ -20,7 +20,7 @@ import extdeps.cpu.types {
   CpuModelCatalogRow, CpuSocket, LandGridArray,
 }
 import extdeps.toolchain.types { Aarch64 }
-import extdeps.vendor.ampere { ampere }
+import extdeps.vendor.ampere { ampere_vendor }
 import std.measure { watt, watt_count, hardware_thread_count, hertz }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -108,7 +108,7 @@ test fn w_cpu_catalog_row_tdp_not_bare_int() -> Bool {
   let row = CpuModelCatalogRow {
     model_number: "TEST",
     oem_listing_id: none,
-    vendor: ampere,
+    vendor: ampere_vendor,
     architecture: Aarch64,
     cores: 1,
     threads: hardware_thread_count(1),

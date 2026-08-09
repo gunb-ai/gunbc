@@ -5,7 +5,7 @@ import std.measure { ByteSize, byte_size, celsius, hardware_thread_count, hertz,
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.toolchain.types { Aarch64 }
-import extdeps.vendor.ampere { ampere }
+import extdeps.vendor.ampere { ampere_vendor }
 import extdeps.cpu.types {
   ProcessorThermalLimits,
   CpuL1CacheGeometry,
@@ -130,7 +130,7 @@ data ampere_altra_classic_l3_cache_citations: List<CacheGeometryCitation> = [
 data altra_max_m12830_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   model_number: "M128-30",
   oem_listing_id: none,
-  vendor: ampere,
+  vendor: ampere_vendor,
   architecture: Aarch64,
   cores: 128,
   threads: hardware_thread_count(128),
@@ -148,7 +148,7 @@ data altra_max_m12830_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
 data altra_q6430_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   model_number: "Q64-30",
   oem_listing_id: "AC-106418002",
-  vendor: ampere,
+  vendor: ampere_vendor,
   architecture: Aarch64,
   cores: 64,
   threads: hardware_thread_count(64),

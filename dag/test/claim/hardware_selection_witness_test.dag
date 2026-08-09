@@ -1,6 +1,6 @@
 module test.claim.hardware_selection
 
-import extdeps.vendor.ampere { ampere }
+import extdeps.vendor.ampere { ampere_vendor }
 import extdeps.vendor.sk_hynix { sk_hynix }
 import extdeps.memory.types {
   DramModuleCatalogRow, Registered, dram_generation_ddr4, bit_width,
@@ -93,19 +93,19 @@ data mod_1rx8_32g_impossible: DramModuleCatalogRow = DramModuleCatalogRow {
 }
 
 data mem_1rx8_2dpc: MemoryConfig = MemoryConfig {
-  module: mod_1rx8_16g, jedec: ddr4_generation_catalog, dimms_per_channel: 2, power_per_chip: product.hardware_selection.milliwatt(count: 400), price_per_stick: money_amount_micro(count: 120000000)
+  module: mod_1rx8_16g, jedec: ddr4_generation_catalog, dimms_per_channel: 2, power_per_chip: std.measure.milliwatt(count: 400), price_per_stick: money_amount_micro(count: 120000000)
 }
 data mem_2rx8_2dpc: MemoryConfig = MemoryConfig {
-  module: mod_2rx8_16g, jedec: ddr4_generation_catalog, dimms_per_channel: 2, power_per_chip: product.hardware_selection.milliwatt(count: 400), price_per_stick: money_amount_micro(count: 120000000)
+  module: mod_2rx8_16g, jedec: ddr4_generation_catalog, dimms_per_channel: 2, power_per_chip: std.measure.milliwatt(count: 400), price_per_stick: money_amount_micro(count: 120000000)
 }
 data mem_1rx8_1dpc: MemoryConfig = MemoryConfig {
-  module: mod_1rx8_16g, jedec: ddr4_generation_catalog, dimms_per_channel: 1, power_per_chip: product.hardware_selection.milliwatt(count: 400), price_per_stick: money_amount_micro(count: 120000000)
+  module: mod_1rx8_16g, jedec: ddr4_generation_catalog, dimms_per_channel: 1, power_per_chip: std.measure.milliwatt(count: 400), price_per_stick: money_amount_micro(count: 120000000)
 }
 
 data cpu_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   model_number: "GENERIC-ARM-64C",
   oem_listing_id: none,
-  vendor: ampere,
+  vendor: ampere_vendor,
   architecture: Aarch64,
   cores: 64,
   threads: hardware_thread_count(64),

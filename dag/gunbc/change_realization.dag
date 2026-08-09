@@ -51,7 +51,7 @@ data change_classification_refusal_note: String = "A staged replacement whose in
 type ChangeRefusalCause
   = StagedReplacementIntermediatesUndeclared { subject_label: NonEmptyStr }
 
-type ChangeClassification
+type ChangeRealizationClassification
   = ChangeRealized { realization: ChangeRealization }
   | ChangeRefused { cause: ChangeRefusalCause }
 
@@ -60,7 +60,7 @@ fn classify_change(
   subject_label: NonEmptyStr,
   continuity: AddressContinuity,
   declared_intermediates: StagedIntermediates?,
-) -> ChangeClassification {
+) -> ChangeRealizationClassification {
   match subject {
     ScmRefSubject => ChangeRealized { realization: AtomicCompareAndSwap }
     SourceDeclarationSubject => ChangeRealized { realization: AtomicTreeTransformation }

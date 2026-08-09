@@ -29,7 +29,7 @@ import extdeps.gpu.types {
 import extdeps.vendor.nvidia { nvidia }
 import extdeps.vendor.amd { amd }
 import extdeps.vendor.intel { intel }
-import extdeps.vendor.ampere { ampere }
+import extdeps.vendor.ampere { ampere_vendor }
 import extdeps.memory.types { MemoryFacts, Hbm }
 import std.measure { byte_size }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -184,10 +184,10 @@ test fn w_gpu_facts_structured_compute_capability() -> Bool {
 }
 
 test fn w_ampere_capability_label_refuses_fail_closed() -> Bool {
-  let cap = GpuComputeCapability { vendor: ampere, major: 1, minor: 0 }
+  let cap = GpuComputeCapability { vendor: ampere_vendor, major: 1, minor: 0 }
   match gpu_compute_capability_sm_label(cap) {
     GpuCapabilityLabelOk { label: _ } => false
-    GpuCapabilityLabelRejected { reason: r } => r.vendor == ampere
+    GpuCapabilityLabelRejected { reason: r } => r.vendor == ampere_vendor
   }
 }
 
