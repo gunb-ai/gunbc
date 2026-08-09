@@ -73,6 +73,25 @@ Both compiles exit **1**, control included, because the control's 12
 pre-existing annotation-grain diagnostics are themselves hard. Exit status does
 not discriminate between the two trees; only the count and the per-name join do.
 
+## The reproducer claim is itself verified
+
+"Regenerable" was asserted here once while the two scripts were absent from the
+tree — `.gitignore`'s repo-wide `*.py` rule dropped them silently (review 50719
+caught it). Both now carry negation entries beside the existing exemptions, and
+the claim is checked the way the rest of this lane's claims are — by execution
+against tracked content only:
+
+```sh
+git archive HEAD | tar -x -C $W/src          # ONLY what a fresh clone gets
+python3 $W/src/docs/plans/import-strip-measurement/strip_imports.py …
+python3 $W/src/docs/plans/import-strip-measurement/classify_residual.py …
+```
+
+Result: the manifest and `import-strip-residual-ledger.tsv` are reproduced
+**byte-identically**, and the classifier prints the reconciliation
+(`3,062 = 12 + 3,050`, ledger rows 3,050, OK). A reproducer that cannot be run
+from a clean checkout is a receipt with a story attached, not a reproducer.
+
 ## Receipts
 
 | file | what it is |
