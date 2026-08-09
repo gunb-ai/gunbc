@@ -161,36 +161,86 @@ test fn spark_unreadable_container_refuses() -> Bool {
 
 // ── IAM delta controls ────────────────────────────────────────────────────────────────────
 
-fn spark_owned_universe() -> List<String> {
-  ["serviceAccount:owned-a@example.iam.gserviceaccount.com", "serviceAccount:owned-b@example.iam.gserviceaccount.com"]
+fn spark_accessor_role() -> String { "roles/secretmanager.secretAccessor" }
+fn spark_admin_role() -> String { "roles/secretmanager.admin" }
+fn spark_owned_a() -> String { "serviceAccount:owned-a@example.iam.gserviceaccount.com" }
+fn spark_owned_b() -> String { "serviceAccount:owned-b@example.iam.gserviceaccount.com" }
+fn spark_foreign() -> String { "user:someone-elses-grant@example.com" }
+
+fn spark_bcell(role: String, member: String) -> GcpIamBindingCell {
+  GcpIamBindingCell { role: role, member: member, condition: none }
 }
 
-// CONTROL 12, the one that matters most: a member OUTSIDE the owned universe is preserved, and is
-// neither removed nor treated as drift. A blind SetIamPolicy drops exactly this member, which is
-// the defect the deleted pattern shipped.
+// The owned universe is a set of CELLS. This model owns owned-a and owned-b under the accessor
+// role only; it deliberately does NOT own either of them under admin, so an admin binding on a
+// member we otherwise recognise is still someone else's grant.
+fn spark_owned_universe() -> List<GcpIamBindingCell> {
+  [
+    spark_bcell(role: spark_accessor_role(), member: spark_owned_a()),
+    spark_bcell(role: spark_accessor_role(), member: spark_owned_b())
+  ]
+}
+
+// CONTROL 12, the one that matters most: a cell OUTSIDE the owned universe is preserved, and is
+// neither removed nor treated as drift. A blind SetIamPolicy drops exactly this cell, which is the
+// defect the deleted pattern shipped.
 test fn spark_iam_preserves_unrelated_bindings() -> Bool {
-  let observed = ["serviceAccount:owned-a@example.iam.gserviceaccount.com", "user:someone-elses-grant@example.com"]
   let d = spark_iam_delta(
-    observed: observed,
-    desired_owned: ["serviceAccount:owned-a@example.iam.gserviceaccount.com"],
+    observed: [
+      spark_bcell(role: spark_accessor_role(), member: spark_owned_a()),
+      spark_bcell(role: spark_accessor_role(), member: spark_foreign())
+    ],
+    desired_owned: [spark_bcell(role: spark_accessor_role(), member: spark_owned_a())],
     owned_universe: spark_owned_universe())
   d.preserve.length() == 1
-    && spark_member_in(m: "user:someone-elses-grant@example.com", xs: d.preserve)
+    && spark_cell_in(c: spark_bcell(role: spark_accessor_role(), member: spark_foreign()), xs: d.preserve)
     && d.remove.length() == 0
     && d.add.length() == 0
 }
 
-// CONTROL 13: a stale OWNED member is removed, and a missing desired member is added. Removal is
-// scoped to the owned universe, so this proves the diff acts where it has authority.
+// CONTROL 13: a stale OWNED cell is removed, and a missing desired cell is added. Removal is scoped
+// to the owned universe, so this proves the diff acts where it has authority.
 test fn spark_iam_removes_stale_owned_and_adds_missing() -> Bool {
   let d = spark_iam_delta(
-    observed: ["serviceAccount:owned-b@example.iam.gserviceaccount.com"],
-    desired_owned: ["serviceAccount:owned-a@example.iam.gserviceaccount.com"],
+    observed: [spark_bcell(role: spark_accessor_role(), member: spark_owned_b())],
+    desired_owned: [spark_bcell(role: spark_accessor_role(), member: spark_owned_a())],
     owned_universe: spark_owned_universe())
   d.add.length() == 1
-    && spark_member_in(m: "serviceAccount:owned-a@example.iam.gserviceaccount.com", xs: d.add)
+    && spark_cell_in(c: spark_bcell(role: spark_accessor_role(), member: spark_owned_a()), xs: d.add)
     && d.remove.length() == 1
-    && spark_member_in(m: "serviceAccount:owned-b@example.iam.gserviceaccount.com", xs: d.remove)
+    && spark_cell_in(c: spark_bcell(role: spark_accessor_role(), member: spark_owned_b()), xs: d.remove)
+}
+
+// CONTROL 13b: THE CLAIM THE MEMBER-GRAIN DIFF COULD NOT MAKE. The same member is observed under
+// admin and desired under accessor. At member grain this reads "already present, nothing to do" and
+// the admin binding survives a reconcile that meant to demote it. At cell grain the accessor cell
+// is an add, and the admin cell is preserved rather than removed because this model does not own
+// that member under that role -- so the demotion is visible AND the reconcile stays inside its
+// authority instead of silently revoking a grant someone else made.
+test fn spark_iam_distinguishes_two_roles_for_one_member() -> Bool {
+  let d = spark_iam_delta(
+    observed: [spark_bcell(role: spark_admin_role(), member: spark_owned_a())],
+    desired_owned: [spark_bcell(role: spark_accessor_role(), member: spark_owned_a())],
+    owned_universe: spark_owned_universe())
+  d.add.length() == 1
+    && spark_cell_in(c: spark_bcell(role: spark_accessor_role(), member: spark_owned_a()), xs: d.add)
+    && d.remove.length() == 0
+    && d.preserve.length() == 1
+    && spark_cell_in(c: spark_bcell(role: spark_admin_role(), member: spark_owned_a()), xs: d.preserve)
+}
+
+// CONTROL 13c: a condition is part of cell identity. The same role and member under a DIFFERENT
+// condition is a different grant, so an unconditional observed cell does not satisfy a desired
+// conditional one. Collapsing these would let a time-boxed grant be silently satisfied by a
+// permanent one already in place.
+test fn spark_iam_treats_a_condition_as_part_of_identity() -> Bool {
+  let bounded = GcpIamBindingCell {
+    role: spark_accessor_role(),
+    member: spark_owned_a(),
+    condition: IamCondition { title: "until-cutover", expression: "request.time < timestamp(\"2026-09-01T00:00:00Z\")", description: none }
+  }
+  !spark_cell_eq(a: bounded, b: spark_bcell(role: spark_accessor_role(), member: spark_owned_a()))
+    && spark_cell_eq(a: bounded, b: bounded)
 }
 
 // CONTROL 14: a write with no observed etag refuses. Without it a concurrent update is overwritten
@@ -349,19 +399,38 @@ fn spark_srv5_secret() -> NonEmptyStr { "spark-srv5-administrator" }
 fn spark_srv6_secret() -> NonEmptyStr { "spark-srv6-administrator" }
 fn spark_srv7_secret() -> NonEmptyStr { "spark-srv7-administrator" }
 
+// SYNTHETIC fixture roster and grant context. These describe a fictional grant; they observe no
+// live approval and stand for no real authorization.
+fn spark_fixture_roster() -> SparkRosterIdentity {
+  SparkRosterIdentity { roster: "spark-fixture-population", revision: "fixture-rev-0" }
+}
+
+fn spark_fixture_context() -> SparkCloudContext {
+  SparkCloudContext {
+    workflow: "fixture-workflow",
+    revision: "fixture-rev-0",
+    purpose: "witness fixture; no live grant",
+    duration_seconds: 600,
+    max_uses: 1,
+    approval: GrantApprovalNotSought
+  }
+}
+
 fn spark_pair_grant() -> SparkCloudGrant {
   SparkCloudGrant {
-    principal: FleetCloudConvergence {},
+    principal: FleetCloudConvergencePrincipal { role: FleetCloudConvergence {} },
     operations: [SmGetSecret, SmGetIamPolicy, SmAddVersion, SmAccessVersion],
-    scope: SparkCloudScope { resources: [spark_srv5_secret(), spark_srv6_secret()], evolution: FrozenAtGrant }
+    scope: SparkCloudScope { resources: [spark_srv5_secret(), spark_srv6_secret()], evolution: FrozenAtGrant { frozen_at: spark_fixture_roster() } },
+    context: spark_fixture_context()
   }
 }
 
 fn spark_srv5_only_grant() -> SparkCloudGrant {
   SparkCloudGrant {
-    principal: FleetCloudConvergence {},
+    principal: FleetCloudConvergencePrincipal { role: FleetCloudConvergence {} },
     operations: [SmAccessVersion],
-    scope: SparkCloudScope { resources: [spark_srv5_secret()], evolution: FrozenAtGrant }
+    scope: SparkCloudScope { resources: [spark_srv5_secret()], evolution: FrozenAtGrant { frozen_at: spark_fixture_roster() } },
+    context: spark_fixture_context()
   }
 }
 
@@ -374,7 +443,7 @@ fn spark_permits(d: AccessDecision) -> Bool {
 
 fn spark_allocated_principal() -> FleetCloudPrincipalAllocationStanding {
   CloudPrincipalAllocated {
-    principal: FleetCloudConvergence {},
+    principal: FleetCloudConvergencePrincipal { role: FleetCloudConvergence {} },
     member: "serviceAccount:fixture@example.iam.gserviceaccount.com",
     readback: "fixture readback"
   }
@@ -404,14 +473,16 @@ test fn spark_pair_grant_reaches_both_and_not_a_third() -> Bool {
 // since AddVersion is irreversible-by-sprawl and DestroyVersion erases bytes with no inverse.
 test fn spark_operations_do_not_imply_one_another() -> Bool {
   let read_only = SparkCloudGrant {
-    principal: FleetCloudConvergence {},
+    principal: FleetCloudConvergencePrincipal { role: FleetCloudConvergence {} },
     operations: [SmAccessVersion],
-    scope: SparkCloudScope { resources: [spark_srv5_secret()], evolution: FrozenAtGrant }
+    scope: SparkCloudScope { resources: [spark_srv5_secret()], evolution: FrozenAtGrant { frozen_at: spark_fixture_roster() } },
+    context: spark_fixture_context()
   }
   let writer = SparkCloudGrant {
-    principal: FleetCloudConvergence {},
+    principal: FleetCloudConvergencePrincipal { role: FleetCloudConvergence {} },
     operations: [SmAddVersion],
-    scope: SparkCloudScope { resources: [spark_srv5_secret()], evolution: FrozenAtGrant }
+    scope: SparkCloudScope { resources: [spark_srv5_secret()], evolution: FrozenAtGrant { frozen_at: spark_fixture_roster() } },
+    context: spark_fixture_context()
   }
   !spark_permits(d: spark_cloud_grant_decision(grant: read_only, cell: spark_cell(op: SmAddVersion, r: spark_srv5_secret())))
     && !spark_permits(d: spark_cloud_grant_decision(grant: writer, cell: spark_cell(op: SmDestroyVersion, r: spark_srv5_secret())))
@@ -422,7 +493,7 @@ test fn spark_operations_do_not_imply_one_another() -> Bool {
 // which is exactly what the prior revision did while its own note said otherwise.
 fn spark_reported_principal_fixture() -> FleetCloudPrincipalAllocationStanding {
   CloudPrincipalReported {
-    principal: FleetCloudConvergence {},
+    principal: FleetCloudConvergencePrincipal { role: FleetCloudConvergence {} },
     reported_member: "serviceAccount:fixture@example.iam.gserviceaccount.com",
     source: "fixture"
   }
@@ -471,4 +542,83 @@ test fn spark_allocated_principal_still_bounded_by_scope() -> Bool {
     standing: spark_allocated_principal(),
     grant: spark_pair_grant(),
     cell: spark_cell(op: SmAccessVersion, r: spark_srv7_secret())))
+}
+
+// CONTROL 27: NO PRINCIPAL CAN BOTH GRANT AND READ. This is the property the two-principal split
+// exists to buy, and it is checked over BOTH roles rather than asserted in a comment. If either
+// role were later widened to hold setIamPolicy alongside versions.access, a workflow holding that
+// one credential could bind itself to a secret and then read it, which is the self-serving grant
+// path the split is meant to make unreachable.
+test fn no_spark_principal_can_both_grant_and_read() -> Bool {
+  no_principal_can_both_grant_and_read(principal: FleetCloudConvergencePrincipal { role: FleetCloudConvergence {} })
+    && no_principal_can_both_grant_and_read(principal: FleetCloudGrantAdministratorPrincipal { role: FleetCloudGrantAdministrator {} })
+}
+
+// CONTROL 28: the split is a real partition of authority, not two names over one capability set.
+// The data plane reaches payloads and never policy; the control plane reaches policy and never
+// payloads. A revision that collapsed them into one role would red here in both directions.
+test fn spark_principal_roles_partition_payload_from_policy() -> Bool {
+  principal_role_admits_operation(principal: FleetCloudConvergencePrincipal { role: FleetCloudConvergence {} }, op: SmAccessVersion)
+    && !principal_role_admits_operation(principal: FleetCloudConvergencePrincipal { role: FleetCloudConvergence {} }, op: SmSetIamPolicy)
+    && !principal_role_admits_operation(principal: FleetCloudConvergencePrincipal { role: FleetCloudConvergence {} }, op: SmGetIamPolicy)
+    && principal_role_admits_operation(principal: FleetCloudGrantAdministratorPrincipal { role: FleetCloudGrantAdministrator {} }, op: SmSetIamPolicy)
+    && !principal_role_admits_operation(principal: FleetCloudGrantAdministratorPrincipal { role: FleetCloudGrantAdministrator {} }, op: SmAccessVersion)
+    && !principal_role_admits_operation(principal: FleetCloudGrantAdministratorPrincipal { role: FleetCloudGrantAdministrator {} }, op: SmAddVersion)
+}
+
+// CONTROL 29: the request projects into the KERNEL's shape rather than being judged locally. If
+// this module ever grew its own request record, this would stop type-checking against
+// effect_access_request and the parallel-access-system regression would be caught at the seam.
+test fn spark_grant_projects_into_the_access_kernel() -> Bool {
+  let req = spark_cloud_access_request(
+    grant: spark_srv5_only_grant(),
+    cell: spark_cell(op: SmAccessVersion, r: spark_srv5_secret()),
+    evidence: spark_wif_issuance_standing())
+  (req.object as String) == (spark_srv5_secret() as String)
+    && req.context.value.max_uses == 1
+    && (req.context.value.workflow as String) == "fixture-workflow"
+}
+
+// CONTROL 30: FrozenAtGrant NAMES what it was frozen against. A frozen scope whose roster identity
+// is unrecoverable is a label, not a mechanism -- nothing could then distinguish the original grant
+// from one silently widened later. This reds if the roster identity is dropped from the arm.
+test fn frozen_scope_names_the_roster_it_was_frozen_at() -> Bool {
+  match spark_srv5_only_grant().scope.evolution {
+    FrozenAtGrant { frozen_at: r } =>
+      (r.roster as String) == "spark-fixture-population" && (r.revision as String) == "fixture-rev-0"
+    TracksNamespaceMembership { roster: _ } => false
+  }
+}
+
+// CONTROL 31: the role CEILING refuses independently of the grant, and the refusal is located
+// against the RIGHT subject. A grant that names setIamPolicy for the convergence principal is
+// refused even though the grant lists the operation and the resource is in scope -- because no IAM
+// binding could make that legal. The subject in the refusal must be the administrator's own label
+// when the administrator is the one refused, which a hard-coded subject string could not produce.
+test fn ceiling_refuses_and_locates_against_the_actual_subject() -> Bool {
+  let over_grant = SparkCloudGrant {
+    principal: FleetCloudConvergencePrincipal { role: FleetCloudConvergence {} },
+    operations: [SmSetIamPolicy],
+    scope: SparkCloudScope { resources: [spark_srv5_secret()], evolution: FrozenAtGrant { frozen_at: spark_fixture_roster() } },
+    context: spark_fixture_context()
+  }
+  match spark_cloud_grant_decision(grant: over_grant, cell: spark_cell(op: SmSetIamPolicy, r: spark_srv5_secret())) {
+    Permit => false
+    Deny { refusal: rf } => rf.location.subject == "FleetCloudConvergence"
+  }
+}
+
+// CONTROL 32: the same refusal against the administrator principal locates against ITS label, so
+// the subject is genuinely derived. With the prior hard-coded literal this claim was unsatisfiable.
+test fn refusal_subject_is_derived_not_literal() -> Bool {
+  let admin_grant = SparkCloudGrant {
+    principal: FleetCloudGrantAdministratorPrincipal { role: FleetCloudGrantAdministrator {} },
+    operations: [SmAccessVersion],
+    scope: SparkCloudScope { resources: [spark_srv5_secret()], evolution: FrozenAtGrant { frozen_at: spark_fixture_roster() } },
+    context: spark_fixture_context()
+  }
+  match spark_cloud_grant_decision(grant: admin_grant, cell: spark_cell(op: SmAccessVersion, r: spark_srv5_secret())) {
+    Permit => false
+    Deny { refusal: rf } => rf.location.subject == "FleetCloudGrantAdministrator"
+  }
 }

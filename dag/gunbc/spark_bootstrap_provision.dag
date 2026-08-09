@@ -1,6 +1,11 @@
 module gunbc.spark_bootstrap_provision
 
+import extdeps.cloud.gcp.iam { GcpIamBindingCell, IamCondition }
+
+import std.authorization_profile { EffectRequest, EffectAuthorizationAction, effect_access_request }
+
 import std.access {
+  AccessRequest, AccessContext, AccessEvidence,
   AccessDecision, Permit, Deny, decision_meet,
   AccessRefusal, AccessRefusalLocation,
   AccessActionNotGranted, AccessObjectNotGranted, AccessEvidenceAbsent, AccessSubjectNotRecognized
@@ -131,7 +136,70 @@ data spark_legacy_container_note: String = "Two containers exist in gunbai-secre
 // Until the WIF workflow reads it back, Reported is the honest arm.
 type FleetCloudConvergence {}
 
-type FleetCloudPrincipalKey = FleetCloudConvergence
+// THE SECOND PRINCIPAL, and it is not a naming exercise. Reconciling an IAM policy
+// requires getIamPolicy + setIamPolicy; reading a secret requires versions.access.
+// One principal holding all three can grant itself anything and then read it, so
+// the authorization question "may this workflow change who can read the fleet key"
+// would be answered by the same credential that answers "may this workflow read the
+// fleet key". Splitting them is what makes the grant path approval-gated rather than
+// self-serving: the administrator can change the policy and CANNOT read a payload;
+// the convergence principal can read the payloads it is granted and CANNOT change
+// any policy, including its own.
+//
+// This split is FORCED by measurement, not chosen for tidiness. Run 31336704811 at
+// head da9d440f8f4 probed fleet-cloud-convergence against fleet-automation-ssh-key
+// and got back exactly one permission, secretmanager.versions.access.
+// secretmanager.secrets.getIamPolicy did NOT come back, and secrets.get returned a
+// live 403 -- so the convergence principal provably cannot read a policy, and the
+// overbreadth question stays UNOBSERVABLE until the administrator principal exists.
+// That is the whole reason effective access stands at PartiallyObserved.
+type FleetCloudGrantAdministrator {}
+
+type FleetCloudPrincipalKey
+  = FleetCloudConvergencePrincipal { role: FleetCloudConvergence }
+  | FleetCloudGrantAdministratorPrincipal { role: FleetCloudGrantAdministrator }
+
+// Which operations a principal ROLE may ever reach, before any grant is consulted.
+// This is a ceiling on the credential itself, so a grant cell naming an operation
+// outside its principal's ceiling cannot be satisfied by adding a binding.
+fn principal_role_admits_operation(principal: FleetCloudPrincipalKey, op: SecretManagerOperation) -> Bool {
+  match principal {
+    // Data plane. Never setIamPolicy, and never getIamPolicy either: a principal
+    // that can read the policy can enumerate who else holds the key, which is a
+    // disclosure the data plane has no business performing.
+    FleetCloudConvergencePrincipal { role: _ } =>
+      match op {
+        SmAccessVersion => true
+        SmAddVersion => true
+        SmGetSecret => true
+        SmDisableVersion => false
+        SmDestroyVersion => false
+        SmGetIamPolicy => false
+        SmSetIamPolicy => false
+      }
+    // Control plane. Reads and writes policy; CANNOT reach a payload. AddVersion is
+    // excluded as well as AccessVersion, because a principal that can write a
+    // version can overwrite the credential it is only supposed to be adjudicating.
+    FleetCloudGrantAdministratorPrincipal { role: _ } =>
+      match op {
+        SmGetIamPolicy => true
+        SmSetIamPolicy => true
+        SmGetSecret => true
+        SmAccessVersion => false
+        SmAddVersion => false
+        SmDisableVersion => false
+        SmDestroyVersion => false
+      }
+  }
+}
+
+// The property that makes the split worth having, stated so a witness can execute it
+// rather than a comment asserting it: no operation is admitted to both roles except
+// the metadata read, and neither role admits the pair (SmAccessVersion, SmSetIamPolicy).
+fn no_principal_can_both_grant_and_read(principal: FleetCloudPrincipalKey) -> Bool {
+  !(principal_role_admits_operation(principal: principal, op: SmSetIamPolicy)
+    && principal_role_admits_operation(principal: principal, op: SmAccessVersion))
+}
 
 type FleetCloudPrincipalAllocationStanding
   = CloudPrincipalUnallocated { principal: FleetCloudPrincipalKey }
@@ -144,7 +212,7 @@ type FleetCloudPrincipalAllocationStanding
 // this session can cite: run 31335059188 at head 6b79d061c4a.
 fn fleet_cloud_principal_standing() -> FleetCloudPrincipalAllocationStanding {
   CloudPrincipalAllocated {
-    principal: FleetCloudConvergence {},
+    principal: FleetCloudConvergencePrincipal { role: FleetCloudConvergence {} },
     member: "serviceAccount:fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com",
     readback: "GitHub Actions run 31335059188 at 6b79d061c4a: OIDC/WIF token issued for this SA; testIamPermissions answered from the resource side"
   }
@@ -183,19 +251,81 @@ fn sm_operation_eq(a: SecretManagerOperation, b: SecretManagerOperation) -> Bool
 // FrozenAtGrant is load-bearing: "global over the current Spark population" must not silently mean
 // that a machine added tomorrow inherits today's authority. Adding srv7 widens a grant only where
 // the policy says TracksNamespaceMembership.
+// FROZEN MUST NAME WHAT IT WAS FROZEN AT. The prior revision spelled this as a bare enum beside a
+// resource list, which is a label rather than a mechanism: nothing recorded WHICH population the
+// grant was frozen against, so "frozen" could not be checked and a later edit widening the list
+// would have been indistinguishable from the original grant. FrozenAtGrant now carries the roster
+// identity it was granted against, so a scope whose roster no longer matches the live population is
+// a detectable condition rather than a silent widening.
+type SparkRosterIdentity {
+  roster: NonEmptyStr
+  revision: NonEmptyStr
+}
+
 type AccessScopeEvolution
-  = FrozenAtGrant
-  | TracksNamespaceMembership
+  = FrozenAtGrant { frozen_at: SparkRosterIdentity }
+  | TracksNamespaceMembership { roster: NonEmptyStr }
 
 type SparkCloudScope {
   resources: List<NonEmptyStr>
   evolution: AccessScopeEvolution
 }
 
+// THE CONTEXT A GRANT NEEDS TO BE ADJUDICATED, which the prior revision simply did not carry. A
+// grant with no workflow, no revision, no purpose, no duration and no approval is not a decidable
+// authorization subject: every question worth asking about it -- who may use it, for how long, on
+// whose authority, and for what -- had no field to be answered from, so the decision could only ever
+// be about operation and resource. These are context, not evidence: they describe the request, and
+// what proves the request was really made under them is the evidence side.
+type SparkGrantApproval
+  = GrantApprovedBy { approver: NonEmptyStr, receipt: NonEmptyStr }
+  | GrantApprovalPending { requested_from: NonEmptyStr }
+  | GrantApprovalNotSought
+
+type SparkCloudContext {
+  workflow: NonEmptyStr
+  revision: NonEmptyStr
+  purpose: NonEmptyStr
+  duration_seconds: Int
+  max_uses: Int
+  approval: SparkGrantApproval
+}
+
 type SparkCloudGrant {
   principal: FleetCloudPrincipalKey
   operations: List<SecretManagerOperation>
   scope: SparkCloudScope
+  context: SparkCloudContext
+}
+
+// The thin projection into the kernel. This module supplies the domain types; std.authorization_
+// profile supplies the request shape and std.access the decision, so nothing about admission is
+// re-invented here -- the profile is a type application, not a parallel access system.
+type SparkCloudRequest =
+  EffectRequest<FleetCloudPrincipalKey, SecretManagerOperation, NonEmptyStr, SparkCloudContext, WifCredentialIssuanceStanding>
+
+fn spark_cloud_request(
+  grant: SparkCloudGrant,
+  cell: AccessGrantCell,
+  evidence: WifCredentialIssuanceStanding
+) -> SparkCloudRequest {
+  EffectRequest {
+    subject: grant.principal,
+    effect: cell.operation,
+    target: cell.resource,
+    context: grant.context,
+    evidence: evidence
+  }
+}
+
+// A grant is adjudicated as a SUBJECT of the kernel, not judged by a local fold. The projection
+// exists so the request can be handed to std.access unchanged.
+fn spark_cloud_access_request(
+  grant: SparkCloudGrant,
+  cell: AccessGrantCell,
+  evidence: WifCredentialIssuanceStanding
+) -> AccessRequest<FleetCloudPrincipalKey, EffectAuthorizationAction<SecretManagerOperation>, NonEmptyStr, SparkCloudContext, WifCredentialIssuanceStanding> {
+  effect_access_request(request: spark_cloud_request(grant: grant, cell: cell, evidence: evidence))
 }
 
 // An exact cell: one principal, one operation, one resource. Replaces a global present/absent
@@ -221,23 +351,46 @@ fn spark_grant_admits_operation(grant: SparkCloudGrant, op: SecretManagerOperati
 
 // The projection. Two independent refusal coordinates -- action and object -- so an operation the
 // grant never carried and a resource outside scope are different denials, not one blurred no.
+// The subject is DERIVED from the grant, never a literal. The prior revision wrote the string
+// "FleetCloudConvergence" into every refusal location, which was survivable while one principal
+// existed and became a falsehood the moment the second one did: a refusal against the grant
+// administrator would have been located against the convergence principal, so the diagnostic would
+// name the wrong subject at exactly the moment someone needed it to be right.
+fn spark_principal_label(principal: FleetCloudPrincipalKey) -> String {
+  match principal {
+    FleetCloudConvergencePrincipal { role: _ } => "FleetCloudConvergence"
+    FleetCloudGrantAdministratorPrincipal { role: _ } => "FleetCloudGrantAdministrator"
+  }
+}
+
+fn spark_grant_refusal_location(grant: SparkCloudGrant, cell: AccessGrantCell) -> AccessRefusalLocation {
+  AccessRefusalLocation {
+    profile: "spark_cloud_grant",
+    subject: spark_principal_label(principal: grant.principal),
+    action: "secret-manager-operation",
+    object: cell.resource as String
+  }
+}
+
 fn spark_cloud_grant_decision(grant: SparkCloudGrant, cell: AccessGrantCell) -> AccessDecision {
-  if !spark_grant_admits_operation(grant: grant, op: cell.operation) {
+  // THE CEILING IS CHECKED FIRST, and it is not the same question as the grant. A grant naming an
+  // operation outside its principal's role ceiling cannot be satisfied by adding an IAM binding --
+  // the credential is not allowed to reach that operation at all -- so this refusal is about the
+  // subject, not the action, and adding a binding in response would be the wrong remedy.
+  if !principal_role_admits_operation(principal: grant.principal, op: cell.operation) {
+    Deny { refusal: AccessRefusal {
+      cause: AccessSubjectNotRecognized { subject: "operation outside this principal's role ceiling; the split forbids it regardless of any binding" },
+      location: spark_grant_refusal_location(grant: grant, cell: cell) } }
+  } else if !spark_grant_admits_operation(grant: grant, op: cell.operation) {
     Deny { refusal: AccessRefusal {
       cause: AccessActionNotGranted { action: "operation outside the granted population" },
-      location: AccessRefusalLocation {
-        profile: "spark_cloud_grant", subject: "FleetCloudConvergence",
-        action: "secret-manager-operation", object: cell.resource as String } } }
+      location: spark_grant_refusal_location(grant: grant, cell: cell) } }
+  } else if !spark_scope_admits(scope: grant.scope, resource: cell.resource) {
+    Deny { refusal: AccessRefusal {
+      cause: AccessObjectNotGranted { object: "resource outside the granted scope" },
+      location: spark_grant_refusal_location(grant: grant, cell: cell) } }
   } else {
-    if !spark_scope_admits(scope: grant.scope, resource: cell.resource) {
-      Deny { refusal: AccessRefusal {
-        cause: AccessObjectNotGranted { object: "resource outside the granted scope" },
-        location: AccessRefusalLocation {
-          profile: "spark_cloud_grant", subject: "FleetCloudConvergence",
-          action: "secret-manager-operation", object: cell.resource as String } } }
-    } else {
-      Permit
-    }
+    Permit
   }
 }
 
@@ -421,25 +574,63 @@ fn classify_spark_container(
 // even when it is not desired, because this model does not own it and removing it would be acting
 // outside our authority.
 
+// THE GRAIN IS role x member x condition, not member. The prior revision diffed flat member
+// strings, which cannot express the question a policy actually answers: the same member appearing
+// under roles/secretmanager.secretAccessor and under roles/secretmanager.admin is ONE entry in a
+// member-grain diff, so demoting a principal from admin to accessor reads as "already present,
+// nothing to do" and the admin binding survives. Worse in the preserve direction: a member-grain
+// preserve carries a member through without carrying WHICH role it was preserved under, so
+// reassembling a policy from it has to guess.
+//
+// A cell is one (role, member, condition) triple -- the exact unit an IAM decision is made on. The
+// wire binding list is recovered by grouping cells back by (role, condition) at the boundary, so a
+// cell nobody authored survives the round trip instead of being dropped by a role-level replace.
 type SparkIamDelta {
-  add: List<String>
-  remove: List<String>
-  preserve: List<String>
+  add: List<GcpIamBindingCell>
+  remove: List<GcpIamBindingCell>
+  preserve: List<GcpIamBindingCell>
 }
 
-fn spark_member_in(m: String, xs: List<String>) -> Bool {
-  fold(xs, init: false, f: (acc, x) => acc || x == m)
+// Condition equality is part of cell identity, not a detail. Two cells with the same role and
+// member but different conditions are DIFFERENT grants -- one may be time-boxed and the other
+// permanent -- so treating them as equal would let a conditional grant be silently replaced by an
+// unconditional one, or an unconditional one survive a reconcile that meant to bound it.
+fn spark_condition_eq(a: IamCondition?, b: IamCondition?) -> Bool {
+  match a {
+    Absent =>
+      match b {
+        Absent => true
+        Present { value: _ } => false
+      }
+    Present { value: ca } =>
+      match b {
+        Absent => false
+        Present { value: cb } => ca.title == cb.title && ca.expression == cb.expression
+      }
+  }
 }
 
+fn spark_cell_eq(a: GcpIamBindingCell, b: GcpIamBindingCell) -> Bool {
+  a.role == b.role && a.member == b.member && spark_condition_eq(a: a.condition, b: b.condition)
+}
+
+fn spark_cell_in(c: GcpIamBindingCell, xs: List<GcpIamBindingCell>) -> Bool {
+  fold(xs, init: false, f: (acc, x) => acc || spark_cell_eq(a: c, b: x))
+}
+
+// Ownership is asked at CELL grain too. A model that owns (member M, role accessor) does not
+// thereby own (member M, role admin): the second may have been granted by someone else for a
+// reason this model cannot see, so removing it would be acting outside our authority even though
+// the member is one we recognise.
 fn spark_iam_delta(
-  observed: List<String>,
-  desired_owned: List<String>,
-  owned_universe: List<String>
+  observed: List<GcpIamBindingCell>,
+  desired_owned: List<GcpIamBindingCell>,
+  owned_universe: List<GcpIamBindingCell>
 ) -> SparkIamDelta {
   SparkIamDelta {
-    add: desired_owned |> filter(m => !spark_member_in(m: m, xs: observed)),
-    remove: observed |> filter(m => spark_member_in(m: m, xs: owned_universe) && !spark_member_in(m: m, xs: desired_owned)),
-    preserve: observed |> filter(m => !spark_member_in(m: m, xs: owned_universe))
+    add: desired_owned |> filter(c => !spark_cell_in(c: c, xs: observed)),
+    remove: observed |> filter(c => spark_cell_in(c: c, xs: owned_universe) && !spark_cell_in(c: c, xs: desired_owned)),
+    preserve: observed |> filter(c => !spark_cell_in(c: c, xs: owned_universe))
   }
 }
 

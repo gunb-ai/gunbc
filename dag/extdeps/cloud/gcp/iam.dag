@@ -49,6 +49,64 @@ type GcpPolicy {
   version: Int
 }
 
+// A GcpBinding is the WIRE shape: one role carrying a LIST of members. It is the
+// wrong grain to reconcile at, because a diff over bindings answers "did this
+// role's member list change" when the question is always "does THIS principal
+// hold THIS role under THIS condition". Reconciling at binding grain is how a
+// desired binding for one member overwrites the other members sharing its role.
+//
+// GcpIamBindingCell is that same fact at the grain a policy decision is actually
+// made on: one role x one member x one condition. Cells are what a reconcile
+// compares, and the binding list is recovered by grouping cells back by (role,
+// condition) at the wire boundary -- so a cell nobody authored survives the round
+// trip instead of being dropped by a role-level replacement.
+type GcpIamBindingCell {
+  role: String
+  member: String
+  condition: IamCondition?
+}
+
+// The permission set of a predefined role is a GOOGLE-OWNED fact that changes
+// without our involvement, so it is observed from roles.get, never transcribed.
+// There is deliberately no hand-authored permission roster in this module: a
+// role->permission table written from memory is authored data wearing a citation,
+// and it decays silently as Google edits the role.
+type GcpPredefinedRole {
+  name: String
+  title: String
+  included_permissions: List<String> from "includedPermissions"
+  stage: String
+}
+
+type RolePermissionAuthority
+  = RolePermissionsObserved { role: GcpPredefinedRole, observed_at_revision: NonEmptyStr }
+  | RolePermissionsUnobserved { role_name: NonEmptyStr, cause: NonEmptyStr }
+
+// Whether a role grants a permission is answerable ONLY from an observation. The
+// unobserved arm returns no Bool at all rather than false, because "we did not
+// look" and "the role does not grant it" have different remedies and collapsing
+// them is the absorbing fallback in the direction that under-reports reach.
+type RoleGrantsPermissionVerdict
+  = RoleGrantsPermission
+  | RoleDoesNotGrantPermission
+  | RoleGrantUndetermined { cause: NonEmptyStr }
+
+fn role_grants_permission(authority: RolePermissionAuthority, permission: String) -> RoleGrantsPermissionVerdict {
+  match authority {
+    RolePermissionsUnobserved { cause: c } => RoleGrantUndetermined { cause: c }
+    RolePermissionsObserved { role: r } =>
+      if list_contains_string(xs: r.included_permissions, needle: permission) {
+        RoleGrantsPermission
+      } else {
+        RoleDoesNotGrantPermission
+      }
+  }
+}
+
+fn list_contains_string(xs: List<String>, needle: String) -> Bool {
+  fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || x == needle })
+}
+
 type ImpersonationChain {
   source: String
   target: String
@@ -96,6 +154,40 @@ service gcp.IAM {
     transport rest { method: POST, path: "/v1/projects/-/serviceAccounts/\{target_sa\}:generateAccessToken" }
     response {
       200 => GcpGenerateAccessToken200Body
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+}
+
+// SEPARATE SERVICE, not another operation on gcp.IAM: role reads live on
+// iam.googleapis.com while token minting lives on iamcredentials.googleapis.com.
+// Two hosts are two dependencies, and hanging GetRole off the credentials service
+// would have had it inherit that service's endpoint and silently request the
+// wrong host.
+// GetRole is the citation behind RolePermissionsObserved. Predefined roles are
+// readable without any project scope, so it is the cheapest possible grounding for
+// "what does roles/secretmanager.secretAccessor actually permit" -- and the reason
+// no permission roster is authored in this module.
+service gcp.IamRoles {
+  config { endpoint: "https://iam.googleapis.com", auth: Bearer, auth_input: access_token }
+
+  operation GetRole {
+    input { access_token: Secret, role_name: NonEmptyStr }
+    output {
+      name: String
+      title: String
+      included_permissions: List<String> from "includedPermissions"
+      stage: String
+    }
+    readonly
+    transport rest { method: GET, path: "/v1/\{role_name\}" }
+    response {
+      200 => GcpPredefinedRole
       401 => GcpErrorShape
       403 => GcpErrorShape
       404 => GcpErrorShape
