@@ -16,7 +16,6 @@ import std.machine_shape {
   IndependentLanes,
   SharedLevelEdge,
   machine_shape_validate,
-  machine_shape_device_level_capacity,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -33,6 +32,18 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // These specimens are deliberately NOT vendor rows. The question is about the carrier's
 // expressiveness, so a synthetic two-domain machine isolates it from any catalog's accidents.
+// WHAT THESE CONTROLS DO AND DO NOT ESTABLISH. They establish that the current carrier admits
+// multiple noncanonical encodings of one physical pool, including a writable double count. They do
+// NOT establish which repair is correct: first-class pool nodes with access edges, canonical
+// normalization of the present representation, a single sanctioned integrated-system constructor
+// with a wall against other materializations, and an exact pool-identity construction all remain
+// open candidates. A control earns a repair REQUIREMENT, never the terminal architecture.
+//
+// The requirement, stated at the strength the evidence supports: GB10 derivation is blocked until
+// one canonical shared-pool construction exists AND the duplicate-pool encoding is either
+// unwritable or refused.
+data shared_pool_repair_requirement_note: String = "Blocking condition, not a design verdict. GB10 derivation stays blocked until a single canonical shared-pool construction exists and the duplicated encoding is unwritable or refused. Which construction achieves that is undecided by these controls, and naming one here would be a terminal shape asserted from evidence that only shows the present one is ambiguous."
+
 data shared_pool_encoding_control_note: String = "Executed control, not an argument from reading. Three encodings of ONE physical machine -- a CPU domain and a GPU domain sharing one 128 GiB pool -- are constructed and validated. Encodings A and B differ only in which domain the pool is authored under, which is arbitrary when the pool is system-owned. Encoding C is the shape an unwary author reaches for when SharedLevelEdge is not used at all: the pool appears under BOTH domains. If C validates, the carrier permits counting one physical pool twice, and nothing in the type forces the shared-pool encoding over the duplicated one."
 
 data cpu_domain: DomainId = "cpu" as DomainId
@@ -120,18 +131,17 @@ test fn witness_shared_encodings_sum_the_pool_once() -> Bool {
     && summed_capacity_bytes(s: encoding_pool_under_gpu()) == pool_bytes
 }
 
-// CONTROL 4: the derived device-level capacity is stable across the two orientations. This is the
-// half that could have gone either way -- machine_shape_device_level_capacity folds domains in
-// order and takes the first domain that carries any level, so an empty CPU domain falls through to
-// the GPU. Asserted rather than assumed, because if it ever diverges the same machine would report
-// two different capacities depending on an arbitrary authoring choice.
-test fn witness_device_level_capacity_is_orientation_stable() -> Bool {
-  match machine_shape_device_level_capacity(shape: encoding_pool_under_cpu()) {
-    Absent => false
-    Present { value: a } =>
-      match machine_shape_device_level_capacity(shape: encoding_pool_under_gpu()) {
-        Absent => false
-        Present { value: b } => byte_size_count(b: a) == byte_size_count(b: b)
-      }
-  }
-}
+// WITHDRAWN CONTROL, recorded rather than silently dropped. An orientation-stability check over
+// machine_shape_device_level_capacity was authored here and removed: it looked reassuring and
+// discriminated nothing. That helper takes the first level of the first NONEMPTY domain, and both
+// specimens carry a one-level tower, so "the first level" and "the pool" coincide by construction
+// and the assertion could only ever compare one pool to itself. On a real accelerator tower the
+// first level may be a register file or SM shared memory, which is exactly the case the check
+// appeared to cover and did not.
+//
+// The successor is a pool-SELECTION discriminator, and it belongs to the repair rather than to this
+// finding. It must prove that capacity is selected by exact pool identity, that domain ordering
+// cannot change the selected pool, and that cache and register levels cannot satisfy a
+// model-residency demand. None of those are provable against the present carrier, which is the
+// finding itself.
+data withdrawn_orientation_control_note: String = "Removed, not weakened: a control over machine_shape_device_level_capacity compared two one-level specimens whose single level is necessarily the pool, so it asserted an identity rather than a selection property. Recorded here because a silently deleted control is indistinguishable from one that never existed, and because the property it seemed to cover -- that pool selection is stable and cannot be satisfied by a cache or register level -- is a real obligation on the repair."
