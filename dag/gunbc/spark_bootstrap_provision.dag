@@ -89,6 +89,15 @@ pattern spark_secret_containers_create(access_token: Secret) -> {
 // pattern made the convergent half unreachable on any host where the containers already existed,
 // which is every host after the first apply — so the only operation that could repair drifted
 // least-privilege bindings was gated behind an operation guaranteed to abort.
+//
+// MEASURED, and stated at the strength the measurement supports: re-running this against secrets
+// that already carry the correct bindings SUCCEEDS and leaves the binding content byte-identical.
+// It is NOT a no-op — the policy etag advances on every run, because this writes the desired policy
+// rather than comparing first and skipping. Re-runnable and idempotent-in-result is the claim;
+// idempotent-in-effect is not, and a caller reasoning about write volume or audit-log noise needs
+// the difference. Receipt 2026-08-09: etags moved BwZYnwVip+g= -> BwZYny9Ox7I= and
+// BwZYnwVp5OE= -> BwZYny9WBCY= while both secrets kept exactly secretAccessor + secretVersionAdder
+// for the assimilator service account.
 pattern spark_secret_iam_converge(access_token: Secret) -> {
   hotspot_binding_etag: String,
   administrator_binding_etag: String
