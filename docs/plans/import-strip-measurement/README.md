@@ -1,23 +1,30 @@
-# Import-strip measurement — reproducer and receipts
+# Import-strip measurement — retained execution record
 
 The machinery behind §15 of
 [the witness-discovery cascade diagnosis](../import-strip-witness-discovery-cascade-diagnosis.md)
 and behind [`import-strip-residual-ledger.tsv`](../import-strip-residual-ledger.tsv).
 
-It exists because a 3,150-row ledger reads as authoritative, and a number a
-future worker cannot regenerate or perturb is not a measurement — it is a claim
-(DESIGN §5: green by execution, plus a discriminating input). Everything below
-regenerates from a named tree.
+**Read this first: the receipts here are a FROZEN RECORD OF ONE TREE, not a
+reproducer.** The harness that produced them was two Python scripts reading
+`.dag` as text; they were removed from the repository by operator ruling and are
+**no longer tracked**, so nothing below can be re-run from a clean checkout. The
+withdrawal, and what it costs, is stated in full further down; this paragraph
+exists so a reader meets that fact before the recipe rather than after it.
 
-**This is a registered scaffold, not production machinery.** Two Python scripts
-reading `.dag` text are exactly the "second representation" the substrate exists
-to replace: the classification is a `Node`-tree read that a lens should perform.
-**Dissolution trigger:** when B2 lands `OrdinaryLoadedCompilationClosure`
-production, the residual ledger becomes a projection of the loader's own
-accepted-binding/provider output — at which point these scripts, the receipts
-below, and this README delete together. Until then the strip cannot be measured
-any other way, because the thing being measured is what happens when the
-substrate's own resolution is removed.
+The measurement was made because a 3,150-row ledger reads as authoritative, and a
+number nobody can perturb is a claim rather than a measurement (DESIGN §5). That
+reasoning is why the harness existed — it is not a promise that it still does.
+
+**It was always a registered scaffold, never production machinery**, and it was
+removed EARLY rather than at its stated trigger. Two Python scripts reading
+`.dag` text are exactly the "second representation" the substrate exists to
+replace: the classification is a `Node`-tree read a lens should perform. The
+declared **dissolution trigger** — B2 landing `OrdinaryLoadedCompilationClosure`
+production, at which point the residual ledger becomes a projection of the
+loader's own accepted-binding/provider output — **has not fired**. The scripts
+went anyway, which trades re-runnability for not carrying a parallel
+text-scanning classifier in the tree. The receipts and this README stay until
+that trigger fires and production binding observations replace them.
 
 ## Tool identity
 
@@ -101,20 +108,27 @@ production, at which point the residual ledger becomes a projection of the
 loader's own output) has not moved. Deleting them early costs re-runnability and
 buys not carrying a parallel text-scanning classifier in the tree.
 
-## What in the receipts is NOT byte-reproducible
+## Which parts of the receipts were stable across runs, and which were not
 
-The compile logs carry wall-clock lines (`compile.reconcile done in 5 minutes`),
-so a re-run reproduces the diagnostics exactly and the timings never. Compare
-receipts with those lines filtered:
+Recorded from when the measurement was made — see the withdrawal above before
+reading this as an instruction. The compile logs carry wall-clock lines
+(`compile.reconcile done in 5 minutes`), so a re-run reproduced the diagnostics
+exactly and the timings never. Runs were compared with those lines filtered:
 
 ```sh
 diff <(grep -v 'done in' new.log) <(grep -v 'done in' receipts/control-diagnostics.log)
 ```
 
 This is not a caveat added to excuse a mismatch — it is how the stamp below was
-checked. Everything the measurement asserts (diagnostic text, counts,
-reconciliation, manifest, ledger) is byte-reproducible; only the durations are
-not, and nothing derives from them.
+checked *at the time the measurement was made*, when the harness was in the tree.
+What it established then: everything the measurement asserts (diagnostic text,
+counts, reconciliation, manifest, ledger) reproduced exactly across runs, and only
+the durations did not, with nothing deriving from them.
+
+**It does not mean you can reproduce them now.** Re-deriving these files requires
+rebuilding the harness from the record above; the repository no longer contains
+it. What a reader can still check without it is the corpus-hash anchor, which
+decides whether these receipts describe the tree in front of them.
 
 ## Receipts
 
