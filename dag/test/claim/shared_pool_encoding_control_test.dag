@@ -1,0 +1,147 @@
+module test.claim.shared_pool_encoding_control
+
+import std.logic { Bool }
+import std.nat { Nat }
+import std.types { List, list_length }
+import std.measure { byte_size, byte_size_count, hardware_thread_count }
+import std.machine_shape {
+  DomainId,
+  LevelId,
+  MachineShape,
+  MachineShapeOk,
+  MachineShapeRefused,
+  MemoryLevel,
+  ExecutionDomain,
+  ExecutionShape,
+  IndependentLanes,
+  SharedLevelEdge,
+  machine_shape_validate,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE OWNER-SWAP REPRESENTATION CONTROL, executed before any GB10 derivation is attempted.
+// Question: can std.machine_shape give ONE canonical identity to a pool that is genuinely shared,
+// where neither execution domain is naturally the owner?
+//
+// SharedLevelEdge is asymmetric -- owner, sharer, level -- and machine_shape_validate_edge requires
+// the level to exist under the OWNER's level index. Memory levels live under a domain
+// (ExecutionDomain { id, execution, memory }). So a single shared pool must be authored beneath one
+// domain or the other, and the choice is arbitrary for a system-owned pool.
+//
+// These specimens are deliberately NOT vendor rows. The question is about the carrier's
+// expressiveness, so a synthetic two-domain machine isolates it from any catalog's accidents.
+// WHAT THESE CONTROLS DO AND DO NOT ESTABLISH. They establish that the current carrier admits
+// multiple noncanonical encodings of one physical pool, including a writable double count. They do
+// NOT establish which repair is correct: first-class pool nodes with access edges, canonical
+// normalization of the present representation, a single sanctioned integrated-system constructor
+// with a wall against other materializations, and an exact pool-identity construction all remain
+// open candidates. A control earns a repair REQUIREMENT, never the terminal architecture.
+//
+// The requirement, stated at the strength the evidence supports: GB10 derivation is blocked until
+// one canonical shared-pool construction exists AND the duplicate-pool encoding is either
+// unwritable or refused.
+data shared_pool_repair_requirement_note: String = "Blocking condition, not a design verdict. GB10 derivation stays blocked until a single canonical shared-pool construction exists and the duplicated encoding is unwritable or refused. Which construction achieves that is undecided by these controls, and naming one here would be a terminal shape asserted from evidence that only shows the present one is ambiguous."
+
+data shared_pool_encoding_control_note: String = "Executed control, not an argument from reading. Three encodings of ONE physical machine -- a CPU domain and a GPU domain sharing one 128 GiB pool -- are constructed and validated. Encodings A and B differ only in which domain the pool is authored under, which is arbitrary when the pool is system-owned. Encoding C is the shape an unwary author reaches for when SharedLevelEdge is not used at all: the pool appears under BOTH domains. If C validates, the carrier permits counting one physical pool twice, and nothing in the type forces the shared-pool encoding over the duplicated one."
+
+data cpu_domain: DomainId = "cpu" as DomainId
+data gpu_domain: DomainId = "gpu" as DomainId
+data pool_level: LevelId = "system-pool" as LevelId
+
+data pool_bytes: Nat = 137438953472
+
+fn pool() -> MemoryLevel {
+  MemoryLevel {
+    id: pool_level,
+    capacity: byte_size(count: pool_bytes),
+    transfer_grain: none,
+    bandwidth: none,
+    latency: none,
+  }
+}
+
+fn lanes(n: Nat) -> ExecutionShape {
+  ExecutionShape { lane_count: hardware_thread_count(count: n), grouping: IndependentLanes }
+}
+
+fn domain(id: DomainId, n: Nat, mem: List<MemoryLevel>) -> ExecutionDomain {
+  ExecutionDomain { id: id, execution: lanes(n: n), memory: mem }
+}
+
+// A: the pool is authored under the CPU; the GPU shares it.
+fn encoding_pool_under_cpu() -> MachineShape {
+  MachineShape {
+    domains: [domain(id: cpu_domain, n: 20, mem: [pool()]), domain(id: gpu_domain, n: 6144, mem: [])],
+    edges: [SharedLevelEdge { owner: cpu_domain, sharer: gpu_domain, level: pool_level }],
+  }
+}
+
+// B: the same machine, authored the other way round.
+fn encoding_pool_under_gpu() -> MachineShape {
+  MachineShape {
+    domains: [domain(id: cpu_domain, n: 20, mem: []), domain(id: gpu_domain, n: 6144, mem: [pool()])],
+    edges: [SharedLevelEdge { owner: gpu_domain, sharer: cpu_domain, level: pool_level }],
+  }
+}
+
+// C: the pool authored under BOTH domains, with no shared edge -- the double count.
+fn encoding_pool_duplicated() -> MachineShape {
+  MachineShape {
+    domains: [
+      domain(id: cpu_domain, n: 20, mem: [pool()]),
+      domain(id: gpu_domain, n: 6144, mem: [pool()]),
+    ],
+    edges: [],
+  }
+}
+
+fn shape_validates(s: MachineShape) -> Bool {
+  match machine_shape_validate(shape: s) {
+    MachineShapeOk { shape: _ } => true
+    MachineShapeRefused { cause: _ } => false
+  }
+}
+
+// The naive summation a capacity consumer reaches for: total installed memory across domains.
+fn summed_capacity_bytes(s: MachineShape) -> Nat {
+  fold(s.domains, init: 0, f: (acc, d) =>
+    fold(d.memory, init: acc, f: (inner, m) => inner + byte_size_count(b: m.capacity)))
+}
+
+// CONTROL 1: both orientations of one shared pool are accepted. If this holds, the carrier admits
+// two encodings of one topology and supplies no canonical identity between them.
+test fn witness_both_owner_orientations_validate() -> Bool {
+  shape_validates(s: encoding_pool_under_cpu()) && shape_validates(s: encoding_pool_under_gpu())
+}
+
+// CONTROL 2: the duplicated-pool encoding is ALSO accepted, and it sums to twice the physical
+// capacity. This is the double count made writable -- nothing requires an author to reach for
+// SharedLevelEdge rather than repeat the level under each accessor.
+test fn witness_duplicated_pool_encoding_is_writable_and_double_counts() -> Bool {
+  let dup = encoding_pool_duplicated()
+  shape_validates(s: dup) && summed_capacity_bytes(s: dup) == pool_bytes + pool_bytes
+}
+
+// CONTROL 3: the honest shared encodings sum to the pool ONCE. Paired with control 2 this shows the
+// carrier can express the correct answer and does not require it.
+test fn witness_shared_encodings_sum_the_pool_once() -> Bool {
+  summed_capacity_bytes(s: encoding_pool_under_cpu()) == pool_bytes
+    && summed_capacity_bytes(s: encoding_pool_under_gpu()) == pool_bytes
+}
+
+// WITHDRAWN CONTROL, recorded rather than silently dropped. An orientation-stability check over
+// machine_shape_device_level_capacity was authored here and removed: it looked reassuring and
+// discriminated nothing. That helper takes the first level of the first NONEMPTY domain, and both
+// specimens carry a one-level tower, so "the first level" and "the pool" coincide by construction
+// and the assertion could only ever compare one pool to itself. On a real accelerator tower the
+// first level may be a register file or SM shared memory, which is exactly the case the check
+// appeared to cover and did not.
+//
+// The successor is a pool-SELECTION discriminator, and it belongs to the repair rather than to this
+// finding. It must prove that capacity is selected by exact pool identity, that domain ordering
+// cannot change the selected pool, and that cache and register levels cannot satisfy a
+// model-residency demand. None of those are provable against the present carrier, which is the
+// finding itself.
+data withdrawn_orientation_control_note: String = "Removed, not weakened: a control over machine_shape_device_level_capacity compared two one-level specimens whose single level is necessarily the pool, so it asserted an identity rather than a selection property. Recorded here because a silently deleted control is indistinguishable from one that never existed, and because the property it seemed to cover -- that pool selection is stable and cannot be satisfied by a cache or register level -- is a real obligation on the repair."
