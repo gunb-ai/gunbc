@@ -884,6 +884,80 @@ pub fn eval_fn_arrow_decl_facts_live(
     Ok(crate::v1_interpreter::list_value(rows))
 }
 
+/// The same `FnArrowDecl` population as `eval_fn_arrow_decl_facts_live`, derived from a SOURCE
+/// POPULATION rather than from the eval context's resolved modules.
+///
+/// Why this exists, measured rather than argued. `eval_fn_arrow_decl_facts_live` reflects
+/// `ctx.modules`, so a caller that needs facts about the whole tree must EVALUATE against the
+/// whole tree — and the live-read manifest producer did exactly that, resolving and typechecking
+/// a 545-module union program to answer one classification request: 179 s wall, 178.8 s CPU,
+/// 9.4 GiB, measured on this container. Every fact it then read is syntactic. `build_item_info`
+/// is parse-level (kind, module, params, body all come from the frontend, none from inference),
+/// and `fn_arrow_decl_record` reads only the item node and the source text, so the entire
+/// population is derivable from a PARSE — the same 540 modules the frontend parses in 191 ms.
+///
+/// It is emphatically NOT a second definition of what a fn-arrow fact is (§3): the per-item
+/// record is `fn_arrow_decl_record` and the kind classification is `build_item_info`, both shared
+/// verbatim with the live producer above. What differs is only which modules are walked, and the
+/// walk itself is the same `module_items` × item-registry filter.
+///
+/// `ctx` supplies symbols only. Source lookups go through the frontend's OWN newline indices,
+/// because the spans in these items name the files parsed here, which are in general not the
+/// files the evaluating context resolved — reusing `ctx.source_indices()` would silently yield
+/// empty lexemes for every module outside the eval closure, which is the same coverage hole in a
+/// quieter form.
+pub fn fn_arrow_decl_facts_from_sources(
+    ctx: &InterpContext,
+    sources: &[Rc<crate::v1_compiler_compile::SourceFile>],
+) -> Result<Vec<Value>, String> {
+    let frontend = crate::v1_compiler_compile::front_end_sources(Rc::new(sources.to_vec().into()));
+    let Some(graph) = frontend.graph.clone() else {
+        return Err(format!(
+            "FN-ARROW FACT REFUSAL cause=FrontendProducedNoGraph sources={} diagnostics={} — a \
+             parse that yields no module graph has no declaration population, and reporting zero \
+             declarations would read as 'this tree declares nothing' rather than as 'the parse \
+             did not happen'.",
+            sources.len(),
+            frontend.diagnostics.len()
+        ));
+    };
+    let si: SourceIndices = Rc::new(
+        frontend
+            .newline_indices
+            .iter()
+            .map(|n| (n.file.clone(), n.clone()))
+            .collect(),
+    );
+    let mut rows: Vec<Value> = Vec::new();
+    for module in graph.modules.iter() {
+        let module_node = module.module.clone();
+        let module_name = crate::v1_std_core::authored_name_at(si.clone(), module_node.clone());
+        let module_name = if module_name.is_empty() {
+            module_node.name.clone()
+        } else {
+            module_name
+        };
+        for item in crate::v1_std_core::module_items(module_node.clone()).iter() {
+            let info = crate::v1_compiler_infer::build_item_info(
+                item.clone(),
+                si.clone(),
+                module_name.clone(),
+            );
+            if info.kind != ItemKind::FnItem && info.kind != ItemKind::FuncItem {
+                continue;
+            }
+            let name = authored_name_at(si.clone(), item.clone());
+            if name.is_empty() {
+                continue;
+            }
+            if let Some(row) = fn_arrow_decl_record(ctx, &si, &module_name, &name, item) {
+                rows.push(row);
+            }
+        }
+    }
+    Ok(rows)
+}
+
 /// module census (same exclude set as `whole_tree_resolved_ctx` / measurement probe).
 pub fn eval_fn_arrow_decl_substrate_is_whole_tree(
     ctx: &InterpContext,

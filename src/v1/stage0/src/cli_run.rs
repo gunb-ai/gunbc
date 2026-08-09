@@ -7951,16 +7951,34 @@ pub fn build_live_read_selection_manifest(
     // is not a function of host hash-iteration order (v2.std.determinism).
     let sources: Vec<Rc<v1_compiler_compile::SourceFile>> = by_path.values().cloned().collect();
     let source_module_count = sources.len();
-    let (graph, indices) =
-        resolved_graph_from_sources(sources, ResolveTypecheckGate::DiscoveryCorpusAdvisory)
-            .map_err(|e| {
-                format!(
+    // Resolve THROUGH THE INDEX, not through the raw source-list entry point.
+    //
+    // `resolved_graph_from_sources` builds a graph with no access to the index's typed-module
+    // cache and outside its schedule-derived retention, so every module in the union is
+    // typechecked cold and every env map it constructs is held for the whole build. Measured,
+    // that is not a margin: the suite was SIGKILLed against this container's 31.3 GB cgroup cap
+    // while resolving a 540-module closure the floor resolves routinely within budget. The
+    // index-aware entry point shares typed modules and participates in the retention the v1
+    // run-stability lane built for exactly this cost shape.
+    //
+    // `Ephemeral` rather than `Memoize`: this graph exists to derive facts once and is not the
+    // graph any consumer executes against, so installing it in the resolved-graph memo would
+    // retain a second whole closure for the index's lifetime beside the graphs the floor runs.
+    let (graph, indices, _fact_resolve_diags) = resolved_graph_from_sources_with_index(
+        index,
+        sources,
+        ResolveTypecheckGate::DiscoveryCorpusAdvisory,
+        "live-read-manifest",
+        ResolvedGraphMemoShare::Ephemeral,
+    )
+    .map_err(|e| {
+        format!(
             "LIVE-READ MANIFEST REFUSAL cause=RequestUniverseUnresolved detail={e} — the union of \
              the request roots' closures could not be resolved, so the declaration facts would \
              describe less than the roots the consumer decides over and no declaration has an \
              established classification."
         )
-            })?;
+    })?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
 
     // COVERAGE, checked at identity grain rather than by count.
@@ -8038,13 +8056,15 @@ pub fn build_live_read_selection_manifest(
         )
     })?;
 
-    let v1_interpreter::Value::List(row_values) = &produced else {
-        return Err(format!(
-            "LIVE-READ MANIFEST REFUSAL cause=ProducerShapeUnexpected got={} — expected a \
-             List<LiveReadSelectionManifestRow>.",
-            produced.type_label_public()
-        ));
-    };
+    // Decoded INSIDE the active context, deliberately. `free_monoid_to_vec` resolves the `Empty`,
+    // `Cons`, `head` and `tail` symbols through `active_ctx()`, and with no context active it
+    // cannot name them — so it returns `None` for EVERY variant, and a perfectly well-formed
+    // `Cons` chain reports as a foreign shape. An earlier revision of this call sat outside the
+    // context block and produced exactly that: a refusal whose message said "neither
+    // representation" about a value that was one of them.
+    let row_values = v1_interpreter::with_active_context(&ctx, || {
+        decode_manifest_row_collection(Some(&ctx), &produced)
+    })?;
 
     let mut rows = std::collections::HashMap::new();
     for row in row_values.iter() {
@@ -8172,6 +8192,53 @@ impl MultiEntryIndex {
         *self.live_read_manifest.borrow_mut() = Some(built.clone());
         built
     }
+}
+
+/// Decode the producer's returned collection, accepting BOTH representations a `List<T>` has.
+///
+/// `List<T>` in the substrate is `FreeMonoid<T>` — `Empty | Cons { head, tail }` — and whether an
+/// expression of that type reaches the Rust boundary as a native `Value::List` or as the modeled
+/// coproduct chain is a property of which operations happened to have native interpreter arms, not
+/// of the type. `fold_list` has a native arm; `list_snoc_item` does not, so it runs its modeled
+/// body and returns the chain. Requiring `Value::List` here therefore encoded an accident of the
+/// realization as a contract, and refused every manifest the producer could actually build.
+///
+/// That mismatch was latent in #7997 rather than introduced later: a producer with no production
+/// consumer is never asked for its value, so nothing decoded it. It surfaced the first time a
+/// consumer ran — which is the point of consumers.
+///
+/// Both accepted shapes must produce identical rows; a foreign variant or a malformed tail
+/// refuses, located, rather than decoding to a short list that would read as a smaller manifest.
+/// `ctx` is used ONLY to resolve a foreign variant's symbol for the refusal text. It is optional
+/// so the refusal arm is reachable from a control without standing up a resolved graph; a caller
+/// that has a context passes it and gets the variant named, one that does not gets the type label.
+pub fn decode_manifest_row_collection(
+    ctx: Option<&v1_interpreter::InterpContext>,
+    produced: &v1_interpreter::Value,
+) -> Result<Vec<v1_interpreter::Value>, String> {
+    // The interpreter's own FreeMonoid decoder is the single authority for this walk — it already
+    // handles the native list, the empty variant, and the cons chain, and re-deriving the walk
+    // here would be a second definition of what `List<T>` means (§3).
+    v1_interpreter::free_monoid_to_vec(produced).ok_or_else(|| {
+        // Name the variant. `type_label_public()` answers "Variant" for every coproduct, which
+        // cannot distinguish a foreign type from a malformed chain from a decoder that could not
+        // resolve its own symbols — three different defects with three different repairs. A
+        // diagnostic that cannot separate them sends the next reader guessing, which is how the
+        // previous two rounds on this boundary were spent.
+        let named = ctx
+            .and_then(|ctx| {
+                variant_parts(produced)
+                    .map(|(variant_name, _)| format!("Variant::{}", ctx.resolve(variant_name)))
+            })
+            .unwrap_or_else(|| produced.type_label_public().to_string());
+        format!(
+            "LIVE-READ MANIFEST REFUSAL cause=ProducerCollectionShapeUnexpected got={named} — \
+             expected a List<LiveReadSelectionManifestRow> in either the native list \
+             representation or the modeled Empty/Cons chain. A shape that is neither cannot be \
+             attributed to a row population, and decoding it partially would under-report the \
+             manifest."
+        )
+    })
 }
 
 /// The whole-roster live-read selection state, built ONCE per index before any per-entry

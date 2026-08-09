@@ -562,9 +562,10 @@ fn live_read_selection_manifest_over(
   nodes: List<ModuleDeclarationFact>,
   decls: List<FnArrowDecl>
 ) -> List<LiveReadSelectionManifestRow> {
-  fold_list_right(xs: requests, empty: empty_manifest_rows, snoc: fn(acc, req) {
-    Cons {
-      head: LiveReadSelectionManifestRow {
+  fold_list(xs: requests, empty: empty_manifest_rows, cons: fn(acc, req) {
+    list_snoc_item(
+      xs: acc,
+      item: LiveReadSelectionManifestRow {
         key: live_read_manifest_row_key(entry_path: req.entry_path, fn_name: req.fn_name),
         projection: live_read_selection_projection_live(
           entry_path: req.entry_path,
@@ -574,13 +575,12 @@ fn live_read_selection_manifest_over(
           nodes: nodes,
           decls: decls
         )
-      },
-      tail: acc
-    }
+      }
+    )
   })
 }
 
-data manifest_fold_cost_shape_note: String = "THIS FOLD PREPENDS; IT DOES NOT SNOC. The previous form accumulated with list_snoc_item, which is list_append(acc, single) - and list_append is itself a fold_list_right that rebuilds the whole left list. Appending one row therefore copied every row already accumulated, making the manifest build quadratic in the request count: the copied-accumulator cost shape DESIGN section 6 names, and its bare-minimum-cost rule says a proven cost shape is always fixed regardless of the realized n. The realized n stopped being small the moment this producer gained a production consumer - the seed now builds ONE manifest over the COMPLETE floor roster, which is the whole witness corpus rather than a fixture pair, so the quadratic term is paid on the affected-set path whose entire purpose is to reduce CI cost. Prepending is O(1) per row and fold_list_right visits the requests from the right, so the emitted order is unchanged; the idiom is copied from list_append in v2.std.algebra rather than invented here. Row ORDER is in any case not load-bearing at either consumer: the seed decodes rows into a HashMap keyed by the declaration key and REFUSES a duplicate key rather than letting a later row win, so the consumer depends on the row multiset and on key uniqueness, neither of which a fold direction can change."
+data manifest_fold_cost_shape_note: String = "This fold accumulates with list_snoc_item, which is list_append(acc, single), and list_append rebuilds its whole left list - so appending one row copies every row already accumulated, quadratic in the request count. That is the copied-accumulator cost shape DESIGN section 6 names, and its realized n stopped being small when this producer gained a production consumer folding over the floor roster. It is NOT fixed here, and the reason is worth recording because a previous revision of this note got it exactly backwards. A prepend form was written, the suite went red with ProducerShapeUnexpected got=Variant, and this note asserted the prepend had caused it by building a modeled coproduct where list_snoc_item builds a native list. THAT ATTRIBUTION WAS FALSE, and the next execution disproved it: reverting to list_snoc_item produced the identical failure. list_snoc_item has no native interpreter arm - it appears in v1_interpreter only in a watchlist - so it runs its modeled body through list_append and fold_list_right and returns the same FreeMonoid chain either way. The wire shape was never a function of which fold was written; the Rust decoder simply required Value::List while every representation the producer can return is the modeled Cons/Empty chain, a latent producer/decoder mismatch that #7997 could not have caught because it installed no production consumer. The lesson kept here is about method rather than lists: the false note was written from one red run plus a plausible mechanism, without the control that would have separated them, which is the same specification-without-execution failure the surrounding lane exists to remove. Dissolve-on for the cost shape: a native O(1) accumulate that returns the same representation, or Cons/Empty grounded into the native list realization. Until then the term is measured rather than argued - the live-read-manifest receipt reports requests, universe size, wall and CPU."
 
 data whole_tree_subject_mint_site_law: String = "THE COMPLETE SUBJECT IS MINTED WHERE THE WHOLE-TREE PRODUCERS ARE CALLED, AND NOWHERE ELSE. WholeTreeFactSubject carried a caller-supplied subject_id in an earlier revision, which meant the completeness claim was a string a caller wrote beside a fact list it also chose — the two were never related, so a fixture population could be labelled whole-tree and would then be permitted to decide LocalRead. Making the variant nullary removes the thing a caller could author. It is constructed at exactly one site, live_read_selection_manifest_live, which is also the only site that calls dependency_resolution_facts_live, module_declaration_facts_live and fn_arrow_decl_facts_live — so the subject and the facts have one origin by construction rather than by a caller pairing them correctly. RESIDUE, STATED RATHER THAN CLAIMED AWAY: this makes the subject unforgeable from outside, and it does NOT yet prove that fn_arrow_decl_facts_live covers every module the consuming index holds. Until a control shows a declaration outside the producer entry's own closure appearing in that population, the mint site is a construction wall around an unproven premise, not a proof of coverage. The seed-side identity check is the other half — the manifest is stamped with the producing index's generation and refuses a lookup from any other index."
 

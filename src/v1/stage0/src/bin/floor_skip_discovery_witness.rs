@@ -4,14 +4,15 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use v1_compiler::cli_run::{
-    build_multi_entry_index, resolve_entry_graph_shared, resolve_entry_with_index,
-    run_discovery_corpus_with_options, workspace_root, DiscoveryCorpusOptions, DiscoveryRow,
-    DiscoverySummary, DiscoveryWidthPolicy, LiveReadSelectionContext, NodeFrontierSelectionMode,
-    SELECTION_CONTROL_BUDGET_ROSTER_REL, SELECTION_CONTROL_CI_FLOOR_PLAN_REL,
-    SELECTION_CONTROL_DOC_REACHABILITY_REL, SELECTION_CONTROL_FALSIFIER_CONTROL_REL,
-    SELECTION_CONTROL_FLOOR_RUNNER_REL, SELECTION_CONTROL_FLOOR_RUNNER_TEST_REL,
-    SELECTION_CONTROL_LIVE_TREE_DECLARED_REL, SELECTION_CONTROL_NODE_PRECISE_REL,
-    SELECTION_CONTROL_REALIZATION_SCHEDULE_REL, SELECTION_CONTROL_SHARED_HELPER_REL,
+    build_multi_entry_index, decode_manifest_row_collection, resolve_entry_graph_shared,
+    resolve_entry_with_index, run_discovery_corpus_with_options, workspace_root,
+    DiscoveryCorpusOptions, DiscoveryRow, DiscoverySummary, DiscoveryWidthPolicy,
+    LiveReadSelectionContext, NodeFrontierSelectionMode, SELECTION_CONTROL_BUDGET_ROSTER_REL,
+    SELECTION_CONTROL_CI_FLOOR_PLAN_REL, SELECTION_CONTROL_DOC_REACHABILITY_REL,
+    SELECTION_CONTROL_FALSIFIER_CONTROL_REL, SELECTION_CONTROL_FLOOR_RUNNER_REL,
+    SELECTION_CONTROL_FLOOR_RUNNER_TEST_REL, SELECTION_CONTROL_LIVE_TREE_DECLARED_REL,
+    SELECTION_CONTROL_NODE_PRECISE_REL, SELECTION_CONTROL_REALIZATION_SCHEDULE_REL,
+    SELECTION_CONTROL_SHARED_HELPER_REL,
 };
 use v1_compiler::v1_interpreter::ExecutionMode;
 
@@ -825,6 +826,70 @@ fn live_read_missing_classification_refuses() {
     );
 }
 
+/// The producer's collection crosses the Rust boundary in EITHER valid representation.
+///
+/// `List<T>` is `FreeMonoid<T>` — `Empty | Cons { head, tail }` — and whether it arrives as a
+/// native `Value::List` or as the modeled chain depends on which operations had native interpreter
+/// arms, not on the type. The decoder therefore accepts both, and this exercises the two shapes
+/// the producer can actually return plus the one it must refuse.
+///
+/// Stated honestly about coverage: the empty and multi-row arms below go through the REAL producer,
+/// so they prove the live path decodes. The "both representations yield identical rows" control is
+/// NOT here, because forcing the producer to return a native list would mean fabricating a path it
+/// does not have — a control that manufactures its own subject proves nothing about the subject.
+/// The shared walk itself is the interpreter's own `free_monoid_to_vec`, already the authority
+/// `coproduct_reflection` uses.
+fn manifest_collection_decodes_both_representations() {
+    chdir_workspace();
+    let ws = workspace_root();
+    let roots = floor_skip_source_roots();
+    let index = build_multi_entry_index(&roots);
+    let disc_entry = ws
+        .join(SELECTION_CONTROL_NODE_PRECISE_REL)
+        .to_string_lossy()
+        .into_owned();
+
+    // (1) EMPTY: no requests → a manifest with zero rows, decoded rather than refused.
+    let empty = LiveReadSelectionContext::build(&index, &[])
+        .expect("an empty roster must decode to an empty manifest, not refuse");
+    // A lookup against it still refuses — empty is a decodable collection, not a licence to skip.
+    let err = empty
+        .runtime_dependency_touched_for_entry(&index, &disc_entry, &[])
+        .expect_err("an entry absent from an empty roster must still refuse");
+    assert!(err.contains("LiveReadEntryAbsent"), "cause: {err}");
+
+    // (2) SEVERAL: three declarations decode, in the population the roster named.
+    let roster: Vec<DiscoveryRow> = [
+        "floor_disc_witness_a_only_holds",
+        "floor_disc_witness_b_only_holds",
+        "floor_disc_witness_transitive_holds",
+    ]
+    .iter()
+    .map(|f| DiscoveryRow {
+        label: (*f).to_string(),
+        entry: disc_entry.clone(),
+        function: (*f).to_string(),
+        reads_live_tree: false,
+    })
+    .collect();
+    let live = LiveReadSelectionContext::build(&index, &roster)
+        .expect("a multi-declaration roster must decode");
+    // Every named declaration is present: a short decode would surface here as a lookup refusal
+    // rather than as a quietly smaller manifest.
+    live.runtime_dependency_touched_for_entry(&index, &disc_entry, &[])
+        .expect("all three declarations must be present and classified");
+
+    // (3) FOREIGN SHAPE: a value that is neither a native list nor a FreeMonoid chain must refuse
+    // by name, not decode to zero rows. An `Int` needs no symbol resolution to reject, so this
+    // exercises the refusal arm itself rather than the decoder's inability to resolve `Empty`.
+    let err = decode_manifest_row_collection(None, &v1_compiler::v1_interpreter::Value::Int(7))
+        .expect_err("a non-collection value must refuse, never decode to an empty manifest");
+    assert!(
+        err.contains("ProducerCollectionShapeUnexpected"),
+        "cause: {err}"
+    );
+}
+
 /// THE DEFECT CONTROL: a declaration OUTSIDE the classification lens's own import closure must
 /// classify, not refuse.
 ///
@@ -1062,6 +1127,10 @@ fn main() -> ExitCode {
         (
             "live_read_classifies_a_declaration_outside_the_lens_closure",
             live_read_classifies_a_declaration_outside_the_lens_closure,
+        ),
+        (
+            "manifest_collection_decodes_both_representations",
+            manifest_collection_decodes_both_representations,
         ),
     ];
 
