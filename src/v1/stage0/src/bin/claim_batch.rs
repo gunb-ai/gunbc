@@ -611,8 +611,10 @@ fn run() -> Result<ExitCode, ExitCode> {
     );
 
     // ONE index per (thread, roots), not one per holder. This harness previously built
-    // its own MultiEntryIndex here while machinery on the same thread separately built
-    // the process-shared one, so the per-source-root bare census — the dominant cold cost
+    // its own MultiEntryIndex here while `install_output_policy` above had ALREADY warmed
+    // the process-shared one on this same thread (it resolves through
+    // `resolve_entry_graph_shared` -> `process_shared_index`), so the per-source-root bare
+    // census — the dominant cold cost
     // on this path, measured at ~13.8s per (root, index) — was computed twice for the
     // same two subjects. The census memo is keyed on the source root alone, with nothing
     // about the query in the key, so the second index bought no distinction at all: it
