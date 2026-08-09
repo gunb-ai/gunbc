@@ -1,0 +1,113 @@
+module gunbc.test.claim.dag_line_comment_annotation_witness_test
+
+import v2.std.text { String }
+import v2.std.logic { Bool }
+import v2.std.algebra { fold_list, length }
+import std.algebra { Cons, Empty }
+import v2.std.compilers.lexing {
+  LexRuleSet,
+  lex_artifact_annotations,
+  lex_artifact_semantic_tokens,
+  token_stream_all
+}
+import v2.compiler.tokenize { lex_walk_artifact }
+import v2.compiler.parse { parse_module }
+import v2.extdeps.languages.dag { dag_lex_rules, dag_grammar }
+
+data annotation_rule_witness_note: String = "CI2-0 commit-1 proof obligation (operator directive msg_aa2963ef): discriminating controls for dag_line_comment_annotation_rule on the PRODUCTION lex (dag_lex_rules), each answering one enumerated question by execution. The rule-removed RED reconstructs the pre-repair ruleset by dropping the head row of dag_lex_rules — the same list minus exactly the annotation rule — so the discrimination is single-variable at the ruleset grain. Route-grain proof (real closure advancing, bucket displacement on the 116-identity sample) lives in the sweep receipts, not here: these are lexical/parse mechanism witnesses, hermetic and fast."
+
+fn rules_with() -> LexRuleSet {
+  dag_lex_rules()
+}
+
+fn rules_without() -> LexRuleSet {
+  match dag_lex_rules() {
+    LexRuleSet { rules: rows } =>
+      match rows {
+        Cons { head: _, tail: rest } => LexRuleSet { rules: rest }
+        Empty => LexRuleSet { rules: Empty }
+      }
+  }
+}
+
+data commented_module_source: String = "module zz_ann_probe\n\n// a leading comment line\nfn probe_id(x: Int) -> Int { x }\n"
+
+data unicode_commented_source: String = "module zz_ann_probe\n\n// prose with an em dash — and a section sign § inside\nfn probe_id(x: Int) -> Int { x }\n"
+
+data comment_at_eof_source: String = "module zz_ann_probe\n\nfn probe_id(x: Int) -> Int { x }\n// trailing block at end of file"
+
+data slashes_in_string_source: String = "module zz_ann_probe\n\ndata url_row: String = \"https://example.org//path\"\n"
+
+data url_in_comment_source: String = "module zz_ann_probe\n\n// see https://example.org//path for the citation\nfn probe_id(x: Int) -> Int { x }\n"
+
+data malformed_source: String = "module zz_ann_probe\n\nfn probe_id(x: Int -> Int { x }\n"
+
+fn lex_annotation_count(source: String, rules: LexRuleSet) -> Int {
+  match lex_walk_artifact(source: source, file: ^ann_probe, rules: rules) {
+    v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
+      length(xs: lex_artifact_annotations(artifact: a))
+    v2.std.diagnostic.Rejected { diagnostics: _ } => 0 - 1
+  }
+}
+
+fn parse_accepts(source: String, rules: LexRuleSet) -> Bool {
+  match lex_walk_artifact(source: source, file: ^ann_probe, rules: rules) {
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
+      match parse_module(tokens: lex_artifact_semantic_tokens(artifact: a), grammar: dag_grammar()) {
+        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+test fn witness_commented_module_parses_with_rule() -> Bool {
+  parse_accepts(source: commented_module_source, rules: rules_with())
+    && lex_annotation_count(source: commented_module_source, rules: rules_with()) == 1
+}
+
+test fn witness_commented_module_refuses_without_rule_RED() -> Bool {
+  parse_accepts(source: commented_module_source, rules: rules_without()) == false
+}
+
+test fn witness_uncommented_module_parses_without_rule_control() -> Bool {
+  parse_accepts(source: "module zz_ann_probe\n\nfn probe_id(x: Int) -> Int { x }\n", rules: rules_without())
+}
+
+test fn witness_unicode_comment_text_parses() -> Bool {
+  parse_accepts(source: unicode_commented_source, rules: rules_with())
+    && lex_annotation_count(source: unicode_commented_source, rules: rules_with()) == 1
+}
+
+test fn witness_comment_at_eof_parses() -> Bool {
+  parse_accepts(source: comment_at_eof_source, rules: rules_with())
+    && lex_annotation_count(source: comment_at_eof_source, rules: rules_with()) == 1
+}
+
+test fn witness_slashes_inside_string_not_consumed_as_annotation() -> Bool {
+  parse_accepts(source: slashes_in_string_source, rules: rules_with())
+    && lex_annotation_count(source: slashes_in_string_source, rules: rules_with()) == 0
+}
+
+test fn witness_url_in_comment_captured_whole() -> Bool {
+  parse_accepts(source: url_in_comment_source, rules: rules_with())
+    && lex_annotation_count(source: url_in_comment_source, rules: rules_with()) == 1
+}
+
+test fn witness_malformed_syntax_still_refuses_RED() -> Bool {
+  parse_accepts(source: malformed_source, rules: rules_with()) == false
+}
+
+test fn witness_semantic_projection_erases_comment_tokens() -> Bool {
+  match lex_walk_artifact(source: commented_module_source, file: ^ann_probe, rules: rules_with()) {
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
+      match lex_walk_artifact(source: "module zz_ann_probe\n\nfn probe_id(x: Int) -> Int { x }\n", file: ^ann_probe, rules: rules_with()) {
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Accepted { value: bare, diagnostics: _ } =>
+          let commented_tokens = length(xs: token_stream_all(stream: lex_artifact_semantic_tokens(artifact: a)))
+          let bare_tokens = length(xs: token_stream_all(stream: lex_artifact_semantic_tokens(artifact: bare)))
+          commented_tokens == bare_tokens
+      }
+  }
+}
