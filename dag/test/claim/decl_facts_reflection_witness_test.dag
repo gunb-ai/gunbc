@@ -11,7 +11,7 @@ import test.claim.decl_facts_reflection_witness_support {
   decl_facts_reflection_bind_is_declaration_ref_projection,
   decl_facts_reflection_constructor_variant,
   decl_facts_reflection_field_projection,
-  decl_facts_reflection_fixture_facts,
+  decl_facts_reflection_witness_support_facts,
   decl_facts_reflection_named_field_projection_surfaces,
   decl_facts_reflection_nullary_value_projection,
   decl_facts_reflection_resolved_nullary_variant_name,
@@ -33,7 +33,7 @@ data qn_uses_param_only: String = "test.fixture.decl_facts_reflection.specimens.
 data qn_uses_local: String = "test.fixture.decl_facts_reflection.specimens.uses_local"
 
 test fn w_fixture_pool_decl_facts_nonempty() -> Bool {
-  length(xs: decl_facts_reflection_fixture_facts()) > 0
+  length(xs: decl_facts_reflection_witness_support_facts()) > 0
 }
 
 test fn w_outer_record_constructor_scaffold_lexeme_surfaces() -> Bool {
@@ -60,7 +60,7 @@ test fn w_named_field_declaration_ref_surfaces() -> Bool {
 
 test fn w_plain_int_specimen_has_no_coproduct_constructor_lexemes() -> Bool {
   match decl_fact_projection_node_for_qualified_name(
-    facts: decl_facts_reflection_fixture_facts(),
+    facts: decl_facts_reflection_witness_support_facts(),
     qn: qn_planted_plain_int_specimen
   ) {
     Present { value: skeleton } =>
@@ -103,7 +103,7 @@ test fn w_nullary_variant_value_absent_without_infer_stamping_nested() -> Bool {
 
 test fn w_fn_body_param_reference_does_not_gain_constructor_lexemes() -> Bool {
   match decl_fact_projection_node_for_qualified_name(
-    facts: decl_facts_reflection_fixture_facts(),
+    facts: decl_facts_reflection_witness_support_facts(),
     qn: qn_uses_param_only
   ) {
     Present { value: skeleton } =>
@@ -116,7 +116,7 @@ test fn w_fn_body_param_reference_does_not_gain_constructor_lexemes() -> Bool {
 
 test fn w_fn_body_local_bindings_do_not_gain_constructor_lexemes() -> Bool {
   match decl_fact_projection_node_for_qualified_name(
-    facts: decl_facts_reflection_fixture_facts(),
+    facts: decl_facts_reflection_witness_support_facts(),
     qn: qn_uses_local
   ) {
     Present { value: skeleton } =>

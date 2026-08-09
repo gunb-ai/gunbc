@@ -32,7 +32,7 @@ import gunbc.merge_admission_produce {
 import gunbc.ci_failure_class { merge_freshness_verdict_is_consumed_to_block }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import tools.merge_admission_capture { current_walk_attempt_id }
+import tools.merge_admission_capture { capture_walk_attempt_id }
 
 data merge_admission_walk_note: String = "The live merge-admission path is a typed pre-walk capture subprocess followed by stamp_tested_floor and refresh_current_target_and_gate as two singleton success stages in ONE shared stage entry. Capture consumes only walk-attempt/tested-subject identity in a claim_batch child whose address space dies before the ordinary floor; importing the downstream classifier and commit-roster closure before discovery made the authored Negligible profile false, and an in-process capture still retained one worker arena after thread join. The WalkPlan carries two ordering laws instead of shell: stamp is reachable only after the whole ordinary floor and its finalization passed, and stage 2 is unreachable until stage 1 passed. The two non-heavy claims route through population_unit_lane to the MAIN THREAD (corrected per review 47528 — an earlier draft said spawned lanes; claim_executor population_unit_lane and its tests are the placement authority); each stage may still resolve the entry independently, and the disk-visible stage-1 receipt is the intentional barrier, not an in-memory memo promise. The stage-2 claim stays composite because fetch MUST precede classification; two sibling claims would have no ordering guarantee."
 
@@ -69,7 +69,7 @@ fn read_floor_receipt(root: String, attempt_id: WalkAttemptId) -> MergeAdmission
 }
 
 func stamp_tested_floor() -> Bool {
-  match current_walk_attempt_id() {
+  match capture_walk_attempt_id() {
     Absent => false
     Present { value: attempt_id } =>
       let root = git.Inspect.Toplevel().path as String
@@ -148,7 +148,7 @@ func merge_target_refresh() -> MergeTargetRefresh {
   if !fetched.success {
     MergeTargetRefreshRefused { cause: RefreshFetchRefused { stderr: fetched.stderr } }
   } else {
-    match current_walk_attempt_id() {
+    match capture_walk_attempt_id() {
       Absent => MergeTargetRefreshRefused { cause: RefreshAttemptIdentityAbsent }
       Present { value: attempt_id } =>
         let root = git.Inspect.Toplevel().path as String

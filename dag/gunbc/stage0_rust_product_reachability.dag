@@ -8,7 +8,7 @@ import gunbc.stage0_rust_host_observation {
   RustSourceHostObservation
 }
 import gunbc.stage0_rust_source_lifecycle_scaffold {
-  path_has_prefix,
+  rust_source_path_has_prefix,
   path_in_list,
   rust_source_prefix_stage0_test,
   rust_source_prefix_test_harness
@@ -25,8 +25,8 @@ data empty_string_list: List<String> = []
 data rust_module_dependency_graph_unresolved_edge: String = "Rust module dependency graph not modeled — cannot walk from cargo bin roots to dependent source files"
 
 fn path_is_test_harness(path: String) -> Bool {
-  path_has_prefix(path: path, prefix: rust_source_prefix_test_harness)
-    || path_has_prefix(path: path, prefix: rust_source_prefix_stage0_test)
+  rust_source_path_has_prefix(path: path, prefix: rust_source_prefix_test_harness)
+    || rust_source_path_has_prefix(path: path, prefix: rust_source_prefix_stage0_test)
 }
 
 type RustProductReachabilityVerdict

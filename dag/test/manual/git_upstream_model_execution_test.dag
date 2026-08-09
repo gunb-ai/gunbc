@@ -55,7 +55,7 @@ import test.claim.git_upstream_model_witness {
   path_subtree_member,
   path_gitlink,
   path_non_ascii,
-  fixture_repository,
+  git_fixture_repository,
 }
 import std.bytes { utf8_encode_bytes }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -78,7 +78,7 @@ fn observed_sha1_oid(stdout: String) -> GitObjectId {
 }
 
 fn complete_fixture_repository() -> GitRepositoryState {
-  let repo = fixture_repository()
+  let repo = git_fixture_repository()
   GitRepositoryState {
     object_format: repo.object_format,
     objects: repo.objects,

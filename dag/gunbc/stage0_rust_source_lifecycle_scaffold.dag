@@ -371,7 +371,7 @@ fn generated_artifact_repo_paths() -> List<String> {
 fn generated_artifact_stage0_src_repo_paths() -> List<String> {
   filter(
     xs: generated_artifact_repo_paths(),
-    predicate: fn(path) { path_has_prefix(path: path, prefix: stage0_src_repo_prefix) }
+    predicate: fn(path) { rust_source_path_has_prefix(path: path, prefix: stage0_src_repo_prefix) }
   )
 }
 
@@ -469,14 +469,14 @@ fn derived_authority_join_repo_paths() -> List<String> {
   list_concat_unique(acc: from_generated, items: derived_hand_maintained_stage0_repo_paths())
 }
 
-fn path_has_prefix(path: String, prefix: String) -> Bool {
+fn rust_source_path_has_prefix(path: String, prefix: String) -> Bool {
   starts_with(s: path, prefix: prefix)
 }
 
 fn path_matches_discovery_prefix_hint(path: String) -> Bool {
   any(
     xs: rust_source_discovery_prefix_hints,
-    predicate: fn(prefix) { path_has_prefix(path: path, prefix: prefix) }
+    predicate: fn(prefix) { rust_source_path_has_prefix(path: path, prefix: prefix) }
   )
 }
 

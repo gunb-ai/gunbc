@@ -1,15 +1,8 @@
 module product.hardware_selection
 
+import std.measure { Milliwatt, milliwatt, milliwatt_count }
 
-type Milliwatt = Measure<Power, Milli, std.nat.Nat>
 
-fn milliwatt(count: std.nat.Nat) -> Milliwatt {
-  Milliwatt { count: count }
-}
-
-fn milliwatt_count(w: Milliwatt) -> std.nat.Nat {
-  measure_count(m: w)
-}
 
 type HardwareAxes {
   throughput: Int
