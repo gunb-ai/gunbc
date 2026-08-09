@@ -1,6 +1,7 @@
 module test.claim.devboot_serve_witness
 
-import std.types { String, Bool, Present, Absent }
+import std.types { String, Bool }
+import v2.std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.devboot.lease { request_ref_namespace }
 import gunbc.devboot.serve {
