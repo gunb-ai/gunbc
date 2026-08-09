@@ -1,5 +1,6 @@
 module gunbc.fleet_converge_cli
 
+import extdeps.filesystem.filesystem_io { Filesystem }
 import std.algebra { trim }
 
 import extdeps.linux.procfs { ProcSysKernelHostname, procfs_path_literal }

@@ -1,5 +1,6 @@
 module gunbc.srv1_tasks_preapply_observation
 
+import extdeps.filesystem.filesystem_io { Filesystem }
 import std.types { String, NonEmptyStr, Bool, List }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.host_converge { runner_instance_glob }
