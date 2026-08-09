@@ -282,6 +282,10 @@ fn cfba_provider_with_reference_closure_row(
   }
 }
 
+// Provider carries BOTH a declaration and a reference, minting raw ids 0 and 1 from its
+// own independent allocator -- the declaration's raw id (0) collides with the consumer's
+// raw declaration id (also 0), so this exercises reference rekeying alongside declaration
+// rekeying, not references: [] as before.
 test fn colliding_raw_ids_assemble_to_distinct_closure_ids_with_joins_intact_holds() -> Bool {
   let consumer_module = cfba_path(dotted: "extdeps.consumer")
   let provider_module = cfba_path(dotted: "extdeps.provider")
@@ -291,10 +295,6 @@ test fn colliding_raw_ids_assemble_to_distinct_closure_ids_with_joins_intact_hol
     name: "ConsumerDecl",
     category: TypeOccurrence,
   )
-  // Provider carries BOTH a declaration and a reference, minting raw ids 0 and 1 from its
-  // own independent allocator -- the declaration's raw id (0) collides with the consumer's
-  // raw declaration id (also 0), so this exercises reference rekeying alongside declaration
-  // rekeying, not references: [] as before.
   let provider = cfba_provider_with_reference_closure_row(
     module_path: provider_module,
     file_path: "extdeps/provider.dag",
