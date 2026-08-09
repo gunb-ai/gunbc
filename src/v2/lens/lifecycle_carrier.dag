@@ -33,8 +33,23 @@ import v2.std.optional {
   optional_prefer_first_present
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.lens.common.construction_justification {
+  ConstructionJustification,
+  WallAfterGrounding
+}
+import std.disposition { SubstrateMandatoryTag }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Membership is DECIDABLE -- a field's name and declared type are both readable
+// off the Node tree -- so this is not RatchetForever. It is not a wall today
+// because the substrate has no way to mandate that a field with a given name
+// carry a given carrier type; the field stays writable and this gate is what
+// refuses it. It dissolves into SubstrateMandatoryTag when that capability
+// exists, at which point the raw form has no constructor and the gate deletes.
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
+}
 
 // The field-name class this wall holds at zero. These are the spellings the
 // authored corpus actually used for "the code change that retires this carve-out"
