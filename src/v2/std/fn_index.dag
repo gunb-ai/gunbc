@@ -34,6 +34,21 @@ fn fn_arrow_decl_facts_live() -> List<FnArrowDecl> {
   fn_arrow_decl_facts_live()
 }
 
+data fn_arrow_index_live_source_subject_note: String = "SAME PROJECTION, DIFFERENT SOURCE SUBJECT. fn_arrow_decl_facts_live reflects the EVALUATING CONTEXT's modules, so a caller needing facts about a whole tree had to evaluate against that whole tree - and the live-read manifest producer did, resolving a 545-module union program to answer one classification request (179125 ms wall, 178751 ms CPU, 9.4 GiB, measured). Worse than the cost, the union composed independently valid modules into one program, so bare names that bind uniquely inside each entry's own import scope stopped binding: Holds, Finding, Exact, Refuse, Blocking, FailClosed all went unresolved and ONE shared refusal denied classification to all 133 enrolled entries. That is not a repairable module; it is a property of composing independently valid programs, so no corpus large enough avoids it. fn_arrow_decl_facts_index_live reads the exact MultiEntryIndex already bound to the classification operation instead. It is a TRANSPORT, not a second semantic authority: it reuses the same parsed-declaration projection the corpus walk uses, reads no files, performs no resolve, computes no closure, and decides no classification. It marshals into the CURRENT evaluator context because a marshalled value carries context-interned symbols and may not be cached across contexts; what is cached is the parse. A missing index substrate or a failed global extraction is a typed refusal, never an empty list, because an empty declaration population reads as no runtime reads and would license a skip."
+
+data fn_arrow_index_live_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.std.fn_index",
+    decl_name: "fn_arrow_decl_facts_index_live",
+    field: WholeDeclaration
+  }
+}
+
+fn fn_arrow_decl_facts_index_live() -> List<FnArrowDecl> {
+  fn_arrow_decl_facts_index_live()
+}
+
 fn fn_arrow_decl_substrate_is_whole_tree() -> Bool {
   fn_arrow_decl_substrate_is_whole_tree()
 }

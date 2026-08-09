@@ -3552,6 +3552,10 @@ macro_rules! v1_bridge_family_arms {
                 lookup_eval_call_bridge_std_fn_index eval_call_bridge__v2_std_fn_index_arm {
                 arm "v4_bridge.fn_arrow_decl_facts_live" { "fn_arrow_decl_facts_live" } =>
                     crate::coproduct_reflection::eval_fn_arrow_decl_facts_live($ctx, &$args),
+                arm "v4_bridge.fn_arrow_decl_facts_index_live" { "fn_arrow_decl_facts_index_live" } =>
+                    crate::cli_run::eval_fn_arrow_decl_facts_index_live($ctx)
+                        .map(list_value)
+                        .map_err(|msg| InterpError::TypeError { msg }),
                 arm "v4_bridge.fn_arrow_decl_substrate_is_whole_tree" { "fn_arrow_decl_substrate_is_whole_tree" } =>
                     crate::coproduct_reflection::eval_fn_arrow_decl_substrate_is_whole_tree($ctx, &$args),
             }

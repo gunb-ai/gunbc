@@ -1887,6 +1887,15 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
+      arm: InterpreterPrimitiveArmId { identity: "v4_bridge.fn_arrow_decl_facts_index_live" },
+      form: FreeCall,
+      authored_spelling: "fn_arrow_decl_facts_index_live",
+      realization_module: "v1_interpreter",
+      dispatch_symbol: "eval_call",
+      dispatch_emit_site: EvalCallBridgeFamilySite { module: qualified_name_from_dotted_string(dotted: "v2.std.fn_index") },
+      enumeration: AuthoredInRoster,
+    },
+    InterpreterPrimitiveDispatchArm {
       arm: InterpreterPrimitiveArmId { identity: "v4_bridge.fn_arrow_decl_substrate_is_whole_tree" },
       form: FreeCall,
       authored_spelling: "fn_arrow_decl_substrate_is_whole_tree",

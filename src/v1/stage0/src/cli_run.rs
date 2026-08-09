@@ -7888,6 +7888,54 @@ const LIVE_READ_CLASSIFICATION_ENTRY: &str = "src/v2/lens/live_read_classificati
 /// a producer that answered "here is what I could classify" would convert its own failure into a
 /// silent skip licence for everything it dropped (§5: a failure arm must refuse, never widen, and
 /// here widening the *skippable* set is the under-selection direction that reads as a faster green).
+thread_local! {
+    /// The fact substrate bound to the classification evaluation currently on this thread.
+    ///
+    /// It is a BINDING, not a fallback switch. `fn_arrow_decl_facts_index_live` refuses when it
+    /// is empty rather than quietly reflecting the eval context instead — an unbound producer
+    /// returning the historical population would be exactly the silent degrade §5 forbids, and
+    /// the two producers answer about different subjects, so substituting one for the other is
+    /// never a safe default. `fn_arrow_decl_facts_live` keeps the reflecting behaviour under its
+    /// own name for its own consumers; neither one falls back to the other.
+    static BOUND_G2_FACTS: RefCell<Option<Rc<G2FactBundle>>> = const { RefCell::new(None) };
+}
+
+/// Run `f` with `bundle` bound as the fact substrate for `fn_arrow_decl_facts_index_live`.
+///
+/// Restores the previous binding on the way out, including on panic-free early return, so a
+/// nested classification cannot leak its substrate to an outer one.
+pub fn with_bound_g2_facts<T>(bundle: Rc<G2FactBundle>, f: impl FnOnce() -> T) -> T {
+    let previous = BOUND_G2_FACTS.with(|cell| cell.borrow_mut().replace(bundle));
+    let out = f();
+    BOUND_G2_FACTS.with(|cell| *cell.borrow_mut() = previous);
+    out
+}
+
+/// The `fn_arrow_decl_facts_index_live` transport: marshal the BOUND index's raw declaration
+/// facts into the calling evaluator's context.
+///
+/// It decides nothing. The population is whatever the shared parsed-declaration projection
+/// produced for the exact bound index; this function selects the fn/func kinds out of it and
+/// marshals. No file is read, no graph is resolved, no closure is walked here.
+pub fn eval_fn_arrow_decl_facts_index_live(
+    ctx: &v1_interpreter::InterpContext,
+) -> Result<Vec<v1_interpreter::Value>, String> {
+    let Some(bundle) = BOUND_G2_FACTS.with(|cell| cell.borrow().clone()) else {
+        return Err(
+            "FN-ARROW INDEX REFUSAL cause=NoBoundFactSubstrate — fn_arrow_decl_facts_index_live \
+             was called with no index bound to this evaluation. It answers about the exact \
+             consuming index, so with none bound there is no population to describe. Returning \
+             an empty list would read as 'this tree declares nothing', which licenses a skip; \
+             reflecting the eval context instead would answer about a different subject."
+                .to_string(),
+        );
+    };
+    Ok(crate::coproduct_reflection::fn_arrow_decl_rows_from_facts(
+        ctx,
+        &bundle.decl_facts,
+    ))
+}
+
 pub fn build_live_read_selection_manifest(
     index: &MultiEntryIndex,
     requests: &[LiveReadSelectionRequest],
@@ -7896,110 +7944,48 @@ pub fn build_live_read_selection_manifest(
     let build_started = std::time::Instant::now();
     let cpu_started_ms = process_cpu_millis();
 
-    // THE FACT UNIVERSE IS THIS INDEX'S UNIVERSE, and that is the whole correctness argument.
+    // THE FACT UNIVERSE IS THIS INDEX'S UNIVERSE, and NO EXECUTABLE PROGRAM IS FORMED OVER IT.
     //
-    // The producer calls `fn_arrow_decl_facts_live()`, which reflects the EVAL CONTEXT'S modules
-    // (`for_each_live_registry_item` iterates `ctx.modules`). An earlier revision built that
-    // context by resolving the classification lens entry alone, so the declaration population was
-    // the LENS'S OWN import closure. Every request root outside it — which is nearly every
-    // enrolled witness — could not bind: `bind_g2_root` finds the module fact (those come from a
-    // whole-pool scan) but no fn-arrow declaration, and answers `G2RootUnbound`. The manifest then
-    // carried a modelled refusal for essentially every declaration, and a consumer reading that as
-    // "touched" would run the entire corpus on any nonempty diff — MORE selection than the G1
-    // predicate this lane replaces, presenting as a slow green rather than as a failure.
+    // The producer no longer calls `fn_arrow_decl_facts_live()`, which reflects the EVAL CONTEXT's
+    // modules and therefore forced whoever needed whole-tree facts to EVALUATE against the whole
+    // tree. Two revisions failed that way. Resolving the lens entry alone made the declaration
+    // population the LENS'S own closure, so nearly every enrolled witness answered `G2RootUnbound`
+    // and a consumer reading that as "touched" would run the entire corpus on any nonempty diff --
+    // more selection than the G1 predicate this lane replaces, presenting as a slow green.
+    // Resolving the UNION of every request root's closure fixed coverage and broke composition:
+    // it cost 179125 ms wall / 178751 ms CPU for ONE request, and then failed outright, because
+    // bare names that bind uniquely inside each entry's own import scope stop binding once
+    // independently valid programs are composed -- `Holds`, `Finding`, `Exact`, `Refuse`,
+    // `Blocking`, `FailClosed` all went unresolved and one shared refusal denied classification to
+    // all 133 enrolled entries. That is not a repairable module; it is a property of composition,
+    // so no corpus large enough avoids it.
     //
-    // So the context is resolved from the index's OWN sources. That makes universe identity
-    // structural rather than asserted: the facts cannot describe a different tree than the one the
-    // consuming index holds, because they are derived from exactly its files. It is deliberately
-    // NOT `whole_tree_resolved_ctx` — that helper applies the witness and strict-resolve exclusion
-    // sets before resolving, so its universe can omit the very test declarations this manifest is
-    // asked to classify, and its name would have read like a receipt while quietly excluding the
-    // subject.
-    // The universe is the UNION OF THE REQUEST ROOTS' OWN CLOSURES, taken from this index's pool,
-    // plus the classification lens's closure. That is the smallest population that provably
-    // contains every fact the producer needs, and the containment is by construction rather than
-    // by hope: classifying root (E, f) needs E's module and the modules
-    // `call_reachable_decls_from_root` can walk from it, and both are exactly E's import closure.
-    //
-    // Taking the index's ENTIRE source population instead would also be sound, and was the first
-    // repair written here — but it pays a whole-corpus resolve even for the small explicit rosters
-    // the selection-control suite runs, and a producer that costs a corpus resolve to answer a
-    // two-entry question is the cost shape this lane exists to remove, reintroduced one layer up.
-    let mut by_path: std::collections::BTreeMap<String, Rc<v1_compiler_compile::SourceFile>> =
-        std::collections::BTreeMap::new();
-    let mut closure_roots: Vec<String> = vec![LIVE_READ_CLASSIFICATION_ENTRY.to_string()];
-    let mut seen_roots: HashSet<String> = HashSet::new();
-    for req in requests {
-        if seen_roots.insert(req.entry_path.clone()) {
-            closure_roots.push(req.entry_path.clone());
-        }
-    }
-    for root in &closure_roots {
-        let closure = load_sources_for_entry_with_pool(index, root).map_err(|e| {
+    // So the facts come from `G2FactBundle` -- a PARSE of exactly this index's pool, cached on the
+    // index, joined to the index population at identity grain in both directions -- and the eval
+    // context is only the classification lens's own closure, which is what actually has to RUN.
+    // The bundle is bound for the duration of the evaluation and read by
+    // `fn_arrow_decl_facts_index_live`.
+    let bundle = index.g2_fact_bundle()?;
+    let sources = load_sources_for_entry_with_pool(index, LIVE_READ_CLASSIFICATION_ENTRY)
+        .map_err(|e| {
             format!(
-                "LIVE-READ MANIFEST REFUSAL cause=RequestRootClosureUnloadable root={root} \
-                 detail={e} — a request root whose own closure cannot be loaded from this index's \
-                 pool has no fact population, so its declaration cannot be classified and the \
-                 entry must not be decided from an absent answer."
+                "LIVE-READ ROWS REFUSAL cause=ClassificationLensClosureUnloadable detail={e} --                  the classification lens's own closure could not be loaded, so the authority that                  decides has no program to run. This is about the lens, not about any request."
             )
         })?;
-        for src in closure {
-            by_path.insert(src.path.clone(), src);
-        }
-    }
-    // BTreeMap keyed by path: deduplicated across overlapping closures AND ordered, so the resolve
-    // is not a function of host hash-iteration order (v2.std.determinism).
-    let sources: Vec<Rc<v1_compiler_compile::SourceFile>> = by_path.values().cloned().collect();
     let source_module_count = sources.len();
-    // Resolve THROUGH THE INDEX, not through the raw source-list entry point.
-    //
-    // `resolved_graph_from_sources` builds a graph with no access to the index's typed-module
-    // cache and outside its schedule-derived retention, so every module in the union is
-    // typechecked cold and every env map it constructs is held for the whole build. Measured,
-    // that is not a margin: the suite was SIGKILLed against this container's 31.3 GB cgroup cap
-    // while resolving a 540-module closure the floor resolves routinely within budget. The
-    // index-aware entry point shares typed modules and participates in the retention the v1
-    // run-stability lane built for exactly this cost shape.
-    //
-    // `Ephemeral` rather than `Memoize`: this graph exists to derive facts once and is not the
-    // graph any consumer executes against, so installing it in the resolved-graph memo would
-    // retain a second whole closure for the index's lifetime beside the graphs the floor runs.
-    let (graph, indices, _fact_resolve_diags) = resolved_graph_from_sources_with_index(
+    let (graph, indices, _lens_diags) = resolved_graph_from_sources_with_index(
         index,
         sources,
         ResolveTypecheckGate::DiscoveryCorpusAdvisory,
-        "live-read-manifest",
+        "live-read-classification-lens",
         ResolvedGraphMemoShare::Ephemeral,
     )
     .map_err(|e| {
         format!(
-            "LIVE-READ MANIFEST REFUSAL cause=RequestUniverseUnresolved detail={e} — the union of \
-             the request roots' closures could not be resolved, so the declaration facts would \
-             describe less than the roots the consumer decides over and no declaration has an \
-             established classification."
+            "LIVE-READ ROWS REFUSAL cause=ClassificationLensUnresolved detail={e} -- the              classification lens itself did not resolve. Unlike the union this replaces, the              population here is ONE entry's own closure, so this refusal is about the lens and              cannot be caused by an unrelated module elsewhere in the tree."
         )
     })?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
-
-    // COVERAGE, checked at identity grain rather than by count.
-    //
-    // Equal module counts do not prove equal module identities: a context with the right number of
-    // modules and a substituted or dropped one answers the census check and still cannot classify
-    // the declaration that went missing. So the shortfall is reported by NAME. This is a
-    // structural backstop, not the primary wall — the primary wall is that any request root which
-    // fails to bind produces a modelled refusal, which `runtime_dependency_touched_for_entry`
-    // propagates as a typed `Err` rather than as a widened answer.
-    if ctx.modules.len() < source_module_count {
-        return Err(format!(
-            "LIVE-READ MANIFEST REFUSAL cause=RequestUniverseIncomplete resolved={} \
-             closure_sources={} — the resolved fact context holds fewer modules than the request \
-             roots' closures it must describe, so some enrolled declaration's home is absent from \
-             the population and would classify as unbound for a reason that is about this resolve \
-             rather than about the declaration.",
-            ctx.modules.len(),
-            source_module_count
-        ));
-    }
 
     let request_values: Vec<v1_interpreter::Value> = requests
         .iter()
@@ -8041,18 +8027,20 @@ pub fn build_live_read_selection_manifest(
         ),
     ];
 
-    let produced = v1_interpreter::with_active_context(&ctx, || {
-        v1_interpreter::run_in_context_with_args(
-            &ctx,
-            "live_read_selection_manifest_live",
-            &args,
-            false,
-        )
+    let produced = with_bound_g2_facts(bundle.clone(), || {
+        v1_interpreter::with_active_context(&ctx, || {
+            v1_interpreter::run_in_context_with_args(
+                &ctx,
+                "live_read_selection_rows_index_live",
+                &args,
+                false,
+            )
+        })
     })
     .map_err(|e| {
         format!(
-            "LIVE-READ MANIFEST REFUSAL cause=ProducerFailed detail={e} — the classification \
-             authority did not produce a manifest, so no declaration is classified."
+            "LIVE-READ ROWS REFUSAL cause=ProducerFailed detail={e} — the classification \
+             authority did not produce rows, so no declaration is classified."
         )
     })?;
 
@@ -8120,13 +8108,17 @@ pub fn build_live_read_selection_manifest(
     // process. It bounds the manifest's footprint from above, which is the honest reading, and is
     // labelled so nobody quotes it as the producer's own.
     eprintln!(
-        "[live-read-manifest] requests={} rows={} closure_roots={} closure_sources={} \
-         resolved_modules={} wall_ms={} cpu_ms={} process_rss_mib={} (wall/cpu cover the closure \
-         load, the union resolve and the fold; process_rss is whole-process, an upper bound, not \
-         this producer's attribution)",
+        "[live-read-rows] requests={} rows={} fact_modules={} fact_decls={} parse_refusals={} \
+         lens_closure_sources={} lens_modules={} wall_ms={} cpu_ms={} process_rss_mib={} \
+         (fact_* describe the cached index-wide parse; lens_* describe the ONLY program resolved \
+         here, the classification lens's own closure -- no union is formed, so no unrelated \
+         module can deny this evaluation. process_rss is whole-process, an upper bound, not this \
+         producer's attribution)",
         requests.len(),
         rows.len(),
-        closure_roots.len(),
+        bundle.module_identities.len(),
+        bundle.decl_facts.len(),
+        bundle.parse_refusals.len(),
         source_module_count,
         ctx.modules.len(),
         build_started.elapsed().as_millis(),
@@ -8342,46 +8334,71 @@ impl MultiEntryIndex {
         }))
     }
 
-    /// The live-read selection manifest for this index, built once and reused.
+    /// How many declarations this index has already classified. Observable so a cache HIT can be
+    /// proven by execution -- a test that only re-called and compared values could not tell a hit
+    /// from a silent recomputation that happened to agree.
+    pub fn live_read_rows_cached(&self) -> usize {
+        self.live_read_rows.borrow().len()
+    }
+
+    /// Classification rows for `requests`, computing ONLY what this index has not already
+    /// classified.
     ///
-    /// The memo lives on the index rather than beside it because the index is what the subject
-    /// identifies: a second index — including one over byte-identical source roots — gets its own
-    /// generation and its own empty cell, so it cannot be served rows derived from another tree.
+    /// What this replaces is worth naming, because its shape was the defect. The prior accessor
+    /// memoized ONE manifest per index and was insensitive to which declarations a caller asked
+    /// about, so the first call had to carry every request any later call might make; a partial
+    /// first roster poisoned the index and every declaration outside it refused with
+    /// `MemoRequestPopulationIncomplete`. The suite disproved that as a property an index can
+    /// have -- the same immutable index is legitimately reused across scenarios with DIFFERENT
+    /// rosters -- so "complete on first access" was an external scheduling convention real
+    /// callers cannot satisfy, not a discipline they were failing to keep.
     ///
-    /// The memo is keyed by the INDEX, not by the request population, so a first call carrying a
-    /// partial roster would memoize a partial manifest and every declaration outside it would
-    /// afterwards refuse. That ordering requirement is enforced here rather than documented: a
-    /// later call whose requests are not covered by the memoized rows REFUSES, naming the missing
-    /// declaration. It is not enough that `row_for` would also refuse — that refusal names one
-    /// absent row and reads as a classification gap, while the defect is that the manifest was
-    /// primed from a chunk. The cause must locate the priming, not the lookup.
-    pub fn live_read_manifest(
+    /// Here a roster asks whatever it likes. Hits are served from the per-declaration cache,
+    /// misses are batched into ONE evaluation (which keeps the useful half of "one eval, many
+    /// rows" without resurrecting the convention), and each resulting row is cached under its own
+    /// bound declaration identity. A binding refusal is cached too, under the same identity: it
+    /// is a fact about that declaration, and recomputing it would only refuse again more slowly.
+    pub fn live_read_rows_for(
         &self,
         requests: &[LiveReadSelectionRequest],
-    ) -> Result<Rc<LiveReadSelectionManifest>, String> {
-        if let Some(cached) = self.live_read_manifest.borrow().as_ref() {
-            let cached = cached.clone().map_err(|e| e.clone())?;
-            if let Some(missing) = requests
-                .iter()
-                .map(|req| live_read_manifest_key(&req.entry_path, &req.fn_name))
-                .find(|key| !cached.rows.contains_key(key))
-            {
-                return Err(format!(
-                    "LIVE-READ MANIFEST REFUSAL cause=MemoRequestPopulationIncomplete key={missing} \
-                     memoized_rows={} — the manifest for this index was built from a request set \
-                     that does not cover this declaration. The memo is index-scoped and \
-                     request-set insensitive, so the FIRST build must carry the complete roster; \
-                     priming it from one entry or one worker chunk makes every later declaration \
-                     unclassifiable. Build the selection context from the complete DiscoveryRow \
-                     roster before any per-entry decision runs.",
-                    cached.rows.len()
-                ));
+    ) -> Result<HashMap<String, LiveReadSelectionRow>, String> {
+        let bundle = self.g2_fact_bundle()?;
+        let mut out: HashMap<String, LiveReadSelectionRow> = HashMap::new();
+        let mut misses: Vec<LiveReadSelectionRequest> = Vec::new();
+        let mut locators: HashMap<
+            String,
+            crate::data_initializer_identity::ResolvedDeclarationLocator,
+        > = HashMap::new();
+
+        for req in requests {
+            let key = live_read_manifest_key(&req.entry_path, &req.fn_name);
+            let entry_rel = repo_rel(std::path::Path::new(&req.entry_path));
+            let locator = match Self::bind_live_read_request(&bundle, &entry_rel, &req.fn_name) {
+                Ok(l) => l,
+                // A binding refusal is LOCAL: this request refuses, unrelated requests below
+                // continue to be bound and classified.
+                Err(e) => return Err(e),
+            };
+            if let Some(cached) = self.live_read_rows.borrow().get(&locator) {
+                out.insert(key, cached.clone().map_err(|e| e)?);
+                continue;
             }
-            return Ok(cached);
+            locators.insert(key, locator);
+            misses.push(req.clone());
         }
-        let built = build_live_read_selection_manifest(self, requests).map(Rc::new);
-        *self.live_read_manifest.borrow_mut() = Some(built.clone());
-        built
+
+        if !misses.is_empty() {
+            let produced = build_live_read_selection_manifest(self, &misses)?;
+            for (key, row) in produced.rows.into_iter() {
+                if let Some(locator) = locators.get(&key) {
+                    self.live_read_rows
+                        .borrow_mut()
+                        .insert(locator.clone(), Ok(row.clone()));
+                }
+                out.insert(key, row);
+            }
+        }
+        Ok(out)
     }
 }
 
@@ -8444,7 +8461,11 @@ pub fn decode_manifest_row_collection(
 /// declaration-grain.
 #[derive(Debug, Clone)]
 pub struct LiveReadSelectionContext {
-    manifest: Rc<LiveReadSelectionManifest>,
+    /// The rows this invocation's roster resolved to. Held directly rather than as a manifest
+    /// object, because the index now owns the durable per-declaration cache and this struct is
+    /// only the ROSTER-SCOPED view over it: it lives for one invocation, and a second roster
+    /// builds its own view against the same index without disturbing this one.
+    rows: HashMap<String, LiveReadSelectionRow>,
     /// The index this manifest was built against. Carried so every lookup re-checks the subject
     /// rather than trusting that the context reached the right consumer.
     subject: u64,
@@ -8484,11 +8505,22 @@ impl LiveReadSelectionContext {
                 fn_name: row.function.clone(),
             });
         }
-        let manifest = index.live_read_manifest(&requests)?;
+        let rows = index.live_read_rows_for(&requests)?;
         Ok(Self {
-            manifest,
+            rows,
             subject: index.generation(),
             functions_by_entry,
+        })
+    }
+
+    /// The classified row for one enrolled declaration in this view, by request identity.
+    pub fn row_for(&self, entry: &str, function: &str) -> Result<&LiveReadSelectionRow, String> {
+        let key = live_read_manifest_key(entry, function);
+        self.rows.get(&key).ok_or_else(|| {
+            format!(
+                "AFFECTED-SET REFUSAL cause=LiveReadRowAbsent entry={entry} function={function} \
+                 — this view carries no row for that declaration."
+            )
         })
     }
 
@@ -8535,15 +8567,27 @@ impl LiveReadSelectionContext {
             ));
         }
         for function in functions {
-            let row = self
-                .manifest
-                .row_for(index.generation(), &entry, function)
-                .map_err(|cause| {
-                    format!(
-                        "AFFECTED-SET REFUSAL cause=LiveReadManifestLookup entry={entry} \
-                         function={function} detail={cause}"
-                    )
-                })?;
+            // The subject is re-checked here rather than trusted from construction: a view built
+            // against one index must never answer for another, even though `build` already
+            // matched them.
+            if index.generation() != self.subject {
+                return Err(format!(
+                    "AFFECTED-SET REFUSAL cause=LiveReadContextSubjectMismatch entry={entry} \
+                     function={function} context_subject={} index_subject={} — this view's rows \
+                     were classified against a different index, so they describe a different \
+                     tree.",
+                    self.subject,
+                    index.generation()
+                ));
+            }
+            let key = live_read_manifest_key(&entry, function);
+            let row = self.rows.get(&key).ok_or_else(|| {
+                format!(
+                    "AFFECTED-SET REFUSAL cause=LiveReadRowAbsent entry={entry} \
+                     function={function} — the roster named this declaration but no row was \
+                     resolved for it. A missing classification is not a missing runtime read."
+                )
+            })?;
             // A MODELLED refusal must reach the caller AS a refusal.
             //
             // `touched_by` answers `true` for a `Refused` row, which is the right conservative
@@ -8933,24 +8977,61 @@ mod live_read_selection_manifest_producer_tests {
         );
     }
 
-    // The memo is on the index, so the same index builds once and a distinct index rebuilds.
+    // INCREMENTALITY + CACHE HIT (proof-ladder gates 1 and 2).
+    //
+    // The predecessor of this test asserted `Rc::ptr_eq` on one whole manifest, which is exactly
+    // the property being deleted: it could only hold if a single object served every request, and
+    // that object required its first caller to carry the complete roster. What must hold now is
+    // the opposite -- disjoint rosters may ask different questions of the same index in any
+    // order, and a repeat ask must not recompute.
     #[test]
-    fn manifest_is_memoized_per_index_and_a_distinct_index_rebuilds() {
+    fn disjoint_rosters_classify_incrementally_and_repeat_asks_hit_the_cache() {
         enter_workspace();
         let index = build_multi_entry_index(&source_roots());
-        let first = index.live_read_manifest(&requests()).expect("first build");
-        let second = index.live_read_manifest(&requests()).expect("memo hit");
-        assert!(
-            Rc::ptr_eq(&first, &second),
-            "the second call rebuilt instead of hitting the memo"
+        assert_eq!(
+            index.live_read_rows_cached(),
+            0,
+            "a fresh index must start with nothing classified"
         );
+
+        let first = requests();
+        let a = index
+            .live_read_rows_for(&first)
+            .expect("the first roster must classify");
+        let after_first = index.live_read_rows_cached();
+        assert!(
+            after_first > 0,
+            "classifying a roster cached nothing, so no later ask can hit"
+        );
+
+        // REPEAT: the same roster again. Occupancy must not grow -- growth would mean the
+        // declarations were classified a second time under new keys, which is a miss wearing a
+        // correct answer.
+        let a_again = index
+            .live_read_rows_for(&first)
+            .expect("a repeat ask must be served");
+        assert_eq!(
+            index.live_read_rows_cached(),
+            after_first,
+            "a repeat ask recomputed instead of hitting the per-declaration cache"
+        );
+        assert_eq!(
+            a.len(),
+            a_again.len(),
+            "the repeat ask served a different row population"
+        );
+
+        // A DISTINCT INDEX owns its own cache and classifies for itself.
         let other = build_multi_entry_index(&source_roots());
-        let third = other.live_read_manifest(&requests()).expect("other build");
-        assert!(
-            !Rc::ptr_eq(&first, &third),
-            "a distinct index served another index's manifest"
+        assert_eq!(
+            other.live_read_rows_cached(),
+            0,
+            "a distinct index inherited another index's classifications"
         );
-        assert_eq!(third.subject, other.generation());
+        other
+            .live_read_rows_for(&first)
+            .expect("a distinct index must classify for itself");
+        assert!(other.live_read_rows_cached() > 0);
     }
 
     // ---- decoder controls, one per coproduct arm ----------------------------------------
@@ -9267,7 +9348,6 @@ pub struct MultiEntryIndex {
     /// nothing because the index IS the key: a different index is a different object with its own
     /// generation and its own empty cell. A refusal is memoized too — recomputing a producer that
     /// already refused would only refuse again, more slowly.
-    live_read_manifest: RefCell<Option<Result<Rc<LiveReadSelectionManifest>, String>>>,
     /// The index-wide G2 fact substrate, built at most once. A GLOBAL refusal is memoized here
     /// and only ever means "this index's population cannot be observed" — a module-local parse
     /// failure lives inside the bundle, under that module's identity, and never reaches this
@@ -9683,7 +9763,6 @@ fn new_multi_entry_index_shell(
         pool_bare_census: RefCell::new(None),
         entry_closure_sources: RefCell::new(HashMap::new()),
         both_closure_edges: RefCell::new(None),
-        live_read_manifest: RefCell::new(None),
         g2_facts: RefCell::new(None),
         live_read_rows: RefCell::new(std::collections::HashMap::new()),
     }
@@ -25528,8 +25607,7 @@ new file mode 100644
             }
             let entry = super::workspace_relative_repo_path(&row.entry);
             match live
-                .manifest
-                .row_for(index.generation(), &entry, &row.function)
+                .row_for(&entry, &row.function)
                 .expect("classification for an enrolled declaration")
             {
                 super::LiveReadSelectionRow::Classified(

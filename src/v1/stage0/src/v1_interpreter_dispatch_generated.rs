@@ -645,6 +645,7 @@ macro_rules! eval_call_bridge__v2_std_concept_index_arm {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum EvalCallBridgeStdFnIndexArm {
     V4BridgeFnArrowDeclFactsLive,
+    V4BridgeFnArrowDeclFactsIndexLive,
     V4BridgeFnArrowDeclSubstrateIsWholeTree,
 }
 
@@ -652,6 +653,7 @@ pub enum EvalCallBridgeStdFnIndexArm {
 pub fn lookup_eval_call_bridge_std_fn_index(spelling: &str) -> Option<EvalCallBridgeStdFnIndexArm> {
     match spelling {
         "fn_arrow_decl_facts_live" => Some(EvalCallBridgeStdFnIndexArm::V4BridgeFnArrowDeclFactsLive),
+        "fn_arrow_decl_facts_index_live" => Some(EvalCallBridgeStdFnIndexArm::V4BridgeFnArrowDeclFactsIndexLive),
         "fn_arrow_decl_substrate_is_whole_tree" => Some(EvalCallBridgeStdFnIndexArm::V4BridgeFnArrowDeclSubstrateIsWholeTree),
         _ => None,
     }
@@ -660,6 +662,7 @@ pub fn lookup_eval_call_bridge_std_fn_index(spelling: &str) -> Option<EvalCallBr
 #[rustfmt::skip]
 macro_rules! eval_call_bridge__v2_std_fn_index_arm {
     ("v4_bridge.fn_arrow_decl_facts_live") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeStdFnIndexArm::V4BridgeFnArrowDeclFactsLive };
+    ("v4_bridge.fn_arrow_decl_facts_index_live") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeStdFnIndexArm::V4BridgeFnArrowDeclFactsIndexLive };
     ("v4_bridge.fn_arrow_decl_substrate_is_whole_tree") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeStdFnIndexArm::V4BridgeFnArrowDeclSubstrateIsWholeTree };
 }
 #[rustfmt::skip]

@@ -915,6 +915,15 @@ pub fn fn_arrow_decl_facts_from_sources(
     sources: &[(String, String)],
 ) -> (Vec<Value>, Vec<DeclFactSourceRefusal>) {
     let (facts, refusals, _parsed) = decl_facts_from_sources(sources);
+    (fn_arrow_decl_rows_from_facts(ctx, &facts), refusals)
+}
+
+/// The fn-arrow marshal over an ALREADY-WALKED declaration population.
+///
+/// Split out because the transport producer holds cached raw facts and must not re-walk sources
+/// to marshal them: the parse is the expensive half and is cached on the index, while marshalling
+/// is per-evaluation because a marshalled `Value` carries symbols interned in the calling context.
+pub fn fn_arrow_decl_rows_from_facts(ctx: &InterpContext, facts: &[DeclFactRaw]) -> Vec<Value> {
     let mut rows = Vec::new();
     for fact in facts.iter() {
         if fact.kind != ItemKind::FnItem && fact.kind != ItemKind::FuncItem {
@@ -935,7 +944,7 @@ pub fn fn_arrow_decl_facts_from_sources(
             rows.push(row);
         }
     }
-    (rows, refusals)
+    rows
 }
 
 /// module census (same exclude set as `whole_tree_resolved_ctx` / measurement probe).
