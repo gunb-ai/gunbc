@@ -62,6 +62,14 @@ data ends_with_contract: PrimitiveContract = {
   carrier_cost: CarrierInsensitive
 }
 
+data trim_contract: PrimitiveContract = {
+  name: "trim",
+  work: "n",
+  output_size: "n",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
 data concat_contract: PrimitiveContract = {
   name: "concat",
   work: "n + m",
@@ -666,6 +674,7 @@ fn primitive_contract_roster() -> List<PrimitiveContract> {
     string_contains_contract,
     starts_with_contract,
     ends_with_contract,
+    trim_contract,
     concat_contract,
     split_contract,
     repeat_contract,

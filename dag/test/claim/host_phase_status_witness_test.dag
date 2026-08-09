@@ -42,7 +42,7 @@ test fn witness_no_producer_derives_unknown_not_converged() -> Bool {
   }
 }
 
-data witness_orthogonality_note: String = "The two axes must stay independent, and this is the conjunct that CAUGHT them being fused. The cell type was first written as a sum (StatusUnmodeled | StatusObserved), so a DeclaredGap phase discarded its observation — and the one cell with a live producer today, (srv3, prefix:os-install-actuated), is a DeclaredGap phase, so coverage computed as zero with a real Converged verdict one branch away. Four combinations must all be representable and distinct: modeled+converged (done), modeled+inaccessible (srv1/srv2 build-cache — a finished model the host refuses to answer for), unmodeled+unknown (ordinary remaining work), and unmodeled+converged (the host is in the desired condition by means the model cannot reproduce — srv3's OS install). A fused enum has to round the middle two to something false."
+data witness_orthogonality_note: String = "The two axes must stay independent, and this is the conjunct that CAUGHT them being fused. The cell type was first written as a sum (StatusUnmodeled | StatusObserved), so a DeclaredGap phase discarded its observation — and the one cell CARRYING AN OBSERVATION today, (srv3, prefix:os-install-actuated), is a DeclaredGap phase, so coverage computed as zero with a real Converged verdict one branch away. Four combinations must all be representable and distinct: modeled+converged (done), modeled+inaccessible (srv1/srv2 build-cache — a finished model the host refuses to answer for), unmodeled+unknown (ordinary remaining work), and unmodeled+converged (the host is in the desired condition by means the model cannot reproduce — srv3's OS install). A fused enum has to round the middle two to something false."
 
 test fn witness_modeled_and_observed_axes_are_independent() -> Bool {
   let modeled_inaccessible = cell_fixture(
@@ -138,7 +138,7 @@ test fn witness_reconcile_covers_upsert_teardown_and_noop() -> Bool {
     && membership_refusal_count(plan: plan) == 0
 }
 
-data witness_matrix_shape_note: String = "Shape assertions over the derived matrix, pinned to the spine and the enrolled fleet rather than to hand-copied numbers: the matrix is an exact identity join over (host x the obligations that host's participation selects), duplicate-free and covering exactly the enrolled roster, so it cannot silently drop a phase or a host — nor hand a host an obligation its participation does not own, which the former rectangle count could not see. The coverage count is the honest measure of the live-observation frontier — one cell has a real producer today, (srv3, prefix:os-install-actuated) — and that number is what items 2 and 3 of the lane exist to raise. Pinning it means adding a producer is a VISIBLE, counted event that must update this witness, never a silent improvement nobody can point at."
+data witness_matrix_shape_note: String = "Shape assertions over the derived matrix, pinned to the spine and the enrolled fleet rather than to hand-copied numbers: the matrix is an exact identity join over (host x the obligations that host's participation selects), duplicate-free and covering exactly the enrolled roster, so it cannot silently drop a phase or a host — nor hand a host an obligation its participation does not own, which the former rectangle count could not see. The coverage count is the frontier's CURRENT measure, and it is not yet an honest one — corrected 2026-08-09 in the same change that landed witness_covered_cell_verdict_is_selected_by_authorship_alone below. Exactly one cell carries an observation today, (srv3, prefix:os-install-actuated), and that observation is AUTHORED rather than execution-backed: it derives from srv3_post_install_lease_table_fixture, and no effect in the tree produces a DhcpLeaseTableObservation. So the count reads one where the executed population is zero, and raising it is what items 2 and 3 of the lane exist to do. Pinning it means adding a producer is a VISIBLE, counted event that must update this witness, never a silent improvement nobody can point at."
 
 // An exact identity join, not a product. Every enrollment contributes exactly the obligations its
 // own participation selects — program_step_count over assimilation_program_for — so a host whose
@@ -387,4 +387,58 @@ test fn witness_runner_only_obligations_exist_on_runner_hosts() -> Bool {
     c => c.cell.host == operator_host_srv5 || c.cell.host == operator_host_srv6,
   )
   runner_only.length() > 0 && on_sparks.length() == 0
+}
+
+data witness_authored_observation_note: String = "THE SIBLING OF THE NOTE ABOVE, and the one the frontier does not yet catch. That note forbids evidence manufactured by the ACT OF LOOKING; this pair catches evidence manufactured by AUTHORING. host_phase_observation_coverage_count is designated by the frontier note as the number that measures the observation debt, and it counts a cell as covered exactly when host_phase_cell_has_live_producer holds -- which tests only that the observation is Present, never that anything executed to produce it. The single Present cell today, (srv3, prefix:os-install-actuated), derives its Converged verdict from srv3_post_install_lease_table_fixture, a data constant in gunbc.network_identity_subsumption whose one dynamic row carries the placeholder MAC 00:00:00:00:00:00. So the metric that measures the debt currently overstates coverage by its entire population. The frontier note states the rule this violates in its own words -- 'a cell earns a row here when an effect produces its verdict by execution' -- which is why the defect is worth an executing control rather than a correction in prose: the rule was already written down and was not enforceable, and no lens or witness would have reddened if a second host were wired in the same way. That is the exact move Spark collector-fact enrollment would have made for srv5 and srv6, which is how this was found."
+
+// THE DISCRIMINATING CONTROL. Both lease tables are authored data constants, and the verdict is a
+// pure function of WHICH ONE is wired into the frontier: the pre-install table (BMC row only)
+// refuses, the post-install fixture (BMC row plus a synthetic OS-up row) converges. Nothing about
+// the live tree participates in that difference. Note the disposition this whole module declares --
+// SubstrateInputsOnly, meaning it reads no live tree at all -- and it still computes a Converged
+// "live observation". An execution-backed observation could not be reproduced under that
+// disposition; an authored one is reproduced exactly.
+test fn witness_covered_cell_verdict_is_selected_by_authorship_alone() -> Bool {
+  let converged = deduce_os_install_actuation_verdict(
+    obs: srv3_post_install_lease_observation,
+    fleet_slot: operator_host_srv3,
+    stall: StallWithinBudget,
+  )
+  let refused = deduce_os_install_actuation_verdict(
+    obs: srv3_pre_install_lease_observation,
+    fleet_slot: operator_host_srv3,
+    stall: StallWithinBudget,
+  )
+  let converged_is_converged = match converged { Converged => true, std.upsert_decision.Absent => false, Drifted => false, Conflict => false, Inaccessible => false, UnknownRefused => false }
+  // EXACTLY Absent, not merely "some non-Converged arm". Under StallWithinBudget the deduction
+  // contract for an observed table with no os-up row is Absent specifically; Drifted, Conflict,
+  // Inaccessible and UnknownRefused each denote a DIFFERENT regression, and a test that accepted
+  // any of them would stay green through all four.
+  let refused_is_exactly_absent = match refused { Converged => false, std.upsert_decision.Absent => true, Drifted => false, Conflict => false, Inaccessible => false, UnknownRefused => false }
+  converged_is_converged && refused_is_exactly_absent
+}
+
+// The covered population stated as an IDENTITY JOIN rather than a count, so this does not become a
+// tree-copied snapshot: the set of cells the coverage metric counts is exactly the one cell whose
+// verdict the control above shows to be authored. If a genuinely executed producer is ever wired,
+// this reds and must be re-derived deliberately -- which is the point.
+test fn witness_every_covered_cell_today_is_the_authored_one() -> Bool {
+  let covered = filter(
+    host_fleet_phase_matrix(enrollments: fleet_subsumption_enrollments),
+    c => host_phase_cell_has_live_producer(c: c),
+  )
+  let authored = filter(
+    covered,
+    c => c.cell.host == operator_host_srv3 && c.cell.phase_label == "prefix:os-install-actuated",
+  )
+  // The PRODUCTION metric itself, not a rebuilt filter beside it. host_phase_observation_coverage_count
+  // is the subject of this finding, so a control that never calls it proves nothing about the number
+  // anyone actually reads.
+  let metric = host_phase_observation_coverage_count(enrollments: fleet_subsumption_enrollments)
+  // Exactly one. This is not a tree-copied roster: the PR's factual claim is that the ENTIRE covered
+  // population is this single authored cell, so the assertion must fail the moment that stops holding
+  // -- including when a genuinely executed producer is wired, which is the outcome this lane wants.
+  metric == covered.length()
+    && covered.length() == authored.length()
+    && authored.length() == 1
 }

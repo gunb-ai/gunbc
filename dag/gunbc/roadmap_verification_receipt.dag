@@ -1,5 +1,7 @@
 module gunbc.roadmap_verification_receipt
 
+import std.algebra { trim }
+
 import std.types { String, NonEmptyStr, Int, List, CommitSha, Bool, FilePath }
 import std.content_hash {
   ContentHash,

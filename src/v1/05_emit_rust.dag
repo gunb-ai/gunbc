@@ -1,5 +1,6 @@
 module v1.compiler.emit_rust
 
+import std.algebra { trim }
 import std.syntax { LiteralValue, BinOp, AlgebraFieldKind }
 import v1.std.core {
   Node, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
@@ -396,6 +397,12 @@ fn rust_host_string_op_fn_emit(name: String) -> String? {
       "        __acc = if (algebra.is_done)(__acc.clone()) { __acc } else { (algebra.step)(__acc) };\n",
       "    }\n",
       "    __acc\n",
+      "}\n"
+    ) }
+  } else if name == "trim" {
+    Present { value: concat(
+      "pub fn trim(s: String) -> String {\n",
+      "    v1_rt::trim(s)\n",
       "}\n"
     ) }
   } else {
