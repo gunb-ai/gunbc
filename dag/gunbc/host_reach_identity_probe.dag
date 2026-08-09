@@ -42,7 +42,13 @@ type ReachProbeOutcome
   = ProbeReachable { observed_short_hostname: String }
   | ProbeTransportUnavailable { cause: String }
   | ProbeAuthenticationRefused { cause: String }
-  | ProbeHostKeyMismatch { expected_fingerprint: String, observed_fingerprint: String }
+  // expected_fingerprint is Optional BY MEANING, not convenience (review 50695): Present
+  // = an enrolled expectation existed and the observed key contradicts it ("wrong machine
+  // OR rotated key — compare and decide"); Absent = no fingerprint enrollment exists yet
+  // for this host, so the only honest claim is "the transport itself flagged verification
+  // failure". An empty-string expected would conflate those two remedies — the exact
+  // state-space conflation the srv5/srv6 identical-factory-keys class needs kept apart.
+  | ProbeHostKeyMismatch { expected_fingerprint: String?, observed_fingerprint: String }
 
 type HostReachIdentityProbeReceipt {
   host: HostIdentity
@@ -72,6 +78,19 @@ fn host_reach_identity_probe_receipt_for(host: HostIdentity) -> HostReachIdentit
 // TransportUnavailable with the raw cause preserved, never a fabricated Reachable.
 // The stderr patterns are the OpenSSH client's stable diagnostics for the two
 // non-transport failure classes.
+fn classify_reach_probe_wire_with_expectation(
+  success: Bool,
+  stdout: String,
+  stderr: String,
+  expected_fingerprint: String?,
+) -> ReachProbeOutcome {
+  match classify_reach_probe_wire(success: success, stdout: stdout, stderr: stderr) {
+    ProbeHostKeyMismatch { expected_fingerprint: _, observed_fingerprint: obs } =>
+      ProbeHostKeyMismatch { expected_fingerprint: expected_fingerprint, observed_fingerprint: obs }
+    other => other
+  }
+}
+
 fn classify_reach_probe_wire(
   success: Bool,
   stdout: String,
@@ -85,7 +104,7 @@ fn classify_reach_probe_wire(
     } else {
       if string_contains(s: stderr, pattern: "HOST IDENTIFICATION HAS CHANGED")
         || string_contains(s: stderr, pattern: "Host key verification failed") {
-        ProbeHostKeyMismatch { expected_fingerprint: "", observed_fingerprint: stderr }
+        ProbeHostKeyMismatch { expected_fingerprint: none, observed_fingerprint: stderr }
       } else {
         ProbeTransportUnavailable { cause: stderr }
       }

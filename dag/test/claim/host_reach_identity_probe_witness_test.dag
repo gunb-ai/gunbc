@@ -13,6 +13,7 @@ import gunbc.host_reach_identity_probe {
   HostReachIdentityProbeReceipt,
   host_reach_identity_probe_receipt_for,
   classify_reach_probe_wire,
+  classify_reach_probe_wire_with_expectation,
   reach_verdict_from_outcome,
   identity_verdict_from_outcome,
   observe_reach_secrets_network,
@@ -72,7 +73,7 @@ test fn reach_projection_covers_all_arms() -> Bool {
   reach_verdict_from_outcome(o: ProbeReachable { observed_short_hostname: "srv1" }) == Converged
     && reach_verdict_from_outcome(o: ProbeTransportUnavailable { cause: "timeout" }) == Inaccessible
     && reach_verdict_from_outcome(o: ProbeAuthenticationRefused { cause: "denied" }) == Inaccessible
-    && reach_verdict_from_outcome(o: ProbeHostKeyMismatch { expected_fingerprint: "a", observed_fingerprint: "b" }) == Conflict
+    && reach_verdict_from_outcome(o: ProbeHostKeyMismatch { expected_fingerprint: Present { value: "a" }, observed_fingerprint: "b" }) == Conflict
 }
 
 // Identity deduction: reachable-and-matching converges; reachable-but-different is
@@ -85,7 +86,7 @@ test fn identity_projection_discriminates_match_drift_and_wrong_machine() -> Boo
     && identity_verdict_from_outcome(host: operator_host_srv1, o: ProbeReachable { observed_short_hostname: "altrad8ud-1l2t-1" }) == Drifted
     && identity_verdict_from_outcome(host: operator_host_srv1, o: ProbeTransportUnavailable { cause: "x" }) == Inaccessible
     && identity_verdict_from_outcome(host: operator_host_srv1, o: ProbeAuthenticationRefused { cause: "x" }) == Inaccessible
-    && identity_verdict_from_outcome(host: operator_host_srv1, o: ProbeHostKeyMismatch { expected_fingerprint: "a", observed_fingerprint: "b" }) == Conflict
+    && identity_verdict_from_outcome(host: operator_host_srv1, o: ProbeHostKeyMismatch { expected_fingerprint: Present { value: "a" }, observed_fingerprint: "b" }) == Conflict
 }
 
 // No committed receipt -> the producers answer none, the canonical seam answers none for
@@ -140,4 +141,32 @@ test fn one_receipt_feeds_both_cells() -> Bool {
   }
   reach_verdict_from_outcome(o: r.outcome) == Converged
     && identity_verdict_from_outcome(host: r.host, o: r.outcome) == Converged
+}
+
+// Review 50695: the mismatch arm distinguishes "enrolled expectation contradicted"
+// (Present — compare fingerprints, decide wrong-machine vs rotated-key) from "transport
+// flagged verification with no enrollment to compare against" (Absent). The wire
+// classifier alone can only produce Absent; the expectation-threading wrapper carries an
+// enrolled fingerprint into the same arm without re-parsing the wire.
+test fn mismatch_expectation_threads_without_fabrication() -> Bool {
+  match classify_reach_probe_wire(success: false, stdout: "", stderr: "Host key verification failed.") {
+    ProbeHostKeyMismatch { expected_fingerprint: e, observed_fingerprint: _ } =>
+      match e {
+        Present { value: _ } => false
+        _ => true
+      }
+    _ => false
+  }
+    && match classify_reach_probe_wire_with_expectation(success: false, stdout: "", stderr: "Host key verification failed.", expected_fingerprint: Present { value: "SHA256:abc" }) {
+      ProbeHostKeyMismatch { expected_fingerprint: e2, observed_fingerprint: _ } =>
+        match e2 {
+          Present { value: f } => f == "SHA256:abc"
+          _ => false
+        }
+      _ => false
+    }
+    && match classify_reach_probe_wire_with_expectation(success: true, stdout: "srv5\n", stderr: "", expected_fingerprint: Present { value: "SHA256:abc" }) {
+      ProbeReachable { observed_short_hostname: h } => h == "srv5"
+      _ => false
+    }
 }
