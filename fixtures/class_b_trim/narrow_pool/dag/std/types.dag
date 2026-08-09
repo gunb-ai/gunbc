@@ -1,0 +1,5 @@
+module std.types
+
+type Bool = True | False
+
+data class_b_trim_narrow_pool_types_stub_note: String = "Minimal std.types overlay for Class B trim narrow-pool tests. Supplies kernel-type import surface (String, Bool) without std.algebra transitive import or forbidden Duration re-mint. std.algebra enters the closure via explicit import std.algebra { trim } resolved from dag/std."

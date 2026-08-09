@@ -11,6 +11,7 @@ pub use crate::extdeps_languages_rust_emit::{
 };
 pub use crate::gunbc_rust_decl_type_overlay::rust_decl_type_container_overlay_is_admitted;
 pub use crate::gunbc_stage0_crate_layout_generated::generated_pub_mod_block;
+pub use crate::std_algebra::trim;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
 use crate::std_serialization::VariantEncoding::*;
@@ -685,7 +686,17 @@ pub fn rust_host_string_op_fn_emit(name: String) -> Option<String> {
                 if (name.clone() == "fold_source".to_string()) {
                     Some(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("pub fn fold_source<R: Clone>(src: String, algebra: Rc<SourceFold<R>>) -> R {\n".to_string(), "    let mut __acc = (algebra.init)(src.clone());\n".to_string()), "    for _ in src.chars() {\n".to_string()), "        __acc = if (algebra.is_done)(__acc.clone()) { __acc } else { (algebra.step)(__acc) };\n".to_string()), "    }\n".to_string()), "    __acc\n".to_string()), "}\n".to_string()))
                 } else {
-                    None
+                    if (name.clone() == "trim".to_string()) {
+                        Some(v1_rt::concat(
+                            v1_rt::concat(
+                                "pub fn trim(s: String) -> String {\n".to_string(),
+                                "    v1_rt::trim(s)\n".to_string(),
+                            ),
+                            "}\n".to_string(),
+                        ))
+                    } else {
+                        None
+                    }
                 }
             }
         }

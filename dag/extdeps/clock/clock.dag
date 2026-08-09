@@ -1,5 +1,7 @@
 module extdeps.clock
 
+import std.algebra { trim }
+
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

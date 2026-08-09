@@ -1,5 +1,7 @@
 module v2.extdeps.languages.bash_proc_self_cgroup
 
+import std.algebra { trim }
+
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import extdeps.linux.proc_self_cgroup {
