@@ -5,7 +5,7 @@ import v2.compiler.emit_produced { emit_produced_module_rust }
 import v2.extdeps.languages.rust { rust_target_model_staging }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.communication.medium { Medium }
-import v2.std.diagnostic { Accepted, Rejected, Outcome }
+import v2.std.diagnostic { Accepted, Rejected, Outcome, Diagnostic, NonEmptyDiagnostics }
 import v2.std.node { Node, Edge, TypeNode, Arrow, Conj, Named, Symbol, node_synthetic }
 import v2.std.optional { Optional, Present, Absent }
 import v2.std.algebra { fold_list, length }
@@ -33,6 +33,18 @@ type EntryRealizationAttempt {
   entry: String
   arrow_count: Int
   standing: RealizationAttemptStanding
+}
+
+
+fn first_located_cause(ds: NonEmptyDiagnostics) -> Symbol {
+  let residue = ^parse_grammar_choice_overlap_residue
+  if !(ds.head.reason == residue) {
+    ds.head.reason
+  } else {
+    fold_list(xs: ds.tail, empty: ds.head.reason, cons: fn(acc, d) {
+      if (acc == residue) && !(d.reason == residue) { d.reason } else { acc }
+    })
+  }
 }
 
 fn attempt_refused(entry: String, phase: RealizationPhase, cause: Symbol) -> EntryRealizationAttempt {
@@ -79,7 +91,7 @@ fn attempt_entry_source(entry: String, source: String) -> EntryRealizationAttemp
       attempt_refused(
         entry: entry,
         phase: PhaseFrontend,
-        cause: ds.head.reason
+        cause: first_located_cause(ds: ds)
       )
     Accepted { value: resolved, diagnostics: _ } => {
       let arrows = collect_arrows(root: resolved, acc: [])
@@ -99,7 +111,7 @@ fn attempt_entry_source(entry: String, source: String) -> EntryRealizationAttemp
               arrow_count: length(xs: arrows),
               standing: V2RealizationRefused {
                 phase: PhaseTranslate,
-                exact_cause: ds.head.reason
+                exact_cause: first_located_cause(ds: ds)
               }
             }
         }

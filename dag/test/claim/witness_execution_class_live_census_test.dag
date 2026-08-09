@@ -54,7 +54,7 @@ fn live_discovery_state() -> FloorDiscoveryWalkState {
 }
 
 fn plan_bundle_name() -> String {
-  "v2-compiler-emit-selected-logic-bundle-v1"
+  "09d7d2e53554c783"
 }
 
 fn empty_class_rows() -> List<WitnessClassRow> {
