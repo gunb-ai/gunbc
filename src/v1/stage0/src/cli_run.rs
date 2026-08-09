@@ -7811,7 +7811,7 @@ fn canonical_shared_index_roots(source_roots: &[String]) -> Vec<String> {
 /// that joins absolute-path reads to this relative-path index can still fork source
 /// identity. The divergence census walls that site with parent-owned `Rc` identity;
 /// the class-wide next rung is canonical `SourceFile` identity at construction.
-fn process_shared_index(source_roots: &[String]) -> Rc<MultiEntryIndex> {
+pub fn process_shared_index(source_roots: &[String]) -> Rc<MultiEntryIndex> {
     let roots = canonical_shared_index_roots(source_roots);
     let roots_key = roots.join("\u{1f}");
     let existing = PROCESS_RESOLVE_INDEX.with(|s| {
@@ -13767,10 +13767,14 @@ fn tree_bare_census_for_root(
     // each time", and those two have different fixes: the first is materialized once
     // and shared, the second needs the subject in the materialization key. The index
     // address distinguishes which index paid it.
-    eprintln!(
-        "[edge-index-census-miss] root={root} index={:p}",
-        index as *const MultiEntryIndex
-    );
+    // A stopped-line audit read, never a control: it reports which subject paid and
+    // which index paid it, and writes nothing that changes what the resolve does.
+    if std::env::var("GUNBC_EDGE_INDEX_CENSUS_TRACE").as_deref() == Ok("1") {
+        eprintln!(
+            "[edge-index-census-miss] root={root} index={:p}",
+            index as *const MultiEntryIndex
+        );
+    }
     let pool = pool_parse(index)?;
     let trimmed = root.trim_end_matches('/');
     let prefix = format!("{trimmed}/");
