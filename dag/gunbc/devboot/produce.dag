@@ -1179,6 +1179,18 @@ fn devboot_materialize(store_root: String, repo_root: String, artifact_oid: Stri
 //
 // The verdict is derived from what was measured rather than from reaching the end of the function: the fetched bytes must hash to the digest the caller was promised AND the binary must execute successfully. Either failing is a refusal, so a consumer cannot report success on bytes it could not verify or could not run.
 
+// A FAILED RECEIPT WRITE REFUSES, because the receipt is the ONLY caller-visible output either entry point has -- neither writes to stdout, so a run whose receipt did not land has reported nothing while exiting zero. That is success claimed without the output the caller reads, which is the same fail-open this vertical deleted from its build path and then reproduced at its own exit. The binding path in this file already checks its writes; these two did not, and the inconsistency is what made it invisible.
+fn receipt_write_refusal(receipt_path: String, detail: String) -> ProcessExit {
+  exit_failure(
+    reason: join([
+      "the run completed but its receipt could not be written to ",
+      receipt_path,
+      " -- the receipt is the only channel this entry point reports through, so a run that cannot record its outcome refuses rather than exiting success (DESIGN section 5). Host error: ",
+      detail,
+    ], ""),
+  )
+}
+
 fn devboot_materialize_entry(
   store_root: String,
   repo_root: String,
@@ -1194,6 +1206,9 @@ fn devboot_materialize_entry(
     out_path: out_path,
   )
   let written = Filesystem.Write(path: receipt_path, content: report)
+  if !written.success {
+    receipt_write_refusal(receipt_path: receipt_path, detail: written.error)
+  } else {
   if !string_contains(s: report, pattern: join([" sha256=", expected_sha256, " "], "")) {
     exit_failure(reason: join(["the materialized bytes did not match the promised digest ", expected_sha256, ": ", report], ""))
   } else {
@@ -1202,6 +1217,7 @@ fn devboot_materialize_entry(
     } else {
       ExitSuccess
     }
+  }
   }
 }
 
@@ -1267,7 +1283,11 @@ fn devboot_produce_entry(
     path: receipt_path,
     content: render_produce_report(report: report, caller: caller),
   )
-  produce_report_exit(report: report)
+  if !written.success {
+    receipt_write_refusal(receipt_path: receipt_path, detail: written.error)
+  } else {
+    produce_report_exit(report: report)
+  }
 }
 
 // THE AVAILABILITY ARM SURVIVES INTO THE MESSAGE. An earlier revision rendered every unavailable outcome as the same sentence about bytes not being retrievable, which flattened the one distinction that matters most here: bytes that are ABSENT are a routine prune and a rebuild fixes them, while bytes that are PRESENT AND WRONG are an integrity failure and rebuilding over them without saying so would bury it. The match is total, so a new availability arm cannot inherit a generic sentence.
