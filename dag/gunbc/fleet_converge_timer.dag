@@ -1,6 +1,10 @@
 module gunbc.fleet_converge_timer
 
 import std.types { String, NonEmptyStr, Bool, Int }
+import std.nat { Nat }
+import std.measure { Second, second, second_count }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 // Arc item 4 (timer / anti-entropy, operator directive 2026-08-08): the steady-state
 // enforcement loop is a PER-HOST systemd timer executing the converge circuit against
@@ -18,17 +22,23 @@ import std.types { String, NonEmptyStr, Bool, Int }
 data fleet_converge_service_unit_name: String = "ctrl-fleet-converge.service"
 data fleet_converge_timer_unit_name: String = "ctrl-fleet-converge.timer"
 data fleet_converge_timer_on_calendar: String = "*:0/15"
-data fleet_converge_timer_randomized_delay_sec: Int = 90
+data fleet_converge_timer_randomized_delay: Second = second(count: 90)
 data fleet_converge_binary_path: String = "/opt/gunbc/bin/gunbc"
 data fleet_converge_env_file_path: String = "/etc/gunbc/fleet-converge.env"
 
-// 🟡 scaffold: string-built medium. Unit INI text is rendered by string concat rather than
-// as a Node emitted through grammar rows — the medium-as-string shape the shell→intent
-// lane's containment exists to stop spreading. Tolerated only while this module is
-// tests-only (no production emitter consumes it); dissolve-on: a systemd-unit grammar-rows
-// emit (the same one-grammar-read-backward move as bash/YAML) or the emit-on-demand serve
-// closure, whichever lands first — at which point these builders become row-derived and
-// the concat bodies delete.
+// String-built medium: unit INI text is rendered by join/concat rather than as a Node
+// emitted through grammar rows — the medium-as-string shape the shell→intent lane's
+// containment exists to stop spreading. Tolerated only while this module is tests-only
+// (no production emitter consumes it); the typed row below carries the dissolution.
+data fleet_converge_unit_text_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.live_deploy.emit",
+    decl_name: "live_deploy_emit_shell_dissolution_trigger",
+    field: WholeDeclaration,
+  }
+}
+
 fn fleet_converge_service_content(host_arg: String) -> String {
   join([
     "[Unit]\n",
@@ -50,7 +60,7 @@ fn fleet_converge_timer_content() -> String {
     "[Timer]\n",
     "OnCalendar=", fleet_converge_timer_on_calendar, "\n",
     "Persistent=true\n",
-    "RandomizedDelaySec=", to_string(fleet_converge_timer_randomized_delay_sec), "\n",
+    "RandomizedDelaySec=", to_string(second_count(s: fleet_converge_timer_randomized_delay)), "\n",
     "Unit=", fleet_converge_service_unit_name, "\n",
     "\n",
     "[Install]\n",
