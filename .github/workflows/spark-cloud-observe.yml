@@ -1,0 +1,103 @@
+# Read-only effective-access observation for the Spark cloud population.
+#
+# DECLARED SCAFFOLD. This file is hand-authored YAML and shell, which the project's own rules say
+# should be emitted from .dag for a foreign executor rather than written by hand. It is authored
+# directly because the observation it performs is the gate on every remaining cloud decision, and
+# modelling the emitter first would be another round of description before the first measurement.
+# DISSOLVE-ON: this workflow is emitted from a .dag intent through the bash grammar rows, the way
+# ci.yml already is, at which point this file is deleted rather than maintained beside its source.
+#
+# WHAT THIS DOES NOT DO: it mutates nothing. Every call is a read. The two testIamPermissions calls
+# are HTTP POST because that is the API's shape, and they are READ-ONLY by contract -- they return
+# the subset of the supplied permissions the caller holds and change no state. Naming that here
+# because a reader scanning for POST should not have to guess.
+#
+# TEMPORARY PUSH TRIGGER, scoped to this one branch so the observation runs without anybody having
+# to press a button. It is not a required check and gates no pull request, so it cannot red a merge.
+# DISSOLVE-ON: the push trigger is deleted once the effective-access standing has been observed and
+# recorded; a read-only probe that keeps firing on every push is a standing cost with no consumer.
+# The workflow_dispatch trigger stays, because re-observing on demand is the legitimate long-run use.
+name: spark-cloud-observe
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - session/spark-serve-0
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  observe:
+    name: Observe effective cloud access (read-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout the exact revision under observation
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud via OIDC/WIF
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/582015116396/locations/global/workloadIdentityPools/github-actions/providers/github-oidc
+          service_account: fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com
+          token_format: access_token
+          access_token_lifetime: 600s
+          create_credentials_file: false
+          export_environment_variables: false
+
+      - name: Observe effective access
+        env:
+          TOK: ${{ steps.auth.outputs.access_token }}
+        run: |
+          set -uo pipefail
+          PROJ=gunbai-secrets
+
+          # Never echo the token. Only HTTP status codes and API response bodies are printed, and
+          # no call returns credential material: testIamPermissions returns permission names, and
+          # the secret GETs return metadata. No AccessVersion call is made, so no payload is read.
+          code() {
+            curl -s -o /tmp/body.json -w '%{http_code}' -H "Authorization: Bearer ${TOK}" "$1"
+          }
+          perms() {
+            curl -s -H "Authorization: Bearer ${TOK}" -H 'Content-Type: application/json' \
+              -X POST "https://secretmanager.googleapis.com/v1/projects/${PROJ}/secrets/$1:testIamPermissions" \
+              -d '{"permissions":["secretmanager.versions.access","secretmanager.versions.add","secretmanager.versions.destroy","secretmanager.secrets.get","secretmanager.secrets.getIamPolicy","secretmanager.secrets.setIamPolicy"]}'
+          }
+
+          echo "=== principal readback: does WIF actually yield the expected identity? ==="
+          # This is the observation that turns CloudPrincipalReported into Allocated or refutes it.
+          curl -s -H "Authorization: Bearer ${TOK}" \
+            "https://cloudresourcemanager.googleapis.com/v1/projects/${PROJ}:testIamPermissions" \
+            -H 'Content-Type: application/json' -X POST \
+            -d '{"permissions":["resourcemanager.projects.get","secretmanager.secrets.list","secretmanager.secrets.create"]}' \
+            | tee /tmp/project_perms.json
+          echo
+
+          echo "=== per-secret effective permission cells ==="
+          for s in fleet-automation-ssh-key spark-hotspot-password spark-administrator-password; do
+            echo "--- ${s} ---"
+            echo "GET metadata http=$(code "https://secretmanager.googleapis.com/v1/projects/${PROJ}/secrets/${s}")"
+            head -c 400 /tmp/body.json; echo
+            echo "granted permissions:"
+            perms "${s}"
+            echo
+            echo "version inventory http=$(code "https://secretmanager.googleapis.com/v1/projects/${PROJ}/secrets/${s}/versions")"
+            head -c 400 /tmp/body.json; echo
+          done
+
+          echo "=== NOTE ON READING THIS RECEIPT ==="
+          echo "An empty permissions object means the caller holds NONE of the probed permissions"
+          echo "on that resource. A 403 on GET means the same thing from the other direction."
+          echo "Expected standing is EffectiveAccessIncomplete: the convergence principal is reported"
+          echo "to hold accessor on ONE secret only, so the Spark containers should refuse. An"
+          echo "unexpected PERMIT is the more interesting result -- it would mean the grant is"
+          echo "broader than reported, which classifies EffectiveAccessOverbroad."
+
+      - name: Publish the receipt
+        if: always()
+        run: |
+          echo "This run mutated nothing. Its product is the effective-permission map above."
