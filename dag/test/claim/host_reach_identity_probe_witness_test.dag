@@ -94,24 +94,25 @@ test fn identity_projection_discriminates_match_drift_and_wrong_machine() -> Boo
 }
 
 // Join 4 (operator verdict): the executed probe run's receipts ARE the registry now —
-// the producers answer Present for a probed host, the observed verdict is Inaccessible
-// (unenrolled host key: never satisfied, never Conflict), and coverage GREW from the
-// executed run, not from wiring. A host outside the registry still answers none.
+// the producers answer Present for a probed host, and the verdicts REFLECT the run:
+// srv1 crossed command reach on run 31333011288 (gunbc-fleet principal), so its cells
+// read Converged from the SAME receipt; coverage GREW from the executed run, not from
+// wiring. A host outside the registry still answers none.
 test fn committed_probe_receipts_feed_producers_and_grow_coverage() -> Bool {
   match host_reach_identity_probe_receipt_for(host: operator_host_srv1) {
     Present { value: r } =>
       match r.outcome {
-        ProbeAuthenticationRefused { cause: c } => string_contains(s: c, pattern: "Permission denied")
+        ProbeReachable { observed_short_hostname: h } => h == "srv1"
         _ => false
       }
     _ => false
   }
     && match observe_reach_secrets_network(host: operator_host_srv1) {
-      Present { value: v } => v == Inaccessible
+      Present { value: v } => v == Converged
       _ => false
     }
     && match observe_host_phase(subject: fixture_subject(), host: operator_host_srv1, phase_label: "P0:reach-secrets-network") {
-      Present { value: v } => v == Inaccessible
+      Present { value: v } => v == Converged
       _ => false
     }
     && match host_reach_identity_probe_receipt_for(host: "no-such-host" as HostIdentity) {
@@ -137,7 +138,7 @@ test fn observe_host_phase_routes_by_label_and_stays_fail_closed() -> Bool {
       _ => true
     }
     && match observe_host_phase(subject: fixture_subject(), host: operator_host_srv1, phase_label: "P0:host-identity-converge") {
-      Present { value: v } => v == Inaccessible
+      Present { value: v } => v == Converged
       _ => false
     }
 }

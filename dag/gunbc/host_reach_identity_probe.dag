@@ -99,9 +99,9 @@ type ProbeRunProvenance {
 }
 
 data probe_receipts_run_provenance: ProbeRunProvenance = ProbeRunProvenance {
-  workflow_run_id: 31331184536,
+  workflow_run_id: 31333011288,
   job_id: "probe_fleet_reach",
-  probed_at: "2026-08-09T19:27:59Z" as NonEmptyStr,
+  probed_at: "2026-08-09T20:03:55Z" as NonEmptyStr,
   head_branch: "session/wise-moth-430",
 }
 
@@ -126,32 +126,32 @@ data probe_receipt_ledger_transcription_scaffold: Disposition = Scaffold {
 data host_reach_identity_probe_receipts: List<HostReachIdentityProbeReceipt> = [
   HostReachIdentityProbeReceipt {
     host: "srv1" as HostIdentity,
-    probed_at: "2026-08-09T19:27:59Z" as NonEmptyStr,
-    outcome: ProbeAuthenticationRefused { cause: "Permission denied, please try again." },
+    probed_at: "2026-08-09T20:03:55Z" as NonEmptyStr,
+    outcome: ProbeReachable { observed_short_hostname: "srv1" },
   },
   HostReachIdentityProbeReceipt {
     host: "srv2" as HostIdentity,
-    probed_at: "2026-08-09T19:27:59Z" as NonEmptyStr,
-    outcome: ProbeAuthenticationRefused { cause: "Permission denied, please try again." },
+    probed_at: "2026-08-09T20:03:55Z" as NonEmptyStr,
+    outcome: ProbeReachable { observed_short_hostname: "srv2" },
   },
   HostReachIdentityProbeReceipt {
     host: "srv3" as HostIdentity,
-    probed_at: "2026-08-09T19:27:59Z" as NonEmptyStr,
-    outcome: ProbeTransportUnavailable { cause: "stderr= stdout=This account is currently not available." },
+    probed_at: "2026-08-09T20:03:55Z" as NonEmptyStr,
+    outcome: ProbeAuthenticationRefused { cause: "Permission denied, please try again." },
   },
   HostReachIdentityProbeReceipt {
     host: "srv4" as HostIdentity,
-    probed_at: "2026-08-09T19:27:59Z" as NonEmptyStr,
-    outcome: ProbeAuthenticationRefused { cause: "ghrunner@srv4: Permission denied (publickey)." },
+    probed_at: "2026-08-09T20:03:55Z" as NonEmptyStr,
+    outcome: ProbeAuthenticationRefused { cause: "gunbc-fleet@srv4: Permission denied (publickey)." },
   },
   HostReachIdentityProbeReceipt {
     host: "srv5" as HostIdentity,
-    probed_at: "2026-08-09T19:27:59Z" as NonEmptyStr,
+    probed_at: "2026-08-09T20:03:55Z" as NonEmptyStr,
     outcome: ProbeAuthenticationRefused { cause: "Permission denied, please try again." },
   },
   HostReachIdentityProbeReceipt {
     host: "srv6" as HostIdentity,
-    probed_at: "2026-08-09T19:27:59Z" as NonEmptyStr,
+    probed_at: "2026-08-09T20:03:55Z" as NonEmptyStr,
     outcome: ProbeAuthenticationRefused { cause: "Permission denied, please try again." },
   },
 ]
