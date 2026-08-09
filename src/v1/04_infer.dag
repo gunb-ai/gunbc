@@ -190,7 +190,7 @@ import v1.compiler.infer_access {
   AccessCheckResultNode,
   check_index_access_node, check_slice_access_node
 }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
 
 fn is_witness_type_name(name: String) -> Bool {
   name == "Witness" || name == "witness"
@@ -2163,7 +2163,7 @@ fn method_existence_decision(recv_rt: Node, method_name: String, scope: InferSco
                 MethodPipeFallback {
                   result_ty: error_type,
                   kernel_diags: [make_error_node(
-                    diagnostic: MethodExistenceFrontierAdmitted { method: method_name, receiver_type: recv_shape, trigger: trigger, span: span },
+                    diagnostic: MethodExistenceFrontierAdmitted { method: method_name, receiver_type: recv_shape, trigger: dissolution_description(condition: trigger), span: span },
                     module_name: scope.module_name
                   )]
                 }
@@ -2348,7 +2348,7 @@ fn frontier_occurrence_budget_checked(module_name: String, module_span: SourceSp
   concat(diagnostics, frontier_occurrence_budget_diags(module_name: module_name, module_span: module_span, diagnostics: diagnostics))
 }
 
-fn unresolved_method_frontier_trigger(module_name: String, method: String, receiver_shape: String) -> String? {
+fn unresolved_method_frontier_trigger(module_name: String, method: String, receiver_shape: String) -> DissolutionCondition? {
   match unresolved_method_frontier()
     |> filter(r => r.module_name == module_name && r.method == method && r.receiver_shape == receiver_shape)
     |> first {
