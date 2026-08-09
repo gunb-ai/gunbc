@@ -85,8 +85,40 @@ fn collect_arrows(root: Node, acc: List<Node>) -> List<Node> {
   })
 }
 
+
+data test_marker_capture_note: String = "STAGED SCAFFOLD (escalation msg_628838a5; dissolve-on: GrammarExpr contextual-keyword terminal lands and dag fn_decl/data_decl productions carry the test marker structurally): the v2 dag grammar cannot yet parse the authored test marker ('test' is a module-path segment, so it cannot be a lex keyword; v1's v1_compiler_parse.rs drop_leading_test_marker DISCARDS the marker pre-parse and re-derives test-ness by text scan — cited as the prior art this capture SUPERSEDES, not imitates: this seam captures and counts, that seam discarded, and the distinction is the point (ruling msg_64870b7f)). The realization ATTEMPT captures the marker at its own seam — line-leading 'test fn '/'test data ' rewritten to the unmarked form, capture COUNTED on the attempt row — so the census sweep can measure the rest of the pipeline while the grammar extension is priced as its own top-of-burn-down repair item (it gates 100 percent of test files). Test-ness itself is never derived from this capture: the discovery roster carries it. Scoped deliberately to attempt_entry_source; the canonical production pipeline does NOT route through this fn."
+
+type MarkedSource {
+  unmarked: String
+  captured_markers: Int
+}
+
+fn capture_test_markers(source: String) -> MarkedSource {
+  let folded = fold(
+    split(s: source, delimiter: "\n"),
+    init: MarkedSource { unmarked: "", captured_markers: 0 },
+    f: fn(acc, line) {
+      let stripped =
+        if starts_with(s: line, prefix: "test fn ") || starts_with(s: line, prefix: "test data ") {
+          MarkedSource {
+            unmarked: substring(s: line, start: 5, end: string_length(s: line)),
+            captured_markers: 1
+          }
+        } else {
+          MarkedSource { unmarked: line, captured_markers: 0 }
+        }
+      MarkedSource {
+        unmarked: if acc.unmarked == "" { stripped.unmarked } else { concat(acc.unmarked, "\n", stripped.unmarked) },
+        captured_markers: acc.captured_markers + stripped.captured_markers
+      }
+    }
+  )
+  folded
+}
+
 fn attempt_entry_source(entry: String, source: String) -> EntryRealizationAttempt {
-  match ingested_resolved_module_from_source(source: source, file: ^realization_attempt_entry_file) {
+  let marked = capture_test_markers(source: source)
+  match ingested_resolved_module_from_source(source: marked.unmarked, file: ^realization_attempt_entry_file) {
     Rejected { diagnostics: ds } =>
       attempt_refused(
         entry: entry,
