@@ -52,6 +52,7 @@ import gunbc.repo_atlas_projection {
 }
 import v2.lens.module_graph { module_declaration_facts_live }
 import extdeps.git
+import extdeps.git.inspect
 import extdeps.git {
   GitDiffNameStatusComplete, git_diff_name_status_parse, GitDiffRange, TwoDot, ThreeDot
 }
@@ -411,7 +412,11 @@ fn repo_atlas_section(snapshot: RepoAtlasSnapshot) -> Fragment {
     ]))
 }
 
-data repo_atlas_live_observation_note: String = "ONE OBSERVATION FUNCTION HOLDS BOTH WET READS, and that is the correction rather than a tidy-up. The page was ALREADY wet — module_declaration_facts_live reads the working tree — so moving only the Git read to a handler would not have made repo_atlas_document pure; it would have split one observation across two seams and left the correspondence between them unstated. Both reads happen here, together, and the pure document receives a completed snapshot.
+data repo_atlas_inspection_authority_note: String = "CLEANLINESS AND HEAD COME FROM git.Inspect, WHICH ALREADY OWNS THEM. An earlier revision minted StatusPorcelain and RevParse on git.Core — a second inspection surface beside the one that exists, in a module whose own note says no second Git inspection surface remains in extdeps.git. That is the DESIGN 3 fork this carrier's header claims not to commit, committed two files away from the claim (review 50800).
+
+THE ARGV DIFFERENCE WAS NOT COSMETIC. WorkingTreeStatus pins --porcelain=v1, -z and --untracked-files=all, each for a reason its module records. The one that mattered here is --untracked-files=all: plain --porcelain honours a repository-local status.showUntrackedFiles=no, so a tree carrying untracked files could have reported EMPTY while module_declaration_facts_live still read them — a clean-looking observation binding a subject to a tree that does not match it. That is a fail-open on the exact head-binding wall this slice adds, and the fix was to stop re-deriving an argv the authority had already gotten right.
+
+ONE OBSERVATION FUNCTION HOLDS BOTH WET READS, and that is the correction rather than a tidy-up. The page was ALREADY wet — module_declaration_facts_live reads the working tree — so moving only the Git read to a handler would not have made repo_atlas_document pure; it would have split one observation across two seams and left the correspondence between them unstated. Both reads happen here, together, and the pure document receives a completed snapshot.
 
 THE BINDING IS CHECKED, NOT ASSUMED. The module facts describe the WORKING TREE and the comparison describes COMMITS. A subject is claimed only when git status --porcelain is observed empty at the resolved head, because a dirty tree means the two halves describe different worlds and marking one against the other would fabricate a correspondence. A dirty or unreadable tree keeps the structure plane and refuses the subject with a located cause; it never quietly draws marks anyway.
 
@@ -423,21 +428,21 @@ data repo_atlas_comparison_base: String = "HEAD^"
 data repo_atlas_comparison_head: String = "HEAD"
 
 fn repo_atlas_observe_changes() -> AtlasChangeObservation {
-  let status = git.Core.StatusPorcelain()
+  let status = git.Inspect.WorkingTreeStatus()
   if status.success == false {
     AtlasComparisonUnavailable {
-      cause: ComparisonReadFailed { detail: "git status --porcelain did not succeed" }
+      cause: ComparisonReadFailed { detail: concat("git status did not succeed — ", status.stderr) }
     }
   } else {
-    if status.raw != "" {
+    if status.entries_nul != "" {
       AtlasComparisonUnavailable {
         cause: ComparisonHeadUnbound {
-          detail: "the working tree carries uncommitted changes, so the live module population does not correspond to any commit"
+          detail: "the working tree carries uncommitted or untracked changes, so the live module population does not correspond to any commit"
         }
       }
     } else {
-      let resolved = git.Core.RevParse(rev: repo_atlas_comparison_head)
-      if resolved.success == false {
+      let head = git.Inspect.HeadCommit()
+      if head.success == false {
         AtlasComparisonUnavailable {
           cause: ComparisonReadFailed { detail: "git rev-parse HEAD did not succeed" }
         }
@@ -454,7 +459,7 @@ fn repo_atlas_observe_changes() -> AtlasChangeObservation {
           AtlasComparisonObserved {
             comparison: AtlasComparison {
               base: repo_atlas_comparison_base,
-              head: resolved.sha,
+              head: head.sha,
               relation: TwoDot
             },
             diff: git_diff_name_status_parse(raw: diff.raw)
