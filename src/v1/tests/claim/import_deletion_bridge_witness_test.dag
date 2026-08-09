@@ -1,7 +1,6 @@
 module v1.tests.claim.import_deletion_bridge_witness
 
 import std.types { Bool, String, List, NonEmptyStr }
-import extdeps.filesystem.filesystem_io { Filesystem }
 import std.occurrence_identity {
   OccurrenceId, OccurrenceIndexEntry, OccurrenceTransport,
   ReferenceOccurrence, DeclarationOccurrence,
@@ -36,7 +35,7 @@ Reading real source requires filesystem_read, which requires the Filesystem SERV
 
 No src/v1 module used a service before, which is why this never surfaced. It is not caused by this lane and is not this lane's to fix casually: the plan model must learn that service presence in the closure contributes emitter-support files, or those files must be classified through v2.compiler.self_host.frontier. Either is a change to a load-bearing regen gate and needs its own modelling, not a path added here.
 
-CONSEQUENCE FOR THIS WITNESS, stated rather than worked around: it cannot both live under src/v1 (needed to import v1.gunbc.occurrence_binding_parser_walk, which the dag+src/v2 compile-clean roots cannot see) and read the live tree (which drags a service into the v1 seed). That is a genuine placement contradiction, not a filing preference, and it is the next thing to resolve.
+CONSEQUENCE FOR THIS WITNESS, stated rather than worked around: it cannot both live under src/v1 (needed to import v1.gunbc.occurrence_binding_parser_walk, which the dag+src/v2 compile-clean roots cannot see) and read the live tree (which drags a service into the v1 seed). That is a genuine placement contradiction, not a filing preference, and it is the next thing to resolve."
 
 data import_deletion_bridge_offline_recipe: String = "OFFLINE LOCAL RECIPE (requires the v1 parser pool, exactly as the sibling occurrence_binding_parser_walk witness does). This file lives under src/v1/tests/claim/ and NOT under dag/test/claim/ for a structural reason, not a filing preference: it imports v1.gunbc.occurrence_binding_parser_walk, and the compile-clean gate compiles dag + src/v2 only, so a copy under dag/ fails to resolve the module it exists to exercise. Placing it here is the same resolution the sibling witness already made.
 
@@ -52,29 +51,45 @@ WHAT THIS PROVES, AND WHAT IT DOES NOT. It is a SUPPLIED-PROVIDER binding keysto
 
 WHAT THIS PROVES. An import-less consumer reaches a declaration in a REAL production module — v2.std.live_tree, read off disk, not a fixture provider and not an embedded source string — with no import participating in the decision anywhere. LiveTreeDisposition is the subject because it is the largest population that loses its sole provider under strip: 1,673 references corpus-wide. If reference-derived binding cannot reach this declaration, deleting imports cannot work at all.
 
-WHY BOTH FILES ARE READ FROM DISK. The point of this checkpoint is the bridge from the EXISTING source population, so a witness that hands the parser an embedded string would prove the parser and skip the thing under test. Both sides go through filesystem_read, and the provider side is an ordinary production module nobody authored for this test.
+SCOPE REDUCED, LOUDLY, WITH A TRIGGER. An earlier revision read BOTH files off disk, so the provider was the ordinary production module rather than anything authored for this test — strictly better evidence. It is not possible today: filesystem_read needs the Filesystem service, and a service in the v1 emission closure emits an unmodelled `dry_run.rs` (see the gap note above), while the witness must live under src/v1 to import the module it exercises at all. Both sources are therefore EMBEDDED, exactly as the sibling parser-walk witness does.
+
+WHAT THAT COSTS, so nobody reads more into this than it carries: the provider is now an authored copy of v2.std.live_tree's type declaration, not the real module, so this no longer witnesses anything about the live corpus and cannot catch drift between the two. It proves the binding mechanism only. DISSOLVE-ON: the stage0 emission model accounts for service-support files (or classifies them through v2.compiler.self_host.frontier), after which both sides return to filesystem_read and the provider becomes the real module again.
+
+THE PARSER FINDING BELOW DOES NOT DEPEND ON THIS. It was established by a structural census of v1.02_parse's declaration-minting sites, not by reading the corpus, so the reduction costs the keystone's reach and costs the finding nothing.
 
 WHY PER-REFERENCE RESOLVE AND NOT structural_binding_walk. The walk demands AllReferencesBound over the whole transport. A real production module references types this two-file closure does not contain, so the walk would refuse for reasons that have nothing to do with the claim — and a refusal read as a failure here would be a false red. Resolving the one reference under test keeps the discriminator on the claim.
 
 THE DISCRIMINATING CONTROL IS THE SECOND TEST, NOT AN ASSERTION IN THIS ONE. Binding the reference proves little on its own: it must FAIL when the provider is absent from the assembled closure. Without that control this witness would pass on any closure that happened to contain the name, which is precisely the pool-membership coincidence the whole lane exists to eliminate."
 
-data live_tree_source_path: String = "src/v2/std/live_tree.dag"
-data consumer_source_path: String = "dag/test/fixture/import_deletion_bridge/live_tree_consumer_bare.dag"
-data provider_module_name: String = "v2.std.live_tree"
-data subject_name: String = "LiveTreeDisposition"
+data idb_live_tree_source_path: String = "src/v2/std/live_tree.dag"
+data idb_consumer_source_path: String = "dag/test/fixture/import_deletion_bridge/live_tree_consumer_bare.dag"
+data idb_provider_module_name: String = "v2.std.live_tree"
+data idb_subject_name: String = "LiveTreeDisposition"
 
-fn parsed_row(path: String) -> ParsedOccurrenceBindingSource {
-  parse_authored_occurrence_binding_source(
-    file: path,
-    source: filesystem_read(path: path).content,
-  )
+fn idb_consumer_source() -> String {
+  "module test.fixture.import_deletion_bridge.live_tree_consumer_bare\n\nfn bridge_consumer_reads_disposition(d: LiveTreeDisposition) -> LiveTreeDisposition {\n  d\n}\n"
 }
 
-fn closure_row_for(
+fn idb_provider_source() -> String {
+  "module v2.std.live_tree\n\ntype LiveTreeDisposition\n  = ReadsLiveTree\n  | SubstrateInputsOnly\n"
+}
+
+fn idb_source_for(path: String) -> String {
+  match path == idb_consumer_source_path {
+    true => idb_consumer_source()
+    false => idb_provider_source()
+  }
+}
+
+fn idb_parsed_row(path: String) -> ParsedOccurrenceBindingSource {
+  parse_authored_occurrence_binding_source(file: path, source: idb_source_for(path: path))
+}
+
+fn idb_closure_row_for(
   path: String,
   grounding: DeclarationExposureGrounding
 ) -> List<CrossFileBindingClosureRow> {
-  match parsed_row(path: path) {
+  match idb_parsed_row(path: path) {
     ParsedOccurrenceBindingSourceRefused => []
     ParsedOccurrenceBindingSourceReady { transport: t, module_path: m } =>
       [ CrossFileBindingClosureRow {
@@ -88,7 +103,7 @@ fn closure_row_for(
   }
 }
 
-fn index_entry_for_occurrence(
+fn idb_index_entry_for_occurrence(
   transport: OccurrenceTransport,
   occurrence: OccurrenceId
 ) -> OccurrenceIndexEntry? {
@@ -103,9 +118,9 @@ fn index_entry_for_occurrence(
     })
 }
 
-fn references_named(transport: OccurrenceTransport, name: String) -> List<ReferenceOccurrence> {
+fn idb_references_named(transport: OccurrenceTransport, name: String) -> List<ReferenceOccurrence> {
   fold(transport.references, init: [], f: (acc, reference) =>
-    match index_entry_for_occurrence(transport: transport, occurrence: reference.occurrence) {
+    match idb_index_entry_for_occurrence(transport: transport, occurrence: reference.occurrence) {
       Absent => acc
       Present { value: entry } =>
         match entry.projection.authored_name == name {
@@ -115,13 +130,13 @@ fn references_named(transport: OccurrenceTransport, name: String) -> List<Refere
     })
 }
 
-fn bound_provider_for_subject(
+fn idb_bound_provider_for_subject(
   consumer_path: String,
   provider_paths: List<String>
 ) -> BoundReferenceProvider? {
-  let consumers = closure_row_for(path: consumer_path, grounding: ModuleLocalMemberExposure)
+  let consumers = idb_closure_row_for(path: consumer_path, grounding: ModuleLocalMemberExposure)
   let providers = fold(provider_paths, init: [], f: (acc, p) =>
-    concat(acc, closure_row_for(path: p, grounding: CrossFileProviderExportedExposure)))
+    concat(acc, idb_closure_row_for(path: p, grounding: CrossFileProviderExportedExposure)))
   fold(consumers, init: none, f: (outer, consumer_row) =>
     match outer {
       Present { value: _ } => outer
@@ -129,7 +144,7 @@ fn bound_provider_for_subject(
         match assemble_cross_file_binding_closure(consumer: consumer_row, providers: providers) {
           AssembledCrossFileBindingClosureRefused { refusal: _ } => none
           AssembledCrossFileBindingClosureReady { transport: t, inputs: i, module_files: _, consumer_file: _ } =>
-            fold(references_named(transport: t, name: subject_name), init: none, f: (found, reference) =>
+            fold(idb_references_named(transport: t, name: idb_subject_name), init: none, f: (found, reference) =>
               match found {
                 Present { value: _ } => found
                 Absent =>
@@ -145,21 +160,21 @@ fn bound_provider_for_subject(
 }
 
 test fn witness_import_less_reference_reaches_the_real_provider() -> Bool {
-  match bound_provider_for_subject(
-    consumer_path: consumer_source_path,
-    provider_paths: [live_tree_source_path],
+  match idb_bound_provider_for_subject(
+    consumer_path: idb_consumer_source_path,
+    provider_paths: [idb_live_tree_source_path],
   ) {
     Absent => false
     Present { value: provider } =>
-      provider.provider_module == provider_module_name
-        && !(provider.consumer_module == provider_module_name)
+      provider.provider_module == idb_provider_module_name
+        && !(provider.consumer_module == idb_provider_module_name)
   }
 }
 
 data bridge_red_control_note: String = "THE CONTROL. Same consumer, same subject, provider file withheld from the assembled closure. A binding here would mean the reference resolved against something other than the declaration in v2.std.live_tree — pool coincidence rather than derivation — and would invalidate the positive case above."
 
 test fn witness_subject_does_not_bind_without_its_provider() -> Bool {
-  match bound_provider_for_subject(consumer_path: consumer_source_path, provider_paths: []) {
+  match idb_bound_provider_for_subject(consumer_path: idb_consumer_source_path, provider_paths: []) {
     Absent => true
     Present { value: _ } => false
   }
@@ -168,9 +183,9 @@ test fn witness_subject_does_not_bind_without_its_provider() -> Bool {
 data bridge_no_import_note: String = "The consumer carries NO import declaration. This asserts that directly against the bytes on disk rather than trusting the fixture to stay import-less: if someone repairs the fixture by adding an import, the bridge claim would silently become a claim about import-based resolution, and this reds instead."
 
 test fn witness_consumer_carries_no_import_declaration() -> Bool {
-  let source = filesystem_read(path: consumer_source_path).content
+  let source = idb_consumer_source()
   !string_contains(s: source, pattern: "import ")
-    && string_contains(s: source, pattern: subject_name)
+    && string_contains(s: source, pattern: idb_subject_name)
 }
 
 

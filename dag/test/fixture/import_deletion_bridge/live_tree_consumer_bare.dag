@@ -1,5 +1,0 @@
-module test.fixture.import_deletion_bridge.live_tree_consumer_bare
-
-fn bridge_consumer_reads_disposition(d: LiveTreeDisposition) -> LiveTreeDisposition {
-  d
-}
