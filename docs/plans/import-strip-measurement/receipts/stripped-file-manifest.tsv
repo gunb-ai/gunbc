@@ -302,7 +302,7 @@ imports_removed	file
 4	extdeps/languages/rust/subject.dag
 3	extdeps/languages/rust/syntax.dag
 3	extdeps/languages/rust/types.dag
-2	extdeps/languages/rust_test_fixtures.dag
+4	extdeps/languages/rust_test_fixtures.dag
 8	extdeps/languages/simd/kernel.dag
 4	extdeps/languages/spice/subject.dag
 14	extdeps/languages/swift.dag
@@ -651,7 +651,7 @@ imports_removed	file
 12	gunbc/citation/x86_64_abi_pdf_consumer.dag
 3	gunbc/claim_evidence_probe_rule.dag
 1	gunbc/claim_executor_hand_rust_boundary.dag
-3	gunbc/class_b_import_closure_overlay.dag
+6	gunbc/class_b_import_closure_overlay.dag
 10	gunbc/claude_setup_token_enrollment.dag
 1	gunbc/cli_invoke.dag
 2	gunbc/cli_run_hand_rust_area_ledger.dag
@@ -2470,7 +2470,7 @@ imports_removed	file
 5	tools/merge_admission_capture_transport.dag
 12	tools/merge_admission_current_context.dag
 14	tools/merge_admission_walk.dag
-7	tools/module_impact_query_front_door.dag
+8	tools/module_impact_query_front_door.dag
 8	tools/namespace_import_closure_behavioral_transport.dag
 1	tools/namespace_structural_root_exposure_generated_witness_transport.dag
 1	tools/parse_witness_transport.dag

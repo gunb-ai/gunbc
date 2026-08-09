@@ -4,7 +4,7 @@ The machinery behind §15 of
 [the witness-discovery cascade diagnosis](../import-strip-witness-discovery-cascade-diagnosis.md)
 and behind [`import-strip-residual-ledger.tsv`](../import-strip-residual-ledger.tsv).
 
-It exists because a 3,088-row ledger reads as authoritative, and a number a
+It exists because a 3,150-row ledger reads as authoritative, and a number a
 future worker cannot regenerate or perturb is not a measurement — it is a claim
 (DESIGN §5: green by execution, plus a discriminating input). Everything below
 regenerates from a named tree.
@@ -47,7 +47,7 @@ cp -r dag src $W/stripped/
 python3 docs/plans/import-strip-measurement/strip_imports.py \
     $W/stripped/dag $W/stripped/src/v2 \
     --manifest $W/stripped-file-manifest.tsv
-# expect: stripped 16382 import declarations across 2583 files
+# expect: stripped 16388 import declarations across 2583 files
 grep -rc '^import ' $W/stripped/dag $W/stripped/src/v2 --include='*.dag' | grep -v ':0' | wc -l
 # expect: 0   (zero residue — a partial strip reads downstream as corpus failure)
 
@@ -59,7 +59,7 @@ grep -rc '^import ' $W/stripped/dag $W/stripped/src/v2 --include='*.dag' | grep 
     --dependency-pool-index primary-precedence --target dag \
     --output-dir $W/o-stripped > $W/stripped-diagnostics.log 2>&1)
 grep 'hard diagnostic' $W/control-diagnostics.log $W/stripped-diagnostics.log
-# expect: control 10, stripped 3098   (both exit 1 — see the note below)
+# expect: control 10, stripped 3160   (both exit 1 — see the note below)
 
 # 3. the ledger, with the reconciliation printed
 python3 docs/plans/import-strip-measurement/classify_residual.py \
@@ -91,7 +91,7 @@ python3 $W/src/docs/plans/import-strip-measurement/classify_residual.py …
 
 Result: the manifest and `import-strip-residual-ledger.tsv` are reproduced
 **byte-identically**, and the classifier prints the reconciliation
-(`3,098 = 10 + 3,088`, ledger rows 3,088, OK). A reproducer that cannot be run
+(`3,160 = 10 + 3,150`, ledger rows 3,150, OK). A reproducer that cannot be run
 from a clean checkout is a receipt with a story attached, not a reproducer.
 
 ## What in the receipts is NOT byte-reproducible

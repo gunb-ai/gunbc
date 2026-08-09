@@ -4,7 +4,7 @@ resolved 2279 sources (transitive import closure)
 ◐ started compile.frontend
 ✓ compile.frontend done in 25 seconds
 ✓ compile.normalize done in 1 seconds
-✓ compile.reconcile done in 6 minutes
+✓ compile.reconcile done in 5 minutes
 ✓ compile.analyses done in 1 seconds
 v2 self-compile produced 10 hard diagnostic(s):
 source annotation sits inside a declaration body. Only module-item grain is modeled; move it above the declaration it describes. (dag/test/claim/host_phase_status_witness_test.dag:25791-25884)

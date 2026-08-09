@@ -766,7 +766,7 @@ the ones that would carry `_unobserved` in the name:
 | --- | --- | --- |
 | `unique_decl_unresolved_mechanism_unobserved` | 1,656 | one indexed declaration, reference unresolved, mechanism not established |
 | `variant_mechanism_unobserved` | 599 | variant-shaped, prior mechanism refuted, re-proof owed |
-| `variant_owner_unindexed` | 249 | capitalised name the index missed (likely inline `type X = A \| B`) |
+| `variant_owner_unindexed` | 250 | capitalised name the index missed (likely inline `type X = A \| B`) |
 | `corpus_hygiene` | 152 | name declared in more than one module |
 | `cascade` | 138 | type-expression / downstream mismatch |
 | `ordinary_callee_unindexed` | 133 | call to a name the index does not carry (builtin, primitive, or generated) |
@@ -1012,15 +1012,15 @@ Re-measured on the head carrying the repair, with the reconciliation checked by
 the classifier:
 
 ```
-stripped_hard (3,098) = control_hard (10) + attributable (3,088)
-attributable (3,088)  = Σ ledger rows (3,088)      [reconciliation: OK]
+stripped_hard (3,160) = control_hard (10) + attributable (3,150)
+attributable (3,150)  = Σ ledger rows (3,150)      [reconciliation: OK]
 ```
 
 | disposition | rows |
 | --- | --- |
-| `unique_decl_unresolved_mechanism_unobserved` | 1,893 |
-| `variant_mechanism_unobserved` | 600 |
-| `variant_owner_unindexed` | 249 |
+| `unique_decl_unresolved_mechanism_unobserved` | 1,951 |
+| `variant_mechanism_unobserved` | 603 |
+| `variant_owner_unindexed` | 250 |
 | `cascade` | 138 |
 | `field_on_unresolved_or_wrong_type` | 73 |
 | `method_on_unresolved_receiver` | 66 |
@@ -1043,9 +1043,9 @@ class; every one of the remaining 10 sits in
 `dag/test/claim/host_phase_status_witness_test.dag`, a file this branch does not
 touch, so the hygiene batch still adds **zero** diagnostics — and this time the
 evidence is the located diagnostics themselves rather than a separate run. The
-corpus grew again (16,382 imports across 2,583 files) because main advanced
+corpus grew again (16,388 imports across 2,583 files) because main advanced
 during the work. And `unique_decl_unresolved_mechanism_unobserved` moved with
-that advance, not with the renames: it is 1,893 here against 1,656 before main
+that advance, not with the renames: it is 1,951 here against 1,656 before main
 moved at all.
 
 The re-measurement itself is not free of the effect it measures, which is worth
