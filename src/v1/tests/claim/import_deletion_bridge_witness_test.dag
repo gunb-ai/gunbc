@@ -1,7 +1,8 @@
-module test.claim.import_deletion_bridge_witness
+module v1.tests.claim.import_deletion_bridge_witness
 
 import std.types { Bool, String, List, NonEmptyStr }
 import extdeps.filesystem.filesystem_io { Filesystem }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.occurrence_identity {
   OccurrenceId, OccurrenceIndexEntry, OccurrenceTransport,
   ReferenceOccurrence, DeclarationOccurrence,
@@ -29,6 +30,12 @@ import v1.gunbc.occurrence_binding_parser_walk {
 }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data import_deletion_bridge_offline_recipe: String = "OFFLINE LOCAL RECIPE (requires the v1 parser pool, exactly as the sibling occurrence_binding_parser_walk witness does). This file lives under src/v1/tests/claim/ and NOT under dag/test/claim/ for a structural reason, not a filing preference: it imports v1.gunbc.occurrence_binding_parser_walk, and the compile-clean gate compiles dag + src/v2 only, so a copy under dag/ fails to resolve the module it exists to exercise. Placing it here is the same resolution the sibling witness already made.
+
+  target/release/claim_batch --source-root dag --source-root src/v1 --source-root src/v2 --entry src/v1/tests/claim/import_deletion_bridge_witness_test.dag --functions witness_subject_does_not_bind_without_its_provider,witness_consumer_carries_no_import_declaration --claim-run --wet
+
+STATED PLAINLY BECAUSE IT IS A REAL COVERAGE GAP, NOT A DETAIL: witnesses here are not per-PR discovery-enrolled, so these controls execute locally and on demand rather than on every change. DISSOLVE-ON is the sibling's, unchanged and shared rather than re-minted: witness_layer_roots admits src/v1 for parser-transport witnesses without Node ambiguity, or the execution corpus carries per-entry source roots — then this recipe deletes and discovery enrollment suffices."
 
 data bridge_witness_note: String = "CHECKPOINT 1 OF IMPORT DELETION — the bridge from the real source population to production occurrence binding, proven on the largest falsifier rather than on a fixture pair.
 
