@@ -15,6 +15,9 @@ pub use crate::extdeps_units_iec_80000_13::{iec_kibi_factor, octet_bit_count};
 pub use crate::extdeps_units_iso8601::{iso8601_minutes_per_hour, iso8601_seconds_per_minute};
 pub use crate::std_currency::CurrencyCode;
 use crate::std_currency::CurrencyCode::*;
+pub use crate::std_dissolution::unbound_dissolution;
+pub use crate::std_dissolution::DissolutionCondition;
+use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_nat::Nat;
 use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, NonEmptyStr};
@@ -1020,6 +1023,24 @@ pub fn clock_basis_label(b: ClockBasis) -> String {
         ClockBasis::CpuClock => "thread-CPU".to_string(),
         ClockBasis::WallClock => "wall".to_string(),
     }
+}
+
+pub fn amortization_months_dissolve_on() -> Rc<DissolutionCondition> {
+    thread_local! {
+        static CACHED: Rc<DissolutionCondition> = {
+            unbound_dissolution("dissolve-on: ground as calendar-month Duration sibling to billing_month_as_hour_count (one month-count authority for billing amortization + hourly divisor), or fold into extdeps.forex/pricing month facts when a second consumer appears — do not mint a third month wrapper.".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
+}
+
+pub fn basis_point_dissolve_on() -> Rc<DissolutionCondition> {
+    thread_local! {
+        static CACHED: Rc<DissolutionCondition> = {
+            unbound_dissolution("dissolve-on: Ratio<Scale> carrier unifying Percent and BasisPoint as two scales of one Dimensionless authority, with bp_to_percent/percent_to_bp derive relations enforced at call sites — else a third dimensionless-ratio use-case mints a third nickname.".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

@@ -12,6 +12,9 @@ pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 use crate::std_disposition::ConstructionMechanism::SingleAuthority;
 use crate::std_disposition::Disposition::Scaffold;
 pub use crate::std_disposition::{ConstructionMechanism, Disposition};
+pub use crate::std_dissolution::unbound_dissolution;
+pub use crate::std_dissolution::DissolutionCondition;
+use crate::std_dissolution::DissolutionCondition::*;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -711,6 +714,51 @@ pub fn repr_grounding_supplemental_bool_host_bridge_target(
     name: String,
 ) -> bool {
     ((module_path.clone() == "std.types".to_string()) && (name.clone() == "Bool".to_string()))
+}
+
+pub fn pair_completion_shape_dissolve_on() -> Rc<DissolutionCondition> {
+    thread_local! {
+        static CACHED: Rc<DissolutionCondition> = {
+            unbound_dissolution("Dissolves when v2 derives these rows from the std.algebra Ring/AbelianGroup inhabitance witnesses directly, so the Grothendieck construction is read off the algebra rather than tabulated here; tracked by the numeric-tower grounding lane.".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
+}
+
+pub fn pair_completion_uses_rhs_dissolve_on() -> Rc<DissolutionCondition> {
+    thread_local! {
+        static CACHED: Rc<DissolutionCondition> = {
+            unbound_dissolution("dissolve-on: std.trait_derive_shape.pair_completion_arm_uses_rhs / pair_completion_body_uses_rhs — variant-discriminating Bool predicates over PairCompletionOperand / PairCompletionBody, retained only because operand arity is DERIVED from the formula rather than stored (storing an arity field would be a second representation of what the arms already say). They dissolve into an arity projection car".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
+}
+
+pub fn repr_grounding_bool_host_bridge_dissolve_on() -> Rc<DissolutionCondition> {
+    thread_local! {
+        static CACHED: Rc<DissolutionCondition> = {
+            unbound_dissolution("dissolve-on: repr_grounding_supplemental_bool_host_bridge_target / v1_emit_enum_supplemental_impls — Bool↔host-bool bridge door. Dissolves with the Value::Null-split / Bool True|False ↔ Value::Bool grounding lane (DESIGN open thread; gunbc.plans.value_null_split). Kept as the remaining half of the old supplemental door; do not ground the bridge in an emitter cleanup (§3).".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
+}
+
+pub fn repr_grounding_group_completion_carrier_dissolve_on() -> Rc<DissolutionCondition> {
+    thread_local! {
+        static CACHED: Rc<DissolutionCondition> = {
+            unbound_dissolution("dissolve-on: repr_grounding_group_completion_carrier — name-match module_path/name selection. Dissolves when capability selection for GroupCompletion pair-completion is derived from std.algebra Ring/AbelianGroup inhabitance witnesses (same terminal as pair_completion_shape_dissolve_on / numeric-tower grounding), so the carrier is identified by inhabitance rather than string equality. Terminal trig".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
+}
+
+pub fn trait_derive_shape_dissolve_on() -> Rc<DissolutionCondition> {
+    thread_local! {
+        static CACHED: Rc<DissolutionCondition> = {
+            unbound_dissolution("ReprGroundingDeriveTrait members that name Rust-specific authorities (ReprDeriveSerialize, ReprDeriveAdd, …) migrate beside each target's spelling table when a second consumer exists; until then capability roles stay in std/ with spellings in extdeps.languages.rust.emit.".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

@@ -34,6 +34,9 @@ use self::StructuralBindingWalk::*;
 pub use crate::std_algebra::FreeMonoid;
 use crate::std_decl_ref::DeclField::WholeDeclaration;
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
+pub use crate::std_dissolution::unbound_dissolution;
+pub use crate::std_dissolution::DissolutionCondition;
+use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_occurrence_binding::OccurrenceBindingResult;
 use crate::std_occurrence_binding::OccurrenceBindingResult::{
     OccurrenceAmbiguous, OccurrenceBound, OccurrenceUnbound,
@@ -1482,10 +1485,19 @@ pub fn module_path_file_row_note() -> String {
 pub fn module_path_file_row_dissolution_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Dissolve-on: cross-file binding production consumes ModuleStorageBinding rows from v2.compiler.source_authority (module_storage_binding_module_dotted × module_storage_binding_file_path) on OrdinaryLoadedCompilationClosure; ModulePathFileRow, ModulePathFileIndex, and this note delete in the completing change. Until then parser-walk supplies rows with ParsedFromSource provenance only.".to_string()
+            "See module_path_file_row_dissolution_note_dissolve_on for the lifecycle condition this row's rationale accompanies.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
+}
+
+pub fn module_path_file_row_dissolve_on() -> Rc<DissolutionCondition> {
+    thread_local! {
+        static CACHED: Rc<DissolutionCondition> = {
+            unbound_dissolution("Dissolve-on: cross-file binding production consumes ModuleStorageBinding rows from v2.compiler.source_authority (module_storage_binding_module_dotted × module_storage_binding_file_path) on OrdinaryLoadedCompilationClosure; ModulePathFileRow, ModulePathFileIndex, and this note delete in the completing change. Until then parser-walk supplies rows with ParsedFromSource provenance only.".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -3595,6 +3607,15 @@ pub fn section13_population_law_roster_denominator_holds(
         Section13PopulationLawRosterVerdict::Section13PopulationLawRosterHolds => true,
         _ => false,
     }
+}
+
+pub fn section13_module_path_is_symbolic_dissolve_on() -> Rc<DissolutionCondition> {
+    thread_local! {
+        static CACHED: Rc<DissolutionCondition> = {
+            unbound_dissolution("feature:module-path-qualified-name — DISSOLVE-ON: DeclarationRef.module_path / OccurrenceModulePathRow.module_path become v2.std.qualified_name.QualifiedName (same trigger as occurrence_module_path_convergence_note / std.observation observation_segment_grounding_note); then positional file-path inhabitance is unwritable, this string-grep oracle deletes, and section13_adjudicate_row stops calling i".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
