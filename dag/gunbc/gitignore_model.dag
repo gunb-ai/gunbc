@@ -83,6 +83,7 @@ type IgnoreArtifact
   | DissolutionCensusProjectionScriptAllowlisted
   | ImportStripStripperAllowlisted
   | ImportStripClassifierAllowlisted
+  | ImportStripControlsAllowlisted
   | PythonBytecodeCacheDir
   | PythonCompiledBytecode
   | ClaimMapDir

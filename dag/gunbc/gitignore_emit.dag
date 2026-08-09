@@ -23,6 +23,7 @@ import gunbc.gitignore_model {
   OpenClawScriptsDir, V2InspectFile, V2InspectErrorsFile, GithubCLICacheDir,
   PythonLocalDevScriptFile, PythonAuditScriptAllowlisted, DissolutionCensusProjectionScriptAllowlisted,
   ImportStripStripperAllowlisted, ImportStripClassifierAllowlisted,
+  ImportStripControlsAllowlisted,
   PythonBytecodeCacheDir, PythonCompiledBytecode,
   ClaimMapDir, ScratchProbeFile,
   GunbcPlanningDir, ScriptsFixturesDir
@@ -90,6 +91,7 @@ fn artifact_pattern(a: IgnoreArtifact) -> String {
     DissolutionCensusProjectionScriptAllowlisted => "!docs/probes/dissolution_census_a_ci_layer_roots_project.py"
     ImportStripStripperAllowlisted => "!docs/plans/import-strip-measurement/strip_imports.py"
     ImportStripClassifierAllowlisted => "!docs/plans/import-strip-measurement/classify_residual.py"
+    ImportStripControlsAllowlisted => "!docs/plans/import-strip-measurement/classifier_controls.py"
     PythonBytecodeCacheDir => "__pycache__/"
     PythonCompiledBytecode => "*.pyc"
     ClaimMapDir => ".claim-map/"

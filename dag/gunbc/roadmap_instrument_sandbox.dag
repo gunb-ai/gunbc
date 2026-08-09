@@ -89,7 +89,7 @@ data instrument_sandbox_page_class: String = "instrument-sandbox"
 data instrument_frame_class: String = "instrument-frame"
 data instrument_row_class: String = "instrument-row"
 data instrument_cell_class: String = "instrument-cell"
-data instrument_note_class: String = "instrument-instrument_note"
+data instrument_note_class: String = "instrument-note"
 data instrument_refusal_class: String = "instrument-refusal"
 
 fn audition_card_class(i: AuditionIntensity) -> String {

@@ -8,7 +8,7 @@ import extdeps.languages.css.properties {
 }
 import extdeps.languages.css.selectors { SelectorSubject, ClassSelector }
 import gunbc.design.material { BuildRule, StaticRule, CssDecl, decl, serialize_rules }
-import gunbc.roadmap_instrument_sandbox { instrument_css }
+import gunbc.roadmap_instrument_sandbox { instrument_css, instrument_note }
 import gunbc.design.theme { role_var, SurfaceRole, BorderRole, TextRole, FocusRole }
 import gunbc.design.scale { scale_var, space_2, space_4, space_6, radius_3, text_12, font_mono }
 import gunbc.roadmap_component {
@@ -123,9 +123,6 @@ fn instrument_motion_css() -> String {
   join([instrument_css(), serialize_rules(rules: motion_rules())], "\n")
 }
 
-fn motion_note(s: String) -> Fragment {
-  el_class("p", "instrument-motion_note", [ txt(s) ])
-}
 
 fn tap_label(t: SyntheticTapStrength) -> String {
   join([
@@ -200,7 +197,7 @@ fn requirement_standing_text() -> String {
 fn plate_section() -> Fragment {
   el("section", [
     el("h2", [ txt("the plate") ]),
-    motion_note(s: "Press a tap. The inner plate rides and settles; the outer frame does not move. Nothing here reads a sensor, and nothing here changes a roadmap fact, an acceptance, a focus or an operation — the displacement is renderer-local by construction."),
+    instrument_note(s: "Press a tap. The inner plate rides and settles; the outer frame does not move. Nothing here reads a sensor, and nothing here changes a roadmap fact, an acceptance, a focus or an operation — the displacement is renderer-local by construction."),
     el_attrs("div", [
       attr(name: "class", value: motion_plate_class),
       attr(name: "id", value: motion_plate_id),
@@ -215,7 +212,7 @@ fn plate_section() -> Fragment {
       straddle_row(t: SyntheticTapFirm),
       straddle_row(t: SyntheticTapKnock),
     ]),
-    motion_note(s: join([
+    instrument_note(s: join([
       "Bound ", to_string(bob_max_travel_px), "px · half-life ",
       to_string(bob_half_life_ms), "ms · settles within ",
       to_string(max_settle_time_ms()), "ms. Requirement standing: ",
@@ -229,7 +226,7 @@ data probe_section_note: String = "Two probes, run separately and reported separ
 fn probe_section() -> Fragment {
   el("section", [
     el("h2", [ txt("capability probes") ]),
-    motion_note(s: join([
+    instrument_note(s: join([
       "Both routes are exercised. The upstream Accelerometer specification is maintained for existing deployments and points new projects at Device Orientation and Motion, so DeviceMotion is primary — but only the sensor lifecycle names its failures, so both run. Dispatch of ",
       devicemotion_event_type, " requires the ", device_motion_accelerometer_permission_name,
       " and ", gyroscope_permission_name, " permissions together.",
@@ -246,7 +243,7 @@ fn probe_section() -> Fragment {
       el("div", [ txt(join([device_motion_event_interface, " · not yet run"], "")) ]),
       el("div", [ txt(join([accelerometer_interface_name(i: LinearAccelerationSensor), " · not yet run"], "")) ]),
     ]),
-    motion_note(s: "An unanswered question renders as unanswered. A probe that has not run says so, and a silent stream is reported as silence with its window rather than as an absent sensor."),
+    instrument_note(s: "An unanswered question renders as unanswered. A probe that has not run says so, and a silent stream is reported as silence with its window rather than as an absent sensor."),
   ])
 }
 
@@ -274,7 +271,7 @@ fn coverage_section() -> Fragment {
   el("section", concat(
     [
       el("h2", [ txt("coverage obligations") ]),
-      motion_note(s: "Obligations, not support claims. A deferred target names the consumer whose arrival is its trigger; a target nobody has a reason to reach has no row at all, because an empty space is more honest than a placeholder."),
+      instrument_note(s: "Obligations, not support claims. A deferred target names the consumer whose arrival is its trigger; a target nobody has a reason to reach has no row at all, because an empty space is more honest than a placeholder."),
     ],
     map(coverage_targets, t => coverage_row(t: t))))
 }

@@ -97,12 +97,62 @@ def parse(line):
     return consumer, (m.group(1) if m else ""), "unnamed"
 
 
-# A name declared once per module across a whole folder is a CONVENTION population
-# by design (every extdeps module declares its own authority anchor), not a fork. A
-# genuine fork is 2-6 declarations; these run to 94 and 497. The threshold sits in
-# the gap rather than naming specific rows, so a new convention row classifies
-# itself instead of waiting to be added to a list.
-CONVENTION_POPULATION_MIN = 10
+# NAMED, CHECKED DISPOSITIONS — not thresholds.
+#
+# An earlier revision classified these two buckets by heuristic: "10 or more
+# declarations is a convention" and "every candidate module has .fixture. in its
+# path is an intentional collision". Both fail OPEN in the direction that
+# matters. A genuine accidental fork that happened to reach ten sites would have
+# been absorbed into the convention bucket and disappeared from the hygiene
+# count; an unrelated duplicate between two fixture modules would have been
+# excused by its path. Since the hygiene bucket is being asserted at ZERO, a
+# rule whose failure mode is "quietly removes rows from the number under test"
+# is the absorbing fallback DESIGN §5 forbids, aimed at this measurement's one
+# load-bearing figure.
+#
+# So each subject is NAMED, and its defining property is CHECKED against the
+# tree. A subject that stops satisfying its property does not keep its
+# disposition — it lands in `duplicate_unclassified`, which is loud, counted,
+# and not zero. Nothing is excused by shape.
+
+CONVENTION_POPULATIONS = {
+    # Every extdeps module declares its own authority anchor and model scope.
+    # The property is not "there are many" — it is one per module, all under
+    # one prefix, which is what makes it a convention rather than a fork.
+    "extdeps_external_authority_anchor": {"module_prefix": "extdeps."},
+    "extdeps_model_scope": {"module_prefix": "extdeps."},
+}
+
+INTENTIONAL_AMBIGUITIES = {
+    # Fixtures that exist SO THAT two declarations collide; renaming them
+    # destroys the test subject. Pinned to the EXACT module pair, so a third
+    # declaration of the same name anywhere else is not excused by these rows.
+    "CensusProbeSubject": frozenset({
+        "test.fixture.record_construction_census.homonym",
+        "test.fixture.record_construction_census.specimens",
+    }),
+    "SharedBareArm": frozenset({
+        "test.fixture.decl_facts_reflection.ambiguous_shared_a",
+        "test.fixture.decl_facts_reflection.ambiguous_shared_b",
+    }),
+}
+
+
+def convention_holds(name, candidates):
+    """One declaration per module, every module under the declared prefix."""
+    spec = CONVENTION_POPULATIONS.get(name)
+    if not spec or not candidates:
+        return False
+    mods = list(candidates)
+    if len(mods) != len(set(mods)):
+        return False                      # two in one module is a fork, not a convention
+    return all(m.startswith(spec["module_prefix"]) for m in mods)
+
+
+def intentional_ambiguity_holds(name, candidates):
+    """The candidate set is EXACTLY the pinned pair — no more, no fewer."""
+    pinned = INTENTIONAL_AMBIGUITIES.get(name)
+    return bool(pinned) and frozenset(candidates) == pinned
 
 
 def disposition(name, category, decl_count, is_variant, line, candidates=()):
@@ -114,13 +164,12 @@ def disposition(name, category, decl_count, is_variant, line, candidates=()):
         return {"field": "field_on_unresolved_or_wrong_type",
                 "method": "method_on_unresolved_receiver",
                 "record_shape": "record_shape_cascade"}[category]
-    if decl_count >= CONVENTION_POPULATION_MIN:
-        return "per_module_convention_population"
-    # Fixtures that exist SO THAT two declarations collide. Renaming them would
-    # destroy the test subject rather than clean the corpus, so they are not debt.
-    if decl_count > 1 and candidates and all(
-            c.startswith("test.fixture.") or ".fixture." in c for c in candidates):
-        return "intentional_ambiguity_fixture"
+    if decl_count > 1 and name in CONVENTION_POPULATIONS:
+        return ("per_module_convention_population" if convention_holds(name, candidates)
+                else "duplicate_unclassified")
+    if decl_count > 1 and name in INTENTIONAL_AMBIGUITIES:
+        return ("intentional_ambiguity_fixture" if intentional_ambiguity_holds(name, candidates)
+                else "duplicate_unclassified")
     if decl_count > 1:
         return "corpus_hygiene"
     if is_variant:

@@ -14,6 +14,7 @@ import gunbc.roadmap_component {
 import gunbc.roadmap_instrument_motion {
   frames_wire, sequence_for, motion_frame_interval_ms,
 }
+import gunbc.roadmap_instrument_sandbox { instrument_css, instrument_note_class }
 import gunbc.capability_binding {
   SyntheticTapStrength, SyntheticTapLight, SyntheticTapFirm, SyntheticTapKnock,
 }
@@ -186,4 +187,18 @@ test fn witness_receipt_starts_unanswered() -> Bool {
   string_contains(s: html, pattern: "not yet run")
     && !string_contains(s: html, pattern: "sensor present")
     && !string_contains(s: html, pattern: "supported")
+}
+
+
+data shared_note_class_note: String = "THE NOTE CLASS IS A WIRE VALUE, NOT A SYMBOL. A repo-wide rename of the fn homonym note matched inside the string literal too, because in \"instrument-note\" the token sits between a hyphen and a quote and neither is a word character. The declaration kept compiling, both pages kept rendering, and the motion page's notes silently stopped matching the stylesheet rule that styles them — a class name is resolved by the browser against CSS text, so nothing in this repository could refuse it. There is now ONE helper: motion imported the sandbox's instrument_note rather than carrying a second copy, so the two cannot drift apart at all. This pins the remaining fact the type system still cannot see — that the emitted class equals the selector the stylesheet defines. The controls are the two exact corrupted spellings: either one reappearing reds this, which the rename that caused it would not have."
+
+test fn witness_note_class_wire_matches_stylesheet_selector() -> Bool {
+  let css = instrument_css()
+  let html = motion_page_body()
+  instrument_note_class == "instrument-note"
+    && string_contains(s: css, pattern: ".instrument-note")
+    && string_contains(s: html, pattern: "instrument-note")
+    && !string_contains(s: html, pattern: "instrument-motion_note")
+    && !string_contains(s: html, pattern: "instrument-instrument_note")
+    && !string_contains(s: css, pattern: ".instrument-motion_note")
 }
