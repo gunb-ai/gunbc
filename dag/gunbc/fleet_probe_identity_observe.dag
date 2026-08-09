@@ -30,15 +30,15 @@ fn observe_capture_line(label: String, argv: List<String>) -> String {
 
 fn observe_authorized_keys_line(home: String) -> String {
   let path = concat(home, "/.ssh/authorized_keys")
-  let read = filesystem_read(path)
+  let read = run_shell_command_capture(command: ArgvCommand { argv: ["cat", path] }, transport: LocalExec)
   if read.success {
-    if string_contains(s: read.content, pattern: fleet_automation_ssh_key.material) {
+    if string_contains(s: read.stdout, pattern: fleet_automation_ssh_key.material) {
       join(["authorized-keys home=", home, " outcome=fleet-key-present\n"], "")
     } else {
       join(["authorized-keys home=", home, " outcome=fleet-key-absent (file readable, key material not found)\n"], "")
     }
   } else {
-    join(["authorized-keys home=", home, " outcome=unreadable cause=", read.error, "\n"], "")
+    join(["authorized-keys home=", home, " outcome=unreadable cause=", trim(s: read.stderr), "\n"], "")
   }
 }
 
