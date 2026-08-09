@@ -4,6 +4,7 @@ import std.realization_schedule { RunnableBatchClamp }
 import std.decl_ref { decl_ref }
 import std.measure { second, millisecond, Minute, minute, minute_count }
 
+import gunbc.fleet_ssh_access { fleet_automation_ssh_key_fingerprint }
 import gunbc.ci_release_bins {
   ci_floor_required_artifact_names
 }
@@ -593,20 +594,39 @@ data gunbc_ci_fleet_key_agent_shell_emit_scaffold: Disposition = Scaffold {
 
 data gunbc_ci_fleet_key_agent_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: gunbc_ci_fleet_key_agent_script — concat-built foreign-executor (GitHub Actions run:) shell materializing the fleet automation key from Secret Manager versions/1 into an in-run ssh-agent; DISSOLVES WHEN the typed secret-materialization effect (SecretRef -> in-run agent, SECRET-VERSION-LIFECYCLE-0 machinery) lands on host_effect_apply and the step becomes an emitted typed effect"
 
+// Repairs #3 and #4 (operator scan of #8083, 2026-08-09):
+// #3 FAILURE-SAFE CLEANUP — a `trap cleanup EXIT` is armed BEFORE the key touches disk,
+//    so any failure in curl/base64/chmod/keygen/agent/add removes the key file and kills
+//    the agent regardless of where set -e aborts. The outer always() step stays as
+//    defense in depth. The old ordering (rm only on the happy path, PID exported last)
+//    could leave the key on disk with no exported PID for the outer cleanup to find.
+// #4 SECRET-IDENTITY VERIFICATION — before ssh-add, derive the public key from the fetched
+//    private material (ssh-keygen -y) and its fingerprint (ssh-keygen -lf) and compare to
+//    the modeled fleet_automation_ssh_key_fingerprint. A wrong secret VERSION is then a
+//    located ProbeCredentialIdentityMismatch that CONTACTS NO HOST, never a downstream
+//    host-auth failure. The comparison is against the repo's single fingerprint authority.
 fn gunbc_ci_fleet_key_agent_script() -> String {
   join([
     "# ", gunbc_ci_fleet_key_agent_shell_emit_dissolution_trigger, "\n",
     "set -euo pipefail\n",
     "umask 077\n",
     "KEY_FILE=\"$RUNNER_TEMP/fleet-automation-key\"\n",
+    "AGENT_STARTED=0\n",
+    "cleanup() { rm -f \"$KEY_FILE\"; if [ \"$AGENT_STARTED\" = 1 ] && [ -n \"$\{SSH_AGENT_PID:-}\" ]; then ssh-agent -k >/dev/null 2>&1 || true; fi; }\n",
+    "trap cleanup EXIT\n",
     "curl -sSf -H \"Authorization: Bearer $WIF_ACCESS_TOKEN\" \"https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/fleet-automation-ssh-key/versions/1:access\" | python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(sys.stdin)[\"payload\"][\"data\"]))' > \"$KEY_FILE\"\n",
     "chmod 600 \"$KEY_FILE\"\n",
+    "EXPECTED_FP=\"", fleet_automation_ssh_key_fingerprint, "\"\n",
+    "OBSERVED_FP=\"$(ssh-keygen -y -f \"$KEY_FILE\" | ssh-keygen -lf - | awk '\{print $2}')\"\n",
+    "if [ \"$OBSERVED_FP\" != \"$EXPECTED_FP\" ]; then echo \"ProbeCredentialIdentityMismatch: fetched secret versions/1 fingerprint $OBSERVED_FP != modeled $EXPECTED_FP; contacting NO host\" >&2; exit 1; fi\n",
     "eval \"$(ssh-agent -s)\" >/dev/null\n",
+    "AGENT_STARTED=1\n",
     "ssh-add \"$KEY_FILE\" 2>/dev/null\n",
     "rm -f \"$KEY_FILE\"\n",
+    "trap - EXIT\n",
     "echo \"SSH_AUTH_SOCK=$SSH_AUTH_SOCK\" >> \"$GITHUB_ENV\"\n",
     "echo \"SSH_AGENT_PID=$SSH_AGENT_PID\" >> \"$GITHUB_ENV\"\n",
-    "echo \"fleet-key: agent loaded (identity fleet-automation@gunbc; secret versions/1 pinned; key file wiped)\"\n",
+    "echo \"fleet-key: agent loaded (identity fleet-automation@gunbc; secret versions/1 pinned; fingerprint verified against modeled authority; key file wiped)\"\n",
   ], "")
 }
 

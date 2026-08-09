@@ -96,10 +96,38 @@ fn fleet_probe_remote_user_for(host: String) -> FleetProbePrincipal {
   }
 }
 
-fn fleet_probe_ssh_target_for(host: String) -> String {
+// Repair #1 (operator scan of #8083, 2026-08-09): an unobserved principal MUST NOT reach
+// SSH. The prior fleet_probe_ssh_target_for handed ProbeUserPending a BARE endpoint, so
+// the ssh client picked the remote username from ambient config — the implicit-user
+// behavior this module's own comments forbid — and if the ambient name authenticated the
+// probe would report reach under an UNMODELED principal. FleetProbeTarget makes the
+// principal part of the target: ProbeTargetReady carries an explicit remote_principal, and
+// ProbeTargetRefused (PrincipalUnobserved | EndpointUnobserved) has NO endpoint at all, so
+// there is nothing to hand ssh. PrincipalAllocationPending is Ready against the ALLOCATED
+// name (a modeled principal — its auth refusal is the honest per-host signal); only
+// ProbeUserPending — a genuinely unobserved principal, the Sparks today — refuses.
+type ProbeTargetRefusalCause
+  = PrincipalUnobserved { note: String }
+  | EndpointUnobserved { note: String }
+
+type FleetProbeTarget
+  = ProbeTargetReady { host: String, endpoint: String, remote_principal: String }
+  | ProbeTargetRefused { host: String, cause: ProbeTargetRefusalCause }
+
+fn fleet_probe_target_for(host: String) -> FleetProbeTarget {
   match fleet_probe_remote_user_for(host: host) {
-    ProbeUserKnown { user: u } => join([u, "@", fleet_probe_endpoint_for(host: host)], "")
-    PrincipalAllocationPending { allocated: u, note: _ } => join([u, "@", fleet_probe_endpoint_for(host: host)], "")
-    ProbeUserPending { note: _ } => fleet_probe_endpoint_for(host: host)
+    ProbeUserKnown { user: u } =>
+      ProbeTargetReady { host: host, endpoint: fleet_probe_endpoint_for(host: host), remote_principal: u }
+    PrincipalAllocationPending { allocated: u, note: _ } =>
+      ProbeTargetReady { host: host, endpoint: fleet_probe_endpoint_for(host: host), remote_principal: u }
+    ProbeUserPending { note: n } =>
+      ProbeTargetRefused { host: host, cause: PrincipalUnobserved { note: n } }
   }
+}
+
+// The transport address for a READY target only — an "principal@endpoint" string. A
+// refused target never reaches here (probe_host_reach_once matches the target first), so
+// there is no bare-endpoint arm to fall through to an ambient username.
+fn fleet_probe_ready_ssh_target(t_host: String, endpoint: String, remote_principal: String) -> String {
+  join([remote_principal, "@", endpoint], "")
 }

@@ -16,7 +16,14 @@ import gunbc.typed_argv_exec {
   TypedArgvExecConverged,
   TypedArgvExecRefused,
 }
-import gunbc.fleet_reach_endpoint { fleet_probe_ssh_target_for }
+import gunbc.fleet_reach_endpoint {
+  fleet_probe_target_for,
+  fleet_probe_ready_ssh_target,
+  ProbeTargetReady,
+  ProbeTargetRefused,
+  PrincipalUnobserved,
+  EndpointUnobserved,
+}
 import gunbc.host_reach_identity_probe { fleet_reach_probe_targets }
 import gunbc.fleet_convergence_verdict {
   FleetConvergenceVerdict,
@@ -131,8 +138,18 @@ fn parse_converge_verdict_label(label: String) -> ConvergeVerdict? {
 // modeled endpoint. Wire refusal or transport failure -> Absent with the cause; a first
 // line that does not decode -> Unparseable carrying the exact bytes.
 fn collect_host_receipt(host: String) -> CollectedHostReceipt {
+  match fleet_probe_target_for(host: host) {
+    ProbeTargetRefused { host: _, cause: c } =>
+      ReceiptAbsent {
+        host: host,
+        cause: match c {
+          PrincipalUnobserved { note: n } => join(["principal unobserved (no SSH attempted): ", n], "")
+          EndpointUnobserved { note: n } => join(["endpoint unobserved (no SSH attempted): ", n], "")
+        },
+      }
+    ProbeTargetReady { host: _, endpoint: e, remote_principal: p } =>
   match typed_argv_probe_over_ssh(
-    host: fleet_probe_ssh_target_for(host: host) as NonEmptyStr,
+    host: fleet_probe_ready_ssh_target(t_host: host, endpoint: e, remote_principal: p) as NonEmptyStr,
     argv: ["cat", fleet_converge_receipt_path(host: host)],
   ) {
     TypedArgvExecConverged { result: r } =>
@@ -149,6 +166,7 @@ fn collect_host_receipt(host: String) -> CollectedHostReceipt {
         ReceiptAbsent { host: host, cause: trim(s: r.stderr) }
       }
     TypedArgvExecRefused { reason: why } => ReceiptAbsent { host: host, cause: why }
+  }
   }
 }
 

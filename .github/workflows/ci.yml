@@ -728,14 +728,22 @@ jobs:
           set -euo pipefail
           umask 077
           KEY_FILE="$RUNNER_TEMP/fleet-automation-key"
+          AGENT_STARTED=0
+          cleanup() { rm -f "$KEY_FILE"; if [ "$AGENT_STARTED" = 1 ] && [ -n "${SSH_AGENT_PID:-}" ]; then ssh-agent -k >/dev/null 2>&1 || true; fi; }
+          trap cleanup EXIT
           curl -sSf -H "Authorization: Bearer $WIF_ACCESS_TOKEN" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/fleet-automation-ssh-key/versions/1:access" | python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(sys.stdin)["payload"]["data"]))' > "$KEY_FILE"
           chmod 600 "$KEY_FILE"
+          EXPECTED_FP="SHA256:mGT7qJsh36VsVb8OPh3m8br3oHedQHxRukRkW5P0CoQ"
+          OBSERVED_FP="$(ssh-keygen -y -f "$KEY_FILE" | ssh-keygen -lf - | awk '{print $2}')"
+          if [ "$OBSERVED_FP" != "$EXPECTED_FP" ]; then echo "ProbeCredentialIdentityMismatch: fetched secret versions/1 fingerprint $OBSERVED_FP != modeled $EXPECTED_FP; contacting NO host" >&2; exit 1; fi
           eval "$(ssh-agent -s)" >/dev/null
+          AGENT_STARTED=1
           ssh-add "$KEY_FILE" 2>/dev/null
           rm -f "$KEY_FILE"
+          trap - EXIT
           echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
           echo "SSH_AGENT_PID=$SSH_AGENT_PID" >> "$GITHUB_ENV"
-          echo "fleet-key: agent loaded (identity fleet-automation@gunbc; secret versions/1 pinned; key file wiped)"
+          echo "fleet-key: agent loaded (identity fleet-automation@gunbc; secret versions/1 pinned; fingerprint verified against modeled authority; key file wiped)"
         env:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
         timeout-minutes: 5
@@ -866,14 +874,22 @@ jobs:
           set -euo pipefail
           umask 077
           KEY_FILE="$RUNNER_TEMP/fleet-automation-key"
+          AGENT_STARTED=0
+          cleanup() { rm -f "$KEY_FILE"; if [ "$AGENT_STARTED" = 1 ] && [ -n "${SSH_AGENT_PID:-}" ]; then ssh-agent -k >/dev/null 2>&1 || true; fi; }
+          trap cleanup EXIT
           curl -sSf -H "Authorization: Bearer $WIF_ACCESS_TOKEN" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/fleet-automation-ssh-key/versions/1:access" | python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(sys.stdin)["payload"]["data"]))' > "$KEY_FILE"
           chmod 600 "$KEY_FILE"
+          EXPECTED_FP="SHA256:mGT7qJsh36VsVb8OPh3m8br3oHedQHxRukRkW5P0CoQ"
+          OBSERVED_FP="$(ssh-keygen -y -f "$KEY_FILE" | ssh-keygen -lf - | awk '{print $2}')"
+          if [ "$OBSERVED_FP" != "$EXPECTED_FP" ]; then echo "ProbeCredentialIdentityMismatch: fetched secret versions/1 fingerprint $OBSERVED_FP != modeled $EXPECTED_FP; contacting NO host" >&2; exit 1; fi
           eval "$(ssh-agent -s)" >/dev/null
+          AGENT_STARTED=1
           ssh-add "$KEY_FILE" 2>/dev/null
           rm -f "$KEY_FILE"
+          trap - EXIT
           echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
           echo "SSH_AGENT_PID=$SSH_AGENT_PID" >> "$GITHUB_ENV"
-          echo "fleet-key: agent loaded (identity fleet-automation@gunbc; secret versions/1 pinned; key file wiped)"
+          echo "fleet-key: agent loaded (identity fleet-automation@gunbc; secret versions/1 pinned; fingerprint verified against modeled authority; key file wiped)"
         env:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
         timeout-minutes: 5
