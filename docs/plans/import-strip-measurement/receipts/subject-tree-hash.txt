@@ -1,2 +1,2 @@
-dag+src/v2 .dag corpus sha256: 23f387b342622f1c759c44adaadc353dd3178d649c5427de781370216756bd63
-measured at commit: 521c12d932b003c1760680a0da6a7aeb29ba557f
+dag+src/v2 .dag corpus sha256: b2ab24061ee5c9c43a9da260b156dc5ffcfcecbb888bb20bc13eb2301494def1
+measured at commit: 9325d2993496e64c073f53fba08baed17da1319a
