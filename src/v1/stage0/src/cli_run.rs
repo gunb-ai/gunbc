@@ -37950,6 +37950,83 @@ mod witness_layer_roots_compile_clean_tests {
         });
     }
 
+    /// The accidental-coverage roster's EXECUTING evidence, positive control and
+    /// discriminating REDs together (review 50728).
+    ///
+    /// The authority row claims "planting a fourth unresolved type in that same file
+    /// returns the gate to false while the three named rows stay exempt". I had run that
+    /// by hand and reported it, which is not the same thing as it being enrolled: a manual
+    /// run proves the behaviour once, on one tree, for as long as someone remembers doing
+    /// it. Under DESIGN §4b the discriminating RED stays enrolled as the evidence that the
+    /// exemption is still exactly as narrow as the row says — otherwise the roster could
+    /// widen, or the predicate could stop matching on file, and nothing would notice.
+    ///
+    /// Three cases, because the roster is a pair and either half can fail independently:
+    /// the named pair is exempt; a DIFFERENT type in the SAME file is not; the SAME type in
+    /// a DIFFERENT file is not.
+    #[test]
+    fn class_b_accidental_coverage_exemption_is_exactly_the_named_pairs() {
+        use crate::v1_std_core::{make_error_node, CompilerDiagnostic};
+        let unresolved_at = |name: &str, file: &str| {
+            make_error_node(
+                Rc::new(CompilerDiagnostic::UnresolvedType {
+                    name: name.to_string(),
+                    span: Rc::new(SourceSpan {
+                        file: file.to_string(),
+                        start: 0,
+                        end: 1,
+                    }),
+                }),
+                "v2.std.grounding".to_string(),
+            )
+        };
+
+        // Positive control: both named rows are exempt, or the roster does nothing.
+        for (file, ty) in CLASS_B_ACCIDENTAL_COVERAGE_EXCEPTIONS {
+            assert!(
+                class_b_diagnostic_is_named_exception(&unresolved_at(ty, file)),
+                "named roster row ({file}, {ty}) must be exempt"
+            );
+        }
+
+        // Discriminating RED 1: a different unresolved type in the SAME file still refuses.
+        // This is the one that separates a named row from a per-file pattern.
+        assert!(
+            !class_b_diagnostic_is_named_exception(&unresolved_at(
+                "v2.std.host_run.NotARealTypeControl",
+                "src/v2/std/grounding.dag",
+            )),
+            "an unnamed type in the exempted file must NOT be exempt — otherwise the roster \
+             is a file pattern that would absorb any future breakage in that file"
+        );
+
+        // Discriminating RED 2: the same type in a DIFFERENT file still refuses, so the
+        // exemption cannot leak to another module that happens to name the same type.
+        assert!(
+            !class_b_diagnostic_is_named_exception(&unresolved_at(
+                "v2.std.host_run.EmitHostRunReceipt",
+                "src/v2/std/some_other_module.dag",
+            )),
+            "a named type in an unnamed file must NOT be exempt"
+        );
+
+        // A non-UnresolvedType hard diagnostic is never exempt, whatever its file.
+        assert!(
+            !class_b_diagnostic_is_named_exception(&make_error_node(
+                Rc::new(CompilerDiagnostic::InternalError {
+                    message: "control".to_string(),
+                    span: Rc::new(SourceSpan {
+                        file: "src/v2/std/grounding.dag".to_string(),
+                        start: 0,
+                        end: 1,
+                    }),
+                }),
+                "v2.std.grounding".to_string(),
+            )),
+            "only UnresolvedType is exemptible; another hard diagnostic class must refuse"
+        );
+    }
+
     /// Producer control: graph-present compile with an unrelated hard diagnostic must refuse
     /// observation — not populate `blocking_hard_diagnostic_count: 0` on an unresolved symbol.
     #[test]
