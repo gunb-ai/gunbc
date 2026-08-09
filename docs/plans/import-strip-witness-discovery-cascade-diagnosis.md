@@ -711,13 +711,23 @@ the trap recorded in §5's repro notes).
 Strip completeness is denominated, not assumed: **16,315 import declarations
 across 2,574 files, zero `import` residue**, with a per-file manifest.
 
-The full reproducer — scripts, raw diagnostic logs, manifest, declaration
+The retained execution record — raw diagnostic logs, manifest, declaration
 census, corpus hash and measured commit — is committed at
-[`import-strip-measurement/`](import-strip-measurement/README.md), including the
-deterministic command sequence that regenerates every number below. It is a
-registered scaffold carrying its own dissolution trigger: when B2 lands, the
-ledger becomes a projection of the loader's accepted-binding output and the
-scripts delete.
+[`import-strip-measurement/`](import-strip-measurement/README.md), together with
+the command sequence that produced every number below.
+
+**It is a record, not a reproducer, and the numbers below cannot be regenerated
+from a clean checkout of this repository.** The Python harness that produced them
+was removed by operator ruling — EARLY, before its declared dissolution trigger
+(B2 landing `OrdinaryLoadedCompilationClosure` production, at which point the
+ledger becomes a projection of the loader's accepted-binding output) had fired.
+That trigger has NOT fired; the scripts went anyway, trading re-runnability for
+not carrying a parallel text-scanning classifier in the tree.
+
+What a reader can still check without the harness is the corpus-hash anchor,
+which decides whether these receipts describe the tree in front of them. What a
+reader cannot do is re-derive them without rebuilding the harness from the
+recorded command sequence.
 
 **Sections 15.1–15.5 record the measurement as it stood BEFORE the corpus repair
 (control 12, attributable 5,815 at `1eadad4af25`, then 3,047 after #8056). They
