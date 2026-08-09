@@ -1,5 +1,7 @@
 module extdeps.tools.sha512sum
 
+import std.algebra { trim }
+
 import std.types { NonEmptyStr, String, Bool, FilePath }
 import std.content_hash { Sha512Digest, sha512_hex_digest }
 import std.decl_ref { DeclarationRef, WholeDeclaration }

@@ -1,5 +1,7 @@
 module gunbc.merge_admission_produce
 
+import std.algebra { trim }
+
 import std.types { NonEmptyStr, CommitSha, String, Int, List, Bool, GitRef }
 import std.content_hash {
   serialize_content_hash,

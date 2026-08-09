@@ -10907,6 +10907,11 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(Value::Bool(s.starts_with(&prefix))))
             },
 
+            arm "free_call.trim" { "trim" } => {
+                let s = expect_str($positional.first().copied(), "trim")?;
+                Ok(Some(Value::Str(v1_rt::trim(s))))
+            },
+
             arm "free_call.length" { "length" } => match $positional.first() {
                 Some(Value::Str(s)) => Ok(Some(Value::Int(s.chars().count() as i64))),
                 Some(v) => match native_len(v) {

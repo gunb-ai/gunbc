@@ -1,5 +1,7 @@
 module extdeps.pijul
 
+import std.algebra { trim }
+
 import std.types { NonEmptyStr, Bytes, Timestamp, Map }
 import std.integer { NonNegativeInt, UInt8 }
 import extdeps.external_authority { ExternalAuthority }
