@@ -555,7 +555,7 @@ fn sha256_record_line(hex: String) -> String {
 // The digits check runs before the parse, so the refusal is decided by the text rather than by trusting a total function's fallback value. Found by review on the approving pass rather than by execution, and worth recording as such: it is the same class the byte-count fabrication note above describes, surviving in the one place the earlier repair did not look.
 fn size_text_is_digits(text: String) -> Bool {
   (text != "")
-    && all(chars(text), c => code_point(c) >= 48 && code_point(c) <= 57)
+    && all(chars(text), c => c >= 48 && c <= 57)
 }
 
 fn observed_stored_artifact(
