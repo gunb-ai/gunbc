@@ -10196,20 +10196,11 @@ impl Ci2TerminalTally {
         }
         self.interpreted.insert(key);
     }
-    fn native(&mut self, entry: String, function: String) {
-        let key = (entry, function);
-        if self.native_routed.contains(&key) {
-            let first = self
-                .first_origin
-                .get(&key)
-                .cloned()
-                .unwrap_or_else(|| "native".to_string());
-            self.duplicates
-                .push((key.0.clone(), key.1.clone(), first, "native".to_string()));
-        } else {
-            self.native_routed.insert(key);
-        }
-    }
+    // No fn-grain native insertion method exists yet ON PURPOSE: today's plan
+    // vocabulary has no fn-grain native route (NativeBundleWitnessKind rows are
+    // plan-grain selectors and never enter the identity sets), so the insertion
+    // point — with its own duplicate arm and origin label — gets written together
+    // with the vocabulary that produces it, not speculatively before it.
     fn duplicate_rows(&self) -> u64 {
         self.duplicates.len() as u64
     }
@@ -11551,7 +11542,7 @@ mod tests {
         let mut tally = Ci2TerminalTally::default();
         tally.canonical.insert(id("e1.dag", "w_one"));
         tally.native_routed.insert(id("e1.dag", "w_one"));
-        tally.native("ghost.dag".to_string(), "w_ghost".to_string());
+        tally.native_routed.insert(id("ghost.dag", "w_ghost"));
         assert!(!tally.holds());
         assert_eq!(tally.unexpected().len(), 1);
     }
