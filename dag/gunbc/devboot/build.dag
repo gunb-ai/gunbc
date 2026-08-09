@@ -1316,6 +1316,7 @@ fn render_build_outcome(outcome: BuildOutcome) -> String {
         "BUILT\npath: ", artifact.path,
         "\nsha256: ", render_sha256_digest(digest: artifact.sha256),
         "\nproducer_host: ", receipt.producer_host,
+        "\nreused: ", if receipt.reused { "true" } else { "false" },
         "\nsubject:\n", program_subject,
       ], "")
   }
