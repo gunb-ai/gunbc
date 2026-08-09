@@ -8183,6 +8183,84 @@ impl MultiEntryIndex {
         self.generation
     }
 
+    /// Bind one `(entry path, function spelling)` request to EXACTLY ONE declaration identity.
+    ///
+    /// Binding is separated from classification deliberately. A request names a spelling, and a
+    /// spelling is not an identity: it may match nothing, or match more than one declaration once
+    /// the population includes every module of the tree. Folding that into classification would
+    /// force a single verdict out of an ambiguous subject, and "many" would silently become
+    /// whichever the walk happened to reach first — the heuristic §4 rules out in a closed system.
+    ///
+    /// So all three cardinalities are answered separately, and only the exactly-one case proceeds.
+    /// Zero and many refuse with DIFFERENT causes, because they have different remedies: zero
+    /// means the enrolled declaration is absent or its module did not parse, many means the
+    /// entry's own file declares the spelling twice.
+    fn bind_live_read_request(
+        bundle: &G2FactBundle,
+        entry_rel: &str,
+        fn_name: &str,
+    ) -> Result<crate::data_initializer_identity::ResolvedDeclarationLocator, String> {
+        if let Some(cause) = bundle.parse_refusals.get(entry_rel) {
+            return Err(format!(
+                "AFFECTED-SET REFUSAL cause=LiveReadEntryModuleUnparsed entry={entry_rel} \
+                 function={fn_name} detail={cause} — the entry's own module did not parse, so its \
+                 declarations are absent for a reason about the module rather than about the \
+                 declaration. This refusal is LOCAL to this request; unrelated entries are \
+                 unaffected."
+            ));
+        }
+        let matches: Vec<&crate::coproduct_reflection::DeclFactRaw> = bundle
+            .decl_facts
+            .iter()
+            .filter(|f| f.rel_path == entry_rel && f.name == fn_name)
+            .collect();
+        match matches.len() {
+            1 => {
+                let f = matches[0];
+                let module_path = f
+                    .qualified_name
+                    .strip_suffix(&format!(".{}", f.name))
+                    .unwrap_or("")
+                    .to_string();
+                Ok(
+                    crate::data_initializer_identity::ResolvedDeclarationLocator {
+                        qualified_name: f.qualified_name.clone(),
+                        name: f.name.clone(),
+                        module_path,
+                        rel_path: f.rel_path.clone(),
+                    },
+                )
+            }
+            0 => Err(format!(
+                "AFFECTED-SET REFUSAL cause=LiveReadRootUnbound entry={entry_rel} \
+                 function={fn_name} — the enrolled declaration is not present in this index's \
+                 declaration population. A missing classification is not a missing runtime read, \
+                 so this refuses rather than licensing a skip."
+            )),
+            n => Err(format!(
+                "AFFECTED-SET REFUSAL cause=LiveReadRootAmbiguous entry={entry_rel} \
+                 function={fn_name} candidates={n} — the spelling binds to more than one \
+                 declaration in that module, so no single declaration's runtime-read closure is \
+                 THE answer for this request. Picking one would be a heuristic standing where an \
+                 identity was owed."
+            )),
+        }
+    }
+
+    /// This index's G2 fact substrate, built at most once and reused.
+    ///
+    /// Unlike the manifest memo it replaces, this cell is not sensitive to WHICH declarations a
+    /// caller asks about — the population is the index's, so any roster reads the same facts and
+    /// no roster can prime it partially.
+    pub fn g2_fact_bundle(&self) -> Result<Rc<G2FactBundle>, String> {
+        if let Some(cached) = self.g2_facts.borrow().as_ref() {
+            return cached.clone().map_err(|e| e.clone());
+        }
+        let built = self.build_g2_fact_bundle();
+        *self.g2_facts.borrow_mut() = Some(built.clone());
+        built
+    }
+
     /// Build the fact substrate for this index, joining fact population to index population at
     /// IDENTITY grain in both directions.
     ///
@@ -9190,6 +9268,28 @@ pub struct MultiEntryIndex {
     /// generation and its own empty cell. A refusal is memoized too — recomputing a producer that
     /// already refused would only refuse again, more slowly.
     live_read_manifest: RefCell<Option<Result<Rc<LiveReadSelectionManifest>, String>>>,
+    /// The index-wide G2 fact substrate, built at most once. A GLOBAL refusal is memoized here
+    /// and only ever means "this index's population cannot be observed" — a module-local parse
+    /// failure lives inside the bundle, under that module's identity, and never reaches this
+    /// cell (see `G2FactBundle`).
+    g2_facts: RefCell<Option<Result<Rc<G2FactBundle>, String>>>,
+    /// Per-declaration classification, keyed by BOUND DECLARATION IDENTITY rather than by a
+    /// rendered `entry::name` string, so two same-named declarations in different modules cannot
+    /// share a verdict.
+    ///
+    /// It is a map that fills incrementally, NOT one manifest primed by its first caller. The
+    /// prior shape required the first call to carry every request any later call might make,
+    /// which the suite disproved as a property an index can have: the same immutable index is
+    /// legitimately reused across scenarios with different rosters, so "complete on first
+    /// access" was an external scheduling convention real callers cannot satisfy. Here a second
+    /// roster may freely ask different questions of the same index, and a miss classifies one
+    /// declaration instead of poisoning the index.
+    live_read_rows: RefCell<
+        std::collections::HashMap<
+            crate::data_initializer_identity::ResolvedDeclarationLocator,
+            Result<LiveReadSelectionRow, String>,
+        >,
+    >,
     both_closure_edges: RefCell<Option<Rc<BothClosureEdgeIndex>>>,
     // Per-process subject-digest → resolved-graph share, the ReferenceTier in
     // front of the cross-process store (materialization-ladder tier ordering:
@@ -9584,6 +9684,8 @@ fn new_multi_entry_index_shell(
         entry_closure_sources: RefCell::new(HashMap::new()),
         both_closure_edges: RefCell::new(None),
         live_read_manifest: RefCell::new(None),
+        g2_facts: RefCell::new(None),
+        live_read_rows: RefCell::new(std::collections::HashMap::new()),
     }
 }
 
