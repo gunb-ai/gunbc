@@ -8,8 +8,6 @@ import std.markdown {
 import extdeps.languages.markdown { serialize_markdown_source }
 import std.types { NonEmptyStr }
 
-data plan_retirement_naming_note: String = "Renamed from DissolutionTrigger (operator ruling 2026-08-08). Two unrelated public types must not share one name, and the collision was not merely cosmetic: std.dissolution.DissolutionTrigger is an executable expiry condition whose satisfaction is decided against the declarations present in the tree, while this one is DOCUMENT metadata — a sentence rendered into a plan's markdown under a heading. Nothing checks it, nothing can, and calling it a trigger invited exactly the reading that a plan's retirement was mechanically tracked. PlanRetiresWhen carries a NonEmptyStr because the emptiness check plan_has_dissolution_trigger used to perform is a constraint the carrier can hold itself — an empty condition is now unwritable rather than caught, so the predicate is a total projection over the coproduct with no length test left in it (DESIGN §5 construction over validation)."
-
 type PlanRetirement
   = PlanRetiresWhen { condition: NonEmptyStr }
   | PlanHasNoRetirement

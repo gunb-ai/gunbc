@@ -16,6 +16,7 @@ import v2.std.algebra {
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { Char, String }
+import std.dissolution { unbound_dissolution }
 
 
 data target_ast_vocab_modules: List<String> = [

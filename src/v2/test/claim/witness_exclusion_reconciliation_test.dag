@@ -33,6 +33,7 @@ import std.realization_schedule { ScheduleWitnessEntry, CorpusWitnessKind }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
+import std.dissolution { unbound_dissolution }
 
 data witness_exclusion_reconciliation_note: String = "Executable reconciliation for gunbc.ci_layer_roots.witness_exclusion_frontier, which is a PATH POLICY carrier as of 2026-08-03: every row is well-formed (never DiscoverySelection, never QuarantineProbeExpectRed, NoConsumer only for the synthetic admission RED-control path, nonempty reason and dissolve_on), the remaining explicit-roster classifications name files those rosters actually run, and the whole-tree probe policy is exactly concat(discovery, strict-resolve). The known-red arm is GONE from this reconciliation rather than strengthened: exact admission moved to gunbc.explicit_witness_admission, so there is no pattern row left to reconcile against a probe roster and the containment check that stood in for identity has nothing to check. What replaces it is a refusal — witness_exclusion_frontier_carries_no_admission_holds, with a synthetic QuarantineProbeExpectRed row as its RED control. RED controls: a DiscoverySelection row, a bare-nickname row, an unbacked BinWitnessWet row, an unbacked rehomed row, an unbacked substrate-long-lane row, and a quarantine row in the path carrier."
 

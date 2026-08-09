@@ -59,8 +59,6 @@ test fn frontier_expiry_fired_trigger_absent_from_rows_is_clean() -> Bool {
     && frontier_expiry_clean(report: report)
 }
 
-data no_forge_control_note: String = "The load-bearing control, and the one that distinguishes this carrier from the representation it replaces. Under the old DissolveTrigger a prose sentence fired whenever a caller passed the same string back in a prose_fired list, so the assertion below was not merely false but unstatable — there WAS an input that made an uncheckable condition report fired, and it was the roster's ordinary calling convention. Here the input that used to do it does not exist, and present_decls cannot reach the UnboundDissolution arm at all. The three probes cover the shapes that could plausibly leak: a ref whose module and name match the description's subject, a ref naming the row's own declaration, and a saturated list. Restoring a prose arm makes this test fail, which is what keeps the deletion real rather than a rename."
-
 test fn unbound_condition_reports_unbound_not_pending() -> Bool {
   let c = unbound_dissolution(description: "every caller migrates to partition_fold_outcome")
   match dissolution_status(condition: c, present_decls: []) {

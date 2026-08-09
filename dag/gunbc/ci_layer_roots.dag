@@ -759,8 +759,6 @@ fn witness_exclusion_patterns(rows: List<WitnessExclusionRow>) -> List<String> {
   fold(rows, init: [], f: fn(acc, row) { concat(acc, [row.pattern]) })
 }
 
-data wet_lane_classification_is_still_a_prose_scan_note: String = "HONEST SCOPE. The row's expiry climbed off a raw String onto std.dissolution.DissolutionCondition, so the CARRIER is typed; the two predicates below still decide wet-lane membership by SCANNING that condition's rendered text for spellings, which is exactly the anemic modeling the carrier migration does not by itself fix. Nothing here got better and nothing got worse: the same strings are matched, through dissolution_description rather than a bare field. The residue mechanism this module already carries (the broad candidate net plus falsifier_self_host_wet_dark_lane_unclassified_rows) is what keeps a fourth spelling visible rather than silently dropped, and it is unchanged. NEXT RUNG, with its trigger: wet-lane membership becomes a typed axis on WitnessExclusionRow — a declared enum arm or a DeclarationAppears-bound condition naming the un-darken authority — at which point both predicates read that axis, the candidate net and its unclassified-residue counter delete together, and this note goes with them. That is a modeling decision about the wet lane on a load-bearing CI carrier, deliberately not made inside a representation migration."
-
 fn witness_exclusion_row_waits_on_wet_lane_undarken(row: WitnessExclusionRow) -> Bool {
   string_contains(s: dissolution_description(condition: row.dissolution), pattern: "falsifier_self_host_wet_cadence_active")
     || (dissolution_description(condition: row.dissolution) == excl_wet_integration_dissolve)

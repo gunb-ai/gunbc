@@ -24,6 +24,7 @@ import gunbc.occurrence_identity_acceptance_closure {
   occurrence_identity_closing_verdict,
   occurrence_identity_closing_complete,
 }
+import std.dissolution { unbound_dissolution }
 
 data occurrence_identity_consumer_red_debt_witness_note: String = "The expected owner and required receipt are PARAMETERS, not shared constants. Four receipts are green by local execution but retain consumer debt until parser_transport_witness_entries exists on main and executes them per PR. The census pins all six debts to their distinct acceptance nodes and exact required_receipt text, preventing a row from staying counted while silently weakening what execution must make RED."
 

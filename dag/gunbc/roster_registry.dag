@@ -324,8 +324,6 @@ data roster_registry: List<RosterRegistration> = [
   }
 ]
 
-data membership_trigger_nonempty_is_structural_note: String = "The trigger half of this predicate is GONE because it became unwritable, not because it stopped mattering. DeclaredFrontier now carries a DissolutionCondition whose unbound arm is NonEmptyStr and whose bound arm carries a DeclarationRef, so there is no constructor for a frontier registration with an empty trigger — the nickname class this predicate exists to catch can no longer be spelled on that axis, and the matching RED control in v2.test.claim.roster_registry_test went with it (DESIGN §4b(4)). reason is still a bare String, so its emptiness check stays real validation; it climbs the same way when reason becomes NonEmptyStr, at which point this predicate is total and deletes entirely."
-
 fn registration_membership_is_standard(r: RosterRegistration) -> Bool {
   match r.membership {
     ByContainment => true

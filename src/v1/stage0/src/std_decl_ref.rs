@@ -65,15 +65,6 @@ pub fn decl_field_ref(
     })
 }
 
-pub fn decl_ref_equality_authority_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Equality lives HERE for the same reason construction does, and the note above already priced the failure: v1-seed fn names are not module-scoped, so a closure containing two modules that each mint decl_field_eq refuses every bare reference as ambiguous. That is not hypothetical — decl_field_eq/declaration_ref_eq/declaration_ref_in_list were minted THREE times (std.roster_frontier, gunbc.commit_workflow, v2.lens.disposition_redundancy), and a fourth copy was the only thing std.dissolution needed to become a fourth ambiguity source. All three duplicates are deleted in favour of these; a module comparing DeclarationRefs imports from std.decl_ref. Note the shape: this is field-by-field structural equality over a record whose three components are each NonEmptyStr or a closed two-arm coproduct, so it is total and needs no refusal arm — there is no cross-representation straddle here of the kind std.content_hash guards, because DeclarationRef has exactly one representation.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn decl_field_eq(a: Rc<DeclField>, b: Rc<DeclField>) -> bool {
     match (*a.clone()).clone() {
         DeclField::WholeDeclaration => match (*b.clone()).clone() {

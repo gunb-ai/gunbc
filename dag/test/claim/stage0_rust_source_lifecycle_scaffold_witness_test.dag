@@ -291,8 +291,6 @@ test fn scaffold_observed_manifest_parse_refusal_surfaces_typed_cause() -> Bool 
   }
 }
 
-data residue_empty_condition_climb_note: String = "scaffold_residue_red_control_empty_dissolve_on_reds is DELETED, not ported. It built a residue row with an empty dissolve_on string and asserted lifecycle_row_well_formed rejected it. HandScaffold now carries a DissolutionCondition whose unbound arm is NonEmptyStr, so unbound_dissolution(description: \"\") has no constructor and the row cannot be built to be rejected — the control asserted a predicate over a state that no longer compiles, and the well-formed check lost the matching dissolve_on emptiness clause in the same motion (DESIGN §4b(4): a climb deletes the lower-rung machinery, and a control whose subject is unconstructible is part of that machinery). The remaining residue controls — duplicate path, unclassified path — are untouched because their invalid states are still writable."
-
 test fn scaffold_observed_duplicate_tracked_paths_reds() -> Bool {
   match rust_source_manifest_state_verdict(observation: witness_duplicate_tracked_observation()) {
     ManifestStateScaffoldRefused { cause: DerivedDuplicateExactPaths { count: _ } } => true

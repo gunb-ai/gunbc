@@ -29,15 +29,6 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn roster_frontier_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "The typed declared-frontier row (DESIGN section 7 self-host-frontier pattern generalized to any group of units, operator ruling 2026-07-22): a row is admissible only as a counted carrier beside its subject, carrying reason and a typed expiry condition — never a bare string in a nickname list. subject anchors the annotated declaration (DeclSubject) or a path-keyed roster member (PathSubject); reason says why the row exists; dissolution is the std.dissolution.DissolutionCondition under which the row deletes, which is either bound to a declaration whose appearance is decidable against the tree or explicitly unbound and unable to fire. The group-grain taxonomy and enrolled roster registry live in gunbc.roster_registry; this module owns only the row shape so std-, lens-, and workflow-layer rosters share one carrier instead of re-minting it per file.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum FrontierSubject {
@@ -48,15 +39,6 @@ pub enum FrontierSubject {
         #[serde(rename = "ref")]
         ref_: Rc<DeclarationRef>,
     },
-}
-
-pub fn frontier_dissolution_carrier_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "The row's expiry is std.dissolution.DissolutionCondition and nothing else. The deleted local DissolveTrigger was a second representation of the same concept, and its TriggerProse arm plus the caller-supplied prose_fired list that fold_frontier_expiry used to take let an uncheckable sentence report as fired whenever a caller happened to pass the same string back — the roster's own expiry check answering from the caller rather than from the tree. The prose population did not disappear with it: a condition that names no declaration is now UnboundDissolution, which is counted separately and provably cannot fire. The deleted frontier_row convenience constructor took a bare `dissolve_on: String` and is not replaced, because taking prose positionally is exactly what made the weak arm the default at 195 of 197 call sites.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -179,15 +161,6 @@ pub fn concat_frontier_row_groups(
         }
         __result
     })
-}
-
-pub fn frontier_expiry_report_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Three counters, because the old two-counter report could not distinguish a row whose condition is checkable and has not yet fired from a row whose condition is not checkable at all — both landed in unfired_count, so the roster read as entirely pending when most of it was unmodelled. unbound_count IS the exact next frontier: it is the population that must climb by naming a declaration, and it is the number the closing claim reports rather than pretending it became checkable. Only fired_still_present_count reds — an unbound row is honest debt, not a defect, so gating on it would make naming a condition worse than leaving it prose.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]

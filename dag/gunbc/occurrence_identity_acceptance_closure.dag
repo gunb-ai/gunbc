@@ -9,6 +9,7 @@ import std.occurrence_identity {
   occurrence_identity_acceptance_law_parser_isolation,
   occurrence_identity_acceptance_laws,
 }
+import std.dissolution { unbound_dissolution }
 
 type OccurrenceIdentityConsumerRedDebt {
   id: String

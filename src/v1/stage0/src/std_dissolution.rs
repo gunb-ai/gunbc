@@ -14,15 +14,6 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn dissolution_authority_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "The single authority for WHEN A COUNTED DEBT ROW MUST DISAPPEAR (operator ruling 2026-08-08). It answers exactly one question and must not be widened to the neighbouring ones: std.disposition.Disposition classifies a modeled mark as legitimately Terminal or as a Scaffold bound to a named construction; a domain coproduct that already carries its temporary arm and its replacement arm models its own transition and needs nothing from here; gunbc.plan retirement is document metadata; and a row recording something that ALREADY dissolved is a receipt, not a condition. This module owns only the third case — an expiry condition attached to a live counted row. The split that makes it worth existing: a TRIGGER is always checkable, and a condition that is not checkable is explicitly not a trigger. Under the representation this replaces (std.roster_frontier DissolveTrigger TriggerProse plus a caller-supplied prose_fired list) a sentence was considered fired whenever some caller passed the same string back in, which let an uncheckable sentence impersonate an observed event — the §5 fabricated-plausible-output failure applied to a debt roster's own expiry. Here UnboundDissolution has no path to DissolutionFired at all: dissolution_status matches it to DissolutionUnbound unconditionally, and there is no parameter by which a caller could influence that arm. An unbound row is therefore counted debt whose condition is not yet modeled — honest per §4b(2) no-untracked-stall — and it climbs by naming the declaration whose appearance proves it, never by being wrapped in a constructor that reports success.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum DissolutionTrigger {
@@ -54,24 +45,6 @@ pub enum DissolutionStatus {
     DissolutionUnbound,
     DissolutionPending,
     DissolutionFired,
-}
-
-pub fn dissolution_status_no_forge_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "The UnboundDissolution arm takes no input other than the condition itself. present_decls cannot reach it, so there is no list a caller could supply — and no declaration it could contain — that makes an unbound condition report DissolutionFired. That is the property the discriminating witness pins in both directions, and it is the reason the fired/pending distinction is derived here rather than stored on the row.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn dissolution_trigger_projection_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "DissolutionTrigger is deliberately a one-arm coproduct — it is the extension point for trigger kinds beyond a declaration appearing, and naming the arm keeps the checkable/uncheckable distinction visible at the type rather than hiding a bare DeclarationRef inside BoundDissolution. The projection below exists because destructuring it INSIDE a BoundDissolution pattern lowers to an irrefutable `let ... else` in emitted Rust, which -D warnings rejects; a single-arm `match` in its own function does not. So the nesting is flattened at the source rather than suppressed with an allow attribute, and the shape stays correct for the day a second arm lands.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn dissolution_trigger_ref(trigger: Rc<DissolutionTrigger>) -> Rc<DeclarationRef> {
@@ -110,30 +83,12 @@ pub fn unbound_dissolution(description: String) -> Rc<DissolutionCondition> {
     })
 }
 
-pub fn dissolution_is_bound_derivation_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "DERIVED from dissolution_status rather than matching the arms a second time. A predicate that re-matched BoundDissolution/UnboundDissolution would be a second classification of the same axis, and the failure mode is specific rather than stylistic: adding a third arm would leave this function still compiling and silently answering false for it, so the two surfaces could disagree about the same condition. Against an empty present_decls a bound condition is DissolutionPending by construction (DissolutionFired requires a matching declaration in the list, and the empty list contains none), so boundness IS 'status is Pending under no present declarations' — one authority, asked a narrower question.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn dissolution_is_bound(condition: Rc<DissolutionCondition>) -> bool {
     match dissolution_status(condition.clone(), Rc::new(vec![])) {
         DissolutionStatus::DissolutionPending => true,
         DissolutionStatus::DissolutionFired => true,
         DissolutionStatus::DissolutionUnbound => false,
     }
-}
-
-pub fn dissolution_description_projection_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "A TOTAL rendering of the condition for display and for witnesses that assert what a trigger names. It is a projection, not a second representation: the bound arm renders the declaration it is waiting on from the ref itself, so there is no authored sentence beside the ref that could drift from it, and the unbound arm returns the only text it has. Nothing decides expiry from this string — dissolution_status never reads it — so rendering a condition cannot become a way to make one fire.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn dissolution_description(condition: Rc<DissolutionCondition>) -> String {

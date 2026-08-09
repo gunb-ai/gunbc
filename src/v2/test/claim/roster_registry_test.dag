@@ -22,8 +22,6 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-data roster_registry_test_note: String = "GREEN: the enrolled registry holds (every registration ByContainment, ByDerivation, or DeclaredFrontier with a nonempty reason). RED control: a synthetic nickname-class registration with an empty reason reds, located to its roster ref. The empty-TRIGGER control is DELETED, not ported: DeclaredFrontier carries a DissolutionCondition whose unbound arm is NonEmptyStr, so a frontier registration with an empty trigger has no constructor and the state the control asserted is unwritable rather than merely rejected (DESIGN §4b(4)). The nickname control keeps only the axis that is still writable — reason — and it still discriminates, which is what keeps this file evidence rather than decoration."
-
 fn synthetic_registration(membership: GroupMembership) -> RosterRegistration {
   RosterRegistration {
     roster: roster_decl(module_path: "v2.test.synthetic", decl_name: "synthetic_roster"),

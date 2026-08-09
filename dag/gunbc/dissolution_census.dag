@@ -11,10 +11,6 @@ import std.dissolution { DissolutionCondition, dissolution_is_bound }
 import std.decl_ref { DeclarationRef }
 import gunbc.census_closure_frontier { census_closure_frontier_rows }
 
-data dissolution_census_note: String = "THE CLOSING COUNT for the dissolution carrier fork, reported as three separate numbers because collapsing them is what the old representation did. A row is exactly one of: BOUND-PENDING (its condition names a declaration that is not in the tree yet — checkable, and it fires the moment that declaration lands), UNBOUND (its condition names no declaration, so it is honest counted debt that provably cannot fire), or FIRED-STILL-PRESENT (its declaration exists and the row should already have been deleted — the only state that reds). The predecessor reported unfired_count, which fused the first two, so a roster of entirely unmodelled conditions read as pending. unbound_count is therefore not a failure number; it IS the exact next frontier, and the honest closing claim quotes it rather than implying every condition became checkable."
-
-data dissolution_census_denominator_note: String = "The subject is the enrolled frontier-row population reachable from gunbc.census_closure_frontier, which is an identity join over authored roster groups rather than a count pinned to a literal — the counts below are DERIVED on every run, so there is no measured-from-the-current-tree number to go stale (DESIGN §5 oracle ruling: a measurement copied from the same tree is not an oracle). What this denominator does NOT cover is stated so the number is not read as wider than it is: frontier rows carried by rosters outside that closure, and the debt carriers that hold a DissolutionCondition inline (ProviderContractTarget, WitnessExclusionRow, ExplicitWitnessAdmission and their siblings) are not folded here. Widening the denominator to every DissolutionCondition in the corpus needs a structural producer that enumerates them, which is the same missing capability the zero wall needs."
-
 fn dissolution_census_report() -> FrontierExpiryReport {
   fold_frontier_expiry(rows: census_closure_frontier_rows(), present_decls: [])
 }
@@ -39,8 +35,6 @@ fn dissolution_census_total() -> Int {
   let r = dissolution_census_report()
   r.unbound_count + r.pending_count + r.fired_still_present_count
 }
-
-data dissolution_census_gate_note: String = "Only fired-still-present reds. An unbound row is debt the model has not learned to check yet, and gating on it would make naming a condition strictly worse for an author than leaving it as prose — the incentive that produced the 195-of-197 prose default in the first place. A bound-pending row is the healthy steady state: it is waiting, correctly, and it will fire on its own."
 
 fn dissolution_census_holds() -> Bool {
   frontier_rows_well_formed(rows: census_closure_frontier_rows())

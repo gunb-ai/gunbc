@@ -14,8 +14,6 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data no_pinned_count_note: String = "Not one assertion here compares a live population to a hand-typed number, and that is deliberate rather than incidental. The counts this census reports are measured from the same tree the assertion would live in, so pinning 19 or 2 would be a change detector whose entire content is remembering to edit it — the shape DESIGN §5's oracle ruling rejects, and the shape whose failure mode is a green test that has stopped meaning anything. What IS asserted are properties that must hold at ANY population size: the three counters exhaustively partition the rows, bound and unbound partition them the same way, the gate reds exactly on fired-still-present, and the two rows that are actually bound behave as bound when their declaration appears. Each of those has an input that makes it false."
-
 test fn census_counters_exhaustively_partition_the_rows() -> Bool {
   let r = dissolution_census_report()
   (r.unbound_count + r.pending_count + r.fired_still_present_count) == length(xs: census_closure_frontier_rows())
@@ -37,8 +35,6 @@ test fn nothing_is_fired_and_still_present_today() -> Bool {
   dissolution_census_report().fired_still_present_count == 0
 }
 
-data gate_discrimination_note: String = "The control that keeps the gate from being decoration. Supplying the declaration a bound row waits on moves that row from pending to fired-still-present and the gate must go red — if it stayed green, fired_still_present_count would be unreachable and the whole census would be a counter nobody can trip. extdeps.network.mac parse_mac_address is used because it does not exist in the tree, so the live census reports it pending and this witness supplies it synthetically; if that function is ever really written, this control keeps working and the roster row it names becomes genuinely stale, which is the outcome the census exists to force."
-
 test fn supplying_a_bound_rows_declaration_reds_the_gate() -> Bool {
   let mac = decl_ref(module_path: "extdeps.network.mac", decl_name: "parse_mac_address")
   let before = dissolution_census_report()
@@ -50,12 +46,10 @@ test fn supplying_a_bound_rows_declaration_reds_the_gate() -> Bool {
     && !frontier_expiry_clean(report: after)
 }
 
-data unbound_immunity_note: String = "The census-level restatement of the carrier's no-forge property. Every unbound row in the live roster stays unbound no matter what declarations are present, so the unbound_count is not something a caller can shrink by supplying inputs — it shrinks only when somebody names a declaration in the row itself. Two decls are supplied: one that a roster row's prose actually discusses, and one naming this witness, covering both the coincidental-mention and the arbitrary-input shapes."
-
 test fn unbound_rows_stay_unbound_under_any_present_decls() -> Bool {
   let probes = [
     decl_ref(module_path: "extdeps.docker.endpoint", decl_name: "docker_default_endpoint"),
-    decl_ref(module_path: "test.claim.dissolution_census_witness_test", decl_name: "unbound_immunity_note"),
+    decl_ref(module_path: "test.claim.dissolution_census_witness_test", decl_name: "unbound_rows_stay_unbound_under_any_present_decls"),
   ]
   let base = dissolution_census_report()
   let probed = dissolution_census_report_against(present_decls: probes)
