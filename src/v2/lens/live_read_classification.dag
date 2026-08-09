@@ -396,13 +396,16 @@ fn callees_from_node(node: Node) -> List<String> {
   )
 }
 
+data closure_decls_hoist_law: String = "THE CLOSURE RESTRICTION IS COMPUTED ONCE PER WALK, NOT ONCE PER CALLEE. decls_matching_callee used to call decls_in_modules(decls, modules) itself, which filters every declaration in the population against every module in the import closure. Nothing in that computation depends on the callee, and closure_modules is fixed for the whole reachability walk - so it was being recomputed for every callee of every reached declaration, at 587 closure modules against roughly 62000 declarations each time. The phase receipt that located it measured classification_production at 287414 ms for 91 requests while the lens closure it was blamed on cost 6639 ms.
+
+The repair is a hoist, not a new data structure. The caller restricts the population to the closure ONCE and threads the restricted list; this function then filters that much smaller list by name. It is exactly the same set by construction - filter(filter(xs, in_closure), named) equals filter(filter(xs, named), in_closure) - so no classification changes, and no primitive the substrate does not already have is required. A grouped index keyed by name would remove the remaining per-callee linear scan too, but it needs a multiplicity-preserving native grouping that authored .dag cannot currently reach (index_by is last-wins AND unreachable from source; the modeled closure-chain Map measured 33x slower). The grouping substrate lands in this same change; the hoist is the term-removal that does not depend on it."
+
 fn decls_matching_callee(
-  decls: List<FnArrowDecl>,
-  modules: List<String>,
+  closure_decls: List<FnArrowDecl>,
   callee: String
 ) -> List<FnArrowDecl> {
   filter(
-    xs: decls_in_modules(decls: decls, modules: modules),
+    xs: closure_decls,
     predicate: fn(decl) { string_eq(a: decl.name, b: callee) }
   )
 }
@@ -417,8 +420,7 @@ fn decl_in_list(decl: FnArrowDecl, xs: List<FnArrowDecl>) -> Bool {
 
 fn call_reachable_decls_go(
   seeds: List<FnArrowDecl>,
-  closure_modules: List<String>,
-  decls: List<FnArrowDecl>,
+  closure_decls: List<FnArrowDecl>,
   reached: List<FnArrowDecl>
 ) -> List<FnArrowDecl> {
   match list_head(xs: seeds) {
@@ -428,8 +430,7 @@ fn call_reachable_decls_go(
       if decl_in_list(decl: seed, xs: reached) {
         call_reachable_decls_go(
           seeds: rest,
-          closure_modules: closure_modules,
-          decls: decls,
+          closure_decls: closure_decls,
           reached: reached
         )
       } else {
@@ -439,16 +440,14 @@ fn call_reachable_decls_go(
           list_append(
             left: acc,
             right: decls_matching_callee(
-              decls: decls,
-              modules: closure_modules,
+              closure_decls: closure_decls,
               callee: callee
             )
           )
         })
         call_reachable_decls_go(
           seeds: list_append(left: rest, right: callee_decls),
-          closure_modules: closure_modules,
-          decls: decls,
+          closure_decls: closure_decls,
           reached: next_reached
         )
       }
@@ -469,8 +468,7 @@ fn call_reachable_decls(
 ) -> List<FnArrowDecl> {
   call_reachable_decls_go(
     seeds: decls_in_module(decls: decls, mod_path: entry_module),
-    closure_modules: closure_modules,
-    decls: decls,
+    closure_decls: decls_in_modules(decls: decls, modules: closure_modules),
     reached: empty_decl_list
   )
 }
@@ -498,8 +496,7 @@ fn call_reachable_decls_from_root(
 ) -> List<FnArrowDecl> {
   call_reachable_decls_go(
     seeds: decl_named_in_module(decls: decls, mod_path: entry_module, fn_name: fn_name),
-    closure_modules: closure_modules,
-    decls: decls,
+    closure_decls: decls_in_modules(decls: decls, modules: closure_modules),
     reached: empty_decl_list
   )
 }
