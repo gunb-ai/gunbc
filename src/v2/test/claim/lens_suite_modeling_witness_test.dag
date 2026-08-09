@@ -1,30 +1,5 @@
 module v2.test.claim.lens_suite_modeling_witness
 
-import v2.lens.suite.census { lens_suite_registry_census, lens_suite_registry_census_holds }
-import v2.lens.suite.checkpoint_a_harness {
-  lens_suite_checkpoint_a_execution_gated,
-  lens_suite_checkpoint_a_harness_holds,
-}
-import v2.lens.suite.fact_pack {
-  lens_corpus_fact_pack_fixture,
-  lens_corpus_fact_pack_second_query_constructs_zero,
-}
-import v2.lens.suite.receipt {
-  LensSuiteReceipt,
-  lens_suite_zero_execution_never_succeeds,
-}
-import v2.lens.suite.roster {
-  lens_suite_planned_count,
-  lens_suite_registered_count,
-  lens_suite_registry_join_complete,
-}
-import v2.lens.suite.selection {
-  lens_suite_boring_checkpoint_is_determinism,
-  lens_suite_boring_lens_mechanically_selected,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data lens_suite_modeling_witness_note: String = "V2-LENS-0 modeling slice (operator ruling 2026-08-09): witnesses the LensSuiteReceipt laws, registry-derived roster, mechanical boring-lens selection, fact-pack identity/construction-count laws, registry census, and Checkpoint A harness gate — NO lens-body execution on the interpreter path. Permanence RED: zero executed lenses cannot verdict success."
