@@ -130,7 +130,7 @@ fn fleet_converge_applicability(host: String) -> FleetConvergeApplicability {
     if host == (operator_host_srv2 as String) || host == (operator_host_srv4 as String) {
       ConvergeKnobFrontier
     } else {
-      if host == "srv5" || host == "srv6" {
+      if host == (operator_host_srv5 as String) || host == (operator_host_srv6 as String) {
         ConvergeSparkPreEnrollment
       } else {
         ConvergeOutsideFleet

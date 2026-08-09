@@ -23,6 +23,8 @@ import gunbc.ci_spec {
   gunbc_ci_srv1_tasks_observation_invoke,
   gunbc_ci_advance_fleet_desired_script,
   gunbc_ci_fleet_reach_probe_invoke,
+  gunbc_ci_fleet_timer_install_invoke,
+  gunbc_ci_collect_fleet_convergence_invoke,
 }
 import gunbc.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
@@ -667,6 +669,81 @@ fn ci_fleet_reach_probe_job() -> Job {
   }
 }
 
+// Fleet timer self-install bootstrap (join 2 invocation wire): workflow_dispatch-only;
+// runs on a fleet runner and installs the converge timer on the machine it runs on
+// (self-install — no remote host contacted). Dispatch once per bootstrap host.
+fn ci_fleet_timer_install_step() -> Step {
+  RunStep {
+    name: Present { value: "Fleet converge timer self-install (fleet_timer_self_install_wet; installs on THIS runner's host)" },
+    id: none,
+    run: gunbc_ci_fleet_timer_install_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn ci_fleet_timer_install_job() -> Job {
+  Job {
+    id: "install_fleet_converge_timer",
+    name: none,
+    runner: gunbc_ci_selected_runner_spec(),
+    steps: concat(
+      ci_artifact_consumer_prelude_steps(),
+      [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_fleet_timer_install_step()]
+    ),
+    needs: ["build"],
+    env: none,
+    outputs: none,
+    if_condition: Present { value: ci_workflow_dispatch_only_if },
+    timeout_minutes: Present { value: gunbc_ci_deploy_job_backstop_timeout_minutes },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: none
+  }
+}
+
+// Fleet convergence collection (join 5 invocation wire): push-to-main downstream of the
+// required ci check, srv1-pinned (the collector reads published receipts over the typed
+// SSH seam FROM inside the fleet) — the collector->fold composition executes per merged
+// revision and prints the collect receipt + fold verdict.
+fn ci_collect_fleet_convergence_step() -> Step {
+  RunStep {
+    name: Present { value: "Collect fleet converge receipts and fold the fleet verdict (collect_fleet_convergence_wet)" },
+    id: none,
+    run: gunbc_ci_collect_fleet_convergence_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn ci_collect_fleet_convergence_job() -> Job {
+  Job {
+    id: "collect_fleet_convergence",
+    name: none,
+    runner: gunbc_ci_deploy_srv1_runner_spec(),
+    steps: concat(
+      ci_artifact_consumer_prelude_steps(),
+      [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_collect_fleet_convergence_step()]
+    ),
+    needs: ["ci"],
+    env: none,
+    outputs: none,
+    if_condition: Present { value: ci_deploy_push_to_main_if },
+    timeout_minutes: Present { value: gunbc_ci_deploy_job_backstop_timeout_minutes },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: none
+  }
+}
+
 fn ci_advance_fleet_desired_step() -> Step {
   RunStep {
     name: Present { value: "Advance refs/fleet/desired to the merged revision (CAS, floor-green only)" },
@@ -955,5 +1032,5 @@ data ci_workflow: Workflow = {
       id_token: none
     }
   },
-  jobs: concat([ci_build_job(), ci_regen_job(), ci_job()], concat(ci_deploy_jobs(), [ci_heal_generated_artifacts_job(), ci_srv1_tasks_observation_job(), ci_fleet_reach_probe_job(), ci_advance_fleet_desired_job()]))
+  jobs: concat([ci_build_job(), ci_regen_job(), ci_job()], concat(ci_deploy_jobs(), [ci_heal_generated_artifacts_job(), ci_srv1_tasks_observation_job(), ci_fleet_reach_probe_job(), ci_fleet_timer_install_job(), ci_collect_fleet_convergence_job(), ci_advance_fleet_desired_job()]))
 }

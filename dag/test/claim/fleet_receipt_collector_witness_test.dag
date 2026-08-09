@@ -34,12 +34,20 @@ test fn witness_receipt_line_round_trips_and_refuses_malformed() -> Bool {
 // converged through the round trip).
 test fn witness_parse_preserves_non_converged_verdicts() -> Bool {
   match parse_converge_receipt_line(line: "converge-receipt host=srv1 applied=0 drifted=2 verdict=drifted") {
-    Present { value: r } => !converge_cli_receipt_converged(r: r) && r.drifted == 2
+    Present { value: r } =>
+      !converge_cli_receipt_converged(r: r)
+        && r.drifted == 2
+        && converge_verdict_label(v: r.verdict) == "drifted"
     Absent => false
   }
     && match parse_converge_receipt_line(line: "converge-receipt host=srv1 applied=0 drifted=0 verdict=absent") {
-      Present { value: r } => !converge_cli_receipt_converged(r: r)
+      Present { value: r } =>
+        !converge_cli_receipt_converged(r: r) && converge_verdict_label(v: r.verdict) == "absent"
       Absent => false
+    }
+    && match parse_converge_receipt_line(line: "converge-receipt host=srv1 applied=x drifted=0 verdict=converged") {
+      Present { value: _ } => false
+      Absent => true
     }
 }
 

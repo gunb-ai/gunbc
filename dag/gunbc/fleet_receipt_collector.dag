@@ -1,6 +1,6 @@
 module gunbc.fleet_receipt_collector
 
-import std.types { String, Bool, List, NonEmptyStr, Int }
+import std.types { String, Bool, List, NonEmptyStr }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -9,7 +9,7 @@ import gunbc.fleet_converge_cli {
   ConvergeCliReceipt,
   fleet_converge_receipt_path,
 }
-import gunbc.host_converge { ConvergeVerdict, VerdictConverged, converge_verdict }
+import gunbc.host_converge { ConvergeVerdict, VerdictConverged, Drifted, Absent, converge_verdict_label }
 import gunbc.typed_argv_exec {
   typed_argv_probe_over_ssh,
   TypedArgvExecOutcome,
@@ -57,14 +57,22 @@ fn parse_converge_receipt_line(line: String) -> ConvergeCliReceipt? {
           Present { value: label } =>
             match parse_converge_verdict_label(label: label) {
               Present { value: v } =>
-                Present {
-                  value: ConvergeCliReceipt {
-                    host: host,
-                    applied: parse_int_or_zero(s: receipt_field_or_empty(tokens: tokens, key: "applied=")),
-                    drifted: parse_int_or_zero(s: receipt_field_or_empty(tokens: tokens, key: "drifted=")),
-                    verdict: v,
-                    reason: none,
-                  },
+                match parse_int(s: receipt_field_or_empty(tokens: tokens, key: "applied=")) {
+                  Present { value: applied } =>
+                    match parse_int(s: receipt_field_or_empty(tokens: tokens, key: "drifted=")) {
+                      Present { value: drifted } =>
+                        Present {
+                          value: ConvergeCliReceipt {
+                            host: host,
+                            applied: applied,
+                            drifted: drifted,
+                            verdict: v,
+                            reason: none,
+                          },
+                        }
+                      Absent => none
+                    }
+                  Absent => none
                 }
               Absent => none
             }
@@ -98,22 +106,24 @@ fn drop_prefix(s: String, prefix: String) -> String {
   substring(s: s, start: prefix.length(), end: s.length())
 }
 
+// Review 50817: decode each label to ITS verdict constructor directly. An earlier
+// revision routed drifted/absent through converge_verdict(effective: "", expected:
+// label), which returns Absent whenever effective is empty — silently re-classifying a
+// published Drifted as Absent on collection, exactly the state-space conflation the
+// header forbids (different remedies: run the converge vs build the observation).
 fn parse_converge_verdict_label(label: String) -> ConvergeVerdict? {
   if label == "converged" {
     Present { value: VerdictConverged }
   } else {
-    if label == "drifted" || label == "absent" {
-      Present { value: converge_verdict(effective: "", expected: label) }
+    if label == "drifted" {
+      Present { value: Drifted }
     } else {
-      none
+      if label == "absent" {
+        Present { value: Absent }
+      } else {
+        none
+      }
     }
-  }
-}
-
-fn parse_int_or_zero(s: String) -> Int {
-  match parse_int(s: s) {
-    Present { value: n } => n
-    Absent => 0
   }
 }
 

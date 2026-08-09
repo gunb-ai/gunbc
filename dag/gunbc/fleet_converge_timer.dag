@@ -50,6 +50,15 @@ data fleet_converge_unit_text_scaffold: Disposition = Scaffold {
 // srv1 (a silent byte churn of a live unit is the wrong side of the trade mid-arc).
 // DISSOLVES WHEN one render authority (these content fns, Doc-wrapped) feeds both
 // routes and the emit goldens re-pin from it.
+data fleet_converge_unit_body_fork_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.live_deploy.emit",
+    decl_name: "emit_fleet_converge_service_unit_doc",
+    field: WholeDeclaration,
+  }
+}
+
 fn fleet_converge_service_content(host_arg: String) -> String {
   join([
     "[Unit]\n",
