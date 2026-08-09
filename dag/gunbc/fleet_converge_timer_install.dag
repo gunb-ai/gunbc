@@ -101,6 +101,19 @@ fn fleet_timer_install_prerequisite_refusal(why: String) -> ProcessExit {
 func fleet_timer_self_install_wet() -> ProcessExit
   uses net: Network
 {
+  let hn = run_shell_command_capture(command: ArgvCommand { argv: ["hostname", "-s"] }, transport: LocalExec)
+  let this_host = trim(s: hn.stdout)
+  let route_ok = match fleet_timer_install_route(host: this_host) {
+    TimerViaSelfInstall { host: _ } => true
+    _ => false
+  }
+  if !route_ok {
+    exit_failure(reason: join([
+      "fleet_timer_self_install: RouteMismatch — this job landed on host '",
+      this_host,
+      "' whose modeled route is not TimerViaSelfInstall (srv1 is owned by live_deploy membership; a self-install there would fork ownership). Re-dispatch until a self-install host picks the job up.",
+    ], ""))
+  } else {
   let sudo_probe = run_shell_command_capture(command: ArgvCommand { argv: ["sudo", "-n", "true"] }, transport: LocalExec)
   if !sudo_probe.success {
     fleet_timer_install_prerequisite_refusal(why: trim(s: sudo_probe.stderr))
@@ -131,6 +144,7 @@ func fleet_timer_self_install_wet() -> ProcessExit
         ], ""))
       }
     }
+  }
   }
   }
 }
