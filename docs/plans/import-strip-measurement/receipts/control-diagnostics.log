@@ -2,7 +2,7 @@ indexed 3404 modules from 2 source roots
 resolved 2274 sources (transitive import closure)
 [census] 1130 indexed modules outside the closure enter the name census only (not compiled)
 ◐ started compile.frontend
-✓ compile.frontend done in 23 seconds
+✓ compile.frontend done in 24 seconds
 ✓ compile.normalize done in 1 seconds
 ✓ compile.reconcile done in 5 minutes
 ✓ compile.analyses done in 1 seconds

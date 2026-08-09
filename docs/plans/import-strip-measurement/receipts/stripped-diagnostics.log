@@ -2,10 +2,10 @@ indexed 3404 modules from 2 source roots
 resolved 2083 sources (transitive import closure)
 [census] 1321 indexed modules outside the closure enter the name census only (not compiled)
 ◐ started compile.frontend
-✓ compile.frontend done in 17 seconds
+✓ compile.frontend done in 16 seconds
 ✓ compile.normalize done in 1 seconds
-✓ compile.reconcile done in 1 minutes
-✓ compile.analyses done in 927ms
+✓ compile.reconcile done in 89 seconds
+✓ compile.analyses done in 899ms
 v2 self-compile produced 3100 hard diagnostic(s):
 source annotation sits inside a declaration body. Only module-item grain is modeled; move it above the declaration it describes. (dag/test/claim/cross_file_binding_assembly_witness_test.dag:10015-10103)
 source annotation sits inside a declaration body. Only module-item grain is modeled; move it above the declaration it describes. (dag/test/claim/cross_file_binding_assembly_witness_test.dag:10106-10195)
@@ -605,8 +605,8 @@ function 'fold' not found in scope (dag/gunbc/package_delivery.dag:40795-40799)
 function 'split' not found in scope (dag/gunbc/package_delivery.dag:46436-46441)
 function 'filter' not found in scope (dag/gunbc/package_delivery.dag:46418-46424)
 function 'fold' not found in scope (dag/gunbc/package_delivery.dag:46671-46675)
-unresolved type 'Symbol' (dag/gunbc/proactive_verification_ledger.dag:2014-2020)
 unresolved type 'Symbol' (dag/gunbc/proactive_verification_ledger.dag:1804-1810)
+unresolved type 'Symbol' (dag/gunbc/proactive_verification_ledger.dag:2014-2020)
 function 'optional_present' not found in scope (dag/gunbc/provider_standing.dag:16265-16281)
 function 'optional_absent' not found in scope (dag/gunbc/provider_standing.dag:16317-16332)
 function 'optional_present' not found in scope (dag/gunbc/provider_standing.dag:16547-16563)
