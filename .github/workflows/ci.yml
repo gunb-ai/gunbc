@@ -348,6 +348,69 @@ jobs:
           GUNBC_FLOOR_PHASE_JOURNAL: target/floor-phase-journal.tsv
         if: always()
         timeout-minutes: 5
+  ci2_terminal_outcome:
+    name: CI2 Terminal Outcome
+    runs-on: [self-hosted, linux, arm64]
+    needs: [build]
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.expected_healed_sha || github.sha }}
+      - name: Refuse a heal revalidation whose run subject or checkout does not name the expected healed SHA
+        run: |
+          EXPECTED_HEALED_SHA="${{ inputs.expected_healed_sha }}"
+          RUN_SUBJECT_HEAD="${{ github.sha }}"
+          if [ -n "$EXPECTED_HEALED_SHA" ]; then
+          ACTUAL_HEAD="$(git rev-parse HEAD)"
+          if ! [ "$RUN_SUBJECT_HEAD" = "$EXPECTED_HEALED_SHA" ]; then
+          echo "::error::heal revalidation refused: workflow run subject $RUN_SUBJECT_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"
+          exit 1
+          fi
+          if ! [ "$ACTUAL_HEAD" = "$EXPECTED_HEALED_SHA" ]; then
+          echo "::error::heal revalidation refused: checkout head $ACTUAL_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"
+          exit 1
+          fi
+          echo "heal revalidation preflight: checkout names expected healed head $EXPECTED_HEALED_SHA"
+          fi
+      - name: Setup Rust (floor gate toolchain — batch-4 emit_host/self_host gates need cargo/rustfmt; no isolated rustup)
+        uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+        with:
+          components: rustfmt
+          cache: false
+          rustflags: ''
+      - name: Derive native-cache root (rustc-version segment; after setup-rust-toolchain)
+        run: |
+          # 🟡 dissolve-on: ci_native_cache_root_script — orch-emitted foreign-executor prelude step deriving GUNBC_NATIVE_CACHE_ROOT from rustc -V after setup-rust-toolchain; leaf rustc/tr/mkdir/echo strings remain until typed toolchain probe lands on host_effect_apply (#5828 / shell→intent Phase 2)
+          if ! GUNBC_TOOLCHAIN_SEG_RAW=$(rustc -V 2>/dev/null); then echo "::error::rustc -V failed after setup-rust-toolchain: cannot derive native-cache toolchain segment"; exit 1; fi
+          GUNBC_TOOLCHAIN_SEG=$(echo "$GUNBC_TOOLCHAIN_SEG_RAW" | tr ' ' '-')
+          if [ -z "$GUNBC_TOOLCHAIN_SEG" ]; then echo "::error::rustc -V produced an empty native-cache toolchain segment after setup-rust-toolchain"; exit 1; fi
+          mkdir -p "$RUNNER_TOOL_CACHE/gunbc-native/$GUNBC_TOOLCHAIN_SEG"
+          echo "GUNBC_NATIVE_CACHE_ROOT=$RUNNER_TOOL_CACHE/gunbc-native/$GUNBC_TOOLCHAIN_SEG" >> "$GITHUB_ENV"
+      - name: Download release-bins artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release-bins
+        timeout-minutes: 10
+      - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)
+        id: release_bins
+        run: |
+          # 🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          mkdir -p "$ROOT/target/release"
+          tar -xzf "$ROOT/release-bins.tgz" -C "$ROOT/target/release"
+          rm -f "$ROOT/release-bins.tgz"
+          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/regen_floor_skip_witness" "$ROOT/target/release/floor_skip_discovery_witness" "$ROOT/target/release/selection_control_skip_witness" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/regen_stage0" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/resolution_divergence_census" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/frontier_probe_survey" "$ROOT/target/release/namespace_structural_root_exposure_generated_witness"
+        timeout-minutes: 5
+      - name: CI2 Terminal Outcome (scheduler-grain terminal contract; RED while incomplete)
+        id: ci2_terminal_outcome
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          # CI2 TERMINAL OUTCOME (operator repair msg_2a8e30e8 item 5): the terminal contract for the CI2 lane as a REAL executing check, RED while incomplete — never prose in a PR body. claim_executor --terminal-outcome evaluates the SAME floor plan the ci job runs, stops after schedule construction, and refuses unless every scheduled test identity is native-routed with zero identities on any interpreted (v1) lane, sets joined exactly both directions, zero duplicates, zero discovery host errors, nonempty universe. Measured at the scheduler on the scheduler's own data — an identity scheduled to an interpreted lane IS a v1-scheduled row, so scheduled-to-interpreter == 0 is the structural form of 'ordinary v1 interpreter executions = 0'. The counters ([ci2-terminal] canonical/native-routed/v1-scheduled/missing/unexpected/duplicates/host-errors) are the exact frontier; the verdict authority and its RED/GREEN discrimination controls live beside the mode in claim_executor (Ci2TerminalTally unit controls). Honesty row (the emit_determinism precedent): this job lands NON-required on the gunbc main ruleset — flipping it protection-required is an operator ruleset action; until that flip it reds loudly on every run without formally blocking merge.
+          "$ROOT/target/release/claim_executor" --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_floor_plan --notice-title "v2 claim corpus" --terminal-outcome
+        timeout-minutes: 20
   deploy_dashboard_srv1:
     runs-on: [self-hosted, linux, arm64, srv1]
     needs: [ci]
