@@ -1,7 +1,7 @@
 module gunbc.stage0_rust_source_lifecycle_scaffold
 
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
 import gunbc.stage0_cargo_manifest {
   stage0_cargo_bin_paths_observation_ref
 }
@@ -645,7 +645,8 @@ fn rust_maintenance_disposition_well_formed(disposition: RustMaintenanceDisposit
     EmitFrom { authority: ref } => declaration_ref_populated(ref: ref)
     DeleteWith { roadmap_node: node } => !((node as String) == "")
     RetainedKernel { reason: reason } => !(reason == "")
-    HandScaffold { reason: reason, dissolution: _ } => !((reason as String) == "")
+    HandScaffold { reason: reason, dissolution: d } =>
+      !((reason as String) == "") && !(dissolution_description(condition: d) == "")
   }
 }
 
