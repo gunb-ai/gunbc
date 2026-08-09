@@ -27,28 +27,42 @@ import gunbc.devboot.build {
 
 data serve_poll_note: String = "Each invocation lists every request ref, skips any whose produced ref already exists, and serves the first pending token it finds. Serving more than one request per tick is unnecessary at this grain — a compile dominates the interval — and trying to drain the whole queue in one shot would let one slow subject block every later request without a typed per-subject refusal escaping."
 
-fn token_from_request_ref(ref_name: String) -> String {
-  trim(s: second_field(text: ref_name))
+type RequestRefTokenParse
+  = RequestRefTokenParsed { token: String }
+  | RequestRefTokenMalformed { ref_name: String, cause: String }
+
+fn drop_request_ref_prefix(ref_name: String) -> String {
+  substring(
+    s: ref_name,
+    start: request_ref_namespace.length(),
+    end: ref_name.length(),
+  )
 }
 
-fn second_field(text: String) -> String {
-  fold(
-    split(s: text, sep: "/"),
-    init: FieldScan { index: 0, found: "" },
-    f: (acc, part) => scan_field(acc: acc, part: part, wanted: 2),
-  ).found
-}
-
-type FieldScan {
-  index: Int
-  found: String
-}
-
-fn scan_field(acc: FieldScan, part: String, wanted: Int) -> FieldScan {
-  if acc.index == wanted {
-    FieldScan { index: acc.index + 1, found: part }
+// EXACT PREFIX REMOVAL, NOT POSITIONAL SCANNING. A request ref is refs/devboot/request/<token>; indexing split segments at position 2 returns the literal 'request', not the token.
+fn token_from_request_ref(ref_name: String) -> RequestRefTokenParse {
+  if !starts_with(s: ref_name, prefix: request_ref_namespace) {
+    RequestRefTokenMalformed {
+      ref_name: ref_name,
+      cause: join(["ref name does not begin with ", request_ref_namespace], ""),
+    }
   } else {
-    FieldScan { index: acc.index + 1, found: acc.found }
+    let remainder = drop_request_ref_prefix(ref_name: ref_name)
+    if remainder == "" {
+      RequestRefTokenMalformed {
+        ref_name: ref_name,
+        cause: "request ref carries no token suffix",
+      }
+    } else {
+      if string_contains(s: remainder, pattern: "/") {
+        RequestRefTokenMalformed {
+          ref_name: ref_name,
+          cause: "request ref token must not contain a nested slash",
+        }
+      } else {
+        RequestRefTokenParsed { token: remainder }
+      }
+    }
   }
 }
 
@@ -74,20 +88,79 @@ fn ref_exists(store_root: String, repo_root: String, ref_name: String) -> RefLoo
   }
 }
 
-fn request_is_pending(store_root: String, repo_root: String, token: String) -> Bool {
+type RequestPendingStatus
+  = RequestPending
+  | RequestSettled
+  | RequestPendingRefused { cause: String }
+
+fn request_pending_status(store_root: String, repo_root: String, token: String) -> RequestPendingStatus {
   match ref_exists(store_root: store_root, repo_root: repo_root, ref_name: request_ref_of(token: token)) {
     RefPresent =>
       match ref_exists(store_root: store_root, repo_root: repo_root, ref_name: produced_ref_of(token: token)) {
-        RefPresent => false
-        RefAbsent => true
-        RefLookupRefused { detail } => false
+        RefPresent => RequestSettled
+        RefAbsent => RequestPending
+        RefLookupRefused { detail } => RequestPendingRefused { cause: detail }
       }
-    RefAbsent => false
-    RefLookupRefused { detail } => false
+    RefAbsent => RequestSettled
+    RefLookupRefused { detail } => RequestPendingRefused { cause: detail }
   }
 }
 
-fn list_request_tokens(store_root: String, repo_root: String) -> List<String> {
+type RequestListObservation
+  = RequestListObserved { tokens: List<String> }
+  | RequestListRefused { cause: String }
+
+type PendingTokenAccum
+  = PendingTokenAccumOk { tokens: List<String> }
+  | PendingTokenAccumRefused { cause: String }
+
+fn accumulate_pending_token(
+  acc: PendingTokenAccum,
+  store_root: String,
+  repo_root: String,
+  ref_name: String,
+) -> PendingTokenAccum {
+  match acc {
+    PendingTokenAccumRefused { cause } => acc
+    PendingTokenAccumOk { tokens } =>
+      match token_from_request_ref(ref_name: ref_name) {
+        RequestRefTokenMalformed { ref_name: bad, cause } =>
+          PendingTokenAccumRefused {
+            cause: join(["malformed request ref ", bad, ": ", cause], ""),
+          }
+        RequestRefTokenParsed { token } =>
+          match request_pending_status(store_root: store_root, repo_root: repo_root, token: token) {
+            RequestPending => PendingTokenAccumOk { tokens: concat(tokens, [token]) }
+            RequestSettled => PendingTokenAccumOk { tokens: tokens }
+            RequestPendingRefused { cause } => PendingTokenAccumRefused { cause: cause }
+          }
+      }
+  }
+}
+
+fn pending_tokens_from_ref_lines(
+  store_root: String,
+  repo_root: String,
+  lines: List<String>,
+) -> PendingTokenAccum {
+  fold(
+    lines,
+    init: PendingTokenAccumOk { tokens: [] },
+    f: (acc, line) =>
+      if line == "" {
+        acc
+      } else {
+        accumulate_pending_token(
+          acc: acc,
+          store_root: store_root,
+          repo_root: repo_root,
+          ref_name: line,
+        )
+      },
+  )
+}
+
+fn list_request_tokens(store_root: String, repo_root: String) -> RequestListObservation {
   let out = gunbc.WitnessBin.Run(
     workdir: repo_root,
     bin_path: "git",
@@ -99,27 +172,16 @@ fn list_request_tokens(store_root: String, repo_root: String) -> List<String> {
     ],
   )
   if !out.success {
-    []
+    RequestListRefused { cause: trim(s: out.stderr) }
   } else {
-    fold(
-      split(s: trim(s: out.stdout), sep: "\n"),
-      init: [],
-      f: (acc, line) =>
-        if line == "" {
-          acc
-        } else {
-          let token = token_from_request_ref(ref_name: line)
-          if token == "" {
-            acc
-          } else {
-            if request_is_pending(store_root: store_root, repo_root: repo_root, token: token) {
-              concat(acc, [token])
-            } else {
-              acc
-            }
-          }
-        },
-    )
+    match pending_tokens_from_ref_lines(
+      store_root: store_root,
+      repo_root: repo_root,
+      lines: split(s: trim(s: out.stdout), sep: "\n"),
+    ) {
+      PendingTokenAccumRefused { cause } => RequestListRefused { cause: cause }
+      PendingTokenAccumOk { tokens } => RequestListObserved { tokens: tokens }
+    }
   }
 }
 
@@ -137,27 +199,33 @@ fn devboot_serve_once(
   cargo_home: String,
   build_jobs: String,
 ) -> ServeOnceOutcome {
-  let pending = list_request_tokens(store_root: store_root, repo_root: repo_root)
-  if is_empty(pending) {
-    ServeOnceIdle
-  } else {
-    match pending.first() {
-      Absent => ServeOnceRefused { detail: "internal error: pending token list was non-empty but had no first element" }
-      Present { value: token } =>
-        ServeOnceHandled {
-          report: devboot_serve_request(
-            repo_root: store_root,
-            work_root: work_root,
-            home: ProducerHome {
-              cargo_bin: cargo_bin,
-              rustup_home: rustup_home,
-              cargo_home: cargo_home,
-              build_jobs: build_jobs,
-            },
-            token: token,
-          ),
+  match list_request_tokens(store_root: store_root, repo_root: repo_root) {
+    RequestListRefused { cause } => ServeOnceRefused { detail: cause }
+    RequestListObserved { tokens } =>
+      if is_empty(tokens) {
+        ServeOnceIdle
+      } else {
+        match tokens.first() {
+          Absent =>
+            ServeOnceRefused {
+              detail: "internal error: pending token list was non-empty but had no first element",
+            }
+          Present { value: token } =>
+            ServeOnceHandled {
+              report: devboot_serve_request(
+                repo_root: store_root,
+                work_root: work_root,
+                home: ProducerHome {
+                  cargo_bin: cargo_bin,
+                  rustup_home: rustup_home,
+                  cargo_home: cargo_home,
+                  build_jobs: build_jobs,
+                },
+                token: token,
+              ),
+            }
         }
-    }
+      }
   }
 }
 

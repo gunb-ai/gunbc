@@ -1029,7 +1029,13 @@ fn serve_existing_produced_digest(store_root: String, token: String) -> ServeRep
           detail: join(["could not read an existing produced digest: ", stderr], ""),
         },
       }
-    RequestEntryAbsent => none
+    RequestEntryAbsent =>
+      Present {
+        value: ServeRefused {
+          token: token,
+          detail: "the produced ref exists but its digest entry is absent",
+        },
+      }
     RequestEntryPresent { text: digest_hex } =>
       match sha256_hex_digest(hex: trim(s: digest_hex)) {
         Absent =>

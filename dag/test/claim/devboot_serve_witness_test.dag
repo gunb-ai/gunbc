@@ -1,0 +1,51 @@
+module test.claim.devboot_serve_witness
+
+import std.types { String, Bool }
+import gunbc.devboot.lease { request_ref_namespace }
+import gunbc.devboot.serve {
+  token_from_request_ref,
+  RequestRefTokenParsed,
+  RequestRefTokenMalformed,
+}
+
+data witness_subject_token: String = "fnv1a64-0b101ca4d5635461"
+
+data witness_request_ref: String = "refs/devboot/request/fnv1a64-0b101ca4d5635461"
+
+// THE BUG THAT SHIPPED: positional scanning at index 2 returned the literal 'request' instead of the subject token.
+test fn a_request_ref_parses_its_subject_token_not_the_namespace_segment() -> Bool {
+  match token_from_request_ref(ref_name: witness_request_ref) {
+    RequestRefTokenParsed { token } => token == witness_subject_token
+    RequestRefTokenMalformed { ref_name: _, cause: _ } => false
+  }
+}
+
+// THE NEGATIVE CONTROL. Index-2 scanning would answer 'request' for every ref under this namespace.
+test fn a_request_ref_does_not_parse_as_the_literal_request_segment() -> Bool {
+  match token_from_request_ref(ref_name: witness_request_ref) {
+    RequestRefTokenParsed { token } => token != "request"
+    RequestRefTokenMalformed { ref_name: _, cause: _ } => true
+  }
+}
+
+test fn a_nested_slash_in_the_token_suffix_refuses() -> Bool {
+  match token_from_request_ref(ref_name: "refs/devboot/request/nested/bad") {
+    RequestRefTokenParsed { token: _ } => false
+    RequestRefTokenMalformed { ref_name: _, cause } => string_contains(s: cause, pattern: "nested slash")
+  }
+}
+
+test fn an_empty_token_suffix_refuses() -> Bool {
+  match token_from_request_ref(ref_name: request_ref_namespace) {
+    RequestRefTokenParsed { token: _ } => false
+    RequestRefTokenMalformed { ref_name: _, cause } => string_contains(s: cause, pattern: "no token suffix")
+  }
+}
+
+test fn a_ref_outside_the_request_namespace_refuses() -> Bool {
+  match token_from_request_ref(ref_name: "refs/devboot/produced/fnv1a64-deadbeef") {
+    RequestRefTokenParsed { token: _ } => false
+    RequestRefTokenMalformed { ref_name: _, cause } =>
+      string_contains(s: cause, pattern: request_ref_namespace)
+  }
+}
