@@ -126,7 +126,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [
       DeclarationRef { module_path: "gunbc.witness_execution_class", decl_name: "native_blocked_cause_note", field: WholeDeclaration },
     ],
-    dissolution: HasTrigger { text: "the general witness→TargetModel producer lands (body-lowering keystone) and the enrolled-roster census is re-derived from executed emission attempts rather than the fixture-bound dispatch surface; the census numbers are superseded by that re-derivation and this receipt deletes with the NativeBlocked{GeneralWitnessTargetModelUnavailable} population it counts." },
+    dissolution: HasTrigger { text: "the general witness→TargetModel producer lands (body-lowering keystone) and the enrolled-roster census is re-derived from executed emission attempts rather than the fixture-bound dispatch surface; the census numbers are superseded by that re-derivation and this receipt deletes with the NativeBlocked\{GeneralWitnessTargetModelUnavailable\} population it counts." },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
