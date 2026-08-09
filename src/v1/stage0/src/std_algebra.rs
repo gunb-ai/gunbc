@@ -1688,7 +1688,7 @@ pub fn trim_free_function_authority_note() -> String {
 }
 
 pub fn trim(s: String) -> String {
-    v1_rt::from_code_point((1 / 0))
+    v1_rt::trim(s)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
