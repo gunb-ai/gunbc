@@ -280,3 +280,44 @@ test fn witness_program_scoping_preserves_the_runner_fleet_matrix() -> Bool {
   let cells = host_fleet_phase_matrix(enrollments: fleet_subsumption_enrollments).length()
   cells == fleet_subsumption_hosts.length() * host_standup_spine.length()
 }
+
+data witness_authored_observation_note: String = "THE SIBLING OF THE NOTE ABOVE, and the one the frontier does not yet catch. That note forbids evidence manufactured by the ACT OF LOOKING; this pair catches evidence manufactured by AUTHORING. host_phase_observation_coverage_count is designated by the frontier note as the number that measures the observation debt, and it counts a cell as covered exactly when host_phase_cell_has_live_producer holds -- which tests only that the observation is Present, never that anything executed to produce it. The single Present cell today, (srv3, prefix:os-install-actuated), derives its Converged verdict from srv3_post_install_lease_table_fixture, a data constant in gunbc.network_identity_subsumption whose one dynamic row carries the placeholder MAC 00:00:00:00:00:00. So the metric that measures the debt currently overstates coverage by its entire population. The frontier note states the rule this violates in its own words -- 'a cell earns a row here when an effect produces its verdict by execution' -- which is why the defect is worth an executing control rather than a correction in prose: the rule was already written down and was not enforceable, and no lens or witness would have reddened if a second host were wired in the same way. That is the exact move Spark collector-fact enrollment would have made for srv5 and srv6, which is how this was found."
+
+// THE DISCRIMINATING CONTROL. Both lease tables are authored data constants, and the verdict is a
+// pure function of WHICH ONE is wired into the frontier: the pre-install table (BMC row only)
+// refuses, the post-install fixture (BMC row plus a synthetic OS-up row) converges. Nothing about
+// the live tree participates in that difference. Note the disposition this whole module declares --
+// SubstrateInputsOnly, meaning it reads no live tree at all -- and it still computes a Converged
+// "live observation". An execution-backed observation could not be reproduced under that
+// disposition; an authored one is reproduced exactly.
+test fn witness_covered_cell_verdict_is_selected_by_authorship_alone() -> Bool {
+  let converged = deduce_os_install_actuation_verdict(
+    obs: srv3_post_install_lease_observation,
+    fleet_slot: operator_host_srv3,
+    stall: StallWithinBudget,
+  )
+  let refused = deduce_os_install_actuation_verdict(
+    obs: srv3_pre_install_lease_observation,
+    fleet_slot: operator_host_srv3,
+    stall: StallWithinBudget,
+  )
+  let converged_is_converged = match converged { Converged => true, std.upsert_decision.Absent => false, Drifted => false, Conflict => false, Inaccessible => false, UnknownRefused => false }
+  let refused_is_not_converged = match refused { Converged => false, std.upsert_decision.Absent => true, Drifted => true, Conflict => true, Inaccessible => true, UnknownRefused => true }
+  converged_is_converged && refused_is_not_converged
+}
+
+// The covered population stated as an IDENTITY JOIN rather than a count, so this does not become a
+// tree-copied snapshot: the set of cells the coverage metric counts is exactly the one cell whose
+// verdict the control above shows to be authored. If a genuinely executed producer is ever wired,
+// this reds and must be re-derived deliberately -- which is the point.
+test fn witness_every_covered_cell_today_is_the_authored_one() -> Bool {
+  let covered = filter(
+    host_fleet_phase_matrix(enrollments: fleet_subsumption_enrollments),
+    c => host_phase_cell_has_live_producer(c: c),
+  )
+  let authored = filter(
+    covered,
+    c => c.cell.host == operator_host_srv3 && c.cell.phase_label == "prefix:os-install-actuated",
+  )
+  covered.length() == authored.length() && authored.length() > 0
+}
