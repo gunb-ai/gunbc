@@ -741,3 +741,42 @@ The consequence worth keeping: a corpus-authored resolution defect and a loader
 deficit produce the *same* diagnostic text, so a raw count over a stripped tree
 cannot rank the work. The declaration-multiplicity join is what separates them,
 and it is cheap enough to re-run on every future strip attempt.
+
+### 15.5 The Class A head fix, measured rather than predicted
+
+Disambiguating `cell`/`row`/`note` predicts a 2,765-diagnostic drop — that is
+arithmetic over the classification, not a result. Per DESIGN §5 ("done means a
+real consumer green by execution"), the strip was re-run against the renamed
+tree: same binary, same brace-depth-aware pass, same 16,315 declarations across
+2,574 files.
+
+| tree | strip-attributable diagnostics |
+| --- | --- |
+| before the rename | 5,815 |
+| after the rename | 3,047 |
+
+**Removed: 2,768 (47.6%)** — three more than predicted, the difference being
+cascade diagnostics downstream of the three names. Zero `cell`, `row`, `note`,
+`instrument_cell`, `instrument_row` or `instrument_note` failures remain in the
+post-rename population, so the class is closed rather than merely reduced.
+
+What is left is 3,047, headed by exactly the two Class B names §14 pinned
+(`LiveTreeDisposition` 503, `SubstrateInputsOnly` 440). The remaining Class A
+tail is ~150 diagnostics across ~30 names and is **not** uniformly mechanical:
+roughly half are genuine §3 forks needing a consolidation onto one authority
+(`nid` has six identical declarations; `declaration_ref_eq`,
+`runner_slot_unit_name`, `accelerometer_permission_name`,
+`srv3_nbd_proxy_local_port` and `shape_from_catalog` are duplicated logic), and
+the other half are homonyms across unrelated domains (`NetworkInterface` in
+docker stats vs network topology, `ChangeClassification`, `ampere` as a vendor
+row vs a unit constructor) where which declaration keeps the name is a modeling
+decision, not a rename. Several touch load-bearing carriers for a combined 2.5%
+of the residue, so they are left for their authority owners rather than
+improvised here.
+
+One property of the tail worth stating, because it looks like a contradiction:
+consolidating a fork today requires **adding** an import to the module that
+loses its local copy — the very edge this lane exists to delete. That is only an
+ordering artifact: once the name is corpus-unique, the bare reference resolves
+without the import, so the added edge is removable by the same strip. It does
+mean fork consolidation should not be measured as import growth.
