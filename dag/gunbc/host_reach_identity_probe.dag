@@ -305,10 +305,10 @@ fn probe_host_reach_once(host: String, probed_at: String) -> HostReachIdentityPr
   }
 }
 
+// Enrollment rides with the run (CI job HOME is ephemeral — see the measured
+// correction at fleet_host_key_enroll_apply): materialize the committed registry into
+// THIS process's known_hosts first, and carry its readback in the receipt.
 func probe_fleet_reach_wet() -> ProcessExit {
-  // Enrollment rides with the run (CI job HOME is ephemeral — see the measured
-  // correction at fleet_host_key_enroll_apply): materialize the committed registry
-  // into THIS process's known_hosts first, and carry its readback in the receipt.
   let enroll_lines = fleet_host_key_enroll_apply()
   let now = clock_now_probed_at()
   let run = FleetReachProbeRun {
