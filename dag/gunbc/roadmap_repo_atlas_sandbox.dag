@@ -203,9 +203,9 @@ fn atlas_structure_plane(snapshot: RepoAtlasSnapshot) -> Fragment {
 fn atlas_change_plane(snapshot: RepoAtlasSnapshot, marks: List<AtlasChangeMark>) -> List<Fragment> {
   let changed_cells = filter(snapshot.cells, c => atlas_changed_occupants(cell: c, marks: marks).length() > 0)
   if changed_cells.length() == 0 { [] } else {
-    [ Element { tag: "g", attributes: [ sattr(name: "class", value: "atlas-plane atlas-plane-changes") ],
-        children: map(changed_cells, c =>
-          atlas_change_dot(cell: c, changed: atlas_changed_occupants(cell: c, marks: marks))) } ]
+    [ el_class("g", "atlas-plane atlas-plane-changes",
+        map(changed_cells, c =>
+          atlas_change_dot(cell: c, changed: atlas_changed_occupants(cell: c, marks: marks)))) ]
   }
 }
 
