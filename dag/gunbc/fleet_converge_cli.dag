@@ -1,5 +1,7 @@
 module gunbc.fleet_converge_cli
 
+import extdeps.linux.procfs { ProcSysKernelHostname, procfs_path_literal }
+
 
 data gunbc_converge_cli_stage0_receiver_disposition: Disposition = Terminal {
   reason: "stage0's `gunbc converge --host <h>` argv dispatch (src/v1/stage0/src/cli_run.rs::handle_converge) is the CLI transport handler for this .dag interface (DESIGN §3 transport-is-a-handler): argv parse -> resolve_entry_graph_shared -> run_in_context_with_args(converge_cli_output) -> stdout/exit-code projection, nothing else. All interpretation, the byte-locked receipt grammar, and typed refusal causes are modeled here (gunbc.fleet_converge_cli) and in gunbc.host_converge/gunbc.fleet_converge_apply; the Rust side carries no converge logic and is not scaffold pending dissolution."
@@ -287,11 +289,32 @@ fn converge_cli_verify_output(host: String) -> ConvergeCliOutput {
   converge_cli_output_with_verify(host: host, verify_only: true)
 }
 
-fn converge_cli_output_with_verify(host: String, verify_only: Bool) -> ConvergeCliOutput {
-  let r = if verify_only {
-    converge_cli_verify_run(host: host)
+// --host self (CONVERGE-0 loop leg): the per-host timer unit converges SELF, so the
+// literal "self" resolves to the machine's own kernel-reported short hostname before
+// routing — the ONE observation a host can always make about itself, read at the cited
+// procfs authority, never an env var or a config file a deploy could skew. Any other
+// value routes unchanged (the operator/CI form). An unresolvable read falls through as
+// the literal, landing in UnknownHost — a typed refusal, never a fabricated identity.
+fn converge_cli_resolve_self(host: String) -> String {
+  if host == "self" {
+    let raw = filesystem_read(path: procfs_path_literal(p: ProcSysKernelHostname) as String).content
+    let line = raw.trim()
+    if line == "" {
+      host
+    } else {
+      line
+    }
   } else {
-    converge_cli_run(host: host)
+    host
+  }
+}
+
+fn converge_cli_output_with_verify(host: String, verify_only: Bool) -> ConvergeCliOutput {
+  let resolved = converge_cli_resolve_self(host: host)
+  let r = if verify_only {
+    converge_cli_verify_run(host: resolved)
+  } else {
+    converge_cli_run(host: resolved)
   }
   ConvergeCliOutput {
     line: converge_cli_receipt_line(r: r),

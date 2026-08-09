@@ -46,6 +46,7 @@ import gunbc.heal_push_plan {
 }
 import gunbc.ci_failure_class { infra_retry_grep_alternation }
 import gunbc.ci_deploy_access { DeployAccess, ci_deploy_srv1_access }
+import gunbc.fleet_main_revision { fleet_desired_ref_name }
 import gunbc.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
 import gunbc.merge_admission_produce {
   ci_repo_root_shell,
@@ -510,6 +511,40 @@ fn gunbc_ci_floor_run(spec: CiSpec) -> String {
 // push events; the printed return value IS the typed receipt.
 data gunbc_ci_srv1_tasks_observation_entry: String = "dag/gunbc/srv1_tasks_preapply_observation.dag"
 data gunbc_ci_srv1_tasks_observation_function: String = "observe_srv1_tasks_preapply_wet"
+
+// Main→desired-ref advancement (CONVERGE-0 loop leg, operator directive 2026-08-09):
+// on a floor-green main push (needs: [ci] IS the floor-green admission — this job exists
+// only downstream of the required check succeeding in the same run), advance
+// refs/fleet/desired to the merged revision by CAS: --force-with-lease names the exact
+// observed prior (gunbc.fleet_main_revision admit_fleet_desired_advance's from side), so
+// a race with a concurrent advance refuses rather than overwriting; ref creation is the
+// from=none arm. Hosts follow the ref; no host is contacted here.
+data gunbc_ci_advance_fleet_desired_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "gunbc_ci_advance_fleet_desired_script",
+    field: WholeDeclaration
+  }
+}
+
+data gunbc_ci_advance_fleet_desired_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: gunbc_ci_advance_fleet_desired_script — concat-built foreign-executor (GitHub Actions run:) CAS ref advance (git ls-remote + push --force-with-lease onto gunbc.fleet_main_revision fleet_desired_ref_name); DISSOLVES WHEN the SCM ref-update realization lands as the typed git.Core CAS service op (membership-diff spine classify_change SCM-ref arm) invoked via host_effect_apply"
+
+fn gunbc_ci_advance_fleet_desired_script() -> String {
+  join([
+    "# ", gunbc_ci_advance_fleet_desired_shell_emit_dissolution_trigger, "\n",
+    "set -eu\n",
+    "DESIRED_REF=", fleet_desired_ref_name, "\n",
+    "CURRENT=$(git ls-remote origin \"$DESIRED_REF\" | cut -f1)\n",
+    "if [ -z \"$CURRENT\" ]; then\n",
+    "git push origin \"$GITHUB_SHA:$DESIRED_REF\"\n",
+    "echo \"[fleet-desired] created $DESIRED_REF -> $GITHUB_SHA\"\n",
+    "else\n",
+    "git push --force-with-lease=\"$DESIRED_REF:$CURRENT\" origin \"$GITHUB_SHA:$DESIRED_REF\"\n",
+    "echo \"[fleet-desired] advanced $DESIRED_REF: $CURRENT -> $GITHUB_SHA (CAS expected-prior held)\"\n",
+    "fi\n",
+  ], "")
+}
 
 data gunbc_ci_srv1_tasks_observation_shell_emit_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,

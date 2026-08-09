@@ -58,7 +58,10 @@ fn required_cell_standing(c: HostPhaseCellStatus) -> RequiredCellStanding {
 fn cell_standing_is_converged(s: RequiredCellStanding) -> Bool {
   match s {
     CellConverged { host: _, phase_label: _ } => true
-    _ => false
+    CellUnobserved { host: _, phase_label: _ } => false
+    CellUnreachable { host: _, phase_label: _ } => false
+    CellDrifted { host: _, phase_label: _ } => false
+    CellConflict { host: _, phase_label: _ } => false
   }
 }
 
@@ -90,7 +93,8 @@ fn host_knob_standing(host: HostIdentity, receipts: List<ConvergeCliReceipt>) ->
 fn host_knob_standing_is_converged(s: HostKnobStanding) -> Bool {
   match s {
     KnobConverged { host: _ } => true
-    _ => false
+    KnobNotConverged { host: _, reason: _ } => false
+    KnobUnobserved { host: _ } => false
   }
 }
 
