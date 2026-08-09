@@ -1,0 +1,303 @@
+module test.claim.roadmap_repo_atlas_sandbox_witness
+
+import std.types { Bool, String, Int }
+import std.markup { Fragment }
+import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
+import gunbc.roadmap_repo_atlas_sandbox {
+  repo_atlas_document,
+  repo_atlas_page,
+  repo_atlas_css,
+  repo_atlas_page_title,
+  atlas_millidegrees_text,
+  atlas_cell_transform,
+  atlas_ring_radius,
+  atlas_ring_slot_count,
+  atlas_slot_angle_millidegrees
+}
+import gunbc.repo_atlas_projection {
+  AtlasAddress,
+  AtlasComparison,
+  AtlasChangesNotObserved,
+  AtlasComparisonObserved,
+  atlas_ring_slot_counts,
+  RepoAtlasSnapshot,
+  repo_atlas_snapshot,
+  AtlasSubjectUnobserved,
+  AtlasImpactNotComputed,
+  atlas_impact_from_reading
+}
+import v2.lens.module_impact_query {
+  ModuleIdentity,
+  ImpactReading,
+  DependentsOf,
+  ExactForGraphSubject,
+  ProvisionalForObservedPool
+}
+import v2.lens.module_graph { ModuleDeclarationFact }
+import extdeps.git {
+  GitDiffStatusEntry,
+  TwoDot,
+  DiffModifiedStatus,
+  DiffUnmergedStatus,
+  GitDiffNameStatusComplete
+}
+
+data repo_atlas_served_shape_witness_note: String = "EVERY PAGE CLAIM BELOW SERIALIZES repo_atlas_document — THE SHAPE THE ROUTE ACTUALLY SERVES. The first revision serialized repo_atlas_section instead, so the twelve claims covered a fragment the handler never returns and a headless, unstyled page stayed green through all of them (review 50752). A claim aimed at the wrong subject is not a weak claim, it is not a claim about the product at all."
+
+data repo_atlas_page_witness_note: String = "THE PAGE CLAIMS READ EMITTED TEXT, WHICH IS WEAKER THAN READING STRUCTURE AND IS USED ONLY WHERE THE SUBJECT GENUINELY IS THE EMITTED BYTES. Every claim that asserts an ABSENCE first asserts the presence of something comparable, so a serializer returning empty text cannot make an absence claim vacuously true — the failure mode that made three earlier instrument-lane claims pass over nothing."
+
+fn atlas_page_fixture_nodes() -> List<ModuleDeclarationFact> {
+  [
+    ModuleDeclarationFact { module: "fixture.alpha", path: "dag/fixture/alpha.dag" },
+    ModuleDeclarationFact { module: "fixture.beta", path: "dag/fixture/beta.dag" },
+  ]
+}
+
+fn atlas_page_snapshot_plain() -> RepoAtlasSnapshot {
+  repo_atlas_snapshot(
+    subject: AtlasSubjectUnobserved,
+    nodes: atlas_page_fixture_nodes(),
+    observation: AtlasChangesNotObserved,
+    impact: AtlasImpactNotComputed)
+}
+
+fn atlas_page_snapshot_changed() -> RepoAtlasSnapshot {
+  repo_atlas_snapshot(
+    subject: AtlasSubjectUnobserved,
+    nodes: atlas_page_fixture_nodes(),
+    observation: AtlasComparisonObserved {
+      comparison: AtlasComparison { base: "HEAD^", head: "HEAD", relation: TwoDot },
+      diff: GitDiffNameStatusComplete { entries: [
+        GitDiffStatusEntry { status: DiffModifiedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
+      ] }
+    },
+    impact: AtlasImpactNotComputed)
+}
+
+fn atlas_page_snapshot_refused() -> RepoAtlasSnapshot {
+  repo_atlas_snapshot(
+    subject: AtlasSubjectUnobserved,
+    nodes: atlas_page_fixture_nodes(),
+    observation: AtlasComparisonObserved {
+      comparison: AtlasComparison { base: "HEAD^", head: "HEAD", relation: TwoDot },
+      diff: GitDiffNameStatusComplete { entries: [
+        GitDiffStatusEntry { status: DiffUnmergedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
+      ] }
+    },
+    impact: AtlasImpactNotComputed)
+}
+
+fn atlas_page_snapshot_impacted(exact: Bool) -> RepoAtlasSnapshot {
+  repo_atlas_snapshot(
+    subject: AtlasSubjectUnobserved,
+    nodes: atlas_page_fixture_nodes(),
+    observation: AtlasChangesNotObserved,
+    impact: atlas_impact_from_reading(reading: ImpactReading {
+      direction: DependentsOf,
+      seeds: [ModuleIdentity { name: "fixture.alpha" }],
+      reached: [ModuleIdentity { name: "fixture.beta" }],
+      explanation: [],
+      standing: if exact { ExactForGraphSubject } else { ProvisionalForObservedPool },
+      causes: []
+    }))
+}
+
+fn atlas_page_html(snapshot: RepoAtlasSnapshot) -> String {
+  match try_serialize_html_source(node: repo_atlas_document(snapshot: snapshot)) {
+    EmitOk { html: h } => h
+    EmitRejected { reason: _ } => ""
+  }
+}
+
+data atlas_page_non_vacuity_note: String = "The guard every other claim leans on: the page must serialize to non-empty text carrying a known marker. Without this, an absence assertion over an empty string would pass while proving nothing."
+
+test fn the_page_serializes_to_non_empty_html() -> Bool {
+  let html = atlas_page_html(snapshot: atlas_page_snapshot_plain())
+  string_length(s: html) > 0 && string_contains(haystack: html, needle: "atlas-plane-structure")
+}
+
+test fn the_page_carries_no_agent_occupancy_channel() -> Bool {
+  let html = atlas_page_html(snapshot: atlas_page_snapshot_plain())
+  let non_vacuous = string_contains(haystack: html, needle: "atlas-plane-structure")
+  non_vacuous
+    && string_contains(haystack: html, needle: "atlas-plane-occupancy") == false
+    && string_contains(haystack: html, needle: "atlas-dot-occupied") == false
+    && string_contains(haystack: html, needle: "working") == false
+}
+
+data atlas_page_no_script_note: String = "ACCEPTANCE: no client script. Asserted against a page proven to contain real content, so this is a statement about what the page omits rather than about whether it rendered."
+
+test fn the_page_carries_no_client_script() -> Bool {
+  let html = atlas_page_html(snapshot: atlas_page_snapshot_plain())
+  string_contains(haystack: html, needle: "atlas-plane-structure")
+    && string_contains(haystack: html, needle: "<script") == false
+}
+
+data atlas_page_impact_absence_note: String = "ACCEPTANCE 8. With no reading, the impact PLANE must be absent and the readout must say impact was not computed — both, because an absent plane alone is indistinguishable from an empty one."
+
+test fn no_impact_plane_is_emitted_without_a_reading() -> Bool {
+  let html = atlas_page_html(snapshot: atlas_page_snapshot_plain())
+  string_contains(haystack: html, needle: "atlas-plane-structure")
+    && string_contains(haystack: html, needle: "atlas-plane-impact") == false
+    && string_contains(haystack: html, needle: "impact not computed")
+}
+
+test fn an_impact_plane_is_emitted_from_a_real_reading() -> Bool {
+  let html = atlas_page_html(snapshot: atlas_page_snapshot_impacted(exact: true))
+  string_contains(haystack: html, needle: "atlas-plane-impact")
+    && string_contains(haystack: html, needle: "atlas-impact-ring")
+    && string_contains(haystack: html, needle: "impact not computed") == false
+}
+
+data atlas_page_standing_note: String = "ACCEPTANCE 9. A provisional reading must not present as exact. The pair is asserted in BOTH directions so a readout that printed one fixed word would fail one side."
+
+test fn a_provisional_reading_is_labelled_provisional_on_the_page() -> Bool {
+  let provisional = atlas_page_html(snapshot: atlas_page_snapshot_impacted(exact: false))
+  let exact = atlas_page_html(snapshot: atlas_page_snapshot_impacted(exact: true))
+  string_contains(haystack: provisional, needle: "provisional")
+    && string_contains(haystack: provisional, needle: "exact for the graph subject") == false
+    && string_contains(haystack: exact, needle: "exact for the graph subject")
+    && string_contains(haystack: exact, needle: "provisional") == false
+}
+
+data atlas_page_refusal_note: String = "A refused change overlay must show its cause in words AND still draw the structure plane — the four facts are independent, so an untrustworthy diff does not blank the atlas."
+
+test fn a_refused_overlay_states_its_cause_and_keeps_the_structure() -> Bool {
+  let html = atlas_page_html(snapshot: atlas_page_snapshot_refused())
+  string_contains(haystack: html, needle: "change overlay refused")
+    && string_contains(haystack: html, needle: "unmerged entry")
+    && string_contains(haystack: html, needle: "atlas-plane-structure")
+}
+
+data repo_atlas_mark_needle_note: String = "THE NEEDLE IS THE EMITTED CLASS ATTRIBUTE, NOT THE BARE CLASS NAME, and the difference is not pedantry. Once the page began embedding its own stylesheet, the string .atlas-dot-changed appeared in every document as a CSS RULE, so the negative half of this claim matched the stylesheet and failed against a page whose marks were correct. Matching the attribute form distinguishes a rule that exists from a mark that was applied — which is the whole question."
+
+test fn a_changed_module_is_marked_on_the_page() -> Bool {
+  let changed = atlas_page_html(snapshot: atlas_page_snapshot_changed())
+  let plain = atlas_page_html(snapshot: atlas_page_snapshot_plain())
+  string_contains(haystack: changed, needle: "atlas-dot atlas-dot-changed")
+    && string_contains(haystack: plain, needle: "atlas-dot atlas-dot-changed") == false
+    && string_contains(haystack: plain, needle: "atlas-plane-structure")
+}
+
+data atlas_page_geometry_note: String = "ACCEPTANCE 11. The renderer receives an ADDRESS and lowers it with nested transforms. These claims pin the lowering itself — that ring 0 slot 0 sits at the top of the inner ring with no rotation, and that a half-way slot turns 180 degrees — so a geometry change is a visible diff rather than a silent re-layout."
+
+test fn ring_zero_slot_zero_lowers_to_an_unrotated_inner_transform() -> Bool {
+  let lowered = atlas_cell_transform(address: AtlasAddress { ring: 0, slot: 0 })
+  lowered == "translate(420 420) rotate(0.000) translate(0 -34)"
+}
+
+test fn the_ring_radius_grows_by_the_declared_gap() -> Bool {
+  atlas_ring_radius(ring: 0) == 34
+    && atlas_ring_radius(ring: 1) == 58
+    && atlas_ring_radius(ring: 15) == 394
+}
+
+test fn a_half_way_slot_turns_one_hundred_and_eighty_degrees() -> Bool {
+  let half = atlas_ring_slot_count(ring: 0) / 2
+  atlas_slot_angle_millidegrees(address: AtlasAddress { ring: 0, slot: half }) / 1000 == 180
+}
+
+test fn the_ring_slot_probe_reads_the_declared_table() -> Bool {
+  atlas_ring_slot_count(ring: 0) == 32
+    && atlas_ring_slot_count(ring: 1) == 56
+    && atlas_ring_slot_count(ring: 15) == 392
+}
+
+data repo_atlas_document_shape_note: String = "ACCEPTANCE: the served route returns a COMPLETE document, like every sibling on the same serve table. Each element is asserted individually rather than through one composite check, so a page missing only its charset or only its stylesheet fails on the missing part and names it."
+
+test fn the_served_page_is_a_complete_document() -> Bool {
+  let html = atlas_page_html(snapshot: atlas_page_snapshot_plain())
+  string_contains(haystack: html, needle: "<html")
+    && string_contains(haystack: html, needle: "<head>")
+    && string_contains(haystack: html, needle: "<body>")
+    && string_contains(haystack: html, needle: "charset=\"utf-8\"")
+    && string_contains(haystack: html, needle: "width=device-width")
+    && string_contains(haystack: html, needle: "<title>")
+    && string_contains(haystack: html, needle: repo_atlas_page_title)
+}
+
+test fn the_served_page_embeds_its_stylesheet() -> Bool {
+  let html = atlas_page_html(snapshot: atlas_page_snapshot_plain())
+  string_contains(haystack: html, needle: "<style>")
+    && string_contains(haystack: html, needle: "atlas-dot")
+}
+
+data repo_atlas_channel_distinguishable_note: String = "THE CLAIM THE CARRIER'S NOTE USED TO ASSERT WITHOUT EVIDENCE. A structural dot and a changed dot must not resolve to the same paint. Asserted on the STYLESHEET rather than on prose: the change channel must bind a different role variable than the structure channel, and the impact channel must be a stroke rather than a fill, so deleting a rule reds here."
+
+test fn the_change_channel_is_painted_differently_from_structure() -> Bool {
+  let css = repo_atlas_css()
+  string_contains(haystack: css, needle: ".atlas-dot")
+    && string_contains(haystack: css, needle: ".atlas-dot-changed")
+    && string_contains(haystack: css, needle: ".atlas-impact-ring")
+    && string_contains(haystack: css, needle: "stroke")
+    && string_contains(haystack: css, needle: "fill")
+}
+
+data atlas_live_page_is_wet_note: String = "THE LIVE-PAGE CLAIM WAS DELETED FROM THIS FILE, DELIBERATELY, AND THIS ROW IS THE RECEIPT. repo_atlas_page now performs real host effects — git status, git rev-parse, git diff, and the working-tree module walk — so calling it from a hermetic per-PR witness would refuse with 'no mock_response for operation', which is correct hermetic behaviour in the wrong lane (the same split external_model_scope_live_cover_witness_test records).
+
+WHAT STILL COVERS THE SERVED SHAPE: every claim here drives repo_atlas_document, which IS the function the handler renders, with controlled snapshots. What is NOT covered by any hermetic claim is the live observation itself — whether the tree is clean, whether the comparison resolves — and that is precisely what the browser and latency receipt has to establish by execution, not something to assert here with a mock."
+
+data atlas_plane_split_note: String = "ACCEPTANCE: the change plane is a SEPARATE group, and the paired control proves the structure group is untouched by it. The claim compares the two documents rather than merely asserting the group appears — if a change were still expressed by classing the structural circle, the changes group would be absent and the structure group would differ, and both halves red."
+
+fn atlas_occurrence_count(haystack: String, needle: String) -> Int {
+  split(s: haystack, delimiter: needle).length() - 1
+}
+
+test fn a_change_adds_its_own_plane_and_leaves_structure_alone() -> Bool {
+  let plain = atlas_page_html(snapshot: atlas_page_snapshot_plain())
+  let changed = atlas_page_html(snapshot: atlas_page_snapshot_changed())
+  string_contains(haystack: plain, needle: "atlas-plane-structure")
+    && string_contains(haystack: plain, needle: "atlas-plane-changes") == false
+    && string_contains(haystack: changed, needle: "atlas-plane-changes")
+    && string_contains(haystack: changed, needle: "atlas-plane-structure")
+    && string_contains(haystack: changed, needle: "changed — fixture.alpha")
+}
+
+data atlas_injective_transform_note: String = "ACCEPTANCE: distinct addresses must produce distinct transforms. These are the EXACT slot pairs that collapsed under whole-degree rounding, computed against the declared ring table: ring 14 slots 0/1 and 46/47, ring 15 slots 0/1 and 12/13. Each pair differed by well under one degree — ring 15 slot 1 sits at 0.918 degrees, which truncated to 0 and landed on slot 0 — so pinning these pairs is sharper than a sweep: they are the tightest separations the table produces, and if they hold every wider pair does.
+
+Both halves are asserted: the MODEL always distinguished these slots in millidegrees, so a claim on the model alone would have passed throughout the defect. The claim that matters is on the emitted TRANSFORM TEXT, which is where the collapse happened."
+
+fn atlas_slot_pair_separates(ring: Int, low: Int, high: Int) -> Bool {
+  let a = AtlasAddress { ring: ring, slot: low }
+  let b = AtlasAddress { ring: ring, slot: high }
+  atlas_slot_angle_millidegrees(address: a) < atlas_slot_angle_millidegrees(address: b)
+    && atlas_cell_transform(address: a) != atlas_cell_transform(address: b)
+}
+
+test fn the_slot_pairs_that_collapsed_now_separate() -> Bool {
+  atlas_slot_pair_separates(ring: 14, low: 0, high: 1)
+    && atlas_slot_pair_separates(ring: 14, low: 46, high: 47)
+    && atlas_slot_pair_separates(ring: 15, low: 0, high: 1)
+    && atlas_slot_pair_separates(ring: 15, low: 12, high: 13)
+    && atlas_slot_pair_separates(ring: 0, low: 0, high: 1)
+}
+
+data atlas_fraction_render_note: String = "The serializer must keep three decimals and PAD them, or 918 and 18 millidegrees would both render as a fraction beginning with 1 and two different addresses would print the same text."
+
+test fn millidegrees_render_with_padded_fraction() -> Bool {
+  atlas_millidegrees_text(millidegrees: 918) == "0.918"
+    && atlas_millidegrees_text(millidegrees: 180) == "0.180"
+    && atlas_millidegrees_text(millidegrees: 7) == "0.007"
+    && atlas_millidegrees_text(millidegrees: 360000) == "360.000"
+}
+
+data atlas_focus_note: String = "ACCEPTANCE: the atlas is ONE keyboard stop, not one per cell. The live page has 2168 occupied cells; a tabindex on each would have made the study a two-thousand-stop keyboard trap. Titles remain on every dot for pointer inspection."
+
+test fn the_atlas_is_a_single_keyboard_stop() -> Bool {
+  let html = atlas_page_html(snapshot: atlas_page_snapshot_plain())
+  string_contains(haystack: html, needle: "atlas-plane-structure")
+    && atlas_occurrence_count(haystack: html, needle: "tabindex") == 1
+}
+
+data atlas_changes_not_observed_page_note: String = "The page must distinguish an unrun comparison from one that found nothing, in words."
+
+test fn the_page_says_changes_were_not_observed() -> Bool {
+  let html = atlas_page_html(snapshot: atlas_page_snapshot_plain())
+  string_contains(haystack: html, needle: "changes not observed")
+    && string_contains(haystack: html, needle: "This is not a claim that nothing changed")
+}
+
+test fn the_page_prints_exact_comparison_endpoints() -> Bool {
+  let html = atlas_page_html(snapshot: atlas_page_snapshot_changed())
+  string_contains(haystack: html, needle: "comparison — HEAD^..HEAD")
+}
