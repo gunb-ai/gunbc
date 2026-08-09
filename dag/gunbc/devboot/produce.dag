@@ -196,24 +196,31 @@ fn devboot_materialize_source(repo_root: String, work_root: String, token: Strin
   )
   let loaded = devboot_witness_run(
     site: retained_devboot_git_read_tree,
-    workdir: repo_root,
+    workdir: work_root,
     bin_path: "env",
-    args: [concat("GIT_INDEX_FILE=", checkout_index), "git", "read-tree", tree_hex],
+    args: [
+      concat("GIT_DIR=", repo_root),
+      concat("GIT_INDEX_FILE=", checkout_index),
+      "git",
+      "read-tree",
+      tree_hex,
+    ],
   )
   if !loaded.success {
     SourceMaterializationRefused { detail: snapshot_step_refusal(step: "read-tree <snapshot>", exit_code: loaded.exit_code, stderr: loaded.stderr) }
   } else {
     let checked_out = devboot_witness_run(
     site: retained_devboot_git_checkout_index,
-    workdir: repo_root,
+    workdir: work_root,
       bin_path: "env",
       args: [
+        concat("GIT_DIR=", repo_root),
         concat("GIT_INDEX_FILE=", checkout_index),
+        concat("GIT_WORK_TREE=", source_dir),
         "git",
         "checkout-index",
         "-a",
         "-f",
-        concat("--prefix=", join([source_dir, "/"], "")),
       ],
   )
     if !checked_out.success {

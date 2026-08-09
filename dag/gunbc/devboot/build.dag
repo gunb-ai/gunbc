@@ -160,7 +160,9 @@ fn read_text_file(repo_root: String, path: String) -> TextFileReadOutcome {
   if read.success {
     TextFilePresent { text: trim(s: read.content) }
   } else {
-    if read.error == "" {
+    if read.error == ""
+      || string_contains(s: read.error, pattern: "No such file or directory")
+      || string_contains(s: read.error, pattern: "not found") {
       TextFileAbsent
     } else {
       TextFileReadFailed { error: read.error }
