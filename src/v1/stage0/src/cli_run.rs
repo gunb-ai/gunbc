@@ -7214,6 +7214,12 @@ fn bare_reference_pull_paths_for_source(
     let cand_started = std::time::Instant::now();
     let candidates = bare_identifier_candidates(&sf.content);
     resolve_stage_slot_add(|st| st.edge_index_bare_candidates += cand_started.elapsed().as_nanos());
+    // The name-universe fold: dotted-chain prefixes, builtin service keys, and the
+    // unbound-name join that produces the roster the resolve loop below walks. Split
+    // out because everything under the bare half that is neither the census nor the
+    // candidate scan was landing in an unattributed remainder, and an unattributed
+    // remainder large enough to be the second-largest term is a seam nobody has looked at.
+    let universe_started = std::time::Instant::now();
     let mut service_prefixes: BTreeSet<String> = candidates
         .dotted_chains
         .iter()
@@ -7250,8 +7256,12 @@ fn bare_reference_pull_paths_for_source(
         .chain(dotted_head_refs.into_iter().map(|n| (n, false)))
         .chain(service_prefixes.into_iter().map(|n| (n, true)))
         .collect();
+    resolve_stage_slot_add(|st| {
+        st.edge_index_bare_name_universe += universe_started.elapsed().as_nanos();
+    });
     let mut pulled: Vec<String> = Vec::new();
     let mut pulled_set: HashSet<String> = HashSet::new();
+    let resolve_loop_started = std::time::Instant::now();
     for (name, service_head) in all_names {
         let in_call_position = candidates.call_position.contains(&name);
         let pullable = |binding: &Rc<crate::v1_compiler_infer_env::TypeBinding>| {
@@ -7352,6 +7362,9 @@ fn bare_reference_pull_paths_for_source(
             }
         }
     }
+    resolve_stage_slot_add(|st| {
+        st.edge_index_bare_resolve_loop += resolve_loop_started.elapsed().as_nanos();
+    });
     Ok(pulled)
 }
 
@@ -11623,6 +11636,8 @@ pub struct ResolveStageNanos {
     pub edge_index_tree_census_miss_nanos: u128,
     /// `bare_identifier_candidates` — the per-file identifier scan.
     pub edge_index_bare_candidates: u128,
+    pub edge_index_bare_name_universe: u128,
+    pub edge_index_bare_resolve_loop: u128,
     /// `Rc::new` + hand-off of the finished index.
     pub edge_index_publish: u128,
     /// `both_closure_edge_index` (memoized on the index; nonzero here is the first build).
@@ -11679,6 +11694,8 @@ impl ResolveStageNanos {
         self.edge_index_tree_census_misses += other.edge_index_tree_census_misses;
         self.edge_index_tree_census_miss_nanos += other.edge_index_tree_census_miss_nanos;
         self.edge_index_bare_candidates += other.edge_index_bare_candidates;
+        self.edge_index_bare_name_universe += other.edge_index_bare_name_universe;
+        self.edge_index_bare_resolve_loop += other.edge_index_bare_resolve_loop;
         self.edge_index_publish += other.edge_index_publish;
         self.load_pool_reference_closure += other.load_pool_reference_closure;
         self.load_fixpoint_rounds += other.load_fixpoint_rounds;
@@ -11792,6 +11809,8 @@ thread_local! {
             edge_index_tree_census_misses: 0,
             edge_index_tree_census_miss_nanos: 0,
             edge_index_bare_candidates: 0,
+            edge_index_bare_name_universe: 0,
+            edge_index_bare_resolve_loop: 0,
             edge_index_publish: 0,
             load_bare_edge_index: 0,
             load_bare_path_lookup: 0,
@@ -12264,6 +12283,16 @@ pub fn exclusive_cost_partition_from(
         InclusiveCostRow {
             name: "edge_index_bare_candidates",
             nanos: st.edge_index_bare_candidates,
+            contained_in: "edge_index_bare_half",
+        },
+        InclusiveCostRow {
+            name: "edge_index_bare_name_universe",
+            nanos: st.edge_index_bare_name_universe,
+            contained_in: "edge_index_bare_half",
+        },
+        InclusiveCostRow {
+            name: "edge_index_bare_resolve_loop",
+            nanos: st.edge_index_bare_resolve_loop,
             contained_in: "edge_index_bare_half",
         },
         InclusiveCostRow {
