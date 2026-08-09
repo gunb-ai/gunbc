@@ -8049,50 +8049,18 @@ pub fn build_live_read_selection_manifest(
     // `Cons` chain reports as a foreign shape. An earlier revision of this call sat outside the
     // context block and produced exactly that: a refusal whose message said "neither
     // representation" about a value that was one of them.
-    let row_values = v1_interpreter::with_active_context(&ctx, || {
-        decode_manifest_row_collection(Some(&ctx), &produced)
+    // THE WHOLE DECODE runs inside the active context, not just its first step.
+    //
+    // `free_monoid_to_vec` resolves `Empty`/`Cons`/`head`/`tail` against `active_ctx()` and
+    // answers None when there is none -- so outside this scope it cannot distinguish a cons chain
+    // from a foreign shape, and reports the latter. The outer row collection hid that for three
+    // rounds because it arrives as a native `Value::List`, which returns before the symbols are
+    // ever consulted; the nested carrier lists are real cons chains and are not so forgiving. The
+    // context is a property of DECODING a produced value, not of one call within it, so it is
+    // scoped to the decode.
+    let rows = v1_interpreter::with_active_context(&ctx, || {
+        decode_live_read_manifest_rows(&ctx, &produced)
     })?;
-
-    let mut rows = std::collections::HashMap::new();
-    for row in row_values.iter() {
-        let v1_interpreter::Value::Record { fields, .. } = row else {
-            return Err(format!(
-                "LIVE-READ MANIFEST REFUSAL cause=RowShapeUnexpected got={} — expected a \
-                 LiveReadSelectionManifestRow record.",
-                row.type_label_public()
-            ));
-        };
-        let key = match ctx.field(fields, "key") {
-            Some(v1_interpreter::Value::Str(k)) => k.clone(),
-            other => {
-                return Err(format!(
-                    "LIVE-READ MANIFEST REFUSAL cause=RowKeyUnexpected got={other:?} — a row \
-                     without a String key cannot be attributed to a declaration."
-                ))
-            }
-        };
-        let projection = match ctx.field(fields, "projection") {
-            Some(p) => p.clone(),
-            None => {
-                return Err(format!(
-                    "LIVE-READ MANIFEST REFUSAL cause=RowProjectionAbsent key={key} — a row \
-                     without a projection carries no classification."
-                ))
-            }
-        };
-        let decoded = decode_live_read_selection_row(&ctx, &projection)?;
-        // A duplicate key REFUSES rather than overwriting. `HashMap::insert` returns the old value
-        // and drops it, so two requests colliding on one `path::fn` key would silently keep the
-        // last — and the two rows are exactly the case where they might disagree. Losing one
-        // quietly is how a RuntimeRead gets replaced by a LocalRead that licenses a skip.
-        if let Some(prior) = rows.insert(key.clone(), decoded) {
-            return Err(format!(
-                "LIVE-READ MANIFEST REFUSAL cause=DuplicateManifestKey key={key} — two requests \
-                 produced the same declaration key. Keeping either row would discard a \
-                 classification without saying which; prior={prior:?}"
-            ));
-        }
-    }
 
     // STEP-6 RECEIPT, emitted unconditionally rather than behind a verbose flag.
     //
@@ -8664,6 +8632,64 @@ pub(crate) fn live_read_context_for_declarations(
     LiveReadSelectionContext::build(index, &roster)
 }
 
+/// Decode the produced manifest into rows, keyed by declaration.
+///
+/// Separated from the producer call so the ENTIRE walk runs under one active context (see the
+/// call site): every nested list in a projection is a cons chain whose decode needs the
+/// interpreter's symbols, and the walk is several coproducts deep.
+fn decode_live_read_manifest_rows(
+    ctx: &v1_interpreter::InterpContext,
+    produced: &v1_interpreter::Value,
+) -> Result<std::collections::HashMap<String, LiveReadSelectionRow>, String> {
+    let row_values = decode_manifest_row_collection(Some(ctx), produced)?;
+    let mut rows = std::collections::HashMap::new();
+    for row in row_values.iter() {
+        let v1_interpreter::Value::Record { fields, .. } = row else {
+            return Err(format!(
+                "LIVE-READ MANIFEST REFUSAL cause=RowShapeUnexpected got={} — expected a \
+                 LiveReadSelectionManifestRow record.",
+                row.type_label_public()
+            ));
+        };
+        let key = match ctx.field(fields, "key") {
+            Some(v1_interpreter::Value::Str(k)) => k.clone(),
+            other => {
+                return Err(format!(
+                    "LIVE-READ MANIFEST REFUSAL cause=RowKeyUnexpected got={other:?} — a row \
+                     without a String key cannot be attributed to a declaration."
+                ))
+            }
+        };
+        let projection = match ctx.field(fields, "projection") {
+            Some(p) => p.clone(),
+            None => {
+                return Err(format!(
+                    "LIVE-READ MANIFEST REFUSAL cause=RowProjectionAbsent key={key} — a row \
+                     without a projection carries no classification."
+                ))
+            }
+        };
+        // The nested decoders refuse with a cause but cannot name a subject -- they see one
+        // projection, not which declaration produced it. An unlocated refusal is only half of
+        // what §5 asks for: it stops the line, but analysis cannot begin without re-deriving the
+        // culprit by hand. The key is in scope here, so attribution belongs here.
+        let decoded = decode_live_read_selection_row(&ctx, &projection)
+            .map_err(|cause| format!("{cause} subject_key={key}"))?;
+        // A duplicate key REFUSES rather than overwriting. `HashMap::insert` returns the old value
+        // and drops it, so two requests colliding on one `path::fn` key would silently keep the
+        // last — and the two rows are exactly the case where they might disagree. Losing one
+        // quietly is how a RuntimeRead gets replaced by a LocalRead that licenses a skip.
+        if let Some(prior) = rows.insert(key.clone(), decoded) {
+            return Err(format!(
+                "LIVE-READ MANIFEST REFUSAL cause=DuplicateManifestKey key={key} — two requests \
+                 produced the same declaration key. Keeping either row would discard a \
+                 classification without saying which; prior={prior:?}"
+            ));
+        }
+    }
+    Ok(rows)
+}
+
 /// Decode one `v2.std.live_read.LiveReadSelectionProjection` value.
 ///
 /// `LiveReadSelectionRefused` decodes to `Refused`, NOT to a decode error: it is a legitimate,
@@ -8753,15 +8779,51 @@ fn decode_live_read_classification(
                 .to_string(),
         );
     }
-    let Some(v1_interpreter::Value::List(items)) = ctx.field(fields, "carriers") else {
-        return Err(
-            "LIVE-READ MANIFEST REFUSAL cause=CarrierListAbsent — a RuntimeRead whose carrier list \
-             is missing or not a list. An empty carrier set intersects no diff, so accepting this \
-             shape would license exactly the skip the runtime read forbids."
-                .to_string(),
-        );
+    // Decoded through the interpreter's FreeMonoid authority rather than by matching
+    // `Value::List`, because `List<T>` has TWO live representations and this field reaches both.
+    // The lens folds its carriers with `list_snoc_item` onto an empty literal, so a decl with no
+    // carrier arrives as the native empty list while one with carriers arrives as a cons chain --
+    // and a bare `Value::List` match therefore refused exactly the RuntimeReads that had
+    // something to say. The same boundary, one level up, is what
+    // `decode_manifest_row_collection` already exists to handle; this is that fix applied where
+    // the second representation actually surfaced.
+    // ABSENT and WRONG-SHAPE are separate refusals. They were one arm for three rounds, and the
+    // conflation is what made each round guess: a missing field means the producer emits this
+    // variant under a different field name, a malformed one means the representation is not the
+    // one the decoder walks, and the repairs share nothing. Neither arm may report the expected
+    // shape without naming the received one -- an expectation is not an observation.
+    let Some(carriers_field) = ctx.field(fields, "carriers") else {
+        return Err(format!(
+            "LIVE-READ MANIFEST REFUSAL cause=CarrierFieldAbsent — a RuntimeRead with no \
+             `carriers` field at all. Fields present: {:?}. An empty carrier set intersects no \
+             diff, so inferring one here would license exactly the skip the runtime read forbids.",
+            fields
+                .iter()
+                .map(|(n, _)| ctx.resolve(*n))
+                .collect::<Vec<_>>()
+        ));
     };
-    let carriers = items
+    let carrier_values = v1_interpreter::free_monoid_to_vec(&carriers_field).ok_or_else(|| {
+        let named = variant_parts(&carriers_field)
+            .map(|(variant_name, inner)| {
+                format!(
+                    "Variant::{}{:?}",
+                    ctx.resolve(variant_name),
+                    inner
+                        .iter()
+                        .map(|(n, _)| ctx.resolve(*n))
+                        .collect::<Vec<_>>()
+                )
+            })
+            .unwrap_or_else(|| carriers_field.type_label_public().to_string());
+        format!(
+            "LIVE-READ MANIFEST REFUSAL cause=CarrierListShapeUnexpected got={named} — a \
+             RuntimeRead whose carriers are neither the native list nor a modeled Empty/Cons \
+             chain. An empty carrier set intersects no diff, so accepting this shape would \
+             license exactly the skip the runtime read forbids."
+        )
+    })?;
+    let carriers = carrier_values
         .iter()
         .map(|item| decode_live_read_carrier(ctx, item))
         .collect::<Result<Vec<LiveReadCarrier>, String>>()?;
