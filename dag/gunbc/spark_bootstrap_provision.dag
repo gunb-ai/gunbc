@@ -1,0 +1,130 @@
+module gunbc.spark_bootstrap_provision
+
+// THE PRODUCER for the Spark bootstrap secrets. gunbc.spark_bootstrap_credential names two
+// SecretRefs and records that nothing creates them; this module is the thing that creates them,
+// so that the refs become materialized by an APPLY rather than by a human opening a console and
+// pasting a password into a form. That distinction is the whole point: a hand-placed secret has
+// no receipt, no idempotence, and no readback, and the srv4 subsumption session is the record of
+// what that costs.
+//
+// Shape is taken verbatim from gunbc.assimilate.bmc_bootstrap_provision, which is proven live
+// against this same project. Only the resources differ. What deliberately does NOT match is token
+// acquisition: the BMC pattern calls shell.GCloud.AuthPrintAccessToken() directly and carries a
+// marked fork for it, so copying that call would have minted a THIRD authority for one concept.
+// This pattern takes the resolved token as a parameter, which is what
+// gunbc.auth.access_token_source.ensure_access_token already returns.
+
+data spark_provision_authority_note: String = "Creating a secret and writing its first version are two different operations with two different idempotence characters, and this module keeps them apart rather than behind one convenient verb. CreateSecret converges: a second run answers 409 on a secret that already exists and the desired state is reached either way. AddVersion does NOT converge — every call mints a new version, so a retry sprawls versions rather than settling — which is exactly the property gunbc.auth.secret_rotation.secret_rotation names when it says AddVersion is not idempotent. So this pattern is safe to re-run for the CONTAINER and is not safe to re-run blindly for the MATERIAL, and a caller that wants convergence on the material must consult the store first. Stating that here because a reader who sees the BMC pattern's 'idempotent; safe to re-run' line in the runbook will otherwise carry that promise across to this one, where only half of it holds."
+
+data spark_hotspot_secret_id: NonEmptyStr = "spark-hotspot-password"
+data spark_administrator_secret_id: NonEmptyStr = "spark-administrator-password"
+
+// The two secrets the bootstrap actually needs, as the names the store will carry. They are
+// separate secrets rather than two versions of one because they are two different credentials with
+// different lifetimes: the hotspot password is a factory-network fact that dies when the Spark
+// joins the fleet network, and the administrator password outlives it.
+data spark_bootstrap_secret_ids: List<NonEmptyStr> = [
+  spark_hotspot_secret_id,
+  spark_administrator_secret_id
+]
+
+// Least privilege, and the same two roles the BMC secret carries: read the version, and add a
+// version. Neither role can delete a secret or read any OTHER secret in the project, because the
+// binding is set on the secret RESOURCE rather than on the project.
+fn spark_secret_iam_bindings() -> List<GcpBinding> {
+  [
+    GcpBinding {
+      role: role_secretmanager_secret_accessor,
+      members: [bmc_assimilator_sa_member()]
+    },
+    GcpBinding {
+      role: role_secretmanager_secret_version_adder,
+      members: [bmc_assimilator_sa_member()]
+    }
+  ]
+}
+
+// Create the CONTAINER only. No payload crosses this pattern, which is why it is separable from
+// the material write below: the container is the part that is safe to converge, and running it
+// needs no credential material at all — only the admin token. An operator can therefore apply this
+// half before the Spark passwords exist.
+pattern spark_secret_containers_provision(access_token: Secret) -> {
+  hotspot_name: String,
+  administrator_name: String,
+  hotspot_binding_etag: String,
+  administrator_binding_etag: String
+}
+  uses net: std.resources.Network
+{
+  node hotspot: gcp.SecretManager.CreateSecret(
+    access_token: access_token,
+    project_id: bmc_secrets_project_id,
+    secret_id: spark_hotspot_secret_id
+  )
+
+  node administrator: gcp.SecretManager.CreateSecret(
+    access_token: access_token,
+    project_id: bmc_secrets_project_id,
+    secret_id: spark_administrator_secret_id
+  )
+
+  node hotspot_bind: gcp.SecretManager.SetSecretIamPolicy(
+    access_token: access_token,
+    project_id: bmc_secrets_project_id,
+    secret: spark_hotspot_secret_id,
+    bindings: spark_secret_iam_bindings()
+  )
+
+  node administrator_bind: gcp.SecretManager.SetSecretIamPolicy(
+    access_token: access_token,
+    project_id: bmc_secrets_project_id,
+    secret: spark_administrator_secret_id,
+    bindings: spark_secret_iam_bindings()
+  )
+
+  return {
+    hotspot_name: hotspot.name,
+    administrator_name: administrator.name,
+    hotspot_binding_etag: hotspot_bind.ok_etag,
+    administrator_binding_etag: administrator_bind.ok_etag
+  }
+}
+
+// Write the MATERIAL, and read back the exact version that was written. The payloads are
+// PARAMETERS and never data rows: a credential authored into this file would be a credential
+// published to everyone who can read the repository, which is the one outcome the whole secret
+// boundary exists to prevent.
+//
+// The readback names the version it verifies rather than reading `latest`. That is not caution
+// about the store — it is that `latest` is a moving alias, so a success proved through it is
+// compatible with some other writer having landed a different version in between, and the receipt
+// would then attest to a payload this run did not write.
+pattern spark_secret_material_write(
+  access_token: Secret,
+  hotspot_name: String,
+  administrator_name: String,
+  hotspot_payload_b64: String,
+  administrator_payload_b64: String
+) -> {
+  hotspot_version: SmResolvedVersionIdentity,
+  administrator_version: SmResolvedVersionIdentity
+}
+  uses net: std.resources.Network
+{
+  node hotspot_v: gcp.SecretManager.AddVersion(
+    access_token: access_token,
+    secret_name: hotspot_name,
+    payload_b64: hotspot_payload_b64
+  )
+
+  node administrator_v: gcp.SecretManager.AddVersion(
+    access_token: access_token,
+    secret_name: administrator_name,
+    payload_b64: administrator_payload_b64
+  )
+
+  return {
+    hotspot_version: hotspot_v.name,
+    administrator_version: administrator_v.name
+  }
+}
