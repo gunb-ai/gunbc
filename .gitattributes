@@ -96,6 +96,7 @@ src/v1/stage0/src/extdeps_languages_rust_types.rs merge=generated-artifact
 src/v1/stage0/src/extdeps_units_dimensionless.rs merge=generated-artifact
 src/v1/stage0/src/extdeps_units_iec_80000_13.rs merge=generated-artifact
 src/v1/stage0/src/extdeps_units_iso8601.rs merge=generated-artifact
+src/v1/stage0/src/extdeps_units_iso_80000_3.rs merge=generated-artifact
 src/v1/stage0/src/extdeps_uri.rs merge=generated-artifact
 src/v1/stage0/src/extdeps_uri_path.rs merge=generated-artifact
 src/v1/stage0/src/extdeps_version.rs merge=generated-artifact
