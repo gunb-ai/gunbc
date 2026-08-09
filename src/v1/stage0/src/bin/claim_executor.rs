@@ -10143,15 +10143,17 @@ fn maybe_run_floor_coordinator(args: &[String]) -> Option<ExitCode> {
 /// duplicate schedule rows, zero discovery host errors, and a nonempty universe (an
 /// empty universe green would be the vacuous-truth absorbing arm DESIGN §5 forbids).
 ///
-/// Today's honest frontier: the native lane carries one plan-grain selector row whose
-/// three members are emitted-tree names, not exact-head test declarations (the fn-grain
-/// vs plan-grain reconciliation the CI2 lane owns), so native-routed ∩ canonical grows
-/// only as real per-identity native routes land. RED by measurement, never by assertion.
-/// Stated plainly so the green path is a declared trigger rather than drift: under
-/// today's plan vocabulary every demanded identity executes on an interpreted lane, so
-/// this check CANNOT go green until the plan can express a scheduled requirement whose
-/// execution is native — that vocabulary is part of the outcome being demanded, not a
-/// deficiency of the check.
+/// Today's honest frontier: the native lane's only inhabitant is a plan-grain selector
+/// row, and a `NativeBundleWitnessKind` row IS a selector by that kind's own definition
+/// ("names the pure .dag process-spec selector" — gunbc_pr_native_batch_note), never an
+/// exact-head test identity — so selector rows are counted under `native-selector-rows`
+/// for visibility and enter NEITHER identity set. The fn-grain native route the terminal
+/// state requires has no plan vocabulary yet; `native-routed` (identity grain) is
+/// honestly 0 until it lands. RED by measurement, never by assertion. Stated plainly so
+/// the green path is a declared trigger rather than drift: under today's plan vocabulary
+/// every demanded identity executes on an interpreted lane, so this check CANNOT go
+/// green until the plan can express a scheduled requirement whose execution is native —
+/// that vocabulary is part of the outcome being demanded, not a deficiency of the check.
 /// The pure accounting half of the terminal check, separated so the RED/GREEN
 /// discrimination controls below exercise every counter without a live tree.
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -10160,29 +10162,56 @@ struct Ci2TerminalTally {
     canonical: std::collections::BTreeSet<(String, String)>,
     /// Identities scheduled to an interpreted (v1) lane — must reach zero.
     interpreted: std::collections::BTreeSet<(String, String)>,
-    /// Supply side: identities the plan routes to a native lane. Deliberately NOT
-    /// inserted into `canonical`: a native row for an identity the demand side does not
-    /// name is the `unexpected` arm, and today's plan-grain selector row
-    /// (`native_selected_logic_production_spec`, whose three members are emitted-tree
-    /// names rather than test declarations) fires it honestly — the fn-grain vs
-    /// plan-grain reconciliation the CI2 lane owns, surfaced by the check instead of
-    /// absorbed by it.
+    /// Supply side: identities the plan routes to a native lane at FN GRAIN. A native
+    /// row for an identity the demand side does not name is the `unexpected` arm.
+    /// Plan-grain selector rows never enter here (see the mode doc above).
     native_routed: std::collections::BTreeSet<(String, String)>,
-    duplicate_rows: u64,
+    /// Plan-grain native selector rows (`NativeBundleWitnessKind`), counted for
+    /// visibility; routes, not identities.
+    native_selector_rows: u64,
+    /// Duplicate schedule rows with the origin of the SECOND insertion beside the
+    /// origin of the first, so the duplicate population is bucketable by construction
+    /// site instead of being one opaque count.
+    duplicates: Vec<(String, String, String, String)>,
+    /// Origin label of each identity's first insertion, kept so a later duplicate can
+    /// name both sides.
+    first_origin: std::collections::BTreeMap<(String, String), String>,
     host_error_rows: u64,
 }
 
 impl Ci2TerminalTally {
-    fn demand(&mut self, entry: String, function: String) {
-        if !self.canonical.insert((entry.clone(), function.clone())) {
-            self.duplicate_rows += 1;
+    fn demand(&mut self, entry: String, function: String, origin: &str) {
+        let key = (entry, function);
+        if self.canonical.contains(&key) {
+            let first = self
+                .first_origin
+                .get(&key)
+                .cloned()
+                .unwrap_or_else(|| "unknown".to_string());
+            self.duplicates
+                .push((key.0.clone(), key.1.clone(), first, origin.to_string()));
+        } else {
+            self.first_origin.insert(key.clone(), origin.to_string());
+            self.canonical.insert(key.clone());
         }
-        self.interpreted.insert((entry, function));
+        self.interpreted.insert(key);
     }
     fn native(&mut self, entry: String, function: String) {
-        if !self.native_routed.insert((entry, function)) {
-            self.duplicate_rows += 1;
+        let key = (entry, function);
+        if self.native_routed.contains(&key) {
+            let first = self
+                .first_origin
+                .get(&key)
+                .cloned()
+                .unwrap_or_else(|| "native".to_string());
+            self.duplicates
+                .push((key.0.clone(), key.1.clone(), first, "native".to_string()));
+        } else {
+            self.native_routed.insert(key);
         }
+    }
+    fn duplicate_rows(&self) -> u64 {
+        self.duplicates.len() as u64
     }
     fn missing_rows(&self) -> u64 {
         self.canonical.difference(&self.native_routed).count() as u64
@@ -10192,7 +10221,7 @@ impl Ci2TerminalTally {
     }
     fn holds(&self) -> bool {
         self.host_error_rows == 0
-            && self.duplicate_rows == 0
+            && self.duplicate_rows() == 0
             && self.interpreted.is_empty()
             && self.missing_rows() == 0
             && self.unexpected().is_empty()
@@ -10205,12 +10234,16 @@ fn run_ci2_terminal_outcome(
     batches: &[Vec<Runnable>],
 ) -> Result<ExitCode, ExitCode> {
     let mut tally = Ci2TerminalTally::default();
-    for runnable in batches.iter().flatten() {
+    for (batch_index, runnable) in batches.iter().flatten().enumerate() {
         match runnable {
             Runnable::SingleClaim {
                 entry, function, ..
             } => {
-                tally.demand(entry.clone(), function.clone());
+                tally.demand(
+                    entry.clone(),
+                    function.clone(),
+                    &format!("single-claim[batch {batch_index}]"),
+                );
             }
             Runnable::DiscoveryBatch {
                 scan_dirs,
@@ -10229,7 +10262,11 @@ fn run_ci2_terminal_outcome(
                     ) {
                         Ok(rows) => {
                             for row in rows {
-                                tally.demand(row.entry, row.function);
+                                tally.demand(
+                                    row.entry,
+                                    row.function,
+                                    &format!("discovery[batch {batch_index}]"),
+                                );
                             }
                         }
                         Err(e) => {
@@ -10239,10 +10276,15 @@ fn run_ci2_terminal_outcome(
                     }
                 }
                 for (entry, function) in explicit_entries {
-                    tally.demand(entry.clone(), function.clone());
+                    tally.demand(
+                        entry.clone(),
+                        function.clone(),
+                        &format!("explicit[batch {batch_index}]"),
+                    );
                 }
                 for (entry, function) in native_bundle_entries {
-                    tally.native(entry.clone(), function.clone());
+                    println!("[ci2-terminal-native-selector-row] {entry}\t{function}");
+                    tally.native_selector_rows += 1;
                 }
             }
             Runnable::ScopedWitnessBatch {
@@ -10252,7 +10294,11 @@ fn run_ci2_terminal_outcome(
                     match discover_floor_witness_roster(source_roots, scan_dirs, &[], &[]) {
                         Ok(rows) => {
                             for row in rows {
-                                tally.demand(row.entry, row.function);
+                                tally.demand(
+                                    row.entry,
+                                    row.function,
+                                    &format!("scoped-discovery[batch {batch_index}]"),
+                                );
                             }
                         }
                         Err(e) => {
@@ -10265,9 +10311,17 @@ fn run_ci2_terminal_outcome(
                 }
                 for e in entries {
                     if e.witness_kind == "NativeBundleWitnessKind" {
-                        tally.native(e.entry.clone(), e.function.clone());
+                        println!(
+                            "[ci2-terminal-native-selector-row] {}\t{}",
+                            e.entry, e.function
+                        );
+                        tally.native_selector_rows += 1;
                     } else {
-                        tally.demand(e.entry.clone(), e.function.clone());
+                        tally.demand(
+                            e.entry.clone(),
+                            e.function.clone(),
+                            &format!("scoped-roster[batch {batch_index}]"),
+                        );
                     }
                 }
             }
@@ -10285,14 +10339,18 @@ fn run_ci2_terminal_outcome(
     for (entry, function) in tally.unexpected() {
         println!("[ci2-terminal-unexpected] {entry}\t{function}");
     }
+    for (entry, function, first, second) in &tally.duplicates {
+        println!("[ci2-terminal-duplicate] {entry}\t{function}\tfirst={first}\tagain={second}");
+    }
     println!(
-        "[ci2-terminal] canonical {} | native-routed {} | v1-scheduled {} | missing {} | unexpected {} | duplicates {} | host-errors {}",
+        "[ci2-terminal] canonical {} | native-routed {} | native-selector-rows {} | v1-scheduled {} | missing {} | unexpected {} | duplicates {} | host-errors {}",
         tally.canonical.len(),
         tally.native_routed.len(),
+        tally.native_selector_rows,
         tally.interpreted.len(),
         tally.missing_rows(),
         tally.unexpected().len(),
-        tally.duplicate_rows,
+        tally.duplicate_rows(),
         tally.host_error_rows,
     );
     if tally.holds() {
@@ -11475,7 +11533,11 @@ mod tests {
     #[test]
     fn ci2_terminal_tally_interpreted_row_refuses() {
         let mut tally = Ci2TerminalTally::default();
-        tally.demand("e1.dag".to_string(), "w_one".to_string());
+        tally.demand(
+            "e1.dag".to_string(),
+            "w_one".to_string(),
+            "discovery[batch 0]",
+        );
         assert!(!tally.holds());
         assert_eq!(tally.interpreted.len(), 1);
         assert_eq!(tally.missing_rows(), 1);
@@ -11497,9 +11559,26 @@ mod tests {
     #[test]
     fn ci2_terminal_tally_duplicate_schedule_row_refuses() {
         let mut tally = Ci2TerminalTally::default();
-        tally.demand("e1.dag".to_string(), "w_one".to_string());
-        tally.demand("e1.dag".to_string(), "w_one".to_string());
-        assert_eq!(tally.duplicate_rows, 1);
+        tally.demand(
+            "e1.dag".to_string(),
+            "w_one".to_string(),
+            "discovery[batch 0]",
+        );
+        tally.demand(
+            "e1.dag".to_string(),
+            "w_one".to_string(),
+            "explicit[batch 1]",
+        );
+        assert_eq!(tally.duplicate_rows(), 1);
+        assert_eq!(
+            tally.duplicates[0],
+            (
+                "e1.dag".to_string(),
+                "w_one".to_string(),
+                "discovery[batch 0]".to_string(),
+                "explicit[batch 1]".to_string()
+            )
+        );
         assert!(!tally.holds());
     }
 

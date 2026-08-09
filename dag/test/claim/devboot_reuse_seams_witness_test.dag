@@ -1,0 +1,192 @@
+module test.claim.devboot_reuse_seams_witness
+
+import std.types { String, Bool, Int, NonEmptyStr }
+
+import gunbc.devboot.subject {
+  BuildSubject,
+  admit_build_subject,
+  render_build_subject,
+  SubjectAdmitted,
+  SubjectRefused,
+}
+import gunbc.devboot.outcome {
+  SubjectMatch,
+  SubjectMatches,
+  SubjectDiffers,
+  ArtifactAvailability,
+  ArtifactAvailable,
+  ArtifactMissing,
+  ArtifactCorrupt,
+  ArtifactUnreadable,
+}
+import gunbc.devboot.produce {
+  stored_subject_match,
+  attach_wait_settled,
+  AttachWait,
+  AttachArtifactAppeared,
+  AttachStillProducing,
+  AttachWaitRefused,
+  lease_recovery_from_outcome,
+  corrupt_artifact_observation,
+  LeaseRecovery,
+  LeaseBroken,
+  LeaseRecoveryRefused,
+}
+import extdeps.git.object_store { git_object_id_from_untagged_hex }
+import extdeps.toolchain.types { ToolchainRequirement, TargetTriple }
+import extdeps.rust.target_triple { parse_rust_target_triple }
+import extdeps.gnu.libc { PlatformCLibrary, GnuLibc, LibcUnobserved }
+import extdeps.cargo { Bin }
+
+// THE THREE SEAMS A REGRESSION WOULD SILENTLY REOPEN. Each of these was proven once by hand against a live store, and a manual run is evidence that a mechanism worked on one afternoon rather than evidence that it still works. These are the arms whose failure is invisible: a reuse comparison that stops discriminating serves the wrong binary, a wait that stops absorbing overwrites a settled result, and a recovery that stops refusing breaks a lease somebody else holds.
+//
+// The decisions are witnessed here and the transports are not, because the transports are git's and are cited to it. What this repository owns is which arm each observation maps to.
+
+fn probe_subject(profile: String) -> BuildSubject? {
+  match git_object_id_from_untagged_hex(hex: "8a472fff9e9000600e33cc3559ecfad4ba55e3a3") {
+    Absent => none
+    Present { value: tree } =>
+      match parse_rust_target_triple(spelling: "aarch64-unknown-linux-gnu") {
+        Absent => none
+        Present { value: host } =>
+          match admit_build_subject(
+            tree_oid: tree,
+            package: "v1-compiler",
+            cargo_target: Bin { name: "gunbc" },
+            toolchain: ToolchainRequirement { name: "rustc", version: "1.93.0" },
+            target: host,
+            profile: profile,
+            features: [],
+            rustflags: [],
+            linker: none,
+            sysroot: none,
+            cargo_config: [],
+            platform_c_library: GnuLibc { version: "2.36" as NonEmptyStr },
+          ) {
+            SubjectRefused { cause } => none
+            SubjectAdmitted { subject } => Present { value: subject }
+          }
+      }
+  }
+}
+
+// THE POSITIVE CONTROL. A stored record that is exactly this subject's rendering matches it. Without this, the refusal witnesses below would all pass on a comparison that answered SubjectDiffers unconditionally -- which is precisely the defect this seam shipped with once: an equality against a blob carrying an appended digest could never match, and every caller refused a request identical to the one that produced it.
+test fn a_record_holding_exactly_this_subject_matches() -> Bool {
+  match probe_subject(profile: "release") {
+    Absent => false
+    Present { value: subject } =>
+      match stored_subject_match(record_text: render_build_subject(subject: subject), subject: subject) {
+        SubjectMatches => true
+        SubjectDiffers => false
+      }
+  }
+}
+
+// THE PREFIX CASE, PINNED RED. This is the exact false match the comparison was changed to prevent: the request's rendering is a strict PREFIX of the stored record, which is what happens whenever the stored subject carries an axis the request does not. Under prefix matching this answered SubjectMatches and the requester asking for LESS received a binary built with configuration it never asked for. The suffix here stands for any appended axis; what the witness pins is that being a prefix is not being equal.
+test fn a_record_whose_subject_extends_this_one_refuses() -> Bool {
+  match probe_subject(profile: "release") {
+    Absent => false
+    Present { value: subject } =>
+      match stored_subject_match(
+        record_text: concat(render_build_subject(subject: subject), "cargo_config.0=target.linker=lld\n"),
+        subject: subject,
+      ) {
+        SubjectMatches => false
+        SubjectDiffers => true
+      }
+  }
+}
+
+// A DIFFERENT SUBJECT REFUSES. Two subjects differing in one axis must not match each other; profile is the axis varied because it participates in the rendering and in the digest, so a comparison that ignored it would be caught here rather than at the store.
+test fn a_record_for_a_different_profile_refuses() -> Bool {
+  match probe_subject(profile: "release") {
+    Absent => false
+    Present { value: released } =>
+      match probe_subject(profile: "dev") {
+        Absent => false
+        Present { value: dev } =>
+          match stored_subject_match(record_text: render_build_subject(subject: dev), subject: released) {
+            SubjectMatches => false
+            SubjectDiffers => true
+          }
+      }
+  }
+}
+
+// AN EMPTY RECORD REFUSES. A store that answered nothing -- a pruned ref, an unreadable blob -- must not read as agreement. An empty string is a prefix of everything, so under the old comparison this was the widest false match available.
+test fn an_empty_record_refuses() -> Bool {
+  match probe_subject(profile: "release") {
+    Absent => false
+    Present { value: subject } =>
+      match stored_subject_match(record_text: "", subject: subject) {
+        SubjectMatches => false
+        SubjectDiffers => true
+      }
+  }
+}
+
+// THE WAIT ABSORBS ONCE THE ARTIFACT HAS APPEARED. Every remaining tick must return the same answer rather than looking again: a later poll could observe a different state and overwrite a settled terminal one, so a waiter holding its artifact could end up reporting a refusal from a subsequent hiccup.
+test fn a_wait_that_found_its_artifact_is_settled() -> Bool {
+  attach_wait_settled(acc: AttachArtifactAppeared { oid: "e503761a" })
+}
+
+// AND ABSORBS ON REFUSAL, for the mirror reason: a store that could not be read must not be re-read into an accidental success by a later tick.
+test fn a_wait_that_refused_is_settled() -> Bool {
+  attach_wait_settled(acc: AttachWaitRefused { detail: "store unreadable" })
+}
+
+// THE DISCRIMINATING NEGATIVE. Still producing is NOT settled, so the fold keeps polling. Without this the two witnesses above would pass on a function that answered true unconditionally -- and a wait that is always settled never waits at all, which would return the caller to the attach-without-an-artifact behaviour this vertical deleted.
+test fn a_wait_still_producing_is_not_settled() -> Bool {
+  !attach_wait_settled(acc: AttachStillProducing)
+}
+
+// RECOVERY ON A SUCCESSFUL SWAP IS A BROKEN LEASE, and it names the holder it removed so the receipt says whose lease was broken rather than merely that one was.
+test fn a_successful_swap_reports_the_lease_broken() -> Bool {
+  match lease_recovery_from_outcome(
+    succeeded: true,
+    exit_code: 0,
+    stderr: "",
+    token: "fnv1a64-deadbeef",
+    expected_holder: "30e357d2",
+  ) {
+    LeaseBroken { token, former_holder } => token == "fnv1a64-deadbeef" && former_holder == "30e357d2"
+    LeaseRecoveryRefused { detail } => false
+  }
+}
+
+// AND A FAILED SWAP REFUSES RATHER THAN REPORTING A BREAK. This is the safety half: git refuses the delete when the lease is not at the expected value, which is what stops two coordinators reacting to one stalled producer from breaking each other's newly started builds. A mapping that reported success on a failed swap would reintroduce exactly the race the lease exists to prevent, through the machinery meant to repair it.
+test fn a_failed_swap_refuses_and_names_the_expected_holder() -> Bool {
+  match lease_recovery_from_outcome(
+    succeeded: false,
+    exit_code: 1,
+    stderr: "error: cannot lock ref: is at aaaa but expected bbbb",
+    token: "fnv1a64-deadbeef",
+    expected_holder: "bbbb",
+  ) {
+    LeaseBroken { token, former_holder } => false
+    LeaseRecoveryRefused { detail } => string_contains(s: detail, pattern: "bbbb")
+  }
+}
+
+// A DIGEST MISMATCH REPORTS CORRUPTION AND NAMES BOTH SIDES. This arm existed in the model with nothing constructing it on the live path -- the observation reported an unreadable store instead -- so the distinction the availability sum draws was not one the system actually made. A variant nothing produces is not a distinction; this witness is what makes it one.
+test fn a_digest_mismatch_is_corruption_carrying_both_digests() -> Bool {
+  match corrupt_artifact_observation(
+    expected_hex: "5af0bd8e23a794a5edea9d8cd8d4d0b533b0feab00196ce54c32e83f3339e48e",
+    observed_hex: "0000000000000000000000000000000000000000000000000000000000000000",
+  ) {
+    ArtifactCorrupt { expected, observed } => !(expected == observed)
+    ArtifactAvailable { artifact } => false
+    ArtifactMissing => false
+    ArtifactUnreadable { detail } => false
+  }
+}
+
+// AND AN UNUSABLE DIGEST REFUSES AS UNREADABLE RATHER THAN AS CORRUPTION, because a corruption report that cannot name what it compared is not a report. This is the discriminating negative for the arm above: without it, a function answering ArtifactCorrupt unconditionally would pass.
+test fn a_corruption_report_without_a_usable_digest_is_unreadable() -> Bool {
+  match corrupt_artifact_observation(expected_hex: "not-a-digest", observed_hex: "also-not") {
+    ArtifactUnreadable { detail } => true
+    ArtifactCorrupt { expected, observed } => false
+    ArtifactAvailable { artifact } => false
+    ArtifactMissing => false
+  }
+}
