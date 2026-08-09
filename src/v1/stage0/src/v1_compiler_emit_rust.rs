@@ -11,6 +11,7 @@ pub use crate::extdeps_languages_rust_emit::{
 };
 pub use crate::gunbc_rust_decl_type_overlay::rust_decl_type_container_overlay_is_admitted;
 pub use crate::gunbc_stage0_crate_layout_generated::generated_pub_mod_block;
+pub use crate::std_algebra::trim;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
 use crate::std_serialization::VariantEncoding::*;

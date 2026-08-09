@@ -473,15 +473,42 @@ fn lookup_binding_by_name_local(env: TypeEnv, name: String) -> TypeBinding? {
 
 fn lookup_binding_by_name(env: TypeEnv, name: String) -> TypeBinding? {
   match lookup_binding_by_name_local(env: env, name: name) {
-    Present { value: binding } => Present { value: binding }
+    Present { value: binding } =>
+      if listed_import_required_bare_call_blocked(env: env, name: name) { none }
+      else { Present { value: binding } }
     Absent => lookup_binding_after_global_bare(env: env, name: name)
   }
 }
 
+data closure_independent_bare_free_call_note: String = "Closure-independent bare free-call binding (#6985 / #8062): symbols registered here refuse global_bare / pool-coincidence resolution unless the name is in source_visible_names (selective import or kernel surface). Dissolve-on: PrimitiveDefinition identity-join closes the denominator so every importable free fn is registered once with its definer module — not a hand-maintained trim-only list."
+
+fn bare_free_call_requires_listed_import(name: String) -> Bool {
+  name == "trim"
+}
+
+fn import_visible_name(env: TypeEnv, name: String) -> Bool {
+  match map_get(env.source_visible_names, name) {
+    Present { value: vis } => vis
+    Absent => false
+  }
+}
+
+fn global_bare_blocked_by_listed_import_requirement(env: TypeEnv, name: String) -> Bool {
+  bare_free_call_requires_listed_import(name: name) && !import_visible_name(env: env, name: name)
+}
+
+fn listed_import_required_bare_call_blocked(env: TypeEnv, name: String) -> Bool {
+  global_bare_blocked_by_listed_import_requirement(env: env, name: name)
+}
+
 fn lookup_binding_after_global_bare(env: TypeEnv, name: String) -> TypeBinding? {
-  match global_bare_lookup(env: env, name: name) {
-    Present { value: binding } => Present { value: binding }
-    Absent => lookup_qualified_module_projection(env: env, name: name)
+  if global_bare_blocked_by_listed_import_requirement(env: env, name: name) {
+    none
+  } else {
+    match global_bare_lookup(env: env, name: name) {
+      Present { value: binding } => Present { value: binding }
+      Absent => lookup_qualified_module_projection(env: env, name: name)
+    }
   }
 }
 
