@@ -234,7 +234,7 @@ jobs:
   ci:
     runs-on: [self-hosted, linux, arm64]
     needs: [build, regen, heal_generated_artifacts]
-    timeout-minutes: 110
+    timeout-minutes: 125
     if: "!cancelled()"
     steps:
       - name: "Refuse when an upstream job already established this branch is red (fails fast instead of skipping: a skipped job reports success to the required check)"
@@ -332,6 +332,20 @@ jobs:
           GUNBC_FLOOR_PHASE_JOURNAL: target/floor-phase-journal.tsv
         if: always()
         timeout-minutes: 5
+      - name: PR-close delivery check (observe-and-report; gates nothing)
+        run: |
+          # PR-close delivery check as an OBSERVE-AND-REPORT step (operator directive 2026-08-08; placement ruled 1-REFINED by the parent 2026-08-09). It gates NOTHING: it renders the delivery receipt into GITHUB_STEP_SUMMARY so the DeclarationGrainUnavailable share is measured on real PRs before anything blocks on it. WHY THE SKIP IS DECIDED IN THIS SHELL RATHER THAN IN .dag, which is the one deliberate wrinkle here. The report costs 409s measured (383s and 409s on two runs), and ~92 percent of that is load_bare_edge_index — the corpus-wide edge index — not the check, whose own eval is 23ms. Deciding the skip through floor_observe_git_diff_name_status_for_ci would pay the same ~100s cold whole-pool index on EVERY PR to sometimes avoid the 409s, and that is exactly the trade gunbc_ci_selection_control_step_note measured at a 23-of-100 skip rate for an expected -25s/PR and concluded 'the cost win alone does not carry the scaffold under DESIGN 6' — the trade whose step the operator then DEMOTED off per-PR CI entirely on 2026-07-29. Re-adding that shape here would re-add a cost the operator had just removed. A git name-status read costs milliseconds, so a PR that adds no .dag module pays essentially nothing and the 409s fires only when the delivery question is actually live. THE WRINKLE, DECLARED RATHER THAN HIDDEN: this is a second representation of path observation sitting beside the .dag diff authority (v2.workflow.floor_diff_observe), which is a DESIGN 3 violation on its face. It is accepted as declared debt, not as correct. Dissolve-on: the persistent content-keyed node store that gunbc_ci_selection_control_step_note and the ci_materialization resolve-receipt note both name as the terminal condition for the per-entry cold resolve class — once the observation is cheap, this decision moves into .dag and this shell pre-filter is deleted. FAIL-CLOSED IN EVERY ARM, because a skip is a claim of PROVABLE ABSENCE and never a default: an unresolvable base commit, any git failure, any rename or copy status, and any non-pull_request event all run the FULL report rather than skipping. Only a successful diff showing zero added .dag paths skips.
+          # THE EXIT-CODE CONTRACT, declared rather than absorbed. gunbc run REFUSES an entry that returns a String rather than a ProcessExit and exits non-zero, printing the returned value — that is a harness contract fact about the return type, not a verdict about the report, so the step cannot read the exit code as success or failure. What it reads instead is the ARTIFACT: the receipt's own header line. If the header is present the report ran and is appended to the step summary; if it is absent the step writes an explicit DID-NOT-RUN block and exits NON-ZERO, so a hard failure can never render as a silently empty summary — the empty-observation narrow DESIGN 5 names, where 'nothing to report' and 'could not report' collapse into the same blank. This is why the step needs no continue-on-error: it is not tolerating a failure, it is reading the right signal.
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          if ! GUNBC_DELIVERY_BASE=$(git rev-parse --verify HEAD^1 2>/dev/null); then echo "delivery check: could not resolve the PR base commit — running the full report (a skip is a claim of provable absence, never a default)"; GUNBC_DELIVERY_FORCE=yes; else GUNBC_DELIVERY_FORCE=no; fi
+          if [ "$GUNBC_DELIVERY_FORCE" = no ]; then if ! GUNBC_DELIVERY_STATUS=$(git diff --name-status "$GUNBC_DELIVERY_BASE" HEAD 2>/dev/null); then echo "delivery check: git diff failed — running the full report"; GUNBC_DELIVERY_FORCE=yes; fi; fi
+          if [ "$GUNBC_DELIVERY_FORCE" = no ]; then if echo "$GUNBC_DELIVERY_STATUS" | grep -qE '^[RC]'; then echo "delivery check: the diff carries a rename or copy status, whose added-path reading this pre-filter does not model — running the full report"; GUNBC_DELIVERY_FORCE=yes; fi; fi
+          if [ "$GUNBC_DELIVERY_FORCE" = no ]; then GUNBC_DELIVERY_ADDED=$(echo "$GUNBC_DELIVERY_STATUS" | grep -E '^A' | grep -c '\.dag$' || true); else GUNBC_DELIVERY_ADDED=force; fi
+          if [ "$GUNBC_DELIVERY_ADDED" = 0 ]; then echo "delivery check skipped: no .dag module added, shell pre-filter" >> "$GITHUB_STEP_SUMMARY"; echo "delivery check skipped: no .dag module added (shell pre-filter; the full report runs whenever a module is added, or on any observation failure)"; exit 0; fi
+          GUNBC_DELIVERY_OUT=$("$ROOT/target/release/gunbc" run --source-root dag --source-root src/v2 --entry dag/tools/module_impact_query_front_door.dag --function pr_delivery_report 2>&1 || true)
+          if echo "$GUNBC_DELIVERY_OUT" | grep -qF 'delivery check'; then echo "$GUNBC_DELIVERY_OUT" | sed -n '/delivery check/,$p' | sed 's/^/    /' >> "$GITHUB_STEP_SUMMARY"; else echo "delivery check DID NOT RUN — no receipt was produced, so nothing about delivery is claimed either way" >> "$GITHUB_STEP_SUMMARY"; echo "$GUNBC_DELIVERY_OUT"; exit 1; fi
+        if: always() && github.event_name == 'pull_request'
+        timeout-minutes: 15
   deploy_dashboard_srv1:
     runs-on: [self-hosted, linux, arm64, srv1]
     needs: [ci]
