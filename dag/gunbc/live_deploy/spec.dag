@@ -31,6 +31,7 @@ import gunbc.host_layout {
   srv1_gunbc_serve_binary,
   srv1_dispatch_worktree_root,
   srv1_dispatch_attempt_state_root,
+  srv1_devboot_artifact_store_root,
 }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
@@ -62,6 +63,20 @@ type OwnedArtifactKind =
 type EnsuredDependencyKind =
     TailscalePackage
   | TmuxPackage
+  | DevbootArtifactStoreDirectory
+
+data ensured_subject_note: String = "ONE CONCEPT -- AN ENSURED HOST RESOURCE -- WITH N KINDS, not a second ensured mechanism beside the first. What Ensured means was already exactly right for the build service's artifact store: converged on every apply, never torn down, TeardownRefuses{TeardownOutsideOwnership}. What was wrong was that a dependency could only BE a package, so a directory had nowhere to live and got put in the owned roster instead -- where Owned means torn down by retract, and produced artifacts are the one thing a deploy must never delete.\\n\\nTHE HAZARD THAT RULED THIS, recorded because it was caught rather than reasoned: appending a host-level root to every per-instance spec made a lab twin's retract remove the production artifact store. Two existing claims went red on it. The claims were right and the placement was wrong, so the category moved and the claims were not touched.\\n\\nThe package arm keeps its exact prior behaviour -- same ensure step, same emitted bytes -- because this widening is about admitting a second KIND of ensured resource, not about changing what ensuring a package means. The directory arm carries its own owner rather than reading a deployment spec, so an ensured host resource stays a fact about the HOST and needs no instance to be stated."
+
+type EnsuredSubject
+  = EnsuredPackage { package: NonEmptyStr }
+  | EnsuredHostDirectory { path: NonEmptyStr, owner: NonEmptyStr }
+
+fn ensured_subject_identity(subject: EnsuredSubject) -> NonEmptyStr {
+  match subject {
+    EnsuredPackage { package } => package
+    EnsuredHostDirectory { path, owner } => path
+  }
+}
 
 type DeploymentArtifactStep {
   kind: OwnedArtifactKind
@@ -70,7 +85,7 @@ type DeploymentArtifactStep {
 
 type DeploymentDependencyStep {
   kind: EnsuredDependencyKind
-  package: NonEmptyStr
+  subject: EnsuredSubject
 }
 
 type DeploymentStep
@@ -299,10 +314,27 @@ fn deployment_owned_steps(
   ]
 }
 
+
+data devboot_root_membership_note: String = "THE BUILD SERVICE'S ROOTS ARE MEMBERSHIP, PROJECTED, AND SEPARATE FROM THE PER-INSTANCE STEPS -- three claims, and the third is the one that took a correction. Membership: these are directories the service WRITES, which is the same property that makes DispatchWorktreeRoot and AttemptStateRoot owned members, and attempt_state_root_member_note records what it cost to learn that a written path outside the roster is a path nothing creates. Projected: the paths come from the gunbc.host_layout rows, never spelled here, so the belt and the deploy cannot drift to two spellings of one directory.\\n\\nSEPARATE, because the first cut put them in deployment_owned_steps beside the dashboard's own members and that was wrong in a way the srv1-only scope hides. Those steps are built PER INSTANCE, and every instance would then have received srv1's literal paths under its own name -- srv2's preview slot creating /var/lib/gunbc directories for a service that does not run there. gunbc_host_layout_note names that exact defect for the exact reason it is dangerous: no value is visibly wrong, so nothing surfaces, and the first host whose layout genuinely diverged would silently inherit srv1's body.\\n\\nSo the projection is its own function, called for the host that actually runs the build service, rather than folded into a per-instance list that would answer for hosts nobody asked about. Dissolve-on: devboot deployed to a second host. At that point the roots become fields of a host layout resolved through a total host-identity lookup -- the next-rung trigger dispatch_state_scope_carries_its_roots_note already names -- and this srv1-shaped function retires into that derivation."
+
+
 fn deployment_ensured_steps() -> List<DeploymentDependencyStep> {
   [
-    DeploymentDependencyStep { kind: TailscalePackage, package: package_tailscale },
-    DeploymentDependencyStep { kind: TmuxPackage, package: package_tmux },
+    DeploymentDependencyStep {
+      kind: TailscalePackage,
+      subject: EnsuredPackage { package: package_tailscale },
+    },
+    DeploymentDependencyStep {
+      kind: TmuxPackage,
+      subject: EnsuredPackage { package: package_tmux },
+    },
+    DeploymentDependencyStep {
+      kind: DevbootArtifactStoreDirectory,
+      subject: EnsuredHostDirectory {
+        path: srv1_devboot_artifact_store_root as String as NonEmptyStr,
+        owner: gunbc_service_user,
+      },
+    },
   ]
 }
 
@@ -318,6 +350,8 @@ fn deployment_steps_apply_order(
     )
   )
 }
+
+data devboot_root_apply_membership_note: String = "THE STORE ROOT IS AN ENSURED HOST RESOURCE, NOT AN OWNED ARTIFACT, and the route to that answer is worth keeping because the obvious fix was the dangerous one. Review asked for devboot_owned_steps to be wired into deployment_steps_apply_order. That was done, and two existing claims went red immediately: a_twin_deployment_on_one_host_collides_with_nothing and twin_teardown_removes_nothing_production_owns. The second is not a technicality -- appending a host-level root to every per-instance spec means a lab twin retract would rm the PRODUCTION artifact store.\\n\\nThe claims were right and the placement was wrong. Owned means torn down by retract, and produced artifacts are exactly what a deploy must never delete -- devboot_root_realization_note argued this while the root sat in the owned roster anyway. So the root moved to the ensured side, where converged-on-apply and never-torn-down are what the category already means, and neither claim was edited. The rejected alternative was to narrow those two claims to per-instance ownership so a host-shared resource fell outside them; it was refused because editing a safety claim to accommodate a change is the DESIGN section 5 tell, and a claim that has just caught a real hazard is not the thing to weaken (operator ruling, 2026-08-08).\\n\\nThe service still runs git init --bare itself, which remains correct and is not made redundant: the deploy ensures the DIRECTORY exists and is owned, and only the service can turn a directory into a repository, because git is not on the deploy principal sudo roster."
 
 data deployment_retract_order_derivation_note: String = "RETRACT IS THE REVERSE OF WHAT THIS SPEC APPLIES, derived from the spec rather than transcribed beside it. It used to be a second hand-written list repeating the same five steps in opposite order — one fact in two places, so editing either alone makes them disagree, and the disagreement surfaces as a teardown that removes the binary while the unit still references it. deployment_apply_order_note states the ordering law in prose; this computes it.\\n\\nDeriving from spec.steps rather than re-deriving from instance and identity matters: it makes the retract order the reverse of THE ORDER THIS SPEC ACTUALLY APPLIED, not the reverse of what a freshly built spec would apply. Those differ exactly when a spec is constructed with something other than the standard order, which is the case a hand-mirrored list gets wrong. Ensured dependencies drop out because they are never torn down (R5) — the filter states that, rather than a comment claiming it."
 
