@@ -21,33 +21,9 @@ type DevbootVerticalStanding
   = VerticalExecutedManuallyOnce
   | VerticalExecutedUnderEnrolledConsumer { consumer: DeclarationRef }
 
-fn devboot_vertical_standing(receipt: DevbootVerticalReceipt) -> DevbootVerticalStanding {
+fn devboot_vertical_standing() -> DevbootVerticalStanding {
   VerticalExecutedManuallyOnce
 }
 
 data devboot_vertical_receipt_inhabitant_note: String = "THE ONE INHABITANT. Two callers submitted the same subject against a freshly initialized bare repository; the first produced and the second reused the first's artifact without building. Two consumers then materialized those bytes independently, verified them by sha256 -- a digest whose preimage is the content alone, so the store cannot satisfy it by agreeing with itself -- and executed the result, both exiting zero.\\n\\nThe artifact object id is the address inside the store and the sha256 is the independent verification; neither is derivable from the other, which is why both are carried. The subject token is the ref name segment under which that artifact is found, and it carries its hash family so two digests from different families can never name one ref."
 
-fn devboot_vertical_receipt() -> DevbootVerticalReceipt? {
-  match sha256_hex_digest(hex: "bbfebc03ba344c4f96021943ec01a4d86f9a42e2e8443a2f8e493f422e9c1065") {
-    Absent => none
-    Present { value: digest } =>
-      Present {
-        value: DevbootVerticalReceipt {
-          evaluated_head: "fc62f53035cc8c3682d1d8c7786784bb9bb601c5",
-          subject_ref_token: "fnv1a64-885d8eaa9593e225" as NonEmptyStr,
-          artifact_object_id: "bc16ab0c32945a9f8b64ba1389d913f960793eac" as NonEmptyStr,
-          artifact_sha256: digest,
-          producer_entry: DeclarationRef {
-            module_path: "gunbc.devboot.produce",
-            decl_name: "devboot_produce_entry",
-            field: WholeDeclaration,
-          },
-          consumer_entry: DeclarationRef {
-            module_path: "gunbc.devboot.produce",
-            decl_name: "devboot_materialize",
-            field: WholeDeclaration,
-          },
-        },
-      }
-  }
-}

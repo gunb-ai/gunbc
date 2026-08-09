@@ -10,7 +10,14 @@ import std.content_hash {
   content_hash_tagged_structural,
 }
 
-import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex }
+import extdeps.git.object_store {
+  GitObjectId,
+  GitObjectFormat,
+  GitObjectFormatSha1,
+  GitObjectFormatSha256,
+  git_object_id_wire_hex,
+  git_object_id_format,
+}
 import extdeps.toolchain.types {
   TargetTriple,
   ToolchainRequirement,
@@ -465,11 +472,27 @@ fn build_environment_digest(environment: BuildEnvironmentSpec) -> Fnv1a64Structu
   )
 }
 
+data tree_oid_family_in_identity_note: String = "THE OBJECT-ID FAMILY IS PART OF THE IDENTITY, and folding the hex alone threw it away. GitObjectId is a coproduct precisely so a SHA-1 and a SHA-256 object id cannot be compared on their hex -- the note beside that type argues exactly this -- and the digest then discarded the discriminant the type exists to carry, so two tree oids from different object formats whose hex coincided would have produced one subject digest and traded artifacts.\\n\\nIt is not reachable today: this repository's stores are SHA-1, so one family is in play and the collision has no way to occur. That is a fact about the current population, not about the carrier, and the repository is explicitly moving toward SHA-256 object format -- the moment both exist, an identity that ignores which one it is becomes wrong silently.\\n\\nThe fix mirrors the ref token, which already prefixes its family for the same reason, so the two places that turn a hash into an identity string now agree instead of one quietly being weaker. Found by review, and the argument that convinced me is that the adjacent note already made the case -- the code simply did not do what its own reasoning said."
+
+fn tree_oid_identity_atom(oid: GitObjectId) -> ContentHash {
+  content_hash_combine_structural(
+    left: content_hash_atom(value: git_object_format_identity_tag(format: git_object_id_format(oid: oid))),
+    right: content_hash_atom(value: git_object_id_wire_hex(oid: oid)),
+  )
+}
+
+fn git_object_format_identity_tag(format: GitObjectFormat) -> NonEmptyStr {
+  match format {
+    GitObjectFormatSha1 => "git.oid.v1.sha1" as NonEmptyStr
+    GitObjectFormatSha256 => "git.oid.v1.sha256" as NonEmptyStr
+  }
+}
+
 fn build_subject_digest(subject: BuildSubject) -> ContentHash {
   content_hash_tagged(
     tag: "devboot.subject" as NonEmptyStr,
     payload: content_hash_combine_structural(
-      left: content_hash_atom(value: git_object_id_wire_hex(oid: subject.tree_oid)),
+      left: tree_oid_identity_atom(oid: subject.tree_oid),
       right: content_hash_combine_structural(
         left: build_product_digest(product: subject.product),
         right: content_hash_combine_structural(

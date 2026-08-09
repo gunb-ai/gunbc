@@ -56,6 +56,10 @@ data devboot_produce_note: String = "THE PRODUCER, AND IT IS THE LIVE PATH RATHE
 
 data producer_lease_realization_note: String = "THE MODELED TRANSITION AND THE REAL ONE, kept honestly apart. gunbc.devboot.lease derives the lease DECISION from the upstream object store's pure transition model, whose exact-old form covers advancing a ref that already exists and returns LeaseCreateNotModeled for the absent case.\\n\\nGit itself does cover that case -- `update-ref <ref> <new> \\\"\\\"` is create-only and fails with 'reference already exists' when it loses -- and that is what this realization calls, verified by execution against a real bare repository: one caller acquired, the second was refused, and the holder did not move. So the gap is in the R0 MODEL, not in the transport, and the refusal arm in the model is a statement about what has been modeled rather than about what git can do. Recording which is which is the whole point; the arm dissolves when the model gains a create-only transition, and the realization does not change when it does."
 
+data devboot_seed_package_note: String = "THE CARGO PACKAGE AND THE BINARY ARE DIFFERENT NAMES, and conflating them hid a total build failure behind a success report. This producer asked cargo for --package gunbc; no such package exists. gunbc is a BIN target inside the package v1-compiler, so every build this service ever ran refused with 'package ID specification gunbc did not match any packages' -- and the run still reported PRODUCED, because hash-object was pointed at the ambient target directory where a binary from some earlier, unrelated build happened to be sitting.\\n\\nSO THE STORED ARTIFACT WAS NEVER BUILT FROM THE NAMED TREE. It was whatever the developer's checkout had lying around, bound to a tree identity it had no relationship to -- the precise failure the isolated-checkout repair was written to make impossible, sitting live in the tree the whole time and invisible because two separate defects covered for each other: the missing success check let the failure pass, and the shared target directory supplied plausible bytes for it to pass with.\\n\\nIT WAS THE ISOLATION THAT EXPOSED IT. Building in a fresh checkout meant no stale binary was there to hash, so the failure finally had nothing to hide behind. That is the argument for isolation stated better than any note could: the ambient directory was not merely a risk to correctness, it was actively concealing a broken build.\\n\\nThe package name is named once here. The bin name stays on the cargo target, where the axis it belongs to already lives."
+
+data devboot_seed_package_name: String = "v1-compiler"
+
 data devboot_snapshot_note: String = "THE SUBJECT IS THE WORKING TREE AS IT STANDS, WHICH IS WHAT AN AGENT ACTUALLY ASKS ABOUT. An earlier revision ran write-tree against an index the CALLER supplied and nothing populated, so the tree it named was HEAD's -- every uncommitted modification and every untracked file was invisible to the identity. A developer editing a file and asking for a build of what they are looking at would have received, and reused forever, a binary for the last commit. The identity was exact and it was exact about the wrong tree.\\n\\nTHREE STEPS MAKE THE SNAPSHOT, and each is load-bearing. read-tree HEAD establishes the committed baseline; add -A folds in modifications, deletions and non-ignored untracked files; write-tree freezes the result into a real tree object. The output is an ordinary git tree, so everything downstream -- transfer, materialization, content addressing -- is git's, not this module's.\\n\\nTHE INDEX IS DERIVED HERE, NOT ACCEPTED FROM THE CALLER, and that is the structural half of 'never mutate the developer's index'. When the path is a parameter, the real index is a legal argument and add -A stages the developer's entire working tree behind their back; a check that the supplied path is not .git/index would be validation of a state that remains writable. Deriving the path under this service's own work root means the developer's index has no way to arrive here at all.\\n\\nIgnored files never participate: add -A honours gitignore, so ambient build output and editor debris cannot move the identity. Files a build genuinely needs but git ignores must be declared, and that declaration does not exist yet -- named on the carrier as owed rather than silently assumed absent."
 
 fn devboot_snapshot_index_path(work_root: String) -> String {
@@ -308,7 +312,7 @@ fn devboot_produce_with_toolchain(
     Present { value: tree_oid } =>
       match admit_build_subject(
         tree_oid: tree_oid,
-        package: "gunbc",
+        package: devboot_seed_package_name,
         cargo_target: Bin { name: "gunbc" },
         toolchain: toolchain,
         target: host,
@@ -500,6 +504,13 @@ fn sha256_record_line(hex: String) -> String {
 
 data observed_stored_artifact_note: String = "EVERY FIELD IS MEASURED OR THE OBSERVATION REFUSES. A first draft of this function filled the byte count with zero and the subject digest with a hash of the object id, purely so the record would typecheck -- two invented values wearing the shape of measurements, which is the fabrication this whole carrier exists to make impossible, committed in the act of satisfying it.\\n\\nNow the subject digest is the digest of the subject actually requested, the blob id is the address the store answered to, the sha256 is computed over the fetched bytes, and the size comes from the store. Anything that cannot be established refuses through the availability sum instead of being supplied."
 
+data observed_size_refuses_note: String = "AN UNPARSEABLE SIZE REFUSES RATHER THAN READING AS ZERO. parse_int answers zero for text that is not a number, so a malformed or empty cat-file size silently produced a zero-byte artifact that then passed every remaining check -- the one field in this record that was still allowed to be invented, in the function whose own note says every field is measured or the observation refuses.\\n\\nIt is reachable: the size read is a separate invocation from the presence check that precedes it, so a store pruned, truncated or made unreadable between the two answers with empty text rather than an error. Zero bytes is also a plausible-looking answer, which is what makes it dangerous -- a consumer would fetch an empty file and only discover the problem when it tried to execute it.\\n\\nThe digits check runs before the parse, so the refusal is decided by the text rather than by trusting a total function's fallback value. Found by review on the approving pass rather than by execution, and worth recording as such: it is the same class the byte-count fabrication note above describes, surviving in the one place the earlier repair did not look."
+
+fn size_text_is_digits(text: String) -> Bool {
+  (text != "")
+    && all(chars(text), c => code_point(c) >= 48 && code_point(c) <= 57)
+}
+
 fn observed_stored_artifact(
   subject: BuildSubject,
   oid: String,
@@ -512,13 +523,19 @@ fn observed_stored_artifact(
       match sha256_hex_digest(hex: sha256_hex) {
         Absent => ArtifactUnreadable { detail: concat("the observed digest is not a sha256: ", sha256_hex) }
         Present { value: digest } =>
-          ArtifactAvailable {
-            artifact: StoredArtifact {
-              subject_digest: build_subject_digest(subject: subject),
-              blob_oid: blob,
-              sha256: digest,
-              bytes: byte_size(count: parse_int(bytes_text)),
-            },
+          if !size_text_is_digits(text: trim(s: bytes_text)) {
+            ArtifactUnreadable {
+              detail: concat("the store did not report a usable object size: ", bytes_text),
+            }
+          } else {
+            ArtifactAvailable {
+              artifact: StoredArtifact {
+                subject_digest: build_subject_digest(subject: subject),
+                blob_oid: blob,
+                sha256: digest,
+                bytes: byte_size(count: parse_int(trim(s: bytes_text))),
+              },
+            }
           }
       }
   }
@@ -550,9 +567,122 @@ data lease_claim_placement_note: String = "THE CLAIM OBJECT IS WRITTEN INTO THE 
 
 data lease_failure_disambiguation_note: String = "LOSING THE RACE AND FAILING TO REACH THE STORE ARE NOT THE SAME EVENT, and git's exit code cannot tell them apart -- measured, both are 128. An earlier revision read any failed update-ref as ATTACHED, which reports a specific and reassuring fact: another producer holds the lease and this caller should wait for its artifact. When the real cause was an unwritable or unreachable store, that is a fabricated plausible output of exactly the kind this vertical refuses everywhere else -- the caller waits for a producer that does not exist, and the deficit is invisible because the answer looked like ordinary healthy contention.\\n\\nTHE DISAMBIGUATION IS STRUCTURAL RATHER THAN TEXTUAL. Matching git's message would be a second, fragile representation of its behaviour, tied to wording no upstream promises to keep. Instead the lease ref is READ BACK: if it now exists, some producer really does hold it and attaching is the truth, with the holder named; if it does not exist, the failure was not a race and the store's own message carries the refusal; if the read-back itself cannot be performed, that refuses too. Git's state answers the question git's exit code could not."
 
-fn lease_failure_report(store_root: String, repo_root: String, token: String, detail: String) -> ProduceReport {
+data attach_waits_for_bytes_note: String = "ATTACHING IS A STATUS, NOT A COMPLETION, and an earlier revision exited SUCCESS on it. The caller asked for a usable binary; it was told the exit code for success and handed nothing, because another producer was still compiling. Every automated consumer -- a script, a CI step, an agent -- reads exit zero as 'the artifact is there' and proceeds to use a file that does not exist. That is the contract law of this vertical inverted at the last step: success reported without retrievable bytes.\\n\\nSo the attaching caller WAITS on the producer that beat it, and the wait terminates in one of exactly two ways: the artifact appears and the ordinary reuse law runs over it -- exact subject comparison, independent digest verification, bytes confirmed present -- or the wait refuses. There is no arm that exits success without bytes, and reuse is not special-cased for waiters: the same fold decides, so a waiter cannot be handed something a first-time requester would have been refused.\\n\\nTHE WAIT IS BOUNDED, AND EXPIRY IS A REFUSAL RATHER THAN A VERDICT. An unbounded wait is the forever-pending state this service must never produce: a producer that died holds its lease forever, and every later requester would block on it silently. The bound turns that into a located, typed, countable refusal naming the holder and how long was spent -- which is what makes a stranded lease observable and therefore fixable, instead of looking like an ordinary slow build. Expiry deliberately does NOT claim the producer is dead: this caller cannot observe that, and inventing it would be the fabrication the timeout exists to avoid. Breaking a stranded lease is a separate, explicit coordinator action.\\n\\nPolling rather than subscribing is what the substrate offers -- git refs have no watch -- and it is honest at this grain: the cost is one ref lookup per interval against a local repository."
+
+data attach_wait_attempt_list_note: String = "THE POLL BUDGET IS A LIST BECAUSE THE SUBSTRATE BOUNDS ITERATION BY THE THING ITERATED. There is no range or repeat primitive -- deliberately, since a count-driven loop is the shape whose termination has to be argued separately -- so the attempt budget is a real finite list and the fold over it terminates by construction rather than by a decreasing counter anybody could get wrong.\\n\\nTen tens is one hundred attempts at nine seconds, which is the nine-hundred-second budget stated beside it. The two are kept in agreement by derivation at the one place that reports them, not by two literals hoping to match."
+
+data attach_wait_interval_seconds: String = "9"
+
+fn attach_wait_tick_unit() -> List<Int> {
+  [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+}
+
+fn attach_wait_attempts() -> List<Int> {
+  fold(
+    attach_wait_tick_unit(),
+    init: [],
+    f: (acc, tick) => concat(acc, attach_wait_tick_unit()),
+  )
+}
+
+fn attach_wait_budget_seconds() -> Int {
+  (attach_wait_attempts() |> count) * parse_int(attach_wait_interval_seconds)
+}
+
+type AttachWait
+  = AttachArtifactAppeared { oid: String }
+  | AttachStillProducing
+  | AttachWaitRefused { detail: String }
+
+fn attach_poll_once(store_root: String, repo_root: String, token: String) -> AttachWait {
+  match artifact_lookup(store_root: store_root, repo_root: repo_root, token: token) {
+    ArtifactRefPresent { oid } => AttachArtifactAppeared { oid: oid }
+    ArtifactRefAbsent => AttachStillProducing
+    ArtifactLookupRefused { detail } => AttachWaitRefused { detail: detail }
+  }
+}
+
+fn attach_wait_step(acc: AttachWait, store_root: String, repo_root: String, token: String) -> AttachWait {
+  match acc {
+    AttachArtifactAppeared { oid } => acc
+    AttachWaitRefused { detail } => acc
+    AttachStillProducing => {
+      let paused = gunbc.WitnessBin.Run(
+        workdir: repo_root,
+        bin_path: "sleep",
+        args: [attach_wait_interval_seconds],
+      )
+      attach_poll_once(store_root: store_root, repo_root: repo_root, token: token)
+    }
+  }
+}
+
+fn attach_wait_for_artifact(store_root: String, repo_root: String, token: String) -> AttachWait {
+  fold(
+    attach_wait_attempts(),
+    init: attach_poll_once(store_root: store_root, repo_root: repo_root, token: token),
+    f: (acc, attempt) => attach_wait_step(acc: acc, store_root: store_root, repo_root: repo_root, token: token),
+  )
+}
+
+fn attach_then_reuse(
+  store_root: String,
+  repo_root: String,
+  work_root: String,
+  caller: String,
+  host: TargetTriple,
+  subject: BuildSubject,
+  token: String,
+  holder: String,
+) -> ProduceReport {
+  match attach_wait_for_artifact(store_root: store_root, repo_root: repo_root, token: token) {
+    AttachWaitRefused { detail } => ProduceRefused { reason: detail }
+    AttachStillProducing =>
+      ProduceRefused {
+        reason: join([
+          "attached to producer ",
+          holder,
+          " and waited ",
+          to_string(attach_wait_budget_seconds()),
+          "s without an artifact appearing; the lease is still held. This caller cannot observe whether that producer is alive -- breaking a stranded lease is an explicit coordinator action, never inferred from a timeout.",
+        ], ""),
+      }
+    AttachArtifactAppeared { oid } =>
+      live_reuse_report(
+        store_root: store_root,
+        repo_root: repo_root,
+        work_root: work_root,
+        caller: caller,
+        host: host,
+        subject: subject,
+        token: token,
+        oid: oid,
+      )
+  }
+}
+
+fn lease_failure_report(
+  store_root: String,
+  repo_root: String,
+  work_root: String,
+  caller: String,
+  host: TargetTriple,
+  subject: BuildSubject,
+  token: String,
+  detail: String,
+) -> ProduceReport {
   match ref_lookup(store_root: store_root, repo_root: repo_root, ref_name: lease_ref_of(token: token)) {
-    ArtifactRefPresent { oid } => ProduceAttached { token: token }
+    ArtifactRefPresent { oid } =>
+      attach_then_reuse(
+        store_root: store_root,
+        repo_root: repo_root,
+        work_root: work_root,
+        caller: caller,
+        host: host,
+        subject: subject,
+        token: token,
+        holder: oid,
+      )
     ArtifactRefAbsent =>
       ProduceRefused {
         reason: join(["lease could not be taken and no producer holds it: ", detail], ""),
@@ -578,7 +708,7 @@ fn devboot_produce_build(store_root: String, repo_root: String, work_root: Strin
     args: [concat("--git-dir=", store_root), "update-ref", lease_ref_of(token: token), claim_oid, ""],
   )
   if !taken.success {
-    lease_failure_report(store_root: store_root, repo_root: repo_root, token: token, detail: trim(s: taken.stderr))
+    lease_failure_report(store_root: store_root, repo_root: repo_root, work_root: work_root, caller: caller, host: host, subject: subject, token: token, detail: trim(s: taken.stderr))
   } else {
     devboot_store_built_artifact(store_root: store_root, repo_root: repo_root, work_root: work_root, caller: caller, host: host, subject: subject, token: token)
   }
@@ -760,6 +890,36 @@ fn devboot_run_build_plan(
     expect: ExpectSuccess,
   )
   let blob_oid = trim(s: stored.stdout)
+  if !built.success {
+    ProduceRefused {
+      reason: join(["the build failed (cargo exit ", to_string(built.exit_code), "): ", trim(s: built.stderr)], ""),
+    }
+  } else {
+    if !stored.success || blob_oid == "" {
+      ProduceRefused {
+        reason: join(["the build produced no retrievable artifact at ", artifact_path, " (git hash-object exit ", to_string(stored.exit_code), "): ", trim(s: stored.stderr)], ""),
+      }
+    } else {
+      devboot_bind_produced_artifact(
+        store_root: store_root,
+        repo_root: repo_root,
+        subject: subject,
+        token: token,
+        blob_oid: blob_oid,
+      )
+    }
+  }
+}
+
+data produced_requires_every_step_note: String = "PRODUCED IS REPORTED ONLY IF EVERY STEP ANSWERED, and until this repair it was reported unconditionally. The final arm returned ProduceProduced no matter what the build and store invocations did, so a run whose cargo never compiled and whose hash-object therefore had nothing to hash still reported success -- with an EMPTY artifact address, which is the contract law of this vertical ('no arm exists where build succeeded is reportable without retrievable bytes') violated by the function that exists to uphold it.\\n\\nIT WAS FOUND BY EXECUTION, NOT BY READING. The receipt said PRODUCED subject=fnv1a64-27b97ee6f4b89fd7 artifact= -- an empty field where an object id belongs -- while the store held a lease and a subject ref but no artifact ref at all. Nothing in the types objected, because the outcome carries the address as an ordinary String and the empty string is a perfectly good one.\\n\\nTHE EXPECTATION MARKER IS NOT A CHECK, which is the lesson worth keeping. Every one of these invocations carried expect: ExpectSuccess, and it reads exactly like an assertion that the step succeeded; it is an output-policy annotation, and control flow continues regardless. Trusting it was the specification-without-execution failure in miniature -- a declaration that looked like enforcement while the realization walked straight past it.\\n\\nThe binding steps are separated below so the success arm is reachable only through the two checks."
+
+fn devboot_bind_produced_artifact(
+  store_root: String,
+  repo_root: String,
+  subject: BuildSubject,
+  token: String,
+  blob_oid: String,
+) -> ProduceReport {
   let artifact_sha256 = observed_artifact_sha256(store_root: store_root, repo_root: repo_root, oid: blob_oid)
   let record_path = join([store_root, "/devboot-record-", token], "")
   let record_written = Filesystem.Write(
@@ -782,9 +942,14 @@ fn devboot_run_build_plan(
     workdir: repo_root,
     bin_path: "git",
     args: [concat("--git-dir=", store_root), "update-ref", artifact_ref_of(token: token), blob_oid, ""],
-    expect: ExpectSuccess,
   )
-  ProduceProduced { token: token, artifact: blob_oid }
+  if !bound.success {
+    ProduceRefused {
+      reason: join(["the artifact was stored but could not be bound to its subject ref (git exit ", to_string(bound.exit_code), "): ", trim(s: bound.stderr)], ""),
+    }
+  } else {
+    ProduceProduced { token: token, artifact: blob_oid }
+  }
 }
 
 data devboot_materialize_note: String = "THE CONSUMER SIDE, AND IT VERIFIES INDEPENDENTLY. The bytes are fetched out of the object database by address, and then their sha256 is computed over the fetched file -- a digest whose preimage is the content alone, so the store cannot satisfy it by agreeing with itself. Re-deriving the git oid instead would only re-read the store's own answer and would establish nothing.\\n\\nThe caller compares the reported digest against the one it was promised. This function reports what it measured rather than deciding the comparison, because the promise lives with the requester."
@@ -838,12 +1003,13 @@ fn first_field(text: String) -> String {
   )
 }
 
+data attach_variant_retired_note: String = "THERE IS NO ATTACHED OUTCOME ANY MORE, because there is nothing for it to mean. Attaching is what happens DURING a request -- the caller waits on the producer that beat it -- and every wait now ends in bytes or in a refusal. A terminal arm saying 'someone else is building this' would be a completion status that reports neither, and it was precisely the arm that used to exit success with nothing to show for it.\\n\\nRetiring the variant rather than remapping its exit code is the difference between a check and a construction. While the arm existed, some later call site could reintroduce the success mapping in one line; with no constructor, a report that claims completion without an artifact cannot be built at all. Attaching still happens and is still visible -- it is a stage of the wait, named in the refusal when the wait expires, not a verdict.\\n\\nWHEN IT COMES BACK IT WILL BE A DIFFERENT THING. The served surface's status route reports a nonterminal standing to a caller that asked for status rather than for a binary; that is a genuine nonterminal answer to a different question, and it belongs to the request/response carriers, never to the outcome of 'give me this artifact'."
+
 data produce_report_typing_note: String = "THE ENTRY RETURNS A TYPED OUTCOME, NOT A SENTENCE, and the sentence is derived from it. An earlier revision returned the rendered String directly, which had two consequences worth recording. The harness treats a non-ProcessExit return as a refusal, so a run that had genuinely PRODUCED an artifact exited nonzero and printed the word refused -- a success reported as a failure, which is the reporting half of the same honesty rule this vertical enforces everywhere else. And a caller wanting the artifact address had to parse prose.\\n\\nNow the decision is a closed sum, the sentence is one projection of it, and the exit code is another. A caller reads the receipt file for the address; the shell reads the exit code for the verdict; neither is derived by scraping the other."
 
 type ProduceReport
   = ProduceProduced { token: String, artifact: String }
   | ProduceReused { token: String, artifact: String }
-  | ProduceAttached { token: String }
   | ProduceRefused { reason: String }
 
 fn render_produce_report(report: ProduceReport, caller: String) -> String {
@@ -852,8 +1018,6 @@ fn render_produce_report(report: ProduceReport, caller: String) -> String {
       join(["PRODUCED subject=", token, " artifact=", artifact, " caller=", caller], "")
     ProduceReused { token, artifact } =>
       join(["REUSED subject=", token, " artifact=", artifact, " caller=", caller], "")
-    ProduceAttached { token } =>
-      join(["ATTACHED subject=", token, " caller=", caller, " (another producer holds the lease)"], "")
     ProduceRefused { reason } => concat("REFUSED: ", reason)
   }
 }
@@ -862,7 +1026,6 @@ fn produce_report_exit(report: ProduceReport) -> ProcessExit {
   match report {
     ProduceProduced { token, artifact } => ExitSuccess
     ProduceReused { token, artifact } => ExitSuccess
-    ProduceAttached { token } => ExitSuccess
     ProduceRefused { reason } => exit_failure(reason: reason)
   }
 }
