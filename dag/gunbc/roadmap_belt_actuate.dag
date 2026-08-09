@@ -1,5 +1,7 @@
 module gunbc.roadmap_belt_actuate
 
+import std.algebra { trim }
+
 import gunbc.output_policy { OutcomeIsData }
 import std.types { String, Int, Bool, List, NonEmptyStr, FilePath, CommitSha, GitRef }
 import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId, node_criteria_digest }

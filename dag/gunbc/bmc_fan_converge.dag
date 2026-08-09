@@ -1,5 +1,7 @@
 module gunbc.bmc_fan_converge
 
+import std.algebra { trim }
+
 import extdeps.bmc.capability {
   CurrentEvidenceUnclaimed,
   BmcFirmwareIntent,

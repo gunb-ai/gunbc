@@ -1,5 +1,7 @@
 module gunbc.legacy_test_inflow
 
+import std.algebra { trim }
+
 import std.types { Bool, FilePath, Int, List, NonEmptyStr, String }
 import gunbc.legacy_test_behavior_disposition {
   LegacyTestBehavior,

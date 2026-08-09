@@ -1,5 +1,7 @@
 module gunbc.roadmap_publish
 
+import std.algebra { trim }
+
 import std.types { String, NonEmptyStr, Int, Bool, List, CommitSha, HttpStatus }
 import extdeps.github.pulls {
   PullRequest,
