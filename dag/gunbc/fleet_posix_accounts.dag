@@ -1,6 +1,11 @@
 module gunbc.fleet_posix_accounts
 
-import extdeps.access.posix { PosixUser }
+import extdeps.access.posix { PosixUser, PosixLoginName }
+import std.nat { Nat }
+import std.types { Timestamp }
+import gunbc.fleet_lifecycle_observation { ProcessReceipt }
+import extdeps.ssh { SshPublicKey }
+import std.content_hash { Fnv1a64Structural }
 import extdeps.sudo.nopasswd_execute_probe {
   SudoNopasswdProbeKind,
   NopasswdExecuteCheck,
@@ -185,12 +190,15 @@ data name_requirements_authority_note: String = "Meaning lives in typed identity
 
 type NameAudience = MachineOnly | HumanObservable | HumanEntered
 
-type NameReadability = Opaque | CompactReadable | Pronounceable | HumanMeaningful
+type NameHumanFactors = Opaque | Compact | Pronounceable | OperatorMeaningful
 
-type NameSemanticEncoding
-  = NoDomainMeaning
-  | MnemonicOnly
-  | MeaningRequired { authority: DeclarationRef }
+// TWO INDEPENDENT AXES, corrected: an earlier revision made NoDomainMeaning and MnemonicOnly peer
+// variants of one coproduct, which is a false exclusion. A pronounceable arbitrary word is BOTH a
+// mnemonic for a human AND free of domain meaning -- that combination is precisely what an
+// automation label should be, and the fused coproduct made it unrepresentable.
+type NameSemanticContent
+  = EncodesNoDomainMeaning
+  | EncodesAuthorityMeaning { authority: DeclarationRef }
 
 type NameAuthorityRole = PresentationOnly | OperationalHandle | ExternalIdentityAuthority
 
@@ -206,26 +214,41 @@ type NameStability
 // the same candidate. Persistence = an allocated name survives reapply. Uniformity = whether two
 // occurrences must share a spelling. Uniqueness = whether one namespace admits a collision. Only
 // uniformity is modeled here as a choice; the others are laws stated on the allocation.
+type NameScopeIdentity = NonEmptyStr where brand("NameScopeIdentity")
+type NameSchemeIdentity = NonEmptyStr where brand("NameSchemeIdentity")
+
 type NameUniformity
   = IndependentPerOccurrence
-  | EqualWithinScope { scope: NonEmptyStr }
+  | EqualWithinScope { scope: NameScopeIdentity }
 
 type NameAllocationMethod
   = ExplicitAllocation
-  | VersionedProjection { scheme: NonEmptyStr }
+  | VersionedProjection { scheme: NameSchemeIdentity }
   | UpstreamObserved
 
 type NameRetirement = ReusableAfterRetirement | Tombstoned
 
-type NameRequirements {
+// SPLIT: what a name must BE is not the same fact as how it is CHOSEN and retired. Allocation
+// method, collision scope and retirement are policy about the allocation process; they are not
+// characteristics of the string.
+type NameIntent {
   audience: NameAudience
-  readability: NameReadability
-  semantic_encoding: NameSemanticEncoding
+  human_factors: NameHumanFactors
+  semantic_content: NameSemanticContent
   authority_role: NameAuthorityRole
   stability: NameStability
   uniformity: NameUniformity
-  allocation: NameAllocationMethod
+}
+
+type NameAllocationPolicy {
+  method: NameAllocationMethod
+  collision_scope: NameScopeIdentity
   retirement: NameRetirement
+}
+
+type NameRequirements {
+  intent: NameIntent
+  allocation_policy: NameAllocationPolicy
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -250,50 +273,70 @@ type FleetPrincipalIntent {
 }
 
 data automation_name_requirements: NameRequirements = NameRequirements {
-  audience: HumanObservable,
-  readability: Pronounceable,
-  semantic_encoding: NoDomainMeaning,
-  authority_role: OperationalHandle,
-  stability: StableForOccurrence,
-  uniformity: IndependentPerOccurrence,
-  allocation: ExplicitAllocation,
-  retirement: Tombstoned,
+  intent: NameIntent {
+    audience: HumanObservable,
+    human_factors: Pronounceable,
+    semantic_content: EncodesNoDomainMeaning,
+    authority_role: OperationalHandle,
+    stability: StableForOccurrence,
+    uniformity: IndependentPerOccurrence,
+  },
+  allocation_policy: NameAllocationPolicy {
+    method: ExplicitAllocation,
+    collision_scope: "host-local-posix" as NameScopeIdentity,
+    retirement: Tombstoned,
+  },
 }
 
 data service_name_requirements: NameRequirements = NameRequirements {
-  audience: MachineOnly,
-  readability: Opaque,
-  semantic_encoding: NoDomainMeaning,
-  authority_role: OperationalHandle,
-  stability: StableForOccurrence,
-  uniformity: IndependentPerOccurrence,
-  allocation: ExplicitAllocation,
-  retirement: Tombstoned,
+  intent: NameIntent {
+    audience: MachineOnly,
+    human_factors: Opaque,
+    semantic_content: EncodesNoDomainMeaning,
+    authority_role: OperationalHandle,
+    stability: StableForOccurrence,
+    uniformity: IndependentPerOccurrence,
+  },
+  allocation_policy: NameAllocationPolicy {
+    method: ExplicitAllocation,
+    collision_scope: "host-local-posix" as NameScopeIdentity,
+    retirement: Tombstoned,
+  },
 }
 
 // The human exception, stated as requirements rather than as an apology: a person must be able to
 // know and type this name, so readability and cross-scope uniformity are genuine requirements here
 // and nowhere else.
 data human_access_name_requirements: NameRequirements = NameRequirements {
-  audience: HumanEntered,
-  readability: HumanMeaningful,
-  semantic_encoding: MnemonicOnly,
-  authority_role: OperationalHandle,
-  stability: StableUntilExplicitRetirement,
-  uniformity: EqualWithinScope { scope: "fleet-human-access" as NonEmptyStr },
-  allocation: ExplicitAllocation,
-  retirement: Tombstoned,
+  intent: NameIntent {
+    audience: HumanEntered,
+    human_factors: OperatorMeaningful,
+    semantic_content: EncodesNoDomainMeaning,
+    authority_role: OperationalHandle,
+    stability: StableUntilExplicitRetirement,
+    uniformity: EqualWithinScope { scope: "fleet-human-access" as NameScopeIdentity },
+  },
+  allocation_policy: NameAllocationPolicy {
+    method: ExplicitAllocation,
+    collision_scope: "fleet-human-access" as NameScopeIdentity,
+    retirement: Tombstoned,
+  },
 }
 
 data legacy_name_requirements: NameRequirements = NameRequirements {
-  audience: HumanObservable,
-  readability: HumanMeaningful,
-  semantic_encoding: MnemonicOnly,
-  authority_role: OperationalHandle,
-  stability: StableUntilExplicitRetirement,
-  uniformity: IndependentPerOccurrence,
-  allocation: UpstreamObserved,
-  retirement: Tombstoned,
+  intent: NameIntent {
+    audience: HumanObservable,
+    human_factors: OperatorMeaningful,
+    semantic_content: EncodesNoDomainMeaning,
+    authority_role: OperationalHandle,
+    stability: StableUntilExplicitRetirement,
+    uniformity: IndependentPerOccurrence,
+  },
+  allocation_policy: NameAllocationPolicy {
+    method: UpstreamObserved,
+    collision_scope: "host-local-posix" as NameScopeIdentity,
+    retirement: Tombstoned,
+  },
 }
 
 fn fleet_principal_intent(key: FleetPosixAccountKey) -> FleetPrincipalIntent {
@@ -384,12 +427,12 @@ type PosixAccountOccurrence {
 
 type PosixAccountAllocation {
   occurrence: PosixAccountOccurrence
-  local_name: NonEmptyStr
+  local_name: PosixLoginName
   uid: Int
   gid: Int
   domain: PosixIdentityDomain
-  name_scheme: NonEmptyStr
-  name_attempt: Int
+  name_scheme: NameSchemeIdentity
+  name_attempt: Nat
 }
 
 type PosixAccountAllocationConflict
@@ -429,12 +472,75 @@ type PosixAccountConflict
 // versus-executed defect this whole split exists to end, reproduced inside its own repair. The
 // grounding fold now compares the two subjects and reports a mismatch as drift.
 //
-// STILL OWED BEFORE APPLY, named rather than silently missing: process receipt, raw-output
-// identity, decoder identity and timestamp. Until those land this record proves an account was
-// DESCRIBED, not that a command ran, so no apply may consume it as access evidence.
+// RECEIPT-BACKED. Without these fields any caller can author a record asserting an account exists,
+// which is #8068's authored-versus-executed defect at account grain: the carrier would prove an
+// account was DESCRIBED, never that a command ran. effect_receipt is our own record of the
+// execution (exit status observed by the dispatcher, and an attempt identity distinguishing two
+// runs against one subject); raw_output_identity pins the bytes the decode consumed, so a decoder
+// change is detectable; observed_at is when, not whether.
 type PosixAccountObservation {
   occurrence: PosixAccountOccurrence
   observed_user: PosixUser
+  effect_receipt: ProcessReceipt
+  raw_output_identity: Fnv1a64Structural
+  observed_at: Timestamp
+}
+
+// ACCOUNT GROUNDING IS NOT ACCESS GROUNDING, and fusing them is why the earlier fold could call an
+// account grounded while copying DESIRED sudo grants into the result -- proving policy, never that
+// the sudoers entry was ever installed. Four facts, and each may hold while the next does not:
+//
+//   account exists and matches its allocation
+//   the exact authorized-key population is observed
+//   the login policy is observed (key-only, password refused)
+//   the narrow privileged capability is observed to execute
+//
+// Only HostAccessGrounded may authorize a serving deployment. That progression -- account created,
+// key login proven, narrow privilege proven, host subsumed -- is the whole srv5 canary.
+type PosixAccessObservation {
+  account: PosixAccountObservation
+  observed_authorized_keys: List<SshPublicKey>
+  password_login_refused: Bool
+  privileged_probe_succeeded: Bool
+}
+
+type HostAccessOutcome
+  = HostAccessGrounded { principal: GroundedPosixPrincipal }
+  | HostAccessAccountNotGrounded { account_outcome: GroundedPosixPrincipalOutcome }
+  | HostAccessKeyPopulationDrifted { expected: List<SshPublicKey>, observed: List<SshPublicKey> }
+  | HostAccessPasswordLoginStillAdmitted
+  | HostAccessPrivilegeNotProven
+
+// The join that a serving deployment must consult. Note the ORDER is not cosmetic: an account that
+// is not grounded cannot have its key population meaningfully compared, and a host still admitting
+// password login is not subsumed however good its key population looks.
+fn ground_host_access(
+  intent: FleetPrincipalIntent,
+  standing: PosixAccountAllocationStanding,
+  access: PosixAccessObservation,
+) -> HostAccessOutcome {
+  let account = ground_posix_principal(
+    intent: intent,
+    standing: standing,
+    observation: Present { value: access.account },
+  )
+  match account {
+    PrincipalGrounded { principal: p } =>
+      if !access.password_login_refused {
+        HostAccessPasswordLoginStillAdmitted
+      } else {
+        if !access.privileged_probe_succeeded {
+          HostAccessPrivilegeNotProven
+        } else {
+          HostAccessGrounded { principal: p }
+        }
+      }
+    PrincipalRequiresHostScope { principal: _ } => HostAccessAccountNotGrounded { account_outcome: account }
+    PrincipalUnallocated { occurrence: _ } => HostAccessAccountNotGrounded { account_outcome: account }
+    PrincipalAllocationConflicted { occurrence: _, first: _, more: _ } => HostAccessAccountNotGrounded { account_outcome: account }
+    PrincipalUnobserved { allocation: _ } => HostAccessAccountNotGrounded { account_outcome: account }
+    PrincipalDrifted { allocation: _, first: _, more: _ } => HostAccessAccountNotGrounded { account_outcome: account }
+  }
 }
 
 // PrincipalRequiresHostScope is the state whose ABSENCE forced the fabrication. An account is
@@ -500,7 +606,7 @@ fn ground_posix_principal(
                   posix: o.observed_user,
                   sudo_grants: intent.sudo_grants,
                   declared_probe: PosixAccountDeclaredProbe {
-                    probed_at: "observed",
+                    probed_at: o.observed_at,
                     probe_command: concat("id ", o.observed_user.name as String) as NonEmptyStr,
                     host: a.occurrence.host as NonEmptyStr,
                   },
