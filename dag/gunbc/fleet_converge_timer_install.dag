@@ -84,8 +84,12 @@ fn fleet_timer_install_commands() -> List<ArgvCommand> {
 // (needs sudo systemctl) nor obtain sudo (needs the deploy path they lack). The
 // prerequisite is therefore CHECKED FIRST and its absence is a TYPED refusal naming the
 // one-time per-host bootstrap, never a bare 'sudo: a password is required' surprise
-// mid-plan. `sudo -n true` is the cheapest discriminating probe: NOPASSWD grants answer
-// success; a host without the dropin refuses without prompting.
+// mid-plan. The probe is `sudo -n -l`: it lists the caller's grants without prompting
+// exactly when NOPASSWD entries exist (sudoers listpw default), and refuses on a host
+// with none. MEASURED CORRECTION (run 31334610318, srv2): the first probe was
+// `sudo -n true`, which tests BLANKET sudo — `true` is not among the six exact granted
+// commands, so a correctly bootstrapped host still refused the probe. The grant set is
+// exact-argv; only -l discriminates 'has the dropin' without exercising a real grant.
 fn fleet_timer_install_prerequisite_refusal(why: String) -> ProcessExit {
   exit_failure(reason: join([
     "fleet_timer_self_install: PrerequisiteAbsent — sudoers dropin gunbc-deploy not effective for this account (",
@@ -114,7 +118,7 @@ func fleet_timer_self_install_wet() -> ProcessExit
       "' whose modeled route is not TimerViaSelfInstall (srv1 is owned by live_deploy membership; a self-install there would fork ownership). Re-dispatch until a self-install host picks the job up.",
     ], ""))
   } else {
-  let sudo_probe = run_shell_command_capture(command: ArgvCommand { argv: ["sudo", "-n", "true"] }, transport: LocalExec)
+  let sudo_probe = run_shell_command_capture(command: ArgvCommand { argv: ["sudo", "-n", "-l"] }, transport: LocalExec)
   if !sudo_probe.success {
     fleet_timer_install_prerequisite_refusal(why: trim(s: sudo_probe.stderr))
   } else {
