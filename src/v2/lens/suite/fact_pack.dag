@@ -1,18 +1,11 @@
 module v2.lens.suite.fact_pack
 
-import std.content_hash {
-  Fnv1a64Structural,
-  content_hash_atom,
-  content_hash_combine_structural,
-  content_hash_eq_structural,
-  content_hash_tagged_structural,
-}
 import v2.std.algebra { fold_list, length }
 import v2.std.collection { List }
 import v2.std.integer { Int }
 import v2.std.text { String }
 
-data lens_suite_fact_pack_note: String = "One exact whole-corpus fact pack per process (V2-LENS-0 boundary). Identity is a structural hash over pool roots plus module-fact rows, not a hand-authored id. construction_count is carried for the once-per-process law; the live producer binds whole_corpus_scope.roots at the host seam when CI2's shared substrate lands. A repeated query with the same subject must return the same identity and must not re-construct (witnessed by modeling controls)."
+data lens_suite_fact_pack_note: String = "One exact whole-corpus fact pack per process (V2-LENS-0 boundary). Identity is a deterministic structural digest over pool roots plus module-fact rows at modeling grain (String seam until CI2's shared substrate lands Fnv1a64Structural). construction_count is carried for the once-per-process law. A repeated query with the same subject must return the same identity and must not re-construct (witnessed by modeling controls)."
 
 type ModuleDeclarationFact {
   module: String
@@ -22,7 +15,7 @@ type ModuleDeclarationFact {
 type LensCorpusFactPack {
   pool_roots: List<String>
   module_facts: List<ModuleDeclarationFact>
-  identity: Fnv1a64Structural
+  identity: String
   construction_count: Int
 }
 
@@ -31,33 +24,20 @@ data lens_suite_whole_corpus_roots: List<String> = ["dag", "src/v1", "src/v2"]
 fn lens_suite_fact_pack_identity_from(
   pool_roots: List<String>,
   module_facts: List<ModuleDeclarationFact>
-) -> Fnv1a64Structural {
-  let roots_hash = fold_list(
+) -> String {
+  let roots_part = fold_list(
     xs: pool_roots,
-    empty: content_hash_atom(value: "lens-suite-fact-pack-roots"),
+    empty: "lens-corpus-fact-pack:roots",
     cons: fn(acc, root) {
-      content_hash_combine_structural(
-        left: acc,
-        right: content_hash_atom(value: root)
-      )
+      concat(acc, concat(":", root))
     }
   )
-  let facts_hash = fold_list(
+  fold_list(
     xs: module_facts,
-    empty: content_hash_atom(value: "lens-suite-fact-pack-facts"),
+    empty: concat(roots_part, ":facts"),
     cons: fn(acc, fact) {
-      content_hash_combine_structural(
-        left: acc,
-        right: content_hash_combine_structural(
-          left: content_hash_atom(value: fact.module),
-          right: content_hash_atom(value: fact.path)
-        )
-      )
+      concat(acc, concat(":", concat(fact.module, concat("@", fact.path))))
     }
-  )
-  content_hash_tagged_structural(
-    tag: "lens-corpus-fact-pack",
-    payload: content_hash_combine_structural(left: roots_hash, right: facts_hash)
   )
 }
 
@@ -108,7 +88,7 @@ fn lens_corpus_fact_pack_second_query_constructs_zero(
   first: LensCorpusFactPack,
   second: LensCorpusFactPack
 ) -> Bool {
-  content_hash_eq_structural(left: first.identity, right: second.identity)
+  (first.identity == second.identity)
     && (second.construction_count == 0)
     && (length(xs: first.module_facts) == length(xs: second.module_facts))
 }

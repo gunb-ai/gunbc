@@ -1,13 +1,13 @@
 module v2.lens.suite.receipt
 
-import std.content_hash { Fnv1a64Structural }
 import v2.lens.registry { LensIdV0 }
 import v2.std.algebra { count_where, length, for_all }
 import v2.std.collection { List }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
+import v2.std.text { String }
 
-data lens_suite_receipt_authority_note: String = "V2-LENS-0 aggregate receipt (operator convergence mandate 2026-08-09). One LensSuiteReceipt reconciles the complete registry roster against terminal execution outcomes on one exact corpus subject. registered = planned = executed terminal rows with zero duplicates and zero unaccounted; v1_lens_body_executions and fallback_count are zero by construction on every success arm. A missing input is Partial, Unavailable, or Refused — never an empty accepted reading. Fact-pack construction_count is one per process; a second query must not construct. Warm execution wall is enforced at the host realization consumer, not re-stated here."
+data lens_suite_receipt_authority_note: String = "V2-LENS-0 aggregate receipt (operator convergence mandate 2026-08-09). One LensSuiteReceipt reconciles the complete registry roster against terminal execution outcomes on one exact corpus subject. registered = planned = executed terminal rows with zero duplicates and zero unaccounted; v1_lens_body_executions and fallback_count are zero by construction on every success arm. A missing input is Partial, Unavailable, or Refused — never an empty accepted reading. Fact-pack construction_count is one per process; a second query must not construct. Subject and fact-pack identity use the modeling String seam until CI2 execution lands Fnv1a64Structural."
 
 type LensSuiteMemberTerminal
   = LensReadingAccepted
@@ -23,7 +23,7 @@ type LensSuiteMemberRow {
 }
 
 type LensSuiteReceipt {
-  subject_digest: Fnv1a64Structural
+  subject_digest: String
   registered_count: Int
   planned_count: Int
   executed_count: Int
@@ -32,7 +32,7 @@ type LensSuiteReceipt {
   unexpected_refusals: Int
   unavailable_count: Int
   unaccounted_count: Int
-  fact_pack_identity: Fnv1a64Structural
+  fact_pack_identity: String
   fact_pack_construction_count: Int
   v1_lens_body_executions: Int
   fallback_count: Int
