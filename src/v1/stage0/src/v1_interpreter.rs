@@ -331,8 +331,35 @@ fn value_hash(v: &Value) -> u64 {
     use std::collections::hash_map::DefaultHasher;
     let mut h = DefaultHasher::new();
 
+    // THE TWO SHAPES THAT NEED NO MATERIALIZATION ARE HANDLED WITHOUT IT.
+    //
+    // `free_monoid_to_vec` CLONES: for a `Value::List` it clones every element, and for a
+    // `Value::Str` it allocates one `Value::Int` per character. Hashing then walks the clone and
+    // throws it away. Measured on the live-read producer with forensics on: 73315126 calls
+    // materializing 3251118183 items, all from this one site, dominating a 221-second phase.
+    //
+    // These two arms produce the IDENTICAL hash by construction -- same 0xF0 tag, same length,
+    // same per-element `value_hash` in the same order -- because that is exactly what the walk
+    // over the materialized vector did. A `Cons` chain still materializes, because walking it
+    // requires resolving the monoid symbols and there is no borrowed view of it.
     match v {
-        Value::List(_) | Value::Str(_) | Value::Variant { .. } => {
+        Value::Str(s) => {
+            0xF0u8.hash(&mut h);
+            s.chars().count().hash(&mut h);
+            for c in s.chars() {
+                value_hash(&char_value(c)).hash(&mut h);
+            }
+            return h.finish();
+        }
+        Value::List(items) => {
+            0xF0u8.hash(&mut h);
+            items.len().hash(&mut h);
+            for item in items.iter() {
+                value_hash(item).hash(&mut h);
+            }
+            return h.finish();
+        }
+        Value::Variant { .. } => {
             if let Some(items) = free_monoid_to_vec(v) {
                 0xF0u8.hash(&mut h);
                 items.len().hash(&mut h);
@@ -14025,5 +14052,63 @@ mod grouping_primitive_tests {
         assert!(lookup("index_by_primitive_delegate").is_some());
         assert!(STD_COLLECTION_MAP_GROUNDED_FNS.contains(&"group_by_primitive_delegate"));
         assert!(STD_COLLECTION_MAP_GROUNDED_FNS.contains(&"index_by_primitive_delegate"));
+    }
+}
+
+#[cfg(test)]
+mod value_hash_materialization_tests {
+    use super::*;
+    use std::collections::hash_map::DefaultHasher;
+
+    /// The implementation that was replaced, kept here as the oracle. It materializes; the
+    /// production path no longer does. Both must answer the same u64 or every HAMT keyed on a
+    /// string or list silently changes shape.
+    fn reference_materializing_hash(v: &Value) -> u64 {
+        let mut h = DefaultHasher::new();
+        if let Some(items) = free_monoid_to_vec(v) {
+            0xF0u8.hash(&mut h);
+            items.len().hash(&mut h);
+            for item in &items {
+                value_hash(item).hash(&mut h);
+            }
+            return h.finish();
+        }
+        value_hash(v)
+    }
+
+    #[test]
+    fn skipping_materialization_preserves_the_hash_for_strings_and_lists() {
+        let specimens = vec![
+            Value::Str(String::new()),
+            Value::Str("a".to_string()),
+            Value::Str("src/v2/lens/module_graph.dag".to_string()),
+            Value::Str("nai\u{308}ve \u{1F600}".to_string()),
+            Value::List(Rc::new(RrbVector::new())),
+            Value::List(Rc::new(
+                vec![Value::Int(1), Value::Str("b".to_string()), Value::Null]
+                    .into_iter()
+                    .collect::<RrbVector<Value>>(),
+            )),
+        ];
+        for v in &specimens {
+            assert_eq!(
+                value_hash(v),
+                reference_materializing_hash(v),
+                "hash changed for {v:?}"
+            );
+        }
+    }
+
+    /// The discriminating half: distinct subjects must still hash apart, so a constant would fail.
+    #[test]
+    fn distinct_strings_and_lists_still_hash_apart() {
+        assert_ne!(
+            value_hash(&Value::Str("a".to_string())),
+            value_hash(&Value::Str("b".to_string()))
+        );
+        assert_ne!(
+            value_hash(&Value::Str("ab".to_string())),
+            value_hash(&Value::Str("ba".to_string()))
+        );
     }
 }
