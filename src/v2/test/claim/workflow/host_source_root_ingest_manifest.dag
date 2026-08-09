@@ -52,3 +52,5 @@ data frontier_probe_entry_source_ref: SourceRef = SourceRef {
 }
 
 data frontier_probe_entry_module_path: String = ""
+
+data realization_sweep_entry_identities: List<String> = []
