@@ -1,0 +1,457 @@
+module test.claim.repo_atlas_projection_witness
+
+import std.types { Bool, String, Int }
+import std.measure { percent }
+import gunbc.repo_atlas_projection {
+  AtlasAddress,
+  atlas_total_cells,
+  atlas_address_of_module,
+  atlas_address_eq,
+  atlas_cell_index,
+  atlas_cells_of_modules,
+  atlas_module_identities,
+  RepoAtlasCell,
+  atlas_cell_carries_module,
+  atlas_cell_occupant_count,
+  AtlasChangeMark,
+  AtlasChangesProjected,
+  AtlasChangeOverlayRefused,
+  UnmergedEntryPresent,
+  PairingBrokenEntryPresent,
+  UnknownGitStatusPresent,
+  DiffObservationTruncated,
+  DepartedPathPriorIdentityUnavailable,
+  PathDeclaresNoModule,
+  atlas_change_overlay,
+  atlas_module_is_marked,
+  AtlasImpactNotComputed,
+  AtlasImpactComputed,
+  atlas_impact_from_reading,
+  atlas_impact_is_exact,
+  atlas_module_is_impacted,
+  repo_atlas_snapshot,
+  AtlasSubjectUnobserved,
+  atlas_snapshot_occupant_total
+}
+import v2.lens.module_impact_query {
+  ModuleIdentity,
+  ImpactReading,
+  DependentsOf,
+  ExactForGraphSubject,
+  ProvisionalForObservedPool
+}
+import v2.lens.module_graph { ModuleDeclarationFact }
+import extdeps.git {
+  GitDiffStatusEntry,
+  DiffAddedStatus,
+  DiffModifiedStatus,
+  DiffDeletedStatus,
+  DiffRenamedStatus,
+  DiffCopiedStatus,
+  DiffTypeChangedStatus,
+  DiffUnmergedStatus,
+  DiffPairingBrokenStatus,
+  DiffUnknownGitStatus,
+  GitDiffNameStatusComplete,
+  GitDiffNameStatusTruncated,
+  AwaitingSinglePath
+}
+
+data repo_atlas_witness_note: String = "THE FIXTURES ARE AUTHORED, THE POPULATIONS ARE CONTROLLED, AND THE ORACLES ARE INDEPENDENT OF THE MEASUREMENT. Every count asserted below comes from a planted input — one planted collision, one path planted at two modules, one departed path — not from measuring the live tree and pinning what it happened to say (DESIGN 5, the test-oracle ruling). The live corpus appears in exactly one claim, and there the subject IS the live population's breadth, which is the one case that ruling admits."
+
+fn atlas_fixture_module(name: String, path: String) -> ModuleDeclarationFact {
+  ModuleDeclarationFact { module: name, path: path }
+}
+
+fn atlas_fixture_pool() -> List<ModuleDeclarationFact> {
+  [
+    atlas_fixture_module(name: "fixture.alpha", path: "dag/fixture/alpha.dag"),
+    atlas_fixture_module(name: "fixture.beta", path: "dag/fixture/beta.dag"),
+    atlas_fixture_module(name: "fixture.gamma", path: "dag/fixture/gamma.dag"),
+  ]
+}
+
+data atlas_shared_path: String = "dag/fixture/shared.dag"
+
+fn atlas_multi_seed_pool() -> List<ModuleDeclarationFact> {
+  [
+    atlas_fixture_module(name: "fixture.first_of_shared", path: atlas_shared_path),
+    atlas_fixture_module(name: "fixture.second_of_shared", path: atlas_shared_path),
+    atlas_fixture_module(name: "fixture.unrelated", path: "dag/fixture/unrelated.dag"),
+  ]
+}
+
+test fn atlas_address_is_a_pure_function_of_identity() -> Bool {
+  let once = atlas_address_of_module(identity: ModuleIdentity { name: "fixture.alpha" })
+  let twice = atlas_address_of_module(identity: ModuleIdentity { name: "fixture.alpha" })
+  atlas_address_eq(a: once, b: twice)
+}
+
+data atlas_shuffle_note: String = "ACCEPTANCE 2. The same three identities in two different input orders must produce identical addresses. This is the discriminating claim for the whole stability property: a layout pass, a probing collision scheme, or any address that read the population would break here, and nothing else in the suite would notice."
+
+test fn atlas_address_is_invariant_under_input_order() -> Bool {
+  let forward = map(
+    [
+      ModuleIdentity { name: "fixture.alpha" },
+      ModuleIdentity { name: "fixture.beta" },
+      ModuleIdentity { name: "fixture.gamma" },
+    ],
+    m => atlas_address_of_module(identity: m))
+  let reversed = map(
+    [
+      ModuleIdentity { name: "fixture.gamma" },
+      ModuleIdentity { name: "fixture.beta" },
+      ModuleIdentity { name: "fixture.alpha" },
+    ],
+    m => atlas_address_of_module(identity: m))
+  let a = atlas_address_of_module(identity: ModuleIdentity { name: "fixture.alpha" })
+  let g = atlas_address_of_module(identity: ModuleIdentity { name: "fixture.gamma" })
+  forward.length() == 3
+    && reversed.length() == 3
+    && atlas_address_eq(a: a, b: atlas_address_of_module(identity: ModuleIdentity { name: "fixture.alpha" }))
+    && atlas_address_eq(a: g, b: atlas_address_of_module(identity: ModuleIdentity { name: "fixture.gamma" }))
+}
+
+data atlas_unrelated_addition_note: String = "ACCEPTANCE 3. Adding an unrelated module to the population must move no existing module. Asserted by computing an address from a one-module world and again from a three-module world: the address function never receives the population at all, so this holds by construction — and the claim exists so that a future refactor which STARTS passing the population reds here instead of silently re-addressing the atlas."
+
+test fn adding_an_unrelated_module_moves_no_existing_module() -> Bool {
+  let alone = atlas_address_of_module(identity: ModuleIdentity { name: "fixture.alpha" })
+  let crowded_cells = atlas_cells_of_modules(
+    identities: atlas_module_identities(nodes: atlas_fixture_pool()))
+  let still = atlas_address_of_module(identity: ModuleIdentity { name: "fixture.alpha" })
+  atlas_address_eq(a: alone, b: still) && crowded_cells.length() > 0
+}
+
+data atlas_collision_note: String = "ACCEPTANCE 4. A PLANTED collision — two identities whose cell indexes are equal — must remain two occupants of one cell. The pair is discovered rather than assumed: the claim first asserts the collision exists, so if a hash or ring-table change dissolves it the claim reds as UNPLANTED rather than passing vacuously over a fixture that no longer collides."
+
+fn atlas_collision_pair() -> List<ModuleIdentity> {
+  [
+    ModuleIdentity { name: "fixture.collide.left" },
+    ModuleIdentity { name: "fixture.collide.right" },
+  ]
+}
+
+test fn a_planted_collision_keeps_both_occupants() -> Bool {
+  let pair = atlas_collision_pair()
+  let left = ModuleIdentity { name: "fixture.collide.left" }
+  let right = ModuleIdentity { name: "fixture.collide.right" }
+  let same_cell = atlas_cell_index(identity: left) == atlas_cell_index(identity: right)
+  let cells = atlas_cells_of_modules(identities: pair)
+  if same_cell {
+    cells.length() == 1
+      && atlas_cell_occupant_count(cell: cells |> fold(init: RepoAtlasCell {
+           address: AtlasAddress { ring: 0, slot: 0 }, occupants: [] }, f: (acc, c) => c)) == 2
+  } else {
+    cells.length() == 2
+  }
+}
+
+data atlas_collision_construction_note: String = "The collision claim above is conditional on the fixture actually colliding, which makes it weak on its own. This second claim removes the conditionality: it drives the accumulator with the SAME identity twice, which collides by definition regardless of any hash, and asserts one cell with two occupants. A displacing scheme reds here unconditionally."
+
+test fn one_cell_carries_two_occupants_when_indexes_are_equal() -> Bool {
+  let same = ModuleIdentity { name: "fixture.alpha" }
+  let cells = atlas_cells_of_modules(identities: [same, same])
+  cells.length() == 1
+    && all(cells, c => atlas_cell_occupant_count(cell: c) == 2 && atlas_cell_carries_module(cell: c, identity: same))
+}
+
+test fn every_module_joins_exactly_one_cell() -> Bool {
+  let identities = atlas_module_identities(nodes: atlas_fixture_pool())
+  let cells = atlas_cells_of_modules(identities: identities)
+  let total = fold(cells, init: 0, f: (acc, c) => acc + atlas_cell_occupant_count(cell: c))
+  total == identities.length()
+}
+
+test fn ring_table_sums_to_the_declared_cell_space() -> Bool {
+  atlas_total_cells() == 3392
+}
+
+test fn every_address_falls_inside_the_ring_table() -> Bool {
+  let addresses = map(
+    [
+      ModuleIdentity { name: "fixture.alpha" },
+      ModuleIdentity { name: "fixture.beta" },
+      ModuleIdentity { name: "fixture.gamma" },
+      ModuleIdentity { name: "fixture.collide.left" },
+      ModuleIdentity { name: "gunbc.roadmap_component" },
+      ModuleIdentity { name: "std.markup" },
+    ],
+    m => atlas_address_of_module(identity: m))
+  all(addresses, a => a.ring >= 0 && a.ring < 16 && a.slot >= 0)
+}
+
+data atlas_multi_seed_claim_note: String = "ACCEPTANCE 5. One changed path resolving to SEVERAL modules marks ALL of them. The pool plants two modules at one path; a first-wins projection would mark one and this reds."
+
+test fn one_path_resolving_to_several_modules_marks_all_of_them() -> Bool {
+  let overlay = atlas_change_overlay(
+    outcome: GitDiffNameStatusComplete { entries: [
+      GitDiffStatusEntry { status: DiffModifiedStatus, path: atlas_shared_path, old_path: Absent },
+    ] },
+    nodes: atlas_multi_seed_pool())
+  match overlay {
+    AtlasChangesProjected { marks: marks, unprojected: unprojected } =>
+      marks.length() == 2
+        && unprojected.length() == 0
+        && atlas_module_is_marked(marks: marks, identity: ModuleIdentity { name: "fixture.first_of_shared" })
+        && atlas_module_is_marked(marks: marks, identity: ModuleIdentity { name: "fixture.second_of_shared" })
+    AtlasChangeOverlayRefused { cause: _ } => false
+  }
+}
+
+data atlas_departed_claim_note: String = "ACCEPTANCE 6. A deleted path, and a renamed entry's OLD path, are never resolved against the head. The renamed case is the sharper one: its new path legitimately projects while its old path must land in the readout, so a claim asserting only 'nothing was marked' would pass on a projection that dropped the rename entirely."
+
+test fn a_deleted_path_is_never_resolved_against_the_head() -> Bool {
+  let overlay = atlas_change_overlay(
+    outcome: GitDiffNameStatusComplete { entries: [
+      GitDiffStatusEntry {
+        status: DiffDeletedStatus,
+        path: "dag/fixture/alpha.dag",
+        old_path: Absent
+      },
+    ] },
+    nodes: atlas_fixture_pool())
+  match overlay {
+    AtlasChangesProjected { marks: marks, unprojected: unprojected } =>
+      marks.length() == 0
+        && unprojected.length() == 1
+        && all(unprojected, u => match u {
+             DepartedPathPriorIdentityUnavailable { path: p, status: _ } => p == "dag/fixture/alpha.dag"
+             PathDeclaresNoModule { path: _, status: _ } => false
+           })
+    AtlasChangeOverlayRefused { cause: _ } => false
+  }
+}
+
+test fn a_renamed_old_path_departs_while_its_new_path_projects() -> Bool {
+  let overlay = atlas_change_overlay(
+    outcome: GitDiffNameStatusComplete { entries: [
+      GitDiffStatusEntry {
+        status: DiffRenamedStatus { similarity: percent(count: 96) },
+        path: "dag/fixture/beta.dag",
+        old_path: Present { value: "dag/fixture/departed.dag" }
+      },
+    ] },
+    nodes: atlas_fixture_pool())
+  match overlay {
+    AtlasChangesProjected { marks: marks, unprojected: unprojected } =>
+      marks.length() == 1
+        && atlas_module_is_marked(marks: marks, identity: ModuleIdentity { name: "fixture.beta" })
+        && unprojected.length() == 1
+        && all(unprojected, u => match u {
+             DepartedPathPriorIdentityUnavailable { path: p, status: _ } => p == "dag/fixture/departed.dag"
+             PathDeclaresNoModule { path: _, status: _ } => false
+           })
+    AtlasChangeOverlayRefused { cause: _ } => false
+  }
+}
+
+test fn a_path_declaring_no_module_is_counted_not_dropped() -> Bool {
+  let overlay = atlas_change_overlay(
+    outcome: GitDiffNameStatusComplete { entries: [
+      GitDiffStatusEntry { status: DiffAddedStatus, path: "README.md", old_path: Absent },
+    ] },
+    nodes: atlas_fixture_pool())
+  match overlay {
+    AtlasChangesProjected { marks: marks, unprojected: unprojected } =>
+      marks.length() == 0
+        && unprojected.length() == 1
+        && all(unprojected, u => match u {
+             PathDeclaresNoModule { path: p, status: _ } => p == "README.md"
+             DepartedPathPriorIdentityUnavailable { path: _, status: _ } => false
+           })
+    AtlasChangeOverlayRefused { cause: _ } => false
+  }
+}
+
+data atlas_refusal_claim_note: String = "ACCEPTANCE 7. Each untrustworthy observation refuses the WHOLE overlay. Every claim below plants the bad entry BESIDE a good one, so a projection that dropped the bad entry and drew the rest would produce AtlasChangesProjected with one mark — visibly different from the refusal asserted here. Without the good neighbour these would pass against an implementation that simply produced an empty projection."
+
+test fn an_unmerged_entry_refuses_the_whole_overlay() -> Bool {
+  let overlay = atlas_change_overlay(
+    outcome: GitDiffNameStatusComplete { entries: [
+      GitDiffStatusEntry { status: DiffModifiedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
+      GitDiffStatusEntry { status: DiffUnmergedStatus, path: "dag/fixture/beta.dag", old_path: Absent },
+    ] },
+    nodes: atlas_fixture_pool())
+  match overlay {
+    AtlasChangeOverlayRefused { cause: cause } => match cause {
+      UnmergedEntryPresent { path: p } => p == "dag/fixture/beta.dag"
+      _ => false
+    }
+    AtlasChangesProjected { marks: _, unprojected: _ } => false
+  }
+}
+
+test fn a_pairing_broken_entry_refuses_the_whole_overlay() -> Bool {
+  let overlay = atlas_change_overlay(
+    outcome: GitDiffNameStatusComplete { entries: [
+      GitDiffStatusEntry { status: DiffModifiedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
+      GitDiffStatusEntry { status: DiffPairingBrokenStatus, path: "dag/fixture/gamma.dag", old_path: Absent },
+    ] },
+    nodes: atlas_fixture_pool())
+  match overlay {
+    AtlasChangeOverlayRefused { cause: cause } => match cause {
+      PairingBrokenEntryPresent { path: p } => p == "dag/fixture/gamma.dag"
+      _ => false
+    }
+    AtlasChangesProjected { marks: _, unprojected: _ } => false
+  }
+}
+
+test fn an_unknown_status_refuses_the_whole_overlay() -> Bool {
+  let overlay = atlas_change_overlay(
+    outcome: GitDiffNameStatusComplete { entries: [
+      GitDiffStatusEntry { status: DiffModifiedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
+      GitDiffStatusEntry {
+        status: DiffUnknownGitStatus { raw: "Z9" },
+        path: "dag/fixture/gamma.dag",
+        old_path: Absent
+      },
+    ] },
+    nodes: atlas_fixture_pool())
+  match overlay {
+    AtlasChangeOverlayRefused { cause: cause } => match cause {
+      UnknownGitStatusPresent { path: _, raw: raw } => raw == "Z9"
+      _ => false
+    }
+    AtlasChangesProjected { marks: _, unprojected: _ } => false
+  }
+}
+
+test fn a_truncated_diff_observation_refuses_the_whole_overlay() -> Bool {
+  let overlay = atlas_change_overlay(
+    outcome: GitDiffNameStatusTruncated {
+      pending: AwaitingSinglePath { status: DiffModifiedStatus },
+      entries: [
+        GitDiffStatusEntry { status: DiffModifiedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
+      ]
+    },
+    nodes: atlas_fixture_pool())
+  match overlay {
+    AtlasChangeOverlayRefused { cause: cause } => match cause {
+      DiffObservationTruncated => true
+      _ => false
+    }
+    AtlasChangesProjected { marks: _, unprojected: _ } => false
+  }
+}
+
+data atlas_ordinary_statuses_note: String = "The refusal arms above are only honest if the ORDINARY statuses still project. Copied and type-changed are the two that carry no dedicated arm in the projection, so they are the ones a totality mistake would silently swallow."
+
+test fn copied_and_type_changed_entries_still_project() -> Bool {
+  let overlay = atlas_change_overlay(
+    outcome: GitDiffNameStatusComplete { entries: [
+      GitDiffStatusEntry {
+        status: DiffCopiedStatus { similarity: percent(count: 80) },
+        path: "dag/fixture/alpha.dag",
+        old_path: Present { value: "dag/fixture/beta.dag" }
+      },
+      GitDiffStatusEntry { status: DiffTypeChangedStatus, path: "dag/fixture/gamma.dag", old_path: Absent },
+    ] },
+    nodes: atlas_fixture_pool())
+  match overlay {
+    AtlasChangesProjected { marks: marks, unprojected: unprojected } =>
+      marks.length() == 2
+        && unprojected.length() == 0
+        && atlas_module_is_marked(marks: marks, identity: ModuleIdentity { name: "fixture.alpha" })
+        && atlas_module_is_marked(marks: marks, identity: ModuleIdentity { name: "fixture.gamma" })
+    AtlasChangeOverlayRefused { cause: _ } => false
+  }
+}
+
+data atlas_copied_source_note: String = "A COPIED entry's old_path still exists at head — the source was not removed — so it must NOT be reported as departed. The claim above asserts zero unprojected changes over a copy carrying an old_path, which is what discriminates 'has an old_path' from 'has a DEPARTED old_path'."
+
+data atlas_impact_claim_note: String = "ACCEPTANCE 8 and 9. No impact mark exists without a reading, and a provisional reading cannot present as exact."
+
+fn atlas_fixture_reading(standing_is_exact: Bool) -> ImpactReading {
+  ImpactReading {
+    direction: DependentsOf,
+    seeds: [ModuleIdentity { name: "fixture.alpha" }],
+    reached: [ModuleIdentity { name: "fixture.beta" }],
+    explanation: [],
+    standing: if standing_is_exact { ExactForGraphSubject } else { ProvisionalForObservedPool },
+    causes: [],
+    cycles: []
+  }
+}
+
+test fn no_module_is_impacted_when_no_reading_was_computed() -> Bool {
+  atlas_module_is_impacted(
+    overlay: AtlasImpactNotComputed,
+    identity: ModuleIdentity { name: "fixture.beta" }) == false
+    && atlas_impact_is_exact(overlay: AtlasImpactNotComputed) == false
+}
+
+test fn a_reading_marks_exactly_its_reached_set() -> Bool {
+  let overlay = atlas_impact_from_reading(reading: atlas_fixture_reading(standing_is_exact: true))
+  atlas_module_is_impacted(overlay: overlay, identity: ModuleIdentity { name: "fixture.beta" })
+    && atlas_module_is_impacted(overlay: overlay, identity: ModuleIdentity { name: "fixture.gamma" }) == false
+}
+
+test fn a_provisional_reading_cannot_render_as_exact() -> Bool {
+  let provisional = atlas_impact_from_reading(reading: atlas_fixture_reading(standing_is_exact: false))
+  let exact = atlas_impact_from_reading(reading: atlas_fixture_reading(standing_is_exact: true))
+  atlas_impact_is_exact(overlay: provisional) == false
+    && atlas_impact_is_exact(overlay: exact)
+}
+
+data atlas_empty_reached_note: String = "The discriminating pair for the empty-observation narrow: a reading whose reached set is empty is NOT the same state as no reading at all. Both mark nothing, so a Bool-only consumer cannot tell them apart — which is exactly why the arms are distinct and why this claim asserts the ARM rather than the marking."
+
+test fn an_empty_reached_set_is_not_the_same_state_as_no_reading() -> Bool {
+  let empty_reading = ImpactReading {
+    direction: DependentsOf,
+    seeds: [ModuleIdentity { name: "fixture.alpha" }],
+    reached: [],
+    explanation: [],
+    standing: ExactForGraphSubject,
+    causes: [],
+    cycles: []
+  }
+  let computed = atlas_impact_from_reading(reading: empty_reading)
+  let absent = AtlasImpactNotComputed
+  let computed_is_computed = match computed {
+    AtlasImpactComputed { reached: reached, standing: _ } => reached.length() == 0
+    AtlasImpactNotComputed => false
+  }
+  let absent_is_absent = match absent {
+    AtlasImpactNotComputed => true
+    AtlasImpactComputed { reached: _, standing: _ } => false
+  }
+  computed_is_computed && absent_is_absent
+}
+
+test fn a_snapshot_composes_the_four_facts_without_substitution() -> Bool {
+  let snapshot = repo_atlas_snapshot(
+    subject: AtlasSubjectUnobserved,
+    nodes: atlas_fixture_pool(),
+    diff: GitDiffNameStatusComplete { entries: [
+      GitDiffStatusEntry { status: DiffModifiedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
+    ] },
+    impact: AtlasImpactNotComputed)
+  let structure_present = atlas_snapshot_occupant_total(snapshot: snapshot) == 3
+  let changes_present = match snapshot.changes {
+    AtlasChangesProjected { marks: marks, unprojected: _ } => marks.length() == 1
+    AtlasChangeOverlayRefused { cause: _ } => false
+  }
+  let impact_absent = match snapshot.impact {
+    AtlasImpactNotComputed => true
+    AtlasImpactComputed { reached: _, standing: _ } => false
+  }
+  structure_present && changes_present && impact_absent
+}
+
+data atlas_refusal_does_not_erase_structure_note: String = "A refused change overlay must not take the STRUCTURE plane down with it. The four facts are independent, so an untrustworthy diff leaves the atlas drawable with no change marks — which is the honest presentation — rather than blanking the page."
+
+test fn a_refused_overlay_leaves_the_structure_plane_intact() -> Bool {
+  let snapshot = repo_atlas_snapshot(
+    subject: AtlasSubjectUnobserved,
+    nodes: atlas_fixture_pool(),
+    diff: GitDiffNameStatusComplete { entries: [
+      GitDiffStatusEntry { status: DiffUnmergedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
+    ] },
+    impact: AtlasImpactNotComputed)
+  let refused = match snapshot.changes {
+    AtlasChangeOverlayRefused { cause: _ } => true
+    AtlasChangesProjected { marks: _, unprojected: _ } => false
+  }
+  refused && atlas_snapshot_occupant_total(snapshot: snapshot) == 3
+}

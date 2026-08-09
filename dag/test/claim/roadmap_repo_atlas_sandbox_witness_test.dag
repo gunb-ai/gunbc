@@ -1,0 +1,185 @@
+module test.claim.roadmap_repo_atlas_sandbox_witness
+
+import std.types { Bool, String, Int }
+import std.markup { Fragment }
+import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
+import gunbc.roadmap_repo_atlas_sandbox {
+  repo_atlas_section,
+  atlas_cell_transform,
+  atlas_ring_radius,
+  atlas_ring_slot_count,
+  atlas_slot_angle_millidegrees
+}
+import gunbc.repo_atlas_projection {
+  AtlasAddress,
+  RepoAtlasSnapshot,
+  repo_atlas_snapshot,
+  AtlasSubjectUnobserved,
+  AtlasImpactNotComputed,
+  atlas_impact_from_reading
+}
+import v2.lens.module_impact_query {
+  ModuleIdentity,
+  ImpactReading,
+  DependentsOf,
+  ExactForGraphSubject,
+  ProvisionalForObservedPool
+}
+import v2.lens.module_graph { ModuleDeclarationFact }
+import extdeps.git {
+  GitDiffStatusEntry,
+  DiffModifiedStatus,
+  DiffUnmergedStatus,
+  GitDiffNameStatusComplete
+}
+
+data repo_atlas_page_witness_note: String = "THE PAGE CLAIMS READ EMITTED TEXT, WHICH IS WEAKER THAN READING STRUCTURE AND IS USED ONLY WHERE THE SUBJECT GENUINELY IS THE EMITTED BYTES. Every claim that asserts an ABSENCE first asserts the presence of something comparable, so a serializer returning empty text cannot make an absence claim vacuously true — the failure mode that made three earlier instrument-lane claims pass over nothing."
+
+fn atlas_page_fixture_nodes() -> List<ModuleDeclarationFact> {
+  [
+    ModuleDeclarationFact { module: "fixture.alpha", path: "dag/fixture/alpha.dag" },
+    ModuleDeclarationFact { module: "fixture.beta", path: "dag/fixture/beta.dag" },
+  ]
+}
+
+fn atlas_page_snapshot_plain() -> RepoAtlasSnapshot {
+  repo_atlas_snapshot(
+    subject: AtlasSubjectUnobserved,
+    nodes: atlas_page_fixture_nodes(),
+    diff: GitDiffNameStatusComplete { entries: [] },
+    impact: AtlasImpactNotComputed)
+}
+
+fn atlas_page_snapshot_changed() -> RepoAtlasSnapshot {
+  repo_atlas_snapshot(
+    subject: AtlasSubjectUnobserved,
+    nodes: atlas_page_fixture_nodes(),
+    diff: GitDiffNameStatusComplete { entries: [
+      GitDiffStatusEntry { status: DiffModifiedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
+    ] },
+    impact: AtlasImpactNotComputed)
+}
+
+fn atlas_page_snapshot_refused() -> RepoAtlasSnapshot {
+  repo_atlas_snapshot(
+    subject: AtlasSubjectUnobserved,
+    nodes: atlas_page_fixture_nodes(),
+    diff: GitDiffNameStatusComplete { entries: [
+      GitDiffStatusEntry { status: DiffUnmergedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
+    ] },
+    impact: AtlasImpactNotComputed)
+}
+
+fn atlas_page_snapshot_impacted(exact: Bool) -> RepoAtlasSnapshot {
+  repo_atlas_snapshot(
+    subject: AtlasSubjectUnobserved,
+    nodes: atlas_page_fixture_nodes(),
+    diff: GitDiffNameStatusComplete { entries: [] },
+    impact: atlas_impact_from_reading(reading: ImpactReading {
+      direction: DependentsOf,
+      seeds: [ModuleIdentity { name: "fixture.alpha" }],
+      reached: [ModuleIdentity { name: "fixture.beta" }],
+      explanation: [],
+      standing: if exact { ExactForGraphSubject } else { ProvisionalForObservedPool },
+      causes: [],
+      cycles: []
+    }))
+}
+
+fn atlas_page_html(snapshot: RepoAtlasSnapshot) -> String {
+  match try_serialize_html_source(node: repo_atlas_section(snapshot: snapshot)) {
+    EmitOk { html: h } => h
+    EmitRejected { reason: _ } => ""
+  }
+}
+
+data atlas_page_non_vacuity_note: String = "The guard every other claim leans on: the page must serialize to non-empty text carrying a known marker. Without this, an absence assertion over an empty string would pass while proving nothing."
+
+test fn the_page_serializes_to_non_empty_html() -> Bool {
+  let html = atlas_page_html(snapshot: atlas_page_snapshot_plain())
+  string_length(s: html) > 0 && string_contains(haystack: html, needle: "atlas-plane-structure")
+}
+
+test fn the_page_carries_no_agent_occupancy_channel() -> Bool {
+  let html = atlas_page_html(snapshot: atlas_page_snapshot_plain())
+  let non_vacuous = string_contains(haystack: html, needle: "atlas-plane-structure")
+  non_vacuous
+    && string_contains(haystack: html, needle: "atlas-plane-occupancy") == false
+    && string_contains(haystack: html, needle: "atlas-dot-occupied") == false
+    && string_contains(haystack: html, needle: "working") == false
+}
+
+data atlas_page_no_script_note: String = "ACCEPTANCE: no client script. Asserted against a page proven to contain real content, so this is a statement about what the page omits rather than about whether it rendered."
+
+test fn the_page_carries_no_client_script() -> Bool {
+  let html = atlas_page_html(snapshot: atlas_page_snapshot_plain())
+  string_contains(haystack: html, needle: "atlas-plane-structure")
+    && string_contains(haystack: html, needle: "<script") == false
+}
+
+data atlas_page_impact_absence_note: String = "ACCEPTANCE 8. With no reading, the impact PLANE must be absent and the readout must say impact was not computed — both, because an absent plane alone is indistinguishable from an empty one."
+
+test fn no_impact_plane_is_emitted_without_a_reading() -> Bool {
+  let html = atlas_page_html(snapshot: atlas_page_snapshot_plain())
+  string_contains(haystack: html, needle: "atlas-plane-structure")
+    && string_contains(haystack: html, needle: "atlas-plane-impact") == false
+    && string_contains(haystack: html, needle: "impact not computed")
+}
+
+test fn an_impact_plane_is_emitted_from_a_real_reading() -> Bool {
+  let html = atlas_page_html(snapshot: atlas_page_snapshot_impacted(exact: true))
+  string_contains(haystack: html, needle: "atlas-plane-impact")
+    && string_contains(haystack: html, needle: "atlas-impact-ring")
+    && string_contains(haystack: html, needle: "impact not computed") == false
+}
+
+data atlas_page_standing_note: String = "ACCEPTANCE 9. A provisional reading must not present as exact. The pair is asserted in BOTH directions so a readout that printed one fixed word would fail one side."
+
+test fn a_provisional_reading_is_labelled_provisional_on_the_page() -> Bool {
+  let provisional = atlas_page_html(snapshot: atlas_page_snapshot_impacted(exact: false))
+  let exact = atlas_page_html(snapshot: atlas_page_snapshot_impacted(exact: true))
+  string_contains(haystack: provisional, needle: "provisional")
+    && string_contains(haystack: provisional, needle: "exact for the graph subject") == false
+    && string_contains(haystack: exact, needle: "exact for the graph subject")
+    && string_contains(haystack: exact, needle: "provisional") == false
+}
+
+data atlas_page_refusal_note: String = "A refused change overlay must show its cause in words AND still draw the structure plane — the four facts are independent, so an untrustworthy diff does not blank the atlas."
+
+test fn a_refused_overlay_states_its_cause_and_keeps_the_structure() -> Bool {
+  let html = atlas_page_html(snapshot: atlas_page_snapshot_refused())
+  string_contains(haystack: html, needle: "change overlay refused")
+    && string_contains(haystack: html, needle: "unmerged entry")
+    && string_contains(haystack: html, needle: "atlas-plane-structure")
+}
+
+test fn a_changed_module_is_marked_on_the_page() -> Bool {
+  let changed = atlas_page_html(snapshot: atlas_page_snapshot_changed())
+  let plain = atlas_page_html(snapshot: atlas_page_snapshot_plain())
+  string_contains(haystack: changed, needle: "atlas-dot-changed")
+    && string_contains(haystack: plain, needle: "atlas-dot-changed") == false
+}
+
+data atlas_page_geometry_note: String = "ACCEPTANCE 11. The renderer receives an ADDRESS and lowers it with nested transforms. These claims pin the lowering itself — that ring 0 slot 0 sits at the top of the inner ring with no rotation, and that a half-way slot turns 180 degrees — so a geometry change is a visible diff rather than a silent re-layout."
+
+test fn ring_zero_slot_zero_lowers_to_an_unrotated_inner_transform() -> Bool {
+  let lowered = atlas_cell_transform(address: AtlasAddress { ring: 0, slot: 0 })
+  lowered == "translate(420 420) rotate(0) translate(0 -34)"
+}
+
+test fn the_ring_radius_grows_by_the_declared_gap() -> Bool {
+  atlas_ring_radius(ring: 0) == 34
+    && atlas_ring_radius(ring: 1) == 58
+    && atlas_ring_radius(ring: 15) == 394
+}
+
+test fn a_half_way_slot_turns_one_hundred_and_eighty_degrees() -> Bool {
+  let half = atlas_ring_slot_count(ring: 0) / 2
+  atlas_slot_angle_millidegrees(address: AtlasAddress { ring: 0, slot: half }) / 1000 == 180
+}
+
+test fn the_ring_slot_probe_reads_the_declared_table() -> Bool {
+  atlas_ring_slot_count(ring: 0) == 32
+    && atlas_ring_slot_count(ring: 1) == 56
+    && atlas_ring_slot_count(ring: 15) == 392
+}
