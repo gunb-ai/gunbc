@@ -1,6 +1,5 @@
 module v2.lens.suite.checkpoint_a_harness
 
-import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import v2.lens.registry { Determinism, LensIdV0, lens_id_v0_eq }
 import v2.lens.suite.census { LensSuiteRegistryCensus, lens_suite_registry_census }
 import v2.lens.suite.roster { lens_suite_planned_count }
@@ -32,7 +31,7 @@ type LensSuiteCheckpointAHarness {
   boring_lens_id: LensIdV0
   planned_roster_count: Int
   census: LensSuiteRegistryCensus
-  subject_placeholder: Fnv1a64Structural
+  subject_placeholder: String
   dispatch_trigger: Ci2DispatchTriggerStanding
   execution_route: LensSuiteExecutionRoute
 }
@@ -43,8 +42,8 @@ data ci2_dispatch_trigger_absent_dissolve_on: String = "gunbc#8043 terminal acce
 
 data interpreter_route_refused_reason: String = "Checkpoint A executes only through the v2-native CI2 route; interpreter-path lens-body execution proves the wrong route"
 
-fn lens_suite_checkpoint_a_subject_placeholder() -> Fnv1a64Structural {
-  content_hash_atom(value: "v2-lens-0-checkpoint-a-subject-pending-ci2-dispatch-trigger")
+fn lens_suite_checkpoint_a_subject_placeholder() -> String {
+  "v2-lens-0-checkpoint-a-subject-pending-ci2-dispatch-trigger"
 }
 
 fn lens_suite_checkpoint_a_dispatch_trigger_standing() -> Ci2DispatchTriggerStanding {
