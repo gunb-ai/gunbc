@@ -8141,14 +8141,29 @@ pub fn build_live_read_selection_manifest(
     // `fn_arrow_decl_facts_index_live`.
     let at = std::time::Instant::now();
     let bundle = index.g2_fact_bundle()?;
+    // THE POPULATION THE GROUPED INDEX IS BUILT OVER, measured at the seed because it is the
+    // denominator every interior cost is expressed in. `distinct_names` and `largest_bucket` are
+    // statistics of the INPUT, not a second implementation of the index: they say how much a
+    // name-keyed lookup can possibly save (declarations / distinct names) and what the worst
+    // single bucket still costs after the save. A run where largest_bucket approaches decls is a
+    // run where grouping bought nothing, and that is exactly the state a bare timing number
+    // cannot distinguish from a slow host.
+    let mut name_counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    for fact in &bundle.decl_facts {
+        *name_counts.entry(fact.name.as_str()).or_insert(0) += 1;
+    }
+    let distinct_name_count = name_counts.len();
+    let largest_bucket = name_counts.values().copied().max().unwrap_or(0);
     phase(
         "fact_bundle_build",
         &at,
         &format!(
-            "modules={} decls={} parse_refusals={}",
+            "modules={} decls={} parse_refusals={} distinct_names={} largest_bucket={}",
             bundle.module_identities.len(),
             bundle.decl_facts.len(),
-            bundle.parse_refusals.len()
+            bundle.parse_refusals.len(),
+            distinct_name_count,
+            largest_bucket
         ),
     );
 
@@ -8266,6 +8281,15 @@ pub fn build_live_read_selection_manifest(
         "the modeled fold: edge/module/fn-arrow production, per-request classification, manifest \
          construction",
     );
+
+    // STOPPED-LINE AUDIT ONLY. When the forensics env var is set, dump the interpreter's
+    // per-.dag-fn self time for this evaluation. It reports; it never decides, and it is off by
+    // default because the instrumentation it reads costs time on every call. The phase receipts
+    // above locate WHICH phase is expensive; this is how the dominant term INSIDE the modeled
+    // fold gets a name instead of a guess.
+    if std::env::var("GUNBC_FLATTEN_SITE_DUMP_SECS").is_ok() {
+        dump_residual_hunt_instrumentation();
+    }
 
     let at = std::time::Instant::now();
     // THE WHOLE DECODE runs inside the active context, not just its first step.
