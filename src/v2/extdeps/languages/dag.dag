@@ -2756,13 +2756,21 @@ fn dag_grammar_type_variant_expr() -> GrammarExpr {
   )
 }
 
+// The optional LEADING pipe admits the corpus's authored multi-line sum layout
+// (`type X =` / `  | A` / `  | B`): whitespace is lexer trivia, so the authored newline
+// carries no token and the leading `|` is the only variable — measured as the second
+// corpus-wide frontend wall (CI2-0 singleton control zz_p_pipe, 2026-08-09; the
+// single-line no-leading-pipe form already parsed).
 fn dag_grammar_type_alias_rhs_expr() -> GrammarExpr {
   dag_grammar_sequence(
-    left: dag_grammar_nonterminal(production: ^dag_production_type_variant),
-    right: dag_grammar_repeat(
-      element: dag_grammar_sequence(
-        left: dag_grammar_terminal(token_class: ^dag_token_pipe),
-        right: dag_grammar_nonterminal(production: ^dag_production_type_variant)
+    left: dag_grammar_optional(element: dag_grammar_terminal(token_class: ^dag_token_pipe)),
+    right: dag_grammar_sequence(
+      left: dag_grammar_nonterminal(production: ^dag_production_type_variant),
+      right: dag_grammar_repeat(
+        element: dag_grammar_sequence(
+          left: dag_grammar_terminal(token_class: ^dag_token_pipe),
+          right: dag_grammar_nonterminal(production: ^dag_production_type_variant)
+        )
       )
     )
   )

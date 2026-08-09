@@ -6,26 +6,60 @@ import v2.std.algebra { fold_list, length }
 import std.algebra { Cons, Empty }
 import v2.std.compilers.lexing {
   LexRuleSet,
+  LexRule,
+  Token,
+  AnnotationRule,
   lex_artifact_annotations,
   lex_artifact_semantic_tokens,
+  symbol_lexeme,
   token_stream_all
 }
 import v2.compiler.tokenize { lex_walk_artifact }
 import v2.compiler.parse { parse_module }
 import v2.extdeps.languages.dag { dag_lex_rules, dag_grammar }
 
-data annotation_rule_witness_note: String = "CI2-0 commit-1 proof obligation (operator directive msg_aa2963ef): discriminating controls for dag_line_comment_annotation_rule on the PRODUCTION lex (dag_lex_rules), each answering one enumerated question by execution. The rule-removed RED reconstructs the pre-repair ruleset by dropping the head row of dag_lex_rules — the same list minus exactly the annotation rule — so the discrimination is single-variable at the ruleset grain. Route-grain proof (real closure advancing, bucket displacement on the 116-identity sample) lives in the sweep receipts, not here: these are lexical/parse mechanism witnesses, hermetic and fast."
+data annotation_rule_witness_note: String = "CI2-0 commit-1 proof obligation (operator directive msg_aa2963ef): discriminating controls for dag_line_comment_annotation_rule on the PRODUCTION lex (dag_lex_rules), each answering one enumerated question by execution. The rule-removed RED reconstructs the pre-repair ruleset by removing the row by DECLARED IDENTITY (the AnnotationRule carrying ^dag_annotation_line_comment), with the removal count asserted, so the discrimination is single-variable at the ruleset grain and survives future rule-order changes (operator repair msg_3bed5a56 items 1-3: identity-based removal; exact annotation payload; exact ordered token-identity sequence, never a count). Route-grain proof (real closure advancing, bucket displacement on the 116-identity sample) lives in the sweep receipts, not here: these are lexical/parse mechanism witnesses, hermetic and fast."
 
 fn rules_with() -> LexRuleSet {
   dag_lex_rules()
 }
 
+// Removal by DECLARED IDENTITY, not position (operator repair msg_3bed5a56 item 1): the row is
+// selected by matching its AnnotationRule constructor and the ^dag_annotation_line_comment class,
+// so a future higher-priority head row cannot silently redirect the RED at an unrelated rule.
+// rules_without_removed_exactly_one() asserts the removal count so a renamed class refuses loudly.
 fn rules_without() -> LexRuleSet {
   match dag_lex_rules() {
     LexRuleSet { rules: rows } =>
-      match rows {
-        Cons { head: _, tail: rest } => LexRuleSet { rules: rest }
-        Empty => LexRuleSet { rules: Empty }
+      LexRuleSet {
+        rules: fold_list(xs: rows, empty: rules_empty(), cons: fn(acc, rule) {
+          match rule {
+            AnnotationRule { annotation_class: cls, pattern: _ } =>
+              if cls == ^dag_annotation_line_comment { acc } else { list_snoc_rule(xs: acc, rule: rule) }
+            _ => list_snoc_rule(xs: acc, rule: rule)
+          }
+        })
+      }
+  }
+}
+
+fn rules_empty() -> List<LexRule> {
+  Empty
+}
+
+fn list_snoc_rule(xs: List<LexRule>, rule: LexRule) -> List<LexRule> {
+  match xs {
+    Empty => Cons { head: rule, tail: Empty }
+    Cons { head: h, tail: t } => Cons { head: h, tail: list_snoc_rule(xs: t, rule: rule) }
+  }
+}
+
+fn rules_without_removed_exactly_one() -> Bool {
+  match dag_lex_rules() {
+    LexRuleSet { rules: all } =>
+      match rules_without() {
+        LexRuleSet { rules: kept } =>
+          length(xs: all) == length(xs: kept) + 1
       }
   }
 }
@@ -67,7 +101,8 @@ test fn witness_commented_module_parses_with_rule() -> Bool {
 }
 
 test fn witness_commented_module_refuses_without_rule_RED() -> Bool {
-  parse_accepts(source: commented_module_source, rules: rules_without()) == false
+  rules_without_removed_exactly_one()
+    && parse_accepts(source: commented_module_source, rules: rules_without()) == false
 }
 
 test fn witness_uncommented_module_parses_without_rule_control() -> Bool {
@@ -89,13 +124,38 @@ test fn witness_slashes_inside_string_not_consumed_as_annotation() -> Bool {
     && lex_annotation_count(source: slashes_in_string_source, rules: rules_with()) == 0
 }
 
+// The annotation lexeme surfaces in the MODELED char-list representation (generic list_append
+// accumulation in the lex walk), while an authored literal is the NATIVE string realization —
+// and `==` across that fork silently answers false (the DESIGN section-5 cross-representation
+// equality class, guarded for Int/Float since #5428 but not for char-list/String; measured here
+// by execution 2026-08-09: the payload decoded char-exact while every native comparison failed).
+// chars_to_string is the identity join at code-point grain — it walks the chain, so this is an
+// exact-payload assertion, never a count. Construction-side grounding of Lexeme in 01_tokenize
+// is the root fix and is carried as typed debt on the census doc, not absorbed here.
+fn first_annotation_lexeme(source: String) -> String {
+  match lex_walk_artifact(source: source, file: ^ann_probe, rules: rules_with()) {
+    v2.std.diagnostic.Rejected { diagnostics: _ } => "REFUSED"
+    v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
+      fold_list(xs: lex_artifact_annotations(artifact: a), empty: "", cons: fn(acc, ann) {
+        concat(acc, chars_to_string(ann.lexeme, 0, 1000000))
+      })
+  }
+}
+
 test fn witness_url_in_comment_captured_whole() -> Bool {
   parse_accepts(source: url_in_comment_source, rules: rules_with())
     && lex_annotation_count(source: url_in_comment_source, rules: rules_with()) == 1
+    && first_annotation_lexeme(source: url_in_comment_source) == "// see https://example.org//path for the citation"
 }
 
 test fn witness_malformed_syntax_still_refuses_RED() -> Bool {
   parse_accepts(source: malformed_source, rules: rules_with()) == false
+}
+
+fn token_identity_sequence(tokens: List<Token>) -> String {
+  fold_list(xs: tokens, empty: "", cons: fn(acc, t) {
+    concat(acc, concat("|", concat(symbol_lexeme(sym: t.class), concat(":", t.lexeme))))
+  })
 }
 
 test fn witness_semantic_projection_erases_comment_tokens() -> Bool {
@@ -105,9 +165,10 @@ test fn witness_semantic_projection_erases_comment_tokens() -> Bool {
       match lex_walk_artifact(source: "module zz_ann_probe\n\nfn probe_id(x: Int) -> Int { x }\n", file: ^ann_probe, rules: rules_with()) {
         v2.std.diagnostic.Rejected { diagnostics: _ } => false
         v2.std.diagnostic.Accepted { value: bare, diagnostics: _ } =>
-          let commented_tokens = length(xs: token_stream_all(stream: lex_artifact_semantic_tokens(artifact: a)))
-          let bare_tokens = length(xs: token_stream_all(stream: lex_artifact_semantic_tokens(artifact: bare)))
-          commented_tokens == bare_tokens
+          let commented_seq = token_identity_sequence(tokens: token_stream_all(stream: lex_artifact_semantic_tokens(artifact: a)))
+          let bare_seq = token_identity_sequence(tokens: token_stream_all(stream: lex_artifact_semantic_tokens(artifact: bare)))
+          (commented_seq == bare_seq) && (commented_seq != "")
       }
   }
 }
+
