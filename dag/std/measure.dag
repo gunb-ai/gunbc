@@ -62,6 +62,11 @@ type Scale =
   | One
   | Sixty
   | RackUnitHeight
+
+  | MilliSquared
+  | MilliCubed
+  | ArcsecondAngle
+  | TurnAngle
   | Kilo
   | Mega
   | Giga
@@ -83,6 +88,10 @@ fn scale_exponent(s: Scale) -> Int? {
     Micro =>  Present { value:  -6 }
     Milli =>  Present { value:  -3 }
     One   =>  Present { value:   0 }
+    MilliSquared => Present { value: -6 }
+    MilliCubed   => Present { value: -9 }
+    ArcsecondAngle => none
+    TurnAngle      => none
     Sixty =>  none
     RackUnitHeight => none
     Kilo  =>  Present { value:   3 }
@@ -122,6 +131,10 @@ fn milliseconds_per_second() -> Nat {
 fn time_scale_factor_seconds(s: Scale) -> Nat? {
   match s {
     One => Present { value: 1 }
+    MilliSquared => none
+    MilliCubed => none
+    ArcsecondAngle => none
+    TurnAngle => none
     Sixty => Present { value: seconds_per_minute() }
     RackUnitHeight => none
     Atto  => none
@@ -156,6 +169,10 @@ fn memory_scale_factor_bytes(s: Scale) -> Nat? {
     Nano  => none
     Micro => none
     Milli => none
+    MilliSquared => none
+    MilliCubed => none
+    ArcsecondAngle => none
+    TurnAngle => none
     Sixty => none
     RackUnitHeight => none
     Kilo  => none
@@ -268,23 +285,41 @@ type MillimeterCoordinate = Measure<Length, Milli, Int>
 
 type MillimeterDisplacementComponent = Measure<Length, Milli, Int>
 
-// AREA AND VOLUME. The scale names the LINEAR scale of the underlying length, so Milli here reads
-// "square millimetre", not "one-thousandth of a square metre". No generic linear scale conversion
+// AREA AND VOLUME carry their OWN scale identities. An earlier revision wrote
+// Measure<Area, Milli, Nat> and warned in a comment not to read Milli linearly - but Scale is not
+// documentation, it is a fold: scale_decimal_exponent answers Milli => -3, so the carrier asserted
+// that a square millimetre is 10^-3 of a square metre. It is 10^-6. A generic consumer inspecting
+// the scale received a FALSE fact, and a comment cannot correct a fold. MilliSquared and MilliCubed
+// answer -6 and -9, so the type carries the squared and cubed relation instead of a caveat.
+// No generic linear scale conversion
 // may be applied to either: the ratios are squared and cubed. The conversions below DERIVE from
 // extdeps.units.iso_80000_3 through a real import edge rather than a prose pointer - a citation
 // that names an authority the module does not depend on is a floating island, and would let the
 // factor here and the factor there drift with nothing to notice.
-type SquareMillimeter = Measure<Area, Milli, Nat>
+type SquareMillimeter = Measure<Area, MilliSquared, Nat>
 
-type CubicMillimeter = Measure<Volume, Milli, Nat>
+type CubicMillimeter = Measure<Volume, MilliCubed, Nat>
 
-// PLANE ANGLE. Turn is the exact canonical unit because degree-to-turn is rational; radian is the
+// PLANE ANGLE units are non-decimal, like Sixty and RackUnitHeight already are: an arcsecond is
+// 1/1296000 of a turn, which is not a power of ten, so scale_decimal_exponent answers `none` rather
+// than pretending. An earlier revision typed Arcsecond as scale One, asserting it was the coherent
+// base unit - it is not; the radian is.
+// Turn is the exact canonical unit because degree-to-turn is rational; radian is the
 // coherent SI unit but 1 turn = 2*pi rad is irrational, so no exact integer conversion to radian
 // exists and none is offered. Angle magnitude and signed angular displacement are separate types
 // for the same reason length magnitude and displacement component are.
-type Arcsecond = Measure<PlaneAngle, One, Nat>
+type Arcsecond = Measure<PlaneAngle, ArcsecondAngle, Nat>
 
-type ArcsecondDisplacement = Measure<PlaneAngle, One, Int>
+type ArcsecondDisplacement = Measure<PlaneAngle, ArcsecondAngle, Int>
+
+// A full turn as a first-class carrier, so the exact canonical unit is representable rather than
+// only describable in prose.
+type Turn = Measure<PlaneAngle, TurnAngle, Nat>
+
+// Signed area: the dot product of two displacement vectors is an AREA with a meaningful sign, not
+// an untyped integer. Without this carrier a dot product returns a bare Int and its dimension is
+// erased at the first operation.
+type SignedSquareMillimeter = Measure<Area, MilliSquared, Int>
 
 fn millimeter_coordinate(count: Int) -> MillimeterCoordinate {
   Measure { count: count }
@@ -845,4 +880,20 @@ fn degrees_to_arcseconds(degrees: Nat) -> Arcsecond {
 // turn is the canonical unit and radian conversion is absent.
 fn quarter_turn_arcseconds() -> Arcsecond {
   arcsecond(count: arcseconds_per_turn() / 4)
+}
+
+fn turn(count: Nat) -> Turn {
+  Measure { count: count }
+}
+
+fn turn_count(t: Turn) -> Nat {
+  measure_count(t)
+}
+
+fn signed_square_millimeter(count: Int) -> SignedSquareMillimeter {
+  Measure { count: count }
+}
+
+fn signed_square_millimeter_count(m: SignedSquareMillimeter) -> Int {
+  measure_count(m)
 }

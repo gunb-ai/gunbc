@@ -5,6 +5,8 @@ import std.integer { Int }
 import std.nat { Nat }
 import std.measure {
   Millimeter,
+  SignedSquareMillimeter,
+  signed_square_millimeter,
   MillimeterDisplacementComponent,
   millimeter_displacement,
   SquareMillimeter,
@@ -35,33 +37,45 @@ import std.affine_space {
 
 type ExactLength
   = LengthExact { value: Millimeter }
-  | LengthRequiresApproximateRealization {
+  | LengthExactRootNotRecognised {
       squared: SquareMillimeter
       reason: NonEmptyStr
     }
 
-// Dot product: exact for integer components. Sign is meaningful (negative means the vectors point
-// away from each other), so the result is a signed scalar, not an area magnitude.
-fn dot3<F>(a: Vector3<F>, b: Vector3<F>) -> Int {
+// Dot product of two DISPLACEMENTS is an AREA with a meaningful sign - millimetre times millimetre
+// is millimetre squared. Returning a bare Int erased that dimension at the first operation, and an
+// erased dimension is how a plausible-looking wrong quantity travels. Sign is retained because a
+// negative dot product means the displacements point away from each other.
+fn dot3<F>(a: Vector3<F>, b: Vector3<F>) -> SignedSquareMillimeter {
   let px = millimeter_displacement_count(m: a.x) * millimeter_displacement_count(m: b.x)
   let py = millimeter_displacement_count(m: a.y) * millimeter_displacement_count(m: b.y)
   let pz = millimeter_displacement_count(m: a.z) * millimeter_displacement_count(m: b.z)
-  px + py + pz
+  signed_square_millimeter(count: px + py + pz)
 }
 
-// Cross product: exact, and frame-preserving. Its magnitude is an area and its direction is normal
-// to both inputs, which is why it stays a Vector3 rather than collapsing to a scalar.
-fn cross3<F>(a: Vector3<F>, b: Vector3<F>) -> Vector3<F> {
+// An AREA vector, NOT a displacement vector. Its components are millimetre squared, and an earlier
+// revision returned Vector3<F> - whose components are millimetre displacements - so the numbers
+// were areas wearing a length type. That made translate_point3(point, by: cross3(a, b)) writable:
+// a cross-product area consumed as a physical translation. A separate carrier makes it unwritable
+// rather than merely wrong, and it is deliberately NOT an alias of Vector3: sharing three numeric
+// components is not sharing a dimension.
+type AreaVector3<F> {
+  x: SignedSquareMillimeter
+  y: SignedSquareMillimeter
+  z: SignedSquareMillimeter
+}
+
+fn cross3<F>(a: Vector3<F>, b: Vector3<F>) -> AreaVector3<F> {
   let ax = millimeter_displacement_count(m: a.x)
   let ay = millimeter_displacement_count(m: a.y)
   let az = millimeter_displacement_count(m: a.z)
   let bx = millimeter_displacement_count(m: b.x)
   let by = millimeter_displacement_count(m: b.y)
   let bz = millimeter_displacement_count(m: b.z)
-  Vector3 {
-    x: millimeter_displacement_component_of(value: (ay * bz) - (az * by)),
-    y: millimeter_displacement_component_of(value: (az * bx) - (ax * bz)),
-    z: millimeter_displacement_component_of(value: (ax * by) - (ay * bx)),
+  AreaVector3 {
+    x: signed_square_millimeter(count: (ay * bz) - (az * by)),
+    y: signed_square_millimeter(count: (az * bx) - (ax * bz)),
+    z: signed_square_millimeter(count: (ax * by) - (ay * bx)),
   }
 }
 
@@ -87,12 +101,15 @@ fn int_square_to_nat(value: Int) -> Nat {
   int_to_nat_nonnegative(value: magnitude * magnitude)
 }
 
-// PARTIAL, deliberately. Exact exactly when the displacement lies along a single axis, where the
-// magnitude is that component's absolute value and no root is taken. Every other case - including
-// Pythagorean triples, which ARE exact - refuses. That refusal is conservative rather than
-// complete, and the reason is stated rather than hidden: recognising a perfect square needs an
-// integer square root this slice does not have. Widening the exact set is a later increment;
-// answering approximately is not, because it would put invented precision underneath everything.
+// PARTIAL, deliberately. Exact when the displacement lies along a single axis, where the magnitude
+// is that component's absolute value and no root is taken.
+//
+// THE REFUSAL NAMES THE IMPLEMENTATION, NOT THE MATHEMATICS. An earlier revision called this arm
+// LengthRequiresApproximateRealization, which is FALSE for (3, 4, 0): its magnitude is exactly 5,
+// and approximation is not required - this slice simply has no integer square root to recognise a
+// perfect square. Naming a limitation of the code as a property of the problem is the same class of
+// overclaim as reporting a rung that executed evidence does not establish. Widening the exact set
+// is a later increment; answering approximately is not.
 fn norm3<F>(v: Vector3<F>) -> ExactLength {
   let x = millimeter_displacement_count(m: v.x)
   let y = millimeter_displacement_count(m: v.y)
@@ -101,9 +118,9 @@ fn norm3<F>(v: Vector3<F>) -> ExactLength {
   if nonzero_axes <= 1 {
     LengthExact { value: millimeter(count: int_to_nat_nonnegative(value: absolute(value: x + y + z))) }
   } else {
-    LengthRequiresApproximateRealization {
+    LengthExactRootNotRecognised {
       squared: norm_squared3(v: v),
-      reason: "magnitude is a square root of a sum of squares; exact only for axis-aligned displacements in this slice",
+      reason: "this slice recognises an exact magnitude only for axis-aligned displacements; the root may still be exact (3,4,0 has magnitude 5) and an integer square root would find it",
     }
   }
 }
@@ -145,10 +162,24 @@ fn closer_than3<F>(a_from: Point3<F>, a_to: Point3<F>, b_from: Point3<F>, b_to: 
   a2 < b2
 }
 
+// A DIRECTION IS DIMENSIONLESS. An earlier revision returned Vector3<F> with components of -1, 0
+// or 1 MILLIMETRES, which is not a direction at all - it is a one-millimetre displacement, and it
+// made translate_point3(point, by: normalized.direction) writable, moving the point by 1 mm. For
+// the exact integer-only slice the honest carrier is the axis enum: it names the six directions
+// integer arithmetic can represent exactly and carries no magnitude to be mistaken for one. A
+// general normalized direction needs division and arrives with the approximate realization.
+type AxisDirection3<F>
+  = PositiveX
+  | NegativeX
+  | PositiveY
+  | NegativeY
+  | PositiveZ
+  | NegativeZ
+
 type Direction3Result<F>
-  = DirectionExact { direction: Vector3<F> }
+  = DirectionExact { direction: AxisDirection3<F> }
   | DirectionZeroVectorHasNone
-  | DirectionRequiresApproximateRealization {
+  | DirectionNotAxisAligned {
       squared_magnitude: SquareMillimeter
       reason: NonEmptyStr
     }
@@ -169,22 +200,25 @@ fn normalize3<F>(v: Vector3<F>) -> Direction3Result<F> {
     DirectionZeroVectorHasNone
   } else {
     if nonzero_axes == 1 {
-      DirectionExact {
-        direction: Vector3 {
-          x: millimeter_displacement_component_of(value: unit_sign(value: x)),
-          y: millimeter_displacement_component_of(value: unit_sign(value: y)),
-          z: millimeter_displacement_component_of(value: unit_sign(value: z)),
-        },
-      }
+      DirectionExact { direction: axis_direction_of(x: x, y: y, z: z) }
     } else {
-      DirectionRequiresApproximateRealization {
+      DirectionNotAxisAligned {
         squared_magnitude: norm_squared3(v: v),
-        reason: "unit components are irrational unless the displacement is axis-aligned",
+        reason: "an exactly representable unit direction needs an axis-aligned displacement; the general case needs division and the approximate realization",
       }
     }
   }
 }
 
-fn unit_sign(value: Int) -> Int {
-  if value == 0 { 0 } else { if value < 0 { 0 - 1 } else { 1 } }
+// Exactly one component is nonzero when this is reached, so the axis is determined.
+fn axis_direction_of<F>(x: Int, y: Int, z: Int) -> AxisDirection3<F> {
+  if x != 0 {
+    if x < 0 { NegativeX } else { PositiveX }
+  } else {
+    if y != 0 {
+      if y < 0 { NegativeY } else { PositiveY }
+    } else {
+      if z < 0 { NegativeZ } else { PositiveZ }
+    }
+  }
 }

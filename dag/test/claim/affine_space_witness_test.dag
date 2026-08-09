@@ -5,7 +5,7 @@ import std.integer { Int }
 import std.nat { Nat }
 import std.measure {
   millimeter_count, millimeter_coordinate_count, millimeter_displacement_count,
-  square_millimeter_count,
+  square_millimeter_count, signed_square_millimeter_count,
 }
 import std.affine_space {
   Vector3, Point3, vector3, point3, zero_vector3,
@@ -16,9 +16,10 @@ import std.affine_space {
   Handedness, RightHanded, CoordinateFrameDescriptor,
 }
 import std.euclidean_geometry {
-  ExactLength, LengthExact, LengthRequiresApproximateRealization,
-  Direction3Result, DirectionExact, DirectionZeroVectorHasNone,
-  DirectionRequiresApproximateRealization,
+  ExactLength, LengthExact, LengthExactRootNotRecognised,
+  Direction3Result, DirectionExact, DirectionZeroVectorHasNone, DirectionNotAxisAligned,
+  AxisDirection3, PositiveX, NegativeX, PositiveY, NegativeY, PositiveZ, NegativeZ,
+  AreaVector3,
   dot3, cross3, norm_squared3, norm3, distance3, distance_squared3, closer_than3, normalize3,
 }
 
@@ -108,16 +109,16 @@ fn witness_norm_squared_is_total_and_exact() -> Bool {
 fn witness_norm_exact_on_axis_refuses_on_diagonal() -> Bool {
   match norm3(v: vector3(x: 0, y: 0 - 2500, z: 0)) {
     LengthExact { value: v } => millimeter_count(m: v) == 2500
-    LengthRequiresApproximateRealization { squared: _, reason: _ } => false
+    LengthExactRootNotRecognised { squared: _, reason: _ } => false
   }
     && match norm3(v: vector3(x: 3, y: 4, z: 0)) {
          LengthExact { value: _ } => false
-         LengthRequiresApproximateRealization { squared: s, reason: _ } =>
+         LengthExactRootNotRecognised { squared: s, reason: _ } =>
            square_millimeter_count(m: s) == 25
        }
     && match distance3(from: desk_a(), to: desk_b()) {
          LengthExact { value: _ } => false
-         LengthRequiresApproximateRealization { squared: s, reason: _ } =>
+         LengthExactRootNotRecognised { squared: s, reason: _ } =>
            square_millimeter_count(m: s) == (1500 * 1500) + (1800 * 1800)
        }
 }
@@ -135,15 +136,15 @@ fn witness_normalize_separates_no_direction_from_no_exact_value() -> Bool {
   match normalize3(v: zero_vector3()) {
     DirectionZeroVectorHasNone => true
     DirectionExact { direction: _ } => false
-    DirectionRequiresApproximateRealization { squared_magnitude: _, reason: _ } => false
+    DirectionNotAxisAligned { squared_magnitude: _, reason: _ } => false
   }
     && match normalize3(v: vector3(x: 0, y: 0 - 900, z: 0)) {
-         DirectionExact { direction: d } => vector_equals(a: d, b: vector3(x: 0, y: 0 - 1, z: 0))
+         DirectionExact { direction: d } => is_negative_y(d: d)
          DirectionZeroVectorHasNone => false
-         DirectionRequiresApproximateRealization { squared_magnitude: _, reason: _ } => false
+         DirectionNotAxisAligned { squared_magnitude: _, reason: _ } => false
        }
     && match normalize3(v: vector3(x: 3, y: 4, z: 0)) {
-         DirectionRequiresApproximateRealization { squared_magnitude: s, reason: _ } =>
+         DirectionNotAxisAligned { squared_magnitude: s, reason: _ } =>
            square_millimeter_count(m: s) == 25
          DirectionExact { direction: _ } => false
          DirectionZeroVectorHasNone => false
@@ -151,14 +152,34 @@ fn witness_normalize_separates_no_direction_from_no_exact_value() -> Bool {
 }
 
 // dot and cross are exact, and cross is perpendicular to both inputs (dot == 0).
-fn witness_dot_and_cross_are_exact() -> Bool {
+// dot and cross are exact AND dimensionally honest: a dot of two displacements is a signed AREA,
+// and a cross is an AREA VECTOR. Neither can be fed back into translate_point3, which takes a
+// displacement - that is a type error, not a runtime refusal, which is why there is no claim here
+// asserting it: the code expressing it does not compile.
+fn witness_dot_and_cross_are_exact_and_dimensioned() -> Bool {
   let u = vector3(x: 1000, y: 0, z: 0)
   let v = vector3(x: 0, y: 1000, z: 0)
-  dot3(a: u, b: v) == 0
-    && dot3(a: u, b: u) == 1000000
-    && vector_equals(a: cross3(a: u, b: v), b: vector3(x: 0, y: 0, z: 1000000))
-    && dot3(a: cross3(a: u, b: v), b: u) == 0
-    && dot3(a: cross3(a: u, b: v), b: v) == 0
+  signed_square_millimeter_count(m: dot3(a: u, b: v)) == 0
+    && signed_square_millimeter_count(m: dot3(a: u, b: u)) == 1000000
+    && area_vector_equals(a: cross3(a: u, b: v), x: 0, y: 0, z: 1000000)
+    && signed_square_millimeter_count(m: dot3(a: u, b: negate_vector3(v: u))) == (0 - 1000000)
+}
+
+fn area_vector_equals(a: AreaVector3<RoomFrame>, x: Int, y: Int, z: Int) -> Bool {
+  signed_square_millimeter_count(m: a.x) == x
+    && signed_square_millimeter_count(m: a.y) == y
+    && signed_square_millimeter_count(m: a.z) == z
+}
+
+fn is_negative_y(d: AxisDirection3<RoomFrame>) -> Bool {
+  match d {
+    NegativeY => true
+    PositiveY => false
+    PositiveX => false
+    NegativeX => false
+    PositiveZ => false
+    NegativeZ => false
+  }
 }
 
 // A transform carries a room point into the building frame. Its RESULT TYPE is Point3<BuildingFrame>,
@@ -184,6 +205,6 @@ test fn affine_space_witnesses() -> Bool {
     && witness_norm_exact_on_axis_refuses_on_diagonal()
     && witness_comparison_is_total_where_norm_refuses()
     && witness_normalize_separates_no_direction_from_no_exact_value()
-    && witness_dot_and_cross_are_exact()
+    && witness_dot_and_cross_are_exact_and_dimensioned()
     && witness_transform_crosses_frames_exactly()
 }
