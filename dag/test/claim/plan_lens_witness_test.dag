@@ -23,8 +23,12 @@ fn plan_without_trigger() -> Plan {
 // refinement at non-literal positions is still deferred, and that gap is what
 // plan_has_retirement's nonempty check defends -- so this control must go
 // through the gap to keep proving the check works (DESIGN 4b(4)).
+fn synthetic_nonliteral_text(text: String) -> NonEmptyStr {
+  concat(text, "")
+}
+
 fn synthetic_empty_condition(text: String) -> DissolutionCondition {
-  unbound_dissolution(description: text as NonEmptyStr)
+  unbound_dissolution(description: synthetic_nonliteral_text(text: text))
 }
 
 fn plan_with_empty_retirement() -> Plan {

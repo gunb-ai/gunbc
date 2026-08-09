@@ -15,8 +15,8 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn census_closure_frontier_rows_count_is_twenty_one() -> Bool {
-  length(xs: census_closure_frontier_rows()) == 21
+test fn census_closure_frontier_rows_count_matches_hand_count() -> Bool {
+  length(xs: census_closure_frontier_rows()) == 24
 }
 
 test fn census_closure_frontier_rows_well_formed() -> Bool {
@@ -28,7 +28,7 @@ test fn frontier_expiry_fold_partitions_unbound_and_pending() -> Bool {
     rows: census_closure_frontier_rows(),
     present_decls: [],
   )
-  report.unbound_count + report.pending_count == 21
+  report.unbound_count + report.pending_count == 24
     && report.fired_still_present_count == 0
     && frontier_expiry_clean(report: report)
 }

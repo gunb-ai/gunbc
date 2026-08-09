@@ -1,5 +1,9 @@
 module extdeps.pin
 
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import std.decl_ref { decl_ref }
+
 import std.types { NonEmptyStr, String, Bool }
 import std.content_hash {
   ContentHash,
@@ -34,7 +38,7 @@ data pin_observed_grain_prerequisite_note: String = "review 44388 raised this an
 
 data pin_selection_note: String = "The refresh axis, which keeps a pin from being a freeze. Execution ALWAYS resolves an exact identity — there is no moving reference at run time, because resolving 'latest' at execution is nondeterminism at the substrate boundary (v2.std.determinism) and would make two runs of one spec disagree. How the exact identity was CHOSEN is the separable fact: ExactPin is authored directly; TrackedChannel records that the identity was resolved FROM a moving reference (a release channel, 'latest', a semver range), with a declared refresh window. It does NOT record the resolution DATE: no such field exists on the carrier today, and an earlier version of this sentence claimed one did — an absent fact described as modeled, which is the section 5 specification-without-execution trap (review 44422). The missing date is exactly what makes the refresh window undecidable today: TrackedChannel carries no resolution timestamp, so no freshness verdict is derivable and none is reported. Re-resolution is an explicit action producing a reviewable diff — the Cargo.lock / flake.lock shape. That is the INTENT of this axis; nothing here reports a pin current."
 
-data pin_refresh_window_positivity_note: String = "review 44397, carried forward and now CLOSED AT LITERAL SITES by where-refinement enforcement (PR #7438). The finding was right that an unrestricted Int admits zero and negative refresh windows as writable substrate states. The field is therefore std.integer.PositiveInt (Nat where gt_zero), which puts the bound on the SINGLE EXISTING AUTHORITY for it — PositiveInt is already consumed by std.approximate_field, so no new bound, refinement, or validator is minted here (consume-never-fork). MEASURED after enforcement: constructing TrackedChannel { channel: \"latest\", refresh_window_days: 0 } against this carrier is now a typed TypeMismatch at compile time — the where-refinement on PositiveInt is enforced by the v1 typechecker at int-literal construction sites only, and dag/std/integer.dag remains its only declaration site. The wall arrives from the single authority rather than a local check, which is precisely why the bound belongs on PositiveInt. RESIDUE (wall after grounding, not a ratchet): non-literal int values at refined positions still compile with a counted WhereRefinementUnenforced advisory per site — the check is decidable (evidence present or not) but the evidence carrier (refinement subtyping / parameter evidence) is not yet modeled; hard-refusing every non-literal site was measured and broke dag_compile_clean across Octet/Port/Milliseconds migration surfaces (b8a4df4 predecessor). Advisory count is observable via the compile_clean_diagnostic_histogram bin (WhereRefinementUnenforced rows keyed by predicate and reason); a new deferral reason cannot ship silently — it must be enrolled in is_interpreter_blocking_diagnostic and is_discovery_corpus_advisory_typecheck_diagnostic in src/v1/00_core.dag or compile-clean policy shifts without review. dissolve-on: feature:refinement-evidence-at-non-literal-positions — acceptance: a non-literal at a refined position either carries evidence or hard-refuses."
+data pin_refresh_window_positivity_note: String = "review 44397, carried forward and now CLOSED AT LITERAL SITES by where-refinement enforcement (PR #7438). The finding was right that an unrestricted Int admits zero and negative refresh windows as writable substrate states. The field is therefore std.integer.PositiveInt (Nat where gt_zero), which puts the bound on the SINGLE EXISTING AUTHORITY for it — PositiveInt is already consumed by std.approximate_field, so no new bound, refinement, or validator is minted here (consume-never-fork). MEASURED after enforcement: constructing TrackedChannel { channel: \"latest\", refresh_window_days: 0 } against this carrier is now a typed TypeMismatch at compile time — the where-refinement on PositiveInt is enforced by the v1 typechecker at int-literal construction sites only, and dag/std/integer.dag remains its only declaration site. The wall arrives from the single authority rather than a local check, which is precisely why the bound belongs on PositiveInt. RESIDUE (wall after grounding, not a ratchet): non-literal int values at refined positions still compile with a counted WhereRefinementUnenforced advisory per site — the check is decidable (evidence present or not) but the evidence carrier (refinement subtyping / parameter evidence) is not yet modeled; hard-refusing every non-literal site was measured and broke dag_compile_clean across Octet/Port/Milliseconds migration surfaces (b8a4df4 predecessor). Advisory count is observable via the compile_clean_diagnostic_histogram bin (WhereRefinementUnenforced rows keyed by predicate and reason); a new deferral reason cannot ship silently — it must be enrolled in is_interpreter_blocking_diagnostic and is_discovery_corpus_advisory_typecheck_diagnostic in src/v1/00_core.dag or compile-clean policy shifts without review. The lifecycle condition for that residue is NOT stated here: it is a typed row in pin_frontier_rows, so this note explains and does not legislate."
 
 type PinSelection
   = ExactPin
@@ -192,3 +196,21 @@ fn pin_value_eq<Subject>(a: Pin<Subject>, b: Pin<Subject>) -> Bool {
     }
     && (a.selection == b.selection)
 }
+
+data pin_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.pin", decl_name: "PinSelection"),
+    reason: "refresh_window_days is a bare PositiveInt count of days rather than a day-typed magnitude",
+    dissolution: unbound_dissolution(description: "feature:pin-refresh-window-measure — a calendar-day carrier exists to consume (std.measure stops at Minute: Nanosecond, Microsecond, Millisecond, Second, Minute — there is no Day, and a calendar day is not an SI scale of seconds, so this cannot be satisfied by picking an existing row); then refresh_window_days becomes that carrier and this row deletes. Consume-never-fork"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.pin", decl_name: "pin_refresh_window_positivity_note"),
+    reason: "the positivity wall holds at literal sites only; non-literal values at refined positions still compile with a counted advisory",
+    dissolution: unbound_dissolution(description: "feature:refinement-evidence-at-non-literal-positions — refinement subtyping / parameter evidence is modeled so a non-literal at a refined position either carries proof or hard-refuses; WhereRefinementUnenforced deferrals for gt_zero/range/non_empty at non-literal sites delete; the pin_refresh_window_positivity_note residue paragraph deletes with this row"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.pin", decl_name: "pin_currency_gap"),
+    reason: "TrackedChannel stores no resolution date, so no freshness verdict is derivable and none is reported",
+    dissolution: unbound_dissolution(description: "feature:pin-tracked-freshness-evidence — v2.std.datetime gains day arithmetic (it has no day-difference, epoch-day, or days-between fn today, and zero CalendarDate constructors are in use anywhere in the corpus) AND TrackedChannel carries resolved_on: CalendarDate; then pin_currency_gap gains a genuine positive arm derived from stored evidence plus an observed date"),
+  ),
+]
