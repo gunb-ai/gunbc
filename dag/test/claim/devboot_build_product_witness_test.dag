@@ -57,9 +57,9 @@ test fn a_refusal_never_reports_a_delivered_executable() -> Bool {
   )
 }
 
-data witness_fixture_digest_hex: String = "5af0bd8e000000000000000000000000000000000000000000000000000000"
+data witness_fixture_digest_hex: String = "5af0bd8e00000000000000000000000000000000000000000000000000000000"
 
-data witness_other_digest_hex: String = "00000000000000000000000000000000000000000000000000000000000000"
+data witness_other_digest_hex: String = "0000000000000000000000000000000000000000000000000000000000000000"
 
 fn witness_fixture_digest() -> Sha256Digest {
   match sha256_hex_digest(hex: witness_fixture_digest_hex) {
