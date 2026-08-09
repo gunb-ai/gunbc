@@ -120,7 +120,24 @@ type FleetCloudConvergencePrincipal
   = FleetCloudPrincipalAllocated { member: NonEmptyStr }
   | FleetCloudPrincipalUnallocated
 
-data fleet_cloud_convergence_principal: FleetCloudConvergencePrincipal = FleetCloudPrincipalUnallocated
+fn fleet_cloud_convergence_principal() -> FleetCloudConvergencePrincipal {
+  FleetCloudPrincipalAllocated { member: "serviceAccount:fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com" }
+}
+
+// The identity now exists; the Spark BINDING does not. Two separate facts, and collapsing them
+// would report this population as reachable by a principal that currently holds nothing on it.
+// Reported by witty-raven-412 on 2026-08-09, not measured here -- this session has no Secret
+// Manager access of any kind, so every cloud row below is a REPORTED observation carrying its
+// source, never a first-hand one.
+type SparkPopulationBindingStanding
+  = SparkPopulationBindingAbsent
+  | SparkPopulationBindingPresent { member: NonEmptyStr }
+
+fn spark_population_binding_standing() -> SparkPopulationBindingStanding { SparkPopulationBindingAbsent }
+
+data spark_cloud_census_note: String = "Cloud rows reported by witty-raven-412 (msg_1e6d1b42) on 2026-08-09 and NOT independently verified here; this session has no gcloud, ADC, metadata server, or credential env, so it cannot check them. (1) Secret fleet-automation-ssh-key in gunbai-secrets, version 1 ENABLED, created 2026-07-21T21:16:13Z. (2) A pre-existing consumer, serviceAccount:fleet-automation@gunbai-secrets.iam.gserviceaccount.com, holds secretAccessor on that secret. (3) serviceAccount:fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com was created 2026-08-09, WIF-bound to the github-actions pool for gunb-ai/gunbc, with accessor on that ONE secret. Its scope therefore does not reach the four Spark credential occurrences, so the Spark population binding stands Absent."
+
+data fleet_key_provenance_note: String = "The scratchpad fleet key and Secret Manager fleet-automation-ssh-key version 1 carry the same ED25519 fingerprint SHA256:mGT7qJsh36VsVb8OPh3m8br3oHedQHxRukRkW5P0CoQ, derived independently on both sides. STATED AT THE STRENGTH THAT SUPPORTS: this is an IDENTITY join -- the two are the same keypair -- and it is not a causal one. It does not establish that the local copy was materialized FROM that version, because a fingerprint is symmetric: a common origin that seeded both, or a copy made before the version existed, produce exactly this evidence. Nobody observed a fetch. Recording it as a materialization would assert an event with no receipt, which is the same overreach as reading a successful apply as proof of least privilege. The honest row is same-keypair-as-v1, joined by fingerprint, with the fetch event unobserved."
 
 data spark_cloud_principal_note: String = "The Spark secret population must be bound to a fleet cloud-convergence principal with an independently allocated service-account identity and the minimum permissions for exactly this population -- never to bmc_assimilator_sa_member(), which is declared as the BMC assimilator for the srv3 BMC secret. Reusing it would make BMC assimilation the authority for Spark provisioning and would widen a principal scoped to one secret into one holding versionAdder across two domains. The GitHub-to-GCP federation facts are likewise a repository-level authority to be extracted and consumed by both domains, not copied out of the BMC rows, since copying is how the second authority gets minted."
 

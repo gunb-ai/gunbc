@@ -54,13 +54,31 @@ test fn spark_allocations_are_all_pending() -> Bool {
     acc && spark_allocation_is_pending(a: spark_secret_allocation(occurrence: o)))
 }
 
-// CONTROL 4: the cloud principal is unallocated. The discriminating negative for the cross-domain
-// expansion: this reds the moment the BMC assimilator, or any other borrowed identity, is bound as
-// the Spark authority.
-test fn spark_cloud_principal_is_unallocated() -> Bool {
-  match fleet_cloud_convergence_principal {
-    FleetCloudPrincipalAllocated { member: _ } => false
-    FleetCloudPrincipalUnallocated => true
+// CONTROL 4: the cloud principal is a DEDICATED identity, never a borrowed one. The invariant was
+// never "unallocated forever" -- an earlier revision asserted that, which would have gone red the
+// moment the correct thing happened. What must hold is that the Spark authority is not a principal
+// declared for another domain, so this reds if the BMC assimilator is ever substituted here.
+fn spark_principal_member() -> String {
+  match fleet_cloud_convergence_principal() {
+    FleetCloudPrincipalAllocated { member: m } => m as String
+    FleetCloudPrincipalUnallocated => ""
+  }
+}
+
+test fn spark_cloud_principal_is_dedicated_not_borrowed() -> Bool {
+  let m = spark_principal_member()
+  m != ""
+    && m != "serviceAccount:bmc-assimilator@gunbai-secrets.iam.gserviceaccount.com"
+    && m != "serviceAccount:fleet-automation@gunbai-secrets.iam.gserviceaccount.com"
+}
+
+// CONTROL 7: the principal existing does not mean the population is reachable by it. The reported
+// grant covers one key secret, not the four Spark occurrences, and this control keeps those two
+// facts from being collapsed into "the principal is set up".
+test fn spark_population_has_no_binding_yet() -> Bool {
+  match spark_population_binding_standing() {
+    SparkPopulationBindingAbsent => true
+    SparkPopulationBindingPresent { member: _ } => false
   }
 }
 
