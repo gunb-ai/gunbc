@@ -3,7 +3,9 @@
 **Status:** design for operator sign-off (deep-swift-443, 2026-07-21).  
 **North star:** every srvN host is **homogeneous** — same assimilation spine, same cgroup caps, same runner slots, same build cache, same ephemeral session containers, same self-converge timer — with only **hardware inventory** and **lifecycle phase** allowed to differ.  
 **Supersedes (in part):** the star-topology assumption in `ci-humming.md` T5 ("ctrl fetches script, runs per-host over SSH") and any GHA-cron converge enforcement sketch.  
-**Builds on:** `host-effect-orchestration.md` Phase E, `gunbc.host_standup` assimilation spine, ROADMAP `2-periodic-actuation`, `membership-diff-reconcile-spine-design.md` (live_deploy binding), `fleet-acceptance-criteria.md` T5, `srvn-buildcache-provisioning-design.md`.
+**Builds on:** `host-effect-orchestration.md` Phase E, `gunbc.host_standup` assimilation spine, ROADMAP `fleet-anti-entropy-hygiene` (the successor identity for the pre-2026-07-27 `2-periodic-actuation` row this doc originally cited; the old id resolves to nothing in `roadmap_authority.dag` and the citation is repointed rather than left dangling), `membership-diff-reconcile-spine-design.md` (live_deploy binding), `fleet-acceptance-criteria.md` T5, `srvn-buildcache-provisioning-design.md`.
+
+**Carrier for (2026-08-07):** ROADMAP `fleet-main-revision-authority`, `fleet-runner-host-convergence`, `fleet-runner-broker-recovery`. Those three rows are what makes a merge to main become applied machine state, converge the build machines' own limits and services through that path, and count the job-runner recovery timer's firings against a named condition for deleting it. This doc's steady-state enforcement loop is the mechanism they schedule; the roadmap rows own the desired-state authority, the fleet-wide answer, and the receipts.
 
 ## North star — homogeneous srvN
 
@@ -484,4 +486,4 @@ A host is **homogeneous** when ALL hold (T4/T5 per `fleet-acceptance-criteria.md
 
 ## Dissolution trigger
 
-Delete this doc when Phase 4 lands, the ROADMAP `2-periodic-actuation` node closes at T5, `ci-humming.md` T5 is updated, the homogeneity acceptance rows above are witnessed on srv1+srv2+srv3, and the design row is registered in `gunbc.plans.*`.
+Delete this doc when Phase 4 lands, the ROADMAP `fleet-anti-entropy-hygiene` node closes at T5 (the successor to the `2-periodic-actuation` id this line originally named), the three rows this doc now carries close, `ci-humming.md` T5 is updated, the homogeneity acceptance rows above are witnessed on srv1+srv2+srv3, and the design row is registered in `gunbc.plans.*`.

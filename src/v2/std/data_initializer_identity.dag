@@ -1,0 +1,318 @@
+module v2.std.data_initializer_identity
+
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.decl_index { DeclFact }
+import v2.std.optional { optional_present, optional_absent }
+
+data data_initializer_identity_authority_note: String = "Resolved parent/arm projection for DataItem rows — qualified_name, module_path, rel_path, and name locator grain (not occurrence identity). Host bridge marshals projection Node trees from typechecked subjects; parse-pool decl_facts rows use PoolDeclarationIdentity only."
+
+fn projection_kind_lexeme_optional(node: Node) -> Optional<String> {
+  match node.kind {
+    TypeNode { connective: Atom { identity: sym } } =>
+      optional_present(value: symbol_lexeme(sym: sym))
+    _ => optional_absent()
+  }
+}
+
+fn projection_named_child_optional(node: Node, label: String) -> Optional<Node> {
+  fold(node_labeled_child_edges(node: node), init: optional_absent(), f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if named_edge_sort_key(e: e) == label {
+          optional_present(value: e.target)
+        } else {
+          optional_absent()
+        }
+    }
+  })
+}
+
+fn projection_atom_lexeme_optional(node: Node) -> Optional<String> {
+  match node_atom_identity_optional(node: node) {
+    Present { value: sym } => optional_present(value: symbol_lexeme(sym: sym))
+    Absent => optional_absent()
+  }
+}
+
+fn projection_named_child_atom_lexeme(node: Node, label: String) -> Optional<String> {
+  match projection_named_child_optional(node: node, label: label) {
+    Present { value: child } => projection_atom_lexeme_optional(node: child)
+    Absent => optional_absent()
+  }
+}
+
+fn declaration_identity_qualified_name_optional(node: Node) -> Optional<String> {
+  projection_named_child_atom_lexeme(node: node, label: "qualified_name")
+}
+
+fn variant_declaration_parent_qualified_name_optional(node: Node) -> Optional<String> {
+  projection_named_child_atom_lexeme(node: node, label: "parent_qualified_name")
+}
+
+fn variant_declaration_name_optional(node: Node) -> Optional<String> {
+  projection_named_child_atom_lexeme(node: node, label: "variant_name")
+}
+
+fn record_constructor_parent_qualified_name_optional(record: Node) -> Optional<String> {
+  match projection_named_child_optional(node: record, label: "constructor_identity") {
+    Present { value: ctor } =>
+      match projection_named_child_optional(node: ctor, label: "parent_type") {
+        Present { value: parent } => declaration_identity_qualified_name_optional(node: parent)
+        Absent => optional_absent()
+      }
+    Absent => optional_absent()
+  }
+}
+
+fn record_constructor_variant_name_optional(record: Node) -> Optional<String> {
+  match projection_named_child_optional(node: record, label: "constructor_identity") {
+    Present { value: ctor } =>
+      match projection_named_child_optional(node: ctor, label: "constructor") {
+        Present { value: variant } => variant_declaration_name_optional(node: variant)
+        Absent => optional_absent()
+      }
+    Absent => optional_absent()
+  }
+}
+
+fn record_field_projection_optional(record: Node, label: String) -> Optional<Node> {
+  projection_named_child_optional(node: record, label: label)
+}
+
+fn value_projection_is_resolved_variant(node: Node) -> Bool {
+  match projection_kind_lexeme_optional(node: node) {
+    Present { value: k } => k == "ResolvedVariantValueProjection"
+    Absent => false
+  }
+}
+
+fn value_projection_is_missing(node: Node) -> Bool {
+  match projection_kind_lexeme_optional(node: node) {
+    Present { value: k } => k == "VariantValueResolutionMissingProjection"
+    Absent => false
+  }
+}
+
+fn value_projection_is_ambiguous(node: Node) -> Bool {
+  match projection_kind_lexeme_optional(node: node) {
+    Present { value: k } => k == "VariantValueResolutionAmbiguousProjection"
+    Absent => false
+  }
+}
+
+fn value_projection_is_not_variant_value(node: Node) -> Bool {
+  match projection_kind_lexeme_optional(node: node) {
+    Present { value: k } => k == "NotVariantValueProjection"
+    Absent => false
+  }
+}
+
+fn resolved_variant_parent_qualified_name_optional(node: Node) -> Optional<String> {
+  projection_named_child_atom_lexeme(node: node, label: "parent_qualified_name")
+}
+
+fn resolved_variant_name_optional(node: Node) -> Optional<String> {
+  projection_named_child_atom_lexeme(node: node, label: "variant_name")
+}
+
+fn ambiguous_candidate_projection_count(node: Node) -> Int {
+  length(
+    xs: fold(node_labeled_child_edges(node: node), init: std.algebra.Empty, f: fn(acc, e) {
+      let key_lexeme = symbol_lexeme(sym: named_edge_sort_key(e: e))
+      if key_lexeme.starts_with(prefix: "candidate_") {
+        list_snoc_item(xs: acc, item: e.target)
+      } else {
+        acc
+      }
+    })
+  )
+}
+
+type PoolDeclarationIdentity {
+  qualified_name: String
+  name: String
+  module_path: String
+  rel_path: String
+}
+
+type ResolvedDeclarationLocator {
+  qualified_name: String
+  name: String
+  module_path: String
+  rel_path: String
+}
+
+fn resolved_declaration_locators_equal(
+  a: ResolvedDeclarationLocator,
+  b: ResolvedDeclarationLocator
+) -> Bool {
+  a.qualified_name == b.qualified_name
+    && a.name == b.name
+    && a.module_path == b.module_path
+    && a.rel_path == b.rel_path
+}
+
+type DeclFactLookup
+  = DeclFactMissing
+  | DeclFactUnique { fact: DeclFact }
+  | DeclFactAmbiguous { candidates: List<DeclFact> }
+
+fn decl_fact_module_path_from_qualified_name(fact: DeclFact) -> String {
+  let suffix = concat(".", fact.name)
+  let qn_len = string_length(s: fact.qualified_name)
+  let suffix_len = string_length(s: suffix)
+  if qn_len >= suffix_len
+    && substring(s: fact.qualified_name, start: qn_len - suffix_len, end: qn_len) == suffix {
+    substring(s: fact.qualified_name, start: 0, end: qn_len - suffix_len)
+  } else {
+    ""
+  }
+}
+
+fn pool_declaration_identity_from_fact(fact: DeclFact) -> PoolDeclarationIdentity {
+  PoolDeclarationIdentity {
+    qualified_name: fact.qualified_name,
+    name: fact.name,
+    module_path: decl_fact_module_path_from_qualified_name(fact: fact),
+    rel_path: fact.rel_path,
+  }
+}
+
+fn pool_declaration_identities_equal(
+  a: PoolDeclarationIdentity,
+  b: PoolDeclarationIdentity
+) -> Bool {
+  a.qualified_name == b.qualified_name
+    && a.name == b.name
+    && a.module_path == b.module_path
+    && a.rel_path == b.rel_path
+}
+
+fn decl_fact_matches_pool_declaration_identity(
+  fact: DeclFact,
+  identity: PoolDeclarationIdentity
+) -> Bool {
+  pool_declaration_identities_equal(
+    a: pool_declaration_identity_from_fact(fact: fact),
+    b: identity
+  )
+}
+
+fn decl_fact_lookup_by_qualified_name(qn: String, facts: List<DeclFact>) -> DeclFactLookup {
+  fold(facts, init: DeclFactMissing, f: fn(acc, fact) {
+    if fact.qualified_name != qn {
+      acc
+    } else {
+      match acc {
+        DeclFactMissing => DeclFactUnique { fact: fact }
+        DeclFactUnique { fact: first } => DeclFactAmbiguous { candidates: list_snoc_item(xs: list_snoc_item(xs: std.algebra.Empty, item: first), item: fact) }
+        DeclFactAmbiguous { candidates: xs } => DeclFactAmbiguous { candidates: list_snoc_item(xs: xs, item: fact) }
+      }
+    }
+  })
+}
+
+fn decl_fact_lookup_by_pool_declaration_identity(
+  identity: PoolDeclarationIdentity,
+  facts: List<DeclFact>
+) -> DeclFactLookup {
+  fold(facts, init: DeclFactMissing, f: fn(acc, fact) {
+    if !decl_fact_matches_pool_declaration_identity(fact: fact, identity: identity) {
+      acc
+    } else {
+      match acc {
+        DeclFactMissing => DeclFactUnique { fact: fact }
+        DeclFactUnique { fact: first } =>
+          DeclFactAmbiguous {
+            candidates: list_snoc_item(xs: list_snoc_item(xs: std.algebra.Empty, item: first), item: fact)
+          }
+        DeclFactAmbiguous { candidates: xs } =>
+          DeclFactAmbiguous { candidates: list_snoc_item(xs: xs, item: fact) }
+      }
+    }
+  })
+}
+
+fn decl_fact_optional_by_qualified_name(qn: String, facts: List<DeclFact>) -> Optional<DeclFact> {
+  match decl_fact_lookup_by_qualified_name(qn: qn, facts: facts) {
+    DeclFactUnique { fact: fact } => optional_present(value: fact)
+    DeclFactMissing => optional_absent()
+    DeclFactAmbiguous { candidates: _ } => optional_absent()
+  }
+}
+
+fn decl_fact_lookup_is_missing(lookup: DeclFactLookup) -> Bool {
+  match lookup {
+    DeclFactMissing => true
+    DeclFactUnique { fact: _ } => false
+    DeclFactAmbiguous { candidates: _ } => false
+  }
+}
+
+fn decl_fact_lookup_is_unique(lookup: DeclFactLookup) -> Bool {
+  match lookup {
+    DeclFactUnique { fact: _ } => true
+    DeclFactMissing => false
+    DeclFactAmbiguous { candidates: _ } => false
+  }
+}
+
+fn decl_fact_lookup_is_ambiguous(lookup: DeclFactLookup) -> Bool {
+  match lookup {
+    DeclFactAmbiguous { candidates: _ } => true
+    DeclFactMissing => false
+    DeclFactUnique { fact: _ } => false
+  }
+}
+
+fn decl_fact_lookup_candidate_count(lookup: DeclFactLookup) -> Int {
+  match lookup {
+    DeclFactAmbiguous { candidates: cands } => length(xs: cands)
+    DeclFactMissing => 0
+    DeclFactUnique { fact: _ } => 0
+  }
+}
+
+fn data_initializer_is_constructor_resolution_refused_projection(node: Node) -> Bool {
+  match projection_kind_lexeme_optional(node: node) {
+    Present { value: k } => k == "DataInitializerConstructorResolutionRefusedProjection"
+    Absent => false
+  }
+}
+
+fn data_initializer_is_typechecked_subject_absent_projection(node: Node) -> Bool {
+  match projection_kind_lexeme_optional(node: node) {
+    Present { value: k } => k == "DataInitializerTypecheckedSubjectAbsentProjection"
+    Absent => false
+  }
+}
+
+fn data_initializer_is_plain_record_projection(node: Node) -> Bool {
+  match projection_kind_lexeme_optional(node: node) {
+    Present { value: k } => k == "DataInitializerPlainRecordProjection"
+    Absent => false
+  }
+}
+
+fn plain_record_parent_qualified_name_optional(record: Node) -> Optional<String> {
+  match projection_named_child_optional(node: record, label: "parent_type") {
+    Present { value: parent } => declaration_identity_qualified_name_optional(node: parent)
+    Absent => optional_absent()
+  }
+}
+
+fn data_initializer_is_record_projection(node: Node) -> Bool {
+  match projection_kind_lexeme_optional(node: node) {
+    Present { value: k } => k == "DataInitializerRecordProjection"
+    Absent => false
+  }
+}
+
+fn data_initializer_is_nullary_projection(node: Node) -> Bool {
+  match projection_kind_lexeme_optional(node: node) {
+    Present { value: k } => k == "DataInitializerNullaryProjection"
+    Absent => false
+  }
+}

@@ -97,9 +97,11 @@ fn signed(by: String, works: RedControlEvidence, scope_equivalent: HandbackEvide
 
 data namespace_kernel_authority_amendment_note: String = "THE KERNEL BAR AS FIRST WRITTEN DEADLOCKED ITS OWN SUCCESSOR, and this amendment is the fix (operator ruling, 2026-08-01). The recut landed namespace-binding-kernel with a red_control ending 'no second place in the compiler makes that same decision' and a handback demanding 'evidence that nothing else decides the same question'. That bar cannot be met while the bootstrap seed keeps its own hand-written none/one/many mirror inside the v1 adapter, and that mirror cannot be deleted until generic emission carries the canonical carrier with its required bounds. But namespace-reference-derived-closure DEPENDS on the kernel. So on the day the recut merged, the next step was already unstartable for a reason that had nothing to do with what the next step needs: deriving candidate populations does not require the seed mirror to be gone, it requires the canonical decision to EXIST and be callable.\n\nTHE CUT IS AUTHORITY VERSUS RETIREMENT. Owning the canonical decision and removing every rival implementation of it are separate achievements with separate evidence, and fusing them made an acceptance bar that no amount of correct kernel work could satisfy. The kernel now owns being the one canonical authority; namespace-legacy-choice-retirement owns deleting the older mechanisms, and the seed mirror is named there as one of its rows. A new node was deliberately NOT minted: that node already reads 'delete every other way of deciding what a name means' and already inventories every remaining place that decides, so the mirror is a row it should always have carried, and minting a sibling would have been a second home for one concept.\n\nTHE ADAPTER IS NOT THEREBY BLESSED. It remains a declared scaffold with its dissolution trigger on its own carrier, counted and visible; moving WHERE its retirement is tracked does not lower what is owed. What changes is only that a temporary bootstrap realization no longer gates work that does not depend on it.\n\nTWO ACCEPTANCE SENTENCES WERE ALSO WRONG AND ARE CORRECTED HERE. The red_control said 'a malformed name refuses', but this boundary accepts occurrence identities and derives no name spelling at all, so it named a check no implementation executes — it now reads malformed occurrence TRANSPORT. And the bar now states the two refusals that distinguish a malformed supplied population from a real verdict: a candidate handed in the wrong role refuses distinctly from one that is absent, and the same declaration supplied twice refuses as malformed rather than counting as two. Only two DISTINCT declaration identities are ambiguity. Collapsing either of those into an ordinary verdict would let a defective candidate producer read as a legitimate naming answer, which is the state-space conflation this whole lane exists to remove."
 
-data five_minute_ci_gate_program_note: String = "PROGRAM BOUNDARY, NOT A SINGLE PR (operator dispatch K, 2026-08-01; sequence revision eager-boar-610, 2026-08-01; contract re-anchored by operator ruling 2026-08-02). Product contract: every required operation performs the bare minimum computation needed to serve it — no recomputation of any semantic fact whose inputs did not change; wall-clock falls out of the realization/materialization goals rather than defining them. Five minutes is NOT the contract — it is the distress ceiling ('this is hard / not working well'), retained only as the Stage C checkpoint bound. Six sub-lanes plus an explicit operator sequence — (1) finish #7522 warm-merge-admission with net wall receipt; (2) merge #7599 native bundle slice; (3) immediately cut over bounded production witness population to native execution kind (#7599 owner); (4) continue #7534 as materialization substrate under module-grain (hierarchy: module parse/type/interface → resolved entry → native bundle; no default CI savings until ordinary invocations consume it); (5) union CLOSED per #7533 → per-entry-assembly narrow lane; (6) this parent registration. Native-at-small-scale evidence has LANDED; operational migration rate remains OPEN with equivalence/fallback/identity/memory fail-closed. The landed change, its merge commit, the head the witnesses actually executed at, and the cited executing witness are execution evidence, not design criteria: they live in ONE typed receipt, gunbc.native_witness_transition_receipt native_at_small_scale_transition_receipt, and are restated neither here nor in gunbc.design_document (operator ruling on gunbc#7710, 2026-08-02 — this note and the design document previously carried independent hand-maintained copies of the same advancing status). Staged expectations (not flat 30–35min): Stage A modest admission saving only; Stage B first order-of-magnitude witness reduction after production native cutover; Stage C five-minute gate when all conjunction in docs/plans/five-minute-ci-gate-design.md holds. Dispositions: entry-graph-union CLOSED; retention PARKED (#7581). See docs/plans/five-minute-ci-gate-design.md."
+data five_minute_ci_gate_program_note: String = "PROGRAM BOUNDARY, NOT A SINGLE PR (operator dispatch K, 2026-08-01; sequence revision eager-boar-610, 2026-08-01; contract re-anchored by operator ruling 2026-08-02). Product contract: every required operation performs the bare minimum computation needed to serve it — no recomputation of any semantic fact whose inputs did not change; wall-clock falls out of the realization/materialization goals rather than defining them. Five minutes is NOT the contract — it is the distress ceiling ('this is hard / not working well'), retained only as the Stage C checkpoint bound. Sub-lane roster, revised by the CI-0 recut (operator 2026-08-08) — UNORDERED: dispatch order follows the graph edges, where the native child row now precedes this gate. The lanes: #7522 warm-merge-admission with net wall receipt; the native lane as the child row native-selected-witness-bundle's ONE-PR CI-0: #7599 is merged, and fallback deletion, complete roster classification, whole-corpus emission, execution and authority land as one state transition in one PR, superseding the former separate merge-the-slice / bounded-cutover steps this note used to carry; #7534 continued as materialization substrate under module-grain (hierarchy: module parse/type/interface → resolved entry → native bundle; no default CI savings until ordinary invocations consume it); union CLOSED per #7533 → per-entry-assembly narrow lane; this parent registration. Native-at-small-scale evidence has LANDED; operational migration rate remains OPEN with equivalence/fallback/identity/memory fail-closed. The landed change, its merge commit, the head the witnesses actually executed at, and the cited executing witness are execution evidence, not design criteria: they live in ONE typed receipt, gunbc.native_witness_transition_receipt native_at_small_scale_transition_receipt, and are restated neither here nor in gunbc.design_document (operator ruling on gunbc#7710, 2026-08-02 — this note and the design document previously carried independent hand-maintained copies of the same advancing status). Staged expectations (not flat 30–35min): Stage A modest admission saving only; Stage B first order-of-magnitude witness reduction after production native cutover; Stage C five-minute gate when all conjunction in docs/plans/five-minute-ci-gate-design.md holds. Dispositions: entry-graph-union CLOSED; retention PARKED (#7581). See docs/plans/five-minute-ci-gate-design.md."
 
 data namespace_node_recut_note: String = "THE BROAD NAMESPACE NODE WAS TOO COARSE TO CLOSE HONESTLY, and the recut is the fix (operator ruling, 2026-07-31). namespace-canonical-binding previously combined two separable things in one boundary: working out which declarations a name can see, and calling one decision function on them. A check proving only the none/one/many decision could therefore have marked the whole node accepted while candidate derivation, reference-derived dependency closure, and the production changeover all remained unbuilt — an acceptance hazard, and the exact shape of rung inflation DESIGN 4b forbids, where a carrier named for the top rung occupies the bottom one.\\n\\nThree prerequisites now stand in front of it. namespace-binding-kernel owns the decision alone, on a candidate population SUPPLIED to it. namespace-reference-derived-closure owns structural exposure, authored order, the candidate index, exact reference-to-declaration binding, and the derived dependency edges. namespace-ambiguity-discharge settles the genuinely-many cases from real compilation. namespace-canonical-binding KEEPS ITS DURABLE IDENTITY and is now the final production changeover only, so historical links resolve and no identity is reused.\\n\\nWhy the split falls exactly there: dependency edges are a PROJECTION OF THE BINDING, not a second authored statement. A program that instead authored the missing edges by hand reached 400 of 771 files at roughly one import per CI floor before it was stopped; the unresolved population was evidence that binding and module discovery are coupled at the wrong boundary, not a backlog to grind down.\\n\\nTHE CHANGEOVER AND ITS SUCCESSOR ARE DISJOINT, and an earlier revision of this recut broke that (review 45649). It retitled namespace-canonical-binding as 'switch the whole compiler over' with a boundary reading 'every place that resolves a name', which swallowed namespace-bound-only-consumers underneath it — that node's own boundary is type checking, call lookup, and argument-count checks reading the decided answer. Overlapping boundaries are the §2 redundancy this document exists to remove, and they are worse on a roadmap than in code: completing the parent would already entail most of the child, so either the child can never be honestly accepted or the parent was silently read narrower than it was written. The cut is PRODUCER versus READER. The changeover node owns the sites that WORK OUT what a name refers to, and the deletion of the search-everything fallback behind them. Its successor owns the READERS of that answer and their obligation to stop on unresolved or ambiguous. Neither entails the other, and each can be accepted on its own evidence.\\n\\nONE EDGE WAS DELIBERATELY NOT CHANGED. pderive-source-slot-binding still depends on namespace-canonical-binding, which now means it waits for the whole production changeover. It plausibly needs only occurrence transport plus the binding kernel, but that is unproven: the dependency moves only once the focused P-derive consumer demonstrates it can operate on an exact supplied candidate population. Loosening it on the strength of the argument alone would be asserting a fact nobody has measured."
+
+data compute_consumer_admission_sequencing_note: String = "THE RULE THAT ORDERS THE COMPUTE LANE, and it is a sequencing ruling rather than a design preference (operator, 2026-08-07): do not move the present arrangement onto our own machines. Move exact computations onto one shared fabric, and DELETE THE DUPLICATED WORK BEFORE increasing the number of things asking for it. Handing agents a build capability without deduplication and admission would not be a fabric — it would be a tidier way for ten callers to launch ten cold builds of one tree, which is the failure the lane exists to prevent. That is why compute-deduplication-and-admission stands in front of ci-owned-execution in the graph rather than beside it: owning CI adds a consumer, and a consumer added before the duplication is removed multiplies the load instead of sharing it.\n\nTHE SECOND HALF OF THE SAME RULE APPLIES TO NATIVE EXECUTION. Emitting a native witness bundle and running it is the right destination, and the miniature is decisive at the scale it measures — direct native calls in single-digit milliseconds against tens interpreted and hundreds through warm cargo transport. But the cited production enrolment delivered zero of three native and three of three fallback, so the required path took no benefit from it, and native bodies surrounded by duplicated preparation would still be bad CI. Native realization and shared preparation are ONE programme, not two lanes competing for the same slot; native-selected-witness-bundle owns the first, and the discovery snapshot, scoped substrate, early selection and streaming rows own the second.\n\nWHY THE MECHANISM ROWS ARE A CHAIN AND NOT A SET. The measured floor is dominated by preparation rather than by the work being prepared for: on the clearest full-floor subject, the discovery batch spent the large majority of its wall on setup and resolve and a small minority actually evaluating witnesses, and the two workers walked the same roots twice. Each row therefore removes a DIFFERENT duplicate — the second walk, the second initialised world, preparation that precedes selection, and the barrier between preparing and executing — and each is only measurable once the one before it has landed. Chaining them with dependency edges is what keeps at most the next one startable, so the standing limit on concurrent performance mechanisms falls out of the graph rather than being restated as prose that nothing enforces. Width two is deliberately absent from that chain and stays parked: the tested implementation shared typed bytes while each worker still built its own world, and the architectural prerequisite is that no second private semantic world exists."
 
 data roadmap_execution_contract_frontier_note: String = "Every node below is ExecutionContractUnspecified: the declared, fail-closed migration frontier for gunbc.roadmap_execution_contract. A node states the exact validation operations that close it before the actuator will spawn for it, so dispatch refuses with a typed environment-admission diagnostic rather than guessing validations or dependencies. The prior binding lived on a pre-refresh operator-TODO node deleted by the 2026-07-27 authority refresh; re-binding is per-node roadmap authoring, never a merge-time default."
 
@@ -988,9 +990,9 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       path: "docs/plans/five-minute-ci-gate-design.md",
       t: fields(
         headline: "Serve every required CI operation with the bare minimum computation; five minutes is the distress ceiling, not the contract",
-        boundary: "Every required operation performs only the computation its inputs require — no semantic fact recomputed whose inputs did not change (re-anchored by operator ruling 2026-08-02: five minutes is the distress ceiling — the Stage C checkpoint bound, not the contract). Six sub-lanes plus operator sequence: (1) #7522 warm-merge-admission net receipt; (2) #7599 native bundle slice; (3) bounded production cutover to native execution; (4) #7534 materialization substrate (module→entry→bundle hierarchy); (5) union closed → per-entry assembly lane; (6) this registration. Native-at-small-scale settled (#7599); open: operational migration rate. Staged expectations A/B/C in design note; the gate is the Stage C conjunction.",
+        boundary: "Every required operation performs only the computation its inputs require — no semantic fact recomputed whose inputs did not change (re-anchored by operator ruling 2026-08-02: five minutes is the distress ceiling — the Stage C checkpoint bound, not the contract). Sub-lanes (unordered roster — dispatch order follows the graph edges; the native child row precedes this gate): #7522 warm-merge-admission net receipt; the child row's ONE-PR CI-0, superseding the former slice-and-cutover steps; #7534 materialization substrate; union closed → per-entry assembly; this registration.",
         displaced_cost: "Today witness bodies are still interpreted and materialization is recomputed across phases — confidence is bought with time the product boundary forbids.",
-        first_slice: "Register sequence, staged expectations, and #7599 in-flight disposition in authority; land no implementation under the parent id.",
+        first_slice: "Register sequence and staged expectations in authority; land no implementation under the parent id — the native cutover's whole implementation belongs to the CI-0 child row.",
         red_control: "A sub-lane that widens to whole-corpus work, silently falls through from an incomplete materialization artifact to cold recompute, or claims the five-minute envelope without Stage C fleet receipts refuses rather than greens.",
         out_of_scope: "No single PR closes the parent; placement/build-flake cap-first work, tokenizer escape scan, and closed entry-graph-union stay outside.",
         handback: "Sequence graph, staged expectations, six sub-lane rows, and design note in docs/plans/five-minute-ci-gate-design.md."
@@ -1003,7 +1005,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       path: "docs/plans/five-minute-ci-gate-design.md",
       t: fields(
         headline: "Admit merges from warm stamped receipts, not cold recomputation",
-        boundary: "NEXT (sequence step 1, #7522 in flight): fold resolve and materialization receipt gates into merge admission so the pull-request path stamps once and admits from warm receipts. Operator expectation: probable net recovery ~1–1.5 min (not ~3 min) — final-head run decides; not transcribed as receipt until measured.",
+        boundary: "#7522 in flight (dispatch order follows the graph edges): fold resolve and materialization receipt gates into merge admission so the pull-request path stamps once and admits from warm receipts. Operator expectation: probable net recovery ~1–1.5 min (not ~3 min) — final-head run decides; not transcribed as receipt until measured.",
         displaced_cost: "Merge admission and the floor tail currently pay separate cold paths for facts already fixed when the run started.",
         first_slice: "Finish #7522 with real net wall receipt and stage profile.",
         red_control: "A stale base-tree or stale gate-roster receipt blocks merge; a missing or invalid receipt refuses rather than widening to a full rerun.",
@@ -1017,13 +1019,13 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       owner: "ci-cost",
       path: "docs/plans/five-minute-ci-gate-design.md",
       t: fields(
-        headline: "Migrate the production selected witness set onto native bundle execution",
-        boundary: "A selected witness population executes as native code in one process: a SelectedWitnessPlan names the population, the bundle carries a content-addressed identity, witnesses run as direct calls rather than through the interpreter, an equivalence oracle establishes that the native result matches the interpreted one, and every failure is a typed refusal. Native execution is dispositive only at the scale actually measured, and any timing ratio against interpreted and warm-cargo paths is reported with its evidence, never asserted unverified. The next step cuts over a bounded production witness population. Migration rate, fallback, artifact identity, and fail-closed memory remain open.",
-        displaced_cost: "Running selected witnesses interpreted still pays per-row interpreter tax documented in ci-floor-child-spawn-attribution.",
-        first_slice: "Merge #7599 once controls clear; then enroll bounded production cutover with counted interpreted-fallback rows.",
-        red_control: "A provenance gap in selection refuses rather than widening to the whole corpus; stale compiler identity, missing native realization, or uncounted fallback refuses.",
-        out_of_scope: "No change to the scheduled falsifier's whole-corpus cold control; no claim that #7599 slice alone closes the five-minute gate.",
-        handback: "#7599 merge receipt; production cutover receipts with native-vs-interpreted attribution and fallback counts trending to zero."
+        headline: "CI2-0: complete v2 witness-execution cutover — every test identity v2-planned and executed, old route deleted, in #8043",
+        boundary: "#8043 owns the COMPLETE transition and does not merge as a three-test cutover (operator mandate 2026-08-08, superseding the staged rulings): every test identity on the exact PR head is planned by v2, lowered through the EXISTING compiler path, realized through a v2-owned route — hermetic to emitted Rust; live observation subject-bound; effects as v2 plans with independent readback; v1-subject tests harnessed BY v2, v1 never the scheduler or verdict — executed, accounted exactly once. Ordinary v1 executions, fallback, and unaccounted identities all zero. NO successor producer, live-read, effects, or measurement PR; a wiring refusal is an in-PR repair item.",
+        displaced_cost: "The three-member route is fixture-bound — specimen token lists, grammar rows, binding spellings, per-test target models — and the census's three-of-9,353 was CIRCULAR: it never attempted canonical realization, it restated the enrollment. The compiler already lowers ordinary bodies (#6520, #6526, #6558, #6512, body_producer_forward) and the live-read, effect, and routing authorities exist; what is missing is wiring the complete roster through the canonical pipeline, not new machinery. The control plane repeatedly mistook fixture-route limits for compiler limits.",
+        first_slice: "In-PR sequence, checkpoints not PR boundaries: A keep the three-member keystone receipt as the smallest end-to-end control; B replace the circular census — complete exact-head roster joined to the real semantic-kind authorities, discovery-rows-default-to-unavailable deleted as a capability decision; C canonical corpus wiring — ordinary test declarations through the existing v2 pipeline, dispatch surface generated from resulting declarations, first non-fixture test the wiring keystone, then widen mechanically; D subject and effect routes joined from the existing live-tree and effect machinery; E delete all ordinary interpreter scheduling and fallback for the complete population; F the cold and warm whole-population receipt, then merge.",
+        red_control: "Per identity, semantic kind and realization standing are orthogonal, one each: TestSemanticKind (hermetic, live-observation, effect, v1-subject) times V2RealizationStanding (emitted, subject-bound execution, effect execution, or Refused with phase and exact diagnostic from an ACTUAL realization attempt — never a default). The population is identity-grain, duplicate-free, complete both directions, bound to the exact tested tree; removed, duplicated, or substituted identities refuse the join. The planted broken test fails through the v2 route. The final receipt reconciles: kinds sum to N, realizations planned equals completed equals accounted equals N, refused equals unavailable equals diverged equals fallback equals ordinary-v1-executions equals remaining-v1-scheduler-rows equals zero, with cold generation, cold compile, warm materialization lookup, execution walls and peak memory observed.",
+        out_of_scope: "No successor PRs of any kind. No scaling the specimen path — no per-test token lists, grammar rows, binding-spelling maps, fixture target models, or enrollment declarations. No second body-lowering, resolution, or classification authority beside the existing ones. No CI-private cache beside the realization and materialization spine. No Interpreted execution route — InterpreterSubjectTest describes the subject under test and never grants v1 the scheduler.",
+        handback: "The merge statement, verbatim: every required test on this exact head is planned and executed through v2 witness execution; all results are exact-subject-accounted; ordinary v1 test execution and fallback have been physically deleted. Anything weaker leaves #8043 open."
       )
     ),
     active_large(
@@ -1084,6 +1086,96 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "Attribution must reconcile on one exclusive basis and must not infer computation from closure membership alone.",
         out_of_scope: "No union-graph construction — that hypothesis is closed.",
         handback: "Repeated-assembly attribution receipt; implementation proposal only if the receipt justifies one."
+      )
+    ),
+    active(
+      identity: "rn_9WQ3ZB6HTKX2LNVR40PDGY7CJM",
+      id: "ci-cost-arc-reconciliation",
+      owner: "ci-cost",
+      path: "docs/plans/ci-performance-tanking-evidence.md",
+      t: fields(
+        headline: "One ledger for what the CI-speed work actually bought",
+        boundary: "One row per attempt made across this arc: what it predicted, what it changed, the exact subject it was measured on, the movement inside its own segment, the movement in the whole required path, whether memory stayed inside the fixed envelope, and a typed result — delivered, partial, falsified, confounded by infrastructure, or evidence invalid — with what each one implies next. Rows are read out of receipts that already exist; nothing is re-measured to fill this in.",
+        displaced_cost: "Weeks of work bought real causal knowledge and several correctly killed hypotheses, but the required path is not meaningfully shorter. Without this ledger the next programme re-runs the attempts already falsified, and re-argues the ones that were only confounded by a machine failure.",
+        first_slice: "Fill the ledger from the receipts already landed, and state the whole-path movement the arc actually achieved.",
+        red_control: "An attempt whose claimed movement cannot be tied to an executed receipt is recorded as evidence invalid, never as delivered. A win inside one segment with no movement in the whole path is partial, never delivered. A result from a run the machine killed is confounded, not falsified — collapsing those two loses the distinction the ledger exists to make.",
+        out_of_scope: "No new measurement programme and no new optimisation. This row explains the arc; it does not extend it.",
+        handback: "The ledger with every attempt classified, and the next mechanisms it justifies, each named with the cost it is expected to remove."
+      )
+    ),
+    active_large(
+      identity: "rn_5TDM8PXW1QKZ0HRB37NVLYG6CA",
+      id: "ci-build-once-per-subject",
+      owner: "ci-cost",
+      path: "docs/plans/ci-performance-tanking-evidence.md",
+      t: fields(
+        headline: "Compile the compiler once per change, not once per job",
+        boundary: "One expensive compiler build per change under test. Small checks stop dragging the whole compiler into a second build profile in order to run a few milliseconds of assertions: work that only observes the tree gets a small target that does not rebuild the monolith.",
+        displaced_cost: "Building and testing is now the largest single cost of getting a change in, and a measured run spent minutes of compiler builds to execute a fraction of a second of checks.",
+        first_slice: "Count the expensive compilations one pull request actually performs, then remove the second profile.",
+        red_control: "A change that adds a second expensive compilation to the required path refuses. A small check that pulls the compiler into its own build is rejected even where it is fast today, because the cost is in the build and not in the check.",
+        out_of_scope: "Not the shared-substrate work — that is a different duplicate, owned above. Not local developer builds.",
+        handback: "The per-change compilation count before and after, and the whole-path movement it produced."
+      )
+    ),
+    active_large(
+      identity: "rn_4RTVN0BQKZ8XWM2CDPHJLG7Y36",
+      id: "ci-floor-discovery-snapshot",
+      owner: "ci-cost",
+      path: "docs/plans/cross-worker-typecheck-share-design.md",
+      t: fields(
+        headline: "Walk the corpus once and let both workers read the same result",
+        boundary: "One complete discovery result is produced once and consumed by the second worker, instead of the same walk happening again in another process. It carries the whole typed result, never a pass-or-fail flag. A consumer that finds it absent, damaged, or belonging to a different subject refuses; it never quietly recomputes.",
+        displaced_cost: "The ordinary worker and the scoped worker each perform effectively the same full walk in separate processes, and the second one measures around 284 seconds. It is the clearest several-minute target on the required path, and it is the first real use of computing something once and reusing it rather than a description of one.",
+        first_slice: "Produce the complete result once and have the second consumer read it, with the recompute path removed rather than left sitting behind it as a fallback.",
+        red_control: "A missing, damaged, or wrong-subject result refuses rather than falling back to a fresh walk. A consumer that recomputes anything the result already fixed reds. The benefit is stated as measured displacement on the required path, never as a win inside one segment.",
+        out_of_scope: "Not the cross-phase sharing above, which removes a different duplicate. Not width two, which stays parked until private worlds stop being rebuilt per process. Not what the corpus contains or how it is selected.",
+        handback: "The result produced once, both consumers reading it, the three refusals, and the measured displacement on the whole path."
+      )
+    ),
+    active_large(
+      identity: "rn_8QDBM3ZVKT5XWN0RCPHJLG2764",
+      id: "ci-scoped-worker-shared-substrate",
+      owner: "ci-cost",
+      path: "docs/plans/cross-worker-typecheck-share-design.md",
+      t: fields(
+        headline: "Stop building a second compiler world in order to run twenty-seven witnesses",
+        boundary: "The scoped worker consumes an already-initialised substrate, or runs as a later stage inside the ordinary one, rather than constructing its own sources, indexes and environments. Staying in its own process remains allowed: isolation means separate mutable scratch and its own lifetime, never recomputing facts that are already fixed and immutable.",
+        displaced_cost: "The scoped worker executes twenty-seven witnesses and pays for a whole second world to do it. The process boundary is being used as a way of handing memory back, and a cold start is the price currently paid for that.",
+        first_slice: "Run the scoped population against the ordinary world's initialised substrate while keeping its own scratch.",
+        red_control: "STRUCTURAL, NOT A STOPWATCH. No second source loading, no second index construction, no second initialised semantic world, the same exact witness population with the same outcomes and effects, worker-private scratch still bounded, and no path back to cold construction. Wall, CPU and memory before and after are recorded as observations beside that verdict — a timer moving cannot stand in for a duplicate that is still reachable, and a duplicate genuinely removed is not disqualified by a noisy host.",
+        out_of_scope: "Not sharing the discovery walk, which the row above owns. Not widening to two workers — that stays parked until private worlds stop being rebuilt.",
+        handback: "The same population and outcomes, no second construction, and the measured segment reduction."
+      )
+    ),
+    active(
+      identity: "rn_2VNCX7QBZK9TWM4RDPHJLG0538",
+      id: "ci-selection-before-preparation",
+      owner: "ci-cost",
+      path: "docs/plans/ci-selection-vs-scheduling.md",
+      t: fields(
+        headline: "Decide what matters before paying to prepare everything",
+        boundary: "Which computations a change affects is decided from source and module facts, ahead of broad roster, index, grouping and closure preparation. Only the views that decision actually needs are then prepared.",
+        displaced_cost: "Selection is already sharp about meaning and blunt about cost: it can correctly conclude that most of the corpus is irrelevant, but only after the corpus has been discovered, named, rostered and indexed. The saving it reports is real while the work it claims to have avoided has largely already been done.",
+        first_slice: "Move the affected-computation decision ahead of broad preparation on one required path, and prepare only what it selected.",
+        red_control: "A selection that still needs whole-corpus preparation to reach its answer reds. Preparing anything the selection did not ask for reds. A provenance gap in selection still refuses rather than widening to everything, exactly as it does today.",
+        out_of_scope: "Not what the selection decides — its correctness is owned elsewhere and does not change here. Not the discovery result itself.",
+        handback: "The reordered path, the prepared population matching the selected one, and the measured displacement."
+      )
+    ),
+    active_large(
+      identity: "rn_4XKBW0ZQNV6TCM2RDPHJLG7135",
+      id: "ci-streaming-realization",
+      owner: "ci-cost",
+      path: "docs/plans/floor-prep-tax-program.md",
+      t: fields(
+        headline: "Start running as soon as the first thing is ready",
+        boundary: "Preparation stops being a barrier standing in front of execution. A module's facts becoming ready makes an entry view ready, which makes a witness ready, which runs — while everything else is still being prepared.",
+        displaced_cost: "Several hundred seconds are currently spent preparing every selected entry before the first one executes. That is a barrier, not work that had to finish first.",
+        first_slice: "Let one family execute as it becomes ready, rather than after the whole selected population has been prepared.",
+        red_control: "The first witness executes before the last selected entry has finished being prepared — the property this row exists for, measured rather than asserted. Outcomes and the order they are reported in stay stable however the readiness order falls out. A failure during preparation still refuses rather than surfacing as a witness that passed.",
+        out_of_scope: "Not running more things at once — this overlaps preparation with execution, it widens neither.",
+        handback: "The measured overlap, the stable outcomes under reordering, and the reduction in time before first execution."
       )
     ),
 
@@ -1175,6 +1267,205 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "A half-old, half-new decision surface is rejected.",
         out_of_scope: "No job-by-job or machine-by-machine switch.",
         handback: "A real run afterwards showing only one decision-maker left."
+      )
+    ),
+    active_large(
+      identity: "rn_6BXPK1RV9ZTNQ3WD8HGYM40CFJ",
+      id: "placement-compile-pool-envelope",
+      owner: "ci-placement",
+      path: "docs/plans/srvn-buildcache-provisioning-design.md",
+      t: fields(
+        headline: "Derive the process, compiler and memory limits from one envelope per machine",
+        boundary: "Shared compilation runs in its own managed place rather than inside whichever job slot happened to start it. How many processes a slot may hold, how wide the compiler may fan out, and how much memory the shared pool may take are all derived from one declared envelope for that machine instead of being three numbers anyone can set independently. Every limit is read back as the machine actually holds it.",
+        displaced_cost: "The immediate outage — jobs unable to start processes against a cap far below the packaged one — and the fault behind it, where every machine's cache-miss compiles are charged to one job slot's budget and on one machine a retired slot's, are both consequences of these limits being separately writable. Two distinct failure kinds were charged to whatever code happened to be under test for a whole day: jobs dying unable to start a process at all, and jobs killed from an outer budget while sitting far under their own — across four independent measurements at 8.8 percent of the visible limit, with the peak identical on every attempt. Neither is a defect in any change under review, and both arrive looking exactly like one.",
+        first_slice: "Restore the affected machine's process limit and read back the value the kernel actually holds, then move shared compilation into its own place with a stated admission bound.",
+        red_control: "The acceptance classes are typed and separately named, never one generic death: a process-count exhaustion reports ProcessAdmissionExhausted; a kill imposed from an outer budget reports OuterResourceEnvelopeKilled, and the two must reproduce as two different things; a command that exits successfully while the machine's effective limit is unchanged reports EffectiveLimitMismatch — a failed read-back, not a success; a cache server whose place cannot be established reports CompilePoolPlacementRefused rather than being assumed to be ours. A pool whose effective limits differ from the envelope refuses. Widening the compiler's fan-out past the envelope refuses. An envelope that grows because more work arrived, rather than because the budget was raised deliberately, refuses.",
+        out_of_scope: "A larger machine or a raised memory cap is not the remedy — the envelope is fixed and the mechanism fits inside it. Not routing jobs between machines, which the rows above own.",
+        handback: "The derived envelope, the read-back limits from every machine, and the previously failing build run again."
+      )
+    ),
+
+    active_large(
+      identity: "rn_7KWZQ2VBNM4XCT0RDPLHGJ86Y1",
+      id: "compute-exact-work-contract",
+      owner: "compute",
+      path: "docs/plans/execution-spine-design.md",
+      t: fields(
+        headline: "One way to ask for work to be done, with the subject pinned exactly",
+        boundary: "A request names the exact tree it applies to, the operation, the inputs it declares and the outputs it promises, the toolchain and environment it needs, its resource envelope, and which providers may serve it. The answer is one of a fixed set of endings: succeeded, failed, refused by the infrastructure, cancelled, or refused because what came back did not match the outputs declared. A branch name or a working directory is not a subject.",
+        displaced_cost: "Building, checking, regenerating, changing machines, serving models and eventually judging changes are each growing a separate way of asking for work to be done. Four execution systems means four queues, four retry rules, four ideas of what success means, and nowhere to say where a piece of work actually ran.",
+        first_slice: "The request and outcome shapes with one provider behind them, serving one real operation from end to end. FIRST DAILY CONSUMER (operator, 2026-08-08): dirty-worktree verification — an exact dirty-tree snapshot runs all affected (or explicitly conservatively complete) v2 tests and returns an exact receipt in at most five seconds on the normal warm path, with a distinct BaseUnstable answer when the base layer itself is red or unverified. It consumes this contract, CI2's reusable execute_v2_witness_plan operation, and optionally confidence's narrowing — confidence is optional for narrowing, never for correctness: a partial impact answer selects the complete corpus explicitly, never a skip and never v1.",
+        red_control: "A request whose subject is a moving reference refuses. A provider that cannot serve the requested class of operation refuses before running rather than quietly answering a smaller question. The five endings stay five — a machine that killed the work cannot render as the work having failed.",
+        out_of_scope: "Not the handing back of what was produced, which is the row below. Not changing what any existing command computes. Not a new scheduler beside the realization spine this builds on.",
+        handback: "The request and outcome carriers, one provider behind them, and one real operation with all five endings demonstrated."
+      )
+    ),
+    active_large(
+      identity: "rn_1MDQX8ZTVK5NBW3RCPHJLG024Y",
+      id: "compute-artifact-return-and-materialization",
+      owner: "compute",
+      path: "docs/plans/execution-spine-design.md",
+      t: fields(
+        headline: "Work that cannot hand back what it produced has not succeeded",
+        boundary: "Every output a computation declared comes back identified by its content, with its size and what produced it, through a manifest the caller can read. Whether those bytes are then copied into a working tree is a separate and explicit step. Work that produces files may only run where its outputs can be returned; a provider that cannot return them offers checking only, and refuses producing work before it starts rather than after.",
+        displaced_cost: "A remote run finished successfully and produced nothing locally; the stale binary left behind was then compared against itself and reported no difference. Every remote build in this environment currently has that shape, and it is silent.",
+        first_slice: "Return the declared outputs of one producing operation by content identity, and make the same operation refuse on a provider that cannot return them.",
+        red_control: "A run reporting success while a declared output is absent refuses instead. An output whose content does not match what the manifest claims refuses. A provider unable to return outputs refuses a producing request rather than answering it with a verdict.",
+        out_of_scope: "Not a distributed content store — exact subject binding, durability, retrieval and refusal come first. Not work that changes a machine, which needs a lease and a read-back rather than an artefact.",
+        handback: "The manifest with content identities, one materialisation into a working tree, and the three refusals demonstrated."
+      )
+    ),
+
+    active_large(
+      identity: "rn_5PZBW1KVNT7XCQ3RDMHJLG0946",
+      id: "compute-deduplication-and-admission",
+      owner: "compute",
+      path: "docs/plans/execution-spine-design.md",
+      t: fields(
+        headline: "Identical work runs once and is handed to everyone who asked for it",
+        boundary: "Two requests naming the same computation are the same work: one producer runs and everyone else attaches to its result as a consumer. The fabric decides what may run — how many cold builds a machine carries at once, what the compile pool's total demand may be, which host serves a request, and what order competing work is served in — and tells a caller which of those it is waiting on. A caller never starts something merely because it cannot tell whether somebody else is already producing it.",
+        displaced_cost: "Ten agents needing the same binary for the same tree currently means ten builds, because nothing lets one of them discover the other nine. Moving the present arrangement onto our own machines WITHOUT this multiplies the load instead of sharing it, which is why this row comes before more consumers rather than after them.",
+        first_slice: "Two agent sessions ask for the same artefact-producing build of the same tree: one producer runs, one compiler build happens, one output is returned, and both attach to it. Deliberately NOT a read-only check — collapsing two verdicts would demonstrate the mechanism on the one case where duplicate work costs nothing, while the case that swamps the fleet is two cold builds.",
+        red_control: "Two identical requests produce one execution and both callers receive the same result, with the same output identity. Two requests differing anywhere in the identity — tree, toolchain, target, profile, features, environment — must NOT collapse, each difference proven separately. A caller refused for want of capacity is told so, and that refusal is counted rather than becoming a longer queue nobody can see.",
+        out_of_scope: "Not what any operation computes. Not the handing back of outputs, which is its sibling. Not provisioning the machines the pool runs on.",
+        handback: "One producer serving several consumers on a real operation, the non-collapse controls, the standing a caller sees, and agents no longer launching duplicate cold builds."
+      )
+    ),
+
+    active_large(
+      identity: "rn_0LNVJ4CQ8ZRHT2XBWD6PGK9YFS",
+      id: "ci-owned-execution",
+      owner: "ci-control",
+      path: "docs/plans/ci-process-end-to-end.md",
+      t: fields(
+        headline: "Run the required checks on our own machines, from a subject we hold ourselves",
+        boundary: "Seeing a new commit creates a durable piece of work of our own, identified by the exact base, head, and combined commit under test. One machine holds it under a lease for the whole run, and the run ends in one typed result we keep. Starting, queueing and handing out the work involve no third-party workflow and no registered runner. The old floor is quarry and shadow oracle, not the template: obligations port only when a disagreement proves they carry a real property, and its batches, ordering, settlement and status vocabulary are not inherited.",
+        displaced_cost: "Starting, queueing, handing out, cancelling and reporting all belong to someone else today. When their side has a bad day our machines wedge, their re-runs test a stale combination, and every one of those failures arrives looking like a fault in our own code.",
+        first_slice: "One exact subject, one bounded population, the emitted native bundle, owned execution, one typed receipt — with the old path running as shadow beside it rather than as the thing being replicated.",
+        red_control: "Restarting the controller recovers unfinished work. The same subject does not run twice at once. Asking for a re-run builds a fresh combination against current main rather than replaying an old one. Losing the machine mid-run returns the work instead of stranding it. A disagreement between the owned path and the shadow is a counted finding, never silently resolved in either direction.",
+        out_of_scope: "GitHub stays the repository and the place people review. Porting old-floor obligations wholesale is out — each ports only on a proven disagreement.",
+        handback: "The durable queue, one run held under a lease from start to finish, and its result carrying the exact subject it tested."
+      )
+    ),
+    active(
+      identity: "rn_8XBLW9DKZH5NCQ0RTVPMGJ4F2",
+      id: "ci-executed-coverage-receipt",
+      owner: "ci-control",
+      path: "docs/plans/ci-process-end-to-end.md",
+      t: fields(
+        headline: "A check reports what it actually executed, not merely that it ran",
+        boundary: "Every required check carries the population it executed — which witnesses, which corpus, how many — and a run that executed nothing cannot report a verdict of any kind. A build failure that stops the corpus from running is its own outcome, distinct from the corpus running and disagreeing.",
+        displaced_cost: "A scheduled check spent days reporting failures while executing no corpus at all, because a step ahead of it failed and the result looked exactly like a real disagreement. Nobody could tell the difference from outside, so a genuine signal was ignored for days.",
+        first_slice: "Carry the executed population on one required check, and refuse a verdict when that population is empty.",
+        red_control: "A run whose executed population is zero refuses rather than reporting either pass or fail. A failure ahead of the corpus is a different outcome from a corpus disagreement. A check that cannot say what it executed does not count as having executed.",
+        out_of_scope: "Not what the corpus contains or how it is selected, and not per-witness enrolment — only that a verdict names the work that produced it.",
+        handback: "One required check carrying its executed population, with the empty-population refusal and the distinct upstream-failure outcome both demonstrated."
+      )
+    ),
+    active_small(
+      identity: "rn_W86W65EBR3HW41MK0X3RBMJ8BT",
+      id: "ci-gate-contention-independent-verdict",
+      owner: "ci-control",
+      path: "docs/plans/ci-performance-tanking-evidence.md",
+      t: fields(
+        headline: "Host load cannot decide a semantic merge verdict",
+        boundary: "A check that blocks merging decides something about the change. The semantic verdict derives from the executed assertion; a timeout or resource exhaustion is a distinct execution outcome, never projected into assertion failure, and never absorbed by widening the cutoff. Work that cannot fit its budget is decomposed or moved through the correct execution mechanism — the cutoff is not raised to admit it.",
+        displaced_cost: "One check was measured ten times across four separate efforts with nothing in the code changing between them, and the readings ranged from well under its limit to well over it. It blocked one change outright, produced a false alarm on another whose own checks all passed, and sent three separate efforts hunting for a defect that was never there — an unchanged semantic subject passing or failing on host contention.",
+        first_slice: "On the one gate currently deciding merges on machine load, split the outcome: the same unchanged subject retains the same semantic result across repeated runs, and an over-budget run reports ExecutionTimedOut or CoverageRefused rather than a failed assertion.",
+        red_control: "Repeated runs of the same unchanged code land on the same semantic side. A timeout reports as ExecutionTimedOut or CoverageRefused, never as an assertion failure. Raising the limit, or moving the check somewhere it stops running per change, refuses as a way of closing this. A quiet-host pass is not accepted as the only evidence.",
+        out_of_scope: "Not a general performance effort, and not a review of every limit — only gates currently deciding merges on machine load. The decomposition or migration of the slow work itself belongs to the execution rows.",
+        handback: "The same unchanged subject holding one semantic result across repeated contended runs, the over-budget outcome demonstrated as its own typed ending, and the limit itself untouched."
+      )
+    ),
+    active(
+      identity: "rn_3HKRW7TBZP1MQ5NDXV0GCJ8YLA",
+      id: "ci-check-projection",
+      owner: "ci-control",
+      path: "docs/plans/ci-process-end-to-end.md",
+      t: fields(
+        headline: "The result shown on GitHub is a copy of ours, never the original",
+        boundary: "Our stored result is published as the required check. No check present means not yet observed and never counts as satisfied. Cancelled, timed out, refused by the infrastructure, and genuinely failed stay four different things the whole way through. A queued merge is checked against the exact commit that queue built. If GitHub cannot be reached the publishing waits; the result itself is never lost.",
+        displaced_cost: "An absent check currently reads the same as one that passed elsewhere, and a job the machine killed arrives as an ordinary failure — so the board cannot tell our defects from theirs, and people learn to re-run rather than read.",
+        first_slice: "Publish one required check from a stored result, with the four endings kept apart.",
+        red_control: "An absent check does not admit a merge. A generic failure that erases a cancellation refuses. Publishing against a commit other than the one that ran refuses.",
+        out_of_scope: "No change to what the branch requires until both paths have been seen to agree.",
+        handback: "One required check published from a stored result, and the four endings demonstrated separately."
+      )
+    ),
+    active(
+      identity: "rn_8YMCT2GQVZ0KRB6WNP4XHDJ71L",
+      id: "ci-actions-runner-retirement",
+      owner: "ci-control",
+      path: "docs/plans/ci-process-end-to-end.md",
+      t: fields(
+        headline: "Remove the hosted-runner path once we carry the required checks",
+        boundary: "With our own path publishing the required checks, the workflow, the runner registrations and the recovery timer are removed together in one change, so there is never a period in which two things can hand out the same work.",
+        displaced_cost: "Retires the vendor's dispatcher as something our fleet's health depends on — the reason the recovery timer has to exist at all, and the reason a bad day on their side becomes a wedged fleet on ours.",
+        first_slice: "Run both paths over the same subjects and compare the verdicts before removing anything.",
+        red_control: "A disagreement on any subject blocks removal. A half-removed state in which both paths can still hand out work is rejected.",
+        out_of_scope: "GitHub keeps the repository, the review surface and the check display. This is about who starts and runs the work, not where it is discussed.",
+        handback: "Agreement across a real run of subjects, then one change that removes the old path."
+      )
+    ),
+    active_small(
+      identity: "rn_4QGZD9NWX3TVB7LMKR0PHY62CS",
+      id: "ci-remote-build-containment",
+      owner: "ci-control",
+      path: "docs/plans/ci-process-end-to-end.md",
+      t: fields(
+        headline: "Contain the remote build wrapper to its safe subset, then retire it into the compute contract",
+        boundary: "This row is a migration, not a home. Until outputs can be handed back, the wrapper admits exactly one remote mode — checking something without producing anything the local tree then needs — and refuses any invocation that would write. Every result names the source it checked and the executable it checked with, so a stale local artefact can never stand in for a remote answer. When the compute contract can return outputs, the wrapper's remaining useful behaviour becomes one provider behind it and the wrapper is deleted rather than extended.",
+        displaced_cost: "There is no stated rule for when this wrapper is the right thing, so it gets guessed at; a remote run meant to produce files can finish successfully having produced nothing locally, and that has already been consumed as a passing check. Every day it stays unclassified, more work is authored against a boundary that means two contradictory things.",
+        first_slice: "Classify the wrapper's operations and refuse the remote writing class before dispatch, not after.",
+        red_control: "A remote invocation declared read-only that writes refuses. A check whose local artefact is older than the source it claims to have checked refuses. A producing request must refuse rather than silently becoming a verdict-only one.",
+        out_of_scope: "This is not where remote execution lives — the compute rows above own that. No rewrite of the wrapper and no new capability added to it; the only additions permitted here are refusals.",
+        handback: "The classification, the refusing controls, and the wrapper deleted once its behaviour is a provider behind the compute contract."
+      )
+    ),
+
+    active(
+      identity: "rn_0PJXVP9KNDXZFHXMDM9XQ7TTSX",
+      id: "commit-writer-admission",
+      owner: "generated-artifact",
+      path: "docs/plans/generated-file-conflict-policy.md",
+      t: fields(
+        headline: "One admission predicate that every commit writer must pass before it may write",
+        boundary: "Admission consumes a complete staged-index observation whose population must equal the exact staged index, never a caller-selected list, with two independent refusal arms: any unmerged index stage refuses typed and located with the affected path, and the staged blobs are inspected for the complete conflict-marker grammar, so a file collapsed to stage zero with markers inside refuses. Text classification is observed, never caller-declared; a fixture exemption is a provenance receipt bound to the same staged path and blob, never a path allowlist. The pre-commit hook stays fast local feedback; the predicate at the writer's boundary is the enforcement.",
+        displaced_cost: "An automated writer has already committed and pushed literal conflict-marker blocks to main by committing through an unresolved merge, and the refusing merge driver raised that class only to mechanically preventable — the repository's own config authority states that commit-writer admission remains the boundary a writer cannot pass. Until this lane lands, the other lanes shrink how many files can be caught by textual adjacency while every writer stays one absorbing fallback away from repeating the incident on the files that remain.",
+        first_slice: "The predicate with the unmerged-index refusal, consumed by one real writer, with the historical incident's exact shape reproduced as the discriminating red.",
+        red_control: "A merge with unmerged index entries refuses typed and located; the staged-marker-text variant refuses separately; an observation population that differs from the staged index refuses in both directions; a freely constructed provenance value whose path happens to match a staged file refuses; a clean tree admits.",
+        out_of_scope: "The infrastructure-side daemon binding is reported for operator routing, not landed from this repository. No repo-wide raw text scan, and no new stringly conflicted-tree fact — the Git model already carries the index-stage and diff-status facts this consumes.",
+        handback: "The predicate consumed by every repo-lane commit writer, the incident witness pair red then green, and the two writer bindings carried as countable work rows rather than prose."
+      )
+    ),
+    active(
+      identity: "rn_7VNBH0KXR5ZQWD2PLGT3MJ86CY",
+      id: "generated-projection-registry-containment",
+      owner: "generated-artifact",
+      path: "docs/plans/generated-file-conflict-policy.md",
+      t: fields(
+        headline: "Stop writing the whole file registry into a generated file",
+        boundary: "A generated artefact must not carry the full list of generated paths. The workflow asks Git which of the paths that actually conflicted are generated, reading that classification from both sides' committed state rather than from a list baked into the workflow text. Adding a generated file then changes the classification projection and leaves the workflow's own bytes alone.",
+        displaced_cost: "One enormous line holding every generated path means any change to that population rewrites the same spot in a shared file, so two branches conflict over a list neither of them disagrees about. That has happened repeatedly, and each occurrence costs a manual resolution carrying no information.",
+        first_slice: "Take the path population out of the workflow and classify only the paths that actually conflicted.",
+        red_control: "Adding or removing a generated file leaves the workflow byte-identical. A path classified as generated on only one side refuses rather than being taken as generated. A conflict that also touches hand-written files refuses before resolving anything. Paths containing spaces or newlines survive. A conflicted classification file sitting in the working tree does not get to decide the classification.",
+        out_of_scope: "The rule that generated files are regenerated rather than merged by hand does not change; this changes how a generated path is recognised, not what happens to one.",
+        handback: "The population gone from the workflow, the previously conflicting case no longer conflicting, and each refusal demonstrated separately."
+      )
+    ),
+    active(
+      identity: "rn_1CJXM6RTPZ8VKQ0NDWB4HG5YFL",
+      id: "generated-commit-policy-census",
+      owner: "generated-artifact",
+      path: "docs/plans/generated-file-conflict-policy.md",
+      t: fields(
+        headline: "Decide which generated files need to be in the repository at all",
+        boundary: "For every generated file we commit, name the consumer that requires the bytes to be present: something outside reads it before our own tools can run, the build needs it to start at all, or a reviewer has to see the exact difference. Anything else is published or produced on demand instead of committed. Generated outputs that stay get their own directories, so what is generated is structural rather than a list someone maintains.",
+        displaced_cost: "A large share of the merge pain comes from files nobody reads as bytes in the repository. Each one that leaves stops producing conflicts, review noise and drift checks permanently, rather than having its conflicts handled better.",
+        first_slice: "Census every committed generated file against those three reasons, and move the first family that has none of them.",
+        red_control: "A file whose consumer cannot be named does not get to stay committed by default. Removing a file something outside genuinely reads is caught before it lands. A generated file appearing inside a hand-written directory refuses.",
+        out_of_scope: "The bootstrap seed stays committed until its own lane removes the need for it; this row does not decide that question.",
+        handback: "The census with a named consumer or a removal for every entry, and the first family moved."
       )
     ),
 
@@ -1736,6 +2027,21 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active(
+      identity: "rn_53RV3EM1TN4T1V3R34L1Z3PL0X9",
+      id: "roadmap-serve-emitted-realization",
+      owner: "fleet",
+      path: "docs/plans/gunbc-served-dashboard-design.md",
+      t: fields(
+        headline: "Serve the roadmap page from emitted native code, never the tree-walking interpreter",
+        boundary: "The interpreted accept loop is a declared scaffold whose dissolution trigger has now fired in production: a two-hour page wedge, one core pinned in memcpy, thirteen connections queued behind a single thread. The fix is ordered. Wire roadmap_serve_handle through the existing emit-on-demand path FIRST — interpreted concat copies its accumulator on every call, quadratic; emitted concat moves, linear: a complexity-class change, not tuning. Then memoize page bodies by content hash of their inputs so a request is lookup-and-write. Concurrency only after bodies are immutable artifacts. A request deadline returns a typed refusal instead of eating the process.",
+        displaced_cost: "The 2026-08-08 srv1 outage: gunbc serve wedged for two hours rendering the daily page, every route behind it dead, and it re-wedges on the next load of the same shape. The scaffold row already names emit-on-demand as its dissolution and the module carries zero references to it — declared and left standing. Separately, the belt reconcile has been dead as long as GcpProjectId has failed to resolve, burning about two minutes of CPU on every timer tick before exiting.",
+        first_slice: "Confirm the quadratic with the existing chars-walked instrumentation at a few page sizes (measured, not assumed — the two-hour spin is proven memcpy but not yet proven quadratic), fix the copied accumulator in both interpreter concat arms, wire roadmap_serve_handle through std.emit_on_demand, land the request deadline, and fix the GcpProjectId unresolved type so the belt lives again.",
+        red_control: "A planted pathological render returns a typed refusal within the deadline instead of pinning a core. Warm-vs-cold page bodies are byte-identical on unchanged inputs; a changed input invalidates the hash rather than serving stale. The chars-walked curve is linear in page size after the fix. The belt tick completes instead of dying on the unresolved type.",
+        out_of_scope: "Threading before the render is linear is refused — a thread pool over a superlinear render converts one wedged route into a machine-wide meltdown, so concurrency is last, where it is nearly free. No new serving architecture: the emit-on-demand and artifact-store carriers already exist; this row is wiring plus the interpreter cost-shape fix, which lands regardless because the interpreter still renders in dev and tests.",
+        handback: "The page served from emitted native code with content-hashed bodies, the interpreted scaffold dissolved, the deadline refusing pathological renders, the concat cost-shape defect fixed in the interpreter, and the belt reconcile alive."
+      )
+    ),
+    active(
       identity: "rn_DMMM7YQHT05Q01CD10Q7B6R1DK",
       id: "fleet-anti-entropy-hygiene",
       owner: "fleet",
@@ -1763,6 +2069,157 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "A missing read-back, an unsafe re-run, a failed undo, or a missed schedule blocks this.",
         out_of_scope: "No accepting this on made-up examples.",
         handback: "The full set of receipts and a machine state someone can go and verify."
+      )
+    ),
+    active_large(
+      identity: "rn_5ZKQW8BXTN2VRD0MHJ7GPL34CY",
+      id: "fleet-main-revision-authority",
+      owner: "fleet",
+      path: "docs/plans/fleet-self-converge-enforcement-design.md",
+      t: fields(
+        headline: "A merge to main is the instruction, and nothing else applies it",
+        boundary: "The state the machines should be in is the exact revision merged to main, held durably by whatever is applying it. A newer revision replaces an older one, an older or unrelated one refuses, and the same one again does nothing. The instruction survives a restart of the thing applying it and an outage at the hosting provider — an event from them may make it happen sooner but is never the only place the instruction lives. A machine that was unreachable or refused is tried again against the revision still held, with no new commit needed.",
+        displaced_cost: "Every fleet-touching merge currently ends with the same question — is that actually on the machines — and the only way to answer it is to go and look. Somebody has to remember to apply things, and forgetting is invisible until it causes an incident.",
+        first_slice: "Watch main directly, hold one durable revision, and show it survives a restart of the applier.",
+        red_control: "An older revision does not overwrite a newer one, and two arriving close together do not finish out of order and leave a machine behind. An unrelated history refuses. A missed notification still converges on the next pass. The same revision again performs no changes at all.",
+        out_of_scope: "Not how any individual setting is applied — the closed loop above owns that. Not the fleet-wide answer, which is its sibling row.",
+        handback: "The held revision surviving a restart, the ordering refusals, and a machine that was down converging on its return without anyone committing anything."
+      )
+    ),
+    active(
+      identity: "rn_2WPGT6NCZQ9XKBR1DVLM40HJY8",
+      id: "fleet-atomic-convergence-verdict",
+      owner: "fleet",
+      path: "docs/plans/fleet-acceptance-criteria.md",
+      t: fields(
+        headline: "One answer for the whole fleet, or exactly which machines are not there yet",
+        boundary: "Each machine produces a receipt — what was wanted, what was there, what was planned, what was applied, and what was read back afterwards. Those fold into a single answer for the fleet, joined with the lifecycle cells enrollment constructs: every required host-and-phase cell is observed, refused, unreachable, drifted, or converged, and a required cell nobody has observed prevents convergence rather than defaulting green. Anything short of all of them is not converged, with the machines that refused, could not be reached, or have drifted each named separately.",
+        displaced_cost: "One machine can hold the new value while the others hold the old one and nothing anywhere says so, which is exactly why the honest answer to whether something is applied is currently to go and check by hand. And the fleet phase matrix currently has exactly one real observation producer cell — one host, one phase, hard-coded — so every other lifecycle claim in the fleet is unobserved by construction; enrollment makes obligations countable, not satisfied.",
+        first_slice: "Fold the existing per-machine receipts into one fleet answer for a single narrow setting.",
+        red_control: "One machine short of the roster reports not converged, never converged with a note attached. Unreachable, refused and drifted stay three different answers, and a machine we could not reach is never simply missing from the count. A command that succeeded while the real value did not change reads as a failed read-back.",
+        out_of_scope: "No new ways of changing machines are added here — this row is the answer, not the action.",
+        handback: "The fleet answer with all four machine outcomes demonstrated."
+      )
+    ),
+    active_large(
+      identity: "rn_9DVRB3XQKM0ZWT7NPGHC65LJY2",
+      id: "fleet-runner-host-convergence",
+      owner: "fleet",
+      path: "docs/plans/fleet-self-converge-enforcement-design.md",
+      t: fields(
+        headline: "The build machines' own limits and services converge from main like everything else",
+        boundary: "The job slots' limits, where shared compilation runs, the recovery timer, and the values those actually take on each machine are all stated as desired state derived from main and converged everywhere. Editing the desired row and merging it is the whole operator action.",
+        displaced_cost: "This is the configuration whose hand-drift produced the process-limit outage and left the shared build cache running inside a retired job slot. It is also the first subject worth proving the whole path on, because it is real, it is already wrong, and fixing it by hand is what created the drift.",
+        first_slice: "Converge one already-repaired value across every machine and read back what each one actually holds.",
+        red_control: "A machine whose effective value differs from the desired one reports drifted. A service command that exits successfully while the machine's real limit is unchanged is a failed read-back, not a success. A machine missing from the roster is never silently skipped.",
+        out_of_scope: "The emergency repair itself belongs to the envelope row in the placement lane; this row is what keeps it true afterwards.",
+        handback: "The desired rows, the read-back values from every machine, and one drift repaired without a person."
+      )
+    ),
+    active_small(
+      identity: "rn_6MKXC1TZGB8QWN4RDVPJ0HY735",
+      id: "fleet-runner-broker-recovery",
+      owner: "fleet",
+      path: "docs/plans/fleet-self-converge-enforcement-design.md",
+      t: fields(
+        headline: "Count every automatic job-runner recovery, and say what retires it",
+        boundary: "The timer that restarts wedged job runners records each firing — which machine, which slot, what it observed, what it did, and whether it worked — and those counts reach the fleet's health. Deciding locally that a runner has stopped making progress is kept separate from asking the provider whether it is still registered, so recovery keeps working during the outage it exists for.",
+        displaced_cost: "It fires roughly ten times a day across the fleet and nothing counts it, so the fleet looks healthy because something invisible is holding it up. The firing rate is the only thing separating a legitimate stopgap from a fault we have stopped noticing.",
+        first_slice: "Emit one attributable receipt per firing, and show the rate per machine.",
+        red_control: "A restart with no attributable cause is not recorded as a recovery. Failing to reach the provider refuses rather than being read as offline. Nothing restarts a slot that is currently running work.",
+        out_of_scope: "Not replacing the current two-part test with a bare silence rule before the local part has been proven on its own.",
+        handback: "The counted receipts, the split by cause, and the named condition under which this timer is deleted."
+      )
+    ),
+    active(
+      identity: "rn_HYV4E84MRC1MJ73EDJZYXP89S8",
+      id: "fleet-spark-host-enrollment",
+      owner: "fleet",
+      path: "dag/gunbc/dgx_spark_procurement.dag",
+      t: fields(
+        headline: "Turn the two Spark machines from hand-managed boxes into exact fleet members",
+        boundary: "srv5 and srv6 become fleet members: enrollment intents carrying InferenceServingParticipation, with endpoint rows derived downstream from the assigned reservation rows — re-typing the address literal refuses, a reverse import into the network intent refuses, and the join is a projection between the two existing authorities, never a second host-identity authority. Enrollment constructs their four required lifecycle cells — identity converge, reach, compute-fabric enrolment, assimilation complete — and every cell stays honestly Unobserved until an observation producer answers it. Enrolled is not converged: no identity convergence, reach satisfaction, capacity acceptance, or serving claim lives here.",
+        displaced_cost: "Two machines are reserved, physically bound, and answerable by nobody: no fleet row knows they exist, so their state is whatever hands left there. The stale count witnesses still encode enrolled-hosts-times-whole-spine — every enrolled host presumed a runner, wrong since participation scoping landed and exposed by srv5. And the endpoint-derivation question already burned a session against an import cycle because the projection layer this row creates did not exist.",
+        first_slice: "Diagnose the cli_run.rs:1577 compiler panic as its own exact defect — never a spelling that dodges it — then the per-enrollment participation-derived cell population replacing the cross-product witnesses, the two enrollment rows, and the endpoint projection.",
+        red_control: "A count witness multiplying enrolled hosts by the whole spine refuses — expected cells are the duplicate-free identity join of each enrollment's participation-derived program, and runner plus inference union exactly with no duplicated cell. An inference enrollment carrying BMC, OS-install, runner-slot, or build-cache obligations refuses. Changing one participation changes only the obligations that participation owns. An endpoint row re-typing the reserved address literal refuses; a reverse import into the network intent refuses. Any Spark cell presented as observed without a producer refuses.",
+        out_of_scope: "No convergence, no serving: identity converge and reach are the convergence lane's observation seam; GB10 compute enrollment, collector facts, runtime, model revision, and auth are the serving row's. No build or runner role, ever.",
+        handback: "Both machines enrolled with exactly four obligations each, the stale cross-product witnesses replaced by the identity join, the endpoint projection landed, and eight Spark cells visible as honestly unobserved."
+      )
+    ),
+    active_large(
+      identity: "rn_3JQZN7WVPD1KXCB0RTMG84LHY6",
+      id: "fleet-spark-inference-serving",
+      owner: "fleet",
+      path: "dag/gunbc/dgx_spark_procurement.dag",
+      t: fields(
+        headline: "Bring the two new machines up as model-serving members, through the same path as everything else",
+        boundary: "Both new machines join through the same standing-up sequence every other machine uses, reach a stated model and runtime, and serve requests on an endpoint. Which model is actually being served, and whether the endpoint is healthy, are read back independently, and each machine stays separately observable. They serve models — they are not job runners and not build caches.",
+        displaced_cost: "Standing these up by hand would create two more machines nobody can answer questions about, which is the state this whole lane exists to end. Going through the convergence path also proves that path on a machine class it has never seen.",
+        first_slice: "The internal path, in order and explicit: membership (the enrollment row), identity and reach observations through the convergence lane's observation seam, GB10 compute enrollment as an inference envelope (accelerator, unified memory, precision modes, model-residency and concurrent-generation budgets — never hardware threads), collector-observed vendor image, OS, driver and runtime facts, pinned serving runtime plus exact model revision and API auth, then the endpoint answering with its model identity read back. Converge one of them through that path first. Infrastructure acceptance (operator amendment 2026-08-08): independent continuously-supervised replicas on both machines, survival across process restart and host reboot, requested model equals observed served model, one provider-neutral inference operation with exact structured-response decode, usage and timing observations retained, and concurrency admission with queue standing observable.",
+        red_control: "An endpoint that answers while serving a different model than the one asked for is drift, not health. A machine we cannot reach leaves the fleet not converged rather than dropping out of the count. Giving one of them a job-runner or build-cache role refuses. A serving acceptance may not lean on model quality in either direction: serving may close while the first model is rejected for semantic work, and a good offline model score cannot close serving.",
+        out_of_scope: "No training or tuning (that is judgment-model-selection-and-specialization), no routing of real work onto them, and no build role. The two replicas stay independent initially — aggregate accepted work across concurrent tasks, not one fast stream.",
+        handback: "Both machines converged from a desired row, the served model read back on each, restart and reboot survival demonstrated, one structured inference decoded exactly with its usage receipt, and one drift repaired — each host separately healthy, drifted, or refused."
+      )
+    ),
+
+    active_large(
+      identity: "rn_RPKBFCD41FZGDV48TJKRJYQ8J2",
+      id: "confidence-semantic-impact-query",
+      owner: "confidence",
+      path: "src/v2/lens/module_graph.dag",
+      t: fields(
+        headline: "Ask what depends on this exact thing, and get an explained, honest answer",
+        boundary: "Given an exact graph subject and one or more semantic node identities, return direct and transitive dependencies or dependents, explanation paths, production and test consumers, and an explicit completeness standing. Git diffs, paths, line and column coordinates, and natural-language questions are adapters into this semantic query — they are not its identity grain. The reading consumes the existing single edge authority as data and never grows a second edge producer; where the finest grain is unavailable, the standing says so with its trigger rather than answering coarser and calling it fine.",
+        displaced_cost: "Whether a concept already exists, who consumes it, what executes it, and what a deletion would break are today answered by grep, memory, or not at all — every session re-derives them, duplicates get minted beside existing authorities, and the reverse question is simulated with N forward closures. This deterministic layer is also the grounding packet the judgment service requires: without it, the machine judgement lane has nothing checkable to stand on. Acceptance standing (2026-08-08, post-rework): the reverse query is merged; the changed-surface rework closed departed-path consumption, the typed Complete/Partial/Refused outcome (unresolved input contaminates the whole result), the skip-authority wall (SkipAuthorityGranted reachable only from Complete AND exact), optional cycle analysis, the two-direction selector-parity control, and three real-diff receipts — one of which falsified a fixture assumption (git reports a deletion in both projections). OPEN: the base-graph population — a deleted subject resolves to typed BaseGraphUnavailable because every graph reader is head-only; building revision-scoped reading is an operator decision (new seed Rust or a heavy checkout). Measured correction: cycles were 28 percent of the wall, not most — the dominant cost is resolve and fact production.",
+        first_slice: "One real corpus query usable by a person — a real module, its explained dependent tree at the finest honestly available grain, with the completeness standing shown — through a tools entry, not a new CLI arm. Not just a fixture suite: the fixture-only consumer is the pattern this lane exists to stop.",
+        red_control: "A query whose subject module does not exist refuses rather than answering empty. A planted unbound module appears in the standing, and no reading over a pool with unaccounted members reports itself closed. The result may not claim one-sided incompleteness while pool independence is unavailable — the standing carries the trigger. A second edge producer beside the declared single authority refuses. Forward-intent refusals (operator amendment 2026-08-08): a branch name without an exact revision is not a subject; a deleted declaration is never silently resolved against the head tree; an unresolved input never becomes an empty result; a partial universe cannot report that no relevant authority exists — no-matches and could-not-see-enough remain different answers. The deterministic layer never turns prose into repository identity: it returns the bounded universe, exact candidate declarations, consumers, explanation paths, and standing for a later mapper or judge.",
+        out_of_scope: "No LLM, no Spark, no provider — this is deterministic repository inspection and must work with none of them provisioned. Declaration and node grain arrive through the namespace dependency-projection triggers, never through a parallel host bridge.",
+        handback: "The reading with typed direction and standing, adapters above it, one real corpus query a person can run and read, and the judgment lane re-grounded on the packet this produces."
+      )
+    ),
+    active(
+      identity: "rn_NE8G0Q69BD0SZ24K26MVXXB2R2",
+      id: "abstraction-candidate-discovery",
+      owner: "confidence",
+      path: "src/v2/lens/module_graph.dag",
+      t: fields(
+        headline: "Find subjects that may deserve one shared abstraction by how they are constructed and consumed",
+        boundary: "Given an exact graph subject, a semantic universe, and a named lens over construction, consumption, effects, tests, lifecycle, or presentation, group observationally equivalent subjects into grounded abstraction candidates. The result is DESCRIPTIVE evidence only: it mints no authority, rewrites no code, and never decides a quotient is valid — similarity under a lens is evidence; 'these should share one authority' is a separate normative ruling crossing that bridge explicitly. Every candidate names its universe, lens, equivalent observations, the distinctions the quotient would erase, nearby authorities, the consumers that would use it, and its over-collapse and demand standing.",
+        displaced_cost: "The grouping move — five things consumed the same way become one new layer — is how this repository forms layers at all, and today it happens only when a person notices: duplicates get minted beside existing authorities, boutique implementations accumulate until a consolidation pays the fork back at interest, and the judgment of which lens a similarity holds under is re-derived by hand every time. The candidate that is NOT an abstraction is half the value: the Spark endpoint question burned a session on topology surgery that a projection-missing classification — join the existing authorities downstream, mint nothing — would have answered in one line.",
+        first_slice: "The DETERMINISTIC detector first — no model, no Spark — with PARTICIPATION as the criterion and shape one weak signal within it (worker correction 2026-08-08: shape misses the vendor trio, structurally unlike but sharing every verb, and false-positives on RackUnitPosition vs RackUnit, structurally identical and rightly distinct — which verbs take the subject, in which position, is what separates them). The mechanical population includes shape-identical declarations AND the consumer-imposed-verb classes: a String field whose readers only compare it against a fixed literal set is a closed enum wearing a String, decidable without a model. The residue — what participation analysis cannot reach — is the exact population any model must justify itself against, and a mechanically decidable case is never delegated to the model. Eval is historical replay: the tree before each already-dissolved fork, labeled by the merge that followed; negatives on kept-distinct rulings — noting the runner-vs-inference-capacity control DOES NOT EXIST YET (what #8056 witnesses is obligations, not capacity) and must be built before the eval may lean on it. Output always carries subject, universe, lens population, and completeness standing — no findings never renders as fork-free.",
+        red_control: "A planted set of near-duplicates with one load-bearing distinction yields keep-distinct, never a merged candidate — keep-distinct is a RESULT, not an absence. A pair whose correct move is a downstream join yields projection-missing, never a new identity authority. A candidate that cannot name a current consumer reads demand-absent rather than ranking beside demanded ones. A cited subject that does not resolve refuses. Candidate dispositions are first-class and closed: structurally-equivalent, semantic-review-required, existing-authority, projection-missing, candidate-new-abstraction, authored-but-unconsumed, keep-distinct, over-collapse-risk, demand-absent, unknown-because-incomplete.",
+        out_of_scope: "No LLM and no Spark in this row — deterministic grouping and packet construction must work before the model server exists; ranking, critique and explanation are the judgment row's. No automatic commits: an application is a proposed patch under review.",
+        handback: "The candidate reading with its named-lens vocabulary, the three controls demonstrated on real corpus subjects, and one accepted candidate applied end to end — consumer migrated, duplicate deleted, receipts equal."
+      )
+    ),
+    active(
+      identity: "rn_JDGMNTM0D3LS3L3CTNTUN1NGX7Q",
+      id: "judgment-model-selection-and-specialization",
+      owner: "judgment",
+      path: "docs/plans/enforcement-intent-design.md",
+      t: fields(
+        headline: "Pick and tune the judgment model against held-out historical rulings, as a derived artifact with staleness",
+        boundary: "Given an exact base-model artifact, prompt and context policies, a provenance-bound corpus of accepted and rejected repository-modeling rulings, a training recipe, and a compiler-and-authority snapshot: compare untuned, prompt-only, and tuned realizations on temporally held-out cases. A tuned artifact is admitted only when it improves the SEMANTIC RESIDUE without worsening false consolidation, citation grounding, or unknown-and-refusal behavior. A changed base model, compiler revision, authority snapshot, corpus, or recipe makes the artifact stale — staleness is derived, never asserted.",
+        displaced_cost: "Without this row, tuning either hides inside serving (coupling infrastructure acceptance to model quality) or inside judgment (letting the judged system pick its own judge) — both forks the operator amendment forbids. And an untuned baseline never measured means every tuning claim is unfalsifiable.",
+        first_slice: "Three arms on one held-out ruling set: A full current prompt on the untuned base; B reduced prompt, untuned; C reduced prompt with a tuned adapter — reported as the per-class vector, never one score.",
+        red_control: "Training and evaluation examples overlapping refuses. An example with no exact pre-ruling repository subject refuses. A tuned model improving only on mechanically decidable cases is a failed admission, not a win. Increased false consolidation or over-collapse refuses. Unresolved citations counted as correct refuses. A tuned artifact against an old substrate served as current refuses, and a base-model update silently inheriting the old adapter's admission refuses. Promotion from training loss without repository-level evaluation refuses.",
+        out_of_scope: "No serving infrastructure (that is fleet-spark-inference-serving, whose acceptance is independent of model promotion in both directions). No judgment semantics — this row selects and specializes the model the judgment row consumes.",
+        handback: "The A/B/C comparison on held-out rulings with its per-class vector, the admission decision with its receipt, and the staleness derivation demonstrated on one changed input."
+      )
+    ),
+    active_large(
+      identity: "rn_0PGYW4KDNQ2BXR9TVCM6HJ3LZ5",
+      id: "judgment-mechanical-review-service",
+      owner: "judgment",
+      path: "docs/plans/enforcement-intent-design.md",
+      t: fields(
+        headline: "Make the repetitive review and abstraction judgements something a machine can propose — two question modes over one evidence substrate",
+        boundary: "ONE service, TWO question modes over the same evidence packet and ruling vocabulary (operator amendment 2026-08-08): FORWARD — given an exact repository subject and a desired-concept intent, where does this belong (existing-authority, projection-missing, candidate-new-abstraction, reprime-candidate, keep-distinct, missing-consumer/actuator/readback, unknown); INVERSE — given candidate dual representations, should they de-fork (likely-duplicate, existing-authority, projection-missing, keep-distinct, over-collapse-risk, demand-absent, unknown). Every declaration it cites must resolve in the exact reviewed subject; selected subjects come only from the bounded searched universe; anything it cannot ground is unknown, never a plausible sentence. Never a second repository-mapping service.",
+        displaced_cost: "These judgements are the throughput limit on the whole board, they are all made by one person, and they are mechanical enough to describe — which is precisely why they are being repeated by hand rather than encoded. The attempt-receipt lesson binds here: an LlmAttemptReceipt proves a model RAN, not what it returned — so the handback requires a semantic judgment receipt binding raw-output identity, decoder identity, evidence-packet identity, exact repository subject, searched-universe identity, resolved model and runtime as observations, decoded judgment, cited declarations, and their citation-resolution receipt; malformed output refuses, an invented authority refuses, and incomplete evidence yields only unknown or a located qualified answer.",
+        first_slice: "Three executed request shapes, smallest label family: one FORWARD mapping (a desired concept lands on an existing authority, a missing projection, or unknown); one INVERSE historical de-fork case classified against a known consolidation ruling; one keep-distinct negative — a similar-looking pair with a load-bearing distinction that must NOT be recommended for consolidation. No patch generation, no coding loop, no automatic commit.",
+        red_control: "A cited declaration that does not exist is refused, never returned. A judgement with nothing resolvable behind it is unknown. A planted duplicate must be found; a genuinely new concept must not report as duplicate; the keep-distinct negative must hold. Raw output that does not belong to the recorded attempt, decodes ambiguously, or cites outside the bounded universe refuses at admission. Evaluation reports a per-class vector (recovered / wrong-consolidation / projection-missing-correct / keep-distinct-correct / citations-resolved / unknown-when-incomplete / operator-verdict), never one score, and never claims general recall — unknown forks have no observable denominator. A model that merely repeats what the deterministic detector already decided has not demonstrated useful inference.",
+        out_of_scope: "Not a coding agent, and never authority — the answer is input to a person or to a check, not the decision. A rule that can be decided outright belongs in a check, not here; a mechanically decidable case is never delegated to the model merely because the model can answer it. A future .dag coding workflow is a NAMED DOWNSTREAM CONSUMER of these receipts, not a node here — patch production, iterative agent sessions, and merge authority are outside this requirement. Model selection and tuning live in the judgment-model-selection-and-specialization successor, never here.",
+        handback: "The service answering both modes with grounded receipts over real subjects, the three executed shapes demonstrated, the per-class evaluation vector against historical rulings, and the measured share of judgements it can actually take."
       )
     ),
 
@@ -1928,8 +2385,7 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "observation-raw-print-retirement", parent: "observation-collapse-watchdog-restatement"),
 
     edge(child: "warm-merge-admission", parent: "five-minute-ci-gate"),
-    edge(child: "native-selected-witness-bundle", parent: "five-minute-ci-gate"),
-    edge(child: "native-selected-witness-bundle", parent: "warm-merge-admission"),
+    edge(child: "five-minute-ci-gate", parent: "native-selected-witness-bundle"),
     edge(child: "module-grain-materialization", parent: "five-minute-ci-gate"),
     edge(child: "pre-index-materialization-lookup", parent: "five-minute-ci-gate"),
     edge(child: "phased-single-process-ci", parent: "five-minute-ci-gate"),
@@ -1941,6 +2397,32 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "placement-two-host-warm-qualification", parent: "placement-live-roster-preflight"),
     edge(child: "placement-shadow-equality", parent: "placement-two-host-warm-qualification"),
     edge(child: "placement-atomic-authority-flip", parent: "placement-shadow-equality"),
+    edge(child: "placement-compile-pool-envelope", parent: "placement-live-roster-preflight"),
+
+    edge(child: "ci-cost-arc-reconciliation", parent: "five-minute-ci-gate"),
+    edge(child: "ci-build-once-per-subject", parent: "ci-cost-arc-reconciliation"),
+    edge(child: "ci-floor-discovery-snapshot", parent: "ci-cost-arc-reconciliation"),
+    edge(child: "ci-floor-discovery-snapshot", parent: "module-grain-materialization"),
+
+    edge(child: "compute-artifact-return-and-materialization", parent: "compute-exact-work-contract"),
+    edge(child: "compute-deduplication-and-admission", parent: "compute-exact-work-contract"),
+    edge(child: "compute-deduplication-and-admission", parent: "compute-artifact-return-and-materialization"),
+    edge(child: "ci-owned-execution", parent: "compute-exact-work-contract"),
+    edge(child: "ci-owned-execution", parent: "compute-artifact-return-and-materialization"),
+    edge(child: "ci-owned-execution", parent: "compute-deduplication-and-admission"),
+    edge(child: "ci-scoped-worker-shared-substrate", parent: "ci-floor-discovery-snapshot"),
+    edge(child: "ci-selection-before-preparation", parent: "ci-floor-discovery-snapshot"),
+    edge(child: "ci-streaming-realization", parent: "ci-selection-before-preparation"),
+    edge(child: "ci-streaming-realization", parent: "ci-scoped-worker-shared-substrate"),
+    edge(child: "phased-single-process-ci", parent: "ci-scoped-worker-shared-substrate"),
+    edge(child: "ci-remote-build-containment", parent: "compute-artifact-return-and-materialization"),
+    edge(child: "ci-check-projection", parent: "ci-owned-execution"),
+    edge(child: "ci-check-projection", parent: "ci-executed-coverage-receipt"),
+    edge(child: "ci-check-projection", parent: "ci-gate-contention-independent-verdict"),
+    edge(child: "ci-actions-runner-retirement", parent: "ci-check-projection"),
+
+    edge(child: "generated-projection-registry-containment", parent: "commit-writer-admission"),
+    edge(child: "generated-commit-policy-census", parent: "generated-projection-registry-containment"),
 
     edge(child: "v1-emitter-fixed-point", parent: "pderive-error-movement-receipt"),
     edge(child: "v2-emitter-direct-rust-door", parent: "v2-emitter-producer-provenance"),
@@ -1985,8 +2467,27 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "fleet-closed-loop-converge", parent: "fleet-state-frontier"),
     edge(child: "fleet-closed-loop-converge", parent: "shell-gate-migration"),
     edge(child: "fleet-dashboard-instance-membership", parent: "fleet-state-frontier"),
+    edge(child: "roadmap-serve-emitted-realization", parent: "fleet-state-frontier"),
     edge(child: "fleet-anti-entropy-hygiene", parent: "fleet-closed-loop-converge"),
     edge(child: "fleet-receipt-qualified-control", parent: "fleet-anti-entropy-hygiene"),
+    edge(child: "fleet-main-revision-authority", parent: "fleet-closed-loop-converge"),
+    edge(child: "fleet-atomic-convergence-verdict", parent: "fleet-closed-loop-converge"),
+    edge(child: "fleet-runner-host-convergence", parent: "fleet-main-revision-authority"),
+    edge(child: "fleet-runner-host-convergence", parent: "fleet-atomic-convergence-verdict"),
+    edge(child: "fleet-runner-host-convergence", parent: "placement-compile-pool-envelope"),
+    edge(child: "fleet-runner-host-convergence", parent: "compute-exact-work-contract"),
+    edge(child: "fleet-runner-broker-recovery", parent: "fleet-runner-host-convergence"),
+    edge(child: "fleet-spark-inference-serving", parent: "fleet-main-revision-authority"),
+    edge(child: "fleet-spark-inference-serving", parent: "fleet-atomic-convergence-verdict"),
+    edge(child: "fleet-spark-inference-serving", parent: "compute-exact-work-contract"),
+
+    edge(child: "judgment-mechanical-review-service", parent: "fleet-spark-inference-serving"),
+    edge(child: "judgment-mechanical-review-service", parent: "confidence-semantic-impact-query"),
+    edge(child: "judgment-mechanical-review-service", parent: "abstraction-candidate-discovery"),
+    edge(child: "abstraction-candidate-discovery", parent: "confidence-semantic-impact-query"),
+    edge(child: "judgment-model-selection-and-specialization", parent: "judgment-mechanical-review-service"),
+    edge(child: "judgment-model-selection-and-specialization", parent: "fleet-spark-inference-serving"),
+    edge(child: "fleet-spark-inference-serving", parent: "fleet-spark-host-enrollment"),
 
     edge(child: "toolchain-single-resolver", parent: "toolchain-pin-model"),
     edge(child: "toolchain-rust-hermetic", parent: "toolchain-single-resolver"),
@@ -2006,6 +2507,8 @@ data unreachable_patterns_construction_residue_note: String = "CONSTRUCTION RESI
 data namespace_cross_file_provenance_lane_integration_note: String = "N3-B STACKED LANE INTEGRATION (operator ruling 2026-08-07). See unreachable_patterns_construction_residue_note for the #6777 emitter construction residue tracked independently of this lane.\n\nPROGRESS STANDARD: namespace lane progress means A NAMED TERMINAL WITNESS WENT RED TO GREEN. Substrate PRs and repair PRs are necessary but are NOT namespace progress. B0 exposure/assembly and B1 fixture-proven projection carriers do not close namespace-cross-file-provenance; only the bound closing witness greens when OrdinaryLoadedCompilationClosure production lands (B2).\n\nCOMPLETION BOUNDARY: B0 lands one exposure authority and collision-free cross-file assembly substrate. B1 lands the complete clause-(e) projection carrier and discriminating fixture algebra; the N3-B row stays red because the ordinary loaded compilation producer is still absent. B2 lands that producer and greens the bound closing witness. #7770 remains quarry-only — manual extraction source, never a merge target; it closes unmerged once B0/B1/B2 land their extracted content.\n\nLANE SHAPE: B0, then B1; B2 and N3-C are parallel after B1. N3-D aggregate handback follows A-close plus B2 plus N3-C. Mutable fork bases, review state, and session topology live in the dashboard, not here."
 
 data namespace_pool_independence_lane_brief_note: String = "N3-C (namespace-pool-independence) LANE BRIEF — operator ruling 2026-08-07. Undispatched until B1 lands; starts from the cleaned final B1 head, not from B0 and not from an intermediate B1 draft.\n\nCONTRACT: Compare two complete B1 clause-(e) projection results for the same source subject — baseline projection versus perturbed projection with one unrelated loaded file added. Required equality across both: same source subject; same reference occurrence identities; same selected declaration identities; same bound-reference population; same occurrence-level provenance rows; same file dependencies; same exact refusal outcome when applicable.\n\nLOAD-BEARING RED CONTROL: A perturbation that reselects a different declaration inside the same provider file while leaving the file-dependency set unchanged must be REFUSED by the full-carrier comparison. A dependency-set-only comparison passes this case while missing the exact Class B reselection N3-C exists to forbid — the comparison is over the complete ReferenceDerivedDependencyProjection carrier, not the deduplicated file list alone.\n\nDEPENDENCIES: Requires B1 (ReferenceDerivedDependencyProjection plus occurrence-grain provenance). Does not require B2 (ordinary loaded compilation closure producer)."
+
+data false_verification_incident_mapping_note: String = "FIVE WAYS THE BUILD REPORTED A RESULT NOBODY EARNED, mapped to their exact homes rather than gathered under an umbrella node (consolidation ruling, 2026-08-08 — the parallel authority branch proposed one observation-verification-integrity node covering all five; a coarse identity over mechanisms this graph already decomposes would be the §3 second authority, so the incident record ports and the node does not). The mapping, one row each: a remote build that exits zero while its output never comes back is compute-artifact-return-and-materialization's first refusal; a stale local binary compared against itself is the same row's manifest-content refusal plus ci-remote-build-containment's stale-artefact refusal; a re-run that replays a combination computed when the change was opened is ci-owned-execution's fresh-combination control; no checks at all treated as satisfied, and a cancelled job rendered as a generic failure, are both ci-check-projection's typed endings — unobserved and cancelled each a distinct answer, never absorbed into pass or fail. Every future incident of this family files against exactly one of those homes; a sixth mechanism with no home is a finding about the graph, not a reason to mint the umbrella."
 
 data namespace_closure_prerequisite_cut_note: String = "THE SIX CAPABILITIES INSIDE namespace-reference-derived-closure ARE NOT SIX NODES, and this cut adds exactly three rows in front of it rather than decomposing it (2026-08-04). Its closing contract, namespace_reference_derived_closure_contract, is a set-difference frontier over six capabilities under three triggers, and every row read Unavailable while the node itself was the only dispatchable thing in the lane. That is a single startable row standing for three separable pieces of work with different substrates, which is the coarse-node hazard namespace_node_recut_note already priced once.\n\nTHE CUT FOLLOWS THE TRIGGERS, because the triggers already record which work each capability waits on. namespace-structural-observations owns the four capabilities under P2aStructuralCandidateProducer7515 — same-parse-tree rules, whose substrate is the merged occurrence-binding parser walk. namespace-cross-file-provenance owns the one under P2aReferenceDependencyProjection7515. namespace-pool-independence owns the one under P2aPoolIndependentDependencyProjection7515.\n\nTHE FIRST TWO ARE PARALLEL, NOT SEQUENTIAL. No dependency runs from the same-file rules to the cross-file projection; they share only the contract they feed. Sequencing them would have idled one worker for no modeled reason. Pool independence DOES depend on cross-file provenance, because a differential needs a projector to perturb.\n\nWHY THE CROSS-FILE ROW IS THE LARGE ONE. The merged parser walk resolves nothing across a file boundary — its own authority note scopes it to authored source through parse_with_table, with transport and module path from the parser. So cross-file target realization sits INSIDE that row rather than upstream of it, and the trigger being named after a merged PR does not mean the capability is discharged.\n\nNO NEW IDENTITY WAS MINTED FOR THE INTEGRATION OR FOR THE CENSUS. namespace-reference-derived-closure keeps its durable identity and now denotes the aggregate handback — all six observations admitted, the expecting-red enrolment retired, its existing check green — so its first_slice moved to say so while its boundary, which still covers all six, did not. namespace-ambiguity-discharge likewise keeps its identity and its existing dependency on the closure node; the census it owns is authoritative only once all six close, never after the same-file rows alone, because a census taken before cross-file answers exist undercounts exactly the candidates that cross a file boundary and inherits the pool coincidence pool-independence exists to remove.\n\nTHE THREE NEW ROWS ARE DELIBERATELY UNBOUND. Each first_slice names authoring its own closing check as its first act, per v1_lane_binding_survey_note: the contract follows the witness, never precedes it. Authoring contracts here to make the rows look startable is the coverage-by-illusion tier that note forbids, and pool-independence could not honestly carry one at all — its differential compares an output shape its own prerequisite has not yet produced."
 
@@ -2292,11 +2795,11 @@ fn preamble() -> List<MarkdownBlock> {
   ]
 }
 
-data roadmap_focus_selection_note: String = "THE ONE ROW THAT SETS THE VIEW. Focusing is a projection policy, not an edit — every node and edge stays declared in this file, the dispatch surface still sees the whole graph, and setting this back to NoFocus restores the full page with no recovery step. It selects the v1 exit lane (the sustained effort under way — the v1 → v2 emitter exit plan) and the compiler-guarantee lane (the DESIGN 4b climb backlog: unstaffed by design, on the page so its nodes stay visible for dispatch — keeping it visible is a focus-selection fact, a typed policy in this row, never an out-of-mechanism section); the other lanes remain real work, they are simply not on the page while these are being ground out. The projection states how many it is hiding, derived rather than transcribed, so a focused page can never read as a shorter roadmap."
+data roadmap_focus_selection_note: String = "THE ONE ROW THAT SETS THE VIEW. Focusing is a projection policy, not an edit — every node and edge stays declared in this file, the dispatch surface still sees the whole graph, and setting this back to NoFocus restores the full page with no recovery step. The projection states how many it is hiding, derived rather than transcribed, so a focused page can never read as a shorter roadmap.\n\nMOVED TO THE INFRASTRUCTURE LANES (operator direction, 2026-08-07). It previously selected the v1 exit lane and the compiler-guarantee climbs. Those remain real work and are unchanged in this file; they are off the page because forward movement on them was stopped. The stated reason is that infrastructure buckled underneath them — a fleet whose applied state cannot be answered without logging into machines, a required path whose cost is dominated by building and testing, machine faults arriving as reds that look like code faults, and generated artefacts conflicting over lists nobody disagrees about. Work carried out on top of that produces results nobody can trust, so the page shows the lanes that repair it and the lane that makes a merge to main become applied fleet state.\n\nTHE JUDGMENT LANE IS DELIBERATELY OFF THE PAGE while its prerequisites are on it: the machines that would serve its model are converging in the fleet lane, and putting the consumer beside the prerequisite would invite starting it early. It is declared, not parked. THE DETERMINISTIC CONFIDENCE LANE IS ON THE PAGE and is not the judgment lane: repository inspection — what exists, who consumes it, what a change may affect — is immediate development infrastructure that must work with no LLM and no Spark provisioned, so it does not wait behind serving. The judgment service depends on it as its grounding packet; the dependency edge carries that order.\n\nA FOCUS IS A DISPLAY CHOICE, NEVER A DISPOSITION, and the difference matters more now than it did when this row selected two lanes. Off the page currently sits real retained work with real remaining boundaries — the namespace closure re-observed on an exact main subject at four of six capabilities established (A–D; the two dependency-projection capabilities remain unavailable under their P2a triggers, closing frontier two — 2026-08-08 execution receipt, superseding the earlier none-admitted wording), the v1 exit with no module yet crossed and no hand-written Rust yet drained, the shell production vertical, the staged alert program, the frozen TypeScript boundary, the instrument adoption, the deployment activation receipt. Hidden means selected against, and nothing here records WHY a hidden lane is paused or what restarts it. That is a missing dimension on the node, not a fact this projection policy can carry: a lane frozen behind infrastructure, a lane draining to merge, and a lane parked because its hypothesis was falsified are three different states, and today all three read identically as absent. Supplying it is a change to the node shape and to what the page counts, and it lands next; until it does, read a hidden lane as retained and unexplained rather than as decided."
 
 data roadmap_focus_selection: RoadmapFocus = FocusOnOwners {
-  label: "the v1 deletion lane + the guarantee-ladder climbs",
-  owners: ["self-host", "compiler-guarantee"],
+  label: "the compute fabric + the infrastructure stabilisation lanes + fleet convergence from main",
+  owners: ["compute", "fleet", "ci-placement", "ci-control", "generated-artifact", "ci-cost", "confidence"],
 }
 
 fn projected_roadmap_nodes_for_accepted(accepted: List<RoadmapNodeId>) -> List<RoadmapNode> {
@@ -2321,7 +2824,7 @@ fn active_section_for_acceptance(focus: RoadmapFocus, accepted: List<RoadmapNode
     title: "Active deliverables — dependency order",
     elements: concat(
       [
-        section_prose(content: "The graph has eleven lanes: SCM compatibility · namespace · P-derive · observation · placement · v1 exit (four finish lines: compiler fixed point, interpreter deleted, products v1-free, zero hand-maintained Rust) · shell · roadmap runtime · fleet/hygiene · hermetic toolchain · compiler-guarantee (the DESIGN §4b ladder climbs; rung STATE lives in the guarantee claims carrier and is emitted, never restated in tickets — [gap analysis](docs/plans/compiler-guarantee-recovery-gap-analysis.md)). The three independent SCM R0 models, the separate P−1 evidence carrier, R1 compatibility-shape extraction, and P0 user-contract/landing spine are accepted; the operator-authored P1 proof-kernel node is active and fail-closed pending its first discriminating closing validation, while P2 and later product lanes remain parked. The toolchain pin model is an independent root. The P-derive receipt feeds the emitter fixed point, so the v1 chain nests under it. Node fields define boundary, first slice, RED control, exclusions, owner, and handback."),
+        section_prose(content: "The graph has sixteen lanes: SCM compatibility · namespace · P-derive · observation · placement · compute · CI cost · CI control · generated artefacts · v1 exit (four finish lines: compiler fixed point, interpreter deleted, products v1-free, zero hand-maintained Rust) · shell · roadmap runtime · fleet/hygiene · judgment · hermetic toolchain · compiler-guarantee (the DESIGN §4b ladder climbs; rung STATE lives in the guarantee claims carrier and is emitted, never restated in tickets — [gap analysis](docs/plans/compiler-guarantee-recovery-gap-analysis.md)). The three independent SCM R0 models, the separate P−1 evidence carrier, R1 compatibility-shape extraction, and P0 user-contract/landing spine are accepted; the operator-authored P1 proof-kernel node is active and fail-closed pending its first discriminating closing validation, while P2 and later product lanes remain parked. The toolchain pin model is an independent root. The P-derive receipt feeds the emitter fixed point, so the v1 chain nests under it. Compute owns the one contract everything else asks for work through — an exact subject in, a typed ending and the outputs it promised back out — and it sits ABOVE CI rather than inside it, because owning CI, converging the fleet, serving models and eventually judging changes are four consumers of one fabric, not four execution systems. It grounds on the signed realization spine rather than minting a second scheduler beside it. CI control owns who starts, queues and hands out required work and how its result reaches GitHub; CI cost owns how much computation that work performs. Fleet owns whether a merge to main becomes applied machine state and whether that question has one answer. Node fields define boundary, first slice, RED control, exclusions, owner, and handback."),
       ],
       concat(
         if focus_is_active(focus: focus) {
@@ -2471,6 +2974,21 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         red_control: "A synthetic measurement-less row folds to Unmeasured, never to a rung; deleting a probe receipt visibly demotes the derived disposition; a path population missing a census axis reds the completeness witness; a row below its ceiling with next_rung_trigger absent reds the stall check.",
         out_of_scope: "No wall lands here; no DESIGN.md prose edit (the carrier projects); no prevalence run.",
         handback: "Carrier module path, the disposition-derivation fn, and the per-domain path-row count."
+      )
+    ),
+    active_sized(identity: "rn_6NCVX2QTBZ0KWR9DPMHJLG5837", id: "compiler-declaration-floor",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyMedium,
+      volume: VolumeMedium,
+      t: fields(
+        headline: "Behaviour witnesses passing does not mean the declarations are right",
+        boundary: "A wrong parameter type, a wrong field type, a duplicated import, a duplicated declaration, and a bare reference that resolves only by accident are each refused with a located diagnostic. This is the declaration half of the ordinary floor, distinct from what a program does when it runs.",
+        displaced_cost: "A value was observed flowing through a field declared as the wrong type while all fifty-two behaviour witnesses over it stayed green. The defect was found by a person reading the declaration. Everything built above a floor that cannot say no inherits the same blindness, and the cost is paid at the point of confusion rather than the point of error.",
+        first_slice: "One planted defect per class, refused and located, with a correct declaration of the same shape still compiling.",
+        red_control: "Each of the five planted defects is refused separately, so a single broad refusal cannot stand in for five. A valid declaration keeps its runtime behaviour exactly, so the wall cannot be satisfied by refusing more of the language. An accidentally-resolving bare reference must produce the ambiguity evidence rather than a silent bind.",
+        out_of_scope: "Not the namespace migration, which consumes this floor rather than supplying it. No rung is asserted here — the census and the claims carrier say where the class stands.",
+        handback: "The five located refusals, the unchanged-behaviour control, and the class filed against the claims carrier."
       )
     ),
     active_sized(identity: "rn_7ENRV3ZX3AGAOLITDWLUPROO2U", id: "guarantee-baseline-prevalence",
@@ -3040,6 +3558,8 @@ fn guarantee_ladder_edges() -> List<RoadmapEdge> {
     edge(child: "guarantee-baseline-prevalence", parent: "ladder-claims-carrier"),
     edge(child: "ladder-census-emitters", parent: "ladder-claims-carrier"),
     edge(child: "call-missing-and-duplicate-wall", parent: "guarantee-baseline-prevalence"),
+    edge(child: "compiler-declaration-floor", parent: "guarantee-baseline-prevalence"),
+    edge(child: "compiler-declaration-floor", parent: "ladder-claims-carrier"),
     edge(child: "call-signature-resolution-coverage", parent: "guarantee-baseline-prevalence"),
     edge(child: "method-receiver-normalization", parent: "guarantee-baseline-prevalence"),
     edge(child: "declared-conformance-grounding", parent: "guarantee-baseline-prevalence"),
