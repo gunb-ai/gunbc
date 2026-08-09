@@ -420,12 +420,38 @@ test fn spark_operations_do_not_imply_one_another() -> Bool {
 // CONTROL 23, the honesty control: a REPORTED principal cannot authorize actuation. This is the
 // one that reds if the carrier is ever edited back to claiming Allocated on second-hand evidence,
 // which is exactly what the prior revision did while its own note said otherwise.
+fn spark_reported_principal_fixture() -> FleetCloudPrincipalAllocationStanding {
+  CloudPrincipalReported {
+    principal: FleetCloudConvergence {},
+    reported_member: "serviceAccount:fixture@example.iam.gserviceaccount.com",
+    source: "fixture"
+  }
+}
+
+// Uses a FIXTURE, never the live standing. An earlier revision asserted this against
+// fleet_cloud_principal_standing(), which meant grounding the principal by observation would have
+// RED this control -- a control that forbids progress rather than forbidding the defect. That is
+// the second time that shape appeared in this module; the invariant is about the Reported arm, so
+// the Reported arm is what it must be given.
 test fn spark_reported_principal_cannot_actuate() -> Bool {
   let cell = spark_cell(op: SmAccessVersion, r: spark_srv5_secret())
   !spark_permits(d: spark_actuation_decision(
-        standing: fleet_cloud_principal_standing(), grant: spark_pair_grant(), cell: cell))
+        standing: spark_reported_principal_fixture(), grant: spark_pair_grant(), cell: cell))
     && spark_permits(d: spark_actuation_decision(
          standing: spark_allocated_principal(), grant: spark_pair_grant(), cell: cell))
+}
+
+// CONTROL 25: the measured effective standing is Incomplete, and the Spark population carries no
+// granted cell at all. This reds if anyone records convergence as reachable before the grant lands.
+test fn spark_effective_access_is_incomplete_and_spark_unreachable() -> Bool {
+  let incomplete = match spark_effective_access_standing() {
+    EffectiveAccessIncomplete { missing_cells: m } => m.length() > 0
+    EffectiveAccessExact { observed_cells: _ } => false
+    EffectiveAccessOverbroad { extra_cells: _ } => false
+    EffectiveAccessUnobserved { cause: _ } => false
+  }
+  let only_key_secret = spark_measured_effective_cells().length() == 1
+  incomplete && only_key_secret
 }
 
 // CONTROL 24: the conjunction is real. An allocated principal still cannot reach a resource outside

@@ -138,13 +138,56 @@ type FleetCloudPrincipalAllocationStanding
   | CloudPrincipalReported { principal: FleetCloudPrincipalKey, reported_member: String, source: NonEmptyStr }
   | CloudPrincipalAllocated { principal: FleetCloudPrincipalKey, member: String, readback: NonEmptyStr }
 
+// GROUNDED 2026-08-09 by execution, not by report. A read-only GitHub OIDC -> WIF job on this
+// branch obtained a token as this service account with no key, no pasted credential and no gcloud,
+// and probed its own permissions. The reported allocation is therefore confirmed by an observation
+// this session can cite: run 31335059188 at head 6b79d061c4a.
 fn fleet_cloud_principal_standing() -> FleetCloudPrincipalAllocationStanding {
-  CloudPrincipalReported {
+  CloudPrincipalAllocated {
     principal: FleetCloudConvergence {},
-    reported_member: "serviceAccount:fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com",
-    source: "witty-raven-412 msg_1e6d1b42; not read back by this session"
+    member: "serviceAccount:fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com",
+    readback: "GitHub Actions run 31335059188 at 6b79d061c4a: OIDC/WIF token issued for this SA; testIamPermissions answered from the resource side"
   }
 }
+
+// ── Effective access, as MEASURED ─────────────────────────────────────────────────────────
+// The standing that keeps a fine-grained intent honest about its realization. A beautifully exact
+// grant backed by a project-wide binding is not fine-grained access, and nothing in the intent can
+// notice that -- only an observation from the resource side can.
+type EffectiveAccessStanding
+  = EffectiveAccessExact { observed_cells: List<AccessGrantCell> }
+  | EffectiveAccessOverbroad { extra_cells: List<AccessGrantCell> }
+  | EffectiveAccessIncomplete { missing_cells: List<AccessGrantCell> }
+  | EffectiveAccessUnobserved { cause: NonEmptyStr }
+
+// Measured cells, from the resource side via testIamPermissions rather than inferred from a 403.
+// The distinction matters: a 403 conflates "not granted" with "does not exist", while an empty
+// permissions object is a positive statement that none of the probed permissions are held.
+fn spark_measured_effective_cells() -> List<AccessGrantCell> {
+  [ AccessGrantCell { operation: SmAccessVersion, resource: "fleet-automation-ssh-key" } ]
+}
+
+// What convergence needs and does not have. This is the input to the grant request, enumerated
+// from the measurement rather than guessed: observation needs secrets.get and versions.list on
+// every subject, and materialization needs accessor plus version-adder on the Spark resources.
+fn spark_missing_effective_cells() -> List<AccessGrantCell> {
+  [
+    AccessGrantCell { operation: SmGetSecret, resource: "fleet-automation-ssh-key" },
+    AccessGrantCell { operation: SmGetSecret, resource: "spark-hotspot-password" },
+    AccessGrantCell { operation: SmAccessVersion, resource: "spark-hotspot-password" },
+    AccessGrantCell { operation: SmAddVersion, resource: "spark-hotspot-password" },
+    AccessGrantCell { operation: SmGetSecret, resource: "spark-administrator-password" },
+    AccessGrantCell { operation: SmAccessVersion, resource: "spark-administrator-password" },
+    AccessGrantCell { operation: SmAddVersion, resource: "spark-administrator-password" }
+  ]
+}
+
+fn spark_effective_access_standing() -> EffectiveAccessStanding {
+  EffectiveAccessIncomplete { missing_cells: spark_missing_effective_cells() }
+}
+
+data spark_effective_access_receipt_note: String = "Measured 2026-08-09, GitHub Actions run 31335059188 at head 6b79d061c4a, read-only. OIDC to WIF issued a token for fleet-cloud-convergence@ with no key and no gcloud, which grounds the principal allocation by execution. Effective grant: secretmanager.versions.access on fleet-automation-ssh-key, and NOTHING on either Spark container -- testIamPermissions returned an empty object for both, which is a positive statement of no permission rather than a 403's ambiguity between denied and absent. Explicitly probed and DENIED: versions.destroy and secrets.setIamPolicy on every subject, so the grant is narrow by measurement and not merely by description; there is no Overbroad finding. Also observed: secrets.get and versions.list are denied everywhere, so this principal cannot verify the legacy containers it does not own, and the Cloud Resource Manager API is disabled on the project (SERVICE_DISABLED), an unrecorded prerequisite. The two Spark containers remain reachable only by the BMC assimilator, so the cross-domain expansion is confirmed by measurement rather than inferred."
+
 
 // ── Domain operations, projected into the one kernel ──────────────────────────────────────
 // The Secret Manager operation population is a domain fact and belongs here. The DECISION is not:
