@@ -219,10 +219,6 @@ fn converge_cli_slice1_srv1_receipt() -> ConvergeCliReceipt {
           },
         }
       }
-    // Unreachable today by construction: host_converge_slice1_converge_loop folds the
-    // tasks outcome into the combined Converged arm (or Refused) and never returns
-    // TasksConverged at top level. Handled exhaustively anyway — do not wire new callers
-    // through this arm.
     HostConvergeSlice1TasksConverged { applied_knobs: n, receipt: r } =>
       if host_converge_slice1_tasks_receipt_is_valid(receipt: r) {
         ConvergeCliReceipt {

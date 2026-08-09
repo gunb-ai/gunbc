@@ -1,0 +1,75 @@
+module gunbc.fleet_probe_identity_observe
+
+import std.types { String, Bool, List }
+import std.algebra { trim }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.resources { Network }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.exec.command { ArgvCommand, LocalExec }
+import gunbc.command_runner { run_shell_command_capture }
+import gunbc.fleet_ssh_access { fleet_automation_ssh_key }
+
+// Observe-first for the probe-identity decision (parent msg_156e62bd): READ-ONLY
+// observation of (a) whether the fleet automation PUBLIC key is present in the
+// runner-reachable authorized_keys on the host this job runs on (srv1 — the only host
+// locally observable before first auth; srv2-4 are recorded pending-first-auth, never
+// assumed either way), and (b) what GCP credential path the runner actually holds today
+// (the A2 seam precondition for in-run private-key materialization). SECRET HYGIENE:
+// only PUBLIC key material and presence verdicts are read or written — no private key
+// bytes, no payload digests, no secret payloads of any kind touch this module.
+data fleet_probe_identity_receipt_path: String = "target/fleet-probe-identity-observe-receipt.txt"
+
+fn observe_capture_line(label: String, argv: List<String>) -> String {
+  let r = run_shell_command_capture(command: ArgvCommand { argv: argv }, transport: LocalExec)
+  if r.success {
+    join([label, " outcome=observed value=", trim(s: r.stdout), "\n"], "")
+  } else {
+    join([label, " outcome=refused cause=", trim(s: r.stderr), "\n"], "")
+  }
+}
+
+fn observe_authorized_keys_line(home: String) -> String {
+  let path = concat(home, "/.ssh/authorized_keys")
+  let read = filesystem_read(path)
+  if read.success {
+    if string_contains(s: read.content, pattern: fleet_automation_ssh_key.material) {
+      join(["authorized-keys home=", home, " outcome=fleet-key-present\n"], "")
+    } else {
+      join(["authorized-keys home=", home, " outcome=fleet-key-absent (file readable, key material not found)\n"], "")
+    }
+  } else {
+    join(["authorized-keys home=", home, " outcome=unreadable cause=", read.error, "\n"], "")
+  }
+}
+
+func fleet_probe_identity_observe_wet() -> ProcessExit
+  uses net: Network
+{
+  let user = run_shell_command_capture(command: ArgvCommand { argv: ["whoami"] }, transport: LocalExec)
+  let passwd_home = run_shell_command_capture(
+    command: ArgvCommand { argv: ["sh", "-c", "getent passwd \"$(whoami)\" | cut -d: -f6"] },
+    transport: LocalExec,
+  )
+  let job_home = run_shell_command_capture(
+    command: ArgvCommand { argv: ["sh", "-c", "echo \"$HOME\"" ] },
+    transport: LocalExec,
+  )
+  let ph = trim(s: passwd_home.stdout)
+  let jh = trim(s: job_home.stdout)
+  let body = join([
+    join(["observer user=", trim(s: user.stdout), " passwd-home=", ph, " job-home=", jh, "\n"], ""),
+    "local-host-note only the host this runner occupies is locally observable pre-auth; srv2-srv4 authorized_keys standing is PENDING-FIRST-AUTH (recorded, not assumed)\n",
+    observe_authorized_keys_line(home: ph),
+    if jh != ph { observe_authorized_keys_line(home: jh) } else { "" },
+    observe_capture_line(label: "gcloud-binary", argv: ["sh", "-c", "command -v gcloud || echo absent"]),
+    observe_capture_line(label: "gcloud-auth-list", argv: ["sh", "-c", "command -v gcloud >/dev/null && gcloud auth list --format=value(account) 2>&1 || echo gcloud-absent"]),
+    observe_capture_line(label: "adc-env", argv: ["sh", "-c", "echo \"$\{GOOGLE_APPLICATION_CREDENTIALS:-absent}\""]),
+    observe_capture_line(label: "adc-file-passwd-home", argv: ["sh", "-c", "test -f \"$(getent passwd \"$(whoami)\" | cut -d: -f6)/.config/gcloud/application_default_credentials.json\" && echo present || echo absent"]),
+  ], "")
+  let w = Filesystem.Write(path: fleet_probe_identity_receipt_path, content: body)
+  if w.success {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat("fleet_probe_identity_observe: receipt publication failed — ", w.error))
+  }
+}
