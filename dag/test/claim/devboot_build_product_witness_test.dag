@@ -42,7 +42,6 @@ import extdeps.gnu.libc {
   GnuLibc,
   LibcUnobserved,
   platform_c_library_identity_tag,
-  platform_c_library_is_observed,
 }
 
 // WHAT THE PRODUCT PROMISES, PINNED. The operation's promise is that a caller receives an exact executable or a reason, and the decisions that keep that promise are ordinary functions over ordinary values -- so they are witnessed here rather than being demonstrated once by a live run against one producer on one afternoon. The live run proves the vertical exists; these prove the arms that keep it honest still discriminate.
@@ -159,7 +158,5 @@ test fn one_c_library_version_has_a_stable_identity() -> Bool {
 test fn an_unobserved_c_library_is_distinct_from_every_observed_one() -> Bool {
   let unobserved = platform_c_library_identity_tag(library: LibcUnobserved)
   let observed = platform_c_library_identity_tag(library: GnuLibc { version: "2.36" as NonEmptyStr })
-  !platform_c_library_is_observed(library: LibcUnobserved)
-    && platform_c_library_is_observed(library: GnuLibc { version: "2.36" as NonEmptyStr })
-    && !(unobserved == observed)
+  !(unobserved == observed)
 }

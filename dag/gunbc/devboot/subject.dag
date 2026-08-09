@@ -57,7 +57,7 @@ import extdeps.toolchain.types {
   Eabi,
   Eabihf,
 }
-import extdeps.gnu.libc { PlatformCLibrary, LibcUnobserved, platform_c_library_identity_tag, render_platform_c_library, platform_c_library_is_observed }
+import extdeps.gnu.libc { PlatformCLibrary, GnuLibc, LibcUnobserved, platform_c_library_identity_tag, render_platform_c_library }
 import extdeps.cargo { CargoTarget, Lib, Bin, CargoTest, Example, Bench }
 
 // WHAT A BUILD IS OF, carried so that two requests naming the same thing are the same request and two requests naming different things never collide. Every field is a fact about the COMPUTATION; nothing here can be a fact about the requester.
@@ -223,7 +223,10 @@ fn first_refusal(left: BuildSubjectRefusalCause?, right: BuildSubjectRefusalCaus
 
 // AN UNOBSERVED C LIBRARY REFUSES rather than being admitted as a distinct-looking environment. LibcUnobserved is representable so a consumer must handle it, and the handling is this: an environment whose platform ABI was never measured cannot identify an artifact, because the whole point of the axis is that two hosts differing only in their C library are two environments. Admitting the unobserved value would let every unmeasured host collapse into one identity -- exactly the collision the axis was added to prevent, reintroduced through its own absent case.
 fn platform_c_library_refusal(library: PlatformCLibrary) -> BuildSubjectRefusalCause? {
-  if platform_c_library_is_observed(library: library) { none } else { Present { value: PlatformCLibraryUnobserved } }
+  match library {
+    GnuLibc { version } => none
+    LibcUnobserved => Present { value: PlatformCLibraryUnobserved }
+  }
 }
 
 fn environment_refusal(
