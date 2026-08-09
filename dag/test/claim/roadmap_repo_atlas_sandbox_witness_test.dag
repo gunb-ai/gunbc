@@ -98,8 +98,7 @@ fn atlas_page_snapshot_impacted(exact: Bool) -> RepoAtlasSnapshot {
       reached: [ModuleIdentity { name: "fixture.beta" }],
       explanation: [],
       standing: if exact { ExactForGraphSubject } else { ProvisionalForObservedPool },
-      causes: [],
-      cycles: []
+      causes: []
     }))
 }
 
