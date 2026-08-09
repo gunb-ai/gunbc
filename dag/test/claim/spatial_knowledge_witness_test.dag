@@ -2,8 +2,21 @@ module test.claim.spatial_knowledge_witness
 
 import std.types { Bool, NonEmptyStr }
 import std.measure { Millimeter, millimeter }
+import std.interval {
+  IntervalReady,
+  IntervalRefused,
+  OrderedClosedInterval,
+  degenerate_interval,
+}
+import std.claim_evidence {
+  RecordedFact,
+  EvidenceLink,
+  EvidenceProvenance,
+  EvidenceFreshness,
+  EvidenceFidelity,
+  EvidenceSupports,
+}
 import std.spatial_knowledge {
-  SpatialKnowledge,
   SpatialMeasured,
   SpatialEstimated,
   SpatialHypothesis,
@@ -14,61 +27,213 @@ import std.spatial_knowledge {
   SpatialClassHypothesis,
   SpatialClassUnknown,
   SpatialRequirement,
-  RequiresMeasured,
-  RequiresMeasuredOrEstimated,
-  SpatialAdmission,
+  MeasuredOnly,
+  MeasuredOrEstimated,
   SpatialAdmittedMeasured,
   SpatialAdmittedEstimated,
   SpatialRefused,
   SpatialGeometryUnknown,
   SpatialHypothesisNotAdmissible,
-  SpatialEstimateBelowRequiredStanding,
+  SpatialStandingBelowMinimum,
+  SpatialUncertaintyExceedsBudget,
   spatial_evidence_class,
-  spatial_measured_value,
-  admit_spatial_quantity,
+}
+import product.spatial_dimension {
+  RoomDimensionKnowledge,
+  RoomDimensionStanding,
+  RoomDimensionEvidence,
+  LengthInterval,
+  ClearWidth,
+  length_interval,
+  length_uncertainty_admissible,
+  admit_room_dimension,
+  render_room_dimension,
+  render_style,
+  render_style_wire,
+  render_wire,
+  StrokeSolid,
+  StrokeUncertaintyBand,
+  StrokeHypothesisDashed,
+  NotDrawnObligationOnly,
 }
 
-// Specimens are the four standings of ONE quantity — a room's clear width — so every claim below
-// discriminates on standing alone rather than on which number was written. The hypothesis specimen
-// is deliberately the refuted 25 ft massing premise that produced this module (converted to mm):
-// a plausible, useful, wrong number is exactly the input a fabrication guard must refuse.
+// One room's clear width, carried at four standings, so every claim discriminates on standing and
+// precision rather than on which number was written. The hypothesis specimen is the refuted 25 ft
+// massing premise that produced this lane: a plausible, useful, wrong number is exactly the input
+// a fabrication guard must refuse.
 
-fn measured_width() -> SpatialKnowledge<Millimeter, NonEmptyStr> {
-  SpatialMeasured {
+fn the_room() -> RoomIdentity {
+  "room-open-work"
+}
+
+// A real claim-evidence link, not a prose string: it carries provenance, the inference rule, the
+// direction, freshness and fidelity. The production specimen would be indistinguishable from a
+// bare string if this module had kept the generic unbound.
+fn tape_anchor_evidence() -> RoomDimensionEvidence {
+  EvidenceLink {
+    fact: RecordedFact { id: "fact-room-open-work-clear-width", value: "3660 mm at 1.0 m height" },
+    direction: EvidenceSupports,
+    inference_rule: "direct-instrument-reading",
+    authority: "operator walkthrough, laser measure",
+    provenance: EvidenceProvenance {
+      entity: "walkthrough-2026-08-10",
+      activity: "tape-anchor-measurement",
+      agent: "operator",
+    },
+    freshness: EvidenceFreshness { maximum_conclusion: "current-as-of-walkthrough", basis: "physical structure, not expected to move" },
+    fidelity: EvidenceFidelity { boundary: "single-axis clear width at one height", losses: ["out-of-plumb wall variation above measurement height"] },
+    probe_independence: "independent-of-listing-claims",
+  }
+}
+
+fn photo_reconstruction_evidence() -> RoomDimensionEvidence {
+  EvidenceLink {
+    fact: RecordedFact { id: "fact-room-open-work-photo-scale", value: "scaled on 3x6in subway tile course" },
+    direction: EvidenceSupports,
+    inference_rule: "photo-reconstruction-scaled-on-in-frame-constant",
+    authority: "listing photo set",
+    provenance: EvidenceProvenance {
+      entity: "loopnet-35253254-photos",
+      activity: "ai-photo-reconstruction",
+      agent: "modeling-session",
+    },
+    freshness: EvidenceFreshness { maximum_conclusion: "as-listed", basis: "photos predate any walkthrough" },
+    fidelity: EvidenceFidelity { boundary: "apparent geometry only", losses: ["lens distortion", "unknown camera pose", "tile course assumed nominal"] },
+    probe_independence: "not-independent-of-listing",
+  }
+}
+
+// Every fixture below is ordered, so the refused arm is unreachable here; it collapses to the
+// degenerate zero interval rather than fabricating a width. The reversed case is asserted on its
+// own in witness 4, against the mint directly, so this helper never becomes the thing under test.
+fn interval_or_degenerate(low: Nat, high: Nat) -> LengthInterval {
+  match length_interval(low: millimeter(count: low), high: millimeter(count: high)) {
+    IntervalReady { interval: i } => i
+    IntervalRefused { reason: _ } => degenerate_interval(point: millimeter(count: 0))
+  }
+}
+
+fn dimension_at(standing: RoomDimensionStanding) -> RoomDimensionKnowledge {
+  RoomDimensionKnowledge { room: the_room(), axis: ClearWidth, standing: standing }
+}
+
+// Measured to +/- 10 mm: uncertainty interval spans 20 mm.
+fn measured_precise() -> RoomDimensionKnowledge {
+  dimension_at(standing: SpatialMeasured {
     value: millimeter(count: 3660),
-    tolerance: millimeter(count: 10),
-    evidence: "tape anchor at walkthrough",
-  }
+    uncertainty: interval_or_degenerate(low: 3650, high: 3670),
+    evidence: tape_anchor_evidence(),
+  })
 }
 
-fn estimated_width() -> SpatialKnowledge<Millimeter, NonEmptyStr> {
-  SpatialEstimated {
-    low: millimeter(count: 3300),
-    high: millimeter(count: 4000),
-    method: "photo reconstruction scaled on in-frame subway tile",
-    evidence: "listing photo set",
-  }
+// Measured, but to +/- 250 mm: same STANDING, 500 mm span. The standing-only guard admitted this
+// exactly as readily as the specimen above; the precision budget is what separates them.
+fn measured_coarse() -> RoomDimensionKnowledge {
+  dimension_at(standing: SpatialMeasured {
+    value: millimeter(count: 3660),
+    uncertainty: interval_or_degenerate(low: 3410, high: 3910),
+    evidence: tape_anchor_evidence(),
+  })
 }
 
-fn hypothesis_width() -> SpatialKnowledge<Millimeter, NonEmptyStr> {
-  SpatialHypothesis {
+fn estimate_narrow() -> RoomDimensionKnowledge {
+  dimension_at(standing: SpatialEstimated {
+    region: interval_or_degenerate(low: 3600, high: 3700),
+    method: "photo-reconstruction-scaled-on-in-frame-constant",
+    evidence: photo_reconstruction_evidence(),
+  })
+}
+
+fn estimate_wide() -> RoomDimensionKnowledge {
+  dimension_at(standing: SpatialEstimated {
+    region: interval_or_degenerate(low: 3300, high: 4000),
+    method: "photo-reconstruction-scaled-on-in-frame-constant",
+    evidence: photo_reconstruction_evidence(),
+  })
+}
+
+fn hypothesis_25ft() -> RoomDimensionKnowledge {
+  dimension_at(standing: SpatialHypothesis {
     value: millimeter(count: 7620),
     purpose: "H1 massing candidate: assumed 25 ft corner-lot width, refuted by parcel records",
+  })
+}
+
+fn unknown_width() -> RoomDimensionKnowledge {
+  dimension_at(standing: SpatialUnknown { obligation: "srv-geometry-capture" })
+}
+
+// Furniture / rack layout: +/- 100 mm, i.e. a 200 mm budget span.
+fn furniture_layout_requirement() -> SpatialRequirement<LengthInterval> {
+  SpatialRequirement {
+    minimum_standing: MeasuredOrEstimated,
+    maximum_uncertainty: interval_or_degenerate(low: 0, high: 200),
   }
 }
 
-fn unknown_width() -> SpatialKnowledge<Millimeter, NonEmptyStr> {
-  SpatialUnknown { survey_obligation: "srv-geometry-capture" }
+// Egress clearance: measured only, +/- 5 mm, a 10 mm budget span.
+fn egress_requirement() -> SpatialRequirement<LengthInterval> {
+  SpatialRequirement {
+    minimum_standing: MeasuredOnly,
+    maximum_uncertainty: interval_or_degenerate(low: 0, high: 10),
+  }
 }
 
-// Asserts the EXACT standing rather than collapsing to "is it measured". A witness that only
-// asked is_measured would pass while hypothesis and unknown were silently interchanged - the same
-// two-state erasure the kernel refuses to offer.
-fn standing_is(
-  knowledge: SpatialKnowledge<Millimeter, NonEmptyStr>,
-  expected: SpatialEvidenceClass,
+fn admits(dimension: RoomDimensionKnowledge, requirement: SpatialRequirement<LengthInterval>) -> Bool {
+  match admit_room_dimension(dimension: dimension, requirement: requirement) {
+    SpatialAdmittedMeasured { value: _, uncertainty: _ } => true
+    SpatialAdmittedEstimated { region: _ } => true
+    SpatialRefused { cause: _ } => false
+  }
+}
+
+fn refused_for_precision(
+  dimension: RoomDimensionKnowledge,
+  requirement: SpatialRequirement<LengthInterval>,
 ) -> Bool {
-  match spatial_evidence_class(knowledge: knowledge) {
+  match admit_room_dimension(dimension: dimension, requirement: requirement) {
+    SpatialAdmittedMeasured { value: _, uncertainty: _ } => false
+    SpatialAdmittedEstimated { region: _ } => false
+    SpatialRefused { cause: c } =>
+      match c {
+        SpatialUncertaintyExceedsBudget { actual: _, budget: _ } => true
+        SpatialGeometryUnknown { obligation: _ } => false
+        SpatialHypothesisNotAdmissible { purpose: _ } => false
+        SpatialStandingBelowMinimum { method: _ } => false
+      }
+  }
+}
+
+fn refused_naming_obligation(dimension: RoomDimensionKnowledge) -> Bool {
+  match admit_room_dimension(dimension: dimension, requirement: furniture_layout_requirement()) {
+    SpatialAdmittedMeasured { value: _, uncertainty: _ } => false
+    SpatialAdmittedEstimated { region: _ } => false
+    SpatialRefused { cause: c } =>
+      match c {
+        SpatialGeometryUnknown { obligation: o } => (o as String) == "srv-geometry-capture"
+        SpatialHypothesisNotAdmissible { purpose: _ } => false
+        SpatialStandingBelowMinimum { method: _ } => false
+        SpatialUncertaintyExceedsBudget { actual: _, budget: _ } => false
+      }
+  }
+}
+
+fn refused_as_hypothesis(dimension: RoomDimensionKnowledge) -> Bool {
+  match admit_room_dimension(dimension: dimension, requirement: furniture_layout_requirement()) {
+    SpatialAdmittedMeasured { value: _, uncertainty: _ } => false
+    SpatialAdmittedEstimated { region: _ } => false
+    SpatialRefused { cause: c } =>
+      match c {
+        SpatialHypothesisNotAdmissible { purpose: _ } => true
+        SpatialGeometryUnknown { obligation: _ } => false
+        SpatialStandingBelowMinimum { method: _ } => false
+        SpatialUncertaintyExceedsBudget { actual: _, budget: _ } => false
+      }
+  }
+}
+
+fn standing_is(dimension: RoomDimensionKnowledge, expected: SpatialEvidenceClass) -> Bool {
+  match spatial_evidence_class(knowledge: dimension.standing) {
     SpatialClassMeasured =>
       match expected {
         SpatialClassMeasured => true
@@ -100,112 +265,100 @@ fn standing_is(
   }
 }
 
-fn has_measured_value(knowledge: SpatialKnowledge<Millimeter, NonEmptyStr>) -> Bool {
-  match spatial_measured_value(knowledge: knowledge) {
-    Present { value: _ } => true
-    Absent => false
+fn style_wire_of(dimension: RoomDimensionKnowledge) -> String {
+  render_style_wire(style: render_style(rendering: render_room_dimension(dimension: dimension)))
+}
+
+// 1 + 2 — CONSUMING PRECISION. Same standing, same evidence, same room: only the uncertainty
+// differs, and only the coarse one is refused. This is the metrology rule actually implemented.
+fn witness_precision_decides_not_standing() -> Bool {
+  admits(dimension: measured_precise(), requirement: furniture_layout_requirement())
+    && refused_for_precision(dimension: measured_coarse(), requirement: furniture_layout_requirement())
+    && standing_is(dimension: measured_coarse(), expected: SpatialClassMeasured)
+}
+
+// 3 — the same measured fact admits for furniture layout and REFUSES at egress grade.
+fn witness_same_evidence_differs_by_consuming_decision() -> Bool {
+  admits(dimension: measured_precise(), requirement: furniture_layout_requirement())
+    && refused_for_precision(dimension: measured_precise(), requirement: egress_requirement())
+}
+
+// 4 — a reversed interval cannot be constructed at all.
+fn witness_reversed_interval_refuses() -> Bool {
+  match length_interval(low: millimeter(count: 4000), high: millimeter(count: 3300)) {
+    IntervalReady { interval: _ } => false
+    IntervalRefused { reason: _ } => true
   }
+    && match length_interval(low: millimeter(count: 3300), high: millimeter(count: 4000)) {
+         IntervalReady { interval: _ } => true
+         IntervalRefused { reason: _ } => false
+       }
 }
 
-fn admits(
-  knowledge: SpatialKnowledge<Millimeter, NonEmptyStr>,
-  requirement: SpatialRequirement,
-) -> Bool {
-  match admit_spatial_quantity(knowledge: knowledge, requirement: requirement) {
-    SpatialAdmittedMeasured { value: _, tolerance: _ } => true
-    SpatialAdmittedEstimated { low: _, high: _ } => true
-    SpatialRefused { cause: _ } => false
-  }
+// 5 — a narrow estimate satisfies a loose layout requirement; a wide one does not; and neither
+// satisfies an egress-grade requirement, which demands a measurement outright.
+fn witness_estimate_width_and_standing_both_bind() -> Bool {
+  admits(dimension: estimate_narrow(), requirement: furniture_layout_requirement())
+    && refused_for_precision(dimension: estimate_wide(), requirement: furniture_layout_requirement())
+    && admits(dimension: estimate_narrow(), requirement: egress_requirement()) == false
 }
 
-fn refusal_names_survey_obligation(
-  knowledge: SpatialKnowledge<Millimeter, NonEmptyStr>,
-) -> Bool {
-  match admit_spatial_quantity(knowledge: knowledge, requirement: RequiresMeasured) {
-    SpatialAdmittedMeasured { value: _, tolerance: _ } => false
-    SpatialAdmittedEstimated { low: _, high: _ } => false
-    SpatialRefused { cause: c } =>
-      match c {
-        SpatialGeometryUnknown { survey_obligation: s } => (s as String) == "srv-geometry-capture"
-        SpatialHypothesisNotAdmissible { purpose: _ } => false
-        SpatialEstimateBelowRequiredStanding { method: _ } => false
-      }
-  }
+// 6 — a hypothesis RENDERS as a hypothesis while REFUSING decision admission. Explore freely,
+// claim conservatively: the two verbs disagree on the same input, which is the point.
+fn witness_hypothesis_renders_but_refuses_decisions() -> Bool {
+  standing_is(dimension: hypothesis_25ft(), expected: SpatialClassHypothesis)
+    && style_wire_of(dimension: hypothesis_25ft()) == "stroke-dashed-hypothesis"
+    && style_wire_of(dimension: hypothesis_25ft()) != style_wire_of(dimension: measured_precise())
+    && refused_as_hypothesis(dimension: hypothesis_25ft())
+    && admits(dimension: hypothesis_25ft(), requirement: egress_requirement()) == false
 }
 
-fn refusal_is_hypothesis_cause(
-  knowledge: SpatialKnowledge<Millimeter, NonEmptyStr>,
-) -> Bool {
-  match admit_spatial_quantity(knowledge: knowledge, requirement: RequiresMeasuredOrEstimated) {
-    SpatialAdmittedMeasured { value: _, tolerance: _ } => false
-    SpatialAdmittedEstimated { low: _, high: _ } => false
-    SpatialRefused { cause: c } =>
-      match c {
-        SpatialGeometryUnknown { survey_obligation: _ } => false
-        SpatialHypothesisNotAdmissible { purpose: _ } => true
-        SpatialEstimateBelowRequiredStanding { method: _ } => false
-      }
-  }
+// 7 — unknown geometry creates no shape, and its refusal names the discharging obligation.
+fn witness_unknown_creates_no_shape() -> Bool {
+  style_wire_of(dimension: unknown_width()) == "not-drawn-obligation"
+    && string_contains(s: render_wire(dimension: unknown_width()), pattern: "srv-geometry-capture")
+    && string_contains(s: render_wire(dimension: unknown_width()), pattern: "<line") == false
+    && refused_naming_obligation(dimension: unknown_width())
+    && admits(dimension: unknown_width(), requirement: furniture_layout_requirement()) == false
 }
 
-fn admitted_estimate_stays_a_range(
-  knowledge: SpatialKnowledge<Millimeter, NonEmptyStr>,
-) -> Bool {
-  match admit_spatial_quantity(knowledge: knowledge, requirement: RequiresMeasuredOrEstimated) {
-    SpatialAdmittedMeasured { value: _, tolerance: _ } => false
-    SpatialAdmittedEstimated { low: lo, high: hi } => lo != hi
-    SpatialRefused { cause: _ } => false
-  }
+// 8 — the four standings render distinguishably, which is the loop the deleted packet broke: one
+// typed source, four styles, none of them coordinated by hand.
+fn witness_render_styles_are_distinct() -> Bool {
+  style_wire_of(dimension: measured_precise()) == "stroke-solid"
+    && style_wire_of(dimension: estimate_narrow()) == "stroke-band"
+    && style_wire_of(dimension: hypothesis_25ft()) == "stroke-dashed-hypothesis"
+    && style_wire_of(dimension: unknown_width()) == "not-drawn-obligation"
 }
 
-// WITNESS CONTROL 2 — unknown geometry cannot default to a rectangle.
-fn witness_unknown_yields_no_magnitude() -> Bool {
-  has_measured_value(knowledge: unknown_width()) == false
-    && admits(knowledge: unknown_width(), requirement: RequiresMeasured) == false
-    && admits(knowledge: unknown_width(), requirement: RequiresMeasuredOrEstimated) == false
-    && refusal_names_survey_obligation(knowledge: unknown_width())
+// 9 — room identity survives into the rendered wire and is not lost on the refusal path.
+fn witness_identity_survives_projection() -> Bool {
+  (measured_precise().room as String) == "room-open-work"
+    && (unknown_width().room as String) == "room-open-work"
+    && string_contains(s: render_wire(dimension: measured_precise()), pattern: "3660")
 }
 
-// WITNESS CONTROL 14 — hypothesis geometry never renders as measured. The RED half is the point:
-// the refuted 25 ft value is present and usable, and is still refused at every standing.
-fn witness_hypothesis_never_renders_definite() -> Bool {
-  standing_is(knowledge: hypothesis_width(), expected: SpatialClassHypothesis)
-    && has_measured_value(knowledge: hypothesis_width()) == false
-    && admits(knowledge: hypothesis_width(), requirement: RequiresMeasured) == false
-    && admits(knowledge: hypothesis_width(), requirement: RequiresMeasuredOrEstimated) == false
-    && refusal_is_hypothesis_cause(knowledge: hypothesis_width())
-}
-
-// The requirement, not the quantity, decides — and an admitted estimate is still a range.
-fn witness_estimate_admits_only_against_its_requirement() -> Bool {
-  admits(knowledge: estimated_width(), requirement: RequiresMeasured) == false
-    && admits(knowledge: estimated_width(), requirement: RequiresMeasuredOrEstimated)
-    && has_measured_value(knowledge: estimated_width()) == false
-    && standing_is(knowledge: estimated_width(), expected: SpatialClassEstimated)
-    && admitted_estimate_stays_a_range(knowledge: estimated_width())
-}
-
-// POSITIVE CONTROL — without this the suite would pass by refusing everything, which is the
-// failure mode a refusal-heavy guard is most likely to have.
-fn witness_measured_admits_at_every_requirement() -> Bool {
-  standing_is(knowledge: measured_width(), expected: SpatialClassMeasured)
-    && has_measured_value(knowledge: measured_width())
-    && admits(knowledge: measured_width(), requirement: RequiresMeasured)
-    && admits(knowledge: measured_width(), requirement: RequiresMeasuredOrEstimated)
-}
-
-// Standing is exactly one of four, and only one of them is measured.
-fn witness_standings_are_distinct() -> Bool {
-  standing_is(knowledge: measured_width(), expected: SpatialClassMeasured)
-    && standing_is(knowledge: estimated_width(), expected: SpatialClassEstimated)
-    && standing_is(knowledge: hypothesis_width(), expected: SpatialClassHypothesis)
-    && standing_is(knowledge: unknown_width(), expected: SpatialClassUnknown)
+// 10 — POSITIVE CONTROL: a real quantity is genuinely admitted AND genuinely drawn, so the suite
+// cannot pass by refusing everything, the failure mode a refusal-heavy guard is most prone to.
+fn witness_measured_admits_and_draws() -> Bool {
+  admits(dimension: measured_precise(), requirement: furniture_layout_requirement())
+    && standing_is(dimension: measured_precise(), expected: SpatialClassMeasured)
+    && string_contains(s: render_wire(dimension: measured_precise()), pattern: "stroke-solid")
+    && length_uncertainty_admissible(
+         actual: interval_or_degenerate(low: 3650, high: 3670),
+         budget: interval_or_degenerate(low: 0, high: 200),
+       )
 }
 
 test fn spatial_knowledge_witnesses() -> Bool {
-  witness_unknown_yields_no_magnitude()
-    && witness_hypothesis_never_renders_definite()
-    && witness_estimate_admits_only_against_its_requirement()
-    && witness_measured_admits_at_every_requirement()
-    && witness_standings_are_distinct()
+  witness_precision_decides_not_standing()
+    && witness_same_evidence_differs_by_consuming_decision()
+    && witness_reversed_interval_refuses()
+    && witness_estimate_width_and_standing_both_bind()
+    && witness_hypothesis_renders_but_refuses_decisions()
+    && witness_unknown_creates_no_shape()
+    && witness_render_styles_are_distinct()
+    && witness_identity_survives_projection()
+    && witness_measured_admits_and_draws()
 }
+
