@@ -39,6 +39,17 @@ data fleet_converge_unit_text_scaffold: Disposition = Scaffold {
   }
 }
 
+// 🟡 dissolve-on: fleet-converge unit-body single render (review 50806) — the unit BODY
+// is currently authored TWICE: these content fns (consumed by the srv2–srv4 self-install
+// route) and gunbc.live_deploy.emit emit_fleet_converge_{service,timer}_unit_doc (the
+// srv1 membership route, which adds After/Wants=network-online.target and
+// WorkingDirectory=, omits EnvironmentFile=, and derives only cadence/jitter from this
+// authority). A §3 parallel representation across the two consumers — srv1 and srv2–4
+// do NOT receive byte-identical units, and an edit to either producer can drift them.
+// Not merged blind here because the emit side's bytes are golden-pinned and deployed on
+// srv1 (a silent byte churn of a live unit is the wrong side of the trade mid-arc).
+// DISSOLVES WHEN one render authority (these content fns, Doc-wrapped) feeds both
+// routes and the emit goldens re-pin from it.
 fn fleet_converge_service_content(host_arg: String) -> String {
   join([
     "[Unit]\n",

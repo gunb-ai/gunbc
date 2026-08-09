@@ -93,24 +93,32 @@ test fn identity_projection_discriminates_match_drift_and_wrong_machine() -> Boo
     && identity_verdict_from_outcome(host: operator_host_srv1, o: ProbeHostKeyUnenrolled { transport_diagnostic: "x" }) == Inaccessible
 }
 
-// No committed receipt -> the producers answer none, the canonical seam answers none for
-// both P0 cells, and the coverage count stays exactly the one real producer cell
-// (srv3, prefix:os-install-actuated). Coverage grows ONLY when an executed probe lands a
-// receipt row — never by wiring alone.
-test fn no_receipt_means_none_and_coverage_stays_one() -> Bool {
+// Join 4 (operator verdict): the executed probe run's receipts ARE the registry now —
+// the producers answer Present for a probed host, the observed verdict is Inaccessible
+// (unenrolled host key: never satisfied, never Conflict), and coverage GREW from the
+// executed run, not from wiring. A host outside the registry still answers none.
+test fn committed_probe_receipts_feed_producers_and_grow_coverage() -> Bool {
   match host_reach_identity_probe_receipt_for(host: operator_host_srv1) {
-    Present { value: _ } => false
-    _ => true
+    Present { value: r } =>
+      match r.outcome {
+        ProbeHostKeyUnenrolled { transport_diagnostic: d } => string_contains(s: d, pattern: "Host key verification failed")
+        _ => false
+      }
+    _ => false
   }
     && match observe_reach_secrets_network(host: operator_host_srv1) {
-      Present { value: _ } => false
-      _ => true
+      Present { value: v } => v == Inaccessible
+      _ => false
     }
     && match observe_host_phase(subject: fixture_subject(), host: operator_host_srv1, phase_label: "P0:reach-secrets-network") {
+      Present { value: v } => v == Inaccessible
+      _ => false
+    }
+    && match host_reach_identity_probe_receipt_for(host: "no-such-host" as HostIdentity) {
       Present { value: _ } => false
       _ => true
     }
-    && host_phase_observation_coverage_count(enrollments: fleet_subsumption_enrollments) == 1
+    && host_phase_observation_coverage_count(enrollments: fleet_subsumption_enrollments) > 1
 }
 
 // The canonical seam routes each label to its producer and answers none for a label with
@@ -129,8 +137,8 @@ test fn observe_host_phase_routes_by_label_and_stays_fail_closed() -> Bool {
       _ => true
     }
     && match observe_host_phase(subject: fixture_subject(), host: operator_host_srv1, phase_label: "P0:host-identity-converge") {
-      Present { value: _ } => false
-      _ => true
+      Present { value: v } => v == Inaccessible
+      _ => false
     }
 }
 
