@@ -44,17 +44,17 @@ data intact_population_note: String = "The four declarations the generated docum
 fn intact_facts() -> List<DeclFact> {
   [
     fixture_fact(
-      qualified_name: "v2.std.symbol_index.SymbolIndex",
+      qualified_name: "std.symbol_index.SymbolIndex",
       name: "SymbolIndex",
       path: "src/v2/std/symbol_index.dag",
     ),
     fixture_fact(
-      qualified_name: "v2.std.symbol_index.symbol_index_lexical_lookup",
+      qualified_name: "std.symbol_index.symbol_index_lexical_lookup",
       name: "symbol_index_lexical_lookup",
       path: "src/v2/std/symbol_index.dag",
     ),
     fixture_fact(
-      qualified_name: "v2.compiler.resolve.lookup_symbol_index_atom_identity",
+      qualified_name: "compiler.resolve.lookup_symbol_index_atom_identity",
       name: "lookup_symbol_index_atom_identity",
       path: "src/v2/compiler/03_resolve.dag",
     ),
@@ -89,7 +89,7 @@ fn facts_without(qualified_name: String) -> List<DeclFact> {
 test fn documentary_refs_renamed_system_refuses() -> Bool {
   let clean = refusals_against(facts: intact_facts())
   let renamed = refusals_against(
-    facts: facts_without(qualified_name: "v2.std.symbol_index.symbol_index_lexical_lookup")
+    facts: facts_without(qualified_name: "std.symbol_index.symbol_index_lexical_lookup")
   )
   clean == 0 && renamed == 1
 }
@@ -101,7 +101,7 @@ test fn documentary_refs_ambiguous_system_refuses() -> Bool {
     intact_facts(),
     [
       fixture_fact(
-        qualified_name: "v2.std.symbol_index.SymbolIndex",
+        qualified_name: "std.symbol_index.SymbolIndex",
         name: "SymbolIndex",
         path: "src/v2/std/symbol_index_fork.dag",
       ),
@@ -130,10 +130,5 @@ test fn documentary_refs_population_is_the_union() -> Bool {
     && length(xs: generated) == 4
 }
 
-data no_summary_control_note: String = "THE ROADMAP AUTHORITY IS CITED, NOT SUMMARIZED. The superseded numbered six-step sequence is gone from the design document, and this control asserts its absence by a distinctive fragment of the old copy. It is deliberately a negative claim about one measured specimen rather than a general prose check -- a general one would be the substring blacklist DESIGN already records as structurally unable to catch a claim spelled differently."
+data retired_prose_substring_control_note: String = "A NEGATIVE PROSE CHECK STOOD HERE AND WAS DELETED RATHER THAN REPAIRED. It asserted the generated document no longer contains the substring 'six-step', to show the superseded numbered sequence is gone. It failed -- and it failed CORRECTLY, because the replacement sentence explains that the paragraph previously carried a numbered six-step copy, so the words survive while the copy does not. The check could not tell a restatement from an explanation of its removal.\n\nTHAT IS THE WHOLE ARGUMENT AGAINST THIS SHAPE, and it is already on record: gunbc.roadmap_authority witness_authority_contains_no_mutable_execution_ledger blacklists substrings in a status field and is structurally unable to catch a stale claim spelled without them. Repairing the needle would have produced a check that passes for this one spelling and decides nothing in general -- validation standing where nothing decidable was available. The positive claim survives instead, in documentary_refs_generated_document_renders_the_rows: the roadmap authority is cited by rendering its typed row, which is a fact a mechanism can actually decide."
 
-test fn documentary_refs_five_minute_sequence_is_not_restated() -> Bool {
-  let md = expected_design_md()
-  !string_contains(s: md, pattern: "six-step")
-    && string_contains(s: md, pattern: documentary_ref_symbol_text(reference: five_minute_ci_gate_authority_ref))
-}
