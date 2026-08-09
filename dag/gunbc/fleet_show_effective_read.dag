@@ -1,5 +1,7 @@
 module gunbc.fleet_show_effective_read
 
+import std.algebra { trim }
+
 
 type RunnerSliceCapLiveReadRow {
   slice_unit: NonEmptyStr
