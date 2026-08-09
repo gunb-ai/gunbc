@@ -1,5 +1,6 @@
 module test.claim.doc_reachability_witness
 import std.dissolution { unbound_dissolution }
+import gunbc.plan { PlanRetiresWhen, PlanHasNoRetirement }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.doc_graph_roots {
   doc_graph_roots_all,
@@ -11,6 +12,7 @@ import gunbc.doc_graph_roots {
   hand_authored_bind_identities_unique,
   hand_authored_key_collision_count,
   hand_authored_doc_binds,
+  hand_authored_bind_is_cited_symbol_resolution_control,
   HandAuthoredDocBind, PlanDoc,
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -86,4 +88,33 @@ test fn doc_graph_has_no_dangling_links() -> Bool {
 
 test fn doc_graph_universe_is_nonempty() -> Bool {
   return doc_graph_doc_count() > 0
+}
+
+// Structural, not textual. These three rows are permanent discriminating
+// evidence for feature:cited-symbol-resolution: a climb deletes production
+// machinery and KEEPS the evidence (DESIGN 4b(4)). They previously carried
+// PlanRetiresWhen with a description saying "never retires" -- the coproduct
+// contradicting its own payload. Asserting the arm catches that directly;
+// grepping the description for the word "permanent" would not.
+test fn cited_symbol_discriminating_controls_have_no_retirement() -> Bool {
+  all(
+    filter(hand_authored_doc_binds, b => hand_authored_bind_is_cited_symbol_resolution_control(b: b)),
+    b => match b.dissolution {
+      PlanHasNoRetirement => true
+      PlanRetiresWhen { condition: _ } => false
+    }
+  )
+}
+
+// Positive control on the same projection: production rows DO retire, so the
+// witness above cannot pass by the filter being empty or by every row lacking a
+// retirement.
+test fn production_doc_binds_all_carry_a_retirement() -> Bool {
+  all(
+    filter(hand_authored_doc_binds, b => !hand_authored_bind_is_cited_symbol_resolution_control(b: b)),
+    b => match b.dissolution {
+      PlanRetiresWhen { condition: _ } => true
+      PlanHasNoRetirement => false
+    }
+  )
 }

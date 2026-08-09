@@ -11,7 +11,7 @@ import v2.std.algebra { filter, list_flat_map }
 import v2.std.decl_index { decl_facts }
 import v2.std.decl_ref_resolution { declaration_ref_resolves }
 
-data doc_graph_roots_note: String = "The single authority for doc-graph roots. Registered plans derive theirs (a PlanArtifact registration IS the document binding); hand-authored docs declare typed HandAuthoredDocBind rows — symbolic identity (home + slug, the same key space as Plan.slug; the file path is a derived storage projection, never stored), the .dag work the doc binds to, and the trigger that deletes the row. No prose 'bind:' scan remains: an unbound doc is an orphan, loudly; a hand-authored slug colliding with a registered plan slug is a red (the row outlived its migration)."
+data doc_graph_roots_note: String = "The single authority for doc-graph roots. Registered plans derive theirs (a PlanArtifact registration IS the document binding); hand-authored docs declare typed HandAuthoredDocBind rows — symbolic identity (home + slug, the same key space as Plan.slug; the file path is a derived storage projection, never stored), the .dag work the doc binds to, and its PlanRetirement. Most rows retire: the condition names the change that deletes the row. Some do NOT -- the cited-symbol-resolution discriminating controls (hand_authored_bind_is_cited_symbol_resolution_control) are permanent evidence and carry PlanHasNoRetirement, because a climb deletes production machinery and keeps the discriminating evidence (DESIGN 4b(4)). A permanent row stating 'never retires' inside an unbound condition would be a model contradiction: the coproduct would say retires-when while the payload said never. No prose 'bind:' scan remains: an unbound doc is an orphan, loudly; a hand-authored slug colliding with a registered plan slug is a red (the row outlived its migration)."
 
 fn plan_doc_graph_roots() -> List<String> {
   map(all_plans, p => plan_path(p: p))
@@ -652,21 +652,21 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     slug: "g1-cited-symbol-control-declaration-absent",
     primary_work: DeclarationRef { module_path: "v2.std.node", decl_name: "G1_planted_declaration_absent_control_RED", field: WholeDeclaration },
     additional_works: [],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "permanent discriminating control for feature:cited-symbol-resolution (operator ruling 2026-08-03): enrolled DeclarationRef names a declared module with no matching decl_facts row — the gate must refuse it; this row never dissolves when production citations go green (DESIGN 4b(4): climb deletes production machinery, not discriminating evidence)") },
+    dissolution: PlanHasNoRetirement,
   },
   HandAuthoredDocBind {
     home: ProbeDoc,
     slug: "g1-cited-symbol-control-module-absent",
     primary_work: DeclarationRef { module_path: "synthetic.g1_planted_module_absent_control_RED", decl_name: "any", field: WholeDeclaration },
     additional_works: [],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "permanent discriminating control for feature:cited-symbol-resolution (operator ruling 2026-08-03): enrolled DeclarationRef names a module absent from module_declaration_facts — distinct refusal arm from declaration-absent; never retires when production population is zero") },
+    dissolution: PlanHasNoRetirement,
   },
   HandAuthoredDocBind {
     home: ProbeDoc,
     slug: "g1-cited-symbol-control-field-absent",
     primary_work: DeclarationRef { module_path: "v2.std.node", decl_name: "NodeKind", field: NamedField { field_name: "G1_planted_field_absent_control_RED" } },
     additional_works: [],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "permanent discriminating control for feature:cited-symbol-resolution (operator ruling 2026-08-03): enrolled DeclarationRef names a real decl_facts row but a NamedField absent from its node — distinct refusal arm from declaration-absent and module-absent; never retires when production population is zero") },
+    dissolution: PlanHasNoRetirement,
   },
   HandAuthoredDocBind {
     home: PlanDoc,
