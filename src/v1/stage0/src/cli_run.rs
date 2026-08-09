@@ -13762,6 +13762,15 @@ fn tree_bare_census_for_root(
     // rather than once per index).
     let miss_started = std::time::Instant::now();
     resolve_stage_slot_add(|st| st.edge_index_tree_census_misses += 1);
+    // Identity of the cold misses, not just their count. The count alone cannot
+    // distinguish "the same subject recomputed per index" from "a different subject
+    // each time", and those two have different fixes: the first is materialized once
+    // and shared, the second needs the subject in the materialization key. The index
+    // address distinguishes which index paid it.
+    eprintln!(
+        "[edge-index-census-miss] root={root} index={:p}",
+        index as *const MultiEntryIndex
+    );
     let pool = pool_parse(index)?;
     let trimmed = root.trim_end_matches('/');
     let prefix = format!("{trimmed}/");
