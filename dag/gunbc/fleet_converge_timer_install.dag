@@ -111,3 +111,28 @@ func fleet_timer_self_install_wet() -> ProcessExit
     }
   }
 }
+
+// Ruling msg_43a8fd77 item 4 (B2, operator step made minimal): the EXACT sudoers grant
+// the runner account needs on srv2-srv4 for timer self-install — narrow, never blanket
+// NOPASSWD. Measured refusal that produced this row: install job executed on srv2 and
+// stopped at 'sudo: a password is required' (run 31326230752). Standing framing
+// (parent msg_72e2dcee): runner privilege is HOST STANDING that convergence PROVISIONS
+// thereafter — once a host converges, this grant is a member the converge path ensures
+// like any other, so the hand-applied grant is a ONE-TIME legacy bootstrap on hosts
+// that predate convergence, never a recurring operator duty.
+type TimerInstallSudoersRequirement {
+  account: String
+  commands: List<String>
+  standing: String
+}
+
+data fleet_timer_install_sudoers_requirement: TimerInstallSudoersRequirement = TimerInstallSudoersRequirement {
+  account: "ghrunner",
+  commands: [
+    "/usr/bin/install -m 0644 /tmp/gunbc-fleet-timer-stage/ctrl-fleet-converge.service /etc/systemd/system/ctrl-fleet-converge.service",
+    "/usr/bin/install -m 0644 /tmp/gunbc-fleet-timer-stage/ctrl-fleet-converge.timer /etc/systemd/system/ctrl-fleet-converge.timer",
+    "/usr/bin/systemctl daemon-reload",
+    "/usr/bin/systemctl enable --now ctrl-fleet-converge.timer",
+  ],
+  standing: "host standing provisioned by convergence thereafter; hand-grant is one-time legacy bootstrap only (msg_72e2dcee)",
+}

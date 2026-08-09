@@ -11,6 +11,7 @@ import extdeps.exec.command { ArgvCommand, LocalExec }
 import gunbc.command_runner { run_shell_commands, run_shell_command_capture, ShellCaptureResult }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for, fleet_reach_probe_targets }
+import gunbc.fleet_ssh_access { fleet_automation_ssh_key }
 
 // CONVERGE acceptance item 4 (operator directive C, 2026-08-09): the host-key
 // fingerprint ENROLLMENT registry. The executed reach probe landed every fleet host at
@@ -224,4 +225,109 @@ func fleet_host_key_enroll_wet() -> ProcessExit
   } else {
     exit_failure(reason: concat("fleet_host_key_enroll: receipt publication failed — ", wr.error))
   }
+}
+
+// Ruling msg_43a8fd77 item 1: AUTHORIZED-KEY SELF-ENROLLMENT is self-service — a
+// dispatched job runs AS the runner account on its host, so writing the fleet PUBLIC
+// key into that account's ~/.ssh/authorized_keys needs no sudo and no secret access
+// (the same self-install pattern as the timer). Idempotent by exact-line presence
+// check (grep -qxF), never an appended duplicate; dir/file created 0700/0600 when
+// absent. Asymmetry stated honestly: this grants fleet-key holders login as the runner
+// account — the intended design (the fleet key IS fleet automation's credential), and
+// reversible by removing the line. The receipt carries whoami — which is also the
+// recorded EXISTENCE proof for the runner account on each host the job lands on.
+data fleet_authorized_key_enroll_receipt_path: String = "target/fleet-authorized-key-enroll-receipt.txt"
+
+fn fleet_automation_authorized_keys_line() -> String {
+  join(["ssh-ed25519 ", fleet_automation_ssh_key.material, " ", fleet_automation_ssh_key.comment], "")
+}
+
+func fleet_authorized_key_self_enroll_wet() -> ProcessExit
+  uses net: Network
+{
+  let user = run_shell_command_capture(command: ArgvCommand { argv: ["whoami"] }, transport: LocalExec)
+  let hostname = run_shell_command_capture(command: ArgvCommand { argv: ["hostname"] }, transport: LocalExec)
+  let line = fleet_automation_authorized_keys_line()
+  let staged = "target/fleet-authorized-key-line"
+  let w = Filesystem.Write(path: staged, content: concat(line, "\n"))
+  let outcome = if w.success {
+    let check = run_shell_command_capture(
+      command: ArgvCommand { argv: ["sh", "-c", "H=$(getent passwd \"$(whoami)\" | cut -d: -f6); grep -qxF \"$(cat target/fleet-authorized-key-line | head -1)\" \"$H/.ssh/authorized_keys\" 2>/dev/null && echo present || echo absent"] },
+      transport: LocalExec,
+    )
+    if trim(s: check.stdout) == "present" {
+      "outcome=already-present"
+    } else {
+      let apply = run_shell_command_capture(
+        command: ArgvCommand { argv: ["sh", "-c", "H=$(getent passwd \"$(whoami)\" | cut -d: -f6); mkdir -p \"$H/.ssh\" && chmod 700 \"$H/.ssh\" && touch \"$H/.ssh/authorized_keys\" && chmod 600 \"$H/.ssh/authorized_keys\" && cat target/fleet-authorized-key-line >> \"$H/.ssh/authorized_keys\""] },
+        transport: LocalExec,
+      )
+      if apply.success {
+        let verify = run_shell_command_capture(
+          command: ArgvCommand { argv: ["sh", "-c", "H=$(getent passwd \"$(whoami)\" | cut -d: -f6); grep -qxF \"$(cat target/fleet-authorized-key-line | head -1)\" \"$H/.ssh/authorized_keys\" && echo enrolled || echo ABSENT-after-apply"] },
+          transport: LocalExec,
+        )
+        concat("outcome=", trim(s: verify.stdout))
+      } else {
+        join(["outcome=refused cause=", trim(s: apply.stderr)], "")
+      }
+    }
+  } else {
+    join(["outcome=refused cause=staging: ", w.error], "")
+  }
+  let body = join([
+    "authorized-key-self-enroll host=", trim(s: hostname.stdout),
+    " user=", trim(s: user.stdout), " ", outcome, "\n",
+  ], "")
+  let wr = Filesystem.Write(path: fleet_authorized_key_enroll_receipt_path, content: body)
+  if wr.success {
+    if string_contains(s: outcome, pattern: "refused") || string_contains(s: outcome, pattern: "ABSENT-after-apply") {
+      exit_failure(reason: concat("fleet_authorized_key_self_enroll: ", body))
+    } else {
+      ExitSuccess
+    }
+  } else {
+    exit_failure(reason: concat("fleet_authorized_key_self_enroll: receipt publication failed — ", wr.error))
+  }
+}
+
+// Ruling msg_43a8fd77 item 3 (A2), CROSSED by the operator 2026-08-09 (parent
+// msg_72e2dcee): the GCP side is PROVISIONED and these are the observed facts, not a
+// request. The service account is WIF-only (no keys exist and none may ever be minted);
+// its sole grant is secretmanager.secretAccessor on the one named secret. The secret
+// already held the fleet key as version 1 (ENABLED, created 2026-07-21T21:16:13Z;
+// payload fingerprint matches the enrolled public key's SHA256:mGT7qJsh36VsVb8OPh3m8b
+// r3oHedQHxRukRkW5P0CoQ) — version 1 is BLESSED as-is, nothing was minted, and
+// consumers PIN versions/1, never the moving `latest` alias (SECRET-VERSION-LIFECYCLE-0
+// wall: evidence must name a version). An OBSERVED PRIOR grant to
+// serviceAccount:fleet-automation@gunbai-secrets.iam.gserviceaccount.com (July-era)
+// exists on the same secret — recorded here, deliberately untouched. Rotation of the
+// key to a version 2 is a REGISTERED FOLLOW-UP through the rotation kernel, not this
+// lane. Closure evidence for A2 = the first dispatched probe run that authenticates.
+type ProbeIdentitySecretAccessRequirement {
+  secret_project: String
+  secret_name: String
+  pinned_version: String
+  service_account: String
+  service_account_unique_id: String
+  wif_principal_set: String
+  wif_provider_resource: String
+  access: String
+  observed_prior_grant: String
+  consumer_jobs: List<String>
+  materialization: String
+}
+
+data probe_identity_secret_access_requirement: ProbeIdentitySecretAccessRequirement = ProbeIdentitySecretAccessRequirement {
+  secret_project: "gunbai-secrets",
+  secret_name: "fleet-automation-ssh-key",
+  pinned_version: "versions/1",
+  service_account: "fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com",
+  service_account_unique_id: "115150029926436834504",
+  wif_principal_set: "principalSet://iam.googleapis.com/projects/582015116396/locations/global/workloadIdentityPools/github-actions/attribute.repository/gunb-ai/gunbc",
+  wif_provider_resource: "projects/582015116396/locations/global/workloadIdentityPools/github-actions/providers/github-oidc",
+  access: "roles/secretmanager.secretAccessor on this one secret only; identity reached exclusively via GitHub OIDC -> WIF exchange (id-token: write on the consumer jobs) — the SA is WIF-only, no SA keys exist or may be minted",
+  observed_prior_grant: "serviceAccount:fleet-automation@gunbai-secrets.iam.gserviceaccount.com holds secretAccessor on the same secret (July-era, pre-existing) — recorded, not modified",
+  consumer_jobs: ["probe_fleet_reach", "collect_fleet_convergence"],
+  materialization: "in-run only: versions/1 accessed per-run into RUNNER_TEMP, mode 0600, loaded into an ssh-agent and the file wiped before any probe executes; never durable HOME, never echoed; the agent is killed when the job ends; receipts carry the identity NAME and outcome only — no key bytes, no payload digests",
 }

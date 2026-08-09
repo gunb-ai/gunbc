@@ -49,3 +49,36 @@ fn fleet_probe_endpoint_for(host: String) -> String {
 // key scan) walks. Homed HERE (moved from host_reach_identity_probe) so enrollment and
 // probe can both consume it without an import cycle: enrollment -> endpoint <- probe.
 data fleet_reach_probe_targets: List<String> = ["srv1", "srv2", "srv3", "srv4", "srv5", "srv6"]
+
+// Ruling msg_43a8fd77 item 2: the REMOTE PRINCIPAL is an explicit typed fact per host,
+// never the implicit ssh default (local-username inheritance is an absorbing default —
+// a probe that authenticates as whatever account happens to run it is not probing a
+// modeled principal). srv1-srv4: ghrunner, the runner account (its EXISTENCE on
+// srv2-srv4 is verified by the first successful dispatch there, recorded not assumed —
+// the self-enrollment receipt carries whoami). srv5/srv6: PENDING — bold-eagle-107's
+// fleet-key verification used an account this module does not know yet
+// (msg_a61db42c asked; the answer lands here with its receipt cited), and a pending
+// principal keeps the bare endpoint (today's behavior) rather than fabricating a user.
+// TARGET STATE, registered not built: ONE fleet-automation POSIX account fleet-wide as
+// the probe principal (aligns with SPARK-SERVE-0 account subsumption), dissolving this
+// per-host heterogeneity.
+type FleetProbePrincipal
+  = ProbeUserKnown { user: String }
+  | ProbeUserPending { note: String }
+
+fn fleet_probe_remote_user_for(host: String) -> FleetProbePrincipal {
+  if host == "srv5" || host == "srv6" {
+    ProbeUserPending {
+      note: "bold-eagle-107 (msg_7428d9fc): the account NAME briansrls is well-supported (operator-supplied login for both Sparks; operator confirmed the name collision with the human account is coincidence) but WHICH principal the fleet-key probe authenticated as is unverified recollection — no retained artifact records it, so this stays Pending until a receipt exists (re-measurement needs operator clearance, through the convergence path, per the interactive-Spark stop-order). The KEY axis is typed separately (fleet_ssh_access fleet_automation_ssh_key_fingerprint); both Sparks' authorized_keys carry exactly fleet-automation@gunbc today (bootstrap node-orch key installed then REMOVED from both).",
+    }
+  } else {
+    ProbeUserKnown { user: "ghrunner" }
+  }
+}
+
+fn fleet_probe_ssh_target_for(host: String) -> String {
+  match fleet_probe_remote_user_for(host: host) {
+    ProbeUserKnown { user: u } => join([u, "@", fleet_probe_endpoint_for(host: host)], "")
+    ProbeUserPending { note: _ } => fleet_probe_endpoint_for(host: host)
+  }
+}
