@@ -1,0 +1,59 @@
+module gunbc.fleet_converge_timer
+
+import std.types { String, NonEmptyStr, Bool, Int }
+
+// Arc item 4 (timer / anti-entropy, operator directive 2026-08-08): the steady-state
+// enforcement loop is a PER-HOST systemd timer executing the converge circuit against
+// the admitted desired revision (gunbc.fleet_main_revision) — never a central cron, an
+// SSH star, or a GHA event as steady state. Every firing emits a receipt; a host that
+// was offline across a desired-state change converges on return because the timer's
+// next firing reads the admitted ref (catch-up is a property of following the ref, plus
+// Persistent= for missed calendar firings). This module is the SINGLE authority for the
+// unit names, cadence, and unit CONTENT — the emitted files derive from these rows, so
+// a hand-edited unit is drift against this authority, not a second truth.
+//
+// Timer shape is the design doc's Option A (OnCalendar + Persistent=true + jitter):
+// Persistent only functions with OnCalendar (systemd ignores it on monotonic timers),
+// and calendar catch-up is exactly the offline-host property the arc requires.
+data fleet_converge_service_unit_name: String = "ctrl-fleet-converge.service"
+data fleet_converge_timer_unit_name: String = "ctrl-fleet-converge.timer"
+data fleet_converge_timer_on_calendar: String = "*:0/15"
+data fleet_converge_timer_randomized_delay_sec: Int = 90
+data fleet_converge_binary_path: String = "/opt/gunbc/bin/gunbc"
+data fleet_converge_env_file_path: String = "/etc/gunbc/fleet-converge.env"
+
+fn fleet_converge_service_content(host_arg: String) -> String {
+  join([
+    "[Unit]\n",
+    "Description=gunbc fleet converge (self)\n",
+    "\n",
+    "[Service]\n",
+    "Type=oneshot\n",
+    "User=root\n",
+    "EnvironmentFile=-", fleet_converge_env_file_path, "\n",
+    "ExecStart=", fleet_converge_binary_path, " converge --host ", host_arg, "\n",
+  ], "")
+}
+
+fn fleet_converge_timer_content() -> String {
+  join([
+    "[Unit]\n",
+    "Description=gunbc fleet converge cadence\n",
+    "\n",
+    "[Timer]\n",
+    "OnCalendar=", fleet_converge_timer_on_calendar, "\n",
+    "Persistent=true\n",
+    "RandomizedDelaySec=", to_string(fleet_converge_timer_randomized_delay_sec), "\n",
+    "Unit=", fleet_converge_service_unit_name, "\n",
+    "\n",
+    "[Install]\n",
+    "WantedBy=timers.target\n",
+  ], "")
+}
+
+// The service converges SELF only: the unit text never names a remote host, so the
+// central-actor-converges-remote-host shape is unwritable from this authority (the
+// design doc's invariant: CI never runs converge against a remote N).
+fn fleet_converge_service_content_self() -> String {
+  fleet_converge_service_content(host_arg: "self")
+}

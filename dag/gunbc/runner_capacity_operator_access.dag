@@ -168,7 +168,7 @@ fn in_band_privilege_observation_for_host(host: HostIdentity) -> InBandPrivilege
   }
 }
 
-data srv1_already_converged_caps_control_note: String = "srv1 acceptance row 6 control (operator 2026-08-07): five slots hand-converged to modeled 14GiB caps (MemoryMax=15032385536 MemoryHigh=13958643712 MemorySwapMax=34359738368 TasksMax=512 CPUWeight=100), verified by read-back. A second identical apply against srv1 must emit ZERO effects — discriminates directory-counting or write-blind realizers."
+data srv1_already_converged_caps_control_note: String = "srv1 acceptance row 6 control (operator 2026-08-07): five slots hand-converged to modeled 14GiB caps (MemoryMax=15032385536 MemoryHigh=13958643712 MemorySwapMax=34359738368 CPUWeight=100) plus TasksMax=512, verified by read-back — but the 2026-08-08 operator ruling on PR 8045 made 16384 the desired TasksMax (512 is the diagnosed EAGAIN outage value), so the zero-effects premise holds on the MEMORY axes only: srv1's tasks axis is expected DRIFT until the per_slot_tasks_max knob corrects it, and the no-op control is exact again after that first correction. Still discriminates directory-counting or write-blind realizers on the memory rows."
 
 type RunnerCapacityHostAdmissionVerdict
   = InBandAdmissionRequirementDocumented { requirement: RunnerCapacityHostInBandAdmissionRequirement }
