@@ -705,12 +705,10 @@ fn host_converge_slice1_converge_host(host: HostIdentity, instance_glob: String)
                 _ =>
                   HostConvergeSlice1HostEnumerated {
                     host: host,
-                    outcomes: fold(units, init: [], f: fn(acc, u) {
-                      concat(acc, [
-                        host_converge_slice1_converge_unit(host: host, unit: u, knob: knob),
-                        host_converge_slice1_converge_unit_tasks(host: host, unit: u, knob: tasks_knob),
-                      ])
-                    }),
+                    outcomes: units.flat_map(u => [
+                      host_converge_slice1_converge_unit(host: host, unit: u, knob: knob),
+                      host_converge_slice1_converge_unit_tasks(host: host, unit: u, knob: tasks_knob),
+                    ]),
                   }
               }
             _ => HostConvergeSlice1HostRefused { reason: concat("host_converge_slice1: live unit enumeration absent for glob ", instance_glob) }

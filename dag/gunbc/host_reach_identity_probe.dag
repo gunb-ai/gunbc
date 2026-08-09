@@ -1,5 +1,7 @@
 module gunbc.host_reach_identity_probe
 
+import std.algebra { trim }
+
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import product.placement_supply { HostIdentity }
 import std.upsert_decision {

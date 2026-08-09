@@ -1,5 +1,7 @@
 module gunbc.fleet_converge_cli
 
+import std.algebra { trim }
+
 import extdeps.linux.procfs { ProcSysKernelHostname, procfs_path_literal }
 
 
