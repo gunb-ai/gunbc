@@ -1,2 +1,14 @@
 dag+src/v2 .dag corpus sha256: f892eef9c545e85cbb2fed35d6b0cd423fd7b93ac956e524b8a292155129cd4b
-measured at commit: ae7383cdc123a3872401b32ca5cd90bb58c4e748
+measured at commit: 88c2ff2385b3b67d4143480e76020ff90c676b12
+
+THE HASH IS THE ANCHOR, NOT THE COMMIT LINE. A commit cannot contain its own id,
+so any stamp written into a tracked file names an ancestor by construction; the
+commit above is the closest one at write time and later docs-only commits do not
+move the corpus. Verify the anchor against whatever HEAD you have, rather than
+trusting either line:
+
+  find dag src/v2 -name '*.dag' -print0 | sort -z | xargs -0 sha256sum | sha256sum
+
+Equal to the hash above means the receipts in this directory describe your tree,
+whatever the commit line says. Different means they do not, and the reproducer in
+../README.md regenerates them.
