@@ -389,6 +389,16 @@ fn artifact_ref_of(token: String) -> String {
   concat(artifact_ref_namespace, token)
 }
 
+// THE SUBJECT AND THE DIGEST ARE SEPARATE BLOBS, because fusing them made the exact comparison impossible. The stored record was the subject rendering with the artifact digest appended, so a caller comparing its request against that blob could never match it exactly -- which is precisely why the earlier code compared a PREFIX, and why the prefix was unsafe: a request with fewer axes is a prefix of a stored subject with more.
+//
+// Splitting them removes the dilemma rather than picking a side of it. The subject blob holds exactly the rendering and nothing else, so equality over the whole blob is the comparison, with no delimiter to parse and no field a subject value could imitate. A separator inside one blob would have worked only until some cargo feature or rustflag contained the separator text; there is no such value here because there is no separator.
+//
+// Found by running two callers against one tree: the first produced, and the second refused with a subject mismatch on a request identical to it.
+
+fn digest_ref_of(token: String) -> String {
+  concat("refs/devboot/digest/", token)
+}
+
 fn subject_ref_of(token: String) -> String {
   concat(subject_ref_namespace, token)
 }
@@ -433,6 +443,19 @@ fn artifact_lookup(store_root: String, repo_root: String, token: String) -> Arti
 // THE LIVE PATH DECIDES REUSE THROUGH THE SAME FOLD THE MODEL DEFINES, which it did not before. An earlier revision reused on artifact-ref PRESENCE alone: the ref existed, so the bytes were served. The reuse law this capsule introduced -- retrieve the stored request, compare it exactly, confirm the bytes are there -- was stated in gunbc.devboot.outcome and exercised by witnesses, while the code that actually answered callers never called it. A model and its realization disagreeing about the model own central law is the fork this repository treats as a correctness defect, and the witnesses could not have caught it because they tested the fold rather than the path.
 //
 // WHAT MAKES THE COMPARISON POSSIBLE is that the producer now stores the rendered subject beside the artifact, under its own ref. On reuse, that text is read back and compared with the rendering of the request; the rendering is injective, so equal text means equal subjects. Bytes are then confirmed present in the object database before anything is served. A digest collision therefore costs a rebuild instead of a wrong binary, and a pruned object refuses instead of being reported as retrievable -- both on the live path, not only in the model.
+fn recorded_artifact_digest(store_root: String, repo_root: String, token: String) -> String {
+  let out = gunbc.WitnessBin.Run(
+    workdir: repo_root,
+    bin_path: "git",
+    args: [concat("--git-dir=", store_root), "cat-file", "blob", digest_ref_of(token: token)],
+  )
+  if out.success {
+    trim(s: out.stdout)
+  } else {
+    ""
+  }
+}
+
 fn stored_record_text(store_root: String, repo_root: String, token: String) -> String {
   let stored = gunbc.WitnessBin.Run(
     workdir: repo_root,
@@ -497,7 +520,7 @@ fn observe_artifact_availability(
   store_root: String,
   repo_root: String,
   oid: String,
-  record_text: String,
+  token: String,
   subject: BuildSubject,
 ) -> ArtifactAvailability {
   let present = gunbc.WitnessBin.Run(
@@ -512,7 +535,7 @@ fn observe_artifact_availability(
     if observed == "" {
       ArtifactUnreadable { detail: "the artifact blob could not be read back for verification" }
     } else {
-      if string_contains(s: record_text, pattern: sha256_record_marker(hex: observed)) {
+      if trim(s: recorded_artifact_digest(store_root: store_root, repo_root: repo_root, token: token)) == trim(s: observed) {
         observed_stored_artifact(
           subject: subject,
           oid: oid,
@@ -976,6 +999,16 @@ fn devboot_run_build_plan(
 // THE EXPECTATION MARKER IS NOT A CHECK, which is the lesson worth keeping. Every one of these invocations carried expect: ExpectSuccess, and it reads exactly like an assertion that the step succeeded; it is an output-policy annotation, and control flow continues regardless. Trusting it was the specification-without-execution failure in miniature -- a declaration that looked like enforcement while the realization walked straight past it.
 //
 // The binding steps are separated below so the success arm is reachable only through the two checks.
+// PRODUCED REQUIRES THE WHOLE BINDING, not just the artifact ref. An earlier revision checked only the final update-ref, so a failed subject-record write, hash or bind still reported PRODUCED -- the same class this function had just been repaired for one step further along, surviving in the steps nobody had looked at yet (review 50649).
+//
+// It is not harmless because reuse would refuse. A caller that is told PRODUCED believes the store holds a complete, retrievable binding; if the subject record never landed, the next request for that exact subject finds an artifact it cannot verify a subject for and rebuilds, silently, forever. The producer would be lying about completion and the cost would appear as an unexplained cache that never hits.
+//
+// Every step is now its own arm with its own sentence, so a partial store says WHICH part is missing rather than reporting a generic failure -- the store is the thing being repaired, and knowing whether the subject, the digest or the artifact is the unbound one is the difference between a one-line fix and an investigation.
+
+fn bind_step_refusal(step: String, exit_code: Int, detail: String) -> String {
+  join(["the artifact was built but the store binding is incomplete: ", step, " failed (exit ", to_string(exit_code), "): ", detail], "")
+}
+
 fn devboot_bind_produced_artifact(
   store_root: String,
   repo_root: String,
@@ -987,7 +1020,7 @@ fn devboot_bind_produced_artifact(
   let record_path = join([store_root, "/devboot-record-", token], "")
   let record_written = Filesystem.Write(
     path: record_path,
-    content: join([render_build_subject(subject: subject), sha256_record_line(hex: artifact_sha256)], ""),
+    content: render_build_subject(subject: subject),
   )
   let record_blob = gunbc.WitnessBin.Run(
     workdir: repo_root,
@@ -1001,17 +1034,51 @@ fn devboot_bind_produced_artifact(
     args: [concat("--git-dir=", store_root), "update-ref", subject_ref_of(token: token), trim(s: record_blob.stdout), ""],
     expect: ExpectSuccess,
   )
+  let digest_path = join([store_root, "/devboot-digest-", token], "")
+  let digest_written = Filesystem.Write(path: digest_path, content: artifact_sha256)
+  let digest_blob = gunbc.WitnessBin.Run(
+    workdir: repo_root,
+    bin_path: "git",
+    args: [concat("--git-dir=", store_root), "hash-object", "-w", "--", digest_path],
+  )
+  let digest_bound = gunbc.WitnessBin.Run(
+    workdir: repo_root,
+    bin_path: "git",
+    args: [concat("--git-dir=", store_root), "update-ref", digest_ref_of(token: token), trim(s: digest_blob.stdout), ""],
+  )
   let bound = gunbc.WitnessBin.Run(
     workdir: repo_root,
     bin_path: "git",
     args: [concat("--git-dir=", store_root), "update-ref", artifact_ref_of(token: token), blob_oid, ""],
   )
-  if !bound.success {
-    ProduceRefused {
-      reason: join(["the artifact was stored but could not be bound to its subject ref (git exit ", to_string(bound.exit_code), "): ", trim(s: bound.stderr)], ""),
-    }
+  if !record_written.success {
+    ProduceRefused { reason: bind_step_refusal(step: "writing the subject record", exit_code: 0, detail: record_path) }
   } else {
-    ProduceProduced { token: token, artifact: blob_oid }
+    if !record_blob.success {
+      ProduceRefused { reason: bind_step_refusal(step: "hashing the subject record", exit_code: record_blob.exit_code, detail: trim(s: record_blob.stderr)) }
+    } else {
+      if !record_bound.success {
+        ProduceRefused { reason: bind_step_refusal(step: "binding the subject record", exit_code: record_bound.exit_code, detail: trim(s: record_bound.stderr)) }
+      } else {
+        if !digest_written.success {
+          ProduceRefused { reason: bind_step_refusal(step: "writing the artifact digest", exit_code: 0, detail: digest_path) }
+        } else {
+          if !digest_blob.success {
+            ProduceRefused { reason: bind_step_refusal(step: "hashing the artifact digest", exit_code: digest_blob.exit_code, detail: trim(s: digest_blob.stderr)) }
+          } else {
+            if !digest_bound.success {
+              ProduceRefused { reason: bind_step_refusal(step: "binding the artifact digest", exit_code: digest_bound.exit_code, detail: trim(s: digest_bound.stderr)) }
+            } else {
+              if !bound.success {
+                ProduceRefused { reason: bind_step_refusal(step: "binding the artifact", exit_code: bound.exit_code, detail: trim(s: bound.stderr)) }
+              } else {
+                ProduceProduced { token: token, artifact: blob_oid }
+              }
+            }
+          }
+        }
+      }
+    }
   }
 }
 
@@ -1150,7 +1217,7 @@ fn live_reuse_report(
       store_root: store_root,
       repo_root: repo_root,
       oid: oid,
-      record_text: stored_record_text(store_root: store_root, repo_root: repo_root, token: token),
+      token: token,
       subject: subject,
     ),
   ) {
