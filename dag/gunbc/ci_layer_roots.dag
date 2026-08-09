@@ -39,6 +39,7 @@ import std.witness_admission {
   FixtureExplicitRoster,
   NoConsumer
 }
+import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
 
 data witness_layer_roots: List<String> = ["dag", "src/v2"]
 

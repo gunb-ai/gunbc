@@ -46,6 +46,24 @@ test fn roster_registry_enrolls_known_rosters() -> Bool {
 }
 
 
+fn empty_trigger_registration() -> RosterRegistration {
+  synthetic_registration(
+    membership: DeclaredFrontier {
+      reason: "a reason without a trigger is not a frontier row",
+      dissolution: unbound_dissolution(description: "")
+    }
+  )
+}
+
+// Restored alongside the production guard, for the same reason: an empty
+// condition is still constructible, so this is the executing evidence that the
+// restored check refuses it.
+test fn roster_registry_red_control_empty_trigger_reds() -> Bool {
+  roster_registry_nonstandard_count_from(
+    registrations: [empty_trigger_registration()]
+  ) == 1
+}
+
 test fn roster_registry_red_control_nickname_reds() -> Bool {
   let findings = nonstandard_registrations_from(
     registrations: [nickname_registration()]

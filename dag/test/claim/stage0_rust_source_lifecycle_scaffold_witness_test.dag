@@ -67,6 +67,7 @@ import std.content_hash { Fnv1a64Structural }
 import std.disposition { RealizationDispatch, Scaffold, SingleAuthority }
 import v2.std.algebra { any, length }
 import v2.std.text { String }
+import std.dissolution { unbound_dissolution }
 
 data stage0_rust_source_lifecycle_scaffold_witness_note: String = "Stage0 lifecycle scaffold witnesses after the PR B host activation. The live observation must inhabit RustManifestObserved with path evidence; typed host refusals remain distinct inputs to the existing verdict. The lifecycle classification is still an honest scaffold and may remain red on the repository-wide unclassified population."
 
@@ -289,6 +290,20 @@ test fn scaffold_observed_manifest_parse_refusal_surfaces_typed_cause() -> Bool 
     ManifestStateScaffoldRefused { cause: HostManifestParseRefused { detail: detail } } => detail == "manifest malformed"
     _ => false
   }
+}
+
+// Restored. An earlier revision of this PR deleted this control claiming the
+// empty condition had become unconstructible under NonEmptyStr. It has not:
+// unbound_dissolution(description: "") constructs, so the guard is validation
+// and its evidence must keep executing (DESIGN 4b(4)).
+test fn scaffold_residue_red_control_empty_dissolve_on_reds() -> Bool {
+  !lifecycle_row_well_formed(
+    row: residue_row(
+      path: "synthetic/unclassified.rs",
+      reason: "red control",
+      dissolution: unbound_dissolution(description: "")
+    )
+  )
 }
 
 test fn scaffold_observed_duplicate_tracked_paths_reds() -> Bool {
