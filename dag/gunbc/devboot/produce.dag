@@ -46,7 +46,7 @@ import gunbc.devboot.subject {
   SubjectAdmitted,
   SubjectRefused,
 }
-import extdeps.git.object_store { git_object_id_from_untagged_hex }
+import extdeps.git.object_store { git_object_id_from_untagged_hex, git_object_id_wire_hex }
 import extdeps.git { git_ref_missing_exit_code }
 import extdeps.toolchain.types { TargetTriple, ToolchainRequirement }
 import extdeps.rust.target_triple { parse_rust_target_triple }
@@ -56,8 +56,101 @@ data devboot_produce_note: String = "THE PRODUCER, AND IT IS THE LIVE PATH RATHE
 
 data producer_lease_realization_note: String = "THE MODELED TRANSITION AND THE REAL ONE, kept honestly apart. gunbc.devboot.lease derives the lease DECISION from the upstream object store's pure transition model, whose exact-old form covers advancing a ref that already exists and returns LeaseCreateNotModeled for the absent case.\\n\\nGit itself does cover that case -- `update-ref <ref> <new> \\\"\\\"` is create-only and fails with 'reference already exists' when it loses -- and that is what this realization calls, verified by execution against a real bare repository: one caller acquired, the second was refused, and the holder did not move. So the gap is in the R0 MODEL, not in the transport, and the refusal arm in the model is a statement about what has been modeled rather than about what git can do. Recording which is which is the whole point; the arm dissolves when the model gains a create-only transition, and the realization does not change when it does."
 
-fn devboot_subject_tree_oid_argv(index_path: String) -> List<String> {
-  [concat("GIT_INDEX_FILE=", index_path), "git", "write-tree"]
+data devboot_snapshot_note: String = "THE SUBJECT IS THE WORKING TREE AS IT STANDS, WHICH IS WHAT AN AGENT ACTUALLY ASKS ABOUT. An earlier revision ran write-tree against an index the CALLER supplied and nothing populated, so the tree it named was HEAD's -- every uncommitted modification and every untracked file was invisible to the identity. A developer editing a file and asking for a build of what they are looking at would have received, and reused forever, a binary for the last commit. The identity was exact and it was exact about the wrong tree.\\n\\nTHREE STEPS MAKE THE SNAPSHOT, and each is load-bearing. read-tree HEAD establishes the committed baseline; add -A folds in modifications, deletions and non-ignored untracked files; write-tree freezes the result into a real tree object. The output is an ordinary git tree, so everything downstream -- transfer, materialization, content addressing -- is git's, not this module's.\\n\\nTHE INDEX IS DERIVED HERE, NOT ACCEPTED FROM THE CALLER, and that is the structural half of 'never mutate the developer's index'. When the path is a parameter, the real index is a legal argument and add -A stages the developer's entire working tree behind their back; a check that the supplied path is not .git/index would be validation of a state that remains writable. Deriving the path under this service's own work root means the developer's index has no way to arrive here at all.\\n\\nIgnored files never participate: add -A honours gitignore, so ambient build output and editor debris cannot move the identity. Files a build genuinely needs but git ignores must be declared, and that declaration does not exist yet -- named on the carrier as owed rather than silently assumed absent."
+
+fn devboot_snapshot_index_path(work_root: String) -> String {
+  join([work_root, "/snapshot.index"], "")
+}
+
+type SnapshotOutcome
+  = SnapshotTaken { tree_hex: String }
+  | SnapshotRefused { detail: String }
+
+data snapshot_step_scalar_note: String = "The step helpers take and return scalars rather than the invocation record, because the bin-invocation service's result is structural and has no named type a signature could carry. Passing exit code and stderr keeps every refusal located to the step that produced it without inventing a second carrier for a shape the transport already owns."
+
+fn snapshot_step_refusal(step: String, exit_code: Int, stderr: String) -> String {
+  join(["dirty-worktree snapshot failed at ", step, " (git exit ", to_string(exit_code), "): ", trim(s: stderr)], "")
+}
+
+fn devboot_snapshot(repo_root: String, work_root: String) -> SnapshotOutcome {
+  let index_path = devboot_snapshot_index_path(work_root: work_root)
+  let prepared = gunbc.WitnessBin.Run(workdir: repo_root, bin_path: "mkdir", args: ["-p", work_root])
+  let cleared = gunbc.WitnessBin.Run(workdir: repo_root, bin_path: "rm", args: ["-f", index_path])
+  let baseline = gunbc.WitnessBin.Run(
+    workdir: repo_root,
+    bin_path: "env",
+    args: [concat("GIT_INDEX_FILE=", index_path), "git", "read-tree", "HEAD"],
+  )
+  if !baseline.success {
+    SnapshotRefused { detail: snapshot_step_refusal(step: "read-tree HEAD", exit_code: baseline.exit_code, stderr: baseline.stderr) }
+  } else {
+    let staged = gunbc.WitnessBin.Run(
+      workdir: repo_root,
+      bin_path: "env",
+      args: [concat("GIT_INDEX_FILE=", index_path), "git", "add", "-A"],
+    )
+    if !staged.success {
+      SnapshotRefused { detail: snapshot_step_refusal(step: "add -A", exit_code: staged.exit_code, stderr: staged.stderr) }
+    } else {
+      let written = gunbc.WitnessBin.Run(
+        workdir: repo_root,
+        bin_path: "env",
+        args: [concat("GIT_INDEX_FILE=", index_path), "git", "write-tree"],
+      )
+      if !written.success {
+        SnapshotRefused { detail: snapshot_step_refusal(step: "write-tree", exit_code: written.exit_code, stderr: written.stderr) }
+      } else {
+        SnapshotTaken { tree_hex: trim(s: written.stdout) }
+      }
+    }
+  }
+}
+
+data devboot_isolated_build_note: String = "THE BYTES ARE BUILT FROM THE TREE THAT NAMES THEM, which the ambient build could not promise. An earlier revision computed a tree oid and then ran cargo in the developer's checkout: nothing joined the two. The working tree could change between the snapshot and the compile, and it routinely does -- an agent edits continuously -- so the artifact stored under a tree's identity could be built from a different tree than the one named, with every check agreeing. Two callers naming different snapshots of one ambient directory could each have received the other's bytes.\\n\\nSo the tree is CHECKED OUT and the build happens only inside that checkout. read-tree into a scratch index followed by checkout-index materializes exactly the named tree and nothing else; there is no path by which ambient state reaches the compiler, because the compiler is never pointed at the ambient directory. The join stops being a promise and becomes the shape of the thing.\\n\\nTHE TARGET DIRECTORY IS PER-SUBJECT FOR THE SAME REASON. Sharing one target/ meant two subjects building concurrently wrote the same output path, so one could overwrite the other between the moment cargo finished and the moment the bytes were hashed -- a wrong artifact stored under a correct identity, produced by nothing worse than ordinary concurrency, and the lease could not prevent it because the lease is per-subject and the collision is between subjects. Isolation is per subject token, so no two builds share a writable path.\\n\\nCOST IS THE HONEST TRADE. A cold isolated build cannot reuse the developer's warm target directory, so first production is slower than the ambient build it replaces. That is the price of the guarantee; the warm path the product mandate requires is bought with materialized artifacts and shared caches keyed on content, never by rebuilding correctness on a shared mutable directory."
+
+fn devboot_source_dir(work_root: String, token: String) -> String {
+  join([work_root, "/", token, "/source"], "")
+}
+
+fn devboot_target_dir(work_root: String, token: String) -> String {
+  join([work_root, "/", token, "/target"], "")
+}
+
+type SourceMaterialization
+  = SourceMaterialized { source_dir: String }
+  | SourceMaterializationRefused { detail: String }
+
+fn devboot_materialize_source(repo_root: String, work_root: String, token: String, tree_hex: String) -> SourceMaterialization {
+  let source_dir = devboot_source_dir(work_root: work_root, token: token)
+  let checkout_index = join([work_root, "/", token, "/checkout.index"], "")
+  let fresh = gunbc.WitnessBin.Run(workdir: repo_root, bin_path: "rm", args: ["-rf", source_dir])
+  let made = gunbc.WitnessBin.Run(workdir: repo_root, bin_path: "mkdir", args: ["-p", source_dir])
+  let loaded = gunbc.WitnessBin.Run(
+    workdir: repo_root,
+    bin_path: "env",
+    args: [concat("GIT_INDEX_FILE=", checkout_index), "git", "read-tree", tree_hex],
+  )
+  if !loaded.success {
+    SourceMaterializationRefused { detail: snapshot_step_refusal(step: "read-tree <snapshot>", exit_code: loaded.exit_code, stderr: loaded.stderr) }
+  } else {
+    let checked_out = gunbc.WitnessBin.Run(
+      workdir: repo_root,
+      bin_path: "env",
+      args: [
+        concat("GIT_INDEX_FILE=", checkout_index),
+        "git",
+        "checkout-index",
+        "-a",
+        "-f",
+        concat("--prefix=", join([source_dir, "/"], "")),
+      ],
+    )
+    if !checked_out.success {
+      SourceMaterializationRefused { detail: snapshot_step_refusal(step: "checkout-index", exit_code: checked_out.exit_code, stderr: checked_out.stderr) }
+    } else {
+      SourceMaterialized { source_dir: source_dir }
+    }
+  }
 }
 
 data observed_toolchain_note: String = "THE TOOLCHAIN AND HOST ARE OBSERVED, NOT ASSERTED, and the previous revision asserting them was a live false share rather than a tidiness problem. It declared the toolchain as rustup 1.89.0 and the host as x86_64-unknown-linux-gnu. Measured on the machine that actually ran it: rustc 1.93.0, host aarch64-unknown-linux-gnu. Both hardcoded values were simply wrong.\\n\\nEACH ERROR HAD ITS OWN FAILURE. A fixed toolchain version means upgrading the compiler does not change the subject digest, so the same tree after a rustc upgrade REUSES the binary the old compiler built -- forever, because nothing about the identity ever moves. A fixed host triple is worse: the digest claimed x86_64 while the stored artifact was an aarch64 binary, so a genuine x86_64 consumer fetching that digest would receive something its machine cannot execute, with every identity check agreeing.\\n\\nSo both are read from the toolchain that is about to do the work. The triple is parsed through the cited Rust spelling in extdeps.rust.target_triple, which is partial and refuses anything it does not publish -- an unrecognized host refuses rather than being assembled from parts, because a triple composed by concatenation looks plausible for combinations Rust does not support."
@@ -168,44 +261,43 @@ fn ensure_store_repository(store_root: String, repo_root: String) -> StoreReadin
   }
 }
 
-fn devboot_produce_report(store_root: String, repo_root: String, index_path: String, caller: String) -> ProduceReport {
+fn devboot_produce_report(store_root: String, repo_root: String, work_root: String, caller: String) -> ProduceReport {
   match ensure_store_repository(store_root: store_root, repo_root: repo_root) {
     StoreInitRefused { detail } => ProduceRefused { reason: detail }
     StoreReady =>
       devboot_produce_in_ready_store(
         store_root: store_root,
         repo_root: repo_root,
-        index_path: index_path,
+        work_root: work_root,
         caller: caller,
       )
   }
 }
 
-fn devboot_produce_in_ready_store(store_root: String, repo_root: String, index_path: String, caller: String) -> ProduceReport {
-  let tree_out = gunbc.WitnessBin.Run(
-    workdir: repo_root,
-    bin_path: "env",
-    args: devboot_subject_tree_oid_argv(index_path: index_path),
-    expect: ExpectSuccess,
-  )
-  let tree_hex = trim(s: tree_out.stdout)
-  match observe_toolchain(repo_root: repo_root) {
-    ToolchainObservationRefused { detail } => ProduceRefused { reason: detail }
-    ToolchainObserved { toolchain, host } =>
-      devboot_produce_with_toolchain(
-        store_root: store_root,
-        repo_root: repo_root,
-        caller: caller,
-        tree_hex: tree_hex,
-        toolchain: toolchain,
-        host: host,
-      )
+fn devboot_produce_in_ready_store(store_root: String, repo_root: String, work_root: String, caller: String) -> ProduceReport {
+  match devboot_snapshot(repo_root: repo_root, work_root: work_root) {
+    SnapshotRefused { detail } => ProduceRefused { reason: detail }
+    SnapshotTaken { tree_hex } =>
+      match observe_toolchain(repo_root: repo_root) {
+        ToolchainObservationRefused { detail } => ProduceRefused { reason: detail }
+        ToolchainObserved { toolchain, host } =>
+          devboot_produce_with_toolchain(
+            store_root: store_root,
+            repo_root: repo_root,
+            work_root: work_root,
+            caller: caller,
+            tree_hex: tree_hex,
+            toolchain: toolchain,
+            host: host,
+          )
+      }
   }
 }
 
 fn devboot_produce_with_toolchain(
   store_root: String,
   repo_root: String,
+  work_root: String,
   caller: String,
   tree_hex: String,
   toolchain: ToolchainRequirement,
@@ -233,6 +325,7 @@ fn devboot_produce_with_toolchain(
           devboot_produce_admitted(
             store_root: store_root,
             repo_root: repo_root,
+            work_root: work_root,
             caller: caller,
             host: host,
             subject: subject,
@@ -314,11 +407,13 @@ fn stored_record_text(store_root: String, repo_root: String, token: String) -> S
   if stored.success { stored.stdout } else { "" }
 }
 
+data stored_subject_exact_equality_note: String = "EXACT EQUALITY, NOT A PREFIX, and the difference was a live false match rather than a stylistic one. An earlier revision accepted the stored record when the request's rendering was a PREFIX of it. Renderings are built by appending axes, so a request carrying no cargo-config entries renders as a strict prefix of a stored subject that carries one -- the shorter request would have matched the longer stored subject and been handed a binary built with configuration it never asked for. Every visible signal would have agreed: the digest found the candidate, the comparison passed, the bytes verified against their own record.\\n\\nPrefix acceptance defeats the exact-subject wall in precisely the direction that matters, because the requester asking for LESS is the one that gets someone else's artifact. The comparison is therefore equality over the whole rendering.\\n\\nBOTH SIDES ARE TRIMMED because the stored side crosses a transport that strips a trailing newline, so an untrimmed comparison would answer differs for a record that is byte-identical in the store. Trimming is a property of the transport seam, not a weakening of the comparison: no interior byte is touched, and two renderings that differ anywhere still differ.\\n\\nTHE RENDERING'S INJECTIVITY IS WHAT THIS RESTS ON, and it is a real obligation rather than an assumption -- render_build_subject delimits every axis and every list element, so no two distinct subjects render alike. Its discriminating control lives with the identity witnesses."
+
 fn stored_subject_match(record_text: String, subject: BuildSubject) -> SubjectMatch {
   if record_text == "" {
     SubjectDiffers
   } else {
-    if starts_with(s: record_text, prefix: render_build_subject(subject: subject)) {
+    if trim(s: record_text) == trim(s: render_build_subject(subject: subject)) {
       SubjectMatches
     } else {
       SubjectDiffers
@@ -429,13 +524,14 @@ fn observed_stored_artifact(
   }
 }
 
-fn devboot_produce_admitted(store_root: String, repo_root: String, caller: String, host: TargetTriple, subject: BuildSubject, token: String) -> ProduceReport {
+fn devboot_produce_admitted(store_root: String, repo_root: String, work_root: String, caller: String, host: TargetTriple, subject: BuildSubject, token: String) -> ProduceReport {
   match artifact_lookup(store_root: store_root, repo_root: repo_root, token: token) {
     ArtifactLookupRefused { detail } => ProduceRefused { reason: detail }
     ArtifactRefPresent { oid } =>
       live_reuse_report(
         store_root: store_root,
         repo_root: repo_root,
+        work_root: work_root,
         caller: caller,
         host: host,
         subject: subject,
@@ -443,7 +539,7 @@ fn devboot_produce_admitted(store_root: String, repo_root: String, caller: Strin
         oid: oid,
       )
     ArtifactRefAbsent =>
-      devboot_produce_build(store_root: store_root, repo_root: repo_root, caller: caller, host: host, subject: subject, token: token)
+      devboot_produce_build(store_root: store_root, repo_root: repo_root, work_root: work_root, caller: caller, host: host, subject: subject, token: token)
   }
 }
 
@@ -465,7 +561,7 @@ fn lease_failure_report(store_root: String, repo_root: String, token: String, de
   }
 }
 
-fn devboot_produce_build(store_root: String, repo_root: String, caller: String, host: TargetTriple, subject: BuildSubject, token: String) -> ProduceReport {
+fn devboot_produce_build(store_root: String, repo_root: String, work_root: String, caller: String, host: TargetTriple, subject: BuildSubject, token: String) -> ProduceReport {
   let claim_path = join([store_root, "/devboot-lease-claim-", token], "")
   let claim_written = Filesystem.Write(path: claim_path, content: concat("producer=", caller))
 
@@ -484,7 +580,7 @@ fn devboot_produce_build(store_root: String, repo_root: String, caller: String, 
   if !taken.success {
     lease_failure_report(store_root: store_root, repo_root: repo_root, token: token, detail: trim(s: taken.stderr))
   } else {
-    devboot_store_built_artifact(store_root: store_root, repo_root: repo_root, caller: caller, host: host, subject: subject, token: token)
+    devboot_store_built_artifact(store_root: store_root, repo_root: repo_root, work_root: work_root, caller: caller, host: host, subject: subject, token: token)
   }
 }
 
@@ -595,7 +691,7 @@ fn build_plan_for_subject(subject: BuildSubject, host: TargetTriple) -> BuildPla
                 ),
               ),
             ),
-            artifact_path: join(["target/", profile_output_dir(profile: profile), "/", artifact_name], ""),
+            artifact_path: join([profile_output_dir(profile: profile), "/", artifact_name], ""),
           }
         }
       }
@@ -612,26 +708,39 @@ fn build_plan_refusal_reason(cause: BuildPlanRefusalCause) -> String {
   }
 }
 
-fn devboot_store_built_artifact(store_root: String, repo_root: String, caller: String, host: TargetTriple, subject: BuildSubject, token: String) -> ProduceReport {
+fn devboot_store_built_artifact(store_root: String, repo_root: String, work_root: String, caller: String, host: TargetTriple, subject: BuildSubject, token: String) -> ProduceReport {
   match build_plan_for_subject(subject: subject, host: host) {
     BuildPlanRefused { cause } =>
       ProduceRefused { reason: build_plan_refusal_reason(cause: cause) }
     BuildPlanReady { args, artifact_path } =>
-      devboot_run_build_plan(
-        store_root: store_root,
+      match devboot_materialize_source(
         repo_root: repo_root,
-        caller: caller,
-        subject: subject,
+        work_root: work_root,
         token: token,
-        args: args,
-        artifact_path: artifact_path,
-      )
+        tree_hex: git_object_id_wire_hex(oid: subject.tree_oid) as String,
+      ) {
+        SourceMaterializationRefused { detail } => ProduceRefused { reason: detail }
+        SourceMaterialized { source_dir } =>
+          devboot_run_build_plan(
+            store_root: store_root,
+            repo_root: repo_root,
+            source_dir: source_dir,
+            target_dir: devboot_target_dir(work_root: work_root, token: token),
+            caller: caller,
+            subject: subject,
+            token: token,
+            args: args,
+            artifact_path: artifact_path,
+          )
+      }
   }
 }
 
 fn devboot_run_build_plan(
   store_root: String,
   repo_root: String,
+  source_dir: String,
+  target_dir: String,
   caller: String,
   subject: BuildSubject,
   token: String,
@@ -639,15 +748,15 @@ fn devboot_run_build_plan(
   artifact_path: String,
 ) -> ProduceReport {
   let built = gunbc.WitnessBin.Run(
-    workdir: repo_root,
-    bin_path: "cargo",
-    args: args,
+    workdir: source_dir,
+    bin_path: "env",
+    args: concat([concat("CARGO_TARGET_DIR=", target_dir), "cargo"], args),
     expect: ExpectSuccess,
   )
   let stored = gunbc.WitnessBin.Run(
     workdir: repo_root,
     bin_path: "git",
-    args: [concat("--git-dir=", store_root), "hash-object", "-w", "--", artifact_path],
+    args: [concat("--git-dir=", store_root), "hash-object", "-w", "--", join([target_dir, "/", artifact_path], "")],
     expect: ExpectSuccess,
   )
   let blob_oid = trim(s: stored.stdout)
@@ -763,14 +872,14 @@ data produce_entry_note: String = "The live entry point. It writes the rendered 
 fn devboot_produce_entry(
   store_root: String,
   repo_root: String,
-  index_path: String,
+  work_root: String,
   caller: String,
   receipt_path: String,
 ) -> ProcessExit {
   let report = devboot_produce_report(
     store_root: store_root,
     repo_root: repo_root,
-    index_path: index_path,
+    work_root: work_root,
     caller: caller,
   )
   let written = Filesystem.Write(
@@ -794,6 +903,7 @@ fn availability_refusal_reason(availability: ArtifactAvailability) -> String {
 fn live_reuse_report(
   store_root: String,
   repo_root: String,
+  work_root: String,
   caller: String,
   host: TargetTriple,
   subject: BuildSubject,
@@ -814,7 +924,7 @@ fn live_reuse_report(
   ) {
     ReuseGranted { artifact } => ProduceReused { token: token, artifact: oid }
     ReuseNoCandidate =>
-      devboot_produce_build(store_root: store_root, repo_root: repo_root, caller: caller, host: host, subject: subject, token: token)
+      devboot_produce_build(store_root: store_root, repo_root: repo_root, work_root: work_root, caller: caller, host: host, subject: subject, token: token)
     ReuseSubjectMismatch { candidate_digest, requested_digest } =>
       ProduceRefused {
         reason: "the artifact stored under this subject digest was built for a different subject; refusing to serve it",
