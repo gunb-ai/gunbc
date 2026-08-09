@@ -5,7 +5,15 @@ import std.algebra { trim }
 
 import extdeps.linux.procfs { ProcSysKernelHostname, procfs_path_literal }
 import gunbc.fleet_converge_apply { converge_apply_for_host }
-import gunbc.host_layout { fleet_converge_receipt_dir }
+import gunbc.host_layout { fleet_converge_receipt_dir, srv1_gunbc_repo_root }
+import gunbc.fleet_desired_observe {
+  FleetRevisionStanding,
+  RevisionConverged,
+  RevisionDrifted,
+  RevisionUnobserved,
+  fleet_revision_standing,
+}
+import extdeps.git.object_store { git_object_id_wire_hex }
 
 
 data gunbc_converge_cli_stage0_receiver_disposition: Disposition = Terminal {
@@ -330,8 +338,11 @@ fn fleet_converge_receipt_path(host: String) -> String {
   join([fleet_converge_receipt_dir, "/", host, "-converge-receipt.txt"], "")
 }
 
-fn converge_cli_publish(out: ConvergeCliOutput, resolved: String) -> ConvergeCliOutput {
-  let w = Filesystem.Write(path: fleet_converge_receipt_path(host: resolved), content: concat(out.line, "\n"))
+fn converge_cli_publish(out: ConvergeCliOutput, resolved: String, revision_line: String) -> ConvergeCliOutput {
+  let w = Filesystem.Write(
+    path: fleet_converge_receipt_path(host: resolved),
+    content: join([out.line, "\n", revision_line, "\n"], ""),
+  )
   if w.success {
     out
   } else {
@@ -343,10 +354,64 @@ fn converge_cli_publish(out: ConvergeCliOutput, resolved: String) -> ConvergeCli
   }
 }
 
+// Operator verdict join 1 (2026-08-09): the self route is where a host READS the
+// desired ref. The knob receipt alone cannot claim convergence while the deployed tree
+// is not at the admitted revision — revision drift or an unobserved ref demotes the
+// output to not-converged with the typed cause, and the published receipt carries the
+// revision cell as its own line so the collector (join 5) sees BOTH cells. Drifted
+// names both sides (desired AND local): tree-sync is the catch-up realization, and its
+// safe form is a compare-and-swap needing the prior. The repo path is the ONE
+// host_layout convention row (byte-identical across enrolled hosts per its note).
+fn converge_cli_revision_gate(out: ConvergeCliOutput, standing: FleetRevisionStanding) -> ConvergeCliOutput {
+  match standing {
+    RevisionConverged { revision: _ } => out
+    RevisionDrifted { desired: d, local: l } =>
+      ConvergeCliOutput {
+        line: out.line,
+        converged: false,
+        reason: Present {
+          value: join([
+            "gunbc converge: revision drift — desired ",
+            git_object_id_wire_hex(oid: d) as String,
+            ", local tree at ",
+            git_object_id_wire_hex(oid: l) as String,
+            "; tree-sync is the catch-up realization",
+          ], ""),
+        },
+      }
+    RevisionUnobserved { cause: c } =>
+      ConvergeCliOutput {
+        line: out.line,
+        converged: false,
+        reason: Present { value: concat("gunbc converge: desired revision unobserved — ", c) },
+      }
+  }
+}
+
+fn converge_cli_revision_line(standing: FleetRevisionStanding) -> String {
+  match standing {
+    RevisionConverged { revision: r } =>
+      concat("converge-revision verdict=converged revision=", git_object_id_wire_hex(oid: r) as String)
+    RevisionDrifted { desired: d, local: l } =>
+      join([
+        "converge-revision verdict=drifted desired=",
+        git_object_id_wire_hex(oid: d) as String,
+        " local=",
+        git_object_id_wire_hex(oid: l) as String,
+      ], "")
+    RevisionUnobserved { cause: c } => concat("converge-revision verdict=unobserved cause=", c)
+  }
+}
+
 fn converge_cli_output(host: String) -> ConvergeCliOutput {
   let out = converge_cli_output_with_verify(host: host, verify_only: false)
   if host == "self" {
-    converge_cli_publish(out: out, resolved: converge_cli_resolve_self(host: host))
+    let standing = fleet_revision_standing(repo: srv1_gunbc_repo_root)
+    converge_cli_publish(
+      out: converge_cli_revision_gate(out: out, standing: standing),
+      resolved: converge_cli_resolve_self(host: host),
+      revision_line: converge_cli_revision_line(standing: standing),
+    )
   } else {
     out
   }
