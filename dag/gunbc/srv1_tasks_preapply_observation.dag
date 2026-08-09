@@ -1,6 +1,7 @@
 module gunbc.srv1_tasks_preapply_observation
 
 import std.types { String, NonEmptyStr, Bool, List }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.host_converge { runner_instance_glob }
 import gunbc.host_converge_slice1 {
   host_converge_slice1_enumerate_units,
@@ -104,7 +105,7 @@ fn observe_unit_tasks(unit: NonEmptyStr) -> Srv1TasksUnitObservation {
   }
 }
 
-func observe_srv1_tasks_preapply_wet() -> Srv1TasksPreApplyReceipt {
+fn observe_srv1_tasks_preapply() -> Srv1TasksPreApplyReceipt {
   match host_converge_slice1_enumerate_units(instance_glob: runner_instance_glob(host: "srv1")) {
     Present { value: units } =>
       if length(units) == 0 {
@@ -118,5 +119,25 @@ func observe_srv1_tasks_preapply_wet() -> Srv1TasksPreApplyReceipt {
         }
       }
     _ => Srv1TasksPreApplyRefused { cause: "unit enumeration refused (systemctl list-units transport)" }
+  }
+}
+
+// Receipt landing: gunbc run admits only ProcessExit from a --function wet entry (the
+// first dispatch printed the receipt through the NotProcessExit refusal arm and exited
+// 2 — receipt captured, job red). The typed receipt therefore lands as a FILE the job
+// uploads/cats, and the exit derives from the receipt's own arm — never from transport
+// exit codes (the ruling's success criterion applies to the later apply the same way).
+data srv1_tasks_preapply_receipt_path: String = "target/srv1-tasks-preapply-receipt.txt"
+
+func observe_srv1_tasks_preapply_wet() -> ProcessExit {
+  let receipt = observe_srv1_tasks_preapply()
+  let w = Filesystem.Write(path: srv1_tasks_preapply_receipt_path, content: to_string(receipt))
+  if !w.success {
+    exit_failure(reason: join(["receipt write failed: ", w.error], ""))
+  } else {
+    match receipt {
+      Srv1TasksPreApplyObserved { host: _, desired_tasks_max: _, observer_cgroup_membership: _, units: _ } => ExitSuccess
+      Srv1TasksPreApplyRefused { cause: why } => exit_failure(reason: why)
+    }
   }
 }

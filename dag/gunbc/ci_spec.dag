@@ -513,14 +513,17 @@ data gunbc_ci_srv1_tasks_observation_function: String = "observe_srv1_tasks_prea
 
 fn gunbc_ci_srv1_tasks_observation_invoke() -> String {
   concat(
-    concat("ROOT=", ci_repo_root_shell(), "\n"),
-    gunbc_run_shell(
-      source_roots: witness_layer_roots,
-      entry: gunbc_ci_srv1_tasks_observation_entry,
-      function: gunbc_ci_srv1_tasks_observation_function,
-      rooted: true,
-      claim_run: false
-    )
+    concat(
+      concat("ROOT=", ci_repo_root_shell(), "\n"),
+      gunbc_run_shell(
+        source_roots: witness_layer_roots,
+        entry: gunbc_ci_srv1_tasks_observation_entry,
+        function: gunbc_ci_srv1_tasks_observation_function,
+        rooted: true,
+        claim_run: false
+      )
+    ),
+    "\ncat \"$ROOT/target/srv1-tasks-preapply-receipt.txt\""
   )
 }
 

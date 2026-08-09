@@ -649,4 +649,5 @@ jobs:
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/srv1_tasks_preapply_observation.dag --function observe_srv1_tasks_preapply_wet
+          cat "$ROOT/target/srv1-tasks-preapply-receipt.txt"
         timeout-minutes: 5
