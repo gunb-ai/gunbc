@@ -1,0 +1,184 @@
+module test.claim.spatial_knowledge_witness
+
+import std.types { Bool, NonEmptyStr }
+import std.measure { Millimeter, millimeter }
+import std.spatial_knowledge {
+  SpatialKnowledge,
+  SpatialMeasured,
+  SpatialEstimated,
+  SpatialHypothesis,
+  SpatialUnknown,
+  SpatialEvidenceClass,
+  SpatialClassMeasured,
+  SpatialClassEstimated,
+  SpatialClassHypothesis,
+  SpatialClassUnknown,
+  SpatialRequirement,
+  RequiresMeasured,
+  RequiresMeasuredOrEstimated,
+  SpatialAdmission,
+  SpatialAdmittedMeasured,
+  SpatialAdmittedEstimated,
+  SpatialRefused,
+  SpatialGeometryUnknown,
+  SpatialHypothesisNotAdmissible,
+  SpatialEstimateBelowRequiredStanding,
+  spatial_evidence_class,
+  spatial_measured_value,
+  spatial_renders_as_definite,
+  admit_spatial_quantity,
+}
+
+// Specimens are the four standings of ONE quantity — a room's clear width — so every claim below
+// discriminates on standing alone rather than on which number was written. The hypothesis specimen
+// is deliberately the refuted 25 ft massing premise that produced this module (converted to mm):
+// a plausible, useful, wrong number is exactly the input a fabrication guard must refuse.
+
+fn measured_width() -> SpatialKnowledge<Millimeter, NonEmptyStr> {
+  SpatialMeasured {
+    value: millimeter(count: 3660),
+    tolerance: millimeter(count: 10),
+    evidence: "tape anchor at walkthrough",
+  }
+}
+
+fn estimated_width() -> SpatialKnowledge<Millimeter, NonEmptyStr> {
+  SpatialEstimated {
+    low: millimeter(count: 3300),
+    high: millimeter(count: 4000),
+    method: "photo reconstruction scaled on in-frame subway tile",
+    evidence: "listing photo set",
+  }
+}
+
+fn hypothesis_width() -> SpatialKnowledge<Millimeter, NonEmptyStr> {
+  SpatialHypothesis {
+    value: millimeter(count: 7620),
+    purpose: "H1 massing candidate: assumed 25 ft corner-lot width, refuted by parcel records",
+  }
+}
+
+fn unknown_width() -> SpatialKnowledge<Millimeter, NonEmptyStr> {
+  SpatialUnknown { survey_obligation: "srv-geometry-capture" }
+}
+
+fn class_is_measured(knowledge: SpatialKnowledge<Millimeter, NonEmptyStr>) -> Bool {
+  match spatial_evidence_class(knowledge: knowledge) {
+    SpatialClassMeasured => true
+    SpatialClassEstimated => false
+    SpatialClassHypothesis => false
+    SpatialClassUnknown => false
+  }
+}
+
+fn has_measured_value(knowledge: SpatialKnowledge<Millimeter, NonEmptyStr>) -> Bool {
+  match spatial_measured_value(knowledge: knowledge) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn admits(
+  knowledge: SpatialKnowledge<Millimeter, NonEmptyStr>,
+  requirement: SpatialRequirement,
+) -> Bool {
+  match admit_spatial_quantity(knowledge: knowledge, requirement: requirement) {
+    SpatialAdmittedMeasured { value: _, tolerance: _ } => true
+    SpatialAdmittedEstimated { low: _, high: _ } => true
+    SpatialRefused { cause: _ } => false
+  }
+}
+
+fn refusal_names_survey_obligation(
+  knowledge: SpatialKnowledge<Millimeter, NonEmptyStr>,
+) -> Bool {
+  match admit_spatial_quantity(knowledge: knowledge, requirement: RequiresMeasured) {
+    SpatialAdmittedMeasured { value: _, tolerance: _ } => false
+    SpatialAdmittedEstimated { low: _, high: _ } => false
+    SpatialRefused { cause: c } =>
+      match c {
+        SpatialGeometryUnknown { survey_obligation: s } => (s as String) == "srv-geometry-capture"
+        SpatialHypothesisNotAdmissible { purpose: _ } => false
+        SpatialEstimateBelowRequiredStanding { method: _ } => false
+      }
+  }
+}
+
+fn refusal_is_hypothesis_cause(
+  knowledge: SpatialKnowledge<Millimeter, NonEmptyStr>,
+) -> Bool {
+  match admit_spatial_quantity(knowledge: knowledge, requirement: RequiresMeasuredOrEstimated) {
+    SpatialAdmittedMeasured { value: _, tolerance: _ } => false
+    SpatialAdmittedEstimated { low: _, high: _ } => false
+    SpatialRefused { cause: c } =>
+      match c {
+        SpatialGeometryUnknown { survey_obligation: _ } => false
+        SpatialHypothesisNotAdmissible { purpose: _ } => true
+        SpatialEstimateBelowRequiredStanding { method: _ } => false
+      }
+  }
+}
+
+fn admitted_estimate_stays_a_range(
+  knowledge: SpatialKnowledge<Millimeter, NonEmptyStr>,
+) -> Bool {
+  match admit_spatial_quantity(knowledge: knowledge, requirement: RequiresMeasuredOrEstimated) {
+    SpatialAdmittedMeasured { value: _, tolerance: _ } => false
+    SpatialAdmittedEstimated { low: lo, high: hi } => lo != hi
+    SpatialRefused { cause: _ } => false
+  }
+}
+
+// WITNESS CONTROL 2 — unknown geometry cannot default to a rectangle.
+fn witness_unknown_yields_no_magnitude() -> Bool {
+  has_measured_value(knowledge: unknown_width()) == false
+    && admits(knowledge: unknown_width(), requirement: RequiresMeasured) == false
+    && admits(knowledge: unknown_width(), requirement: RequiresMeasuredOrEstimated) == false
+    && refusal_names_survey_obligation(knowledge: unknown_width())
+}
+
+// WITNESS CONTROL 14 — hypothesis geometry never renders as measured. The RED half is the point:
+// the refuted 25 ft value is present and usable, and is still refused at every standing.
+fn witness_hypothesis_never_renders_definite() -> Bool {
+  spatial_renders_as_definite(knowledge: hypothesis_width()) == false
+    && class_is_measured(knowledge: hypothesis_width()) == false
+    && has_measured_value(knowledge: hypothesis_width()) == false
+    && admits(knowledge: hypothesis_width(), requirement: RequiresMeasured) == false
+    && admits(knowledge: hypothesis_width(), requirement: RequiresMeasuredOrEstimated) == false
+    && refusal_is_hypothesis_cause(knowledge: hypothesis_width())
+}
+
+// The requirement, not the quantity, decides — and an admitted estimate is still a range.
+fn witness_estimate_admits_only_against_its_requirement() -> Bool {
+  admits(knowledge: estimated_width(), requirement: RequiresMeasured) == false
+    && admits(knowledge: estimated_width(), requirement: RequiresMeasuredOrEstimated)
+    && has_measured_value(knowledge: estimated_width()) == false
+    && spatial_renders_as_definite(knowledge: estimated_width()) == false
+    && admitted_estimate_stays_a_range(knowledge: estimated_width())
+}
+
+// POSITIVE CONTROL — without this the suite would pass by refusing everything, which is the
+// failure mode a refusal-heavy guard is most likely to have.
+fn witness_measured_admits_at_every_requirement() -> Bool {
+  spatial_renders_as_definite(knowledge: measured_width())
+    && class_is_measured(knowledge: measured_width())
+    && has_measured_value(knowledge: measured_width())
+    && admits(knowledge: measured_width(), requirement: RequiresMeasured)
+    && admits(knowledge: measured_width(), requirement: RequiresMeasuredOrEstimated)
+}
+
+// Standing is exactly one of four, and only one of them is measured.
+fn witness_standings_are_distinct() -> Bool {
+  class_is_measured(knowledge: measured_width())
+    && class_is_measured(knowledge: estimated_width()) == false
+    && class_is_measured(knowledge: hypothesis_width()) == false
+    && class_is_measured(knowledge: unknown_width()) == false
+}
+
+test fn spatial_knowledge_witnesses() -> Bool {
+  witness_unknown_yields_no_magnitude()
+    && witness_hypothesis_never_renders_definite()
+    && witness_estimate_admits_only_against_its_requirement()
+    && witness_measured_admits_at_every_requirement()
+    && witness_standings_are_distinct()
+}
