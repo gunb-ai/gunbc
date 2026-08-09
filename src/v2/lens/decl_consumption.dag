@@ -19,6 +19,7 @@ import v2.lens.common.construction_justification {
 }
 import std.disposition { SingleAuthority }
 import v2.std.decl_index { DeclFact }
+import std.realization_schedule { ScheduleWitnessEntry }
 import v2.std.decl_ref_resolution {
   DeclarationIdentity,
   declaration_identity_from_fact,
@@ -288,4 +289,43 @@ data construction_justification_note: String = "WHY THIS IS A READER AND NOT YET
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
+}
+
+data root_enumeration_note: String = "A ROOT IS A DECLARATION NOTHING NEEDS TO REFERENCE, AND THE UNIVERSE OF ROOTS IS ONLY PARTLY ENUMERABLE HERE. That is a finding rather than an inconvenience, and it is stated before the mechanism so no reader takes the roster below for the whole set.\n\nWHAT IS ENUMERABLE: an explicit roster of ScheduleWitnessEntry carries entry (a source path) and function (a declaration name), so joining it to decl_facts by (rel_path, name) yields real declarations. That join is legitimate rather than positional citation in disguise -- the roster natively carries a path and a name, and this join CONSUMES the identity the roster already has instead of inventing one for a declaration that has a better name available.\n\nWHAT IS NOT: since the discovery flip, most executing witnesses are found by a host-side directory scan (CiSpec.discovery_scan_dirs), which no .dag fold can enumerate -- the scan happens outside the substrate and only its results reach the runner. Generated-artifact producers are likewise dispatched by a match in gunbc.generated_artifact_emit rather than listed as a roster of declaration names. So a purpose law consuming this module MUST treat an empty root set as unknown rather than as proof that a declaration is unrooted, which is why the unavailability is a typed arm and not an empty list.\n\nTHE SHAPE OF THE FIX, named rather than attempted here: discovery becomes a declared population the substrate can read, which is the same fact the witness-admission ruling already demands for a different reason -- a witness that no cadence executes must not read as covered. One authority discharges both."
+
+type RootEnumeration
+  = RootsEnumerated { roots: List<DeclarationConsumer> }
+  | RootEnumerationPartial {
+      roots: List<DeclarationConsumer>,
+      unenumerated_source: String,
+    }
+
+fn decl_consumption_roster_roots(
+  roster: List<ScheduleWitnessEntry>,
+  facts: List<DeclFact>,
+) -> List<DeclarationConsumer> {
+  fold(roster, init: [], f: fn(acc, entry) {
+    fold(facts, init: acc, f: fn(inner, f) {
+      if f.rel_path == entry.entry && f.name == entry.function {
+        list_snoc_item(
+          xs: inner,
+          item: WitnessRoot { witness: declaration_identity_from_fact(fact: f) },
+        )
+      } else {
+        inner
+      }
+    })
+  })
+}
+
+data root_enumeration_is_always_partial_note: String = "THE ARM IS FIXED AT PARTIAL, DELIBERATELY, AND THAT IS THE POINT OF TYPING IT. There is no argument available today by which this function could return RootsEnumerated, because the host-side discovery scan is not readable from here -- so offering the total arm and never selecting it would be a carrier shaped to flatter a future it cannot yet reach. The arm exists because the population becomes enumerable once discovery is declared, and on that day this function selects it and the string below deletes. Until then every consumer matches an arm that says out loud that the set is incomplete."
+
+fn decl_consumption_roots(
+  roster: List<ScheduleWitnessEntry>,
+  facts: List<DeclFact>,
+) -> RootEnumeration {
+  RootEnumerationPartial {
+    roots: decl_consumption_roster_roots(roster: roster, facts: facts),
+    unenumerated_source: "host-side witness discovery (CiSpec.discovery_scan_dirs) and generated-artifact producer dispatch (gunbc.generated_artifact_emit) are not readable as declaration rosters from .dag",
+  }
 }

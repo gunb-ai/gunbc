@@ -160,3 +160,26 @@ test fn decl_consumption_atom_names_reads_the_whole_subtree() -> Bool {
   let names = decl_consumption_atom_names(root: fx_body(names: [^alpha, ^beta]))
   length(xs: names) == 3
 }
+
+data root_enumeration_control_note: String = "TWO CLAIMS, AND THE SECOND IS THE ONE THAT MATTERS. The first is ordinary: a roster entry naming a real (path, name) pair produces that declaration as a root. The second asserts that the answer is the PARTIAL arm even when every roster entry resolved -- because the incompleteness is not about this roster, it is about the host-side discovery scan that no fold here can read. A consumer matching a total arm would conclude that a declaration absent from the roots is unrooted, and that conclusion licenses deleting it."
+
+fn fixture_roster() -> List<std.realization_schedule.ScheduleWitnessEntry> {
+  [
+    std.realization_schedule.ScheduleWitnessEntry {
+      entry: "fx/consumption.dag",
+      function: "orphan",
+      kind: std.realization_schedule.CorpusWitnessKind,
+    },
+  ]
+}
+
+test fn decl_consumption_roots_join_the_roster_and_stay_partial() -> Bool {
+  match v2.lens.decl_consumption.decl_consumption_roots(
+    roster: fixture_roster(),
+    facts: fixture_facts(),
+  ) {
+    v2.lens.decl_consumption.RootsEnumerated { roots: _ } => false
+    v2.lens.decl_consumption.RootEnumerationPartial { roots, unenumerated_source: _ } =>
+      length(xs: roots) == 1
+  }
+}
