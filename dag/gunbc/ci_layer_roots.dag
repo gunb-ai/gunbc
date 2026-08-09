@@ -1352,6 +1352,12 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     dissolve_on: "same as sibling row"
   },
   SubstrateLongLaneRow {
+    entry: "dag/test/claim/roadmap_site_surface_readiness_witness_test.dag",
+    function: "witness_roadmap_site_surface_readiness_materialized_batch_holds",
+    reason: "5004ms measured deadline kill (CI run at 0cf0a34faa, 2026-08-09): a borderline ~5s materialized-batch witness pushed over the fast-lane line when the //-annotation lex rule added one per-position rule attempt corpus-wide (longest-match tries every rule at every position; the rule is the CI2-0 frontend repair, the cost is the interpreted lexer's, not the witness's)",
+    dissolve_on: "witness realization lands the lex natively or eval drops under gunbc_ci_fast_lane_witness_eval_budget on a measured run — then re-enroll per-PR discovery and delete this row"
+  },
+  SubstrateLongLaneRow {
     entry: "dag/test/claim/dag_sum_decl_leading_pipe_witness_test.dag",
     function: "witness_single_line_sum_parses",
     reason: "~15s measured eval (valiant-boar-65, 2026-08-09): interpreted production dag_lex_rules + dag_grammar lex+parse per control — the CI2-0 leading-pipe sum-decl proof matrix (operator repair msg_2a8e30e8 item a), incl. the identity-swapped pre-repair grammar RED",
