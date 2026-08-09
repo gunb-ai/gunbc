@@ -1,5 +1,7 @@
 module v2.lens.unit_modeling
 
+import v2.std.witness { Holds }
+
 
 type UnitFieldRow {
   field: Symbol

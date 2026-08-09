@@ -1,0 +1,172 @@
+module v2.workflow.realization_sweep
+
+import v2.workflow.realization_attempt {
+  EntryRealizationAttempt,
+  RealizationAttemptStanding,
+  V2TranslateSerialized,
+  V2RealizationRefused,
+  attempt_closure_rows,
+  attempt_phase_label,
+  entry_witness_source
+}
+import v2.compiler.name_resolve { Admission }
+import v2.compiler.source_authority {
+  SourceRef,
+  SourceRootIngest,
+  SourceRootIngestBuildOk,
+  SourceRootIngestBuildReadFailed,
+  source_root_ingest_build_from_source_refs
+}
+import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
+import v2.std.integer { integer_nat_to_decimal_string }
+import v2.std.optional { Optional, Present, Absent }
+import v2.std.algebra { fold_list, length }
+import v2.std.collection { list_at_optional }
+import v2.std.logic { Bool }
+import std.types { Int, List, String }
+
+data realization_sweep_note: String = "CI2-0 Commit B sweep (operator mandate 2026-08-08, convergence mandate 2026-08-09): the machine-derived census replacing the circular one — for each roster entry, the host-discovered import closure (the executor's own discover_source_root_reads_for_entry, transported as the SAME host_source_root_ingest_manifest overlay the frontier probe survey rides — never a .dag-side re-discovery forking the closure authority) is driven through attempt_closure_rows: ONE canonical assembly per entry, one attempt per required test-fn identity, a typed standing per identity, exactly once. The receipt is a phase-and-cause histogram whose laws are structural (row count equals identity count; every row typed), never tree-copied literals. Identity source: the entry's authored test-fn roster, scanned from the entry witness's own source text at line grain — the same 'test fn ' surface the floor's discovery walk recognizes — and interned to the resolved declaration name the exactly-one join consumes."
+
+type RealizationSweepRow {
+  entry: String
+  function: String
+  phase_label: String
+  cause: String
+}
+
+fn no_name_strings() -> List<String> {
+  []
+}
+
+fn sweep_fn_name_of_line(line: String) -> List<String> {
+  if starts_with(s: line, prefix: "test fn ") {
+    match list_at_optional(xs: split(s: line, delimiter: "("), index: 0) {
+      Absent => no_name_strings()
+      Present { value: head } =>
+        [substring(s: head, start: 8, end: string_length(s: head))]
+    }
+  } else {
+    no_name_strings()
+  }
+}
+
+fn sweep_fn_names(source: String) -> List<String> {
+  fold_list(xs: split(s: source, delimiter: "\n"), empty: no_name_strings(), cons: fn(acc, line) {
+    concat(acc, sweep_fn_name_of_line(line: line))
+  })
+}
+
+fn no_fn_symbols() -> List<Symbol> {
+  []
+}
+
+fn sweep_row_cause(a: EntryRealizationAttempt) -> String {
+  match a.standing {
+    V2TranslateSerialized { emitted_nonempty: _ } => ""
+    V2RealizationRefused { phase: _, exact_cause: c } => symbol_lexeme(sym: c)
+  }
+}
+
+fn sweep_rows(ingest: SourceRootIngest, admission: Admission, entry: String) -> List<RealizationSweepRow> {
+  match entry_witness_source(ingest: ingest, entry: entry) {
+    Absent =>
+      [RealizationSweepRow {
+        entry: entry,
+        function: "",
+        phase_label: "read",
+        cause: "realization_sweep_entry_witness_absent"
+      }]
+    Present { value: entry_source } => {
+      let names = sweep_fn_names(source: entry_source)
+      let attempts = attempt_closure_rows(
+        ingest: ingest,
+        admission: admission,
+        fn_names: fold_list(xs: names, empty: no_fn_symbols(), cons: fn(acc, n) {
+          concat(acc, [symbol_intern_lexeme(lexeme: n)])
+        }),
+        entry: entry
+      )
+      fold_list(xs: names, empty: SweepPairState { index: 0, out: [] }, cons: fn(st, name) {
+        let row = match list_at_optional(xs: attempts, index: st.index) {
+          Absent =>
+            RealizationSweepRow {
+              entry: entry,
+              function: name,
+              phase_label: "read",
+              cause: "realization_sweep_attempt_row_missing"
+            }
+          Present { value: a } =>
+            RealizationSweepRow {
+              entry: entry,
+              function: name,
+              phase_label: attempt_phase_label(a: a),
+              cause: sweep_row_cause(a: a)
+            }
+        }
+        SweepPairState { index: st.index + 1, out: concat(st.out, [row]) }
+      }).out
+    }
+  }
+}
+
+type SweepPairState {
+  index: Int
+  out: List<RealizationSweepRow>
+}
+
+data sweep_rows_from_refs_note: String = "Read-through seam for closures past the manifest inline cap (the SAME source_root_ingest_build_from_source_refs the frontier probe rides): the host manifest carries SourceRef rows (path + root + content hash, no inline source), the sweep reads them through the filesystem with content-hash verification, and a read failure is ONE located refusal row for the entry — typed, counted, never an empty roster."
+
+fn sweep_rows_from_refs(refs: List<SourceRef>, admission: Admission, entry: String) -> List<RealizationSweepRow> {
+  match source_root_ingest_build_from_source_refs(refs: refs) {
+    SourceRootIngestBuildReadFailed { result: _ } =>
+      [RealizationSweepRow {
+        entry: entry,
+        function: "",
+        phase_label: "read",
+        cause: "realization_sweep_closure_read_refused"
+      }]
+    SourceRootIngestBuildOk { ingest: ingest } =>
+      sweep_rows(ingest: ingest, admission: admission, entry: entry)
+  }
+}
+
+fn sweep_rows_account_exactly_once(rows: List<RealizationSweepRow>, entry_source: String) -> Bool {
+  length(xs: rows) == length(xs: sweep_fn_names(source: entry_source))
+}
+
+fn sweep_receipt_tsv(rows: List<RealizationSweepRow>) -> String {
+  fold_list(xs: rows, empty: "", cons: fn(acc, r) {
+    let line = concat(r.entry, "\t", r.function, "\t", r.phase_label, "\t", r.cause)
+    if acc == "" { line } else { concat(acc, "\n", line) }
+  })
+}
+
+type SweepHistogramState {
+  prev: String
+  count: Int
+  out: String
+}
+
+fn sweep_histogram_tsv(rows: List<RealizationSweepRow>) -> String {
+  let keys = map(rows, r => concat(r.phase_label, "\t", r.cause)) |> sort_by(k => k)
+  let folded = fold_list(xs: keys, empty: SweepHistogramState { prev: "", count: 0, out: "" }, cons: fn(st, k) {
+    if st.count == 0 {
+      SweepHistogramState { prev: k, count: 1, out: st.out }
+    } else if k == st.prev {
+      SweepHistogramState { prev: st.prev, count: st.count + 1, out: st.out }
+    } else {
+      SweepHistogramState {
+        prev: k,
+        count: 1,
+        out: if st.out == "" { concat(st.prev, "\t", integer_nat_to_decimal_string(value: st.count)) } else { concat(st.out, "\n", st.prev, "\t", integer_nat_to_decimal_string(value: st.count)) }
+      }
+    }
+  })
+  if folded.count == 0 {
+    folded.out
+  } else if folded.out == "" {
+    concat(folded.prev, "\t", integer_nat_to_decimal_string(value: folded.count))
+  } else {
+    concat(folded.out, "\n", folded.prev, "\t", integer_nat_to_decimal_string(value: folded.count))
+  }
+}

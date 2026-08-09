@@ -1,0 +1,84 @@
+module gunbc.test.claim.realization_sweep_test
+
+import v2.workflow.realization_sweep {
+  RealizationSweepRow,
+  sweep_fn_names,
+  sweep_rows,
+  sweep_rows_account_exactly_once,
+  sweep_receipt_tsv,
+  sweep_histogram_tsv
+}
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.compiler.name_resolve { Admission, ResolutionSubject, Import, ImportVisible }
+import v2.std.artifact { Artifact, SourceFile }
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { fold_list, length }
+import v2.std.logic { Bool }
+import std.types { Int, List, String }
+
+data sweep_test_note: String = "CI2-0 Commit B sweep laws, hermetic controls: the per-identity accounting is exactly-once by construction (rows == authored test-fn roster), every row carries a typed phase, and the histogram is a pure fold over the rows — proven on a planted two-module closure whose entry carries REAL authored test markers, so the marker-capture seam and the identity scan are both exercised. The witness-absent arm is the RED: an entry not present in its own closure ingest is a located refusal row, never an empty (silently uncovered) roster."
+
+data sweep_entry_path: String = "src/v2/test/fixture/ks_entry.dag"
+
+data sweep_entry_source: String = "module ks_entry\n\nimport ks_dep { helper }\n\ntest fn t_cross_module() -> Bool { helper(x: 1) == 2 }\n\ntest fn t_local() -> Bool { local_add(x: 1, y: 1) == 2 }\n\nfn local_add(x: Int, y: Int) -> Int { x + y }\n"
+
+fn ks_read(text: String, id: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: text, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: ^ks_unit,
+    source_root: v2.std.cross_tree.import_model.V2Tree
+  }
+}
+
+fn ks_ingest() -> SourceRootIngest {
+  Cons {
+    head: ks_read(text: "module ks_dep\n\nfn helper(x: Int) -> Int { x + 1 }\n", id: ^ks_dep_art, path: "src/v2/test/fixture/ks_dep.dag"),
+    tail: Cons {
+      head: ks_read(text: sweep_entry_source, id: ^ks_entry_art, path: sweep_entry_path),
+      tail: Empty
+    }
+  }
+}
+
+fn ks_admission() -> Admission {
+  Admission {
+    subject: ResolutionSubject { name: Cons { head: ^ks_entry, tail: Empty } },
+    imports: Cons {
+      head: Import { target: Cons { head: ^ks_dep, tail: Empty }, visibility: ImportVisible },
+      tail: Empty
+    }
+  }
+}
+
+test fn witness_sweep_fn_names_scans_authored_roster() -> Bool {
+  let names = sweep_fn_names(source: sweep_entry_source)
+  length(xs: names) == 2
+}
+
+test fn witness_sweep_rows_account_each_identity_exactly_once() -> Bool {
+  let rows = sweep_rows(ingest: ks_ingest(), admission: ks_admission(), entry: sweep_entry_path)
+  sweep_rows_account_exactly_once(rows: rows, entry_source: sweep_entry_source)
+    && fold_list(xs: rows, empty: true, cons: fn(acc, r) {
+      acc && (r.phase_label != "") && (r.function != "")
+    })
+}
+
+test fn witness_sweep_entry_witness_absent_is_located_refusal_RED() -> Bool {
+  let rows = sweep_rows(ingest: ks_ingest(), admission: ks_admission(), entry: "src/v2/test/fixture/no_such_entry.dag")
+  length(xs: rows) == 1
+    && fold_list(xs: rows, empty: true, cons: fn(acc, r) {
+      acc && (r.cause == "realization_sweep_entry_witness_absent") && (r.phase_label == "read")
+    })
+}
+
+test fn witness_sweep_receipt_and_histogram_render_every_row() -> Bool {
+  let rows = sweep_rows(ingest: ks_ingest(), admission: ks_admission(), entry: sweep_entry_path)
+  let tsv = sweep_receipt_tsv(rows: rows)
+  let hist = sweep_histogram_tsv(rows: rows)
+  (tsv != "") && (hist != "")
+    && fold_list(xs: rows, empty: true, cons: fn(acc, r) {
+      acc && string_contains(s: tsv, pattern: r.function)
+    })
+}
