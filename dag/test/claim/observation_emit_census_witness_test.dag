@@ -55,7 +55,7 @@ test fn w_roster_staleness_check_discriminates() -> Bool {
     source_file: "src/v1/stage0/src/bin/claim_executor.rs" as NonEmptyStr,
     disposition: CountedFrontierSite {
       reason: "control" as NonEmptyStr,
-      dissolution: unbound_dissolution(description: "control") as NonEmptyStr
+      dissolution: unbound_dissolution(description: "control")
     }
   }
   !census_marker_present(site: bogus)
