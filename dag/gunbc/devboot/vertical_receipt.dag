@@ -37,6 +37,8 @@ fn devboot_vertical_standing() -> DevbootVerticalStanding {
 //
 // EVERY DOWNSTREAM CHECK PASSED ANYWAY, which is the part worth carrying forward. The sha256 was genuinely computed over the fetched bytes and genuinely matched; the consumers really did materialize and execute a working binary. An independent digest proves the bytes you fetched are the bytes that were stored, and says nothing about whether the right thing was stored. Production and retrieval are separate claims and the earlier receipt conflated them.
 //
+// WHAT IS AND IS NOT REPRODUCIBLE HERE, stated because the subject axis is a dirty-worktree snapshot. The artifact object id and its sha256 are reproducible by anyone building these crate sources with this toolchain -- they are facts about the output. The SUBJECT TOKEN is not: it names a tree containing uncommitted working-tree state that existed on one machine at one moment, so no other party can recompute it, and the evaluated head only locates the committed part of it. That is a property of building what an agent is looking at rather than what it has committed, and the token is carried as the identity the run actually used, not as something a reader can independently derive.
+//
 // THIS INHABITANT IS FROM AN ISOLATED BUILD. The snapshot tree was checked out into its own directory, compiled there with its own target root, and the resulting binary hashed from that isolated output -- so no ambient artifact could have supplied the bytes. The identity is exactly reproducible from the same tree at the same settings, which is what makes this checkable rather than believable.
 
 fn devboot_vertical_receipt() -> DevbootVerticalReceipt? {
@@ -45,8 +47,8 @@ fn devboot_vertical_receipt() -> DevbootVerticalReceipt? {
     Present { value: digest } =>
       Present {
         value: DevbootVerticalReceipt {
-          evaluated_head: "b0f034c6ffdd5043f64a62bd110ced13186d7b52",
-          subject_ref_token: "fnv1a64-b5c733758fe2fef5" as NonEmptyStr,
+          evaluated_head: "eb38c7b704",
+          subject_ref_token: "fnv1a64-9c6ddff3327a5dd3" as NonEmptyStr,
           artifact_object_id: "e503761a12f3d9c0e7d4364e8bfb094ab0bddf6a" as NonEmptyStr,
           artifact_sha256: digest,
           producer_entry: DeclarationRef {
