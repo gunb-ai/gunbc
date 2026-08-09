@@ -1,8 +1,15 @@
 module v2.workflow.realization_attempt
 
 import v2.compiler.ingested_fixture_arrows { ingested_resolved_module_from_source }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.compiler.name_resolve { Admission, ResolutionSubject, Import, ImportVisible }
+import v2.compiler.infer { infer, InferredTree }
+import v2.compiler.compile { compile_inferred, TranslateTo, TranslateResult, EvalResult, CompileMode }
 import v2.compiler.emit_produced { emit_produced_module_rust }
 import v2.extdeps.languages.rust { rust_target_model_staging }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.collection { list_at_optional }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.communication.medium { Medium }
 import v2.std.diagnostic { Accepted, Rejected, Outcome, Diagnostic, NonEmptyDiagnostics }
@@ -192,5 +199,73 @@ fn attempt_cause(a: EntryRealizationAttempt) -> Optional<Symbol> {
   match a.standing {
     V2TranslateSerialized { emitted_nonempty: _ } => Absent
     V2RealizationRefused { phase: _, exact_cause: c } => Present { value: c }
+  }
+}
+
+data attempt_assembled_note: String = "The CANONICAL closure attempt (operator seven-findings contract, msg_9dec74f7): exact ingest (real file reads as DagSourceReadWitness rows) -> assemble_program_from_ingest (the SAME multi-module assembly the source-root-ingest gate rides — imports resolve against the closure, finding 2; no fixture bridge, finding 1) -> EXACTLY-ONE identity join against the resolved program for the required declaration name (zero and many both refuse with typed causes — finding 6, never a synthetic wrapper) -> infer (finding 3, its own phase) -> compile_inferred TranslateTo (finding 4: assembly, join, infer, translate each report their own phase; the exact cause Symbol locates the true stage inside assembly refusals). rust_target_model_staging remains the target pending the finding-5 canonicality ruling, surfaced in the sweep receipt."
+
+fn decl_edges_named(root: Node, fn_name: Symbol, acc: List<Node>) -> List<Node> {
+  let here = fold(root.children, init: acc, f: fn(inner, e) {
+    match e.label {
+      Named { name: n } =>
+        if n == fn_name {
+          match first_arrow_in(root: e.target) {
+            Present { value: _ } => concat(inner, [node_synthetic(
+              kind: TypeNode { connective: Conj },
+              children: [Edge { label: Named { name: n }, target: e.target }]
+            )])
+            Absent => inner
+          }
+        } else { inner }
+      _ => inner
+    }
+  })
+  fold(root.children, init: here, f: fn(inner, e) {
+    decl_edges_named(root: e.target, fn_name: fn_name, acc: inner)
+  })
+}
+
+fn attempt_assembled(
+  ingest: SourceRootIngest,
+  admission: Admission,
+  fn_name: Symbol,
+  entry: String
+) -> EntryRealizationAttempt {
+  match assemble_program_from_ingest(ingest: ingest, admission: admission, lm: dag_language_model()) {
+    Rejected { diagnostics: ds } =>
+      attempt_refused(entry: entry, phase: PhaseResolve, cause: first_located_cause(ds: ds))
+    Accepted { value: program, diagnostics: _ } => {
+      let joined = decl_edges_named(root: program, fn_name: fn_name, acc: [])
+      if length(xs: joined) == 0 {
+        attempt_refused(entry: entry, phase: PhaseResolve, cause: ^realization_attempt_identity_absent)
+      } else if length(xs: joined) > 1 {
+        attempt_refused(entry: entry, phase: PhaseResolve, cause: ^realization_attempt_identity_ambiguous)
+      } else {
+        match list_at_optional(xs: joined, index: 0) {
+          Absent => attempt_refused(entry: entry, phase: PhaseResolve, cause: ^realization_attempt_identity_absent)
+          Present { value: decl } =>
+            match infer(tree: decl) {
+              Rejected { diagnostics: ds } =>
+                attempt_refused(entry: entry, phase: PhaseInfer, cause: first_located_cause(ds: ds))
+              Accepted { value: inferred, diagnostics: _ } =>
+                match compile_inferred(inferred: inferred, mode: TranslateTo { target: rust_target_model_staging() }) {
+                  Rejected { diagnostics: ds } =>
+                    attempt_refused(entry: entry, phase: PhaseTranslate, cause: first_located_cause(ds: ds))
+                  Accepted { value: out, diagnostics: _ } =>
+                    match out {
+                      TranslateResult { source: emitted } =>
+                        EntryRealizationAttempt {
+                          entry: entry,
+                          arrow_count: 1,
+                          standing: V2TranslateSerialized { emitted_nonempty: !(emitted.carried == "") }
+                        }
+                      EvalResult { value: _ } =>
+                        attempt_refused(entry: entry, phase: PhaseTranslate, cause: ^realization_attempt_mode_result_mismatch)
+                    }
+                }
+            }
+        }
+      }
+    }
   }
 }
