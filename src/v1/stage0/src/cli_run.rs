@@ -6207,14 +6207,14 @@ fn collect_import_closure_module_names_from_facts(
 /// The context is optional only because selection-Off callers never reach an axis at all. Anywhere
 /// the axis is actually consulted, its absence is a typed refusal — not a `false` standing in for
 /// "no classification available", which is the reading that would license a skip.
-fn live_read_selection_context<'a>(
-    live: Option<&'a LiveReadSelectionContext>,
+fn live_read_selection_plan<'a>(
+    plan: Option<&'a LiveReadSelectionPlan>,
     entry_path: &str,
-) -> Result<&'a LiveReadSelectionContext, String> {
-    live.ok_or_else(|| {
+) -> Result<&'a LiveReadSelectionPlan, String> {
+    plan.ok_or_else(|| {
         format!(
-            "AFFECTED-SET REFUSAL cause=LiveReadContextAbsent entry={entry_path} — the live-read \
-             selection axis was consulted with no classification context built for this run."
+            "AFFECTED-SET REFUSAL cause=LiveReadPlanAbsent entry={entry_path} — the live-read \
+             selection axis was consulted with no selection plan built for this run."
         )
     })
 }
@@ -6241,8 +6241,8 @@ fn entry_eligible_for_discovery_skip_before_resolve(
     index: &MultiEntryIndex,
     // `None` only when selection is Off, where this function returns before any axis is
     // consulted. Every reachable use below unwraps it into a typed refusal rather than a
-    // default: an absent classification context must never present as an absent runtime read.
-    live: Option<&LiveReadSelectionContext>,
+    // default: an absent plan must never present as an absent runtime read.
+    plan: Option<&LiveReadSelectionPlan>,
     facts: &ModuleGraphFactsLive,
     declared_paths: &HashSet<String>,
     touched_paths: &[String],
@@ -6251,42 +6251,21 @@ fn entry_eligible_for_discovery_skip_before_resolve(
     if !skip_enabled {
         return Ok(false);
     }
-    // Fail-closed on the substrate-declared disposition (v2.std.live_tree): a
-    // `ReadsLiveTree` entry reads state outside its resolved closure, so the diff
-    // cannot bound its inputs — it never predict-skips. Replaces the deleted
-    // entry-text classifier (`entry_text_indicates_live_host_scan`); the disposition
-    // is entry-grain, parsed onto every DiscoveryRow of the entry.
-    if reads_live_tree {
-        return Ok(false);
-    }
-    if entry_has_edited_test_fn_in_entry(diff_edits, entry_path) {
-        return Ok(false);
-    }
-    if entry_file_touched_via_import_closure(entry_path, facts, declared_paths, touched_paths)? {
-        return Ok(false);
-    }
-    let declared_axis = declared_source_refs_axis_for_entry(
+    // The SAME cheap-axis authority the plan derived its candidates from, so this predicate and
+    // the filter cannot disagree about which rows a classification is available for.
+    if entry_blocked_by_cheap_axes(
         entry_path,
+        reads_live_tree,
         facts,
-        &default_source_roots(),
+        declared_paths,
         touched_paths,
-    );
-    if declared_axis != DeclaredSourceRefAxis::Absent {
-        if declared_source_refs_blocks_skip(declared_axis) {
-            return Ok(false);
-        }
-    } else if effect_reach_touched_via_path_literals(entry_path, facts, touched_paths) {
+        touched_paths,
+        diff_edits,
+    )? != CheapAxisDisposition::NotBlocked
+    {
         return Ok(false);
     }
-    if compile_clean_broad_stop_line_blocks_skip(entry_path, touched_paths) {
-        return Ok(false);
-    }
-    // THE G2 AXIS IS LAST, because it is the only expensive one and the decision is a
-    // disjunction: every axis above already answers "do not skip" on its own evidence, and a
-    // live-read classification cannot change a verdict that is already settled. Ordering is
-    // therefore semantics-preserving and is the difference between classifying the roster and
-    // classifying the rows whose answer G2 can still decide.
-    if live_read_selection_context(live, entry_path)?.runtime_dependency_touched_for_entry(
+    if live_read_selection_plan(plan, entry_path)?.entry_must_run(
         index,
         entry_path,
         touched_paths,
@@ -6309,7 +6288,7 @@ struct DiscoveryEntryResolve {
 
 fn resolve_discovery_entry_for_corpus_row(
     index: &MultiEntryIndex,
-    live: Option<&LiveReadSelectionContext>,
+    plan: Option<&LiveReadSelectionPlan>,
     entry_path: &str,
     execution_mode: v1_interpreter::ExecutionMode,
     whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
@@ -6373,17 +6352,16 @@ fn resolve_discovery_entry_for_corpus_row(
             // classification is consulted at all -- and G2 is the only expensive disjunct here.
             // When the declared-source/effect-reach axis already answers "do not skip", the
             // live-read answer cannot change the verdict, so asking for it is pure cost.
-            let entry_runtime_dependency_touched =
-                match declared_axis {
-                    DeclaredSourceRefAxis::Absent => effect_reach_touched_via_path_literals(
-                        entry_path,
-                        &index.module_graph_facts,
-                        touched_entry_paths,
-                    ),
-                    DeclaredSourceRefAxis::Touched | DeclaredSourceRefAxis::Unresolved => true,
-                    DeclaredSourceRefAxis::Untouched => false,
-                } || live_read_selection_context(live, entry_path)?
-                    .runtime_dependency_touched_for_entry(index, entry_path, touched_entry_paths)?;
+            let entry_runtime_dependency_touched = match declared_axis {
+                DeclaredSourceRefAxis::Absent => effect_reach_touched_via_path_literals(
+                    entry_path,
+                    &index.module_graph_facts,
+                    touched_entry_paths,
+                ),
+                DeclaredSourceRefAxis::Touched | DeclaredSourceRefAxis::Unresolved => true,
+                DeclaredSourceRefAxis::Untouched => false,
+            } || live_read_selection_plan(plan, entry_path)?
+                .entry_must_run(index, entry_path, touched_entry_paths)?;
             (
                 frontier_nodes,
                 touches_frontier,
@@ -9458,6 +9436,112 @@ mod live_read_selection_manifest_producer_tests {
                  from the other"
             );
         }
+    }
+
+    // CHEAP-AXIS EXCLUSION CROSS-PRODUCT (proof-ladder gate 4).
+    //
+    // One control per exclusion reason, because the reasons are separate arms of one disjunction
+    // and a single specimen proves only its own arm. The property under test is the one the
+    // sparse context could not express: an excluded entry must be answerable WITHOUT consulting
+    // the classification, since it is deliberately absent from it. Before the plan existed, each
+    // of these produced `LiveReadEntryAbsent` at whichever consumer asked first.
+    //
+    // Asserted in BOTH directions per arm: the excluded entry must report `AlreadySelected` with
+    // the expected cause AND must answer `entry_must_run == true` -- because "not queried" and
+    // "not selected" are the two ways this could go wrong, and they fail in opposite directions.
+    // An arm that only checked the cause would pass while the entry silently became skippable.
+    #[test]
+    fn every_cheap_axis_excludes_without_the_classification_being_consulted() {
+        enter_workspace();
+        let index = build_multi_entry_index(&source_roots());
+        let entry = "dag/test/claim/accelerator_demo_execution_witness_test.dag";
+        let function = "accelerator_demo_execution_lane_witnesses";
+
+        let row = |reads_live_tree: bool| super::DiscoveryRow {
+            label: format!("{entry}::{function}"),
+            entry: entry.to_string(),
+            function: function.to_string(),
+            reads_live_tree,
+        };
+
+        // (reads_live_tree, diff edits, changed paths, expected cause)
+        let cases: Vec<(
+            bool,
+            super::FloorDiffEdits,
+            Vec<String>,
+            super::CheapAxisCause,
+        )> = vec![
+            (
+                true,
+                super::FloorDiffEdits::default(),
+                Vec::new(),
+                super::CheapAxisCause::ReadsLiveTree,
+            ),
+            (
+                false,
+                super::FloorDiffEdits {
+                    edited_test_fns: [(entry.to_string(), function.to_string())]
+                        .into_iter()
+                        .collect(),
+                    ..Default::default()
+                },
+                Vec::new(),
+                super::CheapAxisCause::EditedTestFn,
+            ),
+            (
+                false,
+                super::FloorDiffEdits {
+                    touched_entry_files: [entry.to_string()].into_iter().collect(),
+                    ..Default::default()
+                },
+                Vec::new(),
+                super::CheapAxisCause::EntryFileTouched,
+            ),
+        ];
+
+        for (reads_live_tree, diff_edits, changed, expected) in cases {
+            let rows = vec![row(reads_live_tree)];
+            let plan = super::LiveReadSelectionPlan::build(&rows, &index, &diff_edits, &changed)
+                .expect("the plan must build for an excluded row without classifying it");
+            match plan.demand_for(entry).expect("planned") {
+                super::LiveReadDemand::AlreadySelected { cause } => assert_eq!(
+                    *cause, expected,
+                    "excluded for the wrong reason, which means a different axis fired"
+                ),
+                super::LiveReadDemand::NeedsClassification => {
+                    panic!("{expected:?} did not exclude the row, so it would be classified")
+                }
+            }
+            assert!(
+                plan.entry_must_run(&index, entry, &changed)
+                    .expect("an excluded entry answers from its own cause, never a lookup"),
+                "{expected:?} excluded the row from classification AND let it skip -- the \
+                 fail-open direction"
+            );
+        }
+    }
+
+    /// An entry the plan never saw is a REAL gap and refuses, distinctly from a deliberate
+    /// exclusion. Without this the plan would be a way to make every absence silent, which is
+    /// the opposite of the defect being repaired.
+    #[test]
+    fn an_unplanned_entry_refuses_rather_than_reading_as_already_selected() {
+        enter_workspace();
+        let index = build_multi_entry_index(&source_roots());
+        let plan = super::LiveReadSelectionPlan::build(
+            &[],
+            &index,
+            &super::FloorDiffEdits::default(),
+            &[],
+        )
+        .expect("an empty roster plans");
+        let err = plan
+            .demand_for("dag/test/claim/accelerator_demo_execution_witness_test.dag")
+            .expect_err("an entry outside the plan must refuse");
+        assert!(
+            err.contains("LiveReadEntryNotPlanned"),
+            "the refusal must name the gap, got: {err}"
+        );
     }
 
     // LOCAL FAILURE ISOLATION (proof-ladder gate 3).
@@ -21397,7 +21481,12 @@ pub fn measure_selected_entry_closure_overlap(
 
     // The same complete-roster context the executor builds — this measurement must answer from
     // the production predicate, not a second one that could drift from it.
-    let live_read_selection = LiveReadSelectionContext::build(&index, &rows)?;
+    // OFFLINE WHOLE-POPULATION MEASUREMENT, classified deliberately rather than left to look
+    // like a production caller that escaped the plan. This function measures closure overlap over
+    // the WHOLE roster and is not on the ordinary floor's decision path, so it wants every row
+    // classified -- the candidate filter would change what it measures, not just what it costs.
+    // It pays the full population price knowingly and must never be reached from the floor.
+    let live_read_selection = LiveReadSelectionPlan::build(&rows, &index, &diff_edits, &[])?;
 
     let mut selected_entries = Vec::new();
     let mut skipped_entries = Vec::new();
@@ -23537,7 +23626,7 @@ mod effect_reach_host_sink_markers_drift_gate_tests {
 fn discovery_rows_runtime_dependency_touched_count(
     rows: &[DiscoveryRow],
     index: &MultiEntryIndex,
-    live: &LiveReadSelectionContext,
+    plan: &LiveReadSelectionPlan,
     touched_paths: &[String],
 ) -> Result<usize, String> {
     if touched_paths.is_empty() {
@@ -23546,7 +23635,11 @@ fn discovery_rows_runtime_dependency_touched_count(
     let mut seen: HashSet<&str> = HashSet::new();
     let mut count = 0usize;
     for row in rows.iter().filter(|row| seen.insert(row.entry.as_str())) {
-        if live.runtime_dependency_touched_for_entry(index, &row.entry, touched_paths)? {
+        // Through the PLAN, so an `AlreadySelected` entry answers true from its own cause
+        // rather than being asked a question the candidate context deliberately cannot answer.
+        // The count keeps its original denominator -- every roster entry -- while no excluded
+        // entry is ever queried for a classification it does not have.
+        if plan.entry_must_run(index, &row.entry, touched_paths)? {
             count += 1;
         }
     }
@@ -23578,49 +23671,58 @@ fn discovery_rows_runtime_dependency_touched_count(
 /// Deliberately excludes the G2 axis. That is the whole point -- it answers "can a live-read
 /// verdict still change this row's outcome", and the answer is no exactly when some other axis
 /// has already said "do not skip".
-/// The rows whose verdict a live-read classification can still change.
+
+/// Why an entry is already forced to run, without consulting the live-read classification.
 ///
-/// One definition, used by every site that builds a `LiveReadSelectionContext`. It exists as a
-/// function rather than a line at each call site because the first consumer in the run used to be
-/// handed the COMPLETE roster on the theory that it primed a memo for everyone else -- and that
-/// convention outlived the memo it justified. The cache is per-declaration and incremental now,
-/// so a later caller asking about a row this one skipped simply classifies it then; priming is
-/// not required, and paying for the whole roster up front is what put 8538 requests into a single
-/// classification that never returned.
-fn live_read_candidate_rows(
-    rows: &[DiscoveryRow],
-    index: &MultiEntryIndex,
-    diff_edits: &FloorDiffEdits,
-    changed_paths: &[String],
-) -> Result<Vec<DiscoveryRow>, String> {
-    let declared_paths = index.module_graph_facts.declared_repo_paths();
-    let touched: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
-    let mut candidates = Vec::new();
-    for row in rows {
-        if entry_blocked_by_cheap_axes(
-            &row.entry,
-            row.reads_live_tree,
-            &index.module_graph_facts,
-            &declared_paths,
-            &touched,
-            changed_paths,
-            diff_edits,
-        )? {
-            continue;
-        }
-        candidates.push(row.clone());
-    }
-    eprintln!(
-        "[live-read-candidates] roster_rows={} candidate_rows={} excluded_by_cheap_axes={} \
-         (excluded rows are already forced to run by an independent axis, so a G2 answer cannot \
-         change their verdict; counted rather than silently narrowed)",
-        rows.len(),
-        candidates.len(),
-        rows.len().saturating_sub(candidates.len())
-    );
-    Ok(candidates)
+/// A typed cause rather than a `bool` because the answer is consumed in two different ways: the
+/// plan uses it to decide whether to CLASSIFY a row, and post-resolve accounting uses it to say
+/// why the runtime axis was never evaluated. A Boolean forces the second consumer to either
+/// re-derive the reason or fabricate `touched = false`, and "false" would be a claim about the
+/// runtime axis that nothing evaluated.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CheapAxisCause {
+    ReadsLiveTree,
+    EditedTestFn,
+    EntryFileTouched,
+    ImportClosureTouched,
+    DeclaredSourceRefs,
+    EffectReach,
+    CompileCleanStopLine,
+    OverlappingDataItems,
 }
 
+impl CheapAxisCause {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            CheapAxisCause::ReadsLiveTree => "ReadsLiveTree",
+            CheapAxisCause::EditedTestFn => "EditedTestFn",
+            CheapAxisCause::EntryFileTouched => "EntryFileTouched",
+            CheapAxisCause::ImportClosureTouched => "ImportClosureTouched",
+            CheapAxisCause::DeclaredSourceRefs => "DeclaredSourceRefs",
+            CheapAxisCause::EffectReach => "EffectReach",
+            CheapAxisCause::CompileCleanStopLine => "CompileCleanStopLine",
+            CheapAxisCause::OverlappingDataItems => "OverlappingDataItems",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CheapAxisDisposition {
+    NotBlocked,
+    Blocked { cause: CheapAxisCause },
+}
+
+/// Is this entry already forced to run by an axis that is NOT the live-read classification?
+///
+/// THE ONE AUTHORITY. Both production selection predicates call this rather than repeating the
+/// chain, because the filter that decides which rows are CLASSIFIED and the predicate that
+/// decides whether a row RUNS have to agree exactly: a row the filter excludes but the predicate
+/// later asks about produces `LiveReadEntryAbsent`, and a row the filter keeps needlessly
+/// restores the cost the filter exists to remove. Two independently writable copies of one
+/// disjunction is that disagreement waiting to be authored.
+///
+/// Deliberately excludes the G2 axis -- it answers "can a live-read verdict still change this
+/// row's outcome", and the answer is no exactly when some other axis has already decided.
 fn entry_blocked_by_cheap_axes(
     entry_path: &str,
     reads_live_tree: bool,
@@ -23629,23 +23731,24 @@ fn entry_blocked_by_cheap_axes(
     touched_entry_paths: &[String],
     stop_line_changed_paths: &[String],
     diff_edits: &FloorDiffEdits,
-) -> Result<bool, String> {
+) -> Result<CheapAxisDisposition, String> {
+    let blocked = |cause: CheapAxisCause| Ok(CheapAxisDisposition::Blocked { cause });
     if reads_live_tree {
-        return Ok(true);
+        return blocked(CheapAxisCause::ReadsLiveTree);
     }
     if diff_edits
         .edited_test_fns
         .iter()
         .any(|(file, _)| diff_file_matches_entry(file, entry_path))
     {
-        return Ok(true);
+        return blocked(CheapAxisCause::EditedTestFn);
     }
     if diff_edits
         .touched_entry_files
         .iter()
         .any(|file| diff_file_matches_entry(file, entry_path))
     {
-        return Ok(true);
+        return blocked(CheapAxisCause::EntryFileTouched);
     }
     if entry_file_touched_via_import_closure(
         entry_path,
@@ -23653,7 +23756,7 @@ fn entry_blocked_by_cheap_axes(
         declared_paths,
         touched_entry_paths,
     )? {
-        return Ok(true);
+        return blocked(CheapAxisCause::ImportClosureTouched);
     }
     let declared_axis = declared_source_refs_axis_for_entry(
         entry_path,
@@ -23663,13 +23766,13 @@ fn entry_blocked_by_cheap_axes(
     );
     if declared_axis != DeclaredSourceRefAxis::Absent {
         if declared_source_refs_blocks_skip(declared_axis) {
-            return Ok(true);
+            return blocked(CheapAxisCause::DeclaredSourceRefs);
         }
     } else if effect_reach_touched_via_path_literals(entry_path, facts, touched_entry_paths) {
-        return Ok(true);
+        return blocked(CheapAxisCause::EffectReach);
     }
     if compile_clean_broad_stop_line_blocks_skip(entry_path, stop_line_changed_paths) {
-        return Ok(true);
+        return blocked(CheapAxisCause::CompileCleanStopLine);
     }
     if !diff_edits.overlapping_data_items.is_empty() {
         let data_item_files: Vec<String> = diff_edits
@@ -23685,89 +23788,176 @@ fn entry_blocked_by_cheap_axes(
             declared_paths,
             &data_item_files,
         )? {
-            return Ok(true);
+            return blocked(CheapAxisCause::OverlappingDataItems);
         }
     }
-    Ok(false)
+    Ok(CheapAxisDisposition::NotBlocked)
+}
+
+/// What a consumer must do about one entry's live-read axis.
+#[derive(Debug, Clone)]
+pub enum LiveReadDemand {
+    /// An independent axis already forced this entry to run, so G2 was never asked. Consumers
+    /// must NOT query the candidate context for it -- absence is by construction, not a gap.
+    AlreadySelected { cause: CheapAxisCause },
+    /// G2 can still change this entry's verdict, so it is in the candidate context.
+    NeedsClassification,
+}
+
+/// The selection plan: which entries need a live-read verdict, and the classifications for
+/// exactly those.
+///
+/// Exists because a bare sparse context cannot distinguish two states that share one
+/// representation -- "absent because another axis already decided" and "absent because the
+/// classification is unexpectedly missing" -- and those have opposite remedies. The first is
+/// correct and must be silent; the second must refuse. With only a context, every consumer sees
+/// `LiveReadEntryAbsent` for both, which is why filtering the context alone moved the failure
+/// rather than fixing it.
+#[derive(Debug, Clone)]
+pub struct LiveReadSelectionPlan {
+    demand_by_entry: HashMap<String, LiveReadDemand>,
+    classified: LiveReadSelectionContext,
+}
+
+impl LiveReadSelectionPlan {
+    fn build(
+        rows: &[DiscoveryRow],
+        index: &MultiEntryIndex,
+        diff_edits: &FloorDiffEdits,
+        changed_paths: &[String],
+    ) -> Result<Self, String> {
+        let declared_paths = index.module_graph_facts.declared_repo_paths();
+        let touched: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
+        let mut demand_by_entry: HashMap<String, LiveReadDemand> = HashMap::new();
+        let mut candidates: Vec<DiscoveryRow> = Vec::new();
+        for row in rows {
+            let entry = workspace_relative_repo_path(&row.entry);
+            let disposition = entry_blocked_by_cheap_axes(
+                &row.entry,
+                row.reads_live_tree,
+                &index.module_graph_facts,
+                &declared_paths,
+                &touched,
+                changed_paths,
+                diff_edits,
+            )?;
+            match disposition {
+                CheapAxisDisposition::Blocked { cause } => {
+                    demand_by_entry.insert(entry, LiveReadDemand::AlreadySelected { cause });
+                }
+                CheapAxisDisposition::NotBlocked => {
+                    demand_by_entry.insert(entry, LiveReadDemand::NeedsClassification);
+                    candidates.push(row.clone());
+                }
+            }
+        }
+        eprintln!(
+            "[live-read-candidates] roster_rows={} candidate_rows={} excluded_by_cheap_axes={} \
+             (excluded rows are already forced to run by an independent axis, so a G2 answer \
+             cannot change their verdict; counted rather than silently narrowed)",
+            rows.len(),
+            candidates.len(),
+            rows.len().saturating_sub(candidates.len())
+        );
+        Ok(Self {
+            demand_by_entry,
+            classified: LiveReadSelectionContext::build(index, &candidates)?,
+        })
+    }
+
+    /// FIXTURE CONSTRUCTOR: a plan whose entries are all candidates, classified directly.
+    ///
+    /// `cfg(test)` so it cannot become a production route that mints demands without deriving
+    /// them from the cheap axes -- that would be a way to author "this row needs classifying"
+    /// beside a classification, which is the shape of forgery this plan exists to prevent.
+    /// Fixtures legitimately want every declaration classified, because their rosters ARE the
+    /// subject under test.
+    #[cfg(test)]
+    fn for_declarations_fixture(
+        index: &MultiEntryIndex,
+        declarations: &[(&str, &str)],
+    ) -> Result<Self, String> {
+        let mut demand_by_entry = HashMap::new();
+        for (entry, _) in declarations {
+            demand_by_entry.insert(
+                workspace_relative_repo_path(entry),
+                LiveReadDemand::NeedsClassification,
+            );
+        }
+        Ok(Self {
+            demand_by_entry,
+            classified: live_read_context_for_declarations(index, declarations)?,
+        })
+    }
+
+    /// What this entry's live-read axis demands. An entry the plan never saw REFUSES: that is a
+    /// genuine gap, and it is exactly the state the sparse context could not tell apart from a
+    /// deliberate exclusion.
+    pub fn demand_for(&self, entry_path: &str) -> Result<&LiveReadDemand, String> {
+        let entry = workspace_relative_repo_path(entry_path);
+        self.demand_by_entry.get(&entry).ok_or_else(|| {
+            format!(
+                "AFFECTED-SET REFUSAL cause=LiveReadEntryNotPlanned entry={entry} — the entry was                  not in the roster this plan was derived from, so neither its cheap-axis                  disposition nor its classification is known. This is a real gap, distinct from                  an entry deliberately excluded because another axis already decided it."
+            )
+        })
+    }
+
+    /// The candidate classifications. Only valid for entries whose demand is
+    /// `NeedsClassification`.
+    pub fn classified(&self) -> &LiveReadSelectionContext {
+        &self.classified
+    }
+
+    /// Does this entry's runtime axis force it to run? `AlreadySelected` answers true WITHOUT
+    /// consulting G2 -- the entry is forced, and the runtime axis was never evaluated, so this
+    /// is the honest do-not-skip answer rather than a fabricated classification.
+    pub fn entry_must_run(
+        &self,
+        index: &MultiEntryIndex,
+        entry_path: &str,
+        touched_paths: &[String],
+    ) -> Result<bool, String> {
+        match self.demand_for(entry_path)? {
+            LiveReadDemand::AlreadySelected { .. } => Ok(true),
+            LiveReadDemand::NeedsClassification => self
+                .classified
+                .runtime_dependency_touched_for_entry(index, entry_path, touched_paths),
+        }
+    }
 }
 
 fn entry_qualifies_for_skip_without_resolve(
     entry_path: &str,
     reads_live_tree: bool,
     index: &MultiEntryIndex,
-    live: &LiveReadSelectionContext,
+    plan: &LiveReadSelectionPlan,
     facts: &ModuleGraphFactsLive,
     declared_paths: &HashSet<String>,
     touched_entry_paths: &[String],
     stop_line_changed_paths: &[String],
     diff_edits: &FloorDiffEdits,
 ) -> Result<bool, String> {
-    // Fail-closed on the substrate-declared disposition (v2.std.live_tree): a
-    // `ReadsLiveTree` entry never predict-skips. Replaces the deleted entry-text
-    // classifier's per-function `witness_test_fn_uses_live_host_scan` scan; the
-    // disposition is entry-grain, so one flag decides the whole entry.
-    if reads_live_tree {
-        return Ok(false);
-    }
-    if diff_edits
-        .edited_test_fns
-        .iter()
-        .any(|(file, _)| diff_file_matches_entry(file, entry_path))
-    {
-        return Ok(false);
-    }
-    if diff_edits
-        .touched_entry_files
-        .iter()
-        .any(|file| diff_file_matches_entry(file, entry_path))
-    {
-        return Ok(false);
-    }
-    if entry_file_touched_via_import_closure(
+    // ONE AUTHORITY FOR THE CHEAP AXES. This predicate used to repeat the whole disjunction
+    // inline, which made the filter that decides WHICH ROWS ARE CLASSIFIED and the predicate
+    // that decides WHETHER A ROW RUNS two independently writable copies of one rule. They only
+    // have to disagree once: a row the filter drops but this predicate asks about produces
+    // LiveReadEntryAbsent, and a row the filter keeps needlessly restores the cost it exists to
+    // remove.
+    if entry_blocked_by_cheap_axes(
         entry_path,
+        reads_live_tree,
         facts,
         declared_paths,
         touched_entry_paths,
-    )? {
+        stop_line_changed_paths,
+        diff_edits,
+    )? != CheapAxisDisposition::NotBlocked
+    {
         return Ok(false);
     }
-    let declared_axis = declared_source_refs_axis_for_entry(
-        entry_path,
-        facts,
-        &default_source_roots(),
-        touched_entry_paths,
-    );
-    if declared_axis != DeclaredSourceRefAxis::Absent {
-        if declared_source_refs_blocks_skip(declared_axis) {
-            return Ok(false);
-        }
-    } else if effect_reach_touched_via_path_literals(entry_path, facts, touched_entry_paths) {
-        return Ok(false);
-    }
-    if compile_clean_broad_stop_line_blocks_skip(entry_path, stop_line_changed_paths) {
-        return Ok(false);
-    }
-    if !diff_edits.overlapping_data_items.is_empty() {
-        let data_item_files: Vec<String> = diff_edits
-            .overlapping_data_items
-            .iter()
-            .map(|(file, _)| file.clone())
-            .collect::<HashSet<_>>()
-            .into_iter()
-            .collect();
-        if entry_file_touched_via_import_closure(
-            entry_path,
-            facts,
-            declared_paths,
-            &data_item_files,
-        )? {
-            return Ok(false);
-        }
-    }
-    // G2 LAST, for the reason given on the sibling predicate: the decision is a disjunction and
-    // every axis above decides on its own evidence, so consulting the classification for a row
-    // already forced to run is cost that cannot change an answer.
-    if live.runtime_dependency_touched_for_entry(index, entry_path, touched_entry_paths)? {
+    // G2 LAST, and through the plan: an entry the cheap axes cleared is a candidate by
+    // construction, so this is the one place the classification is genuinely consulted.
+    if plan.entry_must_run(index, entry_path, touched_entry_paths)? {
         return Ok(false);
     }
     Ok(true)
@@ -23776,7 +23966,7 @@ fn entry_qualifies_for_skip_without_resolve(
 fn discovery_entry_fast_skip_without_resolve(
     rows: &[DiscoveryRow],
     index: &MultiEntryIndex,
-    live: &LiveReadSelectionContext,
+    plan: &LiveReadSelectionPlan,
     facts: &ModuleGraphFactsLive,
     declared_paths: &HashSet<String>,
     touched_entry_paths: &[String],
@@ -23796,7 +23986,7 @@ fn discovery_entry_fast_skip_without_resolve(
             &entry,
             reads_live_tree,
             index,
-            live,
+            plan,
             facts,
             declared_paths,
             touched_entry_paths,
@@ -24611,9 +24801,8 @@ fn run_discovery_corpus_with_options_inner(
                 // later decisions. The memo is per-declaration and incremental, so nothing
                 // downstream depends on being primed here, and the complete-roster build is what
                 // put 8538 requests into one classification that never returned.
-                let candidates =
-                    live_read_candidate_rows(&rows, &index, &diff_edits, &changed_paths)?;
-                let live = LiveReadSelectionContext::build(&index, &candidates)?;
+                let plan =
+                    LiveReadSelectionPlan::build(&rows, &index, &diff_edits, &changed_paths)?;
                 // CANDIDATES HERE TOO. This consumer asks the view about each row, so handing
                 // it the complete roster asks about rows the view was deliberately not built
                 // for -- which is a LiveReadEntryAbsent refusal, and is exactly how the first
@@ -24627,9 +24816,9 @@ fn run_discovery_corpus_with_options_inner(
                 // here would be counting one entry under two axes.
                 let touched_runtime_dependency_entry_count =
                     discovery_rows_runtime_dependency_touched_count(
-                        &candidates,
+                        &rows,
                         &index,
-                        &live,
+                        &plan,
                         &changed_paths,
                     )?;
                 let precompute = call_floor_row_precompute_would_skip(
@@ -24683,19 +24872,20 @@ fn run_discovery_corpus_with_options_inner(
         if options.node_frontier_selection == NodeFrontierSelectionMode::Applied {
             let declared_paths = index.module_graph_facts.declared_repo_paths();
             let touched: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
-            let candidates = live_read_candidate_rows(&rows, &index, &diff_edits, &changed_paths)?;
-            match LiveReadSelectionContext::build(&index, &candidates).and_then(|live| {
-                discovery_entry_fast_skip_without_resolve(
-                    &rows,
-                    &index,
-                    &live,
-                    &index.module_graph_facts,
-                    &declared_paths,
-                    &touched,
-                    &changed_paths,
-                    &diff_edits,
-                )
-            }) {
+            match LiveReadSelectionPlan::build(&rows, &index, &diff_edits, &changed_paths).and_then(
+                |plan| {
+                    discovery_entry_fast_skip_without_resolve(
+                        &rows,
+                        &index,
+                        &plan,
+                        &index.module_graph_facts,
+                        &declared_paths,
+                        &touched,
+                        &changed_paths,
+                        &diff_edits,
+                    )
+                },
+            ) {
                 Ok(_) => None,
                 Err(e) => Some(e),
             }
@@ -25459,23 +25649,26 @@ fn eprintln_affected_set_categorization(
         NodeFrontierSelectionMode::Applied => {
             let declared_paths = index.module_graph_facts.declared_repo_paths();
             let touched: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
-            // Built from `rows`, which IS the complete roster at this call site (the
-            // categorization line runs once, above the width dispatch). A refusal here is
-            // carried into the count so the line reports the refusal rather than a number
-            // derived from a partial answer.
-            let skipped = LiveReadSelectionContext::build(index, rows).and_then(|live| {
-                discovery_entry_fast_skip_without_resolve(
-                    rows,
-                    index,
-                    &live,
-                    &index.module_graph_facts,
-                    &declared_paths,
-                    &touched,
-                    changed_paths,
-                    diff_edits,
-                )
-                .map(|fast| rows.iter().filter(|r| fast.contains(&r.entry)).count())
-            });
+            // THROUGH THE PLAN, not a second full-roster build. This narration site is the
+            // one the review caught still constructing from the complete roster: it could
+            // independently recreate the 8538-request classification the execution sites had
+            // just stopped making, moving the stall from one consumer to another rather than
+            // removing it. A refusal here is carried into the count so the line reports the
+            // refusal rather than a number derived from a partial answer.
+            let skipped = LiveReadSelectionPlan::build(rows, index, diff_edits, changed_paths)
+                .and_then(|plan| {
+                    discovery_entry_fast_skip_without_resolve(
+                        rows,
+                        index,
+                        &plan,
+                        &index.module_graph_facts,
+                        &declared_paths,
+                        &touched,
+                        changed_paths,
+                        diff_edits,
+                    )
+                    .map(|fast| rows.iter().filter(|r| fast.contains(&r.entry)).count())
+                });
             // The baseline is read back ONLY in the state that needs locating, so the
             // ordinary path pays nothing for it.
             let located = changed_paths
@@ -25759,15 +25952,12 @@ fn run_discovery_rows(
     // answer this classification cannot overturn. The per-entry predicates above now consult G2
     // last for the same reason, which is what makes excluding a non-candidate safe -- a
     // short-circuit reaches the classifier only for rows still in play.
-    let live_read_candidates: Vec<DiscoveryRow> = if skip_enabled {
-        live_read_candidate_rows(roster, index, diff_edits, changed_paths)?
-    } else {
-        Vec::new()
-    };
     let live_read_selection = if skip_enabled {
-        Some(LiveReadSelectionContext::build(
+        Some(LiveReadSelectionPlan::build(
+            roster,
             index,
-            &live_read_candidates,
+            diff_edits,
+            changed_paths,
         )?)
     } else {
         None
@@ -27777,7 +27967,7 @@ mod node_frontier_plumbing_controls {
         let declared = index.module_graph_facts.declared_repo_paths();
         let touched_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
         // The fixture's own declarations are its complete roster.
-        let fixture_live = super::live_read_context_for_declarations(
+        let fixture_live = super::LiveReadSelectionPlan::for_declarations_fixture(
             &index,
             &[
                 (&fixture_abs, "floor_disc_witness_a_only_holds"),
@@ -27822,7 +28012,7 @@ mod node_frontier_plumbing_controls {
             floor_diff_edits_from_diff_text(&index, &diff).expect("seeds from outside-file diff");
         let declared = index.module_graph_facts.declared_repo_paths();
         let touched_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
-        let fixture_live = super::live_read_context_for_declarations(
+        let fixture_live = super::LiveReadSelectionPlan::for_declarations_fixture(
             &index,
             &[
                 (&fixture_abs, "floor_disc_witness_a_only_holds"),
@@ -28930,7 +29120,7 @@ mod node_frontier_plumbing_controls {
         let declared = index.module_graph_facts.declared_repo_paths();
         let touched_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
         // The fixture's own declarations are its complete roster.
-        let fixture_live = super::live_read_context_for_declarations(
+        let fixture_live = super::LiveReadSelectionPlan::for_declarations_fixture(
             &index,
             &[
                 (&fixture_abs, "floor_disc_witness_a_only_holds"),
@@ -28976,7 +29166,7 @@ mod node_frontier_plumbing_controls {
         let diff_edits =
             floor_diff_edits_from_diff_text(&index, &diff).expect("seeds from outside-file diff");
         let declared = index.module_graph_facts.declared_repo_paths();
-        let fixture_live = super::live_read_context_for_declarations(
+        let fixture_live = super::LiveReadSelectionPlan::for_declarations_fixture(
             &index,
             &[
                 (
@@ -29020,7 +29210,7 @@ mod node_frontier_plumbing_controls {
         let diff_edits =
             floor_diff_edits_from_diff_text(&index, &diff).expect("seeds from outside-file diff");
         let declared = index.module_graph_facts.declared_repo_paths();
-        let fixture_live = super::live_read_context_for_declarations(
+        let fixture_live = super::LiveReadSelectionPlan::for_declarations_fixture(
             &index,
             &[
                 (
@@ -29096,7 +29286,7 @@ mod node_frontier_plumbing_controls {
         );
         let declared = index.module_graph_facts.declared_repo_paths();
         let touched_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
-        let fixture_live = super::live_read_context_for_declarations(
+        let fixture_live = super::LiveReadSelectionPlan::for_declarations_fixture(
             &index,
             &[
                 (&fixture_abs, "floor_disc_witness_a_only_holds"),
@@ -39937,7 +40127,7 @@ mod witness_layer_roots_compile_clean_tests {
                 reads_live_tree: false,
             };
             let declared = index.module_graph_facts.declared_repo_paths();
-            let shard_a_live = live_read_context_for_declarations(
+            let shard_a_live = LiveReadSelectionPlan::for_declarations_fixture(
                 &index,
                 &[(
                     COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY,
