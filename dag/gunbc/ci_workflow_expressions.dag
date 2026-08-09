@@ -87,9 +87,12 @@ data ci_workflow_expression_templates: List<ExpressionTemplate> = [
 // ordinary pushes, `ci` survives it via its own `!cancelled()`, but a needs:[ci] job
 // whose `if` carries NO status function gets GitHub's implicit success() ANDed in, and
 // success() is false downstream of any transitively skipped job — so the whole
-// push-to-main family silently skipped while every clause it names was true. The
+// push-to-main family silently skipped while every clause it names was true (an
+// empty-observation narrow: 'dependency skipped' rendered as 'condition false'). The
 // expression now carries its own status guard: run unless cancelled, require the ci
-// job's own result to be success explicitly, then the two event clauses.
+// job's own result to be success explicitly, then the two event clauses. The RED
+// control for this class lives in test.claim.ci_workflow_witness
+// push_to_main_family_carries_explicit_status_guard.
 data ci_deploy_push_to_main_if: String = "!cancelled() && needs.ci.result == 'success' && github.ref == 'refs/heads/main' && github.event_name == 'push'"
 
 data ci_workflow_dispatch_only_if: String = "github.event_name == 'workflow_dispatch'"
