@@ -638,3 +638,106 @@ is left in place as evidence.
 **N2 design (quiet-hawk-219):** the follow-on design for the containment binding
 path is [containment binding for cross-module type references](containment-binding-cross-module-type-references-design.md)
 (import-deletion graph node N2; depends on N1 refusal floor).
+
+## 15. Whole-corpus re-measurement (2026-08-09) — the residue is now dominated by homonyms, not by the closure
+
+§14 measured Class B on eight scoped probes. This section measures the **whole
+corpus at once**, so the classes above are denominated against each other rather
+than each against itself. Nothing here refutes §14; it re-prices it.
+
+### 15.1 What was run
+
+Release `gunbc` built from main at `1eadad4af25` — rebuilt deliberately, because
+#7924 (`decl_facts` explicit-import resolution) landed after the last strip
+attempt and a stale binary would have measured a substrate that no longer exists
+(DESIGN "Current state — stale binary phantom breakage"). Two scratch copies of
+`dag` + `src`; one left intact as the known-positive control, one stripped with a
+**brace-depth-aware** pass over every `.dag` file under `dag/` and `src/v2/`
+(`sed '/^import /d'` orphans the multi-line `import x { … }` blocks and inflates
+the reading roughly tenfold — the trap recorded in §5's repro notes).
+
+```
+gunbc compile --source-root dag --source-root src/v2 \
+  --dependency-pool-index primary-precedence --target dag --output-dir <tmp>
+```
+
+Strip completeness is denominated, not assumed: **16,315 import declarations
+across 2,574 files, zero `import` residue** in the stripped tree.
+
+### 15.2 The two readings
+
+| tree | hard diagnostics | exit |
+| --- | --- | --- |
+| control (unstripped) | 12 | 1 |
+| stripped | 5,827 | 1 |
+
+The exit code is **not** the discriminator here — both trees exit 1, because the
+control's 12 pre-existing diagnostics are themselves hard. Only the count and the
+per-name join separate them; a reading that keyed on exit status alone would call
+these two trees identical.
+
+The control's 12 are pre-existing annotation-grain diagnostics in two witness
+files, unrelated to imports; they appear identically in both runs. So the
+strip-attributable population is **5,815 diagnostics over 801 files and 486
+distinct names**, and **1,773 of the 2,574 stripped files (69%) compile clean**.
+
+The control matters for a reason beyond arithmetic: an unstripped compile that
+reported zero would have made "12" look like strip damage. Per DESIGN
+("absence claims need a known-positive"), the baseline is the operand.
+
+This is **not** comparable to the 1,096 figure in the pool-pull receipt: that
+run stripped 1,447 files, this one strips 2,574, and the corpus grew between
+them. Treating the two as a trend would be a change detector, not a measurement.
+
+### 15.3 Classification — by why the name failed
+
+Each failing name was joined against a corpus declaration index (top-level
+`fn`/`func`/`type`/`data`/`service` declarations plus coproduct variant tags),
+so the class is derived from declaration multiplicity rather than from reading
+diagnostic text:
+
+| class | diagnostics | share | distinct names |
+| --- | --- | --- | --- |
+| A — homonym (name declared in >1 module) | 2,917 | 50% | 32 |
+| B — unique declaration, still not pulled | 1,656 | 28% | 293 |
+| C — variant tag (no top-level declaration) | 599 | 10% | 55 |
+| D — derived/unknown name (mostly mismatch cascade) | 631 | 11% | 92 |
+
+**Class A is half the residue and 32 names carry it.** A name declared twice is
+not corpus-unique, so the bare census cannot resolve it and the closure never
+pulls its provider — the failure is authored in the corpus, not in the loader.
+Two names are 2,765 of the 2,917 (48% of everything): `cell` and `row`, declared
+both in `gunbc.plans.md_helpers` (returning `MarkdownTableCell`/
+`MarkdownTableRow`) and in `gunbc.roadmap_instrument_sandbox` (returning a markup
+`Fragment`). Those are **homonyms, not a §3 fork** — two different concepts that
+happened to share a short name — so the correction is disambiguation, not
+consolidation. `note` is the same shape across two site modules.
+
+Not every multiply-declared name is a defect: `extdeps_external_authority_anchor`
+(497 declarations) and `extdeps_model_scope` (94) are per-module convention rows,
+one per `extdeps` module by design. They contribute 8 diagnostics between them
+and are excluded from the actionable set.
+
+**Class B is the §14 population**, and its head is unchanged: `LiveTreeDisposition`
+(503) and `SubstrateInputsOnly` (440) — 943 of the 1,656 — both from the single
+cross-tree provider `src/v2/std/live_tree.dag` that the pool-pull receipt pinned.
+Class C is the arity-zero/variant-tag population §3 describes. Neither has moved.
+
+### 15.4 What this changes about the wave rule
+
+§13's rule stands as written: the strip stays blocked until a closure-independent
+binding fix or a provable-coverage construction check lands. What changes is the
+**ranking**. Before this measurement, the residue read as one undifferentiated
+compiler deficit. It is now:
+
+- **48% corpus hygiene**, removable today by disambiguating three names, with no
+  substrate change and no bearing on whether the strip resumes — the §3
+  no-nicknaming duty would demand it even if `import` were never deleted;
+- **38% the two documented mechanisms** (Classes B and C), unchanged and still
+  the actual blocker;
+- **11% cascade** downstream of the other three, not independently actionable.
+
+The consequence worth keeping: a corpus-authored resolution defect and a loader
+deficit produce the *same* diagnostic text, so a raw count over a stripped tree
+cannot rank the work. The declaration-multiplicity join is what separates them,
+and it is cheap enough to re-run on every future strip attempt.
