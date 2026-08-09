@@ -101,7 +101,7 @@ test fn committed_probe_receipts_feed_producers_and_grow_coverage() -> Bool {
   match host_reach_identity_probe_receipt_for(host: operator_host_srv1) {
     Present { value: r } =>
       match r.outcome {
-        ProbeHostKeyUnenrolled { transport_diagnostic: d } => string_contains(s: d, pattern: "Host key verification failed")
+        ProbeAuthenticationRefused { cause: c } => string_contains(s: c, pattern: "Permission denied")
         _ => false
       }
     _ => false
