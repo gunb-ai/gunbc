@@ -22,6 +22,13 @@ import std.types { Bool, NonEmptyStr }
 // Identity is likewise absent by construction: product.placement_supply is SPATIAL-0, the existing
 // authority for SiteIdentity / RoomIdentity / PhysicalContainment. This module binds geometry to
 // nothing; the product layer binds standing-carrying quantities to the identities it already owns.
+//
+// No Bool projection of either coproduct is offered, deliberately. A renderer asks
+// spatial_evidence_class and matches; a consumer asks admit_spatial_quantity and matches. An
+// `is_refused` or `renders_as_definite` predicate would collapse four standings (or three
+// admissions) to two states, discarding the very distinction witness control 14 exists to
+// preserve — told only "not definite", a renderer cannot draw a hypothesis differently from an
+// unknown, which is the failure this module was written to prevent. The coproduct IS the surface.
 
 type SurveyObligationId = NonEmptyStr where brand("SurveyObligationId")
 
@@ -132,25 +139,5 @@ fn admit_spatial_quantity<T, Ev>(
       SpatialRefused { cause: SpatialHypothesisNotAdmissible { purpose: p } }
     SpatialUnknown { survey_obligation: s } =>
       SpatialRefused { cause: SpatialGeometryUnknown { survey_obligation: s } }
-  }
-}
-
-fn spatial_admission_is_refused<T>(admission: SpatialAdmission<T>) -> Bool {
-  match admission {
-    SpatialAdmittedMeasured { value: _, tolerance: _ } => false
-    SpatialAdmittedEstimated { low: _, high: _ } => false
-    SpatialRefused { cause: _ } => true
-  }
-}
-
-// A quantity is renderable as definite geometry only when it is measured. Every other standing is
-// renderable only as itself — which is what the site packet now does, and what it previously did
-// not: it drew a hypothesis at the confidence of a measurement.
-fn spatial_renders_as_definite<T, Ev>(knowledge: SpatialKnowledge<T, Ev>) -> Bool {
-  match spatial_evidence_class(knowledge: knowledge) {
-    SpatialClassMeasured => true
-    SpatialClassEstimated => false
-    SpatialClassHypothesis => false
-    SpatialClassUnknown => false
   }
 }

@@ -25,7 +25,6 @@ import std.spatial_knowledge {
   SpatialEstimateBelowRequiredStanding,
   spatial_evidence_class,
   spatial_measured_value,
-  spatial_renders_as_definite,
   admit_spatial_quantity,
 }
 
@@ -62,12 +61,42 @@ fn unknown_width() -> SpatialKnowledge<Millimeter, NonEmptyStr> {
   SpatialUnknown { survey_obligation: "srv-geometry-capture" }
 }
 
-fn class_is_measured(knowledge: SpatialKnowledge<Millimeter, NonEmptyStr>) -> Bool {
+// Asserts the EXACT standing rather than collapsing to "is it measured". A witness that only
+// asked is_measured would pass while hypothesis and unknown were silently interchanged - the same
+// two-state erasure the kernel refuses to offer.
+fn standing_is(
+  knowledge: SpatialKnowledge<Millimeter, NonEmptyStr>,
+  expected: SpatialEvidenceClass,
+) -> Bool {
   match spatial_evidence_class(knowledge: knowledge) {
-    SpatialClassMeasured => true
-    SpatialClassEstimated => false
-    SpatialClassHypothesis => false
-    SpatialClassUnknown => false
+    SpatialClassMeasured =>
+      match expected {
+        SpatialClassMeasured => true
+        SpatialClassEstimated => false
+        SpatialClassHypothesis => false
+        SpatialClassUnknown => false
+      }
+    SpatialClassEstimated =>
+      match expected {
+        SpatialClassMeasured => false
+        SpatialClassEstimated => true
+        SpatialClassHypothesis => false
+        SpatialClassUnknown => false
+      }
+    SpatialClassHypothesis =>
+      match expected {
+        SpatialClassMeasured => false
+        SpatialClassEstimated => false
+        SpatialClassHypothesis => true
+        SpatialClassUnknown => false
+      }
+    SpatialClassUnknown =>
+      match expected {
+        SpatialClassMeasured => false
+        SpatialClassEstimated => false
+        SpatialClassHypothesis => false
+        SpatialClassUnknown => true
+      }
   }
 }
 
@@ -140,8 +169,7 @@ fn witness_unknown_yields_no_magnitude() -> Bool {
 // WITNESS CONTROL 14 — hypothesis geometry never renders as measured. The RED half is the point:
 // the refuted 25 ft value is present and usable, and is still refused at every standing.
 fn witness_hypothesis_never_renders_definite() -> Bool {
-  spatial_renders_as_definite(knowledge: hypothesis_width()) == false
-    && class_is_measured(knowledge: hypothesis_width()) == false
+  standing_is(knowledge: hypothesis_width(), expected: SpatialClassHypothesis)
     && has_measured_value(knowledge: hypothesis_width()) == false
     && admits(knowledge: hypothesis_width(), requirement: RequiresMeasured) == false
     && admits(knowledge: hypothesis_width(), requirement: RequiresMeasuredOrEstimated) == false
@@ -153,15 +181,14 @@ fn witness_estimate_admits_only_against_its_requirement() -> Bool {
   admits(knowledge: estimated_width(), requirement: RequiresMeasured) == false
     && admits(knowledge: estimated_width(), requirement: RequiresMeasuredOrEstimated)
     && has_measured_value(knowledge: estimated_width()) == false
-    && spatial_renders_as_definite(knowledge: estimated_width()) == false
+    && standing_is(knowledge: estimated_width(), expected: SpatialClassEstimated)
     && admitted_estimate_stays_a_range(knowledge: estimated_width())
 }
 
 // POSITIVE CONTROL — without this the suite would pass by refusing everything, which is the
 // failure mode a refusal-heavy guard is most likely to have.
 fn witness_measured_admits_at_every_requirement() -> Bool {
-  spatial_renders_as_definite(knowledge: measured_width())
-    && class_is_measured(knowledge: measured_width())
+  standing_is(knowledge: measured_width(), expected: SpatialClassMeasured)
     && has_measured_value(knowledge: measured_width())
     && admits(knowledge: measured_width(), requirement: RequiresMeasured)
     && admits(knowledge: measured_width(), requirement: RequiresMeasuredOrEstimated)
@@ -169,10 +196,10 @@ fn witness_measured_admits_at_every_requirement() -> Bool {
 
 // Standing is exactly one of four, and only one of them is measured.
 fn witness_standings_are_distinct() -> Bool {
-  class_is_measured(knowledge: measured_width())
-    && class_is_measured(knowledge: estimated_width()) == false
-    && class_is_measured(knowledge: hypothesis_width()) == false
-    && class_is_measured(knowledge: unknown_width()) == false
+  standing_is(knowledge: measured_width(), expected: SpatialClassMeasured)
+    && standing_is(knowledge: estimated_width(), expected: SpatialClassEstimated)
+    && standing_is(knowledge: hypothesis_width(), expected: SpatialClassHypothesis)
+    && standing_is(knowledge: unknown_width(), expected: SpatialClassUnknown)
 }
 
 test fn spatial_knowledge_witnesses() -> Bool {
