@@ -1,5 +1,7 @@
 module v2.std.decl_facts_skeleton
 
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
 import std.types { List, String }
 import v2.std.algebra {
   Empty,
@@ -141,3 +143,7 @@ fn decl_fact_skeleton_for_resolution(
     DeclFactResolvedAmbiguous { qualified_name: _, match_count: _ } => Absent
   }
 }
+
+data outer_record_constructor_lexeme_dissolve_on: DissolutionCondition = unbound_dissolution(description: "Dissolve-on: a closed enum or branded digest for each outer record-constructor spelling atom, grounded on extdeps/languages/dag ingest productions, so String aliases at the skeleton marshal boundary become unwritable.")
+
+data skeleton_marshal_atom_lexeme_dissolve_on: DissolutionCondition = unbound_dissolution(description: "Dissolve-on: same closed spelling authority as outer_record_constructor_lexeme_dissolve_on — skeleton marshal atoms share one cited production roster rather than parallel String nicknames.")

@@ -1,5 +1,7 @@
 module gunbc.stage0_rust_lifecycle_totality
 
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
 import gunbc.stage0_rust_host_observation {
   GitObservationRefused,
   RustManifestObserved,
@@ -264,3 +266,5 @@ fn lifecycle_totality_witness_observation(extra_paths: List<String>) -> RustMani
     cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
   }
 }
+
+data lifecycle_totality_retirement_trigger_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: RetirementTrigger carrier lands in gunbc.stage0_rust_source_lifecycle_scaffold and C1 derives exact disposition_without_retirement_trigger_paths via that single authority; LifecycleTotalityRetirementTriggerUnmodeled retires in favor of the real carrier")

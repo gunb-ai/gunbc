@@ -1,5 +1,7 @@
 module v1.tests.claim.required_expr_newline_continuation_test
 
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
 import v1.std.core {
   NewlineIndex,
   build_newline_index,
@@ -101,3 +103,5 @@ test fn w_for_newline_then_block_without_collection_refuses() -> Bool {
     file: "for_newline_missing_collection.dag"
   )
 }
+
+data required_expr_newline_continuation_dissolve_on: DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: fold into v2 parser witness corpus when v1 claim discovery is retired; until then this is the durable floor-enrolled authority for required-expression newline continuation (review #7564).")

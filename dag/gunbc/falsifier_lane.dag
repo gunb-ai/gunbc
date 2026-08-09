@@ -1,5 +1,7 @@
 module gunbc.falsifier_lane
 
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
 import std.types { String, NonEmptyStr, Bool, List, list_length }
 import std.nat { Nat }
 import gunbc.floor_component_receipt {
@@ -688,3 +690,5 @@ fn witness_lane_names_are_distinct() -> Bool {
     acc && (fold(names, init: 0, f: fn(c, m) { if m == n { c + 1 } else { c } }) == 1)
   })
 }
+
+data falsifier_lane_receipt_wiring_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the falsifier receipt document carries these blocks. Today the seed calls gunbc.floor_component_receipt floor_component_receipt_document_with_selection with rows only, and that function is SHARED with the per-PR floor, which has no lane roster — so adding a lane block there unconditionally would fabricate lane identity for components that have none. Wiring is therefore a falsifier-spe")

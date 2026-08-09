@@ -1,5 +1,7 @@
 module v2.workflow.rust_crate_partition
 
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
 import std.algebra { Empty }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.graph {
@@ -732,3 +734,9 @@ fn stage0_partition_fold_ok() -> Bool {
     Stage0PartitionReceiptFoldRefused { cause: _ } => false
   }
 }
+
+data rust_crate_partition_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: rust_crate_partition_interim_explicit — replace ExplicitPartition assignment with PolicyPartition \{ target_crate_count: declared_core_target } when balanced partition policy lands; provenance flips HandExplicit → PolicyDerived.")
+
+data stage0_compilation_units_list_wrapper_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: stage0_compilation_units — removed; receipt paths must call stage0_partition_receipt_outcome (§5 List wrapper collapses resolve/fold refusal to [], indistinguishable from empty partition). Witnesses read units from Stage0PartitionReceiptOk only.")
+
+data stage0_module_dag_interface_grounding_debt_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: stage0_module_dag_interface_grounding — populate ModuleDag.exports with frontier-derived cross-module export Nodes and type_definitions with by-value ModuleTypeDefinitionRow rows when stage0 module ingest provides them; until then R3 render uses Stage0PartitionCrateRow.modules + reexport_packages wildcard pub-use chain (not CompilationUnit.interface Nodes).")

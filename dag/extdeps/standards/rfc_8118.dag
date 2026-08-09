@@ -1,5 +1,7 @@
 module extdeps.standards.rfc_8118
 
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
 import std.types { NonEmptyStr, String, List, Bool }
 import std.integer { PositiveInt }
 import std.citation {
@@ -446,3 +448,5 @@ fn pdf_open_fragment_selector(sequence: PdfOpenParameterSequence) -> PdfOpenFrag
       }
   }
 }
+
+data project_navigable_uri_fragment_decompose_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: extdeps.uri Uri decomposes authority, path, query, and fragment as typed fields. Until then Uri.locator compresses all wire parts into one NonEmptyStr, so whether a base already carries a fragment is not a modeled question — only a string scan. project_navigable_uri refuses BaseLocatorAlreadyCarriesFragment when appending a PDF open-parameter wire form would synthesize a second # (RFC")

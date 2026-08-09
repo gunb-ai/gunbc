@@ -1,5 +1,7 @@
 module gunbc.v1_complexity_capability_census
 
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
 import std.types { String, NonEmptyStr, Bool, List }
 import std.nat { Nat }
 import v2.std.algebra { length }
@@ -598,3 +600,5 @@ fn keys_are_distinct(keys: List<String>) -> Bool {
 fn inventory_identity_keys_distinct() -> Bool {
   keys_are_distinct(keys: inventory_identity_keys())
 }
+
+data capability_retirement_trigger_naming_note: DissolutionCondition = unbound_dissolution(description: "NAMED CapabilityRetirementTrigger, not RetirementTrigger, and the reason is a §3 finding this census caught in itself. A bare RetirementTrigger ALREADY EXISTS in the tree as a VARIANT of gunbc.stage0_rust_honest_frontier_projection RustHonestFrontierDeferredAxis. Declaring a top-level type of that name shadowed the variant and broke lifecycle_totality_counts_retirement_trigger_as_underived_axis wi")

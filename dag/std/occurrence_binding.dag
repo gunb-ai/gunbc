@@ -1,5 +1,7 @@
 module std.occurrence_binding
 
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
 import std.algebra { FreeMonoid, Empty, Cons }
 import std.types { String }
 
@@ -108,3 +110,5 @@ fn occurrence_binding_from_candidates<N>(
       }
   }
 }
+
+data occurrence_binding_staged_adoption_dissolve_on: DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: both production resolver paths consume OccurrenceBindingResult by execution — v1 emits declaration-backed occurrence bindings, and v2 emits the same result and derives DependencyView BindsTo from OccurrenceBound — then delete this staged-adoption scaffold note and this dissolution row.")

@@ -1,5 +1,7 @@
 module gunbc.fleet_bmc_observation
 
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
 import extdeps.bmc.capability {
   BmcFirmwareObservation,
   BmcFirmwareVersion,
@@ -356,3 +358,5 @@ data srv4_bmc_fan_reboot_persistence_note: String = "Live perturbation receipt, 
 data fleet_bmc_surface_observation_note: String = "Authenticated read-only Redfish observations, 2026-07-27. srv3 OpenBMC 2.07.00 advertises ThermalSubsystem and its 51-member Chassis/Sensors collection includes temperature and fan readings; the legacy Chassis/Thermal URI is absent. srv4 OpenBMC 3.22.00 advertises legacy Chassis/Thermal; its Chassis/Sensors request still returns HTTP success but has only 9 power/utilization members and omits temperature/fan readings. A collection-only observer therefore fails open on srv4: transport success is not telemetry completeness. Direct known sensor URIs still resolve, but they do not make an inventory query complete."
 
 data fleet_bmc_update_service_observation_note: String = "Authenticated read-only Redfish observations, 2026-07-27. Both srv3 2.07.00 and srv4 3.22.00 advertise /redfish/v1/UpdateService/update through HttpPushUri and MultipartHttpPushUri, and each active BMC image is Updateable=true. Each FirmwareInventory exposed exactly one BMC image plus non-BMC members; neither exposed a backup BMC image. This is update-surface capability evidence, not an approved image, apply receipt, or recovery proof."
+
+data bmc_fan_symbol_index_subtree_digest_dissolve_on: DissolutionCondition = unbound_dissolution(description: "namespace content-addressed SymbolIndex subtree digest")

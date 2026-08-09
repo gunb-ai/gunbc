@@ -1,5 +1,7 @@
 module v1.tests.claim.occurrence_binding_parser_walk_witness_test
 
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
 import std.types { Bool, String, List, NonEmptyStr }
 import std.occurrence_identity {
   OccurrenceId,
@@ -796,3 +798,5 @@ test fn namespace_reference_derived_closure_parser_integration_holds() -> Bool {
     && parser_missing_declaration_exposure_refuses_holds()
     && parser_missing_authored_order_refuses_holds()
 }
+
+data occurrence_binding_parser_walk_dissolve_on: DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: witness_layer_roots admits src/v1 for parser-transport witnesses without Node ambiguity, or execution corpus carries per-entry source roots — then this recipe deletes and discovery enrollment suffices.")

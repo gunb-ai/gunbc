@@ -1,5 +1,7 @@
 module std.occurrence_binding_candidates
 
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
 import std.types { String, Int, Bool, List, NonEmptyStr, CommitSha, FilePath }
 import std.algebra { FreeMonoid, Empty, Cons }
 import std.occurrence_binding {
@@ -2790,3 +2792,5 @@ fn section13_population_law_roster_denominator_holds(
     _ => false
   }
 }
+
+data section13_module_path_is_symbolic_dissolve_on: DissolutionCondition = unbound_dissolution(description: "feature:module-path-qualified-name — DISSOLVE-ON: DeclarationRef.module_path / OccurrenceModulePathRow.module_path become v2.std.qualified_name.QualifiedName (same trigger as occurrence_module_path_convergence_note / std.observation observation_segment_grounding_note); then positional file-path inhabitance is unwritable, this string-grep oracle deletes, and section13_adjudicate_row stops calling i")

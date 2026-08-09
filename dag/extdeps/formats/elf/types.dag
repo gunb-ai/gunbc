@@ -1,5 +1,7 @@
 module extdeps.formats.elf.types
 
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -178,3 +180,5 @@ fn decode_elf64_ehdr(bytes: List<Int>) -> ElfDecodeOutcome<Elf64Ehdr> {
 fn elf64_ehdr_entry_point(hdr: Elf64Ehdr) -> EntryPoint {
   EntryPoint { virtual_address: hdr.entry }
 }
+
+data elf_phdr_decode_outcome_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: elf.segments.PhdrDecodeOutcome — deleted parallel decode machinery; sole authority is extdeps.formats.elf.types.ElfDecodeOutcome / ElfDecodeReason.")

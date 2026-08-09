@@ -1,5 +1,7 @@
 module test.claim.language_source_scaffold_index_test
 
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
 import std.types { Bool, String, Int }
 import std.disposition { Disposition, Scaffold, Terminal }
 import extdeps.filesystem.filesystem_io
@@ -66,3 +68,5 @@ test fn pair_completion_spelling_binds_the_derivation_authority() -> Bool {
     Terminal { reason: _ } => false
   }
 }
+
+data coverage_scan_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: declared_fn_count below. It counts declarations by splitting the carrier SOURCE TEXT on a fn-name prefix, which is string-shape scanning and is anemic against the Node tree the substrate already has — the same class of debt as pair_completion_uses_rhs, and marked the same way rather than left implicit (review 43195). It is a deliberate interim, strictly better than the hardcoded censu")

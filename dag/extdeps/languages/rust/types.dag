@@ -1,5 +1,7 @@
 module extdeps.languages.rust.types
 
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
 import std.coercion {
   TypeCheckpoint, InhabitantDecl, CallableRepr, CastSyntax, CastRule
 }
@@ -129,3 +131,5 @@ data rust_cast_syntax: CastSyntax = {
 
 data serde_enum_tag_attribute: String = "#[serde(tag = \"_variant\")]"
 data serde_rename_template: String = "#[serde(rename = \"\{key\}\")]"
+
+data rust_types_name_catalog_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: rust.types.integer_types/float_types — deleted bare String name lists with zero consumers; sole type-name catalog authority is extdeps.languages.rust.primitives rust_grounding_primitives.target_name rows.")

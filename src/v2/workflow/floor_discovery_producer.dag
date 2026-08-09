@@ -1,5 +1,7 @@
 module v2.workflow.floor_discovery_producer
 
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
 import std.algebra { trim }
 
 import v2.compiler.discovery_enumeration {
@@ -716,3 +718,8 @@ data floor_discovery_surface_text_scan_scaffold: Disposition = Scaffold {
   }
 }
 
+data floor_discovery_directory_candidate_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: floor_discovery_directory_candidate — basename-without-dot descent heuristic dissolves when Filesystem.List surfaces entry kind (file | directory) and the walker consumes it; live dag/ + src/v2/ corpora have zero dotted directory basenames today (find -type d -name '*.*' empty).")
+
+data floor_discovery_live_tree_disposition_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: floor_discovery_live_tree_disposition — producer reads and refuses malformed/duplicate `data live_tree_disposition: LiveTreeDisposition = …` rows (undeclared = ReadsLiveTree). Effect-reach reclassification remains on the Rust bridge until discovery admission consumes `v2.lens.effect_reach` directly (same trigger as cli_run `reads_live_tree_effective` scaffold).")
+
+data floor_discovery_surface_text_scan_dissolve_on: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: floor_discovery_surface_text_scan — naming hygiene recovers test-decl names (and the producer recovers live_tree_disposition rows + CoproductWireContract markers) via hand-rolled line/token splitting over raw source text (§4 grammar-owned-reads violation); DISSOLVES WHEN discovery enumeration consumes grammar-owned parse/AST facts from the same ingress surface as v2.compiler so stru")
