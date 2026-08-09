@@ -1,6 +1,6 @@
 module test.claim.shell_stream_capture
 
-import std.types { Bool, Int, String }
+import std.types { Bool, String }
 import std.measure { byte_size, byte_size_count }
 import std.shell_stream_capture {
   StreamCapturePolicy,
@@ -40,19 +40,25 @@ test fn default_stderr_policy_is_sixteen_kibibyte_tail() -> Bool {
 }
 
 test fn truncated_when_total_exceeds_retained() -> Bool {
-  captured_stream_truncated(total_bytes: 59522411, retained_bytes: 16384)
+  captured_stream_truncated(
+    total_bytes: byte_size(count: 59522411),
+    retained_bytes: byte_size(count: 16384),
+  )
 }
 
 test fn not_truncated_when_fully_retained() -> Bool {
-  !captured_stream_truncated(total_bytes: 30770, retained_bytes: 30770)
+  !captured_stream_truncated(
+    total_bytes: byte_size(count: 30770),
+    retained_bytes: byte_size(count: 30770),
+  )
 }
 
 test fn tail_observation_stays_within_policy() -> Bool {
   captured_stream_retained_within_policy(
     policy: default_shell_stderr_capture_policy(),
     observation: CapturedStreamObservation {
-      total_bytes: 59522411,
-      retained_bytes: 16384,
+      total_bytes: byte_size(count: 59522411),
+      retained_bytes: byte_size(count: 16384),
       truncated: true,
       digest_hex: "deadbeefcafebabe",
       retained: "tail-only",
@@ -64,8 +70,8 @@ test fn discarded_observation_has_empty_retained() -> Bool {
   captured_stream_retained_within_policy(
     policy: CaptureDiscarded,
     observation: CapturedStreamObservation {
-      total_bytes: 59522411,
-      retained_bytes: 0,
+      total_bytes: byte_size(count: 59522411),
+      retained_bytes: byte_size(count: 0),
       truncated: true,
       digest_hex: "",
       retained: "",
@@ -79,8 +85,8 @@ test fn bounded_observation_refuses_oversized_retained_red_control() -> Bool {
       max_retained_bytes: byte_size(count: 16384),
     },
     observation: CapturedStreamObservation {
-      total_bytes: 59522411,
-      retained_bytes: 59522411,
+      total_bytes: byte_size(count: 59522411),
+      retained_bytes: byte_size(count: 59522411),
       truncated: true,
       digest_hex: "",
       retained: "would-be-full-stderr",
