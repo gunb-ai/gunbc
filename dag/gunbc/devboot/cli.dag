@@ -1,7 +1,7 @@
 module gunbc.devboot.cli
 
 import std.types { String }
-import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import std.process { ProcessExit, exit_failure }
 import extdeps.filesystem.filesystem_io
 import gunbc.devboot.build {
   devboot_build,

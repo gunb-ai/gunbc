@@ -1,81 +1,83 @@
 module gunbc.devboot.fleet_proof_receipt
 
-import std.types { String, NonEmptyStr, Int }
+import std.types { String, NonEmptyStr, Int, Bool, CommitSha }
 import std.content_hash { Sha256Digest, sha256_hex_digest }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 
-// TRANSCRIPTION WITH PROVENANCE of the two-client fleet proof independently verified on srv1/srv2 (witty-raven-412 verification msg_123b5569, 2026-08-09). Host-local /tmp artifacts are ephemeral; these rows are the durable copy.
-type DevbootFleetProofRunProvenance {
-  verified_at: NonEmptyStr
-  verifying_session: NonEmptyStr
-  branch: NonEmptyStr
-  merge_commit: NonEmptyStr
-  note: String
+// THE PRIOR devboot_fleet_proof_rows TRANSCRIPTION IS RETIRED. Those rows described a two-client proof that used a host shell git loop and devboot_serve_entry semantics — not the modeled devboot_serve_once_entry path exercised here. This module is now the single proof authority for the 2026-08-09 modeled fleet rerun (witty-raven-412 GO msg_b352da23, post-consolidation planning).
+data devboot_fleet_proof_transcription_retired_note: String = "RETIRED: devboot_fleet_proof_rows and devboot_fleet_proof_run_provenance described a shell-harness proof (token fnv1a64-0b101ca4d5635461, digest a4cf1e7746...) that did not exercise devboot_serve_once_entry on srv3. Replaced by devboot_modeled_fleet_proof_receipt below, populated from the 2026-08-09T22:07–22:21Z modeled rerun receipts on srv1/srv2/srv3."
+
+type DevbootFleetClientObservation {
+  host: NonEmptyStr
+  reused: Bool
+  executed: Bool
+  receipt_excerpt: String
 }
 
-data devboot_fleet_proof_run_provenance: DevbootFleetProofRunProvenance = DevbootFleetProofRunProvenance {
-  verified_at: "2026-08-09T17:18:44Z" as NonEmptyStr,
-  verifying_session: "session/keen-moth-104" as NonEmptyStr,
-  branch: "session/keen-moth-104" as NonEmptyStr,
-  merge_commit: "69d07ed69d3" as NonEmptyStr,
-  note: "Proof executed against fleet corpus at 7839285a0a (local fleet checkout); mechanism now on published main via #8049. Re-run from origin/main required for evaluated_head alignment — tracked on #8078.",
+// EXECUTION EVIDENCE for the modeled two-client fleet proof. Fields match the on-host .devboot-receipt prose gunbc build writes and the srv3 modeled-serve.log SERVED line — not inferred from absence of a second log line.
+type DevbootModeledFleetProofReceipt {
+  executed_at: NonEmptyStr
+  tested_tree: CommitSha
+  mechanism_branch: NonEmptyStr
+  request_identity: NonEmptyStr
+  producer_host: NonEmptyStr
+  producer_served_count: Int
+  produced_commit: NonEmptyStr
+  artifact_object_id: NonEmptyStr
+  artifact_sha256: Sha256Digest
+  clients: List<DevbootFleetClientObservation>
+  producer_entry: DeclarationRef
+  consumer_entry: DeclarationRef
+  transport_endpoint: String
 }
 
-data devboot_fleet_proof_transcription_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.devboot.fleet_proof_receipt",
-    decl_name: "devboot_fleet_proof_rows",
-    field: WholeDeclaration,
+data devboot_modeled_fleet_proof_note: String = "Producer: srv3 host timer shell invokes ONLY devboot_serve_once_entry (modeled-serve-loop.sh) — no shell git for-each-ref or per-token serve on the path. Clients: srv1 then srv2 each ran gunbc build gunbc --repo-root corpus at tested_tree. Observed: one request ref token, one produced commit 180beeb95ef8dab53c7abf8aa59a728ffc00e4e9, one SERVED line in modeled-serve.log (producer_served_count=1), matching digest on both clients, srv2 reused:true after srv1 reused:false, both binaries executed (--help)."
+
+fn devboot_modeled_fleet_proof_receipt() -> DevbootModeledFleetProofReceipt? {
+  match sha256_hex_digest(hex: "976728c5d2029799f1d89843dfdd70c3b3ed132211126d2752ef8af23b5c146e") {
+    Absent => none
+    Present { value: digest } =>
+      Present {
+        value: DevbootModeledFleetProofReceipt {
+          executed_at: "2026-08-09T22:20:45Z" as NonEmptyStr,
+          tested_tree: "69d07ed69d3",
+          mechanism_branch: "session/keen-moth-104" as NonEmptyStr,
+          request_identity: "fnv1a64-dfd0b4abb44e30e7" as NonEmptyStr,
+          producer_host: "srv3" as NonEmptyStr,
+          producer_served_count: 1,
+          produced_commit: "180beeb95ef8dab53c7abf8aa59a728ffc00e4e9" as NonEmptyStr,
+          artifact_object_id: "bb6463edd3ebdae411755239fa2ae9bcadab23ef" as NonEmptyStr,
+          artifact_sha256: digest,
+          clients: [
+            DevbootFleetClientObservation {
+              host: "srv1" as NonEmptyStr,
+              reused: false,
+              executed: true,
+              receipt_excerpt: "BUILT path: /tmp/devboot-fleet/out-srv1 sha256=976728c5... producer_host: srv3 reused: false",
+            },
+            DevbootFleetClientObservation {
+              host: "srv2" as NonEmptyStr,
+              reused: true,
+              executed: true,
+              receipt_excerpt: "BUILT path: /tmp/devboot-fleet/out-srv2 sha256=976728c5... producer_host: srv3 reused: true",
+            },
+          ],
+          producer_entry: decl_ref(
+            module_path: "gunbc.devboot.serve",
+            decl_name: "devboot_serve_once_entry",
+          ),
+          consumer_entry: decl_ref(
+            module_path: "gunbc.devboot.cli",
+            decl_name: "devboot_build_cli_output",
+          ),
+          transport_endpoint: "git://192.168.1.221:19419/store.git",
+        },
+      }
   }
 }
 
-type DevbootFleetProofRow {
-  host: NonEmptyStr
-  role: NonEmptyStr
-  subject_ref_token: NonEmptyStr
-  artifact_sha256_hex: NonEmptyStr
-  produced_commit: NonEmptyStr
-  exchange_produced_commit: NonEmptyStr
-  receipt_excerpt: String
-  executed: Bool
-}
-
-data devboot_fleet_proof_rows: List<DevbootFleetProofRow> = [
-  DevbootFleetProofRow {
-    host: "srv3" as NonEmptyStr,
-    role: "producer" as NonEmptyStr,
-    subject_ref_token: "fnv1a64-0b101ca4d5635461" as NonEmptyStr,
-    artifact_sha256_hex: "a4cf1e7746bc514fafb03987a50eaf2c730cb38273c709094de2874b9e1450a8" as NonEmptyStr,
-    produced_commit: "e7561f862c48502fd023431c702b86cc210adf07" as NonEmptyStr,
-    exchange_produced_commit: "n/a" as NonEmptyStr,
-    receipt_excerpt: "SERVED fnv1a64-0b101ca4d5635461 sha256=a4cf1e7746bc514fafb03987a50eaf2c730cb38273c709094de2874b9e1450a8",
-    executed: true,
-  },
-  DevbootFleetProofRow {
-    host: "srv1" as NonEmptyStr,
-    role: "client_a" as NonEmptyStr,
-    subject_ref_token: "fnv1a64-0b101ca4d5635461" as NonEmptyStr,
-    artifact_sha256_hex: "a4cf1e7746bc514fafb03987a50eaf2c730cb38273c709094de2874b9e1450a8" as NonEmptyStr,
-    produced_commit: "n/a" as NonEmptyStr,
-    exchange_produced_commit: "e7561f862c48502fd023431c702b86cc210adf07" as NonEmptyStr,
-    receipt_excerpt: "BUILT path: /tmp/devboot-fleet/out-srv1 producer_host: srv3",
-    executed: true,
-  },
-  DevbootFleetProofRow {
-    host: "srv2" as NonEmptyStr,
-    role: "client_b" as NonEmptyStr,
-    subject_ref_token: "fnv1a64-0b101ca4d5635461" as NonEmptyStr,
-    artifact_sha256_hex: "a4cf1e7746bc514fafb03987a50eaf2c730cb38273c709094de2874b9e1450a8" as NonEmptyStr,
-    produced_commit: "n/a" as NonEmptyStr,
-    exchange_produced_commit: "e7561f862c48502fd023431c702b86cc210adf07" as NonEmptyStr,
-    receipt_excerpt: "BUILT path: /tmp/devboot-fleet/out-srv2 producer_host: srv3",
-    executed: true,
-  },
-]
-
-data devboot_fleet_store_ls_remote: String = "refs/devboot/produced/fnv1a64-0b101ca4d5635461 e7561f862c48502fd023431c702b86cc210adf07\nrefs/devboot/request/fnv1a64-0b101ca4d5635461 931ee91b081f41dadaf960c8d3f5913e7eb1cc07"
+data devboot_fleet_store_ls_remote: String = "refs/devboot/produced/fnv1a64-dfd0b4abb44e30e7 180beeb95ef8dab53c7abf8aa59a728ffc00e4e9\nrefs/devboot/request/fnv1a64-dfd0b4abb44e30e7 a6163bd7f5c101f8f21f758b9edf93068fb47305"
 
 data devboot_fleet_transport_endpoint: String = "git://192.168.1.221:19419/store.git"
 
@@ -90,5 +92,8 @@ data devboot_fleet_shell_loop_scaffold: Disposition = Scaffold {
 }
 
 fn devboot_fleet_proof_digest() -> Sha256Digest? {
-  sha256_hex_digest(hex: "a4cf1e7746bc514fafb03987a50eaf2c730cb38273c709094de2874b9e1450a8")
+  match devboot_modeled_fleet_proof_receipt() {
+    Absent => none
+    Present { value: receipt } => Present { value: receipt.artifact_sha256 }
+  }
 }

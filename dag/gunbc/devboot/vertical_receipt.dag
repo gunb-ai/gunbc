@@ -39,23 +39,23 @@ fn devboot_vertical_standing() -> DevbootVerticalStanding {
 //
 // WHAT IS AND IS NOT REPRODUCIBLE HERE, stated because the subject axis is a dirty-worktree snapshot. The artifact object id and its sha256 are reproducible by anyone building these crate sources with this toolchain -- they are facts about the output. The SUBJECT TOKEN is not: it names a tree containing uncommitted working-tree state that existed on one machine at one moment, so no other party can recompute it, and the evaluated head only locates the committed part of it. That is a property of building what an agent is looking at rather than what it has committed, and the token is carried as the identity the run actually used, not as something a reader can independently derive.
 //
-// THIS INHABITANT IS FROM A TWO-CLIENT FLEET PROOF (2026-08-09), independently verified on srv1/srv2. evaluated_head names published main (#8049 merge 69d07ed69d3); subject token and artifact identities are transcribed in gunbc.devboot.fleet_proof_receipt with host receipt excerpts. Transport: git://192.168.1.221:19419/store.git.
+// THIS INHABITANT IS FROM THE MODELED TWO-CLIENT FLEET PROOF (2026-08-09T22:07–22:21Z). evaluated_head names published main (#8049 merge 69d07ed69d3); execution evidence lives in gunbc.devboot.fleet_proof_receipt devboot_modeled_fleet_proof_receipt. Producer: devboot_serve_once_entry on srv3; clients: gunbc build gunbc on srv1/srv2. Transport: git://192.168.1.221:19419/store.git.
 //
 // THIS INHABITANT IS FROM AN ISOLATED BUILD. The snapshot tree was checked out into its own directory, compiled there with its own target root, and the resulting binary hashed from that isolated output -- so no ambient artifact could have supplied the bytes. The identity is exactly reproducible from the same tree at the same settings, which is what makes this checkable rather than believable.
 
 fn devboot_vertical_receipt() -> DevbootVerticalReceipt? {
-  match sha256_hex_digest(hex: "a4cf1e7746bc514fafb03987a50eaf2c730cb38273c709094de2874b9e1450a8") {
+  match sha256_hex_digest(hex: "976728c5d2029799f1d89843dfdd70c3b3ed132211126d2752ef8af23b5c146e") {
     Absent => none
     Present { value: digest } =>
       Present {
         value: DevbootVerticalReceipt {
           evaluated_head: "69d07ed69d3",
-          subject_ref_token: "fnv1a64-0b101ca4d5635461" as NonEmptyStr,
-          artifact_object_id: "3ca7876fe39895f504b1fbc4995340ef7b8f91bd" as NonEmptyStr,
+          subject_ref_token: "fnv1a64-dfd0b4abb44e30e7" as NonEmptyStr,
+          artifact_object_id: "bb6463edd3ebdae411755239fa2ae9bcadab23ef" as NonEmptyStr,
           artifact_sha256: digest,
           producer_entry: DeclarationRef {
-            module_path: "gunbc.devboot.build",
-            decl_name: "devboot_serve_entry",
+            module_path: "gunbc.devboot.serve",
+            decl_name: "devboot_serve_once_entry",
             field: WholeDeclaration,
           },
           consumer_entry: DeclarationRef {
