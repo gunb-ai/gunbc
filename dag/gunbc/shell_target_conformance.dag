@@ -1,6 +1,7 @@
 module gunbc.shell_target_conformance
 
 import std.types { Bool, List, String }
+import gunbc.language_target_registry { gnu_bash_subject_ref }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.roster_frontier { declaration_ref_eq }
 import extdeps.external_authority { ExternalAuthority }
@@ -25,12 +26,6 @@ type ShellConformanceFact {
   specification: DeclarationRef
   degree: ShellConformanceDegree
   citation: ExternalAuthority
-}
-
-data gnu_bash_subject_ref: DeclarationRef = DeclarationRef {
-  module_path: "extdeps.languages.bash.subject",
-  decl_name: "gnu_bash",
-  field: WholeDeclaration
 }
 
 data posix_shell_subject_ref: DeclarationRef = DeclarationRef {
