@@ -8099,6 +8099,7 @@ pub fn build_live_read_selection_manifest(
     //
     // Every line carries the same invocation identity, so concurrent workers are separable and
     // `start without end` locates the phase rather than merely proving something hung.
+    bump_live_read_classification_invocations();
     let invocation = LiveReadInvocationId::mint(index, requests.len());
     eprintln!(
         "[live-read-start] invocation={} subject={} pid={} requests={} \
@@ -9438,6 +9439,56 @@ mod live_read_selection_manifest_producer_tests {
         }
     }
 
+    // ZERO CANDIDATES COST ZERO CLASSIFICATION (proof-ladder gate 5).
+    //
+    // Candidate filtering reduces the number of REQUESTS through the modeled fold; it does not by
+    // itself remove the fixed startup, because a context built unconditionally still resolves the
+    // ~587-module classification lens whether it has one candidate or none. That fixed term is
+    // ~7 seconds on the measured CI run, so "the roster filter appears to work" and "the run
+    // stopped paying for the classifier" are different claims and only the second is asserted
+    // here.
+    //
+    // Counted, not grepped: the assertion is on an invocation COUNTER, because a test that reads
+    // its own stderr proves a line was printed rather than that the work was skipped.
+    #[test]
+    fn a_fully_excluded_roster_resolves_no_classification_lens() {
+        enter_workspace();
+        let index = build_multi_entry_index(&source_roots());
+        let entry = "dag/test/claim/accelerator_demo_execution_witness_test.dag";
+
+        // Every row ReadsLiveTree, so every row is AlreadySelected and none is a candidate.
+        let rows = vec![super::DiscoveryRow {
+            label: format!("{entry}::accelerator_demo_execution_lane_witnesses"),
+            entry: entry.to_string(),
+            function: "accelerator_demo_execution_lane_witnesses".to_string(),
+            reads_live_tree: true,
+        }];
+
+        super::with_typecheck_compute_count_receipt(|| {
+            super::reset_live_read_classification_invocations();
+            let plan = super::LiveReadSelectionPlan::build(
+                &rows,
+                &index,
+                &super::FloorDiffEdits::default(),
+                &[],
+            )
+            .expect("a fully excluded roster still plans");
+
+            assert_eq!(
+                super::live_read_classification_invocations(),
+                0,
+                "a roster with no candidates still resolved the classification lens, so the \
+                 fixed startup survives the filter that was supposed to remove it"
+            );
+            // And the plan is still USABLE -- zero classification must not mean zero answers.
+            assert!(
+                plan.entry_must_run(&index, entry, &[])
+                    .expect("an excluded entry answers from its cause"),
+                "the excluded entry must still be forced to run"
+            );
+        });
+    }
+
     // CHEAP-AXIS EXCLUSION CROSS-PRODUCT (proof-ladder gate 4).
     //
     // One control per exclusion reason, because the reasons are separate arms of one disjunction
@@ -10584,6 +10635,30 @@ pub fn reset_typecheck_compute_count() {
 
 fn bump_typecheck_compute_count() {
     TYPECHECK_COMPUTE_COUNT.fetch_add(1, Ordering::SeqCst);
+}
+
+// How many times the live-read classification lens was RESOLVED AND EVALUATED in this process.
+//
+// The unit is the expensive thing: one increment per `build_live_read_selection_manifest`, which
+// is one lens-closure resolve plus one modeled fold. It exists because two claims on this lane
+// are otherwise unfalsifiable from outside -- "zero candidates cost nothing" and "classification
+// happens once per subject, not once per worker". Both are statements about a COUNT, and a
+// receipt line printed to stderr cannot be asserted by a consumer; a counter can.
+//
+// Deliberately not derived from the phase receipts: a test that greps its own stderr proves the
+// line was printed, not that the work was skipped.
+static LIVE_READ_CLASSIFICATION_INVOCATIONS: AtomicUsize = AtomicUsize::new(0);
+
+pub fn live_read_classification_invocations() -> usize {
+    LIVE_READ_CLASSIFICATION_INVOCATIONS.load(Ordering::SeqCst)
+}
+
+pub fn reset_live_read_classification_invocations() {
+    LIVE_READ_CLASSIFICATION_INVOCATIONS.store(0, Ordering::SeqCst);
+}
+
+fn bump_live_read_classification_invocations() {
+    LIVE_READ_CLASSIFICATION_INVOCATIONS.fetch_add(1, Ordering::SeqCst);
 }
 
 fn shared_caches_read<'a>(
