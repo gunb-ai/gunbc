@@ -11615,7 +11615,6 @@ pub struct ResolveStageNanos {
     pub edge_index_tree_census: u128,
     /// Calls to that census.
     pub edge_index_tree_census_calls: u128,
-    pub edge_index_tree_census_misses: u128,
     /// Cold builds of that census (MISSES only). The count that makes the nanos above
     /// interpretable: total/calls is an average over mostly-free hits and describes no
     /// real call.
@@ -12020,6 +12019,7 @@ pub struct ExclusiveCostPartition {
     pub edge_index_source_files: u128,
     pub edge_index_bare_eligible: u128,
     pub edge_index_closure_expand_calls: u128,
+    pub edge_index_tree_census_misses: u128,
     pub edge_index_tree_census_calls: u128,
     pub load_fixpoint_rounds: u128,
     /// Per-entry span attribution (entry, spans, span nanos, that entry's stage rows),
