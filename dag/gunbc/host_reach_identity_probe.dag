@@ -1,6 +1,14 @@
 module gunbc.host_reach_identity_probe
 
 import std.algebra { trim }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.typed_argv_exec {
+  typed_argv_probe_over_ssh,
+  TypedArgvExecOutcome,
+  TypedArgvExecConverged,
+  TypedArgvExecRefused,
+}
+import gunbc.clock_read { clock_now_probed_at }
 
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import product.placement_supply { HostIdentity }
@@ -38,16 +46,17 @@ import std.upsert_decision {
 // enabled until a ProbeReachable receipt exists for the fleet key — the fallback is
 // never disabled before the primary is proven. That disable is a separate effect with
 // its own receipt, never a side effect of observation.
+// ProbeHostKeyMismatch.expected_fingerprint is Optional BY MEANING, not convenience
+// (review 50695): Present = an enrolled expectation existed and the observed key
+// contradicts it ("wrong machine OR rotated key — compare and decide"); Absent = no
+// fingerprint enrollment exists yet for this host, so the only honest claim is "the
+// transport itself flagged verification failure". An empty-string expected would
+// conflate those two remedies — the exact state-space conflation the srv5/srv6
+// identical-factory-keys class needs kept apart.
 type ReachProbeOutcome
   = ProbeReachable { observed_short_hostname: String }
   | ProbeTransportUnavailable { cause: String }
   | ProbeAuthenticationRefused { cause: String }
-  // expected_fingerprint is Optional BY MEANING, not convenience (review 50695): Present
-  // = an enrolled expectation existed and the observed key contradicts it ("wrong machine
-  // OR rotated key — compare and decide"); Absent = no fingerprint enrollment exists yet
-  // for this host, so the only honest claim is "the transport itself flagged verification
-  // failure". An empty-string expected would conflate those two remedies — the exact
-  // state-space conflation the srv5/srv6 identical-factory-keys class needs kept apart.
   | ProbeHostKeyMismatch { expected_fingerprint: String?, observed_fingerprint: String }
 
 type HostReachIdentityProbeReceipt {
@@ -159,5 +168,53 @@ fn observe_host_identity_converge(host: HostIdentity) -> ObservationVerdict? {
   match host_reach_identity_probe_receipt_for(host: host) {
     Present { value: r } => Present { value: identity_verdict_from_outcome(host: host, o: r.outcome) }
     _ => none
+  }
+}
+
+// LIVE probe execution (loop leg e). One wet pass over the fleet reach targets via the
+// typed SSH PROBE seam (typed_argv_probe_over_ssh, expect: OutcomeIsData) — a failed leg
+// is DATA classified into its typed arm, never a step failure and never an ExpectSuccess
+// annotation standing where a check was owed (DEVBOOT retraction class). No enrollment
+// registry exists yet, so every mismatch carries expected_fingerprint = Absent honestly.
+// The receipt is WRITTEN (typed value) and the entry exits success even when hosts are
+// unreachable, because the probe's product is the observation; only a receipt-write
+// failure is a run failure.
+data fleet_reach_probe_targets: List<String> = ["srv1", "srv2", "srv3", "srv4", "srv5", "srv6"]
+data fleet_reach_probe_receipt_path: String = "target/fleet-reach-probe-receipt.txt"
+
+type FleetReachProbeRun {
+  probed_at: String
+  receipts: List<HostReachIdentityProbeReceipt>
+}
+
+fn probe_host_reach_once(host: String, probed_at: String) -> HostReachIdentityProbeReceipt {
+  let outcome = match typed_argv_probe_over_ssh(host: host as NonEmptyStr, argv: ["hostname"]) {
+    TypedArgvExecConverged { result: r } =>
+      classify_reach_probe_wire_with_expectation(
+        success: r.success,
+        stdout: r.stdout,
+        stderr: r.stderr,
+        expected_fingerprint: none,
+      )
+    TypedArgvExecRefused { reason: why } => ProbeTransportUnavailable { cause: why }
+  }
+  HostReachIdentityProbeReceipt {
+    host: host as HostIdentity,
+    probed_at: probed_at as NonEmptyStr,
+    outcome: outcome,
+  }
+}
+
+func probe_fleet_reach_wet() -> ProcessExit {
+  let now = clock_now_probed_at()
+  let run = FleetReachProbeRun {
+    probed_at: now as String,
+    receipts: map(fleet_reach_probe_targets, h => probe_host_reach_once(host: h, probed_at: now as String)),
+  }
+  let w = Filesystem.Write(path: fleet_reach_probe_receipt_path, content: to_string(run))
+  if w.success {
+    ExitSuccess
+  } else {
+    exit_failure(reason: join(["fleet reach probe receipt write failed: ", w.error], ""))
   }
 }

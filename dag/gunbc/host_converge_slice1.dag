@@ -585,8 +585,11 @@ fn host_converge_slice1_tasks_read_limit(unit: NonEmptyStr) -> SystemdCgroupTask
 // The reapply-noop second write intentionally bypasses the TasksCurrent guard: it is only
 // reachable after an independent read proved the effective TasksMax already equals the
 // desired value, and re-applying the effective value cannot lower headroom (TasksCurrent
-// is always <= the effective cap), so the EAGAIN-starvation class the guard exists for is
-// physically unreachable on this arm. Mirrors the memory circuit's reapply-noop.
+// is always <= the effective cap at the moment of the read). The read-back and this
+// second write are NOT atomic — concurrent task creation can raise TasksCurrent between
+// them — but the EAGAIN-starvation class the guard exists for requires setting the cap
+// BELOW current, which re-applying the already-effective value cannot cause regardless
+// of concurrent spawns (review 50754 wording). Mirrors the memory circuit's reapply-noop.
 fn host_converge_slice1_prove_tasks_reapply_noop(unit: NonEmptyStr, knob: ConvergeKnob) -> String? {
   if !host_converge_slice1_apply_tasks_max(unit: unit, value: knob.desired) {
     Present {

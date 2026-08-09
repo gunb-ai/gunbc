@@ -22,6 +22,7 @@ import gunbc.ci_spec {
   ci_fmt_gate_line,
   gunbc_ci_srv1_tasks_observation_invoke,
   gunbc_ci_advance_fleet_desired_script,
+  gunbc_ci_fleet_reach_probe_invoke,
 }
 import gunbc.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
@@ -630,6 +631,42 @@ fn ci_srv1_tasks_observation_step() -> Step {
 // the required ci check (needs: [ci] is the floor-green admission), contents:write so the
 // checkout-persisted credential can push the CAS ref advance. No host is contacted; hosts
 // follow the ref on their own timers.
+// Live fleet reach probe (loop leg e): workflow_dispatch-only, srv1-pinned (the probe
+// runs FROM inside the fleet, over the typed SSH probe seam where outcome is data).
+fn ci_fleet_reach_probe_step() -> Step {
+  RunStep {
+    name: Present { value: "Live fleet reach probe (probe_fleet_reach_wet; outcomes are data)" },
+    id: none,
+    run: gunbc_ci_fleet_reach_probe_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn ci_fleet_reach_probe_job() -> Job {
+  Job {
+    id: "probe_fleet_reach",
+    name: none,
+    runner: gunbc_ci_deploy_srv1_runner_spec(),
+    steps: concat(
+      ci_artifact_consumer_prelude_steps(),
+      [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_fleet_reach_probe_step()]
+    ),
+    needs: ["build"],
+    env: none,
+    outputs: none,
+    if_condition: Present { value: ci_workflow_dispatch_only_if },
+    timeout_minutes: Present { value: gunbc_ci_deploy_job_backstop_timeout_minutes },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: none
+  }
+}
+
 fn ci_advance_fleet_desired_step() -> Step {
   RunStep {
     name: Present { value: "Advance refs/fleet/desired to the merged revision (CAS, floor-green only)" },
@@ -918,5 +955,5 @@ data ci_workflow: Workflow = {
       id_token: none
     }
   },
-  jobs: concat([ci_build_job(), ci_regen_job(), ci_job()], concat(ci_deploy_jobs(), [ci_heal_generated_artifacts_job(), ci_srv1_tasks_observation_job(), ci_advance_fleet_desired_job()]))
+  jobs: concat([ci_build_job(), ci_regen_job(), ci_job()], concat(ci_deploy_jobs(), [ci_heal_generated_artifacts_job(), ci_srv1_tasks_observation_job(), ci_fleet_reach_probe_job(), ci_advance_fleet_desired_job()]))
 }
