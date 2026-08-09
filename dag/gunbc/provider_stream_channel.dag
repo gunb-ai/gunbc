@@ -1,0 +1,144 @@
+module gunbc.provider_stream_channel
+
+import std.types { String, NonEmptyStr, FilePath }
+import std.decl_ref { decl_ref }
+import std.process_termination { ProcessTermination }
+
+// THE PROVIDER-STREAM CONSTRUCTION WALL.
+//
+// A provider's machine protocol and its human diagnostics are two facts, and a pseudoterminal has
+// exactly ONE output channel — so a pane transcript cannot preserve the distinction no matter how it
+// is captured. That is not a defect in the capture; it is what a transcript IS. The 2026-08-09 srv1
+// dashboard wedge is the receipt: `codex exec --json` ran inside a tmux pane, `tmux pipe-pane` teed the
+// merged pane bytes into an artifact NAMED provider-events.jsonl, and 308 of its 831 lines were codex
+// tracing text rather than protocol events. Every downstream reader then paid for a distinction the
+// capture had already destroyed.
+//
+// The wall below is construction, not validation (DESIGN 5): a stream carries the ORIGIN it was
+// captured from, and the sole mint refuses a pseudoterminal origin. A merged transcript therefore has
+// no route to inhabiting ProviderProtocolStream — the invalid state is unwritable rather than caught.
+// A transcript remains a first-class artifact; it simply cannot claim to be a protocol authority.
+data provider_stream_channel_wall_note: String = "The refusal is on ORIGIN, not on content, and that is deliberate. Content-sniffing a transcript for JSON-looking lines is the heuristic DESIGN 4 rules out in a closed system: it would admit a polluted stream whose noise happened to parse and refuse a clean one whose first line was a banner, and it would have admitted the exact artifact that caused the incident. Origin is a structural fact known at capture time by whoever opened the file descriptor, so it is decidable where content is not."
+
+// The physical channel a byte stream was captured from, BEFORE any pseudoterminal merge. This is the
+// discriminator the wall reads, so it names file descriptors rather than roles: a role ('events',
+// 'diagnostics') is what a caller INTENDS, and intent is exactly what the incident's capture got wrong.
+type ChannelOrigin
+  = ProcessStandardOutput
+  | ProcessStandardError
+  | PseudoterminalTranscript
+
+type StreamFraming
+  = JsonLines
+  | UnframedText
+
+// sole_constructor: only this module may build one, and admit_provider_protocol_stream below is the
+// single admitted route in. A FilePath has no path to a protocol-authority claim that does not pass
+// through the origin check.
+type ProviderProtocolStream sole_constructor {
+  path: FilePath
+  framing: StreamFraming
+}
+
+type ProviderDiagnosticStream sole_constructor {
+  path: FilePath
+}
+
+// No wall: a transcript claims nothing, so nothing needs guarding. It is modeled at all so that the
+// pane artifact has a NAME that is not 'events' — an unnamed transcript is how the conflation survived.
+type HumanTerminalTranscript {
+  path: FilePath
+}
+
+type ProviderProtocolStreamAdmission
+  = ProtocolStreamAdmitted { stream: ProviderProtocolStream }
+  | ProtocolStreamRefused { path: FilePath, origin: ChannelOrigin, reason: NonEmptyStr }
+
+type ProviderDiagnosticStreamAdmission
+  = DiagnosticStreamAdmitted { stream: ProviderDiagnosticStream }
+  | DiagnosticStreamRefused { path: FilePath, origin: ChannelOrigin, reason: NonEmptyStr }
+
+// The ONE protocol mint. Sealed to the two admission functions below rather than left public, because a
+// public record arm is a constructor: naming a function 'the sole mint' does not make it one if callers
+// can build the record directly.
+fn provider_protocol_stream_seal(path: FilePath, framing: StreamFraming) -> ProviderProtocolStream
+  admit_callers: [
+    decl_ref(module_path: "gunbc.provider_stream_channel", decl_name: "admit_provider_protocol_stream"),
+  ]
+  = ProviderProtocolStream { path: path, framing: framing }
+
+fn provider_diagnostic_stream_seal(path: FilePath) -> ProviderDiagnosticStream
+  admit_callers: [
+    decl_ref(module_path: "gunbc.provider_stream_channel", decl_name: "admit_provider_diagnostic_stream"),
+  ]
+  = ProviderDiagnosticStream { path: path }
+
+// Protocol evidence comes from fd 1 and nowhere else. ProcessStandardError refuses as its own arm
+// rather than sharing the transcript's: routing diagnostics into the events artifact and merging the
+// two are different mistakes with different fixes, and one refusal reason for both would name neither.
+fn admit_provider_protocol_stream(
+  path: FilePath,
+  framing: StreamFraming,
+  origin: ChannelOrigin,
+) -> ProviderProtocolStreamAdmission {
+  match origin {
+    ProcessStandardOutput =>
+      ProtocolStreamAdmitted {
+        stream: provider_protocol_stream_seal(path: path, framing: framing),
+      }
+    ProcessStandardError =>
+      ProtocolStreamRefused {
+        path: path,
+        origin: origin,
+        reason: "provider protocol stream must be captured from process stdout; stderr carries diagnostics, not protocol events" as NonEmptyStr,
+      }
+    PseudoterminalTranscript =>
+      ProtocolStreamRefused {
+        path: path,
+        origin: origin,
+        reason: "provider protocol stream cannot be a pseudoterminal transcript: a pty merges stdout and stderr into one channel, so the protocol/diagnostic distinction is already lost at capture" as NonEmptyStr,
+      }
+  }
+}
+
+// Diagnostics come from fd 2. A transcript refuses here too — it is not a diagnostic authority either,
+// because it contains protocol bytes the diagnostic reader would then mis-attribute to the provider's
+// own error reporting.
+fn admit_provider_diagnostic_stream(
+  path: FilePath,
+  origin: ChannelOrigin,
+) -> ProviderDiagnosticStreamAdmission {
+  match origin {
+    ProcessStandardError =>
+      DiagnosticStreamAdmitted {
+        stream: provider_diagnostic_stream_seal(path: path),
+      }
+    ProcessStandardOutput =>
+      DiagnosticStreamRefused {
+        path: path,
+        origin: origin,
+        reason: "provider diagnostic stream must be captured from process stderr; stdout carries the machine protocol" as NonEmptyStr,
+      }
+    PseudoterminalTranscript =>
+      DiagnosticStreamRefused {
+        path: path,
+        origin: origin,
+        reason: "provider diagnostic stream cannot be a pseudoterminal transcript: a pty transcript also carries protocol bytes, which a diagnostic reader would mis-attribute to provider error reporting" as NonEmptyStr,
+      }
+  }
+}
+
+// The three channels plus termination, observed together. Termination consumes the existing
+// std.process_termination authority rather than re-minting an exit carrier (DESIGN 3): a provider turn's
+// termination is an ordinary process termination and nothing about it is provider-specific.
+//
+// The transcript is OPTIONAL because it is an operator convenience: a realization that does not run
+// under a pane has no transcript, and modeling that as an empty path would be a fabricated absence.
+type ProviderProcessObservation {
+  protocol: ProviderProtocolStream
+  diagnostics: ProviderDiagnosticStream
+  transcript: HumanTerminalTranscript?
+  termination: ProcessTermination
+}
+
+data provider_stream_channel_scaffold_note: String = "THE CLI SPLITTER THIS CARRIER SERVES IS TEMPORARY FROM ITS FIRST LINE (operator ruling 2026-08-09). Splitting fd 1 and fd 2 under `codex exec` keeps a pty on the execution path and only stops it from being the PROTOCOL path; the destination is the app-server JSON-RPC interface, where no pty lies on the protocol path at all and the split is a property of the transport rather than something a wrapper reconstructs. extdeps.llm.codex_app_server already models initialize/thread-start/turn-start and gunbc.codex_app_server_press already EXECUTES the account and rate-limit reads, so what is missing is the turn vertical, not provider research. DISSOLVES ON: a CodexAppServer WorkerTurn admitted for srv1, at which point the fd-splitting realization and the tmux pipe-pane protocol capture delete together and this carrier keeps only its app-server producer. The carrier itself does NOT dissolve — it is the provider-neutral shape every adapter produces, and the wall is what stops a future adapter from quietly re-introducing a merged capture."

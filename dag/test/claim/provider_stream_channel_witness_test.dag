@@ -1,0 +1,93 @@
+module test.claim.provider_stream_channel_witness_test
+
+import std.types { String, NonEmptyStr, FilePath, Bool }
+import gunbc.provider_stream_channel {
+  ChannelOrigin,
+  ProcessStandardOutput,
+  ProcessStandardError,
+  PseudoterminalTranscript,
+  StreamFraming,
+  JsonLines,
+  ProviderProtocolStreamAdmission,
+  ProtocolStreamAdmitted,
+  ProtocolStreamRefused,
+  ProviderDiagnosticStreamAdmission,
+  DiagnosticStreamAdmitted,
+  DiagnosticStreamRefused,
+  admit_provider_protocol_stream,
+  admit_provider_diagnostic_stream,
+}
+
+// The incident's own artifact path, used verbatim so the discriminating input is the REAL shape rather
+// than a synthetic one: this is the file that was captured through tmux pipe-pane and then read as a
+// protocol authority.
+data incident_events_path: String = "/opt/gunbc/attempt-state/v2-emitter-direct-rust-door-acc0923494fc8b9cb/provider-events.jsonl"
+
+fn protocol_admitted(origin: ChannelOrigin) -> Bool {
+  match admit_provider_protocol_stream(
+    path: incident_events_path as FilePath,
+    framing: JsonLines,
+    origin: origin,
+  ) {
+    ProtocolStreamAdmitted { stream: _ } => true
+    ProtocolStreamRefused { path: _, origin: _, reason: _ } => false
+  }
+}
+
+fn diagnostic_admitted(origin: ChannelOrigin) -> Bool {
+  match admit_provider_diagnostic_stream(
+    path: "/opt/gunbc/attempt-state/x/provider-diagnostics.log" as FilePath,
+    origin: origin,
+  ) {
+    DiagnosticStreamAdmitted { stream: _ } => true
+    DiagnosticStreamRefused { path: _, origin: _, reason: _ } => false
+  }
+}
+
+// POSITIVE CONTROL. Without this the refusals below are satisfied by a mint that refuses everything,
+// which is a wall that also blocks the legitimate capture.
+test fn stdout_capture_is_admitted_as_protocol_authority() -> Bool {
+  protocol_admitted(origin: ProcessStandardOutput)
+}
+
+// THE DISCRIMINATING RED. This is the exact capture that produced the incident: the pane transcript
+// presented as provider-events.jsonl. It must refuse.
+test fn pseudoterminal_transcript_refuses_as_protocol_authority() -> Bool {
+  !protocol_admitted(origin: PseudoterminalTranscript)
+}
+
+// stderr is refused by its OWN arm, not folded into the transcript's — routing diagnostics into the
+// events artifact and merging both channels are different mistakes with different repairs.
+test fn stderr_capture_refuses_as_protocol_authority() -> Bool {
+  !protocol_admitted(origin: ProcessStandardError)
+}
+
+test fn stderr_capture_is_admitted_as_diagnostic_authority() -> Bool {
+  diagnostic_admitted(origin: ProcessStandardError)
+}
+
+test fn stdout_capture_refuses_as_diagnostic_authority() -> Bool {
+  !diagnostic_admitted(origin: ProcessStandardOutput)
+}
+
+// A transcript is not a diagnostic authority either: it carries protocol bytes a diagnostic reader
+// would mis-attribute to the provider's own error reporting.
+test fn pseudoterminal_transcript_refuses_as_diagnostic_authority() -> Bool {
+  !diagnostic_admitted(origin: PseudoterminalTranscript)
+}
+
+// The refusal must be LOCATED, not a bare false: a wall that cannot say which artifact it refused
+// leaves the operator grepping for the capture site (DESIGN 5 — typed, located).
+test fn protocol_refusal_locates_the_artifact_and_origin() -> Bool {
+  match admit_provider_protocol_stream(
+    path: incident_events_path as FilePath,
+    framing: JsonLines,
+    origin: PseudoterminalTranscript,
+  ) {
+    ProtocolStreamAdmitted { stream: _ } => false
+    ProtocolStreamRefused { path: p, origin: o, reason: r } =>
+      ((p as String) == incident_events_path)
+        && ((r as String) != "")
+        && (match o { PseudoterminalTranscript => true _ => false })
+  }
+}
