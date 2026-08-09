@@ -396,17 +396,43 @@ fn callees_from_node(node: Node) -> List<String> {
   )
 }
 
+data g2_decl_index_law: String = "ONE GROUPED INDEX PER BATCH, NOT ONE SCAN PER CALLEE. The reachability walk asks two questions of the declaration population, both by exact string: which declarations bear this callee's name, and which declaration bears this qualified root name. Answered by filtering the population, each question costs the whole population - and the walk asks the first question once per callee of every reached declaration, so the population is re-walked thousands of times per request and the population is roughly 62000 rows.
+
+group_by answers both from one pass. The index is built ONCE, outside the request fold, over the FULL population, because the population is the same for every request in a batch while the import closure is not. THE CLOSURE FILTER THEREFORE STAYS, applied AFTER bucket retrieval: it is what makes the answer request-specific, and dropping it would widen every request's reachable set to the whole tree.
+
+MULTIPLICITY IS LOAD-BEARING, which is why this needs group_by and could not use index_by. Several modules legitimately declare the same function name; index_by keeps one of them, so a bucket built with it would silently drop every homonym but the last, and a declaration the walk should have reached would be invisible. The equivalence claim is a BAG equality against the full scan, not a set equality, and the planted same-name declarations in three modules are what discriminate it."
+
+type G2DeclIndex {
+  by_name: Map<String, List<FnArrowDecl>>
+  by_qualified_name: Map<String, List<FnArrowDecl>>
+}
+
+fn g2_decl_index(decls: List<FnArrowDecl>) -> G2DeclIndex {
+  G2DeclIndex {
+    by_name: group_by(xs: decls, key_fn: fn(d) { d.name }),
+    by_qualified_name: group_by(xs: decls, key_fn: fn(d) { d.qualified_name })
+  }
+}
+
+fn decls_bucket(bucket: Map<String, List<FnArrowDecl>>, key: String) -> List<FnArrowDecl> {
+  match bucket.lookup(key) {
+    Present { value: found } => found
+    Absent => empty_decl_list
+  }
+}
+
 data closure_decls_hoist_law: String = "THE CLOSURE RESTRICTION IS COMPUTED ONCE PER WALK, NOT ONCE PER CALLEE. decls_matching_callee used to call decls_in_modules(decls, modules) itself, which filters every declaration in the population against every module in the import closure. Nothing in that computation depends on the callee, and closure_modules is fixed for the whole reachability walk - so it was being recomputed for every callee of every reached declaration, at 587 closure modules against roughly 62000 declarations each time. The phase receipt that located it measured classification_production at 287414 ms for 91 requests while the lens closure it was blamed on cost 6639 ms.
 
 The repair is a hoist, not a new data structure. The caller restricts the population to the closure ONCE and threads the restricted list; this function then filters that much smaller list by name. It is exactly the same set by construction - filter(filter(xs, in_closure), named) equals filter(filter(xs, named), in_closure) - so no classification changes, and no primitive the substrate does not already have is required. A grouped index keyed by name would remove the remaining per-callee linear scan too, but it needs a multiplicity-preserving native grouping that authored .dag cannot currently reach (index_by is last-wins AND unreachable from source; the modeled closure-chain Map measured 33x slower). The grouping substrate lands in this same change; the hoist is the term-removal that does not depend on it."
 
 fn decls_matching_callee(
-  closure_decls: List<FnArrowDecl>,
+  index: G2DeclIndex,
+  closure_modules: List<String>,
   callee: String
 ) -> List<FnArrowDecl> {
-  filter(
-    xs: closure_decls,
-    predicate: fn(decl) { string_eq(a: decl.name, b: callee) }
+  decls_in_modules(
+    decls: decls_bucket(bucket: index.by_name, key: callee),
+    modules: closure_modules
   )
 }
 
@@ -420,7 +446,8 @@ fn decl_in_list(decl: FnArrowDecl, xs: List<FnArrowDecl>) -> Bool {
 
 fn call_reachable_decls_go(
   seeds: List<FnArrowDecl>,
-  closure_decls: List<FnArrowDecl>,
+  index: G2DeclIndex,
+  closure_modules: List<String>,
   reached: List<FnArrowDecl>
 ) -> List<FnArrowDecl> {
   match list_head(xs: seeds) {
@@ -430,7 +457,8 @@ fn call_reachable_decls_go(
       if decl_in_list(decl: seed, xs: reached) {
         call_reachable_decls_go(
           seeds: rest,
-          closure_decls: closure_decls,
+          index: index,
+          closure_modules: closure_modules,
           reached: reached
         )
       } else {
@@ -440,14 +468,16 @@ fn call_reachable_decls_go(
           list_append(
             left: acc,
             right: decls_matching_callee(
-              closure_decls: closure_decls,
+              index: index,
+              closure_modules: closure_modules,
               callee: callee
             )
           )
         })
         call_reachable_decls_go(
           seeds: list_append(left: rest, right: callee_decls),
-          closure_decls: closure_decls,
+          index: index,
+          closure_modules: closure_modules,
           reached: next_reached
         )
       }
@@ -468,7 +498,8 @@ fn call_reachable_decls(
 ) -> List<FnArrowDecl> {
   call_reachable_decls_go(
     seeds: decls_in_module(decls: decls, mod_path: entry_module),
-    closure_decls: decls_in_modules(decls: decls, modules: closure_modules),
+    index: g2_decl_index(decls: decls),
+    closure_modules: closure_modules,
     reached: empty_decl_list
   )
 }
@@ -478,13 +509,13 @@ data g2_root_grain_law: String = "THE ROOT IS THE ENROLLED DECLARATION, NOT ITS 
 The seeded variant below takes the exact enrolled function and roots the walk there. Entry-grain skip is then DERIVED by conjunction over the entry rows rather than assumed: an entry may fast-skip only when every enrolled row in it is completely classified and untouched. That derivation is what keeps a single live-read witness from making its siblings unskippable, which is the same precision loss as the G1 union one level down."
 
 fn decl_named_in_module(
-  decls: List<FnArrowDecl>,
+  index: G2DeclIndex,
   mod_path: String,
   fn_name: String
 ) -> List<FnArrowDecl> {
-  filter(
-    xs: decls_in_module(decls: decls, mod_path: mod_path),
-    predicate: fn(decl) { string_eq(a: decl.name, b: fn_name) }
+  decls_in_module(
+    decls: decls_bucket(bucket: index.by_name, key: fn_name),
+    mod_path: mod_path
   )
 }
 
@@ -492,11 +523,12 @@ fn call_reachable_decls_from_root(
   entry_module: String,
   fn_name: String,
   closure_modules: List<String>,
-  decls: List<FnArrowDecl>
+  index: G2DeclIndex
 ) -> List<FnArrowDecl> {
   call_reachable_decls_go(
-    seeds: decl_named_in_module(decls: decls, mod_path: entry_module, fn_name: fn_name),
-    closure_decls: decls_in_modules(decls: decls, modules: closure_modules),
+    seeds: decl_named_in_module(index: index, mod_path: entry_module, fn_name: fn_name),
+    index: index,
+    closure_modules: closure_modules,
     reached: empty_decl_list
   )
 }
@@ -561,6 +593,7 @@ fn live_read_selection_manifest_over(
   nodes: List<ModuleDeclarationFact>,
   decls: List<FnArrowDecl>
 ) -> List<LiveReadSelectionManifestRow> {
+  let index = g2_decl_index(decls: decls)
   list_reverse(xs: fold_list(xs: requests, empty: empty_manifest_rows, cons: fn(acc, req) {
     Cons {
       head: LiveReadSelectionManifestRow {
@@ -571,7 +604,7 @@ fn live_read_selection_manifest_over(
           subject: subject,
           edges: edges,
           nodes: nodes,
-          decls: decls
+          index: index
         )
       },
       tail: acc
@@ -631,7 +664,7 @@ fn live_read_classification_g2_from_edges(
   fn_name: String,
   edges: List<ModuleDependencyEdge>,
   nodes: List<ModuleDeclarationFact>,
-  decls: List<FnArrowDecl>
+  index: G2DeclIndex
 ) -> LiveReadClassification {
   let closure_modules = modules_of_closure_paths(
     closure_paths: dependency_closure(
@@ -645,7 +678,7 @@ fn live_read_classification_g2_from_edges(
     entry_module: entry_module,
     fn_name: fn_name,
     closure_modules: closure_modules,
-    decls: decls
+    index: index
   )
   let carriers = carriers_from_reachable_decls(reachable: reachable)
   if length(xs: carriers) == 0 {
@@ -717,9 +750,9 @@ fn live_read_selection_projection_live(
   subject: G2FactSubject,
   edges: List<ModuleDependencyEdge>,
   nodes: List<ModuleDeclarationFact>,
-  decls: List<FnArrowDecl>
+  index: G2DeclIndex
 ) -> LiveReadSelectionProjection {
-  match bind_g2_root(entry_path: entry_path, fn_name: fn_name, nodes: nodes, decls: decls) {
+  match bind_g2_root(entry_path: entry_path, fn_name: fn_name, nodes: nodes, index: index) {
     G2RootUnbound { cause: cause } =>
       LiveReadSelectionRefused {
         cause: concat("G2 root is not exactly bound, so no classification was run: ", cause)
@@ -733,7 +766,7 @@ fn live_read_selection_projection_live(
           fn_name: fn_name,
           edges: edges,
           nodes: nodes,
-          decls: decls
+          index: index
         )
       )
   }
@@ -964,12 +997,6 @@ fn module_facts_for_path(path: String, nodes: List<ModuleDeclarationFact>) -> Li
   }))
 }
 
-fn decls_with_qualified_name(qualified: String, decls: List<FnArrowDecl>) -> List<FnArrowDecl> {
-  list_reverse(xs: fold_list(xs: decls, empty: empty_decl_list, cons: fn(acc, d) {
-    if string_eq(a: d.qualified_name, b: qualified) { list_cons_item(xs: acc, item: d) } else { acc }
-  }))
-}
-
 fn tail_module_facts(xs: List<ModuleDeclarationFact>) -> List<ModuleDeclarationFact> {
   match list_tail(xs: xs) {
     TailFound { tail: t } => t
@@ -988,7 +1015,7 @@ fn bind_g2_root(
   entry_path: String,
   fn_name: String,
   nodes: List<ModuleDeclarationFact>,
-  decls: List<FnArrowDecl>
+  index: G2DeclIndex
 ) -> G2RootBinding {
   let module_matches = module_facts_for_path(path: entry_path, nodes: nodes)
   match list_head(xs: module_matches) {
@@ -1002,7 +1029,7 @@ fn bind_g2_root(
         }
         HeadAbsent => {
           let qualified = concat(concat(first_module.module, "."), fn_name)
-          let decl_matches = decls_with_qualified_name(qualified: qualified, decls: decls)
+          let decl_matches = decls_bucket(bucket: index.by_qualified_name, key: qualified)
           match list_head(xs: decl_matches) {
             HeadAbsent => G2RootUnbound {
               cause: concat("no fn-arrow declaration is named ", qualified)

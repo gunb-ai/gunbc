@@ -2046,7 +2046,7 @@ fn call_function_inner(
     args: &[(Option<String>, Value)],
     env: &Rc<Env>,
 ) -> InterpResult<Value> {
-    if let Some(result) = try_v2_std_collection_map_primitive_grounding(ctx, fn_node, args) {
+    if let Some(result) = try_v2_std_collection_map_primitive_grounding(ctx, fn_node, args, env) {
         return result;
     }
 
@@ -3625,27 +3625,33 @@ fn is_v4_bridge_family(ctx: &InterpContext, func_name: &str, names: &[&str], mod
 /// `v1_interpreter_authored_roster_arms()`; generated lookup routes spellings
 /// before this macro matches on the generated enum variant.
 macro_rules! v1_map_grounding_arms {
-    ($cb:ident, $fname:ident) => {
+    ($cb:ident, $fname:ident, $args:ident, $env:ident, $ctx:ident) => {
         $cb! {
-            $fname;
-            arm "map_grounding.empty_map" { "empty_map_primitive_delegate" | "empty_map" } => "empty_map",
-            arm "map_grounding.map_insert" { "map_insert" } => "map_insert",
+            $fname, $args, $env, $ctx;
+            arm "map_grounding.empty_map" { "empty_map_primitive_delegate" | "empty_map" } =>
+                map_grounding_via_builtin("empty_map", $args, $ctx),
+            arm "map_grounding.map_insert" { "map_insert" } =>
+                map_grounding_via_builtin("map_insert", $args, $ctx),
+            arm "map_grounding.group_by" { "group_by_primitive_delegate" } =>
+                Some(eval_group_by_native($args, $env, $ctx)),
+            arm "map_grounding.index_by" { "index_by_primitive_delegate" } =>
+                Some(eval_index_by_native($args, $env, $ctx)),
         }
     };
 }
 
 /// Expansion 1: the name list the guard predicate tests.
 macro_rules! v1_map_grounding_names {
-    ($f:ident; $(arm $id:tt { $($lit:literal)|+ } => $body:expr ,)*) => {
+    ($f:ident, $a:ident, $e:ident, $c:ident; $(arm $id:tt { $($lit:literal)|+ } => $body:expr ,)*) => {
         const STD_COLLECTION_MAP_GROUNDED_FNS: &[&str] = &[$($($lit),+),*];
     };
 }
 
-v1_map_grounding_arms!(v1_map_grounding_names, name);
+v1_map_grounding_arms!(v1_map_grounding_names, name, args, env, ctx);
 
 /// Expansion 2: the spelling -> builtin mapping (R1: roster-generated lookup).
 macro_rules! v1_map_grounding_dispatch {
-    ($f:ident; $(arm $id:tt { $($lit:literal)|+ } => $body:expr ,)*) => {
+    ($f:ident, $args:ident, $env:ident, $ctx:ident; $(arm $id:tt { $($lit:literal)|+ } => $body:expr ,)*) => {
         match $crate::v1_interpreter_dispatch_generated::lookup_try_v2_std_collection_map_primitive_grounding($f) {
             Some(arm) => match arm {
                 $( try_v2_std_collection_map_primitive_grounding_arm!($id) => $body , )*
@@ -3694,27 +3700,129 @@ fn is_v2_std_collection_map_grounded_fn(ctx: &InterpContext, fn_node: &Rc<Node>)
         .is_some_and(|info| info.module_name == V2_STD_COLLECTION_MODULE)
 }
 
-fn try_v2_std_collection_map_primitive_grounding(
-    ctx: &InterpContext,
-    fn_node: &Rc<Node>,
+/// The builtin-backed grounding arms. `Ok(None)` from `eval_builtin` means the
+/// native primitive is absent from the host, which for a delegate whose only
+/// body is its own name is an unbounded self-call, not a fallback: refuse.
+fn map_grounding_via_builtin(
+    builtin_name: &str,
     args: &[(Option<String>, Value)],
+    ctx: &InterpContext,
 ) -> Option<InterpResult<Value>> {
-    if !is_v2_std_collection_map_grounded_fn(ctx, fn_node) {
-        return None;
-    }
-    let grounded_name = fn_node.name.as_str();
-    let builtin_name = v1_map_grounding_arms!(v1_map_grounding_dispatch, grounded_name);
     match eval_builtin(builtin_name, args, ctx) {
         Ok(Some(v)) => Some(Ok(v)),
         Ok(None) if builtin_name == "empty_map" => Some(Err(InterpError::TypeError {
             msg: format!(
-                "{V2_STD_COLLECTION_MODULE}.{}: native HAMT primitive missing from eval_builtin (host misconfiguration)",
-                fn_node.name
+                "{V2_STD_COLLECTION_MODULE}.{builtin_name}: native HAMT primitive missing from eval_builtin (host misconfiguration)"
             ),
         })),
         Ok(None) => None,
         Err(e) => Some(Err(e)),
     }
+}
+
+/// Positional (list, key_fn) for the two closure-taking grounding delegates.
+fn grouping_delegate_args<'a>(
+    who: &str,
+    args: &'a [(Option<String>, Value)],
+) -> InterpResult<(Rc<RrbVector<Value>>, &'a Value)> {
+    match args {
+        [(_, xs), (_, key_fn)] => Ok((expect_list(xs, who)?, key_fn)),
+        _ => Err(InterpError::TypeError {
+            msg: format!("{who} requires (xs, key_fn) arguments"),
+        }),
+    }
+}
+
+/// The key-validity arm, kept pure so it is executable on its own: a produced
+/// key that cannot address a map (closure, fn, NaN) REFUSES rather than being
+/// dropped, coerced, or bucketed under a fabricated stand-in.
+fn canon_group_key(who: &str, key: Value) -> InterpResult<CanonKey> {
+    CanonKey::new(key).ok_or_else(|| InterpError::TypeError {
+        msg: format!("{who} key is not a valid map key (closure/fn/NaN)"),
+    })
+}
+
+fn grouping_key(
+    who: &str,
+    key_fn: &Value,
+    item: &Value,
+    env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<CanonKey> {
+    canon_group_key(who, apply_closure(key_fn, &[item.clone()], env, ctx)?)
+}
+
+/// Multiplicity-preserving grouping: every item reaches its key's bucket, and a
+/// bucket's items stay in input order. This is what `index_by` cannot express —
+/// `index_by` keeps the last item per key.
+fn group_by_items(
+    items: &RrbVector<Value>,
+    key_fn: &Value,
+    env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let mut m: HamtMap<CanonKey, RrbVector<Value>> = HamtMap::new();
+    for item in items.iter() {
+        let ck = grouping_key("group_by", key_fn, item, env, ctx)?;
+        match m.get_mut(&ck) {
+            Some(bucket) => bucket.push_back(item.clone()),
+            None => {
+                let mut bucket = RrbVector::new();
+                bucket.push_back(item.clone());
+                m.insert(ck, bucket);
+            }
+        }
+    }
+    Ok(map_value(
+        m.into_iter()
+            .map(|(k, bucket)| (k, list_value(bucket)))
+            .collect::<HamtMap<CanonKey, Value>>(),
+    ))
+}
+
+fn index_by_items(
+    items: &RrbVector<Value>,
+    key_fn: &Value,
+    env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let mut m: HamtMap<CanonKey, Value> = HamtMap::new();
+    for item in items.iter() {
+        let ck = grouping_key("index_by", key_fn, item, env, ctx)?;
+        m.insert(ck, item.clone());
+    }
+    Ok(map_value(m))
+}
+
+fn eval_group_by_native(
+    args: &[(Option<String>, Value)],
+    env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let (items, key_fn) = grouping_delegate_args("group_by", args)?;
+    group_by_items(&items, key_fn, env, ctx)
+}
+
+fn eval_index_by_native(
+    args: &[(Option<String>, Value)],
+    env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let (items, key_fn) = grouping_delegate_args("index_by", args)?;
+    index_by_items(&items, key_fn, env, ctx)
+}
+
+fn try_v2_std_collection_map_primitive_grounding(
+    ctx: &InterpContext,
+    fn_node: &Rc<Node>,
+    args: &[(Option<String>, Value)],
+    env: &Rc<Env>,
+) -> Option<InterpResult<Value>> {
+    if !is_v2_std_collection_map_grounded_fn(ctx, fn_node) {
+        return None;
+    }
+    let grounded_name = fn_node.name.as_str();
+    v1_map_grounding_arms!(v1_map_grounding_dispatch, grounded_name, args, env, ctx)
 }
 
 /// Handler bodies for native fold intercepts (run before free-call dispatch).
@@ -5834,17 +5942,7 @@ macro_rules! v1_algebra_method_arms {
                 $args,
                 $env,
                 $ctx,
-                |items, f, $env, $ctx| {
-                    let mut m = HamtMap::new();
-                    for item in items.iter() {
-                        let key = apply_closure(f, &[item.clone()], $env, $ctx)?;
-                        let ck = CanonKey::new(key).ok_or_else(|| InterpError::TypeError {
-                            msg: "index_by key is not a valid map key (closure/fn/NaN)".to_string(),
-                        })?;
-                        m.insert(ck, item.clone());
-                    }
-                    Ok(map_value(m))
-                },
+                index_by_items,
             ),
 
         }
@@ -13899,5 +13997,33 @@ mod process_termination_tests {
             process_termination_label(&ExitStatus::from_raw(101 << 8)),
             "exit 101"
         );
+    }
+}
+
+#[cfg(test)]
+mod grouping_primitive_tests {
+    use super::*;
+
+    /// The refusal arm of the grouping delegates, executed. A NaN key cannot
+    /// address a HAMT, and the only honest answer is a typed refusal — dropping
+    /// the item or bucketing it under a stand-in would lose a member silently.
+    #[test]
+    fn an_unaddressable_key_refuses_rather_than_being_bucketed() {
+        assert!(canon_group_key("group_by", Value::Float(f64::NAN)).is_err());
+        assert!(canon_group_key("index_by", Value::Float(f64::NAN)).is_err());
+        assert!(canon_group_key("group_by", Value::Str("a".to_string())).is_ok());
+    }
+
+    /// The delegates' bodies are their own names, so an unbound delegate is an
+    /// unbounded self-call that the interpreter refuses at the call-depth wall —
+    /// it never answers. This asserts the binding exists, which is what makes the
+    /// public wrappers reachable at all.
+    #[test]
+    fn both_grouping_delegates_are_bound_at_the_collection_grounding_seam() {
+        use crate::v1_interpreter_dispatch_generated::lookup_try_v2_std_collection_map_primitive_grounding as lookup;
+        assert!(lookup("group_by_primitive_delegate").is_some());
+        assert!(lookup("index_by_primitive_delegate").is_some());
+        assert!(STD_COLLECTION_MAP_GROUNDED_FNS.contains(&"group_by_primitive_delegate"));
+        assert!(STD_COLLECTION_MAP_GROUNDED_FNS.contains(&"index_by_primitive_delegate"));
     }
 }
