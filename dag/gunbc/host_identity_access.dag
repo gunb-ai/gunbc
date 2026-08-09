@@ -4,7 +4,7 @@ module gunbc.host_identity_access
 data host_identity_hostnamectl_path: NonEmptyStr = fleet_hostnamectl_command_path
 
 fn host_identity_ssh_access(host: ComputeHost, ssh_host: NonEmptyStr) -> DeployAccess {
-  let principal = fleet_posix_principal(key: FleetAccountOperator)
+  let principal = fleet_posix_operator_principal()
   DeployAccess {
     principal: principal,
     host: host,
@@ -37,6 +37,6 @@ data host_identity_srv3_access: DeployAccess = host_identity_ssh_access(
 
 fn host_identity_operator_principal_name() -> NonEmptyStr {
   grounded_posix_principal_name(
-    p: fleet_posix_principal(key: FleetAccountOperator)
+    p: fleet_posix_operator_principal()
   )
 }

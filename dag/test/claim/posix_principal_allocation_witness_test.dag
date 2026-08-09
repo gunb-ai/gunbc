@@ -34,7 +34,7 @@ fn alloc(host: HostIdentity, name: NonEmptyStr, uid: Int) -> PosixAccountAllocat
 
 fn observed(a: PosixAccountAllocation, name: NonEmptyStr, uid: Int) -> PosixAccountObservation {
   PosixAccountObservation {
-    allocation: a,
+    occurrence: a.occurrence,
     observed_user: PosixUser { name: name, uid: uid, gid: uid },
   }
 }
@@ -42,19 +42,23 @@ fn observed(a: PosixAccountAllocation, name: NonEmptyStr, uid: Int) -> PosixAcco
 fn grounded_name(o: GroundedPosixPrincipalOutcome) -> NonEmptyStr? {
   match o {
     PrincipalGrounded { principal: p } => Present { value: p.posix.name }
-    PrincipalUnallocated => none
-    PrincipalUnobserved => none
-    PrincipalDrifted { causes: _ } => none
+    PrincipalRequiresHostScope { principal: _ } => none
+    PrincipalUnallocated { occurrence: _ } => none
+    PrincipalAllocationConflicted { occurrence: _, first: _, more: _ } => none
+    PrincipalUnobserved { allocation: _ } => none
+    PrincipalDrifted { allocation: _, first: _, more: _ } => none
   }
 }
 
 
 fn outcome_is_drift(o: GroundedPosixPrincipalOutcome) -> Bool {
   match o {
-    PrincipalDrifted { causes: c } => c.length() > 0
+    PrincipalDrifted { allocation: _, first: _, more: _ } => true
     PrincipalGrounded { principal: _ } => false
-    PrincipalUnallocated => false
-    PrincipalUnobserved => false
+    PrincipalRequiresHostScope { principal: _ } => false
+    PrincipalUnallocated { occurrence: _ } => false
+    PrincipalAllocationConflicted { occurrence: _, first: _, more: _ } => false
+    PrincipalUnobserved { allocation: _ } => false
   }
 }
 
@@ -109,10 +113,12 @@ test fn witness_unallocated_principal_cannot_ground() -> Bool {
     observation: none,
   )
   match o {
-    PrincipalUnallocated => true
+    PrincipalUnallocated { occurrence: occ } => occ.host == spark5
     PrincipalGrounded { principal: _ } => false
-    PrincipalUnobserved => false
-    PrincipalDrifted { causes: _ } => false
+    PrincipalRequiresHostScope { principal: _ } => false
+    PrincipalAllocationConflicted { occurrence: _, first: _, more: _ } => false
+    PrincipalUnobserved { allocation: _ } => false
+    PrincipalDrifted { allocation: _, first: _, more: _ } => false
   }
 }
 
@@ -126,10 +132,12 @@ test fn witness_allocated_but_unobserved_is_its_own_state() -> Bool {
     standing: AccountAllocated { allocation: a },
     observation: none,
   ) {
-    PrincipalUnobserved => true
-    PrincipalUnallocated => false
+    PrincipalUnobserved { allocation: _ } => true
+    PrincipalUnallocated { occurrence: _ } => false
+    PrincipalRequiresHostScope { principal: _ } => false
+    PrincipalAllocationConflicted { occurrence: _, first: _, more: _ } => false
     PrincipalGrounded { principal: _ } => false
-    PrincipalDrifted { causes: _ } => false
+    PrincipalDrifted { allocation: _, first: _, more: _ } => false
   }
 }
 
@@ -192,4 +200,60 @@ test fn witness_name_requirements_forbid_domain_meaning_for_machine_principals()
     && requirements_forbid_domain_meaning(r: fleet_principal_intent(key: FleetAccountInferenceService).name_requirements)
     && requirements_are_independent_per_occurrence(r: fleet_principal_intent(key: FleetAccountAutomation).name_requirements)
     && !requirements_forbid_domain_meaning(r: fleet_principal_intent(key: FleetAccountOperator).name_requirements)
+}
+
+// CONTROL 8 -- the two host-scoped principals cannot be answered by the host-less legacy accessor.
+// This is the arm that replaced the fabricated UNALLOCATED-PRINCIPAL value: asking a host-less
+// question about a per-host account now REFUSES with a state a caller must match, rather than
+// returning an ordinary GroundedPosixPrincipal carrying a poison name and uid -1 that any consumer
+// could render into an effect, a path, or a log without ever acknowledging failure.
+test fn witness_host_scoped_principals_refuse_the_hostless_accessor() -> Bool {
+  let a = match fleet_posix_principal(key: FleetAccountAutomation) {
+    PrincipalRequiresHostScope { principal: _ } => true
+    PrincipalGrounded { principal: _ } => false
+    PrincipalUnallocated { occurrence: _ } => false
+    PrincipalAllocationConflicted { occurrence: _, first: _, more: _ } => false
+    PrincipalUnobserved { allocation: _ } => false
+    PrincipalDrifted { allocation: _, first: _, more: _ } => false
+  }
+  let s = match fleet_posix_principal(key: FleetAccountInferenceService) {
+    PrincipalRequiresHostScope { principal: _ } => true
+    PrincipalGrounded { principal: _ } => false
+    PrincipalUnallocated { occurrence: _ } => false
+    PrincipalAllocationConflicted { occurrence: _, first: _, more: _ } => false
+    PrincipalUnobserved { allocation: _ } => false
+    PrincipalDrifted { allocation: _, first: _, more: _ } => false
+  }
+  // and the legacy four still ground through the same accessor
+  let legacy = match fleet_posix_principal(key: FleetAccountCiRunner) {
+    PrincipalGrounded { principal: p } => p.posix.name == "ghrunner"
+    PrincipalRequiresHostScope { principal: _ } => false
+    PrincipalUnallocated { occurrence: _ } => false
+    PrincipalAllocationConflicted { occurrence: _, first: _, more: _ } => false
+    PrincipalUnobserved { allocation: _ } => false
+    PrincipalDrifted { allocation: _, first: _, more: _ } => false
+  }
+  a && s && legacy
+}
+
+// CONTROL 9 -- an observation bound to a DIFFERENT host is drift, not a match. Without this the
+// srv5 observation could ground srv6's allocation, which is the copied-receipt failure at account
+// grain.
+test fn witness_observation_from_another_host_is_drift() -> Bool {
+  let a5 = alloc(host: spark5, name: "lumen" as NonEmptyStr, uid: 1500)
+  let a6 = alloc(host: spark6, name: "lumen" as NonEmptyStr, uid: 1500)
+  outcome_is_drift(o: ground_posix_principal(
+    intent: fleet_principal_intent(key: FleetAccountAutomation),
+    standing: AccountAllocated { allocation: a5 },
+    observation: Present { value: observed(a: a6, name: "lumen" as NonEmptyStr, uid: 1500) },
+  ))
+}
+
+// CONTROL 10 -- the service realization is UNSELECTED, not silently a persistent account.
+test fn witness_service_realization_is_unselected() -> Bool {
+  match spark_inference_realization_standing(host: spark5) {
+    ServicePrincipalRealizationUnselected => true
+    DynamicServicePrincipal { supervisor: _ } => false
+    PersistentServiceAccount { allocation: _ } => false
+  }
 }

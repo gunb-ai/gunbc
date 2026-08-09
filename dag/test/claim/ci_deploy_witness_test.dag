@@ -61,7 +61,7 @@ test fn witness_deploy_access_uses_local_apply_on_srv1() -> Bool {
 
 test fn witness_deploy_access_sudo_miss_surfaces_sudoers_hint() -> Bool {
   let actor = DeployAccessActor {
-    observed_name: fleet_posix_principal(key: FleetAccountCiRunner).posix.name,
+    observed_name: fleet_posix_ci_runner_principal().posix.name,
     sudo_granted: false,
   }
   match deploy_access_check(access: ci_deploy_srv1_access, actor: actor) {

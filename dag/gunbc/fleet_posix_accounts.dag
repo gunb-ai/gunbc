@@ -400,10 +400,18 @@ type PosixAccountAllocationConflict
 // Three states, not an Optional. "Never allocated", "allocated" and "allocation refused because
 // something already holds the name or number" have different remedies, and a two-valued answer
 // would force the apply to guess which one it was looking at.
+// SUBJECT-BOUND. An unallocated standing that does not say WHICH occurrence is unallocated can be
+// produced for srv5 and consumed as srv6's answer with nothing to detect the swap -- the copied-
+// receipt failure at allocation grain. Conflicts carry first-plus-rest so an EMPTY conflict
+// population has no constructor: "conflicted, with no causes" is not a state.
 type PosixAccountAllocationStanding
-  = AccountUnallocated
+  = AccountUnallocated { occurrence: PosixAccountOccurrence }
   | AccountAllocated { allocation: PosixAccountAllocation }
-  | AccountAllocationConflict { causes: List<PosixAccountAllocationConflict> }
+  | AccountAllocationConflict {
+      occurrence: PosixAccountOccurrence
+      first: PosixAccountAllocationConflict
+      more: List<PosixAccountAllocationConflict>
+    }
 
 // ---------------------------------------------------------------------------------------------
 // GROUNDING -- six states, because Optional collapses six remedies into one absence.
@@ -414,17 +422,42 @@ data grounding_outcome_note: String = "Absent cannot carry a remedy. Intent-abse
 type PosixAccountConflict
   = ObservedNameDiffersFromAllocation { observed: NonEmptyStr, allocated: NonEmptyStr }
   | ObservedUidDiffersFromAllocation { observed: Int, allocated: Int }
+  | ObservationSubjectMismatch { observed_host: HostIdentity, allocated_host: HostIdentity }
 
+// THE OBSERVATION CARRIES ITS OWN SUBJECT, never a copy of the desired allocation. Copying the
+// allocation in would make every observation agree with the plan by construction -- the authored-
+// versus-executed defect this whole split exists to end, reproduced inside its own repair. The
+// grounding fold now compares the two subjects and reports a mismatch as drift.
+//
+// STILL OWED BEFORE APPLY, named rather than silently missing: process receipt, raw-output
+// identity, decoder identity and timestamp. Until those land this record proves an account was
+// DESCRIBED, not that a command ran, so no apply may consume it as access evidence.
 type PosixAccountObservation {
-  allocation: PosixAccountAllocation
+  occurrence: PosixAccountOccurrence
   observed_user: PosixUser
 }
 
+// PrincipalRequiresHostScope is the state whose ABSENCE forced the fabrication. An account is
+// per-host, so a host-less question about a host-scoped principal has no answer -- and the legacy
+// accessor asks exactly that question, because it predates the occurrence split and takes no host.
+// Without this arm the only way to keep that accessor total was to invent a principal, which is
+// what UNALLOCATED-PRINCIPAL was. The missing state was the defect; the poison value was its
+// symptom.
 type GroundedPosixPrincipalOutcome
   = PrincipalGrounded { principal: GroundedPosixPrincipal }
-  | PrincipalUnallocated
-  | PrincipalUnobserved
-  | PrincipalDrifted { causes: List<PosixAccountConflict> }
+  | PrincipalRequiresHostScope { principal: FleetPosixAccountKey }
+  | PrincipalUnallocated { occurrence: PosixAccountOccurrence }
+  | PrincipalAllocationConflicted {
+      occurrence: PosixAccountOccurrence
+      first: PosixAccountAllocationConflict
+      more: List<PosixAccountAllocationConflict>
+    }
+  | PrincipalUnobserved { allocation: PosixAccountAllocation }
+  | PrincipalDrifted {
+      allocation: PosixAccountAllocation
+      first: PosixAccountConflict
+      more: List<PosixAccountConflict>
+    }
 
 // The join. An observation whose account does not match what was allocated is DRIFT, reported with
 // both sides, never silently accepted and never rounded to "absent".
@@ -434,20 +467,32 @@ fn ground_posix_principal(
   observation: PosixAccountObservation?,
 ) -> GroundedPosixPrincipalOutcome {
   match standing {
-    AccountUnallocated => PrincipalUnallocated
-    AccountAllocationConflict { causes: _ } => PrincipalUnallocated
+    AccountUnallocated { occurrence: occ } => PrincipalUnallocated { occurrence: occ }
+    AccountAllocationConflict { occurrence: occ, first: f, more: m } =>
+      PrincipalAllocationConflicted { occurrence: occ, first: f, more: m }
     AccountAllocated { allocation: a } =>
       match observation {
         Absent => PrincipalUnobserved
         Present { value: o } =>
+          if o.occurrence.host != a.occurrence.host {
+            PrincipalDrifted {
+              allocation: a,
+              first: ObservationSubjectMismatch { observed_host: o.occurrence.host, allocated_host: a.occurrence.host },
+              more: [],
+            }
+          } else {
           if o.observed_user.name != a.local_name {
             PrincipalDrifted {
-              causes: [ObservedNameDiffersFromAllocation { observed: o.observed_user.name, allocated: a.local_name }],
+              allocation: a,
+              first: ObservedNameDiffersFromAllocation { observed: o.observed_user.name, allocated: a.local_name },
+              more: [],
             }
           } else {
             if o.observed_user.uid != a.uid {
               PrincipalDrifted {
-                causes: [ObservedUidDiffersFromAllocation { observed: o.observed_user.uid, allocated: a.uid }],
+                allocation: a,
+                first: ObservedUidDiffersFromAllocation { observed: o.observed_user.uid, allocated: a.uid },
+                more: [],
               }
             } else {
               PrincipalGrounded {
@@ -463,6 +508,7 @@ fn ground_posix_principal(
               }
             }
           }
+          }
       }
   }
 }
@@ -472,65 +518,121 @@ fn ground_posix_principal(
 // sudoers or authorized_keys, which is the point. This is the honest starting standing, not a
 // placeholder waiting to be filled with a static name.
 fn spark_automation_allocation_standing(host: HostIdentity) -> PosixAccountAllocationStanding {
-  AccountUnallocated
-}
-
-fn spark_inference_allocation_standing(host: HostIdentity) -> PosixAccountAllocationStanding {
-  AccountUnallocated
-}
-
-
-// THE LEGACY ACCESSOR'S REFUSAL ARM. fleet_posix_principal predates the intent/allocation split and
-// its four legacy keys still resolve to rows that were observed on srv1/srv3. The two new
-// principals have no allocated account anywhere, so there is no honest GroundedPosixPrincipal to
-// return -- and fabricating one is exactly what the reverted commit did.
-//
-// This arm is deliberately UNREACHABLE-BY-CONTRACT rather than convenient: it returns a principal
-// whose name is empty and whose grant list is empty, so any caller that ignores the split and uses
-// it to render an effect produces a visibly broken account name rather than a plausible one. The
-// real answer for these principals is ground_posix_principal, which reports PrincipalUnallocated.
-// Dissolve-on: the legacy four migrate to allocation+observation rows and this accessor is deleted
-// in favour of ground_posix_principal, at which point the arm has nothing to guard.
-fn fleet_posix_unallocated_principal_refusal(key: FleetPosixAccountKey) -> GroundedPosixPrincipal {
-  GroundedPosixPrincipal {
-    posix: PosixUser { name: "UNALLOCATED-PRINCIPAL" as NonEmptyStr, uid: -1, gid: -1 },
-    sudo_grants: [],
-    declared_probe: PosixAccountDeclaredProbe {
-      probed_at: "never",
-      probe_command: "id UNALLOCATED-PRINCIPAL" as NonEmptyStr,
-      host: "none" as NonEmptyStr,
-    },
+  AccountUnallocated {
+    occurrence: PosixAccountOccurrence { host: host, principal: FleetAccountAutomation },
   }
 }
 
-fn fleet_posix_principal(key: FleetPosixAccountKey) -> GroundedPosixPrincipal {
+// UNSELECTED, not unallocated. Answering "unallocated" would already have chosen a persistent
+// /etc/passwd account, before the serving runtime exists to say whether a supervisor-managed
+// dynamic identity is sufficient. Choosing a realization by default is the same fusion one layer
+// down.
+type ServicePrincipalRealizationStanding
+  = ServicePrincipalRealizationUnselected
+  | DynamicServicePrincipal { supervisor: NonEmptyStr }
+  | PersistentServiceAccount { allocation: PosixAccountAllocationStanding }
+
+fn spark_inference_realization_standing(host: HostIdentity) -> ServicePrincipalRealizationStanding {
+  ServicePrincipalRealizationUnselected
+}
+
+
+
+// TOTAL PER-ACCOUNT ACCESSORS for the four legacy principals. These exist because their accounts
+// WERE observed on srv1/srv3, so the question "what is this account" has an answer that needs no
+// host parameter and no optional. Callers asking about a legacy srv1 account use these; callers
+// asking about a host-scoped principal must go through ground_posix_principal with an occurrence.
+// The split is what lets the fabricated placeholder be deleted instead of relocated.
+fn fleet_posix_root_principal() -> GroundedPosixPrincipal {
+  GroundedPosixPrincipal {
+    posix: fleet_posix_root_user,
+    sudo_grants: fleet_posix_root_sudo_grants(),
+    declared_probe: fleet_posix_root_declared_probe,
+  }
+}
+
+fn fleet_posix_operator_principal() -> GroundedPosixPrincipal {
+  GroundedPosixPrincipal {
+    posix: fleet_posix_operator_user,
+    sudo_grants: fleet_posix_operator_sudo_grants(),
+    declared_probe: fleet_posix_operator_declared_probe,
+  }
+}
+
+fn fleet_posix_ci_runner_principal() -> GroundedPosixPrincipal {
+  GroundedPosixPrincipal {
+    posix: fleet_posix_ci_runner_user,
+    sudo_grants: fleet_posix_ci_runner_sudo_grants(),
+    declared_probe: fleet_posix_ci_runner_declared_probe,
+  }
+}
+
+fn fleet_posix_srv3_host_principal() -> GroundedPosixPrincipal {
+  GroundedPosixPrincipal {
+    posix: fleet_posix_srv3_host_user,
+    sudo_grants: fleet_posix_srv3_host_sudo_grants(),
+    declared_probe: fleet_posix_srv3_host_declared_probe,
+  }
+}
+
+
+// The legacy call sites all ask about an srv1/srv3 account that WAS observed. This keeps them total
+// without reintroducing a fabricated value: the four legacy keys are grounded, and the two
+// host-scoped principals REFUSE here rather than returning an inventable placeholder. A caller that
+// wants those must go through ground_posix_principal with an occurrence.
+fn fleet_posix_legacy_principal(key: FleetPosixAccountKey) -> GroundedPosixPrincipal? {
+  match fleet_posix_principal(key: key) {
+    PrincipalGrounded { principal: p } => Present { value: p }
+    PrincipalRequiresHostScope { principal: _ } => none
+    PrincipalUnallocated { occurrence: _ } => none
+    PrincipalAllocationConflicted { occurrence: _, first: _, more: _ } => none
+    PrincipalUnobserved { allocation: _ } => none
+    PrincipalDrifted { allocation: _, first: _, more: _ } => none
+  }
+}
+
+// THE LEGACY ACCESSOR, now returning an OUTCOME. Its four legacy keys resolve to accounts observed
+// on srv1/srv3 and keep working. Its two new keys cannot be answered here at all -- not because the
+// accounts are missing, but because this function takes no host and an account is per-host. That is
+// PrincipalRequiresHostScope, and it is the honest answer a fabricated principal was standing in
+// for. Dissolve-on: the legacy four migrate to receipt-backed allocation+observation rows and this
+// accessor is deleted in favour of ground_posix_principal.
+fn fleet_posix_principal(key: FleetPosixAccountKey) -> GroundedPosixPrincipalOutcome {
   match key {
     FleetAccountRoot =>
-      GroundedPosixPrincipal {
-        posix: fleet_posix_root_user,
-        sudo_grants: fleet_posix_root_sudo_grants(),
-        declared_probe: fleet_posix_root_declared_probe,
+      PrincipalGrounded {
+        principal: GroundedPosixPrincipal {
+          posix: fleet_posix_root_user,
+          sudo_grants: fleet_posix_root_sudo_grants(),
+          declared_probe: fleet_posix_root_declared_probe,
+        },
       }
     FleetAccountOperator =>
-      GroundedPosixPrincipal {
-        posix: fleet_posix_operator_user,
-        sudo_grants: fleet_posix_operator_sudo_grants(),
-        declared_probe: fleet_posix_operator_declared_probe,
+      PrincipalGrounded {
+        principal: GroundedPosixPrincipal {
+          posix: fleet_posix_operator_user,
+          sudo_grants: fleet_posix_operator_sudo_grants(),
+          declared_probe: fleet_posix_operator_declared_probe,
+        },
       }
     FleetAccountCiRunner =>
-      GroundedPosixPrincipal {
-        posix: fleet_posix_ci_runner_user,
-        sudo_grants: fleet_posix_ci_runner_sudo_grants(),
-        declared_probe: fleet_posix_ci_runner_declared_probe,
+      PrincipalGrounded {
+        principal: GroundedPosixPrincipal {
+          posix: fleet_posix_ci_runner_user,
+          sudo_grants: fleet_posix_ci_runner_sudo_grants(),
+          declared_probe: fleet_posix_ci_runner_declared_probe,
+        },
       }
     FleetAccountSrv3Host =>
-      GroundedPosixPrincipal {
-        posix: fleet_posix_srv3_host_user,
-        sudo_grants: fleet_posix_srv3_host_sudo_grants(),
-        declared_probe: fleet_posix_srv3_host_declared_probe,
+      PrincipalGrounded {
+        principal: GroundedPosixPrincipal {
+          posix: fleet_posix_srv3_host_user,
+          sudo_grants: fleet_posix_srv3_host_sudo_grants(),
+          declared_probe: fleet_posix_srv3_host_declared_probe,
+        },
       }
-    FleetAccountAutomation => fleet_posix_unallocated_principal_refusal(key: key)
-    FleetAccountInferenceService => fleet_posix_unallocated_principal_refusal(key: key)
+    FleetAccountAutomation => PrincipalRequiresHostScope { principal: key }
+    FleetAccountInferenceService => PrincipalRequiresHostScope { principal: key }
   }
 }
 
@@ -549,16 +651,16 @@ fn posix_declared_probe_names_principal(p: GroundedPosixPrincipal) -> Bool {
 
 fn fleet_posix_account_from_name(name: NonEmptyStr) -> GroundedPosixPrincipal? {
   match name == fleet_posix_root_user.name {
-    true => Present { value: fleet_posix_principal(key: FleetAccountRoot) }
+    true => Present { value: fleet_posix_root_principal() }
     false =>
       match name == fleet_posix_operator_user.name {
-        true => Present { value: fleet_posix_principal(key: FleetAccountOperator) }
+        true => Present { value: fleet_posix_operator_principal() }
         false =>
           match name == fleet_posix_ci_runner_user.name {
-            true => Present { value: fleet_posix_principal(key: FleetAccountCiRunner) }
+            true => Present { value: fleet_posix_ci_runner_principal() }
             false =>
               match name == fleet_posix_srv3_host_user.name {
-                true => Present { value: fleet_posix_principal(key: FleetAccountSrv3Host) }
+                true => Present { value: fleet_posix_srv3_host_principal() }
                 false => Absent
               }
           }
