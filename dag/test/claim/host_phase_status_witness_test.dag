@@ -410,8 +410,12 @@ test fn witness_covered_cell_verdict_is_selected_by_authorship_alone() -> Bool {
     stall: StallWithinBudget,
   )
   let converged_is_converged = match converged { Converged => true, std.upsert_decision.Absent => false, Drifted => false, Conflict => false, Inaccessible => false, UnknownRefused => false }
-  let refused_is_not_converged = match refused { Converged => false, std.upsert_decision.Absent => true, Drifted => true, Conflict => true, Inaccessible => true, UnknownRefused => true }
-  converged_is_converged && refused_is_not_converged
+  // EXACTLY Absent, not merely "some non-Converged arm". Under StallWithinBudget the deduction
+  // contract for an observed table with no os-up row is Absent specifically; Drifted, Conflict,
+  // Inaccessible and UnknownRefused each denote a DIFFERENT regression, and a test that accepted
+  // any of them would stay green through all four.
+  let refused_is_exactly_absent = match refused { Converged => false, std.upsert_decision.Absent => true, Drifted => false, Conflict => false, Inaccessible => false, UnknownRefused => false }
+  converged_is_converged && refused_is_exactly_absent
 }
 
 // The covered population stated as an IDENTITY JOIN rather than a count, so this does not become a
@@ -427,5 +431,14 @@ test fn witness_every_covered_cell_today_is_the_authored_one() -> Bool {
     covered,
     c => c.cell.host == operator_host_srv3 && c.cell.phase_label == "prefix:os-install-actuated",
   )
-  covered.length() == authored.length() && authored.length() > 0
+  // The PRODUCTION metric itself, not a rebuilt filter beside it. host_phase_observation_coverage_count
+  // is the subject of this finding, so a control that never calls it proves nothing about the number
+  // anyone actually reads.
+  let metric = host_phase_observation_coverage_count(enrollments: fleet_subsumption_enrollments)
+  // Exactly one. This is not a tree-copied roster: the PR's factual claim is that the ENTIRE covered
+  // population is this single authored cell, so the assertion must fail the moment that stops holding
+  // -- including when a genuinely executed producer is wired, which is the outcome this lane wants.
+  metric == covered.length()
+    && covered.length() == authored.length()
+    && authored.length() == 1
 }
