@@ -630,6 +630,15 @@ fn gunbc_ci_fleet_key_agent_script() -> String {
   ], "")
 }
 
+// The in-run ssh-agent teardown — a FRESH per-job effect (each isolated job starts and
+// must kill its own agent; nothing is memoizable across jobs), named so both the workflow
+// step and the materialization gate's fresh-effect list reference ONE authority (§3),
+// rather than an inline literal duplicated per job that the ladder would read as authored
+// cross-job duplication.
+fn gunbc_ci_fleet_key_agent_cleanup_script() -> String {
+  "if [ -n \"$\{SSH_AGENT_PID:-}\" ]; then ssh-agent -k || true; fi\n"
+}
+
 // Fleet timer self-install bootstrap (operator verdict join 2, parent verification
 // msg_8d84ae4f): the LIVE invocation wire for fleet_timer_self_install_wet — without
 // this job the self-install route had zero callers, a disconnected mechanism. The job

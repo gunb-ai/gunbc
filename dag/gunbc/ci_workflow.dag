@@ -27,6 +27,7 @@ import gunbc.ci_spec {
   gunbc_ci_fleet_timer_install_invoke,
   gunbc_ci_collect_fleet_convergence_invoke,
   gunbc_ci_fleet_key_agent_script,
+  gunbc_ci_fleet_key_agent_cleanup_script,
   gunbc_ci_fleet_host_key_scan_invoke,
   gunbc_ci_fleet_host_key_enroll_invoke,
   gunbc_ci_probe_identity_observe_invoke,
@@ -721,7 +722,7 @@ fn ci_fleet_key_agent_cleanup_step() -> Step {
   RunStep {
     name: Present { value: "Kill the in-run ssh-agent (key never outlives the job)" },
     id: none,
-    run: "if [ -n \"$\{SSH_AGENT_PID:-}\" ]; then ssh-agent -k || true; fi\n",
+    run: gunbc_ci_fleet_key_agent_cleanup_script(),
     shell: none,
     env: none,
     working_directory: none,
