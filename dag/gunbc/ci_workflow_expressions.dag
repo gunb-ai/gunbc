@@ -82,6 +82,8 @@ data ci_workflow_expression_templates: List<ExpressionTemplate> = [
 
 data ci_deploy_push_to_main_if: String = "github.ref == 'refs/heads/main' && github.event_name == 'push'"
 
+data ci_workflow_dispatch_only_if: String = "github.event_name == 'workflow_dispatch'"
+
 data ci_floor_runs_unless_cancelled_if: String = "!cancelled()"
 
 data ci_floor_upstream_red_refusal_script: String = "set -e\nBUILD='${{ needs.build.result }}'\nREGEN='${{ needs.regen.result }}'\nHEAL='${{ needs.heal_generated_artifacts.result }}'\nif [ \"$BUILD\" != \"success\" ] || [ \"$REGEN\" != \"success\" ] || [ \"$HEAL\" = \"failure\" ]; then\necho \"::error::FloorUpstreamAlreadyRed build=$BUILD regen=$REGEN heal=$HEAL — an upstream job already established this branch is red, so the floor refuses before spending its budget. The located cause is that job's own diagnostic; this step adds no verdict of its own.\"\nexit 1\nfi\necho \"[floor-preflight] upstream clean: build=$BUILD regen=$REGEN heal=$HEAL\""

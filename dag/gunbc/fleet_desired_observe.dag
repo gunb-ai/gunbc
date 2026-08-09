@@ -1,0 +1,101 @@
+module gunbc.fleet_desired_observe
+
+import std.types { String, Bool, FilePath, GitRef }
+import std.algebra { trim }
+import extdeps.git
+import extdeps.git.object_store {
+  GitObjectId,
+  git_object_id_from_untagged_hex,
+  git_object_id_eq,
+}
+import gunbc.fleet_main_revision {
+  fleet_desired_ref_name,
+  FleetDesiredRevision,
+  FleetDesiredAdmitted,
+  FleetDesiredUnobserved,
+  converge_target_revision,
+}
+
+// Operator verdict join 1 (2026-08-09): the LIVE half of gunbc.fleet_main_revision.
+// That module models what the desired ref MEANS; until this module landed, nothing on
+// any host actually READ refs/fleet/desired — converge_target_revision had no live
+// caller, so the anti-entropy property the ref buys (a returning host converges from the
+// admitted ref without a new commit) existed only as vocabulary. This module is the
+// observation edge: ls-remote the exact ref through the typed git.Core service op
+// (runtime-present site — typed service op, never emitted shell, per the shell→intent
+// routing), decode the advertised object id through the ONE untagged-hex decoder the
+// object-store authority provides, and refuse (typed cause, never a fabricated target)
+// on transport refusal, an unadvertised ref, or an undecodable advertisement.
+fn observe_fleet_desired_revision(repo: FilePath) -> FleetDesiredRevision {
+  let read = git.Core.LsRemoteRefInRepo(repo: repo, remote: "origin", ref_name: fleet_desired_ref_name)
+  if read.exit_code == 0 {
+    let line = trim(s: read.advertised)
+    if line == "" {
+      FleetDesiredUnobserved {
+        cause: concat("fleet_desired_observe: origin does not advertise ", fleet_desired_ref_name),
+      }
+    } else {
+      match git_object_id_from_untagged_hex(hex: split(s: line, delimiter: "\t").first()) {
+        Present { value: oid } => FleetDesiredAdmitted { revision: oid }
+        Absent =>
+          FleetDesiredUnobserved {
+            cause: concat("fleet_desired_observe: advertisement is not a decodable object id: ", line),
+          }
+      }
+    }
+  } else {
+    FleetDesiredUnobserved {
+      cause: concat("fleet_desired_observe: ls-remote refused: ", read.stderr),
+    }
+  }
+}
+
+// The local half of the comparison: what revision THIS host's deployed tree is at.
+// Absent (typed, located in the cause the caller renders) when the repo path is not a
+// git repository or HEAD does not decode — never a fabricated revision.
+fn observe_local_tree_revision(repo: FilePath) -> GitObjectId? {
+  let read = git.Core.RevParseInRepo(repo: repo, target: "HEAD" as GitRef)
+  if read.exit_code == 0 {
+    git_object_id_from_untagged_hex(hex: trim(s: read.revision))
+  } else {
+    none
+  }
+}
+
+// The revision cell of a host's convergence: three states, none collapsible. Converged
+// says the deployed tree IS the admitted revision; Drifted carries BOTH sides (the
+// membership-diff `from` ruling — a catch-up realization needs the prior, and the
+// receipt must name what it observed, not just that it disagreed); Unobserved says the
+// comparison could not be made and why — it is unobserved-GRADE for the fold, never
+// satisfied (leg-f ruling shape).
+type FleetRevisionStanding
+  = RevisionConverged { revision: GitObjectId }
+  | RevisionDrifted { desired: GitObjectId, local: GitObjectId }
+  | RevisionUnobserved { cause: String }
+
+fn fleet_revision_standing(repo: FilePath) -> FleetRevisionStanding {
+  let observed = observe_fleet_desired_revision(repo: repo)
+  match converge_target_revision(observed: observed) {
+    Present { value: desired } =>
+      match observe_local_tree_revision(repo: repo) {
+        Present { value: local } =>
+          if git_object_id_eq(left: desired, right: local) {
+            RevisionConverged { revision: desired }
+          } else {
+            RevisionDrifted { desired: desired, local: local }
+          }
+        Absent =>
+          RevisionUnobserved {
+            cause: "fleet_desired_observe: local tree revision unreadable (not a git repository, or HEAD undecodable)",
+          }
+      }
+    Absent =>
+      match observed {
+        FleetDesiredUnobserved { cause: c } => RevisionUnobserved { cause: c }
+        FleetDesiredAdmitted { revision: _ } =>
+          RevisionUnobserved {
+            cause: "fleet_desired_observe: admitted revision projected no target (unreachable by construction)",
+          }
+      }
+  }
+}

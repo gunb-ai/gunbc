@@ -3782,6 +3782,7 @@ fn instrument_tuner_client_js_source() -> String {
 data instrument_sandbox_page_path: String = "/sandbox/instrument"
 data instrument_tuner_page_path: String = "/sandbox/instrument/tuner"
 data instrument_motion_page_path: String = "/sandbox/instrument/motion"
+data repo_atlas_page_path: String = "/sandbox/repo-atlas"
 
 data instrument_lab_nav_note: String = "ONE ROSTER, RENDERED IN THE SHARED HEADER, so a new instrument page is discoverable by adding a row rather than by remembering which pages to edit. It also removes the path literals: the route table and the links now read the same declaration, so a page cannot link somewhere the router does not serve. That is the difference between a nav that is DERIVED from the routes' own path authority and one that agrees with it by coincidence until someone renames a route."
 
@@ -3794,6 +3795,7 @@ data instrument_lab_links: List<InstrumentLabLink> = [
   InstrumentLabLink { path: instrument_sandbox_page_path, label: "instrument" },
   InstrumentLabLink { path: instrument_tuner_page_path, label: "tuner" },
   InstrumentLabLink { path: instrument_motion_page_path, label: "motion lab" },
+  InstrumentLabLink { path: repo_atlas_page_path, label: "repo atlas" },
 ]
 
 data instrument_motion_asset_path: String = "/assets/instrument-motion.js"
