@@ -1,6 +1,7 @@
 module gunbc.devboot.build
 
 import std.types { String, Bool, Int, List }
+import std.measure { Second, second, second_count }
 import extdeps.gunbc
 import extdeps.filesystem.filesystem_io
 import gunbc.devboot.lease {
@@ -63,12 +64,6 @@ data produced_refusal_entry: String = "refusal"
 
 data produced_host_entry: String = "host"
 
-// THE RUNTIME FLOOR TRAVELS WITH THE ARTIFACT, and it is here because a delivered binary that cannot run is worse than a refusal. Measured on the live vertical: a producer on glibc 2.39 built an artifact for a caller on glibc 2.36, both hosts aarch64-unknown-linux-gnu, so the target triples were IDENTICAL, the exact-subject comparison passed, the digest verified on both sides, and the caller received 24 megabytes that died at the dynamic linker. Every check agreed and the answer was unusable.
-//
-// The triple does not determine executability: the platform C library is part of the ABI and is not in it. So the producer reports the C library its artifact was linked against, and the caller checks that its own is new enough.
-//
-// THE COMPARISON IS AN ORDER, NOT AN EQUALITY, and getting that wrong in either direction is a real failure. glibc is backward compatible -- an artifact built against 2.36 runs on 2.39 -- so demanding equality would refuse the majority of pairings that genuinely work, and a service that refuses what would have worked teaches its callers to route around it. Demanding nothing is what produced the incident above. What the caller needs is exactly: is my C library at least the one this artifact was linked against.
-data produced_libc_entry: String = "libc"
 
 fn request_ref_of(token: String) -> String {
   join([request_ref_namespace, token], "")
@@ -165,7 +160,7 @@ type BuildRefusal
   | ToolchainNotObserved { detail: String }
   | SubjectNotAdmitted { detail: String }
   | ProducerUnreachable { detail: String }
-  | ProducerDidNotAnswer { waited_seconds: Int }
+  | ProducerDidNotAnswer { waited: Second }
   | ProducerRefusedRequest { detail: String }
   | SubjectMismatch { requested: String, produced: String }
   | ArtifactNotRetrievable { detail: String }
@@ -183,8 +178,8 @@ fn build_refusal_sentence(cause: BuildRefusal) -> String {
     ToolchainNotObserved { detail } => join(["the local toolchain could not be observed: ", detail], "")
     SubjectNotAdmitted { detail } => join(["the build subject was refused: ", detail], "")
     ProducerUnreachable { detail } => join(["the producer could not be reached: ", detail], "")
-    ProducerDidNotAnswer { waited_seconds } =>
-      join(["the producer did not answer within ", to_string(waited_seconds), " seconds"], "")
+    ProducerDidNotAnswer { waited } =>
+      join(["the producer did not answer within ", to_string(second_count(waited)), " seconds"], "")
     ProducerRefusedRequest { detail } => join(["the producer refused: ", detail], "")
     SubjectMismatch { requested, produced } =>
       join(["the producer built a different subject than the one requested\nrequested:\n", requested, "\nproduced:\n", produced], "")
@@ -215,8 +210,13 @@ fn poll_settled(acc: PollState) -> Bool {
   }
 }
 
-fn poll_interval_seconds() -> Int {
-  5
+// THE POLL INTERVAL IS A DURATION, not a number that happens to be counted in seconds. A scale unit living in a name rather than in the type is the conflation this repository treats as a hard block, and leaving it here while the producer's wait was migrated to Second in this same change would have been worse than either choice alone: two representations of one concept, one file apart from the authority that already models it.
+fn poll_interval() -> Second {
+  second(count: 5)
+}
+
+fn poll_interval_argv() -> String {
+  to_string(second_count(poll_interval()))
 }
 
 fn poll_tick_unit() -> List<Int> {
@@ -227,8 +227,8 @@ fn poll_attempts() -> List<Int> {
   fold([1, 2, 3, 4, 5, 6], init: [], f: (acc, outer) => concat(acc, poll_tick_unit()))
 }
 
-fn poll_budget_seconds() -> Int {
-  fold(poll_attempts(), init: 0, f: (acc, attempt) => acc + poll_interval_seconds())
+fn poll_budget() -> Second {
+  second(count: (poll_attempts() |> count) * second_count(poll_interval()))
 }
 
 fn poll_once(repo_root: String, endpoint: String, ref_name: String) -> PollState {
@@ -255,7 +255,7 @@ fn poll_step(acc: PollState, repo_root: String, endpoint: String, ref_name: Stri
     let slept = gunbc.WitnessBin.Run(
       workdir: repo_root,
       bin_path: "sleep",
-      args: [to_string(poll_interval_seconds())],
+      args: [poll_interval_argv()],
     )
     poll_once(repo_root: repo_root, endpoint: endpoint, ref_name: ref_name)
   }
@@ -503,7 +503,7 @@ fn devboot_build_admitted(
           ref_name: produced_ref_of(token: published),
         ) {
           PollUnreachable { detail } => BuildRefused { cause: ProducerUnreachable { detail: detail } }
-          PollWaiting => BuildRefused { cause: ProducerDidNotAnswer { waited_seconds: poll_budget_seconds() } }
+          PollWaiting => BuildRefused { cause: ProducerDidNotAnswer { waited: poll_budget() } }
           PollAnswered { ref_name } =>
             devboot_receive_answer(
               exchange_repo: exchange_repo,
