@@ -102,3 +102,131 @@ test fn spark_legacy_containers_are_observed_unbound() -> Bool {
 test fn spark_legacy_containers_do_not_cover_the_population() -> Bool {
   spark_legacy_containers.length() < spark_credential_population().length()
 }
+
+// ── Container classification controls ─────────────────────────────────────────────────────
+
+fn spark_allocated_specimen() -> SparkSecretAllocation {
+  SparkSecretAllocated {
+    occurrence: spark_credential_occurrence(host: spark_srv5(), kind: AdministratorCredential),
+    handle: "fixture-allocated-handle"
+  }
+}
+
+fn spark_pending_specimen() -> SparkSecretAllocation {
+  spark_secret_allocation(occurrence: spark_credential_occurrence(host: spark_srv5(), kind: AdministratorCredential))
+}
+
+fn spark_verdict_is_refused(v: SparkContainerVerdict) -> Bool {
+  match v {
+    SparkContainerRefused { cause: _ } => true
+    SparkContainerCreateRequired => false
+    SparkContainerConverged { handle: _ } => false
+    SparkContainerConflicted { handle: _, cause: _ } => false
+  }
+}
+
+fn spark_verdict_is_conflicted(v: SparkContainerVerdict) -> Bool {
+  match v {
+    SparkContainerConflicted { handle: _, cause: _ } => true
+    SparkContainerRefused { cause: _ } => false
+    SparkContainerCreateRequired => false
+    SparkContainerConverged { handle: _ } => false
+  }
+}
+
+fn spark_verdict_is_converged(v: SparkContainerVerdict) -> Bool {
+  match v {
+    SparkContainerConverged { handle: _ } => true
+    SparkContainerConflicted { handle: _, cause: _ } => false
+    SparkContainerRefused { cause: _ } => false
+    SparkContainerCreateRequired => false
+  }
+}
+
+fn spark_verdict_is_create_required(v: SparkContainerVerdict) -> Bool {
+  match v {
+    SparkContainerCreateRequired => true
+    SparkContainerConverged { handle: _ } => false
+    SparkContainerConflicted { handle: _, cause: _ } => false
+    SparkContainerRefused { cause: _ } => false
+  }
+}
+
+// CONTROL 8: an unallocated occurrence cannot be observed. The alternative -- computing a probable
+// name and observing that -- is the reverse inference the naming law forbids.
+test fn spark_unallocated_occurrence_refuses_observation() -> Bool {
+  spark_verdict_is_refused(v: classify_spark_container(
+    allocation: spark_pending_specimen(),
+    observation: SparkContainerAbsent))
+}
+
+// CONTROL 9: absent means create; versionless-present means converged. The two ordinary arms.
+test fn spark_absent_creates_and_empty_container_converges() -> Bool {
+  spark_verdict_is_create_required(v: classify_spark_container(
+    allocation: spark_allocated_specimen(),
+    observation: SparkContainerAbsent))
+    && spark_verdict_is_converged(v: classify_spark_container(
+         allocation: spark_allocated_specimen(),
+         observation: SparkContainerPresent { handle: "fixture-allocated-handle", version_count: 0 }))
+}
+
+// CONTROL 10, the discriminating one: a container that already carries a version is CONFLICTED,
+// never converged. This is the control that reds if someone makes the classifier tolerant to get a
+// run green -- and tolerance here means writing a second live credential for one occurrence.
+test fn spark_container_with_existing_version_conflicts() -> Bool {
+  spark_verdict_is_conflicted(v: classify_spark_container(
+    allocation: spark_allocated_specimen(),
+    observation: SparkContainerPresent { handle: "fixture-allocated-handle", version_count: 1 }))
+}
+
+// CONTROL 11: an unreadable container refuses. It does not fall through to create, which would
+// attempt a write against a resource whose state is unknown.
+test fn spark_unreadable_container_refuses() -> Bool {
+  spark_verdict_is_refused(v: classify_spark_container(
+    allocation: spark_allocated_specimen(),
+    observation: SparkContainerUnreadable { cause: "permission denied reading the secret" }))
+}
+
+// ── IAM delta controls ────────────────────────────────────────────────────────────────────
+
+fn spark_owned_universe() -> List<String> {
+  ["serviceAccount:owned-a@example.iam.gserviceaccount.com", "serviceAccount:owned-b@example.iam.gserviceaccount.com"]
+}
+
+// CONTROL 12, the one that matters most: a member OUTSIDE the owned universe is preserved, and is
+// neither removed nor treated as drift. A blind SetIamPolicy drops exactly this member, which is
+// the defect the deleted pattern shipped.
+test fn spark_iam_preserves_unrelated_bindings() -> Bool {
+  let observed = ["serviceAccount:owned-a@example.iam.gserviceaccount.com", "user:someone-elses-grant@example.com"]
+  let d = spark_iam_delta(
+    observed: observed,
+    desired_owned: ["serviceAccount:owned-a@example.iam.gserviceaccount.com"],
+    owned_universe: spark_owned_universe())
+  d.preserve.length() == 1
+    && spark_member_in(m: "user:someone-elses-grant@example.com", xs: d.preserve)
+    && d.remove.length() == 0
+    && d.add.length() == 0
+}
+
+// CONTROL 13: a stale OWNED member is removed, and a missing desired member is added. Removal is
+// scoped to the owned universe, so this proves the diff acts where it has authority.
+test fn spark_iam_removes_stale_owned_and_adds_missing() -> Bool {
+  let d = spark_iam_delta(
+    observed: ["serviceAccount:owned-b@example.iam.gserviceaccount.com"],
+    desired_owned: ["serviceAccount:owned-a@example.iam.gserviceaccount.com"],
+    owned_universe: spark_owned_universe())
+  d.add.length() == 1
+    && spark_member_in(m: "serviceAccount:owned-a@example.iam.gserviceaccount.com", xs: d.add)
+    && d.remove.length() == 1
+    && spark_member_in(m: "serviceAccount:owned-b@example.iam.gserviceaccount.com", xs: d.remove)
+}
+
+// CONTROL 14: a write with no observed etag refuses. Without it a concurrent update is overwritten
+// with no signal at all.
+test fn spark_iam_write_without_etag_refuses() -> Bool {
+  let d = spark_iam_delta(observed: [], desired_owned: [], owned_universe: spark_owned_universe())
+  match admit_spark_iam_write(observed_etag: SparkEtagMissing, delta: d) {
+    SparkIamWriteRefused { cause: _ } => true
+    SparkIamWriteAdmitted { etag: _, delta: _ } => false
+  }
+}

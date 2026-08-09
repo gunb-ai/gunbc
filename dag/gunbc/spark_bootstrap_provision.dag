@@ -171,3 +171,92 @@ data spark_cloud_principal_note: String = "The Spark secret population must be b
 data spark_convergence_shape_note: String = "observe container (Get before Create; absent/matching/conflicting/unreadable are four distinct verdicts) -> reconcile IAM (GetIamPolicy, membership diff, preserve unrelated bindings, SetIamPolicy with observed etag, readback) -> materialize (at most one AddVersion per attempt identity, receipt naming the exact version) -> independent readback (AccessVersion at that exact version, compared by payload identity). Secret material never crosses a string-shaped CLI boundary: base64 is wire encoding, not confidentiality, and gunbc.spark_bootstrap_credential's sensitive-input policy already refuses secrets appearing in argv or standard streams. Material is generated or fetched inside the admitted run and projected to base64 at the REST boundary."
 
 data spark_provision_frontier_note: String = "NOT BUILT, and named so the absence is countable rather than implied: the four secret allocations, the container observe/classify operation, the IAM membership diff, the materialization attempt identity and receipt, the independent payload-identity readback, the allocated fleet cloud-convergence principal, the shared GitHub-to-GCP federation authority, and the generated workflow that executes all of it under OIDC/WIF. Until those exist the Spark cloud population converges 0 of 4 occurrences, and the two existing containers do not reduce that number."
+
+// ── Container observation: Get before Create ──────────────────────────────────────────────
+// Four verdicts, because "absent", "already correct", "present but not ours to write into" and
+// "could not be read" have four different remedies. The prior revision collapsed all of them into
+// calling Create and reading a 409, which is the absorbing fallback in its cheapest form: an error
+// arm standing in for an observation nobody made.
+
+type SparkContainerObservation
+  = SparkContainerAbsent
+  | SparkContainerPresent { handle: NonEmptyStr, version_count: Int }
+  | SparkContainerUnreadable { cause: NonEmptyStr }
+
+type SparkContainerVerdict
+  = SparkContainerCreateRequired
+  | SparkContainerConverged { handle: NonEmptyStr }
+  | SparkContainerConflicted { handle: NonEmptyStr, cause: NonEmptyStr }
+  | SparkContainerRefused { cause: NonEmptyStr }
+
+// A container that ALREADY carries a version is Conflicted, not Converged. Writing into it would
+// make this run's credential a SECOND version of something nobody in this run authored, and
+// because AddVersion never overwrites, the prior value stays live and accessible. Adopting it
+// silently is how one occurrence ends up holding two different credentials.
+fn classify_spark_container(
+  allocation: SparkSecretAllocation,
+  observation: SparkContainerObservation
+) -> SparkContainerVerdict {
+  match allocation {
+    SparkSecretAllocationPending { occurrence: _ } =>
+      SparkContainerRefused { cause: "occurrence has no allocated handle; there is nothing to observe by, and guessing a name is the fabrication the carried-never-derived law forbids" }
+    SparkSecretAllocated { occurrence: _, handle: _ } =>
+      match observation {
+        SparkContainerAbsent => SparkContainerCreateRequired
+        SparkContainerUnreadable { cause: c } => SparkContainerRefused { cause: c }
+        SparkContainerPresent { handle: h, version_count: n } =>
+          if n > 0 {
+            SparkContainerConflicted { handle: h, cause: "container already carries a version this run did not write; AddVersion never overwrites, so writing here would leave two live credentials for one occurrence" }
+          } else {
+            SparkContainerConverged { handle: h }
+          }
+      }
+  }
+}
+
+// ── IAM: membership diff, never a blind replace ───────────────────────────────────────────
+// setIamPolicy REPLACES the policy rather than amending it, so the desired write is computed as a
+// delta against an observed policy and unrelated bindings are carried through untouched. The
+// owned-universe parameter is what makes "unrelated" decidable: a member outside it is preserved
+// even when it is not desired, because this model does not own it and removing it would be acting
+// outside our authority.
+
+type SparkIamDelta {
+  add: List<String>
+  remove: List<String>
+  preserve: List<String>
+}
+
+fn spark_member_in(m: String, xs: List<String>) -> Bool {
+  fold(xs, init: false, f: (acc, x) => acc || x == m)
+}
+
+fn spark_iam_delta(
+  observed: List<String>,
+  desired_owned: List<String>,
+  owned_universe: List<String>
+) -> SparkIamDelta {
+  SparkIamDelta {
+    add: desired_owned |> filter(m => !spark_member_in(m: m, xs: observed)),
+    remove: observed |> filter(m => spark_member_in(m: m, xs: owned_universe) && !spark_member_in(m: m, xs: desired_owned)),
+    preserve: observed |> filter(m => !spark_member_in(m: m, xs: owned_universe))
+  }
+}
+
+// The etag is not politeness. Without the observed etag a concurrent update is overwritten with no
+// signal, so a write that cannot name the policy it read REFUSES rather than proceeding.
+type SparkObservedEtag
+  = SparkEtagObserved { etag: NonEmptyStr }
+  | SparkEtagMissing
+
+type SparkIamWriteAdmission
+  = SparkIamWriteAdmitted { etag: NonEmptyStr, delta: SparkIamDelta }
+  | SparkIamWriteRefused { cause: NonEmptyStr }
+
+fn admit_spark_iam_write(observed_etag: SparkObservedEtag, delta: SparkIamDelta) -> SparkIamWriteAdmission {
+  match observed_etag {
+    SparkEtagMissing =>
+      SparkIamWriteRefused { cause: "no observed etag; a policy write that cannot name the policy it read silently overwrites a concurrent update" }
+    SparkEtagObserved { etag: e } => SparkIamWriteAdmitted { etag: e, delta: delta }
+  }
+}
