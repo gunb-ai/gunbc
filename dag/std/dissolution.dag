@@ -52,10 +52,13 @@ fn unbound_dissolution(description: String) -> DissolutionCondition {
   UnboundDissolution { description: description as NonEmptyStr }
 }
 
+data dissolution_is_bound_derivation_note: String = "DERIVED from dissolution_status rather than matching the arms a second time. A predicate that re-matched BoundDissolution/UnboundDissolution would be a second classification of the same axis, and the failure mode is specific rather than stylistic: adding a third arm would leave this function still compiling and silently answering false for it, so the two surfaces could disagree about the same condition. Against an empty present_decls a bound condition is DissolutionPending by construction (DissolutionFired requires a matching declaration in the list, and the empty list contains none), so boundness IS 'status is Pending under no present declarations' — one authority, asked a narrower question."
+
 fn dissolution_is_bound(condition: DissolutionCondition) -> Bool {
-  match condition {
-    BoundDissolution { trigger: _ } => true
-    UnboundDissolution { description: _ } => false
+  match dissolution_status(condition: condition, present_decls: []) {
+    DissolutionPending => true
+    DissolutionFired => true
+    DissolutionUnbound => false
   }
 }
 

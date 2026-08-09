@@ -110,10 +110,20 @@ pub fn unbound_dissolution(description: String) -> Rc<DissolutionCondition> {
     })
 }
 
+pub fn dissolution_is_bound_derivation_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "DERIVED from dissolution_status rather than matching the arms a second time. A predicate that re-matched BoundDissolution/UnboundDissolution would be a second classification of the same axis, and the failure mode is specific rather than stylistic: adding a third arm would leave this function still compiling and silently answering false for it, so the two surfaces could disagree about the same condition. Against an empty present_decls a bound condition is DissolutionPending by construction (DissolutionFired requires a matching declaration in the list, and the empty list contains none), so boundness IS 'status is Pending under no present declarations' — one authority, asked a narrower question.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn dissolution_is_bound(condition: Rc<DissolutionCondition>) -> bool {
-    match (*condition.clone()).clone() {
-        DissolutionCondition::BoundDissolution { trigger: _, .. } => true,
-        DissolutionCondition::UnboundDissolution { description: _, .. } => false,
+    match dissolution_status(condition.clone(), Rc::new(vec![])) {
+        DissolutionStatus::DissolutionPending => true,
+        DissolutionStatus::DissolutionFired => true,
+        DissolutionStatus::DissolutionUnbound => false,
     }
 }
 
