@@ -1,17 +1,17 @@
 module v2.lens.inert_carrier
 
 import std.roster_frontier { FrontierRow, frontier_row_path, frontier_units }
-import std.dissolution { unbound_dissolution }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.disposition { RealizationDispatch }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import v2.std.collection { fold_list }
 
 data inert_carrier_local_alias_roster_note: String = "Floor hygiene: roster LocalAlias for inert G1 fixture type in qualified_module_projection_stripped_fixture.dag (latent main gap; exposed by W1.2 broad affected set; not W3.1 reachability migration)."
 
-data inert_carrier_row_dissolve: String = "a live consumer reads the carrier; the stale-roster check then forces this row's deletion"
+data inert_carrier_row_dissolve: DissolutionCondition = unbound_dissolution(description: "a live consumer reads the carrier; the stale-roster check then forces this row's deletion")
 
 fn inert_row(unit: String, reason: String) -> FrontierRow {
-  frontier_row_path(path: unit, reason: reason, dissolution: unbound_dissolution(description: inert_carrier_row_dissolve))
+  frontier_row_path(path: unit, reason: reason, dissolution: inert_carrier_row_dissolve)
 }
 
 data inert_carrier_roster: List<FrontierRow> = [

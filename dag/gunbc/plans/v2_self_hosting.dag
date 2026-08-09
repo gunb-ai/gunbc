@@ -1,5 +1,6 @@
 module gunbc.plans.v2_self_hosting
 
+import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownBlock, ThematicBreak }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, quote }
@@ -73,6 +74,6 @@ data v2_self_hosting_plan: Plan = Plan {
   slug: "v2-self-hosting",
   title: "Plan — v2 self-hosting",
   body: v2_self_hosting_body(),
-  retirement: PlanRetiresWhen { condition: "Delete this doc when Wave 4 lands: pipeline on emitted Rust, import grammar deleted, v1 collapsed to pinned kernel, CI compile cone gone. The frontier carrier + absent v1 compiler logic are the authority; this tracker is redundant."
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when Wave 4 lands: pipeline on emitted Rust, import grammar deleted, v1 collapsed to pinned kernel, CI compile cone gone. The frontier carrier + absent v1 compiler logic are the authority; this tracker is redundant.")
   }
 }

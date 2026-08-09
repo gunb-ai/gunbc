@@ -1,5 +1,6 @@
 module gunbc.plans.axiom_syllogism_lens
 
+import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownBlock, TableBlock, BlockquoteBlock, AlignNone, ThematicBreak }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row }
@@ -162,6 +163,6 @@ data axiom_syllogism_lens_plan: Plan = Plan {
   slug: "axiom-syllogism-lens",
   title: "The axiom + syllogism lens — the argument as the fourth reachability substrate",
   body: axiom_syllogism_lens_body(),
-  retirement: PlanRetiresWhen { condition: "Delete this doc when the axiom + syllogism lens is built and runs executably over DESIGN.md's own §1–§7 argument: std/argument.dag (the Axiom/Claim/Argument carriers plus the three fail-closed folds), dag/gunbc/design_argument.dag (the transcribed DESIGN rows), and a discovered design_argument_witness_test.dag are green-by-execution with the orphan/cycle/smuggled-axiom discriminators going RED — at which point this scope-only design is superseded by the running wall and DESIGN open thread #1 is closed."
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the axiom + syllogism lens is built and runs executably over DESIGN.md's own §1–§7 argument: std/argument.dag (the Axiom/Claim/Argument carriers plus the three fail-closed folds), dag/gunbc/design_argument.dag (the transcribed DESIGN rows), and a discovered design_argument_witness_test.dag are green-by-execution with the orphan/cycle/smuggled-axiom discriminators going RED — at which point this scope-only design is superseded by the running wall and DESIGN open thread #1 is closed.")
   }
 }

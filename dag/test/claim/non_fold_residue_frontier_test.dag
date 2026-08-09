@@ -1,5 +1,6 @@
 module test.claim.non_fold_residue_frontier
 
+import std.types { NonEmptyStr }
 import gunbc.non_fold_residue {
   non_fold_residue_frontier,
   non_fold_residue_frontier_construct,
@@ -7,7 +8,7 @@ import gunbc.non_fold_residue {
   non_fold_residue_frontier_well_formed
 }
 import std.roster_frontier { FrontierRow, PathSubject, frontier_row_well_formed, frontier_rows_keyed_roster_build }
-import std.dissolution { unbound_dissolution }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.keyed_roster { KeyedRosterBuilt, KeyedRosterBuildDuplicateKey }
 
 data non_fold_residue_frontier_test_note: String = "GREEN: every enrolled non-fold-residue row is well-formed (nonempty subject, reason, trigger), path keys are unique via keyed_roster_build construction (lane 4), and the roster is populated. RED controls: a synthetic row with an empty trigger fails well-formedness; a synthetic duplicate path key yields KeyedRosterBuildDuplicateKey. The host-side equivalence receipt (nfr_roster_receipt: unrostered=0, stale=0 against the live corpus scan) lives in cli_run.rs nfr_tests and the always-on witness enrollment on src/v2/lens/non_fold_residue_test.dag."
@@ -27,12 +28,23 @@ test fn non_fold_residue_frontier_is_populated() -> Bool {
   length(xs: non_fold_residue_frontier_units()) >= 100
 }
 
+// Constructs the empty condition through the NON-LITERAL path deliberately.
+// The literal form `unbound_dissolution(description: "")` is now refused at
+// compile (the parameter is NonEmptyStr), which is the wall. Refinement at
+// non-literal positions is still deferred, so that gap is exactly what the
+// downstream well-formedness guard defends -- and this control has to reach it
+// through the gap in order to keep proving the guard works (DESIGN 4b(4):
+// production machinery dissolves on a climb, the evidence stays enrolled).
+fn synthetic_empty_condition(text: String) -> DissolutionCondition {
+  unbound_dissolution(description: text as NonEmptyStr)
+}
+
 test fn non_fold_residue_frontier_red_control_empty_trigger_reds() -> Bool {
   let verdict = frontier_row_well_formed(
     row: FrontierRow {
       subject: PathSubject { path: "synthetic.dag::f" },
       reason: "a reason without a trigger is not a frontier row",
-      dissolution: unbound_dissolution(description: "")
+      dissolution: synthetic_empty_condition(text: "")
     }
   )
   verdict == false

@@ -1,5 +1,6 @@
 module gunbc.plans.inert_layer_lens
 
+import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, quote, cell, row }
@@ -132,6 +133,6 @@ data inert_layer_lens_plan: Plan = Plan {
   slug: "inert-layer-lens",
   title: "The inert-layer lens — modeled but unreached",
   body: inert_layer_lens_body(),
-  retirement: PlanRetiresWhen { condition: "Delete this doc when the inert-layer lens family it specifies is fully built and self-describing in the carriers: the still-unbuilt code Tier-1/Tier-2 target class (`v2.lens.inert_layer` over the run-roots, covering `CacheLayerPlan` / `WorkDemand` / `execution_receipt_digest`) has landed as fail-closed floor witnesses alongside the already-live doc-graph (gunbc#5484) and inert-carrier (Lane 7) instances — at which point the rule \"reachable from a run-root, on the exception roster, or deleted\" is enforced by execution across all three substrates and this design prose is superseded by the lenses themselves (the lens never dissolves; this doc does, per DESIGN §6's mark-on-carrier-is-authority)."
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the inert-layer lens family it specifies is fully built and self-describing in the carriers: the still-unbuilt code Tier-1/Tier-2 target class (`v2.lens.inert_layer` over the run-roots, covering `CacheLayerPlan` / `WorkDemand` / `execution_receipt_digest`) has landed as fail-closed floor witnesses alongside the already-live doc-graph (gunbc#5484) and inert-carrier (Lane 7) instances — at which point the rule \"reachable from a run-root, on the exception roster, or deleted\" is enforced by execution across all three substrates and this design prose is superseded by the lenses themselves (the lens never dissolves; this doc does, per DESIGN §6's mark-on-carrier-is-authority).")
   }
 }

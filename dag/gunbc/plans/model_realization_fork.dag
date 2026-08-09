@@ -1,5 +1,6 @@
 module gunbc.plans.model_realization_fork
 
+import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, p, li, ol, cell, row }
@@ -57,6 +58,6 @@ data model_realization_fork_plan: Plan = Plan {
   slug: "model-realization-fork",
   title: "Plan — model↔realization fork (the root of the fail-open problem)",
   body: model_realization_fork_body(),
-  retirement: PlanRetiresWhen { condition: "Delete this doc when the numeric tower is grounded (`Int`/`Nat` native = modeled, guard is dead code) **and** `Value::Null` is split into its grounded carriers (Optional/Witness/miss each own their realization). At that point the per-site bridges are gone and the seam no longer exists."
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the numeric tower is grounded (`Int`/`Nat` native = modeled, guard is dead code) **and** `Value::Null` is split into its grounded carriers (Optional/Witness/miss each own their realization). At that point the per-site bridges are gone and the seam no longer exists.")
   }
 }

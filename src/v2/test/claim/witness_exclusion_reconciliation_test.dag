@@ -33,7 +33,7 @@ import std.realization_schedule { ScheduleWitnessEntry, CorpusWitnessKind }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
-import std.dissolution { unbound_dissolution }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 data witness_exclusion_reconciliation_note: String = "Executable reconciliation for gunbc.ci_layer_roots.witness_exclusion_frontier, which is a PATH POLICY carrier as of 2026-08-03: every row is well-formed (never DiscoverySelection, never QuarantineProbeExpectRed, NoConsumer only for the synthetic admission RED-control path, nonempty reason and dissolve_on), the remaining explicit-roster classifications name files those rosters actually run, and the whole-tree probe policy is exactly concat(discovery, strict-resolve). The known-red arm is GONE from this reconciliation rather than strengthened: exact admission moved to gunbc.explicit_witness_admission, so there is no pattern row left to reconcile against a probe roster and the containment check that stood in for identity has nothing to check. What replaces it is a refusal — witness_exclusion_frontier_carries_no_admission_holds, with a synthetic QuarantineProbeExpectRed row as its RED control. RED controls: a DiscoverySelection row, a bare-nickname row, an unbacked BinWitnessWet row, an unbacked rehomed row, an unbacked substrate-long-lane row, and a quarantine row in the path carrier."
 
@@ -186,26 +186,26 @@ test fn dispatch_bijection_real_roster_red_falsifier_self_host_wet_note_names_wi
   )
 }
 
-fn synthetic_wet_lane_row(description: String) -> WitnessExclusionRow {
+fn synthetic_wet_lane_row(dissolution: DissolutionCondition) -> WitnessExclusionRow {
   WitnessExclusionRow {
     pattern: "synthetic_wet_lane_third_spelling_test.dag",
     classification: OfflineLocalRecipe,
     reason: "synthetic",
-    dissolution: unbound_dissolution(description: description)
+    dissolution: dissolution
   }
 }
 
 data witness_exclusion_red_control_third_spelling_row_is_unclassified_note: String = "The discriminating RED control: a synthetic row phrasing its trigger around the wet lane in a THIRD spelling -- naming the lane without the cadence-flag identifier, without referential equality to excl_wet_integration_dissolve, and without un-darken(s) -- must be caught by the broad candidate net yet missed by the precise positive predicate, proving the unclassified-residue mechanism can actually distinguish (not merely always return true/empty by construction)."
 
 test fn witness_exclusion_red_control_third_spelling_row_is_unclassified() -> Bool {
-  let row = synthetic_wet_lane_row(description: "falsifier_self_host_wet lane activates for this trigger")
+  let row = synthetic_wet_lane_row(dissolution: unbound_dissolution(description: "falsifier_self_host_wet lane activates for this trigger"))
   witness_exclusion_row_mentions_wet_lane_dark_state(row: row)
     && !witness_exclusion_row_waits_on_wet_lane_undarken(row: row)
 }
 
 // Positive control on the same synthetic-row path: a row that DOES match one of the positive arms must not be reported as unclassified by the net/positive-predicate pairing.
 test fn witness_exclusion_control_matched_row_is_not_flagged_unclassified() -> Bool {
-  let row = synthetic_wet_lane_row(description: "falsifier_self_host_wet_cadence_active flips true")
+  let row = synthetic_wet_lane_row(dissolution: unbound_dissolution(description: "falsifier_self_host_wet_cadence_active flips true"))
   witness_exclusion_row_mentions_wet_lane_dark_state(row: row)
     && witness_exclusion_row_waits_on_wet_lane_undarken(row: row)
 }

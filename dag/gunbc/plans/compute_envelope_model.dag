@@ -1,5 +1,6 @@
 module gunbc.plans.compute_envelope_model
 
+import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, p, li, ul, ol, quote, cell, row }
@@ -95,6 +96,6 @@ data compute_envelope_model_plan: Plan = Plan {
   slug: "compute-envelope-model",
   title: "Compute envelope — one authority for the CI fleet's resource dimensions",
   body: compute_envelope_model_body(),
-  retirement: PlanRetiresWhen { condition: "Delete this doc when the host `ResourceEnvelope` is grounded in measured truth (128c/128GB, both hosts) and every knob — spawn width, host packing, per-build fan-out, `TasksMax`, jobserver tokens, `MemoryMax` — is *derived* from that single authority (the ctrl units generated, never hand-typed), at which point the coherent operating point is a witnessed by-construction property (§3/§5) and this planning tracker is redundant."
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the host `ResourceEnvelope` is grounded in measured truth (128c/128GB, both hosts) and every knob — spawn width, host packing, per-build fan-out, `TasksMax`, jobserver tokens, `MemoryMax` — is *derived* from that single authority (the ctrl units generated, never hand-typed), at which point the coherent operating point is a witnessed by-construction property (§3/§5) and this planning tracker is redundant.")
   }
 }

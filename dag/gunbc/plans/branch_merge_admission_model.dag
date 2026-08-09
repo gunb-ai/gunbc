@@ -1,5 +1,6 @@
 module gunbc.plans.branch_merge_admission_model
 
+import std.dissolution { unbound_dissolution }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
 import gunbc.plan { Plan, PlanRetiresWhen }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, quote, cell, row }
@@ -165,6 +166,6 @@ data branch_merge_admission_model_plan: Plan = Plan {
   slug: "branch-merge-admission-model",
   title: "[SKETCH] Branch & merge-admission model — green-stays-green by construction + repo-standard drift gate",
   body: branch_merge_admission_model_body(),
-  retirement: PlanRetiresWhen { condition: "Delete when the merge-admission authority is landed and witnessed: RepoStandard is the single source for the repo settings, the KeyedReceipt admission predicate is in force (a stale base-tree OR stale gate-roster receipt is unwritable), and the read-only RepoStandard drift gate runs over the live GitHub config — at which point stale-green and standard-vs-reality drift are unwritable by construction and this sketch is redundant."
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete when the merge-admission authority is landed and witnessed: RepoStandard is the single source for the repo settings, the KeyedReceipt admission predicate is in force (a stale base-tree OR stale gate-roster receipt is unwritable), and the read-only RepoStandard drift gate runs over the live GitHub config — at which point stale-green and standard-vs-reality drift are unwritable by construction and this sketch is redundant.")
   }
 }

@@ -1,5 +1,6 @@
 module gunbc.plans.affected_set_self_confirmation
 
+import std.dissolution { unbound_dissolution }
 import std.types { List }
 import gunbc.plan { Plan, PlanRetiresWhen }
 import std.markdown { MarkdownBlock }
@@ -22,6 +23,6 @@ data affected_set_self_confirmation_plan: Plan = Plan {
   slug: "affected-set-self-confirmation",
   title: "Plan — affected-set true self-confirmation (7933B)",
   body: affected_set_self_confirmation_body(),
-  retirement: PlanRetiresWhen { condition: "7933B authority live: symbolic mechanism refs, generated/direct host projection, refusal on unresolved mechanism or check identity — DELETE the cli_run.rs 7933A scaffold (COMPILE_CLEAN_* consts + broad-rule bridge); gunbc.affected_set_stop_line becomes rationale/cost carrier only or dissolves into the new authority module."
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "7933B authority live: symbolic mechanism refs, generated/direct host projection, refusal on unresolved mechanism or check identity — DELETE the cli_run.rs 7933A scaffold (COMPILE_CLEAN_* consts + broad-rule bridge); gunbc.affected_set_stop_line becomes rationale/cost carrier only or dissolves into the new authority module.")
   }
 }

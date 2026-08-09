@@ -1,5 +1,6 @@
 module gunbc.plans.wave2_prep_design
 
+import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetiresWhen }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, quote, cell, row }
@@ -198,6 +199,6 @@ data wave2_prep_design_plan: Plan = Plan {
   slug: "wave2-prep-design",
   title: "Wave 2 prep — module-flip census, FLAG E row-fold, SymbolIndex dependency map",
   body: wave2_prep_design_body(),
-  retirement: PlanRetiresWhen { condition: "Delete when Wave 2 Band A–C flips are underway and either (a) body_lowering_fold.dag is deleted per §3 slice 4, or (b) the frontier carrier holds execution-measured per-module probes replacing knowledge-attributed census. Surviving checklist rows migrate into gunbc.plans.v2_self_hosting or the frontier carrier; enroll generated docs/plans md at checkpoint 1 only then — never hand-author the projection."
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete when Wave 2 Band A–C flips are underway and either (a) body_lowering_fold.dag is deleted per §3 slice 4, or (b) the frontier carrier holds execution-measured per-module probes replacing knowledge-attributed census. Surviving checklist rows migrate into gunbc.plans.v2_self_hosting or the frontier carrier; enroll generated docs/plans md at checkpoint 1 only then — never hand-author the projection.")
   }
 }

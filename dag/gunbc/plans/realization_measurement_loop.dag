@@ -1,5 +1,6 @@
 module gunbc.plans.realization_measurement_loop
 
+import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownBlock, CodeBlock, TableBlock, AlignNone, ThematicBreak }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row, quote, hr }
@@ -182,6 +183,6 @@ data realization_measurement_loop_plan: Plan = Plan {
   slug: "realization-measurement-loop",
   title: "Plan — Realization & Measurement: closing the cost → schedule loop (+ infra onto `.dag`)",
   body: realization_measurement_loop_body(),
-  retirement: PlanRetiresWhen { condition: "Delete this plan once the cost→schedule loop is closed — every pure transform's realize(T) is content-addressed by hash(inputs ⊕ content(T)) and materialized at its minimal Placement, CostAccount is fed by Measured basis (not hardcoded zero), schedule width is hardware-bounded and the spawner is bounded by available_parallelism, the cache catalog has live runtime consumers, and a non-redundant transform with no cache supplier at its reach is a located typed ERROR — so the substrate is measurement-fed rather than input-starved."
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this plan once the cost→schedule loop is closed — every pure transform's realize(T) is content-addressed by hash(inputs ⊕ content(T)) and materialized at its minimal Placement, CostAccount is fed by Measured basis (not hardcoded zero), schedule width is hardware-bounded and the spawner is bounded by available_parallelism, the cache catalog has live runtime consumers, and a non-redundant transform with no cache supplier at its reach is a located typed ERROR — so the substrate is measurement-fed rather than input-starved.")
   }
 }

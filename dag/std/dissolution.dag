@@ -42,8 +42,13 @@ fn bound_dissolution(ref: DeclarationRef) -> DissolutionCondition {
   BoundDissolution { trigger: DeclarationAppears { ref: ref } }
 }
 
-fn unbound_dissolution(description: String) -> DissolutionCondition {
-  UnboundDissolution { description: description as NonEmptyStr }
+// The refinement is the PARAMETER, not an internal cast. The cast form was
+// demonstrably not a wall: unbound_dissolution(description: "") constructed, and
+// the downstream well-formedness guards had to be restored to catch what the
+// cast was assumed to prevent. The permitted string payload lives inside
+// UnboundDissolution; it does not cross this authority boundary untyped.
+fn unbound_dissolution(description: NonEmptyStr) -> DissolutionCondition {
+  UnboundDissolution { description: description }
 }
 
 fn dissolution_is_bound(condition: DissolutionCondition) -> Bool {

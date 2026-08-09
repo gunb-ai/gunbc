@@ -1,5 +1,6 @@
 module gunbc.plans.value_null_split
 
+import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, p, li, ol, cell, row, task, tasks, Unchecked }
@@ -60,6 +61,6 @@ data value_null_split_plan: Plan = Plan {
   slug: "value-null-split",
   title: "Plan — Value::Null split (Optional / Witness / lookup-miss carriers)",
   body: value_null_split_body(),
-  retirement: PlanRetiresWhen { condition: "Delete when `Value::Null` means only untyped lookup-miss, `Optional::Absent` and `Witness::Violates` are construction-reached only as their `Value::Variant` forms (no `match_pattern` Null bridges), the testgen `Optional`×`native_value_null` straddle row is removed, and `CrossRepresentationEquality` backstop for numerics is the only remaining guard."
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete when `Value::Null` means only untyped lookup-miss, `Optional::Absent` and `Witness::Violates` are construction-reached only as their `Value::Variant` forms (no `match_pattern` Null bridges), the testgen `Optional`×`native_value_null` straddle row is removed, and `CrossRepresentationEquality` backstop for numerics is the only remaining guard.")
   }
 }

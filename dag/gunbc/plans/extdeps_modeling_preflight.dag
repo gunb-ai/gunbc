@@ -1,5 +1,6 @@
 module gunbc.plans.extdeps_modeling_preflight
 
+import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.types { NonEmptyStr }
 import std.markdown { MarkdownBlock, TableBlock, BlockquoteBlock, AlignNone }
@@ -55,6 +56,6 @@ data extdeps_modeling_preflight_plan: Plan = Plan {
   slug: "extdeps-modeling-preflight",
   title: "extdeps modeling preflight — one subject per upstream module",
   body: extdeps_modeling_preflight_body(),
-  retirement: PlanRetiresWhen { condition: "Dissolves when the preflight's decidable half is machine-consumed end-to-end: the ExternalModelScope requirement is promoted from the gunbc.extdeps_scope_frontier staging roster to a v2.lens.mandatory_tag region (compile-grain wall), at which point the subject/coverage questions are enforced by construction and this doc's residue (the genuinely judgment-shaped rows: existing-model search, proposed file map) folds into DESIGN §3's standing text."
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Dissolves when the preflight's decidable half is machine-consumed end-to-end: the ExternalModelScope requirement is promoted from the gunbc.extdeps_scope_frontier staging roster to a v2.lens.mandatory_tag region (compile-grain wall), at which point the subject/coverage questions are enforced by construction and this doc's residue (the genuinely judgment-shaped rows: existing-model search, proposed file map) folds into DESIGN §3's standing text.")
   }
 }

@@ -7,9 +7,10 @@ import std.markdown {
 }
 import extdeps.languages.markdown { serialize_markdown_source }
 import std.types { NonEmptyStr }
+import std.dissolution { DissolutionCondition, dissolution_description }
 
 type PlanRetirement
-  = PlanRetiresWhen { condition: NonEmptyStr }
+  = PlanRetiresWhen { condition: DissolutionCondition }
   | PlanHasNoRetirement
 
 type Plan {
@@ -26,7 +27,7 @@ fn plan_p(text: String) -> MarkdownBlock { ParagraphBlock { inlines: [TextInline
 fn plan_retirement_blocks(p: Plan) -> List<MarkdownBlock> {
   match p.retirement {
     PlanRetiresWhen { condition } =>
-      [plan_h2(text: "Dissolution trigger (DESIGN §6)"), plan_p(text: condition as String)]
+      [plan_h2(text: "Dissolution trigger (DESIGN §6)"), plan_p(text: dissolution_description(condition: condition))]
     PlanHasNoRetirement => []
   }
 }
@@ -39,13 +40,14 @@ fn plan_to_document(p: Plan) -> MarkdownDocument {
   MarkdownDocument { blocks: plan_to_blocks(p: p) }
 }
 
-// The nonempty check is NOT redundant with the NonEmptyStr carrier. An earlier
-// revision deleted it believing construction enforced emptiness; it does not on
-// this path, so an empty condition is still writable and this is the check that
-// refuses it.
+// Retained deliberately. The payload is now a DissolutionCondition, whose own
+// literal-empty form is refused at construction, but refinement at NON-literal
+// positions is still deferred -- so an empty description can still reach this
+// carrier through that gap and this is the check that refuses it. It dissolves
+// when nonliteral refinement enforcement is real, not before.
 fn plan_has_retirement(p: Plan) -> Bool {
   match p.retirement {
-    PlanRetiresWhen { condition: c } => (c as String).length() > 0
+    PlanRetiresWhen { condition: c } => dissolution_description(condition: c).length() > 0
     PlanHasNoRetirement => false
   }
 }

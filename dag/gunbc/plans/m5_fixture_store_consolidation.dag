@@ -1,5 +1,6 @@
 module gunbc.plans.m5_fixture_store_consolidation
 
+import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, li_blocks, ul, ol, cell, row }
@@ -145,6 +146,6 @@ data m5_fixture_store_consolidation_plan: Plan = Plan {
   slug: "m5-fixture-store-consolidation",
   title: "M5 — Fixture-store consolidation onto one Realization kernel",
   body: m5_fixture_store_consolidation_body(),
-  retirement: PlanRetiresWhen { condition: "Delete this doc when the v1 and v2 fixture stores both dispatch through `std.cache_interface` (the §5 fold rewired, `FixtureError` collapsed onto `CacheRejectReason` with the `FreshnessExpired` / write-outcome / transport-faithfulness gaps closed) and the in-process row has converged to `ContentAddressedByValue` + `content_verified_on_read` — at which point \"one fixture concept, two handlers\" is a witnessed property (the convergence assertion green by execution) and this tracker is redundant."
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the v1 and v2 fixture stores both dispatch through `std.cache_interface` (the §5 fold rewired, `FixtureError` collapsed onto `CacheRejectReason` with the `FreshnessExpired` / write-outcome / transport-faithfulness gaps closed) and the in-process row has converged to `ContentAddressedByValue` + `content_verified_on_read` — at which point \"one fixture concept, two handlers\" is a witnessed property (the convergence assertion green by execution) and this tracker is redundant.")
   }
 }

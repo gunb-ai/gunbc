@@ -1,5 +1,6 @@
 module gunbc.plans.cli_run_hollowing_plan
 
+import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone, ThematicBreak }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, quote, row, cell }
@@ -176,6 +177,6 @@ data cli_run_hollowing_plan: Plan = Plan {
   slug: "cli-run-hollowing-plan",
   title: "Plan — cli_run.rs hollowing map (Chunk F)",
   body: cli_run_hollowing_plan_body(),
-  retirement: PlanRetiresWhen { condition: "Delete when `cli_run.rs` Chunk F is GENERATED or deleted — orchestration runs from workflow `.dag` + pinned bootstrap kernel only, and this high-level map is redundant with the frontier carrier + seed-shrink census."
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete when `cli_run.rs` Chunk F is GENERATED or deleted — orchestration runs from workflow `.dag` + pinned bootstrap kernel only, and this high-level map is redundant with the frontier carrier + seed-shrink census.")
   }
 }

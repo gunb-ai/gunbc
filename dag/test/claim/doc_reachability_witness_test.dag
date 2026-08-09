@@ -1,4 +1,5 @@
 module test.claim.doc_reachability_witness
+import std.dissolution { unbound_dissolution }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.doc_graph_roots {
   doc_graph_roots_all,
@@ -41,7 +42,7 @@ test fn doc_graph_slug_wall_reds_on_registered_slug() -> Bool {
     slug: "typescript-gap-census",
     primary_work: DeclarationRef { module_path: "gunbc.plans.typescript_gap_census", decl_name: "typescript_gap_census_plan", field: WholeDeclaration },
     additional_works: [],
-    dissolution: PlanRetiresWhen { condition: "synthetic negative control: this slug IS registered, so the wall must refuse it" },
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "synthetic negative control: this slug IS registered, so the wall must refuse it") },
   }) == false
 }
 
@@ -61,7 +62,7 @@ test fn doc_graph_duplicate_identity_red_control() -> Bool {
     slug: "synthetic-duplicate-identity-control",
     primary_work: DeclarationRef { module_path: "gunbc.doc_graph_roots", decl_name: "hand_authored_bind_key", field: WholeDeclaration },
     additional_works: [],
-    dissolution: PlanRetiresWhen { condition: "synthetic negative control: two rows carrying one (home, slug) identity must be counted as collisions — proves the uniqueness predicate discriminates" },
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "synthetic negative control: two rows carrying one (home, slug) identity must be counted as collisions — proves the uniqueness predicate discriminates") },
   }
   return hand_authored_key_collision_count(binds: [dup, dup]) == 2
     && hand_authored_key_collision_count(binds: [dup]) == 0

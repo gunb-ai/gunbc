@@ -1,5 +1,6 @@
 module gunbc.plans.ci_oom_reclassification
 
+import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, p, li, ul, cell, row }
@@ -46,6 +47,6 @@ data ci_oom_reclassification_plan: Plan = Plan {
   slug: "ci-oom-reclassification",
   title: "CI OOM reclassification — the green-on-main LIVE-flip prerequisite (cross-run clustering consumer)",
   body: ci_oom_reclassification_body(),
-  retirement: PlanRetiresWhen { condition: "Delete this doc when the cross-run clustering reclassifier is built, wired, and its discriminating witness (clustered-137 ⇒ Infra; lone-137 ⇒ Structural) is floor-green by execution — at which point the green-on-main prerequisite (a) of ci-merge-freshness §6 is satisfied as a witnessed property and this design is superseded by the carrier + witness."
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the cross-run clustering reclassifier is built, wired, and its discriminating witness (clustered-137 ⇒ Infra; lone-137 ⇒ Structural) is floor-green by execution — at which point the green-on-main prerequisite (a) of ci-merge-freshness §6 is satisfied as a witnessed property and this design is superseded by the carrier + witness.")
   }
 }

@@ -12,17 +12,17 @@ import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.roster_frontier { FrontierRow, frontier_row_path, frontier_units }
 
-import std.dissolution { unbound_dissolution }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data lens_registry_completeness_pool_roots: List<String> = ["src/v2/lens"]
 
 data lens_registry_completeness_empty_paths: List<String> = []
 
-data lens_registry_infra_row_dissolve: String = "the module becomes an enforcing lens (then it enrolls in lens_registry_v0) or leaves src/v2/lens; row deletes"
+data lens_registry_infra_row_dissolve: DissolutionCondition = unbound_dissolution(description: "the module becomes an enforcing lens (then it enrolls in lens_registry_v0) or leaves src/v2/lens; row deletes")
 
 fn infra_row(unit: String, reason: String) -> FrontierRow {
-  frontier_row_path(path: unit, reason: reason, dissolution: unbound_dissolution(description: lens_registry_infra_row_dissolve))
+  frontier_row_path(path: unit, reason: reason, dissolution: lens_registry_infra_row_dissolve)
 }
 
 data lens_registry_completeness_known_infra_roster: List<FrontierRow> = [

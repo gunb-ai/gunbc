@@ -1,5 +1,6 @@
 module gunbc.plans.discrete_cost_derivation
 
+import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownBlock, MarkdownTableRow, TableBlock, BlockquoteBlock, CodeBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row }
@@ -246,6 +247,6 @@ data discrete_cost_derivation_plan: Plan = Plan {
   slug: "discrete-cost-derivation",
   title: "Discrete cost derivation — the work account between symbolic cost and measured wall",
   body: discrete_cost_derivation_body(),
-  retirement: PlanRetiresWhen { condition: "Delete this doc when the C0 authority ruling is stated on the carriers themselves (v2.lens.cost owning discrete work, the v1 CostExpr machinery migrated, llvm_instruction_cost re-homed to a cited per-target model), a DAG section plus a declared input plus a realization derives ExactCost or BoundedCost or refuses with typed counted causes by execution, the projection to predicted time calibrates against dag/gunbc/witness_row_cost_basis.tsv with a planted-omission RED, and floor admission consumes declared per-witness cost envelopes so gunbc_ci_fast_lane_rule_note, gunbc_falsifier_substrate_long_lane_budget_note, and long_lane_exclusion_note all fire their own dissolve-on together — at which point the carriers state the policy and this note retires."
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the C0 authority ruling is stated on the carriers themselves (v2.lens.cost owning discrete work, the v1 CostExpr machinery migrated, llvm_instruction_cost re-homed to a cited per-target model), a DAG section plus a declared input plus a realization derives ExactCost or BoundedCost or refuses with typed counted causes by execution, the projection to predicted time calibrates against dag/gunbc/witness_row_cost_basis.tsv with a planted-omission RED, and floor admission consumes declared per-witness cost envelopes so gunbc_ci_fast_lane_rule_note, gunbc_falsifier_substrate_long_lane_budget_note, and long_lane_exclusion_note all fire their own dissolve-on together — at which point the carriers state the policy and this note retires.")
   }
 }

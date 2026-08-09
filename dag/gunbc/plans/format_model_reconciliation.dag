@@ -1,5 +1,6 @@
 module gunbc.plans.format_model_reconciliation
 
+import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownBlock, TableBlock, BlockquoteBlock, AlignNone, CodeBlock }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row }
@@ -68,6 +69,6 @@ data format_model_reconciliation_plan: Plan = Plan {
   slug: "format-model-reconciliation",
   title: "Format-model reconciliation — record spelling onto single authority",
   body: format_model_reconciliation_body(),
-  retirement: PlanRetiresWhen { condition: "Delete this doc when the C5 digest/accelerator tail is classified by semantic grain and every true record projection routes through `std.serialize` `serialize_record_doc` with byte-identical witnesses; presentation-only lists explicitly remain on `std.render`. The legacy FormatModel/OutputFormat collapse, runner manifest/JSON swap, gitignore line-layout de-fork, dnsmasq boundary, and CSS typed-row migration are already complete."
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the C5 digest/accelerator tail is classified by semantic grain and every true record projection routes through `std.serialize` `serialize_record_doc` with byte-identical witnesses; presentation-only lists explicitly remain on `std.render`. The legacy FormatModel/OutputFormat collapse, runner manifest/JSON swap, gitignore line-layout de-fork, dnsmasq boundary, and CSS typed-row migration are already complete.")
   }
 }

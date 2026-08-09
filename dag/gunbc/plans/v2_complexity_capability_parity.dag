@@ -1,5 +1,6 @@
 module gunbc.plans.v2_complexity_capability_parity
 
+import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownBlock, MarkdownTableRow, TableBlock, BlockquoteBlock, CodeBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row }
@@ -185,6 +186,6 @@ data v2_complexity_capability_parity_plan: Plan = Plan {
   slug: "v2-complexity-capability-parity",
   title: "v2 complexity capability parity — restoring the engine, not porting the seed",
   body: v2_complexity_capability_parity_body(),
-  retirement: PlanRetiresWhen { condition: "Delete this doc when the capability census is closed with every v1 row dispositioned, the boundary class distinguishes the genuinely undecidable residue from the decidable capability (SATISFIED: `lens_contract_complexity_derived_kernel` and `lens_contract_complexity_optimality` replaced the mixed row), v2.lens.cost carries grounded SizeExpr/CostExpr with work/span/output-size/peak-space/certainty on a restored ComplexitySummary, interprocedural summaries and descent bounds derive over declaration-keyed identities, the parity corpus reproduces or dispositions every meaningful v1 conclusion, `lens_contract_complexity_derived_kernel` has a live consumer witness and has flipped off AuditOnly — and this clause deliberately does NOT name `lens_contract_complexity_optimality`, which is `RatchetForever` and stays permanently AuditOnly by ruling, so requiring IT to flip would make this doc unretirable by construction, and v1.compiler.complexity is deleted or dispositioned — at which point the carriers state the capability and this note retires."
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the capability census is closed with every v1 row dispositioned, the boundary class distinguishes the genuinely undecidable residue from the decidable capability (SATISFIED: `lens_contract_complexity_derived_kernel` and `lens_contract_complexity_optimality` replaced the mixed row), v2.lens.cost carries grounded SizeExpr/CostExpr with work/span/output-size/peak-space/certainty on a restored ComplexitySummary, interprocedural summaries and descent bounds derive over declaration-keyed identities, the parity corpus reproduces or dispositions every meaningful v1 conclusion, `lens_contract_complexity_derived_kernel` has a live consumer witness and has flipped off AuditOnly — and this clause deliberately does NOT name `lens_contract_complexity_optimality`, which is `RatchetForever` and stays permanently AuditOnly by ruling, so requiring IT to flip would make this doc unretirable by construction, and v1.compiler.complexity is deleted or dispositioned — at which point the carriers state the capability and this note retires.")
   }
 }
