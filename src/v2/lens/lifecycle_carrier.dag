@@ -22,7 +22,7 @@ import v2.std.node {
   TypeNode
 }
 import v2.std.node_query { edge_field_type_name }
-import v2.std.collection { List, Map, empty_map, map_insert, map_get }
+import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.optional {
   Absent,
@@ -69,17 +69,15 @@ data lifecycle_field_name_rows: List<Symbol> = [
   ^retires_when
 ]
 
-fn lifecycle_field_name_set() -> Map<Symbol, Symbol> {
-  fold(lifecycle_field_name_rows, init: empty_map(), f: fn(acc, nm) {
-    map_insert(m: acc, key: nm, value: nm)
-  })
-}
-
+// Membership over eight rows, as a fold rather than a Map. A Map would have to
+// be BUILT on every call -- this predicate sits under the compile door and is
+// reached per field edge corpus-wide -- so the map's O(1) lookup is bought with
+// eight inserts per query and is a pure loss at this size (DESIGN 6, bare
+// minimum cost: a proven cost-shape defect is fixed regardless of realized n).
 fn name_is_lifecycle_field(name: Symbol) -> Bool {
-  match map_get(m: lifecycle_field_name_set(), key: name) {
-    Accepted { value: Present { value: _ } } => true
-    _ => false
-  }
+  fold(lifecycle_field_name_rows, init: false, f: fn(acc, nm) {
+    acc || (nm == name)
+  })
 }
 
 fn type_is_bare_string(target: Node) -> Bool {
@@ -97,8 +95,12 @@ fn lifecycle_carrier_diagnostic(carrier: Node) -> Diagnostic {
 
 fn field_lifecycle_violation(carrier: Node, edge: Edge) -> Optional<Diagnostic> {
   match edge.label {
+    // Type first, name second -- the same ordering unit_modeling_gate uses, and
+    // for the same reason: the type test is a single symbol comparison on a node
+    // already in hand, while the name test walks the row list. Only String and
+    // NonEmptyStr fields ever reach the walk.
     Named { name: nm } =>
-      if name_is_lifecycle_field(name: nm) && type_is_bare_string(target: edge.target) {
+      if type_is_bare_string(target: edge.target) && name_is_lifecycle_field(name: nm) {
         optional_present(value: lifecycle_carrier_diagnostic(carrier: carrier))
       } else {
         optional_absent()
