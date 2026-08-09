@@ -1,5 +1,10 @@
 module gunbc.assimilate.bmc_bootstrap_provision
 
+// GcpPolicy and merge_policy_bindings are named explicitly rather than reached as bare references:
+// policy assembly now comes from the IAM authority, and a bare reference to it would resolve only
+// when some unrelated module in the closure happened to drag that definer into the pool.
+import extdeps.cloud.gcp.iam { GcpPolicy, GcpBinding, merge_policy_bindings }
+
 
 data bmc_assimilate_service_deps: List<GcpService> = [
   GcpServiceUsage,
@@ -49,11 +54,20 @@ pattern bmc_bootstrap_provision_srv3() -> {
     display_name: bmc_assimilator_display_name
   )
 
+  node observed_policy: gcp.SecretManager.GetSecretIamPolicy(
+    access_token: auth.access_token,
+    project_id: bmc_secrets_project_id,
+    secret: bmc_srv3_secret_name
+  )
+
   node bind: gcp.SecretManager.SetSecretIamPolicy(
     access_token: auth.access_token,
     project_id: bmc_secrets_project_id,
     secret: bmc_srv3_secret_name,
-    bindings: bmc_secret_iam_bindings()
+    policy: merge_policy_bindings(
+      observed: GcpPolicy { bindings: observed_policy.bindings, etag: observed_policy.etag, version: observed_policy.version },
+      desired: bmc_secret_iam_bindings()
+    )
   )
 
   node pool: gcp.IamAdmin.CreateWorkloadIdentityPool(
@@ -75,7 +89,7 @@ pattern bmc_bootstrap_provision_srv3() -> {
 
   return {
     sa_email: sa.email,
-    secret_binding_etag: bind.ok_etag,
+    secret_binding_etag: bind.etag,
     pool_op: pool.operation_name,
     provider_op: provider.operation_name
   }

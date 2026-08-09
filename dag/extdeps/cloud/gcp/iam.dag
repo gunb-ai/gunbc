@@ -66,6 +66,31 @@ type GcpIamBindingCell {
   condition: IamCondition?
 }
 
+// POLICY ASSEMBLY LIVES WITH THE POLICY TYPE, not in a consumer. setIamPolicy replaces the whole
+// document, so every caller needs the same read-modify-write; if each one assembled its own the
+// preserve rule would be re-implemented per site and would drift. merge_policy_bindings takes the
+// OBSERVED policy and the caller's desired bindings and returns the document to write: every
+// observed binding whose role the caller does not author is carried through untouched, the caller's
+// bindings replace only their own roles, and the observed etag rides along so the write is a
+// compare-and-swap rather than a blind overwrite.
+//
+// Role-grain replacement is the honest bound of this helper: a caller authoring a role takes over
+// that role's whole member list. Cell-grain reconciliation -- preserving other members WITHIN a
+// role the caller also uses -- needs the caller's owned-cell universe, which this function does not
+// have and must not guess.
+fn binding_role_authored(desired: List<GcpBinding>, role: String) -> Bool {
+  fold(desired, init: false, f: (acc, d) => acc || d.role == role)
+}
+
+fn merge_policy_bindings(observed: GcpPolicy, desired: List<GcpBinding>) -> GcpPolicy {
+  let preserved = observed.bindings |> filter(b => !binding_role_authored(desired: desired, role: b.role))
+  GcpPolicy {
+    bindings: fold(desired, init: preserved, f: (acc, d) => acc |> list_push(d)),
+    etag: observed.etag,
+    version: observed.version
+  }
+}
+
 // The permission set of a predefined role is a GOOGLE-OWNED fact that changes
 // without our involvement, so it is observed from roles.get, never transcribed.
 // There is deliberately no hand-authored permission roster in this module: a
