@@ -6,8 +6,6 @@ import v2.lens.suite.receipt {
   lens_suite_zero_execution_never_succeeds,
 }
 import v2.lens.suite.roster { lens_suite_planned_count, lens_suite_registered_count }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

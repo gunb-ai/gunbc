@@ -13,8 +13,6 @@ import v2.lens.suite.selection {
   lens_suite_boring_checkpoint_is_determinism,
   lens_suite_boring_lens_mechanically_selected,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

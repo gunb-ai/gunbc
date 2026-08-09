@@ -4,8 +4,6 @@ import v2.lens.suite.fact_pack {
   lens_corpus_fact_pack_fixture,
   lens_corpus_fact_pack_second_query_constructs_zero,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
