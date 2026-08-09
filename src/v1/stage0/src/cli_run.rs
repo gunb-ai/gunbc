@@ -8191,6 +8191,15 @@ impl MultiEntryIndex {
         entry_rel: &str,
         fn_name: &str,
     ) -> Result<crate::data_initializer_identity::ResolvedDeclarationLocator, String> {
+        // The index's OWN key authority decides identity on both sides. Comparing the request's
+        // spelling to the pool key directly is the source-identity fork DESIGN names on this very
+        // index: the pool may hold a relative key while a caller arrives with an absolute path (or
+        // the reverse), and a raw string compare then answers "no such declaration" about a
+        // declaration that is plainly present -- a refusal whose cause is the spelling, not the
+        // subject. Both sides go through `module_index_path_key`, so a mismatch means the entry
+        // really is outside this index.
+        let entry_key = module_index_path_key(std::path::Path::new(entry_rel));
+        let entry_rel = entry_key.as_str();
         if let Some(cause) = bundle.parse_refusals.get(entry_rel) {
             return Err(format!(
                 "AFFECTED-SET REFUSAL cause=LiveReadEntryModuleUnparsed entry={entry_rel} \
@@ -8262,7 +8271,16 @@ impl MultiEntryIndex {
         let sources: Vec<(String, String)> = self
             .source_files
             .iter()
-            .map(|(path, sf)| (path.clone(), sf.content.clone()))
+            // The pool is keyed by MODULE PATH (dotted, `std.machine_shape`), not by file path --
+            // `source_files.contains_key(module_path)` elsewhere is the tell. The declaration
+            // population must be identified by FILE, because that is what a diff touches and what
+            // a discovery row names, so the identity here comes from `sf.path`.
+            .map(|(_module_path, sf)| {
+                (
+                    module_index_path_key(std::path::Path::new(&sf.path)),
+                    sf.content.clone(),
+                )
+            })
             .collect();
         let index_identities: std::collections::BTreeSet<String> =
             sources.iter().map(|(p, _)| p.clone()).collect();
