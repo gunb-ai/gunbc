@@ -14,8 +14,13 @@ import v2.lens.module_impact_query {
 import extdeps.git {
   GitDiffStatusEntry,
   GitDiffChangeStatus,
-  GitDiffNameStatusParseOutcome
+  GitDiffNameStatusParseOutcome,
+  GitDiffRange,
+  DiffAddedStatus, DiffCopiedStatus, DiffDeletedStatus, DiffModifiedStatus,
+  DiffPairingBrokenStatus, DiffRenamedStatus, DiffTypeChangedStatus,
+  DiffUnmergedStatus, DiffUnknownGitStatus
 }
+import v2.std.algebra { list_reverse }
 import extdeps.git.object_store { GitObjectId }
 
 data repo_atlas_subject_note: String = "THE ATLAS IS A PROJECTION, NOT A SECOND MODEL. It mints exactly one new concept — a renderer-neutral ADDRESS for a semantic subject — and consumes module identity, module declaration facts, Git change status, and the reverse-impact reading from their existing single authorities. It re-declares none of them. The renderer receives addresses and roles; it never receives Git logic, graph traversal, or pixel positions.
@@ -123,6 +128,8 @@ type AtlasCellAccumulator {
   occupants: Map<Int, List<ModuleIdentity>>
 }
 
+data repo_atlas_cell_order_cost_note: String = "THE ORDER LIST CONSES AND REVERSES ONCE rather than appending. Appending with concat(acc, [item]) copies the whole accumulator per module, which is O(n^2) over a 3400-module population — the exact idiom dedup_import_resolution_facts_cost_note records as having cost that lane an OOM and then 900 seconds. DESIGN 6 bare-minimum-cost: a proven cost-shape defect is always fixed regardless of the realized n, and list_reverse of a cons-accumulated fold is exactly the append-accumulated order, so the projection is unchanged by construction."
+
 data repo_atlas_cell_order_note: String = "The accumulator carries an ORDERED index list beside the occupancy map, and cells project by walking that list with a map probe per entry. Reading the map's own key order instead would expose host traversal order — the exact nondeterminism v2.std.determinism refuses at map_keys / map_values — and the atlas would render in an order the model does not control. This is the pattern that thread prescribes: meaningful order in a list, the map for membership only."
 
 fn atlas_accumulate_cell(acc: AtlasCellAccumulator, identity: ModuleIdentity) -> AtlasCellAccumulator {
@@ -137,7 +144,7 @@ fn atlas_accumulate_cell(acc: AtlasCellAccumulator, identity: ModuleIdentity) ->
       )
     }
     Absent => AtlasCellAccumulator {
-      order: concat(acc.order, [index]),
+      order: concat([index], acc.order),
       occupants: map_insert(m: acc.occupants, key: index, value: [identity])
     }
   }
@@ -149,7 +156,7 @@ fn atlas_cells_of_modules(identities: List<ModuleIdentity>) -> List<RepoAtlasCel
     init: AtlasCellAccumulator { order: [], occupants: empty_map() },
     f: atlas_accumulate_cell
   )
-  map(acc.order, index => RepoAtlasCell {
+  map(list_reverse(xs: acc.order), index => RepoAtlasCell {
     address: atlas_address_of_index(index: index),
     occupants: match map_lookup_where_rejected_unreachable(m: acc.occupants, key: index) {
       Present { value: occupants } => occupants
@@ -158,8 +165,29 @@ fn atlas_cells_of_modules(identities: List<ModuleIdentity>) -> List<RepoAtlasCel
   })
 }
 
+data repo_atlas_duplicate_fact_note: String = "TWO ROWS NAMING ONE MODULE ARE ONE SUBJECT OBSERVED TWICE, not two subjects. The staged many-to-many path/module relation means a single module can legitimately be declared at more than one path, so the fact list may carry it repeatedly; letting that through would raise the cell's occupant count and paint the dot denser, reporting a storage detail as semantic density. Identity is the atlas's unit, so the projection deduplicates on it here — before cells exist — and a genuine collision between DISTINCT identities still yields two occupants."
+
+type AtlasIdentityDedup {
+  order: List<ModuleIdentity>
+  seen: Map<String, Bool>
+}
+
+fn atlas_dedup_step(acc: AtlasIdentityDedup, n: ModuleDeclarationFact) -> AtlasIdentityDedup {
+  match map_lookup_where_rejected_unreachable(m: acc.seen, key: n.module) {
+    Present { value: _ } => acc
+    Absent => AtlasIdentityDedup {
+      order: concat([ModuleIdentity { name: n.module }], acc.order),
+      seen: map_insert(m: acc.seen, key: n.module, value: true)
+    }
+  }
+}
+
 fn atlas_module_identities(nodes: List<ModuleDeclarationFact>) -> List<ModuleIdentity> {
-  map(nodes, n => ModuleIdentity { name: n.module })
+  list_reverse(xs: fold(
+    nodes,
+    init: AtlasIdentityDedup { order: [], seen: empty_map() },
+    f: atlas_dedup_step
+  ).order)
 }
 
 data repo_atlas_change_projection_note: String = "THE HEAD-ONLY LIMIT, STATED AS A TYPE RATHER THAN ABSORBED. The Git comparison names an exact base, an exact head and the relation between them, but the module-graph producers on current main take source roots and inspect the CURRENT tree — they do not accept an arbitrary revision. So an added or modified module can be projected against the head, and a deleted or renamed-old path CANNOT: its prior semantic identity is not recoverable from the head alone.
@@ -181,14 +209,40 @@ type UnprojectedChange
       status: GitDiffChangeStatus
     }
 
+data repo_atlas_comparison_identity_note: String = "A DIFF IS NOT A FACT UNTIL IT NAMES ITS ENDPOINTS, and the overlay may not be combined with a module population that was read from somewhere else. AtlasComparison carries the exact base, head and relation; the readout prints all three, because 'a named revision' is provenance nobody can check.
+
+THE MISSING ARM THIS ADDS. The overlay previously had only Projected and Refused, so an authored empty diff — nobody ran a comparison — rendered identically to a comparison that ran and found nothing changed. That is bottom-as-answer conflated with bottom-as-ignorance, the same class the impact overlay already gets right two fields away, and the atlas was carrying it in the field whose entire job is saying what changed.
+
+WHY THE HEAD MUST BE BOUND. module_declaration_facts_live reads the WORKING TREE, and the comparison names commits. If the tree is dirty the two describe different worlds, so a subject may be claimed only when the tree is observed clean at that head; otherwise the structure still draws and the subject refuses with ComparisonHeadUnbound. Drawing marks against a tree that does not match the comparison would be a fabricated correspondence, not a small inaccuracy."
+
+type AtlasComparison {
+  base: String
+  head: String
+  relation: GitDiffRange
+}
+
+type AtlasChangeObservation
+  = AtlasChangesNotObserved
+  | AtlasComparisonObserved {
+      comparison: AtlasComparison,
+      diff: GitDiffNameStatusParseOutcome
+    }
+  | AtlasComparisonUnavailable {
+      cause: AtlasOverlayRefusalCause
+    }
+
 type AtlasOverlayRefusalCause
-  = UnmergedEntryPresent { path: String }
+  = ComparisonHeadUnbound { detail: String }
+  | ComparisonReadFailed { detail: String }
+  | UnmergedEntryPresent { path: String }
   | PairingBrokenEntryPresent { path: String }
   | UnknownGitStatusPresent { path: String, raw: String }
   | DiffObservationTruncated
 
 type AtlasChangeOverlay
-  = AtlasChangesProjected {
+  = AtlasChangeNotObserved
+  | AtlasChangesProjected {
+      comparison: AtlasComparison,
       marks: List<AtlasChangeMark>,
       unprojected: List<UnprojectedChange>
     }
@@ -202,13 +256,20 @@ Dropping the bad entry and drawing the rest is the absorbing fallback DESIGN 5 f
 
 DiffPairingBrokenStatus is enumerated here deliberately. The ruling's status list named eight arms and GitDiffChangeStatus carries NINE; matching the prose rather than the coproduct would have left one arm falling through whatever the default was."
 
+data repo_atlas_status_totality_note: String = "ALL NINE ARMS ARE ENUMERATED AND NO WILDCARD REMAINS in any of the three status folds. A wildcard here is not a shorthand — it is a standing decision about statuses that do not exist yet: a tenth upstream GitDiffChangeStatus arm would have compiled clean and silently become an ordinary, non-departed, non-refusing change, which is the fail-open direction on the one wall this carrier exists to hold. With the wildcards gone a new upstream arm fails to typecheck until the atlas makes a conscious decision about it, so the refusal is the substrate's rather than this module's diligence."
+
 fn atlas_status_refusal(entry: GitDiffStatusEntry) -> AtlasOverlayRefusalCause? {
   match entry.status {
+    DiffAddedStatus => Absent
+    DiffModifiedStatus => Absent
+    DiffCopiedStatus { similarity: _ } => Absent
+    DiffRenamedStatus { similarity: _ } => Absent
+    DiffDeletedStatus => Absent
+    DiffTypeChangedStatus => Absent
     DiffUnmergedStatus => Present { value: UnmergedEntryPresent { path: entry.path } }
     DiffPairingBrokenStatus => Present { value: PairingBrokenEntryPresent { path: entry.path } }
     DiffUnknownGitStatus { raw: raw } =>
       Present { value: UnknownGitStatusPresent { path: entry.path, raw: raw } }
-    _ => Absent
   }
 }
 
@@ -225,14 +286,28 @@ data repo_atlas_departed_status_note: String = "A DELETED path has departed. A R
 fn atlas_status_is_departure(status: GitDiffChangeStatus) -> Bool {
   match status {
     DiffDeletedStatus => true
-    _ => false
+    DiffAddedStatus => false
+    DiffModifiedStatus => false
+    DiffCopiedStatus { similarity: _ } => false
+    DiffRenamedStatus { similarity: _ } => false
+    DiffTypeChangedStatus => false
+    DiffUnmergedStatus => false
+    DiffPairingBrokenStatus => false
+    DiffUnknownGitStatus { raw: _ } => false
   }
 }
 
 fn atlas_status_carries_departed_old_path(status: GitDiffChangeStatus) -> Bool {
   match status {
     DiffRenamedStatus { similarity: _ } => true
-    _ => false
+    DiffCopiedStatus { similarity: _ } => false
+    DiffAddedStatus => false
+    DiffModifiedStatus => false
+    DiffDeletedStatus => false
+    DiffTypeChangedStatus => false
+    DiffUnmergedStatus => false
+    DiffPairingBrokenStatus => false
+    DiffUnknownGitStatus { raw: _ } => false
   }
 }
 
@@ -292,7 +367,8 @@ fn atlas_project_entry(
   }
 }
 
-fn atlas_change_overlay(
+fn atlas_project_diff(
+  comparison: AtlasComparison,
   outcome: GitDiffNameStatusParseOutcome,
   nodes: List<ModuleDeclarationFact>
 ) -> AtlasChangeOverlay {
@@ -306,12 +382,27 @@ fn atlas_change_overlay(
           let acc = fold(
             entries,
             init: AtlasProjectionAccumulator { marks: [], unprojected: [] },
-            f: (a, e) =>
-              atlas_project_entry(acc: a, entry: e, nodes: nodes)
+            f: (a, e) => atlas_project_entry(acc: a, entry: e, nodes: nodes)
           )
-          AtlasChangesProjected { marks: acc.marks, unprojected: acc.unprojected }
+          AtlasChangesProjected {
+            comparison: comparison,
+            marks: acc.marks,
+            unprojected: acc.unprojected
+          }
         }
       }
+  }
+}
+
+fn atlas_change_overlay(
+  observation: AtlasChangeObservation,
+  nodes: List<ModuleDeclarationFact>
+) -> AtlasChangeOverlay {
+  match observation {
+    AtlasChangesNotObserved => AtlasChangeNotObserved
+    AtlasComparisonUnavailable { cause: cause } => AtlasChangeOverlayRefused { cause: cause }
+    AtlasComparisonObserved { comparison: comparison, diff: diff } =>
+      atlas_project_diff(comparison: comparison, outcome: diff, nodes: nodes)
   }
 }
 
@@ -359,13 +450,13 @@ type RepoAtlasSnapshot {
 fn repo_atlas_snapshot(
   subject: AtlasSubject,
   nodes: List<ModuleDeclarationFact>,
-  diff: GitDiffNameStatusParseOutcome,
+  observation: AtlasChangeObservation,
   impact: AtlasImpactOverlay
 ) -> RepoAtlasSnapshot {
   RepoAtlasSnapshot {
     subject: subject,
     cells: atlas_cells_of_modules(identities: atlas_module_identities(nodes: nodes)),
-    changes: atlas_change_overlay(outcome: diff, nodes: nodes),
+    changes: atlas_change_overlay(observation: observation, nodes: nodes),
     impact: impact
   }
 }
@@ -381,6 +472,14 @@ fn atlas_snapshot_occupant_total(snapshot: RepoAtlasSnapshot) -> Int {
 
 fn atlas_cell_carries_module(cell: RepoAtlasCell, identity: ModuleIdentity) -> Bool {
   any(cell.occupants, o => impact_module_eq(a: o, b: identity))
+}
+
+fn atlas_overlay_marks(overlay: AtlasChangeOverlay) -> List<AtlasChangeMark> {
+  match overlay {
+    AtlasChangesProjected { comparison: _, marks: marks, unprojected: _ } => marks
+    AtlasChangeOverlayRefused { cause: _ } => []
+    AtlasChangeNotObserved => []
+  }
 }
 
 fn atlas_module_is_marked(marks: List<AtlasChangeMark>, identity: ModuleIdentity) -> Bool {

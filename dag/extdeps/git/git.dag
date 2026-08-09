@@ -677,6 +677,34 @@ service git.Core {
     }
   }
 
+  operation StatusPorcelain {
+    input {}
+    output {
+      raw: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["git", "status", "--porcelain"] }
+    exit {
+      0 => Unit
+      128 => String "Not a git repository"
+    }
+  }
+
+  operation RevParse {
+    input { rev: GitRef }
+    output {
+      sha: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["git", "rev-parse", rev] }
+    exit {
+      0 => Unit
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
+
   operation RevList {
     input { since: String }
     output { commits: List<CommitSha> from "stdout_lines" }

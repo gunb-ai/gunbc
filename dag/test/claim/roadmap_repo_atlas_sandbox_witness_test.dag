@@ -8,6 +8,7 @@ import gunbc.roadmap_repo_atlas_sandbox {
   repo_atlas_page,
   repo_atlas_css,
   repo_atlas_page_title,
+  atlas_millidegrees_text,
   atlas_cell_transform,
   atlas_ring_radius,
   atlas_ring_slot_count,
@@ -15,6 +16,10 @@ import gunbc.roadmap_repo_atlas_sandbox {
 }
 import gunbc.repo_atlas_projection {
   AtlasAddress,
+  AtlasComparison,
+  AtlasChangesNotObserved,
+  AtlasComparisonObserved,
+  atlas_ring_slot_counts,
   RepoAtlasSnapshot,
   repo_atlas_snapshot,
   AtlasSubjectUnobserved,
@@ -31,6 +36,7 @@ import v2.lens.module_impact_query {
 import v2.lens.module_graph { ModuleDeclarationFact }
 import extdeps.git {
   GitDiffStatusEntry,
+  TwoDot,
   DiffModifiedStatus,
   DiffUnmergedStatus,
   GitDiffNameStatusComplete
@@ -51,7 +57,7 @@ fn atlas_page_snapshot_plain() -> RepoAtlasSnapshot {
   repo_atlas_snapshot(
     subject: AtlasSubjectUnobserved,
     nodes: atlas_page_fixture_nodes(),
-    diff: GitDiffNameStatusComplete { entries: [] },
+    observation: AtlasChangesNotObserved,
     impact: AtlasImpactNotComputed)
 }
 
@@ -59,9 +65,12 @@ fn atlas_page_snapshot_changed() -> RepoAtlasSnapshot {
   repo_atlas_snapshot(
     subject: AtlasSubjectUnobserved,
     nodes: atlas_page_fixture_nodes(),
-    diff: GitDiffNameStatusComplete { entries: [
-      GitDiffStatusEntry { status: DiffModifiedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
-    ] },
+    observation: AtlasComparisonObserved {
+      comparison: AtlasComparison { base: "HEAD^", head: "HEAD", relation: TwoDot },
+      diff: GitDiffNameStatusComplete { entries: [
+        GitDiffStatusEntry { status: DiffModifiedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
+      ] }
+    },
     impact: AtlasImpactNotComputed)
 }
 
@@ -69,9 +78,12 @@ fn atlas_page_snapshot_refused() -> RepoAtlasSnapshot {
   repo_atlas_snapshot(
     subject: AtlasSubjectUnobserved,
     nodes: atlas_page_fixture_nodes(),
-    diff: GitDiffNameStatusComplete { entries: [
-      GitDiffStatusEntry { status: DiffUnmergedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
-    ] },
+    observation: AtlasComparisonObserved {
+      comparison: AtlasComparison { base: "HEAD^", head: "HEAD", relation: TwoDot },
+      diff: GitDiffNameStatusComplete { entries: [
+        GitDiffStatusEntry { status: DiffUnmergedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
+      ] }
+    },
     impact: AtlasImpactNotComputed)
 }
 
@@ -79,7 +91,7 @@ fn atlas_page_snapshot_impacted(exact: Bool) -> RepoAtlasSnapshot {
   repo_atlas_snapshot(
     subject: AtlasSubjectUnobserved,
     nodes: atlas_page_fixture_nodes(),
-    diff: GitDiffNameStatusComplete { entries: [] },
+    observation: AtlasChangesNotObserved,
     impact: atlas_impact_from_reading(reading: ImpactReading {
       direction: DependentsOf,
       seeds: [ModuleIdentity { name: "fixture.alpha" }],
@@ -172,7 +184,7 @@ data atlas_page_geometry_note: String = "ACCEPTANCE 11. The renderer receives an
 
 test fn ring_zero_slot_zero_lowers_to_an_unrotated_inner_transform() -> Bool {
   let lowered = atlas_cell_transform(address: AtlasAddress { ring: 0, slot: 0 })
-  lowered == "translate(420 420) rotate(0) translate(0 -34)"
+  lowered == "translate(420 420) rotate(0.000) translate(0 -34)"
 }
 
 test fn the_ring_radius_grows_by_the_declared_gap() -> Bool {
@@ -222,12 +234,71 @@ test fn the_change_channel_is_painted_differently_from_structure() -> Bool {
     && string_contains(haystack: css, needle: "fill")
 }
 
-test fn the_live_page_binds_the_document_shape() -> Bool {
-  match try_serialize_html_source(node: repo_atlas_page()) {
-    EmitOk { html: h } =>
-      string_contains(haystack: h, needle: "<html")
-        && string_contains(haystack: h, needle: "atlas-plane-structure")
-        && string_contains(haystack: h, needle: "<style>")
-    EmitRejected { reason: _ } => false
-  }
+data atlas_live_page_is_wet_note: String = "THE LIVE-PAGE CLAIM WAS DELETED FROM THIS FILE, DELIBERATELY, AND THIS ROW IS THE RECEIPT. repo_atlas_page now performs real host effects — git status, git rev-parse, git diff, and the working-tree module walk — so calling it from a hermetic per-PR witness would refuse with 'no mock_response for operation', which is correct hermetic behaviour in the wrong lane (the same split external_model_scope_live_cover_witness_test records).
+
+WHAT STILL COVERS THE SERVED SHAPE: every claim here drives repo_atlas_document, which IS the function the handler renders, with controlled snapshots. What is NOT covered by any hermetic claim is the live observation itself — whether the tree is clean, whether the comparison resolves — and that is precisely what the browser and latency receipt has to establish by execution, not something to assert here with a mock."
+
+data atlas_plane_split_note: String = "ACCEPTANCE: the change plane is a SEPARATE group, and the paired control proves the structure group is untouched by it. The claim compares the two documents rather than merely asserting the group appears — if a change were still expressed by classing the structural circle, the changes group would be absent and the structure group would differ, and both halves red."
+
+fn atlas_occurrence_count(haystack: String, needle: String) -> Int {
+  split(s: haystack, delimiter: needle).length() - 1
+}
+
+test fn a_change_adds_its_own_plane_and_leaves_structure_alone() -> Bool {
+  let plain = atlas_page_html(snapshot: atlas_page_snapshot_plain())
+  let changed = atlas_page_html(snapshot: atlas_page_snapshot_changed())
+  string_contains(haystack: plain, needle: "atlas-plane-structure")
+    && string_contains(haystack: plain, needle: "atlas-plane-changes") == false
+    && string_contains(haystack: changed, needle: "atlas-plane-changes")
+    && string_contains(haystack: changed, needle: "atlas-plane-structure")
+    && string_contains(haystack: changed, needle: "changed — fixture.alpha")
+}
+
+data atlas_injective_transform_note: String = "ACCEPTANCE: distinct addresses must produce distinct transforms. These are the EXACT slot pairs that collapsed under whole-degree rounding, computed against the declared ring table: ring 14 slots 0/1 and 46/47, ring 15 slots 0/1 and 12/13. Each pair differed by well under one degree — ring 15 slot 1 sits at 0.918 degrees, which truncated to 0 and landed on slot 0 — so pinning these pairs is sharper than a sweep: they are the tightest separations the table produces, and if they hold every wider pair does.
+
+Both halves are asserted: the MODEL always distinguished these slots in millidegrees, so a claim on the model alone would have passed throughout the defect. The claim that matters is on the emitted TRANSFORM TEXT, which is where the collapse happened."
+
+fn atlas_slot_pair_separates(ring: Int, low: Int, high: Int) -> Bool {
+  let a = AtlasAddress { ring: ring, slot: low }
+  let b = AtlasAddress { ring: ring, slot: high }
+  atlas_slot_angle_millidegrees(address: a) < atlas_slot_angle_millidegrees(address: b)
+    && atlas_cell_transform(address: a) != atlas_cell_transform(address: b)
+}
+
+test fn the_slot_pairs_that_collapsed_now_separate() -> Bool {
+  atlas_slot_pair_separates(ring: 14, low: 0, high: 1)
+    && atlas_slot_pair_separates(ring: 14, low: 46, high: 47)
+    && atlas_slot_pair_separates(ring: 15, low: 0, high: 1)
+    && atlas_slot_pair_separates(ring: 15, low: 12, high: 13)
+    && atlas_slot_pair_separates(ring: 0, low: 0, high: 1)
+}
+
+data atlas_fraction_render_note: String = "The serializer must keep three decimals and PAD them, or 918 and 18 millidegrees would both render as a fraction beginning with 1 and two different addresses would print the same text."
+
+test fn millidegrees_render_with_padded_fraction() -> Bool {
+  atlas_millidegrees_text(millidegrees: 918) == "0.918"
+    && atlas_millidegrees_text(millidegrees: 180) == "0.180"
+    && atlas_millidegrees_text(millidegrees: 7) == "0.007"
+    && atlas_millidegrees_text(millidegrees: 360000) == "360.000"
+}
+
+data atlas_focus_note: String = "ACCEPTANCE: the atlas is ONE keyboard stop, not one per cell. The live page has 2168 occupied cells; a tabindex on each would have made the study a two-thousand-stop keyboard trap. Titles remain on every dot for pointer inspection."
+
+test fn the_atlas_is_a_single_keyboard_stop() -> Bool {
+  let html = atlas_page_html(snapshot: atlas_page_snapshot_plain())
+  string_contains(haystack: html, needle: "atlas-plane-structure")
+    && atlas_occurrence_count(haystack: html, needle: "tabindex") == 1
+}
+
+data atlas_changes_not_observed_page_note: String = "The page must distinguish an unrun comparison from one that found nothing, in words."
+
+test fn the_page_says_changes_were_not_observed() -> Bool {
+  let html = atlas_page_html(snapshot: atlas_page_snapshot_plain())
+  string_contains(haystack: html, needle: "changes not observed")
+    && string_contains(haystack: html, needle: "This is not a claim that nothing changed")
+}
+
+test fn the_page_prints_exact_comparison_endpoints() -> Bool {
+  let html = atlas_page_html(snapshot: atlas_page_snapshot_changed())
+  string_contains(haystack: html, needle: "comparison — HEAD^..HEAD")
 }

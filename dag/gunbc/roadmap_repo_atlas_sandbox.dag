@@ -39,10 +39,24 @@ import gunbc.repo_atlas_projection {
   atlas_module_is_marked,
   atlas_module_is_impacted,
   atlas_impact_is_exact,
-  repo_atlas_snapshot
+  atlas_overlay_marks,
+  repo_atlas_snapshot,
+  AtlasComparison,
+  AtlasChangeObservation,
+  AtlasChangesNotObserved,
+  AtlasComparisonObserved,
+  AtlasComparisonUnavailable,
+  AtlasChangeNotObserved,
+  ComparisonHeadUnbound,
+  ComparisonReadFailed
 }
 import v2.lens.module_graph { module_declaration_facts_live }
-import extdeps.git { GitDiffNameStatusComplete }
+import extdeps.git
+import extdeps.git {
+  GitDiffNameStatusComplete, git_diff_name_status_parse, GitDiffRange, TwoDot, ThreeDot
+}
+import extdeps.git.object_store { GitObjectId, GitSha1ObjectId, GitSha256ObjectId, git_sha1_object_id }
+import v2.std.optional { Present, Absent }
 import v2.lens.module_impact_query {
   ModuleIdentity,
   ImpactStanding,
@@ -93,9 +107,23 @@ fn atlas_slot_angle_millidegrees(address: AtlasAddress) -> Int {
   address.slot * 360000 / atlas_ring_slot_count(ring: address.ring)
 }
 
+data repo_atlas_angular_precision_note: String = "THE TRANSFORM KEEPS THE FRACTION, AND DROPPING IT WAS A REAL COLLAPSE. The model computes slot x 360000 / slot_count in millidegrees; the serializer used to divide by 1000 and emit whole degrees, so a ring declaring more than 360 slots could not render them apart. Measured on the declared table: ring 14 has 368 slots and 8 of them landed on another slot's degree, ring 15 has 392 and 32 did — 40 distinct addresses drawn on top of one another before any hash collision.
+
+That is worse than a collision, which the model handles honestly by SHARING a cell: two modules at one address are two occupants of one dot with one title, whereas two modules at different addresses rendering at the same point are two dots claiming the same place with nothing recording that they overlap. Emitting three decimal places preserves every declared slot on every ring and keeps the address table fixed."
+
+fn atlas_millidegrees_text(millidegrees: Int) -> String {
+  let whole = millidegrees / 1000
+  let frac = millidegrees % 1000
+  let hundreds = frac / 100
+  let tens = frac % 100 / 10
+  let ones = frac % 10
+  concat(to_string(whole), concat(".", concat(to_string(hundreds),
+    concat(to_string(tens), to_string(ones)))))
+}
+
 fn atlas_cell_transform(address: AtlasAddress) -> String {
   let center = to_string(atlas_svg_center)
-  let angle = to_string(atlas_slot_angle_millidegrees(address: address) / 1000)
+  let angle = atlas_millidegrees_text(millidegrees: atlas_slot_angle_millidegrees(address: address))
   let radius = to_string(atlas_ring_radius(ring: address.ring))
   let move_to_center = concat("translate(", concat(center, concat(" ", concat(center, ")"))))
   let turn = concat(" rotate(", concat(angle, ")"))
@@ -111,10 +139,8 @@ data repo_atlas_role_note: String = "THE FOUR ROLES ARE SEPARATE VISUAL CHANNELS
 
 Density, not brightness, carries a cell's occupant count: brightness is the change channel, and reusing it for population would make a crowded structural cell read as a change."
 
-fn atlas_cell_class(cell: RepoAtlasCell, marked: Bool, impacted: Bool) -> String {
-  let base = if atlas_cell_occupant_count(cell: cell) > 1 { "atlas-dot atlas-dot-shared" } else { "atlas-dot" }
-  let with_change = if marked { concat(base, " atlas-dot-changed") } else { base }
-  if impacted { concat(with_change, " atlas-dot-impacted") } else { with_change }
+fn atlas_cell_class(cell: RepoAtlasCell) -> String {
+  if atlas_cell_occupant_count(cell: cell) > 1 { "atlas-dot atlas-dot-shared" } else { "atlas-dot" }
 }
 
 fn atlas_cell_any_marked(cell: RepoAtlasCell, marks: List<AtlasChangeMark>) -> Bool {
@@ -130,27 +156,61 @@ fn atlas_cell_title(cell: RepoAtlasCell) -> String {
     if acc == "" { o.name } else { concat(acc, concat(" · ", o.name)) })
 }
 
-fn atlas_structure_dot(cell: RepoAtlasCell, marks: List<AtlasChangeMark>, impact: AtlasImpactOverlay) -> Fragment {
-  let marked = atlas_cell_any_marked(cell: cell, marks: marks)
-  let impacted = atlas_cell_any_impacted(cell: cell, impact: impact)
+data repo_atlas_plane_independence_note: String = "THE CHANGE PLANE IS ITS OWN GROUP, and it has to be. The module claims four independently transformable co-registered planes, which is the whole basis for depth coming from differential plane behaviour and for a future impulse desynchronizing them the way a CRT loses hold. An earlier revision expressed a change by adding a class to the STRUCTURE circle, which fused two of the four layers at exactly the seam the design says must stay separable — the claim was in the prose and the fusion was in the markup.
+
+A SECOND DEFECT DISSOLVED WITH IT. Marking the structural dot marked the CELL, so in a shared cell every occupant appeared changed when only one of them was. The change plane emits one mark per changed OCCUPANT and titles it with the changed occupants alone, so a cell holding a changed module beside an untouched one no longer reports both as changed."
+
+fn atlas_structure_dot(cell: RepoAtlasCell) -> Fragment {
   Element { tag: "g", attributes: [
     sattr(name: "transform", value: atlas_cell_transform(address: cell.address)),
   ], children: [
     Element { tag: "circle", attributes: [
       sattr(name: "r", value: to_string(atlas_dot_radius)),
-      sattr(name: "class", value: atlas_cell_class(cell: cell, marked: marked, impacted: impacted)),
-      sattr(name: "tabindex", value: "0"),
+      sattr(name: "class", value: atlas_cell_class(cell: cell)),
     ], children: [
       Element { tag: "title", attributes: [], children: [ txt(atlas_cell_title(cell: cell)) ] },
     ] },
   ] }
 }
 
+fn atlas_changed_occupants(cell: RepoAtlasCell, marks: List<AtlasChangeMark>) -> List<ModuleIdentity> {
+  filter(cell.occupants, o => atlas_module_is_marked(marks: marks, identity: o))
+}
+
+fn atlas_identity_list_text(identities: List<ModuleIdentity>) -> String {
+  fold(identities, init: "", f: (acc, o) =>
+    if acc == "" { o.name } else { concat(acc, concat(" · ", o.name)) })
+}
+
+fn atlas_change_dot(cell: RepoAtlasCell, changed: List<ModuleIdentity>) -> Fragment {
+  Element { tag: "g", attributes: [
+    sattr(name: "transform", value: atlas_cell_transform(address: cell.address)),
+  ], children: [
+    Element { tag: "circle", attributes: [
+      sattr(name: "r", value: to_string(atlas_dot_radius)),
+      sattr(name: "class", value: "atlas-dot atlas-dot-changed"),
+    ], children: [
+      Element { tag: "title", attributes: [], children: [
+        txt(concat("changed — ", atlas_identity_list_text(identities: changed))),
+      ] },
+    ] },
+  ] }
+}
+
 data repo_atlas_plane_note: String = "Each plane is its own SVG group so a register or a motion realization can transform one without the others. They are emitted in one document and share the coordinate frame — co-registered, not composited after the fact — which is what lets a future impulse desynchronize them the way a CRT loses hold, using the planes that already exist rather than new machinery."
 
-fn atlas_structure_plane(snapshot: RepoAtlasSnapshot, marks: List<AtlasChangeMark>) -> Fragment {
+fn atlas_structure_plane(snapshot: RepoAtlasSnapshot) -> Fragment {
   Element { tag: "g", attributes: [ sattr(name: "class", value: "atlas-plane atlas-plane-structure") ],
-    children: map(snapshot.cells, c => atlas_structure_dot(cell: c, marks: marks, impact: snapshot.impact)) }
+    children: map(snapshot.cells, c => atlas_structure_dot(cell: c)) }
+}
+
+fn atlas_change_plane(snapshot: RepoAtlasSnapshot, marks: List<AtlasChangeMark>) -> List<Fragment> {
+  let changed_cells = filter(snapshot.cells, c => atlas_changed_occupants(cell: c, marks: marks).length() > 0)
+  if changed_cells.length() == 0 { [] } else {
+    [ Element { tag: "g", attributes: [ sattr(name: "class", value: "atlas-plane atlas-plane-changes") ],
+        children: map(changed_cells, c =>
+          atlas_change_dot(cell: c, changed: atlas_changed_occupants(cell: c, marks: marks))) } ]
+  }
 }
 
 fn atlas_impact_ring(cell: RepoAtlasCell) -> Fragment {
@@ -193,10 +253,7 @@ fn atlas_glass_plane() -> Fragment {
 }
 
 fn atlas_marks_of(snapshot: RepoAtlasSnapshot) -> List<AtlasChangeMark> {
-  match snapshot.changes {
-    AtlasChangesProjected { marks: marks, unprojected: _ } => marks
-    AtlasChangeOverlayRefused { cause: _ } => []
-  }
+  atlas_overlay_marks(overlay: snapshot.changes)
 }
 
 fn atlas_svg(snapshot: RepoAtlasSnapshot) -> Fragment {
@@ -209,17 +266,30 @@ fn atlas_svg(snapshot: RepoAtlasSnapshot) -> Fragment {
       sattr(name: "class", value: "atlas"),
       sattr(name: "role", value: "img"),
       sattr(name: "aria-label", value: "the .dag module population as a ring atlas"),
+      sattr(name: "tabindex", value: "0"),
     ],
     children: concat(
-      concat([atlas_structure_plane(snapshot: snapshot, marks: marks)], atlas_impact_plane(snapshot: snapshot)),
+      concat(
+        concat([atlas_structure_plane(snapshot: snapshot)],
+          atlas_change_plane(snapshot: snapshot, marks: marks)),
+        atlas_impact_plane(snapshot: snapshot)),
       [atlas_glass_plane()]),
   }
 }
 
 data repo_atlas_readout_note: String = "THE READOUT IS THE HONEST HALF OF THE PAGE AND IS NOT OPTIONAL GARNISH. Everything the atlas cannot draw truthfully is stated here in words: the refusal cause when the change overlay refused, the departed paths that have no head identity, the paths declaring no module, and whether an impact reading exists and at what standing. A viewer who reads only the picture must not be able to conclude more than the model knows."
 
+fn atlas_comparison_text(c: AtlasComparison) -> String {
+  let rel = match c.relation { TwoDot => ".." ThreeDot => "..." }
+  concat("comparison — ", concat(c.base, concat(rel, c.head)))
+}
+
 fn atlas_refusal_text(cause: AtlasOverlayRefusalCause) -> String {
   match cause {
+    ComparisonHeadUnbound { detail: d } =>
+      concat("comparison not bound to this tree — ", d)
+    ComparisonReadFailed { detail: d } =>
+      concat("comparison could not be read — ", d)
     UnmergedEntryPresent { path: p } =>
       concat("change overlay refused — unmerged entry at ", p)
     PairingBrokenEntryPresent { path: p } =>
@@ -265,13 +335,21 @@ fn atlas_impact_readout(snapshot: RepoAtlasSnapshot) -> Fragment {
   }
 }
 
+data repo_atlas_not_observed_readout_note: String = "The not-observed arm reads differently from a comparison that found nothing, because they ARE different and the remedy differs: one needs a comparison run, the other needs nothing."
+
 fn atlas_changes_readout(snapshot: RepoAtlasSnapshot) -> List<Fragment> {
   match snapshot.changes {
+    AtlasChangeNotObserved => [
+      el_class("p", "atlas-readout atlas-readout-absent", [
+        txt("changes not observed — no comparison was run for this snapshot, so no dot is marked. This is not a claim that nothing changed."),
+      ]),
+    ]
     AtlasChangeOverlayRefused { cause: cause } => [
       el_class("p", "atlas-readout atlas-readout-refused", [ txt(atlas_refusal_text(cause: cause)) ]),
     ]
-    AtlasChangesProjected { marks: marks, unprojected: unprojected } => concat(
-      [ el_class("p", "atlas-readout", [
+    AtlasChangesProjected { comparison: comparison, marks: marks, unprojected: unprojected } => concat(
+      [ el_class("p", "atlas-readout", [ txt(atlas_comparison_text(c: comparison)) ]),
+        el_class("p", "atlas-readout", [
           txt(concat("direct changes — ", concat(to_string(marks.length()), " module(s) marked"))),
         ]) ],
       if unprojected.length() == 0 { [] } else {
@@ -287,12 +365,19 @@ fn atlas_changes_readout(snapshot: RepoAtlasSnapshot) -> List<Fragment> {
   }
 }
 
+fn atlas_object_id_text(id: GitObjectId) -> String {
+  match id {
+    GitSha1ObjectId { digest: d } => d.hex
+    GitSha256ObjectId { digest: d } => d.hex
+  }
+}
+
 fn atlas_subject_text(subject: AtlasSubject) -> String {
   match subject {
     AtlasSubjectUnobserved =>
       "subject — unobserved; this snapshot names no revision"
-    AtlasSubjectRevision { revision: _ } =>
-      "subject — a named revision"
+    AtlasSubjectRevision { revision: rev } =>
+      concat("subject — working tree observed clean at ", atlas_object_id_text(id: rev))
   }
 }
 
@@ -326,19 +411,80 @@ fn repo_atlas_section(snapshot: RepoAtlasSnapshot) -> Fragment {
     ]))
 }
 
-data repo_atlas_live_population_note: String = "THE STRUCTURE PLANE READS THE ACTUAL CURRENT MODULE POPULATION, not a fixture. That is what makes this a repo atlas rather than a drawing of one, and it is the one place the live tree is the subject.
+data repo_atlas_live_observation_note: String = "ONE OBSERVATION FUNCTION HOLDS BOTH WET READS, and that is the correction rather than a tidy-up. The page was ALREADY wet — module_declaration_facts_live reads the working tree — so moving only the Git read to a handler would not have made repo_atlas_document pure; it would have split one observation across two seams and left the correspondence between them unstated. Both reads happen here, together, and the pure document receives a completed snapshot.
 
-The change and impact overlays are NOT wired to a live comparison in this slice, and the page says so through its own honest arms rather than through prose: the subject is unobserved, the diff is an empty complete observation, and impact is not computed. Supplying a real comparison is a call-site change, not a page change — which is the seam this slice exists to establish."
+THE BINDING IS CHECKED, NOT ASSUMED. The module facts describe the WORKING TREE and the comparison describes COMMITS. A subject is claimed only when git status --porcelain is observed empty at the resolved head, because a dirty tree means the two halves describe different worlds and marking one against the other would fabricate a correspondence. A dirty or unreadable tree keeps the structure plane and refuses the subject with a located cause; it never quietly draws marks anyway.
 
-fn repo_atlas_live_snapshot() -> RepoAtlasSnapshot {
-  repo_atlas_snapshot(
-    subject: AtlasSubjectUnobserved,
-    nodes: module_declaration_facts_live(pool_roots: repo_atlas_pool_roots),
-    diff: GitDiffNameStatusComplete { entries: [] },
-    impact: AtlasImpactNotComputed)
-}
+FIRST-PARENT HEAD^..HEAD IS THE SANDBOX COMPARISON, deliberately not the CI baseline policy: importing merge-base-against-origin/main semantics would make a design surface answer a release question."
 
 data repo_atlas_pool_roots: List<String> = ["dag", "src/v2"]
+
+data repo_atlas_comparison_base: String = "HEAD^"
+data repo_atlas_comparison_head: String = "HEAD"
+
+fn repo_atlas_observe_changes() -> AtlasChangeObservation {
+  let status = git.Core.StatusPorcelain()
+  if status.success == false {
+    AtlasComparisonUnavailable {
+      cause: ComparisonReadFailed { detail: "git status --porcelain did not succeed" }
+    }
+  } else {
+    if status.raw != "" {
+      AtlasComparisonUnavailable {
+        cause: ComparisonHeadUnbound {
+          detail: "the working tree carries uncommitted changes, so the live module population does not correspond to any commit"
+        }
+      }
+    } else {
+      let resolved = git.Core.RevParse(rev: repo_atlas_comparison_head)
+      if resolved.success == false {
+        AtlasComparisonUnavailable {
+          cause: ComparisonReadFailed { detail: "git rev-parse HEAD did not succeed" }
+        }
+      } else {
+        let diff = git.Core.DiffNameStatus(
+          base: repo_atlas_comparison_base,
+          head: repo_atlas_comparison_head,
+          range: TwoDot)
+        if diff.success == false {
+          AtlasComparisonUnavailable {
+            cause: ComparisonReadFailed { detail: "git diff --name-status did not succeed" }
+          }
+        } else {
+          AtlasComparisonObserved {
+            comparison: AtlasComparison {
+              base: repo_atlas_comparison_base,
+              head: resolved.sha,
+              relation: TwoDot
+            },
+            diff: git_diff_name_status_parse(raw: diff.raw)
+          }
+        }
+      }
+    }
+  }
+}
+
+fn repo_atlas_observed_subject(observation: AtlasChangeObservation) -> AtlasSubject {
+  match observation {
+    AtlasChangesNotObserved => AtlasSubjectUnobserved
+    AtlasComparisonUnavailable { cause: _ } => AtlasSubjectUnobserved
+    AtlasComparisonObserved { comparison: comparison, diff: _ } =>
+      match git_sha1_object_id(hex: comparison.head) {
+        Present { value: id } => AtlasSubjectRevision { revision: id }
+        Absent => AtlasSubjectUnobserved
+      }
+  }
+}
+
+fn repo_atlas_live_snapshot() -> RepoAtlasSnapshot {
+  let observation = repo_atlas_observe_changes()
+  repo_atlas_snapshot(
+    subject: repo_atlas_observed_subject(observation: observation),
+    nodes: module_declaration_facts_live(pool_roots: repo_atlas_pool_roots),
+    observation: observation,
+    impact: AtlasImpactNotComputed)
+}
 
 data repo_atlas_stylesheet_note: String = "THE ROLES ARE MADE DISTINGUISHABLE HERE, NOT ASSERTED IN A NOTE. An earlier revision of this module carried a note saying the four channels must stay distinguishable at a glance and then emitted class names with NO rules behind them, so on the live route a real SCM change mark rendered identically to an ordinary structural cell. That is rung inflation in its plainest form — the carrier described a property the artifact did not have — and it was caught by review 50752 rather than by any claim here, because every page claim served a fragment the route does not serve.
 
