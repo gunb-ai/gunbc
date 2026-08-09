@@ -40,6 +40,7 @@ import gunbc.pr_delivery_check {
   Unconsumed,
   WitnessEntryPoint,
   pr_delivery_check,
+  pr_delivery_subjects_for_added_paths,
 }
 import v2.lens.module_impact_query {
   ChangedPathSeeds,
