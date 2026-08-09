@@ -201,7 +201,7 @@ fn classify_reach_probe_wire(
         || string_contains(s: stderr, pattern: "Host key verification failed") {
         ProbeHostKeyUnenrolled { transport_diagnostic: stderr }
       } else {
-        ProbeTransportUnavailable { cause: stderr }
+        ProbeTransportUnavailable { cause: join(["stderr=", stderr, " stdout=", stdout], "") }
       }
     }
   }
