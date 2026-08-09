@@ -58,6 +58,7 @@ import extdeps.toolchain.types { TargetTriple, ToolchainRequirement }
 import extdeps.rust.target_triple { parse_rust_target_triple }
 import extdeps.gnu.libc { PlatformCLibrary, GnuLibc, LibcUnobserved }
 import extdeps.cargo { CargoTarget, Lib, Bin, CargoTest, Example, Bench }
+import gunbc.devboot.program { devboot_program_package }
 
 // THE PRODUCER, AND IT IS THE LIVE PATH RATHER THAN A WITNESS. This module is invoked through `gunbc run`, so the first consumer of the identity carriers is the ordinary CLI surface -- a witness suite proving the same functions in isolation would not have established that anything is ever actually built or retrieved.
 //
@@ -73,8 +74,7 @@ import extdeps.cargo { CargoTarget, Lib, Bin, CargoTest, Example, Bench }
 //
 // IT WAS THE ISOLATION THAT EXPOSED IT. Building in a fresh checkout meant no stale binary was there to hash, so the failure finally had nothing to hide behind. That is the argument for isolation stated better than any note could: the ambient directory was not merely a risk to correctness, it was actively concealing a broken build.
 //
-// The package name is named once here. The bin name stays on the cargo target, where the axis it belongs to already lives.
-data devboot_seed_package_name: String = "v1-compiler"
+// The package name is imported from gunbc.devboot.program, the single authority for the cargo package row. The bin name stays on the cargo target, where the axis it belongs to already lives.
 
 // THE SUBJECT IS THE WORKING TREE AS IT STANDS, WHICH IS WHAT AN AGENT ACTUALLY ASKS ABOUT. An earlier revision ran write-tree against an index the CALLER supplied and nothing populated, so the tree it named was HEAD's -- every uncommitted modification and every untracked file was invisible to the identity. A developer editing a file and asking for a build of what they are looking at would have received, and reused forever, a binary for the last commit. The identity was exact and it was exact about the wrong tree.
 //
@@ -344,7 +344,7 @@ fn devboot_produce_with_toolchain(
     Present { value: tree_oid } =>
       match admit_build_subject(
         tree_oid: tree_oid,
-        package: devboot_seed_package_name,
+        package: devboot_program_package,
         cargo_target: Bin { name: "gunbc" },
         toolchain: toolchain,
         target: host,
