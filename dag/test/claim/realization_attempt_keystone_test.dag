@@ -38,7 +38,7 @@ test fn witness_planted_minimal_module_emits() -> Bool {
   let a = attempt_entry_source(entry: "planted://minimal", source: planted_minimal_source)
   match a.standing {
     V2TranslateSerialized { emitted_nonempty: ne } => ne && a.arrow_count == 1
-    V2RealizationRefused { phase: _, exact_cause: _ } => false
+    V2RealizationRefused { phase: _, exact_cause: _, located: _ } => false
   }
 }
 
@@ -46,7 +46,7 @@ test fn witness_planted_garbage_refuses_frontend_RED() -> Bool {
   let a = attempt_entry_source(entry: "planted://garbage", source: planted_garbage_source)
   match a.standing {
     V2TranslateSerialized { emitted_nonempty: _ } => false
-    V2RealizationRefused { phase: p, exact_cause: _ } => match p {
+    V2RealizationRefused { phase: p, exact_cause: _, located: _ } => match p {
       PhaseFrontend => true
       _ => false
     }
@@ -98,7 +98,7 @@ test fn witness_assembled_identity_absent_refuses_RED() -> Bool {
   let a = attempt_assembled(ingest: ka_two_module_ingest(), admission: ka_admission(), fn_name: ^no_such_declaration, entry: "planted://ka_importer")
   match a.standing {
     V2TranslateSerialized { emitted_nonempty: _ } => false
-    V2RealizationRefused { phase: _, exact_cause: c } => c == ^realization_attempt_identity_absent
+    V2RealizationRefused { phase: _, exact_cause: c, located: _ } => c == ^realization_attempt_identity_absent
   }
 }
 

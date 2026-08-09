@@ -32,6 +32,7 @@ type RealizationSweepRow {
   function: String
   phase_label: String
   cause: String
+  located: String
 }
 
 fn no_name_strings() -> List<String> {
@@ -60,10 +61,17 @@ fn no_fn_symbols() -> List<Symbol> {
   []
 }
 
+fn sweep_row_located(a: EntryRealizationAttempt) -> String {
+  match a.standing {
+    V2TranslateSerialized { emitted_nonempty: _ } => ""
+    V2RealizationRefused { phase: _, exact_cause: _, located: l } => l
+  }
+}
+
 fn sweep_row_cause(a: EntryRealizationAttempt) -> String {
   match a.standing {
     V2TranslateSerialized { emitted_nonempty: _ } => ""
-    V2RealizationRefused { phase: _, exact_cause: c } => symbol_lexeme(sym: c)
+    V2RealizationRefused { phase: _, exact_cause: c, located: _ } => symbol_lexeme(sym: c)
   }
 }
 
@@ -74,7 +82,8 @@ fn sweep_rows(ingest: SourceRootIngest, admission: Admission, entry: String) -> 
         entry: entry,
         function: "",
         phase_label: "read",
-        cause: "realization_sweep_entry_witness_absent"
+        cause: "realization_sweep_entry_witness_absent",
+        located: entry
       }]
     Present { value: entry_source } => {
       let names = sweep_fn_names(source: entry_source)
@@ -93,14 +102,16 @@ fn sweep_rows(ingest: SourceRootIngest, admission: Admission, entry: String) -> 
               entry: entry,
               function: name,
               phase_label: "read",
-              cause: "realization_sweep_attempt_row_missing"
+              cause: "realization_sweep_attempt_row_missing",
+              located: entry
             }
           Present { value: a } =>
             RealizationSweepRow {
               entry: entry,
               function: name,
               phase_label: attempt_phase_label(a: a),
-              cause: sweep_row_cause(a: a)
+              cause: sweep_row_cause(a: a),
+              located: sweep_row_located(a: a)
             }
         }
         SweepPairState { index: st.index + 1, out: concat(st.out, [row]) }
@@ -123,7 +134,8 @@ fn sweep_rows_from_refs(refs: List<SourceRef>, admission: Admission, entry: Stri
         entry: entry,
         function: "",
         phase_label: "read",
-        cause: "realization_sweep_closure_read_refused"
+        cause: "realization_sweep_closure_read_refused",
+        located: entry
       }]
     SourceRootIngestBuildOk { ingest: ingest } =>
       sweep_rows(ingest: ingest, admission: admission, entry: entry)
@@ -136,7 +148,7 @@ fn sweep_rows_account_exactly_once(rows: List<RealizationSweepRow>, entry_source
 
 fn sweep_receipt_tsv(rows: List<RealizationSweepRow>) -> String {
   fold_list(xs: rows, empty: "", cons: fn(acc, r) {
-    let line = concat(r.entry, "\t", r.function, "\t", r.phase_label, "\t", r.cause)
+    let line = concat(r.entry, "\t", r.function, "\t", r.phase_label, "\t", r.cause, "\t", r.located)
     if acc == "" { line } else { concat(acc, "\n", line) }
   })
 }

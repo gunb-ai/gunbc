@@ -13,7 +13,7 @@ import v2.std.collection { list_at_optional }
 import v2.std.compilers.lexing { symbol_lexeme }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.communication.medium { Medium }
-import v2.std.diagnostic { Accepted, Rejected, Outcome, Diagnostic, NonEmptyDiagnostics }
+import v2.std.diagnostic { Accepted, Rejected, Outcome, Diagnostic, NonEmptyDiagnostics, Textual }
 import v2.std.node { Node, Edge, TypeNode, Arrow, Conj, Named, Symbol, node_synthetic }
 import v2.std.optional { Optional, Present, Absent }
 import v2.std.algebra { fold_list, length }
@@ -39,7 +39,7 @@ type RealizationPhase
 
 type RealizationAttemptStanding
   = V2TranslateSerialized { emitted_nonempty: Bool }
-  | V2RealizationRefused { phase: RealizationPhase, exact_cause: Symbol }
+  | V2RealizationRefused { phase: RealizationPhase, exact_cause: Symbol, located: String }
 
 type EntryRealizationAttempt {
   entry: String
@@ -60,10 +60,35 @@ fn first_located_cause(ds: NonEmptyDiagnostics) -> Symbol {
 }
 
 fn attempt_refused(entry: String, phase: RealizationPhase, cause: Symbol) -> EntryRealizationAttempt {
+  attempt_refused_at(entry: entry, phase: phase, cause: cause, located: "")
+}
+
+fn attempt_refused_at(entry: String, phase: RealizationPhase, cause: Symbol, located: String) -> EntryRealizationAttempt {
   EntryRealizationAttempt {
     entry: entry,
     arrow_count: 0,
-    standing: V2RealizationRefused { phase: phase, exact_cause: cause }
+    standing: V2RealizationRefused { phase: phase, exact_cause: cause, located: located }
+  }
+}
+
+fn first_located_file(ds: NonEmptyDiagnostics) -> String {
+  let head_file = match ds.head.at {
+    Textual { file: f, extent: _ } => symbol_lexeme(sym: f)
+    _ => ""
+  }
+  if head_file != "" {
+    head_file
+  } else {
+    fold_list(xs: ds.tail, empty: "", cons: fn(acc, d) {
+      if acc != "" {
+        acc
+      } else {
+        match d.at {
+          Textual { file: f, extent: _ } => symbol_lexeme(sym: f)
+          _ => ""
+        }
+      }
+    })
   }
 }
 
@@ -132,10 +157,11 @@ fn attempt_entry_source(entry: String, source: String) -> EntryRealizationAttemp
   let marked = capture_test_markers(source: source)
   match ingested_resolved_module_from_source(source: marked.unmarked, file: ^realization_attempt_entry_file) {
     Rejected { diagnostics: ds } =>
-      attempt_refused(
+      attempt_refused_at(
         entry: entry,
         phase: PhaseFrontend,
-        cause: first_located_cause(ds: ds)
+        cause: first_located_cause(ds: ds),
+        located: first_located_file(ds: ds)
       )
     Accepted { value: resolved, diagnostics: _ } => {
       let arrows = collect_arrows(root: resolved, acc: [])
@@ -155,7 +181,8 @@ fn attempt_entry_source(entry: String, source: String) -> EntryRealizationAttemp
               arrow_count: length(xs: arrows),
               standing: V2RealizationRefused {
                 phase: PhaseTranslate,
-                exact_cause: first_located_cause(ds: ds)
+                exact_cause: first_located_cause(ds: ds),
+                located: first_located_file(ds: ds)
               }
             }
         }
@@ -176,14 +203,14 @@ fn attempt_entry(entry: String) -> EntryRealizationAttempt {
 fn attempt_is_emitted(a: EntryRealizationAttempt) -> Bool {
   match a.standing {
     V2TranslateSerialized { emitted_nonempty: ne } => ne
-    V2RealizationRefused { phase: _, exact_cause: _ } => false
+    V2RealizationRefused { phase: _, exact_cause: _, located: _ } => false
   }
 }
 
 fn attempt_phase_label(a: EntryRealizationAttempt) -> String {
   match a.standing {
     V2TranslateSerialized { emitted_nonempty: _ } => "emitted"
-    V2RealizationRefused { phase: p, exact_cause: _ } => match p {
+    V2RealizationRefused { phase: p, exact_cause: _, located: _ } => match p {
       PhaseRead => "read"
       PhaseFrontend => "frontend"
       PhaseNormalize => "normalize"
@@ -200,7 +227,7 @@ fn attempt_phase_label(a: EntryRealizationAttempt) -> String {
 fn attempt_cause(a: EntryRealizationAttempt) -> Optional<Symbol> {
   match a.standing {
     V2TranslateSerialized { emitted_nonempty: _ } => Absent
-    V2RealizationRefused { phase: _, exact_cause: c } => Present { value: c }
+    V2RealizationRefused { phase: _, exact_cause: c, located: _ } => Present { value: c }
   }
 }
 
@@ -256,11 +283,11 @@ fn attempt_joined(program: Node, fn_name: Symbol, entry: String) -> EntryRealiza
       Present { value: decl } =>
         match infer(tree: decl) {
           Rejected { diagnostics: ds } =>
-            attempt_refused(entry: entry, phase: PhaseInfer, cause: first_located_cause(ds: ds))
+            attempt_refused_at(entry: entry, phase: PhaseInfer, cause: first_located_cause(ds: ds), located: first_located_file(ds: ds))
           Accepted { value: inferred, diagnostics: _ } =>
             match compile_inferred(inferred: inferred, mode: TranslateTo { target: rust_target_model_staging() }) {
               Rejected { diagnostics: ds } =>
-                attempt_refused(entry: entry, phase: PhaseTranslate, cause: first_located_cause(ds: ds))
+                attempt_refused_at(entry: entry, phase: PhaseTranslate, cause: first_located_cause(ds: ds), located: first_located_file(ds: ds))
               Accepted { value: out, diagnostics: _ } =>
                 match out {
                   TranslateResult { source: emitted } =>
@@ -287,7 +314,7 @@ fn attempt_assembled(
   match assemble_program_from_ingest(ingest: ingest, admission: admission, lm: dag_language_model()) {
     Rejected { diagnostics: ds } => {
       let cause = first_located_cause(ds: ds)
-      attempt_refused(entry: entry, phase: phase_for_reason(reason: cause, fallback: PhaseResolve), cause: cause)
+      attempt_refused_at(entry: entry, phase: phase_for_reason(reason: cause, fallback: PhaseResolve), cause: cause, located: first_located_file(ds: ds))
     }
     Accepted { value: program, diagnostics: _ } =>
       attempt_joined(program: program, fn_name: fn_name, entry: entry)
@@ -342,8 +369,9 @@ fn attempt_closure_rows(
     Rejected { diagnostics: ds } => {
       let cause = first_located_cause(ds: ds)
       let phase = phase_for_reason(reason: cause, fallback: PhaseResolve)
+      let located = first_located_file(ds: ds)
       fold_list(xs: fn_names, empty: no_attempt_rows(), cons: fn(acc, _name) {
-        concat(acc, [attempt_refused(entry: entry, phase: phase, cause: cause)])
+        concat(acc, [attempt_refused_at(entry: entry, phase: phase, cause: cause, located: located)])
       })
     }
     Accepted { value: program, diagnostics: _ } =>

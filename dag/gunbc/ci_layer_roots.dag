@@ -1256,6 +1256,36 @@ data falsifier_substrate_long_lane_note: String = "Nightly falsifier batch 6 (te
 
 data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
   SubstrateLongLaneRow {
+    entry: "dag/test/claim/realization_attempt_keystone_test.dag",
+    function: "witness_planted_minimal_module_emits",
+    reason: "5015ms deadline kill measured on CI run 31290921315 (2026-08-09): every keystone witness runs the real interpreted v2 pipeline (tokenize->parse->normalize->resolve->emit or assemble->join->infer->translate) at least once — the mechanism IS the modeled boundary crossing and its interpreted cost exceeds the 5s fast lane on CI hardware",
+    dissolve_on: "witness realization lands the pipeline natively or eval drops under gunbc_ci_fast_lane_witness_eval_budget on a measured CI run — then re-enroll per-PR discovery and delete the five keystone rows"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/realization_attempt_keystone_test.dag",
+    function: "witness_planted_garbage_refuses_frontend_RED",
+    reason: "same keystone deadline class as witness_planted_minimal_module_emits (CI run 31290921315)",
+    dissolve_on: "same as witness_planted_minimal_module_emits row"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/realization_attempt_keystone_test.dag",
+    function: "witness_real_corpus_entry_produces_typed_standing",
+    reason: "same keystone deadline class as witness_planted_minimal_module_emits (CI run 31290921315)",
+    dissolve_on: "same as witness_planted_minimal_module_emits row"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/realization_attempt_keystone_test.dag",
+    function: "witness_assembled_cross_module_subject_reaches_typed_standing",
+    reason: "same keystone deadline class as witness_planted_minimal_module_emits (CI run 31290921315)",
+    dissolve_on: "same as witness_planted_minimal_module_emits row"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/realization_attempt_keystone_test.dag",
+    function: "witness_assembled_identity_absent_refuses_RED",
+    reason: "same keystone deadline class as witness_planted_minimal_module_emits (CI run 31290921315)",
+    dissolve_on: "same as witness_planted_minimal_module_emits row"
+  },
+  SubstrateLongLaneRow {
     entry: "dag/test/claim/realization_sweep_test.dag",
     function: "witness_sweep_rows_account_each_identity_exactly_once",
     reason: "~16s measured eval (valiant-boar-65, 2026-08-09): one real canonical two-module closure assembly (tokenize->parse->normalize->resolve) through attempt_closure_rows — the CI2-0 sweep mechanism keystone; the cheap identity-scan and witness-absent RED siblings stay per-PR",

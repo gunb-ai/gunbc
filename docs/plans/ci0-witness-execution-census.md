@@ -114,3 +114,51 @@ live-observation, and v1 executing ONLY where v1 is itself the subject
 as its subject). The scoreboard metric per producer stage is
 **v1-executions-remaining**, which must fall to the InterpreterSubjectTest
 roster size and stop. Today that number is the whole roster minus 3.
+
+## Commit B sweep receipt — canonical per-identity realization attempts (2026-08-09)
+
+The circular census (classifier-agrees-with-enrollment) is replaced by
+ACTUAL canonical realization attempts: per roster entry, the executor's own
+`discover_source_root_reads_for_entry` closure, transported through the
+`host_source_root_ingest_manifest` overlay (the frontier-probe survey
+pattern), driven by `v2.workflow.realization_sweep` — ONE
+`assemble_program_from_ingest` per entry, one exactly-one identity join →
+`infer` → `compile_inferred TranslateTo` per authored test-fn identity.
+Driver: `realization_sweep_survey` (local recipe;
+`--entries-file <roster>`); a host failure is a counted row, never a
+skipped entry.
+
+Stratified sample (10 entries across dag/test/claim,
+src/v2/test/claim/manual, src/v2/test/claim/emit — incl. both keystone
+files, a large witness file, and small smoke files):
+
+```
+entries 10   identity_rows 116   host_error_rows 0
+phase      exact_cause                          count
+frontend   parse_g0_tokens_remain               100
+frontend   tokenize_lex_e1_unrecognized_char     16
+located    dag/extdeps/cache/materialization.dag 16   (tokenize bucket)
+```
+
+**Reading: 100% of sampled identities refuse at PhaseFrontend.** Assembly
+parses every closure member, so the first member the v2 grammar cannot
+parse gates the whole entry — no identity in this sample reached resolve,
+infer, or translate through its real closure. The translate-stage buckets
+measured earlier (cross-module named-call emission, staging-lex literals,
+match-binder resolve) remain real but are BEHIND the frontend wall on
+every real closure; they were measured on planted/synthetic closures.
+Burn-down order is therefore: (1) frontend grammar coverage of the live
+std/extdeps closure population (the `parse_g0_tokens_remain` residue —
+located-file attribution for this bucket is a named gap: those diagnostics
+carry PortLocus, not Textual, so the sweep's `located` column is empty for
+them; the tokenize bucket locates exactly, all 16 rows at
+`dag/extdeps/cache/materialization.dag`), then (2) the translate buckets,
+then (3) the test-marker grammar extension (operator holds the std.grammar
+design pass; the capture scaffold already unblocks measurement).
+
+Laws asserted by execution (hermetic mechanism witnesses,
+`dag/test/claim/realization_sweep_test.dag`): exactly-once accounting
+(rows == authored test-fn roster), witness-absent RED (a located refusal
+row, never an empty roster), receipt/histogram render every row. The two
+assembly-bearing witnesses are enrolled on the falsifier substrate long
+lane (measured ~16-17.5s each); identity-scan and RED stay per-PR.

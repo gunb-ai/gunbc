@@ -138,6 +138,7 @@ fn main() -> ExitCode {
     }
 
     let mut histogram: BTreeMap<(String, String), u64> = BTreeMap::new();
+    let mut located: BTreeMap<String, u64> = BTreeMap::new();
     let mut identity_rows: u64 = 0;
     let mut host_error_rows: u64 = 0;
     for entry in &entries {
@@ -148,6 +149,10 @@ fn main() -> ExitCode {
                     let cols: Vec<&str> = line.split('\t').collect();
                     let phase = cols.get(2).unwrap_or(&"").to_string();
                     let cause = cols.get(3).unwrap_or(&"").to_string();
+                    let at = cols.get(4).unwrap_or(&"").to_string();
+                    if !at.is_empty() {
+                        *located.entry(at).or_insert(0) += 1;
+                    }
                     *histogram.entry((phase, cause)).or_insert(0) += 1;
                     identity_rows += 1;
                 }
@@ -170,6 +175,9 @@ fn main() -> ExitCode {
     println!("[sweep-summary] entries {} identity_rows {identity_rows} host_error_rows {host_error_rows}", entries.len());
     for ((phase, cause), count) in &histogram {
         println!("[sweep-histogram] {phase}\t{cause}\t{count}");
+    }
+    for (at, count) in &located {
+        println!("[sweep-located] {at}\t{count}");
     }
     ExitCode::SUCCESS
 }
