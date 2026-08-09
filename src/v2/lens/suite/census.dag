@@ -1,0 +1,54 @@
+module v2.lens.suite.census
+
+import v2.lens.enforcement.contract { LensContract, lens_contract_registry }
+import v2.lens.enforcement.vocab { BoundConsumerWitness, ConsumerWitnessBinding, NoConsumerWitness }
+import v2.lens.registry { lens_registry_v0 }
+import v2.lens.suite.roster { lens_suite_registered_count }
+import v2.std.algebra { count_where, length }
+import v2.std.collection { List }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+
+data lens_suite_registry_census_note: String = "V2-LENS-0 displacement denominator (operator ruling 2026-08-09): registered_identity_count is the lens_registry_v0 population at identity grain; no_consumer_witness_count is the lens_contract_registry rows whose consumer_witness arm is NoConsumerWitness. The pair is DERIVED, never hand-maintained — the measured gap between registry completeness and live consumer enrollment is the lane's first displacement fact."
+
+type LensSuiteRegistryCensus {
+  registered_identity_count: Int
+  contract_row_count: Int
+  no_consumer_witness_count: Int
+}
+
+fn lens_contract_has_no_consumer_witness(contract: LensContract) -> Bool {
+  match contract.consumer_witness {
+    NoConsumerWitness => true
+    BoundConsumerWitness { witness: _ } => false
+  }
+}
+
+fn lens_suite_contract_row_count() -> Int {
+  length(xs: lens_contract_registry)
+}
+
+fn lens_suite_no_consumer_witness_count() -> Int {
+  count_where(xs: lens_contract_registry, predicate: fn(contract) {
+    lens_contract_has_no_consumer_witness(contract: contract)
+  })
+}
+
+fn lens_suite_registry_census() -> LensSuiteRegistryCensus {
+  LensSuiteRegistryCensus {
+    registered_identity_count: lens_suite_registered_count(),
+    contract_row_count: lens_suite_contract_row_count(),
+    no_consumer_witness_count: lens_suite_no_consumer_witness_count()
+  }
+}
+
+fn lens_suite_registry_census_population_positive(census: LensSuiteRegistryCensus) -> Bool {
+  (census.registered_identity_count > 0)
+    && (census.contract_row_count > 0)
+    && (census.no_consumer_witness_count >= 0)
+    && (census.no_consumer_witness_count <= census.contract_row_count)
+}
+
+fn lens_suite_registry_census_holds() -> Bool {
+  lens_suite_registry_census_population_positive(census: lens_suite_registry_census())
+}

@@ -1,0 +1,103 @@
+module v2.lens.suite.checkpoint_a_harness
+
+import std.content_hash { Fnv1a64Structural, content_hash_atom }
+import v2.lens.registry { Determinism, LensIdV0, lens_id_v0_eq }
+import v2.lens.suite.census { LensSuiteRegistryCensus, lens_suite_registry_census }
+import v2.lens.suite.roster { lens_suite_planned_count }
+import v2.lens.suite.selection {
+  lens_suite_boring_checkpoint_is_determinism,
+  lens_suite_boring_checkpoint_lens_id,
+}
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.optional { Absent, Optional, Present }
+import v2.std.text { String }
+
+data lens_suite_checkpoint_a_harness_note: String = "Checkpoint A HARNESS ONLY (operator ruling 2026-08-09): declares the boring-lens selection, roster denominator, census, and CI2 dispatch gate — it does NOT execute any lens body. Interpreter-path execution is forbidden; Checkpoint A's content is one lens through the v2-native CI2 route with zero v1 lens-body executions (#8043). This module lands on main now; execution wires on the #8043 branch after the dispatch-trigger receipt exists."
+
+type Ci2DispatchTriggerStanding
+  = Ci2DispatchTriggerAbsent {
+      blocker: String
+      dissolve_on: String
+    }
+  | Ci2DispatchTriggerSatisfied {
+      receipt_ref: String
+    }
+
+type LensSuiteExecutionRoute
+  = V2NativeCi2Route
+  | InterpreterRouteRefused { reason: String }
+
+type LensSuiteCheckpointAHarness {
+  boring_lens_id: LensIdV0
+  planned_roster_count: Int
+  census: LensSuiteRegistryCensus
+  subject_placeholder: Fnv1a64Structural
+  dispatch_trigger: Ci2DispatchTriggerStanding
+  execution_route: LensSuiteExecutionRoute
+}
+
+data ci2_dispatch_trigger_absent_blocker: String = "CI2-0 dispatch trigger receipt not yet on main (gunbc#8043 open): one ordinary non-fixture declaration must complete canonical parse→normalize→resolve→infer→realize→execute with roster identity joined before Checkpoint A executes"
+
+data ci2_dispatch_trigger_absent_dissolve_on: String = "gunbc#8043 terminal acceptance lands the dispatch-trigger receipt; Checkpoint A execution module on the #8043 branch consumes it and deletes this Absent arm"
+
+data interpreter_route_refused_reason: String = "Checkpoint A executes only through the v2-native CI2 route; interpreter-path lens-body execution proves the wrong route"
+
+fn lens_suite_checkpoint_a_subject_placeholder() -> Fnv1a64Structural {
+  content_hash_atom(value: "v2-lens-0-checkpoint-a-subject-pending-ci2-dispatch-trigger")
+}
+
+fn lens_suite_checkpoint_a_dispatch_trigger_standing() -> Ci2DispatchTriggerStanding {
+  Ci2DispatchTriggerAbsent {
+    blocker: ci2_dispatch_trigger_absent_blocker,
+    dissolve_on: ci2_dispatch_trigger_absent_dissolve_on
+  }
+}
+
+fn lens_suite_checkpoint_a_execution_route_standing() -> LensSuiteExecutionRoute {
+  InterpreterRouteRefused { reason: interpreter_route_refused_reason }
+}
+
+fn lens_suite_checkpoint_a_harness_for_boring_lens(boring: LensIdV0) -> LensSuiteCheckpointAHarness {
+  LensSuiteCheckpointAHarness {
+    boring_lens_id: boring,
+    planned_roster_count: lens_suite_planned_count(),
+    census: lens_suite_registry_census(),
+    subject_placeholder: lens_suite_checkpoint_a_subject_placeholder(),
+    dispatch_trigger: lens_suite_checkpoint_a_dispatch_trigger_standing(),
+    execution_route: lens_suite_checkpoint_a_execution_route_standing()
+  }
+}
+
+fn lens_suite_checkpoint_a_harness() -> Optional<LensSuiteCheckpointAHarness> {
+  match lens_suite_boring_checkpoint_lens_id() {
+    Present { value: boring } =>
+      Present { value: lens_suite_checkpoint_a_harness_for_boring_lens(boring: boring) }
+    Absent => Absent
+  }
+}
+
+fn lens_suite_checkpoint_a_execution_gated() -> Bool {
+  match lens_suite_checkpoint_a_dispatch_trigger_standing() {
+    Ci2DispatchTriggerAbsent { blocker: _, dissolve_on: _ } => true
+    Ci2DispatchTriggerSatisfied { receipt_ref: _ } => false
+  }
+}
+
+fn lens_suite_checkpoint_a_harness_holds() -> Bool {
+  match lens_suite_checkpoint_a_harness() {
+    Present { value: harness } =>
+      lens_suite_boring_checkpoint_is_determinism()
+        && lens_suite_checkpoint_a_execution_gated()
+        && lens_id_v0_eq(left: harness.boring_lens_id, right: Determinism)
+        && match harness.execution_route {
+          InterpreterRouteRefused { reason: _ } => true
+          V2NativeCi2Route => false
+        }
+        && match harness.dispatch_trigger {
+          Ci2DispatchTriggerAbsent { blocker: _, dissolve_on: _ } => true
+          Ci2DispatchTriggerSatisfied { receipt_ref: _ } => false
+        }
+    Absent => false
+  }
+}

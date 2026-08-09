@@ -1,0 +1,71 @@
+module v2.lens.suite.roster
+
+import v2.lens.registry {
+  Bound,
+  LensIdV0,
+  LensRegistryEntryV0,
+  Unbound,
+  lens_id_v0_eq,
+  lens_registry_entry_bound,
+  lens_registry_v0,
+}
+import v2.std.algebra { count_where, fold_list, for_all, length, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data lens_suite_roster_authority_note: String = "The planned roster is DERIVED from lens_registry_v0 — no second hand-maintained suite list (V2-LENS-0 boundary). Every bound registry row appears exactly once in plan order; Unbound rows are registered but not planned until module_path binds. Auto-enrollment law: a new LensIdV0 registry row without a matching executable body must refuse the roster join at gunbc test — enforced by receipt reconciliation and permanence witnesses, not by a parallel ledger."
+
+data lens_suite_roster_empty_ids: List<LensIdV0> = []
+
+fn lens_suite_registry_entry_module_path(entry: LensRegistryEntryV0) -> String {
+  match entry.module_path {
+    Bound { path: p } => p
+    Unbound => ""
+  }
+}
+
+fn lens_suite_planned_entries() -> List<LensRegistryEntryV0> {
+  fold_list(
+    xs: lens_registry_v0,
+    empty: [],
+    cons: fn(acc, entry) {
+      if lens_registry_entry_bound(entry: entry) {
+        list_snoc_item(xs: acc, item: entry)
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn lens_suite_planned_lens_ids() -> List<LensIdV0> {
+  fold_list(
+    xs: lens_suite_planned_entries(),
+    empty: lens_suite_roster_empty_ids,
+    cons: fn(acc, entry) {
+      list_snoc_item(xs: acc, item: entry.lens_id)
+    }
+  )
+}
+
+fn lens_suite_registered_count() -> Int {
+  length(xs: lens_registry_v0)
+}
+
+fn lens_suite_planned_count() -> Int {
+  length(xs: lens_suite_planned_entries())
+}
+
+fn lens_suite_planned_ids_unique() -> Bool {
+  let ids = lens_suite_planned_lens_ids()
+  for_all(xs: ids, predicate: fn(id) {
+    count_where(xs: ids, predicate: fn(other) { lens_id_v0_eq(left: id, right: other) }) == 1
+  })
+}
+
+fn lens_suite_registry_join_complete() -> Bool {
+  (lens_suite_registered_count() == lens_suite_planned_count())
+    && lens_suite_planned_ids_unique()
+}

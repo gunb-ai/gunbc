@@ -1,0 +1,102 @@
+module v2.lens.suite.receipt
+
+import std.content_hash { Fnv1a64Structural }
+import std.verification { NanosecondDuration }
+import v2.lens.registry { LensIdV0 }
+import v2.std.algebra { count_where, length, for_all }
+import v2.std.collection { List }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+
+data lens_suite_receipt_authority_note: String = "V2-LENS-0 aggregate receipt (operator convergence mandate 2026-08-09). One LensSuiteReceipt reconciles the complete registry roster against terminal execution outcomes on one exact corpus subject. registered = planned = executed terminal rows with zero duplicates and zero unaccounted; v1_lens_body_executions and fallback_count are zero by construction on every success arm. A missing input is Partial, Unavailable, or Refused — never an empty accepted reading. Fact-pack construction_count is one per process; a second query must not construct. Warm execution wall is enforced at the host realization consumer, not re-stated here."
+
+type LensSuiteMemberTerminal
+  = LensReadingAccepted
+  | LensReadingRefusedExpected { reason: String }
+  | LensReadingRefusedUnexpected { reason: String }
+  | LensExecutionUnavailable { trigger: String }
+  | LensExecutionUnaccounted
+
+type LensSuiteMemberRow {
+  lens_id: LensIdV0
+  module_path: String
+  terminal: LensSuiteMemberTerminal
+}
+
+type LensSuiteReceipt {
+  subject_digest: Fnv1a64Structural
+  registered_count: Int
+  planned_count: Int
+  executed_count: Int
+  accepted_readings: Int
+  expected_refusals: Int
+  unexpected_refusals: Int
+  unavailable_count: Int
+  unaccounted_count: Int
+  fact_pack_identity: Fnv1a64Structural
+  fact_pack_construction_count: Int
+  v1_lens_body_executions: Int
+  fallback_count: Int
+  preparation_wall: NanosecondDuration
+  execution_wall: NanosecondDuration
+  members: List<LensSuiteMemberRow>
+}
+
+fn lens_suite_member_is_terminal_accounted(row: LensSuiteMemberRow) -> Bool {
+  match row.terminal {
+    LensReadingAccepted => true
+    LensReadingRefusedExpected { reason: _ } => true
+    LensReadingRefusedUnexpected { reason: _ } => true
+    LensExecutionUnavailable { trigger: _ } => true
+    LensExecutionUnaccounted => false
+  }
+}
+
+fn lens_suite_count_terminal_accounted(rows: List<LensSuiteMemberRow>) -> Int {
+  count_where(xs: rows, predicate: fn(row) { lens_suite_member_is_terminal_accounted(row: row) })
+}
+
+fn lens_suite_receipt_members_match_planned(
+  receipt: LensSuiteReceipt,
+  planned_count: Int
+) -> Bool {
+  (length(xs: receipt.members) == planned_count)
+    && (receipt.planned_count == planned_count)
+    && (receipt.registered_count == planned_count)
+}
+
+fn lens_suite_receipt_zero_v1_and_fallback(receipt: LensSuiteReceipt) -> Bool {
+  (receipt.v1_lens_body_executions == 0) && (receipt.fallback_count == 0)
+}
+
+fn lens_suite_receipt_fact_pack_once(receipt: LensSuiteReceipt) -> Bool {
+  receipt.fact_pack_construction_count == 1
+}
+
+fn lens_suite_receipt_terminal_reconciles(receipt: LensSuiteReceipt) -> Bool {
+  let accounted = lens_suite_count_terminal_accounted(rows: receipt.members)
+  let terminal_sum = receipt.accepted_readings + receipt.expected_refusals + receipt.unexpected_refusals + receipt.unavailable_count
+  (receipt.executed_count == accounted)
+    && (receipt.unaccounted_count == 0)
+    && (accounted == terminal_sum)
+}
+
+fn lens_suite_verdict_success(receipt: LensSuiteReceipt) -> Bool {
+  (receipt.executed_count > 0)
+    && lens_suite_receipt_members_match_planned(
+      receipt: receipt,
+      planned_count: receipt.planned_count
+    )
+    && lens_suite_receipt_zero_v1_and_fallback(receipt: receipt)
+    && lens_suite_receipt_fact_pack_once(receipt: receipt)
+    && lens_suite_receipt_terminal_reconciles(receipt: receipt)
+    && (receipt.unexpected_refusals == 0)
+}
+
+fn lens_suite_zero_execution_never_succeeds(receipt: LensSuiteReceipt) -> Bool {
+  if receipt.executed_count == 0 {
+    !lens_suite_verdict_success(receipt: receipt)
+  } else {
+    true
+  }
+}
