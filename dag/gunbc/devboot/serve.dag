@@ -141,19 +141,23 @@ fn devboot_serve_once(
   if is_empty(pending) {
     ServeOnceIdle
   } else {
-    let token = pending |> head
-    let report = devboot_serve_request(
-      repo_root: store_root,
-      work_root: work_root,
-      home: ProducerHome {
-        cargo_bin: cargo_bin,
-        rustup_home: rustup_home,
-        cargo_home: cargo_home,
-        build_jobs: build_jobs,
-      },
-      token: token,
-    )
-    ServeOnceHandled { report: report }
+    match pending.first() {
+      Absent => ServeOnceRefused { detail: "internal error: pending token list was non-empty but had no first element" }
+      Present { value: token } =>
+        ServeOnceHandled {
+          report: devboot_serve_request(
+            repo_root: store_root,
+            work_root: work_root,
+            home: ProducerHome {
+              cargo_bin: cargo_bin,
+              rustup_home: rustup_home,
+              cargo_home: cargo_home,
+              build_jobs: build_jobs,
+            },
+            token: token,
+          ),
+        }
+    }
   }
 }
 
