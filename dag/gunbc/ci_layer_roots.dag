@@ -1287,14 +1287,20 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/realization_sweep_test.dag",
-    function: "witness_sweep_rows_account_each_identity_exactly_once",
+    function: "witness_canonical_identities_join_own_enrolled_roster",
+    reason: "~150s-class dir walk (floor_discovery_producer over dag/test/claim, the census-walk cost class): the canonical-roster derivation witnessed against this file's own enrolled roster — fixture-controlled identity join, corpus-breadth walk",
+    dissolve_on: "witness realization lands the walk natively or eval drops under gunbc_ci_fast_lane_witness_eval_budget on a measured run — then re-enroll per-PR discovery and delete this row"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/realization_sweep_test.dag",
+    function: "witness_sweep_rows_join_planted_roster_exactly_once",
     reason: "~16s measured eval (valiant-boar-65, 2026-08-09): one real canonical two-module closure assembly (tokenize->parse->normalize->resolve) through attempt_closure_rows — the CI2-0 sweep mechanism keystone; the cheap identity-scan and witness-absent RED siblings stay per-PR",
     dissolve_on: "witness realization lands the assembly natively or eval drops under gunbc_ci_fast_lane_witness_eval_budget on a measured run — then re-enroll per-PR discovery and delete this row"
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/realization_sweep_test.dag",
     function: "witness_sweep_receipt_and_histogram_render_every_row",
-    reason: "same Class C assembly wall as sibling witness_sweep_rows_account_each_identity_exactly_once (~17.5s measured)",
+    reason: "same Class C assembly wall as sibling witness_sweep_rows_join_planted_roster_exactly_once (~17.5s measured)",
     dissolve_on: "same as sibling row"
   },
   SubstrateLongLaneRow {

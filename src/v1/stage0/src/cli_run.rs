@@ -18699,7 +18699,7 @@ fn witness_admission_entry_function_keys_from_source(
     keys
 }
 
-fn witness_admission_explicit_consumer_keys() -> Vec<String> {
+pub fn witness_admission_explicit_consumer_keys() -> Vec<String> {
     static KEYS: OnceLock<Vec<String>> = OnceLock::new();
     KEYS.get_or_init(|| {
         let mut keys = witness_admission_entry_function_keys_from_source(

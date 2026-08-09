@@ -3,13 +3,15 @@ module v2.test.long.realization_sweep_probe_entry
 import v2.workflow.realization_sweep {
   RealizationSweepRow,
   sweep_rows_from_refs,
+  member_parse_rows_from_refs,
   sweep_receipt_tsv,
   sweep_histogram_tsv
 }
 import v2.test.workflow.host_source_root_ingest_manifest {
   frontier_probe_entry_module_path,
   host_compiler_closure_admission,
-  host_source_root_closure_refs
+  host_source_root_closure_refs,
+  realization_sweep_entry_identities
 }
 import v2.std.algebra { fold_list, length }
 import v2.std.logic { Bool }
@@ -24,12 +26,17 @@ fn sweep_entry_rows() -> List<RealizationSweepRow> {
   sweep_rows_from_refs(
     refs: host_source_root_closure_refs,
     admission: host_compiler_closure_admission,
-    entry: frontier_probe_entry_module_path
+    entry: frontier_probe_entry_module_path,
+    identities: realization_sweep_entry_identities
   )
 }
 
 fn realization_sweep_entry_receipt() -> String {
   sweep_receipt_tsv(rows: sweep_entry_rows())
+}
+
+fn realization_sweep_member_scan_receipt() -> String {
+  sweep_receipt_tsv(rows: member_parse_rows_from_refs(refs: host_source_root_closure_refs))
 }
 
 fn realization_sweep_entry_histogram() -> String {

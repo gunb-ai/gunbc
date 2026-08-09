@@ -140,25 +140,61 @@ frontend   tokenize_lex_e1_unrecognized_char     16
 located    dag/extdeps/cache/materialization.dag 16   (tokenize bucket)
 ```
 
-**Reading: 100% of sampled identities refuse at PhaseFrontend.** Assembly
-parses every closure member, so the first member the v2 grammar cannot
-parse gates the whole entry — no identity in this sample reached resolve,
-infer, or translate through its real closure. The translate-stage buckets
-measured earlier (cross-module named-call emission, staging-lex literals,
-match-binder resolve) remain real but are BEHIND the frontend wall on
-every real closure; they were measured on planted/synthetic closures.
-Burn-down order is therefore: (1) frontend grammar coverage of the live
-std/extdeps closure population (the `parse_g0_tokens_remain` residue —
-located-file attribution for this bucket is a named gap: those diagnostics
-carry PortLocus, not Textual, so the sweep's `located` column is empty for
-them; the tokenize bucket locates exactly, all 16 rows at
-`dag/extdeps/cache/materialization.dag`), then (2) the translate buckets,
-then (3) the test-marker grammar extension (operator holds the std.grammar
-design pass; the capture scaffold already unblocks measurement).
+**Reading: 100% of sampled identities refuse at PhaseFrontend — cause NOT
+yet attributed (operator correction, msg_6305b900).** Assembly parses
+every closure member, so the first member the canonical grammar cannot
+parse gates the whole entry; no identity in this sample reached resolve,
+infer, or translate through its real closure. What is EXCLUDED by
+construction: the authored test marker (the attempt rewrites line-leading
+markers pre-assembly, so the persisting `parse_g0_tokens_remain`
+population cannot be the marker by this receipt alone). What is measured
+so far by single-variable controls through the canonical assembled route:
+a two-module closure with an authored marker, a single-segment import, a
+dotted import, `==` bodies, nested/newline-separated record literals,
+generic signatures and projections ALL pass frontend (the minimal fixtures
+reach translate, refusing at `infer_grounding_not_derived`); a
+`v2.std.optional` one-import closure reaches normalize
+(`body_lowering_reason_wrapper_retained_emitted`); the
+`extdeps.communication.medium` one-import closure refuses frontend. The
+exact residual token/production is NOT yet named — the per-member scan
+(child-process singleton assemblies through the same canonical route) is
+the instrument that names it, and repair waits for that name.
+**Instrument correction recorded:** the single-module probe
+(`ingested_resolved_module_from_source`) is measurably NARROWER than the
+canonical assembled route (`==` bodies, projections, generic signatures
+and dotted imports refuse under it while parsing through assembly), so no
+frontend attribution from that instrument is admissible; the probe path
+is retained only as a planted-source control.
+**Finding 5 (rust_target_model_staging canonicality), measured:** the
+enrolled production bundle does NOT use `rust_target_model_staging()` —
+it rides a fixture-family model
+(`rust_test_fixtures.rust_logic_selected_bundle_target_model_staging`,
+derived from the logic-family meet model), and `rust_target_model()` is a
+narrower fn_add-lex fixture. No production-canonical general Rust
+TargetModel exists in tree today; `rust_target_model_staging()` (core
+bundle + staging lex) is the most general available and the sweep uses
+it, with unification of the bundle's fixture-family model into the
+general model registered as a repair item BEFORE mass execution
+(operator correction 5: canonicality is established or replaced before
+the full-corpus run, not after).
 
 Laws asserted by execution (hermetic mechanism witnesses,
-`dag/test/claim/realization_sweep_test.dag`): exactly-once accounting
-(rows == authored test-fn roster), witness-absent RED (a located refusal
-row, never an empty roster), receipt/histogram render every row. The two
-assembly-bearing witnesses are enrolled on the falsifier substrate long
-lane (measured ~16-17.5s each); identity-scan and RED stay per-PR.
+`dag/test/claim/realization_sweep_test.dag`): the roster is the CANONICAL
+enrolled floor population — the UNION of executing cadences, because
+discovery exclusion is a cadence fact, not an enrollment fact: host-side
+`discover_floor_witness_roster` ∪ `witness_admission_explicit_consumer_keys`
+(ci_layer_roots long-lane rows, wet enrollment, exact admissions,
+commit-roster claims — one existing authority, no second parser), .dag-side
+`entry_canonical_identities` = discovery walk ∪
+`explicit_witness_admissions` ∪ `falsifier_substrate_long_lane_rows` (the
+.dag union omits the wet/commit-roster sources the host authority also
+carries; asymmetry is additive-only and matters only for entries enrolled
+there — none in this sample); the source-text scanner is deleted;
+accounting is the independent both-directions identity join
+(`sweep_rows_join_canonical`, duplicate-free); the survey VERDICT refuses
+unless canonical == accounted, host errors == 0, duplicates == 0,
+missing == 0 (the receipt stays for diagnosis; the verdict does not
+green — a host error is one counted row but never a green run); the
+witness-absent RED stays. Assembly-bearing witnesses and the canonical-
+walk witness are enrolled on the falsifier substrate long lane with
+measured reasons.
