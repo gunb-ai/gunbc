@@ -7,11 +7,13 @@ import gunbc.dissolution_migration_census {
   DissolvesByGreening,
   RefusalOrReasonCarrier,
   NotALifecycleCarrier,
+  NarrativeOnly,
   lifecycle_residue_rows,
   historical_receipt_rows,
   dissolves_by_greening_rows,
   refusal_or_reason_rows,
   not_a_lifecycle_carrier_rows,
+  narrative_only_rows,
   residue_row_key,
   residue_row_keys,
   residue_keys_are_unique,
@@ -21,8 +23,8 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn residue_population_is_the_four_class_partition() -> Bool {
-  let parts = length(xs: historical_receipt_rows()) + length(xs: dissolves_by_greening_rows()) + length(xs: refusal_or_reason_rows()) + length(xs: not_a_lifecycle_carrier_rows())
+test fn residue_population_is_the_five_class_partition() -> Bool {
+  let parts = length(xs: historical_receipt_rows()) + length(xs: dissolves_by_greening_rows()) + length(xs: refusal_or_reason_rows()) + length(xs: not_a_lifecycle_carrier_rows()) + length(xs: narrative_only_rows())
   length(xs: lifecycle_residue_rows()) == parts
 }
 

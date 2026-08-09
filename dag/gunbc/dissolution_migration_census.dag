@@ -7,7 +7,7 @@ import std.types { NonEmptyStr }
 //
 // Every top-level declaration in the corpus whose name is in the lifecycle
 // class and whose declared type is still String/NonEmptyStr appears here with
-// exactly one classification. The population is closed by construction of the
+// exactly one of five classifications. The population is closed by construction of the
 // name class: an unclassified survivor is a census miss, and the witness that
 // consumes these rows reds on one.
 //
@@ -19,6 +19,7 @@ type LifecycleResidueClass
   | DissolvesByGreening
   | RefusalOrReasonCarrier
   | NotALifecycleCarrier
+  | NarrativeOnly
 
 type LifecycleResidueRow {
   ref: DeclarationRef
@@ -88,10 +89,38 @@ fn not_a_lifecycle_carrier_rows() -> List<LifecycleResidueRow> {
   ]
 }
 
+
+// These notes WERE the sole authority for a live condition. The condition moved
+// to the sibling named in each rationale, and what remains is the rationale --
+// which is exactly the class the reviewer's table says keeps its String. Each
+// row names its successor so the extraction is checkable, not asserted.
+fn narrative_only_rows() -> List<LifecycleResidueRow> {
+  [
+    residue_row(module_path: "gunbc.live_deploy.spec", decl_name: "blue_green_retirement_stateful_root_scaffold_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to blue_green_retirement_stateful_root_scaffold_dissolve_on"),
+    residue_row(module_path: "test.claim.long.reference_closure_equivalence", decl_name: "conformance_import_envelope_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to conformance_import_envelope_dissolve_on"),
+    residue_row(module_path: "v2.lens.cost.copied_port_citations", decl_name: "copied_port_citation_frontier_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to copied_port_citation_frontier_dissolve_on"),
+    residue_row(module_path: "v2.compiler.self_host.frontier_probe_survey", decl_name: "frontier_probe_survey_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to frontier_probe_survey_dissolve_on"),
+    residue_row(module_path: "v2.lens.enforcement.lens_module_gate", decl_name: "lens_module_gate_surface_table_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to lens_module_gate_surface_table_dissolve_on"),
+    residue_row(module_path: "std.occurrence_binding_candidates", decl_name: "module_path_file_row_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to module_path_file_row_dissolve_on"),
+    residue_row(module_path: "v2.lens.reference_deps", decl_name: "reference_deps_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to reference_deps_dissolve_on"),
+    residue_row(module_path: "v2.lens.module_graph", decl_name: "reference_derived_edge_source_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to reference_derived_edge_source_dissolve_on"),
+    residue_row(module_path: "gunbc.repository_census_coverage", decl_name: "repository_census_keyed_roster_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to repository_census_keyed_roster_dissolve_on"),
+    residue_row(module_path: "extdeps.transports.rest", decl_name: "rest_auth_scheme_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to rest_auth_scheme_dissolve_on"),
+    residue_row(module_path: "extdeps.transports.rest", decl_name: "rest_target_form_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to rest_target_form_dissolve_on"),
+    residue_row(module_path: "gunbc.runner_lifecycle_realize", decl_name: "runner_lifecycle_realize_scaffold_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to runner_lifecycle_realize_scaffold_dissolve_on"),
+    residue_row(module_path: "v2.std.compilers.semantic_decl_emission", decl_name: "target_semantic_decl_shape_predicate_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to target_semantic_decl_shape_predicate_dissolve_on"),
+    residue_row(module_path: "v2.std.compilers.target_model", decl_name: "target_value_expr_int_bool_octet_channel_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to target_value_expr_int_bool_octet_channel_dissolve_on"),
+    residue_row(module_path: "v2.std.compilers.target_model", decl_name: "target_value_expr_int_literal_predicate_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to target_value_expr_int_literal_predicate_dissolve_on"),
+    residue_row(module_path: "v2.lens.vacuity", decl_name: "vacuity_operand_provenance_independent_oracle_predicate_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to vacuity_operand_provenance_independent_oracle_predicate_dissolve_on"),
+    residue_row(module_path: "v2.lens.vacuity", decl_name: "vacuity_operand_provenance_live_snapshot_duplicate_partner_predicate_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to vacuity_operand_provenance_live_snapshot_duplicate_partner_predicate_dissolve_on"),
+    residue_row(module_path: "test.claim.v1_complexity_capability_census", decl_name: "w_retirement_is_owed_until_replacement_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to w_retirement_is_owed_until_replacement_dissolve_on"),
+  ]
+}
+
 fn lifecycle_residue_rows() -> List<LifecycleResidueRow> {
   concat_lists(
     concat_lists(historical_receipt_rows(), dissolves_by_greening_rows()),
-    concat_lists(refusal_or_reason_rows(), not_a_lifecycle_carrier_rows()),
+    concat_lists(concat_lists(refusal_or_reason_rows(), not_a_lifecycle_carrier_rows()), narrative_only_rows()),
   )
 }
 
