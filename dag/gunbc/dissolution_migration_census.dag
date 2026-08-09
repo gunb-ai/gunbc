@@ -1,0 +1,128 @@
+module gunbc.dissolution_migration_census
+
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
+import std.types { NonEmptyStr }
+
+// The residue of the dissolution-carrier migration, at declaration identity.
+//
+// Every top-level declaration in the corpus whose name is in the lifecycle
+// class and whose declared type is still String/NonEmptyStr appears here with
+// exactly one classification. The population is closed by construction of the
+// name class: an unclassified survivor is a census miss, and the witness that
+// consumes these rows reds on one.
+//
+// This is a census of what did NOT become a DissolutionCondition and WHY. The
+// migrated population is not listed here -- it is carried by its own type, and
+// re-listing it would be the parallel ledger this migration exists to close.
+type LifecycleResidueClass
+  = HistoricalReceipt
+  | DissolvesByGreening
+  | RefusalOrReasonCarrier
+  | NotALifecycleCarrier
+
+type LifecycleResidueRow {
+  ref: DeclarationRef
+  class: LifecycleResidueClass
+  rationale: NonEmptyStr
+}
+
+fn residue_row(
+  module_path: String,
+  decl_name: String,
+  class: LifecycleResidueClass,
+  rationale: NonEmptyStr,
+) -> LifecycleResidueRow {
+  LifecycleResidueRow {
+    ref: decl_ref(module_path: module_path, decl_name: decl_name),
+    class: class,
+    rationale: rationale,
+  }
+}
+
+// A receipt states that a condition WAS met and what happened. It is not an
+// active lifecycle condition, so typing it as one would be a lie in the other
+// direction: DissolutionCondition has no "already fired, subject gone" form,
+// and inventing one would re-open the forgeable-firing path this PR closed.
+fn historical_receipt_rows() -> List<LifecycleResidueRow> {
+  [
+    residue_row(module_path: "std.witness_admission", decl_name: "witness_admission_predicate_dissolution_note", class: HistoricalReceipt, rationale: "records that two predicates dissolved per review 39760; the successor is live"),
+    residue_row(module_path: "gunbc.ci_spec", decl_name: "ci_documentation_only_floor_shortcut_retired_note", class: HistoricalReceipt, rationale: "records the 2026-07-21 removal of the documentation_only_skip shortcut and why"),
+    residue_row(module_path: "gunbc.ci_floor_measurement", decl_name: "gunbc_ci_width_constants_retired_note", class: HistoricalReceipt, rationale: "records the operator ruling that retired the hand-edited width constants"),
+    residue_row(module_path: "gunbc.design.archetype", decl_name: "dashboard_boundary_demand_dissolved_note", class: HistoricalReceipt, rationale: "records BoundaryRole leaving the dashboard demand and where refusal color routes now"),
+    residue_row(module_path: "v2.test.claim.execution.loop_round_trip", decl_name: "loop_descent_fabrication_dissolved_note", class: HistoricalReceipt, rationale: "records the deleted hand-fabricated TerminationProof and the body-lowering path that replaced it"),
+    residue_row(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lowering_interim_scaffold_dissolved_note", class: HistoricalReceipt, rationale: "records the interim hand-walker scaffolds already folded into body_producer_forward"),
+    residue_row(module_path: "v2.std.witness_execution_routing", decl_name: "witness_execution_disposition_predicate_dissolution_note", class: HistoricalReceipt, rationale: "records three predicates dissolved per review 41625"),
+    residue_row(module_path: "v2.std.algebra", decl_name: "copied_port_fact_registry_dissolution_note", class: HistoricalReceipt, rationale: "records the deleted hand-stamped copied_port_fact rows and the derivation that replaced them"),
+    residue_row(module_path: "test.claim.roadmap_belt_actuate", decl_name: "codex_preflight_ok_dissolution_note", class: HistoricalReceipt, rationale: "records the codex_preflight_ok helper's removal per review 44110"),
+    residue_row(module_path: "test.claim.peak_resident_measured", decl_name: "peak_resident_platform_precondition_retired_note", class: HistoricalReceipt, rationale: "records a precondition retired by its own trigger after one commit"),
+  ]
+}
+
+// These dissolve by GREENING, not by an edit. The condition is the witness
+// itself passing, which is already executing -- so an UnboundDissolution row
+// would restate what the witness structurally is, and a BoundDissolution row
+// would point at a declaration that never appears.
+fn dissolves_by_greening_rows() -> List<LifecycleResidueRow> {
+  [
+    residue_row(module_path: "test.claim.legacy_test_behavior_disposition_acceptance", decl_name: "legacy_test_behavior_acceptance_dissolution_note", class: DissolvesByGreening, rationale: "greens when the last discovered legacy behavior receives an admitted disposition"),
+    residue_row(module_path: "test.claim.observation_raw_print_retirement_acceptance", decl_name: "acceptance_dissolution_note", class: DissolvesByGreening, rationale: "greens when the frontier reaches zero; its expect-red row becomes wrong at the same moment"),
+    residue_row(module_path: "gunbc.namespace_reference_derived_closure_contract", decl_name: "namespace_reference_derived_closure_contract_dissolution_note", class: DissolvesByGreening, rationale: "greens as each of six clauses becomes executable; the contract text is unchanged by that"),
+  ]
+}
+
+// A refusal poison, a typed-refusal reason, and a contract narrative. None of
+// these states a lifecycle condition; each is matched by the lifecycle NAME
+// pattern and would be mis-migrated by a name-driven sweep.
+fn refusal_or_reason_rows() -> List<LifecycleResidueRow> {
+  [
+    residue_row(module_path: "gunbc.live_deploy.emit", decl_name: "live_deploy_systemd_retirement_emit_refused_poison", class: RefusalOrReasonCarrier, rationale: "a located poison marker deliberately not valid deploy shell, so the drift gate reds"),
+    residue_row(module_path: "gunbc.stage0_rust_lifecycle_totality", decl_name: "lifecycle_totality_retirement_trigger_underived_reason", class: RefusalOrReasonCarrier, rationale: "the reason a disposition path set cannot be derived, carried beside the refusal"),
+    residue_row(module_path: "gunbc.roadmap_authority", decl_name: "observation_raw_print_retirement_contract_note", class: RefusalOrReasonCarrier, rationale: "names the discriminating binding a sibling contract deliberately withholds"),
+  ]
+}
+
+// The name pattern matched; the declaration is not a lifecycle carrier at all.
+fn not_a_lifecycle_carrier_rows() -> List<LifecycleResidueRow> {
+  [
+    residue_row(module_path: "test.claim.generated_artifact_merge_driver_real_execution", decl_name: "witness_retired_take_ours_driver_value", class: NotALifecycleCarrier, rationale: "the literal git config value \"true\" for a retired merge driver, not a condition"),
+  ]
+}
+
+fn lifecycle_residue_rows() -> List<LifecycleResidueRow> {
+  concat_lists(
+    concat_lists(historical_receipt_rows(), dissolves_by_greening_rows()),
+    concat_lists(refusal_or_reason_rows(), not_a_lifecycle_carrier_rows()),
+  )
+}
+
+fn concat_lists(a: List<LifecycleResidueRow>, b: List<LifecycleResidueRow>) -> List<LifecycleResidueRow> {
+  fold(b, init: a, f: fn(acc, r) { append(acc, r) })
+}
+
+fn residue_row_key(row: LifecycleResidueRow) -> String {
+  declaration_ref_display_key(ref: row.ref)
+}
+
+// The classification coproduct HAS NO ACTIVE-CONDITION VARIANT. That is where
+// the zero lives: a survivor that is an active condition has no row it could
+// occupy, so it cannot be recorded as classified -- it has to be migrated. A
+// predicate asserting "no row is active" would be vacuously true over a
+// coproduct that cannot express one, which is the change-detector shape DESIGN
+// section 5 rejects, so no such predicate is written.
+//
+// What IS checkable here is an identity join: the classification is keyed by
+// declaration identity, and two rows claiming the same declaration means one of
+// them is describing something else.
+fn residue_row_keys() -> List<String> {
+  map(lifecycle_residue_rows(), fn(r) { residue_row_key(row: r) })
+}
+
+fn residue_keys_are_unique() -> Bool {
+  length(xs: dedup_keys(residue_row_keys())) == length(xs: residue_row_keys())
+}
+
+fn dedup_keys(keys: List<String>) -> List<String> {
+  fold(keys, init: [], f: fn(acc, k) {
+    if contains(xs: acc, item: k, eq: fn(a, b) { a == b }) { acc } else { append(acc, k) }
+  })
+}
