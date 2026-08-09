@@ -10,7 +10,8 @@ import gunbc.typed_argv_exec {
   TypedArgvExecRefused,
 }
 import gunbc.clock_read { clock_now_probed_at }
-import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
+import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for, fleet_reach_probe_targets }
+import gunbc.fleet_host_key_enrollment { enrolled_fingerprint_for }
 
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
@@ -276,7 +277,6 @@ fn observe_host_identity_converge(host: HostIdentity) -> ObservationVerdict? {
 // The receipt is WRITTEN (typed value) and the entry exits success even when hosts are
 // unreachable, because the probe's product is the observation; only a receipt-write
 // failure is a run failure.
-data fleet_reach_probe_targets: List<String> = ["srv1", "srv2", "srv3", "srv4", "srv5", "srv6"]
 data fleet_reach_probe_receipt_path: String = "target/fleet-reach-probe-receipt.txt"
 
 type FleetReachProbeRun {
@@ -294,7 +294,7 @@ fn probe_host_reach_once(host: String, probed_at: String) -> HostReachIdentityPr
         success: r.success,
         stdout: r.stdout,
         stderr: r.stderr,
-        expected_fingerprint: none,
+        expected_fingerprint: enrolled_fingerprint_for(host: host),
       )
     TypedArgvExecRefused { reason: why } => ProbeTransportUnavailable { cause: why }
   }

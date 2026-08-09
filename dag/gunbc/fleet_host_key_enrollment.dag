@@ -1,0 +1,160 @@
+module gunbc.fleet_host_key_enrollment
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.algebra { trim }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import std.resources { Network }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.exec.command { ArgvCommand, LocalExec }
+import gunbc.command_runner { run_shell_commands, run_shell_command_capture, ShellCaptureResult }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for, fleet_reach_probe_targets }
+
+// CONVERGE acceptance item 4 (operator directive C, 2026-08-09): the host-key
+// fingerprint ENROLLMENT registry. The executed reach probe landed every fleet host at
+// ProbeHostKeyUnenrolled — the transport refuses verification because the probing
+// account holds no known_hosts entry, so first-contact and changed-key are
+// indistinguishable and both P0 cells honestly read Inaccessible. This module is the
+// remedy the fold names: (a) a wet SCAN observes each host's public key from the same
+// LAN position every probe runs from (ssh-keyscan + ssh-keygen -lf, captured to a typed
+// receipt — an OBSERVATION, it repairs nothing, per the observe-never-silently-repair
+// ordering law); (b) the committed registry rows below are the single enrollment
+// authority (the Spark rows cross-check against bold-eagle-107's independent
+// measurement of distinct keys); (c) a separate wet ENROLL applies the registry to the
+// probing account's known_hosts with an independent ssh-keygen -F readback per host.
+// Once enrolled, a verification failure at probe time is a REAL ProbeHostKeyMismatch
+// (enrolled expectation contradicted) rather than Unenrolled — the constructor split's
+// second arm becomes reachable with a Present expectation.
+type KnownHostKeyRow {
+  host: HostIdentity
+  endpoint: String
+  key_type: String
+  public_key_base64: String
+  sha256_fingerprint: String
+}
+
+// 🟡 dissolve-on: like the probe-receipt ledger, rows land here as the provenance-backed
+// transcription of an executed scan receipt; DISSOLVES WHEN scan-artifact ingestion
+// commits rows by machinery (same trigger as probe_receipt_ledger_transcription_scaffold).
+data host_key_enrollment_transcription_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.fleet_host_key_enrollment",
+    decl_name: "fleet_host_key_enrollments",
+    field: WholeDeclaration,
+  }
+}
+
+data fleet_host_key_enrollments: List<KnownHostKeyRow> = []
+
+fn enrolled_fingerprint_for(host: String) -> String? {
+  fold(fleet_host_key_enrollments, init: none, f: fn(acc, k) {
+    match acc {
+      Present { value: _ } => acc
+      _ => if (k.host as String) == host { Present { value: k.sha256_fingerprint } } else { none }
+    }
+  })
+}
+
+fn known_hosts_line(k: KnownHostKeyRow) -> String {
+  join([k.endpoint, " ", k.key_type, " ", k.public_key_base64], "")
+}
+
+data fleet_host_key_scan_receipt_path: String = "target/fleet-host-key-scan-receipt.txt"
+
+// One host's scan: keyscan at the modeled endpoint (ed25519 — the key type both
+// bold-eagle measurements and OpenSSH defaults lead with), then fingerprint the scanned
+// line. Both captures ride the receipt VERBATIM with a per-host outcome label; a
+// refusing scan is a typed absent line, never an empty fabrication.
+fn scan_host_key_lines(host: String) -> String {
+  let endpoint = fleet_probe_endpoint_for(host: host)
+  let scan = run_shell_command_capture(
+    command: ArgvCommand { argv: ["ssh-keyscan", "-T", "5", "-t", "ed25519", endpoint] },
+    transport: LocalExec,
+  )
+  if scan.success && trim(s: scan.stdout) != "" {
+    let key_file = join(["target/fleet-host-key-scan-", host, ".pub"], "")
+    let w = Filesystem.Write(path: key_file, content: scan.stdout)
+    let fp = if w.success {
+      run_shell_command_capture(
+        command: ArgvCommand { argv: ["ssh-keygen", "-l", "-f", key_file] },
+        transport: LocalExec,
+      )
+    } else {
+      ShellCaptureResult { success: false, stdout: "", stderr: w.error }
+    }
+    join([
+      "scan host=", host, " endpoint=", endpoint, " outcome=observed\n",
+      "key ", trim(s: scan.stdout), "\n",
+      "fingerprint ", trim(s: fp.stdout), "\n",
+    ], "")
+  } else {
+    join([
+      "scan host=", host, " endpoint=", endpoint, " outcome=refused cause=", trim(s: scan.stderr), "\n",
+    ], "")
+  }
+}
+
+func fleet_host_key_scan_wet() -> ProcessExit
+  uses net: Network
+{
+  let body = join(map(fleet_reach_probe_targets, h => scan_host_key_lines(host: h)), "")
+  let w = Filesystem.Write(path: fleet_host_key_scan_receipt_path, content: body)
+  if w.success {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat("fleet_host_key_scan: receipt publication failed — ", w.error))
+  }
+}
+
+data fleet_host_key_enroll_receipt_path: String = "target/fleet-host-key-enroll-receipt.txt"
+
+// The ENROLL apply: registry rows -> a staged fragment -> appended to the probing
+// account's known_hosts -> per-host independent readback (ssh-keygen -F at the
+// endpoint), which is the success criterion — never the append's exit code. Refuses
+// loudly when the registry is empty: enrolling nothing must not read as enrolled.
+func fleet_host_key_enroll_wet() -> ProcessExit
+  uses net: Network
+{
+  if length(fleet_host_key_enrollments) == 0 {
+    exit_failure(reason: "fleet_host_key_enroll: registry is empty — nothing to enroll; run the scan and commit the transcription first (an empty apply must not read as enrollment)")
+  } else {
+    let fragment = join(map(fleet_host_key_enrollments, k => concat(known_hosts_line(k: k), "\n")), "")
+    let staged = "target/fleet-known-hosts-fragment"
+    let w = Filesystem.Write(path: staged, content: fragment)
+    if w.success {
+      let applied = run_shell_commands(
+        commands: [
+          ArgvCommand { argv: ["mkdir", "-p", ".ssh-enroll-stage"] },
+          ArgvCommand { argv: ["sh", "-c", "mkdir -p \"$HOME/.ssh\" && touch \"$HOME/.ssh/known_hosts\" && cat target/fleet-known-hosts-fragment >> \"$HOME/.ssh/known_hosts\"" ] },
+        ],
+        transport: LocalExec,
+      )
+      match applied {
+        ExitFailure { code: _, reason: why } => exit_failure(reason: concat("fleet_host_key_enroll: apply refused: ", why))
+        ExitSuccess => {
+          let readback = join(map(fleet_host_key_enrollments, k => {
+            let f = run_shell_command_capture(
+              command: ArgvCommand { argv: ["ssh-keygen", "-F", k.endpoint] },
+              transport: LocalExec,
+            )
+            join([
+              "enroll host=", k.host as String, " endpoint=", k.endpoint,
+              if f.success { " readback=found" } else { " readback=ABSENT" }, "\n",
+            ], "")
+          }), "")
+          let wr = Filesystem.Write(path: fleet_host_key_enroll_receipt_path, content: readback)
+          if wr.success {
+            ExitSuccess
+          } else {
+            exit_failure(reason: concat("fleet_host_key_enroll: receipt publication failed — ", wr.error))
+          }
+        }
+      }
+    } else {
+      exit_failure(reason: concat("fleet_host_key_enroll: fragment staging refused — ", w.error))
+    }
+  }
+}
