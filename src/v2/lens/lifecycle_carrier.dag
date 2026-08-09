@@ -93,12 +93,12 @@ fn lifecycle_carrier_diagnostic(carrier: Node) -> Diagnostic {
   }
 }
 
+// Type first, name second -- the same ordering unit_modeling_gate uses, and for
+// the same reason: the type test is a single symbol comparison on a node already
+// in hand, while the name test walks the row list. Only String and NonEmptyStr
+// fields ever reach the walk.
 fn field_lifecycle_violation(carrier: Node, edge: Edge) -> Optional<Diagnostic> {
   match edge.label {
-    // Type first, name second -- the same ordering unit_modeling_gate uses, and
-    // for the same reason: the type test is a single symbol comparison on a node
-    // already in hand, while the name test walks the row list. Only String and
-    // NonEmptyStr fields ever reach the walk.
     Named { name: nm } =>
       if type_is_bare_string(target: edge.target) && name_is_lifecycle_field(name: nm) {
         optional_present(value: lifecycle_carrier_diagnostic(carrier: carrier))
