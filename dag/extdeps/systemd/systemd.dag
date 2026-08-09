@@ -95,8 +95,10 @@ type SystemdCgroupTaskLimit
 // parse_systemd_task_limit_show mirrors parse_systemd_memory_limit_show because a systemd
 // cgroup limit shown by `systemctl show` is one wire shape — a decimal count or the literal
 // "infinity" — differing only in the magnitude it grounds into (ByteSize vs a cardinal task
-// count). dissolve-on: a single limit parse parameterized by magnitude (the
-// SystemdCgroupLimit<M> consolidation), at which point both hand parses derive from it.
+// count). 🟡 feature:task-count-measure-carrier dissolve-on: a single limit parse
+// parameterized by magnitude (the SystemdCgroupLimit<M> consolidation) with the count arm
+// grounding into a std.measure TaskCount carrier (the HardwareThreadCount shape) instead of
+// bare Int, at which point both hand parses derive from it and the flat scalar retires.
 fn parse_systemd_task_limit_show(raw: String) -> SystemdCgroupTaskLimit {
   if raw == "" { TaskLimitAbsent }
   else { if raw == "infinity" { TaskLimitUnbounded }

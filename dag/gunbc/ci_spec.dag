@@ -511,8 +511,21 @@ fn gunbc_ci_floor_run(spec: CiSpec) -> String {
 data gunbc_ci_srv1_tasks_observation_entry: String = "dag/gunbc/srv1_tasks_preapply_observation.dag"
 data gunbc_ci_srv1_tasks_observation_function: String = "observe_srv1_tasks_preapply_wet"
 
+data gunbc_ci_srv1_tasks_observation_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "gunbc_ci_srv1_tasks_observation_invoke",
+    field: WholeDeclaration
+  }
+}
+
+data gunbc_ci_srv1_tasks_observation_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: gunbc_ci_srv1_tasks_observation_invoke — feature:task-count-measure-carrier sibling transport; concat-built foreign-executor (GitHub Actions run:) shell invoking gunbc run on gunbc.srv1_tasks_preapply_observation observe_srv1_tasks_preapply_wet plus a cat of the typed receipt file; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the observation step to orchestration emit over the typed gunbc.WitnessBin.Run route without a medium-as-string concat scaffold"
+
 fn gunbc_ci_srv1_tasks_observation_invoke() -> String {
   concat(
+    concat("# ", concat(gunbc_ci_srv1_tasks_observation_shell_emit_dissolution_trigger, "\n")),
+    concat(
     concat(
       concat("ROOT=", ci_repo_root_shell(), "\n"),
       gunbc_run_shell(
@@ -524,6 +537,7 @@ fn gunbc_ci_srv1_tasks_observation_invoke() -> String {
       )
     ),
     "\ncat \"$ROOT/target/srv1-tasks-preapply-receipt.txt\""
+  )
   )
 }
 

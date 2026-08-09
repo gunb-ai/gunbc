@@ -73,7 +73,7 @@ fn workload_class_cpu_weight(wc: WorkloadClass) -> Int {
   }
 }
 
-// 🟡 dissolve-on: TaskCount measure carrier — per_runner_tasks_max is a pids-controller
+// 🟡 feature:task-count-measure-carrier dissolve-on: TaskCount measure carrier — per_runner_tasks_max is a pids-controller
 // COUNT riding a bare Int while its memory siblings carry ByteSize; same dissolution as
 // the ConvergeTarget.PerSlotMemoryCap → PerSlotUnitProperty P3 axis rework (a std.measure
 // TaskCount, the HardwareThreadCount shape), which also retires the to_string() re-serialization
