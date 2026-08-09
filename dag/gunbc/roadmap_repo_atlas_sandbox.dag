@@ -4,6 +4,15 @@ import std.types { Int, String, Bool, List }
 import std.markup { Fragment, Element, FragmentText, Attribute, attr }
 import gunbc.site.markup { txt, el, el_class, el_attrs }
 import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
+import extdeps.languages.css.properties { Fill, Stroke, Opacity, Display, MaxWidth, Width, Margin, FontFamily, FontSize, Color, RawProperty }
+import extdeps.languages.css.selectors { SelectorSubject, ClassSelector }
+import gunbc.design.material { BuildRule, StaticRule, CssDecl, decl, serialize_rules }
+import gunbc.design.theme {
+  role_var, FigureRole, FigureLitRole, FigureEdgeRole, BorderRole, TextRole, TextDimRole
+}
+import gunbc.design.scale { scale_var, space_4, text_12, font_mono, measure_page }
+import gunbc.roadmap_style { roadmap_css }
+import gunbc.roadmap_page { roadmap_header }
 import gunbc.repo_atlas_projection {
   AtlasAddress,
   RepoAtlasSnapshot,
@@ -331,16 +340,145 @@ fn repo_atlas_live_snapshot() -> RepoAtlasSnapshot {
 
 data repo_atlas_pool_roots: List<String> = ["dag", "src/v2"]
 
+data repo_atlas_stylesheet_note: String = "THE ROLES ARE MADE DISTINGUISHABLE HERE, NOT ASSERTED IN A NOTE. An earlier revision of this module carried a note saying the four channels must stay distinguishable at a glance and then emitted class names with NO rules behind them, so on the live route a real SCM change mark rendered identically to an ordinary structural cell. That is rung inflation in its plainest form — the carrier described a property the artifact did not have — and it was caught by review 50752 rather than by any claim here, because every page claim served a fragment the route does not serve.
+
+THE CHANNELS, and why each is what it is. Structure is the FIGURE role held below full strength, so the population reads as a field rather than as a wall of marks. A direct change is the FIGURE-LIT role at full strength: brightness is the change channel and nothing else uses it. Impact is a STROKE on a separate concentric circle — an outline, never a fill — so an affected module and a changed module cannot be confused even when they are the same cell. A shared cell strokes its own dot in the structure colour, which reads as denser without reading as brighter, because occupant count is not a change and must not borrow the change channel.
+
+GLOW IS ABSENT ON PURPOSE. It belongs to selection, there is no selection on this page yet, and an unused channel is safer than one that collides with occupancy when the occupancy overlay finally arrives."
+
+fn cls(name: String) -> SelectorSubject {
+  ClassSelector { name: name }
+}
+
+fn atlas_rules() -> List<BuildRule> {
+  [
+    StaticRule {
+      selector: cls(name: "atlas"),
+      decls: [
+        decl(prop: Display, value: "block"),
+        decl(prop: Width, value: "100%"),
+        decl(prop: MaxWidth, value: scale_var(t: measure_page)),
+        decl(prop: Margin, value: "0 auto"),
+      ],
+    },
+    StaticRule {
+      selector: cls(name: "atlas-dot"),
+      decls: [
+        decl(prop: Fill, value: role_var(r: FigureRole)),
+        decl(prop: Opacity, value: "0.45"),
+      ],
+    },
+    StaticRule {
+      selector: cls(name: "atlas-dot-shared"),
+      decls: [
+        decl(prop: Stroke, value: role_var(r: FigureRole)),
+        decl(prop: RawProperty { name: "stroke-width" }, value: "1"),
+      ],
+    },
+    StaticRule {
+      selector: cls(name: "atlas-dot-changed"),
+      decls: [
+        decl(prop: Fill, value: role_var(r: FigureLitRole)),
+        decl(prop: Opacity, value: "1"),
+      ],
+    },
+    StaticRule {
+      selector: cls(name: "atlas-impact-ring"),
+      decls: [
+        decl(prop: Stroke, value: role_var(r: FigureEdgeRole)),
+        decl(prop: RawProperty { name: "stroke-width" }, value: "1"),
+        decl(prop: Opacity, value: "0.8"),
+      ],
+    },
+    StaticRule {
+      selector: cls(name: "atlas-glass-edge"),
+      decls: [
+        decl(prop: Stroke, value: role_var(r: BorderRole)),
+        decl(prop: RawProperty { name: "stroke-width" }, value: "1"),
+        decl(prop: Opacity, value: "0.5"),
+      ],
+    },
+    StaticRule {
+      selector: cls(name: "atlas-readout"),
+      decls: [
+        decl(prop: FontFamily, value: scale_var(t: font_mono)),
+        decl(prop: FontSize, value: scale_var(t: text_12)),
+        decl(prop: Color, value: role_var(r: TextDimRole)),
+      ],
+    },
+    StaticRule {
+      selector: cls(name: "atlas-readout-refused"),
+      decls: [ decl(prop: Color, value: role_var(r: TextRole)) ],
+    },
+    StaticRule {
+      selector: cls(name: "atlas-readout-absent"),
+      decls: [ decl(prop: Color, value: role_var(r: TextRole)) ],
+    },
+    StaticRule {
+      selector: cls(name: "atlas-legend"),
+      decls: [
+        decl(prop: FontFamily, value: scale_var(t: font_mono)),
+        decl(prop: FontSize, value: scale_var(t: text_12)),
+        decl(prop: Color, value: role_var(r: TextDimRole)),
+        decl(prop: Margin, value: scale_var(t: space_4)),
+      ],
+    },
+    StaticRule {
+      selector: cls(name: "atlas-unprojected-list"),
+      decls: [
+        decl(prop: FontFamily, value: scale_var(t: font_mono)),
+        decl(prop: FontSize, value: scale_var(t: text_12)),
+        decl(prop: Color, value: role_var(r: TextDimRole)),
+      ],
+    },
+  ]
+}
+
+fn repo_atlas_css() -> String {
+  join([roadmap_css(), serialize_rules(rules: atlas_rules())], "\n")
+}
+
+data repo_atlas_page_title: String = "gunbc — repo atlas"
+
+data repo_atlas_document_note: String = "A FULL DOCUMENT, matching every sibling route on the same serve table. The route previously returned a bare main fragment, so the browser received markup with no charset, no viewport, no title, no stylesheet and no header — an incomplete document that the sibling pages all get right (review 50752). The page witnesses now serialize THIS function rather than the section beneath it, because the shape the route serves is the shape a claim has to cover."
+
+fn repo_atlas_document(snapshot: RepoAtlasSnapshot) -> Fragment {
+  Element {
+    tag: "html",
+    attributes: [ attr(name: "lang", value: "en") ],
+    children: [
+      el("head", [
+        Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8") ], children: [] },
+        Element {
+          tag: "meta",
+          attributes: [
+            attr(name: "name", value: "viewport"),
+            attr(name: "content", value: "width=device-width, initial-scale=1"),
+          ],
+          children: [],
+        },
+        el("style", [ txt(repo_atlas_css()) ]),
+        el("title", [ txt(repo_atlas_page_title) ]),
+      ]),
+      el("body", [
+        roadmap_header(page: "repo atlas"),
+        el_class("main", "atlas-page", [
+          repo_atlas_section(snapshot: snapshot),
+        ]),
+      ]),
+    ],
+  }
+}
+
+data repo_atlas_served_shape_note: String = "repo_atlas_document IS THE SERVED SHAPE and takes the snapshot as a parameter for exactly one reason: the page witnesses must be able to drive the shape the route serves with controlled fixtures. Before this split the claims serialized the SECTION while the route served a bare main, so a headless or unstyled page stayed green — the claims were covering a shape nobody received. repo_atlas_page is now the thin live binding and nothing else."
+
 fn repo_atlas_page() -> Fragment {
-  el_class("main", "atlas-page", [
-    el("h1", [ txt("repo atlas — sandbox") ]),
-    repo_atlas_section(snapshot: repo_atlas_live_snapshot()),
-  ])
+  repo_atlas_document(snapshot: repo_atlas_live_snapshot())
 }
 
 fn repo_atlas_html() -> String {
   match try_serialize_html_source(node: repo_atlas_page()) {
-    EmitOk { html: h } => h
+    EmitOk { html: h } => concat("<!DOCTYPE html>\n", h)
     EmitRejected { reason: r } => concat("EMIT REJECTED: ", r)
   }
 }

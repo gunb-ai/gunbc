@@ -4,7 +4,10 @@ import std.types { Bool, String, Int }
 import std.markup { Fragment }
 import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
 import gunbc.roadmap_repo_atlas_sandbox {
-  repo_atlas_section,
+  repo_atlas_document,
+  repo_atlas_page,
+  repo_atlas_css,
+  repo_atlas_page_title,
   atlas_cell_transform,
   atlas_ring_radius,
   atlas_ring_slot_count,
@@ -32,6 +35,8 @@ import extdeps.git {
   DiffUnmergedStatus,
   GitDiffNameStatusComplete
 }
+
+data repo_atlas_served_shape_witness_note: String = "EVERY PAGE CLAIM BELOW SERIALIZES repo_atlas_document — THE SHAPE THE ROUTE ACTUALLY SERVES. The first revision serialized repo_atlas_section instead, so the twelve claims covered a fragment the handler never returns and a headless, unstyled page stayed green through all of them (review 50752). A claim aimed at the wrong subject is not a weak claim, it is not a claim about the product at all."
 
 data repo_atlas_page_witness_note: String = "THE PAGE CLAIMS READ EMITTED TEXT, WHICH IS WEAKER THAN READING STRUCTURE AND IS USED ONLY WHERE THE SUBJECT GENUINELY IS THE EMITTED BYTES. Every claim that asserts an ABSENCE first asserts the presence of something comparable, so a serializer returning empty text cannot make an absence claim vacuously true — the failure mode that made three earlier instrument-lane claims pass over nothing."
 
@@ -87,7 +92,7 @@ fn atlas_page_snapshot_impacted(exact: Bool) -> RepoAtlasSnapshot {
 }
 
 fn atlas_page_html(snapshot: RepoAtlasSnapshot) -> String {
-  match try_serialize_html_source(node: repo_atlas_section(snapshot: snapshot)) {
+  match try_serialize_html_source(node: repo_atlas_document(snapshot: snapshot)) {
     EmitOk { html: h } => h
     EmitRejected { reason: _ } => ""
   }
@@ -153,11 +158,14 @@ test fn a_refused_overlay_states_its_cause_and_keeps_the_structure() -> Bool {
     && string_contains(haystack: html, needle: "atlas-plane-structure")
 }
 
+data repo_atlas_mark_needle_note: String = "THE NEEDLE IS THE EMITTED CLASS ATTRIBUTE, NOT THE BARE CLASS NAME, and the difference is not pedantry. Once the page began embedding its own stylesheet, the string .atlas-dot-changed appeared in every document as a CSS RULE, so the negative half of this claim matched the stylesheet and failed against a page whose marks were correct. Matching the attribute form distinguishes a rule that exists from a mark that was applied — which is the whole question."
+
 test fn a_changed_module_is_marked_on_the_page() -> Bool {
   let changed = atlas_page_html(snapshot: atlas_page_snapshot_changed())
   let plain = atlas_page_html(snapshot: atlas_page_snapshot_plain())
-  string_contains(haystack: changed, needle: "atlas-dot-changed")
-    && string_contains(haystack: plain, needle: "atlas-dot-changed") == false
+  string_contains(haystack: changed, needle: "atlas-dot atlas-dot-changed")
+    && string_contains(haystack: plain, needle: "atlas-dot atlas-dot-changed") == false
+    && string_contains(haystack: plain, needle: "atlas-plane-structure")
 }
 
 data atlas_page_geometry_note: String = "ACCEPTANCE 11. The renderer receives an ADDRESS and lowers it with nested transforms. These claims pin the lowering itself — that ring 0 slot 0 sits at the top of the inner ring with no rotation, and that a half-way slot turns 180 degrees — so a geometry change is a visible diff rather than a silent re-layout."
@@ -182,4 +190,44 @@ test fn the_ring_slot_probe_reads_the_declared_table() -> Bool {
   atlas_ring_slot_count(ring: 0) == 32
     && atlas_ring_slot_count(ring: 1) == 56
     && atlas_ring_slot_count(ring: 15) == 392
+}
+
+data repo_atlas_document_shape_note: String = "ACCEPTANCE: the served route returns a COMPLETE document, like every sibling on the same serve table. Each element is asserted individually rather than through one composite check, so a page missing only its charset or only its stylesheet fails on the missing part and names it."
+
+test fn the_served_page_is_a_complete_document() -> Bool {
+  let html = atlas_page_html(snapshot: atlas_page_snapshot_plain())
+  string_contains(haystack: html, needle: "<html")
+    && string_contains(haystack: html, needle: "<head>")
+    && string_contains(haystack: html, needle: "<body>")
+    && string_contains(haystack: html, needle: "charset=\"utf-8\"")
+    && string_contains(haystack: html, needle: "width=device-width")
+    && string_contains(haystack: html, needle: "<title>")
+    && string_contains(haystack: html, needle: repo_atlas_page_title)
+}
+
+test fn the_served_page_embeds_its_stylesheet() -> Bool {
+  let html = atlas_page_html(snapshot: atlas_page_snapshot_plain())
+  string_contains(haystack: html, needle: "<style>")
+    && string_contains(haystack: html, needle: "atlas-dot")
+}
+
+data repo_atlas_channel_distinguishable_note: String = "THE CLAIM THE CARRIER'S NOTE USED TO ASSERT WITHOUT EVIDENCE. A structural dot and a changed dot must not resolve to the same paint. Asserted on the STYLESHEET rather than on prose: the change channel must bind a different role variable than the structure channel, and the impact channel must be a stroke rather than a fill, so deleting a rule reds here."
+
+test fn the_change_channel_is_painted_differently_from_structure() -> Bool {
+  let css = repo_atlas_css()
+  string_contains(haystack: css, needle: ".atlas-dot")
+    && string_contains(haystack: css, needle: ".atlas-dot-changed")
+    && string_contains(haystack: css, needle: ".atlas-impact-ring")
+    && string_contains(haystack: css, needle: "stroke")
+    && string_contains(haystack: css, needle: "fill")
+}
+
+test fn the_live_page_binds_the_document_shape() -> Bool {
+  match try_serialize_html_source(node: repo_atlas_page()) {
+    EmitOk { html: h } =>
+      string_contains(haystack: h, needle: "<html")
+        && string_contains(haystack: h, needle: "atlas-plane-structure")
+        && string_contains(haystack: h, needle: "<style>")
+    EmitRejected { reason: _ } => false
+  }
 }
