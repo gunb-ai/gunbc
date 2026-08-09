@@ -1,0 +1,190 @@
+module std.euclidean_geometry
+
+import std.types { Bool, NonEmptyStr }
+import std.integer { Int }
+import std.nat { Nat }
+import std.measure {
+  Millimeter,
+  MillimeterDisplacementComponent,
+  millimeter_displacement,
+  SquareMillimeter,
+  millimeter,
+  square_millimeter,
+  square_millimeter_count,
+  millimeter_displacement_count,
+}
+import std.affine_space {
+  Vector3,
+  Point3,
+  displacement_between3,
+}
+
+// SPATIAL-2, metric half. This is where integer millimetres stop being sufficient, so it is where
+// the numeric policy has to become structural.
+//
+// The split that makes the slice honest: the SQUARED magnitude of an integer vector is always an
+// exact integer, while the magnitude itself is a square root and generally irrational. So
+// norm_squared is TOTAL and exact, and norm is PARTIAL - and its refusal carries the exact squared
+// value, so a consumer holding an approximate realization can finish the computation without
+// re-deriving anything. A refusal that discarded the squared magnitude would force the caller to
+// recompute what this module already knew exactly.
+//
+// What is deliberately NOT here: a norm that floors, a normalize that divides, and any trigonometry.
+// Rotating (1000, 0) by 30 degrees gives (866.025..., 500). A total integer answer would be an
+// invented precision at the very bottom of the spatial stack, where every later claim inherits it.
+
+type ExactLength
+  = LengthExact { value: Millimeter }
+  | LengthRequiresApproximateRealization {
+      squared: SquareMillimeter
+      reason: NonEmptyStr
+    }
+
+// Dot product: exact for integer components. Sign is meaningful (negative means the vectors point
+// away from each other), so the result is a signed scalar, not an area magnitude.
+fn dot3<F>(a: Vector3<F>, b: Vector3<F>) -> Int {
+  let px = millimeter_displacement_count(m: a.x) * millimeter_displacement_count(m: b.x)
+  let py = millimeter_displacement_count(m: a.y) * millimeter_displacement_count(m: b.y)
+  let pz = millimeter_displacement_count(m: a.z) * millimeter_displacement_count(m: b.z)
+  px + py + pz
+}
+
+// Cross product: exact, and frame-preserving. Its magnitude is an area and its direction is normal
+// to both inputs, which is why it stays a Vector3 rather than collapsing to a scalar.
+fn cross3<F>(a: Vector3<F>, b: Vector3<F>) -> Vector3<F> {
+  let ax = millimeter_displacement_count(m: a.x)
+  let ay = millimeter_displacement_count(m: a.y)
+  let az = millimeter_displacement_count(m: a.z)
+  let bx = millimeter_displacement_count(m: b.x)
+  let by = millimeter_displacement_count(m: b.y)
+  let bz = millimeter_displacement_count(m: b.z)
+  Vector3 {
+    x: millimeter_displacement_component_of(value: (ay * bz) - (az * by)),
+    y: millimeter_displacement_component_of(value: (az * bx) - (ax * bz)),
+    z: millimeter_displacement_component_of(value: (ax * by) - (ay * bx)),
+  }
+}
+
+fn millimeter_displacement_component_of(value: Int) -> MillimeterDisplacementComponent {
+  millimeter_displacement(count: value)
+}
+
+// TOTAL and exact: the squared magnitude of an integer vector is an integer. Nonnegative by
+// construction (a sum of squares), so it lands in the Nat-backed area carrier without a sign
+// question. Every consumer that only needs to COMPARE magnitudes should use this and never touch
+// norm - comparing squared lengths is exact and needs no square root at all.
+fn norm_squared3<F>(v: Vector3<F>) -> SquareMillimeter {
+  let x = millimeter_displacement_count(m: v.x)
+  let y = millimeter_displacement_count(m: v.y)
+  let z = millimeter_displacement_count(m: v.z)
+  square_millimeter(count: int_square_to_nat(value: x) + int_square_to_nat(value: y) + int_square_to_nat(value: z))
+}
+
+// A square is nonnegative whatever the sign of its root, so this crossing from the signed to the
+// unsigned carrier is total rather than a coercion that could lose information.
+fn int_square_to_nat(value: Int) -> Nat {
+  let magnitude = if value < 0 { 0 - value } else { value }
+  int_to_nat_nonnegative(value: magnitude * magnitude)
+}
+
+// PARTIAL, deliberately. Exact exactly when the displacement lies along a single axis, where the
+// magnitude is that component's absolute value and no root is taken. Every other case - including
+// Pythagorean triples, which ARE exact - refuses. That refusal is conservative rather than
+// complete, and the reason is stated rather than hidden: recognising a perfect square needs an
+// integer square root this slice does not have. Widening the exact set is a later increment;
+// answering approximately is not, because it would put invented precision underneath everything.
+fn norm3<F>(v: Vector3<F>) -> ExactLength {
+  let x = millimeter_displacement_count(m: v.x)
+  let y = millimeter_displacement_count(m: v.y)
+  let z = millimeter_displacement_count(m: v.z)
+  let nonzero_axes = axis_count(value: x) + axis_count(value: y) + axis_count(value: z)
+  if nonzero_axes <= 1 {
+    LengthExact { value: millimeter(count: int_to_nat_nonnegative(value: absolute(value: x + y + z))) }
+  } else {
+    LengthRequiresApproximateRealization {
+      squared: norm_squared3(v: v),
+      reason: "magnitude is a square root of a sum of squares; exact only for axis-aligned displacements in this slice",
+    }
+  }
+}
+
+fn axis_count(value: Int) -> Nat {
+  if value == 0 { 0 } else { 1 }
+}
+
+fn absolute(value: Int) -> Int {
+  if value < 0 { 0 - value } else { value }
+}
+
+// Int and Nat are the SAME grounded value here (std.coercion grounded_primitive_coproduct_identities:
+// a Nat IS an Int, numeric tower grounded construction-side), so this crossing is the identity and
+// needs no explicit cast - an `as Nat` is refused by the interpreter, which is correct: there is no
+// conversion to perform. The guard is what makes it total: a negative magnitude has no Nat, and
+// clamping it to zero would be a fabricated answer, so callers must only reach this with a value
+// they have already made nonnegative (every caller here squares or takes an absolute value first).
+fn int_to_nat_nonnegative(value: Int) -> Nat {
+  if value < 0 { 0 } else { value }
+}
+
+// Distance is the norm of the displacement, and inherits its partiality exactly. It is NOT a
+// separate approximation: one operation, asked of the vector between two points.
+fn distance3<F>(from: Point3<F>, to: Point3<F>) -> ExactLength {
+  norm3(v: displacement_between3(from: from, to: to))
+}
+
+// Squared distance is total, and is what a comparison should use.
+fn distance_squared3<F>(from: Point3<F>, to: Point3<F>) -> SquareMillimeter {
+  norm_squared3(v: displacement_between3(from: from, to: to))
+}
+
+// Comparing magnitudes needs no square root: the ordering of squares agrees with the ordering of
+// nonnegative magnitudes. This is the total operation most callers of "distance" actually want.
+fn closer_than3<F>(a_from: Point3<F>, a_to: Point3<F>, b_from: Point3<F>, b_to: Point3<F>) -> Bool {
+  let a2 = square_millimeter_count(m: distance_squared3(from: a_from, to: a_to))
+  let b2 = square_millimeter_count(m: distance_squared3(from: b_from, to: b_to))
+  a2 < b2
+}
+
+type Direction3Result<F>
+  = DirectionExact { direction: Vector3<F> }
+  | DirectionZeroVectorHasNone
+  | DirectionRequiresApproximateRealization {
+      squared_magnitude: SquareMillimeter
+      reason: NonEmptyStr
+    }
+
+// Normalization refuses the zero vector because zero has magnitude but no direction - that is a
+// genuine mathematical absence, not a numeric limitation, and it is a DIFFERENT arm from the
+// approximation refusal. Collapsing the two would conflate "this has no direction" with "I cannot
+// compute the direction exactly", which have different remedies.
+//
+// A unit vector in integer millimetres is only representable when the displacement is axis-aligned;
+// anything else needs division and lands on the approximate realization.
+fn normalize3<F>(v: Vector3<F>) -> Direction3Result<F> {
+  let x = millimeter_displacement_count(m: v.x)
+  let y = millimeter_displacement_count(m: v.y)
+  let z = millimeter_displacement_count(m: v.z)
+  let nonzero_axes = axis_count(value: x) + axis_count(value: y) + axis_count(value: z)
+  if nonzero_axes == 0 {
+    DirectionZeroVectorHasNone
+  } else {
+    if nonzero_axes == 1 {
+      DirectionExact {
+        direction: Vector3 {
+          x: millimeter_displacement_component_of(value: unit_sign(value: x)),
+          y: millimeter_displacement_component_of(value: unit_sign(value: y)),
+          z: millimeter_displacement_component_of(value: unit_sign(value: z)),
+        },
+      }
+    } else {
+      DirectionRequiresApproximateRealization {
+        squared_magnitude: norm_squared3(v: v),
+        reason: "unit components are irrational unless the displacement is axis-aligned",
+      }
+    }
+  }
+}
+
+fn unit_sign(value: Int) -> Int {
+  if value == 0 { 0 } else { if value < 0 { 0 - 1 } else { 1 } }
+}

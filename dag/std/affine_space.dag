@@ -1,0 +1,227 @@
+module std.affine_space
+
+import std.types { Bool, NonEmptyStr }
+import std.integer { Int }
+import std.measure {
+  MillimeterCoordinate,
+  MillimeterDisplacementComponent,
+  millimeter_coordinate,
+  millimeter_coordinate_count,
+  millimeter_displacement,
+  millimeter_displacement_count,
+}
+
+// SPATIAL-2: the affine layer. It exists because "can a measurement be negative" was the wrong
+// question. A length is never negative; a COORDINATE and a DISPLACEMENT are, and they are negative
+// in different senses - one is a location on an oriented axis relative to a chosen origin, the
+// other is a change along it. Millimeter stays Nat-backed and is not widened; what was missing is
+// the layer that says what a signed spatial number means.
+//
+// A POINT IS NOT A VECTOR. Both hold three signed components, and that shared representation is
+// exactly why the distinction has to live in the types rather than in discipline: the operations
+// are what separate them.
+//
+//   Point + Vector -> Point          a location moved by a displacement
+//   Point - Point  -> Vector         the displacement between two locations
+//   Vector +- Vector -> Vector       displacements compose
+//   Point + Point                    HAS NO OPERATION - the sum of two locations is meaningless
+//
+// The last line is enforced by absence: no such function is written, and since Point3 and Vector3
+// are distinct types, an attempt to add two points does not typecheck. This mirrors the affine /
+// cardinal split product.placement_supply already draws between a rack POSITION and a rack HEIGHT.
+//
+// FRAMES RIDE IN THE TYPE. Point3<F> carries its coordinate frame as a phantom parameter - the
+// same shape std.measure already uses, where Measure<Q, S, M> holds only a count and carries its
+// quantity and scale phantom. So subtracting a room-local point from a building-global point is
+// not a refusal to be checked at runtime; it does not typecheck. That is the stronger of the two
+// options, and it is available here rather than merely preferable.
+
+type Handedness
+  = RightHanded
+  | LeftHanded
+
+// The runtime descriptor of a frame: its identity, handedness and a human-facing name for the
+// origin it is measured from. The frame's TYPE-level identity is the phantom parameter; this
+// carries the facts a type parameter cannot, and the two are bound by the declaring module.
+type CoordinateFrameDescriptor {
+  identity: NonEmptyStr
+  handedness: Handedness
+  origin_description: NonEmptyStr
+}
+
+type Vector3<F> {
+  x: MillimeterDisplacementComponent
+  y: MillimeterDisplacementComponent
+  z: MillimeterDisplacementComponent
+}
+
+type Point3<F> {
+  x: MillimeterCoordinate
+  y: MillimeterCoordinate
+  z: MillimeterCoordinate
+}
+
+type Vector2<F> {
+  x: MillimeterDisplacementComponent
+  y: MillimeterDisplacementComponent
+}
+
+type Point2<F> {
+  x: MillimeterCoordinate
+  y: MillimeterCoordinate
+}
+
+fn vector3<F>(x: Int, y: Int, z: Int) -> Vector3<F> {
+  Vector3 {
+    x: millimeter_displacement(count: x),
+    y: millimeter_displacement(count: y),
+    z: millimeter_displacement(count: z),
+  }
+}
+
+fn point3<F>(x: Int, y: Int, z: Int) -> Point3<F> {
+  Point3 {
+    x: millimeter_coordinate(count: x),
+    y: millimeter_coordinate(count: y),
+    z: millimeter_coordinate(count: z),
+  }
+}
+
+fn vector2<F>(x: Int, y: Int) -> Vector2<F> {
+  Vector2 { x: millimeter_displacement(count: x), y: millimeter_displacement(count: y) }
+}
+
+fn point2<F>(x: Int, y: Int) -> Point2<F> {
+  Point2 { x: millimeter_coordinate(count: x), y: millimeter_coordinate(count: y) }
+}
+
+fn zero_vector3<F>() -> Vector3<F> {
+  vector3(x: 0, y: 0, z: 0)
+}
+
+// Point + Vector -> Point. Translation is EXACT in integer millimetres, which is why it is in this
+// first slice at all: no approximation policy is needed to move a location by a displacement.
+fn translate_point3<F>(point: Point3<F>, by: Vector3<F>) -> Point3<F> {
+  point3(
+    x: millimeter_coordinate_count(m: point.x) + millimeter_displacement_count(m: by.x),
+    y: millimeter_coordinate_count(m: point.y) + millimeter_displacement_count(m: by.y),
+    z: millimeter_coordinate_count(m: point.z) + millimeter_displacement_count(m: by.z),
+  )
+}
+
+// Point - Point -> Vector. The result is a displacement, not a location, and not a distance: it is
+// signed and directional. Its NORM is the nonnegative physical distance, and that lives in
+// std.euclidean_geometry because it is the operation that stops being exact.
+fn displacement_between3<F>(from: Point3<F>, to: Point3<F>) -> Vector3<F> {
+  vector3(
+    x: millimeter_coordinate_count(m: to.x) - millimeter_coordinate_count(m: from.x),
+    y: millimeter_coordinate_count(m: to.y) - millimeter_coordinate_count(m: from.y),
+    z: millimeter_coordinate_count(m: to.z) - millimeter_coordinate_count(m: from.z),
+  )
+}
+
+fn add_vector3<F>(a: Vector3<F>, b: Vector3<F>) -> Vector3<F> {
+  vector3(
+    x: millimeter_displacement_count(m: a.x) + millimeter_displacement_count(m: b.x),
+    y: millimeter_displacement_count(m: a.y) + millimeter_displacement_count(m: b.y),
+    z: millimeter_displacement_count(m: a.z) + millimeter_displacement_count(m: b.z),
+  )
+}
+
+fn subtract_vector3<F>(a: Vector3<F>, b: Vector3<F>) -> Vector3<F> {
+  vector3(
+    x: millimeter_displacement_count(m: a.x) - millimeter_displacement_count(m: b.x),
+    y: millimeter_displacement_count(m: a.y) - millimeter_displacement_count(m: b.y),
+    z: millimeter_displacement_count(m: a.z) - millimeter_displacement_count(m: b.z),
+  )
+}
+
+fn negate_vector3<F>(v: Vector3<F>) -> Vector3<F> {
+  vector3(
+    x: 0 - millimeter_displacement_count(m: v.x),
+    y: 0 - millimeter_displacement_count(m: v.y),
+    z: 0 - millimeter_displacement_count(m: v.z),
+  )
+}
+
+// Scaling by an integer is exact. Scaling by a ratio is NOT offered: it would need a rounding
+// policy, and inventing one here would put approximation into the affine layer before the
+// numeric seam is decided.
+fn scale_vector3<F>(v: Vector3<F>, factor: Int) -> Vector3<F> {
+  vector3(
+    x: millimeter_displacement_count(m: v.x) * factor,
+    y: millimeter_displacement_count(m: v.y) * factor,
+    z: millimeter_displacement_count(m: v.z) * factor,
+  )
+}
+
+fn translate_point2<F>(point: Point2<F>, by: Vector2<F>) -> Point2<F> {
+  point2(
+    x: millimeter_coordinate_count(m: point.x) + millimeter_displacement_count(m: by.x),
+    y: millimeter_coordinate_count(m: point.y) + millimeter_displacement_count(m: by.y),
+  )
+}
+
+fn displacement_between2<F>(from: Point2<F>, to: Point2<F>) -> Vector2<F> {
+  vector2(
+    x: millimeter_coordinate_count(m: to.x) - millimeter_coordinate_count(m: from.x),
+    y: millimeter_coordinate_count(m: to.y) - millimeter_coordinate_count(m: from.y),
+  )
+}
+
+fn add_vector2<F>(a: Vector2<F>, b: Vector2<F>) -> Vector2<F> {
+  vector2(
+    x: millimeter_displacement_count(m: a.x) + millimeter_displacement_count(m: b.x),
+    y: millimeter_displacement_count(m: a.y) + millimeter_displacement_count(m: b.y),
+  )
+}
+
+// QUARTER TURNS ONLY, and this is the numeric policy made structural rather than documented.
+// A quarter turn about a principal axis permutes and negates integer components, so it is EXACT.
+// A general rotation is not: rotating (1000, 0) by 30 degrees gives (866.025..., 500), which no
+// integer carrier represents. There is therefore no general-rotation constructor in this slice -
+// not a function that rounds, and not one that refuses at runtime, but no constructor at all.
+// It arrives with the approximate-numeric realization and its declared error bound.
+type QuarterTurns
+  = NoTurn
+  | OneQuarter
+  | TwoQuarters
+  | ThreeQuarters
+
+// Rotation about +Z, right-handed: (x, y) -> (-y, x) per quarter turn. Z is unchanged.
+fn rotate_quarter_turns_about_z<F>(v: Vector3<F>, turns: QuarterTurns) -> Vector3<F> {
+  let x = millimeter_displacement_count(m: v.x)
+  let y = millimeter_displacement_count(m: v.y)
+  let z = millimeter_displacement_count(m: v.z)
+  match turns {
+    NoTurn => vector3(x: x, y: y, z: z)
+    OneQuarter => vector3(x: 0 - y, y: x, z: z)
+    TwoQuarters => vector3(x: 0 - x, y: 0 - y, z: z)
+    ThreeQuarters => vector3(x: y, y: 0 - x, z: z)
+  }
+}
+
+// A frame-to-frame transform. Both frames are phantom parameters, so applying a RoomFrame point to
+// a Transform3<BuildingFrame, SiteFrame> does not typecheck - the cross-frame error is unwritable
+// rather than refused. Rotation is restricted to the exact quarter-turn set for the reason above.
+type Transform3<From, To> {
+  rotation_about_z: QuarterTurns
+  translation: Vector3<To>
+}
+
+fn apply_transform3<From, To>(
+  transform: Transform3<From, To>,
+  point: Point3<From>,
+) -> Point3<To> {
+  let as_displacement = vector3(
+    x: millimeter_coordinate_count(m: point.x),
+    y: millimeter_coordinate_count(m: point.y),
+    z: millimeter_coordinate_count(m: point.z),
+  )
+  let rotated = rotate_quarter_turns_about_z(v: as_displacement, turns: transform.rotation_about_z)
+  point3(
+    x: millimeter_displacement_count(m: rotated.x) + millimeter_displacement_count(m: transform.translation.x),
+    y: millimeter_displacement_count(m: rotated.y) + millimeter_displacement_count(m: transform.translation.y),
+    z: millimeter_displacement_count(m: rotated.z) + millimeter_displacement_count(m: transform.translation.z),
+  )
+}

@@ -1,0 +1,193 @@
+module test.claim.affine_space_witness
+
+import std.types { Bool }
+import std.integer { Int }
+import std.nat { Nat }
+import std.measure {
+  millimeter_count, millimeter_coordinate_count, millimeter_displacement_count,
+  square_millimeter_count,
+}
+import std.affine_space {
+  Vector3, Point3, vector3, point3, zero_vector3,
+  translate_point3, displacement_between3, add_vector3, subtract_vector3,
+  negate_vector3, scale_vector3, rotate_quarter_turns_about_z,
+  QuarterTurns, NoTurn, OneQuarter, TwoQuarters, ThreeQuarters,
+  Transform3, apply_transform3,
+  Handedness, RightHanded, CoordinateFrameDescriptor,
+}
+import std.euclidean_geometry {
+  ExactLength, LengthExact, LengthRequiresApproximateRealization,
+  Direction3Result, DirectionExact, DirectionZeroVectorHasNone,
+  DirectionRequiresApproximateRealization,
+  dot3, cross3, norm_squared3, norm3, distance3, distance_squared3, closer_than3, normalize3,
+}
+
+// Two distinct frames. They exist only as type-level tags: the room's origin is its southwest
+// floor corner, the building's is elsewhere, and a coordinate means nothing without saying which.
+type RoomFrame
+type BuildingFrame
+
+data room_frame_descriptor: CoordinateFrameDescriptor = CoordinateFrameDescriptor {
+  identity: "room-open-work",
+  handedness: RightHanded,
+  origin_description: "southwest floor corner, x east, y north, z up",
+}
+
+fn desk_a() -> Point3<RoomFrame> { point3(x: 1200, y: 800, z: 0) }
+
+// Nothing physically negative about this desk: it is 300 mm on the negative side of the chosen
+// x-origin. That is the whole point of the affine layer.
+fn desk_b() -> Point3<RoomFrame> { point3(x: 0 - 300, y: 2600, z: 0) }
+
+fn vec_components(v: Vector3<RoomFrame>) -> Int {
+  millimeter_displacement_count(m: v.x)
+}
+
+fn vector_equals(a: Vector3<RoomFrame>, b: Vector3<RoomFrame>) -> Bool {
+  millimeter_displacement_count(m: a.x) == millimeter_displacement_count(m: b.x)
+    && millimeter_displacement_count(m: a.y) == millimeter_displacement_count(m: b.y)
+    && millimeter_displacement_count(m: a.z) == millimeter_displacement_count(m: b.z)
+}
+
+fn point_equals(a: Point3<RoomFrame>, b: Point3<RoomFrame>) -> Bool {
+  millimeter_coordinate_count(m: a.x) == millimeter_coordinate_count(m: b.x)
+    && millimeter_coordinate_count(m: a.y) == millimeter_coordinate_count(m: b.y)
+    && millimeter_coordinate_count(m: a.z) == millimeter_coordinate_count(m: b.z)
+}
+
+// Point - Point -> Vector, with signed components. desk_b - desk_a = (-1500, 1800, 0).
+fn witness_point_difference_is_signed_displacement() -> Bool {
+  let d = displacement_between3(from: desk_a(), to: desk_b())
+  millimeter_displacement_count(m: d.x) == (0 - 1500)
+    && millimeter_displacement_count(m: d.y) == 1800
+    && millimeter_displacement_count(m: d.z) == 0
+}
+
+// Point + Vector -> Point, and it inverts the difference: a + (b - a) == b.
+fn witness_translate_inverts_difference() -> Bool {
+  point_equals(a: translate_point3(point: desk_a(), by: displacement_between3(from: desk_a(), to: desk_b())), b: desk_b())
+    && point_equals(a: translate_point3(point: desk_a(), by: zero_vector3()), b: desk_a())
+}
+
+// Vector +/- Vector -> Vector, and negation is the additive inverse.
+fn witness_vectors_compose() -> Bool {
+  let u = vector3(x: 100, y: 0 - 50, z: 25)
+  let v = vector3(x: 0 - 30, y: 70, z: 0 - 5)
+  vector_equals(a: subtract_vector3(a: add_vector3(a: u, b: v), b: v), b: u)
+    && vector_equals(a: add_vector3(a: u, b: negate_vector3(v: u)), b: zero_vector3())
+    && vector_equals(a: scale_vector3(v: u, factor: 2), b: add_vector3(a: u, b: u))
+}
+
+// A quarter turn about +Z is exact: (x, y) -> (-y, x); four of them are the identity.
+//
+// BOTH x AND y ARE NONZERO ON PURPOSE. An earlier version used (1000, 0, 7), where a reflection
+// (x, y) -> (y, x) and a rotation (x, y) -> (-y, x) produce the SAME answer, so the claim passed
+// while the operation was a reflection. The defect was found by mutating the implementation and
+// watching this witness stay green; an asymmetric vector is what makes the sign observable.
+fn witness_quarter_turns_are_exact_and_close() -> Bool {
+  let v = vector3(x: 1000, y: 300, z: 7)
+  vector_equals(a: rotate_quarter_turns_about_z(v: v, turns: OneQuarter), b: vector3(x: 0 - 300, y: 1000, z: 7))
+    && vector_equals(a: rotate_quarter_turns_about_z(v: v, turns: TwoQuarters), b: vector3(x: 0 - 1000, y: 0 - 300, z: 7))
+    && vector_equals(a: rotate_quarter_turns_about_z(v: v, turns: ThreeQuarters), b: vector3(x: 300, y: 0 - 1000, z: 7))
+    && vector_equals(a: rotate_quarter_turns_about_z(v: v, turns: NoTurn), b: v)
+    && vector_equals(
+         a: rotate_quarter_turns_about_z(
+              v: rotate_quarter_turns_about_z(v: v, turns: TwoQuarters),
+              turns: TwoQuarters,
+            ),
+         b: v,
+       )
+}
+
+// Squared magnitudes are TOTAL and exact, including the diagonal case norm3 must refuse.
+fn witness_norm_squared_is_total_and_exact() -> Bool {
+  square_millimeter_count(m: norm_squared3(v: vector3(x: 3, y: 4, z: 0))) == 25
+    && square_millimeter_count(m: norm_squared3(v: vector3(x: 0 - 3, y: 0 - 4, z: 0))) == 25
+    && square_millimeter_count(m: norm_squared3(v: zero_vector3())) == 0
+    && square_millimeter_count(m: distance_squared3(from: desk_a(), to: desk_b())) == (1500 * 1500) + (1800 * 1800)
+}
+
+// THE NUMERIC POLICY, made executable. Axis-aligned magnitudes are exact; a diagonal REFUSES and
+// its refusal carries the exact squared magnitude so an approximate realization can finish.
+fn witness_norm_exact_on_axis_refuses_on_diagonal() -> Bool {
+  match norm3(v: vector3(x: 0, y: 0 - 2500, z: 0)) {
+    LengthExact { value: v } => millimeter_count(m: v) == 2500
+    LengthRequiresApproximateRealization { squared: _, reason: _ } => false
+  }
+    && match norm3(v: vector3(x: 3, y: 4, z: 0)) {
+         LengthExact { value: _ } => false
+         LengthRequiresApproximateRealization { squared: s, reason: _ } =>
+           square_millimeter_count(m: s) == 25
+       }
+    && match distance3(from: desk_a(), to: desk_b()) {
+         LengthExact { value: _ } => false
+         LengthRequiresApproximateRealization { squared: s, reason: _ } =>
+           square_millimeter_count(m: s) == (1500 * 1500) + (1800 * 1800)
+       }
+}
+
+// Comparison needs no square root, and is exact where norm refuses.
+fn witness_comparison_is_total_where_norm_refuses() -> Bool {
+  closer_than3(a_from: point3(x: 0, y: 0, z: 0), a_to: point3(x: 3, y: 4, z: 0),
+               b_from: point3(x: 0, y: 0, z: 0), b_to: point3(x: 30, y: 40, z: 0))
+    && closer_than3(a_from: point3(x: 0, y: 0, z: 0), a_to: point3(x: 30, y: 40, z: 0),
+                    b_from: point3(x: 0, y: 0, z: 0), b_to: point3(x: 3, y: 4, z: 0)) == false
+}
+
+// Zero has magnitude but no direction: a DIFFERENT arm from "cannot compute exactly".
+fn witness_normalize_separates_no_direction_from_no_exact_value() -> Bool {
+  match normalize3(v: zero_vector3()) {
+    DirectionZeroVectorHasNone => true
+    DirectionExact { direction: _ } => false
+    DirectionRequiresApproximateRealization { squared_magnitude: _, reason: _ } => false
+  }
+    && match normalize3(v: vector3(x: 0, y: 0 - 900, z: 0)) {
+         DirectionExact { direction: d } => vector_equals(a: d, b: vector3(x: 0, y: 0 - 1, z: 0))
+         DirectionZeroVectorHasNone => false
+         DirectionRequiresApproximateRealization { squared_magnitude: _, reason: _ } => false
+       }
+    && match normalize3(v: vector3(x: 3, y: 4, z: 0)) {
+         DirectionRequiresApproximateRealization { squared_magnitude: s, reason: _ } =>
+           square_millimeter_count(m: s) == 25
+         DirectionExact { direction: _ } => false
+         DirectionZeroVectorHasNone => false
+       }
+}
+
+// dot and cross are exact, and cross is perpendicular to both inputs (dot == 0).
+fn witness_dot_and_cross_are_exact() -> Bool {
+  let u = vector3(x: 1000, y: 0, z: 0)
+  let v = vector3(x: 0, y: 1000, z: 0)
+  dot3(a: u, b: v) == 0
+    && dot3(a: u, b: u) == 1000000
+    && vector_equals(a: cross3(a: u, b: v), b: vector3(x: 0, y: 0, z: 1000000))
+    && dot3(a: cross3(a: u, b: v), b: u) == 0
+    && dot3(a: cross3(a: u, b: v), b: v) == 0
+}
+
+// A transform carries a room point into the building frame. Its RESULT TYPE is Point3<BuildingFrame>,
+// so it cannot be fed back into a RoomFrame operation - the cross-frame error is unwritable rather
+// than refused at runtime.
+fn room_to_building() -> Transform3<RoomFrame, BuildingFrame> {
+  Transform3 { rotation_about_z: OneQuarter, translation: vector3(x: 10000, y: 20000, z: 0) }
+}
+
+fn witness_transform_crosses_frames_exactly() -> Bool {
+  let moved = apply_transform3(transform: room_to_building(), point: point3(x: 1000, y: 0, z: 500))
+  millimeter_coordinate_count(m: moved.x) == 10000
+    && millimeter_coordinate_count(m: moved.y) == 21000
+    && millimeter_coordinate_count(m: moved.z) == 500
+}
+
+test fn affine_space_witnesses() -> Bool {
+  witness_point_difference_is_signed_displacement()
+    && witness_translate_inverts_difference()
+    && witness_vectors_compose()
+    && witness_quarter_turns_are_exact_and_close()
+    && witness_norm_squared_is_total_and_exact()
+    && witness_norm_exact_on_axis_refuses_on_diagonal()
+    && witness_comparison_is_total_where_norm_refuses()
+    && witness_normalize_separates_no_direction_from_no_exact_value()
+    && witness_dot_and_cross_are_exact()
+    && witness_transform_crosses_frames_exactly()
+}

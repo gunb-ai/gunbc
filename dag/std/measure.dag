@@ -39,6 +39,10 @@ type Quantity =
   | ElectricCharge
   | MagneticFlux
 
+  | Area
+  | Volume
+  | PlaneAngle
+
   | Dimensionless
 
 type Scale =
@@ -245,6 +249,81 @@ type Volt = Measure<ElectricPotentialDifference, One, Nat>
 type Ampere = Measure<ElectricCurrent, One, Nat>
 
 type Millimeter = Measure<Length, Milli, Nat>
+
+// SIGNED SPATIAL COMPONENTS. Millimeter above stays Nat-backed and is NOT widened: a wall of
+// length -3 m must remain unwritable. What was missing is not a negative length but the affine
+// layer that explains what a signed spatial number MEANS - a position along an oriented axis
+// relative to a chosen origin, or a displacement along it. Both are signed; neither is a length.
+// The quantity stays Length because these measure extent along an axis; only the carrier differs,
+// and Nat-backed and Int-backed measures do not unify, so a magnitude cannot be passed where a
+// component is required or the reverse.
+type MillimeterCoordinate = Measure<Length, Milli, Int>
+
+type MillimeterDisplacementComponent = Measure<Length, Milli, Int>
+
+// AREA AND VOLUME. The scale names the LINEAR scale of the underlying length, so Milli here reads
+// "square millimetre", not "one-thousandth of a square metre". That is why no generic linear scale
+// conversion may be applied to either: the ratios are squared and cubed, and the exact factors are
+// cited in extdeps.units.iso_80000_3 rather than derived from the linear Scale fold.
+type SquareMillimeter = Measure<Area, Milli, Nat>
+
+type CubicMillimeter = Measure<Volume, Milli, Nat>
+
+// PLANE ANGLE. Turn is the exact canonical unit because degree-to-turn is rational; radian is the
+// coherent SI unit but 1 turn = 2*pi rad is irrational, so no exact integer conversion to radian
+// exists and none is offered. Angle magnitude and signed angular displacement are separate types
+// for the same reason length magnitude and displacement component are.
+type Arcsecond = Measure<PlaneAngle, One, Nat>
+
+type ArcsecondDisplacement = Measure<PlaneAngle, One, Int>
+
+fn millimeter_coordinate(count: Int) -> MillimeterCoordinate {
+  Measure { count: count }
+}
+
+fn millimeter_coordinate_count(m: MillimeterCoordinate) -> Int {
+  measure_count(m)
+}
+
+fn millimeter_displacement(count: Int) -> MillimeterDisplacementComponent {
+  Measure { count: count }
+}
+
+fn millimeter_displacement_count(m: MillimeterDisplacementComponent) -> Int {
+  measure_count(m)
+}
+
+fn square_millimeter(count: Nat) -> SquareMillimeter {
+  Measure { count: count }
+}
+
+fn square_millimeter_count(m: SquareMillimeter) -> Nat {
+  measure_count(m)
+}
+
+fn cubic_millimeter(count: Nat) -> CubicMillimeter {
+  Measure { count: count }
+}
+
+fn cubic_millimeter_count(m: CubicMillimeter) -> Nat {
+  measure_count(m)
+}
+
+fn arcsecond(count: Nat) -> Arcsecond {
+  Measure { count: count }
+}
+
+fn arcsecond_count(a: Arcsecond) -> Nat {
+  measure_count(a)
+}
+
+fn arcsecond_displacement(count: Int) -> ArcsecondDisplacement {
+  Measure { count: count }
+}
+
+fn arcsecond_displacement_count(a: ArcsecondDisplacement) -> Int {
+  measure_count(a)
+}
 
 // EIA-310 rack unit: 1U = 1.75 in = 44.45 mm EXACTLY, which is 44450 micrometres — an
 // integer, so the quantum is exact in the Nat carrier and needs no rounding. RackUnitHeight

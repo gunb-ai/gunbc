@@ -1,0 +1,46 @@
+module extdeps.units.iso_80000_3
+
+import std.types { String }
+import std.nat { Nat }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.iso.org/standard/31887.html"
+  }
+}
+
+data iso_80000_3_version_note: String = "ISO 80000-3:2006 (Quantities and units - Part 3: Space and time): the quantity definitions for length, area, volume, plane angle and solid angle. This module grounds ONLY the exact unit relations the spatial substrate needs; it is not a general physics authority, and no generic extdeps.physics hub is created for it. CITATION STANDING: read from knowledge, PIN-PENDING - the standard is paywalled and was not fetched, so the locator is the ISO catalogue page rather than the normative text. The relations declared here are definitional and independently checkable (a turn is 360 degrees by definition of the degree; a square metre is the area of a square of side one metre), which is why they are safe to carry ahead of the pin; anything requiring the normative wording must wait for it."
+
+data iso_80000_3_plane_angle_note: String = "Plane angle is dimensionless in the SI sense - it is a ratio of two lengths - but it is NOT interchangeable with an ordinary dimensionless count, and the substrate keeps it a distinct Quantity so that adding an angle to a length, or reading an angle as a bare ratio, has no operation. ISO 80000-3 defines the radian as the coherent unit; the degree, arcminute and arcsecond are non-SI units accepted for use with the SI (BIPM SI Brochure), and are carried here as exact rational subdivisions of the turn."
+
+data iso_80000_3_turn_exactness_note: String = "THE TURN IS THE EXACT CANONICAL UNIT, deliberately, and this is a numeric-policy fact rather than a taste one: degree-to-turn conversion is rational and therefore exact in integer arithmetic (1 turn = 360 degrees), whereas 1 turn = 2*pi radians is irrational and CANNOT be represented exactly by any integer or rational carrier. A substrate that offered a total degree-to-radian conversion over integers would be silently flooring - inventing precision at the unit boundary, before any geometry ran. Radian therefore has no exact integer conversion function here; it is declared as the coherent unit and its conversion waits on the approximate-numeric realization with a declared error bound."
+
+fn degrees_per_turn() -> Nat {
+  360
+}
+
+fn arcminutes_per_degree() -> Nat {
+  60
+}
+
+fn arcseconds_per_arcminute() -> Nat {
+  60
+}
+
+fn arcseconds_per_turn() -> Nat {
+  degrees_per_turn() * arcminutes_per_degree() * arcseconds_per_arcminute()
+}
+
+// Area and volume scale as the SQUARE and CUBE of the linear ratio. Carried explicitly because a
+// generic linear scale conversion is wrong for both: reusing the length factor 1000 for area would
+// understate a square metre by a factor of 1000.
+fn square_millimetres_per_square_metre() -> Nat {
+  1000000
+}
+
+fn cubic_millimetres_per_cubic_metre() -> Nat {
+  1000000000
+}
