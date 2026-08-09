@@ -1832,7 +1832,7 @@ imports_removed	file
 13	test/claim/infer_self_grounding_wall_test.dag
 8	test/claim/instrument_bob_witness_test.dag
 6	test/claim/instrument_camera_witness_test.dag
-8	test/claim/instrument_motion_page_witness_test.dag
+9	test/claim/instrument_motion_page_witness_test.dag
 6	test/claim/instrument_physical_witness_test.dag
 12	test/claim/instrument_sandbox_witness_test.dag
 8	test/claim/instrument_tuner_witness_test.dag
@@ -2043,6 +2043,7 @@ imports_removed	file
 7	test/claim/meta_exec_confinement/lens_unit/discriminators_test.dag
 6	test/claim/meta_exec_confinement/roster_soundness_test.dag
 3	test/claim/meta_exec_confinement/scanner/planted_leak_test.dag
+2	test/claim/module_graph_edge_source_witness_test.dag
 6	test/claim/module_impact_query_witness_test.dag
 9	test/claim/module_resolution_plan_witness_test.dag
 11	test/claim/module_storage_binding_test.dag
@@ -2396,6 +2397,9 @@ imports_removed	file
 1	test/fixture/leaf_key_collision/module_a.dag
 1	test/fixture/leaf_key_collision/module_b.dag
 1	test/fixture/meta_exec_confinement_scan/leak/plant.dag
+2	test/fixture/module_graph_edge_source/consumer_imported.dag
+1	test/fixture/module_graph_edge_source/provider_imported.dag
+1	test/fixture/module_graph_edge_source/provider_referenced.dag
 2	test/fixture/production_qualification_origin_probe/cadence_receipt_plan.dag
 2	test/fixture/realization_vocab_scan/leak/plant.dag
 2	test/fixture/record_construction_census/homonym.dag

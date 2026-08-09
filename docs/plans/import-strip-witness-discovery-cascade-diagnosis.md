@@ -886,12 +886,31 @@ the ledger. What replaced it is four kinds of row, each named:
 | --- | --- | --- |
 | `per_module_convention_population` | 8 | one row per module by design (`extdeps_external_authority_anchor` ×497, `extdeps_model_scope` ×94) |
 | `intentional_ambiguity_fixture` | 3 | fixtures that exist *so that* two declarations collide; renaming them deletes the test subject |
-| `field_on_unresolved_or_wrong_type` | 71 | first failure is the receiver, not the name |
+| `field_on_unresolved_or_wrong_type` | 73 | first failure is the receiver, not the name |
 | `method_on_unresolved_receiver` | 66 | same |
 
-The convention rule is derived, not a list: a threshold sits in the gap between
-fork counts (2–6) and convention counts (94, 497), so a newly authored
-convention row classifies itself instead of waiting to be allow-listed.
+**The two excusing dispositions are NAMED SUBJECTS WITH CHECKED PROPERTIES, not
+thresholds — and an earlier revision of this PR got that wrong in the one place
+it matters most.** It classified a convention by population size (ten or more
+declarations) and an intentional collision by path shape (every candidate module
+containing `.fixture.`), on the reasoning that a rule which generalizes beats a
+list that must be maintained. Both rules fail OPEN, and they fail open *into the
+number this section asserts at zero*: a genuine accidental fork that happened to
+reach ten sites would have been reclassified as a convention and disappeared from
+the hygiene count, and an unrelated duplicate between two fixture modules would
+have been excused by its path. A rule whose failure mode is "quietly removes rows
+from the figure under test" is the absorbing fallback DESIGN §5 forbids, aimed at
+this measurement's one load-bearing claim (review 50775).
+
+Each subject is now named, and the property that makes it one is checked against
+the tree: a convention must be one declaration per module under a declared module
+prefix, and an intentional ambiguity must match an exact pinned module set. A
+subject that stops satisfying its property does not keep its disposition — it
+lands in `duplicate_unclassified`, which is loud, counted, and not zero. Six
+controls in `import-strip-measurement/classifier_controls.py` hold this in both
+directions, and the two that matter are the ones the retired rules would have
+failed: a planted ten-declaration accidental fork stays hygiene, and an unknown
+duplicate across two fixture modules stays hygiene.
 
 **What was done, by treatment.** Consolidated onto one authority:
 `declaration_ref_eq` and `declaration_ref_in_list` (44 rows, the largest family)
@@ -993,17 +1012,17 @@ Re-measured on the head carrying the repair, with the reconciliation checked by
 the classifier:
 
 ```
-stripped_hard (3,100) = control_hard (22) + attributable (3,078)
-attributable (3,078)  = Σ ledger rows (3,078)      [reconciliation: OK]
+stripped_hard (3,098) = control_hard (10) + attributable (3,088)
+attributable (3,088)  = Σ ledger rows (3,088)      [reconciliation: OK]
 ```
 
 | disposition | rows |
 | --- | --- |
-| `unique_decl_unresolved_mechanism_unobserved` | 1,885 |
+| `unique_decl_unresolved_mechanism_unobserved` | 1,893 |
 | `variant_mechanism_unobserved` | 600 |
 | `variant_owner_unindexed` | 249 |
 | `cascade` | 138 |
-| `field_on_unresolved_or_wrong_type` | 71 |
+| `field_on_unresolved_or_wrong_type` | 73 |
 | `method_on_unresolved_receiver` | 66 |
 | `ordinary_callee_unindexed` | 45 |
 | `record_shape_cascade` | 12 |
@@ -1011,15 +1030,45 @@ attributable (3,078)  = Σ ledger rows (3,078)      [reconciliation: OK]
 | `intentional_ambiguity_fixture` | 3 |
 | `unindexed_symbol_candidate` | 1 |
 
+`corpus_hygiene` is **absent from this table, at zero**, which is the close this
+section reports. So is `duplicate_unclassified` — the disposition a named
+convention or fixture subject falls into when the property that names it stops
+holding — so the two remaining excusing dispositions above are not thresholds
+that absorbed anything: each was checked against the tree, and both held.
+
 Three numbers moved for reasons that are not this repair, and saying so is the
-difference between a measurement and a scoreboard. The unstripped control rose
-12 → 22: all ten are the annotation-grain class in
-`dag/test/claim/host_phase_status_witness_test.dag`, and compiling `origin/main`
-alone reproduces 22, so the hygiene batch adds **zero** diagnostics. The corpus
-grew (16,375 imports across 2,579 files, from 16,315/2,574) because main landed
-#8062, #8061 and #8068 during the work. And
-`unique_decl_unresolved_mechanism_unobserved` rose 1,656 → 1,885 across that same
-main advance, not across the renames.
+difference between a measurement and a scoreboard. The unstripped control has
+now FALLEN 22 → 10, because main landed #8072 healing part of the annotation-grain
+class; every one of the remaining 10 sits in
+`dag/test/claim/host_phase_status_witness_test.dag`, a file this branch does not
+touch, so the hygiene batch still adds **zero** diagnostics — and this time the
+evidence is the located diagnostics themselves rather than a separate run. The
+corpus grew again (16,382 imports across 2,583 files) because main advanced
+during the work. And `unique_decl_unresolved_mechanism_unobserved` moved with
+that advance, not with the renames: it is 1,893 here against 1,656 before main
+moved at all.
+
+The re-measurement itself is not free of the effect it measures, which is worth
+stating: these figures come from a tree that includes this branch's own four
+fixture modules and one new witness. Their contribution is bounded by the control
+above — zero diagnostics unstripped — not assumed.
+
+**One defect this lane introduced is worth recording, because the corpus could
+not see it.** A homonym rename in `v2.lens.module_graph` left
+`dependency_resolution_facts_live` passing the *import* producer into both arms
+of its two-source union (review 50749). The two producers share a signature, so
+the compile stayed green and the function kept returning well-formed edges — it
+simply stopped carrying every dependency that only a bare reference establishes,
+which is precisely the edge class this whole lane is about. Nothing executed that
+seam. It does now: `test.claim.module_graph_edge_source_witness` points the
+production function at a four-module fixture and asserts the union at identity
+grain in both directions, and restoring the doubled arm reds two of its five
+witnesses. The fixture's shape is derived from the seam rather than invented —
+`reference_resolution_facts` emits nothing for a file that still carries imports,
+so the two producers are disjoint by file, the reference-only dependency must
+live in an import-less consumer, and a same-path duplicate is unconstructible
+through this seam; the witness says so rather than asserting a dedup that cannot
+arise.
 
 **This does not close import deletion, and nothing here should be read as
 progress toward it.** The remaining residual is not a naming tail. It is one

@@ -1,5 +1,5 @@
-dag+src/v2 .dag corpus sha256: f892eef9c545e85cbb2fed35d6b0cd423fd7b93ac956e524b8a292155129cd4b
-measured at commit: 88c2ff2385b3b67d4143480e76020ff90c676b12
+dag+src/v2 .dag corpus sha256: f9b8899549439989d0e31ea4d1248c920039633c190b03cc38a51c3943d0f7ba
+measured at commit: 8bb6c3861a3c7d6dddbca1ad477499f9db3e0242
 
 THE HASH IS THE ANCHOR, NOT THE COMMIT LINE. A commit cannot contain its own id,
 so any stamp written into a tracked file names an ancestor by construction; the

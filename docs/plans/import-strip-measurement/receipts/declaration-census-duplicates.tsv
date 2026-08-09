@@ -1,7 +1,6 @@
 # Multiply-declared names only (declaration_count > 1) — the actionable slice.
 # The FULL census is regenerable by the command in ../README.md;
 # it is not committed because it is derivable and large.
-count	name
 1014	live_tree_disposition
 497	extdeps_external_authority_anchor
 94	extdeps_model_scope
@@ -88,6 +87,7 @@ count	name
 4	conj2
 4	char_eq
 4	census_of
+3	witness_subject_note
 3	witness_purpose_note
 3	witness_mod_c
 3	witness_mod_b
@@ -204,7 +204,6 @@ count	name
 2	witness_type_atom
 2	witness_two_unit_assignment
 2	witness_triangle_dag
-2	witness_subject_note
 2	witness_stack_grows_down
 2	witness_sha256_hex
 2	witness_repo_file
@@ -596,6 +595,7 @@ count	name
 2	fixture_key_eq
 2	fixture_index_entry
 2	fixture_host
+2	fixture_edges
 2	fixture_carriers
 2	FixedPointCheck
 2	finding_refusal_cause

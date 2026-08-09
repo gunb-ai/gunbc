@@ -1,16 +1,16 @@
-ledger rows: 3078
-  unique_decl_unresolved_mechanism_unobserved 1885
+ledger rows: 3088
+  unique_decl_unresolved_mechanism_unobserved 1893
   variant_mechanism_unobserved               600
   variant_owner_unindexed                    249
   cascade                                    138
-  field_on_unresolved_or_wrong_type          71
+  field_on_unresolved_or_wrong_type          73
   method_on_unresolved_receiver              66
   ordinary_callee_unindexed                  45
   record_shape_cascade                       12
   per_module_convention_population           8
   intentional_ambiguity_fixture              3
   unindexed_symbol_candidate                 1
-  SUM                                        3078
+  SUM                                        3088
 
-reconciliation: stripped_hard=3100 = control_hard=22 + attributable=3078
-ledger rows 3078 vs attributable 3078: OK
+reconciliation: stripped_hard=3098 = control_hard=10 + attributable=3088
+ledger rows 3088 vs attributable 3088: OK
