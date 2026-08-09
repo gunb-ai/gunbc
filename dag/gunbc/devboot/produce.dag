@@ -1096,3 +1096,59 @@ fn live_reuse_report(
       ProduceRefused { reason: availability_refusal_reason(availability: availability) }
   }
 }
+
+data producer_standing_note: String = "WHAT A REQUEST'S PRODUCER IS DOING RIGHT NOW, derived from the store rather than stored beside it. The two refs this service already writes answer it between them: an artifact ref means the work finished and the bytes are addressable, a lease ref without an artifact means some producer holds the subject and has not finished, and neither means nobody has started. Adding a third ref carrying a status word would be a second representation of a fact the first two already determine, and it would be the one that could disagree.\\n\\nRUNNING IS NOT A LIVENESS CLAIM, and keeping that honest is the whole reason this type has the shape it does. A held lease says a producer took the subject; it does not say that producer still exists. Nothing in a git ref expires, so a process killed mid-build leaves a lease that reads exactly like an active one, and no reader can tell the difference from the ref alone. So the arm is named for what is observable -- the lease is held, by this holder -- and says nothing further.\\n\\nTHE STRANDED CASE IS THEREFORE A SEPARATE, EXPLICIT ACTION rather than an inference. A waiter that timed out knows only that it waited; concluding death from that would be the fabrication the timeout was introduced to avoid, and acting on it -- breaking the lease and starting a second build -- would destroy the exactly-one-producer property under the one condition where two producers are most likely to collide. Recovery is below, and it is something a coordinator DOES, never something a reader concludes."
+
+type ProducerStanding
+  = ProducerNotStarted
+  | ProducerRunning { holder: String }
+  | ProducerProduced { artifact: String }
+  | ProducerStandingRefused { detail: String }
+
+fn producer_standing(store_root: String, repo_root: String, token: String) -> ProducerStanding {
+  match artifact_lookup(store_root: store_root, repo_root: repo_root, token: token) {
+    ArtifactLookupRefused { detail } => ProducerStandingRefused { detail: detail }
+    ArtifactRefPresent { oid } => ProducerProduced { artifact: oid }
+    ArtifactRefAbsent =>
+      match ref_lookup(store_root: store_root, repo_root: repo_root, ref_name: lease_ref_of(token: token)) {
+        ArtifactLookupRefused { detail } => ProducerStandingRefused { detail: detail }
+        ArtifactRefPresent { oid } => ProducerRunning { holder: oid }
+        ArtifactRefAbsent => ProducerNotStarted
+      }
+  }
+}
+
+data stranded_lease_recovery_note: String = "BREAKING A LEASE IS A COORDINATOR ACTION WITH AN EXPECTED HOLDER, never an automatic reaction to a slow build. The caller must name the holder it believes is stranded, and the deletion is a compare-and-swap against exactly that value, so a lease that moved between the observation and the decision is not the lease being broken -- the recovery refuses instead. Without that, two coordinators reacting to one stalled producer would break each other's newly started builds in turn, which is the same race the lease exists to prevent, reintroduced by the machinery meant to repair it.\\n\\nIT DOES NOT DECIDE THAT A PRODUCER IS DEAD, because this repository cannot yet observe that. The producer's identity is recorded in the claim object, but no liveness fact -- a pid on a named host, a heartbeat with a bound -- is captured anywhere, so any automatic rule here would be a guess dressed as a recovery. What this gives is the mechanism plus the safety property, exercised by an operator or a coordinator that has established death by some means outside this module.\\n\\ndissolve-on: the claim object carries a liveness handle the fleet can independently check. At that point orphan detection derives, this becomes its effect arm rather than the whole story, and the standing above gains a genuine Interrupted arm -- which is deliberately absent today rather than present and never inhabited."
+
+type LeaseRecovery
+  = LeaseBroken { token: String, former_holder: String }
+  | LeaseRecoveryRefused { detail: String }
+
+fn devboot_break_stranded_lease(
+  store_root: String,
+  repo_root: String,
+  token: String,
+  expected_holder: String,
+) -> LeaseRecovery {
+  let broken = gunbc.WitnessBin.Run(
+    workdir: repo_root,
+    bin_path: "git",
+    args: [concat("--git-dir=", store_root), "update-ref", "-d", lease_ref_of(token: token), expected_holder],
+  )
+  if broken.success {
+    LeaseBroken { token: token, former_holder: expected_holder }
+  } else {
+    LeaseRecoveryRefused {
+      detail: join([
+        "the lease for ",
+        token,
+        " was not held by ",
+        expected_holder,
+        " at the moment of the break, so it was left alone (git exit ",
+        to_string(broken.exit_code),
+        "): ",
+        trim(s: broken.stderr),
+      ], ""),
+    }
+  }
+}
