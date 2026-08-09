@@ -56,6 +56,7 @@ type OwnedArtifactKind =
   | AttemptStateRoot
   | SystemdUnit
   | BeltTimerUnit
+  | FleetConvergeTimerUnit
   | TailscaleServeMapping
 
 type EnsuredDependencyKind =
@@ -100,6 +101,7 @@ fn owned_artifact_teardown_disposition(kind: OwnedArtifactKind) -> TeardownDispo
     AttemptStateRoot => TeardownActs
     SystemdUnit => TeardownActs
     BeltTimerUnit => TeardownActs
+    FleetConvergeTimerUnit => TeardownActs
     TailscaleServeMapping => TeardownActs
   }
 }
@@ -173,6 +175,33 @@ fn deployment_belt_service_unit_path(names: DeploymentNames) -> NonEmptyStr {
 
 fn deployment_belt_timer_unit_path(names: DeploymentNames) -> NonEmptyStr {
   join(["/etc/systemd/system/", deployment_belt_timer_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+// CONVERGE-0 loop member (operator directive 2026-08-09: 'timer in deployment membership').
+// The fleet-converge timer rides the belt-timer precedent EXACTLY — per-deployment names
+// derived from the instance stem (unconditional membership, so the twin mirror holds and
+// two instances cannot mint one path), one member owning .timer + .service, teardown
+// removes both, retirement stops the runtime. The converge pass itself is idempotent
+// observe→verdict→apply-on-drift, so a twin's duplicate cadence against the same host is
+// duplicated observation, never duplicated mutation. CONTENT cadence/catch-up facts
+// (OnCalendar, Persistent=true, jitter) derive from the gunbc.fleet_converge_timer
+// authority rows; only the NAMES derive here. That module's fixed ctrl-fleet-converge
+// unit-name rows remain the standalone/host-standup authority and are not consumed by
+// this member.
+fn deployment_fleet_converge_service_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-fleet-converge.service"], "") as NonEmptyStr
+}
+
+fn deployment_fleet_converge_timer_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-fleet-converge.timer"], "") as NonEmptyStr
+}
+
+fn deployment_fleet_converge_service_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_fleet_converge_service_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+fn deployment_fleet_converge_timer_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_fleet_converge_timer_unit_name(names: names) as String], "") as NonEmptyStr
 }
 
 data tailscale_default_https_port: Port = 443
@@ -265,6 +294,7 @@ fn deployment_owned_steps(
     DeploymentArtifactStep { kind: AttemptStateRoot, path: dashboard_instance_dispatch_attempt_state_root(instance: instance) as String as NonEmptyStr },
     DeploymentArtifactStep { kind: SystemdUnit, path: deployment_systemd_unit_path(names: names) },
     DeploymentArtifactStep { kind: BeltTimerUnit, path: deployment_belt_timer_unit_path(names: names) },
+    DeploymentArtifactStep { kind: FleetConvergeTimerUnit, path: deployment_fleet_converge_timer_unit_path(names: names) },
     DeploymentArtifactStep { kind: TailscaleServeMapping, path: tailscale_serve_endpoint_key(endpoint: names.tailscale_serve_endpoint) },
   ]
 }
@@ -389,6 +419,7 @@ fn owned_artifact_retirement_disposition(kind: OwnedArtifactKind) -> RetirementD
     AttemptStateRoot => RetirementPreserves
     SystemdUnit => RetiresRuntime
     BeltTimerUnit => RetiresRuntime
+    FleetConvergeTimerUnit => RetiresRuntime
     TailscaleServeMapping => RetirementPreserves
   }
 }

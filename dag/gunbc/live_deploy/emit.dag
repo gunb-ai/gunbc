@@ -1,5 +1,12 @@
 module gunbc.live_deploy.emit
 
+import gunbc.fleet_converge_cli { fleet_converge_receipt_dir }
+import gunbc.fleet_converge_timer {
+  fleet_converge_timer_on_calendar,
+  fleet_converge_timer_randomized_delay,
+}
+import std.measure { second_count }
+
 import std.types { String, List, Bool, NonEmptyStr, Int, FilePath, CommitSha }
 import gunbc.managed_directory {
   ManagedDirectory,
@@ -34,10 +41,13 @@ import gunbc.live_deploy.spec {
   DeploymentStep, ArtifactStep, Dependency,
   DeploymentDependencyStep,
   DeploymentArtifactStep,
-  ServeBinary, GunbcSourceTree, DispatchWorktreeRoot, AttemptStateRoot, SystemdUnit, BeltTimerUnit, TailscaleServeMapping,
+  ServeBinary, GunbcSourceTree, DispatchWorktreeRoot, AttemptStateRoot, SystemdUnit, BeltTimerUnit, FleetConvergeTimerUnit, TailscaleServeMapping,
   deployment_belt_service_unit_name,
   deployment_belt_timer_unit_name,
   deployment_belt_service_unit_path,
+  deployment_fleet_converge_service_unit_name,
+  deployment_fleet_converge_timer_unit_name,
+  deployment_fleet_converge_service_unit_path,
   deployment_spec_srv1,
   deployment_plan_listen_port,
   deployment_owned_steps_retract_order,
@@ -299,6 +309,56 @@ fn apply_belt_service_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
   ], ""))
 }
 
+fn emit_fleet_converge_service_unit_doc(spec: DeploymentSpec) -> Doc {
+  let svc = spec.service
+  doc_concat(parts: [
+    doc_line_of(text: "[Unit]"),
+    doc_line_of(text: "Description=gunbc fleet converge (self)"),
+    doc_line_of(text: "After=network-online.target"),
+    doc_line_of(text: "Wants=network-online.target"),
+    doc_line_of(text: ""),
+    doc_line_of(text: "[Service]"),
+    doc_line_of(text: "Type=oneshot"),
+    doc_line_of(text: "User=root"),
+    doc_line_of(text: concat("WorkingDirectory=", svc.repo_root)),
+    doc_line_of(text: join([
+      "ExecStart=", svc.serve_binary, " converge --host self",
+    ], "")),
+  ])
+}
+
+fn emit_fleet_converge_timer_unit_doc(spec: DeploymentSpec) -> Doc {
+  doc_concat(parts: [
+    doc_line_of(text: "[Unit]"),
+    doc_line_of(text: "Description=gunbc fleet converge cadence"),
+    doc_line_of(text: ""),
+    doc_line_of(text: "[Timer]"),
+    doc_line_of(text: concat("Unit=", deployment_fleet_converge_service_unit_name(names: spec.names) as String)),
+    doc_line_of(text: concat("OnCalendar=", fleet_converge_timer_on_calendar)),
+    doc_line_of(text: "Persistent=true"),
+    doc_line_of(text: concat("RandomizedDelaySec=", to_string(second_count(s: fleet_converge_timer_randomized_delay)))),
+    doc_line_of(text: ""),
+    doc_line_of(text: "[Install]"),
+    doc_line_of(text: "WantedBy=timers.target"),
+  ])
+}
+
+fn apply_fleet_converge_service_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
+  deploy_raw(command: join([
+    "cat > \"$_gunbc_stage/", deployment_fleet_converge_service_unit_name(names: spec.names) as String, "\" <<'GUNBC_FLEET_CONVERGE_SERVICE_EOF'\n",
+    render(doc: emit_fleet_converge_service_unit_doc(spec: spec), proto: live_deploy_protocol),
+    "GUNBC_FLEET_CONVERGE_SERVICE_EOF",
+  ], ""))
+}
+
+fn apply_fleet_converge_timer_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
+  deploy_raw(command: join([
+    "cat > \"$_gunbc_stage/", deployment_fleet_converge_timer_unit_name(names: spec.names) as String, "\" <<'GUNBC_FLEET_CONVERGE_TIMER_EOF'\n",
+    render(doc: emit_fleet_converge_timer_unit_doc(spec: spec), proto: live_deploy_protocol),
+    "GUNBC_FLEET_CONVERGE_TIMER_EOF",
+  ], ""))
+}
+
 fn apply_belt_timer_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
   deploy_raw(command: join([
     "cat > \"$_gunbc_stage/", deployment_belt_timer_unit_name(names: spec.names) as String, "\" <<'GUNBC_BELT_TIMER_EOF'\n",
@@ -506,6 +566,22 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
       deploy_raw(command: systemctl_enable_command(unit: deployment_belt_timer_unit_name(names: spec.names), privileged: true)),
       deploy_raw(command: systemctl_restart_command(unit: deployment_belt_timer_unit_name(names: spec.names), privileged: true)),
     ]
+    FleetConvergeTimerUnit => [
+      deploy_raw(command: join(["sudo -n install -d -m 0755 ", fleet_converge_receipt_dir], "")),
+      apply_fleet_converge_service_unit_write_step(spec: spec),
+      apply_fleet_converge_timer_unit_write_step(spec: spec),
+      deploy_raw(command: join([
+        "sudo -n install -m 0644 \"$_gunbc_stage/", deployment_fleet_converge_service_unit_name(names: spec.names) as String, "\" ",
+        deployment_fleet_converge_service_unit_path(names: spec.names) as String,
+      ], "")),
+      deploy_raw(command: join([
+        "sudo -n install -m 0644 \"$_gunbc_stage/", deployment_fleet_converge_timer_unit_name(names: spec.names) as String, "\" ",
+        art.path as String,
+      ], "")),
+      deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
+      deploy_raw(command: systemctl_enable_command(unit: deployment_fleet_converge_timer_unit_name(names: spec.names), privileged: true)),
+      deploy_raw(command: systemctl_restart_command(unit: deployment_fleet_converge_timer_unit_name(names: spec.names), privileged: true)),
+    ]
     TailscaleServeMapping => [
       tailscale_serve_apply_step(spec: spec),
     ]
@@ -531,6 +607,15 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
       [
         deploy_raw(command: join([
           "sudo -n rm -f ", art.path as String, " ", deployment_belt_service_unit_path(names: spec.names) as String,
+        ], "")),
+        deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
+      ]
+    )
+    FleetConvergeTimerUnit => concat(
+      systemctl_disable_now_if_present_steps(unit: deployment_fleet_converge_timer_unit_name(names: spec.names), privileged: true),
+      [
+        deploy_raw(command: join([
+          "sudo -n rm -f ", art.path as String, " ", deployment_fleet_converge_service_unit_path(names: spec.names) as String,
         ], "")),
         deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
       ]

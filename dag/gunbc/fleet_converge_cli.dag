@@ -283,8 +283,40 @@ fn converge_cli_verify_run(host: String) -> ConvergeCliReceipt {
   }
 }
 
+// Receipt publication (CONVERGE-0 loop leg): on the SELF route — the per-host timer's
+// route, where the deployment guarantees the host layout exists — the receipt line is
+// WRITTEN to the declared receipts path before being printed, so a fold-side observation
+// job can read the host's last converge standing without a new commit. Publication
+// failure on that route FAILS CLOSED (converged=false with a typed reason): the loop's
+// product is the published receipt, so an unpublished converge must not report success.
+// Non-self routes (operator/CI supervised runs against a named host) are unchanged —
+// no write is attempted, because nothing guarantees the receipts directory there.
+data fleet_converge_receipt_dir: String = "/opt/gunbc/receipts"
+
+fn fleet_converge_receipt_path(host: String) -> String {
+  join([fleet_converge_receipt_dir, "/", host, "-converge-receipt.txt"], "")
+}
+
+fn converge_cli_publish(out: ConvergeCliOutput, resolved: String) -> ConvergeCliOutput {
+  let w = Filesystem.Write(path: fleet_converge_receipt_path(host: resolved), content: concat(out.line, "\n"))
+  if w.success {
+    out
+  } else {
+    ConvergeCliOutput {
+      line: out.line,
+      converged: false,
+      reason: Present { value: concat("gunbc converge: receipt publication failed — ", w.error) },
+    }
+  }
+}
+
 fn converge_cli_output(host: String) -> ConvergeCliOutput {
-  converge_cli_output_with_verify(host: host, verify_only: false)
+  let out = converge_cli_output_with_verify(host: host, verify_only: false)
+  if host == "self" {
+    converge_cli_publish(out: out, resolved: converge_cli_resolve_self(host: host))
+  } else {
+    out
+  }
 }
 
 fn converge_cli_verify_output(host: String) -> ConvergeCliOutput {
