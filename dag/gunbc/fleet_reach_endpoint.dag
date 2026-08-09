@@ -1,0 +1,46 @@
+module gunbc.fleet_reach_endpoint
+
+import std.types { String, NonEmptyStr, Bool, List }
+import product.placement_supply { HostIdentity }
+import gunbc.dgx_spark_procurement {
+  DgxSparkRouterBinding,
+  SlotAssigned,
+  SlotUnassigned,
+  dgx_spark_router_bindings,
+}
+import extdeps.network.ipv4 { render_ipv4_address }
+
+// Probe-endpoint resolution (bold-eagle-107's projection, offered via witty-raven
+// msg_1c4e0bce; homed HERE — downstream of both gunbc.dgx_spark_procurement and the
+// reach probe — so procurement never imports reach machinery). The srv5/srv6 resolution
+// gap is NOT missing DNS: the addresses are already modeled as cited CR1000A DHCP-lease
+// rows joined to fleet identity by an OperatorAllocation receipt, and nothing publishes
+// 'srv5'/'srv6' as resolvable names. A probe that resolves HOSTNAMES therefore fails for
+// every Spark forever regardless of host state; the fix is consuming the modeled
+// endpoint. SlotAssigned projects the reservation's address; SlotUnassigned projects NO
+// endpoint — never a placeholder (a fabricated address would be the §5 plausible-output
+// trap aimed at the network).
+fn spark_endpoint_for_binding(binding: DgxSparkRouterBinding) -> String? {
+  match binding {
+    SlotAssigned { identity: _, reservation: r, allocation: _ } =>
+      Present { value: render_ipv4_address(addr: r.ipv4_address) as String }
+    SlotUnassigned { identity: _ } => none
+  }
+}
+
+// Fleet-wide: a host with a modeled endpoint probes AT that endpoint; every other host
+// probes by name (srv1-srv4 resolve via the LAN today). The receipt stays keyed by the
+// fleet IDENTITY either way — the endpoint is transport addressing, not identity.
+fn fleet_probe_endpoint_for(host: String) -> String {
+  fold(dgx_spark_router_bindings, init: host, f: fn(acc, b) {
+    match b {
+      SlotAssigned { identity: i, reservation: r, allocation: _ } =>
+        if (i as String) == host {
+          render_ipv4_address(addr: r.ipv4_address) as String
+        } else {
+          acc
+        }
+      SlotUnassigned { identity: _ } => acc
+    }
+  })
+}

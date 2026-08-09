@@ -105,3 +105,20 @@ test fn cell_standings_discriminate_and_only_converged_counts() -> Bool {
     && !cell_standing_is_converged(s: CellDrifted { host: h, phase_label: "p" })
     && !cell_standing_is_converged(s: CellConflict { host: h, phase_label: "p" })
 }
+
+// Machine-id hazard control (msg_1c4e0bce): two receipts claiming ONE host identity —
+// possible while both Sparks share a machine-id and factory host keys — classify as a
+// named ambiguity, never first-wins. Even two CONVERGED duplicates cannot converge the
+// knob, because which machine produced which receipt is exactly what is unestablished.
+test fn duplicate_receipts_for_one_host_are_ambiguity_never_a_pick() -> Bool {
+  let a = converged_receipt(host: "srv5")
+  let b = converged_receipt(host: "srv5")
+  match host_knob_standing(host: "srv5" as HostIdentity, receipts: [a, b]) {
+    KnobNotConverged { host: _, reason: r } => string_contains(s: r, pattern: "ambiguous")
+    _ => false
+  }
+    && match host_knob_standing(host: "srv5" as HostIdentity, receipts: [a]) {
+      KnobConverged { host: _ } => true
+      _ => false
+    }
+}

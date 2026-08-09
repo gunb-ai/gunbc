@@ -10,6 +10,7 @@ import gunbc.typed_argv_exec {
   TypedArgvExecRefused,
 }
 import gunbc.clock_read { clock_now_probed_at }
+import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
 
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import product.placement_supply { HostIdentity }
@@ -204,8 +205,11 @@ type FleetReachProbeRun {
   receipts: List<HostReachIdentityProbeReceipt>
 }
 
+// The probe transports to the host's RESOLVED ENDPOINT (gunbc.fleet_reach_endpoint:
+// Sparks probe at their modeled reservation address, everyone else by name) while the
+// receipt stays keyed by fleet IDENTITY — addressing is transport, never identity.
 fn probe_host_reach_once(host: String, probed_at: String) -> HostReachIdentityProbeReceipt {
-  let outcome = match typed_argv_probe_over_ssh(host: host as NonEmptyStr, argv: ["hostname"]) {
+  let outcome = match typed_argv_probe_over_ssh(host: fleet_probe_endpoint_for(host: host) as NonEmptyStr, argv: ["hostname"]) {
     TypedArgvExecConverged { result: r } =>
       classify_reach_probe_wire_with_expectation(
         success: r.success,

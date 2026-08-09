@@ -73,20 +73,27 @@ type HostKnobStanding
   | KnobNotConverged { host: HostIdentity, reason: String }
   | KnobUnobserved { host: HostIdentity }
 
+// Duplicate receipts for ONE host identity are a CONTRADICTION to classify, never a
+// pick (the machine-id hazard, msg_1c4e0bce: both Sparks share one /etc/machine-id and
+// shipped identical host keys, so two machines CAN claim one identity until
+// host-identity-converge runs — first-wins would render that collision a verdict).
+// 0 receipts -> Unobserved; exactly 1 -> judged on its own validity; >1 -> NotConverged
+// with the ambiguity named, whatever the duplicates claim.
 fn host_knob_standing(host: HostIdentity, receipts: List<ConvergeCliReceipt>) -> HostKnobStanding {
-  match fold(receipts, init: none, f: fn(acc, r) {
-    match acc {
-      Present { value: _ } => acc
-      _ => if r.host == (host as String) { Present { value: r } } else { none }
-    }
-  }) {
-    Present { value: r } =>
+  let mine = filter(receipts, r => r.host == (host as String))
+  if length(mine) == 0 {
+    KnobUnobserved { host: host }
+  } else {
+    if length(mine) > 1 {
+      KnobNotConverged { host: host, reason: "ambiguous: multiple converge receipts claim this one host identity — a collision to investigate, never a pick" }
+    } else {
+      let r = mine.first()
       if converge_cli_receipt_converged(r: r) {
         KnobConverged { host: host }
       } else {
         KnobNotConverged { host: host, reason: "converge receipt present but not converged" }
       }
-    _ => KnobUnobserved { host: host }
+    }
   }
 }
 

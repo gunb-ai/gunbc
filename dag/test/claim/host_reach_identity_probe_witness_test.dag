@@ -4,6 +4,7 @@ import std.types { Bool, String, NonEmptyStr, List }
 import std.upsert_decision { ObservationVerdict, Converged, Drifted, Conflict, Inaccessible, UnknownRefused }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3 }
+import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.host_reach_identity_probe {
   ReachProbeOutcome,
   ProbeReachable,
@@ -171,4 +172,13 @@ test fn mismatch_expectation_threads_without_fabrication() -> Bool {
       ProbeReachable { observed_short_hostname: h } => h == "srv5"
       _ => false
     }
+}
+
+// Endpoint resolution (msg_1c4e0bce): the Sparks' probe target is the MODELED
+// reservation address — 'srv5'/'srv6' are not published names anywhere — while
+// name-resolvable hosts pass through unchanged. Identity stays the receipt key.
+test fn spark_probe_targets_are_modeled_addresses_not_names() -> Bool {
+  fleet_probe_endpoint_for(host: "srv5") == "192.168.1.222"
+    && fleet_probe_endpoint_for(host: "srv6") == "192.168.1.223"
+    && fleet_probe_endpoint_for(host: "srv1") == "srv1"
 }

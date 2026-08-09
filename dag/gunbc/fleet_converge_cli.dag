@@ -324,6 +324,14 @@ fn converge_cli_verify_output(host: String) -> ConvergeCliOutput {
   converge_cli_output_with_verify(host: host, verify_only: true)
 }
 
+// MACHINE-ID HAZARD, checked (msg_1c4e0bce): self identity here derives from the
+// kernel hostname — NEVER /etc/machine-id, which both Sparks share from one baked DGX
+// image (and their factory SSH host keys shipped identical), so machine-id and host-key
+// are non-anchors until repaired (SPARK-SERVE-0, bold-eagle). Hostname is itself only
+// sound AFTER P0:host-identity-converge has set it; before that, two machines can
+// resolve one name — which is why the fleet fold classifies duplicate receipts for one
+// identity as a named ambiguity (never first-wins), so a collision surfaces as
+// NotConverged instead of one machine's receipt silently satisfying the other.
 // --host self (CONVERGE-0 loop leg): the per-host timer unit converges SELF, so the
 // literal "self" resolves to the machine's own kernel-reported short hostname before
 // routing — the ONE observation a host can always make about itself, read at the cited
