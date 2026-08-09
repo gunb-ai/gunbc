@@ -1124,6 +1124,36 @@ fn devboot_materialize(store_root: String, repo_root: String, artifact_oid: Stri
   ], "")
 }
 
+// THE CONSUMER ENTRY RETURNS AN EXIT CODE, for the same reason the producer entry does. devboot_materialize answers a String, and the harness treats a non-ProcessExit return as a refusal -- so a consumer that fetched the bytes, verified them and ran them successfully was reported as REFUSED, with the successful result printed underneath the word. A success reported as a failure is the reporting half of the honesty rule this vertical enforces everywhere else, and it had already been fixed once on the producer side without the consumer side being looked at.
+//
+// The verdict is derived from what was measured rather than from reaching the end of the function: the fetched bytes must hash to the digest the caller was promised AND the binary must execute successfully. Either failing is a refusal, so a consumer cannot report success on bytes it could not verify or could not run.
+
+fn devboot_materialize_entry(
+  store_root: String,
+  repo_root: String,
+  artifact_oid: String,
+  out_path: String,
+  expected_sha256: String,
+  receipt_path: String,
+) -> ProcessExit {
+  let report = devboot_materialize(
+    store_root: store_root,
+    repo_root: repo_root,
+    artifact_oid: artifact_oid,
+    out_path: out_path,
+  )
+  let written = Filesystem.Write(path: receipt_path, content: report)
+  if !string_contains(s: report, pattern: join([" sha256=", expected_sha256, " "], "")) {
+    exit_failure(reason: join(["the materialized bytes did not match the promised digest ", expected_sha256, ": ", report], ""))
+  } else {
+    if !string_contains(s: report, pattern: " executed_exit=0") {
+      exit_failure(reason: join(["the materialized binary did not execute successfully: ", report], ""))
+    } else {
+      ExitSuccess
+    }
+  }
+}
+
 // THE BYTES NEVER PASS THROUGH A STRING, and that is a correctness constraint rather than a performance one. An earlier draft of this function read the blob to stdout and wrote that value to a file, which would have routed twenty-four megabytes of executable through a text carrier -- any byte sequence that is not valid UTF-8 would have been mangled, and the corruption would have surfaced as a binary that refuses to execute rather than as an error at the point it happened.
 //
 // `git unpack-file` writes the blob to a temporary file itself and prints only the NAME, so the bytes travel from the object database to the filesystem entirely inside git. Verified by execution: the unpacked file's sha256 equals the built binary's exactly.
