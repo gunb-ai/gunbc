@@ -1,0 +1,162 @@
+module test.claim.decl_consumption_witness
+
+import std.types { Bool, String }
+import v2.std.algebra { length }
+import v2.std.optional { Present, Absent }
+import std.decl_ref { DeclarationRef, decl_ref }
+import v2.std.node { Node, Symbol, Edge, Positional, TypeNode, Atom, node_offset_atom }
+import v2.std.decl_index { DeclFact, FnItem }
+import v2.lens.decl_consumption {
+  DeclarationConsumption,
+  DeclarationConsumer,
+  DeclarationReference,
+  ConsumptionUnresolvable,
+  SubjectNameAmbiguous,
+  SubjectUniverseAbsent,
+  build_declaration_consumption_index,
+  declaration_consumers,
+  decl_consumption_atom_names,
+}
+
+data decl_consumption_witness_note: String = "THE PAIRS ARE THE POINT. Each claim below is asserted against a planted population where the OPPOSITE population is also planted, so a fold that ignored its input and answered one constant cannot pass: a subject with a consumer and a subject with none; a name that is unique and a name that is duplicated; a subject inside the universe and one outside it. The module-grain predecessor would have passed the first of each pair and failed the second, which is exactly the fail-open being replaced -- fx.orphan lives in a module that has dependents, so module grain reports it reached while nothing names it."
+
+fn fx_atom(sym: Symbol) -> Node {
+  node_offset_atom(sym: sym)
+}
+
+fn fx_body(names: List<Symbol>) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^fx_body_root } },
+    children: fold(names, init: [], f: fn(acc, s) {
+      concat(acc, [Edge { label: Positional, target: fx_atom(sym: s) }])
+    }),
+    occurrence_id: v2.std.node.SyntheticOccurrence,
+  }
+}
+
+fn fx_fact(qualified_name: String, name: String, body: Node) -> DeclFact {
+  DeclFact {
+    qualified_name: qualified_name,
+    name: name,
+    kind: FnItem,
+    node: body,
+    rel_path: "fx/consumption.dag",
+  }
+}
+
+data fixture_population_note: String = "fx.m.target is referenced by fx.m.caller and by nothing else. fx.m.orphan is referenced by nobody but sits in the SAME module as a referenced declaration, which is the precise case module grain answers wrongly. fx.m.dup and fx.other.dup share a short name, so any reference to it is ambiguous and must land in unresolvable rather than in either candidate's consumer list."
+
+fn fixture_facts() -> List<DeclFact> {
+  [
+    fx_fact(
+      qualified_name: "fx.m.target",
+      name: "target",
+      body: fx_body(names: [^target]),
+    ),
+    fx_fact(
+      qualified_name: "fx.m.orphan",
+      name: "orphan",
+      body: fx_body(names: [^orphan]),
+    ),
+    fx_fact(
+      qualified_name: "fx.m.caller",
+      name: "caller",
+      body: fx_body(names: [^caller, ^target]),
+    ),
+    fx_fact(
+      qualified_name: "fx.m.dup",
+      name: "dup",
+      body: fx_body(names: [^dup]),
+    ),
+    fx_fact(
+      qualified_name: "fx.other.dup",
+      name: "dup",
+      body: fx_body(names: [^dup]),
+    ),
+    fx_fact(
+      qualified_name: "fx.m.ambiguous_user",
+      name: "ambiguous_user",
+      body: fx_body(names: [^ambiguous_user, ^dup]),
+    ),
+  ]
+}
+
+fn fixture_index() -> v2.lens.decl_consumption.DeclarationConsumptionIndex {
+  build_declaration_consumption_index(facts: fixture_facts())
+}
+
+fn fixture_consumers(module_path: String, decl_name: String) -> DeclarationConsumption {
+  declaration_consumers(
+    index: fixture_index(),
+    subject: decl_ref(module_path: module_path, decl_name: decl_name),
+  )
+}
+
+test fn decl_consumption_referenced_declaration_has_its_consumer() -> Bool {
+  let answer = fixture_consumers(module_path: "fx.m", decl_name: "target")
+  if length(xs: answer.consumers) == 1 {
+    match answer.consumers |> first {
+      Absent => false
+      Present { value: c } =>
+        match c {
+          DeclarationReference { consumer } => consumer.qualified_name == "fx.m.caller"
+          _ => false
+        }
+    }
+  } else {
+    false
+  }
+}
+
+data orphan_control_note: String = "THE ARM THE MODULE-GRAIN PREDECESSOR CANNOT REACH. fx.m.orphan sits in fx.m, and fx.m is depended upon -- fx.m.caller references fx.m.target, so any module-grain reachability answer for fx.m is 'reached'. Declaration grain answers zero, which is the true fact, and this is the single claim that distinguishes the two mechanisms."
+
+test fn decl_consumption_orphan_in_a_reached_module_has_no_consumer() -> Bool {
+  let orphan = fixture_consumers(module_path: "fx.m", decl_name: "orphan")
+  let target = fixture_consumers(module_path: "fx.m", decl_name: "target")
+  length(xs: orphan.consumers) == 0
+    && length(xs: orphan.unresolvable) == 0
+    && length(xs: target.consumers) == 1
+}
+
+test fn decl_consumption_self_reference_is_not_a_consumer() -> Bool {
+  let answer = fixture_consumers(module_path: "fx.m", decl_name: "caller")
+  length(xs: answer.consumers) == 0
+}
+
+test fn decl_consumption_ambiguous_name_refuses_rather_than_picking() -> Bool {
+  let index = fixture_index()
+  let ambiguous_recorded = fold(index.unresolvable, init: false, f: fn(acc, u) {
+    match u {
+      SubjectNameAmbiguous { name, consumer: _, candidate_count: _ } =>
+        acc || name == "dup"
+      _ => acc
+    }
+  })
+  let neither_candidate_credited =
+    length(xs: fixture_consumers(module_path: "fx.m", decl_name: "dup").consumers) == 0
+      && length(xs: fixture_consumers(module_path: "fx.other", decl_name: "dup").consumers) == 0
+  ambiguous_recorded && neither_candidate_credited
+}
+
+data universe_control_note: String = "'NOTHING REFERENCES IT' AND 'IT IS NOT IN THE FACT PACK' ARE DIFFERENT STATES. The first is a fact about consumption and licenses deleting the declaration; the second is a universe hole and licenses nothing. Both would render as an empty consumer list without the subject_universe check, so this control asserts the refusing arm for an absent subject AND the clean empty answer for a present one, because only the pair proves the two are distinguished rather than one of them being reported for both."
+
+test fn decl_consumption_absent_subject_refuses_and_present_orphan_does_not() -> Bool {
+  let absent = fixture_consumers(module_path: "fx.nowhere", decl_name: "never_declared")
+  let refuses = match absent.unresolvable |> first {
+    Absent => false
+    Present { value: u } =>
+      match u {
+        SubjectUniverseAbsent { subject_qualified_name } =>
+          subject_qualified_name == "fx.nowhere.never_declared"
+        _ => false
+      }
+  }
+  let orphan_is_clean =
+    length(xs: fixture_consumers(module_path: "fx.m", decl_name: "orphan").unresolvable) == 0
+  refuses && orphan_is_clean
+}
+
+test fn decl_consumption_atom_names_reads_the_whole_subtree() -> Bool {
+  let names = decl_consumption_atom_names(root: fx_body(names: [^alpha, ^beta]))
+  length(xs: names) == 3
+}
