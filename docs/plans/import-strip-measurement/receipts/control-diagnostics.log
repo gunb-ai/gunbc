@@ -2,9 +2,9 @@ indexed 3404 modules from 2 source roots
 resolved 2274 sources (transitive import closure)
 [census] 1130 indexed modules outside the closure enter the name census only (not compiled)
 ◐ started compile.frontend
-✓ compile.frontend done in 24 seconds
+✓ compile.frontend done in 25 seconds
 ✓ compile.normalize done in 1 seconds
-✓ compile.reconcile done in 5 minutes
+✓ compile.reconcile done in 6 minutes
 ✓ compile.analyses done in 1 seconds
 v2 self-compile produced 22 hard diagnostic(s):
 source annotation sits inside a declaration body. Only module-item grain is modeled; move it above the declaration it describes. (dag/test/claim/cross_file_binding_assembly_witness_test.dag:11371-11459)

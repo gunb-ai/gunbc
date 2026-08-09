@@ -94,6 +94,21 @@ Result: the manifest and `import-strip-residual-ledger.tsv` are reproduced
 (`3,100 = 22 + 3,078`, ledger rows 3,078, OK). A reproducer that cannot be run
 from a clean checkout is a receipt with a story attached, not a reproducer.
 
+## What in the receipts is NOT byte-reproducible
+
+The compile logs carry wall-clock lines (`compile.reconcile done in 5 minutes`),
+so a re-run reproduces the diagnostics exactly and the timings never. Compare
+receipts with those lines filtered:
+
+```sh
+diff <(grep -v 'done in' new.log) <(grep -v 'done in' receipts/control-diagnostics.log)
+```
+
+This is not a caveat added to excuse a mismatch — it is how the stamp below was
+checked. Everything the measurement asserts (diagnostic text, counts,
+reconciliation, manifest, ledger) is byte-reproducible; only the durations are
+not, and nothing derives from them.
+
 ## Receipts
 
 | file | what it is |
