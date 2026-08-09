@@ -38,33 +38,6 @@ pub fn trait_derive_emit_scope_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn trait_derive_emit_v1_coproduct_shape_dissolve_on() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "v1_coproduct_all_variants_nullary duplicates v2.std.compilers.coproduct_variant_shape.coproduct_all_variants_nullary (nullary = zero Conj children on v1 Node); dissolves when v1 trait_derive_emit imports the v2 shape authority instead of minting a parallel walk.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn trait_derive_emit_symbol_ord_carrier_dissolve_on() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "rust_nominal_identity_carrier_shape_eligible gates on authored_name_at == \"Symbol\"; dissolves when Symbol kernel grounds on target_model.symbol_kernel_type_node (or equivalent typed atom) instead of string match. Single authority: trait_derive_emit (emit_rust imports; duplicate removed review 42525).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn trait_derive_emit_bool_host_bridge_dissolve_on() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "dissolve-on: v1_emit_enum_supplemental_impls / rust_supplemental_impls_bool_coproduct — Bool↔host-bool bridge. Dissolves with the Value::Null-split / Bool True|False ↔ Value::Bool grounding lane (DESIGN open thread; gunbc.plans.value_null_split): when the modeled Bool coproduct and the native Value::Bool (and host bool) are one grounded carrier, the bridge deletes. Do not ground the bridge in an emitter cleanup — that forks the operator-tracked thread (§3).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn trait_derive_emit_item_clone_bound_rule_note() -> String {
     thread_local! {
         static CACHED: String = {
@@ -101,28 +74,10 @@ pub fn trait_derive_emit_item_clone_bound_contract_fork_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn trait_derive_emit_item_clone_bound_contract_fork_dissolve_on() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "DISSOLVE-ON: v2 Rust emitter consumes target_derive_supplemental_generic_bound_contract for item-level generic bounds; then delete this structural implementation — do not accumulate beside the contract.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn trait_derive_emit_fn_clone_bound_keyed_carrier_module_scaffold_note() -> String {
     thread_local! {
         static CACHED: String = {
             "COUNTED SCAFFOLD (emit_fn_def module_path arm): std.keyed_row and std.keyed_roster generic fns emit Clone on every item generic because List<KeyedRow<..>> value-param type exprs reach emit as opaque containers — the element applied-type children are not readable in param_node_type_expr, so v1_fn_param_type_needs_clone_bound cannot derive K/V from rows: List<KeyedRow<K, V>> even though item-level KeyedRow<K: Clone, V: Clone> and the emitted bodies clone both fields. The override is module-scoped, not a seed widen: it does not change v1_generic_params_needing_clone_bound's per-param filter. Membership is the typed allowlist trait_derive_emit_fn_clone_bound_keyed_carrier_module_allowlist, enrolled DeclaredFrontier in gunbc.roster_registry — not gunbc.non_fold_residue (no wildcard-match site). Witness: regen --verify on std_keyed_row/std_keyed_roster without this arm drops V: Clone on keyed_row_find and drops all fn-level bounds on keyed_roster_build (compile errors on .value.clone()).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn trait_derive_emit_fn_clone_bound_keyed_carrier_module_scaffold_dissolve_on() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "DISSOLVE-ON: v1 param_node_type_expr preserves container element applied-type children (or an equivalent typed surface) so v1_fn_generic_clone_bound_via_bounded_container_element / v1_fn_generic_clone_bound_via_referenced_decl derive keyed-row carrier bounds without the module_path arm; then delete trait_derive_emit_fn_clone_bound_keyed_carrier_module_allowlist, its emit_fn_def consumer, and the gunbc.roster_registry registration.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())

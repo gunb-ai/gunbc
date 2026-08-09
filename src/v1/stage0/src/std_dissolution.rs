@@ -4,8 +4,8 @@
 use self::DissolutionCondition::*;
 use self::DissolutionStatus::*;
 use self::DissolutionTrigger::*;
-pub use crate::std_decl_ref::declaration_ref_in_list;
 pub use crate::std_decl_ref::DeclarationRef;
+pub use crate::std_decl_ref::{declaration_ref_display_key, declaration_ref_in_list};
 pub use crate::std_types::NonEmptyStr;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -114,6 +114,24 @@ pub fn dissolution_is_bound(condition: Rc<DissolutionCondition>) -> bool {
     match (*condition.clone()).clone() {
         DissolutionCondition::BoundDissolution { trigger: _, .. } => true,
         DissolutionCondition::UnboundDissolution { description: _, .. } => false,
+    }
+}
+
+pub fn dissolution_description_projection_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "A TOTAL rendering of the condition for display and for witnesses that assert what a trigger names. It is a projection, not a second representation: the bound arm renders the declaration it is waiting on from the ref itself, so there is no authored sentence beside the ref that could drift from it, and the unbound arm returns the only text it has. Nothing decides expiry from this string — dissolution_status never reads it — so rendering a condition cannot become a way to make one fire.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn dissolution_description(condition: Rc<DissolutionCondition>) -> String {
+    match (*condition.clone()).clone() {
+        DissolutionCondition::BoundDissolution { trigger: t, .. } => {
+            declaration_ref_display_key(dissolution_trigger_ref(t.clone()))
+        }
+        DissolutionCondition::UnboundDissolution { description: d, .. } => d.clone(),
     }
 }
 

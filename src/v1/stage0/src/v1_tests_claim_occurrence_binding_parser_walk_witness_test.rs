@@ -69,15 +69,6 @@ pub fn occurrence_binding_parser_walk_offline_recipe() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn occurrence_binding_parser_walk_dissolve_on() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "DISSOLVE-ON: witness_layer_roots admits src/v1 for parser-transport witnesses without Node ambiguity, or execution corpus carries per-entry source roots — then this recipe deletes and discovery enrollment suffices.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ObcpwParsed {

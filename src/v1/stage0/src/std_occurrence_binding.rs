@@ -20,15 +20,6 @@ pub fn occurrence_binding_staged_adoption_scaffold_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn occurrence_binding_staged_adoption_dissolve_on() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "DISSOLVE-ON: both production resolver paths consume OccurrenceBindingResult by execution — v1 emits declaration-backed occurrence bindings, and v2 emits the same result and derives DependencyView BindsTo from OccurrenceBound — then delete this staged-adoption scaffold note and this dissolution row.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ContainmentPath<N: Clone> {
     pub ancestors: Rc<Vec<N>>,

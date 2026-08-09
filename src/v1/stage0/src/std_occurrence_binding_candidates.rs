@@ -3364,15 +3364,6 @@ pub fn section13_module_path_is_symbolic_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn section13_module_path_is_symbolic_dissolve_on() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "feature:module-path-qualified-name — DISSOLVE-ON: DeclarationRef.module_path / OccurrenceModulePathRow.module_path become v2.std.qualified_name.QualifiedName (same trigger as occurrence_module_path_convergence_note / std.observation observation_segment_grounding_note); then positional file-path inhabitance is unwritable, this string-grep oracle deletes, and section13_adjudicate_row stops calling it.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn section13_module_path_is_symbolic(module_path: String) -> bool {
     {
         let path = module_path.clone();

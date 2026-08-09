@@ -4,7 +4,8 @@
 use self::FrontierSubject::*;
 use crate::std_decl_ref::DeclField::{NamedField, WholeDeclaration};
 pub use crate::std_decl_ref::{
-    decl_field_ref, decl_ref, declaration_ref_eq, declaration_ref_in_list,
+    decl_field_ref, decl_ref, declaration_ref_display_key, declaration_ref_eq,
+    declaration_ref_in_list,
 };
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 use crate::std_dissolution::DissolutionCondition::{BoundDissolution, UnboundDissolution};
@@ -116,25 +117,6 @@ pub fn frontier_rows_well_formed(rows: Rc<Vec<Rc<FrontierRow>>>) -> bool {
         .fold(true, |acc: bool, row: Rc<FrontierRow>| {
             (acc && frontier_row_well_formed(row.clone()))
         })
-}
-
-pub fn declaration_ref_display_key(ref_: Rc<DeclarationRef>) -> String {
-    match (*ref_.field.clone()).clone() {
-        DeclField::WholeDeclaration => v1_rt::concat(
-            ref_.module_path.clone(),
-            v1_rt::concat("::".to_string(), ref_.decl_name.clone()),
-        ),
-        DeclField::NamedField { field_name: f, .. } => v1_rt::concat(
-            ref_.module_path.clone(),
-            v1_rt::concat(
-                "::".to_string(),
-                v1_rt::concat(
-                    ref_.decl_name.clone(),
-                    v1_rt::concat("::".to_string(), f.clone()),
-                ),
-            ),
-        ),
-    }
 }
 
 pub fn frontier_subject_eq(a: Rc<FrontierSubject>, b: Rc<FrontierSubject>) -> bool {

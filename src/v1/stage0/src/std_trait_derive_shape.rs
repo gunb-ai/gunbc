@@ -37,15 +37,6 @@ pub fn trait_derive_shape_grounding_lane_handoff() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn trait_derive_shape_dissolve_on() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "ReprGroundingDeriveTrait members that name Rust-specific authorities (ReprDeriveSerialize, ReprDeriveAdd, …) migrate beside each target's spelling table when a second consumer exists; until then capability roles stay in std/ with spellings in extdeps.languages.rust.emit.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
@@ -441,15 +432,6 @@ pub fn pair_completion_shape_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn pair_completion_shape_dissolve_on() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Dissolves when v2 derives these rows from the std.algebra Ring/AbelianGroup inhabitance witnesses directly, so the Grothendieck construction is read off the algebra rather than tabulated here; tracked by the numeric-tower grounding lane.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
@@ -659,15 +641,6 @@ pub fn pair_completion_op_rows() -> Rc<Vec<Rc<PairCompletionOpRow>>> {
     ])
 }
 
-pub fn pair_completion_uses_rhs_dissolve_on() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "dissolve-on: std.trait_derive_shape.pair_completion_arm_uses_rhs / pair_completion_body_uses_rhs — variant-discriminating Bool predicates over PairCompletionOperand / PairCompletionBody, retained only because operand arity is DERIVED from the formula rather than stored (storing an arity field would be a second representation of what the arms already say). They dissolve into an arity projection carried on PairCompletionOpRow at construction the moment a second consumer needs arity, or the moment refinement predicates become construction-enforced so the projection can be made total by construction; until then the derivation is the single authority and these are its only readers.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn pair_completion_arm_uses_rhs(arm: Rc<PairCompletionArm>) -> bool {
     {
         let mut __found = false;
@@ -728,27 +701,9 @@ pub fn repr_grounding_group_completion_carrier_trigger() -> Rc<Disposition> {
     CACHED.with(|c: &Rc<Disposition>| c.clone())
 }
 
-pub fn repr_grounding_group_completion_carrier_dissolve_on() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "dissolve-on: repr_grounding_group_completion_carrier — name-match module_path/name selection. Dissolves when capability selection for GroupCompletion pair-completion is derived from std.algebra Ring/AbelianGroup inhabitance witnesses (same terminal as pair_completion_shape_dissolve_on / numeric-tower grounding), so the carrier is identified by inhabitance rather than string equality. Terminal trigger binds Ring as that inhabitance authority (repr_grounding_group_completion_carrier_trigger).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn repr_grounding_group_completion_carrier(module_path: String, name: String) -> bool {
     ((module_path.clone() == "std.algebra".to_string())
         && (name.clone() == "GroupCompletion".to_string()))
-}
-
-pub fn repr_grounding_bool_host_bridge_dissolve_on() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "dissolve-on: repr_grounding_supplemental_bool_host_bridge_target / v1_emit_enum_supplemental_impls — Bool↔host-bool bridge door. Dissolves with the Value::Null-split / Bool True|False ↔ Value::Bool grounding lane (DESIGN open thread; gunbc.plans.value_null_split). Kept as the remaining half of the old supplemental door; do not ground the bridge in an emitter cleanup (§3).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn repr_grounding_supplemental_bool_host_bridge_target(

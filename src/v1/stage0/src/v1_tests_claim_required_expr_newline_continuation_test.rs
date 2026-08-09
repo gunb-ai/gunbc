@@ -22,15 +22,6 @@ pub fn required_expr_newline_continuation_offline_recipe() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn required_expr_newline_continuation_dissolve_on() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "DISSOLVE-ON: fold into v2 parser witness corpus when v1 claim discovery is retired; until then this is the durable floor-enrolled authority for required-expression newline continuation (review #7564).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn newline_parse_ctx(file: String, source: String) -> Rc<ParseContext> {
     Rc::new(ParseContext {
         source_indices: v1_rt::rc_map_insert(

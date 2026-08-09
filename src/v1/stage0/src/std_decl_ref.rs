@@ -104,3 +104,22 @@ pub fn declaration_ref_in_list(
             (acc || declaration_ref_eq(target.clone(), r.clone()))
         })
 }
+
+pub fn declaration_ref_display_key(ref_: Rc<DeclarationRef>) -> String {
+    match (*ref_.field.clone()).clone() {
+        DeclField::WholeDeclaration => v1_rt::concat(
+            ref_.module_path.clone(),
+            v1_rt::concat("::".to_string(), ref_.decl_name.clone()),
+        ),
+        DeclField::NamedField { field_name: f, .. } => v1_rt::concat(
+            ref_.module_path.clone(),
+            v1_rt::concat(
+                "::".to_string(),
+                v1_rt::concat(
+                    ref_.decl_name.clone(),
+                    v1_rt::concat("::".to_string(), f.clone()),
+                ),
+            ),
+        ),
+    }
+}
