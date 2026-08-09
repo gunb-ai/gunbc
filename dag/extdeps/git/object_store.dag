@@ -1,5 +1,7 @@
 module extdeps.git.object_store
 
+import std.algebra { trim }
+
 import std.types { NonEmptyStr, Bytes, Map }
 import std.content_hash {
   ContentHash,

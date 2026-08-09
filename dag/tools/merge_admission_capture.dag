@@ -1,5 +1,7 @@
 module tools.merge_admission_capture
 
+import std.algebra { trim }
+
 import std.types { FilePath, GitRef, NonEmptyStr, String, Bool }
 import extdeps.git.inspect
 import extdeps.git.object_store {

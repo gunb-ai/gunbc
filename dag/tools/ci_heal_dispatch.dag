@@ -1,5 +1,7 @@
 module tools.ci_heal_dispatch
 
+import std.algebra { trim }
+
 import gunbc.repository { gunbc_repository }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.types { CommitSha, NonEmptyStr }
