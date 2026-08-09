@@ -1,0 +1,16 @@
+module v2.test.claim.lens_suite_fact_pack_witness
+
+import v2.lens.suite.fact_pack {
+  lens_corpus_fact_pack_fixture,
+  lens_corpus_fact_pack_second_query_constructs_zero,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn witness_lens_suite_fact_pack_second_query_constructs_zero() -> Bool {
+  let first = lens_corpus_fact_pack_fixture(construction_count: 1)
+  let second = lens_corpus_fact_pack_fixture(construction_count: 0)
+  lens_corpus_fact_pack_second_query_constructs_zero(first: first, second: second)
+}

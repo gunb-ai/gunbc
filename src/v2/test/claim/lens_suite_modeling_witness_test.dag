@@ -5,16 +5,7 @@ import v2.lens.suite.checkpoint_a_harness {
   lens_suite_checkpoint_a_execution_gated,
   lens_suite_checkpoint_a_harness_holds,
 }
-import v2.lens.suite.fact_pack {
-  lens_corpus_fact_pack_fixture,
-  lens_corpus_fact_pack_second_query_constructs_zero,
-}
-import v2.lens.suite.receipt {
-  LensSuiteReceipt,
-  lens_suite_zero_execution_never_succeeds,
-}
 import v2.lens.suite.roster {
-  lens_suite_planned_count,
   lens_suite_registered_count,
   lens_suite_registry_join_complete,
 }
@@ -27,7 +18,7 @@ import v2.std.logic { Bool }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data lens_suite_modeling_witness_note: String = "V2-LENS-0 modeling slice (operator ruling 2026-08-09): witnesses the LensSuiteReceipt laws, registry-derived roster, mechanical boring-lens selection, fact-pack identity/construction-count laws, registry census, and Checkpoint A harness gate — NO lens-body execution on the interpreter path. Permanence RED: zero executed lenses cannot verdict success."
+data lens_suite_modeling_witness_note: String = "V2-LENS-0 modeling slice (operator ruling 2026-08-09): roster join, boring-lens selection, registry census, and Checkpoint A harness gate — NO lens-body execution. Receipt and fact-pack permanence witnesses live in sibling claim files to keep each compile closure within the per-PR witness budget."
 
 test fn witness_lens_suite_registry_join_complete() -> Bool {
   lens_suite_registry_join_complete()
@@ -43,37 +34,6 @@ test fn witness_lens_suite_registry_census_holds() -> Bool {
 
 test fn witness_lens_suite_checkpoint_a_harness_gated() -> Bool {
   lens_suite_checkpoint_a_harness_holds() && lens_suite_checkpoint_a_execution_gated()
-}
-
-test fn witness_lens_suite_zero_execution_never_succeeds_red() -> Bool {
-  let planned = lens_suite_planned_count()
-  let registered = lens_suite_registered_count()
-  let fact_pack = lens_corpus_fact_pack_fixture(construction_count: 1)
-  let zero_executed = LensSuiteReceipt {
-    subject_digest: fact_pack.identity,
-    registered_count: registered,
-    planned_count: planned,
-    executed_count: 0,
-    accepted_readings: 0,
-    expected_refusals: 0,
-    unexpected_refusals: 0,
-    unavailable_count: 0,
-    unaccounted_count: 0,
-    fact_pack_identity: fact_pack.identity,
-    fact_pack_construction_count: fact_pack.construction_count,
-    v1_lens_body_executions: 0,
-    fallback_count: 0,
-    preparation_wall_nanos: 0,
-    execution_wall_nanos: 0,
-    members: []
-  }
-  lens_suite_zero_execution_never_succeeds(receipt: zero_executed)
-}
-
-test fn witness_lens_suite_fact_pack_second_query_constructs_zero() -> Bool {
-  let first = lens_corpus_fact_pack_fixture(construction_count: 1)
-  let second = lens_corpus_fact_pack_fixture(construction_count: 0)
-  lens_corpus_fact_pack_second_query_constructs_zero(first: first, second: second)
 }
 
 test fn witness_lens_suite_census_registered_matches_registry() -> Bool {

@@ -1,0 +1,37 @@
+module v2.test.claim.lens_suite_receipt_witness
+
+import v2.lens.suite.fact_pack { lens_corpus_fact_pack_fixture }
+import v2.lens.suite.receipt {
+  LensSuiteReceipt,
+  lens_suite_zero_execution_never_succeeds,
+}
+import v2.lens.suite.roster { lens_suite_planned_count, lens_suite_registered_count }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn witness_lens_suite_zero_execution_never_succeeds_red() -> Bool {
+  let planned = lens_suite_planned_count()
+  let registered = lens_suite_registered_count()
+  let fact_pack = lens_corpus_fact_pack_fixture(construction_count: 1)
+  let zero_executed = LensSuiteReceipt {
+    subject_digest: fact_pack.identity,
+    registered_count: registered,
+    planned_count: planned,
+    executed_count: 0,
+    accepted_readings: 0,
+    expected_refusals: 0,
+    unexpected_refusals: 0,
+    unavailable_count: 0,
+    unaccounted_count: 0,
+    fact_pack_identity: fact_pack.identity,
+    fact_pack_construction_count: fact_pack.construction_count,
+    v1_lens_body_executions: 0,
+    fallback_count: 0,
+    preparation_wall_nanos: 0,
+    execution_wall_nanos: 0,
+    members: []
+  }
+  lens_suite_zero_execution_never_succeeds(receipt: zero_executed)
+}
