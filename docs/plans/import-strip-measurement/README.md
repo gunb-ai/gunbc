@@ -4,7 +4,7 @@ The machinery behind §15 of
 [the witness-discovery cascade diagnosis](../import-strip-witness-discovery-cascade-diagnosis.md)
 and behind [`import-strip-residual-ledger.tsv`](../import-strip-residual-ledger.tsv).
 
-It exists because a 3,050-row ledger reads as authoritative, and a number a
+It exists because a 3,078-row ledger reads as authoritative, and a number a
 future worker cannot regenerate or perturb is not a measurement — it is a claim
 (DESIGN §5: green by execution, plus a discriminating input). Everything below
 regenerates from a named tree.
@@ -21,13 +21,15 @@ substrate's own resolution is removed.
 
 ## Tool identity
 
-- `gunbc` release binary built from commit `1eadad4af25`
+- `gunbc` release binary built from the measured head itself
   (`CTRL_BUILD_BYPASS_SHIMS=1 cargo build --release --bin gunbc`).
-- No `.rs` file changed between `1eadad4af25` and the measured base, so the same
-  binary is current for the measured tree. That is the *reason* the binary is
-  reusable — not an assumption that binaries age well. A stale binary measures a
-  substrate that no longer exists (#7924 changed explicit-import resolution
-  after the previous strip attempt, which is why it was rebuilt then).
+- It was REBUILT mid-lane, and that is load-bearing rather than incidental. The
+  first measurement used a binary from `1eadad4af25`; main then landed #8062,
+  which changes `src/v1` binding behaviour. A binary older than the substrate it
+  judges reports a compiler that no longer exists — and it did: the heal entry
+  passed locally under the old binary while failing in CI under the new one.
+  Rebuild whenever `src/v1` moves, and do not reuse a binary across a main merge
+  without checking.
 - Measured base commit and corpus hash: [`receipts/subject-tree-hash.txt`](receipts/subject-tree-hash.txt).
 
 ## Regenerate everything
@@ -45,7 +47,7 @@ cp -r dag src $W/stripped/
 python3 docs/plans/import-strip-measurement/strip_imports.py \
     $W/stripped/dag $W/stripped/src/v2 \
     --manifest $W/stripped-file-manifest.tsv
-# expect: stripped 16315 import declarations across 2574 files
+# expect: stripped 16375 import declarations across 2579 files
 grep -rc '^import ' $W/stripped/dag $W/stripped/src/v2 --include='*.dag' | grep -v ':0' | wc -l
 # expect: 0   (zero residue — a partial strip reads downstream as corpus failure)
 
@@ -57,19 +59,19 @@ grep -rc '^import ' $W/stripped/dag $W/stripped/src/v2 --include='*.dag' | grep 
     --dependency-pool-index primary-precedence --target dag \
     --output-dir $W/o-stripped > $W/stripped-diagnostics.log 2>&1)
 grep 'hard diagnostic' $W/control-diagnostics.log $W/stripped-diagnostics.log
-# expect: control 12, stripped 3062   (both exit 1 — see the note below)
+# expect: control 22, stripped 3100   (both exit 1 — see the note below)
 
 # 3. the ledger, with the reconciliation printed
 python3 docs/plans/import-strip-measurement/classify_residual.py \
     $W/stripped-diagnostics.log $W/stripped \
-    docs/plans/import-strip-residual-ledger.tsv --control-count 12
+    docs/plans/import-strip-residual-ledger.tsv --control-count 22
 
 # 4. the declaration census (full; only its duplicate slice is committed)
 grep -rhoE '^(fn|func|type|data|service) +[A-Za-z_][A-Za-z0-9_]*' \
     dag src/v2 --include='*.dag' | awk '{print $2}' | sort | uniq -c | sort -rn
 ```
 
-Both compiles exit **1**, control included, because the control's 12
+Both compiles exit **1**, control included, because the control's 22
 pre-existing annotation-grain diagnostics are themselves hard. Exit status does
 not discriminate between the two trees; only the count and the per-name join do.
 
@@ -89,7 +91,7 @@ python3 $W/src/docs/plans/import-strip-measurement/classify_residual.py …
 
 Result: the manifest and `import-strip-residual-ledger.tsv` are reproduced
 **byte-identically**, and the classifier prints the reconciliation
-(`3,062 = 12 + 3,050`, ledger rows 3,050, OK). A reproducer that cannot be run
+(`3,100 = 22 + 3,078`, ledger rows 3,078, OK). A reproducer that cannot be run
 from a clean checkout is a receipt with a story attached, not a reproducer.
 
 ## Receipts
@@ -98,7 +100,7 @@ from a clean checkout is a receipt with a story attached, not a reproducer.
 | --- | --- |
 | `receipts/control-diagnostics.log` | raw unstripped compile output (the known-positive) |
 | `receipts/stripped-diagnostics.log` | raw stripped compile output |
-| `receipts/stripped-file-manifest.tsv` | per-file count of import declarations removed (2,574 rows) |
+| `receipts/stripped-file-manifest.tsv` | per-file count of import declarations removed (2,579 rows) |
 | `receipts/declaration-census-duplicates.tsv` | every multiply-declared name (the actionable slice) |
 | `receipts/summary.txt` | disposition totals and the reconciliation identity |
 | `receipts/subject-tree-hash.txt` | corpus hash + measured commit |
