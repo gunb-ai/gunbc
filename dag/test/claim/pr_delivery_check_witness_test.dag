@@ -30,7 +30,10 @@ import gunbc.pr_delivery_check {
   SelfConsumedOnly,
   Unconsumed,
   WitnessEntryPoint,
+  ModuleSubject,
+  PathSubject,
   pr_delivery_check,
+  pr_delivery_subject_label,
 }
 
 data pr_delivery_witness_note: String = "Controlled fixtures: every population and every expected verdict is authored here, so no assertion is a measurement of the current tree copied back onto itself. The two controls that matter most are NEGATIVE: a newly added module consumed only by its own witness must NOT read as delivered (that is the inert-analysis tier the criterion exists to catch), and a modification to an existing module that already has dependents must NOT read as CONSUMED (that is the fail-open this check would have shipped at module grain, on the common case)."
@@ -249,4 +252,62 @@ test fn witness_a_new_witness_module_is_a_harness_entry_point_not_a_failure() ->
   receipt.witness_entry_point_count == 1
     && receipt.unconsumed_count == 0
     && receipt.self_consumed_only_count == 0
+}
+
+data pr_delivery_partial_grain_control_note: String = "THE CONTROL THAT WAS MISSING, and the reason review 50637 found a fail-open my suite could not. witness_a_partial_surface_makes_every_verdict_undecidable authored an unresolved path (README.md) alongside an ADDED module, so its modified-.dag set was EMPTY and the arm that dropped modified paths was never exercised. This control authors the ordinary mixed shape instead — one MODIFIED existing .dag plus one unresolved path — and pins that the DeclarationGrainUnavailable row survives the Partial arm. It is discriminating in both directions: the grain row must be present AND the added subject must still degrade to Undecidable, because those two axes fail independently."
+
+test fn witness_a_partial_surface_still_reports_the_grain_unavailable_rows() -> Bool {
+  let receipt = delivery_receipt(
+    changed: ["src/v2/lens/existing.dag", "README.md"],
+    added: no_paths
+  )
+  receipt.declaration_grain_unavailable_count == 1
+    && receipt.consumed_count == 0
+    && any(xs: receipt.subjects, predicate: fn(row) {
+      match row.verdict {
+        DeclarationGrainUnavailable { path } => path == "src/v2/lens/existing.dag"
+        Consumed { consumers: _ } => false
+        SelfConsumedOnly { test_consumers: _ } => false
+        ConsumerPending { work_item: _ } => false
+        DeliveryUndecidable { cause: _ } => false
+        Unconsumed => false
+        WitnessEntryPoint { path: _ } => false
+      }
+    })
+}
+
+test fn witness_a_refused_surface_still_reports_the_grain_unavailable_rows() -> Bool {
+  let receipt = pr_delivery_check(
+    outcome: ChangedSurfaceRefused { reason: "diff observation failed" },
+    changed_paths: ["src/v2/lens/existing.dag"],
+    added_paths: no_paths,
+    edges: delivery_edges,
+    nodes: delivery_nodes,
+    import_facts: delivery_import_facts,
+    admissions: delivery_admissions
+  )
+  receipt.declaration_grain_unavailable_count == 1
+}
+
+data pr_delivery_subject_carrier_control_note: String = "Pins the carrier split review 50637 asked for: a modified-path row carries a PathSubject whose label is the PATH, and an added-module row carries a ModuleSubject whose label is the MODULE NAME. Before the split both rendered through ModuleIdentity.name, so a path sat in an identity field and a consumer keying on subject could not tell them apart. Asserted in both directions so a regression that collapsed them back would red."
+
+test fn witness_a_modified_path_subject_is_a_path_not_a_module_identity() -> Bool {
+  let receipt = delivery_receipt(
+    changed: ["src/v2/lens/feature.dag", "src/v2/lens/existing.dag"],
+    added: ["src/v2/lens/feature.dag"]
+  )
+  any(xs: receipt.subjects, predicate: fn(row) {
+    match row.subject {
+      PathSubject { path } => path == "src/v2/lens/existing.dag"
+      ModuleSubject { module: _ } => false
+    }
+  })
+    && any(xs: receipt.subjects, predicate: fn(row) {
+      match row.subject {
+        ModuleSubject { module } => module.name == "m.feature"
+        PathSubject { path: _ } => false
+      }
+    })
+    && pr_delivery_subject_label(subject: PathSubject { path: "p/q.dag" }) == "p/q.dag"
+    && pr_delivery_subject_label(subject: ModuleSubject { module: ModuleIdentity { name: "m.x" } }) == "m.x"
 }

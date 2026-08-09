@@ -59,8 +59,25 @@ type DeliveryVerdict
       cause: String
     }
 
+data pr_delivery_subject_carrier_note: String = "Found by review 50637 on this PR, and it is the SAME conflation capsule 1 made unwritable in the query core, re-opened one layer up by this receipt. ModuleIdentity is a record precisely so a path cannot be passed where a module identity is required; a DeclarationGrainUnavailable row then set subject: ModuleIdentity { name: path }, putting a file path into the identity field, so any consumer keying on subject rather than on verdict.path would mis-identify it. A modified path whose declarations this check cannot see is genuinely NOT a module subject — that is the whole content of the verdict — so the subject axis is a coproduct: ModuleSubject carries the identity, PathSubject carries the storage location, and neither can impersonate the other. The wall is that PathSubject has no ModuleIdentity field to fill, so the substitution has no constructor rather than a convention against it."
+
+type DeliverySubject
+  = ModuleSubject {
+      module: ModuleIdentity
+    }
+  | PathSubject {
+      path: String
+    }
+
+fn pr_delivery_subject_label(subject: DeliverySubject) -> String {
+  match subject {
+    ModuleSubject { module } => module.name
+    PathSubject { path } => path
+  }
+}
+
 type DeliverySubjectVerdict {
-  subject: ModuleIdentity
+  subject: DeliverySubject
   verdict: DeliveryVerdict
 }
 
@@ -204,12 +221,14 @@ fn pr_delivery_verdict_for_module(
   }
 }
 
+data pr_delivery_first_path_note: String = "Found by review 50634 on this PR. The fold's cons discarded its accumulator and returned the item, so this yielded the LAST declared path while its name promised the first — a name standing where a fact was owed, harmless today only because the parse snapshot enforces one path per module, and therefore exactly the kind of claim that rots silently when the many-to-many end state the module-identity-vs-storage lane stages actually lands. Folding the reversed list makes last-of-reversed BE first, so the name is now true by construction rather than by a coincidence of the current 1:1 mapping."
+
 fn pr_delivery_first_path_of(
   nodes: List<ModuleDeclarationFact>,
   module_id: ModuleIdentity
 ) -> String {
   fold_list(
-    xs: pr_delivery_module_paths(nodes: nodes, module_id: module_id),
+    xs: list_reverse(xs: pr_delivery_module_paths(nodes: nodes, module_id: module_id)),
     empty: module_id.name,
     cons: fn(acc, path) { path }
   )
@@ -395,23 +414,48 @@ fn pr_delivery_receipt_of(subjects: List<DeliverySubjectVerdict>) -> DeliveryRec
 
 data pr_delivery_undecidable_note: String = "The same law the reverse query obeys, applied one level up: an incomplete view may never prove emptiness. If the changed-surface outcome is Partial or Refused, this check cannot conclude that nothing consumes a subject, because the population it would be reasoning over is itself admittedly incomplete. Every subject is therefore Undecidable, carrying the reason — never a confident SelfConsumedOnly derived from a view that was missing inputs. Getting this backwards is how a delivery gate turns into a delivery fabricator."
 
+data pr_delivery_grain_rows_survive_partial_note: String = "Found by review 50637 on this PR, and it was a fail-open of the exact class this check exists to surface. The Partial and Refused arms built rows for ADDED subjects only and never called pr_delivery_modified_dag_paths, so a mixed PR — one modified .dag plus any unresolved path, the ordinary shape — produced a receipt with NO DeclarationGrainUnavailable row for the code change at all. The highest-priority subject class disappeared precisely when the surface was already incomplete, which is the silent narrow DESIGN 5 names: an incomplete view rendering as 'nothing to report' rather than 'here is what I cannot answer'. WHY THE VERDICT IS UNCHANGED BY PARTIAL, rather than being demoted to Undecidable: grain unavailability is a property of THIS CHECK'S RESOLUTION, not of the observed surface. The reverse query being incomplete cannot make a modified module's declarations more visible, and it cannot make them less visible either — the answer was already 'module grain cannot see this'. So the modified rows are emitted identically in all three arms, and only the ADDED subjects degrade to Undecidable, because those are the ones whose verdict actually depended on the completeness of the population. My own witness missed this because its modified-path set was empty; the control now authors a genuinely mixed surface."
+
+fn pr_delivery_modified_path_rows(
+  acc: List<DeliverySubjectVerdict>,
+  modified_paths: List<String>
+) -> List<DeliverySubjectVerdict> {
+  fold_list(
+    xs: modified_paths,
+    empty: acc,
+    cons: fn(inner, path) {
+      pr_delivery_prepend_verdict(
+        acc: inner,
+        item: DeliverySubjectVerdict {
+          subject: PathSubject { path: path },
+          verdict: DeclarationGrainUnavailable { path: path }
+        }
+      )
+    }
+  )
+}
+
 fn pr_delivery_undecidable_receipt(
   subjects: List<ModuleIdentity>,
+  modified_paths: List<String>,
   cause: String
 ) -> DeliveryReceipt {
   pr_delivery_receipt_of(
-    subjects: list_reverse(xs: fold_list(
-      xs: subjects,
-      empty: no_delivery_subject_verdicts,
-      cons: fn(acc, m) {
-        pr_delivery_prepend_verdict(
-          acc: acc,
-          item: DeliverySubjectVerdict {
-            subject: m,
-            verdict: DeliveryUndecidable { cause: cause }
-          }
-        )
-      }
+    subjects: list_reverse(xs: pr_delivery_modified_path_rows(
+      acc: fold_list(
+        xs: subjects,
+        empty: no_delivery_subject_verdicts,
+        cons: fn(acc, m) {
+          pr_delivery_prepend_verdict(
+            acc: acc,
+            item: DeliverySubjectVerdict {
+              subject: ModuleSubject { module: m },
+              verdict: DeliveryUndecidable { cause: cause }
+            }
+          )
+        }
+      ),
+      modified_paths: modified_paths
     ))
   )
 }
@@ -429,26 +473,29 @@ fn pr_delivery_check(
     nodes: nodes,
     added_paths: added_paths
   )
+  let modified_paths = pr_delivery_modified_dag_paths(
+    changed_paths: changed_paths,
+    added_paths: added_paths,
+    nodes: nodes
+  )
   match outcome {
     ChangedSurfaceRefused { reason } =>
       pr_delivery_undecidable_receipt(
         subjects: added_subjects,
+        modified_paths: modified_paths,
         cause: "the changed surface was refused: {reason}"
       )
     ChangedSurfacePartial { reading: _, unresolved_subjects: _ } =>
       pr_delivery_undecidable_receipt(
         subjects: added_subjects,
+        modified_paths: modified_paths,
         cause: "the changed-surface outcome is Partial — an incomplete view may not prove that nothing consumes a subject"
       )
     ChangedSurfaceComplete { reading: _ } =>
       pr_delivery_receipt_of(
         subjects: pr_delivery_verdicts_for_subjects(
           added_subjects: added_subjects,
-          modified_paths: pr_delivery_modified_dag_paths(
-            changed_paths: changed_paths,
-            added_paths: added_paths,
-            nodes: nodes
-          ),
+          modified_paths: modified_paths,
           edges: edges,
           nodes: nodes,
           import_facts: import_facts,
@@ -473,7 +520,7 @@ fn pr_delivery_verdicts_for_subjects(
       pr_delivery_prepend_verdict(
         acc: acc,
         item: DeliverySubjectVerdict {
-          subject: m,
+          subject: ModuleSubject { module: m },
           verdict: pr_delivery_verdict_for_module(
             subject: m,
             edges: edges,
@@ -485,17 +532,8 @@ fn pr_delivery_verdicts_for_subjects(
       )
     }
   )
-  list_reverse(xs: fold_list(
-    xs: modified_paths,
-    empty: added_rows,
-    cons: fn(acc, path) {
-      pr_delivery_prepend_verdict(
-        acc: acc,
-        item: DeliverySubjectVerdict {
-          subject: ModuleIdentity { name: path },
-          verdict: DeclarationGrainUnavailable { path: path }
-        }
-      )
-    }
+  list_reverse(xs: pr_delivery_modified_path_rows(
+    acc: added_rows,
+    modified_paths: modified_paths
   ))
 }

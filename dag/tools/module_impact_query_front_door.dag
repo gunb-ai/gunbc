@@ -33,6 +33,9 @@ import gunbc.pr_delivery_check {
   DeclarationGrainUnavailable,
   DeliveryReceipt,
   DeliverySubjectVerdict,
+  ModuleSubject,
+  PathSubject,
+  pr_delivery_subject_label,
   DeliveryUndecidable,
   SelfConsumedOnly,
   Unconsumed,
@@ -384,19 +387,19 @@ data pr_delivery_front_door_note: String = "The observe-and-report front door fo
 fn render_delivery_verdict(row: DeliverySubjectVerdict) -> String {
   match row.verdict {
     Consumed { consumers } =>
-      "    CONSUMED               {row.subject.name}  <-  {render_modules(modules: consumers)}"
+      "    CONSUMED               {pr_delivery_subject_label(subject: row.subject)}  <-  {render_modules(modules: consumers)}"
     SelfConsumedOnly { test_consumers } =>
-      "    SELF-CONSUMED-ONLY     {row.subject.name}  <-  only its own witnesses ({render_modules(modules: test_consumers)}) — NOT delivered"
+      "    SELF-CONSUMED-ONLY     {pr_delivery_subject_label(subject: row.subject)}  <-  only its own witnesses ({render_modules(modules: test_consumers)}) — NOT delivered"
     ConsumerPending { work_item } =>
-      "    CONSUMER-PENDING       {row.subject.name}  <-  declared, awaiting {work_item}"
+      "    CONSUMER-PENDING       {pr_delivery_subject_label(subject: row.subject)}  <-  declared, awaiting {work_item}"
     DeclarationGrainUnavailable { path } =>
       "    DECLARATION-GRAIN-NA   {path}  —  modified existing module; module grain cannot see which declarations were added"
     Unconsumed =>
-      "    UNCONSUMED             {row.subject.name}  —  NOTHING references it — not delivered"
+      "    UNCONSUMED             {pr_delivery_subject_label(subject: row.subject)}  —  NOTHING references it — not delivered"
     WitnessEntryPoint { path } =>
-      "    WITNESS-ENTRY-POINT    {path}  —  harness-invoked; inbound references do not judge it"
+      "    WITNESS-ENTRY-POINT    {path}  —  harness-invoked; inbound references do not judge it. NOT a delivery exemption — whether it EXECUTES is the floor's enrollment authority, not this check"
     DeliveryUndecidable { cause } =>
-      "    UNDECIDABLE            {row.subject.name}  —  {cause}"
+      "    UNDECIDABLE            {pr_delivery_subject_label(subject: row.subject)}  —  {cause}"
   }
 }
 
