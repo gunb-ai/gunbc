@@ -48,9 +48,9 @@ fn carrier_home_kind_to_g1_carrier(home: LiveReadCarrierHome) -> LiveReadCarrier
 }
 
 fn g1_carriers_from_homes(homes: List<LiveReadCarrierHome>) -> List<LiveReadCarrier> {
-  fold_list(xs: homes, empty: empty_carrier_list, cons: fn(acc, home) {
-    list_snoc_item(xs: acc, item: carrier_home_kind_to_g1_carrier(home: home))
-  })
+  list_reverse(xs: fold_list(xs: homes, empty: empty_carrier_list, cons: fn(acc, home) {
+    list_cons_item(xs: acc, item: carrier_home_kind_to_g1_carrier(home: home))
+  }))
 }
 
 fn live_read_classification_g1(
@@ -107,9 +107,11 @@ fn decls_in_module(decls: List<FnArrowDecl>, mod_path: String) -> List<FnArrowDe
 }
 
 fn decls_in_modules(decls: List<FnArrowDecl>, modules: List<String>) -> List<FnArrowDecl> {
-  fold_list(xs: modules, empty: empty_decl_list, cons: fn(acc, mod_path) {
-    list_append(left: acc, right: decls_in_module(decls: decls, mod_path: mod_path))
-  })
+  list_reverse(xs: fold_list(xs: modules, empty: empty_decl_list, cons: fn(acc, mod_path) {
+    fold_list(xs: decls_in_module(decls: decls, mod_path: mod_path), empty: acc, cons: fn(inner, d) {
+      list_cons_item(xs: inner, item: d)
+    })
+  }))
 }
 
 fn is_path_like_lexeme(text: String) -> Bool {
@@ -162,9 +164,9 @@ fn atom_identities_in_node(node: Node) -> List<Symbol> {
 }
 
 fn param_names_of(decl: FnArrowDecl) -> List<String> {
-  fold_list(xs: decl.params, empty: empty_string_list, cons: fn(acc, p) {
-    list_snoc_item(xs: acc, item: symbol_lexeme(sym: p.name))
-  })
+  list_reverse(xs: fold_list(xs: decl.params, empty: empty_string_list, cons: fn(acc, p) {
+    list_cons_item(xs: acc, item: symbol_lexeme(sym: p.name))
+  }))
 }
 
 fn path_pattern_from_lexeme(text: String, param_names: List<String>) -> PathPattern {
@@ -222,13 +224,13 @@ fn carrier_already_present(carriers: List<LiveReadCarrier>, candidate: LiveReadC
 }
 
 fn merge_carriers(left: List<LiveReadCarrier>, right: List<LiveReadCarrier>) -> List<LiveReadCarrier> {
-  fold_list(xs: right, empty: left, cons: fn(acc, c) {
+  list_reverse(xs: fold_list(xs: right, empty: list_reverse(xs: left), cons: fn(acc, c) {
     if carrier_already_present(carriers: acc, candidate: c) {
       acc
     } else {
-      list_snoc_item(xs: acc, item: c)
+      list_cons_item(xs: acc, item: c)
     }
-  })
+  }))
 }
 
 fn carrier_for_callee_text(
@@ -258,21 +260,21 @@ fn carrier_for_callee_text(
 }
 
 fn positional_child_targets(node: Node) -> List<Node> {
-  fold(node.children, init: empty_node_list, f: fn(acc, e) {
+  list_reverse(xs: fold(node.children, init: empty_node_list, f: fn(acc, e) {
     match e.label {
-      Positional => list_snoc_item(xs: acc, item: e.target)
+      Positional => list_cons_item(xs: acc, item: e.target)
       Named { name: _ } => acc
     }
-  })
+  }))
 }
 
 fn arg_symbols_from_nodes(nodes: List<Node>) -> List<Symbol> {
-  fold_list(xs: nodes, empty: empty_symbol_list, cons: fn(acc, n) {
+  list_reverse(xs: fold_list(xs: nodes, empty: empty_symbol_list, cons: fn(acc, n) {
     match node_atom_identity_optional(node: n) {
-      Present { value: sym } => list_snoc_item(xs: acc, item: sym)
+      Present { value: sym } => list_cons_item(xs: acc, item: sym)
       Absent => acc
     }
-  })
+  }))
 }
 
 fn carriers_from_call_node(node: Node, param_names: List<String>) -> List<LiveReadCarrier> {
@@ -562,10 +564,9 @@ fn live_read_selection_manifest_over(
   nodes: List<ModuleDeclarationFact>,
   decls: List<FnArrowDecl>
 ) -> List<LiveReadSelectionManifestRow> {
-  fold_list(xs: requests, empty: empty_manifest_rows, cons: fn(acc, req) {
-    list_snoc_item(
-      xs: acc,
-      item: LiveReadSelectionManifestRow {
+  list_reverse(xs: fold_list(xs: requests, empty: empty_manifest_rows, cons: fn(acc, req) {
+    Cons {
+      head: LiveReadSelectionManifestRow {
         key: live_read_manifest_row_key(entry_path: req.entry_path, fn_name: req.fn_name),
         projection: live_read_selection_projection_live(
           entry_path: req.entry_path,
@@ -575,11 +576,14 @@ fn live_read_selection_manifest_over(
           nodes: nodes,
           decls: decls
         )
-      }
-    )
-  })
+      },
+      tail: acc
+    }
+  }))
 }
 
+
+data manifest_accumulator_shape_law: String = "THE MANIFEST FOLD PREPENDS AND REVERSES ONCE; IT MAY NOT SNOC. list_snoc_item is list_append(left: xs, right: singleton), so it TRAVERSES THE ACCUMULATED PREFIX on every row: in a left fold that is quadratic in request count. The measured consequence is what makes this a law rather than a preference. A one-request probe cannot observe the quadratic term at all - it reported 101s and was read as a fixed per-invocation cost - while the ordinary floor builds from a roster of thousands, and the completion receipt is emitted only AFTER the fold and decode. So the failure presents as ZERO completion receipts and almost no executed discovery rows (6 rows against main's 4728 in the same window), which reads like a route never entered rather than an accumulator that cannot finish. The cost shape is therefore fixed regardless of the realized n, per DESIGN section 6 bare-minimum-cost: n is not a time-stable fact, and this n is already thousands. ENFORCED STRUCTURALLY, not by a timing threshold: live_read_selection_manifest_over has no call reachability to list_snoc_item, which is decidable from the Node tree and does not depend on a host being fast enough for a threshold to discriminate. The scale control is the second half, and the mutation that reds it is restoring the snoc form."
 
 data whole_tree_subject_mint_site_law: String = "A DECIDING SUBJECT IS MINTED ONLY WHERE THE LIVE PRODUCERS ARE CALLED, AND NOWHERE ELSE. WholeTreeFactSubject carried a caller-supplied subject_id in an earlier revision, which meant the completeness claim was a string a caller wrote beside a fact list it also chose - the two were never related, so a fixture population could be labelled complete and would then be permitted to decide LocalRead. Making the variant nullary removes the thing a caller could author. THE CALLER SUPPLIES REQUEST IDENTITY, NEVER THE FACT POPULATION AND NEVER THE COMPLETENESS CLAIM. THE PREMISE CHANGED, AND THIS LAW CHANGED WITH IT (operator ruling). The former text admitted its own residue: the mint site kept callers from pairing an arbitrary fact list with a completeness token, and it did NOT prove that fn_arrow_decl_facts_live covered the consuming index. It could not, because that producer reflects the EVALUATING CONTEXT's modules, so covering the index meant evaluating against a union of every request root's closure - which was measured at 179125 ms wall and 178751 ms CPU for a single request, and which failed outright once composed: bare names that bind uniquely inside each entry's own import scope stopped binding across the union, and ONE shared refusal denied classification to all 133 enrolled entries. Coverage is now established rather than assumed. fn_arrow_decl_facts_index_live reads the EXACT bound MultiEntryIndex, and the host joins fact population to index population at identity grain in BOTH directions before any subject is minted - a count comparison cannot stand in for that, because a population with one identity missing and one extra has the same size and is a different tree. COMPLETENESS IS PER BOUND REQUEST, NOT GLOBAL. A module that fails to extract refuses only the requests whose required closure contains it; unrelated requests still classify. Reading the subject as the entire index parsed successfully would recreate the union's own failure in another form, where one unrelated bad module denies every classification. The seed-side identity check remains the other half - a row is stamped with the producing index's generation and refuses a lookup from any other index. NAMING RESIDUE, STATED: the variant is still spelled WholeTreeFactSubject while it now means complete-for-this-bound-request. CompleteBoundRequestFactSubject would be the honest name; the rename is deferred for fan-out, and this sentence exists so the prose does not stay false to avoid touching a load-bearing row."
 
@@ -958,15 +962,15 @@ type G2RootBinding
   | G2RootUnbound { cause: String }
 
 fn module_facts_for_path(path: String, nodes: List<ModuleDeclarationFact>) -> List<ModuleDeclarationFact> {
-  fold_list(xs: nodes, empty: empty_module_declaration_fact_list, cons: fn(acc, n) {
-    if string_eq(a: n.path, b: path) { list_snoc_item(xs: acc, item: n) } else { acc }
-  })
+  list_reverse(xs: fold_list(xs: nodes, empty: empty_module_declaration_fact_list, cons: fn(acc, n) {
+    if string_eq(a: n.path, b: path) { list_cons_item(xs: acc, item: n) } else { acc }
+  }))
 }
 
 fn decls_with_qualified_name(qualified: String, decls: List<FnArrowDecl>) -> List<FnArrowDecl> {
-  fold_list(xs: decls, empty: empty_decl_list, cons: fn(acc, d) {
-    if string_eq(a: d.qualified_name, b: qualified) { list_snoc_item(xs: acc, item: d) } else { acc }
-  })
+  list_reverse(xs: fold_list(xs: decls, empty: empty_decl_list, cons: fn(acc, d) {
+    if string_eq(a: d.qualified_name, b: qualified) { list_cons_item(xs: acc, item: d) } else { acc }
+  }))
 }
 
 fn tail_module_facts(xs: List<ModuleDeclarationFact>) -> List<ModuleDeclarationFact> {
