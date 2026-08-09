@@ -156,31 +156,6 @@ test fn witness_consumer_carries_no_import_declaration() -> Bool {
 }
 
 
-fn declarations_named(transport: OccurrenceTransport, name: String) -> List<DeclarationOccurrence> {
-  fold(transport.declarations, init: [], f: (acc, d) =>
-    match index_entry_for_occurrence(transport: transport, occurrence: d.occurrence) {
-      Absent => acc
-      Present { value: entry } =>
-        match entry.projection.authored_name == name {
-          true => concat(acc, [d])
-          false => acc
-        }
-    })
-}
-
-fn assembled_or_none(provider_paths: List<String>) -> AssembledCrossFileBindingClosure? {
-  let consumers = closure_row_for(path: consumer_source_path, grounding: ModuleLocalMemberExposure)
-  let providers = fold(provider_paths, init: [], f: (acc, p) =>
-    concat(acc, closure_row_for(path: p, grounding: CrossFileProviderExportedExposure)))
-  fold(consumers, init: none, f: (found, consumer_row) =>
-    match found {
-      Present { value: _ } => found
-      Absent => Present {
-        value: assemble_cross_file_binding_closure(consumer: consumer_row, providers: providers)
-      }
-    })
-}
-
 data checkpoint_one_finding_note: String = "WHAT THIS WITNESS FOUND, BY EXECUTION, ON ITS FIRST RUN.
 
 The positive case below currently REDS, and the reason is the load-bearing checkpoint-1 finding: the parser mints declaration occurrences for `fn` and `data` declarations but NOT for `type` declarations or their coproduct variants. Narrowed by discriminating probes rather than inferred — the assembled closure is Ready, the consumer's LiveTreeDisposition REFERENCE is present in it, the provider transport carries MORE THAN ONE declaration, and yet neither `LiveTreeDisposition` nor its variant `ReadsLiveTree` appears among them. So the failure is not assembly, not the read, not the reference side, and not an empty provider: it is that the type declaration was never minted.
