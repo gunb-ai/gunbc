@@ -444,8 +444,12 @@ type SparkMaterializationReceipt {
 // Three attempt states, because "never tried", "issued and unconfirmed" and "confirmed" have three
 // different resolutions. The middle one is the whole point: it resolves by OBSERVING the store,
 // never by issuing a second AddVersion.
+// Four states. SparkAttemptJournaled is the only route to a first write: the attempt is durably
+// recorded BEFORE the effect is issued, so a crash between journal and issue lands in
+// IssuedUnconfirmed and resolves by observation rather than by a second AddVersion.
 type SparkAttemptRecord
   = SparkAttemptNone
+  | SparkAttemptJournaled { identity: SparkMaterializationIdentity }
   | SparkAttemptIssuedUnconfirmed { identity: SparkMaterializationIdentity }
   | SparkAttemptConfirmed { receipt: SparkMaterializationReceipt }
 
@@ -455,30 +459,66 @@ type SparkMaterializationDecision
   | SparkMaterializeObserveStore { identity: SparkMaterializationIdentity }
   | SparkMaterializeRefused { cause: NonEmptyStr }
 
+// THE ONLY producer of a materialization decision. A public spark_materialize_once existed here and
+// is deleted: it let any caller mint SparkMaterializeOnce without consulting the attempt record,
+// which made the whole at-most-once argument advisory -- the wall was in the prose and the bypass
+// was in the interface.
+//
+// The confirmed arm now JOINS the receipt's own fields. A receipt carrying exact_version 7 beside a
+// readback for version 8 previously produced Noop, because nothing compared them; two fields that
+// must agree and are never checked are two facts, not one.
 fn decide_spark_materialization(record: SparkAttemptRecord) -> SparkMaterializationDecision {
   match record {
     SparkAttemptNone => SparkMaterializeRefused { cause: "no attempt identity supplied; a materialization without one cannot be resumed, because nothing distinguishes a retry from a first attempt" }
+    SparkAttemptJournaled { identity: i } => SparkMaterializeOnce { identity: i }
     SparkAttemptIssuedUnconfirmed { identity: i } => SparkMaterializeObserveStore { identity: i }
     SparkAttemptConfirmed { receipt: r } =>
       match r.readback {
-        SparkReadbackMatched { version: v } => SparkMaterializeNoop { exact_version: v }
-        SparkReadbackMismatched { version: v } => SparkMaterializeRefused { cause: "recorded version read back a payload identity that does not match what this attempt wrote; the stored credential is not the one this receipt claims" }
+        SparkReadbackMatched { version: v } =>
+          if (v as String) == (r.exact_version as String) {
+            SparkMaterializeNoop { exact_version: v }
+          } else {
+            SparkMaterializeRefused { cause: "receipt names one version and its readback verified a different one; the receipt does not attest to the version it claims" }
+          }
+        SparkReadbackMismatched { version: _ } => SparkMaterializeRefused { cause: "recorded version read back a payload identity that does not match what this attempt wrote; the stored credential is not the one this receipt claims" }
         SparkReadbackUnavailable { cause: c } => SparkMaterializeRefused { cause: c }
       }
   }
 }
 
-fn spark_materialize_once(identity: SparkMaterializationIdentity) -> SparkMaterializationDecision {
-  SparkMaterializeOnce { identity: identity }
+// AN EXACT VERSION ADDRESS IS NOT A PAYLOAD MATCH. The prior revision of this function turned any
+// non-`latest` string into SparkReadbackMatched, which is fabricated success in its purest form: it
+// consumed no AccessVersion response, no decoded payload, no expected identity and no comparison,
+// yet produced the verdict that discharges a receipt. Naming an exact version is NECESSARY evidence
+// and it is not sufficient, so admission and matching are now two operations and this one can only
+// ever yield an address.
+type SparkVersionAddressAdmission
+  = SparkVersionAddressAdmitted { version: NonEmptyStr }
+  | SparkVersionAddressRefused { cause: NonEmptyStr }
+
+fn admit_spark_readback_version(version: NonEmptyStr) -> SparkVersionAddressAdmission {
+  if (version as String) == "latest" {
+    SparkVersionAddressRefused { cause: "readback named the moving alias latest rather than an exact version; it cannot witness which version this run wrote" }
+  } else {
+    SparkVersionAddressAdmitted { version: version }
+  }
 }
 
-// The readback must name the version it verified. `latest` is a moving alias, so a success proved
-// through it is compatible with another writer having landed a different version in between, and
-// the receipt would then attest to a payload this run did not write.
-fn admit_spark_readback_version(version: NonEmptyStr) -> SparkReadbackVerdict {
-  if (version as String) == "latest" {
-    SparkReadbackUnavailable { cause: "readback named the moving alias latest rather than an exact version; it cannot witness which version this run wrote" }
-  } else {
-    SparkReadbackMatched { version: version }
+// The matched verdict is reachable ONLY through a comparison of an expected identity against one
+// decoded from an actual access of that exact version. Both identities are inputs; neither is
+// assumed, and no arm produces Matched without them agreeing.
+fn compare_spark_readback(
+  address: SparkVersionAddressAdmission,
+  expected_identity: NonEmptyStr,
+  observed_identity: NonEmptyStr
+) -> SparkReadbackVerdict {
+  match address {
+    SparkVersionAddressRefused { cause: c } => SparkReadbackUnavailable { cause: c }
+    SparkVersionAddressAdmitted { version: v } =>
+      if expected_identity == observed_identity {
+        SparkReadbackMatched { version: v }
+      } else {
+        SparkReadbackMismatched { version: v }
+      }
   }
 }

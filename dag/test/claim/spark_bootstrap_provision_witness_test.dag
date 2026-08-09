@@ -272,19 +272,53 @@ test fn spark_bad_readback_refuses() -> Bool {
          record: SparkAttemptConfirmed { receipt: spark_receipt_with(readback: SparkReadbackUnavailable { cause: "version disabled" }) }))
 }
 
-// CONTROL 18: a readback that names `latest` cannot witness anything. The moving alias is
-// compatible with another writer having landed in between.
-test fn spark_readback_through_latest_is_unavailable() -> Bool {
-  match admit_spark_readback_version(version: "latest") {
-    SparkReadbackUnavailable { cause: _ } => true
-    SparkReadbackMatched { version: _ } => false
-    SparkReadbackMismatched { version: _ } => false
+// CONTROL 18, rewritten after a fabricated-success finding: an exact version ADDRESS is admitted,
+// and admission alone produces no Matched verdict. The prior control asserted that a non-latest
+// string yields Matched, which encoded the defect rather than catching it -- the control and the
+// bug agreed. Matching now requires two identities that actually agree.
+test fn spark_version_address_is_not_a_payload_match() -> Bool {
+  let admitted = admit_spark_readback_version(version: "7")
+  let refused = admit_spark_readback_version(version: "latest")
+  let addr_ok = match admitted {
+    SparkVersionAddressAdmitted { version: _ } => true
+    SparkVersionAddressRefused { cause: _ } => false
   }
-    && match admit_spark_readback_version(version: "7") {
-         SparkReadbackMatched { version: _ } => true
-         SparkReadbackUnavailable { cause: _ } => false
-         SparkReadbackMismatched { version: _ } => false
-       }
+  let latest_refused = match refused {
+    SparkVersionAddressRefused { cause: _ } => true
+    SparkVersionAddressAdmitted { version: _ } => false
+  }
+  let agreeing = match compare_spark_readback(address: admitted, expected_identity: "id-a", observed_identity: "id-a") {
+    SparkReadbackMatched { version: _ } => true
+    SparkReadbackMismatched { version: _ } => false
+    SparkReadbackUnavailable { cause: _ } => false
+  }
+  let disagreeing = match compare_spark_readback(address: admitted, expected_identity: "id-a", observed_identity: "id-b") {
+    SparkReadbackMismatched { version: _ } => true
+    SparkReadbackMatched { version: _ } => false
+    SparkReadbackUnavailable { cause: _ } => false
+  }
+  addr_ok && latest_refused && agreeing && disagreeing
+}
+
+// CONTROL 18b: the receipt must JOIN its own fields. A receipt naming version 7 whose readback
+// verified version 8 previously produced Noop, because nothing compared them.
+test fn spark_receipt_version_must_match_its_readback() -> Bool {
+  spark_decision_is_refused(d: decide_spark_materialization(
+    record: SparkAttemptConfirmed { receipt: spark_receipt_with(readback: SparkReadbackMatched { version: "8" }) }))
+}
+
+// CONTROL 18c: a first write is reachable ONLY through a journaled attempt. The deleted public
+// constructor let any caller mint the apply decision, which made at-most-once advisory.
+test fn spark_first_write_requires_a_journaled_attempt() -> Bool {
+  let journaled = decide_spark_materialization(record: SparkAttemptJournaled { identity: spark_identity_specimen() })
+  let unjournaled = decide_spark_materialization(record: SparkAttemptNone)
+  let is_once = match journaled {
+    SparkMaterializeOnce { identity: _ } => true
+    SparkMaterializeNoop { exact_version: _ } => false
+    SparkMaterializeObserveStore { identity: _ } => false
+    SparkMaterializeRefused { cause: _ } => false
+  }
+  is_once && spark_decision_is_refused(d: unjournaled)
 }
 
 // CONTROL 19, the asymmetry wall: a factory hotspot credential cannot be GENERATED. Generating one
