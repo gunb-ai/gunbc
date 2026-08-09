@@ -311,9 +311,13 @@ fn atlas_status_carries_departed_old_path(status: GitDiffChangeStatus) -> Bool {
   }
 }
 
+data repo_atlas_projection_accumulator_cost_note: String = "BOTH LISTS CONS AND REVERSE ONCE, for the same reason the cell order list does, and the fields are named _rev so a future edit cannot append to them believing they are in final order. Appending with concat(acc, [x]) per entry copies the whole accumulator each time — the O(n^2) shape DESIGN 6 says is always fixed regardless of the realized n, because 'the diff is small here' is not a time-stable fact: this same fold answers a two-file PR and a thousand-file merge, and reuse is what changes n.
+
+Consing seeds in order and reversing the flat result once restores the original order exactly, so the projection is unchanged by construction and the multi-seed ordering claim still holds."
+
 type AtlasProjectionAccumulator {
-  marks: List<AtlasChangeMark>
-  unprojected: List<UnprojectedChange>
+  marks_rev: List<AtlasChangeMark>
+  unprojected_rev: List<UnprojectedChange>
 }
 
 data repo_atlas_multi_seed_note: String = "A path may resolve to zero, one, or SEVERAL modules and this never selects the first. impact_seeds_for_path returns a list precisely because the staged many-to-many path/module relation makes one storage location a conservative question, and picking one seed would silently answer a question the pool cannot answer. All resolved modules are marked; zero resolved modules is a real answer and lands as PathDeclaresNoModule rather than vanishing."
@@ -326,10 +330,10 @@ fn atlas_project_entry(
   let with_old = if atlas_status_carries_departed_old_path(status: entry.status) {
     match entry.old_path {
       Present { value: old } => AtlasProjectionAccumulator {
-        marks: acc.marks,
-        unprojected: concat(
-          acc.unprojected,
-          [DepartedPathPriorIdentityUnavailable { path: old, status: entry.status }]
+        marks_rev: acc.marks_rev,
+        unprojected_rev: concat(
+          [DepartedPathPriorIdentityUnavailable { path: old, status: entry.status }],
+          acc.unprojected_rev
         )
       }
       Absent => acc
@@ -339,29 +343,30 @@ fn atlas_project_entry(
   }
   if atlas_status_is_departure(status: entry.status) {
     AtlasProjectionAccumulator {
-      marks: with_old.marks,
-      unprojected: concat(
-        with_old.unprojected,
-        [DepartedPathPriorIdentityUnavailable { path: entry.path, status: entry.status }]
+      marks_rev: with_old.marks_rev,
+      unprojected_rev: concat(
+        [DepartedPathPriorIdentityUnavailable { path: entry.path, status: entry.status }],
+        with_old.unprojected_rev
       )
     }
   } else {
     let seeds = impact_seeds_for_path(path: entry.path, nodes: nodes)
     if seeds.length() == 0 {
       AtlasProjectionAccumulator {
-        marks: with_old.marks,
-        unprojected: concat(
-          with_old.unprojected,
-          [PathDeclaresNoModule { path: entry.path, status: entry.status }]
+        marks_rev: with_old.marks_rev,
+        unprojected_rev: concat(
+          [PathDeclaresNoModule { path: entry.path, status: entry.status }],
+          with_old.unprojected_rev
         )
       }
     } else {
       AtlasProjectionAccumulator {
-        marks: concat(
-          with_old.marks,
-          map(seeds, s => AtlasChangeMark { module: s, status: entry.status })
+        marks_rev: fold(
+          seeds,
+          init: with_old.marks_rev,
+          f: (a, s) => concat([AtlasChangeMark { module: s, status: entry.status }], a)
         ),
-        unprojected: with_old.unprojected
+        unprojected_rev: with_old.unprojected_rev
       }
     }
   }
@@ -381,13 +386,13 @@ fn atlas_project_diff(
         Absent => {
           let acc = fold(
             entries,
-            init: AtlasProjectionAccumulator { marks: [], unprojected: [] },
+            init: AtlasProjectionAccumulator { marks_rev: [], unprojected_rev: [] },
             f: (a, e) => atlas_project_entry(acc: a, entry: e, nodes: nodes)
           )
           AtlasChangesProjected {
             comparison: comparison,
-            marks: acc.marks,
-            unprojected: acc.unprojected
+            marks: list_reverse(xs: acc.marks_rev),
+            unprojected: list_reverse(xs: acc.unprojected_rev)
           }
         }
       }
