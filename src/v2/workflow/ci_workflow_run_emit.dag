@@ -306,5 +306,8 @@ fn ci_delivery_summary_intent() -> Pipeline {
 }
 
 fn ci_delivery_summary_script() -> String {
-  ci_workflow_run_emit_pipeline(p: ci_delivery_summary_intent())
+  concat(
+    concat("# ", concat(ci_delivery_summary_shell_emit_dissolution_trigger, "\n")),
+    ci_workflow_run_emit_pipeline(p: ci_delivery_summary_intent())
+  )
 }
