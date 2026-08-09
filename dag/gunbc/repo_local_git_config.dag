@@ -1,5 +1,7 @@
 module gunbc.repo_local_git_config
 
+import std.algebra { trim }
+
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.types { FilePath }
 import gunbc.membership_reconcile {

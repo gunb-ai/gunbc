@@ -16,6 +16,7 @@ use crate::cli_run::value_to_wire_json;
 use crate::std_syntax::BinOp;
 use crate::std_syntax::LiteralValue;
 use crate::v1_compiler_emit::{extract_string_interp_parts, has_mock_prefix};
+use crate::v1_compiler_infer_emit_info::EmitGraphInfo;
 use crate::v1_compiler_infer_items::{item_kind, ItemInfo, ItemKind, ResolvedGraph, TypedModule};
 use crate::v1_rt;
 use crate::v1_rt::{
@@ -1436,6 +1437,7 @@ pub struct InterpContext {
     pub modules: Rc<im::Vector<Rc<TypedModule>>>,
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    pub emit_graph_info: Rc<EmitGraphInfo>,
     fn_nodes: HashMap<String, Rc<Node>>,
     ambiguous_bare_function_names: std::collections::HashSet<String>,
     service_ops: HashMap<String, ServiceOp>,
@@ -1443,7 +1445,7 @@ pub struct InterpContext {
     pub fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
     data_cache: std::cell::RefCell<HashMap<usize, Value>>,
     // Per-call parameter-name derivation is invariant per fn_node but was re-sliced from
-    // source spans on every call (authored_name_at). Memoize it per ctx, keyed by fn_node
+    // source spans on every call (authored_name_at). Memoize it per fn_node, keyed by fn_node
     // pointer identity. The key alone is not sound: the ctx does not own fn_nodes (they are
     // borrowed `Rc<Node>`s that can be dropped while the ctx lives), so a freed node's address
     // can be reused by an unrelated later node and silently collide on this key. keepalive_fns
@@ -1678,6 +1680,7 @@ impl InterpContext {
             modules: graph.modules.clone(),
             item_registry: graph.item_registry.clone(),
             source_indices,
+            emit_graph_info: graph.emit_graph_info.clone(),
             fn_nodes,
             ambiguous_bare_function_names,
             service_ops,
@@ -1812,6 +1815,19 @@ impl InterpContext {
         self.fn_nodes.get(name)
     }
 
+    pub fn lookup_fn_node(&self, qualified_name: &str) -> Option<Rc<Node>> {
+        self.fn_nodes.get(qualified_name).cloned()
+    }
+
+    pub fn resolved_graph(&self) -> ResolvedGraph {
+        ResolvedGraph {
+            modules: self.modules.clone(),
+            item_registry: self.item_registry.clone(),
+            diagnostics: Rc::new(im::Vector::new()),
+            emit_graph_info: self.emit_graph_info.clone(),
+        }
+    }
+
     /// Report identity from the exact fn_nodes entry used by lookup_fn. The
     /// module path comes from the existing collision-checked module index; this
     /// accessor does not select, resolve, traverse the graph, or alter lookup.
@@ -1897,12 +1913,9 @@ pub fn run_in_context_with_args(
 }
 
 /// Peak parent-chain depth observed across `call_function` frames in the last
-/// `run_in_context*` invocation (test witness for lexical-base scoping; default-off until armed).
+/// `run_in_context*` invocation (test witness for lexical-base scoping).
 #[cfg(any(test, feature = "interp_test_witness"))]
 pub fn call_env_depth_peak_snapshot() -> usize {
-    if !call_env_depth_witness_enabled() {
-        return 0;
-    }
     CALL_ENV_DEPTH_PEAK.with(|peak| peak.get())
 }
 
@@ -2048,8 +2061,10 @@ fn call_function_inner(
 
     let cached_params = {
         let key = Rc::as_ptr(fn_node) as usize;
-        let existing = ctx.param_name_cache.borrow().get(&key).cloned();
-        if let Some(c) = existing {
+        // Bind the lookup to a local so the immutable borrow is released before the
+        // None branch takes a mutable borrow (an `if let ...borrow()` would hold it through `else`).
+        let hit = ctx.param_name_cache.borrow().get(&key).cloned();
+        if let Some(c) = hit {
             c
         } else {
             // Each param's authored name is sliced once into `all`; `filtered` reuses it
@@ -2069,12 +2084,12 @@ fn call_function_inner(
                 })
                 .map(|(i, _)| all[i].clone())
                 .collect();
-            let fresh = Rc::new((filtered, all));
+            let c = Rc::new((filtered, all));
             ctx.param_name_cache_keepalive
                 .borrow_mut()
                 .push(fn_node.clone());
-            ctx.param_name_cache.borrow_mut().insert(key, fresh.clone());
-            fresh
+            ctx.param_name_cache.borrow_mut().insert(key, c.clone());
+            c
         }
     };
     let param_names: &Vec<String> = &cached_params.0;
@@ -2443,8 +2458,8 @@ fn eval_var(
 ) -> InterpResult<Value> {
     // Resolve and intern this ExprVar's name once, then reuse the Symbol on every eval
     // (skips the per-eval source-span slice in expr_var_name_at and the ctx.sym re-intern).
-    let key = Rc::as_ptr(node) as usize;
     let sym = {
+        let key = Rc::as_ptr(node) as usize;
         let existing = ctx.var_sym_cache.borrow().get(&key).copied();
         if let Some(s) = existing {
             s
@@ -10886,6 +10901,11 @@ macro_rules! v1_builtin_arms {
                 let s = expect_str($positional.first().copied(), "starts_with")?;
                 let prefix = expect_str($positional.get(1).copied(), "starts_with prefix")?;
                 Ok(Some(Value::Bool(s.starts_with(&prefix))))
+            },
+
+            arm "free_call.trim" { "trim" } => {
+                let s = expect_str($positional.first().copied(), "trim")?;
+                Ok(Some(Value::Str(v1_rt::trim(s))))
             },
 
             arm "free_call.length" { "length" } => match $positional.first() {
