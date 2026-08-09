@@ -1,6 +1,6 @@
 module test.claim.hardware_selection
 
-import extdeps.vendor.ampere { ampere }
+import extdeps.vendor.ampere { ampere_vendor }
 import extdeps.vendor.sk_hynix { sk_hynix }
 import extdeps.memory.types {
   DramModuleCatalogRow, Registered, dram_generation_ddr4, bit_width,
@@ -105,7 +105,7 @@ data mem_1rx8_1dpc: MemoryConfig = MemoryConfig {
 data cpu_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   model_number: "GENERIC-ARM-64C",
   oem_listing_id: none,
-  vendor: ampere,
+  vendor: ampere_vendor,
   architecture: Aarch64,
   cores: 64,
   threads: hardware_thread_count(64),

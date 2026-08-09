@@ -97,8 +97,30 @@ def parse(line):
     return consumer, (m.group(1) if m else ""), "unnamed"
 
 
-def disposition(name, category, decl_count, is_variant, line):
+# A name declared once per module across a whole folder is a CONVENTION population
+# by design (every extdeps module declares its own authority anchor), not a fork. A
+# genuine fork is 2-6 declarations; these run to 94 and 497. The threshold sits in
+# the gap rather than naming specific rows, so a new convention row classifies
+# itself instead of waiting to be added to a list.
+CONVENTION_POPULATION_MIN = 10
+
+
+def disposition(name, category, decl_count, is_variant, line, candidates=()):
     """The typed disposition. Nothing here claims a loader observation."""
+    # A duplicate-named FIELD or method is not a declaration-naming defect: the
+    # first failure is on an unresolved or wrong receiver, and renaming the
+    # declaration would not touch it. Category wins over multiplicity here.
+    if category in ("field", "method", "record_shape"):
+        return {"field": "field_on_unresolved_or_wrong_type",
+                "method": "method_on_unresolved_receiver",
+                "record_shape": "record_shape_cascade"}[category]
+    if decl_count >= CONVENTION_POPULATION_MIN:
+        return "per_module_convention_population"
+    # Fixtures that exist SO THAT two declarations collide. Renaming them would
+    # destroy the test subject rather than clean the corpus, so they are not debt.
+    if decl_count > 1 and candidates and all(
+            c.startswith("test.fixture.") or ".fixture." in c for c in candidates):
+        return "intentional_ambiguity_fixture"
     if decl_count > 1:
         return "corpus_hygiene"
     if is_variant:
@@ -171,7 +193,8 @@ def main(argv):
                              else "unresolved" if category in ("type", "value", "callee", "variant")
                              else "n/a"),
             first_root_diagnostic=re.sub(r"\s*\([^()]*:\d+-\d+\)\s*$", "", line)[:200],
-            disposition=disposition(name, category, n, bool(vsites) and n == 0, line),
+            disposition=disposition(name, category, n, bool(vsites) and n == 0, line,
+                                    candidates=candidates),
         ))
         seen[(consumer, name)] += 1
     for r in rows:

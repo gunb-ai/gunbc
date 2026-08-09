@@ -21,7 +21,7 @@ import gunbc.publication_policy {
   resolve_disposition_for_path,
 }
 import gunbc.public_projection {
-  PublicationSubject,
+  PublicProjectionSubject,
   PublicProjectionPlan,
   derive_public_projection_plan,
   public_projection_includes_subject,
@@ -77,8 +77,8 @@ data synthetic_head: CommitSha = "synthetic-head-sha"
 data synthetic_ordinary_session: ModeledSessionId = "synthetic-ordinary-session" as ModeledSessionId
 data synthetic_policy_version: NonEmptyStr = "policy-v1" as NonEmptyStr
 
-fn synthetic_subject(path: FilePath, identity: String) -> PublicationSubject {
-  PublicationSubject {
+fn synthetic_subject(path: FilePath, identity: String) -> PublicProjectionSubject {
+  PublicProjectionSubject {
     subject_identity: content_hash_of_value(value: identity as NonEmptyStr),
     content_identity: content_hash_of_value(value: identity as NonEmptyStr),
     path: path,
@@ -104,7 +104,7 @@ fn admitted_public_docs_policy() -> AdmittedPublicationPolicy {
   }
 }
 
-fn synthetic_decision_receipt(subject: PublicationSubject) -> PublicationDecisionReceipt {
+fn synthetic_decision_receipt(subject: PublicProjectionSubject) -> PublicationDecisionReceipt {
   PublicationDecisionReceipt {
     subject_identity: subject.subject_identity,
     content_identity: subject.content_identity,

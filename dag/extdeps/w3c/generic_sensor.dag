@@ -40,7 +40,7 @@ data sensor_onactivate_handler: String = "onactivate"
 data sensor_onerror_handler: String = "onerror"
 data sensor_error_event_error_property: String = "error"
 
-data interfaces_are_secure_context_only: Bool = true
+data generic_sensor_interfaces_are_secure_context_only: Bool = true
 
 data secure_context_note: String = "The IDL declares [SecureContext, Exposed=(DedicatedWorker, Window)] and the spec states that all interfaces defined by it or by its extension specifications are only available within a secure context."
 

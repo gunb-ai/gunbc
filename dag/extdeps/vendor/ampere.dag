@@ -13,4 +13,4 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data ampere: Vendor<Hardware> = Vendor { legal_name: "Ampere Computing LLC" }
+data ampere_vendor: Vendor<Hardware> = Vendor { legal_name: "Ampere Computing LLC" }
