@@ -113,6 +113,8 @@ out.txt
 *.py
 !docs/plans/witness-subject-execution-audit.py
 !docs/probes/dissolution_census_a_ci_layer_roots_project.py
+!docs/plans/import-strip-measurement/strip_imports.py
+!docs/plans/import-strip-measurement/classify_residual.py
 
 # --- CPython bytecode cache (PEP 3147) [cited: python.org/peps/pep-3147] ---
 __pycache__/
