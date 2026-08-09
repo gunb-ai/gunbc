@@ -74,6 +74,7 @@ test fn reach_projection_covers_all_arms() -> Bool {
     && reach_verdict_from_outcome(o: ProbeTransportUnavailable { cause: "timeout" }) == Inaccessible
     && reach_verdict_from_outcome(o: ProbeAuthenticationRefused { cause: "denied" }) == Inaccessible
     && reach_verdict_from_outcome(o: ProbeHostKeyMismatch { expected_fingerprint: Present { value: "a" }, observed_fingerprint: "b" }) == Conflict
+    && reach_verdict_from_outcome(o: ProbeHostKeyMismatch { expected_fingerprint: none, observed_fingerprint: "Host key verification failed." }) == Inaccessible
 }
 
 // Identity deduction: reachable-and-matching converges; reachable-but-different is
@@ -87,6 +88,7 @@ test fn identity_projection_discriminates_match_drift_and_wrong_machine() -> Boo
     && identity_verdict_from_outcome(host: operator_host_srv1, o: ProbeTransportUnavailable { cause: "x" }) == Inaccessible
     && identity_verdict_from_outcome(host: operator_host_srv1, o: ProbeAuthenticationRefused { cause: "x" }) == Inaccessible
     && identity_verdict_from_outcome(host: operator_host_srv1, o: ProbeHostKeyMismatch { expected_fingerprint: Present { value: "a" }, observed_fingerprint: "b" }) == Conflict
+    && identity_verdict_from_outcome(host: operator_host_srv1, o: ProbeHostKeyMismatch { expected_fingerprint: none, observed_fingerprint: "x" }) == Inaccessible
 }
 
 // No committed receipt -> the producers answer none, the canonical seam answers none for

@@ -124,12 +124,24 @@ fn classify_reach_probe_wire(
 
 // Producer 1 — P0:reach-secrets-network. Projection to the shared verdict vocabulary;
 // the outcome stays on the receipt (see the distinctness note above).
+// A host-key mismatch is a CONFLICT only when an enrolled expectation exists to be
+// contradicted (Present — "we know this host's key and the observed one differs").
+// With Absent expectation the wire's 'verification failed' cannot distinguish first
+// contact from a changed key, so the honest verdict is Inaccessible — the transport
+// never completed and nothing about the host was verified. Both arms leave the cell
+// NOT converged (operator ruling 2026-08-09: a Mismatch/Absent cell counts as
+// unobserved-grade, never as satisfied); only the REMEDY differs — enroll the
+// fingerprint registry vs investigate a real contradiction.
 fn reach_verdict_from_outcome(o: ReachProbeOutcome) -> ObservationVerdict {
   match o {
     ProbeReachable { observed_short_hostname: _ } => Converged
     ProbeTransportUnavailable { cause: _ } => Inaccessible
     ProbeAuthenticationRefused { cause: _ } => Inaccessible
-    ProbeHostKeyMismatch { expected_fingerprint: _, observed_fingerprint: _ } => Conflict
+    ProbeHostKeyMismatch { expected_fingerprint: e, observed_fingerprint: _ } =>
+      match e {
+        Present { value: _ } => Conflict
+        _ => Inaccessible
+      }
   }
 }
 
@@ -161,7 +173,11 @@ fn identity_verdict_from_outcome(host: HostIdentity, o: ReachProbeOutcome) -> Ob
       }
     ProbeTransportUnavailable { cause: _ } => Inaccessible
     ProbeAuthenticationRefused { cause: _ } => Inaccessible
-    ProbeHostKeyMismatch { expected_fingerprint: _, observed_fingerprint: _ } => Conflict
+    ProbeHostKeyMismatch { expected_fingerprint: e, observed_fingerprint: _ } =>
+      match e {
+        Present { value: _ } => Conflict
+        _ => Inaccessible
+      }
   }
 }
 
