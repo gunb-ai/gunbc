@@ -7204,9 +7204,16 @@ fn bare_reference_pull_paths_for_source(
     let Some(root) = source_tree_root_of(&index.source_roots, &file_rel) else {
         return Ok(Vec::new());
     };
+    let census_started = std::time::Instant::now();
     let census = tree_bare_census_for_root(index, &root)?;
+    resolve_stage_slot_add(|st| {
+        st.edge_index_tree_census += census_started.elapsed().as_nanos();
+        st.edge_index_tree_census_calls += 1;
+    });
     let referencing_module = extract_module_path(&sf.content).unwrap_or_default();
+    let cand_started = std::time::Instant::now();
     let candidates = bare_identifier_candidates(&sf.content);
+    resolve_stage_slot_add(|st| st.edge_index_bare_candidates += cand_started.elapsed().as_nanos());
     let mut service_prefixes: BTreeSet<String> = candidates
         .dotted_chains
         .iter()
@@ -7366,7 +7373,13 @@ fn reference_pull_paths_for_source(
                  has no provenance in the module-graph facts pool (fail-closed)"
             ));
         }
-        for path in import_closure_live_paths_with_facts(&dep_rel, facts) {
+        let expand_started = std::time::Instant::now();
+        let expanded = import_closure_live_paths_with_facts(&dep_rel, facts);
+        resolve_stage_slot_add(|st| {
+            st.edge_index_closure_expand += expand_started.elapsed().as_nanos();
+            st.edge_index_closure_expand_calls += 1;
+        });
+        for path in expanded {
             let rel = workspace_relative_repo_path(&path);
             if pulled_set.insert(rel.clone()) {
                 pulled.push(rel);
@@ -7382,23 +7395,37 @@ fn build_both_closure_edge_index(
     let mut bare_out: HashMap<String, Vec<String>> = HashMap::new();
     let mut ref_out: HashMap<String, Vec<String>> = HashMap::new();
     let mut bare_scan_eligible: HashSet<String> = HashSet::new();
+    resolve_stage_slot_add(|st| {
+        st.edge_index_builds += 1;
+        st.edge_index_source_files += index.source_files.len() as u128;
+    });
     for sf in index.source_files.values() {
         let file_rel = workspace_relative_repo_path(&sf.path);
-        ref_out.insert(
-            file_rel.clone(),
-            reference_pull_paths_for_source(sf, &index.source_files, &index.module_graph_facts)?,
-        );
+        let ref_started = std::time::Instant::now();
+        let ref_paths =
+            reference_pull_paths_for_source(sf, &index.source_files, &index.module_graph_facts)?;
+        resolve_stage_slot_add(|st| st.edge_index_ref_half += ref_started.elapsed().as_nanos());
+        ref_out.insert(file_rel.clone(), ref_paths);
         if source_declares_import_lines(&sf.content) {
             continue;
         }
         bare_scan_eligible.insert(file_rel.clone());
-        bare_out.insert(file_rel, bare_reference_pull_paths_for_source(sf, index)?);
+        let bare_started = std::time::Instant::now();
+        let bare_paths = bare_reference_pull_paths_for_source(sf, index)?;
+        resolve_stage_slot_add(|st| {
+            st.edge_index_bare_half += bare_started.elapsed().as_nanos();
+            st.edge_index_bare_eligible += 1;
+        });
+        bare_out.insert(file_rel, bare_paths);
     }
-    Ok(Rc::new(BothClosureEdgeIndex {
+    let publish_started = std::time::Instant::now();
+    let built = Rc::new(BothClosureEdgeIndex {
         bare_out,
         ref_out,
         bare_scan_eligible,
-    }))
+    });
+    resolve_stage_slot_add(|st| st.edge_index_publish += publish_started.elapsed().as_nanos());
+    Ok(built)
 }
 
 fn both_closure_edge_index(index: &MultiEntryIndex) -> Result<Rc<BothClosureEdgeIndex>, String> {
@@ -11555,6 +11582,50 @@ pub struct ResolveStageNanos {
     pub load_pool_reference_closure: u128,
     /// Fixpoint iterations (a round is one bare + one pool pass).
     pub load_fixpoint_rounds: u128,
+    /// MEASUREMENT INSTRUMENTATION (CONFIDENCE-0 edge-index receipt, commissioned
+    /// 2026-08-09). These rows decompose `load_bare_edge_index` along the seams the
+    /// constructor ACTUALLY has, rather than a presumed stage pipeline: the ref half,
+    /// the bare half, the import-closure expansion inside them, and publish. They are
+    /// INCLUSIVE rows, so they never enter `sum_exclusive` and cannot break the
+    /// accounting law. Dissolve-on: either the memo fix lands and these retire to a
+    /// regression control, or the v2 materialization substrate absorbs the closure.
+    /// `edge_index_builds` is the row that separates the operator's two outcomes —
+    /// construction fundamentally slow (optimize the measured stage) versus
+    /// construction merely repeated (materialize once). It is a COUNT and not nanos
+    /// deliberately: a cache HIT still adds its own small elapsed time to
+    /// `load_bare_edge_index`, so `nanos == 0` is unassertable on a second query and
+    /// "small" is not a claim this partition's accounting style permits.
+    pub edge_index_builds: u128,
+    /// Source files enumerated by the constructor's one loop.
+    pub edge_index_source_files: u128,
+    /// Files eligible to originate bare edges (import-free), a subset of the above.
+    pub edge_index_bare_eligible: u128,
+    /// `reference_pull_paths_for_source` — the dotted-reference half, summed per file.
+    pub edge_index_ref_half: u128,
+    /// `bare_reference_pull_paths_for_source` — the bare-name half, summed per file.
+    pub edge_index_bare_half: u128,
+    /// `import_closure_live_paths_with_facts` — the NAMED SUSPECT. A module's import
+    /// closure is a pure function of the adjacency map, and `import_closure_from_adjacency`
+    /// recomputes it from nothing on every call (fresh HashSet + VecDeque, a String
+    /// clone per edge, then a sort), once per (source file, referenced module) pair.
+    pub edge_index_closure_expand: u128,
+    /// Calls to that expansion — the multiplicity the per-call cost is paid at.
+    pub edge_index_closure_expand_calls: u128,
+    /// `tree_bare_census_for_root` inside the bare half — the per-tree bare census.
+    pub edge_index_tree_census: u128,
+    /// Calls to that census.
+    pub edge_index_tree_census_calls: u128,
+    pub edge_index_tree_census_misses: u128,
+    /// Cold builds of that census (MISSES only). The count that makes the nanos above
+    /// interpretable: total/calls is an average over mostly-free hits and describes no
+    /// real call.
+    pub edge_index_tree_census_misses: u128,
+    /// Nanos spent in cold census builds only.
+    pub edge_index_tree_census_miss_nanos: u128,
+    /// `bare_identifier_candidates` — the per-file identifier scan.
+    pub edge_index_bare_candidates: u128,
+    /// `Rc::new` + hand-off of the finished index.
+    pub edge_index_publish: u128,
     /// `both_closure_edge_index` (memoized on the index; nonzero here is the first build).
     pub load_bare_edge_index: u128,
     /// `path_to_source_lookup` — a corpus-wide map rebuilt on EVERY call (no memo).
@@ -11597,6 +11668,19 @@ impl ResolveStageNanos {
         self.load_reference_scan_calls += other.load_reference_scan_calls;
         self.load_import_closure += other.load_import_closure;
         self.load_bare_reference_closure += other.load_bare_reference_closure;
+        self.edge_index_builds += other.edge_index_builds;
+        self.edge_index_source_files += other.edge_index_source_files;
+        self.edge_index_bare_eligible += other.edge_index_bare_eligible;
+        self.edge_index_ref_half += other.edge_index_ref_half;
+        self.edge_index_bare_half += other.edge_index_bare_half;
+        self.edge_index_closure_expand += other.edge_index_closure_expand;
+        self.edge_index_closure_expand_calls += other.edge_index_closure_expand_calls;
+        self.edge_index_tree_census += other.edge_index_tree_census;
+        self.edge_index_tree_census_calls += other.edge_index_tree_census_calls;
+        self.edge_index_tree_census_misses += other.edge_index_tree_census_misses;
+        self.edge_index_tree_census_miss_nanos += other.edge_index_tree_census_miss_nanos;
+        self.edge_index_bare_candidates += other.edge_index_bare_candidates;
+        self.edge_index_publish += other.edge_index_publish;
         self.load_pool_reference_closure += other.load_pool_reference_closure;
         self.load_fixpoint_rounds += other.load_fixpoint_rounds;
         self.load_bare_edge_index += other.load_bare_edge_index;
@@ -11697,6 +11781,19 @@ thread_local! {
             load_bare_reference_closure: 0,
             load_pool_reference_closure: 0,
             load_fixpoint_rounds: 0,
+            edge_index_builds: 0,
+            edge_index_source_files: 0,
+            edge_index_bare_eligible: 0,
+            edge_index_ref_half: 0,
+            edge_index_bare_half: 0,
+            edge_index_closure_expand: 0,
+            edge_index_closure_expand_calls: 0,
+            edge_index_tree_census: 0,
+            edge_index_tree_census_calls: 0,
+            edge_index_tree_census_misses: 0,
+            edge_index_tree_census_miss_nanos: 0,
+            edge_index_bare_candidates: 0,
+            edge_index_publish: 0,
             load_bare_edge_index: 0,
             load_bare_path_lookup: 0,
             load_bare_path_lookup_calls: 0,
@@ -11919,6 +12016,11 @@ pub struct ExclusiveCostPartition {
     /// Volume fed to `load_reference_scan`, so it can be priced per byte.
     pub load_reference_scan_bytes: u128,
     pub load_reference_scan_calls: u128,
+    pub edge_index_builds: u128,
+    pub edge_index_source_files: u128,
+    pub edge_index_bare_eligible: u128,
+    pub edge_index_closure_expand_calls: u128,
+    pub edge_index_tree_census_calls: u128,
     pub load_fixpoint_rounds: u128,
     /// Per-entry span attribution (entry, spans, span nanos, that entry's stage rows),
     /// descending by span nanos. Lets a witness entry's split be read apart from the
@@ -12134,6 +12236,41 @@ pub fn exclusive_cost_partition_from(
             nanos: st.load_bare_edge_walk,
             contained_in: "load_bare_reference_closure",
         },
+        InclusiveCostRow {
+            name: "edge_index_ref_half",
+            nanos: st.edge_index_ref_half,
+            contained_in: "load_bare_edge_index",
+        },
+        InclusiveCostRow {
+            name: "edge_index_bare_half",
+            nanos: st.edge_index_bare_half,
+            contained_in: "load_bare_edge_index",
+        },
+        InclusiveCostRow {
+            name: "edge_index_closure_expand",
+            nanos: st.edge_index_closure_expand,
+            contained_in: "edge_index_ref_half",
+        },
+        InclusiveCostRow {
+            name: "edge_index_tree_census",
+            nanos: st.edge_index_tree_census,
+            contained_in: "edge_index_bare_half",
+        },
+        InclusiveCostRow {
+            name: "edge_index_tree_census_miss_nanos",
+            nanos: st.edge_index_tree_census_miss_nanos,
+            contained_in: "edge_index_tree_census",
+        },
+        InclusiveCostRow {
+            name: "edge_index_bare_candidates",
+            nanos: st.edge_index_bare_candidates,
+            contained_in: "edge_index_bare_half",
+        },
+        InclusiveCostRow {
+            name: "edge_index_publish",
+            nanos: st.edge_index_publish,
+            contained_in: "load_bare_edge_index",
+        },
     ];
 
     let sum_exclusive: u128 = exclusive.iter().map(|r| r.nanos).sum();
@@ -12185,6 +12322,12 @@ pub fn exclusive_cost_partition_from(
         verdict,
         load_reference_scan_bytes: st.load_reference_scan_bytes,
         load_reference_scan_calls: st.load_reference_scan_calls,
+        edge_index_builds: st.edge_index_builds,
+        edge_index_source_files: st.edge_index_source_files,
+        edge_index_bare_eligible: st.edge_index_bare_eligible,
+        edge_index_closure_expand_calls: st.edge_index_closure_expand_calls,
+        edge_index_tree_census_calls: st.edge_index_tree_census_calls,
+        edge_index_tree_census_misses: st.edge_index_tree_census_misses,
         load_fixpoint_rounds: st.load_fixpoint_rounds,
         span_rows_by_entry,
     }
@@ -12252,6 +12395,27 @@ pub fn render_exclusive_cost_partition_json(
     // The closure-size spread (504 modules down to a median of 2-5) makes a per-module
     // weighting a different claim from a per-byte one, and only the per-byte one matches
     // how the scan actually costs.
+    // Edge-index construction receipt. `builds` is the load-bearing number: it separates
+    // "construction is fundamentally slow" (optimize the measured stage) from "construction
+    // is merely repeated" (materialize once and share). It is a COUNT rather than nanos
+    // because a memo HIT still adds its own small elapsed time to `load_bare_edge_index`,
+    // so a zero-nanos assertion is unavailable and "small" is not a claim this partition's
+    // accounting style permits. `closure_expand_calls` is the multiplicity the per-call
+    // BFS cost is paid at — the quantity that decides whether the suspect is a cost SHAPE.
+    out.push_str(",\"edge_index_construction\":{\"builds\":");
+    out.push_str(&json_num(p.edge_index_builds));
+    out.push_str(",\"source_files\":");
+    out.push_str(&json_num(p.edge_index_source_files));
+    out.push_str(",\"bare_eligible\":");
+    out.push_str(&json_num(p.edge_index_bare_eligible));
+    out.push_str(",\"closure_expand_calls\":");
+    out.push_str(&json_num(p.edge_index_closure_expand_calls));
+    out.push_str(",\"tree_census_calls\":");
+    out.push_str(&json_num(p.edge_index_tree_census_calls));
+    out.push_str(",\"tree_census_misses\":");
+    out.push_str(&json_num(p.edge_index_tree_census_misses));
+    out.push_str("}");
+
     out.push_str(",\"load_reference_scan_volume\":{\"bytes\":");
     out.push_str(&json_num(p.load_reference_scan_bytes));
     out.push_str(",\"calls\":");
@@ -13590,6 +13754,14 @@ fn tree_bare_census_for_root(
     if let Some(hit) = index.tree_bare_census.borrow().get(root) {
         return Ok(hit.clone());
     }
+    // MISS-ONLY accounting. The call count alone is a trap: this census IS memoized per
+    // root, so dividing total nanos by calls reports an "average per call" that describes
+    // no actual call — a handful of cold builds amortised over ~1.6k hits looks like a
+    // uniform per-file cost and would justify the wrong fix (deduplicate the calls)
+    // instead of the right one (make the cold build cheaper, or build it once per process
+    // rather than once per index).
+    let miss_started = std::time::Instant::now();
+    resolve_stage_slot_add(|st| st.edge_index_tree_census_misses += 1);
     let pool = pool_parse(index)?;
     let trimmed = root.trim_end_matches('/');
     let prefix = format!("{trimmed}/");
@@ -13625,6 +13797,9 @@ fn tree_bare_census_for_root(
         .tree_bare_census
         .borrow_mut()
         .insert(root.to_string(), census.clone());
+    resolve_stage_slot_add(|st| {
+        st.edge_index_tree_census_miss_nanos += miss_started.elapsed().as_nanos();
+    });
     Ok(census)
 }
 

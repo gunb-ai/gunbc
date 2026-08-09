@@ -83,6 +83,10 @@ data front_door_note: String = "The real-corpus front door for the impact readin
 
 data no_lines: List<String> = []
 
+data front_door_no_edges: List<ModuleDependencyEdge> = []
+
+data front_door_no_import_facts: List<ImportResolutionFact> = []
+
 data front_door_pool_roots: List<String> = ["dag", "src/v2"]
 
 data front_door_importer_roots: List<String> = ["dag", "src/v2"]
@@ -414,28 +418,81 @@ fn render_delivery_receipt(receipt: DeliveryReceipt) -> String {
   ])
 }
 
+data pr_delivery_grain_only_note: String = "THE COST/OBSERVATION TENSION, resolved by construction rather than by choosing a side. Review 50657 found the shell pre-filter narrowing to the wrong population: it skipped unless a .dag was ADDED, while DeclarationGrainUnavailable rows come from MODIFIED paths — so a modification-only PR, the common case and precisely the population this step exists to measure, never ran. Widening the filter to any touched .dag fixes the observation but would put the 409s report on nearly every PR, which is the cost the placement ruling exists to avoid. Neither side of that trade is acceptable, so the fold is split instead: the expensive term is front_door_edges (the corpus-wide edge index, ~92 percent of the wall), and it exists ONLY to answer the reverse query for ADDED modules. A PR that adds none needs no reverse query at all — its receipt is the grain census, which needs declaration facts and nothing else. So when no added path resolves to a module, this branches BEFORE touching front_door_edges and passes an empty edge population, which is not a lie about the graph: with no added subject there is no consumer question, no arm reads those edges, and the receipt carries only DeclarationGrainUnavailable rows. The cheap path is now the one that covers the population the step was built to observe."
+
+fn pr_delivery_grain_only_receipt(
+  changed_paths: List<String>,
+  departed_paths: List<String>,
+  added_paths: List<String>
+) -> String {
+  render_delivery_receipt(
+    receipt: pr_delivery_check(
+      outcome: changed_surface_impact_outcome(
+        changed_paths: changed_paths,
+        departed_paths: departed_paths,
+        edges: front_door_no_edges,
+        nodes: front_door_nodes(),
+        import_facts: front_door_no_import_facts,
+        admissions: front_door_admissions
+      ),
+      changed_paths: changed_paths,
+      added_paths: added_paths,
+      edges: front_door_no_edges,
+      nodes: front_door_nodes(),
+      import_facts: front_door_no_import_facts,
+      admissions: front_door_admissions
+    )
+  )
+}
+
+fn pr_delivery_full_receipt(
+  changed_paths: List<String>,
+  departed_paths: List<String>,
+  added_paths: List<String>
+) -> String {
+  render_delivery_receipt(
+    receipt: pr_delivery_check(
+      outcome: changed_surface_impact_outcome(
+        changed_paths: changed_paths,
+        departed_paths: departed_paths,
+        edges: front_door_edges(),
+        nodes: front_door_nodes(),
+        import_facts: front_door_import_facts(),
+        admissions: front_door_admissions
+      ),
+      changed_paths: changed_paths,
+      added_paths: added_paths,
+      edges: front_door_edges(),
+      nodes: front_door_nodes(),
+      import_facts: front_door_import_facts(),
+      admissions: front_door_admissions
+    )
+  )
+}
+
 fn pr_delivery_report() -> String {
   match floor_observe_git_diff_name_status_for_ci() {
     NameStatusDiffFail { reason } =>
       "delivery check REFUSED — the diff could not be observed, so no delivery verdict is computed and nothing is assumed delivered. reason: {reason}"
     NameStatusDiffOk { changed_paths, departed_paths, added_paths } =>
-      render_delivery_receipt(
-        receipt: pr_delivery_check(
-          outcome: changed_surface_impact_outcome(
-            changed_paths: changed_paths,
-            departed_paths: departed_paths,
-            edges: front_door_edges(),
-            nodes: front_door_nodes(),
-            import_facts: front_door_import_facts(),
-            admissions: front_door_admissions
-          ),
-          changed_paths: changed_paths,
-          added_paths: added_paths,
-          edges: front_door_edges(),
+      if any(
+        xs: pr_delivery_subjects_for_added_paths(
           nodes: front_door_nodes(),
-          import_facts: front_door_import_facts(),
-          admissions: front_door_admissions
+          added_paths: added_paths
+        ),
+        predicate: fn(_) { true }
+      ) {
+        pr_delivery_full_receipt(
+          changed_paths: changed_paths,
+          departed_paths: departed_paths,
+          added_paths: added_paths
         )
-      )
+      } else {
+        pr_delivery_grain_only_receipt(
+          changed_paths: changed_paths,
+          departed_paths: departed_paths,
+          added_paths: added_paths
+        )
+      }
   }
 }
