@@ -1,5 +1,7 @@
 module gunbc.systemctl_list_units
 
+import std.algebra { trim }
+
 import std.types { String, NonEmptyStr, List, Bool }
 import extdeps.systemd.systemctl
 

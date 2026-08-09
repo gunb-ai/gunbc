@@ -817,15 +817,54 @@ pub fn lookup_binding_by_name_local(env: Rc<TypeEnv>, name: String) -> Option<Rc
 
 pub fn lookup_binding_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
     match lookup_binding_by_name_local(env.clone(), name.clone()) {
-        Some(binding) => Some(binding.clone()),
+        Some(binding) => {
+            if listed_import_required_bare_call_blocked(env.clone(), name.clone()) {
+                None
+            } else {
+                Some(binding.clone())
+            }
+        }
         None => lookup_binding_after_global_bare(env.clone(), name.clone()),
     }
 }
 
+pub fn closure_independent_bare_free_call_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Closure-independent bare free-call binding (#6985 / #8062): symbols registered here refuse global_bare / pool-coincidence resolution unless the name is in source_visible_names (selective import or kernel surface). Dissolve-on: PrimitiveDefinition identity-join closes the denominator so every importable free fn is registered once with its definer module — not a hand-maintained trim-only list.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn bare_free_call_requires_listed_import(name: String) -> bool {
+    (name.clone() == "trim".to_string())
+}
+
+pub fn import_visible_name(env: Rc<TypeEnv>, name: String) -> bool {
+    match v1_rt::map_get(&env.source_visible_names.clone(), name.clone()) {
+        Some(vis) => vis.clone(),
+        None => false,
+    }
+}
+
+pub fn global_bare_blocked_by_listed_import_requirement(env: Rc<TypeEnv>, name: String) -> bool {
+    (bare_free_call_requires_listed_import(name.clone())
+        && !import_visible_name(env.clone(), name.clone()))
+}
+
+pub fn listed_import_required_bare_call_blocked(env: Rc<TypeEnv>, name: String) -> bool {
+    global_bare_blocked_by_listed_import_requirement(env.clone(), name.clone())
+}
+
 pub fn lookup_binding_after_global_bare(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
-    match global_bare_lookup(env.clone(), name.clone()) {
-        Some(binding) => Some(binding.clone()),
-        None => lookup_qualified_module_projection(env.clone(), name.clone()),
+    if global_bare_blocked_by_listed_import_requirement(env.clone(), name.clone()) {
+        None
+    } else {
+        match global_bare_lookup(env.clone(), name.clone()) {
+            Some(binding) => Some(binding.clone()),
+            None => lookup_qualified_module_projection(env.clone(), name.clone()),
+        }
     }
 }
 

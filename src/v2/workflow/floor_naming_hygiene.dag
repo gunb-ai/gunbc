@@ -1,5 +1,7 @@
 module v2.workflow.floor_naming_hygiene
 
+import std.algebra { trim }
+
 import std.types { String, Bool, List }
 import v2.std.optional {
   Absent,
