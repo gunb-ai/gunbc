@@ -55,10 +55,38 @@ fn posix_login_name_code_point_admitted(cp: Int) -> Bool {
     || cp == 45
 }
 
+// The login shell is part of the passwd entry and it is LOAD-BEARING, not cosmetic: sshd refuses
+// remote command execution for an account whose shell is a nologin binary, so an account can exist,
+// carry the right key, and still be unusable for the exact thing automation needs. A model without
+// this field cannot express the difference between "the account is present" and "the account can
+// run a command", which is a wall a fleet session hit live rather than a hypothetical.
+//
+// It is an OBSERVATION, not a required literal, because most rows in this repository were authored
+// without anyone reading /etc/passwd. Forcing a value would have made three unobserved shells get
+// invented to satisfy the type, which is how the uid rows beside them went wrong.
+type PosixLoginShell
+  = LoginShellObserved { path: NonEmptyStr }
+  | LoginShellUnobserved
+
+// The nologin family exits immediately, so sshd cannot run a command under it. Cited by behaviour
+// rather than by path convention: the check is against the known refusing binaries, and an
+// unobserved shell answers false because "we did not look" is not "it works".
+fn posix_shell_permits_command_execution(shell: PosixLoginShell) -> Bool {
+  match shell {
+    LoginShellUnobserved => false
+    LoginShellObserved { path: p } =>
+      (p as String) != "/usr/sbin/nologin"
+        && (p as String) != "/sbin/nologin"
+        && (p as String) != "/bin/false"
+        && (p as String) != "/usr/bin/false"
+  }
+}
+
 type PosixUser {
   name: NonEmptyStr
   uid: Int
   gid: Int
+  shell: PosixLoginShell
 }
 
 

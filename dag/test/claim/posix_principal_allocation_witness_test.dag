@@ -35,7 +35,9 @@ fn alloc(host: HostIdentity, name: PosixLoginName, uid: Int) -> PosixAccountAllo
 fn observed(a: PosixAccountAllocation, name: PosixLoginName, uid: Int) -> PosixAccountObservation {
   PosixAccountObservation {
     occurrence: a.occurrence,
-    observed_user: PosixUser { name: name, uid: uid, gid: uid },
+    observed_user: PosixUser { name: name, uid: uid, gid: uid,
+  shell: LoginShellUnobserved,
+},
     effect_receipt: process_receipt(label: "id-probe" as NonEmptyStr, exit_status: 0),
     raw_output_identity: content_hash_atom(value: "observed-account" as NonEmptyStr),
     observed_at: "2026-08-09T06:00:00Z",
@@ -275,7 +277,9 @@ test fn witness_service_realization_is_unselected() -> Bool {
 fn receipted(a: PosixAccountAllocation, name: PosixLoginName, uid: Int) -> PosixAccountObservation {
   PosixAccountObservation {
     occurrence: a.occurrence,
-    observed_user: PosixUser { name: name, uid: uid, gid: uid },
+    observed_user: PosixUser { name: name, uid: uid, gid: uid,
+  shell: LoginShellUnobserved,
+},
     effect_receipt: process_receipt(label: "id-probe" as NonEmptyStr, exit_status: 0),
     raw_output_identity: content_hash_atom(value: "uid=1500(lumen)" as NonEmptyStr),
     observed_at: "2026-08-09T06:00:00Z",

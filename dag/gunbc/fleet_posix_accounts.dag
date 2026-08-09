@@ -85,24 +85,28 @@ data fleet_posix_root_user: PosixUser = PosixUser {
   name: "root",
   uid: 0,
   gid: 0,
+  shell: LoginShellUnobserved,
 }
 
 data fleet_posix_operator_user: PosixUser = PosixUser {
   name: "briansrls",
   uid: 1000,
   gid: 1000,
+  shell: LoginShellUnobserved,
 }
 
 data fleet_posix_ci_runner_user: PosixUser = PosixUser {
   name: "ghrunner",
   uid: 1001,
   gid: 1001,
+  shell: LoginShellUnobserved,
 }
 
 data fleet_posix_srv3_host_user: PosixUser = PosixUser {
   name: "ubuntu",
   uid: 1000,
   gid: 1000,
+  shell: LoginShellUnobserved,
 }
 
 data fleet_posix_root_declared_probe: PosixAccountDeclaredProbe = PosixAccountDeclaredProbe {
@@ -789,3 +793,121 @@ fn fleet_posix_account_exists(name: NonEmptyStr) -> Bool {
     Absent => false
   }
 }
+
+
+// ── Reported contradiction of an authored row ─────────────────────────────────────────────
+// fleet_posix_ci_runner_user carries uid 1001 / gid 1001 and a declared_probe claiming
+// probe_command "id ghrunner" on srv1. A live readback of that exact command on that exact host
+// returns 999 / 987, reported by witty-raven-412 (msg_051d4971) from srv1 AND srv2.
+//
+// The defect is not the integers. It is that the declared_probe STAMPS a probe whose own output
+// contradicts the values beside it, so either the probe never ran or its result was discarded for
+// authored numbers. A wrong integer is visible; a provenance stamp is what made it look checked.
+// That is the authored-versus-executed class at account grain, inside the module whose header text
+// already warns that declared_probe is authored provenance and not live observation.
+//
+// This is recorded as a REPORTED contradiction rather than a correction. Overwriting the row with
+// 999/987 would replace one authored pair with another that I cannot verify from this session --
+// better sourced, still not executed here. A PosixAccountObservation is deliberately NOT minted
+// either: that carrier requires a ProcessReceipt and a raw-output identity precisely so an account
+// cannot be asserted without a command having run, and fabricating one to record someone else's
+// reading would defeat the wall it exists to be. The DISAGREEMENT is the durable fact.
+type ReportedAccountContradiction {
+  account: FleetPosixAccountKey
+  modeled_uid: Int
+  modeled_gid: Int
+  reported_uid: Int
+  reported_gid: Int
+  reported_shell: PosixLoginShell
+  hosts: List<HostIdentity>
+  source: NonEmptyStr
+}
+
+fn fleet_ci_runner_reported_contradiction() -> ReportedAccountContradiction {
+  ReportedAccountContradiction {
+    account: FleetAccountCiRunner,
+    modeled_uid: 1001,
+    modeled_gid: 1001,
+    reported_uid: 999,
+    reported_gid: 987,
+    reported_shell: LoginShellObserved { path: "/usr/sbin/nologin" },
+    hosts: ["srv1", "srv2"],
+    source: "witty-raven-412 msg_051d4971; live getent on srv1 and srv2; not verified by this session"
+  }
+}
+
+fn reported_contradiction_is_open(c: ReportedAccountContradiction) -> Bool {
+  c.modeled_uid != c.reported_uid || c.modeled_gid != c.reported_gid
+}
+
+data fleet_account_contradiction_dissolve_on: String = "dissolve-on: fleet_posix_ci_runner_user carries authored uid/gid contradicted by a live readback on two hosts, and its declared_probe stamps a probe whose own command returns the contradicting values. DISSOLVES WHEN a PosixAccountObservation with a real ProcessReceipt grounds the ghrunner row through deploy_access_check_observed, at which point the observed values replace the authored ones and this contradiction row is deleted rather than kept beside them. Until then the model must not report the ghrunner account as grounded."
+
+// The stale duplicate is a filesystem-grain second representation of one grant authority, and it
+// has a consequence beyond tidiness: srv1's effective privilege is the UNION of both files, so a
+// grant readback that reads one file reports a strict subset of real privilege and would classify
+// an over-granted host as exact.
+data srv1_duplicate_sudoers_dropin_note: String = "srv1 carries /etc/sudoers.d/gunbc-deploy.bak-wavec-verify-179889 duplicating the managed grant list, reported by witty-raven-412 (msg_051d4971). Effective privilege is the union of both files, so any effective-access observation that reads a single dropin under-reports it. An effective-grant readback must enumerate the whole sudoers.d population before classifying a host exact."
+
+
+// ── The applied FleetAccountAutomation allocation ─────────────────────────────────────────
+// Label gunbc-fleet, the same on every host. Same-label is not a claim about independence: the
+// operator's ruling makes independence a property of the grant (principal x operation x resource x
+// context), so a matching or differing string changes no identity, no authorized resource, no
+// permitted operation, and no key or sudo policy. Occurrences stay distinct because occurrence
+// identity is host x role.
+//
+// Applied on srv1 and srv2 by witty-raven-412 under the four allocation conditions, with preflight
+// receipts showing no pre-existing account or group (so nothing was adopted) and no sshd allow-list
+// that would silently exclude the principal. srv3 and srv4 are NOT allocated: unreachable, and an
+// unreachable host has no allocation rather than a presumed one.
+//
+// Reported, with source, not independently verified here -- same discipline as every other cloud
+// and host row this session did not execute itself.
+type FleetAutomationAllocationStanding
+  = AutomationAllocationApplied {
+      host: HostIdentity
+      user: PosixUser
+      source: NonEmptyStr
+    }
+  | AutomationAllocationPending { host: HostIdentity, cause: NonEmptyStr }
+
+fn fleet_automation_user_on(host: HostIdentity) -> PosixUser {
+  PosixUser {
+    name: "gunbc-fleet",
+    uid: 1001,
+    gid: 1001,
+    shell: LoginShellObserved { path: "/bin/bash" },
+  }
+}
+
+fn fleet_automation_allocations() -> List<FleetAutomationAllocationStanding> {
+  [
+    AutomationAllocationApplied {
+      host: "srv1",
+      user: fleet_automation_user_on(host: "srv1"),
+      source: "witty-raven-412 msg_f7cbef82; password LOCKED, sudo NONE verified, authorized_keys 0600 single line"
+    },
+    AutomationAllocationApplied {
+      host: "srv2",
+      user: fleet_automation_user_on(host: "srv2"),
+      source: "witty-raven-412 msg_f7cbef82; password LOCKED, sudo NONE verified, authorized_keys 0600 single line"
+    },
+    AutomationAllocationPending { host: "srv3", cause: "host unreachable from the allocating session; key refused at its address" },
+    AutomationAllocationPending { host: "srv4", cause: "no address available to the allocating session" }
+  ]
+}
+
+fn automation_allocation_is_applied(a: FleetAutomationAllocationStanding) -> Bool {
+  match a {
+    AutomationAllocationApplied { host: _, user: _, source: _ } => true
+    AutomationAllocationPending { host: _, cause: _ } => false
+  }
+}
+
+// THE NUMERIC COINCIDENCE, carried because it is a reading hazard rather than a defect. gunbc-fleet
+// landed on uid 1001 because 1001 was the next free id on those hosts -- and 1001/1001 is exactly
+// what the ghrunner row WRONGLY claims. Two rows now read 1001 for different accounts on the same
+// host. The numbers are not identity, so nothing is broken; but a reader comparing uids to decide
+// which account a file belongs to would fuse them, and that is precisely why the ghrunner
+// contradiction must be resolved by observation rather than left standing.
+data automation_uid_coincidence_note: String = "gunbc-fleet is uid 1001 on srv1 and srv2 (next free id). fleet_posix_ci_runner_user also claims 1001, wrongly -- ghrunner is 999/987 on both hosts. Two rows reading the same number for different accounts is a reading hazard, not a collision: uid is host-local and is never fleet principal identity. It raises the priority of grounding the ghrunner row, because a reader who does treat a uid as identity would now fuse the automation account with the CI runner."
