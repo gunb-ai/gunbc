@@ -762,8 +762,8 @@ fn witness_exclusion_patterns(rows: List<WitnessExclusionRow>) -> List<String> {
 
 fn witness_exclusion_row_waits_on_wet_lane_undarken(row: WitnessExclusionRow) -> Bool {
   string_contains(s: dissolution_description(condition: row.dissolution), pattern: "falsifier_self_host_wet_cadence_active")
-    || (dissolution_description(condition: row.dissolution) == excl_wet_integration_dissolve)
-    || (dissolution_description(condition: row.dissolution) == excl_behavioral_receipt_dissolve)
+    || (dissolution_description(condition: row.dissolution) == dissolution_description(condition: excl_wet_integration_dissolve))
+    || (dissolution_description(condition: row.dissolution) == dissolution_description(condition: excl_behavioral_receipt_dissolve))
     || string_contains(s: dissolution_description(condition: row.dissolution), pattern: "wet lane un-darken")
     || string_contains(s: dissolution_description(condition: row.dissolution), pattern: "wet lane un-darkens")
 }

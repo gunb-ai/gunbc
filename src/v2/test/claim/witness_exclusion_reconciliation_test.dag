@@ -1,5 +1,7 @@
 module v2.test.claim.witness_exclusion_reconciliation_test
 
+import std.types { NonEmptyStr }
+
 import std.witness_admission { DiscoverySelection }
 import gunbc.ci_layer_roots {
   WitnessExclusionRow,
@@ -44,6 +46,22 @@ test fn witness_exclusion_frontier_reconciliation_holds() -> Bool {
     && witness_whole_tree_resolve_exclusion_concat_authority_holds()
 }
 
+
+// Constructs the empty condition through the NON-LITERAL path deliberately.
+// The literal form `unbound_dissolution(description: "")` is refused at compile
+// now that the parameter is NonEmptyStr -- that is the wall. Refinement at
+// non-literal positions is still deferred, and that gap is exactly what the
+// downstream well-formedness guard defends, so this control has to reach it
+// through the gap to keep proving the guard works (DESIGN 4b(4): production
+// machinery dissolves on a climb, the evidence stays enrolled).
+fn synthetic_nonliteral_text(text: String) -> NonEmptyStr {
+  concat(text, "")
+}
+
+fn synthetic_empty_condition(text: String) -> DissolutionCondition {
+  unbound_dissolution(description: synthetic_nonliteral_text(text: text))
+}
+
 fn synthetic_row(pattern: String) -> WitnessExclusionRow {
   WitnessExclusionRow {
     pattern: pattern,
@@ -67,7 +85,7 @@ test fn witness_exclusion_red_control_bare_nickname_row_reds() -> Bool {
         pattern: "synthetic_nickname.dag",
         classification: OfflineLocalRecipe,
         reason: "",
-        dissolution: unbound_dissolution(description: "")
+        dissolution: synthetic_empty_condition(text: "")
       }
     ]
   ) == false
