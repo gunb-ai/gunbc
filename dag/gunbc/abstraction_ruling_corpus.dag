@@ -1,0 +1,166 @@
+module gunbc.abstraction_ruling_corpus
+
+import std.types { NonEmptyStr, List, Bool }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// THE LABELED RULING CORPUS -- the measurement instrument every downstream claim is scored against.
+// It exists before any detector or model does, deliberately: without it, "the mechanism works" has
+// no denominator and a tuned model's improvement cannot be distinguished from it re-deriving what a
+// deterministic reader already decides.
+//
+// A ROW IS NOT A CLAIM THAT THE MECHANISM WORKS. It records what a competent reviewer concluded
+// about a real pair of subjects at an exact tree, with the fact that decided it. Rows are authored
+// from decided rulings and from controls executed against the live corpus; none of them is produced
+// by a model, and none may be scored against a model that was fitted on it.
+data abstraction_ruling_corpus_note: String = "Evaluation data, authored ahead of the mechanism on purpose. Two properties are load-bearing and neither is decorative. First, every row names the DISCRIMINATOR -- the single fact that decided the ruling -- because a corpus of subject pairs and verdicts teaches a classifier to pattern-match names, while a corpus of discriminators states what evidence any mechanism must be able to see. Second, every row declares its DETERMINISTIC STANDING, so a mechanism that only re-derives what a structural reader already decides cannot be reported as having added semantic value; that measurement is impossible after the fact if the standing is not recorded per row."
+
+// The closed answer vocabulary. Shared by the forward question (I want to model X -- where does it
+// belong?) and the inverse (these live subjects may be one concept -- should they be de-forked?),
+// because both consume the same evidence and differ only in which end is known.
+type AbstractionRuling
+  = ExistingAuthority
+  | LikelyDuplicate
+  | ProjectionMissing
+  | CandidateNewAbstraction
+  | ReprimeCandidate
+  | KeepDistinct
+  | OverCollapseRisk
+  | DemandAbsent
+  | AuthoredButUnconsumed
+  | UnknownBecauseEvidenceIncomplete
+
+// WHY A SEPARATE STANDING RATHER THAN A BOOLEAN "hard case". The question is not difficulty, it is
+// which layer OWNS the case. A case decidable from participation must be decided deterministically
+// and never delegated to a model merely because a model could answer it; a case that needs semantic
+// judgment is the only place a model earns its cost. Recording this per row is what makes "the
+// model improved only on cases the detector already handled" a measurable failure rather than an
+// impression.
+type DeterministicStanding
+  = DecidableFromParticipation
+  | RequiresSemanticJudgment
+  | UnknownBecauseParticipationIncomplete
+
+type RulingProvenance
+  = ObservedHistorical { resolving_commit: NonEmptyStr }
+  | ObservedLiveControl { executing_witness: DeclarationRef }
+  | Manufactured
+
+// The subjects under judgment. Two or more for the inverse question; the forward question supplies
+// one intent plus its candidate authorities, which is the same shape read from the other end.
+type RulingSubjects {
+  left: DeclarationRef
+  right: DeclarationRef
+}
+
+// A row is (subjects, ruling, discriminator, standing, provenance). The discriminator is prose
+// because it names a FACT about the world, not a declaration -- but it must state the single fact
+// that decided the case, never a summary of the reasoning.
+type AbstractionRulingRow {
+  subjects: RulingSubjects
+  ruling: AbstractionRuling
+  discriminator: NonEmptyStr
+  standing: DeterministicStanding
+  provenance: RulingProvenance
+}
+
+fn decl(module_path: NonEmptyStr, decl_name: NonEmptyStr) -> DeclarationRef {
+  DeclarationRef { module_path: module_path, decl_name: decl_name, field: WholeDeclaration }
+}
+
+fn pair(left: DeclarationRef, right: DeclarationRef) -> RulingSubjects {
+  RulingSubjects { left: left, right: right }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE UNIFIED-MEMORY SPECIMEN. Chosen because the correct answer is NOT "merge everything with the
+// word unified in it": the same term names a hardware topology, a runtime allocation mechanism, and
+// a budget, and the rulings run in both directions across those layers. A detector that reads only
+// declaration shape, or only operation names, cannot produce this population.
+// ---------------------------------------------------------------------------------------------
+
+// THE ROW THAT COULD NOT BE WRITTEN, recorded because its absence is itself a finding. The
+// hardware-pool versus runtime-managed-allocation keep-distinct (a CUDA Unified Memory or SYCL USM
+// managed pointer migrates between processors and may oversubscribe one processor's capacity, so it
+// implies nothing about physical topology) cannot be stated here yet: NO CUDA OR SYCL AUTHORITY
+// EXISTS IN THIS TREE, so both of its subjects cannot resolve. A row citing a declaration that does
+// not exist is exactly what this corpus refuses to return, and authoring one to make the population
+// look complete would poison the instrument with the failure it is built to detect.
+data unmodeled_runtime_allocation_layer_note: String = "Gap, not an omission: the runtime managed-allocation layer (CUDA Unified Memory, SYCL USM, Metal storage modes) has no authority in this tree, so the keep-distinct against hardware pool topology has no resolvable right-hand subject. It is recorded as a gap rather than authored with a fabricated symbol. Dissolves when a runtime-allocation authority is cited; the ruling is then a one-line addition, and until then the conflation it guards against is not reachable in this corpus because neither concept is modeled twice."
+
+data unified_memory_rows: List<AbstractionRulingRow> = [
+  AbstractionRulingRow {
+    subjects: pair(
+      left: decl(module_path: "std.machine_shape", decl_name: "SharedLevelEdge"),
+      right: decl(module_path: "std.machine_shape", decl_name: "MachineShape"),
+    ),
+    ruling: ProjectionMissing,
+    discriminator: "One physical pool has two valid encodings -- authored under either domain -- and a third encoding repeating the level under both domains also validates and double counts. The repair is first-class pool nodes with access edges, not a second memory authority.",
+    standing: DecidableFromParticipation,
+    provenance: ObservedLiveControl {
+      executing_witness: decl(
+        module_path: "test.claim.shared_pool_encoding_control",
+        decl_name: "witness_duplicated_pool_encoding_is_writable_and_double_counts",
+      ),
+    },
+  },
+
+  AbstractionRulingRow {
+    subjects: pair(
+      left: decl(module_path: "extdeps.memory.types", decl_name: "MemoryKind"),
+      right: decl(module_path: "std.machine_shape", decl_name: "SharedLevelEdge"),
+    ),
+    ruling: ProjectionMissing,
+    discriminator: "Dram and Hbm classify memory technology; UnifiedShared classifies which execution domains access a pool. The successor carrier for the topology axis already exists on main, so the enum member is a scaffold whose replacement landed and was never applied.",
+    standing: DecidableFromParticipation,
+    provenance: ObservedHistorical { resolving_commit: "unapplied" },
+  },
+
+  AbstractionRulingRow {
+    subjects: pair(
+      left: decl(module_path: "extdeps.systems.nvidia", decl_name: "dgx_spark_catalog_row"),
+      right: decl(module_path: "gunbc.ci_budget_tree", decl_name: "host_allocatable_bytes"),
+    ),
+    ruling: KeepDistinct,
+    discriminator: "Vendor installed capacity is a catalog fact that never changes; allocatable memory is an observation that changes with what is already resident. Admitting a model because weights plus cache fit the catalog number is the failure this distinction exists to prevent.",
+    standing: RequiresSemanticJudgment,
+    provenance: Manufactured,
+  },
+
+  AbstractionRulingRow {
+    subjects: pair(
+      left: decl(module_path: "gunbc.ci_budget_tree", decl_name: "host_allocatable_bytes"),
+      right: decl(module_path: "gunbc.ci_budget_tree", decl_name: "host_overhead_bytes"),
+    ),
+    ruling: ExistingAuthority,
+    discriminator: "Total minus reserved, saturating, then partitioned among consumers -- with reservation provenance already split into measured, operator allowance, and unmeasured. A serving residency budget needs that same computation over a pool identity, so it consumes this authority rather than minting a parallel one.",
+    standing: DecidableFromParticipation,
+    provenance: Manufactured,
+  },
+]
+
+fn ruling_corpus_rows() -> List<AbstractionRulingRow> {
+  unified_memory_rows
+}
+
+fn ruling_is_keep_distinct(r: AbstractionRuling) -> Bool {
+  match r {
+    KeepDistinct => true
+    ExistingAuthority => false
+    LikelyDuplicate => false
+    ProjectionMissing => false
+    CandidateNewAbstraction => false
+    ReprimeCandidate => false
+    OverCollapseRisk => false
+    DemandAbsent => false
+    AuthoredButUnconsumed => false
+    UnknownBecauseEvidenceIncomplete => false
+  }
+}
+
+fn row_requires_semantic_judgment(row: AbstractionRulingRow) -> Bool {
+  match row.standing {
+    RequiresSemanticJudgment => true
+    DecidableFromParticipation => false
+    UnknownBecauseParticipationIncomplete => false
+  }
+}
