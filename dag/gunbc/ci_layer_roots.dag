@@ -1256,6 +1256,60 @@ data falsifier_substrate_long_lane_note: String = "Nightly falsifier batch 6 (te
 
 data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
   SubstrateLongLaneRow {
+    entry: "dag/test/claim/realization_attempt_keystone_test.dag",
+    function: "witness_planted_minimal_module_emits",
+    reason: "5015ms deadline kill measured on CI run 31290921315 (2026-08-09): every keystone witness runs the real interpreted v2 pipeline (tokenize->parse->normalize->resolve->emit or assemble->join->infer->translate) at least once — the mechanism IS the modeled boundary crossing and its interpreted cost exceeds the 5s fast lane on CI hardware",
+    dissolve_on: "witness realization lands the pipeline natively or eval drops under gunbc_ci_fast_lane_witness_eval_budget on a measured CI run — then re-enroll per-PR discovery and delete the five keystone rows"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/realization_attempt_keystone_test.dag",
+    function: "witness_planted_garbage_refuses_frontend_RED",
+    reason: "same keystone deadline class as witness_planted_minimal_module_emits (CI run 31290921315)",
+    dissolve_on: "same as witness_planted_minimal_module_emits row"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/realization_attempt_keystone_test.dag",
+    function: "witness_real_corpus_entry_produces_typed_standing",
+    reason: "same keystone deadline class as witness_planted_minimal_module_emits (CI run 31290921315)",
+    dissolve_on: "same as witness_planted_minimal_module_emits row"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/realization_attempt_keystone_test.dag",
+    function: "witness_assembled_cross_module_subject_reaches_typed_standing",
+    reason: "same keystone deadline class as witness_planted_minimal_module_emits (CI run 31290921315)",
+    dissolve_on: "same as witness_planted_minimal_module_emits row"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/realization_attempt_keystone_test.dag",
+    function: "witness_assembled_identity_absent_refuses_RED",
+    reason: "same keystone deadline class as witness_planted_minimal_module_emits (CI run 31290921315)",
+    dissolve_on: "same as witness_planted_minimal_module_emits row"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/realization_sweep_test.dag",
+    function: "witness_canonical_identities_join_own_enrolled_roster",
+    reason: "~150s-class dir walk (floor_discovery_producer over dag/test/claim, the census-walk cost class): the canonical-roster derivation witnessed against this file's own enrolled roster — fixture-controlled identity join, corpus-breadth walk",
+    dissolve_on: "witness realization lands the walk natively or eval drops under gunbc_ci_fast_lane_witness_eval_budget on a measured run — then re-enroll per-PR discovery and delete this row"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/realization_sweep_test.dag",
+    function: "witness_sweep_rows_join_planted_roster_exactly_once",
+    reason: "~16s measured eval (valiant-boar-65, 2026-08-09): one real canonical two-module closure assembly (tokenize->parse->normalize->resolve) through attempt_closure_rows — the CI2-0 sweep mechanism keystone; the cheap identity-scan and witness-absent RED siblings stay per-PR",
+    dissolve_on: "witness realization lands the assembly natively or eval drops under gunbc_ci_fast_lane_witness_eval_budget on a measured run — then re-enroll per-PR discovery and delete this row"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/realization_sweep_test.dag",
+    function: "witness_sweep_receipt_and_histogram_render_every_row",
+    reason: "same Class C assembly wall as sibling witness_sweep_rows_join_planted_roster_exactly_once (~17.5s measured)",
+    dissolve_on: "same as sibling row"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/witness_execution_class_live_census_test.dag",
+    function: "witness_live_roster_census_holds",
+    reason: "~150s measured single-walk eval (valiant-boar-65, 2026-08-08): the CI-0 live-roster classification census — a full floor_discovery_producer walk over witness_discovery_scan_dirs (~1k file reads through the interpreted producer) joined against the enrolled bundle plan. Corpus-breadth census, not a fixture-shaped defect (DESIGN witness-cost ruling: the census is irreducible, the mechanism never is); the mechanism fixtures stay per-PR in witness_execution_class_test",
+    dissolve_on: "witness realization lands the census natively or the interpreted walk drops under gunbc_ci_fast_lane_witness_eval_budget on a measured run — then re-enroll per-PR discovery and delete this row"
+  },
+  SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/wave1_gate1_d_mvp_subsumption_witness_test.dag",
     function: "wave1_gate1_d_census_subsumption_witness_holds",
     reason: "134526ms measured witness wall on a cold run (27x a 5s fast-lane budget, test-decomposition-wcf-cut.md Class C, merry-ibex-306 2026-07-25): the fn builds 10 ingested_fixture_arrows fixtures through a real tokenize->parse_module->normalize->resolve pass each, across two aggregator checks (well-formedness, behavior-kind) — genuine corpus breadth, not a fixture-shaped defect. The mechanism-only sibling (self_host/wave1_gate1_d_mvp_subsumption_witness_test.dag table_fixture check_fns, measured eval_self=0.000ms) is already covered by the source-root *_test.dag discovery walk (gunbc.commit_workflow wave1_gate1_d_census_class_c_split_note) — no explicit per-PR roster row for it",

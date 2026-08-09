@@ -287,8 +287,10 @@ fn ci_floor_upstream_red_refusal_step() -> Step {
   }
 }
 
+data ci_floor_native_cache_root_note: String = "The floor job runs the NativeBundle unit (gunbc_pr_native_batch), so it needs the same GUNBC_NATIVE_CACHE_ROOT prelude the build and falsifier jobs already carry: GITHUB_ENV is job-scoped, so the build job's derivation never reaches the floor, and the bundle workspace silently fell back to the shared /tmp scratch prefix instead of the toolchain-segmented durable root (CI2-0 re-observation 2026-08-08: every main floor run since enrollment cold-failed there and was absorbed by the counted interpreter fallback). Deriving the root after setup-rust-toolchain is the same ordering contract the other two jobs witness."
+
 fn ci_floor_job_prelude_steps() -> List<Step> {
-  [ci_heal_revalidation_checkout_step(), ci_heal_revalidation_preflight_step(), ci_floor_gate_toolchain_step()]
+  [ci_heal_revalidation_checkout_step(), ci_heal_revalidation_preflight_step(), ci_floor_gate_toolchain_step(), ci_native_cache_root_step()]
 }
 
 fn ci_floor_spec_from_roster() -> CiSpec {

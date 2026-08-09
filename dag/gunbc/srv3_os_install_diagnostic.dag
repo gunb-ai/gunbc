@@ -19,6 +19,7 @@ import extdeps.bmc.types {
   On,
   Off,
 }
+import extdeps.bmc.webui.nbd_proxy_serve { srv3_nbd_proxy_local_port }
 import extdeps.bmc.webui.nbd_proxy {
   VmSlotIndexEndpoint,
   bmcweb_nbd_proxy_ws_path,
@@ -48,8 +49,6 @@ import product.placement_supply { HostIdentity }
 import gunbc.srv3_actuate_shell_paths {
   srv3_bmcweb_token_path,
 }
-
-data srv3_nbd_proxy_local_port: Int = 10809
 
 data gunbc_srv3_os_install_diagnostic_scope_disposition: Disposition = Terminal {
   reason: "srv3 OS install actuation diagnostic fold — multi-surface observation (nbd serve, BMC session, Redfish system boot/power, virtual media, SOL console, router DHCP lease, weak KVM) over InstallAttemptIntent → InstallDiagnosticVerdict; KVM frozen/keyboard-dead is weak evidence only."

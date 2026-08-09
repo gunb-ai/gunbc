@@ -99,6 +99,12 @@ path = "src/bin/discover_source_root_ingest.rs"
 name = "frontier_probe_survey"
 path = "src/bin/frontier_probe_survey.rs"
 
+# CI2-0 Commit B sweep driver — local recipe only (NOT floor-enrolled, not WitnessBin-addressed):
+# per-entry canonical realization sweep over the frontier-probe overlay transport.
+[[bin]]
+name = "realization_sweep_survey"
+path = "src/bin/realization_sweep_survey.rs"
+
 # Whole-tree v2 parse regression scanner (host transport; one harness, N files).
 [[bin]]
 name = "v2_whole_tree_parse_scan"
