@@ -7873,30 +7873,15 @@ pub struct LiveReadSelectionRequest {
 /// one authority the producer consumes is stated once.
 const LIVE_READ_CLASSIFICATION_ENTRY: &str = "src/v2/lens/live_read_classification.dag";
 
-/// Build the whole-tree live-read manifest by evaluating the `.dag` authority ONCE for the entire
-/// request set.
-///
-/// The batching is not an optimisation detail, it is the reason the seam has this shape: the G2
-/// classification needs the dependency-edge, module-declaration, and fn-arrow fact populations for
-/// the whole tree, and those are derived per evaluation. A per-declaration call would rebuild all
-/// three for every row — quadratic in the corpus against a population that does not change between
-/// rows. `live_read_selection_manifest_over` therefore derives them once and folds the requests
-/// over the shared closure, and this producer's job is to hand it the full request set in one go.
-///
-/// Every failure arm REFUSES. There is no arm that returns an empty or partial manifest, because a
-/// manifest is consumed as a completeness claim — `row_for` treats an absent row as a refusal — and
-/// a producer that answered "here is what I could classify" would convert its own failure into a
-/// silent skip licence for everything it dropped (§5: a failure arm must refuse, never widen, and
-/// here widening the *skippable* set is the under-selection direction that reads as a faster green).
 thread_local! {
-    /// The fact substrate bound to the classification evaluation currently on this thread.
-    ///
-    /// It is a BINDING, not a fallback switch. `fn_arrow_decl_facts_index_live` refuses when it
-    /// is empty rather than quietly reflecting the eval context instead — an unbound producer
-    /// returning the historical population would be exactly the silent degrade §5 forbids, and
-    /// the two producers answer about different subjects, so substituting one for the other is
-    /// never a safe default. `fn_arrow_decl_facts_live` keeps the reflecting behaviour under its
-    /// own name for its own consumers; neither one falls back to the other.
+    // The fact substrate bound to the classification evaluation currently on this thread.
+    //
+    // It is a BINDING, not a fallback switch. `fn_arrow_decl_facts_index_live` refuses when it
+    // is empty rather than quietly reflecting the eval context instead — an unbound producer
+    // returning the historical population would be exactly the silent degrade §5 forbids, and
+    // the two producers answer about different subjects, so substituting one for the other is
+    // never a safe default. `fn_arrow_decl_facts_live` keeps the reflecting behaviour under its
+    // own name for its own consumers; neither one falls back to the other.
     static BOUND_G2_FACTS: RefCell<Option<Rc<G2FactBundle>>> = const { RefCell::new(None) };
 }
 
@@ -7936,6 +7921,20 @@ pub fn eval_fn_arrow_decl_facts_index_live(
     ))
 }
 
+/// Evaluate the classification authority once over a batch of requests.
+///
+/// The batching is what the seam is for, and it is no longer a completeness claim. A
+/// per-declaration call would re-resolve the classification lens and re-marshal the fact
+/// population for every row, against a population that does not change between rows; folding a
+/// batch through `live_read_selection_rows_index_live` pays both once. What it is NOT is a demand
+/// that the batch be the whole roster -- the caller passes exactly its cache misses, and the
+/// index keeps the rows.
+///
+/// Every failure arm REFUSES. No arm returns a partial batch, because a caller reads an absent
+/// row as a refusal and a producer answering "here is what I could classify" would convert its
+/// own failure into a silent skip licence for everything it dropped (§5: a failure arm must
+/// refuse, never widen -- and widening the SKIPPABLE set is the under-selection direction, which
+/// reads as a faster green rather than as a failure).
 pub fn build_live_read_selection_manifest(
     index: &MultiEntryIndex,
     requests: &[LiveReadSelectionRequest],
