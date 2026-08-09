@@ -9,6 +9,7 @@ import gunbc.devboot.program {
   select_program,
   offered_programs_rendering,
 }
+import std.content_hash { Sha256Digest, sha256_hex_digest, Sha256DigestHex }
 import gunbc.devboot.build {
   BuildOutcome,
   Built,
@@ -19,6 +20,7 @@ import gunbc.devboot.build {
   ProgramNotBuildable,
   WorktreeNotSnapshotted,
   ToolchainNotObserved,
+  SourceTreeOidUnusable,
   SubjectNotAdmitted,
   ProducerUnreachable,
   ProducerDidNotAnswer,
@@ -36,6 +38,8 @@ import gunbc.devboot.build {
   request_ref_of,
   produced_ref_of,
 }
+import gunbc.devboot.produce { SnapshotRefused, ToolchainObservationRefused }
+import gunbc.devboot.subject { FeatureNameEmpty, BuildSubjectRefusalCause }
 import gunbc.devboot.lease { request_ref_namespace, produced_ref_namespace }
 import extdeps.gnu.libc {
   PlatformCLibrary,
@@ -53,34 +57,50 @@ test fn a_refusal_never_reports_a_delivered_executable() -> Bool {
   )
 }
 
+data witness_fixture_digest_hex: String = "5af0bd8e000000000000000000000000000000000000000000000000000000"
+
+data witness_other_digest_hex: String = "00000000000000000000000000000000000000000000000000000000000000"
+
+fn witness_fixture_digest() -> Sha256Digest {
+  match sha256_hex_digest(hex: witness_fixture_digest_hex) {
+    Present { value: digest } => digest
+    Absent => Sha256Digest { hex: witness_fixture_digest_hex as Sha256DigestHex }
+  }
+}
+
 // AND THE POSITIVE CONTROL, without which the witness above passes on a predicate that is false for everything.
 test fn a_built_outcome_carrying_a_digest_reports_an_executable() -> Bool {
   outcome_delivers_executable(
     outcome: Built {
       program_subject: "program=gunbc\n",
-      artifact: BuiltArtifact { path: "/tmp/gunbc", sha256: "5af0bd8e" },
+      artifact: BuiltArtifact { path: "/tmp/gunbc", sha256: witness_fixture_digest() },
       receipt: BuildReceipt { invocation: "devboot_build", producer_host: "srv3", reused: false },
     },
   )
 }
 
-// AN ARTIFACT WITHOUT A DIGEST IS NOT A DELIVERY. The discriminating case between the two above: the Built arm alone is not the promise -- the digest binding is. An outcome shaped like a success whose bytes were never bound reads as a refusal to every consumer, which is the only reading that cannot be satisfied by a stale binary sitting where a fresh one was expected.
-test fn a_built_outcome_without_a_digest_does_not_report_an_executable() -> Bool {
-  !outcome_delivers_executable(
-    outcome: Built {
-      program_subject: "program=gunbc\n",
-      artifact: BuiltArtifact { path: "/tmp/gunbc", sha256: "" },
-      receipt: BuildReceipt { invocation: "devboot_build", producer_host: "srv3", reused: false },
-    },
-  )
+// AN INVALID DIGEST HEX IS NOT ADMITTED. The construction wall on Sha256Digest means an empty or truncated hex cannot inhabit BuiltArtifact; this witness pins the admission gate the product path routes through.
+test fn an_invalid_digest_hex_is_not_admitted() -> Bool {
+  match sha256_hex_digest(hex: "5af0bd8e") {
+    Present { value: _ } => false
+    Absent => true
+  }
 }
 
 // EVERY REFUSAL SAYS SOMETHING, and the match that renders them is total, so a refusal added later cannot inherit a generic sentence by omission. A digest mismatch in particular must name BOTH digests: a report that the bytes are wrong without saying what was expected and what arrived cannot be acted on, and this is the arm that fires when a store has been tampered with rather than merely being slow.
 test fn a_digest_mismatch_names_both_digests() -> Bool {
-  let sentence = build_refusal_sentence(
-    cause: ArtifactDigestMismatch { expected: "5af0bd8e", observed: "00000000" },
-  )
-  string_contains(s: sentence, pattern: "5af0bd8e") && string_contains(s: sentence, pattern: "00000000")
+  match sha256_hex_digest(hex: witness_fixture_digest_hex) {
+    Present { value: expected } =>
+      match sha256_hex_digest(hex: witness_other_digest_hex) {
+        Present { value: observed } =>
+          let sentence = build_refusal_sentence(
+            cause: ArtifactDigestMismatch { expected: expected, observed: observed },
+          )
+          string_contains(s: sentence, pattern: "5af0bd8e") && string_contains(s: sentence, pattern: "00000000")
+        Absent => false
+      }
+    Absent => false
+  }
 }
 
 // A SUBJECT MISMATCH CARRIES BOTH SUBJECTS for the same reason, and this refusal is the cross-host wall: the producer derives its subject from its OWN toolchain and never echoes the caller's, so this arm is what stands between a caller and a binary built by a compiler it did not ask for.

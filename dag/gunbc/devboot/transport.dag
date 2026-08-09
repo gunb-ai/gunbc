@@ -1,0 +1,140 @@
+module gunbc.devboot.transport
+
+import std.types { String, NonEmptyStr, List, Bool, Int }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.gunbc
+
+data devboot_shell_transport_note: String = "Counted retained-transport roster for gunbc.devboot.build WitnessBin.Run sites. Runtime-present build.dag is not yet on host_effect_apply typed effects; every raw argv site names a RetainedWitnessRun row with reason + dissolve-on = shell→intent Phase 2 (gunbc.host_effect_realize host_effect_apply). No unmarked WitnessBin.Run calls survive review."
+
+data devboot_shell_typed_effects_dissolve_ref: DeclarationRef = DeclarationRef {
+  module_path: "gunbc.host_effect_realize",
+  decl_name: "host_effect_apply",
+  field: WholeDeclaration,
+}
+
+type RetainedWitnessRun {
+  reason: NonEmptyStr
+  dissolves_to: DeclarationRef
+}
+
+data retained_devboot_rm_rf: RetainedWitnessRun = RetainedWitnessRun {
+  reason: "devboot exchange and request/produced staging clears prior scratch trees and index files" as NonEmptyStr,
+  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
+}
+
+data retained_devboot_mkdir: RetainedWitnessRun = RetainedWitnessRun {
+  reason: "devboot exchange and staging directories are created before git index operations" as NonEmptyStr,
+  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
+}
+
+data retained_devboot_git_read_tree: RetainedWitnessRun = RetainedWitnessRun {
+  reason: "devboot materializes a ref tree or prefixes a source tree into a scratch index" as NonEmptyStr,
+  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
+}
+
+data retained_devboot_git_checkout_index: RetainedWitnessRun = RetainedWitnessRun {
+  reason: "devboot checks out indexed blobs to the exchange directory without piping artifact bytes" as NonEmptyStr,
+  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
+}
+
+data retained_devboot_git_fetch: RetainedWitnessRun = RetainedWitnessRun {
+  reason: "devboot polls the producer answer ref over the git-only transport" as NonEmptyStr,
+  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
+}
+
+data retained_devboot_sleep: RetainedWitnessRun = RetainedWitnessRun {
+  reason: "devboot poll interval waits between fetch attempts" as NonEmptyStr,
+  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
+}
+
+data retained_devboot_git_init: RetainedWitnessRun = RetainedWitnessRun {
+  reason: "devboot prepares a scratch exchange repository under the work root" as NonEmptyStr,
+  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
+}
+
+data retained_devboot_git_update_index: RetainedWitnessRun = RetainedWitnessRun {
+  reason: "devboot stages request and produced tree entries in a scratch index" as NonEmptyStr,
+  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
+}
+
+data retained_devboot_git_push: RetainedWitnessRun = RetainedWitnessRun {
+  reason: "devboot publishes a parentless request commit to the producer store" as NonEmptyStr,
+  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
+}
+
+data retained_devboot_git_hash_object: RetainedWitnessRun = RetainedWitnessRun {
+  reason: "devboot writes staged blobs into the object database before indexing" as NonEmptyStr,
+  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
+}
+
+data retained_devboot_git_write_tree: RetainedWitnessRun = RetainedWitnessRun {
+  reason: "devboot serializes a staged index to a tree object for commit-tree" as NonEmptyStr,
+  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
+}
+
+data retained_devboot_git_commit_tree: RetainedWitnessRun = RetainedWitnessRun {
+  reason: "devboot wraps request and produced trees in parentless commits for shallow clones" as NonEmptyStr,
+  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
+}
+
+data retained_devboot_git_cat_file: RetainedWitnessRun = RetainedWitnessRun {
+  reason: "devboot reads request entry blobs from the producer store ref" as NonEmptyStr,
+  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
+}
+
+data retained_devboot_git_rev_parse: RetainedWitnessRun = RetainedWitnessRun {
+  reason: "devboot resolves the request source subtree and produced answer refs" as NonEmptyStr,
+  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
+}
+
+data retained_devboot_git_update_ref: RetainedWitnessRun = RetainedWitnessRun {
+  reason: "devboot publishes the produced answer ref after commit-tree" as NonEmptyStr,
+  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
+}
+
+data retained_devboot_sha256sum: RetainedWitnessRun = RetainedWitnessRun {
+  reason: "devboot independently verifies artifact bytes before trusting the store digest" as NonEmptyStr,
+  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
+}
+
+data retained_devboot_cp: RetainedWitnessRun = RetainedWitnessRun {
+  reason: "devboot installs the verified artifact at the caller out_path" as NonEmptyStr,
+  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
+}
+
+data retained_devboot_chmod: RetainedWitnessRun = RetainedWitnessRun {
+  reason: "devboot marks the installed artifact executable for the caller" as NonEmptyStr,
+  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
+}
+
+data retained_devboot_uname: RetainedWitnessRun = RetainedWitnessRun {
+  reason: "devboot records the producing host beside the answer without keying the subject" as NonEmptyStr,
+  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
+}
+
+data retained_devboot_cargo_build: RetainedWitnessRun = RetainedWitnessRun {
+  reason: "devboot producer compiles the admitted subject with the observed toolchain homes" as NonEmptyStr,
+  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
+}
+
+type WitnessBinRunOutcome {
+  success: Bool
+  exit_code: Int
+  stdout: String
+  stderr: String
+}
+
+fn devboot_witness_run(
+  site: RetainedWitnessRun,
+  workdir: String,
+  bin_path: String,
+  args: List<String>,
+) -> WitnessBinRunOutcome {
+  let out = gunbc.WitnessBin.Run(workdir: workdir, bin_path: bin_path, args: args)
+  WitnessBinRunOutcome {
+    success: out.success,
+    exit_code: out.exit_code,
+    stdout: out.stdout,
+    stderr: out.stderr,
+  }
+}
