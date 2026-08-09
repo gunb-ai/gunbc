@@ -81,6 +81,9 @@ type IgnoreArtifact
   | PythonLocalDevScriptFile
   | PythonAuditScriptAllowlisted
   | DissolutionCensusProjectionScriptAllowlisted
+  | ImportStripStripperAllowlisted
+  | ImportStripClassifierAllowlisted
+  | ImportStripControlsAllowlisted
   | PythonBytecodeCacheDir
   | PythonCompiledBytecode
   | ClaimMapDir

@@ -2,6 +2,10 @@ module v2.extdeps.languages.rust_test
 
 import std.algebra { Cons, Empty }
 
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+import v2.extdeps.languages.dag { dag_bind_arrow_with_body_fixture }
+
 import v2.extdeps.languages.rust {
   rust_add_declared_inhabitants_root,
   rust_binding_spellings,

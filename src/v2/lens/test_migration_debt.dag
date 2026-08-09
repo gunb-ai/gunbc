@@ -7,7 +7,11 @@ import v2.std.logic { Bool }
 import v2.std.text { String }
 
 // Class-5 carve-out: baselines are point-in-time RATCHET CEILINGS over live host tree scans (test_migration_debt_* builtins), not counts beside a committed roster. Deriving baseline from the same live scan would tautologize live_count <= baseline.
-data test_migration_debt_module_count_baseline: Int = 82
+// 82 -> 83 (2026-08-09): #8062 landed class_b_trim_specimen_test.rs, the Class B trim
+// pool-coincidence discriminating suite — a deliberate hand-Rust admission because the specimen
+// must observe v1 infer_env binding directly. Dissolution: migrates to the v2 witness route when
+// CI2 (#8043) covers compiler-subject tests; the ceiling may then ratchet back down.
+data test_migration_debt_module_count_baseline: Int = 83
 data test_migration_debt_total_loc_baseline: Int = 28247
 data test_migration_debt_total_test_fns_baseline: Int = 891
 

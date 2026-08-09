@@ -38,14 +38,14 @@ import v2.std.data_initializer_identity {
   plain_record_parent_qualified_name_optional,
 }
 
-fn decl_facts_reflection_fixture_facts() -> List<DeclFact> {
+fn decl_facts_reflection_witness_support_facts() -> List<DeclFact> {
   decl_facts(pool_roots: decl_facts_reflection_fixture_pool_roots)
 }
 
 fn decl_facts_reflection_lookup(qn: String) -> DeclFactLookup {
   decl_fact_lookup_by_qualified_name(
     qn: qn,
-    facts: decl_facts_reflection_fixture_facts()
+    facts: decl_facts_reflection_witness_support_facts()
   )
 }
 
@@ -85,7 +85,7 @@ fn decl_fact_projection_node_for_qualified_name(
 
 fn decl_facts_reflection_fact_node(qn: String) -> Optional<Node> {
   decl_fact_projection_node_for_qualified_name(
-    facts: decl_facts_reflection_fixture_facts(),
+    facts: decl_facts_reflection_witness_support_facts(),
     qn: qn
   )
 }
@@ -280,7 +280,7 @@ fn duplicate_qn_pool_declaration_lookup_per_candidate_is_unique(lookup: DeclFact
           && decl_fact_lookup_is_unique(
             lookup: decl_fact_lookup_by_pool_declaration_identity(
               identity: pool_declaration_identity_from_fact(fact: fact),
-              facts: decl_facts_reflection_fixture_facts()
+              facts: decl_facts_reflection_witness_support_facts()
             )
           )
       })

@@ -60,7 +60,7 @@ fn memory_shape_from_cpu_catalog(
   ]
 }
 
-fn shape_from_catalog(input: ShapeFromCatalogInput) -> MachineShapeConstruction {
+fn cpu_shape_from_catalog(input: ShapeFromCatalogInput) -> MachineShapeConstruction {
   match input {
     FromCpuModelCatalog { domain: domain, l1_level: l1_level, l2_level: l2_level, l3_level: l3_level, row: row } =>
       MachineShapeOk {

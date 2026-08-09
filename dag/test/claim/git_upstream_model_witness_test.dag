@@ -585,7 +585,7 @@ fn git_r0_fixture_repository() -> GitRepositoryState {
   }
 }
 
-fn fixture_repository() -> GitRepositoryState {
+fn git_fixture_repository() -> GitRepositoryState {
   git_r0_fixture_repository()
 }
 
@@ -896,7 +896,7 @@ test fn witness_git_ls_files_stage_z_path_containing_space_and_tab_survives_inta
 }
 
 test fn witness_git_bounded_fixture_projects_declared_fragment() -> Bool {
-  let repo = fixture_repository()
+  let repo = git_fixture_repository()
   match git_project_repository(repo: repo, tree_oid: sha1_root_tree) {
     GitProjectionRefused { cause: _ } => false
     GitProjected { projection } =>
@@ -958,7 +958,7 @@ test fn witness_git_empty_commit_and_tag_messages_are_representable() -> Bool {
 }
 
 test fn witness_git_readback_comparison_rejects_perturbed_observation() -> Bool {
-  match git_project_repository(repo: fixture_repository(), tree_oid: sha1_root_tree) {
+  match git_project_repository(repo: git_fixture_repository(), tree_oid: sha1_root_tree) {
     GitProjectionRefused { cause: _ } => false
     GitProjected { projection } =>
       let observed = fixture_read_back_observation()
@@ -1012,7 +1012,7 @@ test fn witness_git_object_format_is_part_of_identity() -> Bool {
 }
 
 test fn witness_git_promisor_missing_never_decodes_as_empty_object() -> Bool {
-  match git_lookup_object(repo: fixture_repository(), oid: sha1_promisor_missing) {
+  match git_lookup_object(repo: git_fixture_repository(), oid: sha1_promisor_missing) {
     ObjectPromisorUnavailable { oid, promisor } =>
       oid == sha1_promisor_missing && promisor == "origin"
     _ => false
@@ -1020,7 +1020,7 @@ test fn witness_git_promisor_missing_never_decodes_as_empty_object() -> Bool {
 }
 
 test fn witness_git_content_address_kind_mismatch_refuses_repository_decode() -> Bool {
-  let repo = fixture_repository()
+  let repo = git_fixture_repository()
   let observed_object = ObjectBlob {
     blob: Blob {
       content: octets_bytes(o: [115, 111, 117, 114, 99, 101]),
@@ -1065,7 +1065,7 @@ test fn witness_git_content_address_kind_mismatch_refuses_repository_decode() ->
 }
 
 test fn witness_git_content_address_binds_observed_oid_and_exact_hash_input() -> Bool {
-  let repo = fixture_repository()
+  let repo = git_fixture_repository()
   let observed_subject = ObjectBlob {
     blob: Blob {
       content: octets_bytes(o: [115, 111, 117, 114, 99, 101]),
@@ -1162,7 +1162,7 @@ test fn witness_git_content_address_binds_observed_oid_and_exact_hash_input() ->
 }
 
 test fn witness_git_duplicate_stored_identity_refuses_without_list_order() -> Bool {
-  let repo = fixture_repository()
+  let repo = git_fixture_repository()
   let conflicting = StoredObject {
     oid: sha1_blob_regular,
     content_address: fixture_content_address(
@@ -1196,7 +1196,7 @@ test fn witness_git_duplicate_stored_identity_refuses_without_list_order() -> Bo
 }
 
 test fn witness_git_duplicate_unavailability_refuses_without_list_order() -> Bool {
-  let repo = fixture_repository()
+  let repo = git_fixture_repository()
   let duplicate = GitRepositoryState {
     object_format: repo.object_format,
     objects: repo.objects,
@@ -1222,7 +1222,7 @@ test fn witness_git_duplicate_unavailability_refuses_without_list_order() -> Boo
 }
 
 test fn witness_git_present_object_cannot_also_be_unavailable() -> Bool {
-  let repo = fixture_repository()
+  let repo = git_fixture_repository()
   let overlap = GitRepositoryState {
     object_format: repo.object_format,
     objects: repo.objects,
@@ -1248,7 +1248,7 @@ test fn witness_git_present_object_cannot_also_be_unavailable() -> Bool {
 }
 
 test fn witness_git_caller_asserted_well_formed_wrong_oid_never_admits() -> Bool {
-  let repo = fixture_repository()
+  let repo = git_fixture_repository()
   let subject = ObjectBlob {
     blob: Blob {
       content: octets_bytes(o: [115, 111, 117, 114, 99, 101]),
@@ -1291,7 +1291,7 @@ test fn witness_git_caller_asserted_well_formed_wrong_oid_never_admits() -> Bool
 }
 
 test fn witness_git_tree_reference_must_be_present_or_promisor_declared() -> Bool {
-  let repo = fixture_repository()
+  let repo = git_fixture_repository()
   let missing = GitRepositoryState {
     object_format: repo.object_format,
     objects: repo.objects |> filter(object =>
@@ -1319,7 +1319,7 @@ test fn witness_git_tree_reference_must_be_present_or_promisor_declared() -> Boo
 }
 
 test fn witness_git_promisor_declared_tree_reference_stays_partial() -> Bool {
-  let repo = fixture_repository()
+  let repo = git_fixture_repository()
   let partial = GitRepositoryState {
     object_format: repo.object_format,
     objects: repo.objects |> filter(object =>
@@ -1345,7 +1345,7 @@ test fn witness_git_promisor_declared_tree_reference_stays_partial() -> Bool {
 }
 
 test fn witness_git_branch_ref_to_corrupt_object_refuses_repository() -> Bool {
-  let repo = fixture_repository()
+  let repo = git_fixture_repository()
   let corrupt = GitRepositoryState {
     object_format: repo.object_format,
     objects: repo.objects,
@@ -1387,7 +1387,7 @@ test fn witness_git_branch_ref_to_corrupt_object_refuses_repository() -> Bool {
 
 test fn witness_git_exact_old_oid_transition_model_preserves_expected_state() -> Bool {
   match git_model_update_ref_exact(
-    repo: fixture_repository(),
+    repo: git_fixture_repository(),
     name: "refs/heads/main",
     new_oid: sha1_next_commit,
     expected_old: sha1_parent_commit,
@@ -1406,7 +1406,7 @@ test fn witness_git_exact_old_oid_transition_model_preserves_expected_state() ->
 }
 
 test fn witness_git_duplicate_ref_names_refuse_exact_transition() -> Bool {
-  let repo = fixture_repository()
+  let repo = git_fixture_repository()
   let duplicate = GitRepositoryState {
     object_format: repo.object_format,
     objects: repo.objects,
@@ -1449,7 +1449,7 @@ test fn witness_git_duplicate_ref_names_refuse_exact_transition() -> Bool {
 }
 
 test fn witness_git_stale_expected_oid_refuses_without_mutation() -> Bool {
-  let repo = fixture_repository()
+  let repo = git_fixture_repository()
   match git_model_update_ref_exact(
     repo: repo,
     name: "refs/heads/main",
@@ -1469,7 +1469,7 @@ test fn witness_git_stale_expected_oid_refuses_without_mutation() -> Bool {
 }
 
 test fn witness_git_missing_new_object_refuses_without_mutation() -> Bool {
-  let repo = fixture_repository()
+  let repo = git_fixture_repository()
   match git_model_update_ref_exact(
     repo: repo,
     name: "refs/heads/main",
@@ -1488,7 +1488,7 @@ test fn witness_git_missing_new_object_refuses_without_mutation() -> Bool {
 }
 
 test fn witness_git_mismatched_object_format_refuses_without_mutation() -> Bool {
-  let repo = fixture_repository()
+  let repo = git_fixture_repository()
   match git_model_update_ref_exact(
     repo: repo,
     name: "refs/heads/main",
@@ -1505,7 +1505,7 @@ test fn witness_git_mismatched_object_format_refuses_without_mutation() -> Bool 
 
 test fn witness_git_symbolic_ref_dereferences_without_losing_symbolic_identity() -> Bool {
   match git_model_update_ref_exact(
-    repo: fixture_repository(),
+    repo: git_fixture_repository(),
     name: "HEAD",
     new_oid: sha1_next_commit,
     expected_old: sha1_parent_commit,
@@ -1528,7 +1528,7 @@ test fn witness_git_symbolic_ref_dereferences_without_losing_symbolic_identity()
 }
 
 test fn witness_git_symbolic_ref_cycle_refuses_without_mutation() -> Bool {
-  let repo = fixture_repository()
+  let repo = git_fixture_repository()
   let cyclic = GitRepositoryState {
     object_format: repo.object_format,
     objects: repo.objects,
