@@ -47,7 +47,57 @@ data host_key_enrollment_transcription_scaffold: Disposition = Scaffold {
   }
 }
 
-data fleet_host_key_enrollments: List<KnownHostKeyRow> = []
+// PROVENANCE: transcription of the executed fleet_host_key_scan_wet on GitHub Actions
+// run 31323244273 (scan_fleet_host_keys on srv1, 2026-08-09, all six hosts
+// outcome=observed, ED25519). The srv5/srv6 fingerprints CROSS-CHECK against
+// bold-eagle-107's independent measurement (SHA256:AnxYhYR+Cz5E… / SHA256:Y5wB4G/qZFXZ…
+// prefixes match exactly) — two independent observations from different positions agree,
+// which is what makes this TOFU scan an enrollment rather than a guess. Keys are
+// DISTINCT across all six hosts (the identical-factory-keys claim stays refuted).
+data fleet_host_key_enrollments: List<KnownHostKeyRow> = [
+  KnownHostKeyRow {
+    host: "srv1" as HostIdentity,
+    endpoint: "srv1",
+    key_type: "ssh-ed25519",
+    public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAIErU2itxhvGPRx1UxiuCYkikYIV9DtuXiELy64bQpAXL",
+    sha256_fingerprint: "SHA256:hIxG0YT2jIxXbxs4XGqwehgoA63kxD4xKP2j6YjG86w",
+  },
+  KnownHostKeyRow {
+    host: "srv2" as HostIdentity,
+    endpoint: "srv2",
+    key_type: "ssh-ed25519",
+    public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAIOcg37ZIA2yVtNBV6dbVIvHjrNxzOI7gEOAF6uGAAJ48",
+    sha256_fingerprint: "SHA256:XbC63cRNKr8kCy4UoXD20QKCNLNY4iMV1B61HMDHFno",
+  },
+  KnownHostKeyRow {
+    host: "srv3" as HostIdentity,
+    endpoint: "srv3",
+    key_type: "ssh-ed25519",
+    public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAIFLymLSidHDQS5dyzq/KZTXsFsTxjZSmDUbSBqHUuWTN",
+    sha256_fingerprint: "SHA256:y3Uq5S1Ibtd6RoN+bzyk79jKqhWVVoM37oL6lQg4tgk",
+  },
+  KnownHostKeyRow {
+    host: "srv4" as HostIdentity,
+    endpoint: "srv4",
+    key_type: "ssh-ed25519",
+    public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAID5/OXS9/f1VdH5sOKS+RL5MDKrfGtwFtFDJDvSz+IPB",
+    sha256_fingerprint: "SHA256:nU6X9fCjhRYdvvvuKCbS7egf9CJMbJI6vYJ/Wgf5zxI",
+  },
+  KnownHostKeyRow {
+    host: "srv5" as HostIdentity,
+    endpoint: "192.168.1.222",
+    key_type: "ssh-ed25519",
+    public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAICIFwSNG7dFfeQLdMR70e/xbYdfGO9O/ArmOkB33kG/T",
+    sha256_fingerprint: "SHA256:AnxYhYR+Cz5EbOCVxirsoZlUwLRENLJmeNyk0ukD/s4",
+  },
+  KnownHostKeyRow {
+    host: "srv6" as HostIdentity,
+    endpoint: "192.168.1.223",
+    key_type: "ssh-ed25519",
+    public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAIEnpVavWbt8VTjUMprf+CbKCw0tS2nQIVuN49Ob5gEsc",
+    sha256_fingerprint: "SHA256:Y5wB4G/qZFXZBaXbjWdK/HtWJP2pUgupsyjwBPehqMs",
+  },
+]
 
 fn enrolled_fingerprint_for(host: String) -> String? {
   fold(fleet_host_key_enrollments, init: none, f: fn(acc, k) {
