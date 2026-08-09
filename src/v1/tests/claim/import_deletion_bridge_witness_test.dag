@@ -2,7 +2,6 @@ module v1.tests.claim.import_deletion_bridge_witness
 
 import std.types { Bool, String, List, NonEmptyStr }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.occurrence_identity {
   OccurrenceId, OccurrenceIndexEntry, OccurrenceTransport,
   ReferenceOccurrence, DeclarationOccurrence,
@@ -29,7 +28,15 @@ import v1.gunbc.occurrence_binding_parser_walk {
   occurrence_binding_inputs_from_transport,
 }
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data stage0_emission_model_gap_note: String = "BLOCKER FOUND WHILE MAKING THIS BRANCH MECHANICALLY COMPLETE — an emission-model gap, not a registration oversight, and it is the reason regen refuses with this witness present.
+
+Reading real source requires filesystem_read, which requires the Filesystem SERVICE in the import closure. Any service in the v1 emission closure makes the emitter generate `dry_run.rs` — service dry-run support (`pub struct DryRunMode(pub bool)`), verified by emitting fresh and reading the file's own header rather than inferred from the name.
+
+`dry_run.rs` HAS NO SOURCE MODULE. Every other emitted stage0 file corresponds to one (`v1_rt.rs` is module v1.rt), and `gunbc.stage0_emit_plan` derives the plan FROM the parse-observed module closure — so a file emitted as a consequence of service PRESENCE, rather than from a module, is structurally invisible to the derivation. regen therefore refuses it as unregistered, and correctly refuses the obvious repair too: the CI auto-heal hand-added two rows to the projection, which is exactly what the refusal text forbids.
+
+No src/v1 module used a service before, which is why this never surfaced. It is not caused by this lane and is not this lane's to fix casually: the plan model must learn that service presence in the closure contributes emitter-support files, or those files must be classified through v2.compiler.self_host.frontier. Either is a change to a load-bearing regen gate and needs its own modelling, not a path added here.
+
+CONSEQUENCE FOR THIS WITNESS, stated rather than worked around: it cannot both live under src/v1 (needed to import v1.gunbc.occurrence_binding_parser_walk, which the dag+src/v2 compile-clean roots cannot see) and read the live tree (which drags a service into the v1 seed). That is a genuine placement contradiction, not a filing preference, and it is the next thing to resolve.
 
 data import_deletion_bridge_offline_recipe: String = "OFFLINE LOCAL RECIPE (requires the v1 parser pool, exactly as the sibling occurrence_binding_parser_walk witness does). This file lives under src/v1/tests/claim/ and NOT under dag/test/claim/ for a structural reason, not a filing preference: it imports v1.gunbc.occurrence_binding_parser_walk, and the compile-clean gate compiles dag + src/v2 only, so a copy under dag/ fails to resolve the module it exists to exercise. Placing it here is the same resolution the sibling witness already made.
 
