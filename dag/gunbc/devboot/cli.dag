@@ -1,0 +1,67 @@
+module gunbc.devboot.cli
+
+import std.types { String, Int, Bool, Present, none }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import extdeps.filesystem.filesystem_io
+import gunbc.devboot.build {
+  devboot_build,
+  render_build_outcome,
+  build_outcome_exit,
+  BuildOutcome,
+  Built,
+  BuildRefused,
+}
+import gunbc.devboot.produce { receipt_write_refusal }
+
+// THE STABLE PRODUCT COMMAND IS `gunbc build <program>`. This module is the argv seam: it assembles host paths and calls the same devboot_build operation the witnesses exercise, without exposing devboot_build_entry's flat parameters at the shell.
+type DevbootBuildCliOutput {
+  exit_code: Int
+  line: String
+  converged: Bool
+  reason: String?
+}
+
+fn devboot_build_cli_output(
+  program: String,
+  repo_root: String,
+  work_root: String,
+  endpoint: String,
+  out_path: String,
+  receipt_path: String,
+) -> DevbootBuildCliOutput {
+  let outcome = devboot_build(
+    program: program,
+    repo_root: repo_root,
+    work_root: work_root,
+    endpoint: endpoint,
+    out_path: out_path,
+  )
+  let prose = render_build_outcome(outcome: outcome)
+  let written = Filesystem.Write(path: receipt_path, content: prose)
+  if !written.success {
+    receipt_write_refusal(receipt_path: receipt_path, detail: written.error)
+    DevbootBuildCliOutput {
+      exit_code: 1,
+      line: join(["REFUSED: could not write receipt at ", receipt_path], ""),
+      converged: false,
+      reason: Present { value: written.error },
+    }
+  } else {
+    match build_outcome_exit(outcome: outcome) {
+      ExitSuccess =>
+        DevbootBuildCliOutput {
+          exit_code: 0,
+          line: prose,
+          converged: true,
+          reason: none,
+        }
+      ExitFailure { reason, code } =>
+        DevbootBuildCliOutput {
+          exit_code: code,
+          line: prose,
+          converged: false,
+          reason: Present { value: reason },
+        }
+    }
+  }
+}

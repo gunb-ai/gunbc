@@ -79,6 +79,18 @@ test fn a_built_outcome_carrying_a_digest_reports_an_executable() -> Bool {
   )
 }
 
+// A REUSED BUILD NAMES IT IN THE RECEIPT. The one-compile law is not merely that bytes match — the caller must be able to observe that it did not publish a fresh request.
+test fn a_reused_build_carries_reused_true_in_the_receipt() -> Bool {
+  match Built {
+    program_subject: "program=gunbc\n",
+    artifact: BuiltArtifact { path: "/tmp/gunbc", sha256: witness_fixture_digest() },
+    receipt: BuildReceipt { invocation: "devboot_build", producer_host: "srv3", reused: true },
+  } {
+    Built { receipt: BuildReceipt { reused: true, invocation: _, producer_host: _ }, program_subject: _, artifact: _ } => true
+    BuildRefused { cause: _ } => false
+  }
+}
+
 // AN INVALID DIGEST HEX IS NOT ADMITTED. The construction wall on Sha256Digest means an empty or truncated hex cannot inhabit BuiltArtifact; this witness pins the admission gate the product path routes through.
 test fn an_invalid_digest_hex_is_not_admitted() -> Bool {
   match sha256_hex_digest(hex: "5af0bd8e") {

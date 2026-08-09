@@ -1,0 +1,193 @@
+module gunbc.devboot.serve
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.measure { Second, second, second_count }
+
+import extdeps.gunbc
+import extdeps.git { git_ref_missing_exit_code }
+import gunbc.devboot.lease {
+  request_ref_namespace,
+  produced_ref_namespace,
+  content_hash_ref_token,
+}
+import gunbc.devboot.build {
+  ServeReport,
+  ServeProduced,
+  ServeRefused,
+  devboot_serve_request,
+  ProducerHome,
+  request_ref_of,
+  produced_ref_of,
+  render_sha256_digest,
+}
+
+// THE PRODUCER SIDE OF gunbc build, ONE REQUEST PER INVOCATION. The product path is git-only: a caller pushes a parentless request commit under refs/devboot/request/<token> and polls refs/devboot/produced/<token>. This module is the other half — it observes the store, serves any request that has no answer yet, and exits. A long-running accept loop is deliberately not modeled here; the belt timer pattern (oneshot + OnUnitInactiveSec) is the host seam, because a stuck compile must not hold a process that owns the whole service.
+//
+// NOTHING HERE NAMES A HOST PATH. repo_root is the bare artifact store (--git-dir), work_root is scratch, and the toolchain homes arrive as parameters exactly as devboot_serve_entry already requires.
+
+data serve_poll_note: String = "Each invocation lists every request ref, skips any whose produced ref already exists, and serves the first pending token it finds. Serving more than one request per tick is unnecessary at this grain — a compile dominates the interval — and trying to drain the whole queue in one shot would let one slow subject block every later request without a typed per-subject refusal escaping."
+
+fn token_from_request_ref(ref_name: String) -> String {
+  trim(s: second_field(text: ref_name))
+}
+
+fn second_field(text: String) -> String {
+  fold(
+    split(s: text, sep: "/"),
+    init: FieldScan { index: 0, found: "" },
+    f: (acc, part) => scan_field(acc: acc, part: part, wanted: 2),
+  ).found
+}
+
+type FieldScan {
+  index: Int
+  found: String
+}
+
+fn scan_field(acc: FieldScan, part: String, wanted: Int) -> FieldScan {
+  if acc.index == wanted {
+    FieldScan { index: acc.index + 1, found: part }
+  } else {
+    FieldScan { index: acc.index + 1, found: acc.found }
+  }
+}
+
+type RefLookup
+  = RefPresent
+  | RefAbsent
+  | RefLookupRefused { detail: String }
+
+fn ref_exists(store_root: String, repo_root: String, ref_name: String) -> RefLookup {
+  let out = gunbc.WitnessBin.Run(
+    workdir: repo_root,
+    bin_path: "git",
+    args: [concat("--git-dir=", store_root), "rev-parse", "--verify", "--quiet", ref_name],
+  )
+  if out.success {
+    RefPresent
+  } else {
+    if out.exit_code == git_ref_missing_exit_code {
+      RefAbsent
+    } else {
+      RefLookupRefused { detail: trim(s: out.stderr) }
+    }
+  }
+}
+
+fn request_is_pending(store_root: String, repo_root: String, token: String) -> Bool {
+  match ref_exists(store_root: store_root, repo_root: repo_root, ref_name: request_ref_of(token: token)) {
+    RefPresent =>
+      match ref_exists(store_root: store_root, repo_root: repo_root, ref_name: produced_ref_of(token: token)) {
+        RefPresent => false
+        RefAbsent => true
+        RefLookupRefused { detail } => false
+      }
+    RefAbsent => false
+    RefLookupRefused { detail } => false
+  }
+}
+
+fn list_request_tokens(store_root: String, repo_root: String) -> List<String> {
+  let out = gunbc.WitnessBin.Run(
+    workdir: repo_root,
+    bin_path: "git",
+    args: [
+      concat("--git-dir=", store_root),
+      "for-each-ref",
+      "--format=%(refname)",
+      request_ref_namespace,
+    ],
+  )
+  if !out.success {
+    []
+  } else {
+    fold(
+      split(s: trim(s: out.stdout), sep: "\n"),
+      init: [],
+      f: (acc, line) =>
+        if line == "" {
+          acc
+        } else {
+          let token = token_from_request_ref(ref_name: line)
+          if token == "" {
+            acc
+          } else {
+            if request_is_pending(store_root: store_root, repo_root: repo_root, token: token) {
+              concat(acc, [token])
+            } else {
+              acc
+            }
+          }
+        },
+    )
+  }
+}
+
+type ServeOnceOutcome
+  = ServeOnceIdle
+  | ServeOnceHandled { report: ServeReport }
+  | ServeOnceRefused { detail: String }
+
+fn devboot_serve_once(
+  store_root: String,
+  repo_root: String,
+  work_root: String,
+  cargo_bin: String,
+  rustup_home: String,
+  cargo_home: String,
+  build_jobs: String,
+) -> ServeOnceOutcome {
+  let pending = list_request_tokens(store_root: store_root, repo_root: repo_root)
+  if is_empty(pending) {
+    ServeOnceIdle
+  } else {
+    let token = pending |> head
+    let report = devboot_serve_request(
+      repo_root: store_root,
+      work_root: work_root,
+      home: ProducerHome {
+        cargo_bin: cargo_bin,
+        rustup_home: rustup_home,
+        cargo_home: cargo_home,
+        build_jobs: build_jobs,
+      },
+      token: token,
+    )
+    ServeOnceHandled { report: report }
+  }
+}
+
+fn render_serve_once(outcome: ServeOnceOutcome) -> String {
+  match outcome {
+    ServeOnceIdle => "IDLE"
+    ServeOnceHandled { report } =>
+      match report {
+        ServeProduced { token, sha256 } => join(["SERVED ", token, " sha256=", render_sha256_digest(digest: sha256)], "")
+        ServeRefused { token, detail } => join(["SERVE-REFUSED ", token, ": ", detail], "")
+      }
+    ServeOnceRefused { detail } => join(["REFUSED: ", detail], "")
+  }
+}
+
+// Flat argv entry for systemd oneshot + timer, matching devboot_serve_entry's toolchain parameters.
+fn devboot_serve_once_entry(
+  store_root: String,
+  repo_root: String,
+  work_root: String,
+  cargo_bin: String,
+  rustup_home: String,
+  cargo_home: String,
+  build_jobs: String,
+) -> String {
+  render_serve_once(
+    outcome: devboot_serve_once(
+      store_root: store_root,
+      repo_root: repo_root,
+      work_root: work_root,
+      cargo_bin: cargo_bin,
+      rustup_home: rustup_home,
+      cargo_home: cargo_home,
+      build_jobs: build_jobs,
+    ),
+  )
+}

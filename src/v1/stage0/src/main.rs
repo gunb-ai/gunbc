@@ -83,6 +83,18 @@ enum Commands {
         host: String,
     },
 
+    /// Build one exact executable for a named program via the devboot exchange.
+    Build {
+        /// Program name from the devboot roster (e.g. "gunbc")
+        program: String,
+        /// Git artifact store endpoint (git://host:port/store.git). Overrides DEVBOOT_ENDPOINT.
+        #[arg(long)]
+        endpoint: Option<String>,
+        /// Output path for the built executable (default: <program> in the current directory)
+        #[arg(long)]
+        out: Option<String>,
+    },
+
     /// Long-running HTTP server: compile once, then answer each request by
     /// calling ONE .dag entry `fn(method, path, body) -> ServeWireResponse`.
     /// The seam is parse/write only — routing and handlers live in .dag.
@@ -658,6 +670,14 @@ fn main() {
 
         Commands::Converge { host } => {
             cli_run::handle_converge(host);
+        }
+
+        Commands::Build {
+            program,
+            endpoint,
+            out,
+        } => {
+            cli_run::handle_devboot_build(program, endpoint, out);
         }
 
         Commands::Serve {

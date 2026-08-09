@@ -15810,6 +15810,118 @@ pub fn handle_converge(host: String) {
     }
 }
 
+/// Thin CLI transport handler for `gunbc build <program>`: argv parse ->
+/// in-process `.dag` interpreter call -> stdout/exit-code projection.
+pub fn handle_devboot_build(program: String, endpoint: Option<String>, out: Option<String>) {
+    let endpoint = endpoint
+        .or_else(|| std::env::var("DEVBOOT_ENDPOINT").ok())
+        .unwrap_or_else(|| {
+            eprintln!(
+                "error: devboot artifact store endpoint required (--endpoint or DEVBOOT_ENDPOINT)"
+            );
+            std::process::exit(1);
+        });
+    let repo_root = std::env::current_dir()
+        .unwrap_or_else(|e| {
+            eprintln!("error: could not read current directory: {e}");
+            std::process::exit(1);
+        })
+        .to_string_lossy()
+        .into_owned();
+    let work_root = std::env::temp_dir()
+        .join(format!("gunbc-devboot-{}", std::process::id()))
+        .to_string_lossy()
+        .into_owned();
+    let out_path = out.unwrap_or(program.clone());
+    let receipt_path = format!("{}.devboot-receipt", out_path);
+    let roots = witness_layer_roots();
+    let (graph, indices) = match resolve_entry_graph_shared(&roots, "dag/gunbc/devboot/cli.dag") {
+        Ok(g) => g,
+        Err(e) => {
+            eprintln!("error: {e}");
+            std::process::exit(1);
+        }
+    };
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+    let args = [
+        (
+            Some("program".to_string()),
+            v1_interpreter::Value::Str(program.clone()),
+        ),
+        (
+            Some("repo_root".to_string()),
+            v1_interpreter::Value::Str(repo_root),
+        ),
+        (
+            Some("work_root".to_string()),
+            v1_interpreter::Value::Str(work_root),
+        ),
+        (
+            Some("endpoint".to_string()),
+            v1_interpreter::Value::Str(endpoint),
+        ),
+        (
+            Some("out_path".to_string()),
+            v1_interpreter::Value::Str(out_path),
+        ),
+        (
+            Some("receipt_path".to_string()),
+            v1_interpreter::Value::Str(receipt_path),
+        ),
+    ];
+    let result = match v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "devboot_build_cli_output",
+        &args,
+        false,
+    ) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("runtime error: {e}");
+            std::process::exit(1);
+        }
+    };
+    let v1_interpreter::Value::Record { fields, .. } = &result else {
+        eprintln!(
+            "error: devboot_build_cli_output returned an unexpected shape: {:?}",
+            result
+        );
+        std::process::exit(1);
+    };
+    let line = match ctx.field(fields, "line") {
+        Some(v1_interpreter::Value::Str(s)) => s.clone(),
+        _ => {
+            eprintln!("error: devboot_build_cli_output.line was not a String");
+            std::process::exit(1);
+        }
+    };
+    let converged = matches!(
+        ctx.field(fields, "converged"),
+        Some(v1_interpreter::Value::Bool(true))
+    );
+    let reason = match ctx.field(fields, "reason") {
+        Some(v1_interpreter::Value::Variant {
+            variant_name,
+            fields: vf,
+            ..
+        }) if ctx.sym_eq(*variant_name, "Present") => match ctx.field(vf, "value") {
+            Some(v1_interpreter::Value::Str(s)) => Some(s.clone()),
+            _ => None,
+        },
+        _ => None,
+    };
+    print!("{line}");
+    if !line.ends_with('\n') {
+        println!();
+    }
+    if let Some(reason) = &reason {
+        eprintln!("{reason}");
+    }
+    if !converged {
+        std::process::exit(1);
+    }
+}
+
 #[path = "pre_push.rs"]
 mod pre_push;
 

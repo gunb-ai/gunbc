@@ -161,8 +161,7 @@ fn read_text_file(repo_root: String, path: String) -> TextFileReadOutcome {
     TextFilePresent { text: trim(s: read.content) }
   } else {
     if read.error == ""
-      || string_contains(s: read.error, pattern: "No such file or directory")
-      || string_contains(s: read.error, pattern: "not found") {
+      || string_contains(s: read.error, pattern: "No such file or directory") {
       TextFileAbsent
     } else {
       TextFileReadFailed { error: read.error }
@@ -626,34 +625,50 @@ fn devboot_build_admitted(
   if !prepared {
     BuildRefused { cause: ProducerUnreachable { detail: "could not prepare the local exchange repository" } }
   } else {
-    match publish_request(
-      repo_root: repo_root,
-      work_root: work_root,
-      endpoint: endpoint,
-      token: token,
-      tree_hex: tree_hex,
-      subject_text: subject_text,
-      program: program,
-    ) {
-      RequestPublicationRefused { detail } =>
-        BuildRefused { cause: ProducerUnreachable { detail: detail } }
-      RequestPublished { token: published } =>
-        match poll_for_answer(
-          repo_root: exchange_repo,
+    let produced_ref = produced_ref_of(token: token)
+    match poll_once(repo_root: exchange_repo, endpoint: endpoint, ref_name: produced_ref) {
+      PollAnswered { ref_name } =>
+        devboot_receive_answer(
+          exchange_repo: exchange_repo,
+          work_root: work_root,
+          out_path: out_path,
+          token: token,
+          ref_name: ref_name,
+          subject_text: subject_text,
+          reused: true,
+        )
+      PollUnreachable { detail } => BuildRefused { cause: ProducerUnreachable { detail: detail } }
+      PollWaiting =>
+        match publish_request(
+          repo_root: repo_root,
+          work_root: work_root,
           endpoint: endpoint,
-          ref_name: produced_ref_of(token: published),
+          token: token,
+          tree_hex: tree_hex,
+          subject_text: subject_text,
+          program: program,
         ) {
-          PollUnreachable { detail } => BuildRefused { cause: ProducerUnreachable { detail: detail } }
-          PollWaiting => BuildRefused { cause: ProducerDidNotAnswer { waited: poll_budget() } }
-          PollAnswered { ref_name } =>
-            devboot_receive_answer(
-              exchange_repo: exchange_repo,
-              work_root: work_root,
-              out_path: out_path,
-              token: published,
-              ref_name: ref_name,
-              subject_text: subject_text,
-            )
+          RequestPublicationRefused { detail } =>
+            BuildRefused { cause: ProducerUnreachable { detail: detail } }
+          RequestPublished { token: published } =>
+            match poll_for_answer(
+              repo_root: exchange_repo,
+              endpoint: endpoint,
+              ref_name: produced_ref_of(token: published),
+            ) {
+              PollUnreachable { detail } => BuildRefused { cause: ProducerUnreachable { detail: detail } }
+              PollWaiting => BuildRefused { cause: ProducerDidNotAnswer { waited: poll_budget() } }
+              PollAnswered { ref_name } =>
+                devboot_receive_answer(
+                  exchange_repo: exchange_repo,
+                  work_root: work_root,
+                  out_path: out_path,
+                  token: published,
+                  ref_name: ref_name,
+                  subject_text: subject_text,
+                  reused: false,
+                )
+            }
         }
     }
   }
@@ -667,6 +682,7 @@ fn devboot_receive_answer(
   token: String,
   ref_name: String,
   subject_text: String,
+  reused: Bool,
 ) -> BuildOutcome {
   if !materialize_ref_tree(repo_root: exchange_repo, work_root: work_root, token: token, ref_name: ref_name) {
     BuildRefused { cause: ArtifactNotRetrievable { detail: "the producer's answer could not be materialized" } }
@@ -688,6 +704,7 @@ fn devboot_receive_answer(
               out_dir: out_dir,
               produced_subject: produced_subject,
               subject_text: subject_text,
+              reused: reused,
             )
         }
       TextFilePresent { text: refusal_text } =>
@@ -706,6 +723,7 @@ fn devboot_receive_answer(
                 out_dir: out_dir,
                 produced_subject: produced_subject,
                 subject_text: subject_text,
+                reused: reused,
               )
           }
         }
@@ -719,6 +737,7 @@ fn devboot_receive_answer_subject(
   out_dir: String,
   produced_subject: String,
   subject_text: String,
+  reused: Bool,
 ) -> BuildOutcome {
   if !(produced_subject == trim(s: subject_text)) {
     BuildRefused { cause: SubjectMismatch { requested: trim(s: subject_text), produced: produced_subject } }
@@ -776,7 +795,7 @@ fn devboot_receive_answer_subject(
                           receipt: BuildReceipt {
                             invocation: join(["devboot_build -> ", out_path], ""),
                             producer_host: producer_host,
-                            reused: false,
+                            reused: reused,
                           },
                         }
                     }
@@ -950,7 +969,100 @@ fn serve_refusal(repo_root: String, work_root: String, token: String, subject_te
   ServeRefused { token: token, detail: detail }
 }
 
+type ProducedRefLookup
+  = ProducedRefPresent
+  | ProducedRefAbsent
+  | ProducedRefLookupRefused { detail: String }
+
+fn produced_ref_lookup(store_root: String, work_root: String, token: String) -> ProducedRefLookup {
+  let ref_name = produced_ref_of(token: token)
+  let shown = devboot_witness_run(
+    site: retained_devboot_git_rev_parse,
+    workdir: work_root,
+    bin_path: "git",
+    args: [concat("--git-dir=", store_root), "rev-parse", "--verify", "--quiet", ref_name],
+  )
+  if shown.success {
+    ProducedRefPresent
+  } else {
+    if shown.exit_code == git_ref_missing_exit_code {
+      ProducedRefAbsent
+    } else {
+      ProducedRefLookupRefused { detail: trim(s: shown.stderr) }
+    }
+  }
+}
+
+// THE ONE-COMPILE LAW IS MODELED HERE, NOT IN A SHELL LOOP. If the produced ref already names a complete answer tree, the producer returns it without recompiling — the same skip the belt timer's outer harness used to enforce out-of-band.
+fn serve_if_produced_already(store_root: String, work_root: String, token: String) -> ServeReport? {
+  match produced_ref_lookup(store_root: store_root, work_root: work_root, token: token) {
+    ProducedRefAbsent => none
+    ProducedRefLookupRefused { detail } => Present { value: ServeRefused { token: token, detail: detail } }
+    ProducedRefPresent =>
+      let ref_name = produced_ref_of(token: token)
+      match read_request_entry(repo_root: store_root, ref_name: ref_name, entry: produced_refusal_entry) {
+        RequestEntryReadFailed { exit_code, stderr } =>
+          Present {
+            value: ServeRefused {
+              token: token,
+              detail: join(["could not read an existing produced refusal: ", stderr], ""),
+            },
+          }
+        RequestEntryPresent { text: refusal_text } =>
+          if trim(s: refusal_text) != "" {
+            Present { value: ServeRefused { token: token, detail: refusal_text } }
+          } else {
+            serve_existing_produced_digest(store_root: store_root, token: token)
+          }
+        RequestEntryAbsent => serve_existing_produced_digest(store_root: store_root, token: token)
+      }
+  }
+}
+
+fn serve_existing_produced_digest(store_root: String, token: String) -> ServeReport? {
+  let ref_name = produced_ref_of(token: token)
+  match read_request_entry(repo_root: store_root, ref_name: ref_name, entry: produced_digest_entry) {
+    RequestEntryReadFailed { exit_code, stderr } =>
+      Present {
+        value: ServeRefused {
+          token: token,
+          detail: join(["could not read an existing produced digest: ", stderr], ""),
+        },
+      }
+    RequestEntryAbsent => none
+    RequestEntryPresent { text: digest_hex } =>
+      match sha256_hex_digest(hex: trim(s: digest_hex)) {
+        Absent =>
+          Present {
+            value: ServeRefused {
+              token: token,
+              detail: join(["an existing produced digest is invalid: ", digest_hex], ""),
+            },
+          }
+        Present { value: digest } => Present { value: ServeProduced { token: token, sha256: digest } }
+      }
+  }
+}
+
 fn devboot_serve_request(
+  repo_root: String,
+  work_root: String,
+  home: ProducerHome,
+  token: String,
+) -> ServeReport {
+  match serve_if_produced_already(store_root: repo_root, work_root: work_root, token: token) {
+    Present { value: report } => report
+    Absent =>
+      devboot_serve_pending_request(
+        repo_root: repo_root,
+        work_root: work_root,
+        home: home,
+        token: token,
+      )
+  }
+}
+
+fn devboot_serve_pending_request(
   repo_root: String,
   work_root: String,
   home: ProducerHome,
