@@ -46,6 +46,7 @@ import gunbc.heal_push_plan {
 }
 import gunbc.ci_failure_class { infra_retry_grep_alternation }
 import gunbc.ci_deploy_access { DeployAccess, ci_deploy_srv1_access }
+import gunbc.fleet_main_revision { fleet_desired_ref_name }
 import gunbc.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
 import gunbc.merge_admission_produce {
   ci_repo_root_shell,
@@ -501,6 +502,176 @@ fn gunbc_ci_workflow_run(spec: CiSpec) -> String {
 
 fn gunbc_ci_floor_run(spec: CiSpec) -> String {
   gunbc_ci_floor_only_script(spec: spec)
+}
+
+// Read-only srv1 tasks pre-apply observation (operator ruling 2026-08-09 on PR 8045;
+// manager approval msg_03ec1f78): produces the ONE exact pre-apply receipt (effective
+// TasksMax, pids.max, pids.current, ancestor limit, observer slot membership) via the
+// typed read seams only. workflow_dispatch-gated at the job, so it never rides PR or
+// push events; the printed return value IS the typed receipt.
+data gunbc_ci_srv1_tasks_observation_entry: String = "dag/gunbc/srv1_tasks_preapply_observation.dag"
+data gunbc_ci_srv1_tasks_observation_function: String = "observe_srv1_tasks_preapply_wet"
+
+// Main→desired-ref advancement (CONVERGE-0 loop leg, operator directive 2026-08-09):
+// on a floor-green main push (needs: [ci] IS the floor-green admission — this job exists
+// only downstream of the required check succeeding in the same run), advance
+// refs/fleet/desired to the merged revision by CAS: --force-with-lease names the exact
+// observed prior (gunbc.fleet_main_revision admit_fleet_desired_advance's from side), so
+// a race with a concurrent advance refuses rather than overwriting; ref creation is the
+// from=none arm. Hosts follow the ref; no host is contacted here.
+data gunbc_ci_fleet_reach_probe_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "gunbc_ci_fleet_reach_probe_invoke",
+    field: WholeDeclaration
+  }
+}
+
+data gunbc_ci_fleet_reach_probe_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: gunbc_ci_fleet_reach_probe_invoke — concat-built foreign-executor (GitHub Actions run:) shell invoking gunbc run on gunbc.host_reach_identity_probe probe_fleet_reach_wet plus a cat of the typed receipt file; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the probe step to orchestration emit over the typed gunbc.WitnessBin.Run route"
+
+fn gunbc_ci_fleet_reach_probe_invoke() -> String {
+  concat(
+    concat("# ", concat(gunbc_ci_fleet_reach_probe_shell_emit_dissolution_trigger, "\n")),
+    concat(
+      concat(
+        concat("ROOT=", ci_repo_root_shell(), "\n"),
+        gunbc_run_shell(
+          source_roots: witness_layer_roots,
+          entry: "dag/gunbc/host_reach_identity_probe.dag",
+          function: "probe_fleet_reach_wet",
+          rooted: true,
+          claim_run: false
+        )
+      ),
+      "\ncat \"$ROOT/target/fleet-reach-probe-receipt.txt\""
+    )
+  )
+}
+
+// Fleet timer self-install bootstrap (operator verdict join 2, parent verification
+// msg_8d84ae4f): the LIVE invocation wire for fleet_timer_self_install_wet — without
+// this job the self-install route had zero callers, a disconnected mechanism. The job
+// runs on a fleet runner and installs the timer on THE MACHINE IT RUNS ON (self-install:
+// no remote host is contacted); dispatch it once per bootstrap host, thereafter the
+// installed timer sustains itself.
+data gunbc_ci_fleet_timer_install_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "gunbc_ci_fleet_timer_install_invoke",
+    field: WholeDeclaration
+  }
+}
+
+data gunbc_ci_fleet_timer_install_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: gunbc_ci_fleet_timer_install_invoke — concat-built foreign-executor (GitHub Actions run:) shell invoking gunbc run on gunbc.fleet_converge_timer_install fleet_timer_self_install_wet; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the step to orchestration emit over the typed gunbc.WitnessBin.Run route"
+
+fn gunbc_ci_fleet_timer_install_invoke() -> String {
+  concat(
+    concat("# ", concat(gunbc_ci_fleet_timer_install_shell_emit_dissolution_trigger, "\n")),
+    concat(
+      concat("ROOT=", ci_repo_root_shell(), "\n"),
+      gunbc_run_shell(
+        source_roots: witness_layer_roots,
+        entry: "dag/gunbc/fleet_converge_timer_install.dag",
+        function: "fleet_timer_self_install_wet",
+        rooted: true,
+        claim_run: false
+      )
+    )
+  )
+}
+
+// Fleet convergence collection (operator verdict join 5, parent verification
+// msg_8d84ae4f): the LIVE invocation wire for collect_fleet_convergence_wet — runs on
+// main pushes downstream of the required ci check, from srv1 (inside the fleet, over
+// the typed SSH probe seam), so the collector->fold composition executes on a real
+// cadence and its collect receipt is printed into the job log.
+data gunbc_ci_collect_fleet_convergence_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "gunbc_ci_collect_fleet_convergence_invoke",
+    field: WholeDeclaration
+  }
+}
+
+data gunbc_ci_collect_fleet_convergence_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: gunbc_ci_collect_fleet_convergence_invoke — concat-built foreign-executor (GitHub Actions run:) shell invoking gunbc run on gunbc.fleet_receipt_collector collect_fleet_convergence_wet plus a cat of the typed collect receipt; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the step to orchestration emit over the typed gunbc.WitnessBin.Run route"
+
+fn gunbc_ci_collect_fleet_convergence_invoke() -> String {
+  concat(
+    concat("# ", concat(gunbc_ci_collect_fleet_convergence_shell_emit_dissolution_trigger, "\n")),
+    concat(
+      concat(
+        concat("ROOT=", ci_repo_root_shell(), "\n"),
+        gunbc_run_shell(
+          source_roots: witness_layer_roots,
+          entry: "dag/gunbc/fleet_receipt_collector.dag",
+          function: "collect_fleet_convergence_wet",
+          rooted: true,
+          claim_run: false
+        )
+      ),
+      "\ncat \"$ROOT/target/fleet-converge-collect-receipt.txt\""
+    )
+  )
+}
+
+data gunbc_ci_advance_fleet_desired_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "gunbc_ci_advance_fleet_desired_script",
+    field: WholeDeclaration
+  }
+}
+
+data gunbc_ci_advance_fleet_desired_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: gunbc_ci_advance_fleet_desired_script — concat-built foreign-executor (GitHub Actions run:) CAS ref advance (git ls-remote + push --force-with-lease onto gunbc.fleet_main_revision fleet_desired_ref_name); DISSOLVES WHEN the SCM ref-update realization lands as the typed git.Core CAS service op (membership-diff spine classify_change SCM-ref arm) invoked via host_effect_apply"
+
+fn gunbc_ci_advance_fleet_desired_script() -> String {
+  join([
+    "# ", gunbc_ci_advance_fleet_desired_shell_emit_dissolution_trigger, "\n",
+    "set -eu\n",
+    "DESIRED_REF=", fleet_desired_ref_name, "\n",
+    "CURRENT=$(git ls-remote origin \"$DESIRED_REF\" | cut -f1)\n",
+    "if [ -z \"$CURRENT\" ]; then\n",
+    "git push origin \"$GITHUB_SHA:$DESIRED_REF\"\n",
+    "echo \"[fleet-desired] created $DESIRED_REF -> $GITHUB_SHA\"\n",
+    "else\n",
+    "git push --force-with-lease=\"$DESIRED_REF:$CURRENT\" origin \"$GITHUB_SHA:$DESIRED_REF\"\n",
+    "echo \"[fleet-desired] advanced $DESIRED_REF: $CURRENT -> $GITHUB_SHA (CAS expected-prior held)\"\n",
+    "fi\n",
+  ], "")
+}
+
+data gunbc_ci_srv1_tasks_observation_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "gunbc_ci_srv1_tasks_observation_invoke",
+    field: WholeDeclaration
+  }
+}
+
+data gunbc_ci_srv1_tasks_observation_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: gunbc_ci_srv1_tasks_observation_invoke — feature:task-count-measure-carrier sibling transport; concat-built foreign-executor (GitHub Actions run:) shell invoking gunbc run on gunbc.srv1_tasks_preapply_observation observe_srv1_tasks_preapply_wet plus a cat of the typed receipt file; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the observation step to orchestration emit over the typed gunbc.WitnessBin.Run route without a medium-as-string concat scaffold"
+
+fn gunbc_ci_srv1_tasks_observation_invoke() -> String {
+  concat(
+    concat("# ", concat(gunbc_ci_srv1_tasks_observation_shell_emit_dissolution_trigger, "\n")),
+    concat(
+    concat(
+      concat("ROOT=", ci_repo_root_shell(), "\n"),
+      gunbc_run_shell(
+        source_roots: witness_layer_roots,
+        entry: gunbc_ci_srv1_tasks_observation_entry,
+        function: gunbc_ci_srv1_tasks_observation_function,
+        rooted: true,
+        claim_run: false
+      )
+    ),
+    "\ncat \"$ROOT/target/srv1-tasks-preapply-receipt.txt\""
+  )
+  )
 }
 
 fn gunbc_ci_deploy_invoke(stage: DeployStage) -> String {

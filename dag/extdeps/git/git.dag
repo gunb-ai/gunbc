@@ -907,6 +907,28 @@ service git.Core {
     }
   }
 
+  operation LsRemoteRefInRepo {
+    input { repo: FilePath, remote: String, ref_name: String }
+    output {
+      advertised: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "-C", "{repo}", "ls-remote", "{remote}", "{ref_name}"] }
+  }
+
+  operation RevParseInRepo {
+    input { repo: FilePath, target: GitRef }
+    output {
+      revision: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "-C", "{repo}", "rev-parse", "{target}"] }
+  }
+
   operation CatFileBlobInRepo {
     input { repo: FilePath, oid: String }
     output {

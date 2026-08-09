@@ -1,0 +1,320 @@
+module gunbc.host_reach_identity_probe
+
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.algebra { trim }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.typed_argv_exec {
+  typed_argv_probe_over_ssh,
+  TypedArgvExecOutcome,
+  TypedArgvExecConverged,
+  TypedArgvExecRefused,
+}
+import gunbc.clock_read { clock_now_probed_at }
+import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
+
+import std.types { String, NonEmptyStr, Bool, List, Int }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import product.placement_supply { HostIdentity }
+import std.upsert_decision {
+  ObservationVerdict,
+  Converged,
+  Absent,
+  Drifted,
+  Conflict,
+  Inaccessible,
+  UnknownRefused,
+}
+
+// ONE wet probe, two phase cells (DESIGN §2: one observation, N consumers). An
+// authenticated short-hostname read over the host's management transport is
+// simultaneously the reach verification (did the transport connect, did the fleet key
+// authenticate, did the expected machine answer) and the identity observation (does the
+// live short hostname equal the enrolled slot identity). The producers for the
+// P0:reach-secrets-network and P0:host-identity-converge phase cells are two PURE
+// deductions over the same committed probe receipt — the same shape as the srv3
+// os-install producer deducing from an observed DHCP lease table: the EFFECT lands a
+// receipt row; the matrix never executes a transport (hermetic by construction, the
+// slice1 landmine class cannot recur here).
+//
+// The four outcomes are DISTINCT ARMS BY OPERATOR CONSTRAINT and must never collapse:
+// transport-unavailable and authentication-refused both project to Inaccessible at
+// verdict grain, but their remedies differ (fix reach vs fix the key), so the receipt
+// keeps the typed outcome and any consumer needing the distinction reads the outcome,
+// never the verdict. Host-key mismatch is a REAL arm, not a formality: srv5/srv6 DO
+// carry distinct SSH host keys (bold-eagle-107 measured all three algorithms differing;
+// an earlier revision of this note claimed identical factory keys — false, the §3
+// stale-claim class) while SHARING one /etc/machine-id, so identity anchors are
+// host-key and NIC MAC, and a host-key check against the wrong expectation is a live
+// failure class for exactly the hosts this producer verifies first.
+//
+// Ordering law (observe, never silently repair): password auth on srv5/srv6 stays
+// enabled until a ProbeReachable receipt exists for the fleet key — the fallback is
+// never disabled before the primary is proven. That disable is a separate effect with
+// its own receipt, never a side effect of observation.
+// Two SEPARATE constructors for the two host-key states (operator verdict on PR 8045):
+// ProbeHostKeyUnenrolled — the transport flagged verification failure and NO expectation
+// is enrolled, so first-contact and changed-key are indistinguishable; remedy = enroll
+// the fingerprint registry; carries only the raw transport diagnostic. ProbeHostKeyMismatch
+// — an enrolled expectation EXISTS and the observed key contradicts it; remedy =
+// investigate wrong-machine vs rotated-key; expected is REQUIRED here by construction
+// (the earlier String? field let one constructor carry both remedies).
+type ReachProbeOutcome
+  = ProbeReachable { observed_short_hostname: String }
+  | ProbeTransportUnavailable { cause: String }
+  | ProbeAuthenticationRefused { cause: String }
+  | ProbeHostKeyUnenrolled { transport_diagnostic: String }
+  | ProbeHostKeyMismatch { expected_fingerprint: String, observed_fingerprint: String }
+
+type HostReachIdentityProbeReceipt {
+  host: HostIdentity
+  probed_at: NonEmptyStr
+  outcome: ReachProbeOutcome
+}
+
+// Committed probe receipts — the registry the two deductions read. A row lands here only
+// when a wet probe EXECUTED and its typed outcome was recorded (the srv3 lease-table
+// pattern); a hand-asserted row without an executed probe is the parallel-ledger shape
+// host_phase_status exists to kill.
+//
+// PROVENANCE (operator verdict join 4): the six rows below are the transcription of the
+// executed probe_fleet_reach job on GitHub Actions run 31300640122 (branch
+// session/wise-moth-430, probed 2026-08-09T07:20:04Z, ExitSuccess, receipt artifact
+// FleetReachProbeRun printed by probe_fleet_reach_wet). Every host answered at the SSH
+// layer with host-key verification failed and NO enrolled expectation, which the wire
+// classifier lands as ProbeHostKeyUnenrolled (first-contact indistinguishable from
+// changed-key until a fingerprint registry exists — the named next observation). The
+// run also DISCHARGED the endpoint question: srv5/srv6 previously failed a layer
+// earlier (name resolution); probed at their modeled reservation addresses they now
+// reach SSH — reach is a transport fact, identity stays the receipt key. Both P0 cells
+// for all six hosts therefore read Inaccessible (never satisfied, never Conflict —
+// leg-f ruling), and the fleet fold stays honestly NOT converged with the remedy named:
+// enroll the fingerprint registry.
+// Typed, not a prose row (review 50827: run id / job / timestamp / branch are
+// machine-consumed facts, the §4c String-commentary shape if left as one string).
+type ProbeRunProvenance {
+  workflow_run_id: Int
+  job_id: String
+  probed_at: NonEmptyStr
+  head_branch: String
+}
+
+data probe_receipts_run_provenance: ProbeRunProvenance = ProbeRunProvenance {
+  workflow_run_id: 31300640122,
+  job_id: "probe_fleet_reach",
+  probed_at: "2026-08-09T07:20:04Z" as NonEmptyStr,
+  head_branch: "session/wise-moth-430",
+}
+
+// 🟡 dissolve-on (review 50824): the rows below are a HAND TRANSCRIPTION of one executed
+// run — provenance-bearing, but still an authored copy of machine output, and the wet
+// probe writes only the receipt FILE, never this registry, so a later run cannot move
+// fleet phase standing without an author in the loop. Accepted interim (parent seam
+// verification msg_8d84ae4f names the transcription acceptable with THIS as the
+// next-rung trigger): DISSOLVES WHEN the probe artifact is ingested by machinery — the
+// receipt file's typed parse committed into this registry by the commit workflow (the
+// same artifact->typed-parse->committed-rows path the operator's join 4 names), at which
+// point a stale hand row is unwritable rather than merely provenance-annotated.
+data probe_receipt_ledger_transcription_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_reach_identity_probe",
+    decl_name: "host_reach_identity_probe_receipts",
+    field: WholeDeclaration,
+  }
+}
+
+data host_reach_identity_probe_receipts: List<HostReachIdentityProbeReceipt> = [
+  HostReachIdentityProbeReceipt {
+    host: "srv1" as HostIdentity,
+    probed_at: "2026-08-09T07:20:04Z" as NonEmptyStr,
+    outcome: ProbeHostKeyUnenrolled { transport_diagnostic: "Host key verification failed." },
+  },
+  HostReachIdentityProbeReceipt {
+    host: "srv2" as HostIdentity,
+    probed_at: "2026-08-09T07:20:04Z" as NonEmptyStr,
+    outcome: ProbeHostKeyUnenrolled { transport_diagnostic: "Host key verification failed." },
+  },
+  HostReachIdentityProbeReceipt {
+    host: "srv3" as HostIdentity,
+    probed_at: "2026-08-09T07:20:04Z" as NonEmptyStr,
+    outcome: ProbeHostKeyUnenrolled { transport_diagnostic: "Host key verification failed." },
+  },
+  HostReachIdentityProbeReceipt {
+    host: "srv4" as HostIdentity,
+    probed_at: "2026-08-09T07:20:04Z" as NonEmptyStr,
+    outcome: ProbeHostKeyUnenrolled { transport_diagnostic: "Host key verification failed." },
+  },
+  HostReachIdentityProbeReceipt {
+    host: "srv5" as HostIdentity,
+    probed_at: "2026-08-09T07:20:04Z" as NonEmptyStr,
+    outcome: ProbeHostKeyUnenrolled { transport_diagnostic: "Host key verification failed." },
+  },
+  HostReachIdentityProbeReceipt {
+    host: "srv6" as HostIdentity,
+    probed_at: "2026-08-09T07:20:04Z" as NonEmptyStr,
+    outcome: ProbeHostKeyUnenrolled { transport_diagnostic: "Host key verification failed." },
+  },
+]
+
+fn host_reach_identity_probe_receipt_for(host: HostIdentity) -> HostReachIdentityProbeReceipt? {
+  fold(host_reach_identity_probe_receipts, init: none, f: fn(acc, r) {
+    match acc {
+      Present { value: _ } => acc
+      _ => if r.host == host { Present { value: r } } else { none }
+    }
+  })
+}
+
+// Wire classification for the wet leg: the transport's terminal facts (exit success,
+// stdout, stderr) decide the outcome arm, fail-closed — an unclassifiable failure is
+// TransportUnavailable with the raw cause preserved, never a fabricated Reachable.
+// The stderr patterns are the OpenSSH client's stable diagnostics for the two
+// non-transport failure classes.
+fn classify_reach_probe_wire_with_expectation(
+  success: Bool,
+  stdout: String,
+  stderr: String,
+  expected_fingerprint: String?,
+) -> ReachProbeOutcome {
+  match classify_reach_probe_wire(success: success, stdout: stdout, stderr: stderr) {
+    ProbeHostKeyUnenrolled { transport_diagnostic: obs } =>
+      match expected_fingerprint {
+        Present { value: e } => ProbeHostKeyMismatch { expected_fingerprint: e, observed_fingerprint: obs }
+        _ => ProbeHostKeyUnenrolled { transport_diagnostic: obs }
+      }
+    other => other
+  }
+}
+
+fn classify_reach_probe_wire(
+  success: Bool,
+  stdout: String,
+  stderr: String,
+) -> ReachProbeOutcome {
+  if success {
+    ProbeReachable { observed_short_hostname: trim(stdout) }
+  } else {
+    if string_contains(s: stderr, pattern: "Permission denied") {
+      ProbeAuthenticationRefused { cause: stderr }
+    } else {
+      if string_contains(s: stderr, pattern: "HOST IDENTIFICATION HAS CHANGED")
+        || string_contains(s: stderr, pattern: "Host key verification failed") {
+        ProbeHostKeyUnenrolled { transport_diagnostic: stderr }
+      } else {
+        ProbeTransportUnavailable { cause: stderr }
+      }
+    }
+  }
+}
+
+// Producer 1 — P0:reach-secrets-network. Projection to the shared verdict vocabulary;
+// the outcome stays on the receipt (see the distinctness note above).
+// A host-key mismatch is a CONFLICT only when an enrolled expectation exists to be
+// contradicted (Present — "we know this host's key and the observed one differs").
+// With Absent expectation the wire's 'verification failed' cannot distinguish first
+// contact from a changed key, so the honest verdict is Inaccessible — the transport
+// never completed and nothing about the host was verified. Both arms leave the cell
+// NOT converged (operator ruling 2026-08-09: a Mismatch/Absent cell counts as
+// unobserved-grade, never as satisfied); only the REMEDY differs — enroll the
+// fingerprint registry vs investigate a real contradiction.
+fn reach_verdict_from_outcome(o: ReachProbeOutcome) -> ObservationVerdict {
+  match o {
+    ProbeReachable { observed_short_hostname: _ } => Converged
+    ProbeTransportUnavailable { cause: _ } => Inaccessible
+    ProbeAuthenticationRefused { cause: _ } => Inaccessible
+    ProbeHostKeyUnenrolled { transport_diagnostic: _ } => Inaccessible
+    ProbeHostKeyMismatch { expected_fingerprint: _, observed_fingerprint: _ } => Conflict
+  }
+}
+
+fn observe_reach_secrets_network(host: HostIdentity) -> ObservationVerdict? {
+  match host_reach_identity_probe_receipt_for(host: host) {
+    Present { value: r } => Present { value: reach_verdict_from_outcome(o: r.outcome) }
+    _ => none
+  }
+}
+
+// Producer 2 — P0:host-identity-converge. The enrolled slot identity is the desired
+// short hostname (fleet naming convention: the fleet_intent slot label IS the hostname
+// the SetHostnameCas converge drives toward). A reachable probe whose hostname differs
+// is Drifted — real divergence, the thing the converge corrects — while an unreachable
+// or unauthenticated host is Inaccessible (cannot say), and a host-key mismatch is
+// Conflict (the machine answering may not be the enrolled host at all; treating its
+// hostname as an identity observation would launder a wrong-machine read into drift).
+fn host_identity_desired_short_hostname(host: HostIdentity) -> String {
+  host as String
+}
+
+fn identity_verdict_from_outcome(host: HostIdentity, o: ReachProbeOutcome) -> ObservationVerdict {
+  match o {
+    ProbeReachable { observed_short_hostname: observed } =>
+      if observed == host_identity_desired_short_hostname(host: host) {
+        Converged
+      } else {
+        Drifted
+      }
+    ProbeTransportUnavailable { cause: _ } => Inaccessible
+    ProbeAuthenticationRefused { cause: _ } => Inaccessible
+    ProbeHostKeyUnenrolled { transport_diagnostic: _ } => Inaccessible
+    ProbeHostKeyMismatch { expected_fingerprint: _, observed_fingerprint: _ } => Conflict
+  }
+}
+
+fn observe_host_identity_converge(host: HostIdentity) -> ObservationVerdict? {
+  match host_reach_identity_probe_receipt_for(host: host) {
+    Present { value: r } => Present { value: identity_verdict_from_outcome(host: host, o: r.outcome) }
+    _ => none
+  }
+}
+
+// LIVE probe execution (loop leg e). One wet pass over the fleet reach targets via the
+// typed SSH PROBE seam (typed_argv_probe_over_ssh, expect: OutcomeIsData) — a failed leg
+// is DATA classified into its typed arm, never a step failure and never an ExpectSuccess
+// annotation standing where a check was owed (DEVBOOT retraction class). No enrollment
+// registry exists yet, so every mismatch carries expected_fingerprint = Absent honestly.
+// The receipt is WRITTEN (typed value) and the entry exits success even when hosts are
+// unreachable, because the probe's product is the observation; only a receipt-write
+// failure is a run failure.
+data fleet_reach_probe_targets: List<String> = ["srv1", "srv2", "srv3", "srv4", "srv5", "srv6"]
+data fleet_reach_probe_receipt_path: String = "target/fleet-reach-probe-receipt.txt"
+
+type FleetReachProbeRun {
+  probed_at: String
+  receipts: List<HostReachIdentityProbeReceipt>
+}
+
+// The probe transports to the host's RESOLVED ENDPOINT (gunbc.fleet_reach_endpoint:
+// Sparks probe at their modeled reservation address, everyone else by name) while the
+// receipt stays keyed by fleet IDENTITY — addressing is transport, never identity.
+fn probe_host_reach_once(host: String, probed_at: String) -> HostReachIdentityProbeReceipt {
+  let outcome = match typed_argv_probe_over_ssh(host: fleet_probe_endpoint_for(host: host) as NonEmptyStr, argv: ["hostname"]) {
+    TypedArgvExecConverged { result: r } =>
+      classify_reach_probe_wire_with_expectation(
+        success: r.success,
+        stdout: r.stdout,
+        stderr: r.stderr,
+        expected_fingerprint: none,
+      )
+    TypedArgvExecRefused { reason: why } => ProbeTransportUnavailable { cause: why }
+  }
+  HostReachIdentityProbeReceipt {
+    host: host as HostIdentity,
+    probed_at: probed_at as NonEmptyStr,
+    outcome: outcome,
+  }
+}
+
+func probe_fleet_reach_wet() -> ProcessExit {
+  let now = clock_now_probed_at()
+  let run = FleetReachProbeRun {
+    probed_at: now as String,
+    receipts: map(fleet_reach_probe_targets, h => probe_host_reach_once(host: h, probed_at: now as String)),
+  }
+  let w = Filesystem.Write(path: fleet_reach_probe_receipt_path, content: to_string(run))
+  if w.success {
+    ExitSuccess
+  } else {
+    exit_failure(reason: join(["fleet reach probe receipt write failed: ", w.error], ""))
+  }
+}

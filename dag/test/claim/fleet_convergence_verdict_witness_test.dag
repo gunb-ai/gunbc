@@ -1,0 +1,124 @@
+module test.claim.fleet_convergence_verdict_witness
+
+import std.types { Bool, String, NonEmptyStr, List, Int }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.host_phase_status { fleet_subsumption_enrollments }
+import gunbc.host_assimilation_program { HostEnrollmentIntent }
+import gunbc.fleet_converge_cli { ConvergeCliReceipt, ConvergeCliRefusalCause, KnobFrontier }
+import gunbc.host_converge { VerdictConverged, Absent, Drifted }
+import gunbc.fleet_convergence_verdict {
+  fleet_convergence_verdict,
+  FleetConvergenceVerdict,
+  FleetConverged,
+  FleetNotConverged,
+  fleet_unobserved_cell_count,
+  host_knob_standing,
+  HostKnobStanding,
+  KnobConverged,
+  KnobNotConverged,
+  KnobUnobserved,
+  RequiredCellStanding,
+  CellConverged,
+  CellUnobserved,
+  CellUnreachable,
+  CellDrifted,
+  CellConflict,
+  cell_standing_is_converged,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn no_receipts() -> List<ConvergeCliReceipt> {
+  []
+}
+
+fn converged_receipt(host: String) -> ConvergeCliReceipt {
+  ConvergeCliReceipt { host: host, applied: 0, drifted: 0, verdict: VerdictConverged, reason: none }
+}
+
+// THE LAW: the live fleet, with its one real producer cell and zero knob receipts, is
+// NOT converged — required unobserved cells prevent convergence rather than defaulting
+// green, and the unobserved count is a positive number (the arc's honest progress
+// denominator). This witness is the named current defect made executable.
+test fn live_fleet_is_not_converged_and_unobserved_cells_are_counted() -> Bool {
+  match fleet_convergence_verdict(enrollments: fleet_subsumption_enrollments, receipts: no_receipts()) {
+    FleetNotConverged { standings: ss } => fleet_unobserved_cell_count(standings: ss) > 0
+    FleetConverged { host_count: _ } => false
+  }
+}
+
+// RED control (the forbidden absorbing arm): even if every enrolled host carried a
+// CONVERGED knob receipt, the unobserved lifecycle cells still prevent fleet
+// convergence — knob green never outvotes an unobserved required cell.
+test fn knob_receipts_alone_cannot_converge_the_fleet() -> Bool {
+  let receipts = map(fleet_subsumption_enrollments, e => converged_receipt(host: e.host as String))
+  match fleet_convergence_verdict(enrollments: fleet_subsumption_enrollments, receipts: receipts) {
+    FleetNotConverged { standings: _ } => true
+    FleetConverged { host_count: _ } => false
+  }
+}
+
+// An empty enrollment is an observation gap, never a vacuously converged fleet.
+test fn empty_fleet_refuses_convergence() -> Bool {
+  let empty: List<HostEnrollmentIntent> = []
+  match fleet_convergence_verdict(enrollments: empty, receipts: no_receipts()) {
+    FleetNotConverged { standings: ss } => length(ss) == 0
+    FleetConverged { host_count: _ } => false
+  }
+}
+
+// Knob standing discriminates its three arms: no receipt is Unobserved (never green), a
+// non-converged receipt is NotConverged, a converged receipt is Converged.
+test fn knob_standing_three_arms_discriminate() -> Bool {
+  match host_knob_standing(host: operator_host_srv1, receipts: no_receipts()) {
+    KnobUnobserved { host: _ } => true
+    _ => false
+  }
+    && match host_knob_standing(host: operator_host_srv1, receipts: [converged_receipt(host: operator_host_srv1 as String)]) {
+      KnobConverged { host: _ } => true
+      _ => false
+    }
+    && match host_knob_standing(
+      host: operator_host_srv1,
+      receipts: [ConvergeCliReceipt {
+        host: operator_host_srv1 as String,
+        applied: 0,
+        drifted: 1,
+        verdict: Absent,
+        reason: Present { value: KnobFrontier { reason: "witness fixture" } },
+      }],
+    ) {
+      KnobNotConverged { host: _, reason: _ } => true
+      _ => false
+    }
+}
+
+// The five cell arms stay distinct — unobserved, unreachable, drifted, and conflict are
+// different remedies and none of them is converged.
+test fn cell_standings_discriminate_and_only_converged_counts() -> Bool {
+  let h = operator_host_srv1
+  cell_standing_is_converged(s: CellConverged { host: h, phase_label: "p" })
+    && !cell_standing_is_converged(s: CellUnobserved { host: h, phase_label: "p" })
+    && !cell_standing_is_converged(s: CellUnreachable { host: h, phase_label: "p" })
+    && !cell_standing_is_converged(s: CellDrifted { host: h, phase_label: "p" })
+    && !cell_standing_is_converged(s: CellConflict { host: h, phase_label: "p" })
+}
+
+// Machine-id hazard control (msg_1c4e0bce): two receipts claiming ONE host identity —
+// possible while both Sparks share a machine-id and factory host keys — classify as a
+// named ambiguity, never first-wins. Even two CONVERGED duplicates cannot converge the
+// knob, because which machine produced which receipt is exactly what is unestablished.
+test fn duplicate_receipts_for_one_host_are_ambiguity_never_a_pick() -> Bool {
+  let a = converged_receipt(host: "srv5")
+  let b = converged_receipt(host: "srv5")
+  match host_knob_standing(host: "srv5" as HostIdentity, receipts: [a, b]) {
+    KnobNotConverged { host: _, reason: r } => string_contains(s: r, pattern: "ambiguous")
+    _ => false
+  }
+    && match host_knob_standing(host: "srv5" as HostIdentity, receipts: [a]) {
+      KnobConverged { host: _ } => true
+      _ => false
+    }
+}

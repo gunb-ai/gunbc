@@ -23,6 +23,7 @@ type ProcfsPath
   | ProcSelfStatus
   | ProcSelfCgroup
   | ProcSwaps
+  | ProcSysKernelHostname
 
 fn procfs_path_literal(p: ProcfsPath) -> NonEmptyStr {
   match p {
@@ -30,6 +31,7 @@ fn procfs_path_literal(p: ProcfsPath) -> NonEmptyStr {
     ProcSelfStatus => "/proc/self/status"
     ProcSelfCgroup => "/proc/self/cgroup"
     ProcSwaps => "/proc/swaps"
+    ProcSysKernelHostname => "/proc/sys/kernel/hostname"
   }
 }
 
@@ -38,6 +40,7 @@ data procfs_paths_read_by_this_repository: List<ProcfsPath> = [
   ProcSelfStatus,
   ProcSelfCgroup,
   ProcSwaps,
+  ProcSysKernelHostname,
 ]
 
 // Provision is a total match over std.os.types.KernelFamily rather than a roster of platforms that happen to have it, so adding a kernel family to that closed enum forces an answer here instead of silently defaulting. LinuxGuestOnWindows answers TRUE deliberately and is the arm most likely to be got wrong by pattern-matching on the name: WSL2 runs a real Linux kernel and synthesizes a real procfs, so a consumer that treated it as a Windows platform would refuse observations the host can actually serve. Darwin and WindowsNt answer false — each has its own mechanism for the same facts (Mach task_info, sysctl, the Windows process API), and modeling those is a separate job this module does not attempt.

@@ -1,5 +1,20 @@
 module gunbc.fleet_converge_cli
 
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.algebra { trim }
+
+import extdeps.linux.procfs { ProcSysKernelHostname, procfs_path_literal }
+import gunbc.fleet_converge_apply { converge_apply_for_host }
+import gunbc.host_layout { fleet_converge_receipt_dir, srv1_gunbc_repo_root }
+import gunbc.fleet_desired_observe {
+  FleetRevisionStanding,
+  RevisionConverged,
+  RevisionDrifted,
+  RevisionUnobserved,
+  fleet_revision_standing,
+}
+import extdeps.git.object_store { git_object_id_wire_hex }
+
 
 data gunbc_converge_cli_stage0_receiver_disposition: Disposition = Terminal {
   reason: "stage0's `gunbc converge --host <h>` argv dispatch (src/v1/stage0/src/cli_run.rs::handle_converge) is the CLI transport handler for this .dag interface (DESIGN §3 transport-is-a-handler): argv parse -> resolve_entry_graph_shared -> run_in_context_with_args(converge_cli_output) -> stdout/exit-code projection, nothing else. All interpretation, the byte-locked receipt grammar, and typed refusal causes are modeled here (gunbc.fleet_converge_cli) and in gunbc.host_converge/gunbc.fleet_converge_apply; the Rust side carries no converge logic and is not scaffold pending dissolution."
@@ -8,6 +23,7 @@ data gunbc_converge_cli_stage0_receiver_disposition: Disposition = Terminal {
 type ConvergeCliRefusalCause
   = PolicyUnsound { reason: String }
   | UnknownHost { host: String }
+  | SparkPreEnrollment { host: String }
   | ComputeInventoryAbsent { host: String }
   | KnobFrontier { reason: String }
 
@@ -23,6 +39,7 @@ fn converge_cli_refusal_message(cause: ConvergeCliRefusalCause) -> String {
   match cause {
     PolicyUnsound { reason: why } => concat("gunbc converge: fleet policy unsound — ", why)
     UnknownHost { host: h } => converge_cli_unknown_host_reason(host: h)
+    SparkPreEnrollment { host: h } => concat(concat("gunbc converge: ", h), " is a Spark pre-enrollment host — no runner slots or host layout exist yet (SPARK-SERVE-0 owns the repair); reach is probed at its modeled endpoint, and no converge route exists until enrollment")
     ComputeInventoryAbsent { host: h } => converge_cli_compute_inventory_absent_reason(host: h)
     KnobFrontier { reason: why } => why
   }
@@ -92,6 +109,36 @@ fn converge_cli_routes_to_slice1(host: String) -> Bool {
   host == (operator_host_srv1 as String) || host == (operator_host_srv3 as String)
 }
 
+// APPLICABILITY, total over the fleet (operator verdict on PR 8045, join 3): every
+// enrolled host identity has exactly one arm — a real converge route, or a TYPED
+// frontier refusal naming what unblocks it. "Applicable" = a slice1 circuit exists for
+// the host's knobs today. srv2/srv4 are knob-frontier (whole-host typed refusal, the
+// pre-existing arm, dissolving as slice1 realizes their knobs); srv5/srv6 are
+// PRE-ENROLLMENT (no runner slots, no host layout yet — SPARK-SERVE-0 owns the repair;
+// their reach is probed at the modeled endpoint, gunbc.fleet_reach_endpoint) — a state
+// DISTINCT from UnknownHost, which now means only an identity outside the fleet.
+type FleetConvergeApplicability
+  = ConvergeSlice1Route
+  | ConvergeKnobFrontier
+  | ConvergeSparkPreEnrollment
+  | ConvergeOutsideFleet
+
+fn fleet_converge_applicability(host: String) -> FleetConvergeApplicability {
+  if converge_cli_routes_to_slice1(host: host) {
+    ConvergeSlice1Route
+  } else {
+    if host == (operator_host_srv2 as String) || host == (operator_host_srv4 as String) {
+      ConvergeKnobFrontier
+    } else {
+      if host == (operator_host_srv5 as String) || host == (operator_host_srv6 as String) {
+        ConvergeSparkPreEnrollment
+      } else {
+        ConvergeOutsideFleet
+      }
+    }
+  }
+}
+
 fn converge_cli_slice1_srv3_receipt() -> ConvergeCliReceipt {
   let result = host_converge_slice1_converge_srv3()
   if host_converge_slice1_host_result_all_valid(result: result) {
@@ -148,6 +195,32 @@ fn converge_cli_slice1_srv1_receipt() -> ConvergeCliReceipt {
           reason: Present {
             value: KnobFrontier {
               reason: "host_converge_slice1: receipt validity gate failed (read_back_converged && reapply_noop && verdict=converged)",
+            },
+          },
+        }
+      }
+    // Unreachable today by construction: host_converge_slice1_converge_loop folds the
+    // tasks outcome into the combined Converged arm (or Refused) and never returns
+    // TasksConverged at top level. Handled exhaustively anyway — do not wire new callers
+    // through this arm.
+    HostConvergeSlice1TasksConverged { applied_knobs: n, receipt: r } =>
+      if host_converge_slice1_tasks_receipt_is_valid(receipt: r) {
+        ConvergeCliReceipt {
+          host: operator_host_srv1 as String,
+          applied: n,
+          drifted: 0,
+          verdict: VerdictConverged,
+          reason: none,
+        }
+      } else {
+        ConvergeCliReceipt {
+          host: operator_host_srv1 as String,
+          applied: 0,
+          drifted: 0,
+          verdict: Absent,
+          reason: Present {
+            value: KnobFrontier {
+              reason: "host_converge_slice1: tasks receipt validity gate failed (read_back_converged && reapply_noop && verdict=converged)",
             },
           },
         }
@@ -253,19 +326,139 @@ fn converge_cli_verify_run(host: String) -> ConvergeCliReceipt {
   }
 }
 
+// Receipt publication (CONVERGE-0 loop leg): on the SELF route — the per-host timer's
+// route, where the deployment guarantees the host layout exists — the receipt line is
+// WRITTEN to the declared receipts path before being printed, so a fold-side observation
+// job can read the host's last converge standing without a new commit. Publication
+// failure on that route FAILS CLOSED (converged=false with a typed reason): the loop's
+// product is the published receipt, so an unpublished converge must not report success.
+// Non-self routes (operator/CI supervised runs against a named host) are unchanged —
+// no write is attempted, because nothing guarantees the receipts directory there.
+fn fleet_converge_receipt_path(host: String) -> String {
+  join([fleet_converge_receipt_dir, "/", host, "-converge-receipt.txt"], "")
+}
+
+fn converge_cli_publish(out: ConvergeCliOutput, resolved: String, revision_line: String) -> ConvergeCliOutput {
+  let w = Filesystem.Write(
+    path: fleet_converge_receipt_path(host: resolved),
+    content: join([out.line, "\n", revision_line, "\n"], ""),
+  )
+  if w.success {
+    out
+  } else {
+    ConvergeCliOutput {
+      line: out.line,
+      converged: false,
+      reason: Present { value: concat("gunbc converge: receipt publication failed — ", w.error) },
+    }
+  }
+}
+
+// Operator verdict join 1 (2026-08-09): the self route is where a host READS the
+// desired ref. The knob receipt alone cannot claim convergence while the deployed tree
+// is not at the admitted revision — revision drift or an unobserved ref demotes the
+// output to not-converged with the typed cause, and the published receipt carries the
+// revision cell as its own line so the collector (join 5) sees BOTH cells. Drifted
+// names both sides (desired AND local): tree-sync is the catch-up realization, and its
+// safe form is a compare-and-swap needing the prior. The repo path is the ONE
+// host_layout convention row (byte-identical across enrolled hosts per its note).
+fn converge_cli_revision_gate(out: ConvergeCliOutput, standing: FleetRevisionStanding) -> ConvergeCliOutput {
+  match standing {
+    RevisionConverged { revision: _ } => out
+    RevisionDrifted { desired: d, local: l } =>
+      ConvergeCliOutput {
+        line: out.line,
+        converged: false,
+        reason: Present {
+          value: join([
+            "gunbc converge: revision drift — desired ",
+            git_object_id_wire_hex(oid: d) as String,
+            ", local tree at ",
+            git_object_id_wire_hex(oid: l) as String,
+            "; tree-sync is the catch-up realization",
+          ], ""),
+        },
+      }
+    RevisionUnobserved { cause: c } =>
+      ConvergeCliOutput {
+        line: out.line,
+        converged: false,
+        reason: Present { value: concat("gunbc converge: desired revision unobserved — ", c) },
+      }
+  }
+}
+
+fn converge_cli_revision_line(standing: FleetRevisionStanding) -> String {
+  match standing {
+    RevisionConverged { revision: r } =>
+      concat("converge-revision verdict=converged revision=", git_object_id_wire_hex(oid: r) as String)
+    RevisionDrifted { desired: d, local: l } =>
+      join([
+        "converge-revision verdict=drifted desired=",
+        git_object_id_wire_hex(oid: d) as String,
+        " local=",
+        git_object_id_wire_hex(oid: l) as String,
+      ], "")
+    RevisionUnobserved { cause: c } => concat("converge-revision verdict=unobserved cause=", c)
+  }
+}
+
 fn converge_cli_output(host: String) -> ConvergeCliOutput {
-  converge_cli_output_with_verify(host: host, verify_only: false)
+  let out = converge_cli_output_with_verify(host: host, verify_only: false)
+  if host == "self" {
+    let standing = fleet_revision_standing(repo: srv1_gunbc_repo_root)
+    converge_cli_publish(
+      out: converge_cli_revision_gate(out: out, standing: standing),
+      resolved: converge_cli_resolve_self(host: host),
+      revision_line: converge_cli_revision_line(standing: standing),
+    )
+  } else {
+    out
+  }
 }
 
 fn converge_cli_verify_output(host: String) -> ConvergeCliOutput {
   converge_cli_output_with_verify(host: host, verify_only: true)
 }
 
-fn converge_cli_output_with_verify(host: String, verify_only: Bool) -> ConvergeCliOutput {
-  let r = if verify_only {
-    converge_cli_verify_run(host: host)
+// MACHINE-ID HAZARD, checked (msg_1c4e0bce): self identity here derives from the
+// kernel hostname — NEVER /etc/machine-id, which both Sparks share from one baked DGX
+// image — machine-id is the duplicated non-anchor. Their SSH HOST KEYS ARE DISTINCT
+// (bold-eagle measured all three algorithms differing on both hosts, 2026-08-09 — an
+// earlier revision of this note claimed identical factory keys, which was FALSE), so
+// host-key IS a valid identity anchor for srv5/srv6 today and the fingerprint
+// enrollment registry can proceed against the two distinct keys with no repair
+// prerequisite; do not plan around host-key regeneration. Hostname is itself only
+// sound AFTER P0:host-identity-converge has set it; before that, two machines can
+// resolve one name — which is why the fleet fold classifies duplicate receipts for one
+// identity as a named ambiguity (never first-wins), so a collision surfaces as
+// NotConverged instead of one machine's receipt silently satisfying the other.
+// --host self (CONVERGE-0 loop leg): the per-host timer unit converges SELF, so the
+// literal "self" resolves to the machine's own kernel-reported short hostname before
+// routing — the ONE observation a host can always make about itself, read at the cited
+// procfs authority, never an env var or a config file a deploy could skew. Any other
+// value routes unchanged (the operator/CI form). An unresolvable read falls through as
+// the literal, landing in UnknownHost — a typed refusal, never a fabricated identity.
+fn converge_cli_resolve_self(host: String) -> String {
+  if host == "self" {
+    let raw = filesystem_read(path: procfs_path_literal(p: ProcSysKernelHostname) as String).content
+    let line = raw.trim()
+    if line == "" {
+      host
+    } else {
+      line
+    }
   } else {
-    converge_cli_run(host: host)
+    host
+  }
+}
+
+fn converge_cli_output_with_verify(host: String, verify_only: Bool) -> ConvergeCliOutput {
+  let resolved = converge_cli_resolve_self(host: host)
+  let r = if verify_only {
+    converge_cli_verify_run(host: resolved)
+  } else {
+    converge_cli_run(host: resolved)
   }
   ConvergeCliOutput {
     line: converge_cli_receipt_line(r: r),
@@ -288,20 +481,28 @@ fn converge_cli_run(host: String) -> ConvergeCliReceipt {
         reason: Present { value: PolicyUnsound { reason: why } },
       }
     ConvergePolicyDerived { hosts: hosts } =>
-      if converge_cli_routes_to_slice1(host: host) {
-        converge_cli_slice1_receipt(host: host)
-      } else {
-        match host_converge_for_identity(hosts: hosts, identity: host as HostIdentity) {
-        Present { value: hc } => converge_cli_receipt_for_host(host_converge: hc)
-        Absent =>
+      match fleet_converge_applicability(host: host) {
+        ConvergeSlice1Route => converge_cli_slice1_receipt(host: host)
+        ConvergeSparkPreEnrollment =>
           ConvergeCliReceipt {
             host: host,
             applied: 0,
             drifted: 0,
             verdict: Absent,
-            reason: Present { value: UnknownHost { host: host } },
+            reason: Present { value: SparkPreEnrollment { host: host } },
           }
-        }
+        _ =>
+          match host_converge_for_identity(hosts: hosts, identity: host as HostIdentity) {
+          Present { value: hc } => converge_cli_receipt_for_host(host_converge: hc)
+          Absent =>
+            ConvergeCliReceipt {
+              host: host,
+              applied: 0,
+              drifted: 0,
+              verdict: Absent,
+              reason: Present { value: UnknownHost { host: host } },
+            }
+          }
       }
   }
 }

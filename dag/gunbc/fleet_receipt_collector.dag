@@ -1,0 +1,202 @@
+module gunbc.fleet_receipt_collector
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.algebra { trim }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_converge_cli {
+  ConvergeCliReceipt,
+  fleet_converge_receipt_path,
+}
+import gunbc.host_converge { ConvergeVerdict, VerdictConverged, Drifted, Absent, converge_verdict_label }
+import gunbc.typed_argv_exec {
+  typed_argv_probe_over_ssh,
+  TypedArgvExecOutcome,
+  TypedArgvExecConverged,
+  TypedArgvExecRefused,
+}
+import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
+import gunbc.host_reach_identity_probe { fleet_reach_probe_targets }
+import gunbc.fleet_convergence_verdict {
+  FleetConvergenceVerdict,
+  FleetConverged,
+  FleetNotConverged,
+  fleet_convergence_verdict,
+}
+import gunbc.host_phase_status { fleet_subsumption_enrollments }
+
+// Operator verdict join 5 (2026-08-09): the receipts hosts PUBLISH were consumed by
+// nothing — converge wrote /opt/gunbc/receipts/<host>-converge-receipt.txt and
+// fleet_convergence_verdict folded over whatever list a caller handed it, with no
+// collector in between, so the fold's NotConverged came from an empty registry rather
+// than from observed state. This module is that collector: read each fleet host's
+// published receipt at the modeled endpoint, PARSE it through one typed grammar (the
+// byte-locked converge-receipt line read back — the same grammar the CLI renders,
+// asked in the other direction), and classify per host with no absorbing arm: a
+// collected receipt, an absent one (typed cause — unreachable and not-yet-published
+// stay distinct in the cause text carried), or an unparseable one (a receipt that
+// exists but does not decode is CONTRADICTION-shaped evidence, never skipped into
+// absence). Only Collected rows enter the fold; every other arm keeps the host
+// knob-unobserved, which the fold already refuses to call converged.
+type CollectedHostReceipt
+  = ReceiptCollected { host: String, receipt: ConvergeCliReceipt }
+  | ReceiptAbsent { host: String, cause: String }
+  | ReceiptUnparseable { host: String, line: String }
+
+// Forward grammar lives in converge_cli_receipt_line; this is the backward read of the
+// SAME line shape: "converge-receipt host=H applied=N drifted=N verdict=V". A missing
+// prefix, missing field, or unknown verdict label refuses (Absent), never guesses.
+fn parse_converge_receipt_line(line: String) -> ConvergeCliReceipt? {
+  let tokens = split(s: trim(s: line), delimiter: " ")
+  if length(tokens) == 5
+    && match tokens.first() { Present { value: t } => t == "converge-receipt" Absent => false } {
+    match receipt_field(tokens: tokens, key: "host=") {
+      Present { value: host } =>
+        match receipt_field(tokens: tokens, key: "verdict=") {
+          Present { value: label } =>
+            match parse_converge_verdict_label(label: label) {
+              Present { value: v } =>
+                match parse_int(s: receipt_field_or_empty(tokens: tokens, key: "applied=")) {
+                  Present { value: applied } =>
+                    match parse_int(s: receipt_field_or_empty(tokens: tokens, key: "drifted=")) {
+                      Present { value: drifted } =>
+                        Present {
+                          value: ConvergeCliReceipt {
+                            host: host,
+                            applied: applied,
+                            drifted: drifted,
+                            verdict: v,
+                            reason: none,
+                          },
+                        }
+                      Absent => none
+                    }
+                  Absent => none
+                }
+              Absent => none
+            }
+          Absent => none
+        }
+      Absent => none
+    }
+  } else {
+    none
+  }
+}
+
+fn receipt_field(tokens: List<String>, key: String) -> String? {
+  fold(tokens, init: none, f: fn(acc, t) {
+    if starts_with(s: t, prefix: key) {
+      Present { value: drop_prefix(s: t, prefix: key) }
+    } else {
+      acc
+    }
+  })
+}
+
+fn receipt_field_or_empty(tokens: List<String>, key: String) -> String {
+  match receipt_field(tokens: tokens, key: key) {
+    Present { value: v } => v
+    Absent => ""
+  }
+}
+
+fn drop_prefix(s: String, prefix: String) -> String {
+  substring(s: s, start: prefix.length(), end: s.length())
+}
+
+// Review 50817: decode each label to ITS verdict constructor directly. An earlier
+// revision routed drifted/absent through converge_verdict(effective: "", expected:
+// label), which returns Absent whenever effective is empty — silently re-classifying a
+// published Drifted as Absent on collection, exactly the state-space conflation the
+// header forbids (different remedies: run the converge vs build the observation).
+fn parse_converge_verdict_label(label: String) -> ConvergeVerdict? {
+  if label == "converged" {
+    Present { value: VerdictConverged }
+  } else {
+    if label == "drifted" {
+      Present { value: Drifted }
+    } else {
+      if label == "absent" {
+        Present { value: Absent }
+      } else {
+        none
+      }
+    }
+  }
+}
+
+// One host's collection: cat the published receipt over the typed argv seam at the
+// modeled endpoint. Wire refusal or transport failure -> Absent with the cause; a first
+// line that does not decode -> Unparseable carrying the exact bytes.
+fn collect_host_receipt(host: String) -> CollectedHostReceipt {
+  match typed_argv_probe_over_ssh(
+    host: fleet_probe_endpoint_for(host: host) as NonEmptyStr,
+    argv: ["cat", fleet_converge_receipt_path(host: host)],
+  ) {
+    TypedArgvExecConverged { result: r } =>
+      if r.success {
+        match receipt_first_line(raw: r.stdout) {
+          Present { value: line } =>
+            match parse_converge_receipt_line(line: line) {
+              Present { value: receipt } => ReceiptCollected { host: host, receipt: receipt }
+              Absent => ReceiptUnparseable { host: host, line: line }
+            }
+          Absent => ReceiptAbsent { host: host, cause: "receipt file empty" }
+        }
+      } else {
+        ReceiptAbsent { host: host, cause: trim(s: r.stderr) }
+      }
+    TypedArgvExecRefused { reason: why } => ReceiptAbsent { host: host, cause: why }
+  }
+}
+
+fn receipt_first_line(raw: String) -> String? {
+  match split(s: raw, delimiter: "\n").first() {
+    Present { value: l } => if trim(s: l) == "" { none } else { Present { value: trim(s: l) } }
+    Absent => none
+  }
+}
+
+fn collected_receipts_only(collected: List<CollectedHostReceipt>) -> List<ConvergeCliReceipt> {
+  collected.flat_map(c => match c {
+    ReceiptCollected { host: _, receipt: r } => [r]
+    ReceiptAbsent { host: _, cause: _ } => []
+    ReceiptUnparseable { host: _, line: _ } => []
+  })
+}
+
+fn collected_line(c: CollectedHostReceipt) -> String {
+  match c {
+    ReceiptCollected { host: h, receipt: _ } => join(["collect host=", h, " outcome=collected"], "")
+    ReceiptAbsent { host: h, cause: why } => join(["collect host=", h, " outcome=absent cause=", why], "")
+    ReceiptUnparseable { host: h, line: l } => join(["collect host=", h, " outcome=unparseable line=", l], "")
+  }
+}
+
+data fleet_collect_receipt_path: String = "target/fleet-converge-collect-receipt.txt"
+
+// The wet collector run: collect every fleet target, feed ONLY collected receipts to
+// the atomic fold (join 5's composition — executed observation -> registry -> verdict),
+// and publish one collect receipt naming each host's collection outcome plus the fold
+// verdict. Exit reflects publication only: an honest NotConverged is a successful
+// collection, not a process failure.
+func collect_fleet_convergence_wet() -> ProcessExit {
+  let collected = map(fleet_reach_probe_targets, h => collect_host_receipt(host: h))
+  let verdict = fleet_convergence_verdict(
+    enrollments: fleet_subsumption_enrollments,
+    receipts: collected_receipts_only(collected: collected),
+  )
+  let verdict_line = match verdict {
+    FleetConverged { host_count: n } => concat("fleet-verdict converged hosts=", to_string(n))
+    FleetNotConverged { standings: s } => concat("fleet-verdict not-converged standings=", to_string(length(s)))
+  }
+  let body = join([join(map(collected, c => collected_line(c: c)), "\n"), "\n", verdict_line, "\n"], "")
+  let w = Filesystem.Write(path: fleet_collect_receipt_path, content: body)
+  if w.success {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat("fleet_receipt_collector: collect receipt publication failed — ", w.error))
+  }
+}
