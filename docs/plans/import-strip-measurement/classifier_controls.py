@@ -12,7 +12,7 @@ import sys
 import os
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from classify_residual import disposition  # noqa: E402
+from classify_residual import disposition, classify_rows  # noqa: E402
 
 FAILURES = []
 
@@ -67,6 +67,49 @@ check("intentional-ambiguity name with a third declaration is not excused",
                               "test.fixture.decl_facts_reflection.ambiguous_shared_b",
                               "gunbc.somewhere_real"]),
       "duplicate_unclassified")
+
+# --- control 4: the SAME property, exercised through the PRODUCTION path ---
+# Controls 1-3 call `disposition()` directly. That is how the raw-population
+# defect survived them: the production builder deduplicates candidate modules
+# into a set before `disposition()` ever sees them, so a convention name
+# declared TWICE IN ONE MODULE arrived as a single-module list and satisfied
+# one-per-module by construction. A control that reaches only the predicate
+# proves the predicate. This one goes through `classify_rows`, which is the
+# seam the ledger is actually built from.
+
+def disposition_via_production_path(name, decl_sites):
+    line = f"function '{name}' not found in scope (dag/x.dag:1-2)"
+    rows = classify_rows([line], {name: decl_sites}, {})
+    return rows[0]["disposition"]
+
+
+check("PRODUCTION PATH: convention declared twice in ONE module is not excused",
+      disposition_via_production_path(
+          "extdeps_model_scope",
+          [("extdeps.a", "data"), ("extdeps.a", "data"), ("extdeps.b", "data")]),
+      "duplicate_unclassified")
+
+check("PRODUCTION PATH: genuine one-per-module convention still classifies",
+      disposition_via_production_path(
+          "extdeps_model_scope",
+          [(f"extdeps.pkg_{i}", "data") for i in range(94)]),
+      "per_module_convention_population")
+
+check("PRODUCTION PATH: planted accidental fork stays hygiene",
+      disposition_via_production_path(
+          "plausible_helper", [(f"gunbc.module_{i}", "fn") for i in range(10)]),
+      "corpus_hygiene")
+
+# The ledger's DISPLAY columns must stay distinct-module even though the check
+# now receives the raw population - the repair separates two facts, it does not
+# swap one for the other.
+_rows = classify_rows(
+    ["function 'extdeps_model_scope' not found in scope (dag/x.dag:1-2)"],
+    {"extdeps_model_scope": [("extdeps.a", "data"), ("extdeps.a", "data"),
+                             ("extdeps.b", "data")]}, {})
+check("ledger candidate columns remain DISTINCT modules",
+      (_rows[0]["candidate_provider_modules"], _rows[0]["candidate_count"]),
+      ("extdeps.a|extdeps.b", 2))
 
 if FAILURES:
     print(f"\n{len(FAILURES)} control(s) FAILED")

@@ -201,6 +201,48 @@ def disposition(name, category, decl_count, is_variant, line, candidates=()):
     return "unindexed_symbol_candidate"
 
 
+def classify_rows(lines, decl, variants):
+    """The production row builder. Extracted from main() so a control can reach
+    it: the raw-population defect below survived a control precisely because the
+    only reachable seam was `disposition()`, and calling that directly bypasses
+    the deduplication the real path performs before it."""
+    rows, seen = [], collections.Counter()
+    for line in lines:
+        consumer, name, category = parse(line)
+        sites = decl.get(name, [])
+        vsites = variants.get(name, [])
+        n = len(sites)
+        # RAW population (duplicates preserved) vs DISPLAY population (distinct).
+        # These are two different facts and collapsing them disarmed the
+        # one-per-module check: `convention_holds` is asked whether a convention
+        # name is declared at most once per module, and a set had already made
+        # that true by construction before it could look. The ledger's candidate
+        # columns want the distinct modules; the check wants the population.
+        candidate_modules = [m for m, _ in sites] or [m for m, _ in vsites]
+        candidates = sorted(set(candidate_modules))
+        rows.append(dict(
+            consumer_file=consumer,
+            occurrence_name=name,
+            occurrence_category=category,
+            candidate_provider_modules="|".join(candidates),
+            candidate_count=len(candidates),
+            intended_provider="unobserved",
+            accepted_binding="unobserved",
+            provider_in_loaded_closure="unobserved",
+            binding_outcome=("suspected_fabricated" if "<anon>" in line
+                             else "ambiguous_candidates" if n > 1
+                             else "unresolved" if category in ("type", "value", "callee", "variant")
+                             else "n/a"),
+            first_root_diagnostic=re.sub(r"\s*\([^()]*:\d+-\d+\)\s*$", "", line)[:200],
+            disposition=disposition(name, category, n, bool(vsites) and n == 0, line,
+                                    candidates=candidate_modules),
+        ))
+        seen[(consumer, name)] += 1
+    for r in rows:
+        r["downstream_diagnostic_count"] = seen[(r["consumer_file"], r["occurrence_name"])] - 1
+    return rows
+
+
 def main(argv):
     log_path, root, out_path = argv[1], argv[2], argv[3]
     control = 0
@@ -221,33 +263,7 @@ def main(argv):
         lines = lines[header[0] + 1:]
     lines = [l for l in lines if not l.startswith("source annotation sits inside")]
 
-    rows, seen = [], collections.Counter()
-    for line in lines:
-        consumer, name, category = parse(line)
-        sites = decl.get(name, [])
-        vsites = variants.get(name, [])
-        n = len(sites)
-        candidates = sorted({m for m, _ in sites}) or sorted({m for m, _ in vsites})
-        rows.append(dict(
-            consumer_file=consumer,
-            occurrence_name=name,
-            occurrence_category=category,
-            candidate_provider_modules="|".join(candidates),
-            candidate_count=len(candidates),
-            intended_provider="unobserved",
-            accepted_binding="unobserved",
-            provider_in_loaded_closure="unobserved",
-            binding_outcome=("suspected_fabricated" if "<anon>" in line
-                             else "ambiguous_candidates" if n > 1
-                             else "unresolved" if category in ("type", "value", "callee", "variant")
-                             else "n/a"),
-            first_root_diagnostic=re.sub(r"\s*\([^()]*:\d+-\d+\)\s*$", "", line)[:200],
-            disposition=disposition(name, category, n, bool(vsites) and n == 0, line,
-                                    candidates=candidates),
-        ))
-        seen[(consumer, name)] += 1
-    for r in rows:
-        r["downstream_diagnostic_count"] = seen[(r["consumer_file"], r["occurrence_name"])] - 1
+    rows = classify_rows(lines, decl, variants)
 
     cols = ["consumer_file", "occurrence_name", "occurrence_category",
             "candidate_provider_modules", "candidate_count", "intended_provider",
