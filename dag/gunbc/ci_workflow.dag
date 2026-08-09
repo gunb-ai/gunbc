@@ -20,7 +20,9 @@ import gunbc.ci_spec {
   ci_heal_author_commit_artifact_includes_hidden_files,
   gunbc_ci_heal_repo_local_git_config_invoke,
   ci_fmt_gate_line,
+  gunbc_ci_srv1_tasks_observation_invoke,
 }
+import gunbc.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
 import v2.workflow.ci_retry_emit { ci_cargo_eagain_retry_script }
 import v2.workflow.ci_v1_compiler_tests_compile_gate_emit {
@@ -32,6 +34,7 @@ import v2.workflow.ci_heal_revalidation_preflight_emit {
 }
 import gunbc.ci_workflow_expressions {
   ci_deploy_push_to_main_if,
+  ci_workflow_dispatch_only_if,
   ci_floor_runs_unless_cancelled_if,
   ci_floor_upstream_red_refusal_script
 }
@@ -601,6 +604,47 @@ fn ci_deploy_jobs() -> List<Job> {
   map(gunbc_ci_deploy_stages, s => ci_deploy_job(stage: s))
 }
 
+// Read-only srv1 tasks pre-apply observation (operator ruling 2026-08-09 on PR 8045,
+// manager approval msg_03ec1f78): workflow_dispatch-ONLY at the job condition, so it
+// never rides pull_request or push events; pinned to the srv1 runner so the read runs
+// INSIDE the observed universe; needs only the release-bins build (no floor, no deploy
+// chain). The step is strictly read-only — the entry it invokes reaches only systemctl
+// show and cgroupfs filesystem_read (gunbc.srv1_tasks_preapply_observation), and the
+// printed return value is the typed Srv1TasksPreApplyReceipt.
+fn ci_srv1_tasks_observation_step() -> Step {
+  RunStep {
+    name: Present { value: "Read-only srv1 tasks pre-apply observation (observe_srv1_tasks_preapply_wet)" },
+    id: none,
+    run: gunbc_ci_srv1_tasks_observation_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn ci_srv1_tasks_observation_job() -> Job {
+  Job {
+    id: "observe_srv1_tasks_preapply",
+    name: none,
+    runner: gunbc_ci_deploy_srv1_runner_spec(),
+    steps: concat(
+      ci_artifact_consumer_prelude_steps(),
+      [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_srv1_tasks_observation_step()]
+    ),
+    needs: ["build"],
+    env: none,
+    outputs: none,
+    if_condition: Present { value: ci_workflow_dispatch_only_if },
+    timeout_minutes: Present { value: gunbc_ci_deploy_job_backstop_timeout_minutes },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: none
+  }
+}
+
 fn gunbc_ci_heal_job_backstop_timeout_minutes() -> Int {
   gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
 }
@@ -830,5 +874,5 @@ data ci_workflow: Workflow = {
       id_token: none
     }
   },
-  jobs: concat([ci_build_job(), ci_regen_job(), ci_job()], concat(ci_deploy_jobs(), [ci_heal_generated_artifacts_job()]))
+  jobs: concat([ci_build_job(), ci_regen_job(), ci_job()], concat(ci_deploy_jobs(), [ci_heal_generated_artifacts_job(), ci_srv1_tasks_observation_job()]))
 }

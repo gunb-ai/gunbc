@@ -503,6 +503,27 @@ fn gunbc_ci_floor_run(spec: CiSpec) -> String {
   gunbc_ci_floor_only_script(spec: spec)
 }
 
+// Read-only srv1 tasks pre-apply observation (operator ruling 2026-08-09 on PR 8045;
+// manager approval msg_03ec1f78): produces the ONE exact pre-apply receipt (effective
+// TasksMax, pids.max, pids.current, ancestor limit, observer slot membership) via the
+// typed read seams only. workflow_dispatch-gated at the job, so it never rides PR or
+// push events; the printed return value IS the typed receipt.
+data gunbc_ci_srv1_tasks_observation_entry: String = "dag/gunbc/srv1_tasks_preapply_observation.dag"
+data gunbc_ci_srv1_tasks_observation_function: String = "observe_srv1_tasks_preapply_wet"
+
+fn gunbc_ci_srv1_tasks_observation_invoke() -> String {
+  concat(
+    concat("ROOT=", ci_repo_root_shell(), "\n"),
+    gunbc_run_shell(
+      source_roots: witness_layer_roots,
+      entry: gunbc_ci_srv1_tasks_observation_entry,
+      function: gunbc_ci_srv1_tasks_observation_function,
+      rooted: true,
+      claim_run: false
+    )
+  )
+}
+
 fn gunbc_ci_deploy_invoke(stage: DeployStage) -> String {
   concat(
     concat("ROOT=", ci_repo_root_shell(), "\n"),

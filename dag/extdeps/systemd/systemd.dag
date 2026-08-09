@@ -34,6 +34,7 @@ type SystemdUnitProperty
   | MemoryCurrent
   | TasksMax
   | TasksCurrent
+  | ControlGroup
 
 fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
   match property {
@@ -44,6 +45,7 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     MemoryCurrent => "MemoryCurrent" as NonEmptyStr
     TasksMax => "TasksMax" as NonEmptyStr
     TasksCurrent => "TasksCurrent" as NonEmptyStr
+    ControlGroup => "ControlGroup" as NonEmptyStr
   }
 }
 
