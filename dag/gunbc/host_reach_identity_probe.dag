@@ -90,7 +90,21 @@ type HostReachIdentityProbeReceipt {
 // for all six hosts therefore read Inaccessible (never satisfied, never Conflict —
 // leg-f ruling), and the fleet fold stays honestly NOT converged with the remedy named:
 // enroll the fingerprint registry.
-data probe_receipts_run_provenance: String = "run=31300640122 job=probe_fleet_reach probed_at=2026-08-09T07:20:04Z head-branch=session/wise-moth-430"
+// Typed, not a prose row (review 50827: run id / job / timestamp / branch are
+// machine-consumed facts, the §4c String-commentary shape if left as one string).
+type ProbeRunProvenance {
+  workflow_run_id: Int
+  job_id: String
+  probed_at: NonEmptyStr
+  head_branch: String
+}
+
+data probe_receipts_run_provenance: ProbeRunProvenance = ProbeRunProvenance {
+  workflow_run_id: 31300640122,
+  job_id: "probe_fleet_reach",
+  probed_at: "2026-08-09T07:20:04Z" as NonEmptyStr,
+  head_branch: "session/wise-moth-430",
+}
 
 // 🟡 dissolve-on (review 50824): the rows below are a HAND TRANSCRIPTION of one executed
 // run — provenance-bearing, but still an authored copy of machine output, and the wet

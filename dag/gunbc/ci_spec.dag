@@ -569,12 +569,15 @@ data gunbc_ci_fleet_timer_install_shell_emit_dissolution_trigger: String = "🟡
 fn gunbc_ci_fleet_timer_install_invoke() -> String {
   concat(
     concat("# ", concat(gunbc_ci_fleet_timer_install_shell_emit_dissolution_trigger, "\n")),
-    gunbc_run_shell(
-      source_roots: witness_layer_roots,
-      entry: "dag/gunbc/fleet_converge_timer_install.dag",
-      function: "fleet_timer_self_install_wet",
-      rooted: true,
-      claim_run: false
+    concat(
+      concat("ROOT=", ci_repo_root_shell(), "\n"),
+      gunbc_run_shell(
+        source_roots: witness_layer_roots,
+        entry: "dag/gunbc/fleet_converge_timer_install.dag",
+        function: "fleet_timer_self_install_wet",
+        rooted: true,
+        claim_run: false
+      )
     )
   )
 }
