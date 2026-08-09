@@ -38,7 +38,6 @@ import gunbc.repo_atlas_projection {
   atlas_cell_occupant_count,
   atlas_module_is_marked,
   atlas_module_is_impacted,
-  atlas_impact_is_exact,
   atlas_overlay_marks,
   repo_atlas_snapshot,
   AtlasComparison,
@@ -142,10 +141,6 @@ Density, not brightness, carries a cell's occupant count: brightness is the chan
 
 fn atlas_cell_class(cell: RepoAtlasCell) -> String {
   if atlas_cell_occupant_count(cell: cell) > 1 { "atlas-dot atlas-dot-shared" } else { "atlas-dot" }
-}
-
-fn atlas_cell_any_marked(cell: RepoAtlasCell, marks: List<AtlasChangeMark>) -> Bool {
-  any(cell.occupants, o => atlas_module_is_marked(marks: marks, identity: o))
 }
 
 fn atlas_cell_any_impacted(cell: RepoAtlasCell, impact: AtlasImpactOverlay) -> Bool {
