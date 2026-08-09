@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, List, Bool, Int }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.gunbc
 
-data devboot_shell_transport_note: String = "Counted retained-transport roster for gunbc.devboot.build WitnessBin.Run sites. Runtime-present build.dag is not yet on host_effect_apply typed effects; every raw argv site names a RetainedWitnessRun row with reason + dissolve-on = shell→intent Phase 2 (gunbc.host_effect_realize host_effect_apply). No unmarked WitnessBin.Run calls survive review."
+data devboot_shell_transport_note: String = "Counted retained-transport roster for gunbc.devboot.build and gunbc.devboot.produce WitnessBin.Run sites. Runtime-present devboot modules are not yet on host_effect_apply typed effects; every raw argv site names a RetainedWitnessRun row with reason + dissolve-on = shell→intent Phase 2 (gunbc.host_effect_realize host_effect_apply). No unmarked WitnessBin.Run calls survive review."
 
 data devboot_shell_typed_effects_dissolve_ref: DeclarationRef = DeclarationRef {
   module_path: "gunbc.host_effect_realize",
@@ -114,6 +114,56 @@ data retained_devboot_uname: RetainedWitnessRun = RetainedWitnessRun {
 
 data retained_devboot_cargo_build: RetainedWitnessRun = RetainedWitnessRun {
   reason: "devboot producer compiles the admitted subject with the observed toolchain homes" as NonEmptyStr,
+  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
+}
+
+data retained_devboot_rm_file: RetainedWitnessRun = RetainedWitnessRun {
+  reason: "devboot producer removes a scratch index or unpack-file temp path" as NonEmptyStr,
+  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
+}
+
+data retained_devboot_git_add_all: RetainedWitnessRun = RetainedWitnessRun {
+  reason: "devboot producer stages the dirty worktree into its snapshot index" as NonEmptyStr,
+  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
+}
+
+data retained_devboot_rustc_version: RetainedWitnessRun = RetainedWitnessRun {
+  reason: "devboot producer observes the local rustc toolchain for subject identity" as NonEmptyStr,
+  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
+}
+
+data retained_devboot_git_bare_init: RetainedWitnessRun = RetainedWitnessRun {
+  reason: "devboot producer bootstraps the artifact store as a bare git repository" as NonEmptyStr,
+  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
+}
+
+data retained_devboot_git_unpack_file: RetainedWitnessRun = RetainedWitnessRun {
+  reason: "devboot producer materializes a store blob to disk for independent digest verification" as NonEmptyStr,
+  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
+}
+
+data retained_devboot_git_object_exists: RetainedWitnessRun = RetainedWitnessRun {
+  reason: "devboot producer checks artifact blob presence before reuse verification" as NonEmptyStr,
+  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
+}
+
+data retained_devboot_git_object_size: RetainedWitnessRun = RetainedWitnessRun {
+  reason: "devboot producer measures stored artifact byte size for the availability record" as NonEmptyStr,
+  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
+}
+
+data retained_devboot_mv: RetainedWitnessRun = RetainedWitnessRun {
+  reason: "devboot producer installs the built artifact beside the store binding" as NonEmptyStr,
+  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
+}
+
+data retained_devboot_execute_artifact: RetainedWitnessRun = RetainedWitnessRun {
+  reason: "devboot materialize path executes the fetched bytes to verify they run" as NonEmptyStr,
+  dissolves_to: devboot_shell_typed_effects_dissolve_ref,
+}
+
+data retained_devboot_ldd: RetainedWitnessRun = RetainedWitnessRun {
+  reason: "devboot producer observes platform C library version for subject identity" as NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 

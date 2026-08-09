@@ -5,6 +5,7 @@ import std.measure { Second, second, second_count }
 import std.content_hash { Sha256Digest, sha256_hex_digest, content_hash_eq_cryptographic }
 import extdeps.gunbc
 import extdeps.filesystem.filesystem_io
+import extdeps.git { git_ref_missing_exit_code, git_repository_unusable_exit_code }
 import gunbc.devboot.transport {
   devboot_witness_run,
   retained_devboot_rm_rf,
@@ -833,7 +834,16 @@ fn read_request_source_tree(repo_root: String, ref_name: String) -> SourceTreeOu
     args: ["rev-parse", join([ref_name, ":", request_source_entry], "")],
   )
   if !resolved.success {
-    if resolved.exit_code == 128 {
+    if string_contains(s: resolved.stderr, pattern: "not a git repository")
+      || resolved.exit_code == git_repository_unusable_exit_code
+        && !string_contains(s: resolved.stderr, pattern: "does not exist in")
+        && !string_contains(s: resolved.stderr, pattern: "invalid object name")
+        && !string_contains(s: resolved.stderr, pattern: "Not a valid object name") {
+      SourceTreeResolveFailed { exit_code: resolved.exit_code, stderr: trim(s: resolved.stderr) }
+    } else if resolved.exit_code == git_ref_missing_exit_code
+      || string_contains(s: resolved.stderr, pattern: "does not exist in")
+      || string_contains(s: resolved.stderr, pattern: "invalid object name")
+      || string_contains(s: resolved.stderr, pattern: "Not a valid object name") {
       SourceTreeAbsent
     } else {
       SourceTreeResolveFailed { exit_code: resolved.exit_code, stderr: trim(s: resolved.stderr) }

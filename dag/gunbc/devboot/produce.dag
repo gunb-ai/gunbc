@@ -7,7 +7,32 @@ import std.content_hash { sha256_hex_digest }
 import extdeps.shell
 import extdeps.gunbc
 import extdeps.filesystem.filesystem_io
-import gunbc.output_policy { ExpectSuccess }
+import gunbc.devboot.transport {
+  devboot_witness_run,
+  retained_devboot_mkdir,
+  retained_devboot_rm_file,
+  retained_devboot_rm_rf,
+  retained_devboot_git_read_tree,
+  retained_devboot_git_add_all,
+  retained_devboot_git_write_tree,
+  retained_devboot_git_checkout_index,
+  retained_devboot_rustc_version,
+  retained_devboot_git_bare_init,
+  retained_devboot_git_rev_parse,
+  retained_devboot_git_cat_file,
+  retained_devboot_git_object_exists,
+  retained_devboot_git_object_size,
+  retained_devboot_git_unpack_file,
+  retained_devboot_git_hash_object,
+  retained_devboot_git_update_ref,
+  retained_devboot_sha256sum,
+  retained_devboot_sleep,
+  retained_devboot_cargo_build,
+  retained_devboot_mv,
+  retained_devboot_chmod,
+  retained_devboot_execute_artifact,
+  retained_devboot_ldd,
+}
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 
 import gunbc.devboot.lease {
@@ -98,9 +123,16 @@ fn snapshot_step_refusal(step: String, exit_code: Int, stderr: String) -> String
 
 fn devboot_snapshot(repo_root: String, work_root: String) -> SnapshotOutcome {
   let index_path = devboot_snapshot_index_path(work_root: work_root)
-  let prepared = gunbc.WitnessBin.Run(workdir: repo_root, bin_path: "mkdir", args: ["-p", work_root])
-  let cleared = gunbc.WitnessBin.Run(workdir: repo_root, bin_path: "rm", args: ["-f", index_path])
-  let baseline = gunbc.WitnessBin.Run(
+  let prepared = devboot_witness_run(
+    site: retained_devboot_mkdir,
+    workdir: repo_root, bin_path: "mkdir", args: ["-p", work_root]
+  )
+  let cleared = devboot_witness_run(
+    site: retained_devboot_rm_file,
+    workdir: repo_root, bin_path: "rm", args: ["-f", index_path]
+  )
+  let baseline = devboot_witness_run(
+    site: retained_devboot_git_read_tree,
     workdir: repo_root,
     bin_path: "env",
     args: [concat("GIT_INDEX_FILE=", index_path), "git", "read-tree", "HEAD"],
@@ -108,19 +140,21 @@ fn devboot_snapshot(repo_root: String, work_root: String) -> SnapshotOutcome {
   if !baseline.success {
     SnapshotRefused { detail: snapshot_step_refusal(step: "read-tree HEAD", exit_code: baseline.exit_code, stderr: baseline.stderr) }
   } else {
-    let staged = gunbc.WitnessBin.Run(
-      workdir: repo_root,
+    let staged = devboot_witness_run(
+    site: retained_devboot_git_add_all,
+    workdir: repo_root,
       bin_path: "env",
       args: [concat("GIT_INDEX_FILE=", index_path), "git", "add", "-A"],
-    )
+  )
     if !staged.success {
       SnapshotRefused { detail: snapshot_step_refusal(step: "add -A", exit_code: staged.exit_code, stderr: staged.stderr) }
     } else {
-      let written = gunbc.WitnessBin.Run(
-        workdir: repo_root,
+      let written = devboot_witness_run(
+    site: retained_devboot_git_write_tree,
+    workdir: repo_root,
         bin_path: "env",
         args: [concat("GIT_INDEX_FILE=", index_path), "git", "write-tree"],
-      )
+  )
       if !written.success {
         SnapshotRefused { detail: snapshot_step_refusal(step: "write-tree", exit_code: written.exit_code, stderr: written.stderr) }
       } else {
@@ -152,9 +186,16 @@ type SourceMaterialization
 fn devboot_materialize_source(repo_root: String, work_root: String, token: String, tree_hex: String) -> SourceMaterialization {
   let source_dir = devboot_source_dir(work_root: work_root, token: token)
   let checkout_index = join([work_root, "/", token, "/checkout.index"], "")
-  let fresh = gunbc.WitnessBin.Run(workdir: repo_root, bin_path: "rm", args: ["-rf", source_dir])
-  let made = gunbc.WitnessBin.Run(workdir: repo_root, bin_path: "mkdir", args: ["-p", source_dir])
-  let loaded = gunbc.WitnessBin.Run(
+  let fresh = devboot_witness_run(
+    site: retained_devboot_rm_rf,
+    workdir: repo_root, bin_path: "rm", args: ["-rf", source_dir]
+  )
+  let made = devboot_witness_run(
+    site: retained_devboot_mkdir,
+    workdir: repo_root, bin_path: "mkdir", args: ["-p", source_dir]
+  )
+  let loaded = devboot_witness_run(
+    site: retained_devboot_git_read_tree,
     workdir: repo_root,
     bin_path: "env",
     args: [concat("GIT_INDEX_FILE=", checkout_index), "git", "read-tree", tree_hex],
@@ -162,8 +203,9 @@ fn devboot_materialize_source(repo_root: String, work_root: String, token: Strin
   if !loaded.success {
     SourceMaterializationRefused { detail: snapshot_step_refusal(step: "read-tree <snapshot>", exit_code: loaded.exit_code, stderr: loaded.stderr) }
   } else {
-    let checked_out = gunbc.WitnessBin.Run(
-      workdir: repo_root,
+    let checked_out = devboot_witness_run(
+    site: retained_devboot_git_checkout_index,
+    workdir: repo_root,
       bin_path: "env",
       args: [
         concat("GIT_INDEX_FILE=", checkout_index),
@@ -173,7 +215,7 @@ fn devboot_materialize_source(repo_root: String, work_root: String, token: Strin
         "-f",
         concat("--prefix=", join([source_dir, "/"], "")),
       ],
-    )
+  )
     if !checked_out.success {
       SourceMaterializationRefused { detail: snapshot_step_refusal(step: "checkout-index", exit_code: checked_out.exit_code, stderr: checked_out.stderr) }
     } else {
@@ -213,12 +255,14 @@ fn scan_field(acc: FieldScan, part: String, wanted: Int) -> FieldScan {
 }
 
 fn observe_toolchain(repo_root: String) -> ObservedToolchain {
-  let version_out = gunbc.WitnessBin.Run(
+  let version_out = devboot_witness_run(
+    site: retained_devboot_rustc_version,
     workdir: repo_root,
     bin_path: "rustc",
     args: ["--version"],
   )
-  let host_out = gunbc.WitnessBin.Run(
+  let host_out = devboot_witness_run(
+    site: retained_devboot_rustc_version,
     workdir: repo_root,
     bin_path: "rustc",
     args: ["-vV"],
@@ -283,7 +327,8 @@ type StoreReadiness
   | StoreInitRefused { detail: String }
 
 fn ensure_store_repository(store_root: String, repo_root: String) -> StoreReadiness {
-  let init = gunbc.WitnessBin.Run(
+  let init = devboot_witness_run(
+    site: retained_devboot_git_bare_init,
     workdir: repo_root,
     bin_path: "git",
     args: ["init", "--bare", "--quiet", store_root],
@@ -425,7 +470,8 @@ type ArtifactLookup
   | ArtifactLookupRefused { detail: String }
 
 fn ref_lookup(store_root: String, repo_root: String, ref_name: String) -> ArtifactLookup {
-  let existing = gunbc.WitnessBin.Run(
+  let existing = devboot_witness_run(
+    site: retained_devboot_git_rev_parse,
     workdir: repo_root,
     bin_path: "git",
     args: [concat("--git-dir=", store_root), "rev-parse", "--verify", "--quiet", ref_name],
@@ -451,7 +497,8 @@ fn artifact_lookup(store_root: String, repo_root: String, token: String) -> Arti
 //
 // WHAT MAKES THE COMPARISON POSSIBLE is that the producer now stores the rendered subject beside the artifact, under its own ref. On reuse, that text is read back and compared with the rendering of the request; the rendering is injective, so equal text means equal subjects. Bytes are then confirmed present in the object database before anything is served. A digest collision therefore costs a rebuild instead of a wrong binary, and a pruned object refuses instead of being reported as retrievable -- both on the live path, not only in the model.
 fn recorded_artifact_digest(store_root: String, repo_root: String, token: String) -> String {
-  let out = gunbc.WitnessBin.Run(
+  let out = devboot_witness_run(
+    site: retained_devboot_git_cat_file,
     workdir: repo_root,
     bin_path: "git",
     args: [concat("--git-dir=", store_root), "cat-file", "blob", digest_ref_of(token: token)],
@@ -464,7 +511,8 @@ fn recorded_artifact_digest(store_root: String, repo_root: String, token: String
 }
 
 fn stored_record_text(store_root: String, repo_root: String, token: String) -> String {
-  let stored = gunbc.WitnessBin.Run(
+  let stored = devboot_witness_run(
+    site: retained_devboot_git_cat_file,
     workdir: repo_root,
     bin_path: "git",
     args: [concat("--git-dir=", store_root), "cat-file", "blob", subject_ref_of(token: token)],
@@ -500,7 +548,8 @@ fn stored_subject_match(record_text: String, subject: BuildSubject) -> SubjectMa
 //
 // The cost is one read of the artifact on the reuse path. That is the honest price of the contract this vertical was given -- a reuse that skipped it would be reporting retrievability it had not established, which is the one thing there is no arm for.
 fn observed_artifact_sha256(store_root: String, repo_root: String, oid: String) -> String {
-  let unpacked = gunbc.WitnessBin.Run(
+  let unpacked = devboot_witness_run(
+    site: retained_devboot_git_unpack_file,
     workdir: repo_root,
     bin_path: "git",
     args: [concat("--git-dir=", store_root), "unpack-file", oid],
@@ -509,16 +558,18 @@ fn observed_artifact_sha256(store_root: String, repo_root: String, oid: String) 
     ""
   } else {
     let temp_name = trim(s: unpacked.stdout)
-    let digest = gunbc.WitnessBin.Run(
-      workdir: repo_root,
+    let digest = devboot_witness_run(
+    site: retained_devboot_sha256sum,
+    workdir: repo_root,
       bin_path: "sha256sum",
       args: [temp_name],
-    )
-    let removed = gunbc.WitnessBin.Run(
-      workdir: repo_root,
+  )
+    let removed = devboot_witness_run(
+    site: retained_devboot_rm_file,
+    workdir: repo_root,
       bin_path: "rm",
       args: ["-f", temp_name],
-    )
+  )
     if digest.success { first_field(text: trim(s: digest.stdout)) } else { "" }
   }
 }
@@ -553,7 +604,8 @@ fn observe_artifact_availability(
   token: String,
   subject: BuildSubject,
 ) -> ArtifactAvailability {
-  let present = gunbc.WitnessBin.Run(
+  let present = devboot_witness_run(
+    site: retained_devboot_git_object_exists,
     workdir: repo_root,
     bin_path: "git",
     args: [concat("--git-dir=", store_root), "cat-file", "-e", oid],
@@ -570,11 +622,12 @@ fn observe_artifact_availability(
           subject: subject,
           oid: oid,
           sha256_hex: observed,
-          bytes_text: trim(s: gunbc.WitnessBin.Run(
-            workdir: repo_root,
+          bytes_text: trim(s: devboot_witness_run(
+    site: retained_devboot_git_object_size,
+    workdir: repo_root,
             bin_path: "git",
             args: [concat("--git-dir=", store_root), "cat-file", "-s", oid],
-          ).stdout),
+  ).stdout),
         )
       } else {
         corrupt_artifact_observation(
@@ -736,11 +789,12 @@ fn attach_wait_step(acc: AttachWait, store_root: String, repo_root: String, toke
     AttachArtifactAppeared { oid } => acc
     AttachWaitRefused { detail } => acc
     AttachStillProducing => {
-      let paused = gunbc.WitnessBin.Run(
-        workdir: repo_root,
+      let paused = devboot_witness_run(
+    site: retained_devboot_sleep,
+    workdir: repo_root,
         bin_path: "sleep",
         args: [attach_wait_interval_argv()],
-      )
+  )
       attach_poll_once(store_root: store_root, repo_root: repo_root, token: token)
     }
   }
@@ -824,14 +878,15 @@ fn devboot_produce_build(store_root: String, repo_root: String, work_root: Strin
   let claim_path = join([store_root, "/devboot-lease-claim-", token], "")
   let claim_written = Filesystem.Write(path: claim_path, content: concat("producer=", caller))
 
-  let claim = gunbc.WitnessBin.Run(
+  let claim = devboot_witness_run(
+    site: retained_devboot_git_hash_object,
     workdir: repo_root,
     bin_path: "git",
     args: [concat("--git-dir=", store_root), "hash-object", "-w", "--", claim_path],
-    expect: ExpectSuccess,
   )
   let claim_oid = trim(s: claim.stdout)
-  let taken = gunbc.WitnessBin.Run(
+  let taken = devboot_witness_run(
+    site: retained_devboot_git_update_ref,
     workdir: repo_root,
     bin_path: "git",
     args: [concat("--git-dir=", store_root), "update-ref", lease_ref_of(token: token), claim_oid, ""],
@@ -1009,23 +1064,23 @@ fn devboot_run_build_plan(
   args: List<String>,
   artifact_path: String,
 ) -> ProduceReport {
-  let built = gunbc.WitnessBin.Run(
+  let built = devboot_witness_run(
+    site: retained_devboot_cargo_build,
     workdir: source_dir,
     bin_path: "env",
     args: concat([concat("CARGO_TARGET_DIR=", target_dir), "cargo"], args),
-    expect: ExpectSuccess,
   )
   if !built.success {
     ProduceRefused {
       reason: join(["the build failed (cargo exit ", to_string(built.exit_code), "): ", trim(s: built.stderr)], ""),
     }
   } else {
-    let stored = gunbc.WitnessBin.Run(
-      workdir: repo_root,
+    let stored = devboot_witness_run(
+    site: retained_devboot_git_hash_object,
+    workdir: repo_root,
       bin_path: "git",
       args: [concat("--git-dir=", store_root), "hash-object", "-w", "--", join([target_dir, "/", artifact_path], "")],
-      expect: ExpectSuccess,
-    )
+  )
     let blob_oid = trim(s: stored.stdout)
     if !stored.success || blob_oid == "" {
       ProduceRefused {
@@ -1073,31 +1128,34 @@ fn devboot_bind_produced_artifact(
     path: record_path,
     content: render_build_subject(subject: subject),
   )
-  let record_blob = gunbc.WitnessBin.Run(
+  let record_blob = devboot_witness_run(
+    site: retained_devboot_git_hash_object,
     workdir: repo_root,
     bin_path: "git",
     args: [concat("--git-dir=", store_root), "hash-object", "-w", "--", record_path],
-    expect: ExpectSuccess,
   )
-  let record_bound = gunbc.WitnessBin.Run(
+  let record_bound = devboot_witness_run(
+    site: retained_devboot_git_update_ref,
     workdir: repo_root,
     bin_path: "git",
     args: [concat("--git-dir=", store_root), "update-ref", subject_ref_of(token: token), trim(s: record_blob.stdout), ""],
-    expect: ExpectSuccess,
   )
   let digest_path = join([store_root, "/devboot-digest-", token], "")
   let digest_written = Filesystem.Write(path: digest_path, content: artifact_sha256)
-  let digest_blob = gunbc.WitnessBin.Run(
+  let digest_blob = devboot_witness_run(
+    site: retained_devboot_git_hash_object,
     workdir: repo_root,
     bin_path: "git",
     args: [concat("--git-dir=", store_root), "hash-object", "-w", "--", digest_path],
   )
-  let digest_bound = gunbc.WitnessBin.Run(
+  let digest_bound = devboot_witness_run(
+    site: retained_devboot_git_update_ref,
     workdir: repo_root,
     bin_path: "git",
     args: [concat("--git-dir=", store_root), "update-ref", digest_ref_of(token: token), trim(s: digest_blob.stdout), ""],
   )
-  let bound = gunbc.WitnessBin.Run(
+  let bound = devboot_witness_run(
+    site: retained_devboot_git_update_ref,
     workdir: repo_root,
     bin_path: "git",
     args: [concat("--git-dir=", store_root), "update-ref", artifact_ref_of(token: token), blob_oid, ""],
@@ -1137,36 +1195,36 @@ fn devboot_bind_produced_artifact(
 //
 // The caller compares the reported digest against the one it was promised. This function reports what it measured rather than deciding the comparison, because the promise lives with the requester.
 fn devboot_materialize(store_root: String, repo_root: String, artifact_oid: String, out_path: String) -> String {
-  let unpacked = gunbc.WitnessBin.Run(
+  let unpacked = devboot_witness_run(
+    site: retained_devboot_git_unpack_file,
     workdir: repo_root,
     bin_path: "git",
     args: [concat("--git-dir=", store_root), "unpack-file", artifact_oid],
-    expect: ExpectSuccess,
   )
   let temp_name = trim(s: unpacked.stdout)
-  let moved = gunbc.WitnessBin.Run(
+  let moved = devboot_witness_run(
+    site: retained_devboot_mv,
     workdir: repo_root,
     bin_path: "mv",
     args: [temp_name, out_path],
-    expect: ExpectSuccess,
   )
-  let made_executable = gunbc.WitnessBin.Run(
+  let made_executable = devboot_witness_run(
+    site: retained_devboot_chmod,
     workdir: repo_root,
     bin_path: "chmod",
     args: ["+x", out_path],
-    expect: ExpectSuccess,
   )
-  let digest = gunbc.WitnessBin.Run(
+  let digest = devboot_witness_run(
+    site: retained_devboot_sha256sum,
     workdir: repo_root,
     bin_path: "sha256sum",
     args: [out_path],
-    expect: ExpectSuccess,
   )
-  let executed = gunbc.WitnessBin.Run(
+  let executed = devboot_witness_run(
+    site: retained_devboot_execute_artifact,
     workdir: repo_root,
     bin_path: out_path,
     args: ["--help"],
-    expect: ExpectSuccess,
   )
   join([
     "MATERIALIZED path=", out_path,
@@ -1400,7 +1458,8 @@ fn devboot_break_stranded_lease(
   token: String,
   expected_holder: String,
 ) -> LeaseRecovery {
-  let broken = gunbc.WitnessBin.Run(
+  let broken = devboot_witness_run(
+    site: retained_devboot_git_update_ref,
     workdir: repo_root,
     bin_path: "git",
     args: [concat("--git-dir=", store_root), "update-ref", "-d", lease_ref_of(token: token), expected_holder],
@@ -1449,7 +1508,10 @@ fn libc_version_from_ldd_text(text: String) -> String {
 }
 
 fn observe_platform_c_library(repo_root: String) -> PlatformCLibrary {
-  let reported = gunbc.WitnessBin.Run(workdir: repo_root, bin_path: "ldd", args: ["--version"])
+  let reported = devboot_witness_run(
+    site: retained_devboot_ldd,
+    workdir: repo_root, bin_path: "ldd", args: ["--version"]
+  )
   if !reported.success {
     LibcUnobserved
   } else {
