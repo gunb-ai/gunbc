@@ -165,11 +165,20 @@ data fleet_host_key_enroll_receipt_path: String = "target/fleet-host-key-enroll-
 // account's known_hosts -> per-host independent readback (ssh-keygen -F at the
 // endpoint), which is the success criterion — never the append's exit code. Refuses
 // loudly when the registry is empty: enrolling nothing must not read as enrolled.
-func fleet_host_key_enroll_wet() -> ProcessExit
+//
+// MEASURED CORRECTION (runs 31323572188): enrollment is NOT durable host state on a CI
+// runner — GitHub Actions overrides HOME to a per-job temp directory, so a separate
+// enroll job writes known_hosts into an ephemeral HOME that is discarded at job end,
+// and a probe job's ssh reads its OWN temp HOME (all six readbacks said found while the
+// probe still refused verification — the readback was true of a universe that no longer
+// existed). The registry is therefore materialized into the CURRENT process's HOME by
+// fleet_host_key_enroll_apply, which the probe entry calls FIRST — enrollment rides
+// with every probe run instead of pretending to persist.
+func fleet_host_key_enroll_apply() -> String
   uses net: Network
 {
   if length(fleet_host_key_enrollments) == 0 {
-    exit_failure(reason: "fleet_host_key_enroll: registry is empty — nothing to enroll; run the scan and commit the transcription first (an empty apply must not read as enrollment)")
+    "enroll outcome=refused cause=registry-empty\n"
   } else {
     let fragment = join(map(fleet_host_key_enrollments, k => concat(known_hosts_line(k: k), "\n")), "")
     let staged = "target/fleet-known-hosts-fragment"
@@ -177,15 +186,14 @@ func fleet_host_key_enroll_wet() -> ProcessExit
     if w.success {
       let applied = run_shell_commands(
         commands: [
-          ArgvCommand { argv: ["mkdir", "-p", ".ssh-enroll-stage"] },
           ArgvCommand { argv: ["sh", "-c", "mkdir -p \"$HOME/.ssh\" && touch \"$HOME/.ssh/known_hosts\" && cat target/fleet-known-hosts-fragment >> \"$HOME/.ssh/known_hosts\"" ] },
         ],
         transport: LocalExec,
       )
       match applied {
-        ExitFailure { code: _, reason: why } => exit_failure(reason: concat("fleet_host_key_enroll: apply refused: ", why))
-        ExitSuccess => {
-          let readback = join(map(fleet_host_key_enrollments, k => {
+        ExitFailure { code: _, reason: why } => join(["enroll outcome=refused cause=", why, "\n"], "")
+        ExitSuccess =>
+          join(map(fleet_host_key_enrollments, k => {
             let f = run_shell_command_capture(
               command: ArgvCommand { argv: ["ssh-keygen", "-F", k.endpoint] },
               transport: LocalExec,
@@ -195,16 +203,25 @@ func fleet_host_key_enroll_wet() -> ProcessExit
               if f.success { " readback=found" } else { " readback=ABSENT" }, "\n",
             ], "")
           }), "")
-          let wr = Filesystem.Write(path: fleet_host_key_enroll_receipt_path, content: readback)
-          if wr.success {
-            ExitSuccess
-          } else {
-            exit_failure(reason: concat("fleet_host_key_enroll: receipt publication failed — ", wr.error))
-          }
-        }
       }
     } else {
-      exit_failure(reason: concat("fleet_host_key_enroll: fragment staging refused — ", w.error))
+      join(["enroll outcome=refused cause=fragment-staging: ", w.error, "\n"], "")
     }
+  }
+}
+
+func fleet_host_key_enroll_wet() -> ProcessExit
+  uses net: Network
+{
+  let receipt = fleet_host_key_enroll_apply()
+  let wr = Filesystem.Write(path: fleet_host_key_enroll_receipt_path, content: receipt)
+  if wr.success {
+    if string_contains(s: receipt, pattern: "outcome=refused") {
+      exit_failure(reason: concat("fleet_host_key_enroll: apply refused — ", receipt))
+    } else {
+      ExitSuccess
+    }
+  } else {
+    exit_failure(reason: concat("fleet_host_key_enroll: receipt publication failed — ", wr.error))
   }
 }

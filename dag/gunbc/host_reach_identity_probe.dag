@@ -11,7 +11,7 @@ import gunbc.typed_argv_exec {
 }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for, fleet_reach_probe_targets }
-import gunbc.fleet_host_key_enrollment { enrolled_fingerprint_for }
+import gunbc.fleet_host_key_enrollment { enrolled_fingerprint_for, fleet_host_key_enroll_apply }
 
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
@@ -306,12 +306,16 @@ fn probe_host_reach_once(host: String, probed_at: String) -> HostReachIdentityPr
 }
 
 func probe_fleet_reach_wet() -> ProcessExit {
+  // Enrollment rides with the run (CI job HOME is ephemeral — see the measured
+  // correction at fleet_host_key_enroll_apply): materialize the committed registry
+  // into THIS process's known_hosts first, and carry its readback in the receipt.
+  let enroll_lines = fleet_host_key_enroll_apply()
   let now = clock_now_probed_at()
   let run = FleetReachProbeRun {
     probed_at: now as String,
     receipts: map(fleet_reach_probe_targets, h => probe_host_reach_once(host: h, probed_at: now as String)),
   }
-  let w = Filesystem.Write(path: fleet_reach_probe_receipt_path, content: to_string(run))
+  let w = Filesystem.Write(path: fleet_reach_probe_receipt_path, content: join([enroll_lines, to_string(run)], ""))
   if w.success {
     ExitSuccess
   } else {
