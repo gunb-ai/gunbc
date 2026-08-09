@@ -107,13 +107,32 @@ fn sweep_rows_for_entry(
     survey_dir: &Path,
     entry_path: &str,
     receipt_fn: &str,
+    singleton: bool,
 ) -> Result<String, String> {
     let exclude = vec!["host_source_root_ingest_manifest.dag".to_string()];
     let overlay_dir = overlay_dir_for(survey_dir, entry_path);
     fs::create_dir_all(&overlay_dir).map_err(|e| format!("mkdir overlay {overlay_dir:?}: {e}"))?;
 
     let discover_roots: Vec<String> = WITNESS_LAYER_ROOTS.iter().map(|r| r.to_string()).collect();
-    let records = discover_source_root_reads_for_entry(&discover_roots, entry_path, &exclude)?;
+    // --singleton: the overlay ingest carries EXACTLY the entry file — a per-file parse
+    // verdict with no closure members in the ingest, so a sibling file's construct cannot
+    // poison this file's row (the confound that produced three refuted hypotheses on
+    // 2026-08-09). The full discovery arm stays the canonical-route default.
+    let records = if singleton {
+        let all = discover_source_root_reads_for_entry(&discover_roots, entry_path, &exclude)?;
+        let one: Vec<_> = all
+            .into_iter()
+            .filter(|r| r.file_path == entry_path)
+            .collect();
+        if one.is_empty() {
+            return Err(format!(
+                "singleton: entry {entry_path} not among its own reads"
+            ));
+        }
+        one
+    } else {
+        discover_source_root_reads_for_entry(&discover_roots, entry_path, &exclude)?
+    };
     let entry_source =
         fs::read_to_string(entry_path).map_err(|e| format!("read entry {entry_path}: {e}"))?;
     let admission = parse_source_root_entry_admission(&entry_source)?;
@@ -151,7 +170,7 @@ fn scan_members(entry_path: &str) -> Result<(), String> {
     let exe = std::env::current_exe().map_err(|e| format!("current_exe: {e}"))?;
     for rec in &records {
         let out = std::process::Command::new(&exe)
-            .args(["--entry", &rec.file_path])
+            .args(["--singleton", "--member-scan", "--entry", &rec.file_path])
             .output()
             .map_err(|e| format!("spawn member {}: {e}", rec.file_path))?;
         let stdout = String::from_utf8_lossy(&out.stdout);
@@ -182,6 +201,7 @@ fn main() -> ExitCode {
     let mut entries: Vec<String> = Vec::new();
     let mut survey_dir = PathBuf::from(DEFAULT_SURVEY_DIR);
     let mut receipt_fn = PROBE_RECEIPT_FN;
+    let mut singleton = false;
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
@@ -213,6 +233,10 @@ fn main() -> ExitCode {
             }
             "--member-scan" => {
                 receipt_fn = MEMBER_SCAN_FN;
+                i += 1;
+            }
+            "--singleton" => {
+                singleton = true;
                 i += 1;
             }
             "--scan-members" => {
@@ -271,7 +295,7 @@ fn main() -> ExitCode {
             Vec::new()
         };
         canonical_total += canonical.len() as u64;
-        match sweep_rows_for_entry(&survey_dir, entry, receipt_fn) {
+        match sweep_rows_for_entry(&survey_dir, entry, receipt_fn, singleton) {
             Ok(tsv) => {
                 for line in tsv.lines().filter(|l| !l.is_empty()) {
                     println!("[sweep-row] {line}");
