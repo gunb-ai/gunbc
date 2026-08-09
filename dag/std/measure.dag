@@ -5,6 +5,13 @@ import std.nat { Nat }
 import std.types { Int, Bool, String, NonEmptyStr }
 import extdeps.units.iec_80000_13 { iec_kibi_factor, octet_bit_count }
 import extdeps.units.iso8601 { iso8601_seconds_per_minute, iso8601_minutes_per_hour }
+import extdeps.units.iso_80000_3 {
+  square_millimetres_per_square_metre,
+  cubic_millimetres_per_cubic_metre,
+  arcseconds_per_turn,
+  degrees_per_turn,
+  arcseconds_per_degree_derived,
+}
 import extdeps.units.dimensionless {
   parts_per_ten_thousand_unity_count,
   percent_unity_hundred_count,
@@ -262,9 +269,11 @@ type MillimeterCoordinate = Measure<Length, Milli, Int>
 type MillimeterDisplacementComponent = Measure<Length, Milli, Int>
 
 // AREA AND VOLUME. The scale names the LINEAR scale of the underlying length, so Milli here reads
-// "square millimetre", not "one-thousandth of a square metre". That is why no generic linear scale
-// conversion may be applied to either: the ratios are squared and cubed, and the exact factors are
-// cited in extdeps.units.iso_80000_3 rather than derived from the linear Scale fold.
+// "square millimetre", not "one-thousandth of a square metre". No generic linear scale conversion
+// may be applied to either: the ratios are squared and cubed. The conversions below DERIVE from
+// extdeps.units.iso_80000_3 through a real import edge rather than a prose pointer - a citation
+// that names an authority the module does not depend on is a floating island, and would let the
+// factor here and the factor there drift with nothing to notice.
 type SquareMillimeter = Measure<Area, Milli, Nat>
 
 type CubicMillimeter = Measure<Volume, Milli, Nat>
@@ -812,3 +821,28 @@ fn clock_basis_label(b: ClockBasis) -> NonEmptyStr {
   }
 }
 
+// Derived from the cited ISO 80000-3 factors, not from the linear Scale fold. These exist so the
+// squared/cubed relation has a modeled consumer: without them the carriers above would name an
+// authority nothing reaches.
+fn square_metres_to_square_millimetres(count: Nat) -> SquareMillimeter {
+  square_millimeter(count: count * square_millimetres_per_square_metre())
+}
+
+fn cubic_metres_to_cubic_millimetres(count: Nat) -> CubicMillimeter {
+  cubic_millimeter(count: count * cubic_millimetres_per_cubic_metre())
+}
+
+// One full turn in arcseconds, derived from the cited subdivision chain rather than restated.
+fn full_turn_arcseconds() -> Arcsecond {
+  arcsecond(count: arcseconds_per_turn())
+}
+
+fn degrees_to_arcseconds(degrees: Nat) -> Arcsecond {
+  arcsecond(count: degrees * arcseconds_per_degree_derived())
+}
+
+// A quarter turn is exact in arcseconds because the subdivision is rational - the same reason the
+// turn is the canonical unit and radian conversion is absent.
+fn quarter_turn_arcseconds() -> Arcsecond {
+  arcsecond(count: arcseconds_per_turn() / 4)
+}

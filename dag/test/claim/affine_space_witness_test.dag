@@ -39,10 +39,6 @@ fn desk_a() -> Point3<RoomFrame> { point3(x: 1200, y: 800, z: 0) }
 // x-origin. That is the whole point of the affine layer.
 fn desk_b() -> Point3<RoomFrame> { point3(x: 0 - 300, y: 2600, z: 0) }
 
-fn vec_components(v: Vector3<RoomFrame>) -> Int {
-  millimeter_displacement_count(m: v.x)
-}
-
 fn vector_equals(a: Vector3<RoomFrame>, b: Vector3<RoomFrame>) -> Bool {
   millimeter_displacement_count(m: a.x) == millimeter_displacement_count(m: b.x)
     && millimeter_displacement_count(m: a.y) == millimeter_displacement_count(m: b.y)

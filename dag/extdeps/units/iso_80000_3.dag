@@ -30,6 +30,10 @@ fn arcseconds_per_arcminute() -> Nat {
   60
 }
 
+fn arcseconds_per_degree_derived() -> Nat {
+  arcminutes_per_degree() * arcseconds_per_arcminute()
+}
+
 fn arcseconds_per_turn() -> Nat {
   degrees_per_turn() * arcminutes_per_degree() * arcseconds_per_arcminute()
 }

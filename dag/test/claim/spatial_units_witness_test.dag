@@ -1,0 +1,74 @@
+module test.claim.spatial_units_witness
+
+import std.types { Bool, Int }
+import std.nat { Nat }
+import std.measure {
+  Arcsecond, SquareMillimeter, CubicMillimeter,
+  arcsecond_count, square_millimeter_count, cubic_millimeter_count,
+  square_metres_to_square_millimetres, cubic_metres_to_cubic_millimetres,
+  full_turn_arcseconds, quarter_turn_arcseconds, degrees_to_arcseconds,
+}
+import extdeps.units.iso_80000_3 {
+  degrees_per_turn, arcminutes_per_degree, arcseconds_per_arcminute,
+  arcseconds_per_turn, arcseconds_per_degree_derived,
+  square_millimetres_per_square_metre, cubic_millimetres_per_cubic_metre,
+}
+import extdeps.color.srgb { hsl_to_rgb_scaled, RgbScaled }
+
+// The wiring these witnesses exist for: the carriers in std.measure now DERIVE from the cited
+// ISO 80000-3 factors through a real import edge. A prose citation cannot be executed, so before
+// the edge existed there was nothing here to go red.
+
+// Area and volume scale as the SQUARE and CUBE of the linear ratio. The discriminating value is
+// the ratio itself: a generic linear conversion would give 1000, which is the defect these
+// separate factors exist to prevent.
+fn witness_area_and_volume_scale_nonlinearly() -> Bool {
+  square_millimeter_count(m: square_metres_to_square_millimetres(count: 1)) == 1000000
+    && cubic_millimeter_count(m: cubic_metres_to_cubic_millimetres(count: 1)) == 1000000000
+    && square_millimetres_per_square_metre() == 1000 * 1000
+    && cubic_millimetres_per_cubic_metre() == 1000 * 1000 * 1000
+    && square_millimeter_count(m: square_metres_to_square_millimetres(count: 3)) == 3000000
+}
+
+// The subdivision chain is exact and rational, which is why the turn is the canonical unit.
+fn witness_turn_subdivision_is_exact() -> Bool {
+  degrees_per_turn() == 360
+    && arcminutes_per_degree() == 60
+    && arcseconds_per_arcminute() == 60
+    && arcseconds_per_degree_derived() == 3600
+    && arcseconds_per_turn() == 1296000
+    && arcsecond_count(a: full_turn_arcseconds()) == 1296000
+    && arcsecond_count(a: degrees_to_arcseconds(degrees: 90)) == 324000
+}
+
+// A quarter turn is exact in arcseconds because 1296000 divides by four with no remainder - the
+// same rational property that makes quarter-turn rotation exact in std.affine_space, and the
+// reason no radian conversion is offered.
+fn witness_quarter_turn_is_exact() -> Bool {
+  arcsecond_count(a: quarter_turn_arcseconds()) == 324000
+    && arcsecond_count(a: quarter_turn_arcseconds()) * 4 == arcsecond_count(a: full_turn_arcseconds())
+    && arcsecond_count(a: quarter_turn_arcseconds()) == arcsecond_count(a: degrees_to_arcseconds(degrees: 90))
+}
+
+// REGRESSION CONTROL for the srgb consolidation: srgb no longer mints its own 360 and now consumes
+// degrees_per_turn(). Its hue arithmetic must be byte-identical, including the negative-hue wrap
+// that is the one place the constant does real work.
+fn rgb_equal(a: RgbScaled, b: RgbScaled) -> Bool {
+  a.r == b.r && a.g == b.g && a.b == b.b
+}
+
+fn witness_srgb_hue_wrap_unchanged_after_consolidation() -> Bool {
+  rgb_equal(a: hsl_to_rgb_scaled(hue: 0 - 120, sat_pct: 100, light_pct: 50),
+            b: hsl_to_rgb_scaled(hue: 240, sat_pct: 100, light_pct: 50))
+    && rgb_equal(a: hsl_to_rgb_scaled(hue: 360, sat_pct: 100, light_pct: 50),
+                 b: hsl_to_rgb_scaled(hue: 0, sat_pct: 100, light_pct: 50))
+    && rgb_equal(a: hsl_to_rgb_scaled(hue: 480, sat_pct: 100, light_pct: 50),
+                 b: hsl_to_rgb_scaled(hue: 120, sat_pct: 100, light_pct: 50))
+}
+
+test fn spatial_units_witnesses() -> Bool {
+  witness_area_and_volume_scale_nonlinearly()
+    && witness_turn_subdivision_is_exact()
+    && witness_quarter_turn_is_exact()
+    && witness_srgb_hue_wrap_unchanged_after_consolidation()
+}
