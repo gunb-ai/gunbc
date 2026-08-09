@@ -207,10 +207,22 @@ unresolvable callee still refuses).
   may_alias refusal stands — RED control `let_unknown_alias_still_refuses_may_alias`).
   `^fold_accumulator_unread` narrows to the named-step residue (`f: step` — a callee-resolution
   fact, Stage B). *Remaining in Stage A:* the fn_decl/fn_literal → Arrow producer rows and the
-  scaffold dissolution — **gated on the namespace lane's containment `SymbolIndex`** (decl names
-  bind via module-root edges / the namespace authority, not decl subtrees; a near-zero-coverage
-  slice would land a dual authority without dissolving anything), staged behind the typed
-  wrapper-retained frontier (lowered | wrapper-retained{cause}, counted, corpus stays green).
+  scaffold dissolution, staged behind the typed wrapper-retained frontier (lowered |
+  wrapper-retained{cause}, counted, corpus stays green).
+
+  **The prerequisite this section used to state as an open gate is discharged, and its standing is
+  no longer written here.** The sentence removed from this position read *gated on the namespace
+  lane's containment `SymbolIndex`* (decl names bind via module-root edges / the namespace
+  authority, not decl subtrees). It stayed after the gate closed, and a slice was nearly
+  commissioned against it. The binding is now a registered design subject —
+  `gunbc.design_subject_registry` `namespace_symbol_index_binding_contract` — whose contract is
+  `v2.std.symbol_index` `SymbolIndex`, whose realization is `v2.std.symbol_index`
+  `symbol_index_lexical_lookup`, and whose production consumer is `v2.compiler.resolve`
+  `lookup_symbol_index_atom_identity`. Standing is derived from those rows by
+  `gunbc.design_truth` `design_authored_standing` and rendered into DESIGN.md by
+  `gunbc.design_projection`; it is not restated in this file, so it cannot go stale here again.
+  *Deliberately unchanged:* Stage A itself remains open — the producer rows are unwritten and the
+  scaffold undissolved. Only the gate claim is retired.
 
 - **Stage B — cross-decl resolution.** Callee signatures resolve named args to declaration
   positions; qualified heads resolve through the containment tree (rides the namespace-only lane's

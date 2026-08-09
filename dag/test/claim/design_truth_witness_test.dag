@@ -1,0 +1,549 @@
+module test.claim.design_truth_witness
+
+import std.types { Bool, String }
+import std.content_hash { Fnv1a64Structural }
+import v2.std.algebra { length }
+import v2.std.optional { Present, Absent }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.roadmap_model { RoadmapNodeIdentity }
+import v2.lens.module_graph { ModuleDeclarationFact, ModuleDependencyEdge }
+import v2.std.decl_index { DeclFact, TypeItem, FnItem }
+import v2.std.node { Node, Symbol, node_offset_atom }
+import gunbc.design_truth {
+  AuthoredDesignStanding,
+  AuthoredDeclared,
+  AuthoredRealized,
+  AuthoredAmbiguous,
+  AuthoredRetired,
+  ContractDigestDerived,
+  ContractRequirementUnreadable,
+  DesignContract,
+  DesignContractChanged,
+  DesignDeclared,
+  DesignRealization,
+  DesignRealized,
+  DesignAmbiguous,
+  DesignRetired,
+  DesignRetirementEvent,
+  DesignStanding,
+  DesignStandingUnreadable,
+  DesignSubjectIdentity,
+  DesignRealizedContractProofUnmeasured,
+  RealizationContractProof,
+  ProvenAgainstContract,
+  ContractProofUnmeasured,
+  design_standing_is_realized,
+  DeliverableSubject,
+  DissolutionNotReached,
+  DissolutionReached,
+  DissolutionUnreadable,
+  DeclarationAbsentCondition,
+  SubjectRealizedCondition,
+  RealizationReachedFromConsumer,
+  RealizationUnreachableFromConsumer,
+  RealizationReachUnreadable,
+  UnscheduledDesignSubjectIdentity,
+  UnscheduledSubject,
+  design_authored_standing,
+  design_contract_digest,
+  design_dissolution_standing,
+  design_realization_reach,
+  design_standing,
+  design_subject_identity_eq,
+}
+import gunbc.design_subject_registry {
+  namespace_symbol_index_binding_contract,
+  namespace_symbol_index_binding_realization,
+}
+import v2.std.symbol_index { SymbolIndex, symbol_index_lexical_lookup }
+import v2.compiler.resolve { lookup_symbol_index_atom_identity }
+
+data design_truth_witness_note: String = "EVERY ARM IS ASSERTED, AND THE PAIRS ARE WHAT MAKE THEM DISCRIMINATING. A fold that ignored its inputs and returned one constant would satisfy any single arm here; asserting zero-realizations, one-realization and two-realizations against the SAME contract means no constant survives, and the same pairing is applied to the reach wall, the digest arms, the retirement precedence and the dissolution conditions. Fixtures are synthetic and tiny -- four modules, one dependency edge -- because the subject of this witness is the MECHANISM, and DESIGN's witness-cost ruling makes the smallest crossing specimen the requirement plus one rather than a realistic-looking corpus.\n\nTHE CITATION HALF IS DISCHARGED BY COMPILATION, not by a fold this file authors. The module IMPORTS SymbolIndex, symbol_index_lexical_lookup and lookup_symbol_index_atom_identity -- the three declarations the production registry names -- so a rename or deletion stops this module compiling and the registry's citations cannot rot silently. The string equalities below bind that compile-time fact to the AUTHORED fields: if a registry ref drifts away from the symbol actually imported, the equality reds while the import still resolves. This is the gunbc.native_witness_transition_receipt pattern, reused rather than re-invented."
+
+fn fixture_module(module_name: String, path: String) -> ModuleDeclarationFact {
+  ModuleDeclarationFact { module: module_name, path: path }
+}
+
+fn fixture_modules() -> List<ModuleDeclarationFact> {
+  [
+    fixture_module(module_name: "fx.contract", path: "fx/contract.dag"),
+    fixture_module(module_name: "fx.impl", path: "fx/impl.dag"),
+    fixture_module(module_name: "fx.consumer", path: "fx/consumer.dag"),
+    fixture_module(module_name: "fx.island", path: "fx/island.dag"),
+  ]
+}
+
+fn fixture_edges() -> List<ModuleDependencyEdge> {
+  [
+    ModuleDependencyEdge {
+      path: "fx/consumer.dag",
+      target_module: "fx.impl",
+      target_declared: true,
+    },
+  ]
+}
+
+fn fixture_fact(qualified_name: String, name: String, path: String, sym: Symbol) -> DeclFact {
+  DeclFact {
+    qualified_name: qualified_name,
+    name: name,
+    kind: FnItem,
+    node: node_offset_atom(sym: sym),
+    rel_path: path,
+  }
+}
+
+fn fixture_facts_with_requirement(requirement_shape: Symbol) -> List<DeclFact> {
+  [
+    fixture_fact(
+      qualified_name: "fx.contract.Requirement",
+      name: "Requirement",
+      path: "fx/contract.dag",
+      sym: requirement_shape,
+    ),
+    fixture_fact(
+      qualified_name: "fx.impl.impl_fn",
+      name: "impl_fn",
+      path: "fx/impl.dag",
+      sym: ^fx_impl_shape,
+    ),
+    fixture_fact(
+      qualified_name: "fx.consumer.consume",
+      name: "consume",
+      path: "fx/consumer.dag",
+      sym: ^fx_consumer_shape,
+    ),
+    fixture_fact(
+      qualified_name: "fx.island.orphan",
+      name: "orphan",
+      path: "fx/island.dag",
+      sym: ^fx_island_shape,
+    ),
+  ]
+}
+
+fn fixture_facts() -> List<DeclFact> {
+  fixture_facts_with_requirement(requirement_shape: ^fx_requirement_original)
+}
+
+fn fixture_subject() -> DesignSubjectIdentity {
+  UnscheduledSubject { identity: "ds_fixture" as UnscheduledDesignSubjectIdentity }
+}
+
+fn fixture_contract() -> DesignContract {
+  DesignContract {
+    subject: fixture_subject(),
+    requirement: decl_ref(module_path: "fx.contract", decl_name: "Requirement"),
+  }
+}
+
+fn fixture_current_digest(facts: List<DeclFact>) -> Fnv1a64Structural? {
+  match design_contract_digest(
+    contract: fixture_contract(),
+    facts: facts,
+    modules: fixture_modules(),
+  ) {
+    ContractDigestDerived { digest } => Present { value: digest }
+    ContractRequirementUnreadable { requirement: _, resolution: _ } => Absent
+  }
+}
+
+fn fixture_realization(
+  implementation: DeclarationRef,
+  digest: Fnv1a64Structural,
+) -> DesignRealization {
+  DesignRealization {
+    subject: fixture_subject(),
+    implementation: implementation,
+    production_consumer: decl_ref(module_path: "fx.consumer", decl_name: "consume"),
+    evidence: decl_ref(
+      module_path: "test.claim.design_truth_witness",
+      decl_name: "design_truth_one_realization_is_realized",
+    ),
+    contract_proof: ProvenAgainstContract { digest: digest },
+  }
+}
+
+fn fixture_unmeasured_realization() -> DesignRealization {
+  DesignRealization {
+    subject: fixture_subject(),
+    implementation: decl_ref(module_path: "fx.impl", decl_name: "impl_fn"),
+    production_consumer: decl_ref(module_path: "fx.consumer", decl_name: "consume"),
+    evidence: decl_ref(
+      module_path: "test.claim.design_truth_witness",
+      decl_name: "design_truth_unmeasured_proof_is_not_realized_nor_stale",
+    ),
+    contract_proof: ContractProofUnmeasured {
+      reason: "fixture: proof deliberately unmeasured",
+      trigger: "fixture: declaration-grain point query lands",
+    },
+  }
+}
+
+fn fixture_reachable_realization(digest: Fnv1a64Structural) -> DesignRealization {
+  fixture_realization(
+    implementation: decl_ref(module_path: "fx.impl", decl_name: "impl_fn"),
+    digest: digest,
+  )
+}
+
+fn fixture_standing(
+  realizations: List<DesignRealization>,
+  retirements: List<DesignRetirementEvent>,
+  facts: List<DeclFact>,
+) -> DesignStanding {
+  design_standing(
+    contract: fixture_contract(),
+    realizations: realizations,
+    retirements: retirements,
+    facts: facts,
+    modules: fixture_modules(),
+    edges: fixture_edges(),
+  )
+}
+
+test fn design_truth_zero_realizations_is_declared() -> Bool {
+  match fixture_standing(realizations: [], retirements: [], facts: fixture_facts()) {
+    DesignDeclared { subject } => design_subject_identity_eq(left: subject, right: fixture_subject())
+    _ => false
+  }
+}
+
+test fn design_truth_one_realization_is_realized() -> Bool {
+  match fixture_current_digest(facts: fixture_facts()) {
+    Absent => false
+    Present { value: digest } =>
+      match fixture_standing(
+        realizations: [fixture_reachable_realization(digest: digest)],
+        retirements: [],
+        facts: fixture_facts(),
+      ) {
+        DesignRealized { subject: _, realization } =>
+          realization.implementation.decl_name as String == "impl_fn"
+        _ => false
+      }
+  }
+}
+
+test fn design_truth_two_realizations_refuse_as_ambiguous() -> Bool {
+  match fixture_current_digest(facts: fixture_facts()) {
+    Absent => false
+    Present { value: digest } =>
+      match fixture_standing(
+        realizations: [
+          fixture_reachable_realization(digest: digest),
+          fixture_reachable_realization(digest: digest),
+        ],
+        retirements: [],
+        facts: fixture_facts(),
+      ) {
+        DesignAmbiguous { subject: _, realizations } => length(xs: realizations) == 2
+        _ => false
+      }
+  }
+}
+
+data moved_contract_control_note: String = "THE ARM A SYMBOL-RESOLUTION LENS CANNOT REACH. Both fact populations declare fx.contract.Requirement and both resolve; only the declaration's STRUCTURE differs. So this control fails for a mechanism that checks existence and passes only for one that compares the digest the realization was proven against with the contract's current one -- which is the whole difference between a citation that still points somewhere and a claim that is still true."
+
+test fn design_truth_moved_contract_is_stale() -> Bool {
+  match fixture_current_digest(facts: fixture_facts()) {
+    Absent => false
+    Present { value: original_digest } => {
+      let moved_facts = fixture_facts_with_requirement(requirement_shape: ^fx_requirement_strengthened)
+      match fixture_standing(
+        realizations: [fixture_reachable_realization(digest: original_digest)],
+        retirements: [],
+        facts: moved_facts,
+      ) {
+        DesignContractChanged { subject: _, stale_realization: _, current_digest: _ } => true
+        _ => false
+      }
+    }
+  }
+}
+
+test fn design_truth_unmoved_contract_is_not_stale() -> Bool {
+  match fixture_current_digest(facts: fixture_facts()) {
+    Absent => false
+    Present { value: digest } =>
+      match fixture_standing(
+        realizations: [fixture_reachable_realization(digest: digest)],
+        retirements: [],
+        facts: fixture_facts(),
+      ) {
+        DesignRealized { subject: _, realization: _ } => true
+        _ => false
+      }
+  }
+}
+
+data reach_wall_control_note: String = "THE ANTI-CEREMONY WALL. fx.island.orphan is a perfectly real declaration that resolves cleanly; it is simply not reachable from the consumer the realization names. Without this arm a DesignRealization would be a typed row asserting 'this implements that' with no more force than the prose it replaces -- the registry would be a second place to write an unfalsifiable claim. The positive control beside it proves the wall is not refusing everything."
+
+test fn design_truth_unreachable_realization_is_not_admitted() -> Bool {
+  match fixture_current_digest(facts: fixture_facts()) {
+    Absent => false
+    Present { value: digest } => {
+      let island = fixture_realization(
+        implementation: decl_ref(module_path: "fx.island", decl_name: "orphan"),
+        digest: digest,
+      )
+      match design_realization_reach(
+        realization: island,
+        facts: fixture_facts(),
+        modules: fixture_modules(),
+        edges: fixture_edges(),
+      ) {
+        RealizationUnreachableFromConsumer { consumer_path: _, implementation_path: _ } =>
+          match fixture_standing(realizations: [island], retirements: [], facts: fixture_facts()) {
+            DesignDeclared { subject: _ } => true
+            _ => false
+          }
+        _ => false
+      }
+    }
+  }
+}
+
+test fn design_truth_reachable_realization_is_admitted() -> Bool {
+  match fixture_current_digest(facts: fixture_facts()) {
+    Absent => false
+    Present { value: digest } =>
+      match design_realization_reach(
+        realization: fixture_reachable_realization(digest: digest),
+        facts: fixture_facts(),
+        modules: fixture_modules(),
+        edges: fixture_edges(),
+      ) {
+        RealizationReachedFromConsumer { consumer_path: _, implementation_path: _ } => true
+        _ => false
+      }
+  }
+}
+
+test fn design_truth_absent_implementation_refuses_reach() -> Bool {
+  match fixture_current_digest(facts: fixture_facts()) {
+    Absent => false
+    Present { value: digest } =>
+      match design_realization_reach(
+        realization: fixture_realization(
+          implementation: decl_ref(module_path: "fx.impl", decl_name: "deleted_fn"),
+          digest: digest,
+        ),
+        facts: fixture_facts(),
+        modules: fixture_modules(),
+        edges: fixture_edges(),
+      ) {
+        RealizationReachUnreadable { reference: _, resolution: _ } => true
+        _ => false
+      }
+  }
+}
+
+data unreadable_contract_control_note: String = "'NO REALIZATION' AND 'CANNOT TELL' ARE DIFFERENT STATES WITH DIFFERENT REMEDIES. Collapsing an unreadable contract into DesignDeclared would render a broken citation as ordinary unstarted work -- the empty-observation narrow, where a run that could not express what it saw reports nothing to see. This control plants a requirement no fact population declares and asserts the standing is the unreadable arm rather than the declared one."
+
+test fn design_truth_unreadable_contract_is_not_declared() -> Bool {
+  let orphan_contract = DesignContract {
+    subject: fixture_subject(),
+    requirement: decl_ref(module_path: "fx.contract", decl_name: "NoSuchRequirement"),
+  }
+  match design_standing(
+    contract: orphan_contract,
+    realizations: [],
+    retirements: [],
+    facts: fixture_facts(),
+    modules: fixture_modules(),
+    edges: fixture_edges(),
+  ) {
+    DesignStandingUnreadable { subject: _, requirement } =>
+      requirement.decl_name as String == "NoSuchRequirement"
+    _ => false
+  }
+}
+
+test fn design_truth_retirement_precedes_realization() -> Bool {
+  match fixture_current_digest(facts: fixture_facts()) {
+    Absent => false
+    Present { value: digest } =>
+      match fixture_standing(
+        realizations: [fixture_reachable_realization(digest: digest)],
+        retirements: [
+          DesignRetirementEvent {
+            subject: fixture_subject(),
+            successor: UnscheduledSubject {
+              identity: "ds_fixture_successor" as UnscheduledDesignSubjectIdentity,
+            },
+          },
+        ],
+        facts: fixture_facts(),
+      ) {
+        DesignRetired { subject: _, successor } => true
+        _ => false
+      }
+  }
+}
+
+data unmeasured_proof_control_note: String = "THE ARM THAT MUST NOT COLLAPSE IN EITHER DIRECTION. An unmeasured contract proof is not DesignRealized (that would silently upgrade an unmeasured row to proven -- the fabrication the coproduct replaced) and not DesignContractChanged (that would report drift against a comparison that never happened). Both wrong answers are individually plausible, so this control asserts the third arm specifically AND asserts the realized-predicate still answers true, because 'an implementation exists and is reached' and 'its contract structure was measured' are different questions that a single Bool would fuse."
+
+test fn design_truth_unmeasured_proof_is_not_realized_nor_stale() -> Bool {
+  match fixture_standing(
+    realizations: [fixture_unmeasured_realization()],
+    retirements: [],
+    facts: fixture_facts(),
+  ) {
+    DesignRealizedContractProofUnmeasured {
+      subject: _, realization: _, reason, trigger: _,
+    } =>
+      reason == "fixture: proof deliberately unmeasured"
+        && design_standing_is_realized(
+          standing: fixture_standing(
+            realizations: [fixture_unmeasured_realization()],
+            retirements: [],
+            facts: fixture_facts(),
+          )
+        )
+    _ => false
+  }
+}
+
+data subject_identity_non_fork_control_note: String = "THE §3 CONTROL FOR THIS PROGRAM'S OWN CARRIER. A scheduled subject carries the roadmap node identity itself and an unscheduled one carries its own key, so the two arms must never compare equal even when their key TEXT coincides -- otherwise the registry would have re-created the parallel key space this carrier exists to avoid, and a roadmap-bound subject could be shadowed by a hand-minted row with the same string."
+
+test fn design_truth_subject_identity_cannot_fork() -> Bool {
+  let deliverable = DeliverableSubject { node: "shared_key" as RoadmapNodeIdentity }
+  let unscheduled = UnscheduledSubject {
+    identity: "shared_key" as UnscheduledDesignSubjectIdentity,
+  }
+  !design_subject_identity_eq(left: deliverable, right: unscheduled)
+    && design_subject_identity_eq(left: deliverable, right: deliverable)
+    && design_subject_identity_eq(left: unscheduled, right: unscheduled)
+}
+
+test fn design_truth_authored_standing_folds_population() -> Bool {
+  match fixture_current_digest(facts: fixture_facts()) {
+    Absent => false
+    Present { value: digest } => {
+      let one = fixture_reachable_realization(digest: digest)
+      let declared = match design_authored_standing(
+        contract: fixture_contract(),
+        realizations: [],
+        retirements: [],
+      ) {
+        AuthoredDeclared { subject: _ } => true
+        _ => false
+      }
+      let realized = match design_authored_standing(
+        contract: fixture_contract(),
+        realizations: [one],
+        retirements: [],
+      ) {
+        AuthoredRealized { subject: _, realization: _ } => true
+        _ => false
+      }
+      let ambiguous = match design_authored_standing(
+        contract: fixture_contract(),
+        realizations: [one, one],
+        retirements: [],
+      ) {
+        AuthoredAmbiguous { subject: _, realizations: _ } => true
+        _ => false
+      }
+      let retired = match design_authored_standing(
+        contract: fixture_contract(),
+        realizations: [one],
+        retirements: [
+          DesignRetirementEvent {
+            subject: fixture_subject(),
+            successor: UnscheduledSubject {
+              identity: "ds_fixture_successor" as UnscheduledDesignSubjectIdentity,
+            },
+          },
+        ],
+      ) {
+        AuthoredRetired { subject: _, successor: _ } => true
+        _ => false
+      }
+      declared && realized && ambiguous && retired
+    }
+  }
+}
+
+test fn design_truth_dissolution_condition_is_evaluated() -> Bool {
+  match fixture_current_digest(facts: fixture_facts()) {
+    Absent => false
+    Present { value: digest } => {
+      let reached = match design_dissolution_standing(
+        condition: SubjectRealizedCondition { subject: fixture_subject() },
+        contracts: [fixture_contract()],
+        realizations: [fixture_reachable_realization(digest: digest)],
+        retirements: [],
+        facts: fixture_facts(),
+        modules: fixture_modules(),
+        edges: fixture_edges(),
+      ) {
+        DissolutionReached { condition: _ } => true
+        _ => false
+      }
+      let not_reached = match design_dissolution_standing(
+        condition: SubjectRealizedCondition { subject: fixture_subject() },
+        contracts: [fixture_contract()],
+        realizations: [],
+        retirements: [],
+        facts: fixture_facts(),
+        modules: fixture_modules(),
+        edges: fixture_edges(),
+      ) {
+        DissolutionNotReached { condition: _ } => true
+        _ => false
+      }
+      let absent_declaration_reached = match design_dissolution_standing(
+        condition: DeclarationAbsentCondition {
+          declaration: decl_ref(module_path: "fx.impl", decl_name: "already_deleted"),
+        },
+        contracts: [fixture_contract()],
+        realizations: [],
+        retirements: [],
+        facts: fixture_facts(),
+        modules: fixture_modules(),
+        edges: fixture_edges(),
+      ) {
+        DissolutionReached { condition: _ } => true
+        _ => false
+      }
+      reached && not_reached && absent_declaration_reached
+    }
+  }
+}
+
+data deleted_live_digest_probe_note: String = "A WHOLE-CORPUS PROBE LIVED HERE AND WAS DELETED RATHER THAN LEFT UNCALLED. It derived the contract digest from decl_facts over the full pool so the value could be read once and pinned in the registry. Two things killed it, and both are recorded because the second is the more interesting. FIRST, cost: the run exceeded a 45-minute remote executor budget, and CONFIDENCE-0 independently measured a corpus-wide reverse query at 409s wall (~92% in load_bare_edge_index), so no per-PR consumer could ever re-derive what it produced. SECOND, and this is the part worth keeping: once the registry stopped pinning a digest, nothing called this function -- and a declaration with no consumer is precisely what the operator's symbol-purpose law forbids. Leaving it as dead scaffolding inside the carrier built to enforce that law would have been the sharpest possible self-contradiction. It returns when the declaration-grain point query makes a single declaration's digest affordable; that trigger is named on gunbc.design_subject_registry namespace_symbol_index_binding_proof_unmeasured_note, which is the row it would serve."
+
+data registry_citation_binding_note: String = "THE AUTHORED REFS ARE BOUND TO THE IMPORTED SYMBOLS HERE. Compilation already proved the three declarations exist and resolve to exactly one binding each; these equalities prove the REGISTRY names those same declarations, which is the half an import alone does not give. Together they close the class the whole program is about at the point everything now cites -- the same gap gunbc#7718 left open on the native-transition receipt and its follow-up closed."
+
+test fn namespace_symbol_index_binding_is_realized() -> Bool {
+  let contract = namespace_symbol_index_binding_contract()
+  let realization = namespace_symbol_index_binding_realization()
+  let contract_names_symbol_index =
+    contract.requirement.module_path as String == "v2.std.symbol_index"
+      && contract.requirement.decl_name as String == "SymbolIndex"
+  let implementation_names_lookup =
+    realization.implementation.module_path as String == "v2.std.symbol_index"
+      && realization.implementation.decl_name as String == "symbol_index_lexical_lookup"
+  let consumer_names_resolve =
+    realization.production_consumer.module_path as String == "v2.compiler.resolve"
+      && realization.production_consumer.decl_name as String == "lookup_symbol_index_atom_identity"
+  let authored = match design_authored_standing(
+    contract: contract,
+    realizations: [realization],
+    retirements: [],
+  ) {
+    AuthoredRealized { subject: _, realization: _ } => true
+    _ => false
+  }
+  let proof_is_declared_unmeasured = match realization.contract_proof {
+    ContractProofUnmeasured { reason: _, trigger } => trigger != ""
+    ProvenAgainstContract { digest: _ } => false
+  }
+  contract_names_symbol_index
+    && implementation_names_lookup
+    && consumer_names_resolve
+    && authored
+    && proof_is_declared_unmeasured
+}
