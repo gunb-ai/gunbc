@@ -30,7 +30,7 @@ type ClassificationAxis
 
 data declared_class_precedence: List<ClassificationAxis> = [EffectAxis, InterpreterSubjectAxis, LiveObservationAxis, CarriageAxis]
 
-data declared_class_precedence_note: NonEmptyStr = "Exclusivity by DECLARED precedence (operator ask, msg_f9334d68): where one witness fits two descriptions — it reads the live tree AND crosses a lowering gap, or performs an effect AND is an interpreter subject — the winning class comes from this declared order, never from code order. Justification, first to last: an effect obligation is an obligation about the WORLD (plan -> execute -> independent readback), so no other description can demote it; an interpreter-subject test executed natively would test the wrong implementation, so it outranks both native axes; a live-tree reader's receipt must bind the observed subject even when the body is otherwise carriable, so observation outranks carriage; carriage (NativeRequired vs NativeBlocked) is last because it is a fact about the EMITTER, not the witness. classify_witness realizes exactly this order and axis_rank composed with axis_of_class, with the dual-description witnesses asserting the realization against this declaration — an undeclared tie-break is the same silent authority this classification exists to kill."
+data declared_class_precedence_note: NonEmptyStr = "Exclusivity by DECLARED precedence (operator ask, msg_f9334d68): where one witness fits two descriptions — it reads the live tree AND crosses a lowering gap, or performs an effect AND is an interpreter subject — the winning class comes from this declared order, never from code order. Justification, first to last: an effect obligation is an obligation about the WORLD (plan -> execute -> independent readback), so no other description can demote it; an interpreter-subject test executed natively would test the wrong implementation, so it outranks both native axes; a live-tree reader's receipt must bind the observed subject even when the body is otherwise carriable, so observation outranks carriage; carriage (NativeRequired vs NativeBlocked) is last because it is a fact about the EMITTER, not the witness. classify_witness DERIVES its result from this list (a first-applicable fold over declared_class_precedence — reordering the data row alone changes classification; review 50672 caught the earlier hardcoded chain as a second authority), and axis_rank composed with axis_of_class plus the dual-description witnesses assert the realization against this declaration — an undeclared tie-break is the same silent authority this classification exists to kill."
 
 fn axis_rank(axis: ClassificationAxis) -> Int {
   let scanned = fold_list(xs: declared_class_precedence, empty: AxisRankScan { index: 0, found: 0 - 1 }, cons: fn(acc, candidate) {
@@ -72,27 +72,57 @@ type EmitterCarriage
 
 data emitter_carriage_note: NonEmptyStr = "Carriage is EVIDENCE, not an assertion (review 50550 finding 3): NativeRequired is reachable only through CarriedInEnrolledBundle, which must name the enrolled bundle identity and the member spelling — facts a consumer joins against the enrolled SelectedWitnessPlan roster, so a mis-supplied bare true cannot mint NativeRequired. The refusal arm carries its typed NativeBlockedCause on the same coproduct, so carried-with-a-cause and blocked-without-one are unrepresentable."
 
+fn axis_applies(
+  axis: ClassificationAxis,
+  disposition: Optional<LiveTreeDisposition>,
+  effect_obligation: Bool,
+  interpreter_subject: Bool
+) -> Bool {
+  match axis {
+    EffectAxis => effect_obligation
+    InterpreterSubjectAxis => interpreter_subject
+    LiveObservationAxis => match disposition {
+      Present { value: d } => match d {
+        ReadsLiveTree => true
+        SubstrateInputsOnly => false
+      }
+      Absent => true
+    }
+    CarriageAxis => true
+  }
+}
+
+fn class_for_axis(axis: ClassificationAxis, carriage: EmitterCarriage) -> WitnessExecutionClass {
+  match axis {
+    EffectAxis => EffectObligation
+    InterpreterSubjectAxis => InterpreterSubjectTest
+    LiveObservationAxis => NativeLiveObservation
+    CarriageAxis => match carriage {
+      CarriedInEnrolledBundle { bundle_identity: _, member: _ } => NativeRequired
+      NoEmitterCarriage { cause: c } => NativeBlocked { cause: c }
+    }
+  }
+}
+
 fn classify_witness(
   disposition: Optional<LiveTreeDisposition>,
   effect_obligation: Bool,
   interpreter_subject: Bool,
   carriage: EmitterCarriage
 ) -> WitnessExecutionClass {
-  if effect_obligation {
-    EffectObligation
-  } else if interpreter_subject {
-    InterpreterSubjectTest
-  } else {
-    match disposition {
-      Present { value: d } => match d {
-        ReadsLiveTree => NativeLiveObservation
-        SubstrateInputsOnly => match carriage {
-          CarriedInEnrolledBundle { bundle_identity: _, member: _ } => NativeRequired
-          NoEmitterCarriage { cause: c } => NativeBlocked { cause: c }
+  let winner = fold_list(xs: declared_class_precedence, empty: Absent, cons: fn(acc, axis) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match axis_applies(axis: axis, disposition: disposition, effect_obligation: effect_obligation, interpreter_subject: interpreter_subject) {
+          true => Present { value: axis }
+          false => Absent
         }
-      }
-      Absent => NativeLiveObservation
     }
+  })
+  match winner {
+    Present { value: axis } => class_for_axis(axis: axis, carriage: carriage)
+    Absent => class_for_axis(axis: CarriageAxis, carriage: carriage)
   }
 }
 
