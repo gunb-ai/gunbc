@@ -42,6 +42,14 @@ data lease_ref_namespace: String = "refs/devboot/lease/"
 
 data artifact_ref_namespace: String = "refs/devboot/artifact/"
 
+// ALL FOUR NAMESPACES LIVE HERE, not two here and two at the call site. A ref namespace is one concept -- where this service keeps a kind of fact -- and splitting the rows across modules meant the next kind of fact got spelled wherever it was first needed. That is exactly what happened: the digest ref was introduced as a literal inside the producer while the lease and artifact rows sat here, so the corpus briefly had two authorities for one naming scheme and no way to notice.
+//
+// Keeping them together is what makes a rename a single edit and a collision visible by reading four adjacent lines.
+
+data subject_ref_namespace: String = "refs/devboot/subject/"
+
+data digest_ref_namespace: String = "refs/devboot/digest/"
+
 // A ref name is a PATH, and Git rejects several characters that the natural wire form of a content hash contains -- the sha256 wire form carries a colon, which is illegal in a ref name. So the ref token is derived here rather than reusing serialize_content_hash, and the derivation keeps the one property the wire form has that matters: the FAMILY stays visible.
 //
 // Dropping the family and keeping only the hex would let two hashes from different families produce the same ref name whenever their hex happened to coincide, which is exactly the cross-family collapse the content-hash family grounding exists to prevent. The token separates family from digest with a hyphen, so the ref namespace inherits the same cross-family distinctness the type carries.

@@ -1,7 +1,7 @@
 module gunbc.devboot.produce
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
-import std.measure { byte_size }
+import std.measure { byte_size, Second, second, second_count }
 import std.content_hash { sha256_hex_digest }
 
 import extdeps.shell
@@ -10,7 +10,13 @@ import extdeps.filesystem.filesystem_io
 import gunbc.output_policy { ExpectSuccess }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 
-import gunbc.devboot.lease { content_hash_ref_token, lease_ref_namespace, artifact_ref_namespace }
+import gunbc.devboot.lease {
+  content_hash_ref_token,
+  lease_ref_namespace,
+  artifact_ref_namespace,
+  subject_ref_namespace,
+  digest_ref_namespace,
+}
 import gunbc.devboot.outcome {
   ReuseDecision,
   ReuseGranted,
@@ -364,8 +370,6 @@ fn devboot_produce_with_toolchain(
   }
 }
 
-data subject_ref_namespace: String = "refs/devboot/subject/"
-
 // THE NAMESPACES ARE CONSUMED, NOT RESPELLED. An earlier revision wrote the two ref prefixes as literals here while gunbc.devboot.lease already declared them, so one fact had two spellings that could drift apart independently -- and the drift would not have been loud. A producer writing under refs/devboot/artifact/ while the lease module looked under a renamed prefix would simply never find an existing artifact: every request would rebuild, the dedup this service exists to provide would be silently gone, and every individual run would still look correct.
 //
 // These functions now append the token to the imported namespaces, so there is one authority for where a subject lives in the store and a rename reaches both readers at once.
@@ -396,7 +400,7 @@ fn artifact_ref_of(token: String) -> String {
 // Found by running two callers against one tree: the first produced, and the second refused with a subject mismatch on a request identical to it.
 
 fn digest_ref_of(token: String) -> String {
-  concat("refs/devboot/digest/", token)
+  concat(digest_ref_namespace, token)
 }
 
 fn subject_ref_of(token: String) -> String {
@@ -516,6 +520,29 @@ fn observed_artifact_sha256(store_root: String, repo_root: String, oid: String) 
   }
 }
 
+// A DIGEST MISMATCH IS CORRUPTION, NOT AN UNREADABLE STORE, and reporting it as the latter was the state-space conflation this vertical's own carrier warns about. The availability sum separates them deliberately: missing or unreadable bytes are an absence and a rebuild fixes them, while bytes that are PRESENT and do not match their promised digest are an INTEGRITY failure -- serving them would be the worst outcome this service can produce, and burying that in the same arm as a routine miss means it gets retried as though it were a cache miss, quietly, forever.
+//
+// The arm carries BOTH digests because the remedy depends on which side moved. It was reachable only through the wrong arm before, so the corrupt-specific path existed in the model and had no producer on the live path -- a variant that nothing constructs is not a distinction the system actually makes.
+//
+// If either digest fails to parse as a sha256 the observation refuses as unreadable instead, because a corruption report that cannot name what it compared is not a report.
+
+fn corrupt_artifact_observation(expected_hex: String, observed_hex: String) -> ArtifactAvailability {
+  match sha256_hex_digest(hex: expected_hex) {
+    Absent =>
+      ArtifactUnreadable {
+        detail: concat("the artifact bytes do not match their recorded digest, and the recorded digest is unusable: ", expected_hex),
+      }
+    Present { value: expected } =>
+      match sha256_hex_digest(hex: observed_hex) {
+        Absent =>
+          ArtifactUnreadable {
+            detail: concat("the artifact bytes do not match their recorded digest, and the observed digest is unusable: ", observed_hex),
+          }
+        Present { value: observed } => ArtifactCorrupt { expected: expected, observed: observed }
+      }
+  }
+}
+
 fn observe_artifact_availability(
   store_root: String,
   repo_root: String,
@@ -547,9 +574,10 @@ fn observe_artifact_availability(
           ).stdout),
         )
       } else {
-        ArtifactUnreadable {
-          detail: "the artifact bytes do not match the sha256 recorded when they were produced",
-        }
+        corrupt_artifact_observation(
+          expected_hex: trim(s: recorded_artifact_digest(store_root: store_root, repo_root: repo_root, token: token)),
+          observed_hex: trim(s: observed),
+        )
       }
     }
   }
@@ -649,7 +677,17 @@ fn devboot_produce_admitted(store_root: String, repo_root: String, work_root: St
 // THE POLL BUDGET IS A LIST BECAUSE THE SUBSTRATE BOUNDS ITERATION BY THE THING ITERATED. There is no range or repeat primitive -- deliberately, since a count-driven loop is the shape whose termination has to be argued separately -- so the attempt budget is a real finite list and the fold over it terminates by construction rather than by a decreasing counter anybody could get wrong.
 //
 // Ten tens is one hundred attempts at nine seconds, which is the nine-hundred-second budget stated beside it. The two are kept in agreement by derivation at the one place that reports them, not by two literals hoping to match.
-data attach_wait_interval_seconds: String = "9"
+// THE INTERVAL IS A DURATION, SO IT IS CARRIED AS ONE. It was a bare String parsed to Int for the budget arithmetic and passed straight to sleep -- a scale unit living in a name (_seconds) rather than in the type, which is the conflation this repository treats as a hard block: nothing stops a caller multiplying it by a count denominated in anything, and the name is the only thing asserting what the number means.
+//
+// std.measure already carries Second, so the value is a Second, the budget is derived by multiplying it by the attempt count, and the STRING only appears at the transport boundary where sleep's argv demands text. That is the right place for a rendering: the unit survives every arithmetic step and is erased exactly once, at the seam that cannot carry it.
+
+fn attach_wait_interval() -> Second {
+  second(count: 9)
+}
+
+fn attach_wait_interval_argv() -> String {
+  to_string(second_count(attach_wait_interval()))
+}
 
 fn attach_wait_tick_unit() -> List<Int> {
   [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
@@ -663,8 +701,8 @@ fn attach_wait_attempts() -> List<Int> {
   )
 }
 
-fn attach_wait_budget_seconds() -> Int {
-  (attach_wait_attempts() |> count) * parse_int(attach_wait_interval_seconds)
+fn attach_wait_budget() -> Second {
+  second(count: (attach_wait_attempts() |> count) * second_count(attach_wait_interval()))
 }
 
 type AttachWait
@@ -698,7 +736,7 @@ fn attach_wait_step(acc: AttachWait, store_root: String, repo_root: String, toke
       let paused = gunbc.WitnessBin.Run(
         workdir: repo_root,
         bin_path: "sleep",
-        args: [attach_wait_interval_seconds],
+        args: [attach_wait_interval_argv()],
       )
       attach_poll_once(store_root: store_root, repo_root: repo_root, token: token)
     }
@@ -731,7 +769,7 @@ fn attach_then_reuse(
           "attached to producer ",
           holder,
           " and waited ",
-          to_string(attach_wait_budget_seconds()),
+          to_string(second_count(attach_wait_budget())),
           "s without an artifact appearing; the lease is still held. This caller cannot observe whether that producer is alive -- breaking a stranded lease is an explicit coordinator action, never inferred from a timeout.",
         ], ""),
       }
