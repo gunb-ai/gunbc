@@ -6580,6 +6580,11 @@ struct ShellResult {
     exit_code: i32,
     stdout: String,
     stderr: String,
+    stdout_total_bytes: u64,
+    stderr_total_bytes: u64,
+    stdout_truncated: bool,
+    stderr_truncated: bool,
+    stderr_digest_hex: Option<String>,
 }
 
 fn push_shell_argv_tokens(argv: &mut Vec<String>, val: Value) -> InterpResult<()> {
@@ -7748,33 +7753,37 @@ fn kill_shell_process_group(pid: u32) {
 }
 
 /// Wait for a shell child, killing the process group when the whole-receipt wall
-/// deadline elapses. No-deadline path is a direct `wait_with_output` (zero poll
-/// overhead for the hermetic corpus).
+/// deadline elapses. Streams are drained concurrently with bounded capture policies
+/// while the child runs — never `wait_with_output` (srv1 jq stderr wedge, 2026-08-09).
 fn wait_child_honoring_wall_deadline(
     child: std::process::Child,
     ctx: &InterpContext,
     argv0: &str,
-) -> InterpResult<std::process::Output> {
+    stdout_policy: crate::shell_stream_capture::StreamCapturePolicy,
+    stderr_policy: crate::shell_stream_capture::StreamCapturePolicy,
+) -> InterpResult<crate::shell_stream_capture::ShellCaptureResult> {
     if ctx.witness_wall_deadline.get().is_none() {
-        return child
-            .wait_with_output()
-            .map_err(|e| InterpError::TypeError {
-                msg: format!("failed to wait on '{}': {}", argv0, e),
-            });
+        return crate::shell_stream_capture::capture_child_output(
+            child,
+            stdout_policy,
+            stderr_policy,
+        )
+        .map_err(|e| InterpError::TypeError {
+            msg: format!("failed to wait on '{}': {}", argv0, e),
+        });
     }
 
     let pid = child.id();
     let (tx, rx) = std::sync::mpsc::channel();
     let worker = std::thread::spawn(move || {
-        let result = child.wait_with_output();
+        let result =
+            crate::shell_stream_capture::capture_child_output(child, stdout_policy, stderr_policy);
         let _ = tx.send(result);
     });
 
     loop {
         if let Some(err) = ctx.wall_deadline_exceeded_error() {
             kill_shell_process_group(pid);
-            // Drain the waiter so we don't leak a join handle; ignore its I/O
-            // error (SIGKILL often surfaces as a wait failure).
             let _ = rx.recv_timeout(std::time::Duration::from_secs(2));
             let _ = worker.join();
             return Err(err);
@@ -7843,7 +7852,10 @@ fn dispatch_shell(
         return Err(err);
     }
 
-    let output = if let Some(stdin_node) = transport_stdin(transport.clone(), ctx.si()) {
+    let stdout_policy = crate::shell_stream_capture::default_shell_stdout_capture_policy();
+    let stderr_policy = crate::shell_stream_capture::default_shell_stderr_capture_policy();
+
+    let capture = if let Some(stdin_node) = transport_stdin(transport.clone(), ctx.si()) {
         use std::io::Write;
         use std::process::Stdio;
 
@@ -7866,7 +7878,8 @@ fn dispatch_shell(
             .take()
             .map(|mut stdin| std::thread::spawn(move || stdin.write_all(&stdin_bytes)));
 
-        let output = wait_child_honoring_wall_deadline(child, ctx, &argv[0])?;
+        let capture =
+            wait_child_honoring_wall_deadline(child, ctx, &argv[0], stdout_policy, stderr_policy)?;
 
         if let Some(writer) = stdin_writer {
             // A stdin-write error (e.g. broken pipe) here is not itself the
@@ -7881,14 +7894,14 @@ fn dispatch_shell(
         }
         render_shell_completion_trace(
             expected,
-            output.status.code().unwrap_or(-1),
-            output.stdout.len(),
-            &output.stderr,
+            capture.exit_status.code().unwrap_or(-1),
+            capture.stdout.retained_bytes(),
+            &capture.stderr.retained,
             wall_start.elapsed(),
             &argv,
             intent,
         );
-        output
+        capture
     } else {
         use std::process::Stdio;
         let wall_start = std::time::Instant::now();
@@ -7901,30 +7914,36 @@ fn dispatch_shell(
         let child = cmd.spawn().map_err(|e| InterpError::TypeError {
             msg: format!("failed to execute '{}': {}", argv[0], e),
         })?;
-        let output = wait_child_honoring_wall_deadline(child, ctx, &argv[0])?;
+        let capture =
+            wait_child_honoring_wall_deadline(child, ctx, &argv[0], stdout_policy, stderr_policy)?;
         render_shell_completion_trace(
             expected,
-            output.status.code().unwrap_or(-1),
-            output.stdout.len(),
-            &output.stderr,
+            capture.exit_status.code().unwrap_or(-1),
+            capture.stdout.retained_bytes(),
+            &capture.stderr.retained,
             wall_start.elapsed(),
             &argv,
             intent,
         );
-        output
+        capture
     };
 
-    let exit_code = output.status.code().unwrap_or(-1);
+    Ok(shell_result_from_capture(&capture))
+}
 
-    Ok(ShellResult {
-        exit_code,
-        stdout: String::from_utf8_lossy(&output.stdout)
-            .trim_end()
-            .to_string(),
-        stderr: String::from_utf8_lossy(&output.stderr)
-            .trim_end()
-            .to_string(),
-    })
+fn shell_result_from_capture(
+    capture: &crate::shell_stream_capture::ShellCaptureResult,
+) -> ShellResult {
+    ShellResult {
+        exit_code: capture.exit_status.code().unwrap_or(-1),
+        stdout: capture.stdout.retained_utf8_lossy_trimmed(),
+        stderr: capture.stderr.retained_utf8_lossy_trimmed(),
+        stdout_total_bytes: capture.stdout.total_bytes,
+        stderr_total_bytes: capture.stderr.total_bytes,
+        stdout_truncated: capture.stdout.truncated,
+        stderr_truncated: capture.stderr.truncated,
+        stderr_digest_hex: capture.stderr.digest_hex.clone(),
+    }
 }
 
 fn map_shell_outputs(
@@ -13813,8 +13832,14 @@ mod wall_deadline_kill_tests {
             .stderr(Stdio::null())
             .spawn()
             .expect("spawn sleep");
-        let err = wait_child_honoring_wall_deadline(child, &ctx, "sleep")
-            .expect_err("over-budget sleep must refuse");
+        let err = wait_child_honoring_wall_deadline(
+            child,
+            &ctx,
+            "sleep",
+            crate::shell_stream_capture::default_shell_stdout_capture_policy(),
+            crate::shell_stream_capture::default_shell_stderr_capture_policy(),
+        )
+        .expect_err("over-budget sleep must refuse");
         let elapsed_ms = started.elapsed().as_millis() as u64;
         // The KERNEL result is caller-agnostic: this helper is generic shell-wait machinery, and
         // the wall budget being armed only by the witness lane today is a fact about its callers,
@@ -13851,9 +13876,15 @@ mod wall_deadline_kill_tests {
             .stderr(Stdio::null())
             .spawn()
             .expect("spawn true");
-        let output = wait_child_honoring_wall_deadline(child, &ctx, "true")
-            .expect("no-deadline wait must succeed");
-        assert!(output.status.success());
+        let output = wait_child_honoring_wall_deadline(
+            child,
+            &ctx,
+            "true",
+            crate::shell_stream_capture::default_shell_stdout_capture_policy(),
+            crate::shell_stream_capture::default_shell_stderr_capture_policy(),
+        )
+        .expect("no-deadline wait must succeed");
+        assert!(output.exit_status.success());
     }
 }
 

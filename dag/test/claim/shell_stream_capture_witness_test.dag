@@ -1,0 +1,89 @@
+module test.claim.shell_stream_capture
+
+import std.types { Bool, Int, String }
+import std.measure { byte_size, byte_size_count }
+import std.shell_stream_capture {
+  StreamCapturePolicy,
+  CaptureDiscarded,
+  CaptureBounded,
+  CaptureDigestAndBoundedTail,
+  CapturedStreamObservation,
+  default_shell_stdout_capture_policy,
+  default_shell_stderr_capture_policy,
+  default_shell_stdout_max_retained_bytes,
+  default_shell_stderr_tail_bytes,
+  captured_stream_truncated,
+  captured_stream_retained_within_policy,
+}
+
+test fn default_stdout_policy_is_eight_mebibytes_bounded() -> Bool {
+  match default_shell_stdout_capture_policy() {
+    CaptureBounded { max_retained_bytes: max } => {
+      byte_size_count(b: max) == 8388608
+    }
+    CaptureDiscarded => false
+    CaptureDigestAndBoundedTail { max_tail_bytes: _ } => false
+    CaptureToArtifact { path: _, max_retained_bytes: _ } => false
+  }
+}
+
+test fn default_stderr_policy_is_sixteen_kibibyte_tail() -> Bool {
+  match default_shell_stderr_capture_policy() {
+    CaptureDigestAndBoundedTail { max_tail_bytes: max } => {
+      byte_size_count(b: max) == byte_size_count(b: default_shell_stderr_tail_bytes)
+        && byte_size_count(b: max) == 16384
+    }
+    CaptureDiscarded => false
+    CaptureBounded { max_retained_bytes: _ } => false
+    CaptureToArtifact { path: _, max_retained_bytes: _ } => false
+  }
+}
+
+test fn truncated_when_total_exceeds_retained() -> Bool {
+  captured_stream_truncated(total_bytes: 59522411, retained_bytes: 16384)
+}
+
+test fn not_truncated_when_fully_retained() -> Bool {
+  !captured_stream_truncated(total_bytes: 30770, retained_bytes: 30770)
+}
+
+test fn tail_observation_stays_within_policy() -> Bool {
+  captured_stream_retained_within_policy(
+    policy: default_shell_stderr_capture_policy(),
+    observation: CapturedStreamObservation {
+      total_bytes: 59522411,
+      retained_bytes: 16384,
+      truncated: true,
+      digest_hex: "deadbeefcafebabe",
+      retained: "tail-only",
+    },
+  )
+}
+
+test fn discarded_observation_has_empty_retained() -> Bool {
+  captured_stream_retained_within_policy(
+    policy: CaptureDiscarded,
+    observation: CapturedStreamObservation {
+      total_bytes: 59522411,
+      retained_bytes: 0,
+      truncated: true,
+      digest_hex: "",
+      retained: "",
+    },
+  )
+}
+
+test fn bounded_observation_refuses_oversized_retained_red_control() -> Bool {
+  !captured_stream_retained_within_policy(
+    policy: CaptureBounded {
+      max_retained_bytes: byte_size(count: 16384),
+    },
+    observation: CapturedStreamObservation {
+      total_bytes: 59522411,
+      retained_bytes: 59522411,
+      truncated: true,
+      digest_hex: "",
+      retained: "would-be-full-stderr",
+    },
+  )
+}
