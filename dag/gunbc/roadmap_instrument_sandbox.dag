@@ -235,11 +235,11 @@ fn instrument_css_at_role(role: SalienceRole) -> String {
   join([instrument_emission_root_css_for(role: role), serialize_rules(rules: instrument_rules())], "\n")
 }
 
-fn cell(s: String) -> Fragment {
+fn fragment_cell(s: String) -> Fragment {
   el_class("span", instrument_cell_class, [ txt(s) ])
 }
 
-fn row(cells: List<Fragment>) -> Fragment {
+fn fragment_row(cells: List<Fragment>) -> Fragment {
   el_class("div", instrument_row_class, cells)
 }
 
@@ -280,11 +280,11 @@ fn live_program_view_result() -> LiveProgramView {
 }
 
 fn depth_cell(d: ProgramDepth) -> Fragment {
-  cell(s: join([to_string(program_depth_index(d: d)), " · ", program_depth_key(d: d)], ""))
+  fragment_cell(s: join([to_string(program_depth_index(d: d)), " · ", program_depth_key(d: d)], ""))
 }
 
 fn owner_cell(o: StateOwner) -> Fragment {
-  cell(s: join([
+  fragment_cell(s: join([
     state_owner_key(o: o), " — ",
     if owner_may_write_domain_fact(o: o) { "may write domain facts" } else { "presentation only" },
   ], ""))
@@ -295,10 +295,10 @@ fn camera_section() -> Fragment {
     [
       el("h2", [ txt("semantic camera") ]),
       note(s: "Five depths on one axis, three modes across it. A depth change crosses exactly one detent, and every move carries the selected subject unchanged."),
-      row(cells: map(program_depths(), d => depth_cell(d: d))),
+      fragment_row(cells: map(program_depths(), d => depth_cell(d: d))),
       el("h3", [ txt("state ownership") ]),
       note(s: "Only one owner may write a domain fact, and it is not reachable from the instrument."),
-      row(cells: map(
+      fragment_row(cells: map(
         [AuthoritativeProgramView, LocalInstrumentState, InstrumentObservation, RendererEphemera],
         o => owner_cell(o: o))),
     ],
@@ -320,32 +320,32 @@ fn remaining_text(r: RemainingShape) -> String {
 
 fn render_reading(label: String, r: ProgramReading) -> Fragment {
   match r {
-    ReadingNoSubject => row(cells: [ cell(s: label), cell(s: "no subject selected") ])
+    ReadingNoSubject => fragment_row(cells: [ fragment_cell(s: label), fragment_cell(s: "no subject selected") ])
     ReadingProgramShape { remaining } =>
-      row(cells: [ cell(s: label), cell(s: "whole program"), cell(s: remaining_text(r: remaining)) ])
-    ReadingOutcomeStatus { name, node, accepted, open_fronts } => row(cells: [
-      cell(s: label),
-      cell(s: name),
-      cell(s: node),
-      cell(s: if accepted { "accepted" } else { "not accepted" }),
-      cell(s: join([to_string(open_fronts), " open fronts"], "")),
+      fragment_row(cells: [ fragment_cell(s: label), fragment_cell(s: "whole program"), fragment_cell(s: remaining_text(r: remaining)) ])
+    ReadingOutcomeStatus { name, node, accepted, open_fronts } => fragment_row(cells: [
+      fragment_cell(s: label),
+      fragment_cell(s: name),
+      fragment_cell(s: node),
+      fragment_cell(s: if accepted { "accepted" } else { "not accepted" }),
+      fragment_cell(s: join([to_string(open_fronts), " open fronts"], "")),
     ])
     ReadingOutcomeRemaining { name, remaining } =>
-      row(cells: [ cell(s: label), cell(s: name), cell(s: remaining_text(r: remaining)) ])
-    ReadingConstraint { subject, kind, headline, in_flight, depth } => row(cells: [
-      cell(s: label),
-      cell(s: join([kind, " constraint"], "")),
-      cell(s: subject),
-      cell(s: headline),
-      cell(s: if in_flight { "work observed" } else { "no work observed" }),
+      fragment_row(cells: [ fragment_cell(s: label), fragment_cell(s: name), fragment_cell(s: remaining_text(r: remaining)) ])
+    ReadingConstraint { subject, kind, headline, in_flight, depth } => fragment_row(cells: [
+      fragment_cell(s: label),
+      fragment_cell(s: join([kind, " constraint"], "")),
+      fragment_cell(s: subject),
+      fragment_cell(s: headline),
+      fragment_cell(s: if in_flight { "work observed" } else { "no work observed" }),
     ])
     ReadingNoConstraint { subject_key, reason } =>
-      row(cells: [ cell(s: label), cell(s: subject_key), cell(s: reason) ])
-    ReadingFront { key, name, closed, gates_accepted, gates_total } => row(cells: [
-      cell(s: label),
-      cell(s: name),
-      cell(s: join([to_string(gates_accepted), " of ", to_string(gates_total), " gates accepted"], "")),
-      cell(s: if closed { "closed" } else { "open" }),
+      fragment_row(cells: [ fragment_cell(s: label), fragment_cell(s: subject_key), fragment_cell(s: reason) ])
+    ReadingFront { key, name, closed, gates_accepted, gates_total } => fragment_row(cells: [
+      fragment_cell(s: label),
+      fragment_cell(s: name),
+      fragment_cell(s: join([to_string(gates_accepted), " of ", to_string(gates_total), " gates accepted"], "")),
+      fragment_cell(s: if closed { "closed" } else { "open" }),
     ])
     ReadingUnavailable { mode, subject_key, cause } =>
       el_class("div", instrument_refusal_class, [
@@ -399,10 +399,10 @@ fn reading_rows() -> Fragment {
 
 fn salience_row(assignments: List<SalienceAssignment>, spec: V1FinishLineSpec) -> Fragment {
   let key = v1_finish_line_key(l: spec.line)
-  row(cells: [
-    cell(s: salience_key(role: assignment_role_for(assignments: assignments, subject: key))),
-    cell(s: spec.name),
-    cell(s: key),
+  fragment_row(cells: [
+    fragment_cell(s: salience_key(role: assignment_role_for(assignments: assignments, subject: key))),
+    fragment_cell(s: spec.name),
+    fragment_cell(s: key),
   ])
 }
 
@@ -412,9 +412,9 @@ fn salience_block(label: String, camera: ProgramCamera, refusal: RefusalAggregat
     concat(
       [ el("h3", [ txt(label) ]) ],
       map(v1_exit_finish_lines(), s => salience_row(assignments: assignments, spec: s))),
-    [ row(cells: [
-        cell(s: salience_key(role: assignment_role_for(assignments: assignments, subject: refusal_subject_key))),
-        cell(s: refusal_subject_key),
+    [ fragment_row(cells: [
+        fragment_cell(s: salience_key(role: assignment_role_for(assignments: assignments, subject: refusal_subject_key))),
+        fragment_cell(s: refusal_subject_key),
       ]) ]))
 }
 
@@ -447,7 +447,7 @@ fn audition_card(i: AuditionIntensity) -> Fragment {
   let verdict = admit_audition(i: i, role: audition_subject_role(), subject_key: audition_subject_key())
   el_class("div", audition_card_class(i: i), [
     el("h3", [ txt(audition_intensity_key(i: i)) ]),
-    cell(s: "Compiler fixed point"),
+    fragment_cell(s: "Compiler fixed point"),
     note(s: audition_verdict_text(a: verdict)),
   ])
 }
@@ -461,10 +461,10 @@ fn audition_section() -> Fragment {
 }
 
 fn channel_row(p: InstrumentPreference, c: InstrumentChannel) -> Fragment {
-  row(cells: [
-    cell(s: channel_key(c: c)),
-    cell(s: join([to_string(amplitude_px(a: channel_amplitude(p: p, c: c))), "px"], "")),
-    cell(s: "carries no domain fact"),
+  fragment_row(cells: [
+    fragment_cell(s: channel_key(c: c)),
+    fragment_cell(s: join([to_string(amplitude_px(a: channel_amplitude(p: p, c: c))), "px"], "")),
+    fragment_cell(s: "carries no domain fact"),
   ])
 }
 
@@ -486,7 +486,7 @@ fn displacement_text(p: InstrumentPreference) -> String {
 }
 
 fn impulse_cell(s: PhysicalImpulseSource, a: SensorAvailability) -> Fragment {
-  cell(s: join([
+  fragment_cell(s: join([
     sensor_availability_key(a: a), " → ",
     match admit_impulse(p: preference_default, s: s, sensor: a) {
       ImpulseAdmitted { source, settle } => join(["admitted (", settle.name, ")"], "")
@@ -501,8 +501,8 @@ fn sensor_states() -> List<SensorAvailability> {
 }
 
 fn impulse_row(s: PhysicalImpulseSource) -> Fragment {
-  row(cells: concat(
-    [ cell(s: impulse_source_key(s: s)) ],
+  fragment_row(cells: concat(
+    [ fragment_cell(s: impulse_source_key(s: s)) ],
     map(sensor_states(), a => impulse_cell(s: s, a: a))))
 }
 

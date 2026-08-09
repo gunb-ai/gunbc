@@ -1,5 +1,7 @@
 module gunbc.git_diff_change_window
 
+import std.algebra { trim }
+
 import extdeps.git.object_store {
   GitObjectId,
   git_object_id_from_untagged_hex,

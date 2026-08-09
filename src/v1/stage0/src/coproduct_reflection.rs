@@ -655,6 +655,13 @@ fn hoist_call_arg_string_literal_edges(
     }
 }
 
+fn should_emit_nullary_variant_value_atom(binding_kind: Option<&Rc<VarBindingKind>>) -> bool {
+    matches!(
+        binding_kind,
+        Some(bk) if matches!(bk.as_ref(), VarBindingKind::VariantValueBinding { .. })
+    )
+}
+
 fn marshal_generic(
     ctx: &InterpContext,
     node: &Rc<Node>,
@@ -664,30 +671,30 @@ fn marshal_generic(
     let name = node_authored_name(node, si);
     let mut edges: Vec<Value> = Vec::with_capacity(node.children.len() + 1);
     let mut refs: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-    if node_references_param(node, &name, param_names) {
+    if matches!(node.expr_data.as_ref(), ExprData::ExprRecordLit { .. }) && !name.is_empty() {
+        // Outer record-constructor SPELLING (OuterRecordConstructorLexeme) from ExprRecordLit
+        // authored name — not resolved parent-variant identity; see
+        // `v2.std.decl_facts_skeleton` `decl_facts_outer_record_constructor_lexeme_authority_note`.
         edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
-    } else if matches!(node.expr_data.as_ref(), ExprData::ExprCall { .. }) && !name.is_empty() {
-        // G2 live-read call reachability: callee atoms make cross-fn carrier chains
-        // visible in the fn-arrow skeleton (docs/plans/live-read-witness-classification-design.md P1).
-        edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
-    } else if matches!(node.expr_data.as_ref(), ExprData::ExprRecordLit { .. }) && !name.is_empty()
-    {
-        // Authored constructor SPELLING, not resolved declaration identity: the name is
-        // the AST node's authored lexeme (no qualified name, no parent-enum identity),
-        // so a spelling census over this edge is a conservative over-approximation —
-        // two same-spelled record types in different modules are indistinguishable
-        // here. It also fires ONLY for record literals: a fieldless variant
-        // constructed bare is not an ExprRecordLit and stays invisible, so a
-        // zero count over a fieldless declaration is vacuous, never evidence.
-        // The NAMED edge only discriminates a construction occurrence from a
-        // string literal or callee atom spelling the same lexeme (those ride
-        // positional edges). Resolved constructor identity (qualified declaration +
-        // parent identity for variants) is separate future work.
+        // Named edge discriminates construction from string-literal/callee atoms spelling the
+        // same lexeme (record_construction_census_witness_test).
         edges.push(edge_named(
             ctx,
             "record_construction_spelling",
             atom_identity_node(ctx, &name),
         ));
+    } else if node_references_param(node, &name, param_names) {
+        edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
+    } else if matches!(node.expr_data.as_ref(), ExprData::ExprCall { .. }) && !name.is_empty() {
+        // G2 live-read call reachability: callee atoms make cross-fn carrier chains
+        // visible in the fn-arrow skeleton (docs/plans/live-read-witness-classification-design.md P1).
+        edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
+    } else if !name.is_empty() {
+        if let ExprData::ExprVar { binding_kind } = node.expr_data.as_ref() {
+            if should_emit_nullary_variant_value_atom(binding_kind.as_ref()) {
+                edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
+            }
+        }
     }
     if let Some(literal_edge) = marshal_string_literal_atom(ctx, node) {
         edges.push(literal_edge);
@@ -1034,10 +1041,11 @@ pub struct DeclFactsCorpusWalk {
     pub files_parsed: usize,
 }
 
-/// Parse-only whole-tree `decl_facts(roots)` substrate — shared by host builtin and emit audits.
-///
-/// Preserves the non-test corpus boundary for emit-only audits: `is_test_dag(rel)` skips
-/// before any `DeclFactRaw` row is materialized (same exclusion as the pre-#6158 walk).
+// decl_facts_corpus_walk parses every .dag under every pool_root independently,
+// taking module_path from each file's own module declaration. It does not consult
+// dependency-pool-index / the module source index used by compile/load. Where roots
+// shadow the same module path, this producer may emit facts for both the winning
+// source and the shadowed stub; compile binds only the winner.
 pub fn decl_facts_corpus_walk(pool_roots: &[String]) -> DeclFactsCorpusWalk {
     let mut out = Vec::new();
     let mut files_scanned = 0usize;
@@ -1122,6 +1130,7 @@ fn marshal_decl_fact_node(
     item: &Rc<Node>,
     kind: ItemKind,
     si: &SourceIndices,
+    qualified_name: &str,
 ) -> InterpResult<Value> {
     match kind {
         ItemKind::TypeItem => concept_decl_node(ctx, si, item),
@@ -1129,11 +1138,10 @@ fn marshal_decl_fact_node(
             Ok(fn_arrow_output_skeleton(ctx, si, item).unwrap_or_else(|| unit_type_node(ctx)))
         }
         ItemKind::DataItem => {
-            if let Some(body) = item.body.as_ref() {
-                Ok(marshal_fn_body_skeleton(ctx, body, &[], si))
-            } else {
-                Ok(unit_type_node(ctx))
-            }
+            crate::data_initializer_identity::marshal_data_initializer_projection(
+                ctx,
+                qualified_name,
+            )
         }
         _ => Ok(unit_type_node(ctx)),
     }
@@ -1223,23 +1231,36 @@ pub fn eval_export_signature_facts(
 
 pub fn eval_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> InterpResult<Value> {
     let facts = decl_facts_for_roots(pool_roots);
+    eval_decl_facts_rows(ctx, &facts)
+}
+
+fn eval_decl_facts_rows(ctx: &InterpContext, facts: &[DeclFactRaw]) -> InterpResult<Value> {
     let mut rows = Vec::with_capacity(facts.len());
     for fact in facts {
-        let node = marshal_decl_fact_node(ctx, &fact.node, fact.kind, &fact.source_indices)
-            .map_err(|e| InterpError::TypeError {
-                msg: format!(
-                    "decl_facts: failed to marshal `{}` ({:?}) in `{}`: {e}",
-                    fact.qualified_name, fact.kind, fact.rel_path
-                ),
-            })?;
+        let node = marshal_decl_fact_node(
+            ctx,
+            &fact.node,
+            fact.kind,
+            &fact.source_indices,
+            &fact.qualified_name,
+        )
+        .map_err(|e| InterpError::TypeError {
+            msg: format!(
+                "decl_facts: failed to marshal `{}` ({:?}) in `{}`: {e}",
+                fact.qualified_name, fact.kind, fact.rel_path
+            ),
+        })?;
         rows.push(Value::Record {
             type_name: ctx.sym("DeclFact"),
             fields: Rc::new(sorted_fields(vec![
-                (ctx.sym("qualified_name"), Value::Str(fact.qualified_name)),
-                (ctx.sym("name"), Value::Str(fact.name)),
+                (
+                    ctx.sym("qualified_name"),
+                    Value::Str(fact.qualified_name.clone()),
+                ),
+                (ctx.sym("name"), Value::Str(fact.name.clone())),
                 (ctx.sym("kind"), marshal_decl_item_kind(ctx, fact.kind)),
                 (ctx.sym("node"), node),
-                (ctx.sym("rel_path"), Value::Str(fact.rel_path)),
+                (ctx.sym("rel_path"), Value::Str(fact.rel_path.clone())),
             ])),
         });
     }
@@ -1471,5 +1492,120 @@ fn outcome_rejected_value(ctx: &InterpContext, reason: &str) -> Value {
                 fields: Rc::new(vec![(ctx.sym("reason"), Value::Str(reason.to_string()))]),
             }]),
         )]),
+    }
+}
+
+#[cfg(test)]
+mod parse_only_uppercase_variant_regression_tests {
+    use std::rc::Rc;
+
+    use im::{vector as im_vec, HashMap};
+
+    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+    use crate::v1_interpreter::{ExecutionMode, InterpContext, Value};
+    use crate::v1_std_core::{
+        empty_node_list, make_named_expr_node, ExprData, SourceSpan, VarBindingKind,
+    };
+
+    use super::marshal_generic;
+
+    fn test_ctx() -> InterpContext {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+            emit_graph_info: empty_emit_graph_info(),
+        };
+        InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
+    }
+
+    fn dummy_span() -> Rc<SourceSpan> {
+        Rc::new(SourceSpan {
+            file: "test.dag".to_string(),
+            start: 0,
+            end: 1,
+        })
+    }
+
+    fn uppercase_var_without_binding() -> Rc<crate::v1_std_core::Node> {
+        make_named_expr_node(
+            "SharedArm".to_string(),
+            Rc::new(ExprData::ExprVar { binding_kind: None }),
+            empty_node_list(),
+            None,
+            dummy_span(),
+            dummy_span(),
+        )
+    }
+
+    fn uppercase_var_with_variant_binding() -> Rc<crate::v1_std_core::Node> {
+        make_named_expr_node(
+            "SharedArm".to_string(),
+            Rc::new(ExprData::ExprVar {
+                binding_kind: Some(Rc::new(VarBindingKind::VariantValueBinding {
+                    parent_enum: "Parent".to_string(),
+                })),
+            }),
+            empty_node_list(),
+            None,
+            dummy_span(),
+            dummy_span(),
+        )
+    }
+
+    fn skeleton_children_len(ctx: &InterpContext, skel: &Value) -> usize {
+        match skel {
+            Value::Record { fields, .. } => {
+                let children_key = ctx.sym("children");
+                fields
+                    .iter()
+                    .find(|(k, _)| *k == children_key)
+                    .map(|(_, v)| match v {
+                        Value::List(items) => items.len(),
+                        _ => 0,
+                    })
+                    .unwrap_or(0)
+            }
+            _ => 0,
+        }
+    }
+
+    #[test]
+    fn uppercase_nullary_without_variant_binding_emits_no_parse_only_skeleton_atom() {
+        let ctx = test_ctx();
+        let si = ctx.source_indices();
+        let (skel, _) = marshal_generic(&ctx, &uppercase_var_without_binding(), &[], &si);
+        assert_eq!(
+            skeleton_children_len(&ctx, &skel),
+            0,
+            "capitalization alone must not mint a variant-value skeleton atom"
+        );
+    }
+
+    #[test]
+    fn infer_stamped_variant_binding_still_emits_parse_only_skeleton_atom() {
+        let ctx = test_ctx();
+        let si = ctx.source_indices();
+        let (skel, _) = marshal_generic(&ctx, &uppercase_var_with_variant_binding(), &[], &si);
+        assert_eq!(
+            skeleton_children_len(&ctx, &skel),
+            1,
+            "infer-stamped VariantValueBinding must still emit the skeleton atom"
+        );
+    }
+
+    #[test]
+    fn capitalization_heuristic_not_used_on_parse_only_path() {
+        let source = include_str!("coproduct_reflection.rs");
+        let production = source.split("#[cfg(test)]").next().unwrap_or(source);
+        assert!(
+            !production.contains("is_uppercase_variant_spelling"),
+            "parse-only skeleton path must not reintroduce capitalization classification"
+        );
+        assert!(
+            production.contains("should_emit_nullary_variant_value_atom"),
+            "parse-only skeleton must gate on infer-stamped VariantValueBinding only"
+        );
     }
 }

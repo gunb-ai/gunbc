@@ -1,5 +1,7 @@
 module extdeps.llm.claude_setup_token_cli
 
+import std.algebra { trim }
+
 import std.types {
   String,
   NonEmptyStr,

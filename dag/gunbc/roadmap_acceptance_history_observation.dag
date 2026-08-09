@@ -1,5 +1,7 @@
 module gunbc.roadmap_acceptance_history_observation
 
+import std.algebra { trim }
+
 import extdeps.git.inspect
 import extdeps.git
 import gunbc.output_policy { ExpectSuccess }

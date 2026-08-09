@@ -39,7 +39,8 @@ import v1.compiler.infer_types {
 import v1.compiler.infer_env {
   TypeEnv, TypeBinding, authored_name,
   is_recursive_type, lookup_type, lookup_type_for,
-  GlobalBareLookupState, borrowed_generic_param_names, global_bare_policy_candidate, lookup_binding_by_name, lookup_binding_by_name_local, qualified_all_but_last, qualify_borrowed_type_names, symbol_index_lookup
+  GlobalBareLookupState, borrowed_generic_param_names, global_bare_policy_candidate, lookup_binding_by_name, lookup_binding_by_name_local, qualified_all_but_last, qualify_borrowed_type_names, symbol_index_lookup,
+  listed_import_required_bare_call_blocked
 }
 
 import v1.compiler.infer_emit_info {
@@ -79,10 +80,14 @@ fn lookup_in_scope(locals: Map<String, TypeBinding>, name: String) -> Node? {
 }
 
 fn lookup_func_sig(func_env: ResolvedFuncEnv, type_env: TypeEnv, name: String) -> FuncSigLookup {
-  match lookup_resolved_sig(env: func_env, name: name) {
-    FuncSigResolved { sig: sig } => FuncSigResolved { sig: sig }
-    FuncSigAmbiguous { candidates: cands } => FuncSigAmbiguous { candidates: cands }
-    FuncSigUnresolved => func_sig_from_global_bare(type_env: type_env, name: name)
+  if listed_import_required_bare_call_blocked(env: type_env, name: name) {
+    FuncSigUnresolved
+  } else {
+    match lookup_resolved_sig(env: func_env, name: name) {
+      FuncSigResolved { sig: sig } => FuncSigResolved { sig: sig }
+      FuncSigAmbiguous { candidates: cands } => FuncSigAmbiguous { candidates: cands }
+      FuncSigUnresolved => func_sig_from_global_bare(type_env: type_env, name: name)
+    }
   }
 }
 
@@ -107,16 +112,20 @@ fn borrowed_census_decl(type_env: TypeEnv, name: String) -> BorrowedCensusDecl? 
       Absent => none
     }
   } else {
-    match map_get(type_env.symbol_index.global_bare, name) {
-      Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
-        Present { value: BorrowedCensusDecl { owner_module_path: mp, node: b.resolved } }
-      Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
-        match global_bare_policy_candidate(env_module_path: type_env.module_path, candidates: cands) {
-          Present { value: cand } =>
-            Present { value: BorrowedCensusDecl { owner_module_path: cand.module_path, node: cand.binding.resolved } }
-          Absent => none
-        }
-      Absent => none
+    if listed_import_required_bare_call_blocked(env: type_env, name: name) {
+      none
+    } else {
+      match map_get(type_env.symbol_index.global_bare, name) {
+        Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
+          Present { value: BorrowedCensusDecl { owner_module_path: mp, node: b.resolved } }
+        Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
+          match global_bare_policy_candidate(env_module_path: type_env.module_path, candidates: cands) {
+            Present { value: cand } =>
+              Present { value: BorrowedCensusDecl { owner_module_path: cand.module_path, node: cand.binding.resolved } }
+            Absent => none
+          }
+        Absent => none
+      }
     }
   }
 }
