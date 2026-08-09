@@ -1,5 +1,7 @@
 module gunbc.stage0_rust_host_observation
 
+import std.algebra { trim }
+
 import extdeps.git
 import gunbc.output_policy { ExpectSuccess }
 import gunbc.repo_identity { gunbc_merge_target_ref }
