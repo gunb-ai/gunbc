@@ -1,0 +1,101 @@
+module test.claim.evaluation_budget
+
+import std.types { NonEmptyStr, Bool, Int, String }
+import std.measure {
+  nanosecond,
+  positive_millisecond,
+  positive_measure_count,
+}
+import std.evaluation_budget {
+  EvaluationClock,
+  ThreadCpu,
+  MonotonicWall,
+  evaluation_clock_key,
+  EvaluationEntryIdentity,
+  EvaluationLimit,
+  LimitUnset,
+  LimitSet,
+  EvaluationBudgetVerdict,
+  EvaluationWithinBudget,
+  EvaluationBudgetExceeded,
+  evaluation_budget_verdict,
+  evaluation_budget_exceeded,
+  effective_nested_limit_nanos,
+  evaluation_budget_refusal_code,
+}
+
+data witness_entry: EvaluationEntryIdentity = EvaluationEntryIdentity {
+  entry: "roadmap_serve_handle" as NonEmptyStr,
+}
+
+data limit_10ms: EvaluationLimit = LimitSet {
+  limit: positive_millisecond(count: positive_measure_count(predecessor: 9)),
+}
+
+fn witness_within_budget_is_within() -> Bool {
+  match evaluation_budget_verdict(
+    entry: witness_entry,
+    clock: ThreadCpu,
+    elapsed: nanosecond(count: 5000000),
+    limit: limit_10ms,
+  ) {
+    EvaluationWithinBudget => true
+    EvaluationBudgetExceeded { entry: _, clock: _, elapsed: _, limit: _ } => false
+  }
+}
+
+fn witness_over_budget_exceeds_and_names_its_clock() -> Bool {
+  match evaluation_budget_verdict(
+    entry: witness_entry,
+    clock: MonotonicWall,
+    elapsed: nanosecond(count: 11000000),
+    limit: limit_10ms,
+  ) {
+    EvaluationWithinBudget => false
+    EvaluationBudgetExceeded { entry: e, clock: c, elapsed: _, limit: _ } =>
+      (e.entry as String) == "roadmap_serve_handle"
+        && (evaluation_clock_key(c: c) as String) == "monotonic_wall"
+  }
+}
+
+data unset_limit_note: String = "THE DISCRIMINATING HALF. An elapsed value astronomically past any plausible budget must still be WITHIN budget when no limit is declared, because LimitUnset is a policy state rather than a missing number. If this returned exceeded, an unbounded caller would refuse every evaluation the moment the carrier was introduced — the exact regression that makes landing the mechanism unset-by-default unsafe."
+
+fn witness_unset_limit_never_exceeds() -> Bool {
+  !evaluation_budget_exceeded(v: evaluation_budget_verdict(
+    entry: witness_entry,
+    clock: ThreadCpu,
+    elapsed: nanosecond(count: 999999999999),
+    limit: LimitUnset,
+  ))
+}
+
+fn witness_boundary_equal_elapsed_is_within() -> Bool {
+  !evaluation_budget_exceeded(v: evaluation_budget_verdict(
+    entry: witness_entry,
+    clock: ThreadCpu,
+    elapsed: nanosecond(count: 10000000),
+    limit: limit_10ms,
+  ))
+}
+
+data nesting_law_note: String = "EARLIEST-DEADLINE-WINS, ASSERTED IN BOTH DIRECTIONS. A one-sided check would pass against the seed's current inverted behavior: arm_eval_deadline overwrites with a fresh baseline, so an inner scope requesting a LONGER limit currently wins and extends its caller's bound. The second conjunct is what fails against that."
+
+fn witness_nested_limit_takes_the_smaller() -> Bool {
+  effective_nested_limit_nanos(outer_remaining_nanos: 3000000, inner_limit_nanos: 9000000) == 3000000
+    && effective_nested_limit_nanos(outer_remaining_nanos: 9000000, inner_limit_nanos: 3000000) == 3000000
+}
+
+fn witness_refusal_code_is_stable() -> Bool {
+  (evaluation_budget_refusal_code() as String) == "evaluation_budget_exceeded"
+}
+
+data red_control_note: String = "RED CONTROL. Asserts the verdict is exceeded on an input that is WITHIN budget. It must fail; if it ever passes, evaluation_budget_verdict has stopped discriminating and every green above is vacuous."
+
+fn witness_red_control_within_reported_as_exceeded() -> Bool {
+  evaluation_budget_exceeded(v: evaluation_budget_verdict(
+    entry: witness_entry,
+    clock: ThreadCpu,
+    elapsed: nanosecond(count: 1000000),
+    limit: limit_10ms,
+  ))
+}

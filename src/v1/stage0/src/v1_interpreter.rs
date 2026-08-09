@@ -810,6 +810,26 @@ pub enum InterpError {
         key: String,
         service: String,
     },
+    /// The caller-agnostic evaluation-budget result. This is what the kernel RAISES; the two
+    /// witness-named variants below are domain refusals that the witness lane maps this into at
+    /// its own boundary, never things `eval_expr` produces directly.
+    ///
+    /// The split exists because the kernel had no neutral result to raise: a served HTTP request
+    /// is not a witness, so raising `EvalBudgetExceeded` at a serve route would carry the
+    /// fast-lane witness ruling — including its "relocating the file does not discharge it"
+    /// guidance — into an HTTP 5xx body, which is the DESIGN §3 nickname failure applied to a
+    /// diagnostic (operator review 2026-08-09). `entry` names which evaluation crossed, `clock`
+    /// names which bound fired (a consumer that cannot tell CPU from wall cannot tell a spin
+    /// from a stall, and those have different remedies), and `elapsed_nanos` is nanoseconds
+    /// rather than floored milliseconds per `std.measure`'s `nanosecond_millisecond_projection_note`:
+    /// a declared limit is policy and is milliseconds, an observed crossing is a measurement and
+    /// is never floored on its way into the carrier.
+    EvaluationBudgetExceeded {
+        entry: String,
+        clock: EvaluationClock,
+        elapsed_nanos: u128,
+        limit_ms: u64,
+    },
     /// The fast-lane per-witness eval budget, enforced on THREAD CPU by the cooperative
     /// stride-poll in `eval_expr`. The measured field is named for its clock deliberately:
     /// this budget and the wall-clock one below are different quantities of the same
@@ -868,6 +888,21 @@ impl fmt::Display for InterpError {
                 write!(f, "no field '{}' on type '{}'", field, type_name)
             }
             InterpError::TypeError { msg } => write!(f, "type error: {}", msg),
+            InterpError::EvaluationBudgetExceeded {
+                entry,
+                clock,
+                elapsed_nanos,
+                limit_ms,
+            } => {
+                write!(
+                    f,
+                    "evaluation budget exceeded: entry={} clock={} elapsed_ns={} limit_ms={}",
+                    entry,
+                    clock.key(),
+                    elapsed_nanos,
+                    limit_ms
+                )
+            }
             InterpError::EvalBudgetExceeded {
                 cpu_ms: elapsed_ms,
                 budget_ms,
@@ -1495,6 +1530,9 @@ pub struct InterpContext {
     // pair is (cpu_baseline_nanos, budget_ms).
     eval_deadline: std::cell::Cell<Option<(u128, u64)>>,
     eval_deadline_stride: std::cell::Cell<u32>,
+    /// Entry identity the armed budget belongs to, so the neutral `EvaluationBudgetExceeded`
+    /// can name what crossed rather than leaving the caller to infer it.
+    budget_entry: std::cell::RefCell<Option<String>>,
     // Lane-level budget: when set, run_claim_measured re-arms the deadline per witness.
     witness_eval_budget_ms: std::cell::Cell<Option<u64>>,
     // Whole-receipt wall budget for Wet self-host receipts (emit+cargo subprocess I/O included).
@@ -1706,6 +1744,7 @@ impl InterpContext {
             governed_services: RefCell::new(None),
             eval_deadline: std::cell::Cell::new(None),
             eval_deadline_stride: std::cell::Cell::new(0),
+            budget_entry: std::cell::RefCell::new(None),
             witness_eval_budget_ms: std::cell::Cell::new(None),
             witness_wall_budget_ms: std::cell::Cell::new(None),
             witness_wall_deadline: std::cell::Cell::new(None),
@@ -1720,6 +1759,81 @@ impl InterpContext {
 
     pub fn clear_eval_deadline(&self) {
         self.eval_deadline.set(None);
+    }
+
+    /// Milliseconds left on the armed CPU deadline, or `None` when none is armed.
+    /// `Some(0)` means already past.
+    pub fn eval_deadline_remaining_ms(&self) -> Option<u64> {
+        let (baseline, budget_ms) = self.eval_deadline.get()?;
+        let elapsed_ms = (thread_cpu_nanos().saturating_sub(baseline) / 1_000_000) as u64;
+        Some(budget_ms.saturating_sub(elapsed_ms))
+    }
+
+    /// The entry identity the currently-armed budget belongs to, for the neutral result.
+    pub fn budget_entry(&self) -> Option<String> {
+        self.budget_entry.borrow().clone()
+    }
+
+    /// Enter a scoped evaluation budget that can only ever TIGHTEN what is already armed.
+    ///
+    /// This exists because the paired `arm_*` / `clear_*` calls compose wrongly, and wrongly in
+    /// the fail-open direction (verified 2026-08-09). `arm_eval_deadline` sets its cell
+    /// unconditionally with a FRESH baseline, so a nested arm does not shorten an outer bound —
+    /// it restarts the clock and grants the outer evaluation a whole new budget. `clear_*` then
+    /// sets `None` rather than restoring what it displaced, so an inner clear disarms an outer
+    /// deadline entirely. Both are silent.
+    ///
+    /// The guard fixes composition in one place: the effective limit is the smaller of what
+    /// REMAINS on the outer deadline and what this scope requests (remaining, not declared —
+    /// two scopes carrying the same declared limit but armed at different instants have
+    /// different time left, and it is the time left that decides which fires first), and every
+    /// exit path restores the displaced state because `Drop` runs on early return and on unwind.
+    /// A leaked deadline is not merely an absent bound: the CPU baseline is captured at arm
+    /// time, so a deadline surviving into a later evaluation measures that evaluation against a
+    /// baseline already spent, and refuses it immediately. On a long-lived process sharing one
+    /// `InterpContext` across requests — `gunbc serve` — that would refuse every subsequent
+    /// request for the life of the process.
+    pub fn enter_evaluation_budget(
+        &self,
+        entry: &str,
+        cpu_limit_ms: Option<u64>,
+        wall_limit_ms: Option<u64>,
+    ) -> EvaluationBudgetScope<'_> {
+        let prior_eval = self.eval_deadline.get();
+        let prior_wall = self.witness_wall_deadline.get();
+        let prior_stride = self.eval_deadline_stride.get();
+        let prior_entry = self.budget_entry.borrow().clone();
+
+        // Earliest-deadline-wins on both clocks. `None` requested means "this scope declares no
+        // bound on this clock" — which must NOT disarm an outer bound, so the prior survives.
+        if let Some(requested) = cpu_limit_ms {
+            let effective = match self.eval_deadline_remaining_ms() {
+                Some(remaining) => remaining.min(requested),
+                None => requested,
+            };
+            self.eval_deadline
+                .set(Some((thread_cpu_nanos(), effective)));
+            self.eval_deadline_stride.set(0);
+        }
+        if let Some(requested) = wall_limit_ms {
+            let effective = match self.wall_deadline_remaining_ms() {
+                Some(remaining) => remaining.min(requested),
+                None => requested,
+            };
+            self.witness_wall_deadline
+                .set(Some((Instant::now(), effective)));
+        }
+        if cpu_limit_ms.is_some() || wall_limit_ms.is_some() {
+            *self.budget_entry.borrow_mut() = Some(entry.to_string());
+        }
+
+        EvaluationBudgetScope {
+            ctx: self,
+            prior_eval,
+            prior_wall,
+            prior_stride,
+            prior_entry,
+        }
     }
 
     pub fn set_witness_eval_budget(&self, budget_ms: Option<u64>) {
@@ -1757,15 +1871,28 @@ impl InterpContext {
 
     pub fn wall_deadline_exceeded_error(&self) -> Option<InterpError> {
         let (start, budget_ms) = self.witness_wall_deadline.get()?;
-        let elapsed_ms = start.elapsed().as_millis() as u64;
-        if elapsed_ms > budget_ms {
-            Some(InterpError::WitnessWallBudgetExceeded {
-                wall_ms: elapsed_ms,
-                budget_ms,
+        let elapsed = start.elapsed();
+        if elapsed.as_millis() as u64 > budget_ms {
+            Some(InterpError::EvaluationBudgetExceeded {
+                entry: self.budget_entry_or_unnamed(),
+                clock: EvaluationClock::MonotonicWall,
+                elapsed_nanos: elapsed.as_nanos(),
+                limit_ms: budget_ms,
             })
         } else {
             None
         }
+    }
+
+    /// Entry identity for a budget result. `arm_*` callers that set no entry (the witness lane,
+    /// which maps this result into its own refusal and supplies the witness name there) get an
+    /// explicit placeholder rather than an empty string, so an unnamed entry is visibly unnamed
+    /// instead of looking like a successfully-read empty name.
+    fn budget_entry_or_unnamed(&self) -> String {
+        self.budget_entry
+            .borrow()
+            .clone()
+            .unwrap_or_else(|| "<unnamed-evaluation>".to_string())
     }
 
     fn published_mock_keys(&self) -> InterpResult<Rc<std::collections::HashSet<String>>> {
@@ -2286,6 +2413,75 @@ fn call_function_inner(
 /// linux) it falls back to a process-monotonic wall clock. A clock error yields 0, which makes
 /// the deadline under-count rather than fire spuriously (the witness still returns its real
 /// Pass/Fail; the budget is a performance guard, not a correctness gate).
+/// Maps the kernel's caller-agnostic budget result into the WITNESS lane's refusal vocabulary.
+///
+/// The kernel raises `EvaluationBudgetExceeded` for every caller (see that variant's comment for
+/// why it must not raise a witness concept). The witness lane's diagnostics carry operator
+/// rulings its consumers depend on — the 5s fast-lane rule, and the "relocating the file does not
+/// discharge it" guidance that exists because a witness was once re-homed under `long/` to
+/// silence exactly this error — so that text stays here, at the witness boundary, rather than
+/// leaking into an HTTP response or being deleted.
+///
+/// Any non-budget error passes through untouched.
+pub fn map_budget_error_to_witness_refusal(err: InterpError) -> InterpError {
+    match err {
+        InterpError::EvaluationBudgetExceeded {
+            clock,
+            elapsed_nanos,
+            limit_ms,
+            ..
+        } => match clock {
+            EvaluationClock::ThreadCpu => InterpError::EvalBudgetExceeded {
+                cpu_ms: (elapsed_nanos / 1_000_000) as u64,
+                budget_ms: limit_ms,
+            },
+            EvaluationClock::MonotonicWall => InterpError::WitnessWallBudgetExceeded {
+                wall_ms: (elapsed_nanos / 1_000_000) as u64,
+                budget_ms: limit_ms,
+            },
+        },
+        other => other,
+    }
+}
+
+/// Which bound fired. Carried in the neutral result because CPU and wall are different
+/// quantities of the same occurrence and the remedies differ: a CPU crossing is a spin, a wall
+/// crossing with small CPU is a stall. Mirrors `std.evaluation_budget.EvaluationClock`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EvaluationClock {
+    ThreadCpu,
+    MonotonicWall,
+}
+
+impl EvaluationClock {
+    /// Stable wire key. Must equal `std.evaluation_budget.evaluation_clock_key`.
+    pub fn key(&self) -> &'static str {
+        match self {
+            EvaluationClock::ThreadCpu => "thread_cpu",
+            EvaluationClock::MonotonicWall => "monotonic_wall",
+        }
+    }
+}
+
+/// Restores the evaluation-budget state it displaced, on every exit path including unwind.
+/// See `InterpContext::enter_evaluation_budget` for why paired arm/clear calls are not enough.
+pub struct EvaluationBudgetScope<'a> {
+    ctx: &'a InterpContext,
+    prior_eval: Option<(u128, u64)>,
+    prior_wall: Option<(Instant, u64)>,
+    prior_stride: u32,
+    prior_entry: Option<String>,
+}
+
+impl Drop for EvaluationBudgetScope<'_> {
+    fn drop(&mut self) {
+        self.ctx.eval_deadline.set(self.prior_eval);
+        self.ctx.witness_wall_deadline.set(self.prior_wall);
+        self.ctx.eval_deadline_stride.set(self.prior_stride);
+        *self.ctx.budget_entry.borrow_mut() = self.prior_entry.take();
+    }
+}
+
 pub fn thread_cpu_nanos() -> u128 {
     #[cfg(unix)]
     {
@@ -2313,17 +2509,33 @@ pub fn thread_cpu_nanos() -> u128 {
 }
 
 fn eval_expr(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
-    if let Some((cpu_baseline_nanos, budget_ms)) = ctx.eval_deadline.get() {
+    // The stride poll runs when EITHER clock is armed. Gating it on the CPU deadline alone was a
+    // real defect, found by executing a wall-only serve process rather than by reading: with no
+    // CPU limit the whole poll became unreachable, so a wall-only caller — precisely the
+    // configuration that bounds a low-CPU stall — silently had no in-eval crossing point at all.
+    //
+    // Neither clock contains an evaluation blocked inside a single native primitive: that never
+    // returns to `eval_expr`, so nothing is polled. That residue is why worker isolation, not a
+    // budget, is what bounds the listener unconditionally.
+    let cpu_armed = ctx.eval_deadline.get();
+    let wall_armed = ctx.witness_wall_deadline.get().is_some();
+    if cpu_armed.is_some() || wall_armed {
         let stride = ctx.eval_deadline_stride.get().wrapping_add(1);
         ctx.eval_deadline_stride.set(stride);
         if stride % 4096 == 0 {
-            let elapsed_ms =
-                (thread_cpu_nanos().saturating_sub(cpu_baseline_nanos) / 1_000_000) as u64;
-            if elapsed_ms > budget_ms {
-                return Err(InterpError::EvalBudgetExceeded {
-                    cpu_ms: elapsed_ms,
-                    budget_ms,
-                });
+            if let Some((cpu_baseline_nanos, budget_ms)) = cpu_armed {
+                let elapsed_nanos = thread_cpu_nanos().saturating_sub(cpu_baseline_nanos);
+                if (elapsed_nanos / 1_000_000) as u64 > budget_ms {
+                    return Err(InterpError::EvaluationBudgetExceeded {
+                        entry: ctx.budget_entry_or_unnamed(),
+                        clock: EvaluationClock::ThreadCpu,
+                        elapsed_nanos,
+                        limit_ms: budget_ms,
+                    });
+                }
+            }
+            if let Some(err) = ctx.wall_deadline_exceeded_error() {
+                return Err(err);
             }
         }
     }
@@ -13425,7 +13637,10 @@ mod wall_deadline_kill_tests {
     use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
 
-    use super::{wait_child_honoring_wall_deadline, ExecutionMode, InterpContext, InterpError};
+    use super::{
+        map_budget_error_to_witness_refusal, wait_child_honoring_wall_deadline, EvaluationClock,
+        ExecutionMode, InterpContext, InterpError,
+    };
 
     fn wet_ctx() -> InterpContext {
         let graph = ResolvedGraph {
@@ -13435,6 +13650,153 @@ mod wall_deadline_kill_tests {
             emit_graph_info: empty_emit_graph_info(),
         };
         InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Wet)
+    }
+
+    /// REGRESSION CONTROL ON EXISTING BEHAVIOR, not new coverage. Against the paired
+    /// `arm_eval_deadline` / `clear_eval_deadline` calls this replaces, the second assertion
+    /// fails: `arm_*` overwrites with a fresh baseline, so an inner scope asking for a LONGER
+    /// limit wins and extends its caller's bound. Asserting only the tightening direction would
+    /// pass against that inverted behavior and prove nothing.
+    #[test]
+    fn nested_budget_scope_can_only_tighten() {
+        let ctx = wet_ctx();
+
+        let _outer = ctx.enter_evaluation_budget("outer", Some(50), None);
+        let outer_remaining = ctx.eval_deadline_remaining_ms().expect("outer armed");
+        assert!(outer_remaining <= 50, "outer_remaining={outer_remaining}");
+
+        {
+            let _inner = ctx.enter_evaluation_budget("inner", Some(10), None);
+            let inner = ctx.eval_deadline_remaining_ms().expect("inner armed");
+            assert!(inner <= 10, "a tighter inner scope must win: {inner}");
+        }
+
+        {
+            // The direction that fails against the displaced implementation.
+            let _inner = ctx.enter_evaluation_budget("inner", Some(5_000), None);
+            let inner = ctx.eval_deadline_remaining_ms().expect("inner armed");
+            assert!(
+                inner <= 50,
+                "a looser inner scope must NOT extend the outer bound: {inner}"
+            );
+        }
+    }
+
+    /// PINS THE DEFECT THE GUARD EXISTS FOR, so `nested_budget_scope_can_only_tighten` cannot be
+    /// mistaken for decoration. These are the raw paired calls, exercised directly: a nested
+    /// `arm_eval_deadline` with a LOOSER limit replaces the tighter outer bound, and a nested
+    /// `clear_eval_deadline` disarms it entirely. Both are the fail-open direction and both are
+    /// silent. If either assertion ever flips, the raw calls have been fixed and the guard's
+    /// tightening logic can be re-examined; until then this is why callers must not use them
+    /// directly around a nestable evaluation.
+    #[test]
+    fn raw_arm_and_clear_compose_fail_open() {
+        let ctx = wet_ctx();
+
+        ctx.arm_eval_deadline(50);
+        ctx.arm_eval_deadline(5_000);
+        let after_looser_arm = ctx.eval_deadline_remaining_ms().expect("armed");
+        assert!(
+            after_looser_arm > 50,
+            "raw arm was expected to EXTEND the outer bound (the defect); got {after_looser_arm}"
+        );
+
+        ctx.arm_eval_deadline(50);
+        ctx.clear_eval_deadline();
+        assert!(
+            ctx.eval_deadline_remaining_ms().is_none(),
+            "raw clear was expected to disarm rather than restore (the defect)"
+        );
+    }
+
+    /// The poisoning case. `gunbc serve` shares one `InterpContext` across every request, and the
+    /// CPU baseline is captured at arm time — so a deadline that survived its scope would measure
+    /// the NEXT request against a baseline already spent and refuse it immediately. That is worse
+    /// than no bound: it converts one stuck request into a permanently broken process.
+    #[test]
+    fn budget_scope_restores_prior_state_on_exit() {
+        let ctx = wet_ctx();
+        assert!(ctx.eval_deadline_remaining_ms().is_none());
+
+        {
+            let _scope = ctx.enter_evaluation_budget("request-1", Some(25), Some(25));
+            assert!(ctx.eval_deadline_remaining_ms().is_some());
+            assert!(ctx.wall_deadline_remaining_ms().is_some());
+            assert_eq!(ctx.budget_entry().as_deref(), Some("request-1"));
+        }
+
+        assert!(
+            ctx.eval_deadline_remaining_ms().is_none(),
+            "CPU deadline leaked past its scope"
+        );
+        assert!(
+            ctx.wall_deadline_remaining_ms().is_none(),
+            "wall deadline leaked past its scope"
+        );
+        assert_eq!(ctx.budget_entry(), None, "entry identity leaked past scope");
+    }
+
+    /// An unset clock is a declared policy state and must not disarm what an outer scope armed.
+    #[test]
+    fn unset_inner_clock_does_not_disarm_outer_bound() {
+        let ctx = wet_ctx();
+        let _outer = ctx.enter_evaluation_budget("outer", Some(50), Some(50));
+        {
+            let _inner = ctx.enter_evaluation_budget("inner", None, None);
+            assert!(
+                ctx.eval_deadline_remaining_ms().is_some(),
+                "an unset inner CPU limit disarmed the outer bound"
+            );
+            assert!(
+                ctx.wall_deadline_remaining_ms().is_some(),
+                "an unset inner wall limit disarmed the outer bound"
+            );
+        }
+    }
+
+    /// The kernel result must stay caller-agnostic, and the witness lane must still be able to
+    /// recover its own vocabulary from it. Both directions asserted: neutral in, witness out.
+    #[test]
+    fn budget_error_maps_into_witness_refusal_per_clock() {
+        let cpu = InterpError::EvaluationBudgetExceeded {
+            entry: "w".to_string(),
+            clock: EvaluationClock::ThreadCpu,
+            elapsed_nanos: 7_000_000,
+            limit_ms: 5,
+        };
+        match map_budget_error_to_witness_refusal(cpu) {
+            InterpError::EvalBudgetExceeded { cpu_ms, budget_ms } => {
+                assert_eq!((cpu_ms, budget_ms), (7, 5));
+            }
+            other => panic!("expected EvalBudgetExceeded, got {other:?}"),
+        }
+
+        let wall = InterpError::EvaluationBudgetExceeded {
+            entry: "w".to_string(),
+            clock: EvaluationClock::MonotonicWall,
+            elapsed_nanos: 9_000_000,
+            limit_ms: 5,
+        };
+        match map_budget_error_to_witness_refusal(wall) {
+            InterpError::WitnessWallBudgetExceeded { wall_ms, budget_ms } => {
+                assert_eq!((wall_ms, budget_ms), (9, 5));
+            }
+            other => panic!("expected WitnessWallBudgetExceeded, got {other:?}"),
+        }
+
+        // Non-budget errors pass through untouched.
+        match map_budget_error_to_witness_refusal(InterpError::DivisionByZero) {
+            InterpError::DivisionByZero => {}
+            other => panic!("pass-through broken: {other:?}"),
+        }
+    }
+
+    /// The clock keys are a wire contract shared with `std.evaluation_budget.evaluation_clock_key`.
+    /// Pinned here so the two go red together rather than drifting silently.
+    #[test]
+    fn evaluation_clock_keys_match_dag_authority() {
+        assert_eq!(EvaluationClock::ThreadCpu.key(), "thread_cpu");
+        assert_eq!(EvaluationClock::MonotonicWall.key(), "monotonic_wall");
     }
 
     #[test]
@@ -13454,15 +13816,25 @@ mod wall_deadline_kill_tests {
         let err = wait_child_honoring_wall_deadline(child, &ctx, "sleep")
             .expect_err("over-budget sleep must refuse");
         let elapsed_ms = started.elapsed().as_millis() as u64;
+        // The KERNEL result is caller-agnostic: this helper is generic shell-wait machinery, and
+        // the wall budget being armed only by the witness lane today is a fact about its callers,
+        // not about the bound. The witness lane maps this into its own refusal at the claim
+        // boundary (`map_budget_error_to_witness_refusal`), which is where its guidance text lives.
         match err {
-            InterpError::WitnessWallBudgetExceeded {
-                wall_ms: reported,
-                budget_ms,
+            InterpError::EvaluationBudgetExceeded {
+                clock,
+                elapsed_nanos,
+                limit_ms,
+                ..
             } => {
-                assert_eq!(budget_ms, 200);
-                assert!(reported >= 200, "reported={reported}");
+                assert_eq!(limit_ms, 200);
+                assert_eq!(clock, EvaluationClock::MonotonicWall);
+                assert!(
+                    elapsed_nanos / 1_000_000 >= 200,
+                    "elapsed_nanos={elapsed_nanos}"
+                );
             }
-            other => panic!("expected WitnessWallBudgetExceeded, got {other:?}"),
+            other => panic!("expected EvaluationBudgetExceeded, got {other:?}"),
         }
         assert!(
             elapsed_ms < 2000,

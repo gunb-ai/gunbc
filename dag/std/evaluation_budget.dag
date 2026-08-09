@@ -1,0 +1,104 @@
+module std.evaluation_budget
+
+import std.types { NonEmptyStr, Bool, Int, String }
+import std.measure {
+  Nanosecond,
+  nanosecond_count,
+  PositiveMillisecond,
+  positive_millisecond_count,
+  nanoseconds_per_millisecond,
+}
+
+data evaluation_budget_neutrality_note: String = "THIS CARRIER IS DELIBERATELY CALLER-AGNOSTIC, AND THAT IS THE WHOLE REASON IT EXISTS. The interpreter already enforced two cooperative deadlines, but the only results it could raise were named for one caller — EvalBudgetExceeded carried the fast-lane witness ruling in its message and WitnessWallBudgetExceeded carried the falsifier lane's. A served HTTP request is not a witness, so raising either at a serve route would make the kernel manufacture a witness concept for a non-witness caller (operator review 2026-08-09) — the DESIGN section 3 nickname failure, one concept wearing another domain's name. The kernel raises THIS result; each caller maps it into its own refusal vocabulary at its own boundary, so witness guidance stays with the witness lane and route guidance stays with the route."
+
+data evaluation_budget_clock_split_note: String = "TWO CLOCKS, NOT ONE, AND NEITHER SUBSUMES THE OTHER. Thread CPU excludes blocking I/O and scheduler time-slicing, which is what makes it the honest bound on a runaway evaluation: a genuine non-terminating fold burns CPU and is caught, while a bounded scan whose WALL time was inflated by a cold page cache or a co-resident build is not misclassified. That insulation is also its blind spot, and the blind spot is recorded rather than discovered — dag/test/claim/generated_artifact_drift_test.dag fixed_point_witness_long_lane_note states it exactly: nothing bounds waiting, so a subject with small CPU and large wait NEVER crosses a CPU cap. For a served route that is not an academic gap, because a handler blocked on a filesystem read or a subprocess holds its listener just as completely as one spinning. So the clock is part of the exceeded result: a consumer that cannot tell which bound fired cannot tell a spin from a stall, and those have different remedies."
+
+data evaluation_budget_scale_split_note: String = "LIMITS ARE MILLISECONDS AND ELAPSED IS NANOSECONDS, following std.measure nanosecond_millisecond_projection_note rather than a local preference: Nanosecond is the canonical exact elapsed-time carrier while Millisecond is a policy and presentation scale, and that note forbids retaining a floored value for measurement. A declared budget is authored policy, so it is a Millisecond; an observed crossing is a measurement, so it is a Nanosecond and is never floored on the way into this carrier. The limit is a PositiveMillisecond specifically — a zero-millisecond budget has no constructor, so the degenerate policy that would refuse every evaluation before it began is unwritable rather than validated."
+
+type EvaluationClock
+  = ThreadCpu
+  | MonotonicWall
+
+fn evaluation_clock_key(c: EvaluationClock) -> NonEmptyStr {
+  match c {
+    ThreadCpu => "thread_cpu" as NonEmptyStr
+    MonotonicWall => "monotonic_wall" as NonEmptyStr
+  }
+}
+
+type EvaluationEntryIdentity {
+  entry: NonEmptyStr
+}
+
+type EvaluationLimit
+  = LimitUnset
+  | LimitSet { limit: PositiveMillisecond }
+
+data evaluation_limit_unset_is_a_state_not_a_default_note: String = "LimitUnset IS A DECLARED POLICY STATE, NOT A MISSING VALUE, and separating it from a sentinel is what keeps this from becoming the absorbing fallback DESIGN section 5 forbids. Unset means this caller has declared that it does not bound this clock — today's serve behavior, stated rather than implied. It is NOT the same fact as a limit that could not be read, which would be a refusal; and it is not spelled as a zero or a very large number, because both of those are answers wearing the shape of an absence. A consumer matching on this coproduct cannot silently treat unbounded as bounded."
+
+fn evaluation_limit_nanos(limit: PositiveMillisecond) -> Int {
+  positive_millisecond_count(m: limit) * nanoseconds_per_millisecond()
+}
+
+type EvaluationBudgetPolicy {
+  entry: EvaluationEntryIdentity
+  cpu_limit: EvaluationLimit
+  wall_limit: EvaluationLimit
+}
+
+type EvaluationBudgetVerdict
+  = EvaluationWithinBudget
+  | EvaluationBudgetExceeded {
+      entry: EvaluationEntryIdentity
+      clock: EvaluationClock
+      elapsed: Nanosecond
+      limit: PositiveMillisecond
+    }
+
+fn evaluation_budget_verdict(
+  entry: EvaluationEntryIdentity,
+  clock: EvaluationClock,
+  elapsed: Nanosecond,
+  limit: EvaluationLimit,
+) -> EvaluationBudgetVerdict {
+  match limit {
+    LimitUnset => EvaluationWithinBudget
+    LimitSet { limit: l } =>
+      if nanosecond_count(n: elapsed) > evaluation_limit_nanos(limit: l) {
+        EvaluationBudgetExceeded {
+          entry: entry,
+          clock: clock,
+          elapsed: elapsed,
+          limit: l,
+        }
+      } else {
+        EvaluationWithinBudget
+      }
+  }
+}
+
+fn evaluation_budget_exceeded(v: EvaluationBudgetVerdict) -> Bool {
+  match v {
+    EvaluationWithinBudget => false
+    EvaluationBudgetExceeded { entry: _, clock: _, elapsed: _, limit: _ } => true
+  }
+}
+
+data evaluation_budget_nesting_law_note: String = "THE COMPOSITION LAW IS EARLIEST-DEADLINE-WINS, AND IT IS STATED HERE BECAUSE THE SEED CURRENTLY IMPLEMENTS ITS INVERSE. v1_interpreter arm_eval_deadline sets its cell unconditionally with a FRESH baseline, so a nested arm does not shorten an outer bound — it resets the clock and grants the outer evaluation a whole new budget, and clear_eval_deadline then sets None rather than restoring what it displaced, so an inner clear disarms an outer deadline entirely (verified 2026-08-09). An inner scope may therefore only ever tighten: the effective limit is the smaller of what remains on the outer deadline and what the inner scope requests. Modeled as a fold over remaining nanoseconds rather than over declared limits, because two scopes armed at different instants can carry the same declared limit and different remaining time, and it is the remaining time that decides which fires first."
+
+fn effective_nested_limit_nanos(
+  outer_remaining_nanos: Int,
+  inner_limit_nanos: Int,
+) -> Int {
+  if outer_remaining_nanos < inner_limit_nanos {
+    outer_remaining_nanos
+  } else {
+    inner_limit_nanos
+  }
+}
+
+fn evaluation_budget_refusal_code() -> NonEmptyStr {
+  "evaluation_budget_exceeded" as NonEmptyStr
+}
+
+data evaluation_budget_retry_semantics_note: String = "THE REFUSAL CODE IS STABLE AND CARRIES NO RETRY PROMISE, which is a modeling decision and not an omission. A deterministic request that exceeds a fixed evaluation policy will exceed it again on every retry, so advertising Retry-After — or reaching for a status whose meaning is temporary capacity — would tell the caller something the model does not know. The machine-readable code, the clock that fired, the entry, and both quantities are what a consumer can act on; whether a later attempt may be admitted is a separate fact that no arm here establishes (operator review 2026-08-09)."

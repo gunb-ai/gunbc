@@ -1,0 +1,40 @@
+module test.claim.serve_budget_fixture
+
+import std.types { String, Int, Bool }
+
+data serve_budget_fixture_note: String = "A DELIBERATELY RUNAWAY ROUTE, USED AS THE DISCRIMINATING INPUT FOR THE SERVE EVALUATION BUDGET. It is a fixture rather than a witness: nothing here asserts a property, it exists to be EVALUATED by a real `gunbc serve` process so the budget can be observed firing against a live listener. The /spin route recurses with a descent that never reaches its base case within any budget, and it recurses through ordinary function application specifically so the cooperative stride-poll in eval_expr is crossed — which is the same shape as the sampled roadmap wedge (eval_expr -> eval_pure_named_call -> call_function_inner -> eval_expr) and NOT the shape the budget cannot contain (a single blocking native primitive, which never returns to eval_expr at all). A fixture that spun inside one primitive would prove the opposite of what this one proves."
+
+fn spin(n: Int) -> Int {
+  if n <= 0 {
+    0
+  } else {
+    spin(n: n + 1)
+  }
+}
+
+type ServeWireResponse {
+  status: Int
+  content_type_label: String
+  body: String
+}
+
+fn serve_budget_fixture_handle(
+  method: String,
+  path: String,
+  body: String,
+  release_revision: String,
+) -> ServeWireResponse {
+  if path == "/spin" {
+    ServeWireResponse {
+      status: 200,
+      content_type_label: "text/plain; charset=utf-8",
+      body: concat("unreachable: ", to_string(spin(n: 1))),
+    }
+  } else {
+    ServeWireResponse {
+      status: 200,
+      content_type_label: "text/plain; charset=utf-8",
+      body: "healthy",
+    }
+  }
+}
