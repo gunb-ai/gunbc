@@ -6,7 +6,8 @@ import extdeps.sudo.nopasswd_execute_probe {
   NopasswdExecuteCheck,
   NopasswdGrantListCheck,
 }
-import std.types { NonEmptyStr, List, String, Bool }
+import std.types { NonEmptyStr, List, String, Bool, Int }
+import product.placement_supply { HostIdentity }
 import std.disposition { Disposition, Terminal, Scaffold, ConstructionMechanism }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.effects { ExecuteEffect }
@@ -63,11 +64,17 @@ data srv1_ci_deploy_runner_principal: DeployRunnerPrincipal = DeployRunnerPrinci
   job_user: "ghrunner",
 }
 
+// ONE semantic principal population. The two new arms are PRINCIPAL IDENTITIES, not accounts:
+// they carry policy and no operating-system label, because fleet-automation@gunbc is an SSH key
+// comment and never was a username. What a principal IS lives here; what it is CALLED on a given
+// host is an allocation, and the two are joined only by an executed observation.
 type FleetPosixAccountKey
   = FleetAccountRoot
   | FleetAccountOperator
   | FleetAccountCiRunner
   | FleetAccountSrv3Host
+  | FleetAccountAutomation
+  | FleetAccountInferenceService
 
 data fleet_posix_root_user: PosixUser = PosixUser {
   name: "root",
@@ -161,6 +168,341 @@ fn fleet_posix_srv3_host_sudo_grants() -> List<PosixSudoGrant> {
   []
 }
 
+
+// ---------------------------------------------------------------------------------------------
+// NAME REQUIREMENTS -- what a name must BE, kept separate from what it must SPELL.
+//
+// The hostname authority already separates HostIdentity from an allocated DnsLabel, and an
+// unallocated host cannot recover a label by parsing its identity. This is that decomposition at
+// account grain. It exists because the opposite was tried in this very module and reverted: static
+// usernames gunbc / gunbc-inference put the role back into the string, and once a role is legible
+// in a label, consumers start reading the label as authority.
+//
+// NOT one universal name type. DNS labels, POSIX login names, unit names and secret resource names
+// have different grammars, different collision domains and different external authorities. What is
+// shared is the REQUIREMENTS vocabulary; the lexical authority stays with the target namespace.
+data name_requirements_authority_note: String = "Meaning lives in typed identity; human friendliness, protocol legality, stability and collision behaviour live in explicit requirements; the resulting string is an allocated handle -- stable where required, arbitrary where meaning would be dangerous, and never parsed back into authority. Modeled after the reverted static-username commit demonstrated the alternative: a readable role in the label is indistinguishable, to every downstream consumer, from identity."
+
+type NameAudience = MachineOnly | HumanObservable | HumanEntered
+
+type NameReadability = Opaque | CompactReadable | Pronounceable | HumanMeaningful
+
+type NameSemanticEncoding
+  = NoDomainMeaning
+  | MnemonicOnly
+  | MeaningRequired { authority: DeclarationRef }
+
+type NameAuthorityRole = PresentationOnly | OperationalHandle | ExternalIdentityAuthority
+
+type NameStability
+  = PerAttempt
+  | StableForOccurrence
+  | StableAcrossReplacement
+  | StableUntilExplicitRetirement
+
+// CONSISTENCY IS FOUR REQUIREMENTS, NOT ONE, and fusing them is how the reverted commit asserted
+// cross-host equality ("an account whose uid differs per host is not one identity") when what it
+// actually needed was per-occurrence STABILITY. Reproducibility = same subject/scheme/attempt gives
+// the same candidate. Persistence = an allocated name survives reapply. Uniformity = whether two
+// occurrences must share a spelling. Uniqueness = whether one namespace admits a collision. Only
+// uniformity is modeled here as a choice; the others are laws stated on the allocation.
+type NameUniformity
+  = IndependentPerOccurrence
+  | EqualWithinScope { scope: NonEmptyStr }
+
+type NameAllocationMethod
+  = ExplicitAllocation
+  | VersionedProjection { scheme: NonEmptyStr }
+  | UpstreamObserved
+
+type NameRetirement = ReusableAfterRetirement | Tombstoned
+
+type NameRequirements {
+  audience: NameAudience
+  readability: NameReadability
+  semantic_encoding: NameSemanticEncoding
+  authority_role: NameAuthorityRole
+  stability: NameStability
+  uniformity: NameUniformity
+  allocation: NameAllocationMethod
+  retirement: NameRetirement
+}
+
+// ---------------------------------------------------------------------------------------------
+// PRINCIPAL INTENT -- total over every semantic principal, and carrying NO name and NO uid.
+// ---------------------------------------------------------------------------------------------
+
+// HumanAccessOnly is a STRUCTURAL policy, not a comment. FleetAccountOperator was broad enough that
+// automation already bound to it -- host_identity_access and ci_deploy_access both resolve it today
+// -- so the fusion is live rather than hypothetical. Rather than rename the arm (20 call sites, a
+// separate migration), the constraint is carried where a consumer can read it.
+type FleetLoginPolicy
+  = HumanAccessOnly
+  | KeyOnlyAutomation
+  | NoLoginServiceIdentity
+  | LegacyHostAccount
+
+type FleetPrincipalIntent {
+  principal: FleetPosixAccountKey
+  login_policy: FleetLoginPolicy
+  name_requirements: NameRequirements
+  sudo_grants: List<PosixSudoGrant>
+}
+
+data automation_name_requirements: NameRequirements = NameRequirements {
+  audience: HumanObservable,
+  readability: Pronounceable,
+  semantic_encoding: NoDomainMeaning,
+  authority_role: OperationalHandle,
+  stability: StableForOccurrence,
+  uniformity: IndependentPerOccurrence,
+  allocation: ExplicitAllocation,
+  retirement: Tombstoned,
+}
+
+data service_name_requirements: NameRequirements = NameRequirements {
+  audience: MachineOnly,
+  readability: Opaque,
+  semantic_encoding: NoDomainMeaning,
+  authority_role: OperationalHandle,
+  stability: StableForOccurrence,
+  uniformity: IndependentPerOccurrence,
+  allocation: ExplicitAllocation,
+  retirement: Tombstoned,
+}
+
+// The human exception, stated as requirements rather than as an apology: a person must be able to
+// know and type this name, so readability and cross-scope uniformity are genuine requirements here
+// and nowhere else.
+data human_access_name_requirements: NameRequirements = NameRequirements {
+  audience: HumanEntered,
+  readability: HumanMeaningful,
+  semantic_encoding: MnemonicOnly,
+  authority_role: OperationalHandle,
+  stability: StableUntilExplicitRetirement,
+  uniformity: EqualWithinScope { scope: "fleet-human-access" as NonEmptyStr },
+  allocation: ExplicitAllocation,
+  retirement: Tombstoned,
+}
+
+data legacy_name_requirements: NameRequirements = NameRequirements {
+  audience: HumanObservable,
+  readability: HumanMeaningful,
+  semantic_encoding: MnemonicOnly,
+  authority_role: OperationalHandle,
+  stability: StableUntilExplicitRetirement,
+  uniformity: IndependentPerOccurrence,
+  allocation: UpstreamObserved,
+  retirement: Tombstoned,
+}
+
+fn fleet_principal_intent(key: FleetPosixAccountKey) -> FleetPrincipalIntent {
+  match key {
+    FleetAccountRoot =>
+      FleetPrincipalIntent {
+        principal: key,
+        login_policy: LegacyHostAccount,
+        name_requirements: legacy_name_requirements,
+        sudo_grants: fleet_posix_root_sudo_grants(),
+      }
+    FleetAccountOperator =>
+      FleetPrincipalIntent {
+        principal: key,
+        login_policy: HumanAccessOnly,
+        name_requirements: human_access_name_requirements,
+        sudo_grants: fleet_posix_operator_sudo_grants(),
+      }
+    FleetAccountCiRunner =>
+      FleetPrincipalIntent {
+        principal: key,
+        login_policy: LegacyHostAccount,
+        name_requirements: legacy_name_requirements,
+        sudo_grants: fleet_posix_ci_runner_sudo_grants(),
+      }
+    FleetAccountSrv3Host =>
+      FleetPrincipalIntent {
+        principal: key,
+        login_policy: LegacyHostAccount,
+        name_requirements: legacy_name_requirements,
+        sudo_grants: fleet_posix_srv3_host_sudo_grants(),
+      }
+    FleetAccountAutomation =>
+      FleetPrincipalIntent {
+        principal: key,
+        login_policy: KeyOnlyAutomation,
+        name_requirements: automation_name_requirements,
+        sudo_grants: fleet_posix_automation_sudo_grants(),
+      }
+    FleetAccountInferenceService =>
+      FleetPrincipalIntent {
+        principal: key,
+        login_policy: NoLoginServiceIdentity,
+        name_requirements: service_name_requirements,
+        sudo_grants: fleet_posix_inference_service_sudo_grants(),
+      }
+  }
+}
+
+// ONE closed privileged operation, consuming the EXISTING helper-path authority in this module
+// rather than declaring a second one with the same literal (the reverted commit did exactly that).
+// The probe is grant-list rather than execute-check because the helper is not installed yet, and
+// this module's own materialization note reserves grant-list for precisely that case: an absent
+// binary and an absent grant are different states with different remedies.
+fn fleet_posix_automation_sudo_grants() -> List<PosixSudoGrant> {
+  [
+    PosixSudoGrant {
+      command_path: gunbc_deploy_privileged_helper_path,
+      probe: NopasswdGrantListCheck,
+    },
+  ]
+}
+
+// EMPTY BY CONSTRUCTION. The served process runs a model and answers requests; it never needs to
+// change the host it runs on, under either a persistent or a supervisor-managed identity.
+fn fleet_posix_inference_service_sudo_grants() -> List<PosixSudoGrant> {
+  []
+}
+
+
+// ---------------------------------------------------------------------------------------------
+// ALLOCATION -- the host-local handle, and the numeric identity, kept apart from both.
+// ---------------------------------------------------------------------------------------------
+
+// A UID is not a username and not a principal. An inode records the NUMBER, so a uid change is an
+// ownership migration rather than a rename, which is why numeric identity is stronger and more
+// operationally load-bearing than the label. It is scoped to an identity DOMAIN: two independent
+// hosts share nothing numerically unless something makes them, so equality across srv5 and srv6 is
+// permitted but never required, and is never evidence of one principal.
+type PosixIdentityDomain
+  = HostLocalIdentityDomain { host: HostIdentity }
+  | SharedNumericOwnershipDomain { identity: NonEmptyStr, members: List<HostIdentity> }
+
+type PosixAccountOccurrence {
+  host: HostIdentity
+  principal: FleetPosixAccountKey
+}
+
+type PosixAccountAllocation {
+  occurrence: PosixAccountOccurrence
+  local_name: NonEmptyStr
+  uid: Int
+  gid: Int
+  domain: PosixIdentityDomain
+  name_scheme: NonEmptyStr
+  name_attempt: Int
+}
+
+type PosixAccountAllocationConflict
+  = LocalNameOccupied { name: NonEmptyStr }
+  | NumericIdentityOccupied { uid: Int }
+  | AllocationContradictsObservation
+
+// Three states, not an Optional. "Never allocated", "allocated" and "allocation refused because
+// something already holds the name or number" have different remedies, and a two-valued answer
+// would force the apply to guess which one it was looking at.
+type PosixAccountAllocationStanding
+  = AccountUnallocated
+  | AccountAllocated { allocation: PosixAccountAllocation }
+  | AccountAllocationConflict { causes: List<PosixAccountAllocationConflict> }
+
+// ---------------------------------------------------------------------------------------------
+// GROUNDING -- six states, because Optional collapses six remedies into one absence.
+// ---------------------------------------------------------------------------------------------
+
+data grounding_outcome_note: String = "Absent cannot carry a remedy. Intent-absent, allocated-but-unapplied, applied-but-unobserved, observation-contradicts-allocation, drifted and grounded are six different situations with six different next actions, and an Optional answer makes them one. Only PrincipalGrounded may enter live SSH or deployment access -- that is the construction wall replacing the reverted commit's attempt to present a desired account as a grounded one."
+
+type PosixAccountConflict
+  = ObservedNameDiffersFromAllocation { observed: NonEmptyStr, allocated: NonEmptyStr }
+  | ObservedUidDiffersFromAllocation { observed: Int, allocated: Int }
+
+type PosixAccountObservation {
+  allocation: PosixAccountAllocation
+  observed_user: PosixUser
+}
+
+type GroundedPosixPrincipalOutcome
+  = PrincipalGrounded { principal: GroundedPosixPrincipal }
+  | PrincipalUnallocated
+  | PrincipalUnobserved
+  | PrincipalDrifted { causes: List<PosixAccountConflict> }
+
+// The join. An observation whose account does not match what was allocated is DRIFT, reported with
+// both sides, never silently accepted and never rounded to "absent".
+fn ground_posix_principal(
+  intent: FleetPrincipalIntent,
+  standing: PosixAccountAllocationStanding,
+  observation: PosixAccountObservation?,
+) -> GroundedPosixPrincipalOutcome {
+  match standing {
+    AccountUnallocated => PrincipalUnallocated
+    AccountAllocationConflict { causes: _ } => PrincipalUnallocated
+    AccountAllocated { allocation: a } =>
+      match observation {
+        Absent => PrincipalUnobserved
+        Present { value: o } =>
+          if o.observed_user.name != a.local_name {
+            PrincipalDrifted {
+              causes: [ObservedNameDiffersFromAllocation { observed: o.observed_user.name, allocated: a.local_name }],
+            }
+          } else {
+            if o.observed_user.uid != a.uid {
+              PrincipalDrifted {
+                causes: [ObservedUidDiffersFromAllocation { observed: o.observed_user.uid, allocated: a.uid }],
+              }
+            } else {
+              PrincipalGrounded {
+                principal: GroundedPosixPrincipal {
+                  posix: o.observed_user,
+                  sudo_grants: intent.sudo_grants,
+                  declared_probe: PosixAccountDeclaredProbe {
+                    probed_at: "observed",
+                    probe_command: concat("id ", o.observed_user.name as String) as NonEmptyStr,
+                    host: a.occurrence.host as NonEmptyStr,
+                  },
+                },
+              }
+            }
+          }
+      }
+  }
+}
+
+// THE SPARKS TODAY: both automation occurrences are UNALLOCATED. No name has been chosen, no uid
+// reserved, and nothing has been applied -- so nothing here can render useradd, User=, a home path,
+// sudoers or authorized_keys, which is the point. This is the honest starting standing, not a
+// placeholder waiting to be filled with a static name.
+fn spark_automation_allocation_standing(host: HostIdentity) -> PosixAccountAllocationStanding {
+  AccountUnallocated
+}
+
+fn spark_inference_allocation_standing(host: HostIdentity) -> PosixAccountAllocationStanding {
+  AccountUnallocated
+}
+
+
+// THE LEGACY ACCESSOR'S REFUSAL ARM. fleet_posix_principal predates the intent/allocation split and
+// its four legacy keys still resolve to rows that were observed on srv1/srv3. The two new
+// principals have no allocated account anywhere, so there is no honest GroundedPosixPrincipal to
+// return -- and fabricating one is exactly what the reverted commit did.
+//
+// This arm is deliberately UNREACHABLE-BY-CONTRACT rather than convenient: it returns a principal
+// whose name is empty and whose grant list is empty, so any caller that ignores the split and uses
+// it to render an effect produces a visibly broken account name rather than a plausible one. The
+// real answer for these principals is ground_posix_principal, which reports PrincipalUnallocated.
+// Dissolve-on: the legacy four migrate to allocation+observation rows and this accessor is deleted
+// in favour of ground_posix_principal, at which point the arm has nothing to guard.
+fn fleet_posix_unallocated_principal_refusal(key: FleetPosixAccountKey) -> GroundedPosixPrincipal {
+  GroundedPosixPrincipal {
+    posix: PosixUser { name: "UNALLOCATED-PRINCIPAL" as NonEmptyStr, uid: -1, gid: -1 },
+    sudo_grants: [],
+    declared_probe: PosixAccountDeclaredProbe {
+      probed_at: "never",
+      probe_command: "id UNALLOCATED-PRINCIPAL" as NonEmptyStr,
+      host: "none" as NonEmptyStr,
+    },
+  }
+}
+
 fn fleet_posix_principal(key: FleetPosixAccountKey) -> GroundedPosixPrincipal {
   match key {
     FleetAccountRoot =>
@@ -187,6 +529,8 @@ fn fleet_posix_principal(key: FleetPosixAccountKey) -> GroundedPosixPrincipal {
         sudo_grants: fleet_posix_srv3_host_sudo_grants(),
         declared_probe: fleet_posix_srv3_host_declared_probe,
       }
+    FleetAccountAutomation => fleet_posix_unallocated_principal_refusal(key: key)
+    FleetAccountInferenceService => fleet_posix_unallocated_principal_refusal(key: key)
   }
 }
 
