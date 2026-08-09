@@ -3,6 +3,7 @@ module gunbc.devboot.serve
 import std.types { String, Bool, List }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io
+import extdeps.gunbc
 
 import gunbc.devboot.transport {
   devboot_witness_run,
