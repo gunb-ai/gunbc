@@ -14,6 +14,7 @@ import std.occurrence_binding_candidates {
   DeclarationExposureRow,
   AuthoredOrderRow,
   OccurrenceBindingCandidateInputs,
+  DeclarationExposureGrounding,
   ModuleLocalMemberExposure,
   declaration_exposure_from_containment,
 }
@@ -70,9 +71,16 @@ fn authored_order_row_from_entry(entry: OccurrenceIndexEntry) -> AuthoredOrderRo
 
 data occurrence_binding_inputs_accumulator_note: String = "Input projection accumulates by prepend during fold and reverses once at the end — never concat(acc, [row]) (§6 bare-minimum cost / blocker 6)."
 
+data occurrence_binding_inputs_grounding_note: String = "THE GROUNDING IS A PARAMETER BECAUSE IT IS A FACT ABOUT THE FILE'S ROLE IN THE CLOSURE, NOT ABOUT THE PARSE. It was hardwired to ModuleLocalMemberExposure, which derives ModuleExposure for module-root declarations — visible only to references in the SAME module. That is right for a consumer's own declarations and wrong for a PROVIDER in a cross-file closure, whose exported declarations must derive RootExposure. With it hardwired, an import-less consumer could never bind to a declaration in another file: the candidate population was empty by construction, and the failure looked like an ordinary Unbound rather than a missing exposure grounding.
+
+Found by execution, not by reading: the checkpoint-1 bridge witness resolved a real LiveTreeDisposition reference against the real v2.std.live_tree module and got Unbound while its provider-withheld control behaved correctly, which is the signature of the provider being present but unexposed.
+
+DeclarationExposure's own authority requires the grounding be chosen AT DERIVATION, never as a post-hoc upgrade of an already-derived row, which is exactly why this is a parameter here rather than a rewrite of the rows afterwards. Callers binding within one file pass ModuleLocalMemberExposure; callers assembling a cross-file closure pass CrossFileProviderExportedExposure for provider files."
+
 fn occurrence_binding_inputs_from_transport(
   module_path: NonEmptyStr,
-  transport: OccurrenceTransport
+  transport: OccurrenceTransport,
+  grounding: DeclarationExposureGrounding
 ) -> OccurrenceBindingCandidateInputs {
   OccurrenceBindingCandidateInputs {
     module_paths: reverse(fold(
@@ -96,7 +104,7 @@ fn occurrence_binding_inputs_from_transport(
             exposure: declaration_exposure_from_containment(
               module_path: module_path,
               containment: declaration.containment,
-              grounding: ModuleLocalMemberExposure,
+              grounding: grounding,
             ),
           },
         ], acc),
