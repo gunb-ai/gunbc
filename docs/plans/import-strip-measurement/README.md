@@ -32,10 +32,12 @@ substrate's own resolution is removed.
   without checking.
 - Measured base commit and corpus hash: [`receipts/subject-tree-hash.txt`](receipts/subject-tree-hash.txt).
 
-## Regenerate everything
+## How the measurement was produced
 
-From a clean checkout of the measured base, with `$G` the `gunbc` binary and
-`$W` a scratch directory:
+**Not a runnable recipe from this repository** — the two Python steps below name
+a harness that is deliberately not tracked (see the section after this one). This
+records what was executed, so it can be rebuilt; it is not a script you can run
+from a fresh clone. `$G` is the `gunbc` binary and `$W` a scratch directory.
 
 ```sh
 # 0. two copies of the subject tree: one control, one to strip
@@ -75,24 +77,29 @@ Both compiles exit **1**, control included, because the control's 10
 pre-existing annotation-grain diagnostics are themselves hard. Exit status does
 not discriminate between the two trees; only the count and the per-name join do.
 
-## The reproducer claim is itself verified
+## The harness is NOT in the repository — claim withdrawn
 
-"Regenerable" was asserted here once while the two scripts were absent from the
-tree — `.gitignore`'s repo-wide `*.py` rule dropped them silently (review 50719
-caught it). Both now carry negation entries beside the existing exemptions, and
-the claim is checked the way the rest of this lane's claims are — by execution
-against tracked content only:
+An earlier revision of this file said the measurement regenerates byte-identically
+from a clean checkout, and shipped the two Python scripts to make that true.
+**Operator ruling: those scripts do not belong in the repository, and they have
+been deleted** (along with their `.gitignore` allowlist rows, removed at the
+`gunbc.gitignore_authority` single authority rather than by hand-editing the
+generated file).
 
-```sh
-git archive HEAD | tar -x -C $W/src          # ONLY what a fresh clone gets
-python3 $W/src/docs/plans/import-strip-measurement/strip_imports.py …
-python3 $W/src/docs/plans/import-strip-measurement/classify_residual.py …
-```
+So the claim is withdrawn rather than quietly left standing: **the receipts below
+cannot be regenerated from a clean checkout of this repository.** The recipe
+above describes what was run and the corpus-hash anchor still lets you check
+whether the receipts describe your tree, but a fresh clone does not contain the
+harness that produced them. Anyone re-running this must rebuild it from the
+recipe.
 
-Result: the manifest and `import-strip-residual-ledger.tsv` are reproduced
-**byte-identically**, and the classifier prints the reconciliation
-(`3,160 = 10 + 3,150`, ledger rows 3,150, OK). A reproducer that cannot be run
-from a clean checkout is a receipt with a story attached, not a reproducer.
+This is a real reduction in the evidence's strength and is recorded as one. It is
+the right trade: the scripts were a throwaway measurement harness reading `.dag`
+as text — exactly the second representation the substrate exists to replace — and
+their dissolution trigger (B2 landing `OrdinaryLoadedCompilationClosure`
+production, at which point the residual ledger becomes a projection of the
+loader's own output) has not moved. Deleting them early costs re-runnability and
+buys not carrying a parallel text-scanning classifier in the tree.
 
 ## What in the receipts is NOT byte-reproducible
 

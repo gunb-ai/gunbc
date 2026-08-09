@@ -907,8 +907,8 @@ the tree: a convention must be one declaration per module under a declared modul
 prefix, and an intentional ambiguity must match an exact pinned module set. A
 subject that stops satisfying its property does not keep its disposition — it
 lands in `duplicate_unclassified`, which is loud, counted, and not zero. Six
-controls in `import-strip-measurement/classifier_controls.py` hold this in both
-directions, and the two that matter are the ones the retired rules would have
+controls held this in both directions when the classification was produced (the
+harness is deliberately untracked — see `import-strip-measurement/README.md`), and the two that matter are the ones the retired rules would have
 failed: a planted ten-declaration accidental fork stays hygiene, and an unknown
 duplicate across two fixture modules stays hygiene.
 
