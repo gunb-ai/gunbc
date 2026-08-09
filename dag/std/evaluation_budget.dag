@@ -77,13 +77,6 @@ fn evaluation_budget_verdict(
   }
 }
 
-fn evaluation_budget_exceeded(v: EvaluationBudgetVerdict) -> Bool {
-  match v {
-    EvaluationWithinBudget => false
-    EvaluationBudgetExceeded { entry: _, clock: _, elapsed: _, limit: _ } => true
-  }
-}
-
 data evaluation_budget_nesting_law_note: String = "THE COMPOSITION LAW IS EARLIEST-DEADLINE-WINS, AND IT IS STATED HERE BECAUSE THE SEED CURRENTLY IMPLEMENTS ITS INVERSE. v1_interpreter arm_eval_deadline sets its cell unconditionally with a FRESH baseline, so a nested arm does not shorten an outer bound — it resets the clock and grants the outer evaluation a whole new budget, and clear_eval_deadline then sets None rather than restoring what it displaced, so an inner clear disarms an outer deadline entirely (verified 2026-08-09). An inner scope may therefore only ever tighten: the effective limit is the smaller of what remains on the outer deadline and what the inner scope requests. Modeled as a fold over remaining nanoseconds rather than over declared limits, because two scopes armed at different instants can carry the same declared limit and different remaining time, and it is the remaining time that decides which fires first."
 
 fn effective_nested_limit_nanos(
