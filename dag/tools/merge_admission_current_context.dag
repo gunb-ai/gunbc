@@ -1,5 +1,7 @@
 module tools.merge_admission_current_context
 
+import std.algebra { trim }
+
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.types { NonEmptyStr, GitRef }
 import extdeps.git { git_remote_ref_parts }

@@ -1,5 +1,7 @@
 module gunbc.ci_deploy_target_host
 
+import std.algebra { trim }
+
 import std.types { String, NonEmptyStr, Bool, List }
 import std.access { AccessDecision, Permit, Deny, access_policy_refusal, access_refusal_reason }
 import std.disposition { Disposition, Scaffold, SingleAuthority }

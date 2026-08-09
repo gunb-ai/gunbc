@@ -1,5 +1,7 @@
 module gunbc.host_effect_realize
 
+import std.algebra { trim }
+
 import gunbc.host_effect {
   HostEffect, ShellCommand, RedfishAction, ConvergePlan,
   OsInstallActuatorToolchainEnsure, ProvisionBuildCache,

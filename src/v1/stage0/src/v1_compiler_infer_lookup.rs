@@ -21,8 +21,9 @@ pub use crate::v1_compiler_infer_emit_info::{
 use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
 pub use crate::v1_compiler_infer_env::{
     authored_name, borrowed_generic_param_names, global_bare_policy_candidate, is_recursive_type,
-    lookup_binding_by_name, lookup_binding_by_name_local, lookup_type, lookup_type_for,
-    qualified_all_but_last, qualify_borrowed_type_names, symbol_index_lookup,
+    listed_import_required_bare_call_blocked, lookup_binding_by_name, lookup_binding_by_name_local,
+    lookup_type, lookup_type_for, qualified_all_but_last, qualify_borrowed_type_names,
+    symbol_index_lookup,
 };
 pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_method::infer_builtin_call_type;
@@ -92,17 +93,21 @@ pub fn lookup_func_sig(
     type_env: Rc<TypeEnv>,
     name: String,
 ) -> Rc<FuncSigLookup> {
-    match (*lookup_resolved_sig(func_env.clone(), name.clone())).clone() {
-        FuncSigLookup::FuncSigResolved { sig: sig, .. } => {
-            Rc::new(FuncSigLookup::FuncSigResolved { sig: sig.clone() })
-        }
-        FuncSigLookup::FuncSigAmbiguous {
-            candidates: cands, ..
-        } => Rc::new(FuncSigLookup::FuncSigAmbiguous {
-            candidates: cands.clone(),
-        }),
-        FuncSigLookup::FuncSigUnresolved => {
-            func_sig_from_global_bare(type_env.clone(), name.clone())
+    if listed_import_required_bare_call_blocked(type_env.clone(), name.clone()) {
+        Rc::new(FuncSigLookup::FuncSigUnresolved)
+    } else {
+        match (*lookup_resolved_sig(func_env.clone(), name.clone())).clone() {
+            FuncSigLookup::FuncSigResolved { sig: sig, .. } => {
+                Rc::new(FuncSigLookup::FuncSigResolved { sig: sig.clone() })
+            }
+            FuncSigLookup::FuncSigAmbiguous {
+                candidates: cands, ..
+            } => Rc::new(FuncSigLookup::FuncSigAmbiguous {
+                candidates: cands.clone(),
+            }),
+            FuncSigLookup::FuncSigUnresolved => {
+                func_sig_from_global_bare(type_env.clone(), name.clone())
+            }
         }
     }
 }
@@ -131,31 +136,39 @@ pub fn borrowed_census_decl(type_env: Rc<TypeEnv>, name: String) -> Option<Rc<Bo
             None => None,
         }
     } else {
-        match v1_rt::map_get(
-            &type_env.symbol_index.clone().global_bare.clone(),
-            name.clone(),
-        )
-        .as_deref()
-        .cloned()
-        {
-            Some(GlobalBareLookupState::GlobalBareUniqueBinding {
-                module_path: mp,
-                binding: b,
-                ..
-            }) => Some(Rc::new(BorrowedCensusDecl {
-                owner_module_path: mp.clone(),
-                node: b.resolved.clone(),
-            })),
-            Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
-                candidates: cands, ..
-            }) => match global_bare_policy_candidate(type_env.module_path.clone(), cands.clone()) {
-                Some(cand) => Some(Rc::new(BorrowedCensusDecl {
-                    owner_module_path: cand.module_path.clone(),
-                    node: cand.binding.clone().resolved.clone(),
+        if listed_import_required_bare_call_blocked(type_env.clone(), name.clone()) {
+            None
+        } else {
+            match v1_rt::map_get(
+                &type_env.symbol_index.clone().global_bare.clone(),
+                name.clone(),
+            )
+            .as_deref()
+            .cloned()
+            {
+                Some(GlobalBareLookupState::GlobalBareUniqueBinding {
+                    module_path: mp,
+                    binding: b,
+                    ..
+                }) => Some(Rc::new(BorrowedCensusDecl {
+                    owner_module_path: mp.clone(),
+                    node: b.resolved.clone(),
                 })),
+                Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
+                    candidates: cands,
+                    ..
+                }) => {
+                    match global_bare_policy_candidate(type_env.module_path.clone(), cands.clone())
+                    {
+                        Some(cand) => Some(Rc::new(BorrowedCensusDecl {
+                            owner_module_path: cand.module_path.clone(),
+                            node: cand.binding.clone().resolved.clone(),
+                        })),
+                        None => None,
+                    }
+                }
                 None => None,
-            },
-            None => None,
+            }
         }
     }
 }

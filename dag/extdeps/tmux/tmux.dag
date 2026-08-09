@@ -1,5 +1,7 @@
 module extdeps.tmux
 
+import std.algebra { trim }
+
 import std.types { List, String, NonEmptyStr, Int, Bool, RenderedTerminalText }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
