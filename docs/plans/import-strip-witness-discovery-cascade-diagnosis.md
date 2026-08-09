@@ -959,6 +959,34 @@ fact is its source, and is now
 own author introduced, which is the argument for running it rather than
 predicting it.
 
+**The third defect, and the coverage gap under it (review 50749).** The
+`reference_resolution_facts_live` rename in `v2.lens.module_graph` did more than
+collide: the blunt pass also rewrote the CALL SITE inside
+`dependency_resolution_facts_live`, so `reference_edges:` was sourced from
+`import_resolution_facts_live` — the same producer already feeding
+`import_edges:`. Bare-reference dependency edges were silently dropped from the
+module graph, which feeds affected-set selection, import closure and
+compile-clean scope. Two prose rows were rewritten to claim two import sources
+as well.
+
+It is repaired (`reference_edges:` now calls
+`reference_derived_import_resolution_facts_live`, and both prose rows differ from
+main by exactly the rename), but the interesting part is why nothing caught it.
+**Both helpers have the identical signature** `(List<String>, List<String>,
+List<String>) -> List<ImportResolutionFact>`, so substituting one for the other
+is type-correct; the whole-tree compile stayed green at baseline through the
+regression. And searching the corpus finds **no witness referencing
+`dependency_resolution_facts_live` or `union_import_resolution_fact_lists` at
+all** — the two-source union has no discriminating control anywhere, so a wrong
+producer at that seam is invisible to the executing corpus. External review
+caught what no check does.
+
+That gap is recorded here rather than closed: a real control needs a fixture
+where a module is reachable by bare reference but NOT by import, so the two arms
+provably disagree — which is the same fixture shape the ordinary-loader vertical
+needs, and belongs with it rather than bolted onto a naming PR. Filed as an
+obligation, not a plan.
+
 ### 15.7 What the residual is now, and what it is not
 
 Re-measured on the head carrying the repair, with the reconciliation checked by
