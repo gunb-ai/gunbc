@@ -62,7 +62,7 @@ import gunbc.ci_layer_roots { witness_layer_roots }
 import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import std.types { NonEmptyStr }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
 
 type FalsifierStepTimeoutBasis {
   single_step_cap_minutes: Int
@@ -229,7 +229,7 @@ data falsifier_aggregate_verdict_shell_emit_scaffold: Disposition = Scaffold {
   }
 }
 
-data falsifier_aggregate_verdict_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: falsifier_aggregate_verdict_script — concat-built foreign-executor (GitHub Actions run:) aggregate cadence verdict shell; receipt JSON literals are derived from gunbc.falsifier_cold_corpus_execution classify_cold_corpus_execution / cold_corpus_execution_receipt_json, but the transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the aggregate verdict step through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold"
+data falsifier_aggregate_verdict_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: falsifier_aggregate_verdict_script — concat-built foreign-executor (GitHub Actions run:) aggregate cadence verdict shell; receipt JSON literals are derived from gunbc.falsifier_cold_corpus_execution classify_cold_corpus_execution / cold_corpus_execution_receipt_json, but the transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the aggregate verdict step through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold")
 
 fn falsifier_aggregate_verdict_write_receipt(json: String) -> String {
   concat(
@@ -240,7 +240,7 @@ fn falsifier_aggregate_verdict_write_receipt(json: String) -> String {
 
 fn falsifier_aggregate_verdict_script() -> String {
   concat(
-    concat("# ", concat(falsifier_aggregate_verdict_shell_emit_dissolution_trigger, "\n")),
+    concat("# ", concat(dissolution_description(condition: falsifier_aggregate_verdict_shell_emit_dissolution_trigger), "\n")),
     concat(
       "set -euo pipefail\n",
       concat(

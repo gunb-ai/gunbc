@@ -1,5 +1,7 @@
 module gunbc.command_runner
 
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
+
 import std.types { List, String, NonEmptyStr }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
@@ -24,7 +26,7 @@ data command_runner_scaffold: Disposition = Scaffold {
   }
 }
 
-data command_runner_dissolution_trigger: String = "🟡 dissolve-on: run_shell_command — generic ArgvCommand runner routes the typed extdeps.exec.command shape through shell.Exec.Run via the shell_bash_runner heredoc transport; DISSOLVES WHEN host_effect_apply binds ArgvCommand execution as a typed transport handler and dag/gunbc/command_runner.dag retires its shell_exec_via_bash glue"
+data command_runner_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: run_shell_command — generic ArgvCommand runner routes the typed extdeps.exec.command shape through shell.Exec.Run via the shell_bash_runner heredoc transport; DISSOLVES WHEN host_effect_apply binds ArgvCommand execution as a typed transport handler and dag/gunbc/command_runner.dag retires its shell_exec_via_bash glue")
 
 func run_shell_command(command: ArgvCommand, transport: CommandTransport) -> ProcessExit
   uses net: Network

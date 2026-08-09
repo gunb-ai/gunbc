@@ -1,5 +1,7 @@
 module v2.workflow.ci_regen_rustfmt_path_emit
 
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
+
 import v2.workflow.orchestration_bash_emit_support {
   orch_bash_comment_line,
   orch_bash_do,
@@ -35,7 +37,7 @@ data ci_regen_rustfmt_path_emit_authority_note: String = "Foreign-executor shell
 
 data ci_regen_rustfmt_path_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ regen rustfmt-PATH run-step emission was rejected by v2.compiler.emit_orchestration; this marker is not valid workflow shell, so the committed ci.yml drift gate goes red rather than a hand-spelled fallback masking the refusal (DESIGN 5: refuse, never widen)\n"
 
-data ci_regen_ensure_rustfmt_path_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_regen_ensure_rustfmt_path_script — foreign-executor PATH ensure for regen_stage0 on hosts with a cargo shim and no CARGO_HOME/bin (receipt CI #7290 srv3-03); control flow is If/Predicate/Exit/Let via orch bash-emit; leaf test -x / command -v / export PATH / dirname strings remain until FileExists + session-EnvExport (PR2b) or the regen job shares isolate+pin by construction; DISSOLVES WHEN rustfmt resolution is a typed toolchain probe on host_effect_apply rather than emitted bash (#5828 / ROADMAP 6-shell-slice0)"
+data ci_regen_ensure_rustfmt_path_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_regen_ensure_rustfmt_path_script — foreign-executor PATH ensure for regen_stage0 on hosts with a cargo shim and no CARGO_HOME/bin (receipt CI #7290 srv3-03); control flow is If/Predicate/Exit/Let via orch bash-emit; leaf test -x / command -v / export PATH / dirname strings remain until FileExists + session-EnvExport (PR2b) or the regen job shares isolate+pin by construction; DISSOLVES WHEN rustfmt resolution is a typed toolchain probe on host_effect_apply rather than emitted bash (#5828 / ROADMAP 6-shell-slice0)")
 
 data ci_regen_ensure_rustfmt_path_note: String = "Prepend a locatable rustfmt dir onto PATH before regen_stage0's standalone rustfmt spawn (hosts that expose a cargo shim without CARGO_HOME/bin — receipt CI #7290 srv3-03). Probe order: CARGO_HOME/bin, /opt/cargo/bin, HOME/.cargo/bin, rustup which; refuse if still absent."
 
@@ -248,7 +250,7 @@ fn ci_regen_rustfmt_require_step() -> PipelineStep {
 fn ci_regen_ensure_rustfmt_path_intent() -> Pipeline {
   Pipeline {
     steps: [
-      orch_bash_comment_line(text: ci_regen_ensure_rustfmt_path_shell_emit_dissolution_trigger),
+      orch_bash_comment_line(text: dissolution_description(condition: ci_regen_ensure_rustfmt_path_shell_emit_dissolution_trigger)),
       orch_bash_comment_line(text: ci_regen_ensure_rustfmt_path_note),
       ci_regen_rustfmt_probe_cargo_home_step(),
       ci_regen_rustfmt_probe_opt_cargo_step(),

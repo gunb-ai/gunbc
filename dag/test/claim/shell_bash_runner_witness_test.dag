@@ -1,12 +1,14 @@
 module test.claim.shell_bash_runner
 
+import std.dissolution { dissolution_description }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn shell_bash_runner_carries_dissolution_trigger() -> Bool {
-  string_contains(s: shell_bash_runner_dissolution_trigger, pattern: "dissolve-on:")
-    && string_contains(s: shell_bash_runner_dissolution_trigger, pattern: "bash_fold")
-    && string_contains(s: shell_bash_runner_dissolution_trigger, pattern: "shell_exec_via_bash")
+  string_contains(s: dissolution_description(condition: shell_bash_runner_dissolution_trigger), pattern: "dissolve-on:")
+    && string_contains(s: dissolution_description(condition: shell_bash_runner_dissolution_trigger), pattern: "bash_fold")
+    && string_contains(s: dissolution_description(condition: shell_bash_runner_dissolution_trigger), pattern: "shell_exec_via_bash")
 }
 
 test fn shell_exec_via_bash_wraps_body_in_heredoc() -> Bool {

@@ -1,5 +1,7 @@
 module gunbc.ci_spec
 
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
+
 import std.realization_schedule { RunnableBatchClamp }
 import std.decl_ref { decl_ref }
 import std.measure { second, millisecond, Minute, minute, minute_count }
@@ -351,7 +353,7 @@ data ci_release_bins_pack_shell_emit_scaffold: Disposition = Scaffold {
   }
 }
 
-data ci_release_bins_pack_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_release_bins_pack_script — concat-built foreign-executor (GitHub Actions run:) release-bins tar pack runner; membership of archived bin names is derived from gunbc.ci_release_bins, but the pack transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the pack runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold"
+data ci_release_bins_pack_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_release_bins_pack_script — concat-built foreign-executor (GitHub Actions run:) release-bins tar pack runner; membership of archived bin names is derived from gunbc.ci_release_bins, but the pack transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the pack runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold")
 
 fn ci_release_bins_pack_script() -> String {
   let names = fold(
@@ -360,7 +362,7 @@ fn ci_release_bins_pack_script() -> String {
     f: (acc, name) => concat(acc, concat(" ", concat("\"", concat(name, "\""))))
   )
   concat(
-    concat("# ", concat(ci_release_bins_pack_shell_emit_dissolution_trigger, "\n")),
+    concat("# ", concat(dissolution_description(condition: ci_release_bins_pack_shell_emit_dissolution_trigger), "\n")),
     concat(
       concat("ROOT=", ci_repo_root_shell(), "\n"),
       concat(
@@ -380,11 +382,11 @@ data ci_release_bins_unpack_verify_shell_emit_scaffold: Disposition = Scaffold {
   }
 }
 
-data ci_release_bins_unpack_verify_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold"
+data ci_release_bins_unpack_verify_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold")
 
 fn ci_release_bins_unpack_verify_script() -> String {
   concat(
-    concat("# ", concat(ci_release_bins_unpack_verify_shell_emit_dissolution_trigger, "\n")),
+    concat("# ", concat(dissolution_description(condition: ci_release_bins_unpack_verify_shell_emit_dissolution_trigger), "\n")),
     concat(
       concat("ROOT=", ci_repo_root_shell(), "\n"),
       concat(
@@ -549,11 +551,11 @@ data ci_heal_repo_local_git_config_shell_emit_scaffold: Disposition = Scaffold {
   }
 }
 
-data ci_heal_repo_local_git_config_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: gunbc_ci_heal_repo_local_git_config_invoke — foreign-executor (GitHub Actions run:) shell transport invoking gunbc run on dag/gunbc/repo_local_git_config converge; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the heal step to orchestration emit over the typed gunbc.WitnessBin.Run route without a medium-as-string concat scaffold"
+data ci_heal_repo_local_git_config_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_heal_repo_local_git_config_invoke — foreign-executor (GitHub Actions run:) shell transport invoking gunbc run on dag/gunbc/repo_local_git_config converge; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the heal step to orchestration emit over the typed gunbc.WitnessBin.Run route without a medium-as-string concat scaffold")
 
 fn gunbc_ci_heal_repo_local_git_config_invoke() -> String {
   concat(
-    concat("# ", concat(ci_heal_repo_local_git_config_shell_emit_dissolution_trigger, "\n")),
+    concat("# ", concat(dissolution_description(condition: ci_heal_repo_local_git_config_shell_emit_dissolution_trigger), "\n")),
     concat(
       concat("ROOT=", ci_repo_root_shell(), "\n"),
       gunbc_run_shell(
@@ -618,7 +620,7 @@ data ci_heal_commit_push_shell_emit_scaffold: Disposition = Scaffold {
   }
 }
 
-data ci_heal_commit_push_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: gunbc_ci_heal_commit_push_script — the entire foreign-executor heal commit RunStep, including git config/add/commit/push, workflow author-commit drift detection (git diff over author_commit_required_committed_artifact_paths), repair-artifact packaging (mkdir/cp into heal-author-commit-required/), and HealAuthorCommitRequired diagnostic emission. All of this is today concat-built bash under the single Scaffold disposition beside ci_heal_commit_push_shell_emit_scaffold (ci_heal_git_add_lines was already the prior git-staging half; #7659 extends the same surface for AuthorCommitRequired, not a second unmarked shell). The former merge-admission emitter peer stays deleted: its runtime-present work executes as typed git/filesystem operations inside WalkPlan success stages. DISSOLVES WHEN the shell→intent lane models the full heal repair disposition on host_effect_apply — git transport, filesystem packaging, typed diagnostic — via orchestration bash-emit or typed Do-effects (host-effect-orchestration, ROADMAP shell→intent Phase 2), at which point this RunStep is a realization handler, not emitted bash. The regen half (main_wet) is already modeled separately."
+data ci_heal_commit_push_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_heal_commit_push_script — the entire foreign-executor heal commit RunStep, including git config/add/commit/push, workflow author-commit drift detection (git diff over author_commit_required_committed_artifact_paths), repair-artifact packaging (mkdir/cp into heal-author-commit-required/), and HealAuthorCommitRequired diagnostic emission. All of this is today concat-built bash under the single Scaffold disposition beside ci_heal_commit_push_shell_emit_scaffold (ci_heal_git_add_lines was already the prior git-staging half; #7659 extends the same surface for AuthorCommitRequired, not a second unmarked shell). The former merge-admission emitter peer stays deleted: its runtime-present work executes as typed git/filesystem operations inside WalkPlan success stages. DISSOLVES WHEN the shell→intent lane models the full heal repair disposition on host_effect_apply — git transport, filesystem packaging, typed diagnostic — via orchestration bash-emit or typed Do-effects (host-effect-orchestration, ROADMAP shell→intent Phase 2), at which point this RunStep is a realization handler, not emitted bash. The regen half (main_wet) is already modeled separately.")
 
 fn ci_heal_git_add_lines() -> List<String> {
   map(auto_push_eligible_committed_artifact_paths(), p =>

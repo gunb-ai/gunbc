@@ -1,5 +1,7 @@
 module test.claim.type_ref_hit_ne_bind_measure_witness
 
+import std.dissolution { dissolution_description }
+
 import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensus,
   CensusObserved,
@@ -81,7 +83,7 @@ test fn measure_predicate_two_arms_only() -> Bool {
 }
 
 test fn dissolve_trigger_names_n2_canonical_fold() -> Bool {
-  string_contains(s: type_ref_hit_ne_bind_measure_dissolve_trigger, pattern: "occurrence_binding_from_candidates")
-    && string_contains(s: type_ref_hit_ne_bind_measure_dissolve_trigger, pattern: "OccurrenceBindingResult")
-    && string_contains(s: type_ref_hit_ne_bind_measure_dissolve_trigger, pattern: "containment-binding-cross-module-type-references-design.md")
+  string_contains(s: dissolution_description(condition: type_ref_hit_ne_bind_measure_dissolve_trigger), pattern: "occurrence_binding_from_candidates")
+    && string_contains(s: dissolution_description(condition: type_ref_hit_ne_bind_measure_dissolve_trigger), pattern: "OccurrenceBindingResult")
+    && string_contains(s: dissolution_description(condition: type_ref_hit_ne_bind_measure_dissolve_trigger), pattern: "containment-binding-cross-module-type-references-design.md")
 }

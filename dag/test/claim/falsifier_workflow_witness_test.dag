@@ -1,5 +1,7 @@
 module test.claim.falsifier_workflow_witness_test
 
+import std.dissolution { dissolution_description }
+
 import std.types { Bool, Int, String }
 import extdeps.cron.schedule_model { render_cron_schedule }
 import gunbc.falsifier_workflow {
@@ -262,7 +264,7 @@ test fn aggregate_verdict_job_waits_for_all_arms() -> Bool {
 }
 
 test fn aggregate_verdict_shell_has_dissolve_on_marker() -> Bool {
-  string_contains(s: expected_falsifier_yml(), pattern: falsifier_aggregate_verdict_shell_emit_dissolution_trigger)
+  string_contains(s: expected_falsifier_yml(), pattern: dissolution_description(condition: falsifier_aggregate_verdict_shell_emit_dissolution_trigger))
 }
 
 test fn aggregate_verdict_shell_receipt_literals_match_model() -> Bool {

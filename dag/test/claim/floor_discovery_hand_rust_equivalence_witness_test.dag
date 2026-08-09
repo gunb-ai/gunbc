@@ -1,5 +1,7 @@
 module test.claim.floor_discovery_hand_rust_equivalence_witness
 
+import std.dissolution { dissolution_description }
+
 import gunbc.floor_discovery_scaffold {
   floor_discovery_hand_rust_scaffold,
   floor_discovery_dissolve_trigger,
@@ -202,8 +204,8 @@ test fn floor_discovery_hand_rust_scaffold_binds_producer_authority() -> Bool {
 }
 
 test fn floor_discovery_dissolve_trigger_names_producer_authority() -> Bool {
-  string_contains(s: floor_discovery_dissolve_trigger, pattern: "floor_discovery_producer")
-    && string_contains(s: floor_discovery_dissolve_trigger, pattern: "dissolve-on")
+  string_contains(s: dissolution_description(condition: floor_discovery_dissolve_trigger), pattern: "floor_discovery_producer")
+    && string_contains(s: dissolution_description(condition: floor_discovery_dissolve_trigger), pattern: "dissolve-on")
 }
 
 test fn floor_discovery_surface_text_scan_scaffold_on_carrier() -> Bool {

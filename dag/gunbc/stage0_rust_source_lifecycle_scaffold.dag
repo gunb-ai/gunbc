@@ -57,7 +57,7 @@ data rust_source_manifest_state_verdict_query_scaffold: Disposition = Scaffold {
   }
 }
 
-data rust_source_manifest_state_verdict_dissolve_trigger: String = "🟡 dissolve-on: rust_source_manifest_state_verdict — interim scaffold evidence fold; DISSOLVES WHEN V1FinishLine ZeroHandMaintainedRust acceptance graph subsumes path-derived ratchets (authority dag/gunbc/v1_deletion_plan.dag, ROADMAP.md:24 / v1-zero-hand-maintained-rust)"
+data rust_source_manifest_state_verdict_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: rust_source_manifest_state_verdict — interim scaffold evidence fold; DISSOLVES WHEN V1FinishLine ZeroHandMaintainedRust acceptance graph subsumes path-derived ratchets (authority dag/gunbc/v1_deletion_plan.dag, ROADMAP.md:24 / v1-zero-hand-maintained-rust)")
 
 fn path_in_list(path: String, paths: List<String>) -> Bool {
   any(xs: paths, predicate: fn(p) { p == path })
@@ -659,7 +659,7 @@ data lifecycle_row_well_formed_query_scaffold: Disposition = Scaffold {
   }
 }
 
-data lifecycle_row_well_formed_query_dissolve_trigger: String = "🟡 dissolve-on: lifecycle_row_well_formed — interim scaffold obligation-shape validator; DISSOLVES WHEN V1FinishLine ZeroHandMaintainedRust acceptance graph subsumes row well-formedness (authority dag/gunbc/v1_deletion_plan.dag)"
+data lifecycle_row_well_formed_query_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: lifecycle_row_well_formed — interim scaffold obligation-shape validator; DISSOLVES WHEN V1FinishLine ZeroHandMaintainedRust acceptance graph subsumes row well-formedness (authority dag/gunbc/v1_deletion_plan.dag)")
 
 fn lifecycle_row_well_formed(row: RustSourceLifecycleRow) -> Bool {
   !(row.path == "")

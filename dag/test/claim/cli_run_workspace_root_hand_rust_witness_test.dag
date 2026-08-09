@@ -1,5 +1,7 @@
 module test.claim.cli_run_workspace_root_hand_rust_witness
 
+import std.dissolution { dissolution_description }
+
 
 test fn workspace_root_hand_rust_scaffold_is_seed_retained() -> Bool {
   match cli_run_workspace_root_discovery_scaffold {
@@ -10,15 +12,15 @@ test fn workspace_root_hand_rust_scaffold_is_seed_retained() -> Bool {
 
 test fn workspace_root_hand_rust_dissolve_trigger_names_site_and_lane() -> Bool {
   string_contains(
-    s: cli_run_workspace_root_discovery_dissolve_trigger,
+    s: dissolution_description(condition: cli_run_workspace_root_discovery_dissolve_trigger),
     pattern: "workspace_root_from"
   ) &&
     string_contains(
-      s: cli_run_workspace_root_discovery_dissolve_trigger,
+      s: dissolution_description(condition: cli_run_workspace_root_discovery_dissolve_trigger),
       pattern: "cli-run-reconcile-defork"
     ) &&
     string_contains(
-      s: cli_run_workspace_root_discovery_dissolve_trigger,
+      s: dissolution_description(condition: cli_run_workspace_root_discovery_dissolve_trigger),
       pattern: "5-dissolve-patches"
     )
 }
@@ -50,19 +52,19 @@ test fn source_root_anchor_hand_rust_scaffold_is_seed_retained() -> Bool {
 
 test fn source_root_anchor_dissolve_trigger_names_site_and_lane() -> Bool {
   string_contains(
-    s: cli_run_source_root_anchor_dissolve_trigger,
+    s: dissolution_description(condition: cli_run_source_root_anchor_dissolve_trigger),
     pattern: "try_anchor_source_root"
   ) &&
     string_contains(
-      s: cli_run_source_root_anchor_dissolve_trigger,
+      s: dissolution_description(condition: cli_run_source_root_anchor_dissolve_trigger),
       pattern: "modeled-before-implemented"
     ) &&
     string_contains(
-      s: cli_run_source_root_anchor_dissolve_trigger,
+      s: dissolution_description(condition: cli_run_source_root_anchor_dissolve_trigger),
       pattern: "cli-run-reconcile-defork"
     ) &&
     string_contains(
-      s: cli_run_source_root_anchor_dissolve_trigger,
+      s: dissolution_description(condition: cli_run_source_root_anchor_dissolve_trigger),
       pattern: "5-dissolve-patches"
     )
 }
