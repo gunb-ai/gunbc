@@ -230,3 +230,107 @@ test fn spark_iam_write_without_etag_refuses() -> Bool {
     SparkIamWriteAdmitted { etag: _, delta: _ } => false
   }
 }
+
+// ── Materialization controls ──────────────────────────────────────────────────────────────
+
+fn spark_identity_specimen() -> SparkMaterializationIdentity {
+  SparkMaterializationIdentity {
+    occurrence: spark_credential_occurrence(host: spark_srv5(), kind: AdministratorCredential),
+    payload_identity: "fixture-payload-identity"
+  }
+}
+
+fn spark_receipt_with(readback: SparkReadbackVerdict) -> SparkMaterializationReceipt {
+  SparkMaterializationReceipt {
+    identity: spark_identity_specimen(),
+    handle: "fixture-allocated-handle",
+    exact_version: "7",
+    readback: readback
+  }
+}
+
+fn spark_decision_is_refused(d: SparkMaterializationDecision) -> Bool {
+  match d {
+    SparkMaterializeRefused { cause: _ } => true
+    SparkMaterializeOnce { identity: _ } => false
+    SparkMaterializeNoop { exact_version: _ } => false
+    SparkMaterializeObserveStore { identity: _ } => false
+  }
+}
+
+fn spark_decision_is_observe(d: SparkMaterializationDecision) -> Bool {
+  match d {
+    SparkMaterializeObserveStore { identity: _ } => true
+    SparkMaterializeRefused { cause: _ } => false
+    SparkMaterializeOnce { identity: _ } => false
+    SparkMaterializeNoop { exact_version: _ } => false
+  }
+}
+
+fn spark_decision_is_noop(d: SparkMaterializationDecision) -> Bool {
+  match d {
+    SparkMaterializeNoop { exact_version: _ } => true
+    SparkMaterializeObserveStore { identity: _ } => false
+    SparkMaterializeRefused { cause: _ } => false
+    SparkMaterializeOnce { identity: _ } => false
+  }
+}
+
+// CONTROL 15, the one that prevents version sprawl: an issued-but-unconfirmed attempt resolves by
+// OBSERVING the store. It must never reach MaterializeOnce, because a lost process outcome is not
+// evidence the write did not land.
+test fn spark_issued_unconfirmed_observes_never_rewrites() -> Bool {
+  spark_decision_is_observe(d: decide_spark_materialization(
+    record: SparkAttemptIssuedUnconfirmed { identity: spark_identity_specimen() }))
+}
+
+// CONTROL 16: a confirmed receipt whose readback matched is a Noop naming the exact version. This
+// is what makes a resumed run reuse the version rather than mint a second credential.
+test fn spark_confirmed_receipt_is_noop_at_exact_version() -> Bool {
+  spark_decision_is_noop(d: decide_spark_materialization(
+    record: SparkAttemptConfirmed { receipt: spark_receipt_with(readback: SparkReadbackMatched { version: "7" }) }))
+}
+
+// CONTROL 17: a mismatched or unavailable readback REFUSES. A receipt is not discharged by having
+// been written; it is discharged by an independent read agreeing with it.
+test fn spark_bad_readback_refuses() -> Bool {
+  spark_decision_is_refused(d: decide_spark_materialization(
+    record: SparkAttemptConfirmed { receipt: spark_receipt_with(readback: SparkReadbackMismatched { version: "7" }) }))
+    && spark_decision_is_refused(d: decide_spark_materialization(
+         record: SparkAttemptConfirmed { receipt: spark_receipt_with(readback: SparkReadbackUnavailable { cause: "version disabled" }) }))
+}
+
+// CONTROL 18: a readback that names `latest` cannot witness anything. The moving alias is
+// compatible with another writer having landed in between.
+test fn spark_readback_through_latest_is_unavailable() -> Bool {
+  match admit_spark_readback_version(version: "latest") {
+    SparkReadbackUnavailable { cause: _ } => true
+    SparkReadbackMatched { version: _ } => false
+    SparkReadbackMismatched { version: _ } => false
+  }
+    && match admit_spark_readback_version(version: "7") {
+         SparkReadbackMatched { version: _ } => true
+         SparkReadbackUnavailable { cause: _ } => false
+         SparkReadbackMismatched { version: _ } => false
+       }
+}
+
+// CONTROL 19, the asymmetry wall: a factory hotspot credential cannot be GENERATED. Generating one
+// fabricates an observation of physical hardware, and the administrator arm proves the refusal is
+// kind-specific rather than a blanket ban on generation.
+test fn spark_factory_hotspot_cannot_be_generated() -> Bool {
+  let gen = GeneratedInRun { recipe: "random-24-char" }
+  let refused = match admit_spark_material_source(kind: FactoryHotspotCredential, source: gen) {
+    SparkSourceRefused { cause: _ } => true
+    SparkSourceAdmitted { source: _ } => false
+  }
+  let admin_ok = match admit_spark_material_source(kind: AdministratorCredential, source: gen) {
+    SparkSourceAdmitted { source: _ } => true
+    SparkSourceRefused { cause: _ } => false
+  }
+  let observed_ok = match admit_spark_material_source(kind: FactoryHotspotCredential, source: ObservedFromDevice { note: "read from device label" }) {
+    SparkSourceAdmitted { source: _ } => true
+    SparkSourceRefused { cause: _ } => false
+  }
+  refused && admin_ok && observed_ok
+}
