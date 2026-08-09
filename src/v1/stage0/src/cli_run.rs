@@ -8145,10 +8145,123 @@ pub fn build_live_read_selection_manifest(
     })
 }
 
+/// The index-wide G2 fact substrate: the declaration population of EXACTLY this index's source
+/// pool, derived by parse, with no executable program formed anywhere.
+///
+/// It replaces a union-resolved program, and the reason is semantic before it is economic. The
+/// union composed unrelated modules into one executable context, so one locally invalid module
+/// denied classification to every request — the same widening the G1 answer produced, wearing a
+/// refusal's clothes instead of a `RuntimeRead`. Cost merely confirmed it: one request over a
+/// 545-module union measured 179125 ms wall / 178751 ms CPU at 9.4 GiB.
+///
+/// TWO LEVELS OF FAILURE, deliberately, because collapsing them recreates the defect one layer
+/// down. A bundle that is `Result<Bundle, _>` as a whole may only refuse when the index-wide
+/// population ITSELF cannot be observed. A module that will not parse is a LOCAL fact recorded
+/// in `parse_refusals` — the declarations it would have carried refuse under their own keys, and
+/// every unrelated declaration stays classifiable. `bad A -> A refuses`, never
+/// `bad A -> bundle refuses -> B disappears`.
+///
+/// RAW facts, not marshalled ones. A marshalled `Value` carries symbols interned in the
+/// evaluating context, so caching marshalled rows on the index would hand context-A symbols to a
+/// context-B evaluation. The parse is what is expensive and what is cached; marshalling is cheap
+/// and happens per evaluation.
+#[derive(Debug)]
+pub struct G2FactBundle {
+    /// The index this population describes. Every read re-checks it.
+    pub subject: u64,
+    /// Exact module identities of the index pool, for the bidirectional identity join.
+    pub module_identities: std::collections::BTreeSet<String>,
+    /// The shared declaration projection over that population.
+    pub decl_facts: Vec<crate::coproduct_reflection::DeclFactRaw>,
+    /// Modules that could not contribute declarations, by identity and cause. Local, never global.
+    pub parse_refusals: std::collections::BTreeMap<String, String>,
+}
+
 impl MultiEntryIndex {
     /// This index's opaque identity, for checking a manifest against the index about to consume it.
     pub fn generation(&self) -> u64 {
         self.generation
+    }
+
+    /// Build the fact substrate for this index, joining fact population to index population at
+    /// IDENTITY grain in both directions.
+    ///
+    /// A count comparison is not this check and cannot be: a population with one identity missing
+    /// and one extra has the same size and passes it, while being a different tree. So the join
+    /// names what is missing and what is foreign, in both directions.
+    fn build_g2_fact_bundle(&self) -> Result<Rc<G2FactBundle>, String> {
+        let sources: Vec<(String, String)> = self
+            .source_files
+            .iter()
+            .map(|(path, sf)| (path.clone(), sf.content.clone()))
+            .collect();
+        let index_identities: std::collections::BTreeSet<String> =
+            sources.iter().map(|(p, _)| p.clone()).collect();
+        if index_identities.len() != sources.len() {
+            return Err(format!(
+                "G2 FACT REFUSAL cause=IndexPoolIdentityNotUnique pool={} distinct={} — the \
+                 index's own source pool carries a repeated path identity, so a declaration \
+                 cannot be attributed to one module and the join below would compare a set \
+                 against a multiset.",
+                sources.len(),
+                index_identities.len()
+            ));
+        }
+
+        let (decl_facts, refusals, parsed_paths) =
+            crate::coproduct_reflection::decl_facts_from_sources(&sources);
+
+        // The bidirectional identity join. Every module the facts describe must belong to the
+        // index, and every index module must be accounted for — either by contributing
+        // declarations or by a NAMED parse refusal. A module that is silently absent from both
+        // is the state this join exists to make unreachable: its declarations would report as
+        // unbound for a reason about the walk rather than about the declaration.
+        let refused: std::collections::BTreeMap<String, String> = refusals
+            .into_iter()
+            .map(|r| (r.rel_path, r.cause))
+            .collect();
+        let mut described: std::collections::BTreeSet<String> =
+            decl_facts.iter().map(|f| f.rel_path.clone()).collect();
+        let foreign: Vec<&String> = described
+            .iter()
+            .filter(|p| !index_identities.contains(*p))
+            .collect();
+        if !foreign.is_empty() {
+            return Err(format!(
+                "G2 FACT REFUSAL cause=FactSubjectForeignToIndex foreign={} first={} — the \
+                 declaration population describes a module the consuming index does not hold, so \
+                 the facts and the decision are about different trees.",
+                foreign.len(),
+                foreign[0]
+            ));
+        }
+        // The other direction. A module may legitimately parse and declare nothing, so absence
+        // from `decl_facts` proves nothing on its own — the question is whether it was VISITED.
+        // Every index module must therefore appear as parsed or as refused; anything else means
+        // the walk silently skipped a module the decision will later be made over.
+        let mut visited: std::collections::BTreeSet<String> = parsed_paths.into_iter().collect();
+        visited.extend(refused.keys().cloned());
+        let unvisited: Vec<&String> = index_identities
+            .iter()
+            .filter(|p| !visited.contains(*p))
+            .collect();
+        if !unvisited.is_empty() {
+            return Err(format!(
+                "G2 FACT REFUSAL cause=IndexModuleUnvisited unvisited={} first={} — an index \
+                 module was neither parsed nor refused, so the fact population is a strict subset \
+                 of the tree the consumer decides over. Every declaration in it would report as \
+                 unbound for a reason about this walk rather than about the declaration.",
+                unvisited.len(),
+                unvisited[0]
+            ));
+        }
+
+        Ok(Rc::new(G2FactBundle {
+            subject: self.generation,
+            module_identities: index_identities,
+            decl_facts,
+            parse_refusals: refused,
+        }))
     }
 
     /// The live-read selection manifest for this index, built once and reused.
