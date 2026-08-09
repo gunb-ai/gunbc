@@ -1,5 +1,7 @@
 module extdeps.tools.wc
 
+import std.algebra { trim }
+
 import std.types { FilePath, String, NonEmptyStr }
 import std.measure { ByteSize, byte_size_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }

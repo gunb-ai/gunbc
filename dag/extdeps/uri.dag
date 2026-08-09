@@ -1,5 +1,7 @@
 module extdeps.uri
 
+import std.algebra { trim }
+
 import std.types { NonEmptyStr }
 import std.unicode.types {
   unicode_scalar_max_code_point,

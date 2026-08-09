@@ -1,5 +1,7 @@
 module extdeps.linux.proc_self_cgroup
 
+import std.algebra { trim }
+
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Https, Uri }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
