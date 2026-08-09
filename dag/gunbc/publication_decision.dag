@@ -2,7 +2,7 @@ module gunbc.publication_decision
 
 import std.types { NonEmptyStr, String }
 import std.content_hash { ContentHash }
-import gunbc.public_projection { PublicationSubject }
+import gunbc.public_projection { PublicProjectionSubject }
 
 data publication_decision_note: String = "Exceptional publication decisions bind to content identity, not pathnames. publication_decision_authorizes_newly_public is the single authority for whether a receipt authorizes a newly public subject: matching subject/content identity, candidate policy_version, sole publisher authority, and UniversalPublicationAudience."
 
@@ -30,7 +30,7 @@ fn publication_decision_binds_content(
 
 fn publication_decision_authorizes_newly_public(
   receipt: PublicationDecisionReceipt,
-  subject: PublicationSubject,
+  subject: PublicProjectionSubject,
   policy_version: NonEmptyStr,
   authority: PublicationAuthorityId,
 ) -> Bool {

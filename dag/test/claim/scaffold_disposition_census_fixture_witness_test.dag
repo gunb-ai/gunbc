@@ -1,7 +1,7 @@
 module test.claim.scaffold_disposition_census_fixture_witness_test
 
 import v2.std.decl_index { DeclFact, DataItem, FnItem, decl_facts }
-import v2.std.decl_ref_resolution { decl_facts_matching_qualified_name }
+import v2.std.decl_facts_skeleton { decl_facts_matching_qualified_name }
 import test.fixture.scaffold_disposition_census.expected_classification {
   scaffold_disposition_census_fixture_pool_roots,
   scaffold_disposition_census_expected_rows,

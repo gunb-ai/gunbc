@@ -32,7 +32,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn site_artifact_digest(body: String) -> ContentHash {
+fn fixture_site_artifact_digest(body: String) -> ContentHash {
   content_hash_atom(value: body as NonEmptyStr)
 }
 
@@ -62,7 +62,7 @@ test fn witness_dispatch_artifact_matches_file_content() -> Bool {
 
 test fn witness_artifact_digests_are_content_hashes() -> Bool {
   all(roadmap_site_text_artifacts(), a =>
-    a.digest == site_artifact_digest(body: a.body)
+    a.digest == fixture_site_artifact_digest(body: a.body)
   )
 }
 

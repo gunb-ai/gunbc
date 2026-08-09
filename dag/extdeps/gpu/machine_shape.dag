@@ -81,7 +81,7 @@ fn memory_shape_from_gpu_catalog(
   }
 }
 
-fn shape_from_catalog(input: ShapeFromCatalogInput) -> MachineShapeConstruction {
+fn gpu_shape_from_catalog(input: ShapeFromCatalogInput) -> MachineShapeConstruction {
   match input {
     FromGpuModelCatalog {
       domain: domain,

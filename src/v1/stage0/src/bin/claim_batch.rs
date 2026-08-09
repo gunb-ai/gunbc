@@ -7,10 +7,10 @@ use std::rc::Rc;
 use std::time::Instant;
 
 use v1_compiler::cli_run::{
-    build_multi_entry_index, closure_subject_for_entry, discover_floor_witness_roster,
+    closure_subject_for_entry, discover_floor_witness_roster,
     make_eval_context_with_runtime_options, peak_rss_vhwm_bytes,
-    precompute_whole_tree_published_mock_keys, resolve_entry_with_index, run_claim_measured,
-    witness_exclusion_substrings, ClaimOutcome, DiscoveryRow, MultiEntryIndex,
+    precompute_whole_tree_published_mock_keys, process_shared_index, resolve_entry_with_index,
+    run_claim_measured, witness_exclusion_substrings, ClaimOutcome, DiscoveryRow, MultiEntryIndex,
 };
 use v1_compiler::recorded_fixture::RecordedFixtureStore;
 use v1_compiler::v1_compiler_compile::ResolvedGraph;
@@ -610,7 +610,16 @@ fn run() -> Result<ExitCode, ExitCode> {
         total_witnesses,
     );
 
-    let index = build_multi_entry_index(&source_roots);
+    // ONE index per (thread, roots), not one per holder. This harness previously built
+    // its own MultiEntryIndex here while `install_output_policy` above had ALREADY warmed
+    // the process-shared one on this same thread (it resolves through
+    // `resolve_entry_graph_shared` -> `process_shared_index`), so the per-source-root bare
+    // census — the dominant cold cost
+    // on this path, measured at ~13.8s per (root, index) — was computed twice for the
+    // same two subjects. The census memo is keyed on the source root alone, with nothing
+    // about the query in the key, so the second index bought no distinction at all: it
+    // paid full price for an identical answer.
+    let index = process_shared_index(&source_roots);
 
     let whole_tree_published_keys = match precompute_whole_tree_published_mock_keys(&source_roots) {
         Ok(keys) => {

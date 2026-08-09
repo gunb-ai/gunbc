@@ -35,7 +35,7 @@ fn env_var(name: NonEmptyStr) -> String? {
   }
 }
 
-fn current_walk_attempt_id() -> WalkAttemptId? {
+fn capture_walk_attempt_id() -> WalkAttemptId? {
   match env_var(name: "GUNBC_WALK_ATTEMPT_ID") {
     Present { value: explicit } => compose_explicit_walk_attempt_id(explicit: explicit)
     Absent =>
@@ -103,7 +103,7 @@ data merge_admission_capture_refusal_wire_relpath: String = "target/merge-admiss
 data merge_admission_capture_refusal_wire_seed_pairing: String = "PAIRED LITERAL (review 47596): claim_executor.rs MERGE_ADMISSION_CAPTURE_REFUSAL_WIRE reads this exact relpath — the seed cannot import a .dag datum, so a rename here lands with the paired seed edit or the parent's read degrades to its loud wire-absent arm. Same pairing class as floor-population-budget-refusal.txt, under walk_plan_run_stage_claim_executor_seed_deferral."
 
 func tested_subject_capture() -> TestedSubjectCapture {
-  match current_walk_attempt_id() {
+  match capture_walk_attempt_id() {
     Absent => TestedSubjectCaptureRefused { cause: CaptureAttemptIdentityAbsent }
     Present { value: attempt_id } =>
       let head = git.Inspect.HeadCommit()

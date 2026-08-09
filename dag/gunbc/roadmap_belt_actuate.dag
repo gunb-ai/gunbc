@@ -176,7 +176,7 @@ import gunbc.roadmap_execution_contract {
 import std.credentials { CredentialSource }
 import gunbc.repository { gunbc_repository }
 import gunbc.roadmap_publish {
-  PublicationSubject,
+  RoadmapPublicationSubject,
   PublicationSubjectObservation,
   PublicationSubjectObserved, PublicationSubjectUnobserved,
   PublicationReceipt,
@@ -4822,7 +4822,7 @@ fn belt_publication_subject_for(
         }
       } else {
         PublicationSubjectObserved {
-          subject: PublicationSubject {
+          subject: RoadmapPublicationSubject {
             node_id: node_id,
             attempt_key: attempt_key,
             repository: gunbc_repository,
@@ -4843,7 +4843,7 @@ type BeltPublishGate
 
 fn belt_publish_gate(
   node_id: String,
-  subject: PublicationSubject,
+  subject: RoadmapPublicationSubject,
   existing: PublicationReceiptSource,
 ) -> BeltPublishGate {
   match publication_evidence_for(expected: subject, source: existing) {
@@ -4885,7 +4885,7 @@ fn belt_publish_gate(
 
 fn belt_publish_write_outcome(
   node_id: String,
-  subject: PublicationSubject,
+  subject: RoadmapPublicationSubject,
   receipt: PublicationReceipt,
   write_success: Bool,
   write_error: String,

@@ -7,7 +7,7 @@ import gunbc.change_realization {
   StagedIntermediate, RetirePriorEndpoint, UnlinkStalePath, StopPriorUnit, DrainPriorConsumers,
   StagedIntermediates, staged_intermediates_all, staged_intermediates_count,
   ChangeRealization, AtomicCompareAndSwap, AtomicTreeTransformation, InPlaceUpdate, StagedReplacement,
-  ChangeClassification, ChangeRealized, ChangeRefused,
+  ChangeRealizationClassification, ChangeRealized, ChangeRefused,
   ChangeRefusalCause, StagedReplacementIntermediatesUndeclared,
   classify_change,
 }
@@ -28,7 +28,7 @@ fn one_intermediate(step: StagedIntermediate) -> StagedIntermediates {
   StagedIntermediates { first: step, rest: [] }
 }
 
-fn is_realized_staged(c: ChangeClassification) -> Bool {
+fn is_realized_staged(c: ChangeRealizationClassification) -> Bool {
   match c {
     ChangeRealized { realization: r } =>
       match r {
@@ -41,7 +41,7 @@ fn is_realized_staged(c: ChangeClassification) -> Bool {
   }
 }
 
-fn is_realized(c: ChangeClassification, expected_in_place: Bool) -> Bool {
+fn is_realized(c: ChangeRealizationClassification, expected_in_place: Bool) -> Bool {
   match c {
     ChangeRealized { realization: r } =>
       match r {

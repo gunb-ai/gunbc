@@ -1,0 +1,101 @@
+module test.claim.module_graph_edge_source_witness
+
+import std.types { Bool, String, List, Int }
+import v2.lens.module_graph {
+  ModuleDependencyEdge, ImportResolutionFact,
+  dependency_resolution_facts_live,
+  import_resolution_facts_live,
+  reference_derived_import_resolution_facts_live,
+}
+
+data witness_subject_note: String = "THE EDGE SOURCE IS A UNION OF TWO PRODUCERS, AND UNTIL NOW NOTHING EXECUTED THAT. dependency_resolution_facts_live unions explicit-import facts with reference-derived facts, and the two producers share a signature — so a call site that passed the SAME producer into both arms kept compiling, kept returning well-formed edges, and silently dropped every dependency that only a bare reference establishes. That is exactly what happened during this lane's homonym rename (review 50749); the compiler could not see it and no witness covered the seam.
+
+WHY A FIXTURE TREE RATHER THAN HAND-BUILT LISTS. A unit test of union_import_resolution_fact_lists proves the fold and leaves the defect untouched, because the defect is in WHICH PRODUCERS the production function calls — the fold receives whatever it is handed. So this points the production function itself at a four-module fixture: consumer imports provider_imported and provider_shared explicitly, and reaches provider_referenced ONLY through a qualified container.member reference with no import. The union is then asserted at identity grain in both directions — every expected edge present, and no surplus target — so a missing arm reds on the reference-only edge and a doubled arm reds on the surplus.
+
+WHY THERE IS NO SHARED-PROVIDER DEDUP CONTROL HERE, stated rather than quietly omitted: the two producers are DISJOINT BY FILE. reference_resolution_facts emits nothing for a file that still carries import lines, precisely so the reference producer cannot over-connect the un-stripped tree, so one path cannot appear in both producers and a same-path duplicate is unconstructible through this seam. Asserting a dedup that cannot arise would be a tautological control. What IS asserted instead is the union at identity grain in both directions - every producer row reaches the union, and the union carries no row neither producer produced - which is the property the dedup exists to preserve."
+
+data fixture_roots: List<String> = ["dag/test/fixture/module_graph_edge_source"]
+
+data fixture_exclude: List<String> = []
+
+data imported_provider: String = "test.fixture.module_graph_edge_source.provider_imported"
+data referenced_provider: String = "test.fixture.module_graph_edge_source.provider_referenced"
+
+fn fixture_edges() -> List<ModuleDependencyEdge> {
+  dependency_resolution_facts_live(
+    pool_roots: fixture_roots,
+    importer_roots: fixture_roots,
+    exclude_substrings: fixture_exclude
+  )
+}
+
+fn fixture_import_facts() -> List<ImportResolutionFact> {
+  import_resolution_facts_live(
+    pool_roots: fixture_roots,
+    importer_roots: fixture_roots,
+    exclude_substrings: fixture_exclude
+  )
+}
+
+fn fixture_reference_facts() -> List<ImportResolutionFact> {
+  reference_derived_import_resolution_facts_live(
+    pool_roots: fixture_roots,
+    importer_roots: fixture_roots,
+    exclude_substrings: fixture_exclude
+  )
+}
+
+fn targets_of(edges: List<ModuleDependencyEdge>) -> List<String> {
+  fold(edges, init: [], f: fn(acc, e) { concat(acc, [e.target_module]) })
+}
+
+fn fact_targets(facts: List<ImportResolutionFact>) -> List<String> {
+  fold(facts, init: [], f: fn(acc, f) { concat(acc, [f.import_module]) })
+}
+
+fn count_of(xs: List<String>, want: String) -> Int {
+  fold(xs, init: 0, f: fn(acc, x) { if x == want { acc + 1 } else { acc } })
+}
+
+fn contains_str(xs: List<String>, want: String) -> Bool {
+  count_of(xs: xs, want: want) > 0
+}
+
+data two_source_note: String = "The discriminating half: provider_referenced is reachable ONLY through the reference producer. If the call site's reference arm were replaced by a second copy of the import arm, this edge would be absent and this reds — which is precisely the regression that reached main-adjacent review unnoticed."
+
+test fn witness_reference_only_dependency_reaches_the_union() -> Bool {
+  let ref_targets = fact_targets(facts: fixture_reference_facts())
+  let imp_targets = fact_targets(facts: fixture_import_facts())
+  let edge_targets = targets_of(edges: fixture_edges())
+  contains_str(xs: ref_targets, want: referenced_provider)
+    && !contains_str(xs: imp_targets, want: referenced_provider)
+    && contains_str(xs: edge_targets, want: referenced_provider)
+}
+
+test fn witness_import_only_dependency_reaches_the_union() -> Bool {
+  let imp_targets = fact_targets(facts: fixture_import_facts())
+  let edge_targets = targets_of(edges: fixture_edges())
+  contains_str(xs: imp_targets, want: imported_provider)
+    && contains_str(xs: edge_targets, want: imported_provider)
+}
+
+test fn witness_every_producer_row_reaches_the_union() -> Bool {
+  let edge_targets = targets_of(edges: fixture_edges())
+  let produced = concat(fact_targets(facts: fixture_import_facts()),
+                        fact_targets(facts: fixture_reference_facts()))
+  fold(produced, init: true, f: fn(acc, t) { acc && contains_str(xs: edge_targets, want: t) })
+}
+
+test fn witness_union_has_no_duplicate_target() -> Bool {
+  let edge_targets = targets_of(edges: fixture_edges())
+  count_of(xs: edge_targets, want: imported_provider) == 1
+    && count_of(xs: edge_targets, want: referenced_provider) == 1
+}
+
+test fn witness_union_carries_no_surplus_target() -> Bool {
+  let edge_targets = targets_of(edges: fixture_edges())
+  fold(edge_targets, init: true, f: fn(acc, t) {
+    acc && (contains_str(xs: fact_targets(facts: fixture_import_facts()), want: t)
+            || contains_str(xs: fact_targets(facts: fixture_reference_facts()), want: t))
+  })
+}
