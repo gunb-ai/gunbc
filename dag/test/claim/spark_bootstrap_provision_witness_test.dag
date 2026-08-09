@@ -441,17 +441,27 @@ test fn spark_reported_principal_cannot_actuate() -> Bool {
          standing: spark_allocated_principal(), grant: spark_pair_grant(), cell: cell))
 }
 
-// CONTROL 25: the measured effective standing is Incomplete, and the Spark population carries no
-// granted cell at all. This reds if anyone records convergence as reachable before the grant lands.
-test fn spark_effective_access_is_incomplete_and_spark_unreachable() -> Bool {
-  let incomplete = match spark_effective_access_standing() {
-    EffectiveAccessIncomplete { missing_cells: m } => m.length() > 0
+// CONTROL 25, recut after an overclaim: the standing is PARTIALLY OBSERVED, never an exact
+// missing-cell verdict. testIamPermissions returns empty for a nonexistent resource and is
+// diagnostic-only, so silence cannot establish absence. This control reds if anyone upgrades the
+// standing to Exact or Incomplete without an instrument that can support it.
+test fn spark_effective_access_is_only_partially_observed() -> Bool {
+  match spark_effective_access_standing() {
+    EffectiveAccessPartiallyObserved { positively_observed: p, requested_but_not_returned: r, overbreadth_unobserved_cause: _ } =>
+      p.length() == 1 && r.length() > 0
     EffectiveAccessExact { observed_cells: _ } => false
     EffectiveAccessOverbroad { extra_cells: _ } => false
     EffectiveAccessUnobserved { cause: _ } => false
   }
-  let only_key_secret = spark_measured_effective_cells().length() == 1
-  incomplete && only_key_secret
+}
+
+// CONTROL 26: WIF issuance is observed SEPARATELY from any capability claim. The credential path
+// working is not evidence about what the credential may reach.
+test fn spark_wif_issuance_is_its_own_observation() -> Bool {
+  match spark_wif_issuance_standing() {
+    WifIssuanceObserved { principal: _, workflow: _, revision: _, receipt: _ } => true
+    WifIssuanceUnobserved { cause: _ } => false
+  }
 }
 
 // CONTROL 24: the conjunction is real. An allocated principal still cannot reach a resource outside

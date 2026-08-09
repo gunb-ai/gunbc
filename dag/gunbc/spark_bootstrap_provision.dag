@@ -150,45 +150,6 @@ fn fleet_cloud_principal_standing() -> FleetCloudPrincipalAllocationStanding {
   }
 }
 
-// ── Effective access, as MEASURED ─────────────────────────────────────────────────────────
-// The standing that keeps a fine-grained intent honest about its realization. A beautifully exact
-// grant backed by a project-wide binding is not fine-grained access, and nothing in the intent can
-// notice that -- only an observation from the resource side can.
-type EffectiveAccessStanding
-  = EffectiveAccessExact { observed_cells: List<AccessGrantCell> }
-  | EffectiveAccessOverbroad { extra_cells: List<AccessGrantCell> }
-  | EffectiveAccessIncomplete { missing_cells: List<AccessGrantCell> }
-  | EffectiveAccessUnobserved { cause: NonEmptyStr }
-
-// Measured cells, from the resource side via testIamPermissions rather than inferred from a 403.
-// The distinction matters: a 403 conflates "not granted" with "does not exist", while an empty
-// permissions object is a positive statement that none of the probed permissions are held.
-fn spark_measured_effective_cells() -> List<AccessGrantCell> {
-  [ AccessGrantCell { operation: SmAccessVersion, resource: "fleet-automation-ssh-key" } ]
-}
-
-// What convergence needs and does not have. This is the input to the grant request, enumerated
-// from the measurement rather than guessed: observation needs secrets.get and versions.list on
-// every subject, and materialization needs accessor plus version-adder on the Spark resources.
-fn spark_missing_effective_cells() -> List<AccessGrantCell> {
-  [
-    AccessGrantCell { operation: SmGetSecret, resource: "fleet-automation-ssh-key" },
-    AccessGrantCell { operation: SmGetSecret, resource: "spark-hotspot-password" },
-    AccessGrantCell { operation: SmAccessVersion, resource: "spark-hotspot-password" },
-    AccessGrantCell { operation: SmAddVersion, resource: "spark-hotspot-password" },
-    AccessGrantCell { operation: SmGetSecret, resource: "spark-administrator-password" },
-    AccessGrantCell { operation: SmAccessVersion, resource: "spark-administrator-password" },
-    AccessGrantCell { operation: SmAddVersion, resource: "spark-administrator-password" }
-  ]
-}
-
-fn spark_effective_access_standing() -> EffectiveAccessStanding {
-  EffectiveAccessIncomplete { missing_cells: spark_missing_effective_cells() }
-}
-
-data spark_effective_access_receipt_note: String = "Measured 2026-08-09, GitHub Actions run 31335059188 at head 6b79d061c4a, read-only. OIDC to WIF issued a token for fleet-cloud-convergence@ with no key and no gcloud, which grounds the principal allocation by execution. Effective grant: secretmanager.versions.access on fleet-automation-ssh-key, and NOTHING on either Spark container -- testIamPermissions returned an empty object for both, which is a positive statement of no permission rather than a 403's ambiguity between denied and absent. Explicitly probed and DENIED: versions.destroy and secrets.setIamPolicy on every subject, so the grant is narrow by measurement and not merely by description; there is no Overbroad finding. Also observed: secrets.get and versions.list are denied everywhere, so this principal cannot verify the legacy containers it does not own, and the Cloud Resource Manager API is disabled on the project (SERVICE_DISABLED), an unrecorded prerequisite. The two Spark containers remain reachable only by the BMC assimilator, so the cross-domain expansion is confirmed by measurement rather than inferred."
-
-
 // ── Domain operations, projected into the one kernel ──────────────────────────────────────
 // The Secret Manager operation population is a domain fact and belongs here. The DECISION is not:
 // std.access.AccessDecision is the only admitted/refused sum, and decision_meet the only
@@ -313,6 +274,73 @@ fn spark_actuation_decision(
 
 data spark_access_adapter_note: String = "This module is an ADAPTER, not an access system. It supplies the domain operation population, the resource identity and the scope rows; std.access supplies AccessRequest, AccessDecision, the typed refusal coordinates and decision_meet. No second admitted/refused sum is minted here. Independence is a property of the grant -- principal x operation x resource x context -- and never of a username, a uid, a service-account count, or how many credential values happen to exist. Two passwords under one project-wide binding are not independent access; one short-lived token over two exact resources may be far tighter."
 
+// ── Effective access, at the strength the instrument supports ─────────────────────────────
+// WIF ISSUANCE and CAPABILITY are two observations, not one. The first is about the credential
+// path; the second is about a permission on a resource. Fusing them let a single run stand for
+// both, which is how "the workflow authenticated" would come to mean "the access is understood".
+type WifCredentialIssuanceStanding
+  = WifIssuanceObserved { principal: NonEmptyStr, workflow: NonEmptyStr, revision: NonEmptyStr, receipt: NonEmptyStr }
+  | WifIssuanceUnobserved { cause: NonEmptyStr }
+
+fn spark_wif_issuance_standing() -> WifCredentialIssuanceStanding {
+  WifIssuanceObserved {
+    principal: "serviceAccount:fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com",
+    workflow: "spark-cloud-observe",
+    revision: "6b79d061c4a",
+    receipt: "GitHub Actions run 31335059188; 600s token, no key, no credentials file, no gcloud"
+  }
+}
+
+// THE INSTRUMENT DOES NOT SUPPORT AN ABSENCE CLAIM. An earlier revision of this section recorded
+// EffectiveAccessIncomplete with an exact missing-cell population and asserted there was no
+// Overbroad finding, on the strength of testIamPermissions returning an empty object. That reading
+// is wrong: the API returns the empty set for a resource that does not exist, is documented as a
+// permission-aware-UI helper rather than an authorization check, and is not a guarantee of denial.
+// So an empty response is exactly the ambiguity a 403 carries -- denied, or absent -- and I had
+// claimed it RESOLVED that ambiguity. Positive returns remain good evidence; silence is not a
+// construction wall for absence.
+//
+// Overbreadth is likewise UNOBSERVED rather than absent: nothing enumerated the policy, so no
+// probe could have found a binding it did not think to ask about.
+type EffectiveAccessStanding
+  = EffectiveAccessExact { observed_cells: List<AccessGrantCell> }
+  | EffectiveAccessOverbroad { extra_cells: List<AccessGrantCell> }
+  | EffectiveAccessPartiallyObserved {
+      positively_observed: List<AccessGrantCell>
+      requested_but_not_returned: List<AccessGrantCell>
+      overbreadth_unobserved_cause: NonEmptyStr
+    }
+  | EffectiveAccessUnobserved { cause: NonEmptyStr }
+
+// The ONE cell the run positively established. A returned permission is a real observation; it is
+// the only kind this probe produced.
+fn spark_positively_observed_cells() -> List<AccessGrantCell> {
+  [ AccessGrantCell { operation: SmAccessVersion, resource: "fleet-automation-ssh-key" } ]
+}
+
+// Requested and not returned. NOT called missing: for these subjects the run never established
+// that the resource exists, so absence of permission and absence of resource are not separated.
+fn spark_requested_but_not_returned_cells() -> List<AccessGrantCell> {
+  [
+    AccessGrantCell { operation: SmGetSecret, resource: "fleet-automation-ssh-key" },
+    AccessGrantCell { operation: SmGetSecret, resource: "spark-hotspot-password" },
+    AccessGrantCell { operation: SmAccessVersion, resource: "spark-hotspot-password" },
+    AccessGrantCell { operation: SmAddVersion, resource: "spark-hotspot-password" },
+    AccessGrantCell { operation: SmGetSecret, resource: "spark-administrator-password" },
+    AccessGrantCell { operation: SmAccessVersion, resource: "spark-administrator-password" },
+    AccessGrantCell { operation: SmAddVersion, resource: "spark-administrator-password" }
+  ]
+}
+
+fn spark_effective_access_standing() -> EffectiveAccessStanding {
+  EffectiveAccessPartiallyObserved {
+    positively_observed: spark_positively_observed_cells(),
+    requested_but_not_returned: spark_requested_but_not_returned_cells(),
+    overbreadth_unobserved_cause: "no policy enumeration was performed; a probe cannot find a binding it did not ask about, so overbreadth is unobserved rather than absent"
+  }
+}
+
+data spark_effective_access_receipt_note: String = "Measured 2026-08-09, GitHub Actions run 31335059188 at head 6b79d061c4a, read-only. WHAT IS ESTABLISHED: GitHub OIDC exchanged through WIF issued a 600-second token for fleet-cloud-convergence@ with no key, no credentials file and no gcloud, and that token positively exercised secretmanager.versions.access on fleet-automation-ssh-key. WHAT IS NOT ESTABLISHED, corrected after an overclaim in the prior revision of this row: nothing about absence. testIamPermissions returns the empty set for a resource that does not exist, is documented as a permission-aware-UI helper rather than an authorization check, and may fail open -- so an empty response carries exactly the denied-or-absent ambiguity a 403 carries, and the prior claim that it RESOLVED that ambiguity was wrong. The seven cells are therefore requested-but-not-returned, never a missing-cell population, and overbreadth is UNOBSERVED rather than absent because no policy enumeration ran. Also observed: the Cloud Resource Manager API is disabled on the project, so the project-level principal readback did not execute; the principal is grounded by the ISSUANCE receipt instead, which is a different and narrower fact."
 // ── The convergence shape this model is consumed by ───────────────────────────────────────
 // Declared as the required sequence rather than implemented as callable mutation, because the
 // executor is the OIDC/WIF workflow. Each arm names why it exists.

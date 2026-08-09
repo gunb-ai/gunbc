@@ -56,21 +56,29 @@ jobs:
           set -uo pipefail
           PROJ=gunbai-secrets
 
-          # Never echo the token. Only HTTP status codes and API response bodies are printed, and
-          # no call returns credential material: testIamPermissions returns permission names, and
-          # the secret GETs return metadata. No AccessVersion call is made, so no payload is read.
+          # THE TOKEN MUST NOT REACH ARGV. A prior revision of this file passed it as
+          # -H "Authorization: Bearer $TOK", which places the credential in curl's command line
+          # where any process on the runner can read it from /proc -- the same argv exposure this
+          # project already recorded for a CLI flag, repeated here in the file whose comment claimed
+          # the token was never exposed. It is now written once to a 0600 curl config via a heredoc
+          # (so it is not an argument to any process) and passed by --config.
+          umask 077
+          cat > "${RUNNER_TEMP}/curlrc" <<EOF
+          header = "Authorization: Bearer ${TOK}"
+          EOF
+
           code() {
-            curl -s -o /tmp/body.json -w '%{http_code}' -H "Authorization: Bearer ${TOK}" "$1"
+            curl -s --config "${RUNNER_TEMP}/curlrc" -o /tmp/body.json -w '%{http_code}' "$1"
           }
           perms() {
-            curl -s -H "Authorization: Bearer ${TOK}" -H 'Content-Type: application/json' \
+            curl -s --config "${RUNNER_TEMP}/curlrc" -H 'Content-Type: application/json' \
               -X POST "https://secretmanager.googleapis.com/v1/projects/${PROJ}/secrets/$1:testIamPermissions" \
               -d '{"permissions":["secretmanager.versions.access","secretmanager.versions.add","secretmanager.versions.destroy","secretmanager.secrets.get","secretmanager.secrets.getIamPolicy","secretmanager.secrets.setIamPolicy"]}'
           }
 
           echo "=== principal readback: does WIF actually yield the expected identity? ==="
           # This is the observation that turns CloudPrincipalReported into Allocated or refutes it.
-          curl -s -H "Authorization: Bearer ${TOK}" \
+          curl -s --config "${RUNNER_TEMP}/curlrc" \
             "https://cloudresourcemanager.googleapis.com/v1/projects/${PROJ}:testIamPermissions" \
             -H 'Content-Type: application/json' -X POST \
             -d '{"permissions":["resourcemanager.projects.get","secretmanager.secrets.list","secretmanager.secrets.create"]}' \
@@ -90,14 +98,20 @@ jobs:
           done
 
           echo "=== NOTE ON READING THIS RECEIPT ==="
-          echo "An empty permissions object means the caller holds NONE of the probed permissions"
-          echo "on that resource. A 403 on GET means the same thing from the other direction."
-          echo "Expected standing is EffectiveAccessIncomplete: the convergence principal is reported"
-          echo "to hold accessor on ONE secret only, so the Spark containers should refuse. An"
-          echo "unexpected PERMIT is the more interesting result -- it would mean the grant is"
-          echo "broader than reported, which classifies EffectiveAccessOverbroad."
+          echo "A RETURNED permission is positive evidence the caller holds it."
+          echo "An EMPTY permissions object establishes NOTHING about absence: testIamPermissions"
+          echo "returns the empty set for a resource that does not exist, is documented as a"
+          echo "permission-aware-UI helper rather than an authorization check, and may fail open."
+          echo "So an empty response carries the same denied-or-absent ambiguity a 403 carries."
+          echo "Overbreadth is UNOBSERVED, not absent: no policy was enumerated, and a probe cannot"
+          echo "find a binding it did not ask about. Only GetIamPolicy can settle either question."
 
-      - name: Publish the receipt
+      - name: Shred the credential config
         if: always()
         run: |
+          rm -f "${RUNNER_TEMP}/curlrc" || true
           echo "This run mutated nothing. Its product is the effective-permission map above."
+          echo "KNOWN GAP, not fixed here: this job emits log text rather than a typed artifact"
+          echo "receipt bound to revision, principal, resource, operation and response identity,"
+          echo "so the .dag rows are hand-transcribed from it -- a second authority. Closing that"
+          echo "requires emitting this workflow from the model, which is the next commit."
