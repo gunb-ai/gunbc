@@ -47,7 +47,7 @@ fn is_underivable(v: DriftVerdict) -> Bool {
 fn derivable_item(prs: List<Int>, title: String) -> RoadmapItem {
   DerivableLine { prs: prs, title: title, description: "" }
 }
-fn authored(done: Bool, content: String) -> RoadmapItem {
+fn authored_status_fixture(done: Bool, content: String) -> RoadmapItem {
   AuthoredLine { done: done, content: content }
 }
 
@@ -80,18 +80,18 @@ test fn witness_derivable_done_from_merge() -> Bool {
 }
 
 test fn witness_authored_done_is_authored() -> Bool {
-  item_is_done(item: authored(done: true, content: "hand-checked done"), merged: [])
-    && !item_is_done(item: authored(done: false, content: "hand-checked todo, cites #5445"), merged: [5445])
+  item_is_done(item: authored_status_fixture(done: true, content: "hand-checked done"), merged: [])
+    && !item_is_done(item: authored_status_fixture(done: false, content: "hand-checked todo, cites #5445"), merged: [5445])
 }
 
 test fn witness_partial_evidence_merged_mention_stays_green() -> Bool {
-  let item = authored(done: false, content: "rust-gate coverage — cites merged #5445 as partial evidence, not done")
+  let item = authored_status_fixture(done: false, content: "rust-gate coverage — cites merged #5445 as partial evidence, not done")
   is_underivable(v: status_drift(item: item, committed_box: false, merged: [5445]))
     && !item_drifted(item: item, committed_box: false, merged: [5445])
 }
 
 test fn witness_authored_done_underivable() -> Bool {
-  let item = authored(done: true, content: "audit done, no PR")
+  let item = authored_status_fixture(done: true, content: "audit done, no PR")
   is_underivable(v: status_drift(item: item, committed_box: true, merged: []))
 }
 
@@ -140,7 +140,7 @@ test fn witness_superseded_underivable_no_drift() -> Bool {
 }
 
 test fn witness_non_superseded_has_no_successor() -> Bool {
-  item_superseded_by(item: authored(done: false, content: "live row")) == ""
+  item_superseded_by(item: authored_status_fixture(done: false, content: "live row")) == ""
     && item_superseded_by(item: derivable_item(prs: [5445], title: "bound row")) == ""
     && item_superseded_by(item: PlainLine { content: "prose row" }) == ""
 }

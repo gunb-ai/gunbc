@@ -52,7 +52,7 @@ type ChangeKind
   | ModifyVariant
   | AddStage
 
-type ChangeClassification {
+type BootstrapChangeClassification {
   kind: ChangeKind
   target_type: NonEmptyStr
   field_name: NonEmptyStr?
@@ -63,7 +63,7 @@ type ChangeClassification {
 type BootstrapStrategy = SinglePass | TwoPhase | Additive
 
 type BootstrapPlan {
-  change: ChangeClassification
+  change: BootstrapChangeClassification
   strategy: BootstrapStrategy
   requires_manual_stage0_edit: Bool
   reason: String
@@ -99,7 +99,7 @@ type TransformContract {
   recomputed_fields: List<NonEmptyStr>
 }
 
-fn classify_strategy(change: ChangeClassification) -> BootstrapStrategy {
+fn classify_strategy(change: BootstrapChangeClassification) -> BootstrapStrategy {
   match change.kind {
     AddField => if change.has_default { Additive } else { TwoPhase }
     AddType => Additive

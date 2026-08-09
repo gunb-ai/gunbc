@@ -1,0 +1,95 @@
+module test.claim.fleet_main_revision_witness
+
+import std.types { Bool, String }
+import extdeps.git.object_store { GitObjectId, git_sha1_object_id }
+import gunbc.fleet_main_revision {
+  fleet_desired_ref_name,
+  FleetDesiredRevision,
+  FleetDesiredAdmitted,
+  FleetDesiredUnobserved,
+  fleet_desired_revision_target,
+  FleetDesiredAdvance,
+  AdvanceAdmitted,
+  AdvanceRefused,
+  admit_fleet_desired_advance,
+  converge_target_revision,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn fixture_rev(hex_char: String) -> GitObjectId? {
+  git_sha1_object_id(hex: join([hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char], ""))
+}
+
+// RED — the load-bearing admission law: a revision whose floor is not green NEVER
+// advances the desired ref, whatever the current ref state.
+test fn advance_refused_without_floor_green() -> Bool {
+  match fixture_rev(hex_char: "a") {
+    Present { value: cand } =>
+      match admit_fleet_desired_advance(candidate: cand, floor_green: false, current: none) {
+        AdvanceRefused { cause: _ } => true
+        _ => false
+      }
+        && match fixture_rev(hex_char: "b") {
+          Present { value: cur } =>
+            match admit_fleet_desired_advance(candidate: cand, floor_green: false, current: Present { value: cur }) {
+              AdvanceRefused { cause: _ } => true
+              _ => false
+            }
+          _ => false
+        }
+    _ => false
+  }
+}
+
+// The admitted advance is a CAS carrying the expected prior — first admission carries
+// from=none (ref creation), a subsequent one carries the exact prior revision.
+test fn admitted_advance_is_cas_carrying_expected_prior() -> Bool {
+  match fixture_rev(hex_char: "a") {
+    Present { value: cand } =>
+      match admit_fleet_desired_advance(candidate: cand, floor_green: true, current: none) {
+        AdvanceAdmitted { from: f, to: _ } =>
+          match f {
+            Present { value: _ } => false
+            _ => true
+          }
+        _ => false
+      }
+        && match fixture_rev(hex_char: "b") {
+          Present { value: cur } =>
+            match admit_fleet_desired_advance(candidate: cand, floor_green: true, current: Present { value: cur }) {
+              AdvanceAdmitted { from: f2, to: _ } =>
+                match f2 {
+                  Present { value: _ } => true
+                  _ => false
+                }
+              _ => false
+            }
+          _ => false
+        }
+    _ => false
+  }
+}
+
+// An unobserved desired ref yields NO converge target — never a fabricated one, never
+// the invoking tree. Admitted yields exactly the admitted revision.
+test fn converge_target_derives_only_from_admitted_ref() -> Bool {
+  match converge_target_revision(observed: FleetDesiredUnobserved { cause: "ref unreadable" }) {
+    Present { value: _ } => false
+    _ => true
+  }
+    && match fixture_rev(hex_char: "c") {
+      Present { value: rev } =>
+        match converge_target_revision(observed: FleetDesiredAdmitted { revision: rev }) {
+          Present { value: _ } => true
+          _ => false
+        }
+      _ => false
+    }
+}
+
+// The ref name is the single authority and is a fleet-scoped ref, not a branch.
+test fn desired_ref_name_is_the_fleet_scoped_authority() -> Bool {
+  fleet_desired_ref_name == "refs/fleet/desired"
+}

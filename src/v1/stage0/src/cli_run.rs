@@ -1790,6 +1790,54 @@ pub enum DeclaredImportClosureBindingObservation {
     NotRunnable(String),
 }
 
+/// The ONE named accidental-coverage exception for the Class B declared-import-closure
+/// observation (operator ruling 2026-08-09, via the parent lane).
+///
+/// `src/v2/std/grounding.dag` carries ZERO imports and reaches these types by dotted path,
+/// so they bind only when some unrelated importer has already pulled `v2.std.host_run` /
+/// `v2.std.verdict` into the assembled closure — a live Class B pool-membership-coincidence
+/// specimen, the class the import-strip cascade diagnosis says blocks further `dag/**`
+/// stripping. Three options were weighed and two rejected: widening
+/// `class_b_declared_import_pool_roots` is pool-coincidence promoted to gate policy and
+/// would blind the gate to the very class it exists to observe; restoring the module's
+/// import closure UN-STRIPS an already-stripped module, which is motion against the
+/// namespace lane whose terminal state is deleting the import grammar outright — paid now
+/// and unwound later.
+///
+/// So this file becomes a COUNTED member of the accidental-coverage population instead of
+/// an invisible one. That is strictly more honest than the prior state, where it sat in
+/// exactly the same condition with nobody counting it.
+///
+/// This is deliberately a roster of EXACT (file, type name) pairs and never a pattern: it
+/// must not weaken the observation for any other file, and a new unresolved type in this
+/// same file still refuses. Adding a row here is a visible edit, not a policy that silently
+/// absorbs future breakage.
+///
+/// 🟡 dissolve-on: the closure-independent binding fix, or the provable-coverage
+/// construction check, that the import-strip witness-discovery cascade diagnosis names as
+/// the condition for unblocking `dag/**` stripping. When either lands, `grounding.dag`
+/// binds from its own declared closure and this roster goes to zero rows.
+const CLASS_B_ACCIDENTAL_COVERAGE_EXCEPTIONS: &[(&str, &str)] = &[
+    (
+        "src/v2/std/grounding.dag",
+        "v2.std.host_run.EmitHostRunReceipt",
+    ),
+    ("src/v2/std/grounding.dag", "v2.std.verdict.VerdictTally"),
+];
+
+/// True when this diagnostic is an exact named row above — same file AND same unresolved
+/// type. Any other diagnostic, including a different unresolved type in the same file,
+/// is not exempt.
+fn class_b_diagnostic_is_named_exception(d: &Rc<ErrorNode>) -> bool {
+    use crate::v1_std_core::CompilerDiagnostic;
+    let CompilerDiagnostic::UnresolvedType { name, span } = d.diagnostic.as_ref() else {
+        return false;
+    };
+    CLASS_B_ACCIDENTAL_COVERAGE_EXCEPTIONS
+        .iter()
+        .any(|(file, ty)| span.file == *file && name == ty)
+}
+
 fn declared_import_closure_hard_diagnostic_count(
     resolved: &v1_compiler_compile::ResolvedPipelineResult,
 ) -> i64 {
@@ -1797,6 +1845,22 @@ fn declared_import_closure_hard_diagnostic_count(
         .diagnostics
         .iter()
         .filter(|d| compile_clean_diagnostic_is_hard(d))
+        .filter(|d| !class_b_diagnostic_is_named_exception(d))
+        .count() as i64
+}
+
+/// How many hard diagnostics were exempted by the named roster. Reported beside the
+/// observation rather than dropped: an exemption that leaves no trace is indistinguishable
+/// from a clean compile, and the whole point of the roster is that this population is
+/// COUNTED instead of invisible.
+fn declared_import_closure_exempted_diagnostic_count(
+    resolved: &v1_compiler_compile::ResolvedPipelineResult,
+) -> i64 {
+    resolved
+        .diagnostics
+        .iter()
+        .filter(|d| compile_clean_diagnostic_is_hard(d))
+        .filter(|d| class_b_diagnostic_is_named_exception(d))
         .count() as i64
 }
 
@@ -1818,11 +1882,40 @@ pub fn declared_import_closure_binding_observation_from_resolved(
             );
         }
     };
+    let exempted = declared_import_closure_exempted_diagnostic_count(resolved);
+    if exempted > 0 {
+        eprintln!(
+            "[class-b-accidental-coverage] {exempted} hard diagnostic(s) exempted by the \
+             named roster (import-free modules binding by pool membership); \
+             dissolve-on: closure-independent binding or the provable-coverage check"
+        );
+    }
     let hard_count = declared_import_closure_hard_diagnostic_count(resolved);
     if hard_count > 0 {
-        return DeclaredImportClosureBindingObservation::NotRunnable(format!(
-            "declared-import-closure compile produced {hard_count} hard diagnostic(s); binding observation refused"
-        ));
+        // NAME THE DIAGNOSTICS, do not merely count them. A bare count cannot tell a
+        // consumer "all of these are the one known accidental-coverage specimen" from
+        // "a new regression is hiding among them", so every downstream row had to treat
+        // the two identically — the state-space conflation DESIGN names. The identities
+        // are what a counted exception row must join against, so the refusal carries them.
+        let mut named: Vec<String> = resolved
+            .diagnostics
+            .iter()
+            .filter(|d| compile_clean_diagnostic_is_hard(d))
+            .map(|d| format!("{:?}", d.diagnostic))
+            .collect();
+        named.sort();
+        named.dedup();
+        let cause = format!(
+            "declared-import-closure compile produced {hard_count} hard diagnostic(s); \
+             binding observation refused; identities: {}",
+            named.join(" | ")
+        );
+        // Stopped-line audit read: the gate's Bool collapses refused and genuinely-unlisted
+        // into one false, so without this the cause is unobservable from outside.
+        if std::env::var("GUNBC_CLASS_B_REFUSAL_TRACE").as_deref() == Ok("1") {
+            eprintln!("[class-b-refusal] {cause}");
+        }
+        return DeclaredImportClosureBindingObservation::NotRunnable(cause);
     }
     let definer = definer_module_for_name(graph, symbol);
     let symbol_resolves = definer.is_some();
@@ -7204,9 +7297,22 @@ fn bare_reference_pull_paths_for_source(
     let Some(root) = source_tree_root_of(&index.source_roots, &file_rel) else {
         return Ok(Vec::new());
     };
+    let census_started = std::time::Instant::now();
     let census = tree_bare_census_for_root(index, &root)?;
+    resolve_stage_slot_add(|st| {
+        st.edge_index_tree_census += census_started.elapsed().as_nanos();
+        st.edge_index_tree_census_calls += 1;
+    });
     let referencing_module = extract_module_path(&sf.content).unwrap_or_default();
+    let cand_started = std::time::Instant::now();
     let candidates = bare_identifier_candidates(&sf.content);
+    resolve_stage_slot_add(|st| st.edge_index_bare_candidates += cand_started.elapsed().as_nanos());
+    // The name-universe fold: dotted-chain prefixes, builtin service keys, and the
+    // unbound-name join that produces the roster the resolve loop below walks. Split
+    // out because everything under the bare half that is neither the census nor the
+    // candidate scan was landing in an unattributed remainder, and an unattributed
+    // remainder large enough to be the second-largest term is a seam nobody has looked at.
+    let universe_started = std::time::Instant::now();
     let mut service_prefixes: BTreeSet<String> = candidates
         .dotted_chains
         .iter()
@@ -7243,8 +7349,12 @@ fn bare_reference_pull_paths_for_source(
         .chain(dotted_head_refs.into_iter().map(|n| (n, false)))
         .chain(service_prefixes.into_iter().map(|n| (n, true)))
         .collect();
+    resolve_stage_slot_add(|st| {
+        st.edge_index_bare_name_universe += universe_started.elapsed().as_nanos();
+    });
     let mut pulled: Vec<String> = Vec::new();
     let mut pulled_set: HashSet<String> = HashSet::new();
+    let resolve_loop_started = std::time::Instant::now();
     for (name, service_head) in all_names {
         let in_call_position = candidates.call_position.contains(&name);
         let pullable = |binding: &Rc<crate::v1_compiler_infer_env::TypeBinding>| {
@@ -7345,6 +7455,9 @@ fn bare_reference_pull_paths_for_source(
             }
         }
     }
+    resolve_stage_slot_add(|st| {
+        st.edge_index_bare_resolve_loop += resolve_loop_started.elapsed().as_nanos();
+    });
     Ok(pulled)
 }
 
@@ -7366,7 +7479,13 @@ fn reference_pull_paths_for_source(
                  has no provenance in the module-graph facts pool (fail-closed)"
             ));
         }
-        for path in import_closure_live_paths_with_facts(&dep_rel, facts) {
+        let expand_started = std::time::Instant::now();
+        let expanded = import_closure_live_paths_with_facts(&dep_rel, facts);
+        resolve_stage_slot_add(|st| {
+            st.edge_index_closure_expand += expand_started.elapsed().as_nanos();
+            st.edge_index_closure_expand_calls += 1;
+        });
+        for path in expanded {
             let rel = workspace_relative_repo_path(&path);
             if pulled_set.insert(rel.clone()) {
                 pulled.push(rel);
@@ -7382,23 +7501,37 @@ fn build_both_closure_edge_index(
     let mut bare_out: HashMap<String, Vec<String>> = HashMap::new();
     let mut ref_out: HashMap<String, Vec<String>> = HashMap::new();
     let mut bare_scan_eligible: HashSet<String> = HashSet::new();
+    resolve_stage_slot_add(|st| {
+        st.edge_index_builds += 1;
+        st.edge_index_source_files += index.source_files.len() as u128;
+    });
     for sf in index.source_files.values() {
         let file_rel = workspace_relative_repo_path(&sf.path);
-        ref_out.insert(
-            file_rel.clone(),
-            reference_pull_paths_for_source(sf, &index.source_files, &index.module_graph_facts)?,
-        );
+        let ref_started = std::time::Instant::now();
+        let ref_paths =
+            reference_pull_paths_for_source(sf, &index.source_files, &index.module_graph_facts)?;
+        resolve_stage_slot_add(|st| st.edge_index_ref_half += ref_started.elapsed().as_nanos());
+        ref_out.insert(file_rel.clone(), ref_paths);
         if source_declares_import_lines(&sf.content) {
             continue;
         }
         bare_scan_eligible.insert(file_rel.clone());
-        bare_out.insert(file_rel, bare_reference_pull_paths_for_source(sf, index)?);
+        let bare_started = std::time::Instant::now();
+        let bare_paths = bare_reference_pull_paths_for_source(sf, index)?;
+        resolve_stage_slot_add(|st| {
+            st.edge_index_bare_half += bare_started.elapsed().as_nanos();
+            st.edge_index_bare_eligible += 1;
+        });
+        bare_out.insert(file_rel, bare_paths);
     }
-    Ok(Rc::new(BothClosureEdgeIndex {
+    let publish_started = std::time::Instant::now();
+    let built = Rc::new(BothClosureEdgeIndex {
         bare_out,
         ref_out,
         bare_scan_eligible,
-    }))
+    });
+    resolve_stage_slot_add(|st| st.edge_index_publish += publish_started.elapsed().as_nanos());
+    Ok(built)
 }
 
 fn both_closure_edge_index(index: &MultiEntryIndex) -> Result<Rc<BothClosureEdgeIndex>, String> {
@@ -7784,7 +7917,7 @@ fn canonical_shared_index_roots(source_roots: &[String]) -> Vec<String> {
 /// that joins absolute-path reads to this relative-path index can still fork source
 /// identity. The divergence census walls that site with parent-owned `Rc` identity;
 /// the class-wide next rung is canonical `SourceFile` identity at construction.
-fn process_shared_index(source_roots: &[String]) -> Rc<MultiEntryIndex> {
+pub fn process_shared_index(source_roots: &[String]) -> Rc<MultiEntryIndex> {
     let roots = canonical_shared_index_roots(source_roots);
     let roots_key = roots.join("\u{1f}");
     let existing = PROCESS_RESOLVE_INDEX.with(|s| {
@@ -11555,6 +11688,51 @@ pub struct ResolveStageNanos {
     pub load_pool_reference_closure: u128,
     /// Fixpoint iterations (a round is one bare + one pool pass).
     pub load_fixpoint_rounds: u128,
+    /// MEASUREMENT INSTRUMENTATION (CONFIDENCE-0 edge-index receipt, commissioned
+    /// 2026-08-09). These rows decompose `load_bare_edge_index` along the seams the
+    /// constructor ACTUALLY has, rather than a presumed stage pipeline: the ref half,
+    /// the bare half, the import-closure expansion inside them, and publish. They are
+    /// INCLUSIVE rows, so they never enter `sum_exclusive` and cannot break the
+    /// accounting law. Dissolve-on: either the memo fix lands and these retire to a
+    /// regression control, or the v2 materialization substrate absorbs the closure.
+    /// `edge_index_builds` is the row that separates the operator's two outcomes —
+    /// construction fundamentally slow (optimize the measured stage) versus
+    /// construction merely repeated (materialize once). It is a COUNT and not nanos
+    /// deliberately: a cache HIT still adds its own small elapsed time to
+    /// `load_bare_edge_index`, so `nanos == 0` is unassertable on a second query and
+    /// "small" is not a claim this partition's accounting style permits.
+    pub edge_index_builds: u128,
+    /// Source files enumerated by the constructor's one loop.
+    pub edge_index_source_files: u128,
+    /// Files eligible to originate bare edges (import-free), a subset of the above.
+    pub edge_index_bare_eligible: u128,
+    /// `reference_pull_paths_for_source` — the dotted-reference half, summed per file.
+    pub edge_index_ref_half: u128,
+    /// `bare_reference_pull_paths_for_source` — the bare-name half, summed per file.
+    pub edge_index_bare_half: u128,
+    /// `import_closure_live_paths_with_facts` — the NAMED SUSPECT. A module's import
+    /// closure is a pure function of the adjacency map, and `import_closure_from_adjacency`
+    /// recomputes it from nothing on every call (fresh HashSet + VecDeque, a String
+    /// clone per edge, then a sort), once per (source file, referenced module) pair.
+    pub edge_index_closure_expand: u128,
+    /// Calls to that expansion — the multiplicity the per-call cost is paid at.
+    pub edge_index_closure_expand_calls: u128,
+    /// `tree_bare_census_for_root` inside the bare half — the per-tree bare census.
+    pub edge_index_tree_census: u128,
+    /// Calls to that census.
+    pub edge_index_tree_census_calls: u128,
+    /// Cold builds of that census (MISSES only). The count that makes the nanos above
+    /// interpretable: total/calls is an average over mostly-free hits and describes no
+    /// real call.
+    pub edge_index_tree_census_misses: u128,
+    /// Nanos spent in cold census builds only.
+    pub edge_index_tree_census_miss_nanos: u128,
+    /// `bare_identifier_candidates` — the per-file identifier scan.
+    pub edge_index_bare_candidates: u128,
+    pub edge_index_bare_name_universe: u128,
+    pub edge_index_bare_resolve_loop: u128,
+    /// `Rc::new` + hand-off of the finished index.
+    pub edge_index_publish: u128,
     /// `both_closure_edge_index` (memoized on the index; nonzero here is the first build).
     pub load_bare_edge_index: u128,
     /// `path_to_source_lookup` — a corpus-wide map rebuilt on EVERY call (no memo).
@@ -11597,6 +11775,21 @@ impl ResolveStageNanos {
         self.load_reference_scan_calls += other.load_reference_scan_calls;
         self.load_import_closure += other.load_import_closure;
         self.load_bare_reference_closure += other.load_bare_reference_closure;
+        self.edge_index_builds += other.edge_index_builds;
+        self.edge_index_source_files += other.edge_index_source_files;
+        self.edge_index_bare_eligible += other.edge_index_bare_eligible;
+        self.edge_index_ref_half += other.edge_index_ref_half;
+        self.edge_index_bare_half += other.edge_index_bare_half;
+        self.edge_index_closure_expand += other.edge_index_closure_expand;
+        self.edge_index_closure_expand_calls += other.edge_index_closure_expand_calls;
+        self.edge_index_tree_census += other.edge_index_tree_census;
+        self.edge_index_tree_census_calls += other.edge_index_tree_census_calls;
+        self.edge_index_tree_census_misses += other.edge_index_tree_census_misses;
+        self.edge_index_tree_census_miss_nanos += other.edge_index_tree_census_miss_nanos;
+        self.edge_index_bare_candidates += other.edge_index_bare_candidates;
+        self.edge_index_bare_name_universe += other.edge_index_bare_name_universe;
+        self.edge_index_bare_resolve_loop += other.edge_index_bare_resolve_loop;
+        self.edge_index_publish += other.edge_index_publish;
         self.load_pool_reference_closure += other.load_pool_reference_closure;
         self.load_fixpoint_rounds += other.load_fixpoint_rounds;
         self.load_bare_edge_index += other.load_bare_edge_index;
@@ -11697,6 +11890,21 @@ thread_local! {
             load_bare_reference_closure: 0,
             load_pool_reference_closure: 0,
             load_fixpoint_rounds: 0,
+            edge_index_builds: 0,
+            edge_index_source_files: 0,
+            edge_index_bare_eligible: 0,
+            edge_index_ref_half: 0,
+            edge_index_bare_half: 0,
+            edge_index_closure_expand: 0,
+            edge_index_closure_expand_calls: 0,
+            edge_index_tree_census: 0,
+            edge_index_tree_census_calls: 0,
+            edge_index_tree_census_misses: 0,
+            edge_index_tree_census_miss_nanos: 0,
+            edge_index_bare_candidates: 0,
+            edge_index_bare_name_universe: 0,
+            edge_index_bare_resolve_loop: 0,
+            edge_index_publish: 0,
             load_bare_edge_index: 0,
             load_bare_path_lookup: 0,
             load_bare_path_lookup_calls: 0,
@@ -11919,6 +12127,12 @@ pub struct ExclusiveCostPartition {
     /// Volume fed to `load_reference_scan`, so it can be priced per byte.
     pub load_reference_scan_bytes: u128,
     pub load_reference_scan_calls: u128,
+    pub edge_index_builds: u128,
+    pub edge_index_source_files: u128,
+    pub edge_index_bare_eligible: u128,
+    pub edge_index_closure_expand_calls: u128,
+    pub edge_index_tree_census_misses: u128,
+    pub edge_index_tree_census_calls: u128,
     pub load_fixpoint_rounds: u128,
     /// Per-entry span attribution (entry, spans, span nanos, that entry's stage rows),
     /// descending by span nanos. Lets a witness entry's split be read apart from the
@@ -12134,6 +12348,51 @@ pub fn exclusive_cost_partition_from(
             nanos: st.load_bare_edge_walk,
             contained_in: "load_bare_reference_closure",
         },
+        InclusiveCostRow {
+            name: "edge_index_ref_half",
+            nanos: st.edge_index_ref_half,
+            contained_in: "load_bare_edge_index",
+        },
+        InclusiveCostRow {
+            name: "edge_index_bare_half",
+            nanos: st.edge_index_bare_half,
+            contained_in: "load_bare_edge_index",
+        },
+        InclusiveCostRow {
+            name: "edge_index_closure_expand",
+            nanos: st.edge_index_closure_expand,
+            contained_in: "edge_index_ref_half",
+        },
+        InclusiveCostRow {
+            name: "edge_index_tree_census",
+            nanos: st.edge_index_tree_census,
+            contained_in: "edge_index_bare_half",
+        },
+        InclusiveCostRow {
+            name: "edge_index_tree_census_miss_nanos",
+            nanos: st.edge_index_tree_census_miss_nanos,
+            contained_in: "edge_index_tree_census",
+        },
+        InclusiveCostRow {
+            name: "edge_index_bare_candidates",
+            nanos: st.edge_index_bare_candidates,
+            contained_in: "edge_index_bare_half",
+        },
+        InclusiveCostRow {
+            name: "edge_index_bare_name_universe",
+            nanos: st.edge_index_bare_name_universe,
+            contained_in: "edge_index_bare_half",
+        },
+        InclusiveCostRow {
+            name: "edge_index_bare_resolve_loop",
+            nanos: st.edge_index_bare_resolve_loop,
+            contained_in: "edge_index_bare_half",
+        },
+        InclusiveCostRow {
+            name: "edge_index_publish",
+            nanos: st.edge_index_publish,
+            contained_in: "load_bare_edge_index",
+        },
     ];
 
     let sum_exclusive: u128 = exclusive.iter().map(|r| r.nanos).sum();
@@ -12185,6 +12444,12 @@ pub fn exclusive_cost_partition_from(
         verdict,
         load_reference_scan_bytes: st.load_reference_scan_bytes,
         load_reference_scan_calls: st.load_reference_scan_calls,
+        edge_index_builds: st.edge_index_builds,
+        edge_index_source_files: st.edge_index_source_files,
+        edge_index_bare_eligible: st.edge_index_bare_eligible,
+        edge_index_closure_expand_calls: st.edge_index_closure_expand_calls,
+        edge_index_tree_census_calls: st.edge_index_tree_census_calls,
+        edge_index_tree_census_misses: st.edge_index_tree_census_misses,
         load_fixpoint_rounds: st.load_fixpoint_rounds,
         span_rows_by_entry,
     }
@@ -12252,6 +12517,27 @@ pub fn render_exclusive_cost_partition_json(
     // The closure-size spread (504 modules down to a median of 2-5) makes a per-module
     // weighting a different claim from a per-byte one, and only the per-byte one matches
     // how the scan actually costs.
+    // Edge-index construction receipt. `builds` is the load-bearing number: it separates
+    // "construction is fundamentally slow" (optimize the measured stage) from "construction
+    // is merely repeated" (materialize once and share). It is a COUNT rather than nanos
+    // because a memo HIT still adds its own small elapsed time to `load_bare_edge_index`,
+    // so a zero-nanos assertion is unavailable and "small" is not a claim this partition's
+    // accounting style permits. `closure_expand_calls` is the multiplicity the per-call
+    // BFS cost is paid at — the quantity that decides whether the suspect is a cost SHAPE.
+    out.push_str(",\"edge_index_construction\":{\"builds\":");
+    out.push_str(&json_num(p.edge_index_builds));
+    out.push_str(",\"source_files\":");
+    out.push_str(&json_num(p.edge_index_source_files));
+    out.push_str(",\"bare_eligible\":");
+    out.push_str(&json_num(p.edge_index_bare_eligible));
+    out.push_str(",\"closure_expand_calls\":");
+    out.push_str(&json_num(p.edge_index_closure_expand_calls));
+    out.push_str(",\"tree_census_calls\":");
+    out.push_str(&json_num(p.edge_index_tree_census_calls));
+    out.push_str(",\"tree_census_misses\":");
+    out.push_str(&json_num(p.edge_index_tree_census_misses));
+    out.push_str("}");
+
     out.push_str(",\"load_reference_scan_volume\":{\"bytes\":");
     out.push_str(&json_num(p.load_reference_scan_bytes));
     out.push_str(",\"calls\":");
@@ -13590,6 +13876,27 @@ fn tree_bare_census_for_root(
     if let Some(hit) = index.tree_bare_census.borrow().get(root) {
         return Ok(hit.clone());
     }
+    // MISS-ONLY accounting. The call count alone is a trap: this census IS memoized per
+    // root, so dividing total nanos by calls reports an "average per call" that describes
+    // no actual call — a handful of cold builds amortised over ~1.6k hits looks like a
+    // uniform per-file cost and would justify the wrong fix (deduplicate the calls)
+    // instead of the right one (make the cold build cheaper, or build it once per process
+    // rather than once per index).
+    let miss_started = std::time::Instant::now();
+    resolve_stage_slot_add(|st| st.edge_index_tree_census_misses += 1);
+    // Identity of the cold misses, not just their count. The count alone cannot
+    // distinguish "the same subject recomputed per index" from "a different subject
+    // each time", and those two have different fixes: the first is materialized once
+    // and shared, the second needs the subject in the materialization key. The index
+    // address distinguishes which index paid it.
+    // A stopped-line audit read, never a control: it reports which subject paid and
+    // which index paid it, and writes nothing that changes what the resolve does.
+    if std::env::var("GUNBC_EDGE_INDEX_CENSUS_TRACE").as_deref() == Ok("1") {
+        eprintln!(
+            "[edge-index-census-miss] root={root} index={:p}",
+            index as *const MultiEntryIndex
+        );
+    }
     let pool = pool_parse(index)?;
     let trimmed = root.trim_end_matches('/');
     let prefix = format!("{trimmed}/");
@@ -13625,6 +13932,9 @@ fn tree_bare_census_for_root(
         .tree_bare_census
         .borrow_mut()
         .insert(root.to_string(), census.clone());
+    resolve_stage_slot_add(|st| {
+        st.edge_index_tree_census_miss_nanos += miss_started.elapsed().as_nanos();
+    });
     Ok(census)
 }
 
@@ -15107,8 +15417,14 @@ pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOu
             ExitClass::Failure { .. } => ClaimOutcome::Fail,
             ExitClass::NotProcessExit { type_name } => ClaimOutcome::NotBool { got: type_name },
         },
+        // THE WITNESS BOUNDARY. The kernel raises the caller-agnostic
+        // `EvaluationBudgetExceeded`; this is where the witness lane maps it into its own
+        // refusal so its operator-ruling guidance (the 5s fast-lane rule, and the
+        // relocating-the-file-does-not-discharge-it text) reaches the witness author. Mapping
+        // here rather than in the kernel is what keeps a served HTTP route from receiving
+        // witness guidance it cannot act on.
         Err(e) => ClaimOutcome::RuntimeError {
-            message: format!("{}", e),
+            message: format!("{}", v1_interpreter::map_budget_error_to_witness_refusal(e)),
         },
     }
 }
@@ -16371,6 +16687,61 @@ fn release_revision_text_valid(text: &str) -> bool {
             .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c))
 }
 
+/// The process-wide evaluation budget this serve process enforces.
+///
+/// PROCESS-WIDE, NOT PER-ROUTE, and the distinction is load-bearing rather than a simplification.
+/// A per-route budget would have to be known BEFORE `run_in_context_with_args` begins, so
+/// discovering it by evaluating a `.dag` function would mean entering the very unbounded
+/// evaluator the budget exists to constrain (operator review 2026-08-09). Startup configuration
+/// is the seam that avoids that, and this server has exactly one entry — `roadmap_serve_handle`,
+/// named in its systemd unit — so a process-wide value is sufficient here rather than merely
+/// convenient. A genuinely per-route policy needs either separate processes or a generated
+/// route-policy manifest read before evaluation; neither is built.
+#[derive(Debug, Clone, Copy)]
+pub struct ServeEvaluationBudget {
+    pub cpu_limit_ms: Option<u64>,
+    pub wall_limit_ms: Option<u64>,
+}
+
+/// The machine-readable refusal. The stable `code` is the contract — `std.evaluation_budget`
+/// `evaluation_budget_refusal_code` — and both quantities plus the clock are reported so a
+/// consumer can tell a spin from a stall without parsing prose.
+fn serve_budget_refusal_body(
+    entry: &str,
+    clock_key: &str,
+    elapsed_nanos: u128,
+    limit_ms: u64,
+) -> String {
+    format!(
+        "{{\"code\":\"evaluation_budget_exceeded\",\"entry\":{},\"clock\":\"{}\",\"elapsed_ns\":{},\"limit_ms\":{}}}\n",
+        serve_json_string(entry),
+        clock_key,
+        elapsed_nanos,
+        limit_ms
+    )
+}
+
+/// Minimal JSON string escaping for the refusal body. The entry name comes from a launch
+/// argument rather than a request, but it is escaped anyway: a body that can be malformed by its
+/// own configuration is a fabricated-output path, and the cost of not assuming is two lines.
+fn serve_json_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
 pub fn handle_serve(
     source_roots: Vec<String>,
     entry_file: String,
@@ -16378,6 +16749,7 @@ pub fn handle_serve(
     host: String,
     port: u16,
     release_revision: String,
+    serve_budget: ServeEvaluationBudget,
 ) {
     if source_roots.is_empty() {
         eprintln!("error: provide at least one --source-root");
@@ -16444,9 +16816,23 @@ pub fn handle_serve(
             std::process::exit(1);
         }
     };
+    // The budget is announced at startup because "unset" is a policy state that must be visible.
+    // A process serving with no bound and a process serving with a bound are different
+    // operational facts, and the difference has to be readable without inspecting argv.
     eprintln!(
-        "gunbc serve listening on {}:{} -> {}() release_revision={}",
-        host, port, function, release_revision
+        "gunbc serve listening on {}:{} -> {}() release_revision={} eval_budget_cpu_ms={} eval_budget_wall_ms={}",
+        host,
+        port,
+        function,
+        release_revision,
+        serve_budget
+            .cpu_limit_ms
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "unset".to_string()),
+        serve_budget
+            .wall_limit_ms
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "unset".to_string()),
     );
     v1_interpreter::with_active_context(&ctx, || {
         for stream in listener.incoming() {
@@ -16480,7 +16866,58 @@ pub fn handle_serve(
                             v1_interpreter::Value::Str(release_revision.clone()),
                         ),
                     ];
-                    match v1_interpreter::run_in_context_with_args(&ctx, &function, &args, true) {
+                    // THE DEADLINE IS ARMED HERE, AROUND THIS CALL, AND THE SCOPE IS THE POINT.
+                    // Before this existed the serve path armed nothing, so a route evaluation
+                    // that did not return also prevented the `Err` arm below from ever running:
+                    // the 500 existed and was unreachable, and because the loop is serial the
+                    // stuck request held the accept queue for every later one. The guard both
+                    // arms and restores — a leaked deadline would be worse than none here,
+                    // since `ctx` outlives every request and a stale CPU baseline would refuse
+                    // all subsequent requests for the life of the process.
+                    let result = {
+                        let _budget = ctx.enter_evaluation_budget(
+                            &function,
+                            serve_budget.cpu_limit_ms,
+                            serve_budget.wall_limit_ms,
+                        );
+                        v1_interpreter::run_in_context_with_args(&ctx, &function, &args, true)
+                    };
+                    match result {
+                        Err(v1_interpreter::InterpError::EvaluationBudgetExceeded {
+                            entry,
+                            clock,
+                            elapsed_nanos,
+                            limit_ms,
+                        }) => {
+                            // Refusal rendering is HOST-SIDE by necessity, not by preference:
+                            // the evaluation that would have rendered it is the one that was
+                            // just aborted, so asking it to describe its own abort would put
+                            // recovery behind the evaluator that failed.
+                            //
+                            // 500, not 503: this request is deterministic against a fixed
+                            // policy, so it will cross again on retry. A status meaning
+                            // "temporary capacity" would assert something the model does not
+                            // know, and no `Retry-After` is attached for the same reason
+                            // (`std.evaluation_budget.evaluation_budget_retry_semantics_note`).
+                            eprintln!(
+                                "serve: refused {} on {} clock: elapsed_ns={} limit_ms={}",
+                                entry,
+                                clock.key(),
+                                elapsed_nanos,
+                                limit_ms
+                            );
+                            serve_write_response(
+                                &mut stream,
+                                500,
+                                "application/json; charset=utf-8",
+                                &serve_budget_refusal_body(
+                                    &entry,
+                                    clock.key(),
+                                    elapsed_nanos,
+                                    limit_ms,
+                                ),
+                            )
+                        }
                         Err(e) => serve_write_response(
                             &mut stream,
                             500,
@@ -18699,7 +19136,7 @@ fn witness_admission_entry_function_keys_from_source(
     keys
 }
 
-fn witness_admission_explicit_consumer_keys() -> Vec<String> {
+pub fn witness_admission_explicit_consumer_keys() -> Vec<String> {
     static KEYS: OnceLock<Vec<String>> = OnceLock::new();
     KEYS.get_or_init(|| {
         let mut keys = witness_admission_entry_function_keys_from_source(
@@ -37855,6 +38292,83 @@ mod witness_layer_roots_compile_clean_tests {
                 );
             }
         });
+    }
+
+    /// The accidental-coverage roster's EXECUTING evidence, positive control and
+    /// discriminating REDs together (review 50728).
+    ///
+    /// The authority row claims "planting a fourth unresolved type in that same file
+    /// returns the gate to false while the three named rows stay exempt". I had run that
+    /// by hand and reported it, which is not the same thing as it being enrolled: a manual
+    /// run proves the behaviour once, on one tree, for as long as someone remembers doing
+    /// it. Under DESIGN §4b the discriminating RED stays enrolled as the evidence that the
+    /// exemption is still exactly as narrow as the row says — otherwise the roster could
+    /// widen, or the predicate could stop matching on file, and nothing would notice.
+    ///
+    /// Three cases, because the roster is a pair and either half can fail independently:
+    /// the named pair is exempt; a DIFFERENT type in the SAME file is not; the SAME type in
+    /// a DIFFERENT file is not.
+    #[test]
+    fn class_b_accidental_coverage_exemption_is_exactly_the_named_pairs() {
+        use crate::v1_std_core::{make_error_node, CompilerDiagnostic};
+        let unresolved_at = |name: &str, file: &str| {
+            make_error_node(
+                Rc::new(CompilerDiagnostic::UnresolvedType {
+                    name: name.to_string(),
+                    span: Rc::new(SourceSpan {
+                        file: file.to_string(),
+                        start: 0,
+                        end: 1,
+                    }),
+                }),
+                "v2.std.grounding".to_string(),
+            )
+        };
+
+        // Positive control: both named rows are exempt, or the roster does nothing.
+        for (file, ty) in CLASS_B_ACCIDENTAL_COVERAGE_EXCEPTIONS {
+            assert!(
+                class_b_diagnostic_is_named_exception(&unresolved_at(ty, file)),
+                "named roster row ({file}, {ty}) must be exempt"
+            );
+        }
+
+        // Discriminating RED 1: a different unresolved type in the SAME file still refuses.
+        // This is the one that separates a named row from a per-file pattern.
+        assert!(
+            !class_b_diagnostic_is_named_exception(&unresolved_at(
+                "v2.std.host_run.NotARealTypeControl",
+                "src/v2/std/grounding.dag",
+            )),
+            "an unnamed type in the exempted file must NOT be exempt — otherwise the roster \
+             is a file pattern that would absorb any future breakage in that file"
+        );
+
+        // Discriminating RED 2: the same type in a DIFFERENT file still refuses, so the
+        // exemption cannot leak to another module that happens to name the same type.
+        assert!(
+            !class_b_diagnostic_is_named_exception(&unresolved_at(
+                "v2.std.host_run.EmitHostRunReceipt",
+                "src/v2/std/some_other_module.dag",
+            )),
+            "a named type in an unnamed file must NOT be exempt"
+        );
+
+        // A non-UnresolvedType hard diagnostic is never exempt, whatever its file.
+        assert!(
+            !class_b_diagnostic_is_named_exception(&make_error_node(
+                Rc::new(CompilerDiagnostic::InternalError {
+                    message: "control".to_string(),
+                    span: Rc::new(SourceSpan {
+                        file: "src/v2/std/grounding.dag".to_string(),
+                        start: 0,
+                        end: 1,
+                    }),
+                }),
+                "v2.std.grounding".to_string(),
+            )),
+            "only UnresolvedType is exemptible; another hard diagnostic class must refuse"
+        );
     }
 
     /// Producer control: graph-present compile with an unrelated hard diagnostic must refuse

@@ -3,7 +3,7 @@ module gunbc.publication_admission_delta
 import std.types { List, NonEmptyStr }
 import std.content_hash { ContentHash }
 import gunbc.public_projection {
-  PublicationSubject,
+  PublicProjectionSubject,
   PublicProjectionPlan,
   public_projection_includes_subject,
   public_projection_omits_subject,
@@ -12,8 +12,8 @@ import gunbc.public_projection {
 
 // Change-local publication admission compares current published projection vs candidate derived projection. Slice-1 classifies NewlyPublic, NewlyWithheld, and PolicyChanged only. Audience widenings and private-to-public references defer until audience/reference carriers land; digest mismatch refuses at admission via CandidateDigestInconsistent, not a delta class. Whole-projection audit is a separate centrally-owned main-health job, never inherited by unrelated PRs.
 type ProjectionDeltaClass
-  = NewlyPublic { subject: PublicationSubject }
-  | NewlyWithheld { subject: PublicationSubject }
+  = NewlyPublic { subject: PublicProjectionSubject }
+  | NewlyWithheld { subject: PublicProjectionSubject }
   | PolicyChanged {
       from_version: NonEmptyStr,
       to_version: NonEmptyStr,
@@ -45,7 +45,7 @@ type ChangeLocalAdmissionOutcome
 fn classify_subject_delta(
   current: PublicProjectionPlan?,
   candidate: PublicProjectionPlan,
-  subject: PublicationSubject,
+  subject: PublicProjectionSubject,
 ) -> ProjectionDeltaClass? {
   let included_now = match current {
     Absent => false
@@ -73,7 +73,7 @@ fn classify_subject_delta(
 }
 
 fn subject_identity_in_list(
-  subjects: List<PublicationSubject>,
+  subjects: List<PublicProjectionSubject>,
   subject_identity: ContentHash,
 ) -> Bool {
   fold(subjects, init: false, f: fn(found, subject) {
@@ -84,7 +84,7 @@ fn subject_identity_in_list(
 fn candidate_delta_subjects(
   current: PublicProjectionPlan?,
   candidate: PublicProjectionPlan,
-) -> List<PublicationSubject> {
+) -> List<PublicProjectionSubject> {
   let candidate_subjects = concat(candidate.included_subjects, candidate.omitted_subjects)
   match current {
     Absent => candidate_subjects

@@ -7,7 +7,7 @@ import extdeps.w3c.device_orientation_and_motion {
   devicemotion_event_type, device_motion_event_interface,
   hollow_event_emission_is_required, interfaces_are_secure_context_only,
   DeviceMotionDispatchPrecondition, devicemotion_may_be_dispatched,
-  accelerometer_permission_name, gyroscope_permission_name,
+  device_motion_accelerometer_permission_name, gyroscope_permission_name,
   PermissionState, PermissionGranted, PermissionDenied, PermissionPrompt,
   permission_state_wire, permission_state_admits_readings,
   MotionAxisReading, AxisNull, AxisValue, axis_has_value,
@@ -229,7 +229,7 @@ fn witness_hollow_emission_is_advisory_and_dispatch_needs_both_permissions() -> 
          accelerometer_permission_granted: false,
          gyroscope_permission_granted: true,
        })
-    && accelerometer_permission_name == "accelerometer"
+    && device_motion_accelerometer_permission_name == "accelerometer"
     && gyroscope_permission_name == "gyroscope"
     && devicemotion_event_type == "devicemotion"
 }

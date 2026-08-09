@@ -106,6 +106,6 @@ data accelerometer_permission_name: String = "accelerometer"
 
 data secure_context_note: String = "All three interfaces are declared [SecureContext, Exposed=Window], so none of them exists on an insecure origin and none is available to a worker."
 
-data interfaces_are_secure_context_only: Bool = true
+data accelerometer_spec_interfaces_are_secure_context_only: Bool = true
 
 data unit_label: String = "m/s^2"

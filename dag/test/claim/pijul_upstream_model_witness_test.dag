@@ -332,7 +332,7 @@ fn pijul_r0_fixture_repository() -> PijulRepositoryState {
   }
 }
 
-fn fixture_repository() -> PijulRepositoryState {
+fn pijul_fixture_repository() -> PijulRepositoryState {
   pijul_r0_fixture_repository()
 }
 
@@ -391,7 +391,7 @@ fn projection_with_channels(
 }
 
 test fn witness_pijul_fixture_uniqueness_frontier_is_clear() -> Bool {
-  let state = fixture_repository()
+  let state = pijul_fixture_repository()
   match pijul_duplicate_change(changes: state.changes) {
     Present { value: _ } => false
     Absent => match pijul_duplicate_channel(channels: state.channels) {
@@ -419,7 +419,7 @@ test fn witness_pijul_fixture_uniqueness_frontier_is_clear() -> Bool {
 }
 
 test fn witness_pijul_fixture_has_no_duplicate_change_identity() -> Bool {
-  match pijul_duplicate_change(changes: fixture_repository().changes) {
+  match pijul_duplicate_change(changes: pijul_fixture_repository().changes) {
     Present { value: _ } => false
     Absent => true
   }
@@ -433,14 +433,14 @@ test fn witness_pijul_fixture_reference_frontier_is_clear() -> Bool {
 }
 
 test fn witness_pijul_fixture_has_no_self_dependency() -> Bool {
-  match pijul_self_dependency(changes: fixture_repository().changes) {
+  match pijul_self_dependency(changes: pijul_fixture_repository().changes) {
     Present { value: _ } => false
     Absent => true
   }
 }
 
 test fn witness_pijul_fixture_state_identity_frontier_is_clear() -> Bool {
-  let state = fixture_repository()
+  let state = pijul_fixture_repository()
   match pijul_state_identity_issue(channels: state.channels) {
     Present { value: _ } => false
     Absent => match pijul_find_channel(
@@ -475,7 +475,7 @@ test fn witness_pijul_bounded_projection_decodes_with_conflict_and_partial_facts
 }
 
 test fn witness_pijul_projects_and_assesses_caller_supplied_readback() -> Bool {
-  let repository = fixture_repository()
+  let repository = pijul_fixture_repository()
   match pijul_project_repository(repository: repository) {
     PijulProjected { projection } =>
       match pijul_assess_read_back(
@@ -483,7 +483,7 @@ test fn witness_pijul_projects_and_assesses_caller_supplied_readback() -> Bool {
         observation: PijulReadBackObservation {
           pijul_version: pijul_upstream_version,
           projection: PijulCompleteProjection {
-            candidate: fixture_repository(),
+            candidate: pijul_fixture_repository(),
           },
         },
       ) {
@@ -495,7 +495,7 @@ test fn witness_pijul_projects_and_assesses_caller_supplied_readback() -> Bool {
 }
 
 test fn witness_pijul_readback_rejects_perturbed_working_copy() -> Bool {
-  let expected = fixture_repository()
+  let expected = pijul_fixture_repository()
   let perturbed = PijulPartialProjection {
     candidate: PijulRepositoryState {
       changes: expected.changes,
@@ -746,7 +746,7 @@ test fn witness_pijul_duplicate_delivery_contributes_once() -> Bool {
 }
 
 test fn witness_pijul_missing_dependency_refuses_delivery() -> Bool {
-  let base = fixture_repository()
+  let base = pijul_fixture_repository()
   let dependent = PijulRecordedChange {
     identity: fixture_identity(hash: pijul_change_dependent),
     dependencies: [
@@ -798,7 +798,7 @@ test fn witness_pijul_unknown_change_never_applies_as_empty() -> Bool {
 
 test fn witness_pijul_present_change_cannot_also_be_declared_missing() -> Bool {
   let invalid = PijulPartialProjection {
-    candidate: fixture_repository(),
+    candidate: pijul_fixture_repository(),
     missing_changes: [pijul_change_root],
     missing_vertices: [],
     missing_paths: [],
@@ -813,7 +813,7 @@ test fn witness_pijul_present_change_cannot_also_be_declared_missing() -> Bool {
 
 test fn witness_pijul_delivery_revalidates_raw_projection() -> Bool {
   let invalid = PijulPartialProjection {
-    candidate: fixture_repository(),
+    candidate: pijul_fixture_repository(),
     missing_changes: [pijul_change_root],
     missing_vertices: [],
     missing_paths: [],
@@ -833,7 +833,7 @@ test fn witness_pijul_delivery_revalidates_raw_projection() -> Bool {
 }
 
 test fn witness_pijul_missing_dependency_in_channel_still_refuses_delivery() -> Bool {
-  let base = fixture_repository()
+  let base = pijul_fixture_repository()
   let dependent = PijulRecordedChange {
     identity: fixture_identity(hash: pijul_change_dependent),
     dependencies: [
@@ -885,7 +885,7 @@ test fn witness_pijul_missing_dependency_in_channel_still_refuses_delivery() -> 
 }
 
 test fn witness_pijul_existing_channel_member_dependency_gap_refuses_delivery() -> Bool {
-  let base = fixture_repository()
+  let base = pijul_fixture_repository()
   let existing = PijulRecordedChange {
     identity: fixture_identity(hash: pijul_change_left),
     dependencies: [
@@ -986,7 +986,7 @@ test fn witness_pijul_one_state_hash_cannot_name_different_change_sets() -> Bool
   match pijul_decode_projection(
     projection: projection_with_channels(
       projection: projection,
-      channels: append(fixture_repository().channels, items: [collision]),
+      channels: append(pijul_fixture_repository().channels, items: [collision]),
     ),
   ) {
     PijulDecodeRefused {
@@ -1015,7 +1015,7 @@ test fn witness_pijul_equal_change_sets_require_one_state_identity() -> Bool {
   match pijul_decode_projection(
     projection: projection_with_channels(
       projection: projection,
-      channels: append(fixture_repository().channels, items: [divergent]),
+      channels: append(pijul_fixture_repository().channels, items: [divergent]),
     ),
   ) {
     PijulDecodeRefused {
@@ -1031,7 +1031,7 @@ test fn witness_pijul_equal_change_sets_require_one_state_identity() -> Bool {
 }
 
 test fn witness_pijul_undeclared_context_refuses_capture() -> Bool {
-  let base = fixture_repository()
+  let base = pijul_fixture_repository()
   let bad_change = PijulRecordedChange {
     identity: fixture_identity(hash: pijul_change_dependent),
     dependencies: [],
@@ -1082,7 +1082,7 @@ test fn witness_pijul_declared_partial_change_is_not_fabricated() -> Bool {
   }
   let changed = projection_with_channels(
     projection: projection,
-    channels: append(fixture_repository().channels, items: [partial_channel]),
+    channels: append(pijul_fixture_repository().channels, items: [partial_channel]),
   )
   match pijul_decode_projection(projection: changed) {
     PijulDecoded { repository } =>
@@ -1110,7 +1110,7 @@ test fn witness_pijul_graph_conflict_is_retained_without_capture_refusal() -> Bo
 }
 
 test fn witness_pijul_tree_pristine_and_working_copy_remain_distinct() -> Bool {
-  let state = fixture_repository()
+  let state = pijul_fixture_repository()
   count(state.tree.entries) == 1
     && count(state.pristine.vertices) == 3
     && count(state.working_copy.entries) == 2

@@ -1,0 +1,43 @@
+module gunbc.devboot.program
+
+import std.types { String, Bool, List }
+import extdeps.cargo { CargoTarget, Bin }
+
+// WHAT `gunbc build <program>` MEANS BY A PROGRAM. The public operation takes a name, and a name that reaches cargo unchecked fails at the far end of the pipeline: after a snapshot, after a push to another host, after a producer materializes a tree, cargo reports that it matched no target and the caller learns their typo minutes later and one host away. The roster is what turns that into an immediate, local, typed refusal.
+//
+// THE ROSTER IS A DECLARED FRONTIER, NOT AN AUTHORITY. Cargo.toml already enumerates these targets; this list is a second spelling of rows that exist there, which is the parallel representation DESIGN section 3 forbids. It is written down anyway because the alternative available today is passing an unvalidated string to a remote builder, and a counted, named duplicate is honest where a silent one is not.
+//
+// Dissolve-on: a cargo manifest ingest that yields the [[bin]] rows as data, at which point this row is deleted rather than maintained -- the selection becomes a lookup in the manifest model and a program absent from the manifest refuses for the reason it actually refuses. Until then a program added to Cargo.toml and not added here refuses, which is the fail-closed direction: the caller is told the name is not offered rather than being handed a build of something else.
+data devboot_program_package: String = "v1-compiler"
+
+fn offered_programs() -> List<String> {
+  ["gunbc", "claim_batch", "claim_executor", "regen_stage0"]
+}
+
+type ProgramSelection
+  = ProgramSelected { package: String, cargo_target: CargoTarget, bin_name: String }
+  | ProgramNotOffered { program: String }
+
+fn program_is_offered(program: String) -> Bool {
+  fold(offered_programs(), init: false, f: (acc, offered) => acc || (offered == program))
+}
+
+fn select_program(program: String) -> ProgramSelection {
+  if program_is_offered(program: program) {
+    ProgramSelected {
+      package: devboot_program_package,
+      cargo_target: Bin { name: program },
+      bin_name: program,
+    }
+  } else {
+    ProgramNotOffered { program: program }
+  }
+}
+
+fn offered_programs_rendering() -> String {
+  fold(
+    offered_programs(),
+    init: "",
+    f: (acc, offered) => if acc == "" { offered } else { join([acc, ", ", offered], "") },
+  )
+}
