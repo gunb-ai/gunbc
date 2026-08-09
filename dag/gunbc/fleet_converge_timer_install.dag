@@ -6,6 +6,8 @@ import std.algebra { trim }
 import std.resources { Network }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { ArgvCommand, LocalExec }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.command_runner { run_shell_commands, run_shell_command_capture }
 import gunbc.fleet_converge_timer {
   fleet_converge_service_unit_name,
@@ -178,14 +180,36 @@ data fleet_timer_install_sudoers_requirement: TimerInstallSudoersRequirement = T
   standing: "host standing provisioned by convergence thereafter; hand-grant is one-time legacy bootstrap only (msg_72e2dcee)",
 }
 
-// Measured bootstrap receipts (parent msg_acfd9e31, operator-authorized one-time
-// bootstrap, actor witty-raven-412, 2026-08-09): the per-host standing of the
-// gunbc-deploy sudoers dropin — the srv2-4 route's PREREQUISITE (see the probe above).
-// srv1 predates this lane (installed by the live_deploy path); srv2 was hand-
+// LINE-STOP REVERSAL (operator via parent msg_af607b12, 2026-08-09): the hand-applied
+// host state below is DRIFT to dissolve, not a legacy bootstrap to bless. The real
+// defect is that live_deploy targets srv1 ONLY — every 'srv2-4 lacks X' symptom is that
+// one root: no host but srv1 has convergence-provisioned standing. The fix is to make
+// host standing (sudoers dropin, automation account, authorized_keys, timer) DESIRED
+// MEMBERS on the fleet-reconcile membership spine extended past srv1, NOT a second
+// provisioning path and NOT more hand-application. These receipts are therefore
+// registered as a SCAFFOLD whose dissolution is: convergence reproduces srv1/srv2's
+// current standing as Unchanged (no hunk) — the discriminating check that the manual
+// state matches what the model would have produced. A hunk means the hand-work was
+// drift in substance too, and the hunk is its receipt. No further hand-applied host
+// state lands from here; a thing convergence cannot yet do is a typed, located finding.
+data fleet_sudoers_bootstrap_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.fleet_converge_timer_install",
+    decl_name: "fleet_sudoers_bootstrap_receipts",
+    field: WholeDeclaration,
+  }
+}
+
+// Measured bootstrap receipts (parent msg_acfd9e31, hand-applied by witty-raven-412,
+// 2026-08-09; RECLASSIFIED as drift-to-converge by msg_af607b12): the per-host standing
+// of the gunbc-deploy sudoers dropin — the srv2-4 route's PREREQUISITE (see the probe
+// above). srv1 predates this lane (installed by the live_deploy path); srv2 was hand-
 // bootstrapped with the same staged -> visudo -cf -> install -m 0440 -> re-validate ->
 // readback procedure the emitter uses; srv3/srv4 are typed ABSENT with the measured
-// reach cause, never assumed either way. These rows are the one-time-legacy-bootstrap
-// half of the standing framing on fleet_timer_install_sudoers_requirement.
+// reach cause, never assumed either way. These rows are unblocking receipts, marked and
+// counted, that dissolve when the membership spine reproduces the same standing
+// Unchanged (fleet_sudoers_bootstrap_scaffold).
 type SudoersBootstrapStanding
   = BootstrapApplied { artifact: String, validation: String, readback: String, actor: String, date: String }
   | BootstrapPreexisting { artifact: String, readback: String, date: String }

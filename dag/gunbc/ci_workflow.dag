@@ -23,6 +23,7 @@ import gunbc.ci_spec {
   gunbc_ci_srv1_tasks_observation_invoke,
   gunbc_ci_advance_fleet_desired_script,
   gunbc_ci_fleet_reach_probe_invoke,
+  gunbc_ci_multi_principal_probe_invoke,
   gunbc_ci_fleet_timer_install_invoke,
   gunbc_ci_collect_fleet_convergence_invoke,
   gunbc_ci_fleet_key_agent_script,
@@ -643,6 +644,20 @@ fn ci_srv1_tasks_observation_step() -> Step {
 // follow the ref on their own timers.
 // Live fleet reach probe (loop leg e): workflow_dispatch-only, srv1-pinned (the probe
 // runs FROM inside the fleet, over the typed SSH probe seam where outcome is data).
+fn ci_multi_principal_probe_step() -> Step {
+  RunStep {
+    name: Present { value: "Read-only multi-principal fleet-key probe on srv3/srv4 (fleet_multi_principal_probe_wet; hostname + sudo -n -l; no writes)" },
+    id: none,
+    run: gunbc_ci_multi_principal_probe_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
 fn ci_fleet_reach_probe_step() -> Step {
   RunStep {
     name: Present { value: "Live fleet reach probe (probe_fleet_reach_wet; outcomes are data)" },
@@ -733,7 +748,7 @@ fn ci_fleet_reach_probe_job() -> Job {
     runner: gunbc_ci_deploy_srv1_runner_spec(),
     steps: concat(
       ci_artifact_consumer_prelude_steps(),
-      [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_fleet_wif_auth_step(), ci_fleet_key_agent_step(), ci_fleet_reach_probe_step(), ci_fleet_key_agent_cleanup_step()]
+      [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_fleet_wif_auth_step(), ci_fleet_key_agent_step(), ci_fleet_reach_probe_step(), ci_multi_principal_probe_step(), ci_fleet_key_agent_cleanup_step()]
     ),
     needs: ["build"],
     env: none,

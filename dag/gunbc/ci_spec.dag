@@ -549,6 +549,31 @@ fn gunbc_ci_fleet_reach_probe_invoke() -> String {
   )
 }
 
+// Read-only multi-principal fleet-key probe (parent msg_e767a783): measures whether the
+// in-run fleet key authenticates as any PRE-EXISTING account on srv3/srv4 (ubuntu,
+// briansrls, ghrunner, root) — hostname + sudo -n -l, no writes. Rides the same probe
+// job so it reuses the one WIF/agent materialization; its receipt is a separate file.
+data gunbc_ci_multi_principal_probe_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: gunbc_ci_multi_principal_probe_invoke — concat-built foreign-executor (GitHub Actions run:) shell invoking gunbc run on gunbc.fleet_multi_principal_probe fleet_multi_principal_probe_wet plus a cat of the typed receipt; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the step to orchestration emit over the typed gunbc.WitnessBin.Run route"
+
+fn gunbc_ci_multi_principal_probe_invoke() -> String {
+  concat(
+    concat("# ", concat(gunbc_ci_multi_principal_probe_shell_emit_dissolution_trigger, "\n")),
+    concat(
+      concat(
+        concat("ROOT=", ci_repo_root_shell(), "\n"),
+        gunbc_run_shell(
+          source_roots: witness_layer_roots,
+          entry: "dag/gunbc/fleet_multi_principal_probe.dag",
+          function: "fleet_multi_principal_probe_wet",
+          rooted: true,
+          claim_run: false
+        )
+      ),
+      "\ncat \"$ROOT/target/fleet-multi-principal-probe-receipt.txt\""
+    )
+  )
+}
+
 // A2 in-run key materialization (parent msg_72e2dcee): foreign-executor shell that
 // exchanges nothing itself — the WIF access token arrives from the google_auth_action
 // step via env — and turns Secret Manager versions/1 (PINNED, never `latest`) into a

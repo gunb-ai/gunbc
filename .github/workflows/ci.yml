@@ -746,6 +746,13 @@ jobs:
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/host_reach_identity_probe.dag --function probe_fleet_reach_wet
           cat "$ROOT/target/fleet-reach-probe-receipt.txt"
         timeout-minutes: 5
+      - name: Read-only multi-principal fleet-key probe on srv3/srv4 (fleet_multi_principal_probe_wet; hostname + sudo -n -l; no writes)
+        run: |
+          # 🟡 dissolve-on: gunbc_ci_multi_principal_probe_invoke — concat-built foreign-executor (GitHub Actions run:) shell invoking gunbc run on gunbc.fleet_multi_principal_probe fleet_multi_principal_probe_wet plus a cat of the typed receipt; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the step to orchestration emit over the typed gunbc.WitnessBin.Run route
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet_multi_principal_probe.dag --function fleet_multi_principal_probe_wet
+          cat "$ROOT/target/fleet-multi-principal-probe-receipt.txt"
+        timeout-minutes: 5
       - name: Kill the in-run ssh-agent (key never outlives the job)
         run: |
           if [ -n "${SSH_AGENT_PID:-}" ]; then ssh-agent -k || true; fi
