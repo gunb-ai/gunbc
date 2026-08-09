@@ -1,5 +1,11 @@
 module gunbc.spark_bootstrap_provision
 
+import std.access {
+  AccessDecision, Permit, Deny, decision_meet,
+  AccessRefusal, AccessRefusalLocation,
+  AccessActionNotGranted, AccessObjectNotGranted, AccessEvidenceAbsent, AccessSubjectNotRecognized
+}
+
 // The Spark bootstrap credential population, as convergence subjects rather than as callable
 // mutation tools. An earlier revision of this module carried two patterns that dispatched
 // CreateSecret / SetSecretIamPolicy / AddVersion unconditionally from whatever process invoked
@@ -116,30 +122,153 @@ data spark_legacy_container_note: String = "Two containers exist in gunbai-secre
 // The replacement is a semantic identity for the fleet's cloud convergence executor. It carries
 // no allocated service-account handle yet, and the pending arm is the honest state: allocating
 // one is a cloud mutation, which is precisely what this module no longer performs.
-type FleetCloudConvergencePrincipal
-  = FleetCloudPrincipalAllocated { member: NonEmptyStr }
-  | FleetCloudPrincipalUnallocated
+// ── The principal, and what is actually known about it ────────────────────────────────────
+// The semantic identity is stable; the service-account email is an ALLOCATION with its own
+// observation standing. An earlier revision fused them and returned Allocated while its own note
+// said the allocation was not independently verified. Those two statements cannot coexist: the
+// carrier reported a rung its evidence did not establish, which is the inflation this project
+// forbids -- and it was mine, in the same commit that recorded the evidence as second-hand.
+// Until the WIF workflow reads it back, Reported is the honest arm.
+type FleetCloudConvergence {}
 
-fn fleet_cloud_convergence_principal() -> FleetCloudConvergencePrincipal {
-  FleetCloudPrincipalAllocated { member: "serviceAccount:fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com" }
+type FleetCloudPrincipalKey = FleetCloudConvergence
+
+type FleetCloudPrincipalAllocationStanding
+  = CloudPrincipalUnallocated { principal: FleetCloudPrincipalKey }
+  | CloudPrincipalReported { principal: FleetCloudPrincipalKey, reported_member: String, source: NonEmptyStr }
+  | CloudPrincipalAllocated { principal: FleetCloudPrincipalKey, member: String, readback: NonEmptyStr }
+
+fn fleet_cloud_principal_standing() -> FleetCloudPrincipalAllocationStanding {
+  CloudPrincipalReported {
+    principal: FleetCloudConvergence {},
+    reported_member: "serviceAccount:fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com",
+    source: "witty-raven-412 msg_1e6d1b42; not read back by this session"
+  }
 }
 
-// The identity now exists; the Spark BINDING does not. Two separate facts, and collapsing them
-// would report this population as reachable by a principal that currently holds nothing on it.
-// Reported by witty-raven-412 on 2026-08-09, not measured here -- this session has no Secret
-// Manager access of any kind, so every cloud row below is a REPORTED observation carrying its
-// source, never a first-hand one.
-type SparkPopulationBindingStanding
-  = SparkPopulationBindingAbsent
-  | SparkPopulationBindingPresent { member: NonEmptyStr }
+// ── Domain operations, projected into the one kernel ──────────────────────────────────────
+// The Secret Manager operation population is a domain fact and belongs here. The DECISION is not:
+// std.access.AccessDecision is the only admitted/refused sum, and decision_meet the only
+// conjunction, so this module mints neither.
+type SecretManagerOperation
+  = SmGetSecret
+  | SmGetIamPolicy
+  | SmSetIamPolicy
+  | SmAddVersion
+  | SmAccessVersion
+  | SmDisableVersion
+  | SmDestroyVersion
 
-fn spark_population_binding_standing() -> SparkPopulationBindingStanding { SparkPopulationBindingAbsent }
+fn sm_operation_rank(op: SecretManagerOperation) -> Int {
+  match op {
+    SmGetSecret => 1
+    SmGetIamPolicy => 2
+    SmSetIamPolicy => 3
+    SmAddVersion => 4
+    SmAccessVersion => 5
+    SmDisableVersion => 6
+    SmDestroyVersion => 7
+  }
+}
 
-data spark_cloud_census_note: String = "Cloud rows reported by witty-raven-412 (msg_1e6d1b42) on 2026-08-09 and NOT independently verified here; this session has no gcloud, ADC, metadata server, or credential env, so it cannot check them. (1) Secret fleet-automation-ssh-key in gunbai-secrets, version 1 ENABLED, created 2026-07-21T21:16:13Z. (2) A pre-existing consumer, serviceAccount:fleet-automation@gunbai-secrets.iam.gserviceaccount.com, holds secretAccessor on that secret. (3) serviceAccount:fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com was created 2026-08-09, WIF-bound to the github-actions pool for gunb-ai/gunbc, with accessor on that ONE secret. Its scope therefore does not reach the four Spark credential occurrences, so the Spark population binding stands Absent."
+fn sm_operation_eq(a: SecretManagerOperation, b: SecretManagerOperation) -> Bool {
+  sm_operation_rank(op: a) == sm_operation_rank(op: b)
+}
 
-data fleet_key_provenance_note: String = "The scratchpad fleet key and Secret Manager fleet-automation-ssh-key version 1 carry the same ED25519 fingerprint SHA256:mGT7qJsh36VsVb8OPh3m8br3oHedQHxRukRkW5P0CoQ, derived independently on both sides. STATED AT THE STRENGTH THAT SUPPORTS: this is an IDENTITY join -- the two are the same keypair -- and it is not a causal one. It does not establish that the local copy was materialized FROM that version, because a fingerprint is symmetric: a common origin that seeded both, or a copy made before the version existed, produce exactly this evidence. Nobody observed a fetch. Recording it as a materialization would assert an event with no receipt, which is the same overreach as reading a successful apply as proof of least privilege. The honest row is same-keypair-as-v1, joined by fingerprint, with the fetch event unobserved."
+// ── Scope, and whether it moves ───────────────────────────────────────────────────────────
+// FrozenAtGrant is load-bearing: "global over the current Spark population" must not silently mean
+// that a machine added tomorrow inherits today's authority. Adding srv7 widens a grant only where
+// the policy says TracksNamespaceMembership.
+type AccessScopeEvolution
+  = FrozenAtGrant
+  | TracksNamespaceMembership
 
-data spark_cloud_principal_note: String = "The Spark secret population must be bound to a fleet cloud-convergence principal with an independently allocated service-account identity and the minimum permissions for exactly this population -- never to bmc_assimilator_sa_member(), which is declared as the BMC assimilator for the srv3 BMC secret. Reusing it would make BMC assimilation the authority for Spark provisioning and would widen a principal scoped to one secret into one holding versionAdder across two domains. The GitHub-to-GCP federation facts are likewise a repository-level authority to be extracted and consumed by both domains, not copied out of the BMC rows, since copying is how the second authority gets minted."
+type SparkCloudScope {
+  resources: List<NonEmptyStr>
+  evolution: AccessScopeEvolution
+}
+
+type SparkCloudGrant {
+  principal: FleetCloudPrincipalKey
+  operations: List<SecretManagerOperation>
+  scope: SparkCloudScope
+}
+
+// An exact cell: one principal, one operation, one resource. Replaces a global present/absent
+// standing, which could not answer which operation on which resource -- so "the principal is
+// bound" read as coverage while naming nothing.
+type AccessGrantCell {
+  operation: SecretManagerOperation
+  resource: NonEmptyStr
+}
+
+type AccessGrantCellStanding
+  = GrantCellPresent { cell: AccessGrantCell }
+  | GrantCellAbsent { cell: AccessGrantCell }
+  | GrantCellUnobserved { cell: AccessGrantCell }
+
+fn spark_scope_admits(scope: SparkCloudScope, resource: NonEmptyStr) -> Bool {
+  fold(scope.resources, init: false, f: (acc, r) => acc || r == resource)
+}
+
+fn spark_grant_admits_operation(grant: SparkCloudGrant, op: SecretManagerOperation) -> Bool {
+  fold(grant.operations, init: false, f: (acc, o) => acc || sm_operation_eq(a: o, b: op))
+}
+
+// The projection. Two independent refusal coordinates -- action and object -- so an operation the
+// grant never carried and a resource outside scope are different denials, not one blurred no.
+fn spark_cloud_grant_decision(grant: SparkCloudGrant, cell: AccessGrantCell) -> AccessDecision {
+  if !spark_grant_admits_operation(grant: grant, op: cell.operation) {
+    Deny { refusal: AccessRefusal {
+      cause: AccessActionNotGranted { action: "operation outside the granted population" },
+      location: AccessRefusalLocation {
+        profile: "spark_cloud_grant", subject: "FleetCloudConvergence",
+        action: "secret-manager-operation", object: cell.resource as String } } }
+  } else {
+    if !spark_scope_admits(scope: grant.scope, resource: cell.resource) {
+      Deny { refusal: AccessRefusal {
+        cause: AccessObjectNotGranted { object: "resource outside the granted scope" },
+        location: AccessRefusalLocation {
+          profile: "spark_cloud_grant", subject: "FleetCloudConvergence",
+          action: "secret-manager-operation", object: cell.resource as String } } }
+    } else {
+      Permit
+    }
+  }
+}
+
+// Actuation additionally requires the principal to be independently observed. A Reported principal
+// is a claim about the cloud nobody in this run verified, so it cannot authorize an effect -- and
+// this is where decision_meet does the conjoining rather than a second fold.
+fn spark_principal_decision(standing: FleetCloudPrincipalAllocationStanding) -> AccessDecision {
+  match standing {
+    CloudPrincipalAllocated { principal: _, member: _, readback: _ } => Permit
+    CloudPrincipalReported { principal: _, reported_member: _, source: _ } =>
+      Deny { refusal: AccessRefusal {
+        cause: AccessEvidenceAbsent { evidence: "principal allocation is externally reported and not read back by this run" },
+        location: AccessRefusalLocation {
+          profile: "spark_cloud_principal", subject: "FleetCloudConvergence",
+          action: "actuate", object: "spark-cloud-population" } } }
+    CloudPrincipalUnallocated { principal: _ } =>
+      Deny { refusal: AccessRefusal {
+        cause: AccessSubjectNotRecognized { subject: "no allocated cloud principal" },
+        location: AccessRefusalLocation {
+          profile: "spark_cloud_principal", subject: "FleetCloudConvergence",
+          action: "actuate", object: "spark-cloud-population" } } }
+  }
+}
+
+fn spark_actuation_decision(
+  standing: FleetCloudPrincipalAllocationStanding,
+  grant: SparkCloudGrant,
+  cell: AccessGrantCell
+) -> AccessDecision {
+  decision_meet(
+    a: spark_principal_decision(standing: standing),
+    b: spark_cloud_grant_decision(grant: grant, cell: cell))
+}
+
+data spark_access_adapter_note: String = "This module is an ADAPTER, not an access system. It supplies the domain operation population, the resource identity and the scope rows; std.access supplies AccessRequest, AccessDecision, the typed refusal coordinates and decision_meet. No second admitted/refused sum is minted here. Independence is a property of the grant -- principal x operation x resource x context -- and never of a username, a uid, a service-account count, or how many credential values happen to exist. Two passwords under one project-wide binding are not independent access; one short-lived token over two exact resources may be far tighter."
 
 // ── The convergence shape this model is consumed by ───────────────────────────────────────
 // Declared as the required sequence rather than implemented as callable mutation, because the

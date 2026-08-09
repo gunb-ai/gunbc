@@ -54,34 +54,6 @@ test fn spark_allocations_are_all_pending() -> Bool {
     acc && spark_allocation_is_pending(a: spark_secret_allocation(occurrence: o)))
 }
 
-// CONTROL 4: the cloud principal is a DEDICATED identity, never a borrowed one. The invariant was
-// never "unallocated forever" -- an earlier revision asserted that, which would have gone red the
-// moment the correct thing happened. What must hold is that the Spark authority is not a principal
-// declared for another domain, so this reds if the BMC assimilator is ever substituted here.
-fn spark_principal_member() -> String {
-  match fleet_cloud_convergence_principal() {
-    FleetCloudPrincipalAllocated { member: m } => m as String
-    FleetCloudPrincipalUnallocated => ""
-  }
-}
-
-test fn spark_cloud_principal_is_dedicated_not_borrowed() -> Bool {
-  let m = spark_principal_member()
-  m != ""
-    && m != "serviceAccount:bmc-assimilator@gunbai-secrets.iam.gserviceaccount.com"
-    && m != "serviceAccount:fleet-automation@gunbai-secrets.iam.gserviceaccount.com"
-}
-
-// CONTROL 7: the principal existing does not mean the population is reachable by it. The reported
-// grant covers one key secret, not the four Spark occurrences, and this control keeps those two
-// facts from being collapsed into "the principal is set up".
-test fn spark_population_has_no_binding_yet() -> Bool {
-  match spark_population_binding_standing() {
-    SparkPopulationBindingAbsent => true
-    SparkPopulationBindingPresent { member: _ } => false
-  }
-}
-
 // CONTROL 5: both legacy containers classify as observed-unbound, and there are exactly two of
 // them. They are starting state, never accepted output; this reds if either is promoted into the
 // allocation path.
@@ -333,4 +305,100 @@ test fn spark_factory_hotspot_cannot_be_generated() -> Bool {
     SparkSourceRefused { cause: _ } => false
   }
   refused && admin_ok && observed_ok
+}
+
+// ── Access-policy controls ────────────────────────────────────────────────────────────────
+// Independence is tested as a property of the GRANT. None of these controls mention a username, a
+// uid, or a service-account count, because none of those decide who may do what to which resource.
+
+fn spark_srv5_secret() -> NonEmptyStr { "spark-srv5-administrator" }
+fn spark_srv6_secret() -> NonEmptyStr { "spark-srv6-administrator" }
+fn spark_srv7_secret() -> NonEmptyStr { "spark-srv7-administrator" }
+
+fn spark_pair_grant() -> SparkCloudGrant {
+  SparkCloudGrant {
+    principal: FleetCloudConvergence {},
+    operations: [SmGetSecret, SmGetIamPolicy, SmAddVersion, SmAccessVersion],
+    scope: SparkCloudScope { resources: [spark_srv5_secret(), spark_srv6_secret()], evolution: FrozenAtGrant }
+  }
+}
+
+fn spark_srv5_only_grant() -> SparkCloudGrant {
+  SparkCloudGrant {
+    principal: FleetCloudConvergence {},
+    operations: [SmAccessVersion],
+    scope: SparkCloudScope { resources: [spark_srv5_secret()], evolution: FrozenAtGrant }
+  }
+}
+
+fn spark_permits(d: AccessDecision) -> Bool {
+  match d {
+    Permit => true
+    Deny { refusal: _ } => false
+  }
+}
+
+fn spark_allocated_principal() -> FleetCloudPrincipalAllocationStanding {
+  CloudPrincipalAllocated {
+    principal: FleetCloudConvergence {},
+    member: "serviceAccount:fixture@example.iam.gserviceaccount.com",
+    readback: "fixture readback"
+  }
+}
+
+fn spark_cell(op: SecretManagerOperation, r: NonEmptyStr) -> AccessGrantCell {
+  AccessGrantCell { operation: op, resource: r }
+}
+
+// CONTROL 20: a grant over srv5 cannot authorize the same operation on srv6.
+test fn spark_grant_over_srv5_does_not_reach_srv6() -> Bool {
+  spark_permits(d: spark_cloud_grant_decision(grant: spark_srv5_only_grant(), cell: spark_cell(op: SmAccessVersion, r: spark_srv5_secret())))
+    && !spark_permits(d: spark_cloud_grant_decision(grant: spark_srv5_only_grant(), cell: spark_cell(op: SmAccessVersion, r: spark_srv6_secret())))
+}
+
+// CONTROL 21: one global principal with one exact grant reaches BOTH admitted resources -- fine
+// grain comes from the grant, not from proliferating principals -- and still cannot reach srv7.
+// This is the control that would red if a frozen scope silently tracked namespace membership.
+test fn spark_pair_grant_reaches_both_and_not_a_third() -> Bool {
+  spark_permits(d: spark_cloud_grant_decision(grant: spark_pair_grant(), cell: spark_cell(op: SmAccessVersion, r: spark_srv5_secret())))
+    && spark_permits(d: spark_cloud_grant_decision(grant: spark_pair_grant(), cell: spark_cell(op: SmAccessVersion, r: spark_srv6_secret())))
+    && !spark_permits(d: spark_cloud_grant_decision(grant: spark_pair_grant(), cell: spark_cell(op: SmAccessVersion, r: spark_srv7_secret())))
+}
+
+// CONTROL 22: operations do not imply one another. Reading a version does not authorize writing
+// one, and writing one does not authorize destroying one -- the two escalations that matter most,
+// since AddVersion is irreversible-by-sprawl and DestroyVersion erases bytes with no inverse.
+test fn spark_operations_do_not_imply_one_another() -> Bool {
+  let read_only = SparkCloudGrant {
+    principal: FleetCloudConvergence {},
+    operations: [SmAccessVersion],
+    scope: SparkCloudScope { resources: [spark_srv5_secret()], evolution: FrozenAtGrant }
+  }
+  let writer = SparkCloudGrant {
+    principal: FleetCloudConvergence {},
+    operations: [SmAddVersion],
+    scope: SparkCloudScope { resources: [spark_srv5_secret()], evolution: FrozenAtGrant }
+  }
+  !spark_permits(d: spark_cloud_grant_decision(grant: read_only, cell: spark_cell(op: SmAddVersion, r: spark_srv5_secret())))
+    && !spark_permits(d: spark_cloud_grant_decision(grant: writer, cell: spark_cell(op: SmDestroyVersion, r: spark_srv5_secret())))
+}
+
+// CONTROL 23, the honesty control: a REPORTED principal cannot authorize actuation. This is the
+// one that reds if the carrier is ever edited back to claiming Allocated on second-hand evidence,
+// which is exactly what the prior revision did while its own note said otherwise.
+test fn spark_reported_principal_cannot_actuate() -> Bool {
+  let cell = spark_cell(op: SmAccessVersion, r: spark_srv5_secret())
+  !spark_permits(d: spark_actuation_decision(
+        standing: fleet_cloud_principal_standing(), grant: spark_pair_grant(), cell: cell))
+    && spark_permits(d: spark_actuation_decision(
+         standing: spark_allocated_principal(), grant: spark_pair_grant(), cell: cell))
+}
+
+// CONTROL 24: the conjunction is real. An allocated principal still cannot reach a resource outside
+// scope, so principal admission does not override grant scope.
+test fn spark_allocated_principal_still_bounded_by_scope() -> Bool {
+  !spark_permits(d: spark_actuation_decision(
+    standing: spark_allocated_principal(),
+    grant: spark_pair_grant(),
+    cell: spark_cell(op: SmAccessVersion, r: spark_srv7_secret())))
 }
