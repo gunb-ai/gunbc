@@ -64,7 +64,20 @@ data fleet_reach_probe_targets: List<String> = ["srv1", "srv2", "srv3", "srv4", 
 // per-host heterogeneity.
 type FleetProbePrincipal
   = ProbeUserKnown { user: String }
+  | PrincipalAllocationPending { allocated: String, note: String }
   | ProbeUserPending { note: String }
+
+// Principal ruling (parent msg_acfd9e31 item C/D, applied msg_8cf3d762): the fleet
+// automation principal is the DEDICATED login account gunbc-fleet — bold-eagle's
+// allocation for FleetAccountAutomation, the SAME label on all four hosts (their
+// ruling: independence is a property of the grant, not of the string). It is carried
+// here as the explicit typed field ONLY — nothing may parse the name to recover role or
+// host. NOT ghrunner: ghrunner holds NOPASSWD systemctl/install/rm (root-equivalent),
+// stays nologin, and the automation account gets NO sudo — probe/collect need read
+// reach only. Applied + readback-verified on srv1/srv2 (uid 1001, shell /bin/bash,
+// password locked, sudo refused, authorized_keys 0600 with exactly the fleet key);
+// srv3/srv4 carry the allocated name but the account is NOT yet created there
+// (bootstrap actor unreachable) — a standing DISTINCT from refused and from reachable.
 
 fn fleet_probe_remote_user_for(host: String) -> FleetProbePrincipal {
   if host == "srv5" || host == "srv6" {
@@ -72,13 +85,21 @@ fn fleet_probe_remote_user_for(host: String) -> FleetProbePrincipal {
       note: "bold-eagle-107 (msg_7428d9fc): the account NAME briansrls is well-supported (operator-supplied login for both Sparks; operator confirmed the name collision with the human account is coincidence) but WHICH principal the fleet-key probe authenticated as is unverified recollection — no retained artifact records it, so this stays Pending until a receipt exists (re-measurement needs operator clearance, through the convergence path, per the interactive-Spark stop-order). The KEY axis is typed separately (fleet_ssh_access fleet_automation_ssh_key_fingerprint); both Sparks' authorized_keys carry exactly fleet-automation@gunbc today (bootstrap node-orch key installed then REMOVED from both).",
     }
   } else {
-    ProbeUserKnown { user: "ghrunner" }
+    if host == "srv1" || host == "srv2" {
+      ProbeUserKnown { user: "gunbc-fleet" }
+    } else {
+      PrincipalAllocationPending {
+        allocated: "gunbc-fleet",
+        note: "account allocated but not yet created on this host (msg_8cf3d762: bootstrap actor unreachable); probe targets the allocated name so the refusal is typed at auth, never a fabricated reachable",
+      }
+    }
   }
 }
 
 fn fleet_probe_ssh_target_for(host: String) -> String {
   match fleet_probe_remote_user_for(host: host) {
     ProbeUserKnown { user: u } => join([u, "@", fleet_probe_endpoint_for(host: host)], "")
+    PrincipalAllocationPending { allocated: u, note: _ } => join([u, "@", fleet_probe_endpoint_for(host: host)], "")
     ProbeUserPending { note: _ } => fleet_probe_endpoint_for(host: host)
   }
 }

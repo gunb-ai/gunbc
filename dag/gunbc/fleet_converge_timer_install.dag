@@ -2,10 +2,11 @@ module gunbc.fleet_converge_timer_install
 
 import std.types { String, Bool, List, NonEmptyStr }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import std.algebra { trim }
 import std.resources { Network }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { ArgvCommand, LocalExec }
-import gunbc.command_runner { run_shell_commands }
+import gunbc.command_runner { run_shell_commands, run_shell_command_capture }
 import gunbc.fleet_converge_timer {
   fleet_converge_service_unit_name,
   fleet_converge_timer_unit_name,
@@ -77,12 +78,33 @@ fn fleet_timer_install_commands() -> List<ArgvCommand> {
   ]
 }
 
-// Wet self-install: stage both unit texts from the authority, then run the derived argv
-// plan locally. Fails closed on the first refusing step (run_shell_commands
-// short-circuits); a staging write failure refuses before any systemd state changes.
+// Measured B2 root cause (parent msg_acfd9e31, 2026-08-09): the sudoers dropin
+// /etc/sudoers.d/gunbc-deploy is installed by gunbc.ci_deploy_sudoers ONLY on the
+// live_deploy path, which targets srv1 alone — so srv2-4 could neither self-install
+// (needs sudo systemctl) nor obtain sudo (needs the deploy path they lack). The
+// prerequisite is therefore CHECKED FIRST and its absence is a TYPED refusal naming the
+// one-time per-host bootstrap, never a bare 'sudo: a password is required' surprise
+// mid-plan. `sudo -n true` is the cheapest discriminating probe: NOPASSWD grants answer
+// success; a host without the dropin refuses without prompting.
+fn fleet_timer_install_prerequisite_refusal(why: String) -> ProcessExit {
+  exit_failure(reason: join([
+    "fleet_timer_self_install: PrerequisiteAbsent — sudoers dropin gunbc-deploy not effective for this account (",
+    why,
+    "); one-time per-host bootstrap required (fleet_timer_install_sudoers_requirement; receipts: fleet_sudoers_bootstrap_receipts)",
+  ], ""))
+}
+
+// Wet self-install: check the sudoers prerequisite, stage both unit texts from the
+// authority, then run the derived argv plan locally. Fails closed on the first refusing
+// step (run_shell_commands short-circuits); a staging write failure refuses before any
+// systemd state changes.
 func fleet_timer_self_install_wet() -> ProcessExit
   uses net: Network
 {
+  let sudo_probe = run_shell_command_capture(command: ArgvCommand { argv: ["sudo", "-n", "true"] }, transport: LocalExec)
+  if !sudo_probe.success {
+    fleet_timer_install_prerequisite_refusal(why: trim(s: sudo_probe.stderr))
+  } else {
   let mk = run_shell_commands(
     commands: [ArgvCommand { argv: ["mkdir", "-p", fleet_timer_stage_dir] }],
     transport: LocalExec,
@@ -110,6 +132,7 @@ func fleet_timer_self_install_wet() -> ProcessExit
       }
     }
   }
+  }
 }
 
 // Ruling msg_43a8fd77 item 4 (B2, operator step made minimal): the EXACT sudoers grant
@@ -135,4 +158,69 @@ data fleet_timer_install_sudoers_requirement: TimerInstallSudoersRequirement = T
     "/usr/bin/systemctl enable --now ctrl-fleet-converge.timer",
   ],
   standing: "host standing provisioned by convergence thereafter; hand-grant is one-time legacy bootstrap only (msg_72e2dcee)",
+}
+
+// Measured bootstrap receipts (parent msg_acfd9e31, operator-authorized one-time
+// bootstrap, actor witty-raven-412, 2026-08-09): the per-host standing of the
+// gunbc-deploy sudoers dropin — the srv2-4 route's PREREQUISITE (see the probe above).
+// srv1 predates this lane (installed by the live_deploy path); srv2 was hand-
+// bootstrapped with the same staged -> visudo -cf -> install -m 0440 -> re-validate ->
+// readback procedure the emitter uses; srv3/srv4 are typed ABSENT with the measured
+// reach cause, never assumed either way. These rows are the one-time-legacy-bootstrap
+// half of the standing framing on fleet_timer_install_sudoers_requirement.
+type SudoersBootstrapStanding
+  = BootstrapApplied { artifact: String, validation: String, readback: String, actor: String, date: String }
+  | BootstrapPreexisting { artifact: String, readback: String, date: String }
+  | BootstrapAbsent { cause: String }
+
+type SudoersBootstrapReceipt {
+  host: String
+  standing: SudoersBootstrapStanding
+}
+
+data fleet_sudoers_bootstrap_receipts: List<SudoersBootstrapReceipt> = [
+  SudoersBootstrapReceipt {
+    host: "srv1",
+    standing: BootstrapPreexisting {
+      artifact: "/etc/sudoers.d/gunbc-deploy",
+      readback: "byte-identical to fleet_posix_ci_runner_sudo_grants() (six grants: apt-get, install, visudo, systemctl, tailscale, rm)",
+      date: "2026-08-09",
+    },
+  },
+  SudoersBootstrapReceipt {
+    host: "srv2",
+    standing: BootstrapApplied {
+      artifact: "/etc/sudoers.d/gunbc-deploy",
+      validation: "sudo visudo -cf on staged copy (parsed OK), re-validated post-install",
+      readback: "sudo -l as ghrunner shows all six modeled grants",
+      actor: "witty-raven-412",
+      date: "2026-08-09",
+    },
+  },
+  SudoersBootstrapReceipt {
+    host: "srv3",
+    standing: BootstrapAbsent { cause: "bootstrap actor's key refused on 192.168.1.221; route via operator or a runner job once reachable" },
+  },
+  SudoersBootstrapReceipt {
+    host: "srv4",
+    standing: BootstrapAbsent { cause: "no reachable address for the bootstrap actor; route via operator or a runner job once reachable" },
+  },
+]
+
+// Registered removal obligation (parent msg_acfd9e31, observed on srv1): a stale
+// duplicate /etc/sudoers.d/gunbc-deploy.bak-wavec-verify-179889 (0440 root:root) carries
+// a SECOND independent copy of the same grant list — a §3 dual representation with live
+// authorization effect: a future convergence rewriting gunbc-deploy would leave the .bak
+// granting independently. Its removal must land WITH a receipt (host, path, actor,
+// date, post-removal readback); until then this row is the counted debt.
+type SudoersStaleDuplicate {
+  host: String
+  path: String
+  removal_receipt: String?
+}
+
+data srv1_sudoers_stale_duplicate: SudoersStaleDuplicate = SudoersStaleDuplicate {
+  host: "srv1",
+  path: "/etc/sudoers.d/gunbc-deploy.bak-wavec-verify-179889",
+  removal_receipt: none,
 }
