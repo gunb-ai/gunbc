@@ -398,6 +398,12 @@ fn rust_host_string_op_fn_emit(name: String) -> String? {
       "    __acc\n",
       "}\n"
     ) }
+  } else if name == "trim" {
+    Present { value: concat(
+      "pub fn trim(s: String) -> String {\n",
+      "    v1_rt::trim(s)\n",
+      "}\n"
+    ) }
   } else {
     none
   }

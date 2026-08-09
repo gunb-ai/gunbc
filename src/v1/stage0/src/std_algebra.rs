@@ -1681,14 +1681,14 @@ pub fn all_algebra_template_names() -> Rc<Vec<String>> {
 pub fn trim_free_function_authority_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "trim is the importable free-function authority for whitespace trim on String. The declared body is identity-for-typecheck only; semantic execution routes through free_call.trim (v1_rt::trim). The scalar template row trim on FreeMonoid<String> is the method spelling on the same carrier. Free-call trim(s) requires explicit import std.algebra { trim } — binding via std.types transitive algebra pool membership alone is Class B pool coincidence (#6985). Dissolve-on: bare trim free-call without listed import refuses once closure-independent binding lands repo-wide.".to_string()
+            "trim is the importable free-function authority for whitespace trim on String. The declared substrate body is a pure-dag seam (1 / 0); semantic execution routes through free_call.trim (v1_rt::trim). Host realization authority: std.primitives trim_contract. Emitted host-native std.algebra::trim delegates to v1_rt::trim via rust_host_string_op_fn_emit. The scalar template row trim on FreeMonoid<String> is the method spelling on the same carrier. Free-call trim(s) requires explicit import std.algebra { trim } — binding via std.types transitive algebra pool membership alone is Class B pool coincidence (#6985). Dissolve-on: bare trim free-call without listed import refuses once closure-independent binding lands repo-wide.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
 }
 
 pub fn trim(s: String) -> String {
-    s
+    v1_rt::trim(s)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
