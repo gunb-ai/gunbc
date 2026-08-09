@@ -32,7 +32,7 @@ import gunbc.design.instrument_audition {
 import gunbc.roadmap_instrument_sandbox {
   instrument_css, instrument_refusal_class,
   instrument_row_class, live_program_view_result, LiveViewDerived, LiveViewRefused,
-  instrument_cell, instrument_row, instrument_note,
+  cell, row, note,
 }
 import gunbc.roadmap_program_view { V1DeletionProgramView, RemainingShape }
 import gunbc.v1_deletion_plan { v1_exit_finish_lines, v1_finish_line_key, V1FinishLineSpec }
@@ -139,32 +139,32 @@ fn remaining_text(r: RemainingShape) -> String {
 
 fn render_reading(label: String, r: ProgramReading) -> Fragment {
   match r {
-    ReadingNoSubject => instrument_row(cells: [ instrument_cell(s: label), instrument_cell(s: "no subject selected") ])
+    ReadingNoSubject => row(cells: [ cell(s: label), cell(s: "no subject selected") ])
     ReadingProgramShape { remaining } =>
-      instrument_row(cells: [ instrument_cell(s: label), instrument_cell(s: "whole program"), instrument_cell(s: remaining_text(r: remaining)) ])
-    ReadingOutcomeStatus { name, node, accepted, open_fronts } => instrument_row(cells: [
-      instrument_cell(s: label),
-      instrument_cell(s: name),
-      instrument_cell(s: node),
-      instrument_cell(s: if accepted { "accepted" } else { "not accepted" }),
-      instrument_cell(s: join([to_string(open_fronts), " open fronts"], "")),
+      row(cells: [ cell(s: label), cell(s: "whole program"), cell(s: remaining_text(r: remaining)) ])
+    ReadingOutcomeStatus { name, node, accepted, open_fronts } => row(cells: [
+      cell(s: label),
+      cell(s: name),
+      cell(s: node),
+      cell(s: if accepted { "accepted" } else { "not accepted" }),
+      cell(s: join([to_string(open_fronts), " open fronts"], "")),
     ])
     ReadingOutcomeRemaining { name, remaining } =>
-      instrument_row(cells: [ instrument_cell(s: label), instrument_cell(s: name), instrument_cell(s: remaining_text(r: remaining)) ])
-    ReadingConstraint { subject, kind, headline, in_flight, depth } => instrument_row(cells: [
-      instrument_cell(s: label),
-      instrument_cell(s: join([kind, " constraint"], "")),
-      instrument_cell(s: subject),
-      instrument_cell(s: headline),
-      instrument_cell(s: if in_flight { "work observed" } else { "no work observed" }),
+      row(cells: [ cell(s: label), cell(s: name), cell(s: remaining_text(r: remaining)) ])
+    ReadingConstraint { subject, kind, headline, in_flight, depth } => row(cells: [
+      cell(s: label),
+      cell(s: join([kind, " constraint"], "")),
+      cell(s: subject),
+      cell(s: headline),
+      cell(s: if in_flight { "work observed" } else { "no work observed" }),
     ])
     ReadingNoConstraint { subject_key, reason } =>
-      instrument_row(cells: [ instrument_cell(s: label), instrument_cell(s: subject_key), instrument_cell(s: reason) ])
-    ReadingFront { key, name, closed, gates_accepted, gates_total } => instrument_row(cells: [
-      instrument_cell(s: label),
-      instrument_cell(s: name),
-      instrument_cell(s: join([to_string(gates_accepted), " of ", to_string(gates_total), " gates accepted"], "")),
-      instrument_cell(s: if closed { "closed" } else { "open" }),
+      row(cells: [ cell(s: label), cell(s: subject_key), cell(s: reason) ])
+    ReadingFront { key, name, closed, gates_accepted, gates_total } => row(cells: [
+      cell(s: label),
+      cell(s: name),
+      cell(s: join([to_string(gates_accepted), " of ", to_string(gates_total), " gates accepted"], "")),
+      cell(s: if closed { "closed" } else { "open" }),
     ])
     ReadingUnavailable { mode, subject_key, cause } =>
       el_class("div", instrument_refusal_class, [
@@ -214,16 +214,16 @@ fn subject_row(spec: V1FinishLineSpec) -> Fragment {
     attr(name: "tabindex", value: "0"),
     attr(name: "data-subject-key", value: key),
   ], [
-    instrument_cell(s: spec.name),
-    instrument_cell(s: key),
-    instrument_cell(s: spec.claim),
+    cell(s: spec.name),
+    cell(s: key),
+    cell(s: spec.claim),
   ])
 }
 
 fn controls_section() -> Fragment {
   el("section", [
     el("h2", [ txt("camera controls") ]),
-    instrument_note(s: "Wheel and arrow keys admit one detent per threshold crossing; distant depth labels decompose into adjacent steps. Mode buttons switch reading projection."),
+    note(s: "Wheel and arrow keys admit one detent per threshold crossing; distant depth labels decompose into adjacent steps. Mode buttons switch reading projection."),
     el_class("div", instrument_row_class, map(instrument_user_depths(), d => depth_button(d: d))),
     el_class("div", instrument_row_class, map(program_modes(), m => mode_button(m: m))),
   ])
@@ -232,7 +232,7 @@ fn controls_section() -> Fragment {
 fn subjects_section() -> Fragment {
   el("section", [
     el("h2", [ txt("finish lines") ]),
-    instrument_note(s: "Selection follows the production roadmap: click the row, keyboard focus with focus-visible, re-select to clear, Escape clears. Controls on the row do not move selection."),
+    note(s: "Selection follows the production roadmap: click the row, keyboard focus with focus-visible, re-select to clear, Escape clears. Controls on the row do not move selection."),
     el("ul", map(v1_exit_finish_lines(), s => subject_row(spec: s))),
   ])
 }
@@ -240,7 +240,7 @@ fn subjects_section() -> Fragment {
 fn readings_section(view: V1DeletionProgramView) -> Fragment {
   el("section", [
     el("h2", [ txt("reading") ]),
-    instrument_note(s: "One row per camera state, pre-rendered from the live derived world. The client program reveals the row that matches the persistent camera."),
+    note(s: "One row per camera state, pre-rendered from the live derived world. The client program reveals the row that matches the persistent camera."),
     el("div", map(all_cameras(), c => reading_row(view: view, camera: c))),
   ])
 }

@@ -235,15 +235,15 @@ fn instrument_css_at_role(role: SalienceRole) -> String {
   join([instrument_emission_root_css_for(role: role), serialize_rules(rules: instrument_rules())], "\n")
 }
 
-fn instrument_cell(s: String) -> Fragment {
+fn cell(s: String) -> Fragment {
   el_class("span", instrument_cell_class, [ txt(s) ])
 }
 
-fn instrument_row(cells: List<Fragment>) -> Fragment {
+fn row(cells: List<Fragment>) -> Fragment {
   el_class("div", instrument_row_class, cells)
 }
 
-fn instrument_note(s: String) -> Fragment {
+fn note(s: String) -> Fragment {
   el_class("p", instrument_note_class, [ txt(s) ])
 }
 
@@ -280,11 +280,11 @@ fn live_program_view_result() -> LiveProgramView {
 }
 
 fn depth_cell(d: ProgramDepth) -> Fragment {
-  instrument_cell(s: join([to_string(program_depth_index(d: d)), " · ", program_depth_key(d: d)], ""))
+  cell(s: join([to_string(program_depth_index(d: d)), " · ", program_depth_key(d: d)], ""))
 }
 
 fn owner_cell(o: StateOwner) -> Fragment {
-  instrument_cell(s: join([
+  cell(s: join([
     state_owner_key(o: o), " — ",
     if owner_may_write_domain_fact(o: o) { "may write domain facts" } else { "presentation only" },
   ], ""))
@@ -294,11 +294,11 @@ fn camera_section() -> Fragment {
   el("section", concat(
     [
       el("h2", [ txt("semantic camera") ]),
-      instrument_note(s: "Five depths on one axis, three modes across it. A depth change crosses exactly one detent, and every move carries the selected subject unchanged."),
-      instrument_row(cells: map(program_depths(), d => depth_cell(d: d))),
+      note(s: "Five depths on one axis, three modes across it. A depth change crosses exactly one detent, and every move carries the selected subject unchanged."),
+      row(cells: map(program_depths(), d => depth_cell(d: d))),
       el("h3", [ txt("state ownership") ]),
-      instrument_note(s: "Only one owner may write a domain fact, and it is not reachable from the instrument."),
-      instrument_row(cells: map(
+      note(s: "Only one owner may write a domain fact, and it is not reachable from the instrument."),
+      row(cells: map(
         [AuthoritativeProgramView, LocalInstrumentState, InstrumentObservation, RendererEphemera],
         o => owner_cell(o: o))),
     ],
@@ -320,32 +320,32 @@ fn remaining_text(r: RemainingShape) -> String {
 
 fn render_reading(label: String, r: ProgramReading) -> Fragment {
   match r {
-    ReadingNoSubject => instrument_row(cells: [ instrument_cell(s: label), instrument_cell(s: "no subject selected") ])
+    ReadingNoSubject => row(cells: [ cell(s: label), cell(s: "no subject selected") ])
     ReadingProgramShape { remaining } =>
-      instrument_row(cells: [ instrument_cell(s: label), instrument_cell(s: "whole program"), instrument_cell(s: remaining_text(r: remaining)) ])
-    ReadingOutcomeStatus { name, node, accepted, open_fronts } => instrument_row(cells: [
-      instrument_cell(s: label),
-      instrument_cell(s: name),
-      instrument_cell(s: node),
-      instrument_cell(s: if accepted { "accepted" } else { "not accepted" }),
-      instrument_cell(s: join([to_string(open_fronts), " open fronts"], "")),
+      row(cells: [ cell(s: label), cell(s: "whole program"), cell(s: remaining_text(r: remaining)) ])
+    ReadingOutcomeStatus { name, node, accepted, open_fronts } => row(cells: [
+      cell(s: label),
+      cell(s: name),
+      cell(s: node),
+      cell(s: if accepted { "accepted" } else { "not accepted" }),
+      cell(s: join([to_string(open_fronts), " open fronts"], "")),
     ])
     ReadingOutcomeRemaining { name, remaining } =>
-      instrument_row(cells: [ instrument_cell(s: label), instrument_cell(s: name), instrument_cell(s: remaining_text(r: remaining)) ])
-    ReadingConstraint { subject, kind, headline, in_flight, depth } => instrument_row(cells: [
-      instrument_cell(s: label),
-      instrument_cell(s: join([kind, " constraint"], "")),
-      instrument_cell(s: subject),
-      instrument_cell(s: headline),
-      instrument_cell(s: if in_flight { "work observed" } else { "no work observed" }),
+      row(cells: [ cell(s: label), cell(s: name), cell(s: remaining_text(r: remaining)) ])
+    ReadingConstraint { subject, kind, headline, in_flight, depth } => row(cells: [
+      cell(s: label),
+      cell(s: join([kind, " constraint"], "")),
+      cell(s: subject),
+      cell(s: headline),
+      cell(s: if in_flight { "work observed" } else { "no work observed" }),
     ])
     ReadingNoConstraint { subject_key, reason } =>
-      instrument_row(cells: [ instrument_cell(s: label), instrument_cell(s: subject_key), instrument_cell(s: reason) ])
-    ReadingFront { key, name, closed, gates_accepted, gates_total } => instrument_row(cells: [
-      instrument_cell(s: label),
-      instrument_cell(s: name),
-      instrument_cell(s: join([to_string(gates_accepted), " of ", to_string(gates_total), " gates accepted"], "")),
-      instrument_cell(s: if closed { "closed" } else { "open" }),
+      row(cells: [ cell(s: label), cell(s: subject_key), cell(s: reason) ])
+    ReadingFront { key, name, closed, gates_accepted, gates_total } => row(cells: [
+      cell(s: label),
+      cell(s: name),
+      cell(s: join([to_string(gates_accepted), " of ", to_string(gates_total), " gates accepted"], "")),
+      cell(s: if closed { "closed" } else { "open" }),
     ])
     ReadingUnavailable { mode, subject_key, cause } =>
       el_class("div", instrument_refusal_class, [
@@ -399,10 +399,10 @@ fn reading_rows() -> Fragment {
 
 fn salience_row(assignments: List<SalienceAssignment>, spec: V1FinishLineSpec) -> Fragment {
   let key = v1_finish_line_key(l: spec.line)
-  instrument_row(cells: [
-    instrument_cell(s: salience_key(role: assignment_role_for(assignments: assignments, subject: key))),
-    instrument_cell(s: spec.name),
-    instrument_cell(s: key),
+  row(cells: [
+    cell(s: salience_key(role: assignment_role_for(assignments: assignments, subject: key))),
+    cell(s: spec.name),
+    cell(s: key),
   ])
 }
 
@@ -412,16 +412,16 @@ fn salience_block(label: String, camera: ProgramCamera, refusal: RefusalAggregat
     concat(
       [ el("h3", [ txt(label) ]) ],
       map(v1_exit_finish_lines(), s => salience_row(assignments: assignments, spec: s))),
-    [ instrument_row(cells: [
-        instrument_cell(s: salience_key(role: assignment_role_for(assignments: assignments, subject: refusal_subject_key))),
-        instrument_cell(s: refusal_subject_key),
+    [ row(cells: [
+        cell(s: salience_key(role: assignment_role_for(assignments: assignments, subject: refusal_subject_key))),
+        cell(s: refusal_subject_key),
       ]) ]))
 }
 
 fn salience_section() -> Fragment {
   el("section", [
     el("h2", [ txt("focal salience, derived") ]),
-    instrument_note(s: "No row on this page carries an authored role. The selected subject is Focal, its region siblings are Supporting, everything else is Ground, and an active refusal is one Critical subject however many refuse."),
+    note(s: "No row on this page carries an authored role. The selected subject is Focal, its region siblings are Supporting, everything else is Ground, and an active refusal is one Critical subject however many refuse."),
     salience_block(label: "nothing selected", camera: camera_initial, refusal: NoActiveRefusal),
     salience_block(label: "compiler fixed point selected", camera: exemplar_camera(), refusal: NoActiveRefusal),
     salience_block(
@@ -447,24 +447,24 @@ fn audition_card(i: AuditionIntensity) -> Fragment {
   let verdict = admit_audition(i: i, role: audition_subject_role(), subject_key: audition_subject_key())
   el_class("div", audition_card_class(i: i), [
     el("h3", [ txt(audition_intensity_key(i: i)) ]),
-    instrument_cell(s: "Compiler fixed point"),
-    instrument_note(s: audition_verdict_text(a: verdict)),
+    cell(s: "Compiler fixed point"),
+    note(s: audition_verdict_text(a: verdict)),
   ])
 }
 
 fn audition_section() -> Fragment {
   el("section", [
     el("h2", [ txt("focal audition — one real subject, three energies") ]),
-    instrument_note(s: "The same finish line rendered at three grants of the same budget. Restrained is the register before the amendment; hero sits at the emission envelope's admissible maximum, so the comparison shows where the bound actually is."),
+    note(s: "The same finish line rendered at three grants of the same budget. Restrained is the register before the amendment; hero sits at the emission envelope's admissible maximum, so the comparison shows where the bound actually is."),
     el_class("div", instrument_row_class, map(audition_intensities, i => audition_card(i: i))),
   ])
 }
 
 fn channel_row(p: InstrumentPreference, c: InstrumentChannel) -> Fragment {
-  instrument_row(cells: [
-    instrument_cell(s: channel_key(c: c)),
-    instrument_cell(s: join([to_string(amplitude_px(a: channel_amplitude(p: p, c: c))), "px"], "")),
-    instrument_cell(s: "carries no domain fact"),
+  row(cells: [
+    cell(s: channel_key(c: c)),
+    cell(s: join([to_string(amplitude_px(a: channel_amplitude(p: p, c: c))), "px"], "")),
+    cell(s: "carries no domain fact"),
   ])
 }
 
@@ -486,7 +486,7 @@ fn displacement_text(p: InstrumentPreference) -> String {
 }
 
 fn impulse_cell(s: PhysicalImpulseSource, a: SensorAvailability) -> Fragment {
-  instrument_cell(s: join([
+  cell(s: join([
     sensor_availability_key(a: a), " → ",
     match admit_impulse(p: preference_default, s: s, sensor: a) {
       ImpulseAdmitted { source, settle } => join(["admitted (", settle.name, ")"], "")
@@ -501,8 +501,8 @@ fn sensor_states() -> List<SensorAvailability> {
 }
 
 fn impulse_row(s: PhysicalImpulseSource) -> Fragment {
-  instrument_row(cells: concat(
-    [ instrument_cell(s: impulse_source_key(s: s)) ],
+  row(cells: concat(
+    [ cell(s: impulse_source_key(s: s)) ],
     map(sensor_states(), a => impulse_cell(s: s, a: a))))
 }
 
@@ -511,18 +511,18 @@ fn physical_section() -> Fragment {
     concat(
       [
         el("h2", [ txt("physical screen") ]),
-        instrument_note(s: "Press the frame below: the impulse glitch is a real response built through the ordinary ResponseRule machinery, so it obeys the same still-until-touched law every other control does. The idle channels are budgeted here but not animated — ambient motion has no constructor in this register yet, and emitting one past that wall would be an unmarked workaround."),
+        note(s: "Press the frame below: the impulse glitch is a real response built through the ordinary ResponseRule machinery, so it obeys the same still-until-touched law every other control does. The idle channels are budgeted here but not animated — ambient motion has no constructor in this register yet, and emitting one past that wall would be an unmarked workaround."),
         el_attrs("button", [
           attr(name: "class", value: instrument_frame_class ),
           attr(name: "type", value: "button" ),
         ], [
           el("h3", [ txt("instrument enclosure — press to see the impulse transient") ]),
-          instrument_note(s: join(["impulse decay: ", glitch_duration_key(g: preference_default.glitch_duration)], "")),
+          note(s: join(["impulse decay: ", glitch_duration_key(g: preference_default.glitch_duration)], "")),
         ]),
       ],
       map([ChannelOpticalJitter, ChannelVerticalShift, ChannelBuoyantDrift, ChannelImpulseGlitch], c => channel_row(p: preference_default, c: c))),
     concat(
-      [ instrument_note(s: displacement_text(p: preference_default)), el("h3", [ txt("impulse admission") ]) ],
+      [ note(s: displacement_text(p: preference_default)), el("h3", [ txt("impulse admission") ]) ],
       map([SyntheticImpulse, HostAccelerometer, HostDeviceMotion], s => impulse_row(s: s)))))
 }
 
