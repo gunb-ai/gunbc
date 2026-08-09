@@ -24614,9 +24614,20 @@ fn run_discovery_corpus_with_options_inner(
                 let candidates =
                     live_read_candidate_rows(&rows, &index, &diff_edits, &changed_paths)?;
                 let live = LiveReadSelectionContext::build(&index, &candidates)?;
+                // CANDIDATES HERE TOO. This consumer asks the view about each row, so handing
+                // it the complete roster asks about rows the view was deliberately not built
+                // for -- which is a LiveReadEntryAbsent refusal, and is exactly how the first
+                // filtered run failed. The short-circuit that makes exclusion safe has to hold
+                // at every consumer, not only at the predicates.
+                //
+                // The count's meaning narrows accordingly, and stating it is the point: it is
+                // now "among entries whose verdict a live-read answer can still change, how many
+                // have a touched runtime dependency". Excluded entries are not uncounted -- they
+                // are already forced to run by the axis that excluded them, so counting them
+                // here would be counting one entry under two axes.
                 let touched_runtime_dependency_entry_count =
                     discovery_rows_runtime_dependency_touched_count(
-                        &rows,
+                        &candidates,
                         &index,
                         &live,
                         &changed_paths,
