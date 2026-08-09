@@ -24,7 +24,6 @@ import v2.lens.suite.selection {
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import std.verification { NanosecondDuration, nanosecond_duration }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -64,8 +63,8 @@ test fn witness_lens_suite_zero_execution_never_succeeds_red() -> Bool {
     fact_pack_construction_count: fact_pack.construction_count,
     v1_lens_body_executions: 0,
     fallback_count: 0,
-    preparation_wall: nanosecond_duration(count: 0),
-    execution_wall: nanosecond_duration(count: 0),
+    preparation_wall_nanos: 0,
+    execution_wall_nanos: 0,
     members: []
   }
   lens_suite_zero_execution_never_succeeds(receipt: zero_executed)

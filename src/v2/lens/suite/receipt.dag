@@ -1,7 +1,6 @@
 module v2.lens.suite.receipt
 
 import std.content_hash { Fnv1a64Structural }
-import std.verification { NanosecondDuration }
 import v2.lens.registry { LensIdV0 }
 import v2.std.algebra { count_where, length, for_all }
 import v2.std.collection { List }
@@ -37,8 +36,8 @@ type LensSuiteReceipt {
   fact_pack_construction_count: Int
   v1_lens_body_executions: Int
   fallback_count: Int
-  preparation_wall: NanosecondDuration
-  execution_wall: NanosecondDuration
+  preparation_wall_nanos: Int
+  execution_wall_nanos: Int
   members: List<LensSuiteMemberRow>
 }
 
