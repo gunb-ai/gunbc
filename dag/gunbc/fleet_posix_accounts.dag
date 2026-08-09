@@ -68,6 +68,8 @@ type FleetPosixAccountKey
   | FleetAccountOperator
   | FleetAccountCiRunner
   | FleetAccountSrv3Host
+  | FleetAccountAutomation
+  | FleetAccountInferenceService
 
 data fleet_posix_root_user: PosixUser = PosixUser {
   name: "root",
@@ -91,6 +93,62 @@ data fleet_posix_srv3_host_user: PosixUser = PosixUser {
   name: "ubuntu",
   uid: 1000,
   gid: 1000,
+}
+
+// THE AUTOMATION AND SERVICE PRINCIPALS, and the split their arrival forces.
+//
+// fleet-automation@gunbc is an SSH KEY COMMENT, not a POSIX username. The tree had no automation
+// account at all, so every modeled host access resolved FleetAccountOperator -- the HUMAN -- and
+// automation reached hosts as a person. These two rows separate three concepts that were one:
+// who a human is, what automation acts as, and what the served process runs as.
+//
+// WHAT IS DIFFERENT ABOUT THESE TWO ROWS, stated because the carrier cannot yet say it. Every
+// other PosixUser here is OBSERVED: it exists on a host and PosixAccountDeclaredProbe records the
+// command that confirmed it. These two are DESIRED and do not exist anywhere yet. Their probes
+// therefore record the observation that was actually run -- a NAME AND UID AVAILABILITY check on
+// both Sparks -- and not an existence check that would be a fabrication.
+//
+// That is the same authored-versus-executed conflation gunbc#8068 found in the host-phase
+// observation frontier, reappearing one carrier over: a roster whose rows mean "observed to exist"
+// cannot also carry rows meaning "intended to exist" without a reader being unable to tell which
+// it holds. The split is NOT introduced here, deliberately -- inventing a desired/observed axis
+// under a Terminal-disposition authority while a host apply is in flight would be modeling ahead
+// of the consumer. Dissolve-on: the SPARK-SERVE-0 apply creates both accounts, at which point
+// these probes are replaced by real existence observations and the distinction disappears for
+// these rows; if a later desired account outlives its apply, the axis is owed at that point.
+data fleet_posix_desired_not_observed_note: String = "The automation and inference-service rows are DESIRED, not observed. Every other PosixUser in this module exists on a host and its declared probe confirmed it; these two exist nowhere and their probes record a name/uid AVAILABILITY observation instead. Recorded rather than smoothed over because a roster that silently mixes 'is' with 'ought' cannot be read correctly by anything downstream, which is precisely the defect class gunbc#8068 corrected in the observation frontier. Dissolves when the apply creates the accounts and the probes become existence observations."
+
+// UID/GID 1500 and 1501 are pinned IDENTICALLY on both Sparks, which is only sound because it was
+// observed rather than assumed: on 2026-08-09 both hosts carried exactly one uid>=1000 account
+// (briansrls uid=1000 gid=1000), and the names gunbc / gunbc-inference and uids 1500 / 1501 were
+// free on BOTH. A collision on either host must refuse before mutation rather than silently
+// selecting the next free id, because an account whose uid differs per host is not one identity.
+data fleet_posix_automation_user: PosixUser = PosixUser {
+  name: "gunbc",
+  uid: 1500,
+  gid: 1500,
+}
+
+// The served process. It holds NO ssh key, NO password login and NO sudo grant -- it owns model,
+// cache and runtime files and nothing else. Serving needs no ability to reach or change the host,
+// and granting it one because the deployment account happens to have it is how a service principal
+// silently becomes an administrative one.
+data fleet_posix_inference_service_user: PosixUser = PosixUser {
+  name: "gunbc-inference",
+  uid: 1501,
+  gid: 1501,
+}
+
+data fleet_posix_automation_declared_probe: PosixAccountDeclaredProbe = PosixAccountDeclaredProbe {
+  probed_at: "2026-08-09",
+  probe_command: "getent passwd gunbc; getent passwd 1500",
+  host: "spark-a3ee,spark-3bd5",
+}
+
+data fleet_posix_inference_service_declared_probe: PosixAccountDeclaredProbe = PosixAccountDeclaredProbe {
+  probed_at: "2026-08-09",
+  probe_command: "getent passwd gunbc-inference; getent passwd 1501",
+  host: "spark-a3ee,spark-3bd5",
 }
 
 data fleet_posix_root_declared_probe: PosixAccountDeclaredProbe = PosixAccountDeclaredProbe {
@@ -161,6 +219,37 @@ fn fleet_posix_srv3_host_sudo_grants() -> List<PosixSudoGrant> {
   []
 }
 
+// ONE closed privileged operation, not blanket sudo and not docker-group membership. The Docker
+// control socket is a root-equivalent grant: anything that can talk to it can start a privileged
+// container and own the host, so adding the automation account to the docker group because the
+// socket currently refuses it would hand over far more than deployment needs. The grant is instead
+// a single root-owned helper whose closed operation set covers exactly this vertical's effects.
+//
+// The probe is NopasswdGrantListCheck rather than an execute-check DELIBERATELY, and the module's
+// own materialization note names the reason: grant-list is the typed verification for a binary
+// that MAY BE ABSENT. The helper does not exist on either Spark yet -- the apply installs it -- so
+// an execute-check would refuse for the honest reason that the file is missing, and would be
+// indistinguishable from the grant itself being absent. Two different states, two different
+// remedies. When the helper is installed the probe tightens to an execute-check.
+data fleet_gunbc_deploy_privileged_path: NonEmptyStr = "/opt/gunbc/bin/gunbc-deploy-privileged"
+
+fn fleet_posix_automation_sudo_grants() -> List<PosixSudoGrant> {
+  [
+    PosixSudoGrant {
+      command_path: fleet_gunbc_deploy_privileged_path,
+      probe: NopasswdGrantListCheck,
+    },
+  ]
+}
+
+// EMPTY BY CONSTRUCTION, and the empty list is the assertion. The served process runs a model and
+// answers requests; it has no reason to change the host it runs on. A serving principal that
+// accumulates a grant "just for the install step" is how the blast radius of a compromised model
+// server becomes the whole machine.
+fn fleet_posix_inference_service_sudo_grants() -> List<PosixSudoGrant> {
+  []
+}
+
 fn fleet_posix_principal(key: FleetPosixAccountKey) -> GroundedPosixPrincipal {
   match key {
     FleetAccountRoot =>
@@ -186,6 +275,18 @@ fn fleet_posix_principal(key: FleetPosixAccountKey) -> GroundedPosixPrincipal {
         posix: fleet_posix_srv3_host_user,
         sudo_grants: fleet_posix_srv3_host_sudo_grants(),
         declared_probe: fleet_posix_srv3_host_declared_probe,
+      }
+    FleetAccountAutomation =>
+      GroundedPosixPrincipal {
+        posix: fleet_posix_automation_user,
+        sudo_grants: fleet_posix_automation_sudo_grants(),
+        declared_probe: fleet_posix_automation_declared_probe,
+      }
+    FleetAccountInferenceService =>
+      GroundedPosixPrincipal {
+        posix: fleet_posix_inference_service_user,
+        sudo_grants: fleet_posix_inference_service_sudo_grants(),
+        declared_probe: fleet_posix_inference_service_declared_probe,
       }
   }
 }
