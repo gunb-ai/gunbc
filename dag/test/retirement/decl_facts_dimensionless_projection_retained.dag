@@ -1,0 +1,8 @@
+module test.retirement.decl_facts_dimensionless_projection_retained
+
+data decl_facts_dimensionless_projection_retention: TestModuleRetirement = TestModuleRetirement {
+  module: "decl_facts_dimensionless_projection_test.rs",
+  disposition: RetainedNonMigratable {
+    reason: "Developer-convenience Rust control for compile_to_resolved source-file order invariance of initializer projection marshalling (projection kind + constructor parent identity). The witness-layer decl_facts path uses one resolved graph; reversing the SourceFile vector before compile is a host-Rust seam no .dag witness can observe without minting a second compile entry. Retained until src/v1 deletes at v2 self-host."
+  }
+}

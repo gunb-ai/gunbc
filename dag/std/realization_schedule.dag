@@ -7,7 +7,8 @@ import std.measure {
   ClockBasis, CpuClock, WallClock, clock_basis_eq,
   Measure, Time, ByteSize, Watt,
   Second, Millisecond,
-  byte_size, byte_size_count, watt, time_measure, measure_count
+  byte_size, byte_size_count, watt, time_measure, measure_count,
+  second_count, millisecond_count
 }
 import std.pareto { AxisGoal }
 import std.content_hash { ContentHash }
@@ -20,6 +21,8 @@ import std.content_hash {
   fnv1a64_structural_hex_digest
 }
 import std.algebra { Empty, Cons }
+import std.process_termination { ProcessTermination, ProcessExited, ProcessSignaled, ProcessTerminationUnobserved }
+import std.decl_ref { DeclarationRef }
 import std.witness_admission { WitnessConsumerCadence }
 
 type CostBasis
@@ -143,9 +146,33 @@ type RunnableResourceProfile {
   execution_mode: ExecutionMode
 }
 
+// A clamp carries WHO DECLARED IT, and it is a required field rather than a lookup, because the
+// numbers alone cannot say. Two independently owned populations feed one aligned clamp list — the
+// positional gunbc.ci_spec rows for ordinary batches, and the scoped witness batch's own row in
+// gunbc.ci_layer_roots — and the executor reconstructed the origin from the LIST POSITION. That is
+// how a refusal came to report clamp_ms=360000 while citing gunbc_ci_floor_batch_clamp_params[0],
+// a row whose overhead is 240 seconds: two facts that cannot both be true, printed in one located
+// diagnostic, costing two lanes their time reconciling a number against a row that never produced
+// it (gunbc#7869, 2026-08-08).
+//
+// Carrying the authority HERE rather than beside the reader is the construction move: a clamp
+// without a declared source has no constructor, so the misattribution is unwritable instead of
+// being a rendering to keep correct. The positional index stays a positional convenience supplied
+// by the reader — it names an offset into a list, which no symbol can name — while the module and
+// declaration travel with the value (DESIGN section 3: cite the symbol, not the position).
 type RunnableBatchClamp {
   overhead: Second
   per_unit: Millisecond
+  authority: DeclarationRef
+}
+
+// The clamp arithmetic, once. `units` is present in the expression and contributes exactly
+// `units * per_unit` — which is ZERO on every row whose rate is zero, including the scoped witness
+// batch's. Stating it as one fn is what lets a witness assert "27 units and 1 unit clamp
+// identically" against the same expression the executor evaluates, rather than against a second
+// spelling of it.
+fn runnable_batch_clamp_ms(clamp: RunnableBatchClamp, units: Int) -> Int {
+  (second_count(s: clamp.overhead) * 1000) + (units * millisecond_count(m: clamp.per_unit))
 }
 
 type RunnableBatchClampSource
@@ -162,11 +189,6 @@ type ScopedWitnessBatchId = NonEmptyStr where brand("ScopedWitnessBatchId")
 type FloorWorkerIdentity
   = OrdinaryFloorWorker
   | ScopedWitnessFloorWorker { batch_id: ScopedWitnessBatchId }
-
-type FloorWorkerTermination
-  = FloorWorkerExited { code: Int }
-  | FloorWorkerSignaled { signal: Int }
-  | FloorWorkerTerminationUnobserved
 
 type FloorWorkerTerminalReceipt
   = FloorWorkerTerminalReceiptObserved { report: FloorWorkerTerminalReport }
@@ -186,7 +208,7 @@ type FloorWorkerObservationOutcome
 
 type FloorWorkerObservation {
   worker: FloorWorkerIdentity
-  termination: FloorWorkerTermination
+  termination: ProcessTermination
   terminal_receipt: FloorWorkerTerminalReceipt
 }
 
@@ -196,7 +218,7 @@ fn floor_worker_observation_outcome(observation: FloorWorkerObservation) -> Floo
       detail: "worker termination had no terminal report"
     }
     FloorWorkerTerminalReceiptObserved { report: report } => match observation.termination {
-      FloorWorkerExited { code: 0 } => match report {
+      ProcessExited { code: 0 } => match report {
         FloorWorkerReportedCompleted { detail: _ } => FloorWorkerCompleted
         FloorWorkerReportedRefused { detail: detail } => FloorWorkerFailed {
           detail: "refusal report contradicted exit code 0: " + detail
@@ -204,7 +226,7 @@ fn floor_worker_observation_outcome(observation: FloorWorkerObservation) -> Floo
         FloorWorkerReportedFailed { detail: detail } => FloorWorkerFailed { detail: detail }
         FloorWorkerTerminalReportMalformed { detail: detail } => FloorWorkerFailed { detail: detail }
       }
-      FloorWorkerExited { code: _ } => match report {
+      ProcessExited { code: _ } => match report {
         FloorWorkerReportedCompleted { detail: _ } => FloorWorkerFailed {
           detail: "completion report contradicted nonzero exit"
         }
@@ -212,10 +234,10 @@ fn floor_worker_observation_outcome(observation: FloorWorkerObservation) -> Floo
         FloorWorkerReportedFailed { detail: detail } => FloorWorkerFailed { detail: detail }
         FloorWorkerTerminalReportMalformed { detail: detail } => FloorWorkerFailed { detail: detail }
       }
-      FloorWorkerSignaled { signal: _ } => FloorWorkerFailed {
+      ProcessSignaled { signal: _ } => FloorWorkerFailed {
         detail: "terminal report contradicted signal death"
       }
-      FloorWorkerTerminationUnobserved => FloorWorkerFailed {
+      ProcessTerminationUnobserved => FloorWorkerFailed {
         detail: "terminal report exists but process termination was unobserved"
       }
     }

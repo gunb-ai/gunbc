@@ -16,6 +16,7 @@ use crate::cli_run::value_to_wire_json;
 use crate::std_syntax::BinOp;
 use crate::std_syntax::LiteralValue;
 use crate::v1_compiler_emit::{extract_string_interp_parts, has_mock_prefix};
+use crate::v1_compiler_infer_emit_info::EmitGraphInfo;
 use crate::v1_compiler_infer_items::{item_kind, ItemInfo, ItemKind, ResolvedGraph, TypedModule};
 use crate::v1_rt;
 use crate::v1_rt::{
@@ -454,6 +455,55 @@ pub enum Value {
 
 pub(crate) fn list_value(items: impl Into<RrbVector<Value>>) -> Value {
     Value::List(Rc::new(items.into()))
+}
+
+/// Project an observed child-process status onto `std.process_termination` `ProcessTermination`.
+///
+/// A signalled process has no exit code, so it gets the signal arm rather than a
+/// fabricated integer: the seed used to render `.code().unwrap_or(-1)` for both, which
+/// made a runner OOM-kill indistinguishable from a process that chose to exit -1.
+/// `ProcessTerminationUnobserved` is unreachable from an `ExitStatus` (having one means
+/// the process ran); it is the arm a caller supplies when the spawn itself refused.
+pub(crate) fn process_termination_value(
+    status: &std::process::ExitStatus,
+    ctx: &InterpContext,
+) -> Value {
+    let termination = |variant: &str, field: &str, value: i64| Value::Variant {
+        type_name: ctx.sym("ProcessTermination"),
+        variant_name: ctx.sym(variant),
+        fields: Rc::new(vec![(ctx.sym(field), Value::Int(value))]),
+    };
+    if let Some(code) = status.code() {
+        return termination("ProcessExited", "code", i64::from(code));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        if let Some(signal) = status.signal() {
+            return termination("ProcessSignaled", "signal", i64::from(signal));
+        }
+    }
+    Value::Variant {
+        type_name: ctx.sym("ProcessTermination"),
+        variant_name: ctx.sym("ProcessTerminationUnobserved"),
+        fields: Rc::new(Vec::new()),
+    }
+}
+
+/// Human-facing rendering of a termination for a build log line. Kept beside the
+/// projection above so the two spellings of one observation cannot drift.
+pub(crate) fn process_termination_label(status: &std::process::ExitStatus) -> String {
+    if let Some(code) = status.code() {
+        return format!("exit {code}");
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        if let Some(signal) = status.signal() {
+            return format!("signal {signal}");
+        }
+    }
+    "termination unobserved".to_string()
 }
 
 fn map_value(entries: HamtMap<CanonKey, Value>) -> Value {
@@ -1387,6 +1437,7 @@ pub struct InterpContext {
     pub modules: Rc<im::Vector<Rc<TypedModule>>>,
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    pub emit_graph_info: Rc<EmitGraphInfo>,
     fn_nodes: HashMap<String, Rc<Node>>,
     ambiguous_bare_function_names: std::collections::HashSet<String>,
     service_ops: HashMap<String, ServiceOp>,
@@ -1394,7 +1445,7 @@ pub struct InterpContext {
     pub fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
     data_cache: std::cell::RefCell<HashMap<usize, Value>>,
     // Per-call parameter-name derivation is invariant per fn_node but was re-sliced from
-    // source spans on every call (authored_name_at). Memoize it per ctx, keyed by fn_node
+    // source spans on every call (authored_name_at). Memoize it per fn_node, keyed by fn_node
     // pointer identity. The key alone is not sound: the ctx does not own fn_nodes (they are
     // borrowed `Rc<Node>`s that can be dropped while the ctx lives), so a freed node's address
     // can be reused by an unrelated later node and silently collide on this key. keepalive_fns
@@ -1629,6 +1680,7 @@ impl InterpContext {
             modules: graph.modules.clone(),
             item_registry: graph.item_registry.clone(),
             source_indices,
+            emit_graph_info: graph.emit_graph_info.clone(),
             fn_nodes,
             ambiguous_bare_function_names,
             service_ops,
@@ -1763,6 +1815,19 @@ impl InterpContext {
         self.fn_nodes.get(name)
     }
 
+    pub fn lookup_fn_node(&self, qualified_name: &str) -> Option<Rc<Node>> {
+        self.fn_nodes.get(qualified_name).cloned()
+    }
+
+    pub fn resolved_graph(&self) -> ResolvedGraph {
+        ResolvedGraph {
+            modules: self.modules.clone(),
+            item_registry: self.item_registry.clone(),
+            diagnostics: Rc::new(im::Vector::new()),
+            emit_graph_info: self.emit_graph_info.clone(),
+        }
+    }
+
     /// Report identity from the exact fn_nodes entry used by lookup_fn. The
     /// module path comes from the existing collision-checked module index; this
     /// accessor does not select, resolve, traverse the graph, or alter lookup.
@@ -1848,12 +1913,9 @@ pub fn run_in_context_with_args(
 }
 
 /// Peak parent-chain depth observed across `call_function` frames in the last
-/// `run_in_context*` invocation (test witness for lexical-base scoping; default-off until armed).
+/// `run_in_context*` invocation (test witness for lexical-base scoping).
 #[cfg(any(test, feature = "interp_test_witness"))]
 pub fn call_env_depth_peak_snapshot() -> usize {
-    if !call_env_depth_witness_enabled() {
-        return 0;
-    }
     CALL_ENV_DEPTH_PEAK.with(|peak| peak.get())
 }
 
@@ -1999,8 +2061,10 @@ fn call_function_inner(
 
     let cached_params = {
         let key = Rc::as_ptr(fn_node) as usize;
-        let existing = ctx.param_name_cache.borrow().get(&key).cloned();
-        if let Some(c) = existing {
+        // Bind the lookup to a local so the immutable borrow is released before the
+        // None branch takes a mutable borrow (an `if let ...borrow()` would hold it through `else`).
+        let hit = ctx.param_name_cache.borrow().get(&key).cloned();
+        if let Some(c) = hit {
             c
         } else {
             // Each param's authored name is sliced once into `all`; `filtered` reuses it
@@ -2020,12 +2084,12 @@ fn call_function_inner(
                 })
                 .map(|(i, _)| all[i].clone())
                 .collect();
-            let fresh = Rc::new((filtered, all));
+            let c = Rc::new((filtered, all));
             ctx.param_name_cache_keepalive
                 .borrow_mut()
                 .push(fn_node.clone());
-            ctx.param_name_cache.borrow_mut().insert(key, fresh.clone());
-            fresh
+            ctx.param_name_cache.borrow_mut().insert(key, c.clone());
+            c
         }
     };
     let param_names: &Vec<String> = &cached_params.0;
@@ -2394,8 +2458,8 @@ fn eval_var(
 ) -> InterpResult<Value> {
     // Resolve and intern this ExprVar's name once, then reuse the Symbol on every eval
     // (skips the per-eval source-span slice in expr_var_name_at and the ctx.sym re-intern).
-    let key = Rc::as_ptr(node) as usize;
     let sym = {
+        let key = Rc::as_ptr(node) as usize;
         let existing = ctx.var_sym_cache.borrow().get(&key).copied();
         if let Some(s) = existing {
             s
@@ -2723,7 +2787,7 @@ fn cross_representation_numeric_straddle(a: &Value, b: &Value) -> Option<String>
 }
 
 fn is_content_hash_family_variant(name: &str) -> bool {
-    matches!(name, "Fnv1a64" | "Sha256Hash" | "Sha1Hash")
+    matches!(name, "Fnv1a64" | "Sha256Hash" | "Sha1Hash" | "Sha512Hash")
 }
 
 fn is_content_hash_value(v: &Value) -> bool {
@@ -2760,7 +2824,7 @@ fn cross_family_content_hash_straddle(a: &Value, b: &Value) -> Option<String> {
                 Some(format!(
                     "{} vs {} — ContentHash families are not comparable; bare `==` would \
                      silently fabricate `false` whereas structural fnv1a64 and cited \
-                     SHA-256/SHA-1 digests are different kinds with different remedies \
+                     SHA-256/SHA-1/SHA-512 digests are different kinds with different remedies \
                      (DESIGN §5 / feature:content-hash-family-grounded). Match on family \
                      and use per-family eq, or admit_pin_integrity at union carriers.",
                     describe_repr(a),
@@ -10205,8 +10269,7 @@ fn emit_host_run_transport_cached_in_workspace(
     );
 
     let transport_result = |phase: &str,
-                            success: bool,
-                            exit_code: i64,
+                            termination: Value,
                             stdout: &[u8],
                             stderr: &[u8],
                             build_log: Vec<Value>,
@@ -10221,8 +10284,7 @@ fn emit_host_run_transport_cached_in_workspace(
             // dependent and broke .success lookups when #6904 shifted interning.
             fields: Rc::new(sorted_fields(vec![
                 (ctx.sym("phase"), Value::Str(phase.to_string())),
-                (ctx.sym("success"), Value::Bool(success)),
-                (ctx.sym("exit_code"), Value::Int(exit_code)),
+                (ctx.sym("termination"), termination),
                 (ctx.sym("compile_skipped"), Value::Bool(compile_skipped)),
                 (
                     ctx.sym("artifact_lookup_nanos"),
@@ -10280,14 +10342,16 @@ fn emit_host_run_transport_cached_in_workspace(
         let compile_started = std::time::Instant::now();
         for argv in build_argvs {
             let out = run_command(argv)?;
-            let code = out.status.code().map(i64::from).unwrap_or(-1);
-            build_log.push(Value::Str(format!("{} -> exit {code}", argv.join(" "))));
+            build_log.push(Value::Str(format!(
+                "{} -> {}",
+                argv.join(" "),
+                process_termination_label(&out.status)
+            )));
             if !out.status.success() {
                 build_log.push(Value::Str(String::from_utf8_lossy(&out.stderr).to_string()));
                 return Ok(transport_result(
                     "build",
-                    false,
-                    code,
+                    process_termination_value(&out.status, ctx),
                     &out.stdout,
                     &out.stderr,
                     build_log,
@@ -10302,8 +10366,11 @@ fn emit_host_run_transport_cached_in_workspace(
         let native_started = std::time::Instant::now();
         let out = run_command(run_argv)?;
         let native_execution_nanos = native_started.elapsed().as_nanos();
-        let code = out.status.code().map(i64::from).unwrap_or(-1);
-        build_log.push(Value::Str(format!("{} -> exit {code}", run_argv.join(" "))));
+        build_log.push(Value::Str(format!(
+            "{} -> {}",
+            run_argv.join(" "),
+            process_termination_label(&out.status)
+        )));
         if out.status.success() {
             std::fs::write(&ready_marker, b"1").map_err(|e| InterpError::TypeError {
                 msg: format!("emit_host_run_transport_cached: ready marker write failed: {e}"),
@@ -10318,8 +10385,7 @@ fn emit_host_run_transport_cached_in_workspace(
         }
         return Ok(transport_result(
             "run",
-            out.status.success(),
-            code,
+            process_termination_value(&out.status, ctx),
             &out.stdout,
             &out.stderr,
             build_log,
@@ -10332,13 +10398,15 @@ fn emit_host_run_transport_cached_in_workspace(
     let native_started = std::time::Instant::now();
     let out = run_command(run_argv)?;
     let native_execution_nanos = native_started.elapsed().as_nanos();
-    let code = out.status.code().map(i64::from).unwrap_or(-1);
     let mut build_log: Vec<Value> = Vec::new();
-    build_log.push(Value::Str(format!("{} -> exit {code}", run_argv.join(" "))));
+    build_log.push(Value::Str(format!(
+        "{} -> {}",
+        run_argv.join(" "),
+        process_termination_label(&out.status)
+    )));
     Ok(transport_result(
         "run_cached",
-        out.status.success(),
-        code,
+        process_termination_value(&out.status, ctx),
         &out.stdout,
         &out.stderr,
         build_log,
@@ -10397,8 +10465,7 @@ fn emit_host_run_transport_in_workspace(
     };
 
     let transport_result = |phase: &str,
-                            success: bool,
-                            exit_code: i64,
+                            termination: Value,
                             stdout: &[u8],
                             stderr: &[u8],
                             build_log: Vec<Value>,
@@ -10411,8 +10478,7 @@ fn emit_host_run_transport_in_workspace(
             // dependent and broke .success lookups when #6904 shifted interning.
             fields: Rc::new(sorted_fields(vec![
                 (ctx.sym("phase"), Value::Str(phase.to_string())),
-                (ctx.sym("success"), Value::Bool(success)),
-                (ctx.sym("exit_code"), Value::Int(exit_code)),
+                (ctx.sym("termination"), termination),
                 (ctx.sym("compile_skipped"), Value::Bool(compile_skipped)),
                 (
                     ctx.sym("stdout_octets"),
@@ -10440,14 +10506,16 @@ fn emit_host_run_transport_in_workspace(
     let mut build_log: Vec<Value> = Vec::new();
     for argv in build_argvs {
         let out = run_command(argv)?;
-        let code = out.status.code().map(i64::from).unwrap_or(-1);
-        build_log.push(Value::Str(format!("{} -> exit {code}", argv.join(" "))));
+        build_log.push(Value::Str(format!(
+            "{} -> {}",
+            argv.join(" "),
+            process_termination_label(&out.status)
+        )));
         if !out.status.success() {
             build_log.push(Value::Str(String::from_utf8_lossy(&out.stderr).to_string()));
             return Ok(transport_result(
                 "build",
-                false,
-                code,
+                process_termination_value(&out.status, ctx),
                 &out.stdout,
                 &out.stderr,
                 build_log,
@@ -10457,12 +10525,14 @@ fn emit_host_run_transport_in_workspace(
     }
 
     let out = run_command(run_argv)?;
-    let code = out.status.code().map(i64::from).unwrap_or(-1);
-    build_log.push(Value::Str(format!("{} -> exit {code}", run_argv.join(" "))));
+    build_log.push(Value::Str(format!(
+        "{} -> {}",
+        run_argv.join(" "),
+        process_termination_label(&out.status)
+    )));
     Ok(transport_result(
         "run",
-        out.status.success(),
-        code,
+        process_termination_value(&out.status, ctx),
         &out.stdout,
         &out.stderr,
         build_log,
@@ -13777,5 +13847,48 @@ mod resolve_host_tool_program_tests {
             Ok(path) => panic!("expected refusal, got resolved path {path:?}"),
             Err(other) => panic!("expected HostToolUnresolved refusal, got {other:?}"),
         }
+    }
+}
+
+#[cfg(test)]
+mod process_termination_tests {
+    use super::process_termination_label;
+
+    /// The host transport observes a child; a child killed by a signal has NO exit
+    /// code. The seed used to render `.code().unwrap_or(-1)` for both, so an
+    /// OOM-killed cargo build and a process that chose to exit -1 produced the same
+    /// bytes. This is the discriminating control for that split: the same raw wait
+    /// status that carries a signal must never render as an exit.
+    #[cfg(unix)]
+    #[test]
+    fn signal_death_is_not_flattened_to_an_exit_code() {
+        use std::os::unix::process::ExitStatusExt;
+        use std::process::ExitStatus;
+
+        // Raw wait status encoding: low 7 bits are the terminating signal, and
+        // `code()` is None for those. 9 = SIGKILL (the OOM-killer's signal),
+        // 11 = SIGSEGV.
+        for signal in [9, 11] {
+            let status = ExitStatus::from_raw(signal);
+            assert_eq!(status.code(), None, "expected a signalled status");
+            assert_eq!(
+                process_termination_label(&status),
+                format!("signal {signal}")
+            );
+            assert!(
+                !process_termination_label(&status).contains("exit"),
+                "signal {signal} rendered as an exit"
+            );
+        }
+
+        // An ordinary exit still reports its code: status >> 8 is the exit code.
+        assert_eq!(
+            process_termination_label(&ExitStatus::from_raw(0)),
+            "exit 0"
+        );
+        assert_eq!(
+            process_termination_label(&ExitStatus::from_raw(101 << 8)),
+            "exit 101"
+        );
     }
 }

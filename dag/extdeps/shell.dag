@@ -11,12 +11,36 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+data find_files_and_symlinks_positional_note: String = "The script body is a FIXED literal owned here, and root arrives as the positional parameter $1 rather than being spliced into it — so no path can escape a quote, which is exactly what a caller-side concat into a single-quoted find string permitted (review 50535). The pipe to sort stays inside the operation because it is load-bearing: find walks directories in filesystem order, and the caller digests the resulting listing into a tree identity, so an unsorted read would make that identity depend on traversal order. It cannot move into the substrate today — std.primitives declares a sort contract but no callable sort exists (probed, 2026-08-08), which is the dissolve-on for folding this ordering back out of the shell. GNU find -printf keeps this operation Linux-only, per the caller's own linux_find_note."
+
+
 service shell.Find {
   operation ListDirs {
     input { path: FilePath, max_depth: Int = 1, min_depth: Int = 1 }
     output { dirs: List<FilePath> from "stdout_lines" }
     readonly
     transport shell { argv: ["find", "{path}", "-maxdepth", "{max_depth}", "-mindepth", "{min_depth}", "-type", "d"] }
+    exit {
+      0 => Unit
+      nonzero => String "Find command failed"
+    }
+  }
+
+  operation FilesAndSymlinksWithMode {
+    input { root: FilePath }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell {
+      argv: [
+        "sh", "-c",
+        "find \"$1\" \\( -type f -o -type l \\) -printf '%y\\t%m\\t%P\\t%l\\n' | sort",
+        "sh", "{root}",
+      ]
+    }
     exit {
       0 => Unit
       nonzero => String "Find command failed"
@@ -123,7 +147,39 @@ service shell.Test {
   }
 }
 
+service shell.Uname {
+  operation KernelName {
+    input {}
+    output { name: String from "stdout", success: Bool from "exit_success" }
+    transport shell { argv: ["uname", "-s"] }
+    exit {
+      0 => Unit
+      nonzero => String "uname -s failed"
+    }
+  }
+
+  operation Machine {
+    input {}
+    output { machine: String from "stdout", success: Bool from "exit_success" }
+    transport shell { argv: ["uname", "-m"] }
+    exit {
+      0 => Unit
+      nonzero => String "uname -m failed"
+    }
+  }
+}
+
 service shell.Mktemp {
+  operation FileInDirectory {
+    input { dir: FilePath }
+    output { path: FilePath from "stdout", success: Bool from "exit_success" }
+    transport shell { argv: ["mktemp", "-p", "{dir}"] }
+    exit {
+      0 => Unit
+      nonzero => String "mktemp -p failed"
+    }
+  }
+
   operation Dir {
     input {}
     output { path: FilePath from "stdout", success: Bool from "exit_success" }
@@ -157,7 +213,29 @@ service shell.Mkdir {
   }
 }
 
+service shell.Link {
+  operation Hard {
+    input { source: FilePath, destination: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["ln", "{source}", "{destination}"] }
+    exit {
+      0 => Unit "Hardlink created; fails if destination exists, which is the exclusivity this relies on"
+      nonzero => String "ln failed"
+    }
+  }
+}
+
 service shell.Remove {
+  operation FileForce {
+    input { path: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["rm", "-f", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "rm -f failed"
+    }
+  }
+
   operation RecursiveForce {
     input { path: FilePath }
     output { success: Bool from "exit_success" }
@@ -182,6 +260,26 @@ service shell.Move {
 }
 
 service shell.Chmod {
+  operation OwnerOnlyDirectory {
+    input { path: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["chmod", "0700", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "chmod 0700 failed"
+    }
+  }
+
+  operation OwnerReadWriteFile {
+    input { path: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["chmod", "0600", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "chmod 0600 failed"
+    }
+  }
+
   operation RecursiveWritable {
     input { path: FilePath }
     output { success: Bool from "exit_success" }
@@ -189,6 +287,16 @@ service shell.Chmod {
     exit {
       0 => Unit
       nonzero => String "chmod -R u+w failed"
+    }
+  }
+
+  operation RecursiveReadOnly {
+    input { path: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["chmod", "-R", "a-w", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "chmod -R a-w failed"
     }
   }
 }

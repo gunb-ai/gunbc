@@ -1,0 +1,52 @@
+module extdeps.tools.node
+
+import std.types { NonEmptyStr, String, Bool }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.tools { CliTool, SourceApt }
+import extdeps.apt { package_nodejs }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "nodejs.org/docs/latest/api/cli.html"
+  }
+}
+
+data node_cli_tool: CliTool = CliTool {
+  name: "node",
+  min_version: none,
+  installable_via: [SourceApt { package: package_nodejs }],
+}
+
+data node_cli_version_observation_note: String = "Observed node --version is recorded on CodexBuildToolchainReceipt beside npm.Cli.Version so the ambient toolchain that performed offline ci is attributable. Service is named nodejs.Cli (not node.Cli) because bare `node` is the substrate Node primitive — a §3 nickname collision that made Version unresolvable (Primitive() receiver). min_version = none is not a materialization receipt."
+
+service nodejs.Cli {
+  operation Version {
+    input {}
+    output {
+      version: String from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["node", "--version"] }
+    exit {
+      0 => Unit "node CLI version printed"
+      nonzero => String "node --version failed"
+    }
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.tools.node",
+      decl_name: "node_cli_tool",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.tools.node.extdeps_external_authority_anchor,
+  further_citations: []
+}

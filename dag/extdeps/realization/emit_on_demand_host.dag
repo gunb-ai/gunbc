@@ -65,7 +65,7 @@ type ToolchainIdentityOutcome
       identity: ContentHash
     }
 
-data emit_host_structural_identity_refusal_note: String = "emit_host_structural_identity_outcome refuses cryptographic ContentHash families at the structural projection boundary (review 45661). Sha256Hash and Sha1Hash cannot collapse to a shared fnv1a64 sentinel — that was an absorbing fallback hiding distinct digests behind one cache key. Structural-only inputs proceed; crypto arms return EmitHostStructuralIdentityRefusedCrypto with component and identity (family is derived via content_hash_family, not stored in parallel — review 45721)."
+data emit_host_structural_identity_refusal_note: String = "emit_host_structural_identity_outcome refuses cryptographic ContentHash families at the structural projection boundary (review 45661). Sha256Hash, Sha1Hash, and Sha512Hash cannot collapse to a shared fnv1a64 sentinel — that was an absorbing fallback hiding distinct digests behind one cache key. Structural-only inputs proceed; crypto arms return EmitHostStructuralIdentityRefusedCrypto with component and identity (family is derived via content_hash_family, not stored in parallel — review 45721)."
 
 fn emit_host_structural_identity_outcome(
   component: NonEmptyStr,
@@ -79,6 +79,11 @@ fn emit_host_structural_identity_outcome(
         identity: identity
       }
     Sha1Hash(_) =>
+      EmitHostStructuralIdentityRefusedCrypto {
+        component: component,
+        identity: identity
+      }
+    Sha512Hash(_) =>
       EmitHostStructuralIdentityRefusedCrypto {
         component: component,
         identity: identity

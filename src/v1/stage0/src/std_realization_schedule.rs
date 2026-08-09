@@ -6,7 +6,6 @@ use self::FloorWorkerIdentity::*;
 use self::FloorWorkerObservationOutcome::*;
 use self::FloorWorkerTerminalReceipt::*;
 use self::FloorWorkerTerminalReport::*;
-use self::FloorWorkerTermination::*;
 use self::NoWalkFinalization::*;
 use self::NodeFrontierSelection::*;
 use self::OnSuccessRunnableDisposition::*;
@@ -28,18 +27,24 @@ pub use crate::std_content_hash::{
     fnv1a64_structural_hex_digest, serialize_content_hash,
 };
 pub use crate::std_content_hash::{ContentHash, Fnv1a64Structural};
+pub use crate::std_decl_ref::DeclarationRef;
 pub use crate::std_execution_mode::execution_mode_eq;
 pub use crate::std_execution_mode::ExecutionMode;
 use crate::std_execution_mode::ExecutionMode::Hermetic;
 use crate::std_measure::ClockBasis::{CpuClock, WallClock};
 use crate::std_measure::Quantity::Time;
 pub use crate::std_measure::{
-    byte_size, byte_size_count, clock_basis_eq, measure_count, time_measure, watt,
+    byte_size, byte_size_count, clock_basis_eq, measure_count, millisecond_count, second_count,
+    time_measure, watt,
 };
 pub use crate::std_measure::{ByteSize, ClockBasis, Measure, Millisecond, Quantity, Second, Watt};
 pub use crate::std_nat::Nat;
 pub use crate::std_pareto::AxisGoal;
 use crate::std_pareto::AxisGoal::*;
+pub use crate::std_process_termination::ProcessTermination;
+use crate::std_process_termination::ProcessTermination::{
+    ProcessExited, ProcessSignaled, ProcessTerminationUnobserved,
+};
 use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, CommitSha, List, NonEmptyStr};
 pub use crate::std_witness_admission::WitnessConsumerCadence;
@@ -260,6 +265,12 @@ pub struct RunnableResourceProfile {
 pub struct RunnableBatchClamp {
     pub overhead: Second,
     pub per_unit: Millisecond,
+    pub authority: Rc<DeclarationRef>,
+}
+
+pub fn runnable_batch_clamp_ms(clamp: Rc<RunnableBatchClamp>, units: i64) -> i64 {
+    ((second_count(clamp.overhead.clone()) * 1000)
+        + (units.clone() * millisecond_count(clamp.per_unit.clone())))
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -306,14 +317,6 @@ impl FloorWorkerIdentity {
             } => __val.clone(),
         }
     }
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum FloorWorkerTermination {
-    FloorWorkerExited { code: i64 },
-    FloorWorkerSignaled { signal: i64 },
-    FloorWorkerTerminationUnobserved,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -394,7 +397,7 @@ impl FloorWorkerObservationOutcome {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FloorWorkerObservation {
     pub worker: Rc<FloorWorkerIdentity>,
-    pub termination: Rc<FloorWorkerTermination>,
+    pub termination: Rc<ProcessTermination>,
     pub terminal_receipt: Rc<FloorWorkerTerminalReceipt>,
 }
 
@@ -410,9 +413,7 @@ pub fn floor_worker_observation_outcome(
         FloorWorkerTerminalReceipt::FloorWorkerTerminalReceiptObserved {
             report: report, ..
         } => match (*observation.termination.clone()).clone() {
-            FloorWorkerTermination::FloorWorkerExited { code: 0, .. } => match (*report.clone())
-                .clone()
-            {
+            ProcessTermination::ProcessExited { code: 0, .. } => match (*report.clone()).clone() {
                 FloorWorkerTerminalReport::FloorWorkerReportedCompleted { detail: _, .. } => {
                     Rc::new(FloorWorkerObservationOutcome::FloorWorkerCompleted)
                 }
@@ -434,9 +435,7 @@ pub fn floor_worker_observation_outcome(
                     detail: detail.clone(),
                 }),
             },
-            FloorWorkerTermination::FloorWorkerExited { code: _, .. } => match (*report.clone())
-                .clone()
-            {
+            ProcessTermination::ProcessExited { code: _, .. } => match (*report.clone()).clone() {
                 FloorWorkerTerminalReport::FloorWorkerReportedCompleted { detail: _, .. } => {
                     Rc::new(FloorWorkerObservationOutcome::FloorWorkerFailed {
                         detail: "completion report contradicted nonzero exit".to_string(),
@@ -459,12 +458,12 @@ pub fn floor_worker_observation_outcome(
                     detail: detail.clone(),
                 }),
             },
-            FloorWorkerTermination::FloorWorkerSignaled { signal: _, .. } => {
+            ProcessTermination::ProcessSignaled { signal: _, .. } => {
                 Rc::new(FloorWorkerObservationOutcome::FloorWorkerFailed {
                     detail: "terminal report contradicted signal death".to_string(),
                 })
             }
-            FloorWorkerTermination::FloorWorkerTerminationUnobserved => {
+            ProcessTermination::ProcessTerminationUnobserved => {
                 Rc::new(FloorWorkerObservationOutcome::FloorWorkerFailed {
                     detail: "terminal report exists but process termination was unobserved"
                         .to_string(),

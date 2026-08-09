@@ -167,6 +167,7 @@ type SourceSpan {
 }
 
 type Timestamp    = String
+type EpochSecs     = Int where range(min: 0)
 type EpochMs       = Int where range(min: 0)
 type Duration      = Int where range(min: 0)
 type Milliseconds  = Int where range(min: 0), brand("Milliseconds")
