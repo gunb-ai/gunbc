@@ -50,7 +50,7 @@ import gunbc.roadmap_workflow_stage {
 }
 import gunbc.workflow_reconcile { workflow_reconcile_status_key }
 import gunbc.roadmap_publish {
-  PublicationSubject,
+  RoadmapPublicationSubject,
   PublicationSubjectObservation,
   PublicationSubjectObserved, PublicationSubjectUnobserved,
   publication_receipt_of,
@@ -123,7 +123,7 @@ fn fixture_evidence(
     verification_selection: fixture_verification_selection(),
     verification_source: VerificationReceiptAbsent,
     publication_subject: PublicationSubjectObserved {
-      subject: PublicationSubject {
+      subject: RoadmapPublicationSubject {
         node_id: "node-1",
         attempt_key: "feedfacefeedface",
         repository: Repository {
@@ -431,7 +431,7 @@ test fn legacy_attempt_refuses_unobserved_early_stages() -> Bool {
     verification_selection: SelectionAbsent,
     verification_source: VerificationReceiptAbsent,
     publication_subject: PublicationSubjectObserved {
-      subject: PublicationSubject {
+      subject: RoadmapPublicationSubject {
         node_id: "node-1",
         attempt_key: "feedfacefeedface",
         repository: Repository {
@@ -557,8 +557,8 @@ data pub_repository: Repository = Repository {
   default_branch: "main",
 }
 
-fn pub_subject(head: CommitSha) -> PublicationSubject {
-  PublicationSubject {
+fn pub_subject(head: CommitSha) -> RoadmapPublicationSubject {
+  RoadmapPublicationSubject {
     node_id: "node-1",
     attempt_key: "feedfacefeedface",
     repository: pub_repository,

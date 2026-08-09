@@ -32,7 +32,7 @@ import gunbc.design.instrument_audition {
 import gunbc.roadmap_instrument_sandbox {
   instrument_css, instrument_refusal_class,
   instrument_row_class, live_program_view_result, LiveViewDerived, LiveViewRefused,
-  fragment_cell, fragment_row, note,
+  fragment_cell, fragment_row, instrument_note,
 }
 import gunbc.roadmap_program_view { V1DeletionProgramView, RemainingShape }
 import gunbc.v1_deletion_plan { v1_exit_finish_lines, v1_finish_line_key, V1FinishLineSpec }
@@ -223,7 +223,7 @@ fn subject_row(spec: V1FinishLineSpec) -> Fragment {
 fn controls_section() -> Fragment {
   el("section", [
     el("h2", [ txt("camera controls") ]),
-    note(s: "Wheel and arrow keys admit one detent per threshold crossing; distant depth labels decompose into adjacent steps. Mode buttons switch reading projection."),
+    instrument_note(s: "Wheel and arrow keys admit one detent per threshold crossing; distant depth labels decompose into adjacent steps. Mode buttons switch reading projection."),
     el_class("div", instrument_row_class, map(instrument_user_depths(), d => depth_button(d: d))),
     el_class("div", instrument_row_class, map(program_modes(), m => mode_button(m: m))),
   ])
@@ -232,7 +232,7 @@ fn controls_section() -> Fragment {
 fn subjects_section() -> Fragment {
   el("section", [
     el("h2", [ txt("finish lines") ]),
-    note(s: "Selection follows the production roadmap: click the row, keyboard focus with focus-visible, re-select to clear, Escape clears. Controls on the row do not move selection."),
+    instrument_note(s: "Selection follows the production roadmap: click the row, keyboard focus with focus-visible, re-select to clear, Escape clears. Controls on the row do not move selection."),
     el("ul", map(v1_exit_finish_lines(), s => subject_row(spec: s))),
   ])
 }
@@ -240,7 +240,7 @@ fn subjects_section() -> Fragment {
 fn readings_section(view: V1DeletionProgramView) -> Fragment {
   el("section", [
     el("h2", [ txt("reading") ]),
-    note(s: "One row per camera state, pre-rendered from the live derived world. The client program reveals the row that matches the persistent camera."),
+    instrument_note(s: "One row per camera state, pre-rendered from the live derived world. The client program reveals the row that matches the persistent camera."),
     el("div", map(all_cameras(), c => reading_row(view: view, camera: c))),
   ])
 }

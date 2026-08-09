@@ -687,3 +687,25 @@ test fn retract_is_not_emitted_without_an_observed_scoped_removal() -> Bool {
     && !string_contains(s: measured, pattern: "__GUNBC_DEPLOY_REFUSED__")
     && string_contains(s: measured, pattern: "sudo -n tailscale serve --https=443 off")
 }
+
+// CONVERGE-0 loop member: the deployment installs a per-instance fleet-converge timer
+// whose service converges SELF via the deployed binary, with calendar catch-up
+// (Persistent=true — the offline-host property) and the receipts dir the publication
+// leg writes into. Cadence facts derive from the gunbc.fleet_converge_timer authority,
+// so a drifted cadence here reds against that one row, not a second copy.
+test fn fleet_converge_member_installs_self_converging_timer_with_catchup() -> Bool {
+  let live = live_deploy_apply_script_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
+  string_contains(s: live, pattern: " converge --host self")
+    && string_contains(s: live, pattern: "OnCalendar=*:0/15")
+    && string_contains(s: live, pattern: "Persistent=true")
+    && string_contains(s: live, pattern: "-fleet-converge.timer")
+    && string_contains(s: live, pattern: "install -d -m 0755 /opt/gunbc/receipts")
+}
+
+// Teardown owns both files: the retract removes the timer AND the service beside it
+// (the belt-member one-member-two-files shape), never production's fixed-name units.
+test fn fleet_converge_member_retract_removes_both_unit_files() -> Bool {
+  let retract = live_deploy_retract_script_for(spec: deployment_spec_srv1())
+  string_contains(s: retract, pattern: "-fleet-converge.timer")
+    && string_contains(s: retract, pattern: "-fleet-converge.service")
+}

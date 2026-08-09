@@ -40,12 +40,12 @@ import std.upsert_decision {
 }
 import std.types { String, Int, List, Bool }
 
-fn nid(s: String) -> RoadmapNodeId { s }
+fn roadmap_belt_nid(s: String) -> RoadmapNodeId { s }
 
 fn ready_node(id: String) -> RoadmapNode {
   RoadmapNode {
     identity: "rnfx_P2E65A1P1148Z5Y175QT" as RoadmapNodeIdentity,
-    node: nid(s: id),
+    node: roadmap_belt_nid(s: id),
     line: DerivableLine { prs: [1], title: id, description: "" },
     carriers: [],
     sizing: Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
@@ -79,8 +79,8 @@ test fn witness_running_spawns_ready_within_capacity() -> Bool {
   let f = frontier_ready(ids: ["a", "b"])
   let actions = belt_step(state: Running, frontier: f, occupied: [], cap: cap(n: 3))
   belt_spawn_count(actions: actions) == 2
-    && belt_spawns_node(actions: actions, id: nid(s: "a"))
-    && belt_spawns_node(actions: actions, id: nid(s: "b"))
+    && belt_spawns_node(actions: actions, id: roadmap_belt_nid(s: "a"))
+    && belt_spawns_node(actions: actions, id: roadmap_belt_nid(s: "b"))
 }
 
 test fn witness_capacity_limits_spawns() -> Bool {
@@ -91,15 +91,15 @@ test fn witness_capacity_limits_spawns() -> Bool {
 
 test fn witness_occupied_node_not_respawned() -> Bool {
   let f = frontier_ready(ids: ["a", "b"])
-  let actions = belt_step(state: Running, frontier: f, occupied: [nid(s: "a")], cap: cap(n: 3))
+  let actions = belt_step(state: Running, frontier: f, occupied: [roadmap_belt_nid(s: "a")], cap: cap(n: 3))
   belt_spawn_count(actions: actions) == 1
-    && belt_spawns_node(actions: actions, id: nid(s: "b"))
-    && !belt_spawns_node(actions: actions, id: nid(s: "a"))
+    && belt_spawns_node(actions: actions, id: roadmap_belt_nid(s: "b"))
+    && !belt_spawns_node(actions: actions, id: roadmap_belt_nid(s: "a"))
 }
 
 test fn witness_at_capacity_reports_backlog() -> Bool {
   let f = frontier_ready(ids: ["a", "b"])
-  let actions = belt_step(state: Running, frontier: f, occupied: [nid(s: "x"), nid(s: "y")], cap: cap(n: 2))
+  let actions = belt_step(state: Running, frontier: f, occupied: [roadmap_belt_nid(s: "x"), roadmap_belt_nid(s: "y")], cap: cap(n: 2))
   belt_spawn_count(actions: actions) == 0 && at_capacity_waiting(actions: actions) == 2
 }
 

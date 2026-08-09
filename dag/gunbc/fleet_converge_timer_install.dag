@@ -1,0 +1,113 @@
+module gunbc.fleet_converge_timer_install
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import std.resources { Network }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.exec.command { ArgvCommand, LocalExec }
+import gunbc.command_runner { run_shell_commands }
+import gunbc.fleet_converge_timer {
+  fleet_converge_service_unit_name,
+  fleet_converge_timer_unit_name,
+  fleet_converge_service_content_self,
+  fleet_converge_timer_content,
+}
+import gunbc.fleet_converge_cli {
+  FleetConvergeApplicability,
+  ConvergeSlice1Route,
+  ConvergeKnobFrontier,
+  ConvergeSparkPreEnrollment,
+  ConvergeOutsideFleet,
+  fleet_converge_applicability,
+}
+
+// Operator verdict join 2 (2026-08-09): the timer previously installed through
+// deployment_spec_srv1 ONLY — srv2–srv6 had no route, so "per-host timer" was a
+// one-host fact wearing a fleet name. This module makes the route TOTAL over the
+// applicability join 3 defines: srv1 keeps the live_deploy membership route it already
+// has (one authority for that host's owned artifacts — a second installer there would
+// fork ownership); every other ENROLLED host (srv2–srv4) gets the SELF-INSTALL route —
+// the converge binary on the host writes both unit files from the ONE
+// gunbc.fleet_converge_timer authority and enables the timer locally (bootstrap firing
+// arrives via that host's CI runner; thereafter the timer sustains itself); srv5/srv6
+// are the typed pre-enrollment arm (known fleet identities awaiting SPARK-SERVE-0 —
+// never silently absent); anything else is outside the fleet. No arm is a central
+// SSH star: nothing here converges a REMOTE host.
+type FleetTimerRoute
+  = TimerViaLiveDeployMembership { host: String }
+  | TimerViaSelfInstall { host: String }
+  | TimerPreEnrollment { host: String }
+  | TimerOutsideFleet { host: String }
+
+fn fleet_timer_install_route(host: String) -> FleetTimerRoute {
+  match fleet_converge_applicability(host: host) {
+    ConvergeSlice1Route =>
+      if host == "srv1" {
+        TimerViaLiveDeployMembership { host: host }
+      } else {
+        TimerViaSelfInstall { host: host }
+      }
+    ConvergeKnobFrontier => TimerViaSelfInstall { host: host }
+    ConvergeSparkPreEnrollment => TimerPreEnrollment { host: host }
+    ConvergeOutsideFleet => TimerOutsideFleet { host: host }
+  }
+}
+
+data fleet_timer_stage_dir: String = "/tmp/gunbc-fleet-timer-stage"
+
+fn fleet_timer_staged_path(unit_name: String) -> String {
+  join([fleet_timer_stage_dir, "/", unit_name], "")
+}
+
+fn fleet_timer_installed_path(unit_name: String) -> String {
+  concat("/etc/systemd/system/", unit_name)
+}
+
+// The install argv plan, derived — unit names come from the single timer authority, so
+// a renamed unit cannot leave a stale plan behind. `install -m 0644` then daemon-reload
+// then enable --now; the final step is the INDEPENDENT POST-EFFECT READBACK (`systemctl
+// is-enabled`), because an apply's success criterion is never its exit code.
+fn fleet_timer_install_commands() -> List<ArgvCommand> {
+  [
+    ArgvCommand { argv: ["sudo", "-n", "install", "-m", "0644", fleet_timer_staged_path(unit_name: fleet_converge_service_unit_name), fleet_timer_installed_path(unit_name: fleet_converge_service_unit_name)] },
+    ArgvCommand { argv: ["sudo", "-n", "install", "-m", "0644", fleet_timer_staged_path(unit_name: fleet_converge_timer_unit_name), fleet_timer_installed_path(unit_name: fleet_converge_timer_unit_name)] },
+    ArgvCommand { argv: ["sudo", "-n", "systemctl", "daemon-reload"] },
+    ArgvCommand { argv: ["sudo", "-n", "systemctl", "enable", "--now", fleet_converge_timer_unit_name] },
+    ArgvCommand { argv: ["systemctl", "is-enabled", fleet_converge_timer_unit_name] },
+  ]
+}
+
+// Wet self-install: stage both unit texts from the authority, then run the derived argv
+// plan locally. Fails closed on the first refusing step (run_shell_commands
+// short-circuits); a staging write failure refuses before any systemd state changes.
+func fleet_timer_self_install_wet() -> ProcessExit
+  uses net: Network
+{
+  let mk = run_shell_commands(
+    commands: [ArgvCommand { argv: ["mkdir", "-p", fleet_timer_stage_dir] }],
+    transport: LocalExec,
+  )
+  match mk {
+    ExitFailure { code: _, reason: why } => exit_failure(reason: concat("fleet_timer_self_install: stage dir refused: ", why))
+    ExitSuccess => {
+      let w_service = Filesystem.Write(
+        path: fleet_timer_staged_path(unit_name: fleet_converge_service_unit_name),
+        content: fleet_converge_service_content_self(),
+      )
+      let w_timer = Filesystem.Write(
+        path: fleet_timer_staged_path(unit_name: fleet_converge_timer_unit_name),
+        content: fleet_converge_timer_content(),
+      )
+      if w_service.success && w_timer.success {
+        run_shell_commands(commands: fleet_timer_install_commands(), transport: LocalExec)
+      } else {
+        exit_failure(reason: join([
+          "fleet_timer_self_install: staging write refused: ",
+          w_service.error,
+          " ",
+          w_timer.error,
+        ], ""))
+      }
+    }
+  }
+}

@@ -110,6 +110,34 @@ fn hand_authored_doc_path(b: HandAuthoredDocBind) -> String {
 data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "ci0-witness-execution-census",
+    primary_work: DeclarationRef { module_path: "gunbc.witness_execution_class", decl_name: "witness_execution_class_note", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "gunbc.witness_execution_class", decl_name: "native_blocked_cause_note", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the general witness→TargetModel producer lands (body-lowering keystone) and the enrolled-roster census is re-derived from executed emission attempts rather than the fixture-bound dispatch surface; the census numbers are superseded by that re-derivation and this receipt deletes with the NativeBlocked{GeneralWitnessTargetModelUnavailable} population it counts." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "ci2-native-cutover-reobservation",
+    primary_work: DeclarationRef { module_path: "gunbc.ci_workflow", decl_name: "ci_floor_native_cache_root_note", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "gunbc.ci_materialization", decl_name: "ci_native_cache_root_exempt_note", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.native_witness_transition_receipt", decl_name: "native_at_small_scale_transition_receipt", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the CI2 correctness flip lands — the native-selected population is native-required with the counted interpreter fallback deleted — and a main floor run's [native-selected-bundle] receipt shows verdict accepted with fallback = interpreted = unavailable = 0. The measured-standing content is superseded at that point by the run receipts and the transition-receipt authority; this doc records the pre-flip standing and its two located defects, and deletes with the fallback machinery it diagnosed." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "witness-bridge-reobservation",
+    primary_work: DeclarationRef { module_path: "v2.compiler.body_producer_forward", decl_name: "body_producer_forward_note", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lowering_fold_note", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the first witness-bridge stage lands (lowered body -> derived TargetModel -> bundle member -> native execution with planted-red control) and the bridge carrier's own notes record the standing this receipt captured; then this doc folds into the bridge design/receipt and deletes." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "review-surface-subject-map",
     primary_work: DeclarationRef { module_path: "v2.lens.registry.completeness", decl_name: "lens_registry_completeness_consolidated_roster_note", field: WholeDeclaration },
     additional_works: [
