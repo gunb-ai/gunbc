@@ -19,6 +19,8 @@ data lens_suite_roster_authority_note: String = "The planned roster is DERIVED f
 
 data lens_suite_roster_empty_ids: List<LensIdV0> = []
 
+data lens_suite_roster_empty_entries: List<LensRegistryEntryV0> = []
+
 fn lens_suite_registry_entry_module_path(entry: LensRegistryEntryV0) -> String {
   match entry.module_path {
     Bound { path: p } => p
@@ -29,7 +31,7 @@ fn lens_suite_registry_entry_module_path(entry: LensRegistryEntryV0) -> String {
 fn lens_suite_planned_entries() -> List<LensRegistryEntryV0> {
   fold_list(
     xs: lens_registry_v0,
-    empty: [],
+    empty: lens_suite_roster_empty_entries,
     cons: fn(acc, entry) {
       if lens_registry_entry_bound(entry: entry) {
         list_snoc_item(xs: acc, item: entry)

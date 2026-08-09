@@ -43,10 +43,9 @@ fn lens_suite_boring_profile_for(lens_id: LensIdV0) -> Optional<LensSuiteBoringP
       match acc {
         Present { value: _ } => acc
         Absent =>
-          if lens_id_v0_eq(left: boring_profile.lens_id, right: lens_id) {
-            Present { value: boring_profile }
-          } else {
-            Absent
+          match lens_id_v0_eq(left: boring_profile.lens_id, right: lens_id) {
+            true => Present { value: boring_profile }
+            false => Absent
           }
       }
     }
@@ -79,10 +78,9 @@ fn lens_suite_boring_checkpoint_lens_id() -> Optional<LensIdV0> {
       match acc {
         Present { value: _ } => acc
         Absent =>
-          if lens_suite_entry_is_boring_checkpoint(entry: entry) {
-            Present { value: entry.lens_id }
-          } else {
-            Absent
+          match lens_suite_entry_is_boring_checkpoint(entry: entry) {
+            true => Present { value: entry.lens_id }
+            false => Absent
           }
       }
     }
