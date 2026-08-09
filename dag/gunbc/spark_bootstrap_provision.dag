@@ -14,7 +14,18 @@ module gunbc.spark_bootstrap_provision
 // This pattern takes the resolved token as a parameter, which is what
 // gunbc.auth.access_token_source.ensure_access_token already returns.
 
-data spark_provision_authority_note: String = "Creating a secret and writing its first version are two different operations with two different idempotence characters, and this module keeps them apart rather than behind one convenient verb. CreateSecret converges: a second run answers 409 on a secret that already exists and the desired state is reached either way. AddVersion does NOT converge — every call mints a new version, so a retry sprawls versions rather than settling — which is exactly the property gunbc.auth.secret_rotation.secret_rotation names when it says AddVersion is not idempotent. So this pattern is safe to re-run for the CONTAINER and is not safe to re-run blindly for the MATERIAL, and a caller that wants convergence on the material must consult the store first. Stating that here because a reader who sees the BMC pattern's 'idempotent; safe to re-run' line in the runbook will otherwise carry that promise across to this one, where only half of it holds."
+data spark_provision_authority_note: String = "Three operations, three different idempotence characters, kept in separate patterns rather than behind one convenient verb. MEASURED, not assumed: CreateSecret does NOT converge at this seam — a second run answers HTTP 409 ALREADY_EXISTS and the pattern fails, because 409 is a declared error response and nothing here turns it into a success. An earlier revision of this note claimed the opposite ('a second run answers 409 and the desired state is reached either way'), which was an assertion about the API written without executing the re-run; the re-run was then executed and refuted it. AddVersion does not converge either, for a different reason: every call mints a new version, so a retry sprawls versions rather than settling, which is the property gunbc.auth.secret_rotation names. SetSecretIamPolicy DOES converge — it sets a policy to a desired value, so repeating it is a no-op on an already-correct binding. That asymmetry is why IAM convergence is its own pattern: bundling it behind CreateSecret meant a re-run died on 409 before reaching the bindings, so drifted bindings were unrepairable by re-running the only thing that set them. The container create is therefore a ONE-SHOT with a typed failure on re-run, and binding convergence is separately re-runnable."
+
+// 🟡 dissolve-on: spark_secret_containers_create is one-shot rather than convergent — a re-run
+// fails on 409 ALREADY_EXISTS instead of classifying 'already present' as the desired state
+// reached. The rung here is mitigatable (the failure is typed, located, and loud; it cannot
+// silently double-create) and NOT mechanically preventable, because nothing stops a caller
+// re-running it and taking the abort. DISSOLVES WHEN the create routes through an upsert
+// classification that reads 409 as Converged/Noop the way gunbc.auth.access_token_source
+// classifies its ensure, at which point this pattern and spark_secret_iam_converge can rejoin.
+// Next-rung trigger named rather than left implicit, per the guarantee ladder's no-untracked-stall
+// obligation.
+data spark_container_create_not_convergent_dissolve_on: String = "🟡 dissolve-on: spark_secret_containers_create aborts on HTTP 409 ALREADY_EXISTS rather than classifying an existing secret as the desired state reached. DISSOLVES WHEN CreateSecret dispatch routes through an UpsertClassification that maps 409 to Noop, letting create and IAM convergence rejoin into one re-runnable pattern. Measured on 2026-08-09: first apply returned both secret names and both binding etags; immediate reapply failed with 409 on the first secret."
 
 data spark_hotspot_secret_id: NonEmptyStr = "spark-hotspot-password"
 data spark_administrator_secret_id: NonEmptyStr = "spark-administrator-password"
@@ -44,15 +55,14 @@ fn spark_secret_iam_bindings() -> List<GcpBinding> {
   ]
 }
 
-// Create the CONTAINER only. No payload crosses this pattern, which is why it is separable from
-// the material write below: the container is the part that is safe to converge, and running it
-// needs no credential material at all — only the admin token. An operator can therefore apply this
-// half before the Spark passwords exist.
-pattern spark_secret_containers_provision(access_token: Secret) -> {
+// Create the CONTAINERS only. No payload crosses this pattern, so it needs no credential material
+// at all — only the admin token — and an operator can apply it before the Spark passwords exist.
+// ONE-SHOT: see spark_container_create_not_convergent_dissolve_on. A re-run against existing
+// secrets fails loudly on 409 rather than doing anything silent, which is the acceptable form of
+// this deficit; the unacceptable form would be swallowing the 409 and reporting success.
+pattern spark_secret_containers_create(access_token: Secret) -> {
   hotspot_name: String,
-  administrator_name: String,
-  hotspot_binding_etag: String,
-  administrator_binding_etag: String
+  administrator_name: String
 }
   uses net: std.resources.Network
 {
@@ -68,6 +78,23 @@ pattern spark_secret_containers_provision(access_token: Secret) -> {
     secret_id: spark_administrator_secret_id
   )
 
+  return {
+    hotspot_name: hotspot.name,
+    administrator_name: administrator.name
+  }
+}
+
+// Converge the BINDINGS. Separated from creation because SetSecretIamPolicy sets a policy to a
+// desired value and is therefore genuinely re-runnable, while creation is not. Keeping them in one
+// pattern made the convergent half unreachable on any host where the containers already existed,
+// which is every host after the first apply — so the only operation that could repair drifted
+// least-privilege bindings was gated behind an operation guaranteed to abort.
+pattern spark_secret_iam_converge(access_token: Secret) -> {
+  hotspot_binding_etag: String,
+  administrator_binding_etag: String
+}
+  uses net: std.resources.Network
+{
   node hotspot_bind: gcp.SecretManager.SetSecretIamPolicy(
     access_token: access_token,
     project_id: bmc_secrets_project_id,
@@ -83,8 +110,6 @@ pattern spark_secret_containers_provision(access_token: Secret) -> {
   )
 
   return {
-    hotspot_name: hotspot.name,
-    administrator_name: administrator.name,
     hotspot_binding_etag: hotspot_bind.ok_etag,
     administrator_binding_etag: administrator_bind.ok_etag
   }
