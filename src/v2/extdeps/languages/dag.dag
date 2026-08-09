@@ -27,6 +27,7 @@ import v2.std.grammar {
   grammar_formal_production,
   grammar_expr_optional,
   grammar_expr_terminal,
+  grammar_expr_terminal_contextual,
   grammar_expr_terminal_bound,
   grammar_expr_terminal_lexeme,
   formal_grammar_symbol_to_grammar_expr,
@@ -2840,6 +2841,13 @@ fn dag_grammar_fn_decl_expr() -> GrammarExpr {
   )
 }
 
+// The authored test marker is a CONTEXTUAL keyword (operator ruling msg_2a8e30e8 item 4,
+// firing the capture scaffold's dissolve-on): 'test' cannot be a lex keyword because it is an
+// ordinary identifier and module-path segment, so it lexes as ident and the OPTIONAL contextual
+// terminal admits it here — and only before data/fn ('test type'/'test import' still refuse).
+// The marker captures nothing, so a marked declaration's emitted subtree is byte-identical to
+// the unmarked form and test-ness stays roster-derived. FIRST-dispatch stays unambiguous: the
+// marked tail is the only top-level alternative whose FIRST contains ident.
 fn dag_grammar_top_level_item_expr() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_nonterminal(production: ^dag_production_import_decl),
@@ -2847,9 +2855,14 @@ fn dag_grammar_top_level_item_expr() -> GrammarExpr {
       left: dag_grammar_nonterminal(production: ^dag_production_alias_decl),
       right: dag_grammar_choice(
         left: dag_grammar_nonterminal(production: ^dag_production_type_decl),
-        right: dag_grammar_choice(
-          left: dag_grammar_nonterminal(production: ^dag_production_data_decl),
-          right: dag_grammar_nonterminal(production: ^dag_production_fn_decl)
+        right: dag_grammar_sequence(
+          left: dag_grammar_optional(
+            element: grammar_expr_terminal_contextual(token_class: ^dag_token_ident, marker: ^test)
+          ),
+          right: dag_grammar_choice(
+            left: dag_grammar_nonterminal(production: ^dag_production_data_decl),
+            right: dag_grammar_nonterminal(production: ^dag_production_fn_decl)
+          )
         )
       )
     )

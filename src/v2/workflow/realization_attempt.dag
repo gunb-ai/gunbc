@@ -126,39 +126,10 @@ fn collect_arrows(root: Node, acc: List<Node>) -> List<Node> {
 }
 
 
-data test_marker_capture_note: String = "STAGED SCAFFOLD (escalation msg_628838a5; dissolve-on: GrammarExpr contextual-keyword terminal lands and dag fn_decl/data_decl productions carry the test marker structurally): the v2 dag grammar cannot yet parse the authored test marker ('test' is a module-path segment, so it cannot be a lex keyword; v1's v1_compiler_parse.rs drop_leading_test_marker DISCARDS the marker pre-parse and re-derives test-ness by text scan — cited as the prior art this capture SUPERSEDES, not imitates: this seam captures and counts, that seam discarded, and the distinction is the point (ruling msg_64870b7f)). The realization ATTEMPT captures the marker at its own seam — line-leading 'test fn '/'test data ' rewritten to the unmarked form, capture COUNTED on the attempt row — so the census sweep can measure the rest of the pipeline while the grammar extension is priced as its own top-of-burn-down repair item (it gates 100 percent of test files). Test-ness itself is never derived from this capture: the discovery roster carries it. Scoped deliberately to attempt_entry_source; the canonical production pipeline does NOT route through this fn."
-
-type MarkedSource {
-  unmarked: String
-  captured_markers: Int
-}
-
-fn capture_test_markers(source: String) -> MarkedSource {
-  let folded = fold(
-    split(s: source, delimiter: "\n"),
-    init: MarkedSource { unmarked: "", captured_markers: 0 },
-    f: fn(acc, line) {
-      let stripped =
-        if starts_with(s: line, prefix: "test fn ") || starts_with(s: line, prefix: "test data ") {
-          MarkedSource {
-            unmarked: substring(s: line, start: 5, end: string_length(s: line)),
-            captured_markers: 1
-          }
-        } else {
-          MarkedSource { unmarked: line, captured_markers: 0 }
-        }
-      MarkedSource {
-        unmarked: if acc.unmarked == "" { stripped.unmarked } else { concat(acc.unmarked, "\n", stripped.unmarked) },
-        captured_markers: acc.captured_markers + stripped.captured_markers
-      }
-    }
-  )
-  folded
-}
+data test_marker_dissolved_note: String = "DISSOLVED SCAFFOLD RECORD (dissolve-on fired; operator ruling msg_2a8e30e8 item 4): the marker-rewrite capture (MarkedSource / capture_test_markers / capture_markers_ingest — line-leading 'test fn '/'test data ' rewritten to the unmarked form before assembly) is DELETED because the dag grammar now parses the authored test marker structurally: v2.std.grammar GrammarExpr TerminalContextual is the contextual-keyword terminal, and v2.extdeps.languages.dag dag_grammar_top_level_item_expr admits an OPTIONAL ^test marker before data_decl/fn_decl only, capturing nothing — a marked declaration's emitted tree is structurally EQUAL to the unmarked form (witnessed: gunbc.test.claim.dag_test_marker_contextual_witness_test witness_marker_captures_nothing_tree_equal, with 'test type'/'test import'/bare-marker REDs and the pre-extension-grammar identity-swapped RED). Test-ness itself stays roster-derived, exactly the invariant the rewrite preserved. Prior art superseded twice over: v1's drop_leading_test_marker discards pre-parse and re-derives by text scan; the rewrite captured and counted; the grammar now ADMITS — the marker is source structure the parser sees, not a pre-parse patch."
 
 fn attempt_entry_source(entry: String, source: String) -> EntryRealizationAttempt {
-  let marked = capture_test_markers(source: source)
-  match ingested_resolved_module_from_source(source: marked.unmarked, file: ^realization_attempt_entry_file) {
+  match ingested_resolved_module_from_source(source: source, file: ^realization_attempt_entry_file) {
     Rejected { diagnostics: ds } =>
       attempt_refused_at(
         entry: entry,
@@ -349,26 +320,7 @@ fn attempt_assembled(
   }
 }
 
-data attempt_closure_rows_note: String = "Sweep seam (CI2-0 Commit B): ONE assembly per entry closure, then one attempt_joined per required test-fn identity — the exactly-once accounting grain the mandate names. The ingest is marker-captured at this seam only (test_marker_capture_note: the grammar cannot yet parse the authored test marker, so the capture scaffold rewrites line-leading markers and the count stays observable); an assembly refusal is replicated to EVERY identity in the entry with the reason-classified phase, because each identity is accountable and none of them reached its join."
-
-fn capture_markers_ingest(ingest: SourceRootIngest) -> SourceRootIngest {
-  match ingest {
-    Empty => Empty
-    Cons { head: r, tail: t } =>
-      Cons {
-        head: DagSourceReadWitness {
-          source: Medium {
-            carried: capture_test_markers(source: r.source.carried).unmarked,
-            fidelity: r.source.fidelity
-          },
-          artifact: r.artifact,
-          compilation_unit: r.compilation_unit,
-          source_root: r.source_root
-        },
-        tail: capture_markers_ingest(ingest: t)
-      }
-  }
-}
+data attempt_closure_rows_note: String = "Sweep seam (CI2-0 Commit B): ONE assembly per entry closure, then one attempt_joined per required test-fn identity — the exactly-once accounting grain the mandate names. The ingest is assembled AS AUTHORED — the grammar parses the test marker structurally (test_marker_dissolved_note); an assembly refusal is replicated to EVERY identity in the entry with the reason-classified phase, because each identity is accountable and none of them reached its join."
 
 fn entry_witness_source(ingest: SourceRootIngest, entry: String) -> Optional<String> {
   fold_list(xs: ingest, empty: Absent, cons: fn(acc, r) {
@@ -417,7 +369,7 @@ fn census_rows(
   fn_names: List<Symbol>,
   entry: String
 ) -> List<String> {
-  match assemble_program_from_ingest(ingest: capture_markers_ingest(ingest: ingest), admission: admission, lm: dag_language_model()) {
+  match assemble_program_from_ingest(ingest: ingest, admission: admission, lm: dag_language_model()) {
     Rejected { diagnostics: ds } =>
       [concat(entry, concat("	(census)	assembly_refused_", symbol_lexeme(sym: first_located_cause(ds: ds))))]
     Accepted { value: program, diagnostics: _ } =>
@@ -441,7 +393,7 @@ fn attempt_closure_rows(
   fn_names: List<Symbol>,
   entry: String
 ) -> List<EntryRealizationAttempt> {
-  match assemble_program_from_ingest(ingest: capture_markers_ingest(ingest: ingest), admission: admission, lm: dag_language_model()) {
+  match assemble_program_from_ingest(ingest: ingest, admission: admission, lm: dag_language_model()) {
     Rejected { diagnostics: ds } => {
       let cause = first_located_cause(ds: ds)
       let phase = phase_for_reason(reason: cause, fallback: PhaseAssembly)

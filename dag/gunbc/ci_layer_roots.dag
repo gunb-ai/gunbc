@@ -1400,6 +1400,60 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     dissolve_on: "witness realization lands the lex/parse natively or eval drops under gunbc_ci_fast_lane_witness_eval_budget on a measured run — then re-enroll per-PR discovery and delete this row"
   },
   SubstrateLongLaneRow {
+    entry: "dag/test/claim/dag_test_marker_contextual_witness_test.dag",
+    function: "witness_marked_fn_parses",
+    reason: "~16s measured eval (valiant-boar-65, 2026-08-09): interpreted production dag_lex_rules + dag_grammar lex+parse per control — the contextual test-marker matrix (operator repair msg_2a8e30e8 item 4: TerminalContextual grammar arm; the marker-rewrite scaffold deletes in the same change)",
+    dissolve_on: "witness realization lands the lex/parse natively or eval drops under gunbc_ci_fast_lane_witness_eval_budget on a measured run — then re-enroll per-PR discovery and delete this row"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/dag_test_marker_contextual_witness_test.dag",
+    function: "witness_marked_data_parses",
+    reason: "same interpreted lex/parse wall as sibling witness_marked_fn_parses (~16s measured)",
+    dissolve_on: "same as sibling row"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/dag_test_marker_contextual_witness_test.dag",
+    function: "witness_marked_type_refuses_RED",
+    reason: "same interpreted lex/parse wall as sibling witness_marked_fn_parses (~16s measured)",
+    dissolve_on: "same as sibling row"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/dag_test_marker_contextual_witness_test.dag",
+    function: "witness_marked_import_refuses_RED",
+    reason: "same interpreted lex/parse wall as sibling witness_marked_fn_parses (~17s measured)",
+    dissolve_on: "same as sibling row"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/dag_test_marker_contextual_witness_test.dag",
+    function: "witness_fn_named_test_still_parses",
+    reason: "same interpreted lex/parse wall as sibling witness_marked_fn_parses (~17s measured)",
+    dissolve_on: "same as sibling row"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/dag_test_marker_contextual_witness_test.dag",
+    function: "witness_bare_marker_refuses_RED",
+    reason: "same interpreted lex/parse wall as sibling witness_marked_fn_parses (~17s measured)",
+    dissolve_on: "same as sibling row"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/dag_test_marker_contextual_witness_test.dag",
+    function: "witness_mixed_marked_and_unmarked_parse",
+    reason: "same interpreted lex/parse wall as sibling witness_marked_fn_parses (~17s measured)",
+    dissolve_on: "same as sibling row"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/dag_test_marker_contextual_witness_test.dag",
+    function: "witness_marker_captures_nothing_tree_equal",
+    reason: "two full lex+parse passes (marked and unmarked module) compared by structural tree equality — the marker-captures-nothing erasure control (~34s measured)",
+    dissolve_on: "same as sibling row"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/dag_test_marker_contextual_witness_test.dag",
+    function: "witness_pre_extension_grammar_restores_the_RED",
+    reason: "two parses under the identity-swapped pre-extension grammar — the rule-removed RED (~35s measured)",
+    dissolve_on: "same as sibling row"
+  },
+  SubstrateLongLaneRow {
     entry: "dag/test/claim/witness_execution_class_live_census_test.dag",
     function: "witness_live_roster_census_holds",
     reason: "~150s measured single-walk eval (valiant-boar-65, 2026-08-08): the CI-0 live-roster classification census — a full floor_discovery_producer walk over witness_discovery_scan_dirs (~1k file reads through the interpreted producer) joined against the enrolled bundle plan. Corpus-breadth census, not a fixture-shaped defect (DESIGN witness-cost ruling: the census is irreducible, the mechanism never is); the mechanism fixtures stay per-PR in witness_execution_class_test",

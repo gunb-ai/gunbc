@@ -133,6 +133,7 @@ import v2.std.grammar {
   Repeat,
   Sequence,
   Terminal,
+  TerminalContextual,
   ValidatedGrammarRoot,
   VoidGrammar,
   TerminalStampMode,
@@ -1356,6 +1357,7 @@ fn collect_choice_ambiguities_in_expr(
 ) -> List<GrammarChoiceAmbiguityRow> {
   match expr {
     Terminal { token_class: _, stamp: _ } => acc
+    TerminalContextual { token_class: _, marker: _ } => acc
     Nonterminal { production: _ } => acc
     Sequence { left: left, right: right } =>
       collect_choice_ambiguities_in_expr(
@@ -1853,6 +1855,43 @@ fn parse_expr_terminal(
   }
 }
 
+// Contextual-keyword terminal (operator ruling msg_2a8e30e8 item 4): accepts a token of the
+// class whose INTERNED lexeme equals the marker symbol — symbol equality, never a raw string
+// comparison across the lexer's representation seam — consumes it, and captures NOTHING
+// (grammar_empty_node, the same no-capture sentinel an empty Optional yields), so the marker
+// admits the production without changing the emitted subtree.
+fn parse_expr_terminal_contextual(
+  token_class: Symbol,
+  marker: Symbol,
+  tokens: List<Token>,
+  table: ParseTable,
+  prov: ParseProvenanceState
+) -> ParseExprResult {
+  match parse_token_first(tokens: tokens) {
+    Absent => ParseExprRejected { diagnostics: [], table: table }
+    Present { value: tok } =>
+      match tok.class == token_class {
+        false => ParseExprRejected { diagnostics: [], table: table }
+        true =>
+          match symbol_intern_lexeme(lexeme: tok.lexeme) == marker {
+            false => ParseExprRejected { diagnostics: [], table: table }
+            true =>
+              match list_tail(xs: tokens) {
+                TailFound { tail: remaining } =>
+                  ParseExprAccepted {
+                    remaining: remaining,
+                    captured: grammar_empty_node(),
+                    diagnostics: [],
+                    prov: prov,
+                    table: table
+                  }
+                TailAbsent => ParseExprRejected { diagnostics: [], table: table }
+              }
+          }
+      }
+  }
+}
+
 fn parse_expr_sequence(
   left: GrammarExpr,
   right: GrammarExpr,
@@ -2135,6 +2174,14 @@ fn parse_expr_with_first(
       parse_expr_terminal(
         token_class: token_class,
         stamp: stamp,
+        tokens: tokens,
+        table: table,
+        prov: prov
+      )
+    TerminalContextual { token_class: token_class, marker: marker } =>
+      parse_expr_terminal_contextual(
+        token_class: token_class,
+        marker: marker,
         tokens: tokens,
         table: table,
         prov: prov
