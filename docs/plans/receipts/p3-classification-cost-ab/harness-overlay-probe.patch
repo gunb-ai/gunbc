@@ -1,0 +1,233 @@
+diff --git a/src/v1/stage0/Cargo.toml b/src/v1/stage0/Cargo.toml
+index eb935a421d..dc8549f429 100644
+--- a/src/v1/stage0/Cargo.toml
++++ b/src/v1/stage0/Cargo.toml
+@@ -202,6 +202,13 @@ path = "src/bin/floor_skip_discovery_witness.rs"
+ name = "p1_cohort_probe"
+ path = "src/bin/p1_cohort_probe.rs"
+ 
++# P3 ClassificationCostStanding harness (#8055): same-subject end-to-end A/B of the
++# classification wall + narrowed prep/exec vs the retired G1 selector + over-selected
++# prep/exec. Branch-neutral measurement plumbing — selector behavior is in cli_run.
++[[bin]]
++name = "p3_cohort_probe"
++path = "src/bin/p3_cohort_probe.rs"
++
+ # Per-worker private-footprint decomposition (node://adhoc-2a689db3-964). Requires
+ # `--features interp_test_witness` for the force/drop handles on MultiEntryIndex.
+ # Measurement harness only: builds one index on one thread, never admits a second
+diff --git a/src/v1/stage0/src/bin/p3_cohort_probe.rs b/src/v1/stage0/src/bin/p3_cohort_probe.rs
+new file mode 100644
+index 0000000000..f3e4af66de
+--- /dev/null
++++ b/src/v1/stage0/src/bin/p3_cohort_probe.rs
+@@ -0,0 +1,209 @@
++#![allow(clippy::disallowed_macros)]
++
++// P3 ClassificationCostStanding harness — same-subject end-to-end A/B for #8055.
++//
++// Compares two walls on the IDENTICAL subject (roster + injected diff):
++//   candidate — G2 manifest classification + narrowed selected-entry prep/exec
++//   control   — retired G1 carrier-home selector + over-selected prep/exec
++//
++// Selector behavior lives in the compiled `cli_run` on each branch; this probe is
++// branch-neutral measurement plumbing. Build once per arm, run with the same env.
++//
++// Subjects (`GUNBC_P3_SUBJECT`):
++//   incident  (default) — two-entry incident roster + synthetic .dag touch
++//   discovery — full discovery scan with Applied selection (corpus-scale A/B)
++//
++// Env:
++//   GUNBC_P3_ARM=control|candidate — arm label in the terminal receipt
++//
++// Receipt fields pair wall_ms with prep_exec_ms and selected/total entry groups —
++// a selection count alone is not ClassificationCostStanding.
++
++use std::process::ExitCode;
++use std::time::Instant;
++
++use v1_compiler::cli_run::{
++    live_read_classification_production_ms, reset_live_read_classification_production_ms,
++    run_discovery_corpus_with_options, selection_control_incident_subject_roster, workspace_root,
++    DiscoveryCorpusOptions, DiscoveryWidthPolicy, NodeFrontierSelectionMode,
++    SELECTION_CONTROL_NODE_PRECISE_REL,
++};
++use v1_compiler::v1_interpreter::ExecutionMode;
++
++struct EnvVarGuard {
++    key: &'static str,
++    previous: Option<String>,
++}
++
++impl EnvVarGuard {
++    fn set(key: &'static str, value: &str) -> Self {
++        let previous = std::env::var(key).ok();
++        std::env::set_var(key, value);
++        Self { key, previous }
++    }
++}
++
++impl Drop for EnvVarGuard {
++    fn drop(&mut self) {
++        match &self.previous {
++            Some(v) => std::env::set_var(self.key, v),
++            None => std::env::remove_var(self.key),
++        }
++    }
++}
++
++fn floor_skip_source_roots() -> Vec<String> {
++    let ws = workspace_root();
++    vec![
++        ws.join("src/v2").to_string_lossy().into_owned(),
++        ws.join("dag").to_string_lossy().into_owned(),
++    ]
++}
++
++fn fixture_line(text: &str, needle: &str) -> i64 {
++    text.lines()
++        .position(|l| l.contains(needle))
++        .map(|i| (i + 1) as i64)
++        .unwrap_or_else(|| panic!("fixture missing line containing `{needle}`"))
++}
++
++fn injected_name_status_modify(rel_path: &str) -> String {
++    format!("M\\000{rel_path}\\000")
++}
++
++fn inject_incident_diff() -> (EnvVarGuard, EnvVarGuard) {
++    let disc_rel = SELECTION_CONTROL_NODE_PRECISE_REL;
++    let text = std::fs::read_to_string(workspace_root().join(disc_rel))
++        .expect("incident discriminator fixture readable");
++    let helper_line = fixture_line(&text, "fn floor_disc_helper_fn");
++    let unified =
++        format!("+++ b/{disc_rel}\n@@ -{helper_line},0 +{helper_line},1 @@\n+// synthetic touch\n");
++    let diff = EnvVarGuard::set("GUNBC_CI_DIFF_UNIFIED", &unified);
++    let name_status = EnvVarGuard::set(
++        "GUNBC_CI_DIFF_NAME_STATUS",
++        &injected_name_status_modify(disc_rel),
++    );
++    (diff, name_status)
++}
++
++fn arm_label() -> String {
++    std::env::var("GUNBC_P3_ARM").unwrap_or_else(|_| "unspecified".to_string())
++}
++
++fn subject_label() -> String {
++    std::env::var("GUNBC_P3_SUBJECT").unwrap_or_else(|_| "incident".to_string())
++}
++
++fn workspace_head_sha() -> String {
++    std::process::Command::new("git")
++        .args(["rev-parse", "HEAD"])
++        .output()
++        .ok()
++        .and_then(|o| {
++            if o.status.success() {
++                String::from_utf8(o.stdout).ok()
++            } else {
++                None
++            }
++        })
++        .map(|s| s.trim().to_string())
++        .unwrap_or_else(|| "unknown".to_string())
++}
++
++fn main() -> ExitCode {
++    let ws = workspace_root();
++    std::env::set_current_dir(&ws).expect("chdir to workspace root");
++
++    let source_roots = floor_skip_source_roots();
++    let arm = arm_label();
++    let subject = subject_label();
++    let head_sha = workspace_head_sha();
++
++    if subject != "incident" && subject != "discovery" {
++        eprintln!(
++            "p3_cohort_probe: REFUSED unknown GUNBC_P3_SUBJECT={subject:?} \
++             (expected incident|discovery)"
++        );
++        return ExitCode::from(1);
++    }
++
++    let incident = subject == "incident";
++    let _diff_guards = if !incident || std::env::var("GUNBC_CI_DIFF_UNIFIED").is_ok() {
++        None
++    } else {
++        Some(inject_incident_diff())
++    };
++    let explicit_entries = if incident {
++        selection_control_incident_subject_roster()
++    } else {
++        vec![]
++    };
++
++    reset_live_read_classification_production_ms();
++
++    eprintln!(
++        "p3_cohort_probe: arm={arm} subject={subject} head_sha={head_sha} \
++         explicit_entries={} selection=Applied",
++        explicit_entries.len()
++    );
++
++    let wall_start = Instant::now();
++    let run_result = run_discovery_corpus_with_options(
++        &source_roots,
++        &[],
++        &explicit_entries,
++        ExecutionMode::Wet,
++        DiscoveryWidthPolicy::Serial,
++        DiscoveryCorpusOptions {
++            node_frontier_selection: NodeFrontierSelectionMode::Applied,
++            execution_authority_source_roots: source_roots.clone(),
++            explicit_roster_only: incident,
++            ..Default::default()
++        },
++    );
++    let cohort_complete_wall_ms = wall_start.elapsed().as_millis();
++    let classification_production_ms = live_read_classification_production_ms();
++
++    match run_result {
++        Ok(summary) => {
++            let skip_before_resolve = summary
++                .selection_skipped_rows
++                .iter()
++                .filter(|r| r.provenance == "skip-before-resolve-fast-path")
++                .count();
++            let resolve_ms = summary.total_resolve_nanos as f64 / 1.0e6;
++            let eval_ms = summary.total_measured_nanos as f64 / 1.0e6;
++            let prep_exec_ms = resolve_ms + eval_ms;
++
++            eprintln!(
++                "p3_cohort_probe: RECEIPT arm={arm} subject={subject} head_sha={head_sha} \
++                 cohort_complete_wall_ms={cohort_complete_wall_ms} \
++                 selected_entry_groups={} total_entry_groups={} \
++                 skipped_rows={} skip_before_resolve={skip_before_resolve} \
++                 classification_production_ms={classification_production_ms} \
++                 resolve_ms={resolve_ms:.3} eval_ms={eval_ms:.3} prep_exec_ms={prep_exec_ms:.3} \
++                 failures={}",
++                summary.selected_entry_groups,
++                summary.total_entry_groups,
++                summary.skipped,
++                summary.failures.len()
++            );
++
++            if summary.failures.is_empty() {
++                ExitCode::SUCCESS
++            } else {
++                for f in &summary.failures {
++                    eprintln!("p3_cohort_probe: FAIL {f}");
++                }
++                ExitCode::from(1)
++            }
++        }
++        Err(msg) => {
++            eprintln!(
++                "p3_cohort_probe: REFUSED arm={arm} subject={subject} head_sha={head_sha} \
++                 cohort_complete_wall_ms={cohort_complete_wall_ms}: {msg}"
++            );
++            ExitCode::from(1)
++        }
++    }
++}

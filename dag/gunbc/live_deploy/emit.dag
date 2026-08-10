@@ -4,7 +4,8 @@ import gunbc.fleet_converge_timer {
   fleet_converge_timer_on_calendar,
   fleet_converge_timer_randomized_delay,
 }
-import std.measure { second_count }
+import std.measure { second_count, positive_millisecond_count }
+import std.evaluation_budget { EvaluationLimit, LimitSet, LimitUnset }
 
 import std.types { String, List, Bool, NonEmptyStr, Int, FilePath, CommitSha }
 import gunbc.managed_directory {
@@ -221,6 +222,19 @@ type ReleaseRevisionBinding
 
 data release_revision_not_installed_poison: String = "__GUNBC_DEPLOY_UNREACHABLE__ the systemd unit writer was reached with RevisionNotInstalled — a retract fold dispatched a unit install. This marker is not a valid release revision, so the golden drift gate reds rather than emitting a unit whose ExecStart names no release (DESIGN section 5: an unreachable arm refuses loudly, never fabricates)."
 
+// A LIMIT RENDERS ITS FLAG OR RENDERS NOTHING, AND THE EMPTY ARM IS NOT A DEFAULT.
+// LimitUnset is a declared policy state (std.evaluation_budget
+// evaluation_limit_unset_is_a_state_not_a_default_note), so it emits no flag and the
+// process announces `unset` at startup — the same visible operational fact it announces
+// today. What changes is that production no longer REACHES that arm by omission.
+fn eval_budget_flag_text(flag: String, limit: EvaluationLimit) -> String {
+  match limit {
+    LimitUnset => ""
+    LimitSet { limit: l } =>
+      join([" ", flag, " ", to_string(positive_millisecond_count(m: l))], "")
+  }
+}
+
 fn release_revision_execstart_text(binding: ReleaseRevisionBinding) -> String {
   match binding {
     RevisionBoundAtEmission { revision: r } => r as String
@@ -249,6 +263,8 @@ fn emit_systemd_unit_doc(spec: DeploymentSpec, revision: ReleaseRevisionBinding)
       " --entry dag/gunbc/roadmap_serve.dag --function ", svc.serve_function as String,
       " --host ", host, " --port ", port,
       " --release-revision ", release_revision_execstart_text(binding: revision),
+      eval_budget_flag_text(flag: "--eval-budget-cpu-ms", limit: svc.serve_cpu_limit),
+      eval_budget_flag_text(flag: "--eval-budget-wall-ms", limit: svc.serve_wall_limit),
     ], "")),
     doc_line_of(text: "Restart=on-failure"),
     doc_line_of(text: ""),

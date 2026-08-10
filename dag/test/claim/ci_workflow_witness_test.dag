@@ -14,7 +14,7 @@ import gunbc.ci_workflow {
   gunbc_ci_release_build_step_timeout_minutes,
   gunbc_ci_prelude_allowance_minutes,
 }
-import gunbc.ci_workflow_expressions { ci_deploy_push_to_main_if }
+import gunbc.ci_workflow_expressions { ci_fleet_job_if }
 import gunbc.ci_spec {
   gunbc_ci_ordinary_floor_budget_minutes,
   gunbc_ci_admission_postcondition_budget_minutes,
@@ -59,9 +59,17 @@ test fn ci_workflow_witness_holds() -> Bool {
 // silently read as 'condition false'. This test REDS if the guard is removed from the
 // authority row, if any push-to-main job's condition drops it, or if the family
 // becomes vacuously empty.
+//
+// CONSOLIDATION (operator request 2026-08-10): the deploy/collect/advance family (and
+// the workflow_dispatch toolbox) collapsed into ONE `fleet` job (gunbc.ci_workflow
+// ci_fleet_job) whose job-level if is ci_fleet_job_if — carrying the same !cancelled()
+// + needs.ci.result guard on its push arm. The guard-bearing count is therefore 1 now,
+// not >= 2; the per-job status-guard check still holds on that one job, and >= 1 keeps
+// the "not vacuously empty" protection (a fleet job that drops its main-push arm or its
+// status guard still REDs).
 test fn push_to_main_family_carries_explicit_status_guard() -> Bool {
-  string_contains(s: ci_deploy_push_to_main_if, pattern: "!cancelled()")
-    && string_contains(s: ci_deploy_push_to_main_if, pattern: "needs.ci.result == 'success'")
+  string_contains(s: ci_fleet_job_if, pattern: "!cancelled()")
+    && string_contains(s: ci_fleet_job_if, pattern: "needs.ci.result == 'success'")
     && fold_list(
       xs: ci_workflow.jobs,
       empty: true,
@@ -95,5 +103,5 @@ test fn push_to_main_family_carries_explicit_status_guard() -> Bool {
           _ => n
         }
       }
-    ) >= 2
+    ) >= 1
 }

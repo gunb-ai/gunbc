@@ -23,8 +23,15 @@ import gunbc.ci_spec {
   gunbc_ci_srv1_tasks_observation_invoke,
   gunbc_ci_advance_fleet_desired_script,
   gunbc_ci_fleet_reach_probe_invoke,
+  gunbc_ci_multi_principal_probe_invoke,
   gunbc_ci_fleet_timer_install_invoke,
   gunbc_ci_collect_fleet_convergence_invoke,
+  gunbc_ci_fleet_key_agent_script,
+  gunbc_ci_fleet_key_agent_cleanup_script,
+  gunbc_ci_fleet_host_key_scan_invoke,
+  gunbc_ci_fleet_host_key_enroll_invoke,
+  gunbc_ci_probe_identity_observe_invoke,
+  gunbc_ci_authorized_key_enroll_invoke,
 }
 import gunbc.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
@@ -37,8 +44,7 @@ import v2.workflow.ci_heal_revalidation_preflight_emit {
   ci_heal_revalidation_preflight_script,
 }
 import gunbc.ci_workflow_expressions {
-  ci_deploy_push_to_main_if,
-  ci_workflow_dispatch_only_if,
+  ci_fleet_job_if,
   ci_floor_runs_unless_cancelled_if,
   ci_floor_upstream_red_refusal_script
 }
@@ -71,6 +77,7 @@ import std.disposition { Disposition, RealizationDispatch, Scaffold, SingleAutho
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Duration }
 import gunbc.repo_identity { gunbc_default_branch_name }
+import gunbc.fleet_host_key_enrollment { probe_identity_secret_access_requirement }
 import gunbc.falsifier_run_control {
   falsifier_release_build_step_id,
   ci_release_bins_step_id,
@@ -83,6 +90,7 @@ import extdeps.github.actions {
   WorkflowPermissions, PermRead, PermWrite,
   ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressBool, CancelInProgressExpression,
   checkout_action, setup_rust_action, cache_action,
+  google_auth_action,
   upload_artifact_action, download_artifact_action
 }
 
@@ -556,7 +564,6 @@ data gunbc_ci_prelude_allowance_minutes: Int = 5
 
 data gunbc_ci_release_build_step_timeout_minutes: Int = 45
 
-data gunbc_ci_deploy_job_backstop_timeout_minutes: Int = 10
 data srv1_dashboard_deploy_concurrency_group: String = "srv1-dashboard-deploy"
 data srv1_dashboard_deploy_serialization_note: String = "Blue/green selection is observe-then-mutate, so two deploy jobs may not overlap: both could observe blue active, then the first flips green while the second restarts what has become the active green slot, recreating the outage. Job-grain concurrency serializes the entire cutover with cancel-in-progress=false; QueueNotMax may replace an older pending deployment with the newest main revision, but it never interrupts the one holding the host mutation window."
 
@@ -580,20 +587,113 @@ data gunbc_ci_job_backstop_timeout_disposition: Disposition = Terminal {
 
 data gunbc_ci_job_timeout_policy_minutes_deleted_note: String = "Deleted class-4 orphan (operator ruling 2026-07-26): gunbc_ci_job_timeout_policy_minutes (=90) had zero corpus consumers; the live ci job timeout is gunbc_ci_job_backstop_timeout_minutes() (composed step-sum + prelude). Inventory row corrected to name the backstop fn, not the dead literal."
 
-fn ci_deploy_job(stage: DeployStage) -> Job {
+// ── Unified fleet job (operator request 2026-08-10: "a single fleet convergence job —
+// it's overwhelming to see so many"). The ten former deploy/convergence/toolbox jobs
+// collapse into ONE `fleet` job so the GHA UI shows a single row instead of ~nine
+// (mostly-skipped) ones. Each step keeps the event guard its former job's if_condition
+// carried, applied per-step via with_step_if; the shared prelude + release-bins + WIF/
+// agent setup run ONCE, and the key-agent cleanup runs always(). The step builders the
+// former jobs used are all retained and reused below — only the per-op JOB wrappers are
+// removed. ────────────────────────────────────────────────────────────────────────────
+
+// Overwrite a step's if_condition (steps arrive from the builders with if_condition:none;
+// the coproduct must be rebuilt to set the field).
+fn with_step_if(step: Step, cond: String) -> Step {
+  match step {
+    RunStep { name: n, id: i, run: r, shell: sh, env: e, working_directory: wd, if_condition: _, continue_on_error: coe, timeout_minutes: tm } =>
+      RunStep { name: n, id: i, run: r, shell: sh, env: e, working_directory: wd, if_condition: Present { value: cond }, continue_on_error: coe, timeout_minutes: tm }
+    UsesStep { name: n, id: i, uses: u, with: w, env: e, if_condition: _, continue_on_error: coe, timeout_minutes: tm } =>
+      UsesStep { name: n, id: i, uses: u, with: w, env: e, if_condition: Present { value: cond }, continue_on_error: coe, timeout_minutes: tm }
+  }
+}
+
+// OBSERVATION UNFUSED FROM ACTUATION (operator route 2026-08-10, CONVERGE acceptance).
+// deploy dashboard and advance refs/fleet/desired are WRITES — they stay push-only, so the
+// job-if's !cancelled() + main + needs.ci.result == 'success' guard is what gates them, and
+// a censored/red floor can never let them run. collect_fleet_convergence is a READ: it
+// collects host receipts and folds a verdict, and reading what the hosts CURRENTLY report
+// does not require THIS commit's floor to be green. So the collector also runs on
+// workflow_dispatch. This is NOT a weakening of the gate — it separates observing fleet
+// state from changing it; a dispatch-collected fold describes state relative to the CURRENT
+// refs/fleet/desired (not the dispatched head), so it never advances anything and never
+// stands in for a green-floor acceptance. It exists because two consecutive main pushes hit
+// the cold whole-corpus floor over-budget, so the push-gated collector never got to run and
+// items 3 (per-host receipts) and 5 (the fold) had zero executions.
+data ci_fleet_convergence_write_if: String = "github.event_name == 'push'"
+data ci_fleet_collect_read_if: String = "github.event_name == 'push' || github.event_name == 'workflow_dispatch'"
+
+// Main-push convergence steps: deploy stage(s) + collect + advance. Deploy and advance are
+// push-only WRITES; collect is a READ admitted on push OR workflow_dispatch (see above).
+fn ci_fleet_convergence_steps() -> List<Step> {
+  concat(
+    map(gunbc_ci_deploy_stages, s => with_step_if(step: ci_deploy_step(stage: s), cond: ci_fleet_convergence_write_if)),
+    [
+      with_step_if(step: ci_collect_fleet_convergence_step(), cond: ci_fleet_collect_read_if),
+      with_step_if(step: ci_advance_fleet_desired_step(), cond: ci_fleet_convergence_write_if)
+    ]
+  )
+}
+
+// workflow_dispatch toolbox steps: scan -> enroll -> probe (+multi-principal) ->
+// observe_probe -> timer -> authorized-key -> observe_tasks, each guarded to dispatch.
+// Serialized (former parallel jobs), which is if anything MORE correct — enroll after
+// scan, probe after enroll.
+fn ci_fleet_dispatch_steps() -> List<Step> {
+  map(
+    [
+      ci_fleet_host_key_scan_step(),
+      ci_fleet_host_key_enroll_step(),
+      ci_fleet_reach_probe_step(),
+      ci_multi_principal_probe_step(),
+      ci_probe_identity_observe_step(),
+      ci_fleet_timer_install_step(),
+      ci_authorized_key_enroll_step(),
+      ci_srv1_tasks_observation_step()
+    ],
+    st => with_step_if(step: st, cond: "github.event_name == 'workflow_dispatch'")
+  )
+}
+
+// Fleet job backstop = prelude allowance + all aux steps in the LARGER (dispatch) branch.
+// Shared aux: release-download, unpack-verify, WIF, key-agent, cleanup (5). Dispatch ops:
+// 8. Only one branch runs per event, so the dispatch branch (13 aux) dominates the push
+// branch (5 shared + 3 ops = 8). Cap, not expected runtime — each aux step self-caps.
+fn gunbc_ci_fleet_job_backstop_timeout_minutes() -> Int {
+  gunbc_ci_prelude_allowance_minutes + (13 * gunbc_ci_aux_step_timeout_minutes)
+}
+
+// Union of the former jobs' grants: WIF / deploy / collect need id_token:write; advance
+// needs contents:write.
+fn ci_fleet_permissions() -> WorkflowPermissions {
+  WorkflowPermissions {
+    contents: Present { value: PermWrite },
+    pull_requests: none,
+    issues: none,
+    actions: none,
+    id_token: Present { value: PermWrite }
+  }
+}
+
+fn ci_fleet_job() -> Job {
   Job {
-    id: stage.id,
+    id: "fleet",
     name: none,
-    runner: stage.runner,
+    runner: gunbc_ci_deploy_srv1_runner_spec(),
     steps: concat(
-      ci_artifact_consumer_prelude_steps(),
-      [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_deploy_step(stage: stage)]
+      concat(
+        ci_artifact_consumer_prelude_steps(),
+        [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_fleet_wif_auth_step(), ci_fleet_key_agent_step()]
+      ),
+      concat(
+        ci_fleet_convergence_steps(),
+        concat(ci_fleet_dispatch_steps(), [ci_fleet_key_agent_cleanup_step()])
+      )
     ),
-    needs: stage.needs,
+    needs: ["ci"],
     env: none,
     outputs: none,
-    if_condition: Present { value: ci_deploy_push_to_main_if },
-    timeout_minutes: Present { value: gunbc_ci_deploy_job_backstop_timeout_minutes },
+    if_condition: Present { value: ci_fleet_job_if },
+    timeout_minutes: Present { value: gunbc_ci_fleet_job_backstop_timeout_minutes() },
     continue_on_error: none,
     concurrency: Present {
       value: ConcurrencyMappingQueueNotMax {
@@ -602,12 +702,8 @@ fn ci_deploy_job(stage: DeployStage) -> Job {
         explicit_single: none,
       }
     },
-    permissions: none
+    permissions: Present { value: ci_fleet_permissions() }
   }
-}
-
-fn ci_deploy_jobs() -> List<Job> {
-  map(gunbc_ci_deploy_stages, s => ci_deploy_job(stage: s))
 }
 
 // Read-only srv1 tasks pre-apply observation (operator ruling 2026-08-09 on PR 8045,
@@ -637,6 +733,20 @@ fn ci_srv1_tasks_observation_step() -> Step {
 // follow the ref on their own timers.
 // Live fleet reach probe (loop leg e): workflow_dispatch-only, srv1-pinned (the probe
 // runs FROM inside the fleet, over the typed SSH probe seam where outcome is data).
+fn ci_multi_principal_probe_step() -> Step {
+  RunStep {
+    name: Present { value: "Read-only multi-principal fleet-key probe on srv3/srv4 (fleet_multi_principal_probe_wet; hostname + sudo -n -l; no writes)" },
+    id: none,
+    run: gunbc_ci_multi_principal_probe_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
 fn ci_fleet_reach_probe_step() -> Step {
   RunStep {
     name: Present { value: "Live fleet reach probe (probe_fleet_reach_wet; outcomes are data)" },
@@ -651,23 +761,62 @@ fn ci_fleet_reach_probe_step() -> Step {
   }
 }
 
-fn ci_fleet_reach_probe_job() -> Job {
-  Job {
-    id: "probe_fleet_reach",
-    name: none,
-    runner: gunbc_ci_deploy_srv1_runner_spec(),
-    steps: concat(
-      ci_artifact_consumer_prelude_steps(),
-      [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_fleet_reach_probe_step()]
-    ),
-    needs: ["build"],
+// A2 credential seam (parent msg_72e2dcee, provisioned): GitHub OIDC -> WIF exchange to
+// the WIF-only service account, then in-run materialization of the fleet automation
+// private key — Secret Manager versions/1 PINNED (never `latest`), fetched into
+// RUNNER_TEMP mode 0600, loaded into an ssh-agent, and the file WIPED before any probe
+// runs. The agent socket is exported via GITHUB_ENV so the probe step's ssh children
+// inherit it; a trailing always() step kills the agent. Receipts downstream carry the
+// identity NAME and outcome only — no key bytes, no payload digests (the fetch script
+// never echoes the payload). Authority for the facts: gunbc.fleet_host_key_enrollment
+// probe_identity_secret_access_requirement.
+fn ci_fleet_wif_auth_step() -> Step {
+  UsesStep {
+    name: Present { value: "WIF auth (OIDC -> fleet-cloud-convergence SA, access token only)" },
+    id: Present { value: "wif_auth" },
+    uses: google_auth_action,
+    with: Present {
+      value: [
+        kv(key: "workload_identity_provider", value: yaml_string(s: probe_identity_secret_access_requirement.wif_provider_resource)),
+        kv(key: "service_account", value: yaml_string(s: probe_identity_secret_access_requirement.service_account)),
+        kv(key: "token_format", value: yaml_string(s: "access_token")),
+        kv(key: "create_credentials_file", value: yaml_bool(b: false))
+      ]
+    },
     env: none,
-    outputs: none,
-    if_condition: Present { value: ci_workflow_dispatch_only_if },
-    timeout_minutes: Present { value: gunbc_ci_deploy_job_backstop_timeout_minutes },
+    if_condition: none,
     continue_on_error: none,
-    concurrency: none,
-    permissions: none
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn ci_fleet_key_agent_step() -> Step {
+  RunStep {
+    name: Present { value: "Materialize fleet key in-run (SM versions/1 pinned -> RUNNER_TEMP 0600 -> ssh-agent -> wipe file)" },
+    id: none,
+    run: gunbc_ci_fleet_key_agent_script(),
+    shell: none,
+    env: Present {
+      value: [kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}"))]
+    },
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn ci_fleet_key_agent_cleanup_step() -> Step {
+  RunStep {
+    name: Present { value: "Kill the in-run ssh-agent (key never outlives the job)" },
+    id: none,
+    run: gunbc_ci_fleet_key_agent_cleanup_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: "always()" },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
 }
 
@@ -688,30 +837,12 @@ fn ci_fleet_timer_install_step() -> Step {
   }
 }
 
-fn ci_fleet_timer_install_job() -> Job {
-  Job {
-    id: "install_fleet_converge_timer",
-    name: none,
-    runner: gunbc_ci_selected_runner_spec(),
-    steps: concat(
-      ci_artifact_consumer_prelude_steps(),
-      [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_fleet_timer_install_step()]
-    ),
-    needs: ["build"],
-    env: none,
-    outputs: none,
-    if_condition: Present { value: ci_workflow_dispatch_only_if },
-    timeout_minutes: Present { value: gunbc_ci_deploy_job_backstop_timeout_minutes },
-    continue_on_error: none,
-    concurrency: none,
-    permissions: none
-  }
-}
-
-// Fleet convergence collection (join 5 invocation wire): push-to-main downstream of the
-// required ci check, srv1-pinned (the collector reads published receipts over the typed
-// SSH seam FROM inside the fleet) — the collector->fold composition executes per merged
-// revision and prints the collect receipt + fold verdict.
+// Fleet convergence collection (join 5 invocation wire): a READ, srv1-pinned (the collector
+// reads published receipts over the typed SSH seam FROM inside the fleet and folds the
+// verdict). Its guard admits push OR workflow_dispatch (ci_fleet_collect_read_if) — on push
+// it runs per merged revision downstream of the required ci check; on dispatch it observes
+// current fleet state relative to the CURRENT refs/fleet/desired without advancing anything
+// (unfused from the push-only writes; see ci_fleet_convergence_steps).
 fn ci_collect_fleet_convergence_step() -> Step {
   RunStep {
     name: Present { value: "Collect fleet converge receipts and fold the fleet verdict (collect_fleet_convergence_wet)" },
@@ -726,23 +857,59 @@ fn ci_collect_fleet_convergence_step() -> Step {
   }
 }
 
-fn ci_collect_fleet_convergence_job() -> Job {
-  Job {
-    id: "collect_fleet_convergence",
-    name: none,
-    runner: gunbc_ci_deploy_srv1_runner_spec(),
-    steps: concat(
-      ci_artifact_consumer_prelude_steps(),
-      [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_collect_fleet_convergence_step()]
-    ),
-    needs: ["ci"],
+fn ci_fleet_host_key_scan_step() -> Step {
+  RunStep {
+    name: Present { value: "Fleet host-key scan (fleet_host_key_scan_wet; observation only, repairs nothing)" },
+    id: none,
+    run: gunbc_ci_fleet_host_key_scan_invoke(),
+    shell: none,
     env: none,
-    outputs: none,
-    if_condition: Present { value: ci_deploy_push_to_main_if },
-    timeout_minutes: Present { value: gunbc_ci_deploy_job_backstop_timeout_minutes },
+    working_directory: none,
+    if_condition: none,
     continue_on_error: none,
-    concurrency: none,
-    permissions: none
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn ci_fleet_host_key_enroll_step() -> Step {
+  RunStep {
+    name: Present { value: "Fleet host-key enrollment apply (fleet_host_key_enroll_wet; ssh-keygen -F readback)" },
+    id: none,
+    run: gunbc_ci_fleet_host_key_enroll_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn ci_probe_identity_observe_step() -> Step {
+  RunStep {
+    name: Present { value: "Probe-identity observe (read-only: authorized_keys presence + runner GCP credential path)" },
+    id: none,
+    run: gunbc_ci_probe_identity_observe_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn ci_authorized_key_enroll_step() -> Step {
+  RunStep {
+    name: Present { value: "Fleet authorized-key self-enroll (public key, idempotent, runs as the runner account on THIS host)" },
+    id: none,
+    run: gunbc_ci_authorized_key_enroll_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
 }
 
@@ -757,51 +924,6 @@ fn ci_advance_fleet_desired_step() -> Step {
     if_condition: none,
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
-  }
-}
-
-fn ci_advance_fleet_desired_job() -> Job {
-  Job {
-    id: "advance_fleet_desired",
-    name: none,
-    runner: gunbc_ci_selected_runner_spec(),
-    steps: concat(ci_artifact_consumer_prelude_steps(), [ci_advance_fleet_desired_step()]),
-    needs: ["ci"],
-    env: none,
-    outputs: none,
-    if_condition: Present { value: ci_deploy_push_to_main_if },
-    timeout_minutes: Present { value: gunbc_ci_deploy_job_backstop_timeout_minutes },
-    continue_on_error: none,
-    concurrency: none,
-    permissions: Present {
-      value: WorkflowPermissions {
-        contents: Present { value: PermWrite },
-        pull_requests: none,
-        issues: none,
-        actions: none,
-        id_token: none
-      }
-    }
-  }
-}
-
-fn ci_srv1_tasks_observation_job() -> Job {
-  Job {
-    id: "observe_srv1_tasks_preapply",
-    name: none,
-    runner: gunbc_ci_deploy_srv1_runner_spec(),
-    steps: concat(
-      ci_artifact_consumer_prelude_steps(),
-      [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_srv1_tasks_observation_step()]
-    ),
-    needs: ["build"],
-    env: none,
-    outputs: none,
-    if_condition: Present { value: ci_workflow_dispatch_only_if },
-    timeout_minutes: Present { value: gunbc_ci_deploy_job_backstop_timeout_minutes },
-    continue_on_error: none,
-    concurrency: none,
-    permissions: none
   }
 }
 
@@ -1034,5 +1156,5 @@ data ci_workflow: Workflow = {
       id_token: none
     }
   },
-  jobs: concat([ci_build_job(), ci_regen_job(), ci_job()], concat(ci_deploy_jobs(), [ci_heal_generated_artifacts_job(), ci_srv1_tasks_observation_job(), ci_fleet_reach_probe_job(), ci_fleet_timer_install_job(), ci_collect_fleet_convergence_job(), ci_advance_fleet_desired_job()]))
+  jobs: [ci_build_job(), ci_regen_job(), ci_job(), ci_heal_generated_artifacts_job(), ci_fleet_job()]
 }
