@@ -46,7 +46,7 @@ type PreparedFloorSubjectRequest {
   policy: FloorPreparationPolicy
 }
 
-type PreparedClaimSubjectIdentity {
+type PreparedClaimSubjectIdentity sole_constructor {
   discovery_request_identity: Fnv1a64Structural
   selected_identity_digest: Fnv1a64Structural
   preparation_policy_identity: Fnv1a64Structural
