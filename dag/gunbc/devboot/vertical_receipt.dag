@@ -4,6 +4,7 @@ import std.types { String, CommitSha, NonEmptyStr }
 import std.content_hash { Sha256Digest }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.devboot.subject { GitTreeObjectId }
+import gunbc.devboot.fleet_proof_harvest { DevbootModeledFleetProofReceipt }
 import gunbc.devboot.fleet_proof_receipt { devboot_modeled_fleet_proof_receipt }
 
 type DevbootVerticalReceipt {
@@ -24,20 +25,21 @@ fn devboot_vertical_standing() -> DevbootVerticalStanding {
   VerticalExecutedManuallyOnce
 }
 
+fn devboot_vertical_receipt_from_proof(proof: DevbootModeledFleetProofReceipt) -> DevbootVerticalReceipt {
+  DevbootVerticalReceipt {
+    evaluated_commit: proof.tested_commit,
+    evaluated_tree: proof.tested_tree,
+    subject_ref_token: proof.request_identity,
+    artifact_object_id: proof.artifact_object_id,
+    artifact_sha256: proof.artifact_sha256,
+    producer_entry: proof.producer_entry,
+    consumer_entry: proof.consumer_entry,
+  }
+}
+
 fn devboot_vertical_receipt() -> DevbootVerticalReceipt? {
   match devboot_modeled_fleet_proof_receipt() {
     Absent => none
-    Present { value: proof } =>
-      Present {
-        value: DevbootVerticalReceipt {
-          evaluated_commit: proof.tested_commit,
-          evaluated_tree: proof.tested_tree,
-          subject_ref_token: proof.request_identity,
-          artifact_object_id: proof.artifact_object_id,
-          artifact_sha256: proof.artifact_sha256,
-          producer_entry: proof.producer_entry,
-          consumer_entry: proof.consumer_entry,
-        },
-      }
+    Present { value: proof } => Present { value: devboot_vertical_receipt_from_proof(proof: proof) }
   }
 }

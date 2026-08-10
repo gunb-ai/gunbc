@@ -13,8 +13,7 @@ import gunbc.devboot.fleet_proof_harvest {
   parse_client_receipt,
   producer_compile_count_from_log,
 }
-import gunbc.devboot.fleet_proof_receipt { devboot_modeled_fleet_proof_receipt }
-import gunbc.devboot.vertical_receipt { devboot_vertical_receipt }
+import gunbc.devboot.vertical_receipt { devboot_vertical_receipt_from_proof }
 
 test fn witness_capture_reads_fixture_observations() -> Bool {
   let bundle = capture_fleet_proof_harvest_bundle(
@@ -74,15 +73,13 @@ test fn witness_vertical_projection_matches_harvested_proof() -> Bool {
       sites: devboot_fleet_proof_fixture_observation_sites_with_compile_count,
     ),
   ) {
-    Present { value: proof } =>
-      match devboot_vertical_receipt() {
-        Present { value: vertical } =>
-          vertical.evaluated_commit == proof.tested_commit
-            && vertical.evaluated_tree == proof.tested_tree
-            && vertical.subject_ref_token == proof.request_identity
-            && vertical.artifact_sha256 == proof.artifact_sha256
-        Absent => true
-      }
+    Present { value: proof } => {
+      let vertical = devboot_vertical_receipt_from_proof(proof: proof)
+      vertical.evaluated_commit == proof.tested_commit
+        && vertical.evaluated_tree == proof.tested_tree
+        && vertical.subject_ref_token == proof.request_identity
+        && vertical.artifact_sha256 == proof.artifact_sha256
+    }
     Absent => false
   }
 }
