@@ -30,7 +30,9 @@ import gunbc.spark_bootstrap_provision {
   WifCredentialIssuanceStanding, WifIssuanceObserved, WifIssuanceUnobserved,
   spark_wif_issuance_standing,
   EffectiveAccessStanding, EffectiveAccessExact, EffectiveAccessOverbroad,
-  EffectiveAccessPartiallyObserved, EffectiveAccessUnobserved
+  EffectiveAccessPartiallyObserved, EffectiveAccessUnobserved,
+  SecretConsumer, SecretDemandStanding, SecretDemandActive, SecretDemandRetainedForRecovery,
+  SecretDemandRetiredAfterOobe, SecretDemandUnobserved, secret_demand_is_active
 }
 
 import extdeps.cloud.gcp.secret_manager {
@@ -767,4 +769,29 @@ test fn ceiling_admits_policy_read_only_for_the_administrator() -> Bool {
       }
     Deny { refusal: _ } => false
   }
+}
+
+// CONTROL 9a: a credential with NO active consumer produces no routine demand. The post-OOBE
+// hotspot credential is the live specimen: it existed in the four-credential roster and therefore
+// read as an outstanding obligation, which made it an automatic serving blocker. Retired and
+// retained standings are both inactive, and each is distinct from "we have not looked".
+test fn a_secret_with_no_active_consumer_creates_no_demand() -> Bool {
+  !secret_demand_is_active(standing: SecretDemandRetiredAfterOobe {
+    secret: "projects/p/secrets/hotspot", reason: "both Sparks are past out-of-box setup" })
+    && !secret_demand_is_active(standing: SecretDemandRetainedForRecovery {
+      secret: "projects/p/secrets/admin", recovery_consumer: "recovery workflow" })
+    && !secret_demand_is_active(standing: SecretDemandUnobserved {
+      secret: "projects/p/secrets/serving-api", cause: "pinned artifact not yet selected" })
+}
+
+// CONTROL 9b: an active standing needs a NAMED consumer. An Active arm carrying an empty consumer
+// list claims consumers exist while naming none, so the arm's name must not stand in for the fact.
+test fn active_demand_requires_a_named_consumer() -> Bool {
+  secret_demand_is_active(standing: SecretDemandActive {
+    secret: "projects/p/secrets/fleet-key",
+    consumers: [SecretConsumer {
+      consumer: "managed host-access convergence executor",
+      operation: sm_operation_ref(operation: "AccessVersion") }] })
+    && !secret_demand_is_active(standing: SecretDemandActive {
+      secret: "projects/p/secrets/fleet-key", consumers: [] })
 }

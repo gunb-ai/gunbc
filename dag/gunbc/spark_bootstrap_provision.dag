@@ -913,3 +913,43 @@ fn principal_role_admits_operation_ref(principal: FleetCloudPrincipalKey, op: Op
       op.operation == "GetSecretIamPolicy" || op.operation == "SetSecretIamPolicy" || op.operation == "GetSecret"
   }
 }
+
+// ── Secret demand: derived from consumers, not from a fixed denominator ────────────────────
+// THE FOUR-CREDENTIAL POPULATION IS NOT A DEMAND POPULATION. spark_credential_population is a
+// roster of credentials that could exist for a host; it says nothing about whether any workflow
+// still needs one. Treating it as demand made a post-OOBE factory hotspot credential an automatic
+// blocker on serving, because "four occurrences, none allocated" reads as four outstanding
+// obligations regardless of whether anything consumes them.
+//
+// Demand comes from a CONSUMER: a named workflow that will actually read or write the credential,
+// and the operation it will use. A credential with no active consumer creates no access demand and
+// no routine grant -- it is retained for recovery, retired, or unobserved, and each of those is a
+// different standing with a different remedy.
+type SecretConsumer {
+  consumer: NonEmptyStr
+  operation: OperationRef
+}
+
+type SecretDemandStanding
+  = SecretDemandActive { secret: NonEmptyStr, consumers: List<SecretConsumer> }
+  | SecretDemandRetainedForRecovery { secret: NonEmptyStr, recovery_consumer: NonEmptyStr }
+  | SecretDemandRetiredAfterOobe { secret: NonEmptyStr, reason: NonEmptyStr }
+  | SecretDemandUnobserved { secret: NonEmptyStr, cause: NonEmptyStr }
+
+// Only an ACTIVE standing yields routine access demand. Retained-for-recovery is deliberately not
+// active: a recovery credential is reachable by an explicit recovery workflow, not by the standing
+// grant every serving run carries, which is what keeps a break-glass credential from being live
+// authority in the ordinary path.
+fn secret_demand_is_active(standing: SecretDemandStanding) -> Bool {
+  match standing {
+    SecretDemandActive { secret: _, consumers: cs } => count(cs) > 0
+    SecretDemandRetainedForRecovery { secret: _, recovery_consumer: _ } => false
+    SecretDemandRetiredAfterOobe { secret: _, reason: _ } => false
+    SecretDemandUnobserved { secret: _, cause: _ } => false
+  }
+}
+
+// An ACTIVE standing with an empty consumer list is a contradiction, not an active demand: it
+// claims consumers exist while naming none. secret_demand_is_active refuses it above rather than
+// letting the arm's NAME stand in for the fact.
+data spark_secret_demand_note: String = "Demand is derived from named consumers and the operation each will perform, never from the credential roster. The factory hotspot credential is RetiredAfterOobe on both Sparks -- both machines are past out-of-box setup, so no selected workflow reads it -- and it therefore creates no access demand and cannot block serving. The administrator credential is RetainedForRecovery: reachable by an explicit recovery or rotation workflow, not by the standing grant a serving run carries. The fleet SSH key is Active with the managed host-access convergence executor as its consumer. The serving API credential's standing is Unobserved rather than assumed: the pinned artifact and its acquisition path are not yet selected, and authoring an Active row for it would fabricate a consumer that does not exist in any plan."
