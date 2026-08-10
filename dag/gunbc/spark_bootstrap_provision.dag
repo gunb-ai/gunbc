@@ -1010,14 +1010,24 @@ fn srv5_privilege_observation() -> HostPrivilegeObservation {
   }
 }
 
-// THE SPARK SERVING DEPENDENCY INSTALL IS A DECLARED SCAFFOLD, not merely noted debt.
+// THE SPARK SERVING DEPENDENCY INSTALL HAS NO REALIZATION. The scaffold that carried it was
+// DELETED rather than repaired (operator ruling, 2026-08-10).
 //
-// spark-serve-install.yml provisions the serving runtime with an imperative
-// `pip install 'vllm==0.26.0'` inside an ssh heredoc in YAML. The workflow owns the INVOCATION --
-// nothing is hand-run, the credential is materialized through WIF at job time and never enters
-// argv -- but it does NOT own the install as a modeled effect. That is shell-in-yaml at a
-// runtime-present site: exactly the class the shell -> intent routing forbids, because a
-// runtime-present site realizes as a typed effect rather than emitting bash.
+// The retired spark-serve-install.yml provisioned the serving runtime with an imperative
+// `pip install 'vllm==0.26.0'` inside an ssh heredoc in hand-authored YAML. It owned the
+// INVOCATION -- nothing was hand-run, the credential was materialized through WIF at job time and
+// never entered argv -- but it did NOT own the install as a modeled effect. That is shell-in-yaml
+// at a runtime-present site: exactly the class the shell -> intent routing forbids.
+//
+// THE RULING THAT RETIRED IT, which is stronger than the routing rule and supersedes the
+// scaffold's own justification: HAND-WRITING A WORKFLOW IS HAND-APPLYING. A workflow owning the
+// invocation buys nothing if a person authored the effects it invokes -- the modeled route was
+// bypassed either way, and the YAML only moved the hand from a terminal to a file. It is also
+// throwaway by construction: anything hand-authored here must be deleted the moment the emitted
+// route lands, so writing it spends the author's time and every later reader's on work with a
+// known expiry. The correct shape already existed and was ignored -- ci.yml is emitted from .dag
+// and its srv1 deploy step is a two-line launcher around a `gunbc run --entry ... --function`
+// invocation, with the effects modeled behind it.
 //
 // Registered rather than described, because DESIGN requires every scaffold to land with a named
 // dissolution trigger and debt that is only described is debt nobody schedules. Counted here, it
