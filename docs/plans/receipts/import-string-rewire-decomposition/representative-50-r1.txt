@@ -1,0 +1,44 @@
+subject: frozen representative 50-entry cohort
+date_utc: 2026-08-10
+source_head_before_instrumentation: ca64dbaecccdda00198b62c51dc38b8e3ed2cef5
+binary_sha256: 92c497532dd9469b9f2351aa0fb2aaad6d2e1ac0c03c47ebbc1dc3e76148fa54
+cohort: docs/plans/receipts/entry-view-assembly-direction/cohort.tsv
+cohort_sha256: 6256ec909647e60044636e3b30eacbbf4769f8bf80ef90d243c9532935c26db5
+entry_groups: 50
+witnesses: 50
+pass: 47
+fail: 3
+process_exit: 1
+process_wall_ms: 231357
+resolve_wall_ms: 118758
+witness_wall_ms: 244
+process_peak_rss_observation: 7.8 GiB (harness-rounded)
+
+[rewire-import-str-split] type_name_index=1056.1ms export_name_index=136.9ms module_preparation=2046.8ms binding_application=31524.7ms other=0.1ms modules=6746 direct_import_sets=30723 inherited_keys=6928314 ambiguity_checks=6928314 ancestry_map_writes=6606131 str_map_writes=0 unchanged_keys=322183
+
+exact_nanos:
+  assembly_rewire_import_str: 34764582529
+  type_name_index: 1056065228
+  export_name_index: 136935190
+  module_preparation: 2046792549
+  binding_application: 31524695482
+  phase_residual: 94080
+
+cost_partition:
+  parent_span_nanos: 156346817408
+  sum_exclusive_nanos: 156028120568
+  remainder_nanos: 318696840
+  verdict: Reconciled
+
+failures (same identities in repetition 2):
+  artifact_fs_roundtrip_holds — hermetic Write has no mock response
+  store_construction_reads_eviction_holds — function no longer exists on current main
+  build_artifact_corruption_probe_holds — hermetic IsExecutable has no mock response
+
+command shape:
+  target/release/claim_batch --source-root dag --source-root src/v2 \
+    [--entry <cohort.entry> --functions <cohort.function>] x 50
+
+Timing basis: the four rewire subphases are mutually exclusive inside the additive
+assembly_rewire_import_str span. process_wall_ms is an elapsed observation and is not
+added to or used as the denominator for those phase shares.

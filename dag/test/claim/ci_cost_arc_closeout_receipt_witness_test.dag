@@ -12,7 +12,7 @@ import gunbc.ci_cost_arc_closeout_receipt {
   ClosedReject,
   ClosedNoRepeatedTypecheck,
   Landed,
-  UnattributedCiJobWall,
+  ReconciledCiJobWall,
   PerEntryAssembly,
   affected_ci_cost_audit_subject,
   full_corpus_subject_harvest,
@@ -23,8 +23,12 @@ import gunbc.ci_cost_arc_closeout_receipt {
   capture_wall,
   discovery_resolve_wall,
   discovery_eval_wall,
+  initial_partial_classified_ci_wall,
+  initial_partial_unattributed_ci_wall,
   classified_ci_wall,
   unattributed_ci_wall,
+  ci_job_wall_population_receipts,
+  ci_job_wall_population_total,
   cold_admission_baseline_wall,
   selected_entry_groups,
   total_entry_groups,
@@ -44,7 +48,8 @@ import gunbc.ci_cost_arc_closeout_receipt {
   compiler_next_measured_target,
   ci_job_wall_reconciles,
   pipeline_sum_reconciles,
-  classified_equals_capture_resolve_eval,
+  initial_partial_classified_equals_capture_resolve_eval,
+  ci_job_population_without_cleanup_is_incomplete,
 }
 
 test fn witness_subject_is_hand_harvested_affected() -> Bool {
@@ -67,9 +72,10 @@ test fn witness_full_corpus_not_harvested() -> Bool {
 
 test fn witness_ci_job_reconciles() -> Bool {
   ci_job_wall_reconciles()
-    && millisecond_count(m: unattributed_ci_wall()) == 1902042
-    && millisecond_count(m: classified_ci_wall()) == 606958
+    && millisecond_count(m: unattributed_ci_wall()) == 0
+    && millisecond_count(m: classified_ci_wall()) == 2509000
     && millisecond_count(m: ci_job_wall()) == 2509000
+    && millisecond_count(m: ci_job_wall_population_total(rows: ci_job_wall_population_receipts())) == 2509000
 }
 
 test fn witness_pipeline_reconciles() -> Bool {
@@ -80,7 +86,9 @@ test fn witness_pipeline_reconciles() -> Bool {
 }
 
 test fn witness_classified_is_capture_resolve_eval() -> Bool {
-  classified_equals_capture_resolve_eval()
+  initial_partial_classified_equals_capture_resolve_eval()
+    && millisecond_count(m: initial_partial_classified_ci_wall()) == 606958
+    && millisecond_count(m: initial_partial_unattributed_ci_wall()) == 1902042
     && millisecond_count(m: capture_wall()) == 110820
     && millisecond_count(m: discovery_resolve_wall()) == 431122
     && millisecond_count(m: discovery_eval_wall()) == 65016
@@ -138,17 +146,17 @@ test fn witness_closed_lanes() -> Bool {
 
 test fn witness_residual_vs_compiler_next_target() -> Bool {
   match end_to_end_residual() {
-    UnattributedCiJobWall {} => true
+    ReconciledCiJobWall {} => true
   }
     && match compiler_next_measured_target() {
       PerEntryAssembly {} => true
     }
 }
 
-test fn red_unattributed_must_not_be_zero() -> Bool {
-  !(millisecond_count(m: unattributed_ci_wall()) == 0)
+test fn witness_unattributed_is_zero_after_population_reconciliation() -> Bool {
+  millisecond_count(m: unattributed_ci_wall()) == 0
 }
 
-test fn red_ci_job_must_not_silently_equal_classified() -> Bool {
-  !(millisecond_count(m: ci_job_wall()) == millisecond_count(m: classified_ci_wall()))
+test fn red_dropping_job_cleanup_makes_the_population_incomplete() -> Bool {
+  ci_job_population_without_cleanup_is_incomplete()
 }

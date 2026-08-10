@@ -1,6 +1,6 @@
 module gunbc.ci_cost_arc_closeout_receipt
 
-import std.types { Bool, NonEmptyStr }
+import std.types { Bool, NonEmptyStr, List }
 import std.nat { Nat }
 import std.measure {
   Millisecond,
@@ -47,10 +47,62 @@ type SelectionHonestySettle
   = Landed {}
 
 type EndToEndResidual
-  = UnattributedCiJobWall {}
+  = ReconciledCiJobWall {}
 
 type CompilerNextMeasuredTarget
   = PerEntryAssembly {}
+
+type CiJobWallPopulation
+  = JobBootstrap {}
+  | OrdinaryInitialization {}
+  | MergeAdmissionCapture {}
+  | CompileClean {}
+  | CheapGateBatch {}
+  | CompileCleanReceiptGate {}
+  | AffectedDiscovery {}
+  | AuxiliaryDiscovery {}
+  | EmitHost {}
+  | NativeSelectedLogic {}
+  | OrdinaryFinalization {}
+  | ScopedInitialization {}
+  | ScopedWitnessExecution {}
+  | FloorFinalization {}
+  | JobCleanup {}
+
+type CiJobWallPopulationReceipt {
+  population: CiJobWallPopulation,
+  wall: Millisecond,
+}
+
+data ci_job_wall_reconciliation_note: NonEmptyStr = "Exact non-overlapping CI-job population receipt for affected subject run 30863019228, job 91850944162. Boundaries are the GitHub job step timestamps plus claim_executor's structural-role transition lines in that job log, truncated to whole seconds so adjacent intervals share one boundary and sum exactly to the job's 2509-second wall. These are ELAPSED populations, never additive resolver counters: initialization ends where capture starts; capture ends where compile-clean starts; every batch begins at the prior batch's conclusion; the scoped worker begins after ordinary finalization; cleanup ends at the job completion timestamp. The initial capture/resolve/eval harvest remains below as a historical nested observation and is not added to these rows. Largest populations on this exact affected subject: AffectedDiscovery 886s; ScopedInitialization plus ScopedWitnessExecution 557s; CompileClean 315s; OrdinaryInitialization 310s. This closes the denominator only: it selects no optimization mechanism." as NonEmptyStr
+
+fn ci_job_wall_population_receipts() -> List<CiJobWallPopulationReceipt> {
+  [
+    CiJobWallPopulationReceipt { population: JobBootstrap {}, wall: millisecond(count: 14000) },
+    CiJobWallPopulationReceipt { population: OrdinaryInitialization {}, wall: millisecond(count: 310000) },
+    CiJobWallPopulationReceipt { population: MergeAdmissionCapture {}, wall: millisecond(count: 111000) },
+    CiJobWallPopulationReceipt { population: CompileClean {}, wall: millisecond(count: 315000) },
+    CiJobWallPopulationReceipt { population: CheapGateBatch {}, wall: millisecond(count: 118000) },
+    CiJobWallPopulationReceipt { population: CompileCleanReceiptGate {}, wall: millisecond(count: 0) },
+    CiJobWallPopulationReceipt { population: AffectedDiscovery {}, wall: millisecond(count: 886000) },
+    CiJobWallPopulationReceipt { population: AuxiliaryDiscovery {}, wall: millisecond(count: 75000) },
+    CiJobWallPopulationReceipt { population: EmitHost {}, wall: millisecond(count: 6000) },
+    CiJobWallPopulationReceipt { population: NativeSelectedLogic {}, wall: millisecond(count: 74000) },
+    CiJobWallPopulationReceipt { population: OrdinaryFinalization {}, wall: millisecond(count: 16000) },
+    CiJobWallPopulationReceipt { population: ScopedInitialization {}, wall: millisecond(count: 340000) },
+    CiJobWallPopulationReceipt { population: ScopedWitnessExecution {}, wall: millisecond(count: 217000) },
+    CiJobWallPopulationReceipt { population: FloorFinalization {}, wall: millisecond(count: 22000) },
+    CiJobWallPopulationReceipt { population: JobCleanup {}, wall: job_cleanup_wall() }
+  ]
+}
+
+fn ci_job_wall_population_total(rows: List<CiJobWallPopulationReceipt>) -> Millisecond {
+  fold(rows, init: millisecond(count: 0), f: (acc, row) => measure_add(a: acc, b: row.wall))
+}
+
+fn job_cleanup_wall() -> Millisecond {
+  millisecond(count: 5000)
+}
 
 fn affected_ci_cost_audit_subject() -> AffectedCiCostAuditSubject {
   AffectedCiCostAuditSubject {
@@ -94,11 +146,19 @@ fn discovery_eval_wall() -> Millisecond {
   millisecond(count: 65016)
 }
 
-fn classified_ci_wall() -> Millisecond {
+fn initial_partial_classified_ci_wall() -> Millisecond {
   measure_add(
     a: measure_add(a: capture_wall(), b: discovery_resolve_wall()),
     b: discovery_eval_wall()
   )
+}
+
+fn initial_partial_unattributed_ci_wall() -> Millisecond {
+  millisecond(count: millisecond_count(m: ci_job_wall()) - millisecond_count(m: initial_partial_classified_ci_wall()))
+}
+
+fn classified_ci_wall() -> Millisecond {
+  ci_job_wall_population_total(rows: ci_job_wall_population_receipts())
 }
 
 fn unattributed_ci_wall() -> Millisecond {
@@ -186,7 +246,7 @@ fn selection_honesty_settle() -> SelectionHonestySettle {
 }
 
 fn end_to_end_residual() -> EndToEndResidual {
-  UnattributedCiJobWall {}
+  ReconciledCiJobWall {}
 }
 
 fn compiler_next_measured_target() -> CompilerNextMeasuredTarget {
@@ -205,8 +265,13 @@ fn pipeline_sum_reconciles() -> Bool {
   sum == parts
 }
 
-fn classified_equals_capture_resolve_eval() -> Bool {
-  let classified = millisecond_count(m: classified_ci_wall())
+fn initial_partial_classified_equals_capture_resolve_eval() -> Bool {
+  let classified = millisecond_count(m: initial_partial_classified_ci_wall())
   let parts = millisecond_count(m: capture_wall()) + millisecond_count(m: discovery_resolve_wall()) + millisecond_count(m: discovery_eval_wall())
   classified == parts
+}
+
+fn ci_job_population_without_cleanup_is_incomplete() -> Bool {
+  let without_cleanup = millisecond_count(m: classified_ci_wall()) - millisecond_count(m: job_cleanup_wall())
+  !(without_cleanup == millisecond_count(m: ci_job_wall()))
 }

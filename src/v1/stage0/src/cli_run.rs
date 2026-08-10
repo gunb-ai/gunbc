@@ -11686,6 +11686,26 @@ pub struct ResolveStageNanos {
     pub assembly_rewire_type_env: u128,
     /// `rewire_type_env_import_str_binding_identity` alone.
     pub assembly_rewire_import_str: u128,
+    // Inclusive within `assembly_rewire_import_str`. The phase boundaries and work
+    // carrier are declared in `src/v1/04_infer.dag`; this bootstrap row only observes
+    // them. Dissolve with the `.dag` measurement scaffold once its selected substrate
+    // optimization has a cheaper regression witness.
+    /// Build the closure-wide type-name/exporter index.
+    pub assembly_rewire_type_name_index: u128,
+    /// Build the per-module exported-name index.
+    pub assembly_rewire_export_name_index: u128,
+    /// Prepare each module's local/import/inherited-key view.
+    pub assembly_rewire_module_preparation: u128,
+    /// Apply ambiguity decisions and persistent-map rewrites, including observations.
+    pub assembly_rewire_binding_application: u128,
+    /// Structural work counts emitted by the modeled rewire observation.
+    pub assembly_rewire_modules: u128,
+    pub assembly_rewire_direct_import_sets: u128,
+    pub assembly_rewire_inherited_keys: u128,
+    pub assembly_rewire_ambiguity_checks: u128,
+    pub assembly_rewire_ancestry_map_writes: u128,
+    pub assembly_rewire_str_map_writes: u128,
+    pub assembly_rewire_unchanged_keys: u128,
     /// `rewire_func_env_parent_links` alone.
     pub assembly_rewire_func_env: u128,
     /// `corpus_has_v1_seed_source_indices` + `build_emit_graph_info`.
@@ -11792,6 +11812,17 @@ impl ResolveStageNanos {
         self.assembly_rewire += other.assembly_rewire;
         self.assembly_rewire_type_env += other.assembly_rewire_type_env;
         self.assembly_rewire_import_str += other.assembly_rewire_import_str;
+        self.assembly_rewire_type_name_index += other.assembly_rewire_type_name_index;
+        self.assembly_rewire_export_name_index += other.assembly_rewire_export_name_index;
+        self.assembly_rewire_module_preparation += other.assembly_rewire_module_preparation;
+        self.assembly_rewire_binding_application += other.assembly_rewire_binding_application;
+        self.assembly_rewire_modules += other.assembly_rewire_modules;
+        self.assembly_rewire_direct_import_sets += other.assembly_rewire_direct_import_sets;
+        self.assembly_rewire_inherited_keys += other.assembly_rewire_inherited_keys;
+        self.assembly_rewire_ambiguity_checks += other.assembly_rewire_ambiguity_checks;
+        self.assembly_rewire_ancestry_map_writes += other.assembly_rewire_ancestry_map_writes;
+        self.assembly_rewire_str_map_writes += other.assembly_rewire_str_map_writes;
+        self.assembly_rewire_unchanged_keys += other.assembly_rewire_unchanged_keys;
         self.assembly_rewire_func_env += other.assembly_rewire_func_env;
         self.assembly_emit_info += other.assembly_emit_info;
         self.load_reference_scan += other.load_reference_scan;
@@ -11905,6 +11936,17 @@ thread_local! {
             assembly_rewire: 0,
             assembly_rewire_type_env: 0,
             assembly_rewire_import_str: 0,
+            assembly_rewire_type_name_index: 0,
+            assembly_rewire_export_name_index: 0,
+            assembly_rewire_module_preparation: 0,
+            assembly_rewire_binding_application: 0,
+            assembly_rewire_modules: 0,
+            assembly_rewire_direct_import_sets: 0,
+            assembly_rewire_inherited_keys: 0,
+            assembly_rewire_ambiguity_checks: 0,
+            assembly_rewire_ancestry_map_writes: 0,
+            assembly_rewire_str_map_writes: 0,
+            assembly_rewire_unchanged_keys: 0,
             assembly_rewire_func_env: 0,
             assembly_emit_info: 0,
             load_reference_scan: 0,
@@ -12333,6 +12375,29 @@ pub fn exclusive_cost_partition_from(
         },
     ];
     let inclusive = vec![
+        // Inside the exclusive import-string rewire pass. These four rows are mutually
+        // exclusive with one another, but inclusive in this partition because their
+        // parent pass is already an exclusive row.
+        InclusiveCostRow {
+            name: "assembly_rewire_type_name_index",
+            nanos: st.assembly_rewire_type_name_index,
+            contained_in: "assembly_rewire_import_str",
+        },
+        InclusiveCostRow {
+            name: "assembly_rewire_export_name_index",
+            nanos: st.assembly_rewire_export_name_index,
+            contained_in: "assembly_rewire_import_str",
+        },
+        InclusiveCostRow {
+            name: "assembly_rewire_module_preparation",
+            nanos: st.assembly_rewire_module_preparation,
+            contained_in: "assembly_rewire_import_str",
+        },
+        InclusiveCostRow {
+            name: "assembly_rewire_binding_application",
+            nanos: st.assembly_rewire_binding_application,
+            contained_in: "assembly_rewire_import_str",
+        },
         // Inside `load` — the split that decides whether a per-source content-hash memo
         // suffices. `load_reference_scan` is the only part that is a pure function of
         // source content; `load_import_closure` carries file I/O and pool bookkeeping.
@@ -13478,12 +13543,50 @@ fn finish_resolved_graph_assembly(
         v1_compiler_infer::rewire_type_env_parent_links(modules.clone(), source_indices.clone());
     resolve_stage_slot_add(|s| s.assembly_rewire_type_env += rewire_started.elapsed().as_nanos());
     let rewire2_started = std::time::Instant::now();
-    let modules = v1_compiler_infer::rewire_type_env_import_str_binding_identity(
+    // These are the four boundaries declared by the `.dag` measurement scaffold.
+    // Keeping orchestration here mechanically thin prevents the bootstrap seed from
+    // becoming the authority for the decomposition it is only timing.
+    let phase_started = std::time::Instant::now();
+    let type_name_index = v1_compiler_infer::build_type_name_export_index(modules.clone());
+    let type_name_index_nanos = phase_started.elapsed().as_nanos();
+    let phase_started = std::time::Instant::now();
+    let export_name_index = v1_compiler_infer::build_module_exported_type_name_index(
         modules.clone(),
         source_indices.clone(),
     );
+    let export_name_index_nanos = phase_started.elapsed().as_nanos();
+    let phase_started = std::time::Instant::now();
+    let rewire_plans = v1_compiler_infer::prepare_import_string_rewire_modules(
+        modules,
+        export_name_index,
+        source_indices.clone(),
+    );
+    let module_preparation_nanos = phase_started.elapsed().as_nanos();
+    let phase_started = std::time::Instant::now();
+    let rewire_result =
+        v1_compiler_infer::apply_import_string_rewire_plans(rewire_plans, type_name_index);
+    let binding_application_nanos = phase_started.elapsed().as_nanos();
+    let modules = rewire_result.modules.clone();
+    let observation = rewire_result.observation.clone();
+    let count = |name: &str, value: i64| {
+        u128::try_from(value).unwrap_or_else(|_| panic!("negative {name} observation: {value}"))
+    };
     resolve_stage_slot_add(|s| {
-        s.assembly_rewire_import_str += rewire2_started.elapsed().as_nanos()
+        s.assembly_rewire_import_str += rewire2_started.elapsed().as_nanos();
+        s.assembly_rewire_type_name_index += type_name_index_nanos;
+        s.assembly_rewire_export_name_index += export_name_index_nanos;
+        s.assembly_rewire_module_preparation += module_preparation_nanos;
+        s.assembly_rewire_binding_application += binding_application_nanos;
+        s.assembly_rewire_modules += count("module_count", observation.module_count);
+        s.assembly_rewire_direct_import_sets +=
+            count("direct_import_sets", observation.direct_import_sets);
+        s.assembly_rewire_inherited_keys += count("inherited_keys", observation.inherited_keys);
+        s.assembly_rewire_ambiguity_checks +=
+            count("ambiguity_checks", observation.ambiguity_checks);
+        s.assembly_rewire_ancestry_map_writes +=
+            count("ancestry_map_writes", observation.ancestry_map_writes);
+        s.assembly_rewire_str_map_writes += count("str_map_writes", observation.str_map_writes);
+        s.assembly_rewire_unchanged_keys += count("unchanged_keys", observation.unchanged_keys);
     });
     let rewire3_started = std::time::Instant::now();
     let modules =
@@ -42814,6 +42917,10 @@ mod exclusive_cost_partition_law {
             assembly_rewire: 300,
             assembly_rewire_type_env: 100,
             assembly_rewire_import_str: 150,
+            assembly_rewire_type_name_index: 20,
+            assembly_rewire_export_name_index: 30,
+            assembly_rewire_module_preparation: 40,
+            assembly_rewire_binding_application: 50,
             assembly_rewire_func_env: 50,
             ..ResolveStageNanos::default()
         };
@@ -42829,6 +42936,14 @@ mod exclusive_cost_partition_law {
                 .map(|r| r.nanos)
                 .sum::<u128>(),
             300
+        );
+        assert_eq!(
+            p.inclusive
+                .iter()
+                .filter(|r| r.contained_in == "assembly_rewire_import_str")
+                .map(|r| r.nanos)
+                .sum::<u128>(),
+            140
         );
 
         // The invariant that actually matters, over every inclusive row from every parent:

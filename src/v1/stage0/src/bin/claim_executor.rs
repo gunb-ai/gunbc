@@ -4405,6 +4405,28 @@ fn run_discovery_batch_node(
                 ms(st.reconcile_assembly),
                 ms(st.assembly_rewire),
             );
+            let rewire_import_str_subtotal = st
+                .assembly_rewire_type_name_index
+                .saturating_add(st.assembly_rewire_export_name_index)
+                .saturating_add(st.assembly_rewire_module_preparation)
+                .saturating_add(st.assembly_rewire_binding_application);
+            eprintln!(
+                "[rewire-import-str-split] type_name_index={:.1}ms export_name_index={:.1}ms module_preparation={:.1}ms binding_application={:.1}ms other={:.1}ms modules={} direct_import_sets={} inherited_keys={} ambiguity_checks={} ancestry_map_writes={} str_map_writes={} unchanged_keys={}",
+                ms(st.assembly_rewire_type_name_index),
+                ms(st.assembly_rewire_export_name_index),
+                ms(st.assembly_rewire_module_preparation),
+                ms(st.assembly_rewire_binding_application),
+                ms(st
+                    .assembly_rewire_import_str
+                    .saturating_sub(rewire_import_str_subtotal)),
+                st.assembly_rewire_modules,
+                st.assembly_rewire_direct_import_sets,
+                st.assembly_rewire_inherited_keys,
+                st.assembly_rewire_ambiguity_checks,
+                st.assembly_rewire_ancestry_map_writes,
+                st.assembly_rewire_str_map_writes,
+                st.assembly_rewire_unchanged_keys,
+            );
             // Both halves come from the SAME per-entry spans here (`total_resolve_nanos`
             // and `total_stage_nanos` are accumulated entry by entry at the same two call
             // sites), so the discovery corpus can be partitioned against its own parent
