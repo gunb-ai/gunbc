@@ -27,6 +27,7 @@ import gunbc.devboot.transport {
   retained_devboot_sha256sum,
   retained_devboot_cp,
   retained_devboot_chmod,
+  retained_devboot_execute_artifact,
   retained_devboot_uname,
   retained_devboot_cargo_build,
 }
@@ -213,6 +214,14 @@ fn render_sha256_digest(digest: Sha256Digest) -> String {
   digest.hex as String
 }
 
+fn stdout_fingerprint(stdout: String) -> String {
+  fold(
+    split(s: trim(s: stdout), sep: "\n"),
+    init: "",
+    f: (acc, line) => if acc == "" && trim(s: line) != "" { trim(s: line) } else { acc },
+  )
+}
+
 // WHAT A CALLER RECEIVES. An artifact is a path plus the digest that binds it, and both are present or the outcome is a refusal -- there is no arm carrying a path whose bytes were never checked, because that arm is how a stale binary passed for a produced one once already.
 type BuiltArtifact {
   path: String
@@ -224,6 +233,8 @@ type BuildReceipt {
   invocation: String
   producer_host: String
   reused: Bool
+  executed_exit: Int
+  executed_stdout_fingerprint: String
 }
 
 type BuildRefusal
@@ -783,21 +794,41 @@ fn devboot_receive_answer_subject(
                       cause: ArtifactNotRetrievable { detail: join(["could not install the artifact at ", out_path], "") },
                     }
                   } else {
-                    match read_text_file(repo_root: exchange_repo, path: join([out_dir, "/", produced_host_entry], "")) {
-                      TextFileReadFailed { error } =>
-                        BuildRefused { cause: ArtifactNotRetrievable { detail: join(["could not read the producer host: ", error], "") } }
-                      TextFileAbsent =>
-                        BuildRefused { cause: ArtifactNotRetrievable { detail: "the producer host entry is absent" } }
-                      TextFilePresent { text: producer_host } =>
-                        Built {
-                          program_subject: produced_subject,
-                          artifact: BuiltArtifact { path: out_path, sha256: observed },
-                          receipt: BuildReceipt {
-                            invocation: join(["devboot_build -> ", out_path], ""),
-                            producer_host: producer_host,
-                            reused: reused,
-                          },
-                        }
+                    let executed = devboot_witness_run(
+                      site: retained_devboot_execute_artifact,
+                      workdir: exchange_repo,
+                      bin_path: out_path,
+                      args: ["--help"],
+                    )
+                    if executed.exit_code != 0 {
+                      BuildRefused {
+                        cause: ArtifactNotRetrievable {
+                          detail: join([
+                            "the installed artifact exited ",
+                            to_string(executed.exit_code),
+                            " during --help verification",
+                          ], ""),
+                        },
+                      }
+                    } else {
+                      match read_text_file(repo_root: exchange_repo, path: join([out_dir, "/", produced_host_entry], "")) {
+                        TextFileReadFailed { error } =>
+                          BuildRefused { cause: ArtifactNotRetrievable { detail: join(["could not read the producer host: ", error], "") } }
+                        TextFileAbsent =>
+                          BuildRefused { cause: ArtifactNotRetrievable { detail: "the producer host entry is absent" } }
+                        TextFilePresent { text: producer_host } =>
+                          Built {
+                            program_subject: produced_subject,
+                            artifact: BuiltArtifact { path: out_path, sha256: observed },
+                            receipt: BuildReceipt {
+                              invocation: join(["devboot_build -> ", out_path], ""),
+                              producer_host: producer_host,
+                              reused: reused,
+                              executed_exit: executed.exit_code,
+                              executed_stdout_fingerprint: stdout_fingerprint(stdout: executed.stdout),
+                            },
+                          }
+                      }
                     }
                   }
                 }
@@ -1317,6 +1348,8 @@ fn render_build_outcome(outcome: BuildOutcome) -> String {
         "\nsha256: ", render_sha256_digest(digest: artifact.sha256),
         "\nproducer_host: ", receipt.producer_host,
         "\nreused: ", if receipt.reused { "true" } else { "false" },
+        "\nexecuted_exit: ", to_string(receipt.executed_exit),
+        "\nexecuted_stdout: ", receipt.executed_stdout_fingerprint,
         "\nsubject:\n", program_subject,
       ], "")
   }

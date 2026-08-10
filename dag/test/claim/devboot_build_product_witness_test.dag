@@ -29,6 +29,7 @@ import gunbc.devboot.build {
   ArtifactNotRetrievable,
   ArtifactDigestMismatch,
   build_refusal_sentence,
+  render_build_outcome,
   outcome_delivers_executable,
   PollState,
   PollAnswered,
@@ -74,9 +75,34 @@ test fn a_built_outcome_carrying_a_digest_reports_an_executable() -> Bool {
     outcome: Built {
       program_subject: "program=gunbc\n",
       artifact: BuiltArtifact { path: "/tmp/gunbc", sha256: witness_fixture_digest() },
-      receipt: BuildReceipt { invocation: "devboot_build", producer_host: "srv3", reused: false },
+      receipt: BuildReceipt {
+        invocation: "devboot_build",
+        producer_host: "srv3",
+        reused: false,
+        executed_exit: 0,
+        executed_stdout_fingerprint: "A causal compiler: write .dag, get Rust/Python/Go.",
+      },
     },
   )
+}
+
+// EXECUTION EVIDENCE LANDS IN THE RECEIPT PROSE, so a successful build is self-evidencing rather than relying on out-of-band terminal observation.
+test fn a_built_receipt_carries_execution_evidence_in_prose() -> Bool {
+  let prose = render_build_outcome(
+    outcome: Built {
+      program_subject: "program=gunbc\n",
+      artifact: BuiltArtifact { path: "/tmp/gunbc", sha256: witness_fixture_digest() },
+      receipt: BuildReceipt {
+        invocation: "devboot_build",
+        producer_host: "srv3",
+        reused: false,
+        executed_exit: 0,
+        executed_stdout_fingerprint: "A causal compiler: write .dag, get Rust/Python/Go.",
+      },
+    },
+  )
+  string_contains(s: prose, pattern: "executed_exit: 0")
+    && string_contains(s: prose, pattern: "executed_stdout: A causal compiler: write .dag, get Rust/Python/Go.")
 }
 
 // A REUSED BUILD NAMES IT IN THE RECEIPT. The one-compile law is not merely that bytes match — the caller must be able to observe that it did not publish a fresh request.
@@ -84,10 +110,16 @@ test fn a_reused_build_carries_reused_true_in_the_receipt() -> Bool {
   let outcome = Built {
     program_subject: "program=gunbc\n",
     artifact: BuiltArtifact { path: "/tmp/gunbc", sha256: witness_fixture_digest() },
-    receipt: BuildReceipt { invocation: "devboot_build", producer_host: "srv3", reused: true },
+    receipt: BuildReceipt {
+      invocation: "devboot_build",
+      producer_host: "srv3",
+      reused: true,
+      executed_exit: 0,
+      executed_stdout_fingerprint: "A causal compiler: write .dag, get Rust/Python/Go.",
+    },
   }
   match outcome {
-    Built { receipt: BuildReceipt { reused: true, invocation: _, producer_host: _ }, program_subject: _, artifact: _ } => true
+    Built { receipt: BuildReceipt { reused: true, invocation: _, producer_host: _, executed_exit: _, executed_stdout_fingerprint: _ }, program_subject: _, artifact: _ } => true
     BuildRefused { cause: _ } => false
   }
 }

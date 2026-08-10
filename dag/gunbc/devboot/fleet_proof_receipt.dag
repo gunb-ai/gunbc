@@ -1,6 +1,6 @@
 module gunbc.devboot.fleet_proof_receipt
 
-import std.types { String, NonEmptyStr, Int, Bool, CommitSha }
+import std.types { String, NonEmptyStr, Int, CommitSha }
 import std.content_hash { Sha256Digest, sha256_hex_digest }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
@@ -11,13 +11,14 @@ data devboot_fleet_proof_transcription_retired_note: String = "RETIRED: devboot_
 type DevbootFleetClientObservation {
   host: NonEmptyStr
   reused: Bool
-  executed: Bool
+  executed_exit: Int
+  executed_stdout_fingerprint: NonEmptyStr
   receipt_excerpt: String
 }
 
 // EXECUTION EVIDENCE for the modeled two-client fleet proof. Fields match the on-host .devboot-receipt prose gunbc build writes and the srv3 modeled-serve.log SERVED line — not inferred from absence of a second log line.
 type DevbootModeledFleetProofReceipt {
-  executed_at: NonEmptyStr
+  producer_served_at: NonEmptyStr
   tested_tree: CommitSha
   mechanism_branch: NonEmptyStr
   request_identity: NonEmptyStr
@@ -32,7 +33,7 @@ type DevbootModeledFleetProofReceipt {
   transport_endpoint: String
 }
 
-data devboot_modeled_fleet_proof_note: String = "Producer: srv3 host timer shell invokes ONLY devboot_serve_once_entry (modeled-serve-loop.sh) — no shell git for-each-ref or per-token serve on the path. Clients: srv1 then srv2 each ran gunbc build gunbc --repo-root corpus at tested_tree. Observed: one request ref token, one produced commit 180beeb95ef8dab53c7abf8aa59a728ffc00e4e9, one SERVED line in modeled-serve.log (producer_served_count=1), matching digest on both clients, srv2 reused:true after srv1 reused:false, both binaries executed (--help)."
+data devboot_modeled_fleet_proof_note: String = "Producer: srv3 host timer shell invokes ONLY devboot_serve_once_entry (modeled-serve-loop.sh) — no shell git for-each-ref on the path. Clients: srv1 then srv2 each ran gunbc build gunbc --repo-root corpus at tested_tree. Observed: one SERVED at 2026-08-09T22:13:23Z among 72 serve_once invocations (71 IDLE), one produced ref, srv2 reused:true with executed_exit and executed_stdout recorded in the build receipt."
 
 fn devboot_modeled_fleet_proof_receipt() -> DevbootModeledFleetProofReceipt? {
   match sha256_hex_digest(hex: "976728c5d2029799f1d89843dfdd70c3b3ed132211126d2752ef8af23b5c146e") {
@@ -40,8 +41,8 @@ fn devboot_modeled_fleet_proof_receipt() -> DevbootModeledFleetProofReceipt? {
     Present { value: digest } =>
       Present {
         value: DevbootModeledFleetProofReceipt {
-          executed_at: "2026-08-09T22:20:45Z" as NonEmptyStr,
-          tested_tree: "69d07ed69d3",
+          producer_served_at: "2026-08-09T22:13:23Z" as NonEmptyStr,
+          tested_tree: "69d07ed69d3a08a6d881a4ed8f3f45e0ec82e8aa",
           mechanism_branch: "session/keen-moth-104" as NonEmptyStr,
           request_identity: "fnv1a64-dfd0b4abb44e30e7" as NonEmptyStr,
           producer_host: "srv3" as NonEmptyStr,
@@ -53,14 +54,16 @@ fn devboot_modeled_fleet_proof_receipt() -> DevbootModeledFleetProofReceipt? {
             DevbootFleetClientObservation {
               host: "srv1" as NonEmptyStr,
               reused: false,
-              executed: true,
-              receipt_excerpt: "BUILT path: /tmp/devboot-fleet/out-srv1 sha256=976728c5... producer_host: srv3 reused: false",
+              executed_exit: 0,
+              executed_stdout_fingerprint: "A causal compiler: write .dag, get Rust/Python/Go." as NonEmptyStr,
+              receipt_excerpt: "BUILT ... reused: false executed_exit: 0 executed_stdout: A causal compiler: write .dag, get Rust/Python/Go.",
             },
             DevbootFleetClientObservation {
               host: "srv2" as NonEmptyStr,
               reused: true,
-              executed: true,
-              receipt_excerpt: "BUILT path: /tmp/devboot-fleet/out-srv2 sha256=976728c5... producer_host: srv3 reused: true",
+              executed_exit: 0,
+              executed_stdout_fingerprint: "A causal compiler: write .dag, get Rust/Python/Go." as NonEmptyStr,
+              receipt_excerpt: "BUILT ... reused: true executed_exit: 0 executed_stdout: A causal compiler: write .dag, get Rust/Python/Go.",
             },
           ],
           producer_entry: decl_ref(
