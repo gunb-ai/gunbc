@@ -6,7 +6,7 @@ import std.algebra { trim }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.typed_argv_exec { typed_argv_probe_over_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
-import gunbc.host_reach_identity_probe { clock_now_probed_at }
+import gunbc.clock_read { clock_now_probed_at }
 
 // READ-ONLY measurement (parent msg_e767a783): before anyone grants new access, measure
 // whether the fleet key is already enrolled for SOME pre-existing account on srv3/srv4.

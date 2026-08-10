@@ -78,6 +78,7 @@ import std.disposition { Disposition, RealizationDispatch, Scaffold, SingleAutho
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Duration }
 import gunbc.repo_identity { gunbc_default_branch_name }
+import gunbc.fleet_host_key_enrollment { probe_identity_secret_access_requirement }
 import gunbc.falsifier_run_control {
   falsifier_release_build_step_id,
   ci_release_bins_step_id,
@@ -689,8 +690,8 @@ fn ci_fleet_wif_auth_step() -> Step {
     uses: google_auth_action,
     with: Present {
       value: [
-        kv(key: "workload_identity_provider", value: yaml_string(s: "projects/582015116396/locations/global/workloadIdentityPools/github-actions/providers/github-oidc")),
-        kv(key: "service_account", value: yaml_string(s: "fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com")),
+        kv(key: "workload_identity_provider", value: yaml_string(s: probe_identity_secret_access_requirement.wif_provider_resource)),
+        kv(key: "service_account", value: yaml_string(s: probe_identity_secret_access_requirement.service_account)),
         kv(key: "token_format", value: yaml_string(s: "access_token")),
         kv(key: "create_credentials_file", value: yaml_bool(b: false))
       ]

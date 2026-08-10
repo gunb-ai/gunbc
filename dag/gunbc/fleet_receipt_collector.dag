@@ -19,12 +19,12 @@ import gunbc.typed_argv_exec {
 import gunbc.fleet_reach_endpoint {
   fleet_probe_target_for,
   fleet_probe_ready_ssh_target,
+  fleet_reach_probe_targets,
   ProbeTargetReady,
   ProbeTargetRefused,
   PrincipalUnobserved,
   EndpointUnobserved,
 }
-import gunbc.host_reach_identity_probe { fleet_reach_probe_targets }
 import gunbc.fleet_convergence_verdict {
   FleetConvergenceVerdict,
   FleetConverged,
