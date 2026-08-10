@@ -342,6 +342,25 @@ fn value_hash(v: &Value) -> u64 {
     // same per-element `value_hash` in the same order -- because that is exactly what the walk
     // over the materialized vector did. A `Cons` chain still materializes, because walking it
     // requires resolving the monoid symbols and there is no borrowed view of it.
+    //
+    // MEASURED A/B, both arms unprofiled, same binary shape, same exact classification subject
+    // (`manifest_classifies_a_carrier_reaching_decl_apart_from_a_pure_one`, requests=2 rows=2,
+    // 3453 fact modules / 62844 decls, 587-module lens closure) -- so the difference is this
+    // function and nothing else:
+    //
+    //   arm        classification_production   live-read wall   live-read cpu   process RSS
+    //   control    218738 ms                   313266 ms        312468 ms       7195 MiB
+    //   candidate  182038 ms                   274597 ms        273853 ms       7183 MiB
+    //
+    // Streaming is 36.7 s (16.8%) cheaper on the classified term and 38.7 s on the whole read,
+    // at identical resident cost and identical rows. The fixed prelude reproduced across arms
+    // (fact bundle 17.4 / 17.7 s, source load 36.7 / 35.7 s, resolve+typecheck 40.4 / 39.0 s),
+    // which is what makes the two runs comparable rather than two samples of host noise.
+    //
+    // The earlier 216 -> 167 s reading taken from single runs OVERSTATED this: run-to-run
+    // variance on this host is tens of seconds, and only the paired arms above are quotable.
+    // `classification_production` remains far above the fixed lens resolve/typecheck term, so
+    // this repair did not move the dominant cost -- it removed one measured term of it.
     match v {
         Value::Str(s) => {
             0xF0u8.hash(&mut h);
