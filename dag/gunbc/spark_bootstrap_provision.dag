@@ -14,6 +14,8 @@ import extdeps.cloud.gcp.secret_manager {
   secret_manager_effect_required_permissions
 }
 
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply { HostIdentity }
 import v2.std.operation_argv { OperationRef }
 
@@ -1007,3 +1009,30 @@ fn srv5_privilege_observation() -> HostPrivilegeObservation {
     container_socket_admits_principal: false,
   }
 }
+
+// THE SPARK SERVING DEPENDENCY INSTALL IS A DECLARED SCAFFOLD, not merely noted debt.
+//
+// spark-serve-install.yml provisions the serving runtime with an imperative
+// `pip install 'vllm==0.26.0'` inside an ssh heredoc in YAML. The workflow owns the INVOCATION --
+// nothing is hand-run, the credential is materialized through WIF at job time and never enters
+// argv -- but it does NOT own the install as a modeled effect. That is shell-in-yaml at a
+// runtime-present site: exactly the class the shell -> intent routing forbids, because a
+// runtime-present site realizes as a typed effect rather than emitting bash.
+//
+// Registered rather than described, because DESIGN requires every scaffold to land with a named
+// dissolution trigger and debt that is only described is debt nobody schedules. Counted here, it
+// is prioritizable; in a message it is a paragraph.
+data spark_serving_dependency_install_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_effect_realize",
+    decl_name: "host_effect_apply",
+    field: WholeDeclaration
+  }
+}
+
+// DISSOLVES WHEN the venv construction, the pinned package install, and the systemd --user unit
+// write are each a typed effect routed through host_effect_apply, so the serving runtime is
+// provisioned by the same authenticated transport dispatch every other host effect uses and the
+// YAML carries no shell leaf. Until then the imperative install stands, loud and counted.
+data spark_serving_dependency_install_scaffold_note: String = "The pinned revision and port are already typed facts; what remains shell is the sequence that applies them. Bind is host_effect_apply because the Spark is a runtime-present site: the fleet key already reaches it over an authenticated transport, so the install has no foreign-executor or pre-runtime-bootstrap excuse for rendering bash. The loopback bind is deliberate and is NOT part of this scaffold: 127.0.0.1:8000 keeps the inference endpoint unreachable to anything lacking the fleet key, and widening it to the LAN would trade the contract word authenticated for reachability. A LAN-reachable endpoint is a separate modeled decision with its own authorization story, never a canary shortcut."

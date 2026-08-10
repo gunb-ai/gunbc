@@ -32,7 +32,9 @@ import gunbc.spark_bootstrap_provision {
   EffectiveAccessStanding, EffectiveAccessExact, EffectiveAccessOverbroad,
   EffectiveAccessPartiallyObserved, EffectiveAccessUnobserved,
   SecretConsumer, SecretDemandStanding, SecretDemandActive, SecretDemandRetainedForRecovery,
-  SecretDemandRetiredAfterOobe, SecretDemandUnobserved, secret_demand_is_active
+  SecretDemandRetiredAfterOobe, SecretDemandUnobserved, secret_demand_is_active,
+  HostPrivilegeObservation, ServiceInstallScope, SystemUnitScope, ContainerScope,
+  UserUnitScope, InstallScopeUnobserved, derive_install_scope, srv5_privilege_observation
 }
 
 import extdeps.cloud.gcp.secret_manager {
@@ -794,4 +796,50 @@ test fn active_demand_requires_a_named_consumer() -> Bool {
       operation: sm_operation_ref(operation: "AccessVersion") }] })
     && !secret_demand_is_active(standing: SecretDemandActive {
       secret: "projects/p/secrets/fleet-key", consumers: [] })
+}
+
+// CONTROL 10a (POSITIVE DIRECTION): the OBSERVED srv5 facts must produce the user-scope arm.
+// sudo -n refused and the container socket refusing the admitted principal are one cause with two
+// consequences, so user scope is the derived consequence -- not a preference someone recorded.
+test fn observed_srv5_privilege_derives_user_unit_scope() -> Bool {
+  match derive_install_scope(observation: srv5_privilege_observation()) {
+    UserUnitScope { host: h, ground: _ } => (h as String) == "srv5"
+    SystemUnitScope { host: _ } => false
+    ContainerScope { host: _ } => false
+    InstallScopeUnobserved { host: _, cause: _ } => false
+  }
+}
+
+// CONTROL 10b (NEGATIVE DIRECTION): the derivation must REFUSE to claim system-unit or container
+// installability against those same facts. Without this direction the function is a name -- it
+// could return SystemUnitScope for a host with no privilege and control 10a would still pass,
+// which is the inert-mechanism class: wrong in exactly the way it exists to prevent, silently.
+test fn no_privilege_never_derives_system_or_container_scope() -> Bool {
+  match derive_install_scope(observation: HostPrivilegeObservation {
+    host: "srv5", passwordless_sudo: false, container_socket_admits_principal: false }) {
+    SystemUnitScope { host: _ } => false
+    ContainerScope { host: _ } => false
+    UserUnitScope { host: _, ground: _ } => true
+    InstallScopeUnobserved { host: _, cause: _ } => false
+  }
+}
+
+// CONTROL 10c: the derivation is a FUNCTION of privilege, not a constant. A host that DOES hold
+// passwordless sudo derives system scope, and one whose container socket admits the principal
+// derives container scope. Without this, 10a/10b would both pass on a function hardwired to
+// return user scope, and the derivation would be indistinguishable from a declaration.
+test fn privilege_actually_selects_the_scope() -> Bool {
+  match derive_install_scope(observation: HostPrivilegeObservation {
+    host: "srvX", passwordless_sudo: true, container_socket_admits_principal: false }) {
+    SystemUnitScope { host: h } => (h as String) == "srvX"
+    ContainerScope { host: _ } => false
+    UserUnitScope { host: _, ground: _ } => false
+    InstallScopeUnobserved { host: _, cause: _ } => false
+  } && match derive_install_scope(observation: HostPrivilegeObservation {
+    host: "srvY", passwordless_sudo: false, container_socket_admits_principal: true }) {
+    ContainerScope { host: h } => (h as String) == "srvY"
+    SystemUnitScope { host: _ } => false
+    UserUnitScope { host: _, ground: _ } => false
+    InstallScopeUnobserved { host: _, cause: _ } => false
+  }
 }
