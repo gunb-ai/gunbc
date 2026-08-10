@@ -76,6 +76,8 @@ data ci_floor_phase_journal_env_name: String = "GUNBC_FLOOR_PHASE_JOURNAL"
 
 data ci_floor_phase_journal_path: String = "target/floor-phase-journal.tsv"
 
+data ci_floor_phase_journal_artifact_name: String = "floor-phase-journal"
+
 data ci_floor_phase_journal_present_command: String = "[ -f \"$GUNBC_FLOOR_PHASE_JOURNAL\" ]"
 
 data ci_floor_phase_journal_header_command: String = "echo \"[floor-phase-journal] unix_millis pid phase state detail\""
