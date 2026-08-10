@@ -1,0 +1,114 @@
+receipt_version=streaming-profile-ab-v1
+source_head=a26ec4fc4e9736dd0a08aaa4ceeedc74d261b91e
+binary_sha256=780a21b1684df514e1576b88b2fbc6dfa8ceb6900d4eca9178f17d894fa7c1ad
+cohort_sha256=6256ec909647e60044636e3b30eacbbf4769f8bf80ef90d243c9532935c26db5
+run_order=baseline-r1,profile-r1,profile-r2,baseline-r2
+equivalence_run=profile-verify (after timed A-B-B-A; excluded from tax comparison)
+remote_invocation=https://app.buildbuddy.io/invocation/790c8424-5aea-4caf-8774-95709e0622fe
+prior_confounded_invocation=https://app.buildbuddy.io/invocation/14bd227d-28cb-4419-9e74-532945a3d523
+remote_execution_started_utc=2026-08-10T19:55:19Z
+remote_execution_cancelled_after_baseline_r2_bound=1
+classification=EvidenceInvalidLivenessConfounded
+classification_detail=baseline-r2 emitted its start marker but no terminal row, exceeded the declared 900-second per-arm bound, and did not return after TERM/KILL; the remote action was cancelled. This independently reproduces invocation 14bd227d-28cb-4419-9e74-532945a3d523, whose baseline-r2 also failed to terminate. No fourth timing row or instrumentation-tax verdict is inferred.
+deep_equivalence_invocation=https://app.buildbuddy.io/invocation/257fbeca-26bb-40c1-8497-2299904d1abe
+deep_equivalence_classification=EvidenceInvalidOracleCostConfounded
+deep_equivalence_detail=The first profile-verify oracle recursively compared complete TypedModule values. The unchanged semantic subject reached the 899-second bound before producing a witness outcome, so this is evidence about the oracle's own traversal cost, not a semantic disagreement. The corrected oracle compares every non-rewire field by shared identity and both changed maps by exact key population plus binding identity.
+deep_equivalence_exit=124
+deep_equivalence_wall_seconds=899.284
+deep_equivalence_peak_rss_kb=3473452
+deep_equivalence_timed_out=1
+deep_equivalence_pass=0
+deep_equivalence_fail=0
+field_complete_equivalence_invocation=https://app.buildbuddy.io/invocation/66d3516c-9a7b-49c7-9502-32740647c3b2
+field_complete_equivalence_classification=SemanticEquivalenceObserved
+field_complete_equivalence_detail=The corrected fresh-process profile-verify compared every unchanged TypedModule and TypeEnv field by shared identity, then compared both rewire-owned maps by exact key population and binding identity. It completed every cohort entry without an equivalence assertion and reproduced the 47 PASS / 3 FAIL outcome population. Its binary differs from the timed A-B-B-A binary because this bounded oracle replaced recursive whole-graph equality; the same source head, cohort, closure population, and outcomes remain explicit below.
+field_complete_equivalence_source_head=a26ec4fc4e9736dd0a08aaa4ceeedc74d261b91e
+field_complete_equivalence_binary_sha256=a7a7e57c90ecd13ff27cf01600d74956c6ff46a6f60f5413cdcac15fb7e5c1b2
+field_complete_equivalence_cohort_sha256=6256ec909647e60044636e3b30eacbbf4769f8bf80ef90d243c9532935c26db5
+field_complete_equivalence_exit=1
+field_complete_equivalence_pass=47
+field_complete_equivalence_fail=3
+field_complete_equivalence_outcomes_sha256=649ccbedf3125b77436586408748b23ed99076c2f581905803b152f908d4d583
+field_complete_equivalence_subjects_sha256=3f03cb2889aff39c76b22672b5978ccdeb8316545f66deaef021873f87931be6
+field_complete_equivalence_closures_sha256=23cdd1b89183942a0faa6559666adc525842f269e2d23797179bab3b30ae6f66
+field_complete_equivalence_wall_seconds=203.734
+field_complete_equivalence_peak_rss_kb=8261600
+field_complete_equivalence_timed_out=0
+field_complete_equivalence_timeout_process_state=not-timed-out
+
+run=baseline-r1
+profile_enabled=0
+complete_module_equivalence_check=0
+exit=1
+pass=47
+fail=3
+outcomes_sha256=649ccbedf3125b77436586408748b23ed99076c2f581905803b152f908d4d583
+subjects_sha256=dc5ced06ee3ae9e65f01625e0d231379aa078b9ca19c2cab2ec60057193f7630
+closures_sha256=23cdd1b89183942a0faa6559666adc525842f269e2d23797179bab3b30ae6f66
+wall_seconds=170.336
+peak_rss_kb=8150912
+timed_out=0
+[resolve-summary] 50 resolve(s) in 98227ms wall; 50 witness(es) in 206ms wall
+[rewire-import-str-split] profile_enabled=false type_name_index=0.0ms export_name_index=0.0ms module_preparation=0.0ms binding_application=0.0ms other=30506.4ms modules=0 direct_import_sets=0 inherited_keys=0 inherited_keys_considered=0 ancestry_map_writes=0 ancestry_absent=0 ancestry_same_identity=0 ancestry_value_changed=0 str_map_writes=0 str_absent=0 str_same_identity=0 str_value_changed=0 unchanged_keys=0
+parent_span_nanos=122596721349
+assembly_rewire_import_str_nanos=30506424210
+type_name_index_nanos=0
+export_name_index_nanos=0
+module_preparation_nanos=0
+binding_application_nanos=0
+partition_state=Reconciled
+partition_residual_nanos=0
+end_run=baseline-r1
+
+run=profile-r1
+profile_enabled=1
+complete_module_equivalence_check=0
+exit=1
+pass=47
+fail=3
+outcomes_sha256=649ccbedf3125b77436586408748b23ed99076c2f581905803b152f908d4d583
+subjects_sha256=dc5ced06ee3ae9e65f01625e0d231379aa078b9ca19c2cab2ec60057193f7630
+closures_sha256=23cdd1b89183942a0faa6559666adc525842f269e2d23797179bab3b30ae6f66
+wall_seconds=161.340
+peak_rss_kb=8107256
+timed_out=0
+[resolve-summary] 50 resolve(s) in 88599ms wall; 50 witness(es) in 184ms wall
+[rewire-import-str-split] profile_enabled=true type_name_index=723.5ms export_name_index=103.8ms module_preparation=1550.8ms binding_application=26489.9ms other=69.2ms modules=6746 direct_import_sets=30723 inherited_keys=6928314 inherited_keys_considered=6928314 ancestry_map_writes=6606131 ancestry_absent=0 ancestry_same_identity=6572738 ancestry_value_changed=33393 str_map_writes=0 str_absent=0 str_same_identity=0 str_value_changed=0 unchanged_keys=322183
+parent_span_nanos=113496239621
+assembly_rewire_import_str_nanos=28937202688
+type_name_index_nanos=723461110
+export_name_index_nanos=103804819
+module_preparation_nanos=1550819064
+binding_application_nanos=26489881460
+partition_state=Reconciled
+partition_residual_nanos=0
+end_run=profile-r1
+
+run=profile-r2
+profile_enabled=1
+complete_module_equivalence_check=0
+exit=1
+pass=47
+fail=3
+outcomes_sha256=649ccbedf3125b77436586408748b23ed99076c2f581905803b152f908d4d583
+subjects_sha256=dc5ced06ee3ae9e65f01625e0d231379aa078b9ca19c2cab2ec60057193f7630
+closures_sha256=23cdd1b89183942a0faa6559666adc525842f269e2d23797179bab3b30ae6f66
+wall_seconds=161.276
+peak_rss_kb=8118392
+timed_out=0
+[resolve-summary] 50 resolve(s) in 89575ms wall; 50 witness(es) in 187ms wall
+[rewire-import-str-split] profile_enabled=true type_name_index=728.3ms export_name_index=106.0ms module_preparation=1605.5ms binding_application=27254.7ms other=77.4ms modules=6746 direct_import_sets=30723 inherited_keys=6928314 inherited_keys_considered=6928314 ancestry_map_writes=6606131 ancestry_absent=0 ancestry_same_identity=6572738 ancestry_value_changed=33393 str_map_writes=0 str_absent=0 str_same_identity=0 str_value_changed=0 unchanged_keys=322183
+parent_span_nanos=113138409525
+assembly_rewire_import_str_nanos=29771902596
+type_name_index_nanos=728340564
+export_name_index_nanos=105992224
+module_preparation_nanos=1605485831
+binding_application_nanos=27254692357
+partition_state=Reconciled
+partition_residual_nanos=0
+end_run=profile-r2
+
+run=baseline-r2
+terminal_row=absent
+declared_max_run_seconds=900
+process_reaped_after_bound=0

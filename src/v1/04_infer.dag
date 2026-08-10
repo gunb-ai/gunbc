@@ -9355,10 +9355,6 @@ fn realize_module(
 type StrBindingsRewireAccum {
   str_bindings: Map<String, TypeBinding>
   ancestry_str_bindings: Map<String, TypeBinding>
-  ambiguity_checks: Int
-  ancestry_map_writes: Int
-  str_map_writes: Int
-  unchanged_keys: Int
 }
 
 type ImportStringRewireModulePlan {
@@ -9372,9 +9368,15 @@ type ImportStringRewireObservation {
   module_count: Int
   direct_import_sets: Int
   inherited_keys: Int
-  ambiguity_checks: Int
+  inherited_keys_considered: Int
   ancestry_map_writes: Int
+  ancestry_absent: Int
+  ancestry_same_identity: Int
+  ancestry_value_changed: Int
   str_map_writes: Int
+  str_absent: Int
+  str_same_identity: Int
+  str_value_changed: Int
   unchanged_keys: Int
 }
 
@@ -9383,12 +9385,7 @@ type ImportStringRewireModuleResult {
   observation: ImportStringRewireObservation
 }
 
-type ImportStringRewireResult {
-  modules: List<TypedModule>
-  observation: ImportStringRewireObservation
-}
-
-data import_string_rewire_measurement_scaffold_note: String = "Measurement scaffold (2026-08-10, floor-prep-tax-program per-entry assembly lane): rewire_type_env_import_str_binding_identity was the largest named assembly row, but its one host timer could not distinguish index construction, module preparation, or persistent-map rewrites. These phase values and structural work counts therefore live in the .dag authority first; the bootstrap host only times calls to these declared boundaries. The result projection adds O(module count) observation folds to a measurement build and is not itself the optimization. Dissolve-on: once a receipt chooses and lands a substrate optimization, retain only the cheapest regression count needed to witness its multiplicity and remove the remaining timing scaffold."
+data import_string_rewire_measurement_scaffold_note: String = "Default-off measurement scaffold (2026-08-10, floor-prep-tax-program per-entry assembly lane): production rewire_type_env_import_str_binding_identity keeps the parent implementation's per-module prepare -> apply order and does not carry counters. GUNBC_REWIRE_IMPORT_STR_PROFILE=1 selects a bootstrap timing projection over the .dag-declared type-name index, export-name index, single-module preparation, and observed single-module application boundaries. The host must process one module at a time and release each plan/result before the next; retaining a closure-wide plan batch changes the live set and invalidates the phase attribution. The observed path calls the production rewire_inherited_str_binding authority exactly once, then classifies pointer-visible before/after map effects without deciding the output; an interleaved same-head baseline/profile receipt owns instrumentation tax and exact outcome equivalence. Dissolve-on: once a trustworthy receipt chooses and lands a substrate optimization, retain only the cheapest regression count needed to witness its multiplicity and remove the remaining timing scaffold."
 
 fn import_module_path_at(imp: Node, source_indices: Map<String, NewlineIndex>) -> String {
   authored_name_at(source_indices: source_indices, node: imp)
@@ -9457,7 +9454,8 @@ fn rewire_inherited_str_binding(
   type_name_index: Map<String, TypeNameExportFacts>,
   import_export_names: List<Set<String>>,
   local_names: Set<String>,
-  state: StrBindingsRewireAccum,
+  str_bindings: Map<String, TypeBinding>,
+  ancestry_str_bindings: Map<String, TypeBinding>,
   name: String
 ) -> StrBindingsRewireAccum {
   let exporter_count = match map_get(type_name_index, name) {
@@ -9465,56 +9463,124 @@ fn rewire_inherited_str_binding(
     Absent => 0
   }
   if set_contains(local_names, name) || direct_import_exporter_count(import_export_names: import_export_names, name: name) > 1 || exporter_count > 1 {
-    StrBindingsRewireAccum {
-      str_bindings: state.str_bindings,
-      ancestry_str_bindings: state.ancestry_str_bindings,
-      ambiguity_checks: state.ambiguity_checks + 1,
-      ancestry_map_writes: state.ancestry_map_writes,
-      str_map_writes: state.str_map_writes,
-      unchanged_keys: state.unchanged_keys + 1
-    }
+    StrBindingsRewireAccum { str_bindings: str_bindings, ancestry_str_bindings: ancestry_str_bindings }
   } else {
     match map_get(type_name_index, name) {
       Present { value: facts } =>
         match facts.canonical_binding {
           Present { value: canonical } =>
-            let ancestry_str_bindings = map_insert(state.ancestry_str_bindings, name, canonical)
-            match map_get(state.str_bindings, name) {
-              Present { value: _ } => StrBindingsRewireAccum {
-                str_bindings: map_insert(state.str_bindings, name, canonical),
-                ancestry_str_bindings: ancestry_str_bindings,
-                ambiguity_checks: state.ambiguity_checks + 1,
-                ancestry_map_writes: state.ancestry_map_writes + 1,
-                str_map_writes: state.str_map_writes + 1,
-                unchanged_keys: state.unchanged_keys
-              }
-              Absent => StrBindingsRewireAccum {
-                str_bindings: state.str_bindings,
-                ancestry_str_bindings: ancestry_str_bindings,
-                ambiguity_checks: state.ambiguity_checks + 1,
-                ancestry_map_writes: state.ancestry_map_writes + 1,
-                str_map_writes: state.str_map_writes,
-                unchanged_keys: state.unchanged_keys
-              }
+            let ancestry_str_bindings = map_insert(ancestry_str_bindings, name, canonical)
+            let str_bindings = match map_get(str_bindings, name) {
+              Present { value: _ } => map_insert(str_bindings, name, canonical)
+              Absent => str_bindings
             }
-          Absent => StrBindingsRewireAccum {
-            str_bindings: state.str_bindings,
-            ancestry_str_bindings: state.ancestry_str_bindings,
-            ambiguity_checks: state.ambiguity_checks + 1,
-            ancestry_map_writes: state.ancestry_map_writes,
-            str_map_writes: state.str_map_writes,
-            unchanged_keys: state.unchanged_keys + 1
-          }
+            StrBindingsRewireAccum { str_bindings: str_bindings, ancestry_str_bindings: ancestry_str_bindings }
+          Absent => StrBindingsRewireAccum { str_bindings: str_bindings, ancestry_str_bindings: ancestry_str_bindings }
         }
-      Absent => StrBindingsRewireAccum {
-        str_bindings: state.str_bindings,
-        ancestry_str_bindings: state.ancestry_str_bindings,
-        ambiguity_checks: state.ambiguity_checks + 1,
-        ancestry_map_writes: state.ancestry_map_writes,
-        str_map_writes: state.str_map_writes,
-        unchanged_keys: state.unchanged_keys + 1
-      }
+      Absent => StrBindingsRewireAccum { str_bindings: str_bindings, ancestry_str_bindings: ancestry_str_bindings }
     }
+  }
+}
+
+type ObservedStrBindingsRewireAccum {
+  bindings: StrBindingsRewireAccum
+  inherited_keys_considered: Int
+  ancestry_map_writes: Int
+  ancestry_absent: Int
+  ancestry_same_identity: Int
+  ancestry_value_changed: Int
+  str_map_writes: Int
+  str_absent: Int
+  str_same_identity: Int
+  str_value_changed: Int
+  unchanged_keys: Int
+}
+
+fn observe_import_string_rewire_decision(
+  type_name_index: Map<String, TypeNameExportFacts>,
+  import_export_names: List<Set<String>>,
+  local_names: Set<String>,
+  state: ObservedStrBindingsRewireAccum,
+  name: String
+) -> ObservedStrBindingsRewireAccum {
+  let bindings = rewire_inherited_str_binding(
+    type_name_index: type_name_index,
+    import_export_names: import_export_names,
+    local_names: local_names,
+    str_bindings: state.bindings.str_bindings,
+    ancestry_str_bindings: state.bindings.ancestry_str_bindings,
+    name: name
+  )
+  let ancestry_map_write = if rc_ptr_eq(state.bindings.ancestry_str_bindings, bindings.ancestry_str_bindings) { 0 } else { 1 }
+  let str_map_write = if rc_ptr_eq(state.bindings.str_bindings, bindings.str_bindings) { 0 } else { 1 }
+  let prior = map_get(state.bindings.ancestry_str_bindings, name)
+  let current = map_get(bindings.ancestry_str_bindings, name)
+  let prior_str = map_get(state.bindings.str_bindings, name)
+  let current_str = map_get(bindings.str_bindings, name)
+  let ancestry_absent = if ancestry_map_write == 1 {
+    match prior {
+      Absent => 1
+      Present { value: _ } => 0
+    }
+  } else { 0 }
+  let ancestry_same_identity = if ancestry_map_write == 1 {
+    match prior {
+      Present { value: existing } =>
+        match current {
+          Present { value: canonical } => if rc_ptr_eq(existing, canonical) { 1 } else { 0 }
+          Absent => 0
+        }
+      Absent => 0
+    }
+  } else { 0 }
+  let ancestry_value_changed = if ancestry_map_write == 1 {
+    match prior {
+      Present { value: existing } =>
+        match current {
+          Present { value: canonical } => if rc_ptr_eq(existing, canonical) { 0 } else { 1 }
+          Absent => 0
+        }
+      Absent => 0
+    }
+  } else { 0 }
+  let str_absent = if str_map_write == 1 {
+    match prior_str {
+      Absent => 1
+      Present { value: _ } => 0
+    }
+  } else { 0 }
+  let str_same_identity = if str_map_write == 1 {
+    match prior_str {
+      Present { value: existing } =>
+        match current_str {
+          Present { value: canonical } => if rc_ptr_eq(existing, canonical) { 1 } else { 0 }
+          Absent => 0
+        }
+      Absent => 0
+    }
+  } else { 0 }
+  let str_value_changed = if str_map_write == 1 {
+    match prior_str {
+      Present { value: existing } =>
+        match current_str {
+          Present { value: canonical } => if rc_ptr_eq(existing, canonical) { 0 } else { 1 }
+          Absent => 0
+        }
+      Absent => 0
+    }
+  } else { 0 }
+  ObservedStrBindingsRewireAccum {
+    bindings: bindings,
+    inherited_keys_considered: state.inherited_keys_considered + 1,
+    ancestry_map_writes: state.ancestry_map_writes + ancestry_map_write,
+    ancestry_absent: state.ancestry_absent + ancestry_absent,
+    ancestry_same_identity: state.ancestry_same_identity + ancestry_same_identity,
+    ancestry_value_changed: state.ancestry_value_changed + ancestry_value_changed,
+    str_map_writes: state.str_map_writes + str_map_write,
+    str_absent: state.str_absent + str_absent,
+    str_same_identity: state.str_same_identity + str_same_identity,
+    str_value_changed: state.str_value_changed + str_value_changed,
+    unchanged_keys: state.unchanged_keys + (if ancestry_map_write == 0 { 1 } else { 0 }),
   }
 }
 
@@ -9538,24 +9604,20 @@ fn prepare_import_string_rewire_module(
   }
 }
 
-fn prepare_import_string_rewire_modules(
-  modules: List<TypedModule>,
-  export_name_index: Map<String, Set<String>>,
-  source_indices: Map<String, NewlineIndex>
-) -> List<ImportStringRewireModulePlan> {
-  map(modules, m =>
-    prepare_import_string_rewire_module(m: m, export_name_index: export_name_index, source_indices: source_indices)
-  )
-}
-
 fn empty_import_string_rewire_observation() -> ImportStringRewireObservation {
   ImportStringRewireObservation {
     module_count: 0,
     direct_import_sets: 0,
     inherited_keys: 0,
-    ambiguity_checks: 0,
+    inherited_keys_considered: 0,
     ancestry_map_writes: 0,
+    ancestry_absent: 0,
+    ancestry_same_identity: 0,
+    ancestry_value_changed: 0,
     str_map_writes: 0,
+    str_absent: 0,
+    str_same_identity: 0,
+    str_value_changed: 0,
     unchanged_keys: 0
   }
 }
@@ -9568,11 +9630,66 @@ fn add_import_string_rewire_observation(
     module_count: left.module_count + right.module_count,
     direct_import_sets: left.direct_import_sets + right.direct_import_sets,
     inherited_keys: left.inherited_keys + right.inherited_keys,
-    ambiguity_checks: left.ambiguity_checks + right.ambiguity_checks,
+    inherited_keys_considered: left.inherited_keys_considered + right.inherited_keys_considered,
     ancestry_map_writes: left.ancestry_map_writes + right.ancestry_map_writes,
+    ancestry_absent: left.ancestry_absent + right.ancestry_absent,
+    ancestry_same_identity: left.ancestry_same_identity + right.ancestry_same_identity,
+    ancestry_value_changed: left.ancestry_value_changed + right.ancestry_value_changed,
     str_map_writes: left.str_map_writes + right.str_map_writes,
+    str_absent: left.str_absent + right.str_absent,
+    str_same_identity: left.str_same_identity + right.str_same_identity,
+    str_value_changed: left.str_value_changed + right.str_value_changed,
     unchanged_keys: left.unchanged_keys + right.unchanged_keys
   }
+}
+
+fn import_string_rewired_module(m: TypedModule, rewired: StrBindingsRewireAccum) -> TypedModule {
+  TypedModule {
+    module: m.module,
+    items: m.items,
+    type_env: TypeEnv { module_path: m.type_env.module_path,
+      bindings: m.type_env.bindings,
+      str_bindings: rewired.str_bindings,
+      ancestry_str_bindings: rewired.ancestry_str_bindings,
+      parents: m.type_env.parents,
+      recursive_types: m.type_env.recursive_types,
+      recursive_type_set: m.type_env.recursive_type_set,
+      inductive_fields: m.type_env.inductive_fields,
+      source_indices: m.type_env.source_indices,
+      intern_table: m.type_env.intern_table,
+      source_visible_names: m.type_env.source_visible_names,
+      symbol_index: m.type_env.symbol_index
+    },
+    type_env_cache: m.type_env_cache,
+    interface: m.interface,
+    func_env: m.func_env,
+    item_registry: m.item_registry,
+    occurrence_transport: m.occurrence_transport,
+  }
+}
+
+fn apply_import_string_rewire_plan_unobserved(
+  plan: ImportStringRewireModulePlan,
+  type_name_index: Map<String, TypeNameExportFacts>
+) -> TypedModule {
+  let m = plan.module
+  let rewired = fold(
+    plan.inherited_keys,
+    init: StrBindingsRewireAccum {
+      str_bindings: m.type_env.str_bindings,
+      ancestry_str_bindings: m.type_env.ancestry_str_bindings,
+    },
+    f: (acc, name) =>
+      rewire_inherited_str_binding(
+        type_name_index: type_name_index,
+        import_export_names: plan.import_export_names,
+        local_names: plan.local_names,
+        str_bindings: acc.str_bindings,
+        ancestry_str_bindings: acc.ancestry_str_bindings,
+        name: name
+      )
+  )
+  import_string_rewired_module(m: m, rewired: rewired)
 }
 
 fn apply_import_string_rewire_plan(
@@ -9582,16 +9699,24 @@ fn apply_import_string_rewire_plan(
   let m = plan.module
   let rewired = fold(
     plan.inherited_keys,
-    init: StrBindingsRewireAccum {
-      str_bindings: m.type_env.str_bindings,
-      ancestry_str_bindings: m.type_env.ancestry_str_bindings,
-      ambiguity_checks: 0,
+    init: ObservedStrBindingsRewireAccum {
+      bindings: StrBindingsRewireAccum {
+        str_bindings: m.type_env.str_bindings,
+        ancestry_str_bindings: m.type_env.ancestry_str_bindings,
+      },
+      inherited_keys_considered: 0,
       ancestry_map_writes: 0,
+      ancestry_absent: 0,
+      ancestry_same_identity: 0,
+      ancestry_value_changed: 0,
       str_map_writes: 0,
+      str_absent: 0,
+      str_same_identity: 0,
+      str_value_changed: 0,
       unchanged_keys: 0
     },
     f: (acc, name) =>
-      rewire_inherited_str_binding(
+      observe_import_string_rewire_decision(
         type_name_index: type_name_index,
         import_export_names: plan.import_export_names,
         local_names: plan.local_names,
@@ -9600,60 +9725,32 @@ fn apply_import_string_rewire_plan(
       )
   )
   ImportStringRewireModuleResult {
-    module: TypedModule {
-      module: m.module,
-      items: m.items,
-      type_env: TypeEnv { module_path: m.type_env.module_path,
-        bindings: m.type_env.bindings,
-        str_bindings: rewired.str_bindings,
-        ancestry_str_bindings: rewired.ancestry_str_bindings,
-        parents: m.type_env.parents,
-        recursive_types: m.type_env.recursive_types,
-        recursive_type_set: m.type_env.recursive_type_set,
-        inductive_fields: m.type_env.inductive_fields,
-        source_indices: m.type_env.source_indices,
-        intern_table: m.type_env.intern_table,
-        source_visible_names: m.type_env.source_visible_names,
-        symbol_index: m.type_env.symbol_index
-      },
-      type_env_cache: m.type_env_cache,
-      interface: m.interface,
-      func_env: m.func_env,
-      item_registry: m.item_registry,
-      occurrence_transport: m.occurrence_transport,
-    },
+    module: import_string_rewired_module(m: m, rewired: rewired.bindings),
     observation: ImportStringRewireObservation {
       module_count: 1,
       direct_import_sets: count(plan.import_export_names),
       inherited_keys: count(plan.inherited_keys),
-      ambiguity_checks: rewired.ambiguity_checks,
+      inherited_keys_considered: rewired.inherited_keys_considered,
       ancestry_map_writes: rewired.ancestry_map_writes,
+      ancestry_absent: rewired.ancestry_absent,
+      ancestry_same_identity: rewired.ancestry_same_identity,
+      ancestry_value_changed: rewired.ancestry_value_changed,
       str_map_writes: rewired.str_map_writes,
+      str_absent: rewired.str_absent,
+      str_same_identity: rewired.str_same_identity,
+      str_value_changed: rewired.str_value_changed,
       unchanged_keys: rewired.unchanged_keys
     }
-  }
-}
-
-fn apply_import_string_rewire_plans(
-  plans: List<ImportStringRewireModulePlan>,
-  type_name_index: Map<String, TypeNameExportFacts>
-) -> ImportStringRewireResult {
-  let results = map(plans, plan => apply_import_string_rewire_plan(plan: plan, type_name_index: type_name_index))
-  ImportStringRewireResult {
-    modules: map(results, result => result.module),
-    observation: fold(
-      results,
-      init: empty_import_string_rewire_observation(),
-      f: (acc, result) => add_import_string_rewire_observation(left: acc, right: result.observation)
-    )
   }
 }
 
 fn rewire_type_env_import_str_binding_identity(modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> List<TypedModule> {
   let type_name_index = build_type_name_export_index(modules: modules)
   let export_name_index = build_module_exported_type_name_index(modules: modules, source_indices: source_indices)
-  let plans = prepare_import_string_rewire_modules(modules: modules, export_name_index: export_name_index, source_indices: source_indices)
-  apply_import_string_rewire_plans(plans: plans, type_name_index: type_name_index).modules
+  map(modules, m =>
+    let plan = prepare_import_string_rewire_module(m: m, export_name_index: export_name_index, source_indices: source_indices)
+    apply_import_string_rewire_plan_unobserved(plan: plan, type_name_index: type_name_index)
+  )
 }
 
 fn compiler_kernel_type_env(source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> TypeEnv {

@@ -19895,10 +19895,6 @@ pub fn realize_module(
 pub struct StrBindingsRewireAccum {
     pub str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
     pub ancestry_str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
-    pub ambiguity_checks: i64,
-    pub ancestry_map_writes: i64,
-    pub str_map_writes: i64,
-    pub unchanged_keys: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -19914,9 +19910,15 @@ pub struct ImportStringRewireObservation {
     pub module_count: i64,
     pub direct_import_sets: i64,
     pub inherited_keys: i64,
-    pub ambiguity_checks: i64,
+    pub inherited_keys_considered: i64,
     pub ancestry_map_writes: i64,
+    pub ancestry_absent: i64,
+    pub ancestry_same_identity: i64,
+    pub ancestry_value_changed: i64,
     pub str_map_writes: i64,
+    pub str_absent: i64,
+    pub str_same_identity: i64,
+    pub str_value_changed: i64,
     pub unchanged_keys: i64,
 }
 
@@ -19926,16 +19928,10 @@ pub struct ImportStringRewireModuleResult {
     pub observation: ImportStringRewireObservation,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ImportStringRewireResult {
-    pub modules: Rc<Vec<Rc<TypedModule>>>,
-    pub observation: ImportStringRewireObservation,
-}
-
 pub fn import_string_rewire_measurement_scaffold_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Measurement scaffold (2026-08-10, floor-prep-tax-program per-entry assembly lane): rewire_type_env_import_str_binding_identity was the largest named assembly row, but its one host timer could not distinguish index construction, module preparation, or persistent-map rewrites. These phase values and structural work counts therefore live in the .dag authority first; the bootstrap host only times calls to these declared boundaries. The result projection adds O(module count) observation folds to a measurement build and is not itself the optimization. Dissolve-on: once a receipt chooses and lands a substrate optimization, retain only the cheapest regression count needed to witness its multiplicity and remove the remaining timing scaffold.".to_string()
+            "Default-off measurement scaffold (2026-08-10, floor-prep-tax-program per-entry assembly lane): production rewire_type_env_import_str_binding_identity keeps the parent implementation's per-module prepare -> apply order and does not carry counters. GUNBC_REWIRE_IMPORT_STR_PROFILE=1 selects a bootstrap timing projection over the .dag-declared type-name index, export-name index, single-module preparation, and observed single-module application boundaries. The host must process one module at a time and release each plan/result before the next; retaining a closure-wide plan batch changes the live set and invalidates the phase attribution. The observed path calls the production rewire_inherited_str_binding authority exactly once, then classifies pointer-visible before/after map effects without deciding the output; an interleaved same-head baseline/profile receipt owns instrumentation tax and exact outcome equivalence. Dissolve-on: once a trustworthy receipt chooses and lands a substrate optimization, retain only the cheapest regression count needed to witness its multiplicity and remove the remaining timing scaffold.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -20106,7 +20102,8 @@ pub fn rewire_inherited_str_binding(
     type_name_index: Rc<HashMap<String, Rc<TypeNameExportFacts>>>,
     import_export_names: Rc<Vec<Rc<BTreeSet<String>>>>,
     local_names: Rc<BTreeSet<String>>,
-    state: Rc<StrBindingsRewireAccum>,
+    str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
+    ancestry_str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
     name: String,
 ) -> Rc<StrBindingsRewireAccum> {
     {
@@ -20119,64 +20116,203 @@ pub fn rewire_inherited_str_binding(
             || (exporter_count.clone() > 1))
         {
             Rc::new(StrBindingsRewireAccum {
-                str_bindings: state.str_bindings.clone(),
-                ancestry_str_bindings: state.ancestry_str_bindings.clone(),
-                ambiguity_checks: (state.ambiguity_checks.clone() + 1),
-                ancestry_map_writes: state.ancestry_map_writes.clone(),
-                str_map_writes: state.str_map_writes.clone(),
-                unchanged_keys: (state.unchanged_keys.clone() + 1),
+                str_bindings: str_bindings.clone(),
+                ancestry_str_bindings: ancestry_str_bindings.clone(),
             })
         } else {
             match v1_rt::map_get(&type_name_index, name.clone()) {
                 Some(facts) => match facts.canonical_binding.clone() {
                     Some(canonical) => {
                         let ancestry_str_bindings = v1_rt::rc_map_insert(
-                            state.ancestry_str_bindings.clone(),
+                            ancestry_str_bindings.clone(),
                             name.clone(),
                             canonical.clone(),
                         );
-                        match v1_rt::map_get(&state.str_bindings.clone(), name.clone()) {
-                            Some(_) => Rc::new(StrBindingsRewireAccum {
-                                str_bindings: v1_rt::rc_map_insert(
-                                    state.str_bindings.clone(),
-                                    name.clone(),
-                                    canonical.clone(),
-                                ),
-                                ancestry_str_bindings: ancestry_str_bindings.clone(),
-                                ambiguity_checks: (state.ambiguity_checks.clone() + 1),
-                                ancestry_map_writes: (state.ancestry_map_writes.clone() + 1),
-                                str_map_writes: (state.str_map_writes.clone() + 1),
-                                unchanged_keys: state.unchanged_keys.clone(),
-                            }),
-                            None => Rc::new(StrBindingsRewireAccum {
-                                str_bindings: state.str_bindings.clone(),
-                                ancestry_str_bindings: ancestry_str_bindings.clone(),
-                                ambiguity_checks: (state.ambiguity_checks.clone() + 1),
-                                ancestry_map_writes: (state.ancestry_map_writes.clone() + 1),
-                                str_map_writes: state.str_map_writes.clone(),
-                                unchanged_keys: state.unchanged_keys.clone(),
-                            }),
-                        }
+                        let str_bindings = match v1_rt::map_get(&str_bindings, name.clone()) {
+                            Some(_) => v1_rt::rc_map_insert(
+                                str_bindings.clone(),
+                                name.clone(),
+                                canonical.clone(),
+                            ),
+                            None => str_bindings.clone(),
+                        };
+                        Rc::new(StrBindingsRewireAccum {
+                            str_bindings: str_bindings.clone(),
+                            ancestry_str_bindings: ancestry_str_bindings.clone(),
+                        })
                     }
                     None => Rc::new(StrBindingsRewireAccum {
-                        str_bindings: state.str_bindings.clone(),
-                        ancestry_str_bindings: state.ancestry_str_bindings.clone(),
-                        ambiguity_checks: (state.ambiguity_checks.clone() + 1),
-                        ancestry_map_writes: state.ancestry_map_writes.clone(),
-                        str_map_writes: state.str_map_writes.clone(),
-                        unchanged_keys: (state.unchanged_keys.clone() + 1),
+                        str_bindings: str_bindings.clone(),
+                        ancestry_str_bindings: ancestry_str_bindings.clone(),
                     }),
                 },
                 None => Rc::new(StrBindingsRewireAccum {
-                    str_bindings: state.str_bindings.clone(),
-                    ancestry_str_bindings: state.ancestry_str_bindings.clone(),
-                    ambiguity_checks: (state.ambiguity_checks.clone() + 1),
-                    ancestry_map_writes: state.ancestry_map_writes.clone(),
-                    str_map_writes: state.str_map_writes.clone(),
-                    unchanged_keys: (state.unchanged_keys.clone() + 1),
+                    str_bindings: str_bindings.clone(),
+                    ancestry_str_bindings: ancestry_str_bindings.clone(),
                 }),
             }
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ObservedStrBindingsRewireAccum {
+    pub bindings: Rc<StrBindingsRewireAccum>,
+    pub inherited_keys_considered: i64,
+    pub ancestry_map_writes: i64,
+    pub ancestry_absent: i64,
+    pub ancestry_same_identity: i64,
+    pub ancestry_value_changed: i64,
+    pub str_map_writes: i64,
+    pub str_absent: i64,
+    pub str_same_identity: i64,
+    pub str_value_changed: i64,
+    pub unchanged_keys: i64,
+}
+
+pub fn observe_import_string_rewire_decision(
+    type_name_index: Rc<HashMap<String, Rc<TypeNameExportFacts>>>,
+    import_export_names: Rc<Vec<Rc<BTreeSet<String>>>>,
+    local_names: Rc<BTreeSet<String>>,
+    state: Rc<ObservedStrBindingsRewireAccum>,
+    name: String,
+) -> Rc<ObservedStrBindingsRewireAccum> {
+    {
+        let bindings = rewire_inherited_str_binding(
+            type_name_index.clone(),
+            import_export_names.clone(),
+            local_names.clone(),
+            state.bindings.clone().str_bindings.clone(),
+            state.bindings.clone().ancestry_str_bindings.clone(),
+            name.clone(),
+        );
+        let ancestry_map_write = if v1_rt::rc_ptr_eq(
+            state.bindings.clone().ancestry_str_bindings.clone(),
+            bindings.ancestry_str_bindings.clone(),
+        ) {
+            0
+        } else {
+            1
+        };
+        let str_map_write = if v1_rt::rc_ptr_eq(
+            state.bindings.clone().str_bindings.clone(),
+            bindings.str_bindings.clone(),
+        ) {
+            0
+        } else {
+            1
+        };
+        let prior = v1_rt::map_get(
+            &state.bindings.clone().ancestry_str_bindings.clone(),
+            name.clone(),
+        );
+        let current = v1_rt::map_get(&bindings.ancestry_str_bindings.clone(), name.clone());
+        let prior_str = v1_rt::map_get(&state.bindings.clone().str_bindings.clone(), name.clone());
+        let current_str = v1_rt::map_get(&bindings.str_bindings.clone(), name.clone());
+        let ancestry_absent = if (ancestry_map_write.clone() == 1) {
+            match prior.clone() {
+                None => 1,
+                Some(_) => 0,
+            }
+        } else {
+            0
+        };
+        let ancestry_same_identity = if (ancestry_map_write.clone() == 1) {
+            match prior.clone() {
+                Some(existing) => match current.clone() {
+                    Some(canonical) => {
+                        if v1_rt::rc_ptr_eq(existing.clone(), canonical.clone()) {
+                            1
+                        } else {
+                            0
+                        }
+                    }
+                    None => 0,
+                },
+                None => 0,
+            }
+        } else {
+            0
+        };
+        let ancestry_value_changed = if (ancestry_map_write.clone() == 1) {
+            match prior.clone() {
+                Some(existing) => match current.clone() {
+                    Some(canonical) => {
+                        if v1_rt::rc_ptr_eq(existing.clone(), canonical.clone()) {
+                            0
+                        } else {
+                            1
+                        }
+                    }
+                    None => 0,
+                },
+                None => 0,
+            }
+        } else {
+            0
+        };
+        let str_absent = if (str_map_write.clone() == 1) {
+            match prior_str.clone() {
+                None => 1,
+                Some(_) => 0,
+            }
+        } else {
+            0
+        };
+        let str_same_identity = if (str_map_write.clone() == 1) {
+            match prior_str.clone() {
+                Some(existing) => match current_str.clone() {
+                    Some(canonical) => {
+                        if v1_rt::rc_ptr_eq(existing.clone(), canonical.clone()) {
+                            1
+                        } else {
+                            0
+                        }
+                    }
+                    None => 0,
+                },
+                None => 0,
+            }
+        } else {
+            0
+        };
+        let str_value_changed = if (str_map_write.clone() == 1) {
+            match prior_str.clone() {
+                Some(existing) => match current_str.clone() {
+                    Some(canonical) => {
+                        if v1_rt::rc_ptr_eq(existing.clone(), canonical.clone()) {
+                            0
+                        } else {
+                            1
+                        }
+                    }
+                    None => 0,
+                },
+                None => 0,
+            }
+        } else {
+            0
+        };
+        Rc::new(ObservedStrBindingsRewireAccum {
+            bindings: bindings.clone(),
+            inherited_keys_considered: (state.inherited_keys_considered.clone() + 1),
+            ancestry_map_writes: (state.ancestry_map_writes.clone() + ancestry_map_write.clone()),
+            ancestry_absent: (state.ancestry_absent.clone() + ancestry_absent.clone()),
+            ancestry_same_identity: (state.ancestry_same_identity.clone()
+                + ancestry_same_identity.clone()),
+            ancestry_value_changed: (state.ancestry_value_changed.clone()
+                + ancestry_value_changed.clone()),
+            str_map_writes: (state.str_map_writes.clone() + str_map_write.clone()),
+            str_absent: (state.str_absent.clone() + str_absent.clone()),
+            str_same_identity: (state.str_same_identity.clone() + str_same_identity.clone()),
+            str_value_changed: (state.str_value_changed.clone() + str_value_changed.clone()),
+            unchanged_keys: (state.unchanged_keys.clone()
+                + if (ancestry_map_write.clone() == 0) {
+                    1
+                } else {
+                    0
+                }),
+        })
     }
 }
 
@@ -20211,32 +20347,20 @@ pub fn prepare_import_string_rewire_module(
     }
 }
 
-pub fn prepare_import_string_rewire_modules(
-    modules: Rc<Vec<Rc<TypedModule>>>,
-    export_name_index: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<Rc<ImportStringRewireModulePlan>>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for m in modules.clone().iter().cloned() {
-            __result.push(prepare_import_string_rewire_module(
-                m.clone(),
-                export_name_index.clone(),
-                source_indices.clone(),
-            ));
-        }
-        __result
-    })
-}
-
 pub fn empty_import_string_rewire_observation() -> ImportStringRewireObservation {
     ImportStringRewireObservation {
         module_count: 0,
         direct_import_sets: 0,
         inherited_keys: 0,
-        ambiguity_checks: 0,
+        inherited_keys_considered: 0,
         ancestry_map_writes: 0,
+        ancestry_absent: 0,
+        ancestry_same_identity: 0,
+        ancestry_value_changed: 0,
         str_map_writes: 0,
+        str_absent: 0,
+        str_same_identity: 0,
+        str_value_changed: 0,
         unchanged_keys: 0,
     }
 }
@@ -20249,10 +20373,74 @@ pub fn add_import_string_rewire_observation(
         module_count: (left.module_count.clone() + right.module_count.clone()),
         direct_import_sets: (left.direct_import_sets.clone() + right.direct_import_sets.clone()),
         inherited_keys: (left.inherited_keys.clone() + right.inherited_keys.clone()),
-        ambiguity_checks: (left.ambiguity_checks.clone() + right.ambiguity_checks.clone()),
+        inherited_keys_considered: (left.inherited_keys_considered.clone()
+            + right.inherited_keys_considered.clone()),
         ancestry_map_writes: (left.ancestry_map_writes.clone() + right.ancestry_map_writes.clone()),
+        ancestry_absent: (left.ancestry_absent.clone() + right.ancestry_absent.clone()),
+        ancestry_same_identity: (left.ancestry_same_identity.clone()
+            + right.ancestry_same_identity.clone()),
+        ancestry_value_changed: (left.ancestry_value_changed.clone()
+            + right.ancestry_value_changed.clone()),
         str_map_writes: (left.str_map_writes.clone() + right.str_map_writes.clone()),
+        str_absent: (left.str_absent.clone() + right.str_absent.clone()),
+        str_same_identity: (left.str_same_identity.clone() + right.str_same_identity.clone()),
+        str_value_changed: (left.str_value_changed.clone() + right.str_value_changed.clone()),
         unchanged_keys: (left.unchanged_keys.clone() + right.unchanged_keys.clone()),
+    }
+}
+
+pub fn import_string_rewired_module(
+    m: Rc<TypedModule>,
+    rewired: Rc<StrBindingsRewireAccum>,
+) -> Rc<TypedModule> {
+    Rc::new(TypedModule {
+        module: m.module.clone(),
+        items: m.items.clone(),
+        type_env: Rc::new(TypeEnv {
+            module_path: m.type_env.clone().module_path.clone(),
+            bindings: m.type_env.clone().bindings.clone(),
+            str_bindings: rewired.str_bindings.clone(),
+            ancestry_str_bindings: rewired.ancestry_str_bindings.clone(),
+            parents: m.type_env.clone().parents.clone(),
+            recursive_types: m.type_env.clone().recursive_types.clone(),
+            recursive_type_set: m.type_env.clone().recursive_type_set.clone(),
+            inductive_fields: m.type_env.clone().inductive_fields.clone(),
+            source_indices: m.type_env.clone().source_indices.clone(),
+            intern_table: m.type_env.clone().intern_table.clone(),
+            source_visible_names: m.type_env.clone().source_visible_names.clone(),
+            symbol_index: m.type_env.clone().symbol_index.clone(),
+        }),
+        type_env_cache: m.type_env_cache.clone(),
+        interface: m.interface.clone(),
+        func_env: m.func_env.clone(),
+        item_registry: m.item_registry.clone(),
+        occurrence_transport: m.occurrence_transport.clone(),
+    })
+}
+
+pub fn apply_import_string_rewire_plan_unobserved(
+    plan: Rc<ImportStringRewireModulePlan>,
+    type_name_index: Rc<HashMap<String, Rc<TypeNameExportFacts>>>,
+) -> Rc<TypedModule> {
+    {
+        let m = plan.module.clone();
+        let rewired = plan.inherited_keys.clone().iter().cloned().fold(
+            Rc::new(StrBindingsRewireAccum {
+                str_bindings: m.type_env.clone().str_bindings.clone(),
+                ancestry_str_bindings: m.type_env.clone().ancestry_str_bindings.clone(),
+            }),
+            |acc: Rc<StrBindingsRewireAccum>, name: String| {
+                rewire_inherited_str_binding(
+                    type_name_index.clone(),
+                    plan.import_export_names.clone(),
+                    plan.local_names.clone(),
+                    acc.str_bindings.clone(),
+                    acc.ancestry_str_bindings.clone(),
+                    name.clone(),
+                )
+            },
+        );
+        import_string_rewired_module(m.clone(), rewired.clone())
     }
 }
 
@@ -20263,16 +20451,24 @@ pub fn apply_import_string_rewire_plan(
     {
         let m = plan.module.clone();
         let rewired = plan.inherited_keys.clone().iter().cloned().fold(
-            Rc::new(StrBindingsRewireAccum {
-                str_bindings: m.type_env.clone().str_bindings.clone(),
-                ancestry_str_bindings: m.type_env.clone().ancestry_str_bindings.clone(),
-                ambiguity_checks: 0,
+            Rc::new(ObservedStrBindingsRewireAccum {
+                bindings: Rc::new(StrBindingsRewireAccum {
+                    str_bindings: m.type_env.clone().str_bindings.clone(),
+                    ancestry_str_bindings: m.type_env.clone().ancestry_str_bindings.clone(),
+                }),
+                inherited_keys_considered: 0,
                 ancestry_map_writes: 0,
+                ancestry_absent: 0,
+                ancestry_same_identity: 0,
+                ancestry_value_changed: 0,
                 str_map_writes: 0,
+                str_absent: 0,
+                str_same_identity: 0,
+                str_value_changed: 0,
                 unchanged_keys: 0,
             }),
-            |acc: Rc<StrBindingsRewireAccum>, name: String| {
-                rewire_inherited_str_binding(
+            |acc: Rc<ObservedStrBindingsRewireAccum>, name: String| {
+                observe_import_string_rewire_decision(
                     type_name_index.clone(),
                     plan.import_export_names.clone(),
                     plan.local_names.clone(),
@@ -20282,71 +20478,22 @@ pub fn apply_import_string_rewire_plan(
             },
         );
         Rc::new(ImportStringRewireModuleResult {
-            module: Rc::new(TypedModule {
-                module: m.module.clone(),
-                items: m.items.clone(),
-                type_env: Rc::new(TypeEnv {
-                    module_path: m.type_env.clone().module_path.clone(),
-                    bindings: m.type_env.clone().bindings.clone(),
-                    str_bindings: rewired.str_bindings.clone(),
-                    ancestry_str_bindings: rewired.ancestry_str_bindings.clone(),
-                    parents: m.type_env.clone().parents.clone(),
-                    recursive_types: m.type_env.clone().recursive_types.clone(),
-                    recursive_type_set: m.type_env.clone().recursive_type_set.clone(),
-                    inductive_fields: m.type_env.clone().inductive_fields.clone(),
-                    source_indices: m.type_env.clone().source_indices.clone(),
-                    intern_table: m.type_env.clone().intern_table.clone(),
-                    source_visible_names: m.type_env.clone().source_visible_names.clone(),
-                    symbol_index: m.type_env.clone().symbol_index.clone(),
-                }),
-                type_env_cache: m.type_env_cache.clone(),
-                interface: m.interface.clone(),
-                func_env: m.func_env.clone(),
-                item_registry: m.item_registry.clone(),
-                occurrence_transport: m.occurrence_transport.clone(),
-            }),
+            module: import_string_rewired_module(m.clone(), rewired.bindings.clone()),
             observation: ImportStringRewireObservation {
                 module_count: 1,
                 direct_import_sets: (plan.import_export_names.clone().len() as i64),
                 inherited_keys: (plan.inherited_keys.clone().len() as i64),
-                ambiguity_checks: rewired.ambiguity_checks.clone(),
+                inherited_keys_considered: rewired.inherited_keys_considered.clone(),
                 ancestry_map_writes: rewired.ancestry_map_writes.clone(),
+                ancestry_absent: rewired.ancestry_absent.clone(),
+                ancestry_same_identity: rewired.ancestry_same_identity.clone(),
+                ancestry_value_changed: rewired.ancestry_value_changed.clone(),
                 str_map_writes: rewired.str_map_writes.clone(),
+                str_absent: rewired.str_absent.clone(),
+                str_same_identity: rewired.str_same_identity.clone(),
+                str_value_changed: rewired.str_value_changed.clone(),
                 unchanged_keys: rewired.unchanged_keys.clone(),
             },
-        })
-    }
-}
-
-pub fn apply_import_string_rewire_plans(
-    plans: Rc<Vec<Rc<ImportStringRewireModulePlan>>>,
-    type_name_index: Rc<HashMap<String, Rc<TypeNameExportFacts>>>,
-) -> Rc<ImportStringRewireResult> {
-    {
-        let results = Rc::new({
-            let mut __result = Vec::new();
-            for plan in plans.clone().iter().cloned() {
-                __result.push(apply_import_string_rewire_plan(
-                    plan.clone(),
-                    type_name_index.clone(),
-                ));
-            }
-            __result
-        });
-        Rc::new(ImportStringRewireResult {
-            modules: Rc::new({
-                let mut __result = Vec::new();
-                for result in results.clone().iter().cloned() {
-                    __result.push(result.module.clone());
-                }
-                __result
-            }),
-            observation: results.clone().iter().cloned().fold(
-                empty_import_string_rewire_observation(),
-                |acc: ImportStringRewireObservation, result: Rc<ImportStringRewireModuleResult>| {
-                    add_import_string_rewire_observation(acc, result.observation.clone())
-                },
-            ),
         })
     }
 }
@@ -20359,14 +20506,23 @@ pub fn rewire_type_env_import_str_binding_identity(
         let type_name_index = build_type_name_export_index(modules.clone());
         let export_name_index =
             build_module_exported_type_name_index(modules.clone(), source_indices.clone());
-        let plans = prepare_import_string_rewire_modules(
-            modules.clone(),
-            export_name_index.clone(),
-            source_indices.clone(),
-        );
-        apply_import_string_rewire_plans(plans.clone(), type_name_index.clone())
-            .modules
-            .clone()
+        Rc::new({
+            let mut __result = Vec::new();
+            for m in modules.clone().iter().cloned() {
+                __result.push({
+                    let plan = prepare_import_string_rewire_module(
+                        m.clone(),
+                        export_name_index.clone(),
+                        source_indices.clone(),
+                    );
+                    apply_import_string_rewire_plan_unobserved(
+                        plan.clone(),
+                        type_name_index.clone(),
+                    )
+                });
+            }
+            __result
+        })
     }
 }
 

@@ -1,7 +1,7 @@
 module test.claim.ci_cost_arc_closeout_receipt_witness
 
-import std.types { Bool }
-import std.measure { millisecond_count, byte_size_count }
+import std.types { Bool, NonEmptyStr }
+import std.measure { millisecond_count, byte_size_count, second }
 import gunbc.ci_cost_arc_closeout_receipt {
   HandHarvestedDatedAudit,
   SelectionApplied,
@@ -14,6 +14,9 @@ import gunbc.ci_cost_arc_closeout_receipt {
   Landed,
   ReconciledCiJobWall,
   PerEntryAssembly,
+  CiJobWallIntervalReceipt,
+  JobBootstrap,
+  OrdinaryInitialization,
   affected_ci_cost_audit_subject,
   full_corpus_subject_harvest,
   build_wall,
@@ -29,6 +32,10 @@ import gunbc.ci_cost_arc_closeout_receipt {
   unattributed_ci_wall,
   ci_job_wall_population_receipts,
   ci_job_wall_population_total,
+  ci_job_wall_boundary,
+  ci_job_wall_interval_chain_holds,
+  ci_job_wall_population_names_unique,
+  ci_job_wall_population_intervals_cover_job,
   cold_admission_baseline_wall,
   selected_entry_groups,
   total_entry_groups,
@@ -49,7 +56,6 @@ import gunbc.ci_cost_arc_closeout_receipt {
   ci_job_wall_reconciles,
   pipeline_sum_reconciles,
   initial_partial_classified_equals_capture_resolve_eval,
-  ci_job_population_without_cleanup_is_incomplete,
 }
 
 test fn witness_subject_is_hand_harvested_affected() -> Bool {
@@ -72,6 +78,7 @@ test fn witness_full_corpus_not_harvested() -> Bool {
 
 test fn witness_ci_job_reconciles() -> Bool {
   ci_job_wall_reconciles()
+    && ci_job_wall_population_intervals_cover_job()
     && millisecond_count(m: unattributed_ci_wall()) == 0
     && millisecond_count(m: classified_ci_wall()) == 2509000
     && millisecond_count(m: ci_job_wall()) == 2509000
@@ -157,6 +164,30 @@ test fn witness_unattributed_is_zero_after_population_reconciliation() -> Bool {
   millisecond_count(m: unattributed_ci_wall()) == 0
 }
 
-test fn red_dropping_job_cleanup_makes_the_population_incomplete() -> Bool {
-  ci_job_population_without_cleanup_is_incomplete()
+test fn red_interval_gap_or_overlap_breaks_adjacency() -> Bool {
+  let b0 = ci_job_wall_boundary(elapsed_seconds: 0, source_event: "synthetic start" as NonEmptyStr)
+  let b1 = ci_job_wall_boundary(elapsed_seconds: 1, source_event: "synthetic one" as NonEmptyStr)
+  let b2 = ci_job_wall_boundary(elapsed_seconds: 2, source_event: "synthetic two" as NonEmptyStr)
+  let b3 = ci_job_wall_boundary(elapsed_seconds: 3, source_event: "synthetic end" as NonEmptyStr)
+  let adjacent = [
+    CiJobWallIntervalReceipt { population: JobBootstrap {}, start: b0, end: b1 },
+    CiJobWallIntervalReceipt { population: OrdinaryInitialization {}, start: b1, end: b2 }
+  ]
+  let gap = [
+    CiJobWallIntervalReceipt { population: JobBootstrap {}, start: b0, end: b1 },
+    CiJobWallIntervalReceipt { population: OrdinaryInitialization {}, start: b2, end: b3 }
+  ]
+  let overlap = [
+    CiJobWallIntervalReceipt { population: JobBootstrap {}, start: b0, end: b2 },
+    CiJobWallIntervalReceipt { population: OrdinaryInitialization {}, start: b1, end: b3 }
+  ]
+  let duplicate_population = [
+    CiJobWallIntervalReceipt { population: JobBootstrap {}, start: b0, end: b1 },
+    CiJobWallIntervalReceipt { population: JobBootstrap {}, start: b1, end: b2 }
+  ]
+  ci_job_wall_interval_chain_holds(rows: adjacent, job_start: second(count: 0), job_end: second(count: 2))
+    && ci_job_wall_population_names_unique(rows: adjacent)
+    && !ci_job_wall_interval_chain_holds(rows: gap, job_start: second(count: 0), job_end: second(count: 3))
+    && !ci_job_wall_interval_chain_holds(rows: overlap, job_start: second(count: 0), job_end: second(count: 3))
+    && !ci_job_wall_population_names_unique(rows: duplicate_population)
 }

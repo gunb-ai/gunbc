@@ -11686,10 +11686,11 @@ pub struct ResolveStageNanos {
     pub assembly_rewire_type_env: u128,
     /// `rewire_type_env_import_str_binding_identity` alone.
     pub assembly_rewire_import_str: u128,
-    // Inclusive within `assembly_rewire_import_str`. The phase boundaries and work
-    // carrier are declared in `src/v1/04_infer.dag`; this bootstrap row only observes
-    // them. Dissolve with the `.dag` measurement scaffold once its selected substrate
-    // optimization has a cheaper regression witness.
+    // Inclusive within `assembly_rewire_import_str`, and populated only when the
+    // default-off `GUNBC_REWIRE_IMPORT_STR_PROFILE=1` diagnostic is selected. The
+    // phase boundaries and work carrier are declared in `src/v1/04_infer.dag`; this
+    // bootstrap row only observes them. Dissolve with the `.dag` measurement scaffold
+    // once its selected substrate optimization has a cheaper regression witness.
     /// Build the closure-wide type-name/exporter index.
     pub assembly_rewire_type_name_index: u128,
     /// Build the per-module exported-name index.
@@ -11702,9 +11703,15 @@ pub struct ResolveStageNanos {
     pub assembly_rewire_modules: u128,
     pub assembly_rewire_direct_import_sets: u128,
     pub assembly_rewire_inherited_keys: u128,
-    pub assembly_rewire_ambiguity_checks: u128,
+    pub assembly_rewire_inherited_keys_considered: u128,
     pub assembly_rewire_ancestry_map_writes: u128,
+    pub assembly_rewire_ancestry_absent: u128,
+    pub assembly_rewire_ancestry_same_identity: u128,
+    pub assembly_rewire_ancestry_value_changed: u128,
     pub assembly_rewire_str_map_writes: u128,
+    pub assembly_rewire_str_absent: u128,
+    pub assembly_rewire_str_same_identity: u128,
+    pub assembly_rewire_str_value_changed: u128,
     pub assembly_rewire_unchanged_keys: u128,
     /// `rewire_func_env_parent_links` alone.
     pub assembly_rewire_func_env: u128,
@@ -11819,9 +11826,16 @@ impl ResolveStageNanos {
         self.assembly_rewire_modules += other.assembly_rewire_modules;
         self.assembly_rewire_direct_import_sets += other.assembly_rewire_direct_import_sets;
         self.assembly_rewire_inherited_keys += other.assembly_rewire_inherited_keys;
-        self.assembly_rewire_ambiguity_checks += other.assembly_rewire_ambiguity_checks;
+        self.assembly_rewire_inherited_keys_considered +=
+            other.assembly_rewire_inherited_keys_considered;
         self.assembly_rewire_ancestry_map_writes += other.assembly_rewire_ancestry_map_writes;
+        self.assembly_rewire_ancestry_absent += other.assembly_rewire_ancestry_absent;
+        self.assembly_rewire_ancestry_same_identity += other.assembly_rewire_ancestry_same_identity;
+        self.assembly_rewire_ancestry_value_changed += other.assembly_rewire_ancestry_value_changed;
         self.assembly_rewire_str_map_writes += other.assembly_rewire_str_map_writes;
+        self.assembly_rewire_str_absent += other.assembly_rewire_str_absent;
+        self.assembly_rewire_str_same_identity += other.assembly_rewire_str_same_identity;
+        self.assembly_rewire_str_value_changed += other.assembly_rewire_str_value_changed;
         self.assembly_rewire_unchanged_keys += other.assembly_rewire_unchanged_keys;
         self.assembly_rewire_func_env += other.assembly_rewire_func_env;
         self.assembly_emit_info += other.assembly_emit_info;
@@ -11943,9 +11957,15 @@ thread_local! {
             assembly_rewire_modules: 0,
             assembly_rewire_direct_import_sets: 0,
             assembly_rewire_inherited_keys: 0,
-            assembly_rewire_ambiguity_checks: 0,
+            assembly_rewire_inherited_keys_considered: 0,
             assembly_rewire_ancestry_map_writes: 0,
+            assembly_rewire_ancestry_absent: 0,
+            assembly_rewire_ancestry_same_identity: 0,
+            assembly_rewire_ancestry_value_changed: 0,
             assembly_rewire_str_map_writes: 0,
+            assembly_rewire_str_absent: 0,
+            assembly_rewire_str_same_identity: 0,
+            assembly_rewire_str_value_changed: 0,
             assembly_rewire_unchanged_keys: 0,
             assembly_rewire_func_env: 0,
             assembly_emit_info: 0,
@@ -12245,6 +12265,19 @@ pub fn exclusive_cost_partition() -> ExclusiveCostPartition {
         account.nested_spans,
         resolve_span_rows_by_entry(),
     )
+}
+
+/// Fail-closed residual for diagnostic sub-rows.
+///
+/// A child subtotal above its parent is an accounting contradiction, not a zero
+/// remainder. Keep this helper at the shared projection seam so text renderers cannot
+/// independently reintroduce saturating arithmetic.
+pub fn checked_cost_residual(parent: u128, child_subtotal: u128, label: &str) -> u128 {
+    parent.checked_sub(child_subtotal).unwrap_or_else(|| {
+        panic!(
+            "{label} accounting contradiction: child subtotal {child_subtotal} exceeds parent {parent}"
+        )
+    })
 }
 
 /// Same law over a caller-supplied parent/children pair drawn from ONE universe.
@@ -13507,6 +13540,265 @@ mod module_schedule_batches_tests {
     }
 }
 
+fn import_string_rewire_profile_enabled() -> bool {
+    std::env::var("GUNBC_REWIRE_IMPORT_STR_PROFILE").as_deref() == Ok("1")
+}
+
+fn import_string_rewire_verify_enabled() -> bool {
+    std::env::var("GUNBC_REWIRE_IMPORT_STR_VERIFY").as_deref() == Ok("1")
+}
+
+fn assert_import_string_rewire_equivalent(
+    expected: &Rc<im::Vector<Rc<TypedModule>>>,
+    observed: &Rc<im::Vector<Rc<TypedModule>>>,
+) {
+    assert_eq!(
+        expected.len(),
+        observed.len(),
+        "streaming import-string observation changed the module population"
+    );
+    macro_rules! assert_same_rc {
+        ($left:expr, $right:expr, $field:literal) => {
+            assert!(
+                Rc::ptr_eq($left, $right),
+                concat!(
+                    "streaming import-string observation changed ",
+                    $field,
+                    " identity"
+                )
+            )
+        };
+    }
+    for (expected_module, observed_module) in expected.iter().zip(observed.iter()) {
+        assert_same_rc!(&expected_module.module, &observed_module.module, "module");
+        assert_same_rc!(&expected_module.items, &observed_module.items, "items");
+        assert_same_rc!(
+            &expected_module.type_env_cache,
+            &observed_module.type_env_cache,
+            "type-env cache"
+        );
+        assert_same_rc!(
+            &expected_module.interface,
+            &observed_module.interface,
+            "module interface"
+        );
+        assert_same_rc!(
+            &expected_module.func_env,
+            &observed_module.func_env,
+            "function environment"
+        );
+        assert_same_rc!(
+            &expected_module.item_registry,
+            &observed_module.item_registry,
+            "item registry"
+        );
+        match (
+            &expected_module.occurrence_transport,
+            &observed_module.occurrence_transport,
+        ) {
+            (Some(expected_transport), Some(observed_transport)) => assert_same_rc!(
+                expected_transport,
+                observed_transport,
+                "occurrence transport"
+            ),
+            (None, None) => {}
+            _ => panic!("streaming import-string observation changed occurrence transport"),
+        }
+
+        let expected_env = &expected_module.type_env;
+        let observed_env = &observed_module.type_env;
+        assert_eq!(
+            expected_env.module_path, observed_env.module_path,
+            "streaming import-string observation changed module-path value"
+        );
+        assert_same_rc!(
+            &expected_env.bindings,
+            &observed_env.bindings,
+            "binding map"
+        );
+        assert_same_rc!(
+            &expected_env.parents,
+            &observed_env.parents,
+            "parent environments"
+        );
+        assert_same_rc!(
+            &expected_env.recursive_types,
+            &observed_env.recursive_types,
+            "recursive types"
+        );
+        assert_same_rc!(
+            &expected_env.recursive_type_set,
+            &observed_env.recursive_type_set,
+            "recursive type set"
+        );
+        assert_same_rc!(
+            &expected_env.inductive_fields,
+            &observed_env.inductive_fields,
+            "inductive fields"
+        );
+        assert_same_rc!(
+            &expected_env.source_indices,
+            &observed_env.source_indices,
+            "source indices"
+        );
+        assert_same_rc!(
+            &expected_env.intern_table,
+            &observed_env.intern_table,
+            "intern table"
+        );
+        assert_same_rc!(
+            &expected_env.source_visible_names,
+            &observed_env.source_visible_names,
+            "source-visible names"
+        );
+        assert_same_rc!(
+            &expected_env.symbol_index,
+            &observed_env.symbol_index,
+            "symbol index"
+        );
+        assert_eq!(
+            expected_env.str_bindings.len(),
+            observed_env.str_bindings.len(),
+            "streaming observation changed string-binding key population"
+        );
+        for (name, expected_binding) in expected_module.type_env.str_bindings.iter() {
+            let observed_binding = observed_module
+                .type_env
+                .str_bindings
+                .get(name)
+                .expect("equal string-binding maps must contain the same keys");
+            assert!(
+                Rc::ptr_eq(expected_binding, observed_binding),
+                "streaming observation changed string-binding identity for {name}"
+            );
+        }
+        assert_eq!(
+            expected_env.ancestry_str_bindings.len(),
+            observed_env.ancestry_str_bindings.len(),
+            "streaming observation changed ancestry-binding key population"
+        );
+        for (name, expected_binding) in expected_module.type_env.ancestry_str_bindings.iter() {
+            let observed_binding = observed_module
+                .type_env
+                .ancestry_str_bindings
+                .get(name)
+                .expect("equal ancestry-binding maps must contain the same keys");
+            assert!(
+                Rc::ptr_eq(expected_binding, observed_binding),
+                "streaming observation changed ancestry-binding identity for {name}"
+            );
+        }
+    }
+}
+
+/// Default-off host timing projection of the `.dag` rewire boundaries.
+///
+/// The loop is deliberately streaming: one module plan is prepared, applied, observed,
+/// and dropped before the next begins. A closure-wide plan/result batch would change the
+/// live set of the operation being measured. Production stays on
+/// `rewire_type_env_import_str_binding_identity` and carries no observation counters.
+fn profile_import_string_rewire_streaming(
+    modules: Rc<im::Vector<Rc<TypedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<im::Vector<Rc<TypedModule>>> {
+    let phase_started = std::time::Instant::now();
+    let type_name_index = v1_compiler_infer::build_type_name_export_index(modules.clone());
+    let type_name_index_nanos = phase_started.elapsed().as_nanos();
+
+    let phase_started = std::time::Instant::now();
+    let export_name_index = v1_compiler_infer::build_module_exported_type_name_index(
+        modules.clone(),
+        source_indices.clone(),
+    );
+    let export_name_index_nanos = phase_started.elapsed().as_nanos();
+
+    let mut module_preparation_nanos = 0u128;
+    let mut binding_application_nanos = 0u128;
+    let mut rewired_modules = im::Vector::new();
+    let mut observation = v1_compiler_infer::empty_import_string_rewire_observation();
+    for module in modules.iter().cloned() {
+        let phase_started = std::time::Instant::now();
+        let plan = v1_compiler_infer::prepare_import_string_rewire_module(
+            module,
+            export_name_index.clone(),
+            source_indices.clone(),
+        );
+        module_preparation_nanos += phase_started.elapsed().as_nanos();
+
+        let phase_started = std::time::Instant::now();
+        let result =
+            v1_compiler_infer::apply_import_string_rewire_plan(plan, type_name_index.clone());
+        binding_application_nanos += phase_started.elapsed().as_nanos();
+
+        rewired_modules.push_back(result.module.clone());
+        observation = v1_compiler_infer::add_import_string_rewire_observation(
+            observation,
+            result.observation.clone(),
+        );
+    }
+
+    let count = |name: &str, value: i64| {
+        u128::try_from(value).unwrap_or_else(|_| panic!("negative {name} observation: {value}"))
+    };
+    let modules_count = count("module_count", observation.module_count);
+    let direct_import_sets = count("direct_import_sets", observation.direct_import_sets);
+    let inherited_keys = count("inherited_keys", observation.inherited_keys);
+    let inherited_keys_considered = count(
+        "inherited_keys_considered",
+        observation.inherited_keys_considered,
+    );
+    let ancestry_map_writes = count("ancestry_map_writes", observation.ancestry_map_writes);
+    let ancestry_absent = count("ancestry_absent", observation.ancestry_absent);
+    let ancestry_same_identity =
+        count("ancestry_same_identity", observation.ancestry_same_identity);
+    let ancestry_value_changed =
+        count("ancestry_value_changed", observation.ancestry_value_changed);
+    let str_map_writes = count("str_map_writes", observation.str_map_writes);
+    let str_absent = count("str_absent", observation.str_absent);
+    let str_same_identity = count("str_same_identity", observation.str_same_identity);
+    let str_value_changed = count("str_value_changed", observation.str_value_changed);
+    let unchanged_keys = count("unchanged_keys", observation.unchanged_keys);
+    assert_eq!(
+        inherited_keys_considered, inherited_keys,
+        "import-string observation must consider every inherited key exactly once"
+    );
+    assert_eq!(
+        ancestry_map_writes + unchanged_keys,
+        inherited_keys_considered,
+        "import-string keys must partition into writes and unchanged keys"
+    );
+    assert_eq!(
+        ancestry_absent + ancestry_same_identity + ancestry_value_changed,
+        ancestry_map_writes,
+        "ancestry write classification must partition every attempted write"
+    );
+    assert_eq!(
+        str_absent + str_same_identity + str_value_changed,
+        str_map_writes,
+        "string write classification must partition every attempted write"
+    );
+    resolve_stage_slot_add(|s| {
+        s.assembly_rewire_type_name_index += type_name_index_nanos;
+        s.assembly_rewire_export_name_index += export_name_index_nanos;
+        s.assembly_rewire_module_preparation += module_preparation_nanos;
+        s.assembly_rewire_binding_application += binding_application_nanos;
+        s.assembly_rewire_modules += modules_count;
+        s.assembly_rewire_direct_import_sets += direct_import_sets;
+        s.assembly_rewire_inherited_keys += inherited_keys;
+        s.assembly_rewire_inherited_keys_considered += inherited_keys_considered;
+        s.assembly_rewire_ancestry_map_writes += ancestry_map_writes;
+        s.assembly_rewire_ancestry_absent += ancestry_absent;
+        s.assembly_rewire_ancestry_same_identity += ancestry_same_identity;
+        s.assembly_rewire_ancestry_value_changed += ancestry_value_changed;
+        s.assembly_rewire_str_map_writes += str_map_writes;
+        s.assembly_rewire_str_absent += str_absent;
+        s.assembly_rewire_str_same_identity += str_same_identity;
+        s.assembly_rewire_str_value_changed += str_value_changed;
+        s.assembly_rewire_unchanged_keys += unchanged_keys;
+    });
+    Rc::new(rewired_modules)
+}
+
 fn finish_resolved_graph_assembly(
     modules: Rc<im::Vector<Rc<TypedModule>>>,
     diag_chunks: Vec<Rc<im::Vector<Rc<ErrorNode>>>>,
@@ -13543,50 +13835,30 @@ fn finish_resolved_graph_assembly(
         v1_compiler_infer::rewire_type_env_parent_links(modules.clone(), source_indices.clone());
     resolve_stage_slot_add(|s| s.assembly_rewire_type_env += rewire_started.elapsed().as_nanos());
     let rewire2_started = std::time::Instant::now();
-    // These are the four boundaries declared by the `.dag` measurement scaffold.
-    // Keeping orchestration here mechanically thin prevents the bootstrap seed from
-    // becoming the authority for the decomposition it is only timing.
-    let phase_started = std::time::Instant::now();
-    let type_name_index = v1_compiler_infer::build_type_name_export_index(modules.clone());
-    let type_name_index_nanos = phase_started.elapsed().as_nanos();
-    let phase_started = std::time::Instant::now();
-    let export_name_index = v1_compiler_infer::build_module_exported_type_name_index(
-        modules.clone(),
-        source_indices.clone(),
-    );
-    let export_name_index_nanos = phase_started.elapsed().as_nanos();
-    let phase_started = std::time::Instant::now();
-    let rewire_plans = v1_compiler_infer::prepare_import_string_rewire_modules(
-        modules,
-        export_name_index,
-        source_indices.clone(),
-    );
-    let module_preparation_nanos = phase_started.elapsed().as_nanos();
-    let phase_started = std::time::Instant::now();
-    let rewire_result =
-        v1_compiler_infer::apply_import_string_rewire_plans(rewire_plans, type_name_index);
-    let binding_application_nanos = phase_started.elapsed().as_nanos();
-    let modules = rewire_result.modules.clone();
-    let observation = rewire_result.observation.clone();
-    let count = |name: &str, value: i64| {
-        u128::try_from(value).unwrap_or_else(|_| panic!("negative {name} observation: {value}"))
+    let modules = if import_string_rewire_profile_enabled() {
+        let expected = if import_string_rewire_verify_enabled() {
+            Some(
+                v1_compiler_infer::rewire_type_env_import_str_binding_identity(
+                    modules.clone(),
+                    source_indices.clone(),
+                ),
+            )
+        } else {
+            None
+        };
+        let observed = profile_import_string_rewire_streaming(modules, source_indices.clone());
+        if let Some(expected) = expected {
+            assert_import_string_rewire_equivalent(&expected, &observed);
+        }
+        observed
+    } else {
+        v1_compiler_infer::rewire_type_env_import_str_binding_identity(
+            modules,
+            source_indices.clone(),
+        )
     };
     resolve_stage_slot_add(|s| {
-        s.assembly_rewire_import_str += rewire2_started.elapsed().as_nanos();
-        s.assembly_rewire_type_name_index += type_name_index_nanos;
-        s.assembly_rewire_export_name_index += export_name_index_nanos;
-        s.assembly_rewire_module_preparation += module_preparation_nanos;
-        s.assembly_rewire_binding_application += binding_application_nanos;
-        s.assembly_rewire_modules += count("module_count", observation.module_count);
-        s.assembly_rewire_direct_import_sets +=
-            count("direct_import_sets", observation.direct_import_sets);
-        s.assembly_rewire_inherited_keys += count("inherited_keys", observation.inherited_keys);
-        s.assembly_rewire_ambiguity_checks +=
-            count("ambiguity_checks", observation.ambiguity_checks);
-        s.assembly_rewire_ancestry_map_writes +=
-            count("ancestry_map_writes", observation.ancestry_map_writes);
-        s.assembly_rewire_str_map_writes += count("str_map_writes", observation.str_map_writes);
-        s.assembly_rewire_unchanged_keys += count("unchanged_keys", observation.unchanged_keys);
+        s.assembly_rewire_import_str += rewire2_started.elapsed().as_nanos()
     });
     let rewire3_started = std::time::Instant::now();
     let modules =
@@ -42873,6 +43145,14 @@ mod exclusive_cost_partition_law {
         assert_eq!(p.remainder_nanos, 0);
         // The whole point: no share is quotable off a non-partition.
         assert_eq!(p.share_of_parent("load"), None);
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "import-string sub-rows accounting contradiction: child subtotal 101 exceeds parent 100"
+    )]
+    fn diagnostic_residual_refuses_child_subtotal_above_parent() {
+        checked_cost_residual(100, 101, "import-string sub-rows");
     }
 
     #[test]

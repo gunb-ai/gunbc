@@ -4,9 +4,12 @@ import std.types { Bool, NonEmptyStr, List }
 import std.nat { Nat }
 import std.measure {
   Millisecond,
+  Second,
   ByteSize,
   millisecond,
   millisecond_count,
+  second,
+  second_count,
   byte_size,
   measure_add,
 }
@@ -69,39 +72,181 @@ type CiJobWallPopulation
   | FloorFinalization {}
   | JobCleanup {}
 
-type CiJobWallPopulationReceipt {
-  population: CiJobWallPopulation,
-  wall: Millisecond,
+type CiJobWallBoundary {
+  elapsed_since_job_start: Second,
+  source_event: NonEmptyStr,
 }
 
-data ci_job_wall_reconciliation_note: NonEmptyStr = "Exact non-overlapping CI-job population receipt for affected subject run 30863019228, job 91850944162. Boundaries are the GitHub job step timestamps plus claim_executor's structural-role transition lines in that job log, truncated to whole seconds so adjacent intervals share one boundary and sum exactly to the job's 2509-second wall. These are ELAPSED populations, never additive resolver counters: initialization ends where capture starts; capture ends where compile-clean starts; every batch begins at the prior batch's conclusion; the scoped worker begins after ordinary finalization; cleanup ends at the job completion timestamp. The initial capture/resolve/eval harvest remains below as a historical nested observation and is not added to these rows. Largest populations on this exact affected subject: AffectedDiscovery 886s; ScopedInitialization plus ScopedWitnessExecution 557s; CompileClean 315s; OrdinaryInitialization 310s. This closes the denominator only: it selects no optimization mechanism." as NonEmptyStr
+type CiJobWallIntervalReceipt {
+  population: CiJobWallPopulation,
+  start: CiJobWallBoundary,
+  end: CiJobWallBoundary,
+}
 
-fn ci_job_wall_population_receipts() -> List<CiJobWallPopulationReceipt> {
+type CiJobWallCoverageFold {
+  previous_end: Second,
+  interval_count: Nat,
+  adjacent: Bool,
+  ordered: Bool,
+}
+
+type CiJobWallPopulationUniquenessFold {
+  seen: List<CiJobWallPopulation>,
+  unique: Bool,
+}
+
+data ci_job_wall_reconciliation_note: NonEmptyStr = "Non-overlapping CI-job interval receipt for affected subject run 30863019228, job 91850944162, complete at the source's WHOLE-SECOND observational grid. Every interval carries start/end offsets plus the GitHub step or claim_executor log event that supplied its boundary; duration is derived and cannot be redistributed independently. ci_job_wall_interval_chain_holds proves ordered endpoints, exact adjacency, first.start == job.start, and last.end == job.end; ci_job_wall_population_names_unique proves no named population is reused. The millisecond projection is exactly 2509000 ms because the source grid is 2509 whole seconds; it is not a claim of sub-second timestamp precision. These are ELAPSED populations, never additive resolver counters. The initial capture/resolve/eval harvest remains below as a historical nested observation and is not added to these rows. Largest populations on this exact affected subject: AffectedDiscovery 886s; ScopedInitialization plus ScopedWitnessExecution 518s; CompileClean 315s; OrdinaryInitialization 310s. This closes the denominator only: it selects no optimization mechanism." as NonEmptyStr
+
+fn ci_job_wall_boundary(elapsed_seconds: Nat, source_event: NonEmptyStr) -> CiJobWallBoundary {
+  CiJobWallBoundary {
+    elapsed_since_job_start: second(count: elapsed_seconds),
+    source_event: source_event,
+  }
+}
+
+fn ci_job_started_boundary() -> CiJobWallBoundary {
+  ci_job_wall_boundary(elapsed_seconds: 0, source_event: "GitHub job started_at 2026-08-03T23:52:21Z" as NonEmptyStr)
+}
+
+fn floor_started_boundary() -> CiJobWallBoundary {
+  ci_job_wall_boundary(elapsed_seconds: 14, source_event: "GitHub gunbc ci step started_at 2026-08-03T23:52:35Z" as NonEmptyStr)
+}
+
+fn ordinary_plan_ready_boundary() -> CiJobWallBoundary {
+  ci_job_wall_boundary(elapsed_seconds: 324, source_event: "claim_executor ordinary executor plan 2026-08-03T23:57:45Z" as NonEmptyStr)
+}
+
+fn capture_complete_boundary() -> CiJobWallBoundary {
+  ci_job_wall_boundary(elapsed_seconds: 435, source_event: "claim_executor capture receipt and compile-clean start 2026-08-03T23:59:36Z" as NonEmptyStr)
+}
+
+fn compile_clean_complete_boundary() -> CiJobWallBoundary {
+  ci_job_wall_boundary(elapsed_seconds: 750, source_event: "claim_executor compile-clean receipt 2026-08-04T00:04:51Z" as NonEmptyStr)
+}
+
+fn cheap_gate_complete_boundary() -> CiJobWallBoundary {
+  ci_job_wall_boundary(elapsed_seconds: 868, source_event: "claim_executor batch 2 start 2026-08-04T00:06:49Z" as NonEmptyStr)
+}
+
+fn compile_clean_receipt_gate_complete_boundary() -> CiJobWallBoundary {
+  ci_job_wall_boundary(elapsed_seconds: 868, source_event: "claim_executor batch 2 pass and affected batch start 2026-08-04T00:06:49Z" as NonEmptyStr)
+}
+
+fn affected_discovery_complete_boundary() -> CiJobWallBoundary {
+  ci_job_wall_boundary(elapsed_seconds: 1754, source_event: "claim_executor batch 3 pass and batch 4 start 2026-08-04T00:21:35Z" as NonEmptyStr)
+}
+
+fn auxiliary_discovery_complete_boundary() -> CiJobWallBoundary {
+  ci_job_wall_boundary(elapsed_seconds: 1829, source_event: "claim_executor batch 4 pass and batch 5 start 2026-08-04T00:22:50Z" as NonEmptyStr)
+}
+
+fn emit_host_complete_boundary() -> CiJobWallBoundary {
+  ci_job_wall_boundary(elapsed_seconds: 1835, source_event: "claim_executor batch 5 pass and batch 6 start 2026-08-04T00:22:56Z" as NonEmptyStr)
+}
+
+fn native_selected_complete_boundary() -> CiJobWallBoundary {
+  ci_job_wall_boundary(elapsed_seconds: 1909, source_event: "claim_executor batch 6 pass and receipt finalization start 2026-08-04T00:24:10Z" as NonEmptyStr)
+}
+
+fn ordinary_worker_complete_boundary() -> CiJobWallBoundary {
+  ci_job_wall_boundary(elapsed_seconds: 1964, source_event: "ordinary worker observation completed and scoped worker wait started 2026-08-04T00:25:05Z" as NonEmptyStr)
+}
+
+fn scoped_plan_ready_boundary() -> CiJobWallBoundary {
+  ci_job_wall_boundary(elapsed_seconds: 2265, source_event: "scoped claim_executor plan ready 2026-08-04T00:30:06Z" as NonEmptyStr)
+}
+
+fn scoped_witness_complete_boundary() -> CiJobWallBoundary {
+  ci_job_wall_boundary(elapsed_seconds: 2482, source_event: "scoped batch pass and receipt finalization start 2026-08-04T00:33:43Z" as NonEmptyStr)
+}
+
+fn floor_complete_boundary() -> CiJobWallBoundary {
+  ci_job_wall_boundary(elapsed_seconds: 2504, source_event: "scoped worker observation completed 2026-08-04T00:34:05Z" as NonEmptyStr)
+}
+
+fn ci_job_complete_boundary() -> CiJobWallBoundary {
+  ci_job_wall_boundary(elapsed_seconds: 2509, source_event: "GitHub job completed_at 2026-08-04T00:34:10Z" as NonEmptyStr)
+}
+
+fn ci_job_wall_population_receipts() -> List<CiJobWallIntervalReceipt> {
   [
-    CiJobWallPopulationReceipt { population: JobBootstrap {}, wall: millisecond(count: 14000) },
-    CiJobWallPopulationReceipt { population: OrdinaryInitialization {}, wall: millisecond(count: 310000) },
-    CiJobWallPopulationReceipt { population: MergeAdmissionCapture {}, wall: millisecond(count: 111000) },
-    CiJobWallPopulationReceipt { population: CompileClean {}, wall: millisecond(count: 315000) },
-    CiJobWallPopulationReceipt { population: CheapGateBatch {}, wall: millisecond(count: 118000) },
-    CiJobWallPopulationReceipt { population: CompileCleanReceiptGate {}, wall: millisecond(count: 0) },
-    CiJobWallPopulationReceipt { population: AffectedDiscovery {}, wall: millisecond(count: 886000) },
-    CiJobWallPopulationReceipt { population: AuxiliaryDiscovery {}, wall: millisecond(count: 75000) },
-    CiJobWallPopulationReceipt { population: EmitHost {}, wall: millisecond(count: 6000) },
-    CiJobWallPopulationReceipt { population: NativeSelectedLogic {}, wall: millisecond(count: 74000) },
-    CiJobWallPopulationReceipt { population: OrdinaryFinalization {}, wall: millisecond(count: 16000) },
-    CiJobWallPopulationReceipt { population: ScopedInitialization {}, wall: millisecond(count: 340000) },
-    CiJobWallPopulationReceipt { population: ScopedWitnessExecution {}, wall: millisecond(count: 217000) },
-    CiJobWallPopulationReceipt { population: FloorFinalization {}, wall: millisecond(count: 22000) },
-    CiJobWallPopulationReceipt { population: JobCleanup {}, wall: job_cleanup_wall() }
+    CiJobWallIntervalReceipt { population: JobBootstrap {}, start: ci_job_started_boundary(), end: floor_started_boundary() },
+    CiJobWallIntervalReceipt { population: OrdinaryInitialization {}, start: floor_started_boundary(), end: ordinary_plan_ready_boundary() },
+    CiJobWallIntervalReceipt { population: MergeAdmissionCapture {}, start: ordinary_plan_ready_boundary(), end: capture_complete_boundary() },
+    CiJobWallIntervalReceipt { population: CompileClean {}, start: capture_complete_boundary(), end: compile_clean_complete_boundary() },
+    CiJobWallIntervalReceipt { population: CheapGateBatch {}, start: compile_clean_complete_boundary(), end: cheap_gate_complete_boundary() },
+    CiJobWallIntervalReceipt { population: CompileCleanReceiptGate {}, start: cheap_gate_complete_boundary(), end: compile_clean_receipt_gate_complete_boundary() },
+    CiJobWallIntervalReceipt { population: AffectedDiscovery {}, start: compile_clean_receipt_gate_complete_boundary(), end: affected_discovery_complete_boundary() },
+    CiJobWallIntervalReceipt { population: AuxiliaryDiscovery {}, start: affected_discovery_complete_boundary(), end: auxiliary_discovery_complete_boundary() },
+    CiJobWallIntervalReceipt { population: EmitHost {}, start: auxiliary_discovery_complete_boundary(), end: emit_host_complete_boundary() },
+    CiJobWallIntervalReceipt { population: NativeSelectedLogic {}, start: emit_host_complete_boundary(), end: native_selected_complete_boundary() },
+    CiJobWallIntervalReceipt { population: OrdinaryFinalization {}, start: native_selected_complete_boundary(), end: ordinary_worker_complete_boundary() },
+    CiJobWallIntervalReceipt { population: ScopedInitialization {}, start: ordinary_worker_complete_boundary(), end: scoped_plan_ready_boundary() },
+    CiJobWallIntervalReceipt { population: ScopedWitnessExecution {}, start: scoped_plan_ready_boundary(), end: scoped_witness_complete_boundary() },
+    CiJobWallIntervalReceipt { population: FloorFinalization {}, start: scoped_witness_complete_boundary(), end: floor_complete_boundary() },
+    CiJobWallIntervalReceipt { population: JobCleanup {}, start: floor_complete_boundary(), end: ci_job_complete_boundary() }
   ]
 }
 
-fn ci_job_wall_population_total(rows: List<CiJobWallPopulationReceipt>) -> Millisecond {
-  fold(rows, init: millisecond(count: 0), f: (acc, row) => measure_add(a: acc, b: row.wall))
+fn ci_job_wall_interval_seconds(row: CiJobWallIntervalReceipt) -> Second {
+  second(count: second_count(s: row.end.elapsed_since_job_start) - second_count(s: row.start.elapsed_since_job_start))
+}
+
+fn ci_job_wall_population_total(rows: List<CiJobWallIntervalReceipt>) -> Millisecond {
+  let seconds = fold(rows, init: 0, f: (acc, row) => acc + second_count(s: ci_job_wall_interval_seconds(row: row)))
+  millisecond(count: seconds * 1000)
+}
+
+fn ci_job_wall_interval_chain_holds(
+  rows: List<CiJobWallIntervalReceipt>,
+  job_start: Second,
+  job_end: Second
+) -> Bool {
+  let result = fold(rows, init: CiJobWallCoverageFold {
+    previous_end: job_start,
+    interval_count: 0,
+    adjacent: true,
+    ordered: true,
+  }, f: (state, row) =>
+    let start = second_count(s: row.start.elapsed_since_job_start)
+    let end = second_count(s: row.end.elapsed_since_job_start)
+    CiJobWallCoverageFold {
+      previous_end: row.end.elapsed_since_job_start,
+      interval_count: state.interval_count + 1,
+      adjacent: state.adjacent && start == second_count(s: state.previous_end),
+      ordered: state.ordered && start <= end,
+    }
+  )
+  result.interval_count > 0
+    && result.adjacent
+    && result.ordered
+    && second_count(s: result.previous_end) == second_count(s: job_end)
+}
+
+fn ci_job_wall_population_names_unique(rows: List<CiJobWallIntervalReceipt>) -> Bool {
+  fold(rows, init: CiJobWallPopulationUniquenessFold {
+    seen: [],
+    unique: true,
+  }, f: (state, row) =>
+    let already_seen = count(state.seen |> filter(population => population == row.population)) > 0
+    CiJobWallPopulationUniquenessFold {
+      seen: concat(state.seen, [row.population]),
+      unique: state.unique && !already_seen,
+    }
+  ).unique
+}
+
+fn ci_job_wall_population_intervals_cover_job() -> Bool {
+  let rows = ci_job_wall_population_receipts()
+  count(rows) == 15
+    && ci_job_wall_interval_chain_holds(rows: rows, job_start: second(count: 0), job_end: second(count: 2509))
+    && ci_job_wall_population_names_unique(rows: rows)
 }
 
 fn job_cleanup_wall() -> Millisecond {
-  millisecond(count: 5000)
+  ci_job_wall_population_total(rows: [
+    CiJobWallIntervalReceipt { population: JobCleanup {}, start: floor_complete_boundary(), end: ci_job_complete_boundary() }
+  ])
 }
 
 fn affected_ci_cost_audit_subject() -> AffectedCiCostAuditSubject {
@@ -256,7 +401,7 @@ fn compiler_next_measured_target() -> CompilerNextMeasuredTarget {
 fn ci_job_wall_reconciles() -> Bool {
   let job = millisecond_count(m: ci_job_wall())
   let parts = millisecond_count(m: classified_ci_wall()) + millisecond_count(m: unattributed_ci_wall())
-  job == parts
+  ci_job_wall_population_intervals_cover_job() && job == parts
 }
 
 fn pipeline_sum_reconciles() -> Bool {
@@ -269,9 +414,4 @@ fn initial_partial_classified_equals_capture_resolve_eval() -> Bool {
   let classified = millisecond_count(m: initial_partial_classified_ci_wall())
   let parts = millisecond_count(m: capture_wall()) + millisecond_count(m: discovery_resolve_wall()) + millisecond_count(m: discovery_eval_wall())
   classified == parts
-}
-
-fn ci_job_population_without_cleanup_is_incomplete() -> Bool {
-  let without_cleanup = millisecond_count(m: classified_ci_wall()) - millisecond_count(m: job_cleanup_wall())
-  !(without_cleanup == millisecond_count(m: ci_job_wall()))
 }

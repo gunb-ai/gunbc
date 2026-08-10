@@ -810,21 +810,31 @@ fn run() -> Result<ExitCode, ExitCode> {
             .saturating_add(st.assembly_rewire_export_name_index)
             .saturating_add(st.assembly_rewire_module_preparation)
             .saturating_add(st.assembly_rewire_binding_application);
+        let rewire_import_str_other = v1_compiler::cli_run::checked_cost_residual(
+            st.assembly_rewire_import_str,
+            rewire_import_str_subtotal,
+            "import-string sub-rows",
+        );
         eprintln!(
-            "[rewire-import-str-split] type_name_index={:.1}ms export_name_index={:.1}ms module_preparation={:.1}ms binding_application={:.1}ms other={:.1}ms modules={} direct_import_sets={} inherited_keys={} ambiguity_checks={} ancestry_map_writes={} str_map_writes={} unchanged_keys={}",
+            "[rewire-import-str-split] profile_enabled={} type_name_index={:.1}ms export_name_index={:.1}ms module_preparation={:.1}ms binding_application={:.1}ms other={:.1}ms modules={} direct_import_sets={} inherited_keys={} inherited_keys_considered={} ancestry_map_writes={} ancestry_absent={} ancestry_same_identity={} ancestry_value_changed={} str_map_writes={} str_absent={} str_same_identity={} str_value_changed={} unchanged_keys={}",
+            std::env::var("GUNBC_REWIRE_IMPORT_STR_PROFILE").as_deref() == Ok("1"),
             ms(st.assembly_rewire_type_name_index),
             ms(st.assembly_rewire_export_name_index),
             ms(st.assembly_rewire_module_preparation),
             ms(st.assembly_rewire_binding_application),
-            ms(st
-                .assembly_rewire_import_str
-                .saturating_sub(rewire_import_str_subtotal)),
+            ms(rewire_import_str_other),
             st.assembly_rewire_modules,
             st.assembly_rewire_direct_import_sets,
             st.assembly_rewire_inherited_keys,
-            st.assembly_rewire_ambiguity_checks,
+            st.assembly_rewire_inherited_keys_considered,
             st.assembly_rewire_ancestry_map_writes,
+            st.assembly_rewire_ancestry_absent,
+            st.assembly_rewire_ancestry_same_identity,
+            st.assembly_rewire_ancestry_value_changed,
             st.assembly_rewire_str_map_writes,
+            st.assembly_rewire_str_absent,
+            st.assembly_rewire_str_same_identity,
+            st.assembly_rewire_str_value_changed,
             st.assembly_rewire_unchanged_keys,
         );
         // The lines above are INCLUSIVE-universe rows: they sum every resolve this
