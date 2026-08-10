@@ -115,10 +115,40 @@ jobs:
           done
           echo "principal probe complete (no login required for this step to succeed)"
 
+          echo "=== 4. srv5 serving-relevant facts (READ-ONLY, as the admitted principal) ==="
+          # STEP 2 of the canary needs a pinned serving process. What can be pinned is a fact about
+          # the host, not a modeling choice: accelerator presence, driver/runtime versions, container
+          # runtime, free space for weights, and whether anything already listens. Observed BEFORE any
+          # install so the install is derived from measured state rather than assumed state.
+          #
+          # Each probe prints its own absence marker. A command that is missing prints ABSENT rather
+          # than an empty line, because an empty capture is indistinguishable from a failed one --
+          # the exact conflation that made the first principal probe report a false negative.
+          if OUT=$(timeout 60 ssh -i "$WORK/id" -o BatchMode=yes -o StrictHostKeyChecking=no \
+            -o ConnectTimeout=5 -o UserKnownHostsFile="$WORK/kh" \
+            "briansrls@192.168.1.222" 'bash -s' <<'REMOTE' 2>&1); then RC=0; else RC=$?; fi
+          echo "FACT uname=$(uname -srm 2>/dev/null || echo ABSENT)"
+          echo "FACT os=$(. /etc/os-release 2>/dev/null && echo "$PRETTY_NAME" || echo ABSENT)"
+          echo "FACT nvidia_smi=$(command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader 2>&1 | tr '\n' ';' || echo ABSENT)"
+          echo "FACT docker=$(command -v docker >/dev/null 2>&1 && (docker version --format '{{.Server.Version}}' 2>&1 || echo PRESENT-BUT-NO-DAEMON) || echo ABSENT)"
+          echo "FACT python=$(command -v python3 >/dev/null 2>&1 && python3 -V 2>&1 || echo ABSENT)"
+          echo "FACT systemd_user=$(command -v systemctl >/dev/null 2>&1 && echo PRESENT || echo ABSENT)"
+          echo "FACT sudo_nopasswd=$(sudo -n true 2>/dev/null && echo YES || echo NO)"
+          echo "FACT disk_root=$(df -BG --output=avail / 2>/dev/null | tail -1 | tr -d ' ' || echo ABSENT)"
+          echo "FACT mem_total=$(awk '/MemTotal/{print $2$3}' /proc/meminfo 2>/dev/null || echo ABSENT)"
+          echo "FACT listeners=$( (ss -ltnp 2>/dev/null || netstat -ltn 2>/dev/null) | awk 'NR>1{print $4}' | tr '\n' ',' || echo ABSENT)"
+          echo "FACT existing_serving=$(pgrep -af 'vllm|text-generation|ollama|llama' 2>/dev/null | head -3 | tr '\n' ';' || echo NONE)"
+          echo "FACT hf_cache=$(du -sh ~/.cache/huggingface 2>/dev/null | cut -f1 || echo ABSENT)"
+          REMOTE
+          echo "srv5 facts rc=$RC"
+          echo "$OUT"
+
           echo "=== READING THIS RECEIPT ==="
           echo "A returned 'id -un' is a REAL remote-process observation of the admitted principal."
           echo "A failure is NOT proof the account is absent: it distinguishes neither missing"
           echo "authorized_keys, nor absent account, nor sshd policy. Those are different remedies."
+          echo "The section-4 facts are OBSERVATIONS gating the step-2 install; an ABSENT marker is a"
+          echo "measured absence, while a missing line is a probe that did not run -- not the same."
 
       - name: Shred credential material
         if: always()
