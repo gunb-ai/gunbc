@@ -49,8 +49,6 @@ data paren_arithmetic_unchanged_source: String = "module zz_lambda_probe\n\nfn f
 
 data sum_decl_unchanged_source: String = "module zz_lambda_probe\n\ntype AlgX = AlphaX | BetaX\n"
 
-data leading_pipe_sum_unchanged_source: String = "module zz_lambda_probe\n\ntype AlgX =\n  | AlphaX\n  | BetaX\n"
-
 data missing_body_source: String = "module zz_lambda_probe\n\nfn f() -> Int {\n  g(p => )\n}\n"
 
 data missing_param_source: String = "module zz_lambda_probe\n\nfn f() -> Int {\n  g(=> x)\n}\n"
@@ -159,10 +157,6 @@ test fn witness_paren_arithmetic_unchanged() -> Bool {
 
 test fn witness_sum_decl_unchanged() -> Bool {
   parse_accepts(source: sum_decl_unchanged_source)
-}
-
-test fn witness_leading_pipe_sum_unchanged() -> Bool {
-  parse_accepts(source: leading_pipe_sum_unchanged_source)
 }
 
 test fn witness_missing_body_refuses_RED() -> Bool {

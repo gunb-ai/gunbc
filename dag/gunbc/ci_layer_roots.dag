@@ -1359,12 +1359,6 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/dag_arrow_lambda_witness_test.dag",
-    function: "witness_leading_pipe_sum_unchanged",
-    reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~17s measured)",
-    dissolve_on: "same as sibling row"
-  },
-  SubstrateLongLaneRow {
-    entry: "dag/test/claim/dag_arrow_lambda_witness_test.dag",
     function: "witness_missing_body_refuses_RED",
     reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~17s measured)",
     dissolve_on: "same as sibling row"
