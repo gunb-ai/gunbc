@@ -1,0 +1,1521 @@
+module gunbc.devboot.produce
+
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.measure { byte_size, Second, second, second_count }
+import std.content_hash { sha256_hex_digest }
+
+import extdeps.shell
+import extdeps.gunbc
+import extdeps.filesystem.filesystem_io
+import gunbc.devboot.transport {
+  devboot_witness_run,
+  retained_devboot_mkdir,
+  retained_devboot_rm_file,
+  retained_devboot_rm_rf,
+  retained_devboot_git_read_tree,
+  retained_devboot_git_add_all,
+  retained_devboot_git_write_tree,
+  retained_devboot_git_checkout_index,
+  retained_devboot_rustc_version,
+  retained_devboot_git_bare_init,
+  retained_devboot_git_rev_parse,
+  retained_devboot_git_cat_file,
+  retained_devboot_git_object_exists,
+  retained_devboot_git_object_size,
+  retained_devboot_git_unpack_file,
+  retained_devboot_git_hash_object,
+  retained_devboot_git_update_ref,
+  retained_devboot_sha256sum,
+  retained_devboot_sleep,
+  retained_devboot_cargo_build,
+  retained_devboot_mv,
+  retained_devboot_chmod,
+  retained_devboot_execute_artifact,
+  retained_devboot_ldd,
+}
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+
+import gunbc.devboot.lease {
+  content_hash_ref_token,
+  lease_ref_namespace,
+  artifact_ref_namespace,
+  subject_ref_namespace,
+  digest_ref_namespace,
+}
+import gunbc.devboot.outcome {
+  ReuseDecision,
+  ReuseGranted,
+  ReuseNoCandidate,
+  ReuseSubjectMismatch,
+  ReuseUnavailable,
+  SubjectMatch,
+  SubjectMatches,
+  SubjectDiffers,
+  ArtifactAvailability,
+  ArtifactAvailable,
+  ArtifactMissing,
+  ArtifactUnreadable,
+  ArtifactCorrupt,
+  StoredArtifact,
+  reuse_decision_from_match,
+}
+import gunbc.devboot.subject {
+  BuildSubject,
+  BuildEnvironmentSpec,
+  BuildSubjectRefusalCause,
+  FeatureNameEmpty,
+  DuplicateFeature,
+  ProfileNameEmpty,
+  PackageNameEmpty,
+  RustflagEmpty,
+  CargoConfigKeyEmpty,
+  LinkerEmpty,
+  SysrootEmpty,
+  admit_build_subject,
+  build_subject_digest,
+  render_build_subject,
+  SubjectAdmitted,
+  SubjectRefused,
+}
+import extdeps.git.object_store { git_object_id_from_untagged_hex, git_object_id_wire_hex }
+import extdeps.git { git_ref_missing_exit_code }
+import extdeps.toolchain.types { TargetTriple, ToolchainRequirement }
+import extdeps.rust.target_triple { parse_rust_target_triple }
+import extdeps.gnu.libc { PlatformCLibrary, GnuLibc, LibcUnobserved }
+import extdeps.cargo { CargoTarget, Lib, Bin, CargoTest, Example, Bench }
+import gunbc.devboot.program { devboot_program_package }
+
+// THE PRODUCER, AND IT IS THE LIVE PATH RATHER THAN A WITNESS. This module is invoked through `gunbc run`, so the first consumer of the identity carriers is the ordinary CLI surface -- a witness suite proving the same functions in isolation would not have established that anything is ever actually built or retrieved.
+//
+// EVERY HOST PATH ARRIVES AS A PARAMETER. The store root is supplied by the caller, never spelled here: on srv1 the deploy supplies the gunbc.host_layout row, and a local run supplies a scratch directory. A literal here would be the layout-admission defect this vertical was explicitly told not to repeat, and it would also make the producer untestable anywhere but one host.
+//
+// THE ORDER IS THE CONTRACT. Look for an existing artifact first, and only if none exists take the lease and build -- so a subject already produced never builds again, which is the product sentence this service exists to satisfy. The lease is taken with git's exact-value ref update, whose create-only form refuses when the ref already exists, so two callers racing the same subject cannot both become producers.
+// THE MODELED TRANSITION AND THE REAL ONE, kept honestly apart. gunbc.devboot.lease derives the lease DECISION from the upstream object store's pure transition model, whose exact-old form covers advancing a ref that already exists and returns LeaseCreateNotModeled for the absent case.
+//
+// Git itself does cover that case -- `update-ref <ref> <new> \"\"` is create-only and fails with 'reference already exists' when it loses -- and that is what this realization calls, verified by execution against a real bare repository: one caller acquired, the second was refused, and the holder did not move. So the gap is in the R0 MODEL, not in the transport, and the refusal arm in the model is a statement about what has been modeled rather than about what git can do. Recording which is which is the whole point; the arm dissolves when the model gains a create-only transition, and the realization does not change when it does.
+// THE CARGO PACKAGE AND THE BINARY ARE DIFFERENT NAMES, and conflating them hid a total build failure behind a success report. This producer asked cargo for --package gunbc; no such package exists. gunbc is a BIN target inside the package v1-compiler, so every build this service ever ran refused with 'package ID specification gunbc did not match any packages' -- and the run still reported PRODUCED, because hash-object was pointed at the ambient target directory where a binary from some earlier, unrelated build happened to be sitting.
+//
+// SO THE STORED ARTIFACT WAS NEVER BUILT FROM THE NAMED TREE. It was whatever the developer's checkout had lying around, bound to a tree identity it had no relationship to -- the precise failure the isolated-checkout repair was written to make impossible, sitting live in the tree the whole time and invisible because two separate defects covered for each other: the missing success check let the failure pass, and the shared target directory supplied plausible bytes for it to pass with.
+//
+// IT WAS THE ISOLATION THAT EXPOSED IT. Building in a fresh checkout meant no stale binary was there to hash, so the failure finally had nothing to hide behind. That is the argument for isolation stated better than any note could: the ambient directory was not merely a risk to correctness, it was actively concealing a broken build.
+//
+// The package name is imported from gunbc.devboot.program, the single authority for the cargo package row. The bin name stays on the cargo target, where the axis it belongs to already lives.
+
+// THE SUBJECT IS THE WORKING TREE AS IT STANDS, WHICH IS WHAT AN AGENT ACTUALLY ASKS ABOUT. An earlier revision ran write-tree against an index the CALLER supplied and nothing populated, so the tree it named was HEAD's -- every uncommitted modification and every untracked file was invisible to the identity. A developer editing a file and asking for a build of what they are looking at would have received, and reused forever, a binary for the last commit. The identity was exact and it was exact about the wrong tree.
+//
+// THREE STEPS MAKE THE SNAPSHOT, and each is load-bearing. read-tree HEAD establishes the committed baseline; add -A folds in modifications, deletions and non-ignored untracked files; write-tree freezes the result into a real tree object. The output is an ordinary git tree, so everything downstream -- transfer, materialization, content addressing -- is git's, not this module's.
+//
+// THE INDEX IS DERIVED HERE, NOT ACCEPTED FROM THE CALLER, and that is the structural half of 'never mutate the developer's index'. When the path is a parameter, the real index is a legal argument and add -A stages the developer's entire working tree behind their back; a check that the supplied path is not .git/index would be validation of a state that remains writable. Deriving the path under this service's own work root means the developer's index has no way to arrive here at all.
+//
+// Ignored files never participate: add -A honours gitignore, so ambient build output and editor debris cannot move the identity. Files a build genuinely needs but git ignores must be declared, and that declaration does not exist yet -- named on the carrier as owed rather than silently assumed absent.
+fn devboot_snapshot_index_path(work_root: String) -> String {
+  join([work_root, "/snapshot.index"], "")
+}
+
+type SnapshotOutcome
+  = SnapshotTaken { tree_hex: String }
+  | SnapshotRefused { detail: String }
+
+// The step helpers take and return scalars rather than the invocation record, because the bin-invocation service's result is structural and has no named type a signature could carry. Passing exit code and stderr keeps every refusal located to the step that produced it without inventing a second carrier for a shape the transport already owns.
+fn snapshot_step_refusal(step: String, exit_code: Int, stderr: String) -> String {
+  join(["dirty-worktree snapshot failed at ", step, " (git exit ", to_string(exit_code), "): ", trim(s: stderr)], "")
+}
+
+fn devboot_snapshot(repo_root: String, work_root: String) -> SnapshotOutcome {
+  let index_path = devboot_snapshot_index_path(work_root: work_root)
+  let prepared = devboot_witness_run(
+    site: retained_devboot_mkdir,
+    workdir: repo_root, bin_path: "mkdir", args: ["-p", work_root]
+  )
+  let cleared = devboot_witness_run(
+    site: retained_devboot_rm_file,
+    workdir: repo_root, bin_path: "rm", args: ["-f", index_path]
+  )
+  let baseline = devboot_witness_run(
+    site: retained_devboot_git_read_tree,
+    workdir: repo_root,
+    bin_path: "env",
+    args: [concat("GIT_INDEX_FILE=", index_path), "git", "read-tree", "HEAD"],
+  )
+  if !baseline.success {
+    SnapshotRefused { detail: snapshot_step_refusal(step: "read-tree HEAD", exit_code: baseline.exit_code, stderr: baseline.stderr) }
+  } else {
+    let staged = devboot_witness_run(
+    site: retained_devboot_git_add_all,
+    workdir: repo_root,
+      bin_path: "env",
+      args: [concat("GIT_INDEX_FILE=", index_path), "git", "add", "-A"],
+  )
+    if !staged.success {
+      SnapshotRefused { detail: snapshot_step_refusal(step: "add -A", exit_code: staged.exit_code, stderr: staged.stderr) }
+    } else {
+      let written = devboot_witness_run(
+    site: retained_devboot_git_write_tree,
+    workdir: repo_root,
+        bin_path: "env",
+        args: [concat("GIT_INDEX_FILE=", index_path), "git", "write-tree"],
+  )
+      if !written.success {
+        SnapshotRefused { detail: snapshot_step_refusal(step: "write-tree", exit_code: written.exit_code, stderr: written.stderr) }
+      } else {
+        SnapshotTaken { tree_hex: trim(s: written.stdout) }
+      }
+    }
+  }
+}
+
+// THE BYTES ARE BUILT FROM THE TREE THAT NAMES THEM, which the ambient build could not promise. An earlier revision computed a tree oid and then ran cargo in the developer's checkout: nothing joined the two. The working tree could change between the snapshot and the compile, and it routinely does -- an agent edits continuously -- so the artifact stored under a tree's identity could be built from a different tree than the one named, with every check agreeing. Two callers naming different snapshots of one ambient directory could each have received the other's bytes.
+//
+// So the tree is CHECKED OUT and the build happens only inside that checkout. read-tree into a scratch index followed by checkout-index materializes exactly the named tree and nothing else; there is no path by which ambient state reaches the compiler, because the compiler is never pointed at the ambient directory. The join stops being a promise and becomes the shape of the thing.
+//
+// THE TARGET DIRECTORY IS PER-SUBJECT FOR THE SAME REASON. Sharing one target/ meant two subjects building concurrently wrote the same output path, so one could overwrite the other between the moment cargo finished and the moment the bytes were hashed -- a wrong artifact stored under a correct identity, produced by nothing worse than ordinary concurrency, and the lease could not prevent it because the lease is per-subject and the collision is between subjects. Isolation is per subject token, so no two builds share a writable path.
+//
+// COST IS THE HONEST TRADE. A cold isolated build cannot reuse the developer's warm target directory, so first production is slower than the ambient build it replaces. That is the price of the guarantee; the warm path the product mandate requires is bought with materialized artifacts and shared caches keyed on content, never by rebuilding correctness on a shared mutable directory.
+fn devboot_source_dir(work_root: String, token: String) -> String {
+  join([work_root, "/", token, "/source"], "")
+}
+
+fn devboot_target_dir(work_root: String, token: String) -> String {
+  join([work_root, "/", token, "/target"], "")
+}
+
+type SourceMaterialization
+  = SourceMaterialized { source_dir: String }
+  | SourceMaterializationRefused { detail: String }
+
+fn devboot_materialize_source(repo_root: String, work_root: String, token: String, tree_hex: String) -> SourceMaterialization {
+  let source_dir = devboot_source_dir(work_root: work_root, token: token)
+  let checkout_index = join([work_root, "/", token, "/checkout.index"], "")
+  let fresh = devboot_witness_run(
+    site: retained_devboot_rm_rf,
+    workdir: repo_root, bin_path: "rm", args: ["-rf", source_dir]
+  )
+  let made = devboot_witness_run(
+    site: retained_devboot_mkdir,
+    workdir: repo_root, bin_path: "mkdir", args: ["-p", source_dir]
+  )
+  let loaded = devboot_witness_run(
+    site: retained_devboot_git_read_tree,
+    workdir: repo_root,
+    bin_path: "env",
+    args: [concat("GIT_INDEX_FILE=", checkout_index), "git", "read-tree", tree_hex],
+  )
+  if !loaded.success {
+    SourceMaterializationRefused { detail: snapshot_step_refusal(step: "read-tree <snapshot>", exit_code: loaded.exit_code, stderr: loaded.stderr) }
+  } else {
+    let checked_out = devboot_witness_run(
+    site: retained_devboot_git_checkout_index,
+    workdir: repo_root,
+      bin_path: "env",
+      args: [
+        concat("GIT_INDEX_FILE=", checkout_index),
+        "git",
+        "checkout-index",
+        "-a",
+        "-f",
+        concat("--prefix=", join([source_dir, "/"], "")),
+      ],
+  )
+    if !checked_out.success {
+      SourceMaterializationRefused { detail: snapshot_step_refusal(step: "checkout-index", exit_code: checked_out.exit_code, stderr: checked_out.stderr) }
+    } else {
+      SourceMaterialized { source_dir: source_dir }
+    }
+  }
+}
+
+// THE TOOLCHAIN AND HOST ARE OBSERVED, NOT ASSERTED, and the previous revision asserting them was a live false share rather than a tidiness problem. It declared the toolchain as rustup 1.89.0 and the host as x86_64-unknown-linux-gnu. Measured on the machine that actually ran it: rustc 1.93.0, host aarch64-unknown-linux-gnu. Both hardcoded values were simply wrong.
+//
+// EACH ERROR HAD ITS OWN FAILURE. A fixed toolchain version means upgrading the compiler does not change the subject digest, so the same tree after a rustc upgrade REUSES the binary the old compiler built -- forever, because nothing about the identity ever moves. A fixed host triple is worse: the digest claimed x86_64 while the stored artifact was an aarch64 binary, so a genuine x86_64 consumer fetching that digest would receive something its machine cannot execute, with every identity check agreeing.
+//
+// So both are read from the toolchain that is about to do the work. The triple is parsed through the cited Rust spelling in extdeps.rust.target_triple, which is partial and refuses anything it does not publish -- an unrecognized host refuses rather than being assembled from parts, because a triple composed by concatenation looks plausible for combinations Rust does not support.
+type ObservedToolchain
+  = ToolchainObserved { toolchain: ToolchainRequirement, host: TargetTriple }
+  | ToolchainObservationRefused { detail: String }
+
+fn second_field(text: String) -> String {
+  fold(
+    split(s: text, sep: " "),
+    init: FieldScan { index: 0, found: "" },
+    f: (acc, part) => scan_field(acc: acc, part: part, wanted: 1),
+  ).found
+}
+
+type FieldScan {
+  index: Int
+  found: String
+}
+
+fn scan_field(acc: FieldScan, part: String, wanted: Int) -> FieldScan {
+  if acc.index == wanted {
+    FieldScan { index: acc.index + 1, found: part }
+  } else {
+    FieldScan { index: acc.index + 1, found: acc.found }
+  }
+}
+
+fn observe_toolchain(repo_root: String) -> ObservedToolchain {
+  let version_out = devboot_witness_run(
+    site: retained_devboot_rustc_version,
+    workdir: repo_root,
+    bin_path: "rustc",
+    args: ["--version"],
+  )
+  let host_out = devboot_witness_run(
+    site: retained_devboot_rustc_version,
+    workdir: repo_root,
+    bin_path: "rustc",
+    args: ["-vV"],
+  )
+  if !version_out.success {
+    ToolchainObservationRefused { detail: "rustc --version could not be read" }
+  } else {
+    if !host_out.success {
+      ToolchainObservationRefused { detail: "rustc -vV could not be read" }
+    } else {
+      observe_toolchain_from_text(
+        version_text: trim(s: version_out.stdout),
+        verbose_text: host_out.stdout,
+      )
+    }
+  }
+}
+
+fn host_line_triple(verbose_text: String) -> String {
+  fold(
+    split(s: verbose_text, sep: "\n"),
+    init: "",
+    f: (acc, line) =>
+      if starts_with(s: trim(s: line), prefix: "host: ") {
+        trim(s: second_field(text: trim(s: line)))
+      } else {
+        acc
+      },
+  )
+}
+
+fn observe_toolchain_from_text(version_text: String, verbose_text: String) -> ObservedToolchain {
+  let version = second_field(text: version_text)
+  let host_spelling = host_line_triple(verbose_text: verbose_text)
+  if version == "" {
+    ToolchainObservationRefused { detail: concat("could not read a version out of: ", version_text) }
+  } else {
+    match parse_rust_target_triple(spelling: host_spelling) {
+      Absent =>
+        ToolchainObservationRefused {
+          detail: join(["this host reports the target triple ", host_spelling, ", which extdeps.rust.target_triple does not publish a row for"], ""),
+        }
+      Present { value: triple } =>
+        ToolchainObserved {
+          toolchain: ToolchainRequirement { name: "rustc" as NonEmptyStr, version: version as NonEmptyStr },
+          host: triple,
+        }
+    }
+  }
+}
+
+// The report is a rendered String because `gunbc run` prints a value and a caller reads it; the TYPED outcome is what the carriers hold, and this rendering is a projection of it rather than a second representation. It names the subject digest, the decision taken, and the artifact address, which is exactly what a caller needs to fetch.
+// THE SERVICE MAKES THE STORE A REPOSITORY, which until now only the deploy note claimed. The split is stated there and is forced by the privilege boundary: the deploy principal's sudo roster does not grant git, so the deploy can ensure the directory and nothing more, and the account that owns it must do the rest. That left the second half of the sentence unimplemented -- every deploy note said the service initializes the store while the producer's first store touch was a ref lookup against a directory that was not yet a repository.
+//
+// It failed closed rather than silently, because git refuses a --git-dir that is not a repository and the lookup's own three-valued arm surfaces that as a store deficit. So this is not a repaired fail-open; it is a bootstrap step that the carrier promised and the realization omitted, which meant a freshly deployed host could not reach the ordinary path without someone running git init by hand. A capsule claiming the vertical executes on the ordinary CLI path cannot depend on an out-of-band step.
+//
+// init --bare IS IDEMPOTENT BY UPSTREAM CONTRACT -- re-running it on an existing repository reinitializes metadata and touches neither refs nor objects -- so it runs on every produce rather than being guarded by an existence check. A check would be a second, weaker representation of a property git already guarantees, and it would introduce the gap between observing and acting that this module removes everywhere else.
+//
+// IT DOES NOT CREATE THE PARENT. If /var/lib/gunbc is absent the init fails and this refuses, which is the correct outcome: the parent is the deploy's responsibility, and silently creating a store outside the ensured location would produce artifacts nobody is converging and nobody would find.
+type StoreReadiness
+  = StoreReady
+  | StoreInitRefused { detail: String }
+
+fn ensure_store_repository(store_root: String, repo_root: String) -> StoreReadiness {
+  let init = devboot_witness_run(
+    site: retained_devboot_git_bare_init,
+    workdir: repo_root,
+    bin_path: "git",
+    args: ["init", "--bare", "--quiet", store_root],
+  )
+  if init.success {
+    StoreReady
+  } else {
+    StoreInitRefused {
+      detail: join(["artifact store could not be initialized at ", store_root, " (git exit ", to_string(init.exit_code), "): ", trim(s: init.stderr)], ""),
+    }
+  }
+}
+
+fn devboot_produce_report(store_root: String, repo_root: String, work_root: String, caller: String) -> ProduceReport {
+  match ensure_store_repository(store_root: store_root, repo_root: repo_root) {
+    StoreInitRefused { detail } => ProduceRefused { reason: detail }
+    StoreReady =>
+      devboot_produce_in_ready_store(
+        store_root: store_root,
+        repo_root: repo_root,
+        work_root: work_root,
+        caller: caller,
+      )
+  }
+}
+
+fn devboot_produce_in_ready_store(store_root: String, repo_root: String, work_root: String, caller: String) -> ProduceReport {
+  match devboot_snapshot(repo_root: repo_root, work_root: work_root) {
+    SnapshotRefused { detail } => ProduceRefused { reason: detail }
+    SnapshotTaken { tree_hex } =>
+      match observe_toolchain(repo_root: repo_root) {
+        ToolchainObservationRefused { detail } => ProduceRefused { reason: detail }
+        ToolchainObserved { toolchain, host } =>
+          devboot_produce_with_toolchain(
+            store_root: store_root,
+            repo_root: repo_root,
+            work_root: work_root,
+            caller: caller,
+            tree_hex: tree_hex,
+            toolchain: toolchain,
+            host: host,
+          )
+      }
+  }
+}
+
+fn devboot_produce_with_toolchain(
+  store_root: String,
+  repo_root: String,
+  work_root: String,
+  caller: String,
+  tree_hex: String,
+  toolchain: ToolchainRequirement,
+  host: TargetTriple,
+) -> ProduceReport {
+  match git_object_id_from_untagged_hex(hex: tree_hex) {
+    Absent => ProduceRefused { reason: concat("unusable tree oid from git write-tree: ", tree_hex) }
+    Present { value: tree_oid } =>
+      match admit_build_subject(
+        tree_oid: tree_oid,
+        package: devboot_program_package,
+        cargo_target: Bin { name: "gunbc" },
+        toolchain: toolchain,
+        target: host,
+        profile: "release",
+        features: [],
+        rustflags: [],
+        linker: none,
+        sysroot: none,
+        cargo_config: [],
+        platform_c_library: observe_platform_c_library(repo_root: repo_root),
+      ) {
+        SubjectRefused { cause } =>
+          ProduceRefused { reason: build_subject_refusal_reason(cause: cause) }
+        SubjectAdmitted { subject } =>
+          devboot_produce_admitted(
+            store_root: store_root,
+            repo_root: repo_root,
+            work_root: work_root,
+            caller: caller,
+            host: host,
+            subject: subject,
+            token: content_hash_ref_token(hash: build_subject_digest(subject: subject)),
+          )
+      }
+  }
+}
+
+// THE NAMESPACES ARE CONSUMED, NOT RESPELLED. An earlier revision wrote the two ref prefixes as literals here while gunbc.devboot.lease already declared them, so one fact had two spellings that could drift apart independently -- and the drift would not have been loud. A producer writing under refs/devboot/artifact/ while the lease module looked under a renamed prefix would simply never find an existing artifact: every request would rebuild, the dedup this service exists to provide would be silently gone, and every individual run would still look correct.
+//
+// These functions now append the token to the imported namespaces, so there is one authority for where a subject lives in the store and a rename reaches both readers at once.
+// THE TYPED CAUSE SURVIVES TO THE CALLER. An earlier revision matched SubjectRefused and threw the cause away, rendering every admission failure as the same sentence -- so a duplicate feature, an empty profile and an empty package name were indistinguishable to whoever had to fix one. That is the located half of a located refusal discarded at the last step, in a module whose whole subject is that refusals carry their reason.
+//
+// The match below is total, so a new refusal cause cannot inherit a generic sentence by omission.
+fn build_subject_refusal_reason(cause: BuildSubjectRefusalCause) -> String {
+  match cause {
+    FeatureNameEmpty => "a requested feature name was empty"
+    DuplicateFeature { name } => concat("a feature was requested twice: ", name)
+    ProfileNameEmpty => "the requested cargo profile was empty"
+    PackageNameEmpty => "the requested package name was empty"
+    RustflagEmpty => "a requested rustflag was empty"
+    CargoConfigKeyEmpty => "a requested cargo config entry had an empty key"
+    LinkerEmpty => "the requested linker was empty"
+    SysrootEmpty => "the requested sysroot was empty"
+    PlatformCLibraryUnobserved => "the platform C library could not be observed, so the build environment has no identity"
+  }
+}
+
+fn artifact_ref_of(token: String) -> String {
+  concat(artifact_ref_namespace, token)
+}
+
+// THE SUBJECT AND THE DIGEST ARE SEPARATE BLOBS, because fusing them made the exact comparison impossible. The stored record was the subject rendering with the artifact digest appended, so a caller comparing its request against that blob could never match it exactly -- which is precisely why the earlier code compared a PREFIX, and why the prefix was unsafe: a request with fewer axes is a prefix of a stored subject with more.
+//
+// Splitting them removes the dilemma rather than picking a side of it. The subject blob holds exactly the rendering and nothing else, so equality over the whole blob is the comparison, with no delimiter to parse and no field a subject value could imitate. A separator inside one blob would have worked only until some cargo feature or rustflag contained the separator text; there is no such value here because there is no separator.
+//
+// Found by running two callers against one tree: the first produced, and the second refused with a subject mismatch on a request identical to it.
+
+fn digest_ref_of(token: String) -> String {
+  concat(digest_ref_namespace, token)
+}
+
+fn subject_ref_of(token: String) -> String {
+  concat(subject_ref_namespace, token)
+}
+
+fn lease_ref_of(token: String) -> String {
+  concat(lease_ref_namespace, token)
+}
+
+// THE LOOKUP IS THREE-VALUED, because two of its outcomes mean opposite things and the third means neither. A ref that is absent is the ordinary first-time subject and the correct response is to build. A store that could not be read at all -- a wrong --git-dir, a corrupt repository -- is a deficit, and building would answer it by producing a second artifact nobody can find, then storing it in the same unreadable place.
+//
+// An earlier revision branched on success alone, so both landed in the build arm. Review judged that acceptable on the grounds that a broken store would red at the very next git call against the same --git-dir, which is true and is why it was not a silent widen. It is still the wrong shape: it makes correctness depend on a LATER step failing rather than on this step answering honestly, and the distinction costs one exit code to keep.
+//
+// Git supplies it directly: `rev-parse --verify --quiet` exits 1 for a ref that is not there and 128 for a repository it could not use. So absence is read from the arm git reserves for absence, and everything else refuses with the store's own message attached.
+type ArtifactLookup
+  = ArtifactRefPresent { oid: String }
+  | ArtifactRefAbsent
+  | ArtifactLookupRefused { detail: String }
+
+fn ref_lookup(store_root: String, repo_root: String, ref_name: String) -> ArtifactLookup {
+  let existing = devboot_witness_run(
+    site: retained_devboot_git_rev_parse,
+    workdir: repo_root,
+    bin_path: "git",
+    args: [concat("--git-dir=", store_root), "rev-parse", "--verify", "--quiet", ref_name],
+  )
+  if existing.success {
+    ArtifactRefPresent { oid: trim(s: existing.stdout) }
+  } else {
+    if existing.exit_code == git_ref_missing_exit_code {
+      ArtifactRefAbsent
+    } else {
+      ArtifactLookupRefused {
+        detail: join(["artifact store unreadable (git exit ", to_string(existing.exit_code), "): ", trim(s: existing.stderr)], ""),
+      }
+    }
+  }
+}
+
+fn artifact_lookup(store_root: String, repo_root: String, token: String) -> ArtifactLookup {
+  ref_lookup(store_root: store_root, repo_root: repo_root, ref_name: artifact_ref_of(token: token))
+}
+
+// THE LIVE PATH DECIDES REUSE THROUGH THE SAME FOLD THE MODEL DEFINES, which it did not before. An earlier revision reused on artifact-ref PRESENCE alone: the ref existed, so the bytes were served. The reuse law this capsule introduced -- retrieve the stored request, compare it exactly, confirm the bytes are there -- was stated in gunbc.devboot.outcome and exercised by witnesses, while the code that actually answered callers never called it. A model and its realization disagreeing about the model own central law is the fork this repository treats as a correctness defect, and the witnesses could not have caught it because they tested the fold rather than the path.
+//
+// WHAT MAKES THE COMPARISON POSSIBLE is that the producer now stores the rendered subject beside the artifact, under its own ref. On reuse, that text is read back and compared with the rendering of the request; the rendering is injective, so equal text means equal subjects. Bytes are then confirmed present in the object database before anything is served. A digest collision therefore costs a rebuild instead of a wrong binary, and a pruned object refuses instead of being reported as retrievable -- both on the live path, not only in the model.
+fn recorded_artifact_digest(store_root: String, repo_root: String, token: String) -> String {
+  let out = devboot_witness_run(
+    site: retained_devboot_git_cat_file,
+    workdir: repo_root,
+    bin_path: "git",
+    args: [concat("--git-dir=", store_root), "cat-file", "blob", digest_ref_of(token: token)],
+  )
+  if out.success {
+    trim(s: out.stdout)
+  } else {
+    ""
+  }
+}
+
+fn stored_record_text(store_root: String, repo_root: String, token: String) -> String {
+  let stored = devboot_witness_run(
+    site: retained_devboot_git_cat_file,
+    workdir: repo_root,
+    bin_path: "git",
+    args: [concat("--git-dir=", store_root), "cat-file", "blob", subject_ref_of(token: token)],
+  )
+  if stored.success { stored.stdout } else { "" }
+}
+
+// EXACT EQUALITY, NOT A PREFIX, and the difference was a live false match rather than a stylistic one. An earlier revision accepted the stored record when the request's rendering was a PREFIX of it. Renderings are built by appending axes, so a request carrying no cargo-config entries renders as a strict prefix of a stored subject that carries one -- the shorter request would have matched the longer stored subject and been handed a binary built with configuration it never asked for. Every visible signal would have agreed: the digest found the candidate, the comparison passed, the bytes verified against their own record.
+//
+// Prefix acceptance defeats the exact-subject wall in precisely the direction that matters, because the requester asking for LESS is the one that gets someone else's artifact. The comparison is therefore equality over the whole rendering.
+//
+// BOTH SIDES ARE TRIMMED because the stored side crosses a transport that strips a trailing newline, so an untrimmed comparison would answer differs for a record that is byte-identical in the store. Trimming is a property of the transport seam, not a weakening of the comparison: no interior byte is touched, and two renderings that differ anywhere still differ.
+//
+// THE RENDERING'S INJECTIVITY IS WHAT THIS RESTS ON, and it is a real obligation rather than an assumption -- render_build_subject delimits every axis and every list element, so no two distinct subjects render alike. Its discriminating control lives with the identity witnesses.
+fn stored_subject_match(record_text: String, subject: BuildSubject) -> SubjectMatch {
+  if record_text == "" {
+    SubjectDiffers
+  } else {
+    if trim(s: record_text) == trim(s: render_build_subject(subject: subject)) {
+      SubjectMatches
+    } else {
+      SubjectDiffers
+    }
+  }
+}
+
+// THE TEMPORARY FILE IS REMOVED, because git unpack-file writes it into the CURRENT DIRECTORY and the current directory here is the repository whose tree oid is this service's identity axis. Leaving them behind litters the working tree with one file per verification -- the same class as the lease claim file that was written into the repo root, caught the same way, by looking at git status after a run.
+//
+// It does not change the subject today, because the index this producer writes its tree from is read from HEAD rather than from the working directory, so untracked files are invisible to it. That is a property of how the subject is computed, not a licence to leave debris in someone else's checkout.
+// AVAILABILITY IS MEASURED, NOT ASSUMED, and that is why this costs a read. The available arm carries a StoredArtifact, and there is no way to inhabit it without the observation that produced it -- so confirming a ref exists is not enough, and constructing an artifact record with an invented digest to satisfy the type would be precisely the fabrication the carrier exists to prevent.
+//
+// So the bytes are fetched and their sha256 computed over the fetched file, whose preimage is the content alone. That digest is then checked against the one the record stored at production time: equal means available, different means CORRUPT rather than missing, because bytes that are present and wrong are an integrity failure and must never be retried as though they were a cache miss.
+//
+// The cost is one read of the artifact on the reuse path. That is the honest price of the contract this vertical was given -- a reuse that skipped it would be reporting retrievability it had not established, which is the one thing there is no arm for.
+fn observed_artifact_sha256(store_root: String, repo_root: String, oid: String) -> String {
+  let unpacked = devboot_witness_run(
+    site: retained_devboot_git_unpack_file,
+    workdir: repo_root,
+    bin_path: "git",
+    args: [concat("--git-dir=", store_root), "unpack-file", oid],
+  )
+  if !unpacked.success {
+    ""
+  } else {
+    let temp_name = trim(s: unpacked.stdout)
+    let digest = devboot_witness_run(
+    site: retained_devboot_sha256sum,
+    workdir: repo_root,
+      bin_path: "sha256sum",
+      args: [temp_name],
+  )
+    let removed = devboot_witness_run(
+    site: retained_devboot_rm_file,
+    workdir: repo_root,
+      bin_path: "rm",
+      args: ["-f", temp_name],
+  )
+    if digest.success { first_field(text: trim(s: digest.stdout)) } else { "" }
+  }
+}
+
+// A DIGEST MISMATCH IS CORRUPTION, NOT AN UNREADABLE STORE, and reporting it as the latter was the state-space conflation this vertical's own carrier warns about. The availability sum separates them deliberately: missing or unreadable bytes are an absence and a rebuild fixes them, while bytes that are PRESENT and do not match their promised digest are an INTEGRITY failure -- serving them would be the worst outcome this service can produce, and burying that in the same arm as a routine miss means it gets retried as though it were a cache miss, quietly, forever.
+//
+// The arm carries BOTH digests because the remedy depends on which side moved. It was reachable only through the wrong arm before, so the corrupt-specific path existed in the model and had no producer on the live path -- a variant that nothing constructs is not a distinction the system actually makes.
+//
+// If either digest fails to parse as a sha256 the observation refuses as unreadable instead, because a corruption report that cannot name what it compared is not a report.
+
+fn corrupt_artifact_observation(expected_hex: String, observed_hex: String) -> ArtifactAvailability {
+  match sha256_hex_digest(hex: expected_hex) {
+    Absent =>
+      ArtifactUnreadable {
+        detail: concat("the artifact bytes do not match their recorded digest, and the recorded digest is unusable: ", expected_hex),
+      }
+    Present { value: expected } =>
+      match sha256_hex_digest(hex: observed_hex) {
+        Absent =>
+          ArtifactUnreadable {
+            detail: concat("the artifact bytes do not match their recorded digest, and the observed digest is unusable: ", observed_hex),
+          }
+        Present { value: observed } => ArtifactCorrupt { expected: expected, observed: observed }
+      }
+  }
+}
+
+fn observe_artifact_availability(
+  store_root: String,
+  repo_root: String,
+  oid: String,
+  token: String,
+  subject: BuildSubject,
+) -> ArtifactAvailability {
+  let present = devboot_witness_run(
+    site: retained_devboot_git_object_exists,
+    workdir: repo_root,
+    bin_path: "git",
+    args: [concat("--git-dir=", store_root), "cat-file", "-e", oid],
+  )
+  if !present.success {
+    ArtifactMissing
+  } else {
+    let observed = observed_artifact_sha256(store_root: store_root, repo_root: repo_root, oid: oid)
+    if observed == "" {
+      ArtifactUnreadable { detail: "the artifact blob could not be read back for verification" }
+    } else {
+      if trim(s: recorded_artifact_digest(store_root: store_root, repo_root: repo_root, token: token)) == trim(s: observed) {
+        observed_stored_artifact(
+          subject: subject,
+          oid: oid,
+          sha256_hex: observed,
+          bytes_text: trim(s: devboot_witness_run(
+    site: retained_devboot_git_object_size,
+    workdir: repo_root,
+            bin_path: "git",
+            args: [concat("--git-dir=", store_root), "cat-file", "-s", oid],
+  ).stdout),
+        )
+      } else {
+        corrupt_artifact_observation(
+          expected_hex: trim(s: recorded_artifact_digest(store_root: store_root, repo_root: repo_root, token: token)),
+          observed_hex: trim(s: observed),
+        )
+      }
+    }
+  }
+}
+
+// THE DIGEST LINE IS SPELLED ONCE AND SEARCHED FOR WITHOUT ITS TERMINATOR, which is a distinction the first version got wrong and paid for immediately. The writer emits the line with a trailing newline, because it is a line. The reader must not look for that newline: the command transport returns process stdout with the trailing newline stripped, so a record whose last line is the digest comes back WITHOUT it, and a search including the terminator never matches.
+//
+// The symptom was worth the lesson -- a correctly produced and correctly stored artifact was refused on reuse as though its bytes were unretrievable, which is a false refusal rather than a false share, so it fails safe. It still had to be found by running it, because both halves looked right in isolation and only disagreed at the seam.
+//
+// Both forms come from one marker so the writer and the reader cannot drift apart; only the terminator differs, and it differs for a stated reason.
+fn sha256_record_marker(hex: String) -> String {
+  concat("artifact.sha256=", hex)
+}
+
+fn sha256_record_line(hex: String) -> String {
+  join([sha256_record_marker(hex: hex), "\n"], "")
+}
+
+// EVERY FIELD IS MEASURED OR THE OBSERVATION REFUSES. A first draft of this function filled the byte count with zero and the subject digest with a hash of the object id, purely so the record would typecheck -- two invented values wearing the shape of measurements, which is the fabrication this whole carrier exists to make impossible, committed in the act of satisfying it.
+//
+// Now the subject digest is the digest of the subject actually requested, the blob id is the address the store answered to, the sha256 is computed over the fetched bytes, and the size comes from the store. Anything that cannot be established refuses through the availability sum instead of being supplied.
+// AN UNPARSEABLE SIZE REFUSES RATHER THAN READING AS ZERO. parse_int answers zero for text that is not a number, so a malformed or empty cat-file size silently produced a zero-byte artifact that then passed every remaining check -- the one field in this record that was still allowed to be invented, in the function whose own note says every field is measured or the observation refuses.
+//
+// It is reachable: the size read is a separate invocation from the presence check that precedes it, so a store pruned, truncated or made unreadable between the two answers with empty text rather than an error. Zero bytes is also a plausible-looking answer, which is what makes it dangerous -- a consumer would fetch an empty file and only discover the problem when it tried to execute it.
+//
+// The digits check runs before the parse, so the refusal is decided by the text rather than by trusting a total function's fallback value. Found by review on the approving pass rather than by execution, and worth recording as such: it is the same class the byte-count fabrication note above describes, surviving in the one place the earlier repair did not look.
+fn size_text_is_digits(text: String) -> Bool {
+  (text != "")
+    && all(chars(text), c => c >= 48 && c <= 57)
+}
+
+fn observed_stored_artifact(
+  subject: BuildSubject,
+  oid: String,
+  sha256_hex: String,
+  bytes_text: String,
+) -> ArtifactAvailability {
+  match git_object_id_from_untagged_hex(hex: oid) {
+    Absent => ArtifactUnreadable { detail: concat("the store returned an unusable object id: ", oid) }
+    Present { value: blob } =>
+      match sha256_hex_digest(hex: sha256_hex) {
+        Absent => ArtifactUnreadable { detail: concat("the observed digest is not a sha256: ", sha256_hex) }
+        Present { value: digest } =>
+          if !size_text_is_digits(text: trim(s: bytes_text)) {
+            ArtifactUnreadable {
+              detail: concat("the store did not report a usable object size: ", bytes_text),
+            }
+          } else {
+            ArtifactAvailable {
+              artifact: StoredArtifact {
+                subject_digest: build_subject_digest(subject: subject),
+                blob_oid: blob,
+                sha256: digest,
+                bytes: byte_size(count: parse_int(trim(s: bytes_text))),
+              },
+            }
+          }
+      }
+  }
+}
+
+fn devboot_produce_admitted(store_root: String, repo_root: String, work_root: String, caller: String, host: TargetTriple, subject: BuildSubject, token: String) -> ProduceReport {
+  match artifact_lookup(store_root: store_root, repo_root: repo_root, token: token) {
+    ArtifactLookupRefused { detail } => ProduceRefused { reason: detail }
+    ArtifactRefPresent { oid } =>
+      live_reuse_report(
+        store_root: store_root,
+        repo_root: repo_root,
+        work_root: work_root,
+        caller: caller,
+        host: host,
+        subject: subject,
+        token: token,
+        oid: oid,
+      )
+    ArtifactRefAbsent =>
+      devboot_produce_build(store_root: store_root, repo_root: repo_root, work_root: work_root, caller: caller, host: host, subject: subject, token: token)
+  }
+}
+
+// THE LEASE IS TAKEN BEFORE THE BUILD, not after, because a lease acquired afterwards would protect nothing -- both callers would already have paid for the same compile, which is the duplicate work this service exists to remove. Losing the lease is reported as an attach rather than as a failure: the subject IS being produced, and the correct move for the loser is to wait for the winner's artifact, never to start a second build of the same thing.
+// THE CLAIM OBJECT IS WRITTEN INTO THE SERVICE'S OWN ROOT, PER SUBJECT, never into the source tree and never at a shared name. A lease claim needs to become a git object and the transport has no stdin, so it goes through a file first.
+//
+// An earlier revision put that file in the repository root, where it dirtied the very tree whose oid is this service's identity axis -- a producer one careless index operation away from changing the subject it is producing. It then used a single fixed filename inside the store, which removed that problem and introduced a subtler one: two producers working on DIFFERENT subjects share the store, so one could overwrite the other's claim file between the write and the hash, and the bytes a lease ref pointed at could name a caller that never took it. Exactly-one-producer still held -- the compare-and-swap is per subject ref -- but the answer to WHO holds it was unreliable exactly when it matters, under concurrency.
+//
+// The filename now carries the subject token, so two subjects never contend for one path and the claim always names the producer that wrote it.
+// LOSING THE RACE AND FAILING TO REACH THE STORE ARE NOT THE SAME EVENT, and git's exit code cannot tell them apart -- measured, both are 128. An earlier revision read any failed update-ref as ATTACHED, which reports a specific and reassuring fact: another producer holds the lease and this caller should wait for its artifact. When the real cause was an unwritable or unreachable store, that is a fabricated plausible output of exactly the kind this vertical refuses everywhere else -- the caller waits for a producer that does not exist, and the deficit is invisible because the answer looked like ordinary healthy contention.
+//
+// THE DISAMBIGUATION IS STRUCTURAL RATHER THAN TEXTUAL. Matching git's message would be a second, fragile representation of its behaviour, tied to wording no upstream promises to keep. Instead the lease ref is READ BACK: if it now exists, some producer really does hold it and attaching is the truth, with the holder named; if it does not exist, the failure was not a race and the store's own message carries the refusal; if the read-back itself cannot be performed, that refuses too. Git's state answers the question git's exit code could not.
+// ATTACHING IS A STATUS, NOT A COMPLETION, and an earlier revision exited SUCCESS on it. The caller asked for a usable binary; it was told the exit code for success and handed nothing, because another producer was still compiling. Every automated consumer -- a script, a CI step, an agent -- reads exit zero as 'the artifact is there' and proceeds to use a file that does not exist. That is the contract law of this vertical inverted at the last step: success reported without retrievable bytes.
+//
+// So the attaching caller WAITS on the producer that beat it, and the wait terminates in one of exactly two ways: the artifact appears and the ordinary reuse law runs over it -- exact subject comparison, independent digest verification, bytes confirmed present -- or the wait refuses. There is no arm that exits success without bytes, and reuse is not special-cased for waiters: the same fold decides, so a waiter cannot be handed something a first-time requester would have been refused.
+//
+// THE WAIT IS BOUNDED, AND EXPIRY IS A REFUSAL RATHER THAN A VERDICT. An unbounded wait is the forever-pending state this service must never produce: a producer that died holds its lease forever, and every later requester would block on it silently. The bound turns that into a located, typed, countable refusal naming the holder and how long was spent -- which is what makes a stranded lease observable and therefore fixable, instead of looking like an ordinary slow build. Expiry deliberately does NOT claim the producer is dead: this caller cannot observe that, and inventing it would be the fabrication the timeout exists to avoid. Breaking a stranded lease is a separate, explicit coordinator action.
+//
+// Polling rather than subscribing is what the substrate offers -- git refs have no watch -- and it is honest at this grain: the cost is one ref lookup per interval against a local repository.
+// THE POLL BUDGET IS A LIST BECAUSE THE SUBSTRATE BOUNDS ITERATION BY THE THING ITERATED. There is no range or repeat primitive -- deliberately, since a count-driven loop is the shape whose termination has to be argued separately -- so the attempt budget is a real finite list and the fold over it terminates by construction rather than by a decreasing counter anybody could get wrong.
+//
+// Ten tens is one hundred attempts at nine seconds, which is the nine-hundred-second budget stated beside it. The two are kept in agreement by derivation at the one place that reports them, not by two literals hoping to match.
+// THE INTERVAL IS A DURATION, SO IT IS CARRIED AS ONE. It was a bare String parsed to Int for the budget arithmetic and passed straight to sleep -- a scale unit living in a name (_seconds) rather than in the type, which is the conflation this repository treats as a hard block: nothing stops a caller multiplying it by a count denominated in anything, and the name is the only thing asserting what the number means.
+//
+// std.measure already carries Second, so the value is a Second, the budget is derived by multiplying it by the attempt count, and the STRING only appears at the transport boundary where sleep's argv demands text. That is the right place for a rendering: the unit survives every arithmetic step and is erased exactly once, at the seam that cannot carry it.
+
+fn attach_wait_interval() -> Second {
+  second(count: 9)
+}
+
+fn attach_wait_interval_argv() -> String {
+  to_string(second_count(attach_wait_interval()))
+}
+
+fn attach_wait_tick_unit() -> List<Int> {
+  [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+}
+
+fn attach_wait_attempts() -> List<Int> {
+  fold(
+    attach_wait_tick_unit(),
+    init: [],
+    f: (acc, tick) => concat(acc, attach_wait_tick_unit()),
+  )
+}
+
+fn attach_wait_budget() -> Second {
+  second(count: (attach_wait_attempts() |> count) * second_count(attach_wait_interval()))
+}
+
+type AttachWait
+  = AttachArtifactAppeared { oid: String }
+  | AttachStillProducing
+  | AttachWaitRefused { detail: String }
+
+fn attach_poll_once(store_root: String, repo_root: String, token: String) -> AttachWait {
+  match artifact_lookup(store_root: store_root, repo_root: repo_root, token: token) {
+    ArtifactRefPresent { oid } => AttachArtifactAppeared { oid: oid }
+    ArtifactRefAbsent => AttachStillProducing
+    ArtifactLookupRefused { detail } => AttachWaitRefused { detail: detail }
+  }
+}
+
+// WHETHER THE WAIT IS OVER IS ITS OWN DECISION, extracted so the absorbing behaviour can be witnessed without a store. Once the artifact has appeared or the lookup has refused, every remaining tick must return the SAME answer rather than looking again -- a later poll could observe a different state and overwrite a settled terminal one, which would let a waiter that already had its artifact end up reporting a refusal from a subsequent hiccup.
+
+fn attach_wait_settled(acc: AttachWait) -> Bool {
+  match acc {
+    AttachArtifactAppeared { oid } => true
+    AttachWaitRefused { detail } => true
+    AttachStillProducing => false
+  }
+}
+
+fn attach_wait_step(acc: AttachWait, store_root: String, repo_root: String, token: String) -> AttachWait {
+  match acc {
+    AttachArtifactAppeared { oid } => acc
+    AttachWaitRefused { detail } => acc
+    AttachStillProducing => {
+      let paused = devboot_witness_run(
+    site: retained_devboot_sleep,
+    workdir: repo_root,
+        bin_path: "sleep",
+        args: [attach_wait_interval_argv()],
+  )
+      attach_poll_once(store_root: store_root, repo_root: repo_root, token: token)
+    }
+  }
+}
+
+fn attach_wait_for_artifact(store_root: String, repo_root: String, token: String) -> AttachWait {
+  fold(
+    attach_wait_attempts(),
+    init: attach_poll_once(store_root: store_root, repo_root: repo_root, token: token),
+    f: (acc, attempt) => attach_wait_step(acc: acc, store_root: store_root, repo_root: repo_root, token: token),
+  )
+}
+
+fn attach_then_reuse(
+  store_root: String,
+  repo_root: String,
+  work_root: String,
+  caller: String,
+  host: TargetTriple,
+  subject: BuildSubject,
+  token: String,
+  holder: String,
+) -> ProduceReport {
+  match attach_wait_for_artifact(store_root: store_root, repo_root: repo_root, token: token) {
+    AttachWaitRefused { detail } => ProduceRefused { reason: detail }
+    AttachStillProducing =>
+      ProduceRefused {
+        reason: join([
+          "attached to producer ",
+          holder,
+          " and waited ",
+          to_string(second_count(attach_wait_budget())),
+          "s without an artifact appearing; the lease is still held. This caller cannot observe whether that producer is alive -- breaking a stranded lease is an explicit coordinator action, never inferred from a timeout.",
+        ], ""),
+      }
+    AttachArtifactAppeared { oid } =>
+      live_reuse_report(
+        store_root: store_root,
+        repo_root: repo_root,
+        work_root: work_root,
+        caller: caller,
+        host: host,
+        subject: subject,
+        token: token,
+        oid: oid,
+      )
+  }
+}
+
+fn lease_failure_report(
+  store_root: String,
+  repo_root: String,
+  work_root: String,
+  caller: String,
+  host: TargetTriple,
+  subject: BuildSubject,
+  token: String,
+  detail: String,
+) -> ProduceReport {
+  match ref_lookup(store_root: store_root, repo_root: repo_root, ref_name: lease_ref_of(token: token)) {
+    ArtifactRefPresent { oid } =>
+      attach_then_reuse(
+        store_root: store_root,
+        repo_root: repo_root,
+        work_root: work_root,
+        caller: caller,
+        host: host,
+        subject: subject,
+        token: token,
+        holder: oid,
+      )
+    ArtifactRefAbsent =>
+      ProduceRefused {
+        reason: join(["lease could not be taken and no producer holds it: ", detail], ""),
+      }
+    ArtifactLookupRefused { detail: lookup_detail } => ProduceRefused { reason: lookup_detail }
+  }
+}
+
+fn devboot_produce_build(store_root: String, repo_root: String, work_root: String, caller: String, host: TargetTriple, subject: BuildSubject, token: String) -> ProduceReport {
+  let claim_path = join([store_root, "/devboot-lease-claim-", token], "")
+  let claim_written = Filesystem.Write(path: claim_path, content: concat("producer=", caller))
+
+  let claim = devboot_witness_run(
+    site: retained_devboot_git_hash_object,
+    workdir: repo_root,
+    bin_path: "git",
+    args: [concat("--git-dir=", store_root), "hash-object", "-w", "--", claim_path],
+  )
+  let claim_oid = trim(s: claim.stdout)
+  let taken = devboot_witness_run(
+    site: retained_devboot_git_update_ref,
+    workdir: repo_root,
+    bin_path: "git",
+    args: [concat("--git-dir=", store_root), "update-ref", lease_ref_of(token: token), claim_oid, ""],
+  )
+  if !taken.success {
+    lease_failure_report(store_root: store_root, repo_root: repo_root, work_root: work_root, caller: caller, host: host, subject: subject, token: token, detail: trim(s: taken.stderr))
+  } else {
+    devboot_store_built_artifact(store_root: store_root, repo_root: repo_root, work_root: work_root, caller: caller, host: host, subject: subject, token: token)
+  }
+}
+
+
+// THE BUILD IS DERIVED FROM THE ADMITTED SUBJECT, and the previous revision's failure to do so was a false share of the exact kind the identity carriers exist to prevent. It computed the subject digest faithfully and then ran a fixed `cargo build --release --bin gunbc` regardless of what had been admitted, so a caller asking for the library, a different binary, a debug profile, a feature set or another target would have received the release CLI STORED UNDER ITS OWN SUBJECT'S DIGEST. Every later reuse would then serve those wrong bytes as an exact match, because the record and the request really would agree -- the wall in gunbc.devboot.outcome compares subjects, and both sides would have been the subject nobody built.
+//
+// SO EVERY AXIS EITHER REACHES THE ARGV OR REFUSES. The product picks the cargo target flag and the artifact filename; the profile picks the flag and the output directory; features become --features. What this producer cannot yet realize faithfully is REFUSED with a located cause rather than silently ignored, which is the difference between a bounded capability and a lie: a refusal costs the caller a build it could not have had anyway, while ignoring the axis costs it correctness.
+//
+// dissolve-on, per axis rather than as one lump: cross-target builds land with the session-ABI capsule, which is precisely a request for a target this host is not; rustflags, linker and sysroot land when the environment is threaded into the invocation as configuration rather than argv.
+type BuildPlanRefusalCause
+  = CargoTargetNotRealized { detail: String }
+  | ProfileNotRealized { profile: String }
+  | CrossTargetNotRealized { detail: String }
+  | BuildEnvironmentNotRealized { detail: String }
+
+type BuildPlan
+  = BuildPlanReady { args: List<String>, artifact_path: String }
+  | BuildPlanRefused { cause: BuildPlanRefusalCause }
+
+fn cargo_target_flags(target: CargoTarget) -> List<String> {
+  match target {
+    Lib => ["--lib"]
+    Bin { name } => ["--bin", name]
+    CargoTest { name } => []
+    Example { name } => ["--example", name]
+    Bench { name } => []
+  }
+}
+
+fn cargo_target_artifact_name(target: CargoTarget) -> String {
+  match target {
+    Lib => ""
+    Bin { name } => name
+    CargoTest { name } => ""
+    Example { name } => name
+    Bench { name } => ""
+  }
+}
+
+fn features_flags(features: List<NonEmptyStr>) -> List<String> {
+  if is_empty(features) {
+    []
+  } else {
+    ["--features", join(features |> map(f => f as String), ",")]
+  }
+}
+
+fn environment_refusal_detail(environment: BuildEnvironmentSpec) -> String {
+  if !is_empty(environment.rustflags) {
+    "rustflags are carried in the subject identity but not yet threaded into the invocation"
+  } else {
+    match environment.linker {
+      Present { value: l } => "a linker is carried in the subject identity but not yet threaded into the invocation"
+      Absent =>
+        match environment.sysroot {
+          Present { value: r } => "a sysroot is carried in the subject identity but not yet threaded into the invocation"
+          Absent =>
+            if !is_empty(environment.cargo_config) {
+              "cargo config entries are carried in the subject identity but not yet threaded into the invocation"
+            } else {
+              ""
+            }
+        }
+    }
+  }
+}
+
+fn profile_output_dir(profile: String) -> String {
+  if profile == "release" { "release" } else { "debug" }
+}
+
+fn profile_flags(profile: String) -> List<String> {
+  if profile == "release" { ["--release"] } else { [] }
+}
+
+fn build_plan_for_subject(subject: BuildSubject, host: TargetTriple) -> BuildPlan {
+  let env_detail = environment_refusal_detail(environment: subject.environment)
+  let artifact_name = cargo_target_artifact_name(target: subject.product.target)
+  let profile = subject.profile as String
+  if env_detail != "" {
+    BuildPlanRefused { cause: BuildEnvironmentNotRealized { detail: env_detail } }
+  } else {
+    if !(subject.target == host) {
+      BuildPlanRefused {
+        cause: CrossTargetNotRealized {
+          detail: "the requested target is not this host; cross-target production lands with the session-ABI capsule",
+        },
+      }
+    } else {
+      if artifact_name == "" {
+        BuildPlanRefused {
+          cause: CargoTargetNotRealized {
+            detail: "only a named binary or example produces a single retrievable artifact file",
+          },
+        }
+      } else {
+        if !(profile == "release" || profile == "dev") {
+          BuildPlanRefused { cause: ProfileNotRealized { profile: profile } }
+        } else {
+          BuildPlanReady {
+            args: concat(
+              ["build"],
+              concat(
+                profile_flags(profile: profile),
+                concat(
+                  ["--package", subject.product.package as String],
+                  concat(
+                    cargo_target_flags(target: subject.product.target),
+                    features_flags(features: subject.features),
+                  ),
+                ),
+              ),
+            ),
+            artifact_path: join([profile_output_dir(profile: profile), "/", artifact_name], ""),
+          }
+        }
+      }
+    }
+  }
+}
+
+fn build_plan_refusal_reason(cause: BuildPlanRefusalCause) -> String {
+  match cause {
+    CargoTargetNotRealized { detail } => detail
+    ProfileNotRealized { profile } => concat("unrealized cargo profile: ", profile)
+    CrossTargetNotRealized { detail } => detail
+    BuildEnvironmentNotRealized { detail } => detail
+  }
+}
+
+fn devboot_store_built_artifact(store_root: String, repo_root: String, work_root: String, caller: String, host: TargetTriple, subject: BuildSubject, token: String) -> ProduceReport {
+  match build_plan_for_subject(subject: subject, host: host) {
+    BuildPlanRefused { cause } =>
+      ProduceRefused { reason: build_plan_refusal_reason(cause: cause) }
+    BuildPlanReady { args, artifact_path } =>
+      match devboot_materialize_source(
+        repo_root: repo_root,
+        work_root: work_root,
+        token: token,
+        tree_hex: git_object_id_wire_hex(oid: subject.tree_oid) as String,
+      ) {
+        SourceMaterializationRefused { detail } => ProduceRefused { reason: detail }
+        SourceMaterialized { source_dir } =>
+          devboot_run_build_plan(
+            store_root: store_root,
+            repo_root: repo_root,
+            source_dir: source_dir,
+            target_dir: devboot_target_dir(work_root: work_root, token: token),
+            caller: caller,
+            subject: subject,
+            token: token,
+            args: args,
+            artifact_path: artifact_path,
+          )
+      }
+  }
+}
+
+fn devboot_run_build_plan(
+  store_root: String,
+  repo_root: String,
+  source_dir: String,
+  target_dir: String,
+  caller: String,
+  subject: BuildSubject,
+  token: String,
+  args: List<String>,
+  artifact_path: String,
+) -> ProduceReport {
+  let built = devboot_witness_run(
+    site: retained_devboot_cargo_build,
+    workdir: source_dir,
+    bin_path: "env",
+    args: concat([concat("CARGO_TARGET_DIR=", target_dir), "cargo"], args),
+  )
+  if !built.success {
+    ProduceRefused {
+      reason: join(["the build failed (cargo exit ", to_string(built.exit_code), "): ", trim(s: built.stderr)], ""),
+    }
+  } else {
+    let stored = devboot_witness_run(
+    site: retained_devboot_git_hash_object,
+    workdir: repo_root,
+      bin_path: "git",
+      args: [concat("--git-dir=", store_root), "hash-object", "-w", "--", join([target_dir, "/", artifact_path], "")],
+  )
+    let blob_oid = trim(s: stored.stdout)
+    if !stored.success || blob_oid == "" {
+      ProduceRefused {
+        reason: join(["the build produced no retrievable artifact at ", artifact_path, " (git hash-object exit ", to_string(stored.exit_code), "): ", trim(s: stored.stderr)], ""),
+      }
+    } else {
+      devboot_bind_produced_artifact(
+        store_root: store_root,
+        repo_root: repo_root,
+        subject: subject,
+        token: token,
+        blob_oid: blob_oid,
+      )
+    }
+  }
+}
+
+// PRODUCED IS REPORTED ONLY IF EVERY STEP ANSWERED, and until this repair it was reported unconditionally. The final arm returned ProduceProduced no matter what the build and store invocations did, so a run whose cargo never compiled and whose hash-object therefore had nothing to hash still reported success -- with an EMPTY artifact address, which is the contract law of this vertical ('no arm exists where build succeeded is reportable without retrievable bytes') violated by the function that exists to uphold it.
+//
+// IT WAS FOUND BY EXECUTION, NOT BY READING. The receipt said PRODUCED subject=fnv1a64-27b97ee6f4b89fd7 artifact= -- an empty field where an object id belongs -- while the store held a lease and a subject ref but no artifact ref at all. Nothing in the types objected, because the outcome carries the address as an ordinary String and the empty string is a perfectly good one.
+//
+// THE EXPECTATION MARKER IS NOT A CHECK, which is the lesson worth keeping. Every one of these invocations carried expect: ExpectSuccess, and it reads exactly like an assertion that the step succeeded; it is an output-policy annotation, and control flow continues regardless. Trusting it was the specification-without-execution failure in miniature -- a declaration that looked like enforcement while the realization walked straight past it.
+//
+// The binding steps are separated below so the success arm is reachable only through the two checks.
+// PRODUCED REQUIRES THE WHOLE BINDING, not just the artifact ref. An earlier revision checked only the final update-ref, so a failed subject-record write, hash or bind still reported PRODUCED -- the same class this function had just been repaired for one step further along, surviving in the steps nobody had looked at yet (review 50649).
+//
+// It is not harmless because reuse would refuse. A caller that is told PRODUCED believes the store holds a complete, retrievable binding; if the subject record never landed, the next request for that exact subject finds an artifact it cannot verify a subject for and rebuilds, silently, forever. The producer would be lying about completion and the cost would appear as an unexplained cache that never hits.
+//
+// Every step is now its own arm with its own sentence, so a partial store says WHICH part is missing rather than reporting a generic failure -- the store is the thing being repaired, and knowing whether the subject, the digest or the artifact is the unbound one is the difference between a one-line fix and an investigation.
+
+fn bind_step_refusal(step: String, exit_code: Int, detail: String) -> String {
+  join(["the artifact was built but the store binding is incomplete: ", step, " failed (exit ", to_string(exit_code), "): ", detail], "")
+}
+
+fn devboot_bind_produced_artifact(
+  store_root: String,
+  repo_root: String,
+  subject: BuildSubject,
+  token: String,
+  blob_oid: String,
+) -> ProduceReport {
+  let artifact_sha256 = observed_artifact_sha256(store_root: store_root, repo_root: repo_root, oid: blob_oid)
+  let record_path = join([store_root, "/devboot-record-", token], "")
+  let record_written = Filesystem.Write(
+    path: record_path,
+    content: render_build_subject(subject: subject),
+  )
+  let record_blob = devboot_witness_run(
+    site: retained_devboot_git_hash_object,
+    workdir: repo_root,
+    bin_path: "git",
+    args: [concat("--git-dir=", store_root), "hash-object", "-w", "--", record_path],
+  )
+  let record_bound = devboot_witness_run(
+    site: retained_devboot_git_update_ref,
+    workdir: repo_root,
+    bin_path: "git",
+    args: [concat("--git-dir=", store_root), "update-ref", subject_ref_of(token: token), trim(s: record_blob.stdout), ""],
+  )
+  let digest_path = join([store_root, "/devboot-digest-", token], "")
+  let digest_written = Filesystem.Write(path: digest_path, content: artifact_sha256)
+  let digest_blob = devboot_witness_run(
+    site: retained_devboot_git_hash_object,
+    workdir: repo_root,
+    bin_path: "git",
+    args: [concat("--git-dir=", store_root), "hash-object", "-w", "--", digest_path],
+  )
+  let digest_bound = devboot_witness_run(
+    site: retained_devboot_git_update_ref,
+    workdir: repo_root,
+    bin_path: "git",
+    args: [concat("--git-dir=", store_root), "update-ref", digest_ref_of(token: token), trim(s: digest_blob.stdout), ""],
+  )
+  let bound = devboot_witness_run(
+    site: retained_devboot_git_update_ref,
+    workdir: repo_root,
+    bin_path: "git",
+    args: [concat("--git-dir=", store_root), "update-ref", artifact_ref_of(token: token), blob_oid, ""],
+  )
+  if !record_written.success {
+    ProduceRefused { reason: bind_step_refusal(step: "writing the subject record", exit_code: 0, detail: record_path) }
+  } else {
+    if !record_blob.success {
+      ProduceRefused { reason: bind_step_refusal(step: "hashing the subject record", exit_code: record_blob.exit_code, detail: trim(s: record_blob.stderr)) }
+    } else {
+      if !record_bound.success {
+        ProduceRefused { reason: bind_step_refusal(step: "binding the subject record", exit_code: record_bound.exit_code, detail: trim(s: record_bound.stderr)) }
+      } else {
+        if !digest_written.success {
+          ProduceRefused { reason: bind_step_refusal(step: "writing the artifact digest", exit_code: 0, detail: digest_path) }
+        } else {
+          if !digest_blob.success {
+            ProduceRefused { reason: bind_step_refusal(step: "hashing the artifact digest", exit_code: digest_blob.exit_code, detail: trim(s: digest_blob.stderr)) }
+          } else {
+            if !digest_bound.success {
+              ProduceRefused { reason: bind_step_refusal(step: "binding the artifact digest", exit_code: digest_bound.exit_code, detail: trim(s: digest_bound.stderr)) }
+            } else {
+              if !bound.success {
+                ProduceRefused { reason: bind_step_refusal(step: "binding the artifact", exit_code: bound.exit_code, detail: trim(s: bound.stderr)) }
+              } else {
+                ProduceProduced { token: token, artifact: blob_oid }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// THE CONSUMER SIDE, AND IT VERIFIES INDEPENDENTLY. The bytes are fetched out of the object database by address, and then their sha256 is computed over the fetched file -- a digest whose preimage is the content alone, so the store cannot satisfy it by agreeing with itself. Re-deriving the git oid instead would only re-read the store's own answer and would establish nothing.
+//
+// The caller compares the reported digest against the one it was promised. This function reports what it measured rather than deciding the comparison, because the promise lives with the requester.
+fn devboot_materialize(store_root: String, repo_root: String, artifact_oid: String, out_path: String) -> String {
+  let unpacked = devboot_witness_run(
+    site: retained_devboot_git_unpack_file,
+    workdir: repo_root,
+    bin_path: "git",
+    args: [concat("--git-dir=", store_root), "unpack-file", artifact_oid],
+  )
+  let temp_name = trim(s: unpacked.stdout)
+  let moved = devboot_witness_run(
+    site: retained_devboot_mv,
+    workdir: repo_root,
+    bin_path: "mv",
+    args: [temp_name, out_path],
+  )
+  let made_executable = devboot_witness_run(
+    site: retained_devboot_chmod,
+    workdir: repo_root,
+    bin_path: "chmod",
+    args: ["+x", out_path],
+  )
+  let digest = devboot_witness_run(
+    site: retained_devboot_sha256sum,
+    workdir: repo_root,
+    bin_path: "sha256sum",
+    args: [out_path],
+  )
+  let executed = devboot_witness_run(
+    site: retained_devboot_execute_artifact,
+    workdir: repo_root,
+    bin_path: out_path,
+    args: ["--help"],
+  )
+  join([
+    "MATERIALIZED path=", out_path,
+    " sha256=", first_field(text: trim(s: digest.stdout)),
+    " executed_exit=", to_string(executed.exit_code),
+  ], "")
+}
+
+// THE CONSUMER ENTRY RETURNS AN EXIT CODE, for the same reason the producer entry does. devboot_materialize answers a String, and the harness treats a non-ProcessExit return as a refusal -- so a consumer that fetched the bytes, verified them and ran them successfully was reported as REFUSED, with the successful result printed underneath the word. A success reported as a failure is the reporting half of the honesty rule this vertical enforces everywhere else, and it had already been fixed once on the producer side without the consumer side being looked at.
+//
+// The verdict is derived from what was measured rather than from reaching the end of the function: the fetched bytes must hash to the digest the caller was promised AND the binary must execute successfully. Either failing is a refusal, so a consumer cannot report success on bytes it could not verify or could not run.
+
+// A FAILED RECEIPT WRITE REFUSES, because the receipt is the ONLY caller-visible output either entry point has -- neither writes to stdout, so a run whose receipt did not land has reported nothing while exiting zero. That is success claimed without the output the caller reads, which is the same fail-open this vertical deleted from its build path and then reproduced at its own exit. The binding path in this file already checks its writes; these two did not, and the inconsistency is what made it invisible.
+fn receipt_write_refusal(receipt_path: String, detail: String) -> ProcessExit {
+  exit_failure(
+    reason: join([
+      "the run completed but its receipt could not be written to ",
+      receipt_path,
+      " -- the receipt is the only channel this entry point reports through, so a run that cannot record its outcome refuses rather than exiting success (DESIGN section 5). Host error: ",
+      detail,
+    ], ""),
+  )
+}
+
+fn devboot_materialize_entry(
+  store_root: String,
+  repo_root: String,
+  artifact_oid: String,
+  out_path: String,
+  expected_sha256: String,
+  receipt_path: String,
+) -> ProcessExit {
+  let report = devboot_materialize(
+    store_root: store_root,
+    repo_root: repo_root,
+    artifact_oid: artifact_oid,
+    out_path: out_path,
+  )
+  let written = Filesystem.Write(path: receipt_path, content: report)
+  if !written.success {
+    receipt_write_refusal(receipt_path: receipt_path, detail: written.error)
+  } else {
+  if !string_contains(s: report, pattern: join([" sha256=", expected_sha256, " "], "")) {
+    exit_failure(reason: join(["the materialized bytes did not match the promised digest ", expected_sha256, ": ", report], ""))
+  } else {
+    if !string_contains(s: report, pattern: " executed_exit=0") {
+      exit_failure(reason: join(["the materialized binary did not execute successfully: ", report], ""))
+    } else {
+      ExitSuccess
+    }
+  }
+  }
+}
+
+// THE BYTES NEVER PASS THROUGH A STRING, and that is a correctness constraint rather than a performance one. An earlier draft of this function read the blob to stdout and wrote that value to a file, which would have routed twenty-four megabytes of executable through a text carrier -- any byte sequence that is not valid UTF-8 would have been mangled, and the corruption would have surfaced as a binary that refuses to execute rather than as an error at the point it happened.
+//
+// `git unpack-file` writes the blob to a temporary file itself and prints only the NAME, so the bytes travel from the object database to the filesystem entirely inside git. Verified by execution: the unpacked file's sha256 equals the built binary's exactly.
+//
+// EXECUTION IS PART OF MATERIALIZING, not a separate check a caller may skip. A digest match proves the bytes arrived; it does not prove they run, and this vertical exists to hand an agent a binary it can actually use. So the last step runs the thing and reports its exit code.
+fn first_field(text: String) -> String {
+  fold(
+    split(s: text, sep: " "),
+    init: "",
+    f: (acc, part) => if acc == "" { part } else { acc },
+  )
+}
+
+// THERE IS NO ATTACHED OUTCOME ANY MORE, because there is nothing for it to mean. Attaching is what happens DURING a request -- the caller waits on the producer that beat it -- and every wait now ends in bytes or in a refusal. A terminal arm saying 'someone else is building this' would be a completion status that reports neither, and it was precisely the arm that used to exit success with nothing to show for it.
+//
+// Retiring the variant rather than remapping its exit code is the difference between a check and a construction. While the arm existed, some later call site could reintroduce the success mapping in one line; with no constructor, a report that claims completion without an artifact cannot be built at all. Attaching still happens and is still visible -- it is a stage of the wait, named in the refusal when the wait expires, not a verdict.
+//
+// WHEN IT COMES BACK IT WILL BE A DIFFERENT THING. The served surface's status route reports a nonterminal standing to a caller that asked for status rather than for a binary; that is a genuine nonterminal answer to a different question, and it belongs to the request/response carriers, never to the outcome of 'give me this artifact'.
+// THE ENTRY RETURNS A TYPED OUTCOME, NOT A SENTENCE, and the sentence is derived from it. An earlier revision returned the rendered String directly, which had two consequences worth recording. The harness treats a non-ProcessExit return as a refusal, so a run that had genuinely PRODUCED an artifact exited nonzero and printed the word refused -- a success reported as a failure, which is the reporting half of the same honesty rule this vertical enforces everywhere else. And a caller wanting the artifact address had to parse prose.
+//
+// Now the decision is a closed sum, the sentence is one projection of it, and the exit code is another. A caller reads the receipt file for the address; the shell reads the exit code for the verdict; neither is derived by scraping the other.
+type ProduceReport
+  = ProduceProduced { token: String, artifact: String }
+  | ProduceReused { token: String, artifact: String }
+  | ProduceRefused { reason: String }
+
+fn render_produce_report(report: ProduceReport, caller: String) -> String {
+  match report {
+    ProduceProduced { token, artifact } =>
+      join(["PRODUCED subject=", token, " artifact=", artifact, " caller=", caller], "")
+    ProduceReused { token, artifact } =>
+      join(["REUSED subject=", token, " artifact=", artifact, " caller=", caller], "")
+    ProduceRefused { reason } => concat("REFUSED: ", reason)
+  }
+}
+
+fn produce_report_exit(report: ProduceReport) -> ProcessExit {
+  match report {
+    ProduceProduced { token, artifact } => ExitSuccess
+    ProduceReused { token, artifact } => ExitSuccess
+    ProduceRefused { reason } => exit_failure(reason: reason)
+  }
+}
+
+// The live entry point. It writes the rendered receipt to a caller-supplied path -- there is no stdout facility in the substrate, so a file is how a result leaves a run -- and returns the exit code the verdict implies. The receipt path is a parameter for the same reason the store root is: a path spelled inside the service is a fact about one host smuggled into a program that runs on many.
+fn devboot_produce_entry(
+  store_root: String,
+  repo_root: String,
+  work_root: String,
+  caller: String,
+  receipt_path: String,
+) -> ProcessExit {
+  let report = devboot_produce_report(
+    store_root: store_root,
+    repo_root: repo_root,
+    work_root: work_root,
+    caller: caller,
+  )
+  let written = Filesystem.Write(
+    path: receipt_path,
+    content: render_produce_report(report: report, caller: caller),
+  )
+  if !written.success {
+    receipt_write_refusal(receipt_path: receipt_path, detail: written.error)
+  } else {
+    produce_report_exit(report: report)
+  }
+}
+
+// THE AVAILABILITY ARM SURVIVES INTO THE MESSAGE. An earlier revision rendered every unavailable outcome as the same sentence about bytes not being retrievable, which flattened the one distinction that matters most here: bytes that are ABSENT are a routine prune and a rebuild fixes them, while bytes that are PRESENT AND WRONG are an integrity failure and rebuilding over them without saying so would bury it. The match is total, so a new availability arm cannot inherit a generic sentence.
+fn availability_refusal_reason(availability: ArtifactAvailability) -> String {
+  match availability {
+    ArtifactAvailable { artifact } => "the artifact is available"
+    ArtifactMissing => "the artifact ref exists but its bytes are absent from the store"
+    ArtifactCorrupt { expected, observed } => "the artifact bytes do not match their recorded digest"
+    ArtifactUnreadable { detail } => detail
+  }
+}
+
+fn live_reuse_report(
+  store_root: String,
+  repo_root: String,
+  work_root: String,
+  caller: String,
+  host: TargetTriple,
+  subject: BuildSubject,
+  token: String,
+  oid: String,
+) -> ProduceReport {
+  match reuse_decision_from_match(
+    candidate_digest: Present { value: build_subject_digest(subject: subject) },
+    requested: subject,
+    subject_match: stored_subject_match(record_text: stored_record_text(store_root: store_root, repo_root: repo_root, token: token), subject: subject),
+    availability: observe_artifact_availability(
+      store_root: store_root,
+      repo_root: repo_root,
+      oid: oid,
+      token: token,
+      subject: subject,
+    ),
+  ) {
+    ReuseGranted { artifact } => ProduceReused { token: token, artifact: oid }
+    ReuseNoCandidate =>
+      devboot_produce_build(store_root: store_root, repo_root: repo_root, work_root: work_root, caller: caller, host: host, subject: subject, token: token)
+    ReuseSubjectMismatch { candidate_digest, requested_digest } =>
+      ProduceRefused {
+        reason: "the artifact stored under this subject digest was built for a different subject; refusing to serve it",
+      }
+    ReuseUnavailable { availability } =>
+      ProduceRefused { reason: availability_refusal_reason(availability: availability) }
+  }
+}
+
+// WHAT A REQUEST'S PRODUCER IS DOING RIGHT NOW, derived from the store rather than stored beside it. The two refs this service already writes answer it between them: an artifact ref means the work finished and the bytes are addressable, a lease ref without an artifact means some producer holds the subject and has not finished, and neither means nobody has started. Adding a third ref carrying a status word would be a second representation of a fact the first two already determine, and it would be the one that could disagree.
+//
+// RUNNING IS NOT A LIVENESS CLAIM, and keeping that honest is the whole reason this type has the shape it does. A held lease says a producer took the subject; it does not say that producer still exists. Nothing in a git ref expires, so a process killed mid-build leaves a lease that reads exactly like an active one, and no reader can tell the difference from the ref alone. So the arm is named for what is observable -- the lease is held, by this holder -- and says nothing further.
+//
+// THE STRANDED CASE IS THEREFORE A SEPARATE, EXPLICIT ACTION rather than an inference. A waiter that timed out knows only that it waited; concluding death from that would be the fabrication the timeout was introduced to avoid, and acting on it -- breaking the lease and starting a second build -- would destroy the exactly-one-producer property under the one condition where two producers are most likely to collide. Recovery is below, and it is something a coordinator DOES, never something a reader concludes.
+type ProducerStanding
+  = ProducerNotStarted
+  | ProducerRunning { holder: String }
+  | ProducerProduced { artifact: String }
+  | ProducerStandingRefused { detail: String }
+
+fn producer_standing(store_root: String, repo_root: String, token: String) -> ProducerStanding {
+  match artifact_lookup(store_root: store_root, repo_root: repo_root, token: token) {
+    ArtifactLookupRefused { detail } => ProducerStandingRefused { detail: detail }
+    ArtifactRefPresent { oid } => ProducerProduced { artifact: oid }
+    ArtifactRefAbsent =>
+      match ref_lookup(store_root: store_root, repo_root: repo_root, ref_name: lease_ref_of(token: token)) {
+        ArtifactLookupRefused { detail } => ProducerStandingRefused { detail: detail }
+        ArtifactRefPresent { oid } => ProducerRunning { holder: oid }
+        ArtifactRefAbsent => ProducerNotStarted
+      }
+  }
+}
+
+// BREAKING A LEASE IS A COORDINATOR ACTION WITH AN EXPECTED HOLDER, never an automatic reaction to a slow build. The caller must name the holder it believes is stranded, and the deletion is a compare-and-swap against exactly that value, so a lease that moved between the observation and the decision is not the lease being broken -- the recovery refuses instead. Without that, two coordinators reacting to one stalled producer would break each other's newly started builds in turn, which is the same race the lease exists to prevent, reintroduced by the machinery meant to repair it.
+//
+// IT DOES NOT DECIDE THAT A PRODUCER IS DEAD, because this repository cannot yet observe that. The producer's identity is recorded in the claim object, but no liveness fact -- a pid on a named host, a heartbeat with a bound -- is captured anywhere, so any automatic rule here would be a guess dressed as a recovery. What this gives is the mechanism plus the safety property, exercised by an operator or a coordinator that has established death by some means outside this module.
+//
+// dissolve-on: the claim object carries a liveness handle the fleet can independently check. At that point orphan detection derives, this becomes its effect arm rather than the whole story, and the standing above gains a genuine Interrupted arm -- which is deliberately absent today rather than present and never inhabited.
+type LeaseRecovery
+  = LeaseBroken { token: String, former_holder: String }
+  | LeaseRecoveryRefused { detail: String }
+
+// THE DECISION IS SEPARATE FROM THE TRANSPORT, so the arm a caller receives can be witnessed without a repository. What belongs to this module is the mapping -- a successful compare-and-swap is a broken lease, a failed one is a refusal naming who was expected -- while the compare-and-swap SEMANTICS belong to git and are cited there. Fusing them left the mapping reachable only through an effect, which is how it ended up resting on a manual run.
+
+fn lease_recovery_from_outcome(
+  succeeded: Bool,
+  exit_code: Int,
+  stderr: String,
+  token: String,
+  expected_holder: String,
+) -> LeaseRecovery {
+  if succeeded {
+    LeaseBroken { token: token, former_holder: expected_holder }
+  } else {
+    LeaseRecoveryRefused {
+      detail: join([
+        "the lease for ",
+        token,
+        " was not held by ",
+        expected_holder,
+        " at the moment of the break, so it was left alone (git exit ",
+        to_string(exit_code),
+        "): ",
+        trim(s: stderr),
+      ], ""),
+    }
+  }
+}
+
+fn devboot_break_stranded_lease(
+  store_root: String,
+  repo_root: String,
+  token: String,
+  expected_holder: String,
+) -> LeaseRecovery {
+  let broken = devboot_witness_run(
+    site: retained_devboot_git_update_ref,
+    workdir: repo_root,
+    bin_path: "git",
+    args: [concat("--git-dir=", store_root), "update-ref", "-d", lease_ref_of(token: token), expected_holder],
+  )
+  lease_recovery_from_outcome(
+    succeeded: broken.success,
+    exit_code: broken.exit_code,
+    stderr: broken.stderr,
+    token: token,
+    expected_holder: expected_holder,
+  )
+}
+
+// THE PLATFORM C LIBRARY IS OBSERVED HERE, once, because both the producer and the caller need the same reading and a second implementation of it would be a second answer to one question. ldd reports the version as the trailing field of its first line; the vendor text ahead of it differs between distributions, so the field is taken from the end positionally rather than by matching any distribution's phrasing. A reading that fails yields LibcUnobserved, which the subject then refuses -- never a fabricated version, because a wrong version here is exactly a wrong artifact identity.
+type LastTextField {
+  found: String
+}
+
+fn last_text_field(acc: LastTextField, part: String) -> LastTextField {
+  if part == "" { acc } else { LastTextField { found: part } }
+}
+
+type FirstTextLine {
+  taken: Bool
+  text: String
+}
+
+fn first_text_line_step(acc: FirstTextLine, part: String) -> FirstTextLine {
+  if acc.taken { acc } else { FirstTextLine { taken: true, text: part } }
+}
+
+fn first_text_line(text: String) -> String {
+  fold(
+    split(s: text, sep: "\n"),
+    init: FirstTextLine { taken: false, text: "" },
+    f: (acc, part) => first_text_line_step(acc: acc, part: part),
+  ).text
+}
+
+fn libc_version_from_ldd_text(text: String) -> String {
+  fold(
+    split(s: trim(s: first_text_line(text: text)), sep: " "),
+    init: LastTextField { found: "" },
+    f: (acc, part) => last_text_field(acc: acc, part: part),
+  ).found
+}
+
+fn observe_platform_c_library(repo_root: String) -> PlatformCLibrary {
+  let reported = devboot_witness_run(
+    site: retained_devboot_ldd,
+    workdir: repo_root, bin_path: "ldd", args: ["--version"]
+  )
+  if !reported.success {
+    LibcUnobserved
+  } else {
+    let version = libc_version_from_ldd_text(text: reported.stdout)
+    if version == "" { LibcUnobserved } else { GnuLibc { version: version as NonEmptyStr } }
+  }
+}

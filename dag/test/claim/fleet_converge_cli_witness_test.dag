@@ -28,6 +28,7 @@ test fn witness_converge_cli_run_srv2_fails_closed_on_knob_frontier() -> Bool {
           KnobFrontier { reason: why } => string_contains(s: why, pattern: "host_converge_realize")
           PolicyUnsound { reason: _ } => false
           UnknownHost { host: _ } => false
+          SparkPreEnrollment { host: _ } => false
           ComputeInventoryAbsent { host: _ } => false
         }
       _ => false
@@ -47,6 +48,7 @@ test fn witness_converge_cli_run_unknown_host_refuses() -> Bool {
           UnknownHost { host: h } => h == "no-such-fleet-host"
           PolicyUnsound { reason: _ } => false
           KnobFrontier { reason: _ } => false
+          SparkPreEnrollment { host: _ } => false
           ComputeInventoryAbsent { host: _ } => false
         }
       _ => false
@@ -63,10 +65,12 @@ test fn witness_converge_cli_unknown_host_and_compute_inventory_absent_are_disti
         UnknownHost { host: _ } => false
         PolicyUnsound { reason: _ } => false
         KnobFrontier { reason: _ } => false
+        SparkPreEnrollment { host: _ } => false
       }
     ComputeInventoryAbsent { host: _ } => false
     PolicyUnsound { reason: _ } => false
     KnobFrontier { reason: _ } => false
+    SparkPreEnrollment { host: _ } => false
   }
     && converge_cli_refusal_message(cause: unknown) != converge_cli_refusal_message(cause: inventory_absent)
     && string_contains(s: converge_cli_refusal_message(cause: unknown), pattern: "unknown fleet host identity")
@@ -89,10 +93,12 @@ test fn witness_converge_cli_refusal_causes_discriminate() -> Bool {
                 UnknownHost { host: _ } => true
                 PolicyUnsound { reason: _ } => false
                 KnobFrontier { reason: _ } => false
+                SparkPreEnrollment { host: _ } => false
                 ComputeInventoryAbsent { host: _ } => false
               }
             PolicyUnsound { reason: _ } => false
             UnknownHost { host: _ } => false
+            SparkPreEnrollment { host: _ } => false
             ComputeInventoryAbsent { host: _ } => false
           }
         _ => false
@@ -124,3 +130,68 @@ test fn witness_converge_cli_output_projects_receipt_and_exit_signal() -> Bool {
     }
 }
 
+
+// Join 1 (operator verdict): the revision cell gates the self route. Converged passes
+// the knob output through untouched; Drifted demotes to not-converged carrying BOTH
+// revisions (the catch-up realization needs the prior); Unobserved demotes with the
+// typed cause and is never satisfied. The rendered receipt line carries the cell for
+// the collector, one verdict token per arm.
+test fn witness_revision_gate_demotes_drift_and_unobserved_never_converged_passthrough() -> Bool {
+  let a = revision_fixture_oid(hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+  let b = revision_fixture_oid(hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+  let out = ConvergeCliOutput { line: "converge-receipt host=srv1 applied=1 drifted=0 verdict=converged", converged: true, reason: none }
+  let gated_ok = converge_cli_revision_gate(out: out, standing: RevisionConverged { revision: a })
+  let gated_drift = converge_cli_revision_gate(out: out, standing: RevisionDrifted { desired: a, local: b })
+  let gated_unobs = converge_cli_revision_gate(out: out, standing: RevisionUnobserved { cause: "ls-remote refused: no route" })
+  gated_ok.converged
+    && !gated_drift.converged
+    && match gated_drift.reason {
+      Present { value: why } =>
+        string_contains(s: why, pattern: "revision drift")
+          && string_contains(s: why, pattern: "aaaaaaaa")
+          && string_contains(s: why, pattern: "bbbbbbbb")
+      _ => false
+    }
+    && !gated_unobs.converged
+    && match gated_unobs.reason {
+      Present { value: why } => string_contains(s: why, pattern: "unobserved")
+      _ => false
+    }
+    && string_contains(s: converge_cli_revision_line(standing: RevisionConverged { revision: a }), pattern: "verdict=converged")
+    && string_contains(s: converge_cli_revision_line(standing: RevisionDrifted { desired: a, local: b }), pattern: "verdict=drifted")
+    && string_contains(s: converge_cli_revision_line(standing: RevisionUnobserved { cause: "x" }), pattern: "verdict=unobserved")
+}
+
+fn revision_fixture_oid(hex: String) -> GitObjectId {
+  match git_sha1_object_id(hex: hex) {
+    Present { value: oid } => oid
+    Absent =>
+      GitSha1ObjectId {
+        digest: Sha1Digest { hex: hex as Sha1DigestHex },
+      }
+  }
+}
+
+// Join 3 (operator verdict): applicability is TOTAL over the fleet — srv5/srv6 are a
+// typed pre-enrollment refusal DISTINCT from UnknownHost (they are known fleet
+// identities awaiting SPARK-SERVE-0), and every enrolled host lands one arm.
+test fn witness_spark_pre_enrollment_is_typed_and_distinct_from_unknown() -> Bool {
+  let r = converge_cli_run(host: "srv5")
+  !converge_cli_receipt_converged(r: r)
+    && match r.reason {
+      Present { value: cause } =>
+        match cause {
+          SparkPreEnrollment { host: h } => h == "srv5"
+          _ => false
+        }
+      _ => false
+    }
+    && match converge_cli_run(host: "no-such-fleet-host").reason {
+      Present { value: c2 } =>
+        match c2 {
+          UnknownHost { host: _ } => true
+          _ => false
+        }
+      _ => false
+    }
+}

@@ -1,0 +1,115 @@
+module extdeps.rust.target_triple
+
+import std.types { String, List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.toolchain.types {
+  TargetTriple,
+  Architecture,
+  X86_64,
+  Aarch64,
+  TripleVendor,
+  UnknownVendor,
+  Apple,
+  Pc,
+  Os,
+  Linux,
+  Macos,
+  AbiEnv,
+  Gnu,
+  Musl,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "doc.rust-lang.org/rustc/platform-support.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.rust.target_triple",
+      decl_name: "RustTargetTripleRow",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data rust_target_triple_scope_subject_note: String = "THE SUBJECT IS RUST'S SPELLING OF A TARGET TRIPLE, and nothing else about Rust. Not the toolchain distribution, not cargo's build configuration, not the compiler's own target definitions -- only the platform-support table's rendering of the four axes as a hyphenated name, which is the one fact this repository needs from that upstream and the one it cites.\\n\\nThe axes themselves are NOT this module's subject: they are modeled once in the toolchain types, agnostic of any upstream's spelling, and this module is a partial projection from those axes onto the strings Rust publishes. Claiming the axes here would fork the concept that every other upstream's spelling also builds on."
+
+data rust_target_triple_note: String = "RUST'S OWN SPELLING OF A TARGET TRIPLE, living with the Rust upstream that publishes it rather than with any consumer. The toolchain module's diagnostic-name functions state the rule this module obeys: every upstream spells these axes differently, and each spelling belongs beside its own upstream as a PARTIAL projection that refuses what that upstream does not publish. This is that projection for Rust.\\n\\nIT IS DELIBERATELY PARTIAL AND REFUSING. The table below carries the triples this repository actually builds for; anything else returns absent rather than being assembled from parts. Assembling one would be the failure this shape exists to prevent -- a triple composed by concatenating axis spellings looks plausible for every combination, including the many that Rust does not publish, and the resulting string would be handed to a compiler that rejects it or, worse, to an identity that claims a target nobody can build.\\n\\nGROWING IT IS ADDING A ROW, which is the point: a new supported target is a cited addition here, not an edit to a consumer, and until the row exists every consumer refuses rather than guessing."
+
+type RustTargetTripleRow {
+  spelling: NonEmptyStr
+  triple: TargetTriple
+}
+
+fn rust_target_triple_rows() -> List<RustTargetTripleRow> {
+  [
+    RustTargetTripleRow {
+      spelling: "x86_64-unknown-linux-gnu" as NonEmptyStr,
+      triple: TargetTriple { arch: X86_64, vendor: UnknownVendor, os: Linux, env: Present { value: Gnu } },
+    },
+    RustTargetTripleRow {
+      spelling: "aarch64-unknown-linux-gnu" as NonEmptyStr,
+      triple: TargetTriple { arch: Aarch64, vendor: UnknownVendor, os: Linux, env: Present { value: Gnu } },
+    },
+    RustTargetTripleRow {
+      spelling: "x86_64-unknown-linux-musl" as NonEmptyStr,
+      triple: TargetTriple { arch: X86_64, vendor: UnknownVendor, os: Linux, env: Present { value: Musl } },
+    },
+    RustTargetTripleRow {
+      spelling: "aarch64-unknown-linux-musl" as NonEmptyStr,
+      triple: TargetTriple { arch: Aarch64, vendor: UnknownVendor, os: Linux, env: Present { value: Musl } },
+    },
+    RustTargetTripleRow {
+      spelling: "aarch64-apple-darwin" as NonEmptyStr,
+      triple: TargetTriple { arch: Aarch64, vendor: Apple, os: Macos, env: none },
+    },
+    RustTargetTripleRow {
+      spelling: "x86_64-apple-darwin" as NonEmptyStr,
+      triple: TargetTriple { arch: X86_64, vendor: Apple, os: Macos, env: none },
+    },
+  ]
+}
+
+data rust_target_triple_lookup_note: String = "The lookup is a fold over the rows in both directions, so one table serves parsing an observed triple and rendering a modeled one. Two functions reading one row set is the same structure read forwards and backwards; a second table for the reverse direction would be the fork this module exists to avoid."
+
+fn parse_rust_target_triple(spelling: String) -> TargetTriple? {
+  fold(
+    rust_target_triple_rows(),
+    init: none,
+    f: (acc, row) =>
+      match acc {
+        Present { value: found } => Present { value: found }
+        Absent =>
+          if (row.spelling as String) == spelling {
+            Present { value: row.triple }
+          } else {
+            none
+          }
+      },
+  )
+}
+
+fn render_rust_target_triple(triple: TargetTriple) -> NonEmptyStr? {
+  fold(
+    rust_target_triple_rows(),
+    init: none,
+    f: (acc, row) =>
+      match acc {
+        Present { value: found } => Present { value: found }
+        Absent =>
+          if row.triple == triple {
+            Present { value: row.spelling }
+          } else {
+            none
+          }
+      },
+  )
+}

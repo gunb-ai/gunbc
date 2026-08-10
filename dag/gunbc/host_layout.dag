@@ -22,6 +22,11 @@ data operator_home_root: FilePath = "/home/briansrls" as FilePath
 
 data srv1_dispatch_attempt_state_root: FilePath = "/opt/gunbc/attempt-state" as FilePath
 
+data devboot_root_layout_admission_note: String = "THE BUILD SERVICE'S HOST ROOT JOINS THIS AUTHORITY BEFORE ITS FIRST CONSUMER EXISTS, which is the whole point of the ordering. srv1_dispatch_attempt_state_root joined it AFTER an incident (attempt_state_root_layout_admission_note): a path load-bearing for two consumers was spelled as a bare literal inside one of them, so live_deploy's owned-artifact roster never carried it, so no deploy created it, and `install -d` refused with EACCES against a root-owned parent AFTER the dispatch had already half-run. This row is the same shape of fact -- a host path the service WRITES -- and it is declared here first so that roster can carry it from the start rather than after the equivalent failure.\\n\\nWHY ONE ROOT AND NOT TWO. An earlier revision admitted a second root to hold request records, the producer lease and terminal outcomes, on the assumption that this service would keep durable state in a database beside the artifacts. Re-observation found no such store realization in the tree, and found that the artifact store already provides everything the second root was for: a bare Git repository IS the content-addressed object database, its refs ARE durable named state, and its exact-old-value ref update IS the atomic compare-and-swap a producer lease needs. The second root would have been a second durable representation of one fact set, so it is retired rather than left standing with nothing writing to it (see devboot_state_root_retirement_note).\\n\\nWHAT THIS ROW DOES NOT SAY. It is a declaration, not an observation -- the same distinction srv2_host_layout_note draws. The path is not asserted to exist; the deployment creates it and a preflight refuses on the difference. A service that found no store and quietly built into a temp directory would be the absorbing fallback DESIGN section 5 forbids, so the refusal carries the exact path."
+
+data srv1_devboot_artifact_store_root: FilePath = "/var/lib/gunbc/artifacts.git" as FilePath
+
+
 data srv1_roadmap_codex_home: FilePath = codex_account_state_root(
   home: operator_home_root,
   selection: codex_roadmap_account_selection(),
@@ -73,6 +78,14 @@ data gunbc_managed_compile_pool_slice: NonEmptyStr = "gunbc-compile-pool.slice" 
 data belt_spawn_workdir_env_var_note: String = "The ONE authority for the environment variable that carries a belt tick's spawn root, homed here for the same reason as the compile-pool slice name above: it is a fact about how a HOST is laid out and it has TWO consumers on opposite sides of a boundary, so neither may own it. gunbc.roadmap_belt_actuate READS it in belt_run_once_cli; gunbc.live_deploy.emit WRITES it as the Environment= line of the belt unit it installs. A literal in either place is the same string in two files, and the failure it produces is silent rather than loud: the writer and the reader would simply stop meeting, the reader would refuse for a missing variable, and nothing would say which of the two spellings was wrong.\\n\\nHoming it in either consumer would also drag one into the other's closure. The deploy emitter needs exactly one string from the belt; importing gunbc.roadmap_belt_actuate to get it would put the belt's whole implementation — tmux, git worktrees, the Claude provider preflight — behind every emission of a deploy script, for a name. That is the coupling this module exists to prevent."
 
 data belt_spawn_workdir_env_var: NonEmptyStr = "GUNBC_BELT_SPAWN_WORKDIR" as NonEmptyStr
+
+// The ONE authority for the fleet converge-receipt directory, homed here for the same
+// two-consumers-across-a-boundary reason as the belt env var above: gunbc.fleet_converge_cli
+// WRITES per-host receipts under it, gunbc.live_deploy.emit CREATES it at deploy time
+// (install -d). Homing it in the CLI put the deploy emitter's closure behind the converge
+// CLI, which closed the import cycle fleet_converge_apply -> host_effect_realize ->
+// live_deploy.emit -> fleet_converge_cli the moment the CLI imported its own apply seam.
+data fleet_converge_receipt_dir: String = "/opt/gunbc/receipts"
 
 data provider_runtime_placement_note: String = "ONE host-parameterized placement for provider package/exec release trees, mutable provider state, and private wire-evidence roots. Parallel to GunbcHostLayout: a second host must be describable without minting a second set of path concepts. Claude/Cursor/Codex lanes consume this record; they do not re-author /opt/... roots. The flat srv1_* path data below are the once-written field values of srv1's row — the same dissolution pattern as gunbc_host_layout_note."
 

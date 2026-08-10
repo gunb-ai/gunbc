@@ -73,6 +73,11 @@ fn workload_class_cpu_weight(wc: WorkloadClass) -> Int {
   }
 }
 
+// 🟡 feature:task-count-measure-carrier dissolve-on: TaskCount measure carrier — per_runner_tasks_max is a pids-controller
+// COUNT riding a bare Int while its memory siblings carry ByteSize; same dissolution as
+// the ConvergeTarget.PerSlotMemoryCap → PerSlotUnitProperty P3 axis rework (a std.measure
+// TaskCount, the HardwareThreadCount shape), which also retires the to_string() re-serialization
+// at the host_converge knob seam.
 type RunnerHostDeployment {
   identity: HostIdentity
   runner_count: Int
@@ -80,6 +85,7 @@ type RunnerHostDeployment {
   per_runner_memory_cap: ByteSize
   per_runner_memory_swap_cap: ByteSize
   per_runner_memory_high_cap: ByteSize
+  per_runner_tasks_max: Int
   build_tokens: HardwareThreadCount
   runner: RunnerSpec
   workload_class: WorkloadClass
@@ -189,6 +195,7 @@ fn conservation_host_deployment(offer: ComputeOffer, nproc: HardwareThreadCount)
     per_runner_memory_cap: gunbc_ci_runner_cgroup_memory_cap,
     per_runner_memory_swap_cap: gunbc_runner_slot_desired().memory_swap_max,
     per_runner_memory_high_cap: gunbc_runner_slot_desired().memory_high,
+    per_runner_tasks_max: gunbc_runner_slot_desired().tasks_max,
     build_tokens: nproc,
     runner: runner_spec_from_offer(offer: offer),
     workload_class: BatchLatencyTolerant,

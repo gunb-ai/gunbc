@@ -1,5 +1,11 @@
 module gunbc.live_deploy.emit
 
+import gunbc.fleet_converge_timer {
+  fleet_converge_timer_on_calendar,
+  fleet_converge_timer_randomized_delay,
+}
+import std.measure { second_count }
+
 import std.types { String, List, Bool, NonEmptyStr, Int, FilePath, CommitSha }
 import gunbc.managed_directory {
   ManagedDirectory,
@@ -33,11 +39,15 @@ import gunbc.live_deploy.spec {
   DeploymentSpec,
   DeploymentStep, ArtifactStep, Dependency,
   DeploymentDependencyStep,
+  EnsuredSubject, EnsuredPackage, EnsuredHostDirectory, ensured_subject_identity,
   DeploymentArtifactStep,
-  ServeBinary, GunbcSourceTree, DispatchWorktreeRoot, AttemptStateRoot, SystemdUnit, BeltTimerUnit, TailscaleServeMapping,
+  ServeBinary, GunbcSourceTree, DispatchWorktreeRoot, AttemptStateRoot, SystemdUnit, BeltTimerUnit, FleetConvergeTimerUnit, TailscaleServeMapping,
   deployment_belt_service_unit_name,
   deployment_belt_timer_unit_name,
   deployment_belt_service_unit_path,
+  deployment_fleet_converge_service_unit_name,
+  deployment_fleet_converge_timer_unit_name,
+  deployment_fleet_converge_service_unit_path,
   deployment_spec_srv1,
   deployment_plan_listen_port,
   deployment_owned_steps_retract_order,
@@ -46,7 +56,7 @@ import gunbc.live_deploy.spec {
   TeardownDisposition, TeardownActs, TeardownRefuses,
   tree_sync_unit_path,
 }
-import gunbc.host_layout { belt_spawn_workdir_env_var }
+import gunbc.host_layout { belt_spawn_workdir_env_var, fleet_converge_receipt_dir }
 import gunbc.ownership { Ownership }
 import v2.std.algebra { list_tail, TailFound, TailAbsent }
 import gunbc.membership_reconcile {
@@ -299,6 +309,56 @@ fn apply_belt_service_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
   ], ""))
 }
 
+fn emit_fleet_converge_service_unit_doc(spec: DeploymentSpec) -> Doc {
+  let svc = spec.service
+  doc_concat(parts: [
+    doc_line_of(text: "[Unit]"),
+    doc_line_of(text: "Description=gunbc fleet converge (self)"),
+    doc_line_of(text: "After=network-online.target"),
+    doc_line_of(text: "Wants=network-online.target"),
+    doc_line_of(text: ""),
+    doc_line_of(text: "[Service]"),
+    doc_line_of(text: "Type=oneshot"),
+    doc_line_of(text: "User=root"),
+    doc_line_of(text: concat("WorkingDirectory=", svc.repo_root)),
+    doc_line_of(text: join([
+      "ExecStart=", svc.serve_binary, " converge --host self",
+    ], "")),
+  ])
+}
+
+fn emit_fleet_converge_timer_unit_doc(spec: DeploymentSpec) -> Doc {
+  doc_concat(parts: [
+    doc_line_of(text: "[Unit]"),
+    doc_line_of(text: "Description=gunbc fleet converge cadence"),
+    doc_line_of(text: ""),
+    doc_line_of(text: "[Timer]"),
+    doc_line_of(text: concat("Unit=", deployment_fleet_converge_service_unit_name(names: spec.names) as String)),
+    doc_line_of(text: concat("OnCalendar=", fleet_converge_timer_on_calendar)),
+    doc_line_of(text: "Persistent=true"),
+    doc_line_of(text: concat("RandomizedDelaySec=", to_string(second_count(s: fleet_converge_timer_randomized_delay)))),
+    doc_line_of(text: ""),
+    doc_line_of(text: "[Install]"),
+    doc_line_of(text: "WantedBy=timers.target"),
+  ])
+}
+
+fn apply_fleet_converge_service_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
+  deploy_raw(command: join([
+    "cat > \"$_gunbc_stage/", deployment_fleet_converge_service_unit_name(names: spec.names) as String, "\" <<'GUNBC_FLEET_CONVERGE_SERVICE_EOF'\n",
+    render(doc: emit_fleet_converge_service_unit_doc(spec: spec), proto: live_deploy_protocol),
+    "GUNBC_FLEET_CONVERGE_SERVICE_EOF",
+  ], ""))
+}
+
+fn apply_fleet_converge_timer_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
+  deploy_raw(command: join([
+    "cat > \"$_gunbc_stage/", deployment_fleet_converge_timer_unit_name(names: spec.names) as String, "\" <<'GUNBC_FLEET_CONVERGE_TIMER_EOF'\n",
+    render(doc: emit_fleet_converge_timer_unit_doc(spec: spec), proto: live_deploy_protocol),
+    "GUNBC_FLEET_CONVERGE_TIMER_EOF",
+  ], ""))
+}
+
 fn apply_belt_timer_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
   deploy_raw(command: join([
     "cat > \"$_gunbc_stage/", deployment_belt_timer_unit_name(names: spec.names) as String, "\" <<'GUNBC_BELT_TIMER_EOF'\n",
@@ -312,7 +372,7 @@ data live_deploy_reconcile_binding_note: String = "apply/retract are the two deg
 fn deployment_step_key(step: DeploymentStep) -> NonEmptyStr {
   match step {
     ArtifactStep { step: art } => art.path
-    Dependency { step: dep } => dep.package
+    Dependency { step: dep } => ensured_subject_identity(subject: dep.subject)
   }
 }
 
@@ -426,11 +486,26 @@ fn path_parent_dir(path: String) -> String {
 }
 data install_d_mode_undeviated_note: String = "🟡 dissolve-on — FRONTIER, 1 of 4 directory members migrated (attempt-state-root derives its mode through install_d_managed_command; gunbc-source-tree, serve-binary-dir, and dispatch-worktree-root still inherit the constant below). The 0755 here is a SHARED CONSTANT, not a derived fact, and every member still on it inherits it regardless of what that member's readers and writers actually need. That is why /opt/gunbc/attempt-state converges world-readable while the per-attempt directories the belt creates under it are 0700 (attempt_state_prepare_argv_for_instance) — the leaf states its requirement, the root cannot, so the root is loose by default rather than by decision. Ownership is already derived (-o/-g project the service user from the spec, emit_deploy_principal_note); the mode is the one field on the triple still hand-picked. The FIX IS NOT A TIGHTER LITERAL — replacing 0755 with 0700 would move the same undeclared number, and a member whose dependents genuinely need traversal would then break with no statement of why. The mode must be DERIVED FROM THE MEMBER'S DECLARED DEPENDENTS: which principals need which verbs on that position, folded into extdeps.access.posix.FilePermissions (PermissionBits per owner/group/other class, cited to Open Group sys/stat.h) — the same requirement rows std.effect_grant already carries as (verb x subtree x principal) for the execute direction, read here to construct the permission instead of to admit against it. Once a member carries its dependents, an over-permissive mode is unwritable rather than merely unreviewed, and this helper loses its mode argument entirely. DISSOLVES WHEN a footprint member carries FilePermissions derived from its declared dependents; until then the constant is marked, not silently inherited (operator direction 2026-07-30: precise, and derived from the needs/dependents)."
 
-fn install_d_owned_command(spec: DeploymentSpec, path: String) -> String {
+fn install_d_owned_for_user(user: NonEmptyStr, path: String) -> String {
   join([
-    "sudo -n install -d -m 0755 -o ", spec.service.service_user,
-    " -g ", spec.service.service_user, " ", path,
+    "sudo -n install -d -m 0755 -o ", user,
+    " -g ", user, " ", path,
   ], "")
+}
+
+fn install_d_owned_command(spec: DeploymentSpec, path: String) -> String {
+  install_d_owned_for_user(user: spec.service.service_user, path: path)
+}
+
+data ensure_dependency_steps_note: String = "THE DISPATCH THAT ADMITS A SECOND KIND OF ENSURED RESOURCE, written so the package arm is untouched. A package still lowers to exactly the ensure step it always did, at both privilege settings, so no existing emitted byte moves -- the widening adds a kind, it does not redefine what ensuring a package means.\\n\\nA directory lowers to the same owned install -d the artifact steps use, through the same single authority, with the owner taken from the ensured subject rather than from a deployment spec. That is what lets a host-level resource be stated without an instance: an ensured host directory is a fact about the host, and threading a spec through it would have made it look like a per-instance fact again -- the exact confusion that put this root in the owned roster to begin with.\\n\\nprivileged is consumed only by the package arm because it describes how apt is invoked; install -d is privileged in both contexts and takes the same form either way."
+
+fn ensure_dependency_steps(dep: DeploymentDependencyStep, privileged: Bool) -> List<PipelineStep> {
+  match dep.subject {
+    EnsuredPackage { package } => [ensure_apt_package_step(pkg: package, privileged: privileged)]
+    EnsuredHostDirectory { path, owner } => [
+      deploy_raw(command: install_d_owned_for_user(user: owner, path: path as String)),
+    ]
+  }
 }
 
 data install_d_managed_group_residue_note: String = "`-g` is spelled with the OWNER'S USER NAME, not a modeled group name, and that is inherited from install_d_owned_command rather than introduced here: PosixUser carries a gid but no group name, and srv1's per-user groups happen to share their user's name so the emitted argv is byte-identical either way. It is written down because the coincidence is load-bearing and silent — a host whose service account sat in a differently-named primary group would emit a `-g` that does not resolve, and the failure would look like a permissions bug rather than a modeling gap. dissolve-on = PosixUser (or a PosixGroup beside it) carries the group name, at which point this projects it instead of reusing the user's."
@@ -506,11 +581,29 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
       deploy_raw(command: systemctl_enable_command(unit: deployment_belt_timer_unit_name(names: spec.names), privileged: true)),
       deploy_raw(command: systemctl_restart_command(unit: deployment_belt_timer_unit_name(names: spec.names), privileged: true)),
     ]
+    FleetConvergeTimerUnit => [
+      deploy_raw(command: join(["sudo -n install -d -m 0755 ", fleet_converge_receipt_dir], "")),
+      apply_fleet_converge_service_unit_write_step(spec: spec),
+      apply_fleet_converge_timer_unit_write_step(spec: spec),
+      deploy_raw(command: join([
+        "sudo -n install -m 0644 \"$_gunbc_stage/", deployment_fleet_converge_service_unit_name(names: spec.names) as String, "\" ",
+        deployment_fleet_converge_service_unit_path(names: spec.names) as String,
+      ], "")),
+      deploy_raw(command: join([
+        "sudo -n install -m 0644 \"$_gunbc_stage/", deployment_fleet_converge_timer_unit_name(names: spec.names) as String, "\" ",
+        art.path as String,
+      ], "")),
+      deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
+      deploy_raw(command: systemctl_enable_command(unit: deployment_fleet_converge_timer_unit_name(names: spec.names), privileged: true)),
+      deploy_raw(command: systemctl_restart_command(unit: deployment_fleet_converge_timer_unit_name(names: spec.names), privileged: true)),
+    ]
     TailscaleServeMapping => [
       tailscale_serve_apply_step(spec: spec),
     ]
   }
 }
+
+data devboot_root_realization_note: String = "REALIZATION FOR THE BUILD SERVICE'S ARTIFACT STORE, which is an ENSURED host directory rather than an owned artifact, and the difference is the whole safety content. Ensured means converged on every apply and never torn down; owned means removed by retract. Produced artifacts are precisely what a deploy must never delete, so the owned category was wrong -- and it was not wrong in the abstract: with the root on every per-instance spec, a lab twin's retract would have removed the production store, which is what the twin disjointness claims caught.\\n\\nTHE DEPLOY ENSURES THE DIRECTORY; THE SERVICE MAKES IT A REPOSITORY. That split is forced rather than chosen. The deploy principal's sudo roster grants exactly six commands -- apt-get, install, visudo, systemctl, tailscale, rm -- and git is not among them, so a `sudo -n -u <service> git init --bare` step would be refused by sudoers and would red every deploy of this host. An earlier revision emitted precisely that line. `install -d` is granted and idempotent, so the deploy converges ownership and existence; `git init --bare` is idempotent by upstream contract and runs as the account that owns the directory, so no privilege boundary is crossed and no grant needs widening.\\n\\nTHERE IS NO TEARDOWN ARM, and its absence is the point rather than an omission. An ensured resource reaches EffectRemove only through the R5 wall breach poison, so a retract cannot remove this store even by mistake -- the property the previous `rm -d` arm tried to approximate by refusing on a non-empty directory is now structural, and the awkward consequence that arm carried (a full retract could never complete once the store existed) simply does not arise."
 
 data teardown_worktree_rmdir_note: String = "DispatchWorktreeRoot teardown is rm -d (empty-directory removal via the granted rm — the unprivileged principal has no rmdir grant and no write on the root-owned parent), NEVER rm -rf: a non-empty worktree root means live agent worktrees exist, so the retract FAILS LOUDLY there instead of silently destroying sessions (DESIGN 5 — the refusal is the empty-dir precondition itself, identical to the former rmdir). GunbcSourceTree teardown runs AFTER the worktree rm -d succeeds, so the repo the worktrees are registered in is never deleted from under them."
 
@@ -531,6 +624,15 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
       [
         deploy_raw(command: join([
           "sudo -n rm -f ", art.path as String, " ", deployment_belt_service_unit_path(names: spec.names) as String,
+        ], "")),
+        deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
+      ]
+    )
+    FleetConvergeTimerUnit => concat(
+      systemctl_disable_now_if_present_steps(unit: deployment_fleet_converge_timer_unit_name(names: spec.names), privileged: true),
+      [
+        deploy_raw(command: join([
+          "sudo -n rm -f ", art.path as String, " ", deployment_fleet_converge_service_unit_path(names: spec.names) as String,
         ], "")),
         deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
       ]
@@ -563,16 +665,14 @@ fn emit_deploy_replace_unreachable_refusal(step: DeploymentStep) -> List<Pipelin
 data live_deploy_teardown_dependency_unreachable_poison: String = "__GUNBC_DEPLOY_UNREACHABLE__ R5 wall breach — EffectRemove of an Ensured dependency reached the emit dispatch. A dependency is Ensured, so a Removed dependency is MemberRemovalRefused (never an EffectRemove); reaching this arm means deployment_step_ownership or membership_effects is broken. This marker is not valid deploy shell, so the golden drift gate reds — DESIGN §5: an unreachable arm REFUSES loudly (typed/located/counted), never fabricates a no-op. dependency="
 
 fn emit_deploy_teardown_dependency_refusal(dep: DeploymentDependencyStep) -> List<PipelineStep> {
-  [deploy_raw(command: concat(live_deploy_teardown_dependency_unreachable_poison, dep.package))]
+  [deploy_raw(command: concat(live_deploy_teardown_dependency_unreachable_poison, ensured_subject_identity(subject: dep.subject) as String))]
 }
 
 fn emit_deploy_member_effect(effect: MemberEffect<DeploymentStep>, spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
   match effect {
     EffectAdd { to: step } =>
       match step {
-        Dependency { step: dep } => [
-          ensure_apt_package_step(pkg: dep.package, privileged: true),
-        ]
+        Dependency { step: dep } => ensure_dependency_steps(dep: dep, privileged: true)
         ArtifactStep { step: art } => emit_artifact_upsert(art: art, spec: spec, revision: revision)
       }
     EffectReplace { from: _, to: step } => emit_deploy_replace_unreachable_refusal(step: step)
@@ -736,9 +836,7 @@ fn live_deploy_tree_sync_unit_for(spec: DeploymentSpec) -> String {
 
 fn deployment_ensure_dependency_intent(dep: DeploymentDependencyStep) -> Pipeline {
   Pipeline {
-    steps: [
-      ensure_apt_package_step(pkg: dep.package, privileged: false)
-    ],
+    steps: ensure_dependency_steps(dep: dep, privileged: false),
     on_failure: FailFast
   }
 }

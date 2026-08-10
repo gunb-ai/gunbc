@@ -1,0 +1,182 @@
+module test.claim.devboot_build_product_witness
+
+import std.types { String, Bool, NonEmptyStr }
+import std.measure { second }
+
+import gunbc.devboot.program {
+  ProgramSelected,
+  ProgramNotOffered,
+  select_program,
+  offered_programs_rendering,
+}
+import std.content_hash { Sha256Digest, sha256_hex_digest, Sha256DigestHex }
+import gunbc.devboot.build {
+  BuildOutcome,
+  Built,
+  BuildRefused,
+  BuiltArtifact,
+  BuildReceipt,
+  BuildRefusal,
+  ProgramNotBuildable,
+  WorktreeNotSnapshotted,
+  ToolchainNotObserved,
+  SourceTreeOidUnusable,
+  SubjectNotAdmitted,
+  ProducerUnreachable,
+  ProducerDidNotAnswer,
+  ProducerRefusedRequest,
+  SubjectMismatch,
+  ArtifactNotRetrievable,
+  ArtifactDigestMismatch,
+  build_refusal_sentence,
+  outcome_delivers_executable,
+  PollState,
+  PollAnswered,
+  PollWaiting,
+  PollUnreachable,
+  poll_settled,
+  request_ref_of,
+  produced_ref_of,
+}
+import gunbc.devboot.produce { SnapshotRefused, ToolchainObservationRefused }
+import gunbc.devboot.subject { FeatureNameEmpty, BuildSubjectRefusalCause }
+import gunbc.devboot.lease { request_ref_namespace, produced_ref_namespace }
+import extdeps.gnu.libc {
+  PlatformCLibrary,
+  GnuLibc,
+  LibcUnobserved,
+  platform_c_library_identity_tag,
+}
+
+// WHAT THE PRODUCT PROMISES, PINNED. The operation's promise is that a caller receives an exact executable or a reason, and the decisions that keep that promise are ordinary functions over ordinary values -- so they are witnessed here rather than being demonstrated once by a live run against one producer on one afternoon. The live run proves the vertical exists; these prove the arms that keep it honest still discriminate.
+
+// A REFUSAL IS NEVER AN EXECUTABLE. This is the contract law of the vertical stated at the product boundary: no arm of BuildOutcome reports a delivered binary without bytes bound to a digest. The predicate is what downstream callers branch on, and a version of it that answered true unconditionally would restore precisely the behaviour this lane was opened to delete -- a success report with an empty artifact.
+test fn a_refusal_never_reports_a_delivered_executable() -> Bool {
+  !outcome_delivers_executable(
+    outcome: BuildRefused { cause: ProducerDidNotAnswer { waited: second(count: 300) } },
+  )
+}
+
+data witness_fixture_digest_hex: String = "5af0bd8e00000000000000000000000000000000000000000000000000000000"
+
+data witness_other_digest_hex: String = "0000000000000000000000000000000000000000000000000000000000000000"
+
+fn witness_fixture_digest() -> Sha256Digest {
+  match sha256_hex_digest(hex: witness_fixture_digest_hex) {
+    Present { value: digest } => digest
+    Absent => Sha256Digest { hex: witness_fixture_digest_hex as Sha256DigestHex }
+  }
+}
+
+// AND THE POSITIVE CONTROL, without which the witness above passes on a predicate that is false for everything.
+test fn a_built_outcome_carrying_a_digest_reports_an_executable() -> Bool {
+  outcome_delivers_executable(
+    outcome: Built {
+      program_subject: "program=gunbc\n",
+      artifact: BuiltArtifact { path: "/tmp/gunbc", sha256: witness_fixture_digest() },
+      receipt: BuildReceipt { invocation: "devboot_build", producer_host: "srv3", reused: false },
+    },
+  )
+}
+
+// AN INVALID DIGEST HEX IS NOT ADMITTED. The construction wall on Sha256Digest means an empty or truncated hex cannot inhabit BuiltArtifact; this witness pins the admission gate the product path routes through.
+test fn an_invalid_digest_hex_is_not_admitted() -> Bool {
+  match sha256_hex_digest(hex: "5af0bd8e") {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// EVERY REFUSAL SAYS SOMETHING, and the match that renders them is total, so a refusal added later cannot inherit a generic sentence by omission. A digest mismatch in particular must name BOTH digests: a report that the bytes are wrong without saying what was expected and what arrived cannot be acted on, and this is the arm that fires when a store has been tampered with rather than merely being slow.
+test fn a_digest_mismatch_names_both_digests() -> Bool {
+  match sha256_hex_digest(hex: witness_fixture_digest_hex) {
+    Present { value: expected } =>
+      match sha256_hex_digest(hex: witness_other_digest_hex) {
+        Present { value: observed } =>
+          let sentence = build_refusal_sentence(
+            cause: ArtifactDigestMismatch { expected: expected, observed: observed },
+          )
+          string_contains(s: sentence, pattern: "5af0bd8e") && string_contains(s: sentence, pattern: "00000000")
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+// A SUBJECT MISMATCH CARRIES BOTH SUBJECTS for the same reason, and this refusal is the cross-host wall: the producer derives its subject from its OWN toolchain and never echoes the caller's, so this arm is what stands between a caller and a binary built by a compiler it did not ask for.
+test fn a_subject_mismatch_names_both_subjects() -> Bool {
+  let sentence = build_refusal_sentence(
+    cause: SubjectMismatch { requested: "toolchain=1.93.0", produced: "toolchain=1.90.0" },
+  )
+  string_contains(s: sentence, pattern: "1.93.0") && string_contains(s: sentence, pattern: "1.90.0")
+}
+
+// THE POLL ABSORBS ONCE IT HAS AN ANSWER. A later tick that looked again could overwrite a settled result with a transient one, so a caller holding a verified artifact could report a refusal produced by a hiccup after the fact.
+test fn a_poll_that_was_answered_is_settled() -> Bool {
+  poll_settled(acc: PollAnswered { ref_name: "refs/devboot/produced/fnv1a64-deadbeef" })
+}
+
+// AND ABSORBS ON AN UNREACHABLE PRODUCER, because a host that could not be reached is a terminal answer for this attempt rather than an invitation to keep dialling for the remainder of the budget.
+test fn a_poll_that_could_not_reach_the_producer_is_settled() -> Bool {
+  poll_settled(acc: PollUnreachable { detail: "connection refused" })
+}
+
+// THE DISCRIMINATING NEGATIVE. Waiting is NOT settled, so the fold keeps polling. Without this the two witnesses above would pass on a function that answered true unconditionally -- and a poll that is always settled never waits, which turns every request that is not instantly ready into a refusal.
+test fn a_poll_still_waiting_is_not_settled() -> Bool {
+  !poll_settled(acc: PollWaiting)
+}
+
+// THE REF NAMES ARE DERIVED FROM THE SINGLE AUTHORITY. Both namespaces live in gunbc.devboot.lease beside the other four; these witnesses fail if either is respelled here, which is the drift that would otherwise be silent -- a producer writing where no caller looks does not error, it simply never answers, and every individual run still looks correct.
+test fn the_request_ref_is_built_from_the_declared_namespace() -> Bool {
+  request_ref_of(token: "fnv1a64-deadbeef") == concat(request_ref_namespace, "fnv1a64-deadbeef")
+}
+
+test fn the_produced_ref_is_built_from_the_declared_namespace() -> Bool {
+  produced_ref_of(token: "fnv1a64-deadbeef") == concat(produced_ref_namespace, "fnv1a64-deadbeef")
+}
+
+// THE TWO NAMESPACES ARE DISTINCT, which is the property that keeps a request from ever being mistaken for an answer. If they collided, a caller's own pushed request would satisfy its poll immediately and the caller would then try to read an artifact out of the tree it had just sent.
+test fn a_request_and_an_answer_never_share_a_ref() -> Bool {
+  !(request_ref_of(token: "fnv1a64-deadbeef") == produced_ref_of(token: "fnv1a64-deadbeef"))
+}
+
+// AN OFFERED PROGRAM IS SELECTED, and it names the bin it selected rather than assuming the caller's string reaches cargo unchanged.
+test fn an_offered_program_selects_its_bin() -> Bool {
+  match select_program(program: "gunbc") {
+    ProgramNotOffered { program } => false
+    ProgramSelected { package, cargo_target, bin_name } => bin_name == "gunbc" && package == "v1-compiler"
+  }
+}
+
+// AND AN UNOFFERED ONE REFUSES LOCALLY, before a snapshot, before a push, before another host materializes a tree. The refusal names what IS offered, because a caller who mistyped a program name needs the list more than the rejection.
+test fn an_unoffered_program_refuses_and_lists_what_is_offered() -> Bool {
+  match select_program(program: "not-a-real-program") {
+    ProgramSelected { package, cargo_target, bin_name } => false
+    ProgramNotOffered { program } =>
+      program == "not-a-real-program" && string_contains(s: offered_programs_rendering(), pattern: "gunbc")
+  }
+}
+
+
+// THE PLATFORM ABI AXIS, witnessed because it was added in response to a delivered artifact that could not run. Two hosts differing only in their C library are two build environments, and before this axis existed they were one: the target triple was identical, the subject comparison passed, and the caller received bytes that failed at the dynamic linker. These pin the property that made that possible closed.
+
+// TWO C LIBRARIES ARE TWO IDENTITIES. If these tags collided, the digests built from them would collide, and an artifact linked against one library would be served to a host expecting the other -- which is precisely the incident, restored.
+test fn two_c_library_versions_have_distinct_identities() -> Bool {
+  let newer = platform_c_library_identity_tag(library: GnuLibc { version: "2.39" as NonEmptyStr })
+  let older = platform_c_library_identity_tag(library: GnuLibc { version: "2.36" as NonEmptyStr })
+  !(newer == older)
+}
+
+// AND THE SAME VERSION IS THE SAME IDENTITY, the positive control without which the witness above passes on a tag function that returns something different every call -- which would make every environment unique and destroy the reuse this service exists to provide.
+test fn one_c_library_version_has_a_stable_identity() -> Bool {
+  let once = platform_c_library_identity_tag(library: GnuLibc { version: "2.36" as NonEmptyStr })
+  let again = platform_c_library_identity_tag(library: GnuLibc { version: "2.36" as NonEmptyStr })
+  once == again
+}
+
+// AN UNOBSERVED LIBRARY IS NOT AN OBSERVED ONE, and never shares an identity with a measured version. Absent this, every host whose C library could not be read would collapse into a single environment identity and serve each other's artifacts.
+test fn an_unobserved_c_library_is_distinct_from_every_observed_one() -> Bool {
+  let unobserved = platform_c_library_identity_tag(library: LibcUnobserved)
+  let observed = platform_c_library_identity_tag(library: GnuLibc { version: "2.36" as NonEmptyStr })
+  !(unobserved == observed)
+}

@@ -58,11 +58,35 @@ fn emit_local_tidy_line(check: LocalTidyCheck) -> String {
   }
 }
 
+// Namespace-scoped guard skip (measured, run 31334668866 advance_fleet_desired): the
+// source-format guards below protect SOURCE pushes. A push whose refspecs are ALL under
+// refs/fleet/* is a machine ref-advance carrying no source — the cargo fmt guard has
+// nothing to check on it, yet it aborted the desired-ref push on a runner with no cargo
+// (line 'cargo: command not found', exit 127, push refused). This preamble reads the
+// pushed refspecs from stdin (git's pre-push contract: one "<lref> <lsha> <rref> <rsha>"
+// line per ref) and skips the source guards ONLY when at least one ref was seen AND every
+// pushed remote ref is under refs/fleet/*. It is NOT a blanket --no-verify (operator/parent
+// ruling msg_0e7d195a: the toggle whose only effect is 'proceed as if the refusal had not
+// fired' is forbidden): a push touching ANY non-fleet ref runs every guard, and an empty
+// or unreadable stdin (ref_count 0) FAILS CLOSED — the guards run, exactly as today.
+fn emit_pre_push_fleet_ref_skip_preamble() -> String {
+  concat(
+    "_gunbc_only_fleet_refs=1\n_gunbc_ref_count=0\n",
+    concat(
+      "while read -r _lref _lsha _rref _rsha; do\n  _gunbc_ref_count=$((_gunbc_ref_count+1))\n  case \"$_rref\" in\n    refs/fleet/*) : ;;\n    *) _gunbc_only_fleet_refs=0 ;;\n  esac\ndone\n",
+      "if [[ \"$_gunbc_ref_count\" -gt 0 && \"$_gunbc_only_fleet_refs\" == \"1\" ]]; then\n  echo \"[pre-push] refs/fleet/* only — skipping source guards (namespace-scoped)\" >&2\n  exit 0\nfi\n"
+    )
+  )
+}
+
 fn emit_pre_push_body() -> String {
-  fold(
-    project_local_tidy_checks(roster: commit_gate_roster),
-    init: "",
-    f: fn(acc, check) { concat(acc, emit_local_tidy_line(check: check)) }
+  concat(
+    emit_pre_push_fleet_ref_skip_preamble(),
+    fold(
+      project_local_tidy_checks(roster: commit_gate_roster),
+      init: "",
+      f: fn(acc, check) { concat(acc, emit_local_tidy_line(check: check)) }
+    )
   )
 }
 
