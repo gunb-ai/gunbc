@@ -763,8 +763,14 @@ fn primitive_d0_derived_rows_are_from_authority() -> Bool {
     |> all(fn(row) { row.provenance == DerivedFromAuthority })
 }
 
-data primitive_traversal_identity_join_note: String = "COMPLETENESS IS AN IDENTITY JOIN, NOT A COUNT EQUALITY (DESIGN section 5, operator ruling 2026-08-01). The witness over this population previously asserted count(primitive_d0_traversal_facts) == 4 — a literal copied from the tree it measures, which is a change detector rather than an oracle: it went red the moment group_by was added, an addition it has no opinion about, while saying nothing about whether the two order-exposing primitives are still present and still classified. What it was actually guarding is non-vacuity, so that is what this states directly. Exactly-once additionally refuses a duplicate row for one identity, which a count over the whole population cannot see."
-
+// COMPLETENESS IS AN IDENTITY JOIN, NOT A COUNT EQUALITY (DESIGN section 5).
+// The witness over this population previously asserted count(primitive_d0_traversal_facts) == 4 --
+// a literal copied from the tree it measures, which is a change detector rather than an oracle:
+// it went red the moment group_by was added, an addition it has no opinion about, while saying
+// nothing about whether the two order-exposing primitives are still present and still classified.
+// What it was actually guarding is non-vacuity, so that is what this states directly.
+// Exactly-once additionally refuses a duplicate row for one identity, which a count over the
+// whole population cannot see.
 fn primitive_traversal_classified_exactly_once(
   primitive: PrimitiveIdentity,
   expected: TraversalOrder,
