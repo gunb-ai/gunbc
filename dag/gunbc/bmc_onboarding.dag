@@ -7,7 +7,6 @@ import std.types { NonEmptyStr, Int, List }
 import std.logic { Bool }
 import extdeps.bmc.types { RedfishBootSourceOverrideTarget, RedfishAccountRole, AccountRoleAdministrator }
 import gunbc.auth.access_token_source { AccessEnsurePlan }
-import gunbc.os_install_mechanism { srv3_install_boot_target }
 import extdeps.bmc.openbmc { openbmc_factory_login }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_redfish_system_id }
 
@@ -198,8 +197,6 @@ type BmcOnboardingPlan {
   factory_login: FactoryLogin
   secret_name: NonEmptyStr
   rotated_account_role: RedfishAccountRole
-  os_target: OperatingSystemProduct
-  os_install_boot_target: RedfishBootSourceOverrideTarget
   start_phase: BmcOnboardingPhase
 }
 
@@ -218,8 +215,6 @@ fn altra_onboarding_plan(bmc_host: NonEmptyStr, secret_name: NonEmptyStr) -> Bmc
     factory_login: openbmc_factory_login,
     secret_name: secret_name,
     rotated_account_role: AccountRoleAdministrator,
-    os_target: UbuntuOs { distro: NobleNumbat2404Lts },
-    os_install_boot_target: srv3_install_boot_target,
     start_phase: FactoryDefault,
   }
 }
