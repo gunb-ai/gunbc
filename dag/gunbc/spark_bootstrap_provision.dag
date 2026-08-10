@@ -14,6 +14,7 @@ import extdeps.cloud.gcp.secret_manager {
   secret_manager_effect_required_permissions
 }
 
+import product.placement_supply { HostIdentity }
 import v2.std.operation_argv { OperationRef }
 
 import std.authorization_profile { EffectRequest, EffectAuthorizationAction, effect_access_request }
@@ -953,3 +954,56 @@ fn secret_demand_is_active(standing: SecretDemandStanding) -> Bool {
 // claims consumers exist while naming none. secret_demand_is_active refuses it above rather than
 // letting the arm's NAME stand in for the fact.
 data spark_secret_demand_note: String = "Demand is derived from named consumers and the operation each will perform, never from the credential roster. The factory hotspot credential is RetiredAfterOobe on both Sparks -- both machines are past out-of-box setup, so no selected workflow reads it -- and it therefore creates no access demand and cannot block serving. The administrator credential is RetainedForRecovery: reachable by an explicit recovery or rotation workflow, not by the standing grant a serving run carries. The fleet SSH key is Active with the managed host-access convergence executor as its consumer. The serving API credential's standing is Unobserved rather than assumed: the pinned artifact and its acquisition path are not yet selected, and authoring an Active row for it would fabricate a consumer that does not exist in any plan."
+
+// SERVING INSTALL SCOPE IS DERIVED FROM OBSERVED PRIVILEGE, NEVER CHOSEN.
+//
+// srv5 was measured before anything was installed: `sudo -n` refuses, and the container socket
+// refuses the admitted principal. Those are not two independent limitations -- they are ONE cause
+// with two consequences, because both a system unit and a container require an escalation this
+// principal does not hold. What remains is user scope.
+//
+// This is modeled as a derivation rather than recorded as a scope because an unexplained scope
+// invites a later reader to "upgrade" it to a system unit, which silently reintroduces the
+// out-of-band human step the workflow path exists to eliminate. Stated as a consequence, that
+// upgrade is visibly a change to the OBSERVATION -- it requires granting privilege first.
+type HostPrivilegeObservation {
+  host: NonEmptyStr
+  passwordless_sudo: Bool
+  container_socket_admits_principal: Bool
+}
+
+// UserUnitScope carries its ground so the reason travels with the decision. InstallScopeUnobserved
+// is a distinct arm because "we did not measure privilege" and "we measured it and found none" are
+// different states with different remedies -- collapsing them would let an unmeasured host default
+// into user scope and read as derived when nothing was observed.
+type ServiceInstallScope
+  = SystemUnitScope { host: NonEmptyStr }
+  | ContainerScope { host: NonEmptyStr }
+  | UserUnitScope { host: NonEmptyStr, ground: NonEmptyStr }
+  | InstallScopeUnobserved { host: NonEmptyStr, cause: NonEmptyStr }
+
+fn derive_install_scope(observation: HostPrivilegeObservation) -> ServiceInstallScope {
+  if observation.passwordless_sudo {
+    SystemUnitScope { host: observation.host }
+  } else {
+    if observation.container_socket_admits_principal {
+      ContainerScope { host: observation.host }
+    } else {
+      UserUnitScope {
+        host: observation.host,
+        ground: "passwordless sudo refused and container socket refused the admitted principal; both closures share one cause, so user scope is what remains" as NonEmptyStr,
+      }
+    }
+  }
+}
+
+// The srv5 observation as measured on 2026-08-10 through the read-only canary probe, before any
+// mutation. It is an observation row: a later host with different privilege derives a different
+// scope from the same function, which is the point of deriving rather than declaring.
+fn srv5_privilege_observation() -> HostPrivilegeObservation {
+  HostPrivilegeObservation {
+    host: "srv5" as NonEmptyStr,
+    passwordless_sudo: false,
+    container_socket_admits_principal: false,
+  }
+}
