@@ -137,11 +137,29 @@ fn converge_cli_routes_to_slice1(host: String) -> Bool {
 // PRE-ENROLLMENT (no runner slots, no host layout yet — SPARK-SERVE-0 owns the repair;
 // their reach is probed at the modeled endpoint, gunbc.fleet_reach_endpoint) — a state
 // DISTINCT from UnknownHost, which now means only an identity outside the fleet.
+// SPARK-SERVE-0: the Sparks now have a ROUTE, and the route carries its own access standing.
+// ConvergeSparkPreEnrollment was nullary, so "CONVERGE does not know about this host" and "CONVERGE
+// knows about it and cannot act yet" were the same state -- and a state that cannot say what
+// unblocks it cannot be discharged, only replaced. ConvergeSparkRoute names the blocker instead:
+// today every Spark is SparkManagedAccessAbsent because the measured principal population admits
+// only the human bootstrap account, and the grounded arm becomes reachable the moment a managed
+// automation principal exists, with no widening edit to this coproduct.
+type SparkManagedAccessStanding
+  = SparkManagedAccessAbsent { cause: String }
+  | SparkManagedAccessGrounded
+
 type FleetConvergeApplicability
   = ConvergeSlice1Route
   | ConvergeKnobFrontier
-  | ConvergeSparkPreEnrollment
+  | ConvergeSparkRoute { access: SparkManagedAccessStanding }
   | ConvergeOutsideFleet
+
+// MEASURED, not assumed: a read-only probe of srv5 and srv6 found briansrls the only admitted
+// principal and every managed-sounding candidate refused. The cause travels with the standing so a
+// reader is not left to infer which of several remedies applies.
+fn spark_managed_access_standing(host: String) -> SparkManagedAccessStanding {
+  SparkManagedAccessAbsent { cause: "no managed automation principal on this Spark; only the human bootstrap account is admitted (measured, read-only probe)" }
+}
 
 fn fleet_converge_applicability(host: String) -> FleetConvergeApplicability {
   if converge_cli_routes_to_slice1(host: host) {
@@ -151,7 +169,7 @@ fn fleet_converge_applicability(host: String) -> FleetConvergeApplicability {
       ConvergeKnobFrontier
     } else {
       if host == (operator_host_srv5 as String) || host == (operator_host_srv6 as String) {
-        ConvergeSparkPreEnrollment
+        ConvergeSparkRoute { access: spark_managed_access_standing(host: host) }
       } else {
         ConvergeOutsideFleet
       }
@@ -499,13 +517,25 @@ fn converge_cli_run(host: String) -> ConvergeCliReceipt {
     ConvergePolicyDerived { hosts: hosts } =>
       match fleet_converge_applicability(host: host) {
         ConvergeSlice1Route => converge_cli_slice1_receipt(host: host)
-        ConvergeSparkPreEnrollment =>
+        ConvergeSparkRoute { access: SparkManagedAccessAbsent { cause: _ } } =>
           ConvergeCliReceipt {
             host: host,
             applied: 0,
             drifted: 0,
             verdict: Absent,
             reason: Present { value: SparkPreEnrollment { host: host } },
+          }
+        ConvergeSparkRoute { access: SparkManagedAccessGrounded } =>
+          match host_converge_for_identity(hosts: hosts, identity: host as HostIdentity) {
+            Present { value: hc } => converge_cli_receipt_for_host(host_converge: hc)
+            Absent =>
+              ConvergeCliReceipt {
+                host: host,
+                applied: 0,
+                drifted: 0,
+                verdict: Absent,
+                reason: Present { value: SparkPreEnrollment { host: host } },
+              }
           }
         _ =>
           match host_converge_for_identity(hosts: hosts, identity: host as HostIdentity) {
