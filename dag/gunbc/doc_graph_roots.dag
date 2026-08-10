@@ -124,7 +124,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [
 
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject entry_affected_by_touched_paths describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject entry_affected_by_touched_paths describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -133,7 +133,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [
       DeclarationRef { module_path: "v2.workflow.affected_set_floor_runner", decl_name: "floor_test_fn_declaration_edited", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject floor_witness_run_disposition describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject floor_witness_run_disposition describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -142,7 +142,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [
 
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject FreeMonoid describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject FreeMonoid describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -152,7 +152,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "v2.std.cardinality", decl_name: "node_multiplicity", field: WholeDeclaration },
       DeclarationRef { module_path: "v2.std.cardinality", decl_name: "loop_bound_witness_for_node", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject DescentEvidence describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject DescentEvidence describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -161,7 +161,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [
 
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject sccache_stats_query_does_not_spawn_note describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject sccache_stats_query_does_not_spawn_note describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -171,7 +171,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "v2.std.compilers.compilation_unit", decl_name: "partition_fold", field: WholeDeclaration },
       DeclarationRef { module_path: "v2.std.compilers.compilation_unit", decl_name: "CompilationUnitId", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject CompilationUnit describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject CompilationUnit describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -181,7 +181,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "extdeps.cache", decl_name: "resolved_graph_cache", field: WholeDeclaration },
       DeclarationRef { module_path: "extdeps.cache.types", decl_name: "CacheInterfaceCatalogFacts", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject import_closure_live describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject import_closure_live describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -190,7 +190,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [
       DeclarationRef { module_path: "std.termination", decl_name: "DescentEvidence", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject ComputationIdentity describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject ComputationIdentity describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -200,7 +200,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "v2.std.algebra", decl_name: "list_snoc_item", field: WholeDeclaration },
       DeclarationRef { module_path: "v2.std.compilers.lexing", decl_name: "token_stream_first", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject fold_node describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject fold_node describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -210,7 +210,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "v2.std.symbol_index", decl_name: "symbol_index_lookup", field: WholeDeclaration },
       DeclarationRef { module_path: "std.occurrence_binding", decl_name: "occurrence_binding_from_candidates", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject OccurrenceBindingResult describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject OccurrenceBindingResult describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -220,7 +220,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "v2.std.verification", decl_name: "TestClassification", field: WholeDeclaration },
       DeclarationRef { module_path: "v2.std.live_tree", decl_name: "LiveTreeDisposition", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject WitnessKind describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject WitnessKind describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -230,7 +230,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "std.materialization_ladder", decl_name: "CacheProvider", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.host_effect", decl_name: "HostEffect", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject ComputationIdentity describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject ComputationIdentity describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -239,7 +239,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [
       DeclarationRef { module_path: "extdeps.cache", decl_name: "resolved_graph_cache", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject module_resolution_store_value_note describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject module_resolution_store_value_note describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -248,7 +248,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [
 
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject GroupMembership describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject GroupMembership describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -257,7 +257,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [
       DeclarationRef { module_path: "v2.std.compilers.semantic_decl_emission", decl_name: "TargetSemanticDeclEmission", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject TargetModel describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject TargetModel describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -267,7 +267,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "v2.compiler.source_authority", decl_name: "ModuleStorageIndex", field: WholeDeclaration },
       DeclarationRef { module_path: "std.content_hash", decl_name: "ContentHash", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject SourceRef describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject SourceRef describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -276,7 +276,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [
       DeclarationRef { module_path: "v2.lens.dependency_fidelity", decl_name: "FidelityVerdict", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject FnArrowDecl describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject FnArrowDecl describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -286,7 +286,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "gunbc.design.theme", decl_name: "Theme", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.design.material", decl_name: "AreaClass", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject Material describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject Material describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -296,7 +296,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "gunbc.node_http_server_emit", decl_name: "emit_node_http_static_server_program", field: WholeDeclaration },
       DeclarationRef { module_path: "extdeps.http.server", decl_name: "NodeHttpServerRouteBinding", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject dispatch_brief_template describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject dispatch_brief_template describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -306,7 +306,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "std.realization", decl_name: "Materialization", field: WholeDeclaration },
       DeclarationRef { module_path: "v2.std.staging", decl_name: "cached_stage", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject materialize describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject materialize describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -316,7 +316,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "v2.workflow.ci_floor_plan", decl_name: "floor_dependencies_with", field: WholeDeclaration },
       DeclarationRef { module_path: "std.realization_schedule", decl_name: "Runnable", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject parallel_executor_plan_from_dependencies describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject parallel_executor_plan_from_dependencies describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -326,7 +326,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "v2.std.compilers.compilation_unit", decl_name: "partition_fold", field: WholeDeclaration },
       DeclarationRef { module_path: "v2.workflow.rust_crate_partition", decl_name: "PartitionPolicy", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject CompilationUnit describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject CompilationUnit describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -335,7 +335,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [
       DeclarationRef { module_path: "v2.lens.enforcement.standing_intent", decl_name: "StandingIntent", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject LensContract describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject LensContract describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -344,7 +344,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [
 
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject module_key describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject module_key describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -353,7 +353,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [
       DeclarationRef { module_path: "v2.std.runtime", decl_name: "RuntimeBehaviorInterpreter", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject eval_bind_node_eval describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject eval_bind_node_eval describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -363,7 +363,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "v2.std.dependency", decl_name: "DependencyView", field: WholeDeclaration },
       DeclarationRef { module_path: "v2.std.spine", decl_name: "spine_receipt", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject materialize describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject materialize describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -372,7 +372,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [
 
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject Measure describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject Measure describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -381,7 +381,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [
 
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject live_read_classification describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject live_read_classification describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -390,7 +390,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [
       DeclarationRef { module_path: "v2.workflow.ci_floor_plan", decl_name: "floor_heavy_resolve_chain_resource_edges", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject witness_layer_roots describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject witness_layer_roots describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -400,7 +400,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "v2.workflow.ci_floor_plan", decl_name: "floor_heavy_resolve_chain_resource_edges", field: WholeDeclaration },
       DeclarationRef { module_path: "v2.workflow.ci_floor_plan", decl_name: "floor_plan_at_most_one_heavy_gate_resolve_per_batch", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject gate_runnable_profile describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject gate_runnable_profile describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -409,7 +409,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [
       DeclarationRef { module_path: "v2.std.compilers.sugar", decl_name: "SugarKey", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject orch_emit_step describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject orch_emit_step describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -418,7 +418,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [
 
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject DescentEvidence describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject DescentEvidence describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -427,7 +427,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [
       DeclarationRef { module_path: "extdeps.cache", decl_name: "resolved_graph_cache", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject ResolvedTree describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject ResolvedTree describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -437,7 +437,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "std.float", decl_name: "Real", field: WholeDeclaration },
       DeclarationRef { module_path: "std.rational", decl_name: "Rational", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject GroupCompletion describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject GroupCompletion describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -447,7 +447,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "gunbc.design.material", decl_name: "Material", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.design.material", decl_name: "BuildRule", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject TsProgram describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject TsProgram describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -457,7 +457,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "gunbc.roadmap_page", decl_name: "roadmap_daily_workspace_page_for_authority", field: WholeDeclaration },
       DeclarationRef { module_path: "extdeps.http.server", decl_name: "ServedStaticRouteTable", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject belt_dispatch_node describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject belt_dispatch_node describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -467,7 +467,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "std.algebra", decl_name: "GroupCompletion", field: WholeDeclaration },
       DeclarationRef { module_path: "std.rational", decl_name: "Rational", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject FieldOfFractions describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject FieldOfFractions describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -477,7 +477,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "gunbc.host_converge", decl_name: "ConvergeKnob", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.host_converge", decl_name: "ConvergeTarget", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject HostConverge describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject HostConverge describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -486,7 +486,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [
       DeclarationRef { module_path: "std.content_hash", decl_name: "ContentHash", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject DeclarationRef describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject DeclarationRef describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -496,7 +496,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "v2.compiler.source_authority", decl_name: "SourceRootIngest", field: WholeDeclaration },
       DeclarationRef { module_path: "std.content_hash", decl_name: "ContentHash", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject SourceRef describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject SourceRef describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -505,7 +505,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [
       DeclarationRef { module_path: "std.types", decl_name: "NonEmptyStr", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject InterfaceSummary describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject InterfaceSummary describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -514,7 +514,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [
 
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject PerformanceReceipt describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject PerformanceReceipt describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -523,7 +523,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [
 
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject falsifier_substrate_long_lane_rows describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject falsifier_substrate_long_lane_rows describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -533,7 +533,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "v2.std.layer", decl_name: "layer_import_facts_live", field: WholeDeclaration },
       DeclarationRef { module_path: "v2.std.cross_tree.resolution", decl_name: "layer_prefix_from_dotted_qualified_name", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject LayerImportFact describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject LayerImportFact describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -543,7 +543,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "v2.lens.enforcement.standing_intent", decl_name: "StandingIntent", field: WholeDeclaration },
       DeclarationRef { module_path: "v2.lens.vacuity", decl_name: "VacuityEvidence", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject LadderVerdict describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject LadderVerdict describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -552,7 +552,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [
       DeclarationRef { module_path: "v2.compiler.infer", decl_name: "InferredTree", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject provider_from_catalog describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject provider_from_catalog describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -561,7 +561,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [
       DeclarationRef { module_path: "std.process", decl_name: "ProcessExit", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject Gate describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject Gate describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -571,7 +571,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "std.change", decl_name: "keyed_two_way_diff", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.membership_reconcile", decl_name: "EffectsOrRefusal", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject Ownership describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject Ownership describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -580,7 +580,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [
       DeclarationRef { module_path: "std.realization_schedule", decl_name: "Schedule", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject NonEmptyStr describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject NonEmptyStr describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -589,7 +589,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [
       DeclarationRef { module_path: "std.algebra", decl_name: "PointwisePower", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject FreeMonoid describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject FreeMonoid describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -599,7 +599,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "v2.std.node", decl_name: "Symbol", field: WholeDeclaration },
       DeclarationRef { module_path: "v2.std.symbol_index", decl_name: "symbol_index_global_unique_lookup", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject SymbolIndex describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject SymbolIndex describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -608,7 +608,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [
       DeclarationRef { module_path: "std.occurrence_binding", decl_name: "OccurrenceBindingResult", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject occurrence_binding_from_candidates describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject occurrence_binding_from_candidates describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -617,7 +617,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [
 
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject NativeWitnessBundleIdentity describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject NativeWitnessBundleIdentity describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -626,7 +626,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [
 
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject MinimalResolvedNode describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject MinimalResolvedNode describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -636,7 +636,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "std.effect_grant", decl_name: "NamespacePosition", field: WholeDeclaration },
       DeclarationRef { module_path: "std.effect_grant", decl_name: "admit_effect", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject position_under describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject position_under describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -646,7 +646,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "std.induction", decl_name: "SubValueRelation", field: WholeDeclaration },
       DeclarationRef { module_path: "v2.lens.cost", decl_name: "SymbolicCost", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject triage_wildcard describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject triage_wildcard describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -655,7 +655,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [
       DeclarationRef { module_path: "v2.std.orchestration", decl_name: "Pipeline", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject Run describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject Run describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -664,7 +664,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [
 
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject is_container_type describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject is_container_type describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -674,7 +674,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "v2.std.execution_surface", decl_name: "ExecutorCapability", field: WholeDeclaration },
       DeclarationRef { module_path: "v2.std.execution_surface", decl_name: "ProvisioningWindow", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject ShellEmissionJustification describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject ShellEmissionJustification describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -684,7 +684,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "v2.std.verification", decl_name: "ManualAnchorKey", field: WholeDeclaration },
       DeclarationRef { module_path: "v2.std.compilers.target_model", decl_name: "ConcreteSyntaxToken", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject triage_wildcard describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject triage_wildcard describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -693,7 +693,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [
 
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject run_regen_verify describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject run_regen_verify describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -702,7 +702,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [
       DeclarationRef { module_path: "gunbc.ci_layer_roots", decl_name: "bin_witness_wet_per_row_wall_budget_seconds", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject gunbc_ci_floor_step_timeout_discovery_flip_note describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject gunbc_ci_floor_step_timeout_discovery_flip_note describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -711,7 +711,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [
       DeclarationRef { module_path: "std.realization_schedule", decl_name: "RealizationPlan", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject DependencyView describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject DependencyView describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -721,7 +721,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "std.observation", decl_name: "Measured", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.fleet_intent", decl_name: "PerformanceReceipt", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject Runnable describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject Runnable describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -731,7 +731,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "gunbc.roadmap_model", decl_name: "Acceptance", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.process_algebra", decl_name: "ProcessNodeId", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject next_spawnable describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject next_spawnable describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -741,7 +741,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "std.algebra", decl_name: "FreeMonoid", field: WholeDeclaration },
       DeclarationRef { module_path: "v2.std.optional", decl_name: "Optional", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject Symbol describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject Symbol describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -751,7 +751,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "v2.std.node", decl_name: "Symbol", field: WholeDeclaration },
       DeclarationRef { module_path: "v2.compiler.translate", decl_name: "grammar_relation_row_for_emitted", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject DecodeFidelity describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject DecodeFidelity describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -761,7 +761,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "v2.workflow.bootstrap", decl_name: "diverse_compilation_agreement_witness", field: WholeDeclaration },
       DeclarationRef { module_path: "v2.workflow.bootstrap", decl_name: "IndependentCompilerPair", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject SeedHonestyDischarge describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject SeedHonestyDischarge describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -770,7 +770,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [
       DeclarationRef { module_path: "extdeps.cache", decl_name: "resolved_graph_cache", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject content_hash describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject content_hash describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -780,7 +780,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "v2.std.node", decl_name: "Edge", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.host_effect_realize", decl_name: "host_effect_apply", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject Pipeline describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject Pipeline describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -790,7 +790,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "gunbc.retained_shell_script", decl_name: "RetainedShellScript", field: WholeDeclaration },
       DeclarationRef { module_path: "extdeps.shell.exec", decl_name: "TransportScript", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject host_effect_apply describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject host_effect_apply describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -800,7 +800,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "std.termination", decl_name: "DescentEvidence", field: WholeDeclaration },
       DeclarationRef { module_path: "v2.lens.cost.summary", decl_name: "ComplexitySummary", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject CostExpr describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject CostExpr describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -810,7 +810,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "std.realization_schedule", decl_name: "cost_account_predicted_zero", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.ci_input_envelope", decl_name: "InputEnvelope", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject ResourceEnvelope describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject ResourceEnvelope describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -819,7 +819,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [
       DeclarationRef { module_path: "extdeps.external_authority", decl_name: "ExternalAuthority", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject solve_install_mechanism describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject solve_install_mechanism describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -828,7 +828,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [
       DeclarationRef { module_path: "product.placement_supply", decl_name: "HostIdentity", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject host_standup_spine describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject host_standup_spine describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -837,7 +837,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [
       DeclarationRef { module_path: "extdeps.cache.sccache", decl_name: "sccache_local_facts", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject ConvergeTarget describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject ConvergeTarget describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -847,7 +847,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "std.induction", decl_name: "SubValueRelation", field: WholeDeclaration },
       DeclarationRef { module_path: "v2.compiler.resolve", decl_name: "Scope", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject SymbolIndex describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject SymbolIndex describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -856,7 +856,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [
 
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject whole_tree_strict_resolve_exclusion_substrings describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject whole_tree_strict_resolve_exclusion_substrings describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -866,7 +866,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "v2.std.dependency", decl_name: "DependencyView", field: WholeDeclaration },
       DeclarationRef { module_path: "std.realization_schedule", decl_name: "CostAccount", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject CacheProvider describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject CacheProvider describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -876,7 +876,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "v2.lens.coverage", decl_name: "coverage_defect_vacuous_arm", field: WholeDeclaration },
       DeclarationRef { module_path: "v2.std.verification", decl_name: "TestClaim", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject VacuityEvidence describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject VacuityEvidence describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -885,7 +885,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [
       DeclarationRef { module_path: "v2.lens.module_graph", decl_name: "import_closure_live", field: WholeDeclaration },
     ],
-    dissolution: unbound_dissolution(description: "the work this document plans lands and its subject Outcome describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions."),
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject Outcome describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
