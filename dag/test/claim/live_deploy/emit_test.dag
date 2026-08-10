@@ -367,6 +367,16 @@ test fn witness_retract_owned_process_removes_serve_service() -> Bool {
     && !string_contains(s: sh, pattern: "roadmap-site-readback")
 }
 
+// THE PIN NOW ALSO GUARDS THE EVALUATION BUDGET, AND THAT IS THE POINT OF EXTENDING IT
+// RATHER THAN ADDING A SEPARATE CONTAINS-CHECK. srv1 served with
+// eval_budget_cpu_ms=unset eval_budget_wall_ms=unset on every restart of 2026-08-10
+// because the unit passed neither flag; the deadline was armed with None on every request,
+// and since the accept loop is serial an unbounded request held the queue for hours. A
+// whole-line assertion is what makes silently dropping a flag red — a prefix check ending
+// at --port 8080 stays green with both caps missing, which is precisely how the gap
+// survived.
+data execstart_budget_pin_note: String = "The two caps are pinned at their declared values, not merely asserted present. A present-but-different value is a policy amendment and must red here so it is reviewed as one; gunbc.live_deploy.spec dashboard_serve_budget_basis_note carries the measured basis those numbers answer to."
+
 data execstart_pinned_exactly_note: String = "THE FULL ExecStart LINE, PINNED, WITH THE REVISION IN IT — WHICH IS WHAT THE DELETED GOLDEN NEVER ASSERTED. The committed script golden compared whole files, so it would have reddened on any change anywhere and located none of them; the sibling unit witness asserts only a command PREFIX and stops before the flag. Between them, a unit that emitted no --release-revision at all, or emitted it twice, or emitted a different value, passed every check in this file.\\n\\nSo this pins the entire line and the three REDs each break exactly one way it could be wrong: the flag missing, the value belonging to another candidate, or the flag duplicated. A prefix check cannot distinguish any of them, which is why the assertion is the whole line rather than a longer prefix."
 
 test fn witness_execstart_carries_exactly_the_admitted_revision() -> Bool {
@@ -379,6 +389,8 @@ test fn witness_execstart_carries_exactly_the_admitted_revision() -> Bool {
     " --entry dag/gunbc/roadmap_serve.dag --function roadmap_serve_handle",
     " --host 0.0.0.0 --port 8080",
     " --release-revision ", deploy_witness_release_revision as String,
+    " --eval-budget-cpu-ms 30000",
+    " --eval-budget-wall-ms 30000",
   ], "")
   string_contains(s: unit, pattern: expected)
     && !string_contains(s: unit, pattern: concat(expected, " --release-revision"))
