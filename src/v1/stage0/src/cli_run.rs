@@ -16291,6 +16291,89 @@ fn replay_scoped_run_stderr(bytes: &[u8]) {
     let _ = stderr.write_all(bytes).and_then(|_| stderr.flush());
 }
 
+/// Emit the interpreter's per-`Expr`-variant evaluation profile after a `gunbc run`, when
+/// `GUNBC_INTERP_PROFILE=1` is set. Off by default and zero-cost when off: the counters are only
+/// accumulated under the same env flag, so this reads whatever the run already gathered.
+///
+/// WHY THIS EXISTS. The profiler and its printer both predate this, but the printer lived only in
+/// `claim_batch`, which evaluates HERMETICALLY and refuses host effects rather than fabricating
+/// them. So the one runner that could produce a profile could not execute any route that reads the
+/// filesystem or shells out, and the one runner that executes wet (`gunbc run`) discarded the
+/// profile it had already collected. That gap is why the 2026-08-09 dashboard wedge was profiled
+/// with `perf` — which can only name `eval_expr_inner`, never a `.dag` subject — while the
+/// interpreter held the structural identity the whole time and simply never printed it on the wet
+/// path.
+///
+/// SCOPE, STATED HONESTLY: this is variant grain (`Call`, `Match`, `StrConcat`, …), NOT declaration
+/// identity. It can say which expression KIND dominates a wet run; it cannot say which `.dag`
+/// declaration. Naming a declaration needs the caller→callee edge and per-declaration inclusive CPU
+/// that the operator's Phase-2 trace specifies, and this is the seam that work extends rather than
+/// a substitute for it.
+fn emit_run_eval_profile(function: &str) {
+    use crate::v1_interpreter::{
+        cast_lookup_counters, eval_profile_snapshot, expr_variant_name, EXPR_VARIANT_COUNT,
+    };
+    let prof = eval_profile_snapshot();
+    let total_ns: u128 = prof.self_nanos.iter().sum();
+    let total_count: u64 = prof.counts.iter().sum();
+    if total_count == 0 {
+        return;
+    }
+    let mut rows: Vec<usize> = (0..EXPR_VARIANT_COUNT)
+        .filter(|&i| prof.counts[i] > 0)
+        .collect();
+    rows.sort_by(|&a, &b| prof.self_nanos[b].cmp(&prof.self_nanos[a]));
+    eprintln!(
+        "[eval-profile] {}: {} node-evals, {:.3}ms self-time total (sorted by self-time)",
+        function,
+        total_count,
+        total_ns as f64 / 1.0e6,
+    );
+    for i in rows {
+        let ns = prof.self_nanos[i];
+        let count = prof.counts[i];
+        eprintln!(
+            "  {:<16} {:>12} evals  {:>10.3}ms self ({:>5.1}%)  {:>8.0}ns/eval",
+            expr_variant_name(i),
+            count,
+            ns as f64 / 1.0e6,
+            if total_ns == 0 {
+                0.0
+            } else {
+                100.0 * ns as f64 / total_ns as f64
+            },
+            if count == 0 {
+                0.0
+            } else {
+                ns as f64 / count as f64
+            },
+        );
+    }
+    // The cast cost center is a SCAN, not a per-cast constant: each alias-chain hop walks
+    // every item of every module extracting authored source text. Printing the three
+    // counters together is what turns "casts are expensive" into a named multiplier —
+    // items-per-lookup is the corpus-denominated term, and it grows with the closure.
+    let (kernel_calls, lookup_calls, lookup_items) = cast_lookup_counters();
+    if kernel_calls > 0 || lookup_calls > 0 {
+        eprintln!(
+            "[eval-profile] cast-kernel walks: {}  type-lookups: {}  items scanned: {}  ({:.1} lookups/walk, {:.0} items/lookup)",
+            kernel_calls,
+            lookup_calls,
+            lookup_items,
+            if kernel_calls == 0 {
+                0.0
+            } else {
+                lookup_calls as f64 / kernel_calls as f64
+            },
+            if lookup_calls == 0 {
+                0.0
+            } else {
+                lookup_items as f64 / lookup_calls as f64
+            },
+        );
+    }
+}
+
 pub fn handle_run_with_options(
     source_roots: Vec<String>,
     function: String,
@@ -16588,6 +16671,7 @@ pub fn handle_run_with_options(
                         }
                     }
                 }
+                emit_run_eval_profile(&function);
                 match classify_exit(&val, &ctx) {
                     ExitClass::Success => {
                         if let Some(observation) = scoped_observation.as_mut() {
