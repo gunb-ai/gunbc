@@ -14,11 +14,11 @@ Paired end-to-end comparison for #8055 P3 (not a lane-read selection count):
 ### Paired run (one arm per build)
 
 ```bash
-# control arm — build on main
+# control arm — build at tag peeled from e1c688aec8 (pre-#8055 main)
 ctrl-build -- cargo build -p v1-compiler --release --bin p3_cohort_probe
 GUNBC_P3_ARM=control GUNBC_P3_SUBJECT=incident ./target/release/p3_cohort_probe 2>&1 | tee control.log
 
-# candidate arm — build on pr-8055 / merge SHA
+# candidate arm — build at tag peeled from 7f7da93340 (#8055 merge)
 GUNBC_P3_ARM=candidate GUNBC_P3_SUBJECT=incident ./target/release/p3_cohort_probe 2>&1 | tee candidate.log
 ```
 
@@ -31,7 +31,21 @@ Env:
 
 ## Pin discipline
 
-Fleet/corpus runs must dispatch against an **immutable tag** on the merge SHA (`workflow_dispatch --ref <tag>`), and every `RECEIPT` line must show `head_sha=<merge SHA>`. Discard on mismatch.
+Fleet/corpus runs must dispatch against an **immutable tag** (`workflow_dispatch --ref <tag>` — branch or tag name only, never a raw SHA), and every `RECEIPT` line must show `head_sha=<tag target>`. Discard on mismatch.
+
+### Subject pins (declared 2026-08-10, post-#8055 merge)
+
+#8055 merged as `7f7da93340` (2026-08-10T12:57:20Z). `main` has since advanced (`e640f20e61` #8100, `742e634848` #8095). The harness PR branch tracks **current `main`** for probe plumbing only; the **A/B arms do not silently float with `main` tip**.
+
+| Arm | Pin | Rationale |
+|-----|-----|-----------|
+| **control** | Tag on `e1c688aec8` (`7f7da93340^`, last `main` before #8055) | G1 selector + over-selected prep/exec — exact pre-cutover subject |
+| **candidate** | Tag on `7f7da93340` (#8055 merge) | G2 manifest + narrowed prep/exec — exact lane subject |
+| **harness tooling** | Current `main` at harness merge (includes probe binary + receipt) | Measurement plumbing; not an A/B arm subject |
+
+**Deliberate split:** #8095 (floor phase journal on falsifier kills) improves kill forensics but is **not** part of the ClassificationCostStanding candidate subject. Forensics validation may run separately on current `main`; paired cost A/B builds use the tags above.
+
+After tagging, verify each run's `head_sha` equals the tag peel before comparing receipts. Use **group intersection** (below) when comparing per-group cost across arms.
 
 ## Subjects
 
