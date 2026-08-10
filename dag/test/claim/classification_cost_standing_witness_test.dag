@@ -1,0 +1,34 @@
+module test.claim.classification_cost_standing_witness_test
+
+import gunbc.classification_cost_standing_receipt {
+  classification_cost_standing_subject_pin_holds,
+  classification_cost_standing_planted_red_is_one,
+  classification_cost_standing_lane_is_predict_only,
+  lane_predict_only_completed_wall_capture_8055_pending,
+  falsifier_run_subject_8055,
+  falsifier_subject_pin_8055,
+  planted_red_divergence_health_note,
+  lane_predict_only_wall_sanity_note
+}
+
+test fn classification_cost_standing_subject_pin_holds() -> Bool {
+  classification_cost_standing_subject_pin_holds()
+}
+
+test fn classification_cost_standing_planted_red_convention_is_one() -> Bool {
+  classification_cost_standing_planted_red_is_one(
+    capture: lane_predict_only_completed_wall_capture_8055_pending()
+  )
+}
+
+test fn classification_cost_standing_lane_is_predict_only() -> Bool {
+  classification_cost_standing_lane_is_predict_only(
+    capture: lane_predict_only_completed_wall_capture_8055_pending()
+  )
+}
+
+test fn classification_cost_standing_run_id_is_pinned_dispatch() -> Bool {
+  falsifier_run_subject_8055().workflow_run_id == 31393103250
+    && falsifier_subject_pin_8055().landed_merge_commit
+      == "7f7da93340ace3f880e054455710a8909038bfc5"
+}

@@ -1,0 +1,143 @@
+module gunbc.classification_cost_standing_receipt
+
+import std.types { String, Int, NonEmptyStr, Bool, CommitSha }
+import gunbc.falsifier_lane { FalsifierLane, LanePredictOnly, falsifier_lane_name }
+
+data classification_cost_standing_receipt_note: String = "AXIS-2 EXECUTION EVIDENCE for #8055 (operator lane vivid-gull-155, witty-raven-412 consolidation). SelectionStanding (Axis 1, LanePredictOnly against the PR head) is valiant-ant-57's gate; THIS carrier is ClassificationCostStanding only — whether per-request classification cost times roster size narrows required CI wall or merely exchanges over-selection cost for classification cost. That question is NOT answered by a selection count, by later lanes completing, or by LanePredictOnly green alone; the end-to-end A/B (adhoc-bad445b5-6be) compares two same-subject walls and is a separate measurement documented beside this receipt.\n\nSUBJECT PINNING (verified 2026-08-10): workflow_dispatch accepts branch or tag names only — a raw SHA returns HTTP 422 No ref found. Method used: immutable annotated tag falsifier-pin-8055-7f7da933 on squash-merge 7f7da93340ace3f880e054455710a8909038bfc5 (#8055), dispatch --ref falsifier-pin-8055-7f7da933. Every consumer MUST assert run_head_sha == landed_merge_commit before reading any lane numbers.\n\nCOMPLETED-WALL READING (valiant-ant-57 2026-08-10, time-sensitive): read LanePredictOnly ONLY after the lane COMPLETES — the completed wall from job logs, NOT an in-progress elapsed-so-far snapshot. A mid-batch snapshot is not a wall; treating one as a completed span produced a bogus >=1.76x host-variance figure earlier today (retracted; stern-ant post-mortem: real spread 1.12x). LanePredictOnly finishes (~59-66 min measured) well before cold-corpus dies mid-batch, so the completed wall IS available even when the job later fails — that is the two-axis recut basis. IF the job is killed before the lane completes: record EvidenceIncomplete, not a partial number. Subject 7f7da933 predates #8095 — no floor-phase-journal artifact on cold-corpus kills; read the completed wall from logs, not post-kill forensics.\n\nINSTRUMENT LIMITATIONS: workflow_dispatch declares no lane inputs; lane standing is read from completed cold-corpus step logs, not from a per-lane typed receipt (stern-ant-249 follow-on). Aggregate falsifier verdict may be red while cold corpus executed; that is infrastructure, not witness regression. Planted-red health: selection-control intentionally exercises falsifier_red_control_holds=false producing exactly ONE counted divergence — health, not failure."
+
+type FalsifierPinMethod
+  = PinByImmutableTag { tag: NonEmptyStr }
+  | PinByMainDispatchVerified { discard_on_mismatch: Bool }
+
+type FalsifierSubjectPin {
+  landed_pull_request: Int
+  landed_merge_commit: CommitSha
+  pin: FalsifierPinMethod
+}
+
+type FalsifierRunSubject {
+  workflow_run_id: Int
+  head_sha: CommitSha
+}
+
+fn falsifier_run_subject_matches_pin(
+  run: FalsifierRunSubject,
+  pin: FalsifierSubjectPin
+) -> Bool {
+  run.head_sha == pin.landed_merge_commit
+}
+
+data falsifier_pin_8055_note: String = "THE ONE INHABITANT for the post-merge confirmation window. Landed #8055 at squash-merge 7f7da93340ace3f880e054455710a8909038bfc5 (merged 2026-08-10T12:57:20Z). Pinned before dispatch via tag falsifier-pin-8055-7f7da933 so the subject cannot drift when later merges land on main. TRADE-OFF, CHOSEN EXPLICITLY: main tip 742e634848 (#8095) uploads floor-phase-journal on cold-corpus kills and would improve kill forensics, but contains two unrelated commits past the #8055 subject; subject exactness wins, so this pin measures 7f7da933 WITHOUT #8095's journal artifact — stated rather than silent drift."
+
+data falsifier_log_completeness_note: String = "TOOLING TRAP (valiant-ant-57 2026-08-10): gh run view --job <id> --log TRUNCATES the tail of a long step stream — exactly where typed refusals AND completed-lane walls land. Use gh api repos/gunb-ai/gunbc/actions/jobs/<id>/logs --allow-escape-sequences instead. Do not compare completeness by bytes; do not trust Complete job as a completeness marker when the step tail is cut."
+
+data lane_predict_only_wall_sanity_note: String = "SANITY CHECK (valiant-ant-57, two prior completed runs): LanePredictOnly wall 59.1 min and 66.4 min (1.12x apart); five of six lanes within +/-3% across days. Numbers observed on run 31393103250 should be in this band unless a real regression landed."
+
+data falsifier_aggregate_standing_note: String = "STANDING FACTS, measured 2026-08-10, not re-derived here: aggregate verdict cannot currently go green — cold-corpus runs nine lanes under one 170-min step against a 167-min soft deadline and dies mid-batch; CadenceWitness and Gates have never executed on any run. selection-control is a SEPARATE job and passes (~14.5 min). A red aggregate is not this receipt's answer and is not a defect caused by #8055."
+
+data falsifier_8055_pr_floor_baseline_note: String = "#8055 PR-floor baseline (valiant-ant-57): passed every witness it ran (8568 discovery witnesses, 0 FAIL) then refused by ordinary floor budget at exactly 55 minutes of WALK with affected set at 98.8% of entry groups. Budget is scoped to the walk, not the job; ~14m38s prelude sits outside every budget."
+
+fn falsifier_subject_pin_8055() -> FalsifierSubjectPin {
+  FalsifierSubjectPin {
+    landed_pull_request: 8055,
+    landed_merge_commit: "7f7da93340ace3f880e054455710a8909038bfc5",
+    pin: PinByImmutableTag { tag: "falsifier-pin-8055-7f7da933" as NonEmptyStr }
+  }
+}
+
+fn falsifier_run_subject_8055() -> FalsifierRunSubject {
+  FalsifierRunSubject {
+    workflow_run_id: 31393103250,
+    head_sha: "7f7da93340ace3f880e054455710a8909038bfc5"
+  }
+}
+
+data planted_red_divergence_health_note: String = "READING GREEN on selection-control: a healthy run INTENTIONALLY exercises src/v2/test/fixture/floor_skip/falsifier_divergence_control_test.dag falsifier_red_control_holds returning false, producing exactly ONE counted divergence. No red line in the log is the WRONG reading; one EXPECTED divergence is health. Unexpected divergences beyond the planted control are regressions."
+
+type LanePredictOnlyCompletedWallCapture {
+  lane: FalsifierLane
+  discovery_witness_count: Int
+  discovery_resolve_wall_ms: Int
+  discovery_eval_wall_ms: Int
+  classification_production_wall_ms: Int
+  selected_entry_groups: Int
+  total_entry_groups: Int
+  planted_red_divergence_count: Int
+  lane_completed: Bool
+  capture_note: String
+}
+
+data lane_predict_only_completed_wall_pending_note: String = "COMPLETED-WALL CAPTURE PENDING workflow run 31393103250. Numbers below are PLACEHOLDER until LanePredictOnly COMPLETES (~59-66 min); read the completed wall from gh api job logs, never an in-progress elapsed snapshot. If the job is killed before the lane completes, record EvidenceIncomplete — a truncated lane has no wall. Update when the lane finishes; witnesses pin headSha equality and planted-red convention regardless."
+
+fn lane_predict_only_completed_wall_capture_8055_pending() -> LanePredictOnlyCompletedWallCapture {
+  LanePredictOnlyCompletedWallCapture {
+    lane: LanePredictOnly,
+    discovery_witness_count: 0,
+    discovery_resolve_wall_ms: 0,
+    discovery_eval_wall_ms: 0,
+    classification_production_wall_ms: 0,
+    selected_entry_groups: 0,
+    total_entry_groups: 0,
+    planted_red_divergence_count: 1,
+    lane_completed: false,
+    capture_note: lane_predict_only_completed_wall_pending_note
+  }
+}
+
+type ClassificationCostStanding
+  = CostStandingUnobserved { cause: NonEmptyStr }
+  | CostStandingObservedFromCompletedWall {
+      capture: LanePredictOnlyCompletedWallCapture,
+      corpus_executed: Bool,
+      aggregate_verdict_red_expected: Bool
+    }
+  | CostStandingEvidenceIncomplete {
+      workflow_run_id: Int,
+      cause: NonEmptyStr
+    }
+  | CostStandingSubjectMismatch {
+      run_head_sha: CommitSha,
+      landed_merge_commit: CommitSha
+    }
+
+fn classification_cost_standing_8055() -> ClassificationCostStanding {
+  let pin = falsifier_subject_pin_8055()
+  let run = falsifier_run_subject_8055()
+  if !falsifier_run_subject_matches_pin(run: run, pin: pin) {
+    CostStandingSubjectMismatch {
+      run_head_sha: run.head_sha,
+      landed_merge_commit: pin.landed_merge_commit
+    }
+  } else {
+    CostStandingObservedFromCompletedWall {
+      capture: lane_predict_only_completed_wall_capture_8055_pending(),
+      corpus_executed: false,
+      aggregate_verdict_red_expected: true
+    }
+  }
+}
+
+fn classification_cost_standing_subject_pin_holds() -> Bool {
+  falsifier_run_subject_matches_pin(
+    run: falsifier_run_subject_8055(),
+    pin: falsifier_subject_pin_8055()
+  )
+}
+
+fn classification_cost_standing_lane_is_predict_only(
+  capture: LanePredictOnlyCompletedWallCapture
+) -> Bool {
+  falsifier_lane_name(l: capture.lane) == falsifier_lane_name(l: LanePredictOnly)
+}
+
+fn classification_cost_standing_planted_red_is_one(
+  capture: LanePredictOnlyCompletedWallCapture
+) -> Bool {
+  capture.planted_red_divergence_count == 1
+}
+
+fn classification_cost_standing_lane_wall_requires_completion(
+  capture: LanePredictOnlyCompletedWallCapture
+) -> Bool {
+  capture.lane_completed
+}
