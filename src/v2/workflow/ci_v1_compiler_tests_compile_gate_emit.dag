@@ -26,21 +26,6 @@ data ci_v1_compiler_tests_compile_gate_extra_args: List<String> = [
   "--no-run"
 ]
 
-data interpreter_parity_controls_note: String = "THE COMPILE GATE PROVES COMPILATION, WHICH IS NOT EXECUTION. cargo test --no-run builds the test crate and runs nothing, so every #[cfg(test)] control inside the v1-compiler lib - including the value_hash parity oracle that decides HAML key identity, and the grouping delegate binding - was compiled and never executed. That is DESIGN section 5's specification-without-execution exactly: a control that has never run is not evidence, and a typecheck is not a consumer.
-
-THIS STEP EXECUTES A NARROW, NAMED SET. It is deliberately not the whole lib suite: the heavyweight producer module resolves the live tree and has been observed to exhaust memory when run as a group, so enrolling everything would trade an unexecuted control for an unreliable job. --lib excludes the integration-test crates, the two filters name the modules, and --test-threads=1 serializes them because the parity control reads process-global interpreter state. The crate is already built by the step before this one, so the marginal cost is the run itself."
-
-data ci_interpreter_parity_controls_extra_args: List<String> = [
-  "-p",
-  "v1-compiler",
-  "--release",
-  "--lib",
-  "--",
-  "value_hash_materialization",
-  "grouping_primitive",
-  "--test-threads=1"
-]
-
 data ci_v1_compiler_tests_compile_gate_cargo_path: String = "dag/extdeps/rust/cargo_build.dag"
 data ci_v1_compiler_tests_compile_gate_cargo_service: String = "cargo.Build"
 data ci_v1_compiler_tests_compile_gate_cargo_operation: String = "Test"
@@ -107,43 +92,4 @@ fn ci_v1_compiler_tests_compile_gate_script() -> String {
     concat("# ", concat(ci_v1_compiler_tests_compile_gate_shell_emit_dissolution_trigger, "\n")),
     concat(ci_v1_compiler_tests_compile_gate_command(), "\n")
   )
-}
-
-data ci_interpreter_parity_controls_shell_emit_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.ci_workflow",
-    decl_name: "ci_interpreter_parity_controls_run_script",
-    field: WholeDeclaration
-  }
-}
-
-data ci_interpreter_parity_controls_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_interpreter_parity_controls_run_script — foreign-executor (GitHub Actions run:) shell transport for extdeps.cargo_build cargo.Build.Test(extra_args: ci_interpreter_parity_controls_extra_args); this is the SECOND build-job consumer of the same seam as ci_v1_compiler_tests_compile_gate_script, not an independent transport class, and it dissolves with it WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the build-job steps to orchestration emit over the typed cargo operation. It shares the ci_cargo_eagain_retry_script level-1 retry seam, so it also joins the srvN STEP 2 population ci_v1_compiler_tests_compile_gate_eagain_retry_note tracks for removal"
-
-fn ci_interpreter_parity_controls_check_step() -> BashBoundOperationInvocation {
-  bash_bind_operation_invocation_host_env_executable(
-    at: OperationRef {
-      path: ci_v1_compiler_tests_compile_gate_cargo_path,
-      service: ci_v1_compiler_tests_compile_gate_cargo_service,
-      operation: ci_v1_compiler_tests_compile_gate_cargo_operation
-    },
-    bindings: [
-      operation_argv_bind_text_list(
-        name: "extra_args",
-        items: ci_interpreter_parity_controls_extra_args
-      )
-    ],
-    env_var: ci_v1_compiler_tests_compile_gate_cargo_bin_env_var
-  )
-}
-
-fn ci_interpreter_parity_controls_intent() -> EffectPlan<BashBoundOperationInvocation> {
-  EffectPlan {
-    steps: [Do { effect: ci_interpreter_parity_controls_check_step() }],
-    on_failure: FailFast
-  }
-}
-
-fn ci_interpreter_parity_controls_command() -> String {
-  ci_v1_compiler_tests_compile_gate_render(plan: ci_interpreter_parity_controls_intent())
 }
