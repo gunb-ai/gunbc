@@ -29,6 +29,7 @@ import gunbc.fleet_posix_accounts {
   grounded_posix_principal_name,
 }
 import gunbc.ci_workflow { ci_workflow }
+import extdeps.github.actions { Step, RunStep, UsesStep }
 import gunbc.ci_yaml_emit { expected_ci_yml }
 import gunbc.fleet_intent { srv1_host }
 import gunbc.host_effect { LocalShell }
@@ -135,6 +136,56 @@ test fn witness_ci_yml_deploy_job_serializes_blue_green_cutovers() -> Bool {
 test fn witness_workflow_deploy_job_matches_enrollment() -> Bool {
   let fleet_jobs = filter(ci_workflow.jobs, j => j.id == "fleet")
   length(fleet_jobs) == 1
+}
+
+// OBSERVATION-UNFUSED-FROM-ACTUATION discriminating control (operator route 2026-08-10,
+// CONVERGE acceptance). Two consecutive main pushes hit the cold whole-corpus floor
+// over-budget, so the push-gated fleet job skipped every time and collect_fleet_convergence
+// (a READ) never ran. The repair admits the collector on workflow_dispatch while keeping
+// deploy + advance (the WRITES) push-only. This test REDS if the collector reverts to
+// push-only (re-fusing the read to the write gate) OR if either write leaks onto dispatch
+// (letting a censored-floor dispatch deploy or advance the desired ref).
+fn ci_fleet_step_if_condition(s: Step) -> String {
+  match s {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: ifc, continue_on_error: _, timeout_minutes: _ } =>
+      match ifc { Present { value: c } => c, _ => "" }
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: ifc, continue_on_error: _, timeout_minutes: _ } =>
+      match ifc { Present { value: c } => c, _ => "" }
+  }
+}
+
+fn ci_fleet_step_name(s: Step) -> String {
+  match s {
+    RunStep { name: n, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match n { Present { value: nm } => nm, _ => "" }
+    UsesStep { name: n, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match n { Present { value: nm } => nm, _ => "" }
+  }
+}
+
+fn ci_fleet_if_for_step_named(needle: String) -> String {
+  let fleet_steps = filter(ci_workflow.jobs, j => j.id == "fleet").first().steps
+  fold(fleet_steps, init: "", f: (acc, s) =>
+    if string_contains(s: ci_fleet_step_name(s: s), pattern: needle) {
+      ci_fleet_step_if_condition(s: s)
+    } else {
+      acc
+    })
+}
+
+test fn witness_collector_read_unfused_from_writes() -> Bool {
+  let collect_if = ci_fleet_if_for_step_named(needle: "Collect fleet converge")
+  let deploy_if = ci_fleet_if_for_step_named(needle: "Deploy dashboard to srv1")
+  let advance_if = ci_fleet_if_for_step_named(needle: "Advance refs/fleet/desired")
+  // collect (READ): admits BOTH push and workflow_dispatch
+  string_contains(s: collect_if, pattern: "github.event_name == 'push'")
+    && string_contains(s: collect_if, pattern: "workflow_dispatch")
+    // deploy (WRITE): push-only, never dispatch
+    && string_contains(s: deploy_if, pattern: "github.event_name == 'push'")
+    && !string_contains(s: deploy_if, pattern: "workflow_dispatch")
+    // advance (WRITE): push-only, never dispatch
+    && string_contains(s: advance_if, pattern: "github.event_name == 'push'")
+    && !string_contains(s: advance_if, pattern: "workflow_dispatch")
 }
 
 test fn witness_ci_yml_deploy_job_matches_enrollment() -> Bool {

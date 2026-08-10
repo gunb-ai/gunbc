@@ -1,0 +1,87 @@
+module test.claim.grouping_primitive_witness
+
+import v2.std.collection { List, group_by, index_by, map_get }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import std.types { Map }
+import v2.std.algebra { length, list_map }
+import v2.std.optional { Absent, Present }
+import v2.std.diagnostic { Accepted, Rejected }
+
+data grouping_witness_note: String = "THESE ARE THE CONTROLS THAT DISTINGUISH GROUPING FROM INDEXING. index_by keeps the last item per key; group_by keeps every item, in input order. A mutation of the native delegate to last-wins survives every claim about keys and reds on exactly the two multiplicity claims below - three_equal_keys_form_one_three_item_bucket and bucket_preserves_input_order - which is why those two are the discriminating pair rather than decoration.
+
+The delegate is reached only through its typed public wrapper, so a green witness here also establishes that the wrapper's body is intercepted rather than recursing: an unintercepted delegate is an unbounded self-call, which the interpreter refuses at the call-depth wall instead of answering."
+
+type Row {
+  name: String
+  tag: String
+}
+
+data rows: List<Row> = [
+  Row { name: "a", tag: "one" },
+  Row { name: "b", tag: "two" },
+  Row { name: "a", tag: "three" },
+  Row { name: "a", tag: "four" }
+]
+
+data no_rows: List<Row> = []
+
+fn rows_by_name() -> Map<String, List<Row>> {
+  group_by(xs: rows, key_fn: fn(r) { r.name })
+}
+
+fn tags_of(bucket: List<Row>) -> List<String> {
+  list_map(xs: bucket, f: fn(r) { r.tag })
+}
+
+fn bucket_tags(key: String) -> List<String> {
+  match map_get(m: rows_by_name(), key: key) {
+    Accepted { value: found, diagnostics: _ } => match found {
+      Present { value: bucket } => tags_of(bucket: bucket)
+      Absent => []
+    }
+    Rejected { diagnostics: _ } => []
+  }
+}
+
+test fn empty_input_groups_to_a_map_with_no_buckets() -> Bool {
+  match map_get(m: group_by(xs: no_rows, key_fn: fn(r) { r.name }), key: "a") {
+    Accepted { value: found, diagnostics: _ } => match found {
+      Present { value: _ } => false
+      Absent => true
+    }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn a_unique_key_forms_a_one_item_bucket() -> Bool {
+  bucket_tags(key: "b") == ["two"]
+}
+
+test fn three_equal_keys_form_one_three_item_bucket() -> Bool {
+  length(xs: bucket_tags(key: "a")) == 3
+}
+
+test fn bucket_preserves_input_order() -> Bool {
+  bucket_tags(key: "a") == ["one", "three", "four"]
+}
+
+test fn an_absent_key_has_no_bucket_rather_than_an_empty_one() -> Bool {
+  match map_get(m: rows_by_name(), key: "zzz") {
+    Accepted { value: found, diagnostics: _ } => match found {
+      Present { value: _ } => false
+      Absent => true
+    }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn index_by_is_the_other_operation_and_keeps_the_last_item() -> Bool {
+  match map_get(m: index_by(xs: rows, key_fn: fn(r) { r.name }), key: "a") {
+    Accepted { value: found, diagnostics: _ } => match found {
+      Present { value: row } => row.tag == "four"
+      Absent => false
+    }
+    Rejected { diagnostics: _ } => false
+  }
+}

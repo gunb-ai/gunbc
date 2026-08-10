@@ -572,6 +572,30 @@ pub fn rc_index_by<V: Clone, F: Fn(&V) -> String>(
     Rc::new(list.iter().map(|v| (key_fn(v), v.clone())).collect())
 }
 
+// Multiplicity-preserving grouping, the operation rc_index_by cannot express:
+// every item reaches its key's bucket and a bucket keeps input order, where
+// rc_index_by keeps only the last item per key.
+pub fn rc_group_by<V: Clone, F: Fn(&V) -> String>(
+    list: Rc<Vec<V>>,
+    key_fn: F,
+) -> Rc<HashMap<String, Rc<Vec<V>>>> {
+    let mut m: HashMap<String, Rc<Vec<V>>> = HashMap::new();
+    for v in list.iter() {
+        let key = key_fn(v);
+        match m.get_mut(&key) {
+            Some(bucket) => {
+                Rc::make_mut(bucket).push_back(v.clone());
+            }
+            None => {
+                let mut b = Vec::new();
+                b.push_back(v.clone());
+                m.insert(key, Rc::new(b));
+            }
+        }
+    }
+    Rc::new(m)
+}
+
 pub fn rc_empty_map<K: std::cmp::Eq + std::hash::Hash, V>() -> Rc<HashMap<K, V>> {
     Rc::new(HashMap::new())
 }

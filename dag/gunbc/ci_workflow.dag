@@ -38,7 +38,9 @@ import gunbc.merge_admission_produce { ci_repo_root_shell }
 import v2.workflow.ci_retry_emit { ci_cargo_eagain_retry_script }
 import v2.workflow.ci_v1_compiler_tests_compile_gate_emit {
   ci_v1_compiler_tests_compile_gate_command,
+  ci_interpreter_parity_controls_command,
   ci_v1_compiler_tests_compile_gate_shell_emit_dissolution_trigger,
+  ci_interpreter_parity_controls_shell_emit_dissolution_trigger,
 }
 import v2.workflow.ci_heal_revalidation_preflight_emit {
   ci_heal_revalidation_preflight_script,
@@ -343,6 +345,36 @@ fn ci_v1_compiler_tests_compile_gate_run_script() -> String {
   )
 }
 
+fn ci_interpreter_parity_controls_run_script() -> String {
+  concat(
+    "set -e\n",
+    concat(
+      concat("ROOT=", ci_repo_root_shell(), "\n"),
+      concat(
+        concat(
+          "# ",
+          concat(ci_interpreter_parity_controls_shell_emit_dissolution_trigger, "\n")
+        ),
+        ci_cargo_eagain_retry_script(command: ci_interpreter_parity_controls_command())
+      )
+    )
+  )
+}
+
+fn ci_interpreter_parity_controls_step() -> Step {
+  RunStep {
+    name: Present { value: "cargo test -p v1-compiler --release --lib value_hash_materialization grouping_primitive (executes the interpreter controls the compile gate only compiles)" },
+    id: none,
+    run: ci_interpreter_parity_controls_run_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
 fn ci_v1_compiler_tests_compile_gate_step() -> Step {
   RunStep {
     name: Present { value: "cargo test -p v1-compiler-tests --release --no-run (compile-contract gate; reuses release v1-compiler)" },
@@ -607,15 +639,30 @@ fn with_step_if(step: Step, cond: String) -> Step {
   }
 }
 
-// Main-push convergence steps: deploy stage(s) + collect + advance, each guarded to the
-// push event (the job-if already ensures main + ci-success for a push).
+// OBSERVATION UNFUSED FROM ACTUATION (operator route 2026-08-10, CONVERGE acceptance).
+// deploy dashboard and advance refs/fleet/desired are WRITES — they stay push-only, so the
+// job-if's !cancelled() + main + needs.ci.result == 'success' guard is what gates them, and
+// a censored/red floor can never let them run. collect_fleet_convergence is a READ: it
+// collects host receipts and folds a verdict, and reading what the hosts CURRENTLY report
+// does not require THIS commit's floor to be green. So the collector also runs on
+// workflow_dispatch. This is NOT a weakening of the gate — it separates observing fleet
+// state from changing it; a dispatch-collected fold describes state relative to the CURRENT
+// refs/fleet/desired (not the dispatched head), so it never advances anything and never
+// stands in for a green-floor acceptance. It exists because two consecutive main pushes hit
+// the cold whole-corpus floor over-budget, so the push-gated collector never got to run and
+// items 3 (per-host receipts) and 5 (the fold) had zero executions.
+data ci_fleet_convergence_write_if: String = "github.event_name == 'push'"
+data ci_fleet_collect_read_if: String = "github.event_name == 'push' || github.event_name == 'workflow_dispatch'"
+
+// Main-push convergence steps: deploy stage(s) + collect + advance. Deploy and advance are
+// push-only WRITES; collect is a READ admitted on push OR workflow_dispatch (see above).
 fn ci_fleet_convergence_steps() -> List<Step> {
-  map(
-    concat(
-      map(gunbc_ci_deploy_stages, s => ci_deploy_step(stage: s)),
-      [ci_collect_fleet_convergence_step(), ci_advance_fleet_desired_step()]
-    ),
-    st => with_step_if(step: st, cond: "github.event_name == 'push'")
+  concat(
+    map(gunbc_ci_deploy_stages, s => with_step_if(step: ci_deploy_step(stage: s), cond: ci_fleet_convergence_write_if)),
+    [
+      with_step_if(step: ci_collect_fleet_convergence_step(), cond: ci_fleet_collect_read_if),
+      with_step_if(step: ci_advance_fleet_desired_step(), cond: ci_fleet_convergence_write_if)
+    ]
   )
 }
 
@@ -822,10 +869,12 @@ fn ci_fleet_timer_install_step() -> Step {
   }
 }
 
-// Fleet convergence collection (join 5 invocation wire): push-to-main downstream of the
-// required ci check, srv1-pinned (the collector reads published receipts over the typed
-// SSH seam FROM inside the fleet) — the collector->fold composition executes per merged
-// revision and prints the collect receipt + fold verdict.
+// Fleet convergence collection (join 5 invocation wire): a READ, srv1-pinned (the collector
+// reads published receipts over the typed SSH seam FROM inside the fleet and folds the
+// verdict). Its guard admits push OR workflow_dispatch (ci_fleet_collect_read_if) — on push
+// it runs per merged revision downstream of the required ci check; on dispatch it observes
+// current fleet state relative to the CURRENT refs/fleet/desired without advancing anything
+// (unfused from the push-only writes; see ci_fleet_convergence_steps).
 fn ci_collect_fleet_convergence_step() -> Step {
   RunStep {
     name: Present { value: "Collect fleet converge receipts and fold the fleet verdict (collect_fleet_convergence_wet)" },
@@ -1031,7 +1080,7 @@ fn ci_build_job() -> Job {
     id: "build",
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
-    steps: concat(ci_heal_revalidation_prelude_steps(), [ci_fmt_gate_step(), ci_release_build_step(), ci_v1_compiler_tests_compile_gate_step(), ci_stage0_partition_compile_gate_step(), ci_release_bins_pack_step(), ci_release_bins_upload_step()]),
+    steps: concat(ci_heal_revalidation_prelude_steps(), [ci_fmt_gate_step(), ci_release_build_step(), ci_v1_compiler_tests_compile_gate_step(), ci_interpreter_parity_controls_step(), ci_stage0_partition_compile_gate_step(), ci_release_bins_pack_step(), ci_release_bins_upload_step()]),
     needs: [],
     env: none,
     outputs: none,
