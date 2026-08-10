@@ -145,6 +145,14 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
   ),
   known_red_probe(
     entry: "src/v1/tests/claim/parser_declaration_requirements_expected_red_test.dag",
+    f: "witness_a_declaration_exists_at_the_coproduct_field_site",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "DERIVED REQUIREMENT, red by construction until commit C: a declaration must exist at the coproduct payload field's DECLARATION site (byte 109), asserted in ISOLATION from what else exists. It exists because the population row bundles two facts -- 109 present and nothing else named -- so its failure cannot say which held, and commit C could otherwise green by fixing one defect while masking the other. With this row plus the pattern-position row plus the population row, the two defects are independently discriminated. Owner: gunbc#8084 import deletion.",
+    dissolve_on: "commit C mints the coproduct field declaration; this row greens, deletes here, and joins the file-grain roster as a permanent regression control rather than retiring"
+  ),
+  known_red_probe(
+    entry: "src/v1/tests/claim/parser_declaration_requirements_expected_red_test.dag",
     f: "witness_product_type_declaration_is_declared",
     kind: CorpusWitnessKind,
     budget: FastLaneEvalBudget,
@@ -213,14 +221,6 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     kind: CorpusWitnessKind,
     budget: FastLaneEvalBudget,
     reason: "the english-language emit-ingest round trip returns false undiagnosed. Owner: the S2 emit family / behavioral-closure lane.",
-    dissolve_on: "the S2 behavioral-closure lane greens it locally, then this row deletes"
-  ),
-  known_red_probe(
-    entry: "src/v2/test/claim/manual/english_emit_add_test.dag",
-    f: "english_emit_add_prose_holds",
-    kind: CorpusWitnessKind,
-    budget: FastLaneEvalBudget,
-    reason: "the english emit prose projection, same S2 emit-family root as its round-trip sibling. Owner: the S2 behavioral-closure lane.",
     dissolve_on: "the S2 behavioral-closure lane greens it locally, then this row deletes"
   ),
   known_red_probe(

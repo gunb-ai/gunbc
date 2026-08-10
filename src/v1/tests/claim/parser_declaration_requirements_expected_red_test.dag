@@ -75,18 +75,18 @@ fn pdr_matrix_source() -> String {
     "}\n"
 }
 
-type PdcTransport
-  = PdcTransportReady { transport: OccurrenceTransport }
-  | PdcTransportRefused
+type PdrTransport
+  = PdrTransportReady { transport: OccurrenceTransport }
+  | PdrTransportRefused
 
-fn pdr_parse_matrix() -> PdcTransport {
+fn pdr_parse_matrix() -> PdrTransport {
   match parse_authored_occurrence_binding_source(
     file: "app/pdr_matrix.dag",
     source: pdr_matrix_source(),
   ) {
-    ParsedOccurrenceBindingSourceRefused => PdcTransportRefused
+    ParsedOccurrenceBindingSourceRefused => PdrTransportRefused
     ParsedOccurrenceBindingSourceReady { transport: transport, module_path: _ } =>
-      PdcTransportReady { transport: transport }
+      PdrTransportReady { transport: transport }
   }
 }
 
@@ -288,28 +288,31 @@ fn pdr_declares_nothing(transport: OccurrenceTransport, name: String) -> Bool {
 
 fn pdr_row(name: String, expected: String) -> Bool {
   match pdr_parse_matrix() {
-    PdcTransportRefused => false
-    PdcTransportReady { transport: transport } =>
+    PdrTransportRefused => false
+    PdrTransportReady { transport: transport } =>
       pdr_declares_exactly(transport: transport, name: name, expected: expected)
   }
 }
 
 fn pdr_zero_row(name: String) -> Bool {
   match pdr_parse_matrix() {
-    PdcTransportRefused => false
-    PdcTransportReady { transport: transport } =>
+    PdrTransportRefused => false
+    PdrTransportReady { transport: transport } =>
       pdr_declares_nothing(transport: transport, name: name)
   }
 }
 
 fn pdr_identity_row(name: String, expected: String) -> Bool {
   match pdr_parse_matrix() {
-    PdcTransportRefused => false
-    PdcTransportReady { transport: transport } =>
+    PdrTransportRefused => false
+    PdrTransportReady { transport: transport } =>
       pdr_identity_population(transport: transport, name: name) == expected
   }
 }
 
+
+
+data pdr_duplicated_support_scaffold: String = "DECLARED SCAFFOLD -- this file duplicates the matrix witness's entire helper prelude (fixture source, transport parse, category tag, identity rendering, containment chain) under a pdr_ prefix. That is a PARALLEL REPRESENTATION of one instrument and a DESIGN section 2/3 violation, carried deliberately rather than silently. WHY IT EXISTS: src/v1 witnesses are reachable only through the v1 claim scoped roster, which witness_v1_claim_scoped_batch_is_file_grain_and_batch_owned requires to be uniformly file-grain, so an enrolled file must be all-green and deliberately-red rows must live in a separate file reached by exact admission. WHY IT IS NOT MERELY MOVED: the duplication is the price of that split, not a consequence of the split being wrong. DISSOLVE-ON: extract the shared support into one non-test module both witness files import, at which point every pdr_ helper here deletes and only the test fns remain. Do that before adding a third file in this family -- two copies is a scaffold, three is a fork."
 
 data pdr_expected_red_note: String = "EXPECTED-RED BY CONSTRUCTION. Every test fn here asserts a requirement the .dag language imposes that the v1 parser does not yet meet. They are commit C's acceptance targets, and they are expected to FAIL until it lands. They live in their own file because the v1 claim scoped batch is required to be uniformly file-grain (witness_v1_claim_scoped_batch_is_file_grain_and_batch_owned asserts every entry has an empty function), so a file cannot mix green and deliberately-red rows. When commit C lands, these rows green and move to the enrolled green file as permanent regression controls -- they do not retire."
 
@@ -373,8 +376,8 @@ test fn witness_coproduct_payload_field_is_declared_at_its_declaration_site() ->
 // wrong, and the row above alone would not say so.
 test fn witness_pattern_field_position_is_not_a_declaration() -> Bool {
   match pdr_parse_matrix() {
-    PdcTransportRefused => false
-    PdcTransportReady { transport: transport } =>
+    PdrTransportRefused => false
+    PdrTransportReady { transport: transport } =>
       fold(
         transport.declarations,
         init: true,
@@ -383,6 +386,33 @@ test fn witness_pattern_field_position_is_not_a_declaration() -> Bool {
             Absent => acc
             Present { value: entry } =>
               acc && entry.projection.diagnostic_span.start != 394
+          },
+      )
+  }
+}
+
+// THE THIRD ROW, so the two defects are independently discriminated.
+//
+// The population row above bundles two facts -- that a declaration exists at 109, and that nothing
+// else carries this name -- so its failure cannot say which held. The sibling row isolates the
+// second defect (a declaration at 394). This row isolates the FIRST: a declaration exists at the
+// coproduct's declaration site, said without any claim about what else exists.
+//
+// With all three, commit C cannot green by fixing one defect and masking the other: this row fails
+// if the declaration at 109 is still missing, the sibling fails if the use at 394 is still minted as
+// a declaration, and the population row fails if a third occurrence of the name appears anywhere.
+test fn witness_a_declaration_exists_at_the_coproduct_field_site() -> Bool {
+  match pdr_parse_matrix() {
+    PdrTransportRefused => false
+    PdrTransportReady { transport: transport } =>
+      fold(
+        transport.declarations,
+        init: false,
+        f: (found, declaration) =>
+          match pdr_index_entry_for_declaration(transport: transport, declaration: declaration) {
+            Absent => found
+            Present { value: entry } =>
+              found || entry.projection.diagnostic_span.start == 109
           },
       )
   }
