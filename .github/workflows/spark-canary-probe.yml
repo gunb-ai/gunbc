@@ -85,11 +85,29 @@ jobs:
           # captures its exit code and continues; the step's success does not depend on any login
           # succeeding, because the question is WHICH principal is admitted, not whether one is.
           for U in gunbc-fleet ghrunner ubuntu nvidia; do
-            OUT=$(timeout 10 ssh -i "$WORK/id" -o BatchMode=yes -o StrictHostKeyChecking=no \
+            if OUT=$(timeout 10 ssh -i "$WORK/id" -o BatchMode=yes -o StrictHostKeyChecking=no \
               -o ConnectTimeout=5 -o UserKnownHostsFile="$WORK/kh" \
-              "$U@192.168.1.222" 'id -un; id -u' 2>&1 | tr '\n' ' ') || true
-            RC=$?
-            echo "  $U -> rc=$RC out=$OUT"
+              "$U@192.168.1.222" 'echo PRINCIPAL=$(id -un) UID=$(id -u)' 2>&1 | tr '\n' ' '); then
+              RC=0
+            else
+              RC=$?
+            fi
+            # `OUT=$(...) || true; RC=$?` captured the exit status of `true`, so EVERY row reported
+            # rc=0 including the three that were plainly refused -- the harness fabricated the exact
+            # field a reader would use to decide success. The if/else captures the real status.
+            #
+            # The remote command now prints an explicit PRINCIPAL= marker: the previous `id -un`
+            # output was indistinguishable from an empty capture, so "no denial and no output" could
+            # not be told apart from a successful login whose text was lost. A login is only
+            # admitted below when that marker is present.
+            if echo "$OUT" | grep -q "PRINCIPAL="; then
+              VERDICT="ADMITTED"
+            elif echo "$OUT" | grep -q "Permission denied"; then
+              VERDICT="REFUSED-publickey"
+            else
+              VERDICT="UNRESOLVED-no-marker-no-denial"
+            fi
+            echo "  $U -> rc=$RC verdict=$VERDICT out=$OUT"
           done
           echo "principal probe complete (no login required for this step to succeed)"
 
