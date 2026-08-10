@@ -194,6 +194,7 @@ jobs:
             --api-key \${VLLM_API_KEY} \\
             --host 127.0.0.1 --port ${SERVE_PORT} \\
             --max-model-len 4096
+          ExecStartPost=/bin/sh -c 'systemctl --user start --no-block gunbc-vllm-verify.service'
           Restart=on-failure
           RestartSec=10
 
@@ -256,7 +257,7 @@ jobs:
           echo "LINGER=$(loginctl show-user "$USER" -p Linger --value 2>/dev/null || echo UNKNOWN)"
           systemctl --user daemon-reload
           systemctl --user enable --now gunbc-vllm.service 2>&1 | head -5
-          systemctl --user enable gunbc-vllm-verify.service 2>&1 | head -3
+          systemctl --user enable --now gunbc-vllm-verify.service 2>&1 | head -3
           echo "UNIT-STATE=$(systemctl --user is-active gunbc-vllm.service 2>&1)"
           REMOTE
 
@@ -304,7 +305,7 @@ jobs:
           # ~/.cache/huggingface/hub/models--*/snapshots/<SHA>/ and the serving process MMAPS the
           # weight files from it. The SHA in /proc/<pid>/maps is therefore produced by the loading,
           # not by the launch arguments -- it is the path the process actually opened.
-          $SSH "${SPARK_USER}@${SPARK_ADDR}" "SERVE_PORT='${SERVE_PORT}' bash -s" <<'REMOTE'
+          $SSH "${SPARK_USER}@${SPARK_ADDR}" "SERVE_PORT='${SERVE_PORT}' EXPECT_REV='${MODEL_REV}' MODEL_ID='${MODEL_ID}' bash -s" <<'REMOTE'
           set -uo pipefail
           PID=$(pgrep -f 'vllm serve' | head -1)
           echo "READBACK pid=${PID:-NONE}"
@@ -350,9 +351,29 @@ jobs:
           FD=$(ls -l "/proc/$PID/fd" 2>/dev/null | grep -o 'snapshots/[0-9a-f]\{40\}' | sed 's|snapshots/||' | sort -u | tr '\n' ' ')
           echo "open_fd_revisions=${FD:-NONE}"
           echo "cache_snapshots=$(ls "$HOME/.cache/huggingface/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/" 2>/dev/null | tr '\n' ' ' || echo ABSENT)"
-          if [ -z "$MAPPED" ] && [ -z "$FD" ]; then
-            echo "READBACK=UNESTABLISHED-no-independent-fact-observable"
+          # THE READBACK PREVIOUSLY FAILED OPEN. It printed the observed revisions and exited 0 no
+          # matter what they were: unobservable passed, a WRONG revision passed, several revisions
+          # passed. So a green run could print READBACK=UNESTABLISHED and still be reported as a
+          # successful canary -- the check produced a value nobody compared, which is a receipt that
+          # never had a denominator. It now REFUSES unless the exact predicate holds.
+          #
+          # It also selected `pgrep -f 'vllm serve' | head -1` rather than the unit's MainPID, so a
+          # stray or leftover process could answer for the service. MainPID is the systemd-owned fact.
+          MAINPID=$(systemctl --user show -p MainPID --value gunbc-vllm.service 2>/dev/null)
+          echo "unit_main_pid=${MAINPID:-NONE}"
+          if [ -z "$MAINPID" ] || [ "$MAINPID" = "0" ]; then
+            echo "READBACK=REFUSED no unit MainPID"; exit 30
           fi
+          OBS=$(grep -o 'snapshots/[0-9a-f]\{40\}' "/proc/$MAINPID/maps" 2>/dev/null | sed 's|snapshots/||' | sort -u)
+          COUNT=$(printf '%s\n' "$OBS" | grep -c '[0-9a-f]')
+          echo "observed_revisions=[$(printf '%s' "$OBS" | tr '\n' ' ')] count=$COUNT"
+          if [ "$COUNT" != "1" ]; then
+            echo "READBACK=REFUSED expected exactly one loaded revision, observed $COUNT"; exit 31
+          fi
+          if [ "$OBS" != "$EXPECT_REV" ]; then
+            echo "READBACK=REFUSED loaded=$OBS requested=$EXPECT_REV"; exit 32
+          fi
+          echo "READBACK=OK loaded==requested ($OBS), from unit MainPID $MAINPID"
           REMOTE
 
       - name: Shred credential material
