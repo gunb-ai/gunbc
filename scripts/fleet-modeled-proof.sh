@@ -152,6 +152,14 @@ ssh briansrls@100.69.18.126 "cat /tmp/devboot-fleet/out-srv1.devboot-receipt" >"
 ssh briansrls@100.69.18.126 "ssh briansrls@100.73.169.40 cat /tmp/devboot-fleet/out-srv2.devboot-receipt" >"${CAPTURE_ROOT}/srv2.devboot-receipt" 2>/dev/null || true
 ssh briansrls@100.69.18.126 "ssh briansrls@100.73.169.40 \"ssh -i ~/.node-orch/id_ed25519 ubuntu@192.168.1.221 cat /tmp/devboot-fleet/modeled-serve.log\"" >"${CAPTURE_ROOT}/modeled-serve.log" 2>/dev/null || true
 ssh briansrls@100.69.18.126 "ssh briansrls@100.73.169.40 \"ssh -i ~/.node-orch/id_ed25519 ubuntu@192.168.1.221 git --git-dir=/tmp/devboot-fleet/store.git for-each-ref refs/devboot/\"" >"${CAPTURE_ROOT}/store-for-each-ref.txt" 2>/dev/null || true
+cat >"${CAPTURE_ROOT}/capture-provenance.txt" <<PROV
+captured_at: $(date -Is)
+capture_runner_host: $(hostname -f 2>/dev/null || hostname)
+srv1_client_receipt_host: $(ssh -o ConnectTimeout=5 briansrls@100.69.18.126 hostname -f 2>/dev/null || echo srv1-unreachable)
+srv2_client_receipt_host: $(ssh -o ConnectTimeout=5 briansrls@100.69.18.126 "ssh -o ConnectTimeout=5 briansrls@100.73.169.40 hostname -f" 2>/dev/null || echo srv2-unreachable)
+modeled_serve_log_host: $(ssh -o ConnectTimeout=5 briansrls@100.69.18.126 "ssh briansrls@100.73.169.40 ssh -i ~/.node-orch/id_ed25519 -o ConnectTimeout=5 ubuntu@192.168.1.221 hostname -f" 2>/dev/null || echo srv3-unreachable)
+store_for_each_ref_host: $(ssh -o ConnectTimeout=5 briansrls@100.69.18.126 "ssh briansrls@100.73.169.40 ssh -i ~/.node-orch/id_ed25519 -o ConnectTimeout=5 ubuntu@192.168.1.221 hostname -f" 2>/dev/null || echo srv3-unreachable)
+PROV
 ls -la "$CAPTURE_ROOT"
 
 echo "=== done $(date -Is) ==="

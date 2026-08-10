@@ -1,0 +1,6 @@
+captured_at: 2026-08-09T22:16:00+00:00
+capture_runner_host: keen-moth-104-operator-session
+srv1_client_receipt_host: srv1
+srv2_client_receipt_host: srv2
+modeled_serve_log_host: srv3
+store_for_each_ref_host: srv3

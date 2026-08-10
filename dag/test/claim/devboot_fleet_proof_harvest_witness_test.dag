@@ -11,6 +11,7 @@ import gunbc.devboot.fleet_proof_capture {
 import gunbc.devboot.fleet_proof_harvest {
   harvest_modeled_fleet_proof,
   parse_client_receipt,
+  parse_capture_provenance,
   producer_compile_count_from_log,
 }
 import gunbc.devboot.vertical_receipt { devboot_vertical_receipt_from_proof }
@@ -46,6 +47,8 @@ test fn witness_harvest_from_fixture_with_compile_count_seam_field() -> Bool {
         && proof.producer_compile_count == 1
         && proof.produced_commit == ("180beeb95ef8dab53c7abf8aa59a728ffc00e4e9" as NonEmptyStr)
         && length(proof.clients) == 2
+        && proof.observation_capture.modeled_serve_log_host == ("srv3" as NonEmptyStr)
+        && proof.observation_capture.srv1_client_receipt_host == ("srv1" as NonEmptyStr)
     Absent => false
   }
 }
@@ -81,6 +84,15 @@ test fn witness_vertical_projection_matches_harvested_proof() -> Bool {
         && vertical.artifact_sha256 == proof.artifact_sha256
     }
     Absent => false
+  }
+}
+
+test fn witness_capture_provenance_refuses_without_manifest() -> Bool {
+  match parse_capture_provenance(
+    prose: "capture_runner_host: only-field\n",
+  ) {
+    Present { value: _ } => false
+    Absent => true
   }
 }
 

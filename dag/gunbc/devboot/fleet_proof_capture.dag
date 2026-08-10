@@ -14,6 +14,7 @@ type DevbootFleetProofObservationSites {
   srv2_client_receipt_path: String
   modeled_serve_log_path: String
   store_for_each_ref_path: String
+  capture_provenance_path: String
 }
 
 fn read_observation_file(path: String) -> String {
@@ -30,6 +31,7 @@ fn capture_fleet_proof_harvest_bundle(sites: DevbootFleetProofObservationSites) 
     srv2_client_receipt: read_observation_file(path: sites.srv2_client_receipt_path),
     modeled_serve_log: read_observation_file(path: sites.modeled_serve_log_path),
     store_for_each_ref: read_observation_file(path: sites.store_for_each_ref_path),
+    capture_provenance: read_observation_file(path: sites.capture_provenance_path),
   }
 }
 
@@ -44,6 +46,7 @@ data devboot_fleet_proof_fixture_observation_sites: DevbootFleetProofObservation
   srv2_client_receipt_path: join([devboot_fleet_proof_fixture_root, "/srv2.devboot-receipt"], ""),
   modeled_serve_log_path: join([devboot_fleet_proof_fixture_root, "/modeled-serve.log"], ""),
   store_for_each_ref_path: join([devboot_fleet_proof_fixture_root, "/store-for-each-ref.txt"], ""),
+  capture_provenance_path: join([devboot_fleet_proof_fixture_root, "/capture-provenance.txt"], ""),
 }
 
 data devboot_fleet_proof_fixture_observation_sites_with_compile_count: DevbootFleetProofObservationSites = DevbootFleetProofObservationSites {
@@ -55,6 +58,7 @@ data devboot_fleet_proof_fixture_observation_sites_with_compile_count: DevbootFl
   srv2_client_receipt_path: join([devboot_fleet_proof_fixture_root, "/srv2.devboot-receipt"], ""),
   modeled_serve_log_path: join([devboot_fleet_proof_fixture_root, "/modeled-serve-with-compile-count.log"], ""),
   store_for_each_ref_path: join([devboot_fleet_proof_fixture_root, "/store-for-each-ref.txt"], ""),
+  capture_provenance_path: join([devboot_fleet_proof_fixture_root, "/capture-provenance.txt"], ""),
 }
 
 // Written by scripts/fleet-modeled-proof.sh after a fleet run — receipt reads these paths, never hand-pasted bundle rows.
@@ -69,6 +73,7 @@ data devboot_fleet_proof_observation_sites: DevbootFleetProofObservationSites = 
   srv2_client_receipt_path: join([devboot_fleet_proof_capture_root, "/srv2.devboot-receipt"], ""),
   modeled_serve_log_path: join([devboot_fleet_proof_capture_root, "/modeled-serve.log"], ""),
   store_for_each_ref_path: join([devboot_fleet_proof_capture_root, "/store-for-each-ref.txt"], ""),
+  capture_provenance_path: join([devboot_fleet_proof_capture_root, "/capture-provenance.txt"], ""),
 }
 
-data devboot_fleet_proof_capture_note: String = "Observation capture lands before rerun (operator sequencing 2026-08-10). capture_fleet_proof_harvest_bundle reads observation files from devboot_fleet_proof_observation_sites (target/devboot-fleet-proof-observations/ after fleet-modeled-proof.sh). The 2026-08-09 operator-verified run is preserved as fixture files for witnesses only; its modeled-serve.log predates compile_count= in SERVED prose, so harvest refuses producer_compile_count until a post-seam capture rerun writes a fresh log."
+data devboot_fleet_proof_capture_note: String = "Observation capture lands before rerun (operator sequencing 2026-08-10). capture_fleet_proof_harvest_bundle reads observation files from devboot_fleet_proof_observation_sites (target/devboot-fleet-proof-observations/ after fleet-modeled-proof.sh), including capture-provenance.txt naming the host that produced each observation file and the capture runner. The 2026-08-09 operator-verified run is preserved as fixture files for witnesses only; its modeled-serve.log predates compile_count= in SERVED prose, so harvest refuses producer_compile_count until a post-seam capture rerun writes a fresh log."

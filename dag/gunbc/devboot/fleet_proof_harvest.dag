@@ -14,6 +14,15 @@ type DevbootFleetClientObservation {
   executed_stdout_fingerprint: NonEmptyStr
 }
 
+type DevbootFleetObservationCaptureProvenance {
+  captured_at: NonEmptyStr
+  capture_runner_host: NonEmptyStr
+  srv1_client_receipt_host: NonEmptyStr
+  srv2_client_receipt_host: NonEmptyStr
+  modeled_serve_log_host: NonEmptyStr
+  store_for_each_ref_host: NonEmptyStr
+}
+
 type DevbootModeledFleetProofReceipt {
   producer_served_at: NonEmptyStr
   tested_commit: CommitSha
@@ -26,6 +35,7 @@ type DevbootModeledFleetProofReceipt {
   artifact_object_id: NonEmptyStr
   artifact_sha256: Sha256Digest
   clients: List<DevbootFleetClientObservation>
+  observation_capture: DevbootFleetObservationCaptureProvenance
   producer_entry: DeclarationRef
   consumer_entry: DeclarationRef
   transport_endpoint: String
@@ -41,6 +51,7 @@ type DevbootFleetProofHarvestBundle {
   srv2_client_receipt: String
   modeled_serve_log: String
   store_for_each_ref: String
+  capture_provenance: String
 }
 
 type ParsedDevbootClientReceipt {
@@ -91,6 +102,43 @@ fn parse_int_field(prose: String, prefix: String) -> Int? {
   match receipt_line_after_prefix(prose: prose, prefix: prefix) {
     Absent => none
     Present { value: text } => parse_int(s: text)
+  }
+}
+
+fn parse_capture_provenance(prose: String) -> DevbootFleetObservationCaptureProvenance? {
+  match receipt_line_after_prefix(prose: prose, prefix: "captured_at: ") {
+    Absent => none
+    Present { value: captured_at } =>
+      match receipt_line_after_prefix(prose: prose, prefix: "capture_runner_host: ") {
+        Absent => none
+        Present { value: capture_runner_host } =>
+          match receipt_line_after_prefix(prose: prose, prefix: "srv1_client_receipt_host: ") {
+            Absent => none
+            Present { value: srv1_client_receipt_host } =>
+              match receipt_line_after_prefix(prose: prose, prefix: "srv2_client_receipt_host: ") {
+                Absent => none
+                Present { value: srv2_client_receipt_host } =>
+                  match receipt_line_after_prefix(prose: prose, prefix: "modeled_serve_log_host: ") {
+                    Absent => none
+                    Present { value: modeled_serve_log_host } =>
+                      match receipt_line_after_prefix(prose: prose, prefix: "store_for_each_ref_host: ") {
+                        Absent => none
+                        Present { value: store_for_each_ref_host } =>
+                          Present {
+                            value: DevbootFleetObservationCaptureProvenance {
+                              captured_at: captured_at as NonEmptyStr,
+                              capture_runner_host: capture_runner_host as NonEmptyStr,
+                              srv1_client_receipt_host: srv1_client_receipt_host as NonEmptyStr,
+                              srv2_client_receipt_host: srv2_client_receipt_host as NonEmptyStr,
+                              modeled_serve_log_host: modeled_serve_log_host as NonEmptyStr,
+                              store_for_each_ref_host: store_for_each_ref_host as NonEmptyStr,
+                            },
+                          }
+                      }
+                  }
+              }
+          }
+      }
   }
 }
 
@@ -229,10 +277,13 @@ fn producer_served_at_from_log(log: String) -> String? {
 }
 
 fn harvest_modeled_fleet_proof(bundle: DevbootFleetProofHarvestBundle) -> DevbootModeledFleetProofReceipt? {
-  match parse_client_receipt(prose: bundle.srv1_client_receipt) {
+  match parse_capture_provenance(prose: bundle.capture_provenance) {
     Absent => none
-    Present { value: srv1 } =>
-      match parse_client_receipt(prose: bundle.srv2_client_receipt) {
+    Present { value: observation_capture } =>
+      match parse_client_receipt(prose: bundle.srv1_client_receipt) {
+        Absent => none
+        Present { value: srv1 } =>
+          match parse_client_receipt(prose: bundle.srv2_client_receipt) {
         Absent => none
         Present { value: srv2 } =>
           if !(content_hash_eq_cryptographic(left: srv1.sha256, right: srv2.sha256)
@@ -273,18 +324,19 @@ fn harvest_modeled_fleet_proof(bundle: DevbootFleetProofHarvestBundle) -> Devboo
                                       artifact_sha256: srv1.sha256,
                                       clients: [
                                         DevbootFleetClientObservation {
-                                          host: "srv1" as NonEmptyStr,
+                                          host: observation_capture.srv1_client_receipt_host,
                                           reused: false,
                                           executed_exit: srv1.executed_exit,
                                           executed_stdout_fingerprint: srv1.executed_stdout_fingerprint as NonEmptyStr,
                                         },
                                         DevbootFleetClientObservation {
-                                          host: "srv2" as NonEmptyStr,
+                                          host: observation_capture.srv2_client_receipt_host,
                                           reused: true,
                                           executed_exit: srv2.executed_exit,
                                           executed_stdout_fingerprint: srv2.executed_stdout_fingerprint as NonEmptyStr,
                                         },
                                       ],
+                                      observation_capture: observation_capture,
                                       producer_entry: decl_ref(
                                         module_path: "gunbc.devboot.serve",
                                         decl_name: "devboot_serve_once_entry",
@@ -305,5 +357,6 @@ fn harvest_modeled_fleet_proof(bundle: DevbootFleetProofHarvestBundle) -> Devboo
             }
           }
       }
+  }
   }
 }
