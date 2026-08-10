@@ -1,0 +1,89 @@
+# srv5 CANARY — STEP 1 of the live sequence, and READ-ONLY.
+#
+# It answers the one question that gates every later step and that no amount of modeling can
+# settle: can the fleet controller authenticate to srv5 as a managed principal, and as WHICH one?
+# #8083 reports "srv5 no verified managed principal"; that is a claim about our records, not an
+# observation of the host. This observes the host.
+#
+# WHY A SELF-HOSTED RUNNER: the Sparks have no Actions runner, so nothing can bootstrap them from
+# the inside. Authenticated remote application from a fleet controller on the same LAN is the only
+# mechanism. srv1/srv2 are that controller.
+#
+# WHY THIS IS NOT AN APPLY: every command below is an observation. It installs nothing, writes no
+# authorized_keys, and changes no state on srv5. `ssh -o BatchMode=yes` cannot prompt, so a missing
+# credential fails rather than hanging or falling back to an interactive path.
+name: spark-canary-probe
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  probe:
+    name: Observe srv5 managed-principal reach (read-only)
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud via OIDC/WIF
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/582015116396/locations/global/workloadIdentityPools/github-actions/providers/github-oidc
+          service_account: fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com
+          token_format: access_token
+          access_token_lifetime: 600s
+          create_credentials_file: false
+          export_environment_variables: false
+
+      - name: Observe srv5 reach and principal
+        env:
+          TOK: ${{ steps.auth.outputs.access_token }}
+        run: |
+          set -uo pipefail
+          umask 077
+          WORK="${RUNNER_TEMP}/canary"; mkdir -p "$WORK"
+
+          # Token to a 0600 curl config -- never argv, per the exposure already recorded in this repo.
+          cat > "$WORK/curlrc" <<EOF
+          header = "Authorization: Bearer ${TOK}"
+          EOF
+
+          echo "=== 1. network reach to srv5:22 ==="
+          timeout 5 bash -c 'cat < /dev/null > /dev/tcp/192.168.1.222/22' \
+            && echo "srv5:22 OPEN" || echo "srv5:22 UNREACHABLE"
+
+          echo "=== 2. fetch the fleet key (versions.access is the ONE permission measured as held) ==="
+          CODE=$(curl -s --config "$WORK/curlrc" -o "$WORK/v.json" -w '%{http_code}' \
+            "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/fleet-automation-ssh-key/versions/latest:access")
+          echo "AccessVersion http=$CODE"
+          if [ "$CODE" != "200" ]; then
+            echo "REFUSED: cannot fetch fleet key; canary blocked at credential materialization"
+            head -c 300 "$WORK/v.json"; echo; exit 0
+          fi
+
+          python3 -c "import json,base64,sys;d=json.load(open('$WORK/v.json'));sys.stdout.write(base64.b64decode(d['payload']['data']).decode())" > "$WORK/id" 2>/dev/null || {
+            echo "REFUSED: payload did not decode as a key"; exit 0; }
+          chmod 600 "$WORK/id"
+          echo "key bytes: $(wc -c < "$WORK/id")  (content never printed)"
+
+          echo "=== 3. WHICH principal does srv5 admit? read-only id(1) ==="
+          for U in gunbc-fleet ghrunner ubuntu nvidia; do
+            OUT=$(timeout 10 ssh -i "$WORK/id" -o BatchMode=yes -o StrictHostKeyChecking=no \
+              -o ConnectTimeout=5 -o UserKnownHostsFile="$WORK/kh" \
+              "$U@192.168.1.222" 'id -un; id -u' 2>&1 | tr '\n' ' ')
+            echo "  $U -> $OUT"
+          done
+
+          echo "=== READING THIS RECEIPT ==="
+          echo "A returned 'id -un' is a REAL remote-process observation of the admitted principal."
+          echo "A failure is NOT proof the account is absent: it distinguishes neither missing"
+          echo "authorized_keys, nor absent account, nor sshd policy. Those are different remedies."
+
+      - name: Shred credential material
+        if: always()
+        run: rm -rf "${RUNNER_TEMP}/canary" || true
