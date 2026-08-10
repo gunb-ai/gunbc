@@ -620,6 +620,13 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "p3-classification-cost-ab-receipt",
+    primary_work: DeclarationRef { module_path: "v2.lens.live_read_classification", decl_name: "live_read_classification_law", field: WholeDeclaration },
+    additional_works: [],
+    dissolution: HasTrigger { text: "paired fleet receipts for ClassificationCostStanding land on the pinned merge SHA with headSha-verified control/candidate arms and the five-valued verdict is recorded — then surviving measurement facts migrate to the canonical carrier and this bind deletes with the doc." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "push-event-affected-set-baseline-design",
     primary_work: DeclarationRef { module_path: "gunbc.diff_baseline", decl_name: "resolve_diff_baseline", field: WholeDeclaration },
     additional_works: [DeclarationRef { module_path: "v2.workflow.floor_diff_observe", decl_name: "floor_observe_ci_diff_event", field: WholeDeclaration }, DeclarationRef { module_path: "gunbc.diff_baseline", decl_name: "diff_baseline_fail_closed_law", field: WholeDeclaration }],

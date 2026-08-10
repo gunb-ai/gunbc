@@ -1,6 +1,8 @@
 module gunbc.live_deploy.spec
 
 import std.types { String, NonEmptyStr, List, Int, Bool, FilePath }
+import std.evaluation_budget { EvaluationLimit, LimitSet, LimitUnset }
+import std.measure { PositiveMillisecond, positive_millisecond, positive_measure_count }
 import std.os.types { NobleNumbat2404Lts, OsPackageManager }
 import extdeps.os.ubuntu { ubuntu_distribution_catalog_row }
 import extdeps.apt {
@@ -148,6 +150,40 @@ type DeploymentServiceConfig {
   repo_root: NonEmptyStr
   service_user: NonEmptyStr
   listen: HttpServerListenConfig
+  serve_cpu_limit: EvaluationLimit
+  serve_wall_limit: EvaluationLimit
+}
+
+// THE BOUND EXISTS BECAUSE ITS ABSENCE WAS MEASURED IN PRODUCTION, NOT BECAUSE A BOUND IS
+// TIDY. Read off srv1 2026-08-10, on every restart that day including the process then
+// serving: `gunbc serve listening on 0.0.0.0:8080 -> roadmap_serve_handle()
+// eval_budget_cpu_ms=unset eval_budget_wall_ms=unset`. The per-request deadline machinery
+// existed and was armed around every route call, and both CLI flags existed typed
+// Option<u64> — the unit simply never passed them, so every request was armed with None.
+// cli_run handle_serve states the consequence itself: the 500 existed and was unreachable,
+// and because the accept loop is serial the stuck request held the accept queue for every
+// later one. That is how ~1.5s of per-request work became a 10-16 hour unresponsive
+// dashboard: nothing made a request slow, nothing made it STOP.
+//
+// WHY A DECLARED POLICY ROW RATHER THAN A CONSTANT. DESIGN's oracle rule admits a numeric
+// literal grounded in an explicit policy budget, and rejects one grounded in a measurement
+// of the current tree. The measurement below is the BASIS recorded beside the policy, not
+// its justification: a later reader changing this number is amending a declared cap, not
+// tuning a constant, and the row is falsifiable when its basis moves.
+//
+// BOTH CLOCKS ARE SET, for the reason std.evaluation_budget evaluation_clock_split_note
+// already gives — CPU catches a spin, wall catches a stall that consumes almost no CPU
+// while still holding the listener. The measured serve cost is mostly the SECOND kind: a
+// jq subprocess over the attempt event files, which is wait rather than CPU and would
+// never cross a CPU cap.
+data dashboard_serve_budget_basis_note: String = "MEASURED BASIS FOR THE DECLARED CAP (session crisp-gull-269, 2026-08-10, replay against a local copy of srv1 attempt-state). Per request on the daily page: render evaluation 840ms self-time; jq provider projection 486ms across 25,744,152 B spanning five current attempts; ~1.5s total. The largest retained attempt (60,257,673 B, the 2026-08-08 wedge artifact) is roughly three times the jq term, putting a realistic worst case near 2.5-3s. The declared caps are an order of magnitude above that so a legitimate render is never refused, while still converting an unbounded listener hold into a bounded typed refusal. THE ASYMMETRY THAT SETS THE DIRECTION: today's failure mode is a silent multi-hour hang observable only to whoever eventually restarts the process; a too-tight cap fails as an immediate, typed, visible 500 on one request. Those are not equally bad, which argues for arming a defensible cap now and refining it against this basis rather than converging on a perfect number first. VALUE IS OPERATOR POLICY: these numbers are a proposal carrying their basis, not a derivation that forecloses the operator's choice."
+
+fn dashboard_serve_cpu_limit() -> EvaluationLimit {
+  LimitSet { limit: positive_millisecond(count: positive_measure_count(predecessor: 29999)) }
+}
+
+fn dashboard_serve_wall_limit() -> EvaluationLimit {
+  LimitSet { limit: positive_millisecond(count: positive_measure_count(predecessor: 29999)) }
 }
 
 data deployment_spec_carries_no_release_note: String = "THE SPEC ANSWERS WHERE, THE CANDIDATE ANSWERS WHAT, AND THE FIELD THAT FUSED THEM IS GONE. DeploymentServiceConfig briefly carried release_revision, which put a per-invocation fact inside the slot topology — and the tell was visible on the retract path: a retract installs no release, yet it had to construct a DeploymentSpec and therefore had to name a revision it never read. A field that is meaningful on one path and merely along for the ride on another is not a model of either.\\n\\nEvery field that remains here is stable across deploys of this slot: which unit name, which binary, which handler, which root, which principal, which port. Deploying blue twice at two different commits produces the SAME DeploymentServiceConfig both times, which is what makes it a topology rather than a log.\\n\\nThe launch identity now travels beside the spec as gunbc.live_deploy.emit ReleaseRevisionBinding, supplied at the apply seam and read only where ExecStart is rendered. The retract fold passes RevisionNotInstalled and can therefore not name a revision even by accident — the arm that would render one refuses loudly instead of emitting a plausible line."
@@ -401,6 +437,8 @@ fn deployment_service_config(
       host: instance.listen_host as String,
       port: instance.listen_port,
     },
+    serve_cpu_limit: dashboard_serve_cpu_limit(),
+    serve_wall_limit: dashboard_serve_wall_limit(),
   }
 }
 
