@@ -1,0 +1,98 @@
+module gunbc.spark_serving_release
+
+import std.types { String, Bool, List, Int, NonEmptyStr }
+import product.placement_supply { HostIdentity }
+
+// THE SPARK SERVING RELEASE — one content-addressed identity over everything that must be
+// identical on both replicas.
+//
+// The canary proved a runtime/model combination is executable on GB10 and proved nothing else.
+// It is retired rather than refactored: neither its $HOME/gunbc-serve state nor its shell seeds
+// this route, because three of its checks could not fail (cache corruption recovered instead of
+// refusing, a permissive early exit sat above the strict readback, and generation was printed
+// rather than asserted) and lifting that shell would carry those bypasses into production wearing
+// a rewrite.
+//
+// WHY ONE IDENTITY RATHER THAN SEPARATE CHECKED CONDITIONS: four independently-checked facts can
+// each pass while the composite is incoherent — a runtime from one resolution, a model from
+// another, a serving configuration that matches neither. Hashing the closure makes "srv5 and srv6
+// run the same thing" a single comparison instead of a conjunction someone can weaken one arm at
+// a time.
+type RuntimeArtifactIdentity { closure_digest: NonEmptyStr }
+
+// The model artifact is pinned by EXACT REVISION, never a tag. A moving tag makes the identity
+// claim unfalsifiable and could differ between the two hosts, silently breaking exact replay.
+type ModelArtifactIdentity { repository: NonEmptyStr  revision: NonEmptyStr }
+
+type ServingConfigurationIdentity { configuration_digest: NonEmptyStr }
+
+// The credential is referenced BY EXACT VERSION. A moving `latest` alias defeats the
+// exact-version discipline this repo already models: a rotation between observation and
+// reapplication changes the actuator identity with no receipt saying so.
+type SecretVersionRef { secret: NonEmptyStr  version: NonEmptyStr }
+
+// Unified memory is SHARED between CPU and GPU on GB10, which is why the accelerator reports no
+// separate device total. Admission is against the shared pool; budgeting as though a private
+// device pool existed is how a model that cannot fit gets admitted.
+type InferenceCapacityPolicy { max_model_len: Int  shared_memory_budget_bytes: Int }
+
+type SparkServingRelease {
+  runtime: RuntimeArtifactIdentity
+  model: ModelArtifactIdentity
+  serving_configuration: ServingConfigurationIdentity
+  api_credential: SecretVersionRef
+  capacity: InferenceCapacityPolicy
+}
+
+type SparkServingReleaseIdentity { digest: NonEmptyStr }
+
+// The occurrence binds ONE release identity to a host. srv5 and srv6 share release R and differ
+// only in host and receipt — that shared identity is the entire point of the release carrier, and
+// it is why the access and identity prerequisites below are NOT fields of the release: fusing a
+// credential or a host-key binding into it would change the release identity whenever a
+// credential rotated, so the two hosts could no longer share one.
+type SparkServingOccurrence {
+  host: HostIdentity
+  release_identity: SparkServingReleaseIdentity
+}
+
+// Prerequisites are ADMITTED DEPENDENCIES, not booleans and not release fields. Each names what
+// is missing rather than answering false, because "no managed principal exists" and "the host key
+// has no independent anchor" have different remedies and a shared `false` erases that.
+type SparkServingPrerequisite
+  = HostIdentityBindingAdmitted { host: HostIdentity }
+  | ManagedHostAccessGrounded { host: HostIdentity }
+  | PrerequisiteAbsent { host: HostIdentity, requirement: NonEmptyStr, cause: NonEmptyStr }
+
+type SparkServingRefusal { subject: NonEmptyStr  cause: NonEmptyStr }
+
+// THE NO-OP IS STRUCTURAL. SparkServingAlreadyConverged CARRIES NO EFFECT PLAN, so a converged
+// host has no constructor by which to write, restart, reinstall, or rotate anything. That is
+// stronger than building a plan and discovering its list is empty, which concedes the write is
+// representable and relies on an emptiness check a later edit can regress.
+//
+// This is the same cure the bmc_*_reconciled_policy no-op write needs: both of its arms return the
+// policy, so an already-converged policy is rewritten on every converge — an unnecessary IAM write
+// carrying a read-modify-write window that can clobber a concurrent change. A write that is not
+// needed is not made safe by its content matching what was last read.
+type SparkServingReconciliation
+  = SparkServingAlreadyConverged { readback: NonEmptyStr }
+  | SparkServingDeltaRequired { plan_subject: NonEmptyStr }
+  | SparkServingRefused { first: SparkServingRefusal, more: List<SparkServingRefusal> }
+
+// Only SparkServingDeltaRequired may reach an actuator. Expressed as a total function over the
+// coproduct rather than a guard at the call site, so a new arm cannot silently become actuating.
+fn spark_serving_may_actuate(reconciliation: SparkServingReconciliation) -> Bool {
+  match reconciliation {
+    SparkServingDeltaRequired { plan_subject: _ } => true
+    SparkServingAlreadyConverged { readback: _ } => false
+    SparkServingRefused { first: _, more: _ } => false
+  }
+}
+
+// Two occurrences are exact replicas exactly when their release identities agree. Compared at the
+// single release digest rather than field-by-field, because a field-wise comparison is a
+// conjunction that can be weakened one arm at a time.
+fn spark_occurrences_share_release(a: SparkServingOccurrence, b: SparkServingOccurrence) -> Bool {
+  (a.release_identity.digest as String) == (b.release_identity.digest as String)
+}

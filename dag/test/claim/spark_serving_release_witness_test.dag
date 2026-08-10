@@ -1,0 +1,54 @@
+module test.claim.spark_serving_release_witness_test
+
+import std.types { String, Bool, List, Int, NonEmptyStr }
+import gunbc.spark_serving_release {
+  SparkServingReleaseIdentity, SparkServingOccurrence,
+  SparkServingReconciliation, SparkServingAlreadyConverged, SparkServingDeltaRequired,
+  SparkServingRefused, SparkServingRefusal,
+  spark_serving_may_actuate, spark_occurrences_share_release,
+}
+
+fn refusal_specimen() -> SparkServingReconciliation {
+  SparkServingRefused { first: SparkServingRefusal { subject: "srv5", cause: "managed automation principal absent" }, more: [SparkServingRefusal { subject: "srv5", cause: "host key has no independent anchor" }] }
+}
+
+fn occ_srv5() -> SparkServingOccurrence {
+  SparkServingOccurrence { host: "srv5", release_identity: SparkServingReleaseIdentity { digest: "R" } }
+}
+
+fn occ_srv6_same() -> SparkServingOccurrence {
+  SparkServingOccurrence { host: "srv6", release_identity: SparkServingReleaseIdentity { digest: "R" } }
+}
+
+fn occ_srv6_other() -> SparkServingOccurrence {
+  SparkServingOccurrence { host: "srv6", release_identity: SparkServingReleaseIdentity { digest: "R-prime" } }
+}
+
+// CONTROL 1: the no-op is STRUCTURAL. A converged host cannot reach an actuator, and the arm that
+// represents it carries no effect plan at all -- there is no field through which a write could be
+// smuggled. This is the property the bmc_*_reconciled_policy no-op write lacks, where both arms
+// return the policy and an already-converged policy is rewritten on every converge.
+test fn converged_cannot_actuate() -> Bool {
+  !spark_serving_may_actuate(reconciliation: SparkServingAlreadyConverged { readback: "readback receipt" })
+}
+
+// CONTROL 2: the POSITIVE direction. Without it, control 1 passes against a function hardwired to
+// return false -- and a route that can never actuate is not a route. Both directions or the
+// function is a name.
+test fn delta_required_may_actuate() -> Bool {
+  spark_serving_may_actuate(reconciliation: SparkServingDeltaRequired { plan_subject: "install pinned runtime" })
+}
+
+// CONTROL 3: a refusal is not a quiet no-op. It must be non-actuating for a DIFFERENT reason than
+// convergence, and it carries its causes rather than collapsing to a bare false.
+test fn refusal_cannot_actuate() -> Bool {
+  !spark_serving_may_actuate(reconciliation: refusal_specimen())
+}
+
+// CONTROL 4: exact replication is ONE comparison at the release digest. Two hosts sharing a
+// release identity are replicas; differing digests are not, and the check cannot be weakened one
+// field at a time the way a field-wise conjunction can.
+test fn occurrences_replicate_exactly_when_release_identity_agrees() -> Bool {
+  spark_occurrences_share_release(a: occ_srv5(), b: occ_srv6_same())
+  && !spark_occurrences_share_release(a: occ_srv5(), b: occ_srv6_other())
+}
