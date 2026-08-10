@@ -16,7 +16,6 @@ import gunbc.doc_graph_roots {
   HandAuthoredDocBind, PlanDoc,
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.plan { PlanRetiresWhen }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
