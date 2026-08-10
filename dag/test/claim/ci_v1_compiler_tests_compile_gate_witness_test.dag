@@ -4,8 +4,13 @@ import v2.workflow.ci_v1_compiler_tests_compile_gate_emit {
   ci_v1_compiler_tests_compile_gate_script,
   ci_v1_compiler_tests_compile_gate_shell_emit_scaffold,
   ci_interpreter_parity_controls_command,
+  ci_interpreter_parity_controls_shell_emit_scaffold,
 }
-import gunbc.ci_workflow { ci_v1_compiler_tests_compile_gate_run_script, ci_build_job }
+import gunbc.ci_workflow {
+  ci_v1_compiler_tests_compile_gate_run_script,
+  ci_interpreter_parity_controls_run_script,
+  ci_build_job
+}
 import gunbc.ci_spec { ci_release_features }
 import gunbc.ci_build_job_v1_compiler_unit_receipt {
   one_profile_ordering_status,
@@ -126,4 +131,15 @@ test fn interpreter_parity_controls_step_executes_the_named_modules() -> Bool {
 
 test fn red_control_interpreter_parity_step_never_becomes_a_compile_only_gate() -> Bool {
   !string_contains(s: ci_interpreter_parity_controls_command(), pattern: "'--no-run'")
+}
+
+test fn w_interpreter_parity_carrier_is_scaffold() -> Bool {
+  match ci_interpreter_parity_controls_shell_emit_scaffold {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    _ => false
+  }
+}
+
+test fn w_interpreter_parity_run_script_carries_its_dissolution_trigger() -> Bool {
+  string_contains(s: ci_interpreter_parity_controls_run_script(), pattern: "dissolve-on: ci_interpreter_parity_controls_run_script")
 }

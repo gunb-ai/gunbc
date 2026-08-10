@@ -33,6 +33,7 @@ import v2.workflow.ci_v1_compiler_tests_compile_gate_emit {
   ci_v1_compiler_tests_compile_gate_command,
   ci_interpreter_parity_controls_command,
   ci_v1_compiler_tests_compile_gate_shell_emit_dissolution_trigger,
+  ci_interpreter_parity_controls_shell_emit_dissolution_trigger,
 }
 import v2.workflow.ci_heal_revalidation_preflight_emit {
   ci_heal_revalidation_preflight_script,
@@ -341,7 +342,13 @@ fn ci_interpreter_parity_controls_run_script() -> String {
     "set -e\n",
     concat(
       concat("ROOT=", ci_repo_root_shell(), "\n"),
-      ci_cargo_eagain_retry_script(command: ci_interpreter_parity_controls_command())
+      concat(
+        concat(
+          "# ",
+          concat(ci_interpreter_parity_controls_shell_emit_dissolution_trigger, "\n")
+        ),
+        ci_cargo_eagain_retry_script(command: ci_interpreter_parity_controls_command())
+      )
     )
   )
 }

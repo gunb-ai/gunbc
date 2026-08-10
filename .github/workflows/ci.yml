@@ -138,6 +138,7 @@ jobs:
         run: |
           set -e
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          # 🟡 dissolve-on: ci_interpreter_parity_controls_run_script — foreign-executor (GitHub Actions run:) shell transport for extdeps.cargo_build cargo.Build.Test(extra_args: ci_interpreter_parity_controls_extra_args); this is the SECOND build-job consumer of the same seam as ci_v1_compiler_tests_compile_gate_script, not an independent transport class, and it dissolves with it WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the build-job steps to orchestration emit over the typed cargo operation. It shares the ci_cargo_eagain_retry_script level-1 retry seam, so it also joins the srvN STEP 2 population ci_v1_compiler_tests_compile_gate_eagain_retry_note tracks for removal
           set -o pipefail
           BUILD_LOG=$(mktemp)
           if ! ("$CARGO_BIN" 'test' '-p' 'v1-compiler' '--release' '--lib' '--' 'value_hash_materialization' 'grouping_primitive' '--test-threads=1') 2>&1 | tee "$BUILD_LOG"; then

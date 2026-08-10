@@ -109,6 +109,17 @@ fn ci_v1_compiler_tests_compile_gate_script() -> String {
   )
 }
 
+data ci_interpreter_parity_controls_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_workflow",
+    decl_name: "ci_interpreter_parity_controls_run_script",
+    field: WholeDeclaration
+  }
+}
+
+data ci_interpreter_parity_controls_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_interpreter_parity_controls_run_script — foreign-executor (GitHub Actions run:) shell transport for extdeps.cargo_build cargo.Build.Test(extra_args: ci_interpreter_parity_controls_extra_args); this is the SECOND build-job consumer of the same seam as ci_v1_compiler_tests_compile_gate_script, not an independent transport class, and it dissolves with it WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the build-job steps to orchestration emit over the typed cargo operation. It shares the ci_cargo_eagain_retry_script level-1 retry seam, so it also joins the srvN STEP 2 population ci_v1_compiler_tests_compile_gate_eagain_retry_note tracks for removal"
+
 fn ci_interpreter_parity_controls_check_step() -> BashBoundOperationInvocation {
   bash_bind_operation_invocation_host_env_executable(
     at: OperationRef {
