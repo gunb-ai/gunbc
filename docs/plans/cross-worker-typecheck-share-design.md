@@ -6,6 +6,89 @@
 >
 > Parent lanes (referenced, not forked): [resolver-graph-major-design](resolver-graph-major-design.md) §7 move-2 staging, [interface-summary-declared-use-arity](interface-summary-declared-use-arity.md), [v1-run-stability-throughline](v1-run-stability-throughline.md) Track A receipt, [lens-input-authority-design](lens-input-authority-design.md) §1 per-shard W× residual.
 
+## 2026-08-10 correction — exact-subject preparation supersedes the host-first mechanism
+
+The historical sections below remain as the evidence trail for the in-process worker-thread
+hypothesis, but their proposed landing order and immediate mechanism are superseded wherever they
+conflict with this correction.
+
+Three current facts change the next move:
+
+1. The required-path floor normally drains at width one against one process-shared index. The old
+   `W` private thread-index picture is not the dominant required-path cost now.
+2. The ordinary and scoped workers do repeat the same pre-plan discovery over the enclosing
+   `dag`/`src/v2` execution-authority universe. That is an exact duplicate and is now handed across
+   the child boundary as one complete `FloorDiscoverySnapshot`.
+3. The scoped witness subject itself is different: it prepares `dag`/`src/v1` for the five
+   file-grain scoped entries (currently expanding to 27 witnesses), while the ordinary subject is
+   `dag`/`src/v2`. A raw ordinary `MultiEntryIndex` is therefore not the scoped prepared subject.
+   Sharing it would widen roots and fabricate equivalence.
+
+The authority sequence is now:
+
+```text
+v2.workflow.floor_discovery
+  FloorDiscoverySubject / FloorDiscoveryRequest
+  exact commit + tree + ordered root universes + naming/tool identities
+  ↓
+one verified discovery snapshot
+  absent / damaged / wrong subject → refuse, never recompute
+  ↓
+v2.workflow.floor_preparation
+  PreparedFloorSubjectRequest
+  ↓ derives existing std.materialization_provider ResolveClosureRequest keys
+  PreparedClaimSubjectIdentity (sole_constructor)
+  ↓
+provider_serve over one probe per selected witness identity
+  hit → witness-bound modeled artifact metadata
+  miss / wrong key / wrong content / incomplete / duplicate / missing / unexpected → typed refusal
+  ↓
+host realization
+  live immutable capability OR exact materialized artifact
+  never MultiEntryIndex in the semantic API
+```
+
+This also corrects the staging rule in historical §6: the model is not “parallel, not blocking”.
+The domain types and refusal laws land before a live pipeline consumer. Rust may then realize host
+physics behind that boundary; it may not invent the prepared identity, provider outcome, fallback
+policy, or selected population.
+
+### What is live in the first precursor
+
+- `FloorDiscoveryRequest.tested_commit` and `tested_tree` are distinct coordinates. The tree uses
+  the repository's observed Git object format; a commit id no longer inhabits a tree-named field.
+- Cross-process discovery sharing binds the complete request and payload digest. A dirty/untracked
+  worktree, missing snapshot, damaged payload, or request mismatch refuses without activating the
+  producer.
+- The Rust request-identity mirror and the `.dag` derivation share an executed golden digest.
+- `PreparedClaimSubjectIdentity` and the provider serve/refusal fold are modeled and witnessed.
+  No live scoped preparation consumer is claimed by those types alone.
+
+### Next terminal consumer and construction wall
+
+The next consumer is the scoped population, but it may switch only when an exact producer exists
+for every selected `ResolveClosureRequest` and the child can probe those artifacts before broad
+index construction. The acceptance counters remain structural:
+
+```text
+exact subject observations                = 1
+discovery fact constructions              = 1
+prepared artifact-set constructions       = 1
+scoped cold reconstructions                = 0
+fallback reconstructions                   = 0
+missing / duplicate / unexpected identities = 0
+```
+
+Restoring a scoped cold constructor must make a control red. An absent prepared artifact is a
+typed provider miss and stops; it never falls through to `build_multi_entry_index`.
+
+This does **not** authorize simply retaining both current worlds in one process. The batch's
+`SequentialChildProcess` note records an observed same-process death after ordinary discovery at
+7.113 GB RSS. Keep the child lifetime boundary until immutable prepared state is separated from
+per-population evaluator/symbol-index scratch and the same-subject memory receipt proves the new
+co-residence safe. The host may instead materialize exact prepared artifacts across the existing
+child boundary; both choices implement the same modeled identity.
+
 ---
 
 ## 0. The displaced cost (one line)
