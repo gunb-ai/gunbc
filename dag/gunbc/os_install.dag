@@ -37,7 +37,6 @@ import gunbc.os_install_mechanism {
   OsInstallMechanismRefused,
   OsInstallMechanismSelected,
   OsInstallMechanismSolution,
-  srv3_install_boot_target,
   srv3_install_mechanism,
   srv3_install_mechanism_solution,
   install_boot_target_for,

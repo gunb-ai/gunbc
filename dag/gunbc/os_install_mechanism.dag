@@ -301,7 +301,7 @@ data srv4_install_mechanism_solution: OsInstallMechanismSolution = solve_install
   firmware_transition: fleet_firmware_transition_standing
 )
 
-data srv3_install_mechanism_board_default_residue: String = "🟡 dissolve-on: srv3_install_mechanism and srv3_install_boot_target are the pre-repair rows that read the BOARD's shipped-firmware capability row (asrock_altrad8ud_shipped_bmc_firmware_capabilities) instead of srv3's own firmware evidence. They are retained ONLY because their consumers — gunbc.os_install's srv3_os_install_plan / srv3_seeded_os_install_plan / fleet_install_server_specs, gunbc.nbd_proxy_virtual_media_install, gunbc.srv3_os_install_actuate_scope, gunbc.bmc_onboarding, gunbc.host_standup — are total `data` rows that cannot carry OsInstallMechanismRefused without becoming standings themselves, and fleet_install_server_specs reaches gunbc.generated_artifact. They agree with srv3_install_mechanism_solution TODAY only because srv3's observed firmware happens to equal the board's shipped version; the witness srv3_legacy_row_agrees_with_evidence_derived_solution executes that coincidence so it cannot rot silently, and there is deliberately no srv4 legacy row because it would be wrong. DISSOLVES WHEN those consumers take OsInstallMechanismSolution and the plan rows become standings (BMC-EVIDENCE-1); at that point both rows and this note are DELETED."
+data srv3_install_mechanism_board_default_residue: String = "🟡 dissolve-on: srv3_install_mechanism is the last pre-repair row reading the BOARD's shipped-firmware capability row (asrock_altrad8ud_shipped_bmc_firmware_capabilities) instead of a host's own firmware evidence. Its consumer set is now exactly ONE: gunbc.os_install fleet_install_server_specs, which feeds gunbc.generated_artifact — the generated-artifact registry is a total List<GeneratedArtifact> with no representation for a producer refusal, so migrating that last row requires the registry itself to become a standing (GENERATED-REGISTRY-0). srv3_install_boot_target was DELETED with this note's narrowing: gunbc.bmc_onboarding was its last consumer, and it did not need it — BmcOnboardingPlan carried os_install_boot_target while no production consumer read it, which is how srv4 came to carry srv3's board-default CD target despite having no derived install path at all. The remaining row agrees with srv3_install_mechanism_solution TODAY only because srv3's observed firmware equals the board's shipped version; srv3_legacy_row_agrees_with_evidence_derived_solution executes that coincidence so it cannot rot silently, and there is deliberately no srv4 legacy row because it would be wrong. DISSOLVES WHEN the registry becomes a standing and fleet_install_server_specs takes the evidence-derived solution; at that point the row, the coincidence witness and this note are all DELETED."
 
 data srv3_install_mechanism: OsInstallMechanism = solve_install_mechanism(
   current: asrock_altrad8ud_shipped_bmc_firmware_capabilities,
@@ -317,6 +317,27 @@ fn install_boot_target_for(mechanism: OsInstallMechanism) -> RedfishBootSourceOv
   }
 }
 
-data srv3_install_boot_target: RedfishBootSourceOverrideTarget = install_boot_target_for(
-  mechanism: srv3_install_mechanism
+// The boot target a host's install would use, carried as a standing so a host with no derived
+// mechanism has no boot target either. gunbc.bmc_onboarding previously handed srv3's
+// board-default CD target to EVERY host including srv4, whose firmware justifies no delivery
+// mechanism at all — a live contradiction between the evidence model and the onboarding model.
+type InstallBootTargetStanding
+  = InstallBootTargetSelected { target: RedfishBootSourceOverrideTarget }
+  | InstallBootTargetRefused { cause: OsInstallMechanismRefusalCause }
+
+fn install_boot_target_standing_for(solution: OsInstallMechanismSolution) -> InstallBootTargetStanding {
+  match solution {
+    OsInstallMechanismSelected { mechanism: m } =>
+      InstallBootTargetSelected { target: install_boot_target_for(mechanism: m) }
+    OsInstallMechanismRefused { cause: c } => InstallBootTargetRefused { cause: c }
+  }
+}
+
+data srv3_install_boot_target_standing: InstallBootTargetStanding = install_boot_target_standing_for(
+  solution: srv3_install_mechanism_solution
 )
+
+data srv4_install_boot_target_standing: InstallBootTargetStanding = install_boot_target_standing_for(
+  solution: srv4_install_mechanism_solution
+)
+
