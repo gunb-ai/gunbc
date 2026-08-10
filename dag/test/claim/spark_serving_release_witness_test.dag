@@ -7,6 +7,9 @@ import gunbc.spark_serving_release {
   ServingConfigurationIdentity, InferenceCapacityPolicy, spark_serving_release_identity,
   SparkServingReconciliation, SparkServingAlreadyConverged, SparkServingDeltaRequired,
   SparkServingRefused, SparkServingRefusal,
+  SparkServingObservation, SparkServingObserved, SparkServingObservationRefused,
+  SparkServingPrerequisite, PrerequisiteAbsent, ManagedHostAccessGrounded,
+  reconcile_spark_serving,
   spark_serving_may_actuate, spark_occurrences_share_release,
 }
 
@@ -52,12 +55,60 @@ fn occ_srv6_other() -> SparkServingOccurrence {
   SparkServingOccurrence { host: "srv6", release_identity: spark_serving_release_identity(spec: release_other_revision()), endpoint_credential: SecretVersionRef { secret: "spark-serving-api-key", version: "3" } }
 }
 
+data grounded_prereqs: List<SparkServingPrerequisite> = [ManagedHostAccessGrounded { host: "srv5" }]
+
+data absent_prereqs: List<SparkServingPrerequisite> = [PrerequisiteAbsent { host: "srv5", requirement: "managed automation principal", cause: "only the human bootstrap account is admitted" }]
+
+fn observed_matching() -> SparkServingObservation {
+  SparkServingObserved { host: "srv5", loaded_release: spark_serving_release_identity(spec: release_base()) }
+}
+
+fn observed_other() -> SparkServingObservation {
+  SparkServingObserved { host: "srv5", loaded_release: spark_serving_release_identity(spec: release_other_revision()) }
+}
+
+fn observation_refused() -> SparkServingObservation {
+  SparkServingObservationRefused { host: "srv5", cause: "loaded revision not observable from the unit MainPID" }
+}
+
+fn reconcile_arm(observation: SparkServingObservation, prereqs: List<SparkServingPrerequisite>) -> String {
+  match reconcile_spark_serving(desired: occ_srv5(), observation: observation, prerequisites: prereqs) {
+    SparkServingAlreadyConverged { converged_release: _ } => "converged"
+    SparkServingDeltaRequired { plan_subject: _ } => "delta"
+    SparkServingRefused { first: _, more: _ } => "refused"
+  }
+}
+
+// CONTROL 6: THE MECHANISM DISCRIMINATES. A matching observation converges, a differing one
+// requires a delta. Without both, the reconciler could be a constant and every other control here
+// would still pass -- which is exactly how a structural no-op becomes a shape with nothing behind
+// it.
+test fn reconciliation_discriminates_matching_from_differing() -> Bool {
+  reconcile_arm(observation: observed_matching(), prereqs: grounded_prereqs) == "converged"
+    && reconcile_arm(observation: observed_other(), prereqs: grounded_prereqs) == "delta"
+}
+
+// CONTROL 7: AN UNOBSERVABLE HOST REFUSES, IT DOES NOT READ AS DRIFT. "We could not see what is
+// loaded" and "what is loaded is wrong" have different remedies, and answering the first with a
+// delta would send an actuator to rewrite a host nobody could observe.
+test fn unobservable_host_refuses_rather_than_drifting() -> Bool {
+  reconcile_arm(observation: observation_refused(), prereqs: grounded_prereqs) == "refused"
+}
+
+// CONTROL 8: PREREQUISITES ARE CHECKED FIRST. A host missing its managed principal refuses even
+// when the observation would otherwise CONVERGE -- comparing state on a host we have no grounded
+// way to reach answers a question we cannot ask, and letting a convergent-looking observation
+// override a missing prerequisite is how an ungrounded host reports as fine.
+test fn missing_prerequisite_refuses_even_when_observation_matches() -> Bool {
+  reconcile_arm(observation: observed_matching(), prereqs: absent_prereqs) == "refused"
+}
+
 // CONTROL 1: the no-op is STRUCTURAL. A converged host cannot reach an actuator, and the arm that
 // represents it carries no effect plan at all -- there is no field through which a write could be
 // smuggled. This is the property the bmc_*_reconciled_policy no-op write lacks, where both arms
 // return the policy and an already-converged policy is rewritten on every converge.
 test fn converged_cannot_actuate() -> Bool {
-  !spark_serving_may_actuate(reconciliation: SparkServingAlreadyConverged { readback: "readback receipt" })
+  !spark_serving_may_actuate(reconciliation: SparkServingAlreadyConverged { converged_release: spark_serving_release_identity(spec: release_base()) })
 }
 
 // CONTROL 2: the POSITIVE direction. Without it, control 1 passes against a function hardwired to

@@ -3,6 +3,7 @@ module gunbc.spark_serving_release
 import std.types { String, Bool, List, Int, NonEmptyStr }
 import product.placement_supply { HostIdentity }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
+import v2.std.algebra { fold_list }
 
 // THE SPARK SERVING RELEASE — one content-addressed identity over everything that must be
 // identical on both replicas.
@@ -104,17 +105,75 @@ type SparkServingRefusal { subject: NonEmptyStr  cause: NonEmptyStr }
 // policy, so an already-converged policy is rewritten on every converge — an unnecessary IAM write
 // carrying a read-modify-write window that can clobber a concurrent change. A write that is not
 // needed is not made safe by its content matching what was last read.
+// The OBSERVATION is independent of the desired state, and its refusal arm is distinct from an
+// observation reporting a difference: "we could not see what is loaded" and "what is loaded is
+// wrong" have different remedies, and collapsing them lets an unobservable host read as drifted.
+// The loaded identity is the SAME derived carrier as the desired one, so a comparison cannot be
+// satisfied by a caller-authored label.
+type SparkServingObservation
+  = SparkServingObserved { host: HostIdentity, loaded_release: SparkServingReleaseIdentity }
+  | SparkServingObservationRefused { host: HostIdentity, cause: NonEmptyStr }
+
 type SparkServingReconciliation
-  = SparkServingAlreadyConverged { readback: NonEmptyStr }
+  = SparkServingAlreadyConverged { converged_release: SparkServingReleaseIdentity }
   | SparkServingDeltaRequired { plan_subject: NonEmptyStr }
   | SparkServingRefused { first: SparkServingRefusal, more: List<SparkServingRefusal> }
+
+data no_absent_prerequisite: SparkServingRefusal? = none
+
+data no_further_refusals: List<SparkServingRefusal> = []
+
+// A prerequisite that is ABSENT carries its own requirement and cause, so the refusal names what
+// is missing instead of a bare false that erases which of several remedies applies.
+fn first_absent_prerequisite(prerequisites: List<SparkServingPrerequisite>) -> SparkServingRefusal? {
+  fold_list(xs: prerequisites, empty: no_absent_prerequisite, cons: fn(acc, p) {
+    match acc {
+      Present { value: found } => Present { value: found }
+      Absent => match p {
+        PrerequisiteAbsent { host: _, requirement: req, cause: why } => Present { value: SparkServingRefusal { subject: req, cause: why } }
+        HostIdentityBindingAdmitted { host: _ } => none
+        ManagedHostAccessGrounded { host: _ } => none
+      }
+    }
+  })
+}
+
+// THE MECHANISM. Desired x observation x prerequisites -> exactly one arm. This is what makes the
+// structural no-op real rather than a shape: SparkServingAlreadyConverged is reachable ONLY when
+// an independent observation reports the derived identity the desired state asks for, and it
+// carries that observed identity rather than a free-text receipt a caller could author.
+//
+// Order matters and is deliberate. Prerequisites are checked FIRST, so a host without a managed
+// principal or an admitted identity binding refuses rather than being compared -- comparing state
+// on a host we have no grounded way to reach would answer a question we cannot ask. An observation
+// refusal is next, and is NOT drift: it is the absence of an answer.
+fn reconcile_spark_serving(
+  desired: SparkServingOccurrence,
+  observation: SparkServingObservation,
+  prerequisites: List<SparkServingPrerequisite>,
+) -> SparkServingReconciliation {
+  match first_absent_prerequisite(prerequisites: prerequisites) {
+    Present { value: absent } => SparkServingRefused { first: absent, more: no_further_refusals }
+    Absent =>
+      match observation {
+        SparkServingObservationRefused { host: _, cause: why } =>
+          SparkServingRefused { first: SparkServingRefusal { subject: "observation", cause: why }, more: no_further_refusals }
+        SparkServingObserved { host: _, loaded_release: loaded } =>
+          if (loaded.digest.digest as String) == (desired.release_identity.digest.digest as String) {
+            SparkServingAlreadyConverged { converged_release: loaded }
+          } else {
+            SparkServingDeltaRequired { plan_subject: "loaded release differs from desired release" as NonEmptyStr }
+          }
+      }
+  }
+}
 
 // Only SparkServingDeltaRequired may reach an actuator. Expressed as a total function over the
 // coproduct rather than a guard at the call site, so a new arm cannot silently become actuating.
 fn spark_serving_may_actuate(reconciliation: SparkServingReconciliation) -> Bool {
   match reconciliation {
     SparkServingDeltaRequired { plan_subject: _ } => true
-    SparkServingAlreadyConverged { readback: _ } => false
+    SparkServingAlreadyConverged { converged_release: _ } => false
     SparkServingRefused { first: _, more: _ } => false
   }
 }
