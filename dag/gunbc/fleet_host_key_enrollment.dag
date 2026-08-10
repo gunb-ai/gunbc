@@ -404,6 +404,6 @@ data probe_identity_secret_access_requirement: ProbeIdentitySecretAccessRequirem
   wif_provider_resource: "projects/582015116396/locations/global/workloadIdentityPools/github-actions/providers/github-oidc",
   access: "roles/secretmanager.secretAccessor on this one secret only; identity reached exclusively via GitHub OIDC -> WIF exchange (id-token: write on the consumer jobs) — the SA is WIF-only, no SA keys exist or may be minted",
   observed_prior_grant: "serviceAccount:fleet-automation@gunbai-secrets.iam.gserviceaccount.com holds secretAccessor on the same secret (July-era, pre-existing) — recorded, not modified",
-  consumer_jobs: ["probe_fleet_reach", "collect_fleet_convergence"],
+  consumer_jobs: ["fleet"],
   materialization: "in-run only: versions/1 accessed per-run into RUNNER_TEMP, mode 0600, loaded into an ssh-agent and the file wiped before any probe executes; never durable HOME, never echoed; the agent is killed when the job ends; receipts carry the identity NAME and outcome only — no key bytes, no payload digests",
 }
