@@ -201,15 +201,16 @@ data fleet_collect_receipt_path: String = "target/fleet-converge-collect-receipt
 // and publish one collect receipt naming each host's collection outcome plus the fold
 // verdict. Exit reflects publication only: an honest NotConverged is a successful
 // collection, not a process failure.
+//
+// Enrollment rides with the run, SAME path as probe_fleet_reach_wet (review 50900, §3
+// one enrollment authority / §5 no ambient trust): the collector runs in its OWN
+// isolated main-push job with a fresh ephemeral HOME and WIF-materialized key but no
+// durable known_hosts, so it MUST materialize the pinned enrolled-only config before
+// its SSH legs — otherwise fleet_host_key_enroll_apply's StrictHostKeyChecking-yes pin
+// never lands here and the collector's ssh either refuses or falls back to ambient
+// known_hosts (the exact anchor hole the pin closes for the probe). Call it FIRST and
+// carry its readback in the collect receipt, mirroring the probe entry.
 func collect_fleet_convergence_wet() -> ProcessExit {
-  // Enrollment rides with the run, SAME path as probe_fleet_reach_wet (review 50900, §3
-  // one enrollment authority / §5 no ambient trust): the collector runs in its OWN
-  // isolated main-push job with a fresh ephemeral HOME and WIF-materialized key but no
-  // durable known_hosts, so it MUST materialize the pinned enrolled-only config before
-  // its SSH legs — otherwise fleet_host_key_enroll_apply's StrictHostKeyChecking-yes pin
-  // never lands here and the collector's ssh either refuses or falls back to ambient
-  // known_hosts (the exact anchor hole the pin closes for the probe). Call it FIRST and
-  // carry its readback in the collect receipt, mirroring the probe entry.
   let enroll_lines = fleet_host_key_enroll_apply()
   let collected = map(fleet_reach_probe_targets, h => collect_host_receipt(host: h))
   let verdict = fleet_convergence_verdict(
