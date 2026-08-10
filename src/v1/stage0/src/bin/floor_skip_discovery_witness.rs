@@ -5,9 +5,10 @@ use std::process::ExitCode;
 
 use v1_compiler::cli_run::{
     build_multi_entry_index, decode_manifest_row_collection, resolve_entry_graph_shared,
-    resolve_entry_with_index, run_discovery_corpus_with_options, workspace_root,
-    DiscoveryCorpusOptions, DiscoveryRow, DiscoverySummary, DiscoveryWidthPolicy,
-    LiveReadSelectionContext, NodeFrontierSelectionMode, SELECTION_CONTROL_BUDGET_ROSTER_REL,
+    resolve_entry_with_index, run_discovery_corpus_with_options,
+    selection_control_incident_subject_roster, workspace_root, DiscoveryCorpusOptions,
+    DiscoveryRow, DiscoverySummary, DiscoveryWidthPolicy, LiveReadSelectionContext,
+    NodeFrontierSelectionMode, SELECTION_CONTROL_BUDGET_ROSTER_REL,
     SELECTION_CONTROL_CI_FLOOR_PLAN_REL, SELECTION_CONTROL_DOC_REACHABILITY_REL,
     SELECTION_CONTROL_FALSIFIER_CONTROL_REL, SELECTION_CONTROL_FLOOR_RUNNER_REL,
     SELECTION_CONTROL_FLOOR_RUNNER_TEST_REL, SELECTION_CONTROL_LIVE_TREE_DECLARED_REL,
@@ -650,30 +651,6 @@ fn frontier_warmup_does_not_poison_corpus_resolution() {
     );
 }
 
-/// The two-entry incident subject, named once so every control below decides the SAME subject.
-///
-/// A = the node-precise discriminator fixture (the entry the diff touches).
-/// B = the affected-set floor runner test (the unrelated entry whose 474-module closure reaches a
-/// live-read carrier home). B is what the retired predicate made unskippable on any nonempty
-/// `.dag` diff, which is the `2 selected / 1 expected` incident.
-fn incident_subject_roster() -> Vec<(String, String)> {
-    let ws = workspace_root();
-    vec![
-        (
-            ws.join(SELECTION_CONTROL_NODE_PRECISE_REL)
-                .to_string_lossy()
-                .into_owned(),
-            "floor_disc_witness_a_only_holds".to_string(),
-        ),
-        (
-            ws.join(SELECTION_CONTROL_FLOOR_RUNNER_TEST_REL)
-                .to_string_lossy()
-                .into_owned(),
-            "floor_test_untouched_skips_assumed_green_holds".to_string(),
-        ),
-    ]
-}
-
 /// THE INCIDENT CONTROL, at the grain the incident was measured in.
 ///
 /// `entry_file_helper_fn_edit_scopes_runs_to_touched_entry_only` already asserts the row totals
@@ -689,7 +666,11 @@ fn live_read_selection_narrows_incident_subject_to_touched_entry() {
     let text = std::fs::read_to_string(ws.join(disc_rel)).expect("discriminator fixture readable");
     let helper_line = fixture_line(&text, "fn floor_disc_helper_fn");
 
-    let summary = run_injected_diff_roster(disc_rel, helper_line, &incident_subject_roster());
+    let summary = run_injected_diff_roster(
+        disc_rel,
+        helper_line,
+        &selection_control_incident_subject_roster(),
+    );
     assert!(
         summary.failures.is_empty(),
         "incident-subject roster failures: {:?}",
@@ -762,7 +743,7 @@ fn stop_line_population_does_not_widen_incident_subject() {
     let summary = run_discovery_corpus_with_options(
         &floor_skip_source_roots(),
         &[],
-        &incident_subject_roster(),
+        &selection_control_incident_subject_roster(),
         ExecutionMode::Wet,
         DiscoveryWidthPolicy::Serial,
         discovery_options(true),

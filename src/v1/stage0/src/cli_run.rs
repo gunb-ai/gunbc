@@ -3778,6 +3778,30 @@ pub const SELECTION_CONTROL_DECLARED_ENTRIES: &[&str] = &[
     SELECTION_CONTROL_CI_FLOOR_PLAN_REL,
 ];
 
+/// The two-entry incident subject for live-read selection controls and P3 A/B parity.
+///
+/// A = the node-precise discriminator fixture (the entry the diff touches).
+/// B = the affected-set floor runner test (the unrelated entry whose closure reaches a
+/// live-read carrier home). B is what the retired predicate made unskippable on any nonempty
+/// `.dag` diff, which is the `2 selected / 1 expected` incident.
+pub fn selection_control_incident_subject_roster() -> Vec<(String, String)> {
+    let ws = workspace_root();
+    vec![
+        (
+            ws.join(SELECTION_CONTROL_NODE_PRECISE_REL)
+                .to_string_lossy()
+                .into_owned(),
+            "floor_disc_witness_a_only_holds".to_string(),
+        ),
+        (
+            ws.join(SELECTION_CONTROL_FLOOR_RUNNER_TEST_REL)
+                .to_string_lossy()
+                .into_owned(),
+            "floor_test_untouched_skips_assumed_green_holds".to_string(),
+        ),
+    ]
+}
+
 /// The suite's source roots — `[src/v2, dag]`, the roots its rosters resolve against.
 /// Single authority for the same reason as the entry consts above.
 pub fn selection_control_source_roots(workspace: &Path) -> Vec<PathBuf> {
@@ -8111,10 +8135,13 @@ pub fn build_live_read_selection_manifest(
         requests.len()
     );
     let phase = |name: &str, at: &std::time::Instant, detail: &str| {
+        let ms = at.elapsed().as_millis() as u64;
+        if name == "classification_production" {
+            LIVE_READ_CLASSIFICATION_PRODUCTION_MS.fetch_add(ms, Ordering::SeqCst);
+        }
         eprintln!(
-            "[live-read-phase] invocation={} phase={name} ms={} {detail}",
+            "[live-read-phase] invocation={} phase={name} ms={ms} {detail}",
             invocation.id,
-            at.elapsed().as_millis()
         );
     };
 
@@ -10680,6 +10707,18 @@ pub fn live_read_classification_invocations() -> usize {
 
 pub fn reset_live_read_classification_invocations() {
     LIVE_READ_CLASSIFICATION_INVOCATIONS.store(0, Ordering::SeqCst);
+}
+
+static LIVE_READ_CLASSIFICATION_PRODUCTION_MS: AtomicU64 = AtomicU64::new(0);
+
+/// Cumulative `classification_production` phase wall across manifest builds in this process.
+/// Reset before a P3 cohort probe arm; read after `run_discovery_corpus_with_options` returns.
+pub fn live_read_classification_production_ms() -> u128 {
+    LIVE_READ_CLASSIFICATION_PRODUCTION_MS.load(Ordering::SeqCst) as u128
+}
+
+pub fn reset_live_read_classification_production_ms() {
+    LIVE_READ_CLASSIFICATION_PRODUCTION_MS.store(0, Ordering::SeqCst);
 }
 
 fn bump_live_read_classification_invocations() {
