@@ -134,6 +134,41 @@ jobs:
           # repo, not in CI logs, not in argv, and not in the unit file. Secret Manager is not the
           # home for it because this principal holds versions.access ONLY -- it cannot AddVersion --
           # so storing it there would require a privilege I provably do not have.
+          # A prior generation may be in a restart loop; stop it BEFORE rewriting the unit so the
+          # new definition is not racing an old process for the port and the GPU. A restart counter
+          # in the twenties will have tripped the start limit, so the unit is FAILED rather than
+          # merely stopped and a plain start would refuse -- reset-failed is systemd working, not a
+          # new defect.
+          systemctl --user stop gunbc-vllm.service 2>/dev/null || true
+          systemctl --user stop gunbc-vllm-verify.service 2>/dev/null || true
+          systemctl --user reset-failed gunbc-vllm.service 2>/dev/null || true
+
+          # CACHE INTEGRITY AFTER THE SIGKILL LOOP. Twenty starts each SIGKILLed partway through a
+          # 14.19 GiB checkpoint read is exactly the half-written-cache case, and a partially written
+          # weight file that loads WITHOUT erroring is the worst available outcome. This does not
+          # trust the loader to notice: the HF cache stores weights as blobs whose FILENAME IS THEIR
+          # SHA256, so each blob is verifiable against the store's own naming -- an independent
+          # check, not a re-download and not the loader vouching for itself.
+          HUB="$HOME/.cache/huggingface/hub/models--Qwen--Qwen2.5-7B-Instruct"
+          if [ -d "$HUB/blobs" ]; then
+            BAD=0; N=0
+            for b in "$HUB"/blobs/*; do
+              [ -f "$b" ] || continue
+              base=$(basename "$b")
+              case "$base" in *[!0-9a-f]*) continue;; esac
+              [ ${#base} -eq 64 ] || continue
+              N=$((N+1))
+              got=$(sha256sum "$b" | cut -d' ' -f1)
+              if [ "$got" != "$base" ]; then echo "CACHE-CORRUPT blob=$base got=$got"; BAD=$((BAD+1)); fi
+            done
+            echo "CACHE-CHECK verified=$N corrupt=$BAD"
+            if [ "$BAD" != "0" ]; then
+              echo "CACHE-ACTION purging corrupt cache and re-fetching (clean outcome, not a failure to hide)"
+              rm -rf "$HUB"
+            fi
+          else
+            echo "CACHE-CHECK no-blobs-dir (nothing cached yet)"
+          fi
           mkdir -p "$HOME/.config/systemd/user"
           if [ ! -s "$HOME/gunbc-serve/api-key.env" ]; then
             umask 077
@@ -159,7 +194,6 @@ jobs:
             --api-key \${VLLM_API_KEY} \\
             --host 127.0.0.1 --port ${SERVE_PORT} \\
             --max-model-len 4096
-          ExecStartPost=%h/gunbc-serve/verify-loaded-revision.sh ${MODEL_REV} ${SERVE_PORT}
           Restart=on-failure
           RestartSec=10
 
@@ -194,6 +228,27 @@ jobs:
           echo "verify: OK loaded=$GOT"
           VERIFY
           chmod +x "$HOME/gunbc-serve/verify-loaded-revision.sh"
+          # VERIFICATION RUNS AS ITS OWN UNIT, NOT AS ExecStartPost. Attaching it to ExecStartPost
+          # put it INSIDE the start deadline: with Type=simple systemd bounds ExecStart plus
+          # ExecStartPost by TimeoutStartSec (90s default), so a verifier waiting for a multi-minute
+          # weight load was terminated and the LOADING ENGINE WAS SIGKILLED WITH IT -- then restarted
+          # into the same race, 20 times. The guard strangled the thing it guards, which is only
+          # visible by execution. Ordered After= instead: a slow load can no longer read as a failed
+          # start, and verification still refuses on mismatch by stopping the service.
+          cat > "$HOME/.config/systemd/user/gunbc-vllm-verify.service" <<VUNIT
+          [Unit]
+          Description=gunbc pinned vLLM loaded-revision verification
+          After=gunbc-vllm.service
+          BindsTo=gunbc-vllm.service
+
+          [Service]
+          Type=oneshot
+          ExecStart=%h/gunbc-serve/verify-loaded-revision.sh ${MODEL_REV} ${SERVE_PORT}
+          ExecStopPost=/bin/sh -c 'test "\$EXIT_STATUS" = "0" || systemctl --user stop gunbc-vllm.service'
+
+          [Install]
+          WantedBy=default.target
+          VUNIT
 
           # Lingering is what makes a --user unit survive logout; without it the "continuously
           # serve" requirement is not met by a unit that exists.
@@ -201,6 +256,7 @@ jobs:
           echo "LINGER=$(loginctl show-user "$USER" -p Linger --value 2>/dev/null || echo UNKNOWN)"
           systemctl --user daemon-reload
           systemctl --user enable --now gunbc-vllm.service 2>&1 | head -5
+          systemctl --user enable gunbc-vllm-verify.service 2>&1 | head -3
           echo "UNIT-STATE=$(systemctl --user is-active gunbc-vllm.service 2>&1)"
           REMOTE
 
