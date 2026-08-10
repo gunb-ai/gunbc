@@ -1,5 +1,7 @@
 module v2.workflow.ci_workflow_run_emit
 
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
+
 import v2.compiler.emit_orchestration { orch_emit_pipeline }
 import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
 import v2.workflow.ci_materialization_emit { ci_sccache_provider_shell_injection }
@@ -126,7 +128,7 @@ fn ci_native_cache_root_intent() -> Pipeline {
 
 fn ci_native_cache_root_script() -> String {
   concat(
-    concat("# ", concat(ci_native_cache_root_shell_emit_dissolution_trigger, "\n")),
+    concat("# ", concat(dissolution_description(condition: ci_native_cache_root_shell_emit_dissolution_trigger), "\n")),
     ci_workflow_run_emit_pipeline(p: ci_native_cache_root_intent())
   )
 }
@@ -140,7 +142,7 @@ data ci_native_cache_root_shell_emit_scaffold: Disposition = Scaffold {
   }
 }
 
-data ci_native_cache_root_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_native_cache_root_script — orch-emitted foreign-executor prelude step deriving GUNBC_NATIVE_CACHE_ROOT from rustc -V after setup-rust-toolchain; leaf rustc/tr/mkdir/echo strings remain until typed toolchain probe lands on host_effect_apply (#5828 / shell→intent Phase 2)"
+data ci_native_cache_root_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_native_cache_root_script — orch-emitted foreign-executor prelude step deriving GUNBC_NATIVE_CACHE_ROOT from rustc -V after setup-rust-toolchain; leaf rustc/tr/mkdir/echo strings remain until typed toolchain probe lands on host_effect_apply (#5828 / shell→intent Phase 2)")
 
 data ci_native_cache_fabricated_segment_literal: String = "toolchain-unresolved"
 

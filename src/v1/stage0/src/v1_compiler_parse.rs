@@ -11,8 +11,8 @@ use self::ParserResultWitness::*;
 pub use crate::extdeps_languages_dag_syntax::{dag_non_name_keywords, dag_syntax_spec};
 pub use crate::std_algebra::FreeMonoid;
 use crate::std_occurrence_identity::OccurrenceCategory::{
-    CallableOccurrence, ConstructorOccurrence, FieldOccurrence, LexicalValueOccurrence,
-    MethodOccurrence, NamespaceSegmentOccurrence, TypeOccurrence,
+    CallableOccurrence, FieldOccurrence, LexicalValueOccurrence, MethodOccurrence,
+    NamespaceSegmentOccurrence, TypeOccurrence,
 };
 pub use crate::std_occurrence_identity::{
     alloc_occurrence_id, authored_token_ordinal_space_from_allocator,
@@ -2330,7 +2330,7 @@ pub fn stamp_parsed_pattern(
                 field_bindings.clone(),
                 ancestors.clone(),
                 ctx.clone(),
-                Rc::new(ParsedOccurrenceRole::ParsedOccurrenceReference {
+                Rc::new(ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
                     category: OccurrenceCategory::FieldOccurrence,
                 }),
             );
@@ -2430,52 +2430,6 @@ pub fn parsed_occurrence_role_for_node(
         },
         _ => requested.clone(),
     }
-}
-
-pub fn parsed_module_item_declares_type_name(item: Rc<Node>) -> bool {
-    (((((item.transport.clone() == None) && (item.body.clone() == None))
-        && (item.ident_span.clone() != None))
-        && (item.name.clone() != "".to_string()))
-        && ((item.connective.clone() != Connective::NoConnective)
-            || (item.inferred.clone() != None)))
-}
-
-pub fn parsed_module_item_role(item: Rc<Node>) -> Rc<ParsedOccurrenceRole> {
-    if parsed_module_item_declares_type_name(item.clone()) {
-        Rc::new(ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
-            category: OccurrenceCategory::TypeOccurrence,
-        })
-    } else {
-        Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified)
-    }
-}
-
-pub fn stamp_parsed_module_item_list(
-    nodes: Rc<Vec<Rc<Node>>>,
-    ancestors: Rc<Vec<OccurrenceId>>,
-    ctx: Rc<ParseContext>,
-) -> Rc<ParsedNodeListStampResult> {
-    nodes.clone().iter().cloned().fold(
-        Rc::new(ParsedNodeListStampResult {
-            nodes: Rc::new(vec![]),
-            ctx: ctx.clone(),
-        }),
-        |acc: Rc<ParsedNodeListStampResult>, node: Rc<Node>| {
-            let acc = v1_rt::take_owned(acc);
-            {
-                let stamped = stamp_parsed_node(
-                    node.clone(),
-                    ancestors.clone(),
-                    acc.ctx,
-                    parsed_module_item_role(node.clone()),
-                );
-                Rc::new(ParsedNodeListStampResult {
-                    nodes: v1_rt::rc_list_push(acc.nodes, stamped.node.clone()),
-                    ctx: stamped.ctx.clone(),
-                })
-            }
-        },
-    )
 }
 
 pub fn parse_context_record_occurrence(
@@ -2610,50 +2564,6 @@ pub fn stamp_parsed_node_children(
                     category: OccurrenceCategory::TypeOccurrence,
                 }),
                 Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
-            ),
-            ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
-                category: OccurrenceCategory::NamespaceSegmentOccurrence,
-                ..
-            } => {
-                stamp_parsed_module_item_list(node.children.clone(), ancestors.clone(), ctx.clone())
-            }
-            ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
-                category: OccurrenceCategory::TypeOccurrence,
-                ..
-            } => match node.connective.clone() {
-                Connective::Disj => stamp_parsed_node_list(
-                    node.children.clone(),
-                    ancestors.clone(),
-                    ctx.clone(),
-                    Rc::new(ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
-                        category: OccurrenceCategory::ConstructorOccurrence,
-                    }),
-                ),
-                Connective::Conj => stamp_parsed_node_list(
-                    node.children.clone(),
-                    ancestors.clone(),
-                    ctx.clone(),
-                    Rc::new(ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
-                        category: OccurrenceCategory::FieldOccurrence,
-                    }),
-                ),
-                _ => stamp_parsed_node_list(
-                    node.children.clone(),
-                    ancestors.clone(),
-                    ctx.clone(),
-                    Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
-                ),
-            },
-            ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
-                category: OccurrenceCategory::ConstructorOccurrence,
-                ..
-            } => stamp_parsed_node_list(
-                node.children.clone(),
-                ancestors.clone(),
-                ctx.clone(),
-                Rc::new(ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
-                    category: OccurrenceCategory::FieldOccurrence,
-                }),
             ),
             _ => stamp_parsed_node_list(
                 node.children.clone(),

@@ -8,7 +8,8 @@ import extdeps.dns.domain_name { HostName, DomainNameParseError, parse_host_name
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.roster_frontier { FrontierRow, TriggerDeclExists, frontier_row_decl }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { bound_dissolution }
 import std.decl_ref { decl_ref }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -24,9 +25,7 @@ data mac_address_anemic_brand_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.dhcp.v4", decl_name: "MacAddress"),
     reason: "MacAddress is a branded NonEmptyStr hiding six grounded octets; deep-decompose to structured MAC carrier (e.g. MacAddress { octets: [UInt8; 6] }) at parse boundary",
-    trigger: TriggerDeclExists {
-      ref: decl_ref(module_path: "extdeps.network.mac", decl_name: "parse_mac_address"),
-    },
+    dissolution: bound_dissolution(ref: decl_ref(module_path: "extdeps.network.mac", decl_name: "parse_mac_address")),
   )
 ]
 

@@ -1,6 +1,7 @@
 module gunbc.plans.ci_process_end_to_end
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, p, li, ul, ol, hr, quote, cell, row }
 
@@ -163,7 +164,6 @@ data ci_process_end_to_end_plan: Plan = Plan {
   slug: "ci-process-end-to-end",
   title: "CI, end to end — what's on `.dag` today, what isn't, and the lane that closes the gap",
   body: ci_process_end_to_end_body(),
-  dissolution: HasTrigger {
-    text: "Delete this doc when §3-B (the fabric operation — placement, runner deployment, per-runner caps) is on `.dag` and drift-gated (steps 1 + 3 landed), the resolve cache is enabled in CI (step 2), and the rust tentpole no longer dominates a CI run — at which point the push→execute chain is on fabric except GitHub's irreducible engine, the §4 scheduling/caching gaps are closed by a real non-test consumer, and this charter's gap-map is a witnessed property rather than an audit."
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when §3-B (the fabric operation — placement, runner deployment, per-runner caps) is on `.dag` and drift-gated (steps 1 + 3 landed), the resolve cache is enabled in CI (step 2), and the rust tentpole no longer dominates a CI run — at which point the push→execute chain is on fabric except GitHub's irreducible engine, the §4 scheduling/caching gaps are closed by a real non-test consumer, and this charter's gap-map is a witnessed property rather than an audit.")
   }
 }

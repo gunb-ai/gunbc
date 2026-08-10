@@ -41,7 +41,11 @@ import gunbc.os_install_mechanism {
   NbdProxyVirtualMediaInstall,
   PxeHttpInstall,
   FirmwareUpdateThenVirtualMedia,
-  srv3_install_mechanism,
+  OsInstallMechanismRefusalCause,
+  OsInstallMechanismRefused,
+  OsInstallMechanismSelected,
+  OsInstallMechanismSolution,
+  srv3_install_mechanism_solution,
   install_boot_target_for,
 }
 import gunbc.host_effect {
@@ -143,16 +147,87 @@ data srv3_nbd_proxy_export_placeholder: NbdProxyServeInterface = NbdProxyServeIn
   export_byte_count: byte_size(0),
 }
 
-data srv3_os_install_actuator_plan: OsInstallActuatorPlan = os_install_actuator_plan(
-  mechanism: srv3_install_mechanism,
+// The actuator plan carries the refusal rather than erasing it: a host whose firmware justifies
+// no delivery mechanism has no actuator step sequence, and must not be handed a plausible one.
+type OsInstallActuatorPlanRefusal
+  = ActuatorMechanismRefused { cause: OsInstallMechanismRefusalCause }
+  | ActuatorStepsUnrealized { refusals: List<ActuatorStepRefusal> }
+
+type OsInstallActuatorPlanStanding
+  = ActuatorPlanReady { plan: OsInstallActuatorPlan, intents: List<HostEffectIntent> }
+  | ActuatorPlanRefused { cause: OsInstallActuatorPlanRefusal }
+
+fn os_install_actuator_plan_standing_for(
+  solution: OsInstallMechanismSolution,
+  export: NbdProxyServeInterface,
+) -> OsInstallActuatorPlanStanding {
+  match solution {
+    OsInstallMechanismSelected { mechanism: m } =>
+      match os_install_actuator_plan(mechanism: m, export: export) {
+        p =>
+          match actuator_plan_realization(steps: p.steps) {
+            ActuatorPlanRealized { intents: xs } => ActuatorPlanReady { plan: p, intents: xs }
+            ActuatorPlanUnrealized { refusals: rs } =>
+              ActuatorPlanRefused { cause: ActuatorStepsUnrealized { refusals: rs } }
+          }
+      }
+    OsInstallMechanismRefused { cause: c } =>
+      ActuatorPlanRefused { cause: ActuatorMechanismRefused { cause: c } }
+  }
+}
+
+data srv3_os_install_actuator_plan_standing: OsInstallActuatorPlanStanding = os_install_actuator_plan_standing_for(
+  solution: srv3_install_mechanism_solution,
   export: srv3_nbd_proxy_export_placeholder
 )
 
-fn actuator_step_to_host_effect_intent(step: OsInstallActuatorStep) -> HostEffectIntent? {
+// An unrealized step is a REFUSAL, not an absence. The Optional form below returned Absent for
+// the three steps with no realization, and Absent is indistinguishable from "this step needs no
+// host effect" — so a plan containing Redfish media insert, PXE staging or firmware update could
+// be called ready while silently omitting exactly the effects that make it an install. Modelling
+// a nonexistent implementation as a ready plan with missing steps is the fail-open this lane
+// exists to remove.
+type ActuatorStepRefusal
+  = ActuatorStepRealizationAbsent { step: OsInstallActuatorStep }
+
+type ActuatorStepRealization
+  = ActuatorStepReady { intent: HostEffectIntent }
+  | ActuatorStepRefused { cause: ActuatorStepRefusal }
+
+type ActuatorPlanRealization
+  = ActuatorPlanRealized { intents: List<HostEffectIntent> }
+  | ActuatorPlanUnrealized { refusals: List<ActuatorStepRefusal> }
+
+// Accumulates every unrealized step rather than stopping at the first: which effects are missing
+// is the actionable fact, and reporting one of three hides the size of the gap.
+fn actuator_plan_realization(steps: List<OsInstallActuatorStep>) -> ActuatorPlanRealization {
+  fold(
+    steps,
+    init: ActuatorPlanRealized { intents: [] },
+    f: fn(acc, step) {
+      match actuator_step_realization(step: step) {
+        ActuatorStepReady { intent: i } =>
+          match acc {
+            ActuatorPlanRealized { intents: xs } =>
+              ActuatorPlanRealized { intents: concat(xs, [i]) }
+            ActuatorPlanUnrealized { refusals: rs } => ActuatorPlanUnrealized { refusals: rs }
+          }
+        ActuatorStepRefused { cause: c } =>
+          match acc {
+            ActuatorPlanRealized { intents: _ } => ActuatorPlanUnrealized { refusals: [c] }
+            ActuatorPlanUnrealized { refusals: rs } =>
+              ActuatorPlanUnrealized { refusals: concat(rs, [c]) }
+          }
+      }
+    },
+  )
+}
+
+fn actuator_step_realization(step: OsInstallActuatorStep) -> ActuatorStepRealization {
   match step {
     ActuatorBootOnce { target: t, enabled: e } =>
-      Present {
-        value: HostEffectIntent {
+      ActuatorStepReady {
+        intent: HostEffectIntent {
           target: BmcController { node: srv3_host },
           effect: RedfishAction {
             action: SetBootSourceOverride { target: t, enabled: e }
@@ -163,8 +238,8 @@ fn actuator_step_to_host_effect_intent(step: OsInstallActuatorStep) -> HostEffec
         }
       }
     ActuatorForceRestart { reset_type: r } =>
-      Present {
-        value: HostEffectIntent {
+      ActuatorStepReady {
+        intent: HostEffectIntent {
           target: BmcController { node: srv3_host },
           effect: RedfishAction {
             action: ResetSystem { reset_type: r }
@@ -175,8 +250,8 @@ fn actuator_step_to_host_effect_intent(step: OsInstallActuatorStep) -> HostEffec
         }
       }
     ActuatorNbdProxyServe { endpoint: ep, slot: s, index: i, export: _ } =>
-      Present {
-        value: HostEffectIntent {
+      ActuatorStepReady {
+        intent: HostEffectIntent {
           target: HostOs { node: srv3_os_install_actuator_host },
           effect: Srv3NbdProxyServe {
             intent: nbd_proxy_serve_transport_intent(
@@ -193,9 +268,12 @@ fn actuator_step_to_host_effect_intent(step: OsInstallActuatorStep) -> HostEffec
           privilege_denial: none,
         }
       }
-    ActuatorRedfishInsertMedia => Absent
-    ActuatorPxeNetworkBootStaging => Absent
-    ActuatorFirmwareUpdate => Absent
+    ActuatorRedfishInsertMedia =>
+      ActuatorStepRefused { cause: ActuatorStepRealizationAbsent { step: ActuatorRedfishInsertMedia } }
+    ActuatorPxeNetworkBootStaging =>
+      ActuatorStepRefused { cause: ActuatorStepRealizationAbsent { step: ActuatorPxeNetworkBootStaging } }
+    ActuatorFirmwareUpdate =>
+      ActuatorStepRefused { cause: ActuatorStepRealizationAbsent { step: ActuatorFirmwareUpdate } }
   }
 }
 

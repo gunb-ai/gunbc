@@ -3,7 +3,8 @@ module extdeps.network.ipv6
 import std.types { Int, String, Bool, NonEmptyStr, List }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.roster_frontier { FrontierRow, TriggerDeclExists, frontier_row_decl }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { bound_dissolution }
 import std.decl_ref { decl_ref }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -26,9 +27,7 @@ data ipv6_text_codec_staged_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.network.ipv6", decl_name: "Ipv6Address"),
     reason: "Ipv6Address has no RFC 5952 string parse/render yet; it reuses extdeps.numeric.base16 (render) and a reverse-fold over base16_digit_rows (parse), with :: compression",
-    trigger: TriggerDeclExists {
-      ref: decl_ref(module_path: "extdeps.network.ipv6", decl_name: "parse_ipv6_address"),
-    },
+    dissolution: bound_dissolution(ref: decl_ref(module_path: "extdeps.network.ipv6", decl_name: "parse_ipv6_address")),
   )
 ]
 

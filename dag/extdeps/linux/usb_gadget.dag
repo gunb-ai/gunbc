@@ -1,5 +1,7 @@
 module extdeps.linux.usb_gadget
 
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
+
 import std.types { NonEmptyStr, String, Int, Bool, List }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -86,7 +88,7 @@ fn usb_gadget_teardown_ops(gadget: UsbGadget) -> List<ConfigfsOp> {
   ]
 }
 
-data configfs_op_render_dissolution_trigger: String = "🟡 dissolve-on: configfs_op_line — the ConfigfsOp list is the typed authority (structure), but each op is rendered to a POSIX shell line because a configfs attribute write is a remote-file-write with no argv-only form (printf > sysfs needs a redirect) and the BMC transport is SSH. This single per-variant renderer replaces 32 scattered concats. DISSOLVES WHEN host_effect_apply binds ConfigfsOp directly to a remote Filesystem.Write effect (WriteAttr → Filesystem.Write, Mkdir/Symlink/Rmdir → typed FS ops) over the ssh transport, removing the shell leaf."
+data configfs_op_render_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: configfs_op_line — the ConfigfsOp list is the typed authority (structure), but each op is rendered to a POSIX shell line because a configfs attribute write is a remote-file-write with no argv-only form (printf > sysfs needs a redirect) and the BMC transport is SSH. This single per-variant renderer replaces 32 scattered concats. DISSOLVES WHEN host_effect_apply binds ConfigfsOp directly to a remote Filesystem.Write effect (WriteAttr → Filesystem.Write, Mkdir/Symlink/Rmdir → typed FS ops) over the ssh transport, removing the shell leaf.")
 
 fn configfs_op_line(op: ConfigfsOp) -> String {
   match op {

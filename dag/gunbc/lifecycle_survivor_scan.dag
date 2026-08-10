@@ -1,0 +1,139 @@
+module gunbc.lifecycle_survivor_scan
+
+import v2.std.decl_index { DataDeclTypeFact, data_decl_type_facts }
+import v2.lens.lifecycle_carrier { decl_name_is_lifecycle_carrier }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
+
+// The live lifecycle-carrier population, derived from the corpus rather than remembered.
+//
+// This exists because a hand-authored census cannot ground its own completeness. A roster
+// answers "here are the survivors someone wrote down" -- a measurement copied from the same
+// tree, which DESIGN section 5 rejects as an oracle. The subject universe has to be
+// discovered INDEPENDENTLY of any roster and then compared at declaration identity.
+//
+// It is host-derived because no substrate-reachable producer answers the question.
+// `decl_facts` marshals a DataItem's node through the initializer projection and drops
+// `type_annotation`, so it cannot see a declared type at all; `export_signature_facts`
+// refuses corpus-wide; `data_init_decl_facts_live` is scoped to the import closure, a
+// different and smaller population than the corpus. `data_decl_type_facts` is the missing
+// projection, not a new mechanism -- it walks the same parse-only, fail-closed corpus walk
+// `concept_decl_facts` already uses, so a file that fails to parse refuses rather than
+// silently shrinking the denominator.
+//
+// Dissolve-on: this scan and its host producer retire together when v2 self-host gains
+// compile-graph access (gunbc#5364, the trigger `concept_index` already carries), at which
+// point the declared type is reachable from the substrate and this derives without a host
+// bridge.
+
+// Both roots are required and neither is arbitrary: they are the two roots this
+// repository's whole-tree compile covers, and every module the migration touched resolves
+// under one of them. There are no exclusions, deliberately -- not for test files, not for
+// fixtures. A narrowed root list or a skipped subtree would let the count reach zero by not
+// looking, which is the empty-observation narrow DESIGN names: absence of a survivor and
+// inability to observe one are different states.
+data lifecycle_survivor_scan_roots: List<String> = ["dag", "src/v2"]
+
+data lifecycle_survivor_scan_facts: List<DataDeclTypeFact> = data_decl_type_facts(pool_roots: lifecycle_survivor_scan_roots)
+
+// Raw prose is exactly the two bare string carriers, matching `type_is_bare_string` in the
+// field-grain wall. A refined or wrapped carrier is not raw; a `DissolutionCondition` is the
+// migrated form.
+fn type_is_raw_prose(type_name: String) -> Bool {
+  (type_name == "String") || (type_name == "NonEmptyStr")
+}
+
+// The three conditions conjoined: the declaration's name belongs to the lifecycle class
+// (decided by the SAME roster the field wall consults, never a second spelling list), its
+// declared type is still bare string, and the result is projected at exact declaration
+// identity rather than by name alone.
+fn fact_is_raw_lifecycle_survivor(f: DataDeclTypeFact) -> Bool {
+  decl_name_is_lifecycle_carrier(name: f.decl_name) && type_is_raw_prose(type_name: f.type_name)
+}
+
+fn raw_lifecycle_string_survivor_facts() -> List<DataDeclTypeFact> {
+  filter(xs: lifecycle_survivor_scan_facts, predicate: fn(f) { fact_is_raw_lifecycle_survivor(f: f) })
+}
+
+fn raw_lifecycle_string_survivor_refs() -> List<DeclarationRef> {
+  list_map(
+    xs: raw_lifecycle_string_survivor_facts(),
+    f: fn(f) { decl_ref(module_path: f.module_path, decl_name: f.decl_name) }
+  )
+}
+
+fn raw_lifecycle_string_survivor_count() -> Int {
+  length(xs: raw_lifecycle_string_survivor_refs())
+}
+
+fn raw_lifecycle_string_survivor_keys() -> List<String> {
+  list_map(xs: raw_lifecycle_string_survivor_refs(), f: fn(r) { declaration_ref_display_key(ref: r) })
+}
+
+// The gate. An unclassified raw survivor does not need to be classified -- it needs to not
+// exist, and this is what makes that claim executable rather than asserted. A newly authored
+// `data x_dissolve_on: String = "..."` anywhere under either root reds this.
+fn no_raw_lifecycle_string_survivors() -> Bool {
+  raw_lifecycle_string_survivor_count() == 0
+}
+
+// Producer non-vacuity, separated from the gate above because zero is also what a broken
+// producer returns. These are the facts that distinguish "nothing survives" from "nothing
+// was read": the walk must yield a real corpus, and it must reach declarations whose
+// declared type is a bare string (6,903 at the time of writing) so the type projection is
+// demonstrably populated rather than uniformly empty.
+fn scan_reads_a_real_corpus() -> Bool {
+  length(xs: lifecycle_survivor_scan_facts) > 10000
+}
+
+fn scan_sees_bare_string_declarations() -> Bool {
+  length(xs: filter(xs: lifecycle_survivor_scan_facts, predicate: fn(f) { type_is_raw_prose(type_name: f.type_name) })) > 1000
+}
+
+// Every declaration carries a declared type. `data` cannot be authored without an
+// annotation, so an empty type name means the projection failed to read one -- and a
+// consumer that treated unknown as "not a string" would silently under-report exactly the
+// survivors this scan exists to find. Asserted, not assumed.
+fn scan_projects_every_declared_type() -> Bool {
+  length(xs: filter(xs: lifecycle_survivor_scan_facts, predicate: fn(f) { f.type_name == "" })) == 0
+}
+
+// The scan must reach test modules too. `decl_facts_corpus_walk` skips test `.dag` files;
+// this walk does not, and if it did, a survivor authored in a witness would be invisible to
+// the gate. Anchored on a declaration that exists only under `dag/test/`.
+fn scan_reaches_test_modules() -> Bool {
+  length(xs: filter(xs: lifecycle_survivor_scan_facts, predicate: fn(f) { starts_with(s: f.rel_path, prefix: "dag/test/") })) > 0
+}
+
+// Synthetic rows exercising the selection predicate directly. The corpus count above is zero
+// today, so on its own it cannot distinguish a predicate that selects correctly from one
+// that selects nothing at all. These run the SAME predicate production uses.
+data planted_raw_survivor: DataDeclTypeFact = DataDeclTypeFact {
+  module_path: "planted.specimen",
+  decl_name: "planted_carrier_dissolve_on",
+  type_name: "String",
+  rel_path: "planted/specimen.dag"
+}
+
+data planted_migrated_control: DataDeclTypeFact = DataDeclTypeFact {
+  module_path: "planted.specimen",
+  decl_name: "planted_carrier_dissolve_on",
+  type_name: "DissolutionCondition",
+  rel_path: "planted/specimen.dag"
+}
+
+data planted_nonempty_str_survivor: DataDeclTypeFact = DataDeclTypeFact {
+  module_path: "planted.specimen",
+  decl_name: "planted_carrier_retirement_trigger",
+  type_name: "NonEmptyStr",
+  rel_path: "planted/specimen.dag"
+}
+
+// Discriminating in the other direction: a predicate that rejected every String declaration
+// would satisfy the migrated control and still be wrong, so an ordinary String declaration
+// outside the name class must also be rejected -- for the right reason.
+data planted_ordinary_string_note: DataDeclTypeFact = DataDeclTypeFact {
+  module_path: "planted.specimen",
+  decl_name: "planted_carrier_note",
+  type_name: "String",
+  rel_path: "planted/specimen.dag"
+}

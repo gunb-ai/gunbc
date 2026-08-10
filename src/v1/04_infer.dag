@@ -190,6 +190,7 @@ import v1.compiler.infer_access {
   AccessCheckResultNode,
   check_index_access_node, check_slice_access_node
 }
+import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
 
 fn is_witness_type_name(name: String) -> Bool {
   name == "Witness" || name == "witness"
@@ -2162,7 +2163,7 @@ fn method_existence_decision(recv_rt: Node, method_name: String, scope: InferSco
                 MethodPipeFallback {
                   result_ty: error_type,
                   kernel_diags: [make_error_node(
-                    diagnostic: MethodExistenceFrontierAdmitted { method: method_name, receiver_type: recv_shape, trigger: trigger, span: span },
+                    diagnostic: MethodExistenceFrontierAdmitted { method: method_name, receiver_type: recv_shape, trigger: dissolution_description(condition: trigger), span: span },
                     module_name: scope.module_name
                   )]
                 }
@@ -2211,7 +2212,7 @@ type UnresolvedMethodFrontierRow {
   receiver_shape: String
   occurrences: Int
   cause: String
-  dissolution_trigger: String
+  dissolution: DissolutionCondition
 }
 
 fn unresolved_method_frontier() -> List<UnresolvedMethodFrontierRow> {
@@ -2222,7 +2223,7 @@ fn unresolved_method_frontier() -> List<UnresolvedMethodFrontierRow> {
       occurrences: 7,
       receiver_shape: "Primitive()",
       cause: "receiver is a lambda parameter whose type is never inferred, so it arrives with NO authored name at all. The call is a product FIELD holding a callable — the LexMatchThunk { apply: fn(s) } idiom — not a method at all.",
-      dissolution_trigger: "lambda-parameter receiver typing, so the receiver resolves to its declared product and apply is found as a field"
+      dissolution: unbound_dissolution(description: "lambda-parameter receiver typing, so the receiver resolves to its declared product and apply is found as a field")
     },
     {
       module_name: "extdeps.git.object_store",
@@ -2230,7 +2231,7 @@ fn unresolved_method_frontier() -> List<UnresolvedMethodFrontierRow> {
       occurrences: 2,
       receiver_shape: "Primitive()",
       cause: "receiver is `tree.entries` where `tree` is the parameter of a lambda stored in a StoreObjectFold record field, so the field's declared fn type never reaches the lambda's parameter and the projection off it has no established type.",
-      dissolution_trigger: "lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in"
+      dissolution: unbound_dissolution(description: "lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in")
     },
     {
       module_name: "extdeps.git.object_store",
@@ -2238,7 +2239,7 @@ fn unresolved_method_frontier() -> List<UnresolvedMethodFrontierRow> {
       occurrences: 1,
       receiver_shape: "Primitive()",
       cause: "same StoreObjectFold lambda-parameter shape as the `map` row above; listed separately because the key names one method on one receiver shape, never a module-wide pass.",
-      dissolution_trigger: "lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in"
+      dissolution: unbound_dissolution(description: "lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in")
     },
     {
       module_name: "extdeps.mercurial",
@@ -2246,7 +2247,7 @@ fn unresolved_method_frontier() -> List<UnresolvedMethodFrontierRow> {
       occurrences: 3,
       receiver_shape: "Primitive()",
       cause: "receiver is an untyped parameter of a lambda stored in a fold record field, the same shape as the object_store rows.",
-      dissolution_trigger: "lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in"
+      dissolution: unbound_dissolution(description: "lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in")
     },
     {
       module_name: "gunbc.scm_compatibility.mercurial",
@@ -2254,7 +2255,7 @@ fn unresolved_method_frontier() -> List<UnresolvedMethodFrontierRow> {
       occurrences: 3,
       receiver_shape: "Primitive()",
       cause: "receiver is `missing_changesets`, an untyped parameter of the `partial:` lambda in a MercurialRepositoryCompletenessFold record field.",
-      dissolution_trigger: "lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in"
+      dissolution: unbound_dissolution(description: "lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in")
     },
     {
       module_name: "extdeps.dns.domain_name",
@@ -2262,7 +2263,7 @@ fn unresolved_method_frontier() -> List<UnresolvedMethodFrontierRow> {
       occurrences: 1,
       receiver_shape: "Primitive(ok)",
       cause: "receiver is a coproduct payload bound by pattern destructuring, which arrives typed as the VARIANT name rather than the field type.",
-      dissolution_trigger: "coproduct payload binding typed as the field type, at which point the receiver is List and DECIDABLE"
+      dissolution: unbound_dissolution(description: "coproduct payload binding typed as the field type, at which point the receiver is List and DECIDABLE")
     },
     {
       module_name: "v1.compiler.trace",
@@ -2270,7 +2271,7 @@ fn unresolved_method_frontier() -> List<UnresolvedMethodFrontierRow> {
       occurrences: 1,
       receiver_shape: "Product(SpanMapping)",
       cause: "receiver is an Optional produced by `|> last`, and the optional functor is being mapped over. It arrives as the INNER product because the optional cardinality is dropped before method lookup, so Optional's own surface is never consulted.",
-      dissolution_trigger: "reconciling the two optionality representations (cardinality-marked node vs the nominal Optional coproduct) so an optional receiver keeps its optional surface at method lookup"
+      dissolution: unbound_dissolution(description: "reconciling the two optionality representations (cardinality-marked node vs the nominal Optional coproduct) so an optional receiver keeps its optional surface at method lookup")
     },
     {
       module_name: "gunbc.source_integration_landing_spine",
@@ -2278,7 +2279,7 @@ fn unresolved_method_frontier() -> List<UnresolvedMethodFrontierRow> {
       occurrences: 1,
       receiver_shape: "Node(Optional)",
       cause: "same optional-functor class as the v1.compiler.trace row, in its OTHER surface form: here the Optional survives as a named node rather than collapsing to its inner product, and neither form carries a method surface. Two shapes for one concept is itself the defect the trigger names.",
-      dissolution_trigger: "reconciling the two optionality representations so an optional receiver keeps its optional surface at method lookup"
+      dissolution: unbound_dissolution(description: "reconciling the two optionality representations so an optional receiver keeps its optional surface at method lookup")
     },
     {
       module_name: "test.claim.sccache_local_content_verified_on_read",
@@ -2286,7 +2287,7 @@ fn unresolved_method_frontier() -> List<UnresolvedMethodFrontierRow> {
       occurrences: 1,
       receiver_shape: "Primitive(std.types.NonEmptyStr)",
       cause: "the brand-alias class in its LEAF form. The receiver is a coproduct variant payload whose declared type is NonEmptyStr, and it arrives not as the refinement Conj the peel walks but as a plain leaf carrying the QUALIFIED name std.types.NonEmptyStr — so there is no refinement chain to descend and no kernel profile under that name. Three head-resolution strategies were tried against this site and measured: resolving the leaf through lookup_type_for, through lookup_type_by_name on the qualified name, and on its last segment. NONE of them recovered the refinement, so the machinery was deleted rather than shipped unproven, and the site is declared here instead. Why the peel reaches the Conj form but not this one is not yet understood, and saying so is more useful than a fourth guess.",
-      dissolution_trigger: "one representation for a brand alias at method lookup — the same reconciliation the conformance wall's class (2) names — so the leaf and Conj forms stop being two shapes for one concept"
+      dissolution: unbound_dissolution(description: "one representation for a brand alias at method lookup — the same reconciliation the conformance wall's class (2) names — so the leaf and Conj forms stop being two shapes for one concept")
     },
     {
       module_name: "v2.std.compilers.target_model",
@@ -2294,7 +2295,7 @@ fn unresolved_method_frontier() -> List<UnresolvedMethodFrontierRow> {
       occurrences: 1,
       receiver_shape: "Primitive(T)",
       cause: "receiver is a bare type variable. This one is genuinely undecidable at this seam rather than a resolution defect: nothing establishes what T offers.",
-      dissolution_trigger: "primitive-realization-single-authority, giving every receiver a complete declared method surface"
+      dissolution: unbound_dissolution(description: "primitive-realization-single-authority, giving every receiver a complete declared method surface")
     }
   ]
 }
@@ -2347,11 +2348,11 @@ fn frontier_occurrence_budget_checked(module_name: String, module_span: SourceSp
   concat(diagnostics, frontier_occurrence_budget_diags(module_name: module_name, module_span: module_span, diagnostics: diagnostics))
 }
 
-fn unresolved_method_frontier_trigger(module_name: String, method: String, receiver_shape: String) -> String? {
+fn unresolved_method_frontier_trigger(module_name: String, method: String, receiver_shape: String) -> DissolutionCondition? {
   match unresolved_method_frontier()
     |> filter(r => r.module_name == module_name && r.method == method && r.receiver_shape == receiver_shape)
     |> first {
-    Present { value: row } => Present { value: row.dissolution_trigger }
+    Present { value: row } => Present { value: row.dissolution }
     Absent => none
   }
 }

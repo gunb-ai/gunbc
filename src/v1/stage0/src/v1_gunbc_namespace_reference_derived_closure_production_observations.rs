@@ -2,10 +2,7 @@
 // Source module: v1.gunbc.namespace_reference_derived_closure_production_observations
 
 use self::NrdfcParsed::*;
-use crate::std_occurrence_binding_candidates::DeclarationExposureGrounding::ModuleLocalMemberExposure;
-pub use crate::std_occurrence_binding_candidates::{
-    DeclarationExposureGrounding, OccurrenceBindingCandidateInputs,
-};
+pub use crate::std_occurrence_binding_candidates::OccurrenceBindingCandidateInputs;
 pub use crate::std_occurrence_identity::{OccurrenceId, OccurrenceTransport};
 pub use crate::std_reference_binding_observation::structural_binding_resolution_from_candidates;
 use crate::std_reference_binding_observation::ReferenceBindingObservation::{
@@ -95,7 +92,6 @@ pub fn nrdfc_parse(file: String, source: String) -> Rc<NrdfcParsed> {
             inputs: occurrence_binding_inputs_from_transport(
                 module_path.clone(),
                 transport.clone(),
-                DeclarationExposureGrounding::ModuleLocalMemberExposure,
             ),
         }),
     }

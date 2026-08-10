@@ -210,23 +210,8 @@ unresolvable callee still refuses).
   scaffold dissolution, staged behind the typed wrapper-retained frontier (lowered |
   wrapper-retained{cause}, counted, corpus stays green).
 
-  **The prerequisite this section used to state as an open gate is discharged, and neither its
-  standing nor its bindings are written here.** The sentence removed from this position read
-  *gated on the namespace lane's containment `SymbolIndex`*. It stayed after the gate closed, and
-  a slice was nearly commissioned against it. The binding is now the registered design subject
-  `gunbc.design_subject_registry` `namespace_symbol_index_binding_contract`; standing is derived
-  by `gunbc.design_truth` `design_authored_standing` and rendered into DESIGN.md by
-  `gunbc.design_projection`.
-
-  This paragraph deliberately names **only that one symbol**. An earlier revision of it also
-  restated the contract, implementation and production-consumer declarations in prose, which
-  recreated the exact stale-copy class this migration removes — a repoint in the registry would
-  have left this file false while the typed rows stayed correct. Caught in review of the PR that
-  removed the other four copies, which is a fair demonstration that the habit is the hard part and
-  the wall is what actually holds.
-
-  *Deliberately unchanged:* Stage A itself remains open — the producer rows are unwritten and the
-  scaffold undissolved. Only the gate claim is retired.
+  Stage A remains open: the producer rows are unwritten and the scaffold is undissolved. The former
+  namespace prerequisite is not part of the remaining bar.
 
 - **Stage B — cross-decl resolution.** Callee signatures resolve named args to declaration
   positions; qualified heads resolve through the containment tree (rides the namespace-only lane's

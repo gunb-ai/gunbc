@@ -2,13 +2,13 @@ module test.claim.v1_interpreter_primitive_roster_acceptance
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.v1_interpreter_primitive_surface {
+  arm_declares_dissolution_trigger,
   AuthoredInRoster,
   EvalBuiltinInnerSite,
   FreeCall,
   InterpreterPrimitiveArmId,
   InterpreterPrimitiveDispatchArm,
   MethodCall,
-  arm_declares_dissolution_trigger,
   decode_dispatch_form,
   duplicate_row_keys,
   form_has_no_shadowed_spelling,
@@ -74,7 +74,8 @@ fn declared_rows_carry_exact_triggers() -> Bool {
   let actual = v1_interpreter_declared_arms() |> map(r => r.dispatch_symbol)
   count(actual |> filter(s => !expected |> any(e => e == s))) == 0
     && count(expected |> filter(e => !actual |> any(s => s == e))) == 0
-    && (v1_interpreter_declared_arms() |> all(r => arm_declares_dissolution_trigger(arm: r)))
+    && v1_interpreter_declared_arms()
+         |> all(r => arm_declares_dissolution_trigger(arm: r))
 }
 
 fn arms_without_semantic_identity_stay_representable() -> Bool {

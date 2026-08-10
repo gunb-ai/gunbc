@@ -67,7 +67,7 @@ pub struct GroupCompletion<M> {
 }
 // repr-grounding arm (b): GroupCompletion<M> carrier arithmetic, rendered from the
 // pair-completion rows in std.trait_derive_shape (Add/Mul/Neg are row data; Sub/Div bodies
-// remain keyed literals — see rust_pair_completion_nonpolynomial_body_dissolve_on).
+// remain keyed literals: only Add, Mul and Neg render from the PairCompletionSumOfProducts polynomial arms).
 impl<M> std::ops::Neg for GroupCompletion<M> {
     type Output = Self;
     fn neg(self) -> Self::Output {

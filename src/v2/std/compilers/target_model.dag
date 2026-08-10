@@ -1,5 +1,7 @@
 module v2.std.compilers.target_model
 
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { Equal, Greater, Less, Ordering, TailAbsent, TailFound, any, fold_list, fold_list_node, fold_list_right, is_empty, length, list_append, list_snoc_item, list_tail }
 import v2.std.collection {
@@ -12049,7 +12051,9 @@ fn target_value_expr_branch_bool_gate(node: Node) -> Bool {
   }
 }
 
-data target_value_expr_int_literal_predicate_dissolution_note: String = "🟡 dissolve-on: target_value_expr_is_int_literal_atom and target_value_expr_int_literal_magnitude_node_optional duplicate dag_node_is_int_literal_atom / dag_int_literal_magnitude_node_optional in extdeps/languages/dag.dag — std/compilers cannot import extdeps (layer DAG); DISSOLVES WHEN int-literal atom predicates live in std as single authority both compiler and extdeps import."
+data target_value_expr_int_literal_predicate_dissolution_note: String = "See target_value_expr_int_literal_predicate_dissolution_note_dissolve_on for the lifecycle condition this row's rationale accompanies."
+
+data target_value_expr_int_literal_predicate_dissolve_on: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: target_value_expr_is_int_literal_atom and target_value_expr_int_literal_magnitude_node_optional duplicate dag_node_is_int_literal_atom / dag_int_literal_magnitude_node_optional in extdeps/languages/dag.dag — std/compilers cannot import extdeps (layer DAG); DISSOLVES WHEN int-literal atom predicates live in std as single authority both compiler and extdeps import.")
 
 fn target_value_expr_is_int_literal_atom(node: Node) -> Bool {
   match node.kind {
@@ -12975,3 +12979,5 @@ fn target_project_arrow_body_to_value_expression(
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
+
+data target_value_expr_int_bool_octet_channel_dissolve_on: DissolutionCondition = unbound_dissolution(description: "the modeled octet-to-bool codec authority is inhabited over the \{0,1} domain (NOT general nonzero), at which point this inline `x != 0` scrutinee staging bridge at the match seam grounds on it and deletes")

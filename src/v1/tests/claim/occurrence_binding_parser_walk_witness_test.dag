@@ -1,5 +1,7 @@
 module v1.tests.claim.occurrence_binding_parser_walk_witness_test
 
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
 import std.types { Bool, String, List, NonEmptyStr }
 import std.occurrence_identity {
   OccurrenceId,
@@ -49,8 +51,6 @@ import v1.gunbc.occurrence_binding_parser_walk {
 data occurrence_binding_parser_walk_witness_note: String = "Parser integration witness (namespace-reference-derived-closure merge bar): every case begins at authored source, reaches the P2 structural walk through v1.compiler.parse.parse_with_table transport only — no hand-constructed OccurrenceTransport. Case 6 discharges projection law (A) only: repeated bound-reference providers for one declaration project to one DirectModuleDependency edge — not identity collapse, collector deduplication, or section-13 repeated-discovery collapse. Collector re-observation dedup (B) stays a distinct deferred debt on ProductionOccurrenceCollectorMissing. Case 7 parses once in one graph scope, preserves the parser-minted reference occurrence on the positive arm, and substitutes an occurrence id unknown within that same transport on the negative arm — never comparing allocator-local OccurrenceId values across standalone parses."
 
 data occurrence_binding_parser_walk_offline_recipe: String = "OFFLINE LOCAL RECIPE (requires v1 parser pool): target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/occurrence_binding_parser_walk_witness_test.dag --functions namespace_reference_derived_closure_parser_integration_holds"
-
-data occurrence_binding_parser_walk_dissolve_on: String = "DISSOLVE-ON: witness_layer_roots admits src/v1 for parser-transport witnesses without Node ambiguity, or execution corpus carries per-entry source roots — then this recipe deletes and discovery enrollment suffices."
 
 type ObcpwParsed
   = ObcpwParsedReady {
@@ -439,7 +439,6 @@ data parser_repeated_bindings_projection_law_note: String = "Case 6 — projecti
 
 data parser_transport_scoped_identity_note: String = "Case 7 — single parse in one graph scope. Positive arm preserves the parser-minted reference occurrence; negative arm substitutes an occurrence id unknown within that same transport. OccurrenceId integers are allocator-local and must not be compared across standalone parses."
 
-
 fn obcpw_bound_providers_named(
   transport: OccurrenceTransport,
   inputs: OccurrenceBindingCandidateInputs,
@@ -801,3 +800,5 @@ test fn namespace_reference_derived_closure_parser_integration_holds() -> Bool {
     && parser_missing_declaration_exposure_refuses_holds()
     && parser_missing_authored_order_refuses_holds()
 }
+
+data occurrence_binding_parser_walk_dissolve_on: DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: witness_layer_roots admits src/v1 for parser-transport witnesses without Node ambiguity, or execution corpus carries per-entry source roots — then this recipe deletes and discovery enrollment suffices.")
