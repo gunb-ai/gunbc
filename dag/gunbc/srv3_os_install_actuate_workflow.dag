@@ -94,7 +94,7 @@ fn srv3_os_install_actuate_workflow_credential_intent_is_declared() -> Bool {
 
 fn srv3_os_install_actuator_plan_step_count_matches_workflow_tail() -> Bool {
   match srv3_os_install_actuator_plan_standing {
-    ActuatorPlanReady { plan: p } => p.steps.length() == 3
+    ActuatorPlanReady { plan: p, intents: _ } => p.steps.length() == 3
     ActuatorPlanRefused { cause: _ } => false
   }
 }

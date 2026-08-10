@@ -115,7 +115,7 @@ func srv3_nbd_proxy_serve() -> ProcessExit
 
 fn srv3_os_install_actuator_step_count_is_three() -> Bool {
   match srv3_os_install_actuator_plan_standing {
-    ActuatorPlanReady { plan: p } => os_install_actuator_step_count(plan: p) == 3
+    ActuatorPlanReady { plan: p, intents: _ } => os_install_actuator_step_count(plan: p) == 3
     ActuatorPlanRefused { cause: _ } => false
   }
 }

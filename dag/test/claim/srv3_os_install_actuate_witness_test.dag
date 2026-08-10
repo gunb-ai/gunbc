@@ -7,7 +7,7 @@ test fn srv3_actuator_plan_has_three_steps() -> Bool {
   srv3_os_install_actuator_step_count_is_three()
     && match srv3_os_install_actuator_plan_standing {
       ActuatorPlanRefused { cause: _ } => false
-      ActuatorPlanReady { plan: p } =>
+      ActuatorPlanReady { plan: p, intents: _ } =>
         match p.mechanism {
           NbdProxyVirtualMediaInstall => true
           PxeHttpInstall => false
