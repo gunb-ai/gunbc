@@ -3,7 +3,7 @@ module tools.publication_publisher
 import std.types { Bool, List, NonEmptyStr, String }
 import std.content_hash { serialize_content_hash }
 import extdeps.git.hooks { PrePushStdinRow }
-import gunbc.public_projection { PublicProjectionPlan, PublicationSubject }
+import gunbc.public_projection { PublicProjectionPlan, PublicProjectionSubject }
 import gunbc.publication_admission_delta {
   ChangeLocalAdmissionRequest,
   ChangeLocalAdmissionOutcome,
@@ -115,7 +115,7 @@ fn change_local_admission_detail(outcome: ChangeLocalAdmissionOutcome) -> String
 
 fn receipt_authorizes_newly_public(
   receipts: List<PublicationDecisionReceipt>,
-  subject: PublicationSubject,
+  subject: PublicProjectionSubject,
   policy_version: NonEmptyStr,
   authority: PublicationAuthorityId,
 ) -> Bool {
@@ -131,7 +131,7 @@ fn receipt_authorizes_newly_public(
 
 fn receipt_binds_subject_content(
   receipts: List<PublicationDecisionReceipt>,
-  subject: PublicationSubject,
+  subject: PublicProjectionSubject,
 ) -> Bool {
   fold(receipts, init: false, f: fn(found, receipt) {
     found || publication_decision_binds_content(

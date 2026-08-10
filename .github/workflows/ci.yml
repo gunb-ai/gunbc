@@ -134,6 +134,23 @@ jobs:
           fi
           rm -f "$BUILD_LOG"
         timeout-minutes: 15
+      - name: cargo test -p v1-compiler --release --lib value_hash_materialization grouping_primitive (executes the interpreter controls the compile gate only compiles)
+        run: |
+          set -e
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          # 🟡 dissolve-on: ci_interpreter_parity_controls_run_script — foreign-executor (GitHub Actions run:) shell transport for extdeps.cargo_build cargo.Build.Test(extra_args: ci_interpreter_parity_controls_extra_args); this is the SECOND build-job consumer of the same seam as ci_v1_compiler_tests_compile_gate_script, not an independent transport class, and it dissolves with it WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the build-job steps to orchestration emit over the typed cargo operation. It shares the ci_cargo_eagain_retry_script level-1 retry seam, so it also joins the srvN STEP 2 population ci_v1_compiler_tests_compile_gate_eagain_retry_note tracks for removal
+          set -o pipefail
+          BUILD_LOG=$(mktemp)
+          if ! ("$CARGO_BIN" 'test' '-p' 'v1-compiler' '--release' '--lib' '--' 'value_hash_materialization' 'grouping_primitive' '--test-threads=1') 2>&1 | tee "$BUILD_LOG"; then
+            if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error|(exit status: 254)|sccache: error: failed to execute compile' "$BUILD_LOG"; then
+              echo "::warning::cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)"
+              CARGO_BUILD_JOBS=1 "$CARGO_BIN" 'test' '-p' 'v1-compiler' '--release' '--lib' '--' 'value_hash_materialization' 'grouping_primitive' '--test-threads=1'
+            else
+              exit 1
+            fi
+          fi
+          rm -f "$BUILD_LOG"
+        timeout-minutes: 5
       - name: cargo check all seven stage0 partition crates (compile gate; roster drift backstop)
         run: |
           # 🟡 dissolve-on: ci_stage0_partition_compile_gate_script — foreign-executor (GitHub Actions run:) shell transport for seven partition-crate cargo.Build.Check invocations; DISSOLVES WHEN bash-emit (#5828 / shell→intent Phase 2) binds the build-job step to orchestration emit over the typed cargo operations — same de-fork as ci_v1_compiler_tests_compile_gate_script and ci_fmt_gate_line
@@ -186,6 +203,14 @@ jobs:
           components: rustfmt
           cache: false
           rustflags: ''
+      - name: Derive native-cache root (rustc-version segment; after setup-rust-toolchain)
+        run: |
+          # 🟡 dissolve-on: ci_native_cache_root_script — orch-emitted foreign-executor prelude step deriving GUNBC_NATIVE_CACHE_ROOT from rustc -V after setup-rust-toolchain; leaf rustc/tr/mkdir/echo strings remain until typed toolchain probe lands on host_effect_apply (#5828 / shell→intent Phase 2)
+          if ! GUNBC_TOOLCHAIN_SEG_RAW=$(rustc -V 2>/dev/null); then echo "::error::rustc -V failed after setup-rust-toolchain: cannot derive native-cache toolchain segment"; exit 1; fi
+          GUNBC_TOOLCHAIN_SEG=$(echo "$GUNBC_TOOLCHAIN_SEG_RAW" | tr ' ' '-')
+          if [ -z "$GUNBC_TOOLCHAIN_SEG" ]; then echo "::error::rustc -V produced an empty native-cache toolchain segment after setup-rust-toolchain"; exit 1; fi
+          mkdir -p "$RUNNER_TOOL_CACHE/gunbc-native/$GUNBC_TOOLCHAIN_SEG"
+          echo "GUNBC_NATIVE_CACHE_ROOT=$RUNNER_TOOL_CACHE/gunbc-native/$GUNBC_TOOLCHAIN_SEG" >> "$GITHUB_ENV"
       - name: Download release-bins artifact
         uses: actions/download-artifact@v4
         with:
@@ -276,6 +301,14 @@ jobs:
           components: rustfmt
           cache: false
           rustflags: ''
+      - name: Derive native-cache root (rustc-version segment; after setup-rust-toolchain)
+        run: |
+          # 🟡 dissolve-on: ci_native_cache_root_script — orch-emitted foreign-executor prelude step deriving GUNBC_NATIVE_CACHE_ROOT from rustc -V after setup-rust-toolchain; leaf rustc/tr/mkdir/echo strings remain until typed toolchain probe lands on host_effect_apply (#5828 / shell→intent Phase 2)
+          if ! GUNBC_TOOLCHAIN_SEG_RAW=$(rustc -V 2>/dev/null); then echo "::error::rustc -V failed after setup-rust-toolchain: cannot derive native-cache toolchain segment"; exit 1; fi
+          GUNBC_TOOLCHAIN_SEG=$(echo "$GUNBC_TOOLCHAIN_SEG_RAW" | tr ' ' '-')
+          if [ -z "$GUNBC_TOOLCHAIN_SEG" ]; then echo "::error::rustc -V produced an empty native-cache toolchain segment after setup-rust-toolchain"; exit 1; fi
+          mkdir -p "$RUNNER_TOOL_CACHE/gunbc-native/$GUNBC_TOOLCHAIN_SEG"
+          echo "GUNBC_NATIVE_CACHE_ROOT=$RUNNER_TOOL_CACHE/gunbc-native/$GUNBC_TOOLCHAIN_SEG" >> "$GITHUB_ENV"
       - name: Download release-bins artifact
         uses: actions/download-artifact@v4
         with:
@@ -332,55 +365,6 @@ jobs:
           GUNBC_FLOOR_PHASE_JOURNAL: target/floor-phase-journal.tsv
         if: always()
         timeout-minutes: 5
-  deploy_dashboard_srv1:
-    runs-on: [self-hosted, linux, arm64, srv1]
-    needs: [ci]
-    timeout-minutes: 10
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    concurrency:
-      group: srv1-dashboard-deploy
-      cancel-in-progress: false
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-          ref: ${{ inputs.expected_healed_sha || github.sha }}
-      - name: Refuse a heal revalidation whose run subject or checkout does not name the expected healed SHA
-        run: |
-          EXPECTED_HEALED_SHA="${{ inputs.expected_healed_sha }}"
-          RUN_SUBJECT_HEAD="${{ github.sha }}"
-          if [ -n "$EXPECTED_HEALED_SHA" ]; then
-          ACTUAL_HEAD="$(git rev-parse HEAD)"
-          if ! [ "$RUN_SUBJECT_HEAD" = "$EXPECTED_HEALED_SHA" ]; then
-          echo "::error::heal revalidation refused: workflow run subject $RUN_SUBJECT_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"
-          exit 1
-          fi
-          if ! [ "$ACTUAL_HEAD" = "$EXPECTED_HEALED_SHA" ]; then
-          echo "::error::heal revalidation refused: checkout head $ACTUAL_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"
-          exit 1
-          fi
-          echo "heal revalidation preflight: checkout names expected healed head $EXPECTED_HEALED_SHA"
-          fi
-      - name: Download release-bins artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: release-bins
-        timeout-minutes: 10
-      - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)
-        id: release_bins
-        run: |
-          # 🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          mkdir -p "$ROOT/target/release"
-          tar -xzf "$ROOT/release-bins.tgz" -C "$ROOT/target/release"
-          rm -f "$ROOT/release-bins.tgz"
-          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/regen_floor_skip_witness" "$ROOT/target/release/floor_skip_discovery_witness" "$ROOT/target/release/selection_control_skip_witness" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/regen_stage0" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/resolution_divergence_census" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/frontier_probe_survey" "$ROOT/target/release/namespace_structural_root_exposure_generated_witness"
-        timeout-minutes: 5
-      - name: Deploy dashboard to srv1 (live_deploy_apply_srv1_wet)
-        run: |
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/live_deploy/apply.dag --function live_deploy_apply_srv1_wet
   heal_generated_artifacts:
     runs-on: [self-hosted, linux, arm64]
     needs: [build]
@@ -603,3 +587,181 @@ jobs:
           compression-level: 0
         if: always() && steps.heal_commit_push.outputs.heal_author_commit_required == '1'
         timeout-minutes: 10
+  fleet:
+    runs-on: [self-hosted, linux, arm64, srv1]
+    needs: [ci]
+    timeout-minutes: 70
+    if: "!cancelled() && ((github.ref == 'refs/heads/main' && github.event_name == 'push' && needs.ci.result == 'success') || github.event_name == 'workflow_dispatch')"
+    permissions:
+      contents: write
+      id-token: write
+    concurrency:
+      group: srv1-dashboard-deploy
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.expected_healed_sha || github.sha }}
+      - name: Refuse a heal revalidation whose run subject or checkout does not name the expected healed SHA
+        run: |
+          EXPECTED_HEALED_SHA="${{ inputs.expected_healed_sha }}"
+          RUN_SUBJECT_HEAD="${{ github.sha }}"
+          if [ -n "$EXPECTED_HEALED_SHA" ]; then
+          ACTUAL_HEAD="$(git rev-parse HEAD)"
+          if ! [ "$RUN_SUBJECT_HEAD" = "$EXPECTED_HEALED_SHA" ]; then
+          echo "::error::heal revalidation refused: workflow run subject $RUN_SUBJECT_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"
+          exit 1
+          fi
+          if ! [ "$ACTUAL_HEAD" = "$EXPECTED_HEALED_SHA" ]; then
+          echo "::error::heal revalidation refused: checkout head $ACTUAL_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"
+          exit 1
+          fi
+          echo "heal revalidation preflight: checkout names expected healed head $EXPECTED_HEALED_SHA"
+          fi
+      - name: Download release-bins artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release-bins
+        timeout-minutes: 10
+      - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)
+        id: release_bins
+        run: |
+          # 🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          mkdir -p "$ROOT/target/release"
+          tar -xzf "$ROOT/release-bins.tgz" -C "$ROOT/target/release"
+          rm -f "$ROOT/release-bins.tgz"
+          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/regen_floor_skip_witness" "$ROOT/target/release/floor_skip_discovery_witness" "$ROOT/target/release/selection_control_skip_witness" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/regen_stage0" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/resolution_divergence_census" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/frontier_probe_survey" "$ROOT/target/release/namespace_structural_root_exposure_generated_witness"
+        timeout-minutes: 5
+      - name: WIF auth (OIDC -> fleet-cloud-convergence SA, access token only)
+        id: wif_auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/582015116396/locations/global/workloadIdentityPools/github-actions/providers/github-oidc
+          service_account: fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com
+          token_format: access_token
+          create_credentials_file: false
+        timeout-minutes: 5
+      - name: Materialize fleet key in-run (SM versions/1 pinned -> RUNNER_TEMP 0600 -> ssh-agent -> wipe file)
+        run: |
+          # 🟡 dissolve-on: gunbc_ci_fleet_key_agent_script — concat-built foreign-executor (GitHub Actions run:) shell materializing the fleet automation key from Secret Manager versions/1 into an in-run ssh-agent; DISSOLVES WHEN the typed secret-materialization effect (SecretRef -> in-run agent, SECRET-VERSION-LIFECYCLE-0 machinery) lands on host_effect_apply and the step becomes an emitted typed effect
+          set -euo pipefail
+          umask 077
+          KEY_FILE="$RUNNER_TEMP/fleet-automation-key"
+          AGENT_STARTED=0
+          cleanup() { rm -f "$KEY_FILE"; if [ "$AGENT_STARTED" = 1 ] && [ -n "${SSH_AGENT_PID:-}" ]; then ssh-agent -k >/dev/null 2>&1 || true; fi; }
+          trap cleanup EXIT
+          curl -sSf -H "Authorization: Bearer $WIF_ACCESS_TOKEN" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/fleet-automation-ssh-key/versions/1:access" | python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(sys.stdin)["payload"]["data"]))' > "$KEY_FILE"
+          chmod 600 "$KEY_FILE"
+          EXPECTED_FP="SHA256:mGT7qJsh36VsVb8OPh3m8br3oHedQHxRukRkW5P0CoQ"
+          OBSERVED_FP="$(ssh-keygen -y -f "$KEY_FILE" | ssh-keygen -lf - | awk '{print $2}')"
+          if [ "$OBSERVED_FP" != "$EXPECTED_FP" ]; then echo "ProbeCredentialIdentityMismatch: fetched secret versions/1 fingerprint $OBSERVED_FP != modeled $EXPECTED_FP; contacting NO host" >&2; exit 1; fi
+          eval "$(ssh-agent -s)" >/dev/null
+          AGENT_STARTED=1
+          ssh-add "$KEY_FILE" 2>/dev/null
+          rm -f "$KEY_FILE"
+          trap - EXIT
+          echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
+          echo "SSH_AGENT_PID=$SSH_AGENT_PID" >> "$GITHUB_ENV"
+          echo "fleet-key: agent loaded (identity fleet-automation@gunbc; secret versions/1 pinned; fingerprint verified against modeled authority; key file wiped)"
+        env:
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+        timeout-minutes: 5
+      - name: Deploy dashboard to srv1 (live_deploy_apply_srv1_wet)
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/live_deploy/apply.dag --function live_deploy_apply_srv1_wet
+        if: github.event_name == 'push'
+      - name: Collect fleet converge receipts and fold the fleet verdict (collect_fleet_convergence_wet)
+        run: |
+          # 🟡 dissolve-on: gunbc_ci_collect_fleet_convergence_invoke — concat-built foreign-executor (GitHub Actions run:) shell invoking gunbc run on gunbc.fleet_receipt_collector collect_fleet_convergence_wet plus a cat of the typed collect receipt; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the step to orchestration emit over the typed gunbc.WitnessBin.Run route
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet_receipt_collector.dag --function collect_fleet_convergence_wet
+          cat "$ROOT/target/fleet-converge-collect-receipt.txt"
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        timeout-minutes: 5
+      - name: Advance refs/fleet/desired to the merged revision (CAS, floor-green only)
+        run: |
+          # 🟡 dissolve-on: gunbc_ci_advance_fleet_desired_script — concat-built foreign-executor (GitHub Actions run:) CAS ref advance (git ls-remote + push --force-with-lease onto gunbc.fleet_main_revision fleet_desired_ref_name); DISSOLVES WHEN the SCM ref-update realization lands as the typed git.Core CAS service op (membership-diff spine classify_change SCM-ref arm) invoked via host_effect_apply
+          set -eu
+          DESIRED_REF=refs/fleet/desired
+          CURRENT=$(git ls-remote origin "$DESIRED_REF" | cut -f1)
+          if [ -z "$CURRENT" ]; then
+          git push origin "$GITHUB_SHA:$DESIRED_REF"
+          echo "[fleet-desired] created $DESIRED_REF -> $GITHUB_SHA"
+          else
+          git push --force-with-lease="$DESIRED_REF:$CURRENT" origin "$GITHUB_SHA:$DESIRED_REF"
+          echo "[fleet-desired] advanced $DESIRED_REF: $CURRENT -> $GITHUB_SHA (CAS expected-prior held)"
+          fi
+        if: github.event_name == 'push'
+        timeout-minutes: 5
+      - name: Fleet host-key scan (fleet_host_key_scan_wet; observation only, repairs nothing)
+        run: |
+          # 🟡 dissolve-on: gunbc_ci_fleet_host_key_scan_invoke — concat-built foreign-executor (GitHub Actions run:) shell invoking gunbc run on gunbc.fleet_host_key_enrollment fleet_host_key_scan_wet plus a cat of the typed scan receipt; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the step to orchestration emit over the typed gunbc.WitnessBin.Run route
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet_host_key_enrollment.dag --function fleet_host_key_scan_wet
+          cat "$ROOT/target/fleet-host-key-scan-receipt.txt"
+        if: github.event_name == 'workflow_dispatch'
+        timeout-minutes: 5
+      - name: Fleet host-key enrollment apply (fleet_host_key_enroll_wet; ssh-keygen -F readback)
+        run: |
+          # 🟡 dissolve-on: gunbc_ci_fleet_host_key_enroll_invoke — concat-built foreign-executor (GitHub Actions run:) shell invoking gunbc run on gunbc.fleet_host_key_enrollment fleet_host_key_enroll_wet plus a cat of the typed enroll receipt; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the step to orchestration emit over the typed gunbc.WitnessBin.Run route
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet_host_key_enrollment.dag --function fleet_host_key_enroll_wet
+          cat "$ROOT/target/fleet-host-key-enroll-receipt.txt"
+        if: github.event_name == 'workflow_dispatch'
+        timeout-minutes: 5
+      - name: Live fleet reach probe (probe_fleet_reach_wet; outcomes are data)
+        run: |
+          # 🟡 dissolve-on: gunbc_ci_fleet_reach_probe_invoke — concat-built foreign-executor (GitHub Actions run:) shell invoking gunbc run on gunbc.host_reach_identity_probe probe_fleet_reach_wet plus a cat of the typed receipt file; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the probe step to orchestration emit over the typed gunbc.WitnessBin.Run route
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/host_reach_identity_probe.dag --function probe_fleet_reach_wet
+          cat "$ROOT/target/fleet-reach-probe-receipt.txt"
+        if: github.event_name == 'workflow_dispatch'
+        timeout-minutes: 5
+      - name: Read-only multi-principal fleet-key probe on srv3/srv4 (fleet_multi_principal_probe_wet; hostname + sudo -n -l; no writes)
+        run: |
+          # 🟡 dissolve-on: gunbc_ci_multi_principal_probe_invoke — concat-built foreign-executor (GitHub Actions run:) shell invoking gunbc run on gunbc.fleet_multi_principal_probe fleet_multi_principal_probe_wet plus a cat of the typed receipt; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the step to orchestration emit over the typed gunbc.WitnessBin.Run route
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet_multi_principal_probe.dag --function fleet_multi_principal_probe_wet
+          cat "$ROOT/target/fleet-multi-principal-probe-receipt.txt"
+        if: github.event_name == 'workflow_dispatch'
+        timeout-minutes: 5
+      - name: "Probe-identity observe (read-only: authorized_keys presence + runner GCP credential path)"
+        run: |
+          # 🟡 dissolve-on: gunbc_ci_probe_identity_observe_invoke — concat-built foreign-executor (GitHub Actions run:) shell invoking gunbc run on gunbc.fleet_probe_identity_observe fleet_probe_identity_observe_wet plus a cat of the typed receipt (READ-ONLY observation; no secret payloads); DISSOLVES WHEN bash-emit (#5828) binds the step to orchestration emit over the typed gunbc.WitnessBin.Run route
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet_probe_identity_observe.dag --function fleet_probe_identity_observe_wet
+          cat "$ROOT/target/fleet-probe-identity-observe-receipt.txt"
+        if: github.event_name == 'workflow_dispatch'
+        timeout-minutes: 5
+      - name: Fleet converge timer self-install (fleet_timer_self_install_wet; installs on THIS runner's host)
+        run: |
+          # 🟡 dissolve-on: gunbc_ci_fleet_timer_install_invoke — concat-built foreign-executor (GitHub Actions run:) shell invoking gunbc run on gunbc.fleet_converge_timer_install fleet_timer_self_install_wet; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the step to orchestration emit over the typed gunbc.WitnessBin.Run route
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet_converge_timer_install.dag --function fleet_timer_self_install_wet
+        if: github.event_name == 'workflow_dispatch'
+        timeout-minutes: 5
+      - name: Fleet authorized-key self-enroll (public key, idempotent, runs as the runner account on THIS host)
+        run: |
+          # 🟡 dissolve-on: gunbc_ci_authorized_key_enroll_invoke — concat-built foreign-executor (GitHub Actions run:) shell invoking gunbc run on gunbc.fleet_host_key_enrollment fleet_authorized_key_self_enroll_wet plus a cat of the typed receipt (PUBLIC key only; idempotent exact-line enrollment); DISSOLVES WHEN bash-emit (#5828) binds the step to orchestration emit over the typed gunbc.WitnessBin.Run route
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet_host_key_enrollment.dag --function fleet_authorized_key_self_enroll_wet
+          cat "$ROOT/target/fleet-authorized-key-enroll-receipt.txt"
+        if: github.event_name == 'workflow_dispatch'
+        timeout-minutes: 5
+      - name: Read-only srv1 tasks pre-apply observation (observe_srv1_tasks_preapply_wet)
+        run: |
+          # 🟡 dissolve-on: gunbc_ci_srv1_tasks_observation_invoke — feature:task-count-measure-carrier sibling transport; concat-built foreign-executor (GitHub Actions run:) shell invoking gunbc run on gunbc.srv1_tasks_preapply_observation observe_srv1_tasks_preapply_wet plus a cat of the typed receipt file; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the observation step to orchestration emit over the typed gunbc.WitnessBin.Run route without a medium-as-string concat scaffold
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/srv1_tasks_preapply_observation.dag --function observe_srv1_tasks_preapply_wet
+          cat "$ROOT/target/srv1-tasks-preapply-receipt.txt"
+        if: github.event_name == 'workflow_dispatch'
+        timeout-minutes: 5
+      - name: Kill the in-run ssh-agent (key never outlives the job)
+        run: |
+          if [ -n "${SSH_AGENT_PID:-}" ]; then ssh-agent -k || true; fi
+        if: always()
+        timeout-minutes: 5

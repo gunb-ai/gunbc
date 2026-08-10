@@ -29,6 +29,7 @@ data generated_pub_mod_basenames: List<String> = [
 
 data generated_stage0_filenames: List<String> = [
   "v1_interpreter.rs",
+  "bounded_shell_host_drain.rs",
   "ci_control_plane.rs",
   "cli_run.rs",
   "coproduct_reflection.rs",

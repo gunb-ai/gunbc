@@ -1,0 +1,59 @@
+module gunbc.fleet_main_revision
+
+import std.types { String, NonEmptyStr, Bool }
+import extdeps.git.object_store { GitObjectId }
+
+// fleet-main-revision-authority (arc item 3, operator directive 2026-08-08): the fleet's
+// desired revision derives from MERGED, FLOOR-GREEN main — never from a CLI argument, a
+// session's checkout, or raw HEAD. Hosts follow ONE admitted ref; "submitted" means
+// "survived the floor", not "was pushed". Git-ref polling over service polling is the
+// anti-entropy property being bought: a host that cannot reach the control plane keeps
+// converging toward last-known-good, and a returning host converges from the admitted
+// ref without a new commit or a human step.
+data fleet_desired_ref_name: String = "refs/fleet/desired"
+
+// What a host (or the fold) knows about the admitted desired revision after observing
+// the ref. Unobserved is a typed state with a cause — a host that cannot read the ref
+// holds last-known-good and says so; it never fabricates a target and never treats
+// "could not read" as "nothing desired" (the empty-observation narrow).
+type FleetDesiredRevision
+  = FleetDesiredAdmitted { revision: GitObjectId }
+  | FleetDesiredUnobserved { cause: String }
+
+fn fleet_desired_revision_target(d: FleetDesiredRevision) -> GitObjectId? {
+  match d {
+    FleetDesiredAdmitted { revision: r } => Present { value: r }
+    FleetDesiredUnobserved { cause: _ } => none
+  }
+}
+
+// The admission gate: the ref advances ONLY when the candidate revision's floor is
+// green. The advance is a compare-and-swap naming the expected prior (git update-ref
+// <ref> <new> <old> — the MemberChanged `from` side, per the reconcile spine's CAS
+// ruling), so a concurrent admission refuses instead of silently overwriting. A prior
+// of none is the first admission (ref creation).
+type FleetDesiredAdvance
+  = AdvanceAdmitted { from: GitObjectId?, to: GitObjectId }
+  | AdvanceRefused { cause: String }
+
+fn admit_fleet_desired_advance(
+  candidate: GitObjectId,
+  floor_green: Bool,
+  current: GitObjectId?,
+) -> FleetDesiredAdvance {
+  if floor_green {
+    AdvanceAdmitted { from: current, to: candidate }
+  } else {
+    AdvanceRefused {
+      cause: "fleet_main_revision: candidate revision's floor is not green; the desired ref never advances onto an unproven revision (raw-HEAD simultaneous fleet-bricking is the prevented class)",
+    }
+  }
+}
+
+// Converge target derivation — the seam that retires the CLI argument as the source of
+// desired state. The converge circuit asks THIS function what revision it is converging
+// toward; an unobserved ref yields none and the caller refuses (typed, located), it
+// does not fall back to "whatever tree I was invoked from".
+fn converge_target_revision(observed: FleetDesiredRevision) -> GitObjectId? {
+  fleet_desired_revision_target(d: observed)
+}

@@ -45,7 +45,7 @@ import gunbc.worker_lifecycle {
   WorkerProcessExited,
 }
 import gunbc.roadmap_publish {
-  PublicationSubject,
+  RoadmapPublicationSubject,
   PublicationSubjectObserved,
   PublicationReceiptSource,
   ReceiptSourceAbsent,
@@ -330,7 +330,7 @@ fn fixture_evidence(
     verification_selection: selection,
     verification_source: source,
     publication_subject: PublicationSubjectObserved {
-      subject: PublicationSubject {
+      subject: RoadmapPublicationSubject {
         node_id: "recut-a",
         attempt_key: "feedfacefeedface",
         repository: Repository {

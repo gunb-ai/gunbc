@@ -74,13 +74,13 @@ type NetworkStats {
   tx_dropped: Nat
 }
 
-type NetworkInterface {
+type DockerContainerNetworkInterfaceStats {
   name: String
   stats: NetworkStats
 }
 
 type Networks {
-  interfaces: List<NetworkInterface>
+  interfaces: List<DockerContainerNetworkInterfaceStats>
 }
 
 service docker.ContainerStats {
