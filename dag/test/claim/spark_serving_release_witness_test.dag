@@ -1,6 +1,7 @@
 module test.claim.spark_serving_release_witness_test
 
 import std.types { String, Bool, List, Int, NonEmptyStr }
+import std.measure { byte_size }
 import gunbc.spark_serving_release {
   SparkServingReleaseIdentity, SparkServingOccurrence, SecretVersionRef,
   SparkServingRelease, RuntimeArtifactIdentity, ModelArtifactIdentity,
@@ -14,15 +15,15 @@ import gunbc.spark_serving_release {
 }
 
 fn release_base() -> SparkServingRelease {
-  SparkServingRelease { runtime: RuntimeArtifactIdentity { closure_digest: "closure-1" }, model: ModelArtifactIdentity { repository: "Qwen/Qwen2.5-7B-Instruct", revision: "a09a35458c702b33eeacc393d103063234e8bc28" }, serving_configuration: ServingConfigurationIdentity { configuration_digest: "cfg-1" }, capacity: InferenceCapacityPolicy { max_model_len: 4096, shared_memory_budget_bytes: 127600816 } }
+  SparkServingRelease { runtime: RuntimeArtifactIdentity { closure_digest: "closure-1" }, model: ModelArtifactIdentity { repository: "Qwen/Qwen2.5-7B-Instruct", revision: "a09a35458c702b33eeacc393d103063234e8bc28" }, serving_configuration: ServingConfigurationIdentity { configuration_digest: "cfg-1" }, capacity: InferenceCapacityPolicy { max_model_len: 4096, shared_memory_budget_bytes: byte_size(127600816) } }
 }
 
 fn release_other_revision() -> SparkServingRelease {
-  SparkServingRelease { runtime: RuntimeArtifactIdentity { closure_digest: "closure-1" }, model: ModelArtifactIdentity { repository: "Qwen/Qwen2.5-7B-Instruct", revision: "0000000000000000000000000000000000000000" }, serving_configuration: ServingConfigurationIdentity { configuration_digest: "cfg-1" }, capacity: InferenceCapacityPolicy { max_model_len: 4096, shared_memory_budget_bytes: 127600816 } }
+  SparkServingRelease { runtime: RuntimeArtifactIdentity { closure_digest: "closure-1" }, model: ModelArtifactIdentity { repository: "Qwen/Qwen2.5-7B-Instruct", revision: "0000000000000000000000000000000000000000" }, serving_configuration: ServingConfigurationIdentity { configuration_digest: "cfg-1" }, capacity: InferenceCapacityPolicy { max_model_len: 4096, shared_memory_budget_bytes: byte_size(127600816) } }
 }
 
 fn release_other_capacity() -> SparkServingRelease {
-  SparkServingRelease { runtime: RuntimeArtifactIdentity { closure_digest: "closure-1" }, model: ModelArtifactIdentity { repository: "Qwen/Qwen2.5-7B-Instruct", revision: "a09a35458c702b33eeacc393d103063234e8bc28" }, serving_configuration: ServingConfigurationIdentity { configuration_digest: "cfg-1" }, capacity: InferenceCapacityPolicy { max_model_len: 8192, shared_memory_budget_bytes: 127600816 } }
+  SparkServingRelease { runtime: RuntimeArtifactIdentity { closure_digest: "closure-1" }, model: ModelArtifactIdentity { repository: "Qwen/Qwen2.5-7B-Instruct", revision: "a09a35458c702b33eeacc393d103063234e8bc28" }, serving_configuration: ServingConfigurationIdentity { configuration_digest: "cfg-1" }, capacity: InferenceCapacityPolicy { max_model_len: 8192, shared_memory_budget_bytes: byte_size(127600816) } }
 }
 
 // CONTROL 5: the identity is a FUNCTION OF THE RELEASE, both directions. An independently

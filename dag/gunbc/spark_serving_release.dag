@@ -4,6 +4,8 @@ import std.types { String, Bool, List, Int, NonEmptyStr }
 import product.placement_supply { HostIdentity }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import v2.std.algebra { fold_list }
+import std.nat { Nat }
+import std.measure { ByteSize, byte_size_count }
 
 // THE SPARK SERVING RELEASE — one content-addressed identity over everything that must be
 // identical on both replicas.
@@ -42,7 +44,13 @@ type SecretVersionRef { secret: NonEmptyStr  version: NonEmptyStr }
 // Unified memory is SHARED between CPU and GPU on GB10, which is why the accelerator reports no
 // separate device total. Admission is against the shared pool; budgeting as though a private
 // device pool existed is how a model that cannot fit gets admitted.
-type InferenceCapacityPolicy { max_model_len: Int  shared_memory_budget_bytes: Int }
+// Both magnitudes were Int, so a NEGATIVE context length and a NEGATIVE memory budget were
+// representable -- states with no meaning that a validator would have to reject after the fact.
+// max_model_len is a cardinal token count (Nat) and the budget is a ByteSize on the std.measure
+// authority, so neither can be written. Memory is not a bare number: it carries its quantity, and
+// reusing the measure carrier is what lets this budget be compared against the host RAM figures
+// the fleet already models rather than against a same-shaped Int that happens to mean bytes.
+type InferenceCapacityPolicy { max_model_len: Nat  shared_memory_budget_bytes: ByteSize }
 
 type SparkServingRelease {
   runtime: RuntimeArtifactIdentity
@@ -68,7 +76,7 @@ type SparkServingReleaseIdentity { digest: Fnv1a64Structural }
 // therefore a different digest -- which is what makes the identity a function of the release
 // rather than a label beside it.
 fn spark_serving_release_seed(spec: SparkServingRelease) -> NonEmptyStr {
-  "spark-serving-release|runtime={spec.runtime.closure_digest}|repo={spec.model.repository}|rev={spec.model.revision}|config={spec.serving_configuration.configuration_digest}|max_len={spec.capacity.max_model_len}|mem={spec.capacity.shared_memory_budget_bytes}" as NonEmptyStr
+  "spark-serving-release|runtime={spec.runtime.closure_digest}|repo={spec.model.repository}|rev={spec.model.revision}|config={spec.serving_configuration.configuration_digest}|max_len={spec.capacity.max_model_len}|mem={byte_size_count(b: spec.capacity.shared_memory_budget_bytes)}" as NonEmptyStr
 }
 
 fn spark_serving_release_identity(spec: SparkServingRelease) -> SparkServingReleaseIdentity {
