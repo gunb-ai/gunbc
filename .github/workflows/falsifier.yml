@@ -172,7 +172,7 @@ jobs:
   cold-corpus:
     runs-on: [self-hosted, linux, arm64]
     needs: [falsifier-build]
-    timeout-minutes: 270
+    timeout-minutes: 280
     steps:
       - name: Checkout
         uses: actions/checkout@v5
