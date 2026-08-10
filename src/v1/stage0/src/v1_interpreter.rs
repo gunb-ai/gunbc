@@ -1991,6 +1991,52 @@ pub fn eval_data_item_value(ctx: &InterpContext, item_name: &str) -> InterpResul
     Ok(Some(eval_expr(body, &Env::empty(), ctx)?))
 }
 
+// STACK-SEGMENT PROBE (stopped-line audit only, forensics-gated).
+//
+// Every dag-fn call and every closure application passes through
+// `stacker::maybe_grow(256 KiB, 8 MiB, ..)`. When the remaining stack is below the red zone
+// that call ALLOCATES an 8 MiB segment, and a workload sitting chronically near the boundary
+// would pay that on every step -- a cost that is invisible in per-fn attribution because it is
+// charged to whatever frame happens to be running. This counts the probes and how many of them
+// were under the red zone, so "the fold spends milliseconds per item somewhere the profiler
+// cannot name" becomes a decidable question rather than a hypothesis.
+static STACK_PROBES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static STACK_PROBES_UNDER_RED_ZONE: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
+const STACK_RED_ZONE: usize = 256 * 1024;
+
+static NODE_EVALS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Forensics-gated node-evaluation counter. It answers the one question the per-fn attribution
+/// cannot: whether an unexplained phase cost is MANY node evaluations or a few expensive ones.
+fn record_node_eval() {
+    if residual_hunt_forensics_enabled() {
+        NODE_EVALS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+pub fn node_eval_snapshot() -> u64 {
+    NODE_EVALS.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+fn record_stack_probe() {
+    if !residual_hunt_forensics_enabled() {
+        return;
+    }
+    STACK_PROBES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    if stacker::remaining_stack().is_some_and(|r| r < STACK_RED_ZONE) {
+        STACK_PROBES_UNDER_RED_ZONE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+pub fn stack_probe_snapshot() -> (u64, u64) {
+    (
+        STACK_PROBES.load(std::sync::atomic::Ordering::Relaxed),
+        STACK_PROBES_UNDER_RED_ZONE.load(std::sync::atomic::Ordering::Relaxed),
+    )
+}
+
 thread_local! {
     static CALL_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
 }
@@ -2039,7 +2085,8 @@ fn call_function_guarded(
     }
     // Grow the host stack in slices so DEEP-but-bounded chains below the limit
     // never abort the process between guard checks.
-    stacker::maybe_grow(256 * 1024, 8 * 1024 * 1024, || {
+    record_stack_probe();
+    stacker::maybe_grow(STACK_RED_ZONE, 8 * 1024 * 1024, || {
         call_function_dispatch(ctx, fn_node, args, env)
     })
 }
@@ -2340,6 +2387,7 @@ pub fn thread_cpu_nanos() -> u128 {
 }
 
 fn eval_expr(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
+    record_node_eval();
     if let Some((cpu_baseline_nanos, budget_ms)) = ctx.eval_deadline.get() {
         let stride = ctx.eval_deadline_stride.get().wrapping_add(1);
         ctx.eval_deadline_stride.set(stride);
@@ -12107,7 +12155,8 @@ fn apply_closure(
             ),
         });
     }
-    let result = stacker::maybe_grow(256 * 1024, 8 * 1024 * 1024, || {
+    record_stack_probe();
+    let result = stacker::maybe_grow(STACK_RED_ZONE, 8 * 1024 * 1024, || {
         apply_closure_inner(closure, args, env, ctx)
     });
     CALL_DEPTH.with(|d| d.set(d.get() - 1));

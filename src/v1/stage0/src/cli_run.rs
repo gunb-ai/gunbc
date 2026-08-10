@@ -8290,6 +8290,7 @@ pub fn build_live_read_selection_manifest(
     if std::env::var("GUNBC_FLATTEN_SITE_DUMP_SECS").is_ok() {
         dump_residual_hunt_instrumentation();
     }
+    dump_live_read_eval_profile();
 
     let at = std::time::Instant::now();
     // THE WHOLE DECODE runs inside the active context, not just its first step.
@@ -16966,6 +16967,39 @@ pub fn handle_run(
 /// (env `GUNBC_FLATTEN_SITE_DUMP_SECS`) and once, deterministically, right
 /// after a `dag run` entry returns -- the periodic dump alone races the
 /// process's natural completion and under-reports on fast runs.
+/// Per-expression-variant self time for the producer's evaluation, using the interpreter's
+/// existing `GUNBC_INTERP_PROFILE` instrument rather than a second one. Reports; never decides.
+/// It exists because the node-eval counter priced ONE evaluation at roughly 39 microseconds on
+/// this phase -- a per-node cost, not a node-count problem -- and the variant is the next thing
+/// that needs a name rather than a hypothesis.
+fn dump_live_read_eval_profile() {
+    use v1_interpreter::{eval_profile_snapshot, expr_variant_name, EXPR_VARIANT_COUNT};
+    let prof = eval_profile_snapshot();
+    let total_count: u64 = prof.counts.iter().sum();
+    if total_count == 0 {
+        return;
+    }
+    let total_ns: u128 = prof.self_nanos.iter().sum();
+    let mut rows: Vec<usize> = (0..EXPR_VARIANT_COUNT)
+        .filter(|&i| prof.counts[i] > 0)
+        .collect();
+    rows.sort_by(|&a, &b| prof.self_nanos[b].cmp(&prof.self_nanos[a]));
+    eprintln!(
+        "[live-read-eval-profile] {} node-evals, {:.0}ms self-time total",
+        total_count,
+        total_ns as f64 / 1.0e6
+    );
+    for i in rows.into_iter().take(12) {
+        eprintln!(
+            "  {:<20} {:>10} evals  {:>9.0}ms self  {:>9.0}ns/eval",
+            expr_variant_name(i),
+            prof.counts[i],
+            prof.self_nanos[i] as f64 / 1.0e6,
+            prof.self_nanos[i] as f64 / prof.counts[i].max(1) as f64
+        );
+    }
+}
+
 fn dump_residual_hunt_instrumentation() {
     let mut sites = v1_interpreter::flatten_by_site_snapshot();
     sites.sort_by(|a, b| b.3.cmp(&a.3));
@@ -17002,6 +17036,15 @@ fn dump_residual_hunt_instrumentation() {
     for (name, calls, nanos) in self_times.iter().take(20) {
         eprintln!("  {}  calls={}  self_ms={}", name, calls, nanos / 1_000_000);
     }
+    eprintln!(
+        "--- node evaluations: {} (eval_expr entries; with the phase wall this prices ONE node eval) ---",
+        v1_interpreter::node_eval_snapshot()
+    );
+    let (stack_probes, stack_under_red_zone) = v1_interpreter::stack_probe_snapshot();
+    eprintln!(
+        "--- stack segment probe: probes={} under_red_zone={} (each under-red-zone probe allocates an 8 MiB segment; a high ratio names a per-call cost no per-fn attribution can see) ---",
+        stack_probes, stack_under_red_zone
+    );
     let (memo_lookups, memo_hits, memo_distinct) = v1_interpreter::parse_memo_global_snapshot();
     eprintln!(
         "--- parse memo effectiveness discriminator: lookups={} hits={} distinct_keys={} (lookups>>distinct & hits==0 => memo never serves a re-attempted span) ---",
