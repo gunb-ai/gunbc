@@ -68,6 +68,7 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
         "extdeps_units_dimensionless",
         "extdeps_units_iec_80000_13",
         "extdeps_units_iso8601",
+        "extdeps_units_iso_80000_3",
         "std_occurrence_identity",
         "std_source_annotation",
         "v1_std_core"

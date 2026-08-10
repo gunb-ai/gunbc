@@ -113,6 +113,9 @@ pub mod extdeps_units_dimensionless;
 #[rustfmt::skip]
 #[path = "../../stage0/src/extdeps_units_iec_80000_13.rs"]
 pub mod extdeps_units_iec_80000_13;
+
+#[path = "../../stage0/src/extdeps_units_iso_80000_3.rs"]
+pub mod extdeps_units_iso_80000_3;
 #[rustfmt::skip]
 #[path = "../../stage0/src/extdeps_units_iso8601.rs"]
 pub mod extdeps_units_iso8601;

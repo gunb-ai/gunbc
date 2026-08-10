@@ -221,6 +221,7 @@ fn stage0_std_core_modules() -> List<String> {
       "extdeps_units_dimensionless",
       "extdeps_units_iec_80000_13",
       "extdeps_units_iso8601",
+      "extdeps_units_iso_80000_3",
       "std_occurrence_identity",
       "std_source_annotation",
       "v1_std_core"
@@ -370,6 +371,7 @@ fn stage0_cross_unit_import_edges() -> List<ModuleDagEdge> {
     stage0_module_dag_edge(from: "std_measure", to: "extdeps_units_dimensionless"),
     stage0_module_dag_edge(from: "std_measure", to: "extdeps_units_iec_80000_13"),
     stage0_module_dag_edge(from: "std_measure", to: "extdeps_units_iso8601"),
+    stage0_module_dag_edge(from: "std_measure", to: "extdeps_units_iso_80000_3"),
     stage0_module_dag_edge(from: "std_effects", to: "std_types"),
     stage0_module_dag_edge(from: "std_execution_mode", to: "std_types"),
     stage0_module_dag_edge(from: "std_interface_summary", to: "std_decl_ref"),
