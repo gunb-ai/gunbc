@@ -39,3 +39,34 @@ Fleet/corpus runs must dispatch against an **immutable tag** on the merge SHA (`
 - `discovery` — full discovery scan with Applied selection (corpus-scale; use pinned tag on fleet).
 
 Populated `.log` files from executed paired runs land in `docs/plans/receipts/p3-classification-cost-ab/`.
+
+## Verdict shape (ClassificationCostStanding)
+
+Five-valued only — never collapse to a Boolean “faster”:
+
+`Improved | Regressed{delta} | WithinExistingEnvelope{observed} | ExceededExistingEnvelope | EvidenceIncomplete`
+
+`Regressed` and `WithinExistingEnvelope` can hold **simultaneously** (the likeliest outcome); that combination is mergeable but licenses no CI-cost claim.
+
+## Per-group comparison (composition control)
+
+Comparing average per-group cost between two floor runs is confounded by **group mix**, not just host variance. Example from held #8055 work: one diff’s affected set ran 441 entry groups; a std-touching diff ran 1050 — different long-tail composition makes naive averages incomparable.
+
+**Method (witty-raven-412):** compare per-group cost on the **intersection** of group identifiers present in **both** runs. Same subjects by construction; no extra run required (~70 min contended floor each).
+
+The `incident` probe subject (two-entry roster) is the discriminating same-subject harness; corpus-scale `discovery` runs need intersection analysis when group counts differ.
+
+## Calibration (2026-08-10, valiant-ant-57)
+
+- **Host variance on identical work:** ~1.12× (not ≥1.76× — that was a mid-batch snapshot, retracted). Five of six falsifier lanes reproduce within ±3% across two runs on different days.
+- **±3% is measured for falsifier lanes only.** Whether floor discovery groups reproduce that tightly is **unmeasured** — treat as inference if used.
+
+## Fleet log retrieval trap
+
+`gh run view --job <id> --log` **truncates the tail** of long steps (where typed refusals are written). Use:
+
+```bash
+gh api repos/gunb-ai/gunbc/actions/jobs/<id>/logs --allow-escape-sequences
+```
+
+Without `--allow-escape-sequences` the API writes 0 bytes. Do not compare completeness by byte size (CLI prefixes every line) or by `Complete job` surviving truncation — compare line counts or grep the terminal diagnostic by name.
