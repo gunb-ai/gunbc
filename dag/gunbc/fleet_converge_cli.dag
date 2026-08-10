@@ -388,6 +388,22 @@ fn converge_cli_publish(out: ConvergeCliOutput, resolved: String, revision_line:
 // representation the collector inherited. Drifted names both sides (desired AND local):
 // tree-sync is the catch-up realization, its safe form a compare-and-swap needing the prior.
 // The repo path is the ONE host_layout convention row.
+// DECLARED IMPRECISION, next-rung item (review, 2026-08-10). RevisionUnobserved maps to
+// Absent, but converge_verdict (host_converge) already mints Absent for "subject not present
+// on the host". So the isolated verdict=absent TOKEN conflates two states with OPPOSITE
+// remedies — install/converge the subject, vs fix the desired-ref observation (the srv1 b1
+// git-credential defect — different lane). This is the sentinel review 50817 warned about on
+// parse_converge_verdict_label, one level down in the value rather than the decode. It is
+// fail-closed, not fail-open (both fold not-converged, so acceptance correctly fails and the
+// collector is never misled), and the receipt as a WHOLE disambiguates: the self path always
+// emits the converge-revision evidence line beside this one, so verdict=absent + "unobserved
+// cause=" is the revision case and verdict=absent + "observed=<hex>" is the subject-absent
+// case. Only the isolated line-1 token is ambiguous, and only to a human remedy-router who
+// ignores line 2. A precise fix is a distinct Unobserved verdict, DEFERRED with the same
+// reasoning as the GitObjectId-in-VerdictConverged trigger below: it widens the shared
+// ConvergeVerdict enum that knob-only convergence uses and would never emit. That the enum
+// cannot carry this without burdening an unrelated consumer is itself the dual-representation
+// smell one rung up (the enum doing two jobs) — named here, not fixed here.
 fn converge_cli_revision_verdict(standing: FleetRevisionStanding) -> ConvergeVerdict {
   match standing {
     RevisionConverged { revision: _ } => VerdictConverged
