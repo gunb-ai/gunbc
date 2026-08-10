@@ -1,325 +1,23 @@
 module v1.tests.claim.parser_declaration_requirements_expected_red_test
 
-import std.types { Bool, String, List, Int, NonEmptyStr }
-import std.occurrence_identity {
-  OccurrenceId,
-  OccurrenceTransport,
-  OccurrenceIndexEntry,
-  DeclarationOccurrence,
-  OccurrenceCategory,
-  LexicalValueOccurrence,
-  TypeOccurrence,
-  CallableOccurrence,
-  ConstructorOccurrence,
-  NamespaceSegmentOccurrence,
-  FieldOccurrence,
-  MethodOccurrence,
+import std.types { Bool }
+import std.occurrence_identity { DeclarationOccurrence }
+import v1.tests.claim.parser_declaration_matrix_support {
+  pdc_row,
+  pdc_identity_row,
+  pdc_parse_matrix,
+  pdc_index_entry_for_declaration,
+  PdcTransportReady,
+  PdcTransportRefused,
 }
-import v1.gunbc.occurrence_binding_parser_walk {
-  ParsedOccurrenceBindingSourceRefused,
-  ParsedOccurrenceBindingSourceReady,
-  parse_authored_occurrence_binding_source,
-}
-
-// WHY THIS WITNESS EXISTS, and what it is NOT.
-//
-// The import-deletion lane's keystone needs a cross-file reference to bind to a declaration in
-// another file WITHOUT an import declaration naming that file. Before any of that can be built,
-// one prior question has to be answered by execution rather than by reading a match arm: for each
-// authored declaration FORM the .dag grammar admits, does the parser mint a declaration occurrence
-// at all, and in which OccurrenceCategory?
-//
-// That question is the DENOMINATOR. A binding walk that only ever sees the forms the parser
-// happens to mint will report a healthy population while the forms it never mints are invisible —
-// and invisible is indistinguishable from bound. So this witness pins the whole matrix INCLUDING
-// its zeroes: a form that mints nothing is asserted to mint nothing, by name, so that minting it
-// later is a visible change to this file rather than a silent widening.
-//
-// It asserts ONLY what the parser produces. It makes no claim about resolution, exposure,
-// candidate binding, provider files, or clause-(e) participation; those are separate seams with
-// their own witnesses.
-data pdr_matrix_witness_note: String = "Parser declaration-category denominator. Pins, per authored declaration form, the OccurrenceCategory population the v1 parser mints — including the forms that mint nothing. Observation-only: no resolution, exposure, or binding claim. The zero rows are the load-bearing half; minting a category later must edit this file."
-
-data pdr_offline_recipe: String = "OFFLINE LOCAL RECIPE (requires v1 parser pool): target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/parser_declaration_category_matrix_witness_test.dag --functions witness_matrix_fixture_parses,witness_function_declaration_mints_callable,witness_second_function_declaration_mints_callable,witness_function_parameter_binds,witness_match_scrutinee_parameter_binds,witness_let_binder_binds,witness_pattern_binder_binds,witness_product_type_declaration_is_declared,witness_coproduct_type_declaration_is_declared,witness_nullary_constructor_is_declared,witness_payload_constructor_is_declared,witness_product_field_is_declared,witness_coproduct_payload_field_is_declared_at_its_declaration_site,witness_pattern_field_position_is_not_a_declaration"
-
-data pdr_dissolve_on: String = "DISSOLVE-ON: witness_layer_roots admits src/v1 for parser-transport witnesses, or the execution corpus carries per-entry source roots — then this recipe deletes and discovery enrollment suffices."
-
-// One module carrying every declaration form the matrix ranges over, each with a distinct authored
-// name so a per-name join is exact. Named `pdr_*` throughout: an authored name that collided with a
-// real corpus declaration would make the join ambiguous against a homonym rather than wrong-looking.
-fn pdr_matrix_source() -> String {
-  "module app.pdr_matrix\n" +
-    "\n" +
-    "type PdcProduct {\n" +
-    "  pdr_product_field: Int\n" +
-    "}\n" +
-    "\n" +
-    "type PdcSum = PdcNullary | PdcPayload { pdr_payload_field: Int }\n" +
-    "\n" +
-    "data pdr_annotated_datum: Int = 7\n" +
-    "\n" +
-    "fn pdr_function(pdr_parameter: Int) -> Int {\n" +
-    "  let pdr_let_binder = pdr_parameter\n" +
-    "  pdr_let_binder\n" +
-    "}\n" +
-    "\n" +
-    "fn pdr_matcher(pdr_scrutinee: PdcSum) -> Int {\n" +
-    "  match pdr_scrutinee {\n" +
-    "    PdcNullary => {\n" +
-    "      0\n" +
-    "    }\n" +
-    "    PdcPayload { pdr_payload_field: pdr_pattern_binder } => {\n" +
-    "      pdr_pattern_binder\n" +
-    "    }\n" +
-    "  }\n" +
-    "}\n"
-}
-
-type PdrTransport
-  = PdrTransportReady { transport: OccurrenceTransport }
-  | PdrTransportRefused
-
-fn pdr_parse_matrix() -> PdrTransport {
-  match parse_authored_occurrence_binding_source(
-    file: "app/pdr_matrix.dag",
-    source: pdr_matrix_source(),
-  ) {
-    ParsedOccurrenceBindingSourceRefused => PdrTransportRefused
-    ParsedOccurrenceBindingSourceReady { transport: transport, module_path: _ } =>
-      PdrTransportReady { transport: transport }
-  }
-}
-
-// A total projection of the closed OccurrenceCategory coproduct onto a comparable tag. It is a
-// projection rather than a Bool predicate per category so that an assertion names the category the
-// parser ACTUALLY minted when it disagrees, instead of reporting only that some expectation failed.
-fn pdr_category_tag(category: OccurrenceCategory) -> String {
-  match category {
-    LexicalValueOccurrence => "LexicalValueOccurrence"
-    TypeOccurrence => "TypeOccurrence"
-    CallableOccurrence => "CallableOccurrence"
-    ConstructorOccurrence => "ConstructorOccurrence"
-    NamespaceSegmentOccurrence => "NamespaceSegmentOccurrence"
-    FieldOccurrence => "FieldOccurrence"
-    MethodOccurrence => "MethodOccurrence"
-  }
-}
-
-fn pdr_index_entry_for_declaration(
-  transport: OccurrenceTransport,
-  declaration: DeclarationOccurrence
-) -> OccurrenceIndexEntry? {
-  fold(
-    transport.index.entries,
-    init: none,
-    f: (found, entry) =>
-      match found {
-        Present { value: _ } => found
-        Absent =>
-          match entry.projection.occurrence.value == declaration.occurrence.value {
-            true => Present { value: entry }
-            false => Absent
-          }
-      },
-  )
-}
-
-// Every category tag the parser minted for declarations carrying this authored name, in transport
-// order. A name the parser never declared yields the empty list — which is the assertion the zero
-// rows below make, and the reason this returns a population rather than an Optional.
-fn pdr_declared_tags_for_name(
-  transport: OccurrenceTransport,
-  name: String
-) -> List<String> {
-  fold(
-    transport.declarations,
-    init: [],
-    f: (acc, declaration) =>
-      match pdr_index_entry_for_declaration(transport: transport, declaration: declaration) {
-        Absent => acc
-        Present { value: entry } =>
-          match entry.projection.authored_name == name {
-            true => concat(acc, [pdr_category_tag(category: declaration.category)])
-            false => acc
-          }
-      },
-  )
-}
-
-// The minted population rendered as one ordered, delimited string. Comparing the rendering rather
-// than walking two lists in parallel keeps ORDER and MULTIPLICITY in the comparison: a name minted
-// twice, or minted in the other order, is a different string. The leading delimiter is what makes
-// that true at the edges — without it "A" would be a prefix-collision hazard against "AB".
-fn pdr_render_tags(tags: List<String>) -> String {
-  fold(tags, init: "", f: (acc, tag) => acc + "|" + tag)
-}
-
-// EXACT OCCURRENCE IDENTITY, because an authored name is not one.
-//
-// `pdr_payload_field` is authored TWICE in the fixture — once as the coproduct's payload field, once
-// as the field position of the destructuring pattern — and that collision is deliberately kept
-// rather than renamed away, because it is what the real language does. A name-keyed assertion
-// cannot say WHICH of the two it matched: a single-tag expectation passes whether the parser minted
-// the declaration-side field or the pattern-side one, so the row silently reports the wrong subject
-// half the time. The parser repair is about exact occurrences and its witness must not collapse
-// them back into a name census.
-//
-// So every row below is keyed on the tuple the occurrence actually carries: authored name, category,
-// byte span, and containment depth plus the authored name of the immediately containing occurrence.
-// Multiplicity is carried by rendering the whole matching POPULATION rather than a first match.
-
-// The containment path rendered as the chain of authored ancestor names, root first.
-//
-// A chain rather than a depth integer, because "containment path" is what the occurrence carries and
-// the chain is what discriminates: it separates the coproduct's own payload field (…>PdcSum>PdcPayload)
-// from the pattern's field position (…>pdr_matcher>…), and it is what commit C's control means when
-// it requires a variant's containment to NAME its owning type. A depth number cannot state either.
-// An ancestor whose node has no authored name renders as "<anon>" rather than being skipped, so an
-// anonymous link in the chain is visible instead of silently shortening it.
-fn pdr_containment_chain(
-  transport: OccurrenceTransport,
-  declaration: DeclarationOccurrence
-) -> String {
-  fold(
-    declaration.containment.ancestors,
-    init: "",
-    f: (chain, ancestor) =>
-      chain + ">" + pdr_named_or_anon(
-        transport: transport,
-        occurrence_value: ancestor.value,
-      ),
-  )
-}
-
-fn pdr_named_or_anon(transport: OccurrenceTransport, occurrence_value: Int) -> String {
-  let found = pdr_name_for_occurrence(transport: transport, occurrence_value: occurrence_value)
-  match found == "" {
-    true => "<anon>"
-    false => found
-  }
-}
-
-fn pdr_name_for_occurrence(transport: OccurrenceTransport, occurrence_value: Int) -> String {
-  fold(
-    transport.index.entries,
-    init: "<unknown>",
-    f: (found, entry) =>
-      match found == "<unknown>" {
-        false => found
-        true =>
-          match entry.projection.occurrence.value == occurrence_value {
-            true => entry.projection.authored_name
-            false => found
-          }
-      },
-  )
-}
-
-fn pdr_render_occurrence(
-  transport: OccurrenceTransport,
-  declaration: DeclarationOccurrence,
-  entry: OccurrenceIndexEntry
-) -> String {
-  entry.projection.authored_name +
-    "#" + pdr_category_tag(category: declaration.category) +
-    "#span:" + to_string(entry.projection.diagnostic_span.start) +
-    "-" + to_string(entry.projection.diagnostic_span.end) +
-    "#path:" + pdr_containment_chain(transport: transport, declaration: declaration)
-}
-
-// Every declaration carrying this authored name, rendered at full identity, in transport order.
-// A name minted twice yields two rows, so multiplicity is asserted rather than assumed.
-fn pdr_identity_rows_for_name(
-  transport: OccurrenceTransport,
-  name: String
-) -> List<String> {
-  fold(
-    transport.declarations,
-    init: [],
-    f: (acc, declaration) =>
-      match pdr_index_entry_for_declaration(transport: transport, declaration: declaration) {
-        Absent => acc
-        Present { value: entry } =>
-          match entry.projection.authored_name == name {
-            true =>
-              concat(acc, [pdr_render_occurrence(
-                transport: transport,
-                declaration: declaration,
-                entry: entry,
-              )])
-            false => acc
-          }
-      },
-  )
-}
-
-fn pdr_identity_population(transport: OccurrenceTransport, name: String) -> String {
-  pdr_render_tags(tags: pdr_identity_rows_for_name(transport: transport, name: name))
-}
-
-fn pdr_declares_exactly(
-  transport: OccurrenceTransport,
-  name: String,
-  expected: String
-) -> Bool {
-  pdr_render_tags(tags: pdr_declared_tags_for_name(transport: transport, name: name)) == expected
-}
-
-fn pdr_declares_nothing(transport: OccurrenceTransport, name: String) -> Bool {
-  length(pdr_declared_tags_for_name(transport: transport, name: name)) == 0
-}
-
-
-// THE MATRIX — every row is a DERIVED requirement, none is a copied measurement.
-//
-// The expected value of each row comes from what the .dag language says must bind, never from what
-// the current parser happens to produce. That distinction is the whole design of this file. Writing
-// the expectations by observing the tree would make the fixture a change detector — it would report
-// "the parser still does what the parser does" and go green over defects — which is exactly the
-// tree-copied-oracle failure DESIGN section 5 rules out. The fixture is controlled (this file
-// authors its own input), so deriving the expected population is possible and is therefore required.
-//
-// A consequence, stated plainly because it is unusual: SEVERAL ROWS BELOW ARE EXPECTED TO FAIL
-// TODAY. They are the derived requirements the v1 parser does not yet meet, and they are the
-// acceptance targets commit C must flip. They are enrolled function-grain, never file-grain, so a
-// deliberate red is never confused with a broken batch.
-//
-// One row per requirement rather than a conjunction, so a failure names the form that disagreed.
-
-fn pdr_row(name: String, expected: String) -> Bool {
-  match pdr_parse_matrix() {
-    PdrTransportRefused => false
-    PdrTransportReady { transport: transport } =>
-      pdr_declares_exactly(transport: transport, name: name, expected: expected)
-  }
-}
-
-fn pdr_zero_row(name: String) -> Bool {
-  match pdr_parse_matrix() {
-    PdrTransportRefused => false
-    PdrTransportReady { transport: transport } =>
-      pdr_declares_nothing(transport: transport, name: name)
-  }
-}
-
-fn pdr_identity_row(name: String, expected: String) -> Bool {
-  match pdr_parse_matrix() {
-    PdrTransportRefused => false
-    PdrTransportReady { transport: transport } =>
-      pdr_identity_population(transport: transport, name: name) == expected
-  }
-}
-
-
-
-data pdr_duplicated_support_scaffold: String = "DECLARED SCAFFOLD -- this file duplicates the matrix witness's entire helper prelude (fixture source, transport parse, category tag, identity rendering, containment chain) under a pdr_ prefix. That is a PARALLEL REPRESENTATION of one instrument and a DESIGN section 2/3 violation, carried deliberately rather than silently. WHY IT EXISTS: src/v1 witnesses are reachable only through the v1 claim scoped roster, which witness_v1_claim_scoped_batch_is_file_grain_and_batch_owned requires to be uniformly file-grain, so an enrolled file must be all-green and deliberately-red rows must live in a separate file reached by exact admission. WHY IT IS NOT MERELY MOVED: the duplication is the price of that split, not a consequence of the split being wrong. DISSOLVE-ON: extract the shared support into one non-test module both witness files import, at which point every pdr_ helper here deletes and only the test fns remain. Do that before adding a third file in this family -- two copies is a scaffold, three is a fork."
 
 data pdr_expected_red_note: String = "EXPECTED-RED BY CONSTRUCTION. Every test fn here asserts a requirement the .dag language imposes that the v1 parser does not yet meet. They are commit C's acceptance targets, and they are expected to FAIL until it lands. They live in their own file because the v1 claim scoped batch is required to be uniformly file-grain (witness_v1_claim_scoped_batch_is_file_grain_and_batch_owned asserts every entry has an empty function), so a file cannot mix green and deliberately-red rows. When commit C lands, these rows green and move to the enrolled green file as permanent regression controls -- they do not retire."
+
 
 // ---------------------------------------------------------------------------------------------
 // Derived requirements the parser DOES NOT meet. Expected red today; commit C's acceptance targets.
 //
-// `data pdr_annotated_datum` is deliberately absent from this section. Whether a top-level data row
+// `data pdc_annotated_datum` is deliberately absent from this section. Whether a top-level data row
 // is honestly representable by an existing category and exposure, or whether its absence is a real
 // model gap, must be settled by an actual cross-file binding control rather than chosen here for
 // convenience — so it carries no derived row yet.
@@ -329,33 +27,33 @@ data pdr_expected_red_note: String = "EXPECTED-RED BY CONSTRUCTION. Every test f
 // coproduct form must; a type ALIAS must too, and is a third shape (NoConnective with `inferred`
 // present) that a connective-keyed rule would miss.
 test fn witness_product_type_declaration_is_declared() -> Bool {
-  pdr_row(name: "PdcProduct", expected: "|TypeOccurrence")
+  pdc_row(name: "PdcProduct", expected: "|TypeOccurrence")
 }
 
 test fn witness_coproduct_type_declaration_is_declared() -> Bool {
-  pdr_row(name: "PdcSum", expected: "|TypeOccurrence")
+  pdc_row(name: "PdcSum", expected: "|TypeOccurrence")
 }
 
 // A variant arm introduces a constructor name, whether or not it carries a payload. Both forms
 // follow the same rule; asserting only the payload form would let a nullary-only regression pass.
 test fn witness_nullary_constructor_is_declared() -> Bool {
-  pdr_row(name: "PdcNullary", expected: "|ConstructorOccurrence")
+  pdc_row(name: "PdcNullary", expected: "|ConstructorOccurrence")
 }
 
 test fn witness_payload_constructor_is_declared() -> Bool {
-  pdr_row(name: "PdcPayload", expected: "|ConstructorOccurrence")
+  pdc_row(name: "PdcPayload", expected: "|ConstructorOccurrence")
 }
 
 // A product type's field is declared by the type that owns it.
 test fn witness_product_field_is_declared() -> Bool {
-  pdr_row(name: "pdr_product_field", expected: "|FieldOccurrence")
+  pdc_row(name: "pdc_product_field", expected: "|FieldOccurrence")
 }
 
 // THE TWO ROWS THAT A NAME JOIN CANNOT STATE, and the reason this file keys on identity.
 //
-// `pdr_payload_field` is authored twice: at byte 109 as the coproduct's payload FIELD DECLARATION,
+// `pdc_payload_field` is authored twice: at byte 109 as the coproduct's payload FIELD DECLARATION,
 // and at byte 394 as the field position of the destructuring pattern. The second is a USE of the
-// first — it names which field is being destructured; the binder is `pdr_pattern_binder`. So the
+// first — it names which field is being destructured; the binder is `pdc_pattern_binder`. So the
 // language requires exactly one DECLARATION of this name, at 109, and the pattern position must not
 // produce one.
 //
@@ -365,9 +63,9 @@ test fn witness_product_field_is_declared() -> Bool {
 // occurrence. The spans are hard-coded deliberately: this fixture authors its own source, and a
 // fixture edit that moves these positions SHOULD break these rows rather than silently re-point them.
 test fn witness_coproduct_payload_field_is_declared_at_its_declaration_site() -> Bool {
-  pdr_identity_row(
-    name: "pdr_payload_field",
-    expected: "|pdr_payload_field#FieldOccurrence#span:109-126#path:>app.pdr_matrix>PdcSum>PdcPayload",
+  pdc_identity_row(
+    name: "pdc_payload_field",
+    expected: "|pdc_payload_field#FieldOccurrence#span:109-126#path:>app.pdc_matrix>PdcSum>PdcPayload",
   )
 }
 
@@ -375,14 +73,14 @@ test fn witness_coproduct_payload_field_is_declared_at_its_declaration_site() ->
 // declaration at 109 exists, a parser that ALSO kept minting a declaration at 394 would still be
 // wrong, and the row above alone would not say so.
 test fn witness_pattern_field_position_is_not_a_declaration() -> Bool {
-  match pdr_parse_matrix() {
-    PdrTransportRefused => false
-    PdrTransportReady { transport: transport } =>
+  match pdc_parse_matrix() {
+    PdcTransportRefused => false
+    PdcTransportReady { transport: transport } =>
       fold(
         transport.declarations,
         init: true,
         f: (acc, declaration) =>
-          match pdr_index_entry_for_declaration(transport: transport, declaration: declaration) {
+          match pdc_index_entry_for_declaration(transport: transport, declaration: declaration) {
             Absent => acc
             Present { value: entry } =>
               acc && entry.projection.diagnostic_span.start != 394
@@ -402,14 +100,14 @@ test fn witness_pattern_field_position_is_not_a_declaration() -> Bool {
 // if the declaration at 109 is still missing, the sibling fails if the use at 394 is still minted as
 // a declaration, and the population row fails if a third occurrence of the name appears anywhere.
 test fn witness_a_declaration_exists_at_the_coproduct_field_site() -> Bool {
-  match pdr_parse_matrix() {
-    PdrTransportRefused => false
-    PdrTransportReady { transport: transport } =>
+  match pdc_parse_matrix() {
+    PdcTransportRefused => false
+    PdcTransportReady { transport: transport } =>
       fold(
         transport.declarations,
         init: false,
         f: (found, declaration) =>
-          match pdr_index_entry_for_declaration(transport: transport, declaration: declaration) {
+          match pdc_index_entry_for_declaration(transport: transport, declaration: declaration) {
             Absent => found
             Present { value: entry } =>
               found || entry.projection.diagnostic_span.start == 109
