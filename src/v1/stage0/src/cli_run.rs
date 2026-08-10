@@ -24124,7 +24124,57 @@ impl LiveReadSelectionPlan {
             classified: LiveReadSelectionContext::build(index, &candidates)?,
         })
     }
+}
 
+/// Build the selection plan ONCE PER INDEX, which is the grain the plan's subject actually has.
+///
+/// `LiveReadSelectionPlan::build` folds the COMPLETE roster through the cheap axes and then
+/// classifies the survivors. Its inputs -- roster, index, diff, changed paths -- do not vary
+/// across the entry groups one worker processes, so building it inside the per-group call
+/// recomputed one invariant answer once per group: 719 rebuilds in the run that produced this
+/// function, each reporting the identical `roster_rows=8563 candidate_rows=91`.
+///
+/// It is per-INDEX rather than per-run because a manifest carries the subject of the index that
+/// produced it, and each width>1 worker builds its own `MultiEntryIndex`; handing a worker the
+/// main thread's plan would refuse on subject mismatch at every lookup, correctly. Per-index is
+/// therefore the strongest sharing the subject identity permits, and this is the only production
+/// site that builds one -- so the per-group rebuild is not merely fixed, it is unwritable from
+/// `run_discovery_rows`, which no longer receives the roster it would need.
+/// Built whenever selection is on at all -- PredictOnly included. The falsifier runs PredictOnly
+/// and counts divergences between the prediction and the cold result, so a prediction computed
+/// from a different predicate than the applied one would make the falsifier measure the wrong
+/// thing: it would count agreement with a retired answer.
+///
+/// ONLY THE ROWS WHOSE VERDICT G2 CAN STILL CHANGE. Selection is a disjunction of independent
+/// "do not skip" axes, and every axis except this one is a fact lookup over already-built graph
+/// facts. A row a cheap axis has already forced to run cannot have its verdict changed by a
+/// live-read classification, so classifying it is pure cost -- and, with the classifier as an
+/// eager prerequisite, cost paid before the first discovery row can execute. The measured shape
+/// of that mistake: 6 rows executed in the 55-minute window against main's 4728, with no
+/// completion receipt to say why.
+///
+/// The candidate filter is a COST reduction, not a semantic one: it uses the same predicates in
+/// the same disjunction, so an entry excluded is one already decided by an axis this
+/// classification cannot overturn.
+fn live_read_selection_plan_for_index(
+    selection: NodeFrontierSelectionMode,
+    roster: &[DiscoveryRow],
+    index: &MultiEntryIndex,
+    diff_edits: &FloorDiffEdits,
+    changed_paths: &[String],
+) -> Result<Option<LiveReadSelectionPlan>, String> {
+    if selection == NodeFrontierSelectionMode::Off {
+        return Ok(None);
+    }
+    Ok(Some(LiveReadSelectionPlan::build(
+        roster,
+        index,
+        diff_edits,
+        changed_paths,
+    )?))
+}
+
+impl LiveReadSelectionPlan {
     /// FIXTURE CONSTRUCTOR: a plan whose entries are all candidates, classified directly.
     ///
     /// `cfg(test)` so it cannot become a production route that mints demands without deriving
@@ -25177,9 +25227,16 @@ fn run_discovery_corpus_with_options_inner(
             // Arm retention over the WHOLE serial schedule (all rows) before the single drain
             // call — a shared module stays resident until its last scheduled entry consumes it.
             index_arm_schedule_retention(&index, &rows);
+            let live_read_plan = live_read_selection_plan_for_index(
+                options.node_frontier_selection,
+                &rows,
+                &index,
+                &diff_edits,
+                &changed_paths,
+            )?;
             let summary = run_discovery_rows(
                 &rows,
-                &rows,
+                live_read_plan.as_ref(),
                 &index,
                 execution_mode,
                 options.node_frontier_selection,
@@ -25315,6 +25372,16 @@ fn run_discovery_corpus_with_options_inner(
                         } else {
                             None
                         };
+                        // ONCE PER WORKER, because that is once per index: this worker built its
+                        // own `index` above and every group it dequeues below shares it. Building
+                        // inside the loop recomputed one invariant answer per group.
+                        let live_read_plan = live_read_selection_plan_for_index(
+                            selection_for_workers,
+                            &roster_for_worker,
+                            &index,
+                            &seeds,
+                            &paths,
+                        )?;
                         let mut worker_summaries = Vec::new();
                         loop {
                             if abort_for_worker.load(Ordering::SeqCst) {
@@ -25326,7 +25393,7 @@ fn run_discovery_corpus_with_options_inner(
                             };
                             match run_discovery_rows(
                                 &group_rows,
-                                &roster_for_worker,
+                                live_read_plan.as_ref(),
                                 &index,
                                 execution_mode,
                                 selection_for_workers,
@@ -25448,6 +25515,14 @@ fn run_discovery_corpus_with_options_inner(
                 let p1_cohort_detail = p1_cohort_receipt_enabled();
                 let mut p1_cohort_seen_subjects: std::collections::HashSet<String> =
                     std::collections::HashSet::new();
+                // ONCE for this index, not once per group.
+                let live_read_plan = live_read_selection_plan_for_index(
+                    options.node_frontier_selection,
+                    &rows,
+                    &index,
+                    &diff_edits,
+                    &changed_paths,
+                )?;
                 for (group_idx, group_indices) in groups.into_iter().enumerate() {
                     let group_rows: Vec<DiscoveryRow> =
                         group_indices.iter().map(|&i| rows[i].clone()).collect();
@@ -25459,7 +25534,7 @@ fn run_discovery_corpus_with_options_inner(
                     let typecheck_misses_before = p1_cohort_detail.then(typecheck_compute_count);
                     let summary = run_discovery_rows(
                         &group_rows,
-                        &rows,
+                        live_read_plan.as_ref(),
                         &index,
                         execution_mode,
                         options.node_frontier_selection,
@@ -25660,6 +25735,16 @@ fn run_discovery_corpus_with_options_inner(
                         // The front-loaded admission cost (index build + runner resolve) has
                         // landed and is visible to the creep signals: unblock admission pacing.
                         slot.note_first_cost_paid();
+                        // ONCE PER WORKER, because that is once per index: this worker built its
+                        // own `index` above and every group it dequeues below shares it. Building
+                        // inside the loop recomputed one invariant answer per group.
+                        let live_read_plan = live_read_selection_plan_for_index(
+                            selection_for_workers,
+                            &roster_for_worker,
+                            &index,
+                            &seeds,
+                            &paths,
+                        )?;
                         let mut worker_summaries = Vec::new();
                         loop {
                             // Multiplicative decrease drains here: a worker between groups retires
@@ -25675,7 +25760,7 @@ fn run_discovery_corpus_with_options_inner(
                             };
                             match run_discovery_rows(
                                 &group_rows,
-                                &roster_for_worker,
+                                live_read_plan.as_ref(),
                                 &index,
                                 execution_mode,
                                 selection_for_workers,
@@ -26112,15 +26197,17 @@ impl ShardStyle {
 #[allow(clippy::too_many_arguments)]
 fn run_discovery_rows(
     rows: &[DiscoveryRow],
-    // The COMPLETE discovery roster for the run, which at width > 1 is a strict superset of
-    // `rows` — the pool hands each worker one entry-group chunk. The live-read selection context
-    // is built from this, never from `rows`: the manifest memo is index-scoped and request-set
-    // insensitive, so a chunk-primed manifest would classify one worker's entries and refuse
-    // every other. It is a separate parameter rather than a prebuilt context because each worker
-    // builds its OWN `MultiEntryIndex` (`build_multi_entry_index` inside the worker closure), and
-    // a manifest carries the subject of the index that produced it — handing a worker the main
-    // thread's manifest would refuse on subject mismatch at every lookup, correctly.
-    roster: &[DiscoveryRow],
+    // The plan for THIS index, built once by `live_read_selection_plan_for_index` at the site
+    // that builds the index. It arrives prebuilt rather than as the complete roster this
+    // function used to fold itself: the inputs are invariant across the entry groups a worker
+    // processes, so building here recomputed one answer once per group. Taking the plan instead
+    // of the roster is what makes that rebuild unwritable from here — the roster it would need
+    // is no longer in scope.
+    //
+    // Still per-index and never per-run: a manifest carries the subject of the index that
+    // produced it, each width>1 worker builds its OWN `MultiEntryIndex`, and handing a worker
+    // the main thread's plan would refuse on subject mismatch at every lookup, correctly.
+    live_read_selection: Option<&LiveReadSelectionPlan>,
     index: &MultiEntryIndex,
     execution_mode: v1_interpreter::ExecutionMode,
     selection: NodeFrontierSelectionMode,
@@ -26194,36 +26281,8 @@ fn run_discovery_rows(
     let touched_entry_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
     let pool_roots = witness_layer_roots();
     let whole_tree_published_keys = whole_tree_published_keys.map(Rc::new);
-    // Built whenever selection is on at all — PredictOnly included. The falsifier runs
-    // PredictOnly and counts divergences between the prediction and the cold result, so a
-    // prediction computed from a different predicate than the applied one would make the
-    // falsifier measure the wrong thing: it would count agreement with a retired answer.
-    // ONLY THE ROWS WHOSE VERDICT G2 CAN STILL CHANGE.
-    //
-    // Selection is a disjunction of independent "do not skip" axes, and every axis except this
-    // one is a fact lookup over already-built graph facts. A row that a cheap axis has already
-    // forced to run cannot have its verdict changed by a live-read classification, so classifying
-    // it is pure cost -- and, with the classifier as an eager prerequisite, cost paid before the
-    // first discovery row can execute. The measured shape of that mistake: 6 rows executed in the
-    // 55-minute window against main's 4728, with no completion receipt to say why.
-    //
-    // This is a COST reduction, not a semantic one: the candidate filter uses the same predicates
-    // in the same disjunction, so an entry excluded here is one already decided by an axis whose
-    // answer this classification cannot overturn. The per-entry predicates above now consult G2
-    // last for the same reason, which is what makes excluding a non-candidate safe -- a
-    // short-circuit reaches the classifier only for rows still in play.
-    let live_read_selection = if skip_enabled {
-        Some(LiveReadSelectionPlan::build(
-            roster,
-            index,
-            diff_edits,
-            changed_paths,
-        )?)
-    } else {
-        None
-    };
     let entry_fast_skip = if selection == NodeFrontierSelectionMode::Applied {
-        let live = live_read_selection.as_ref().ok_or_else(|| {
+        let live = live_read_selection.ok_or_else(|| {
             "AFFECTED-SET REFUSAL cause=LiveReadContextAbsent — selection is Applied but no \
              live-read selection context was built."
                 .to_string()
@@ -26302,7 +26361,7 @@ fn run_discovery_rows(
                 row.reads_live_tree,
                 &row.entry,
                 index,
-                live_read_selection.as_ref(),
+                live_read_selection,
                 &index.module_graph_facts,
                 &module_graph_declared_paths,
                 changed_paths,
@@ -26329,7 +26388,7 @@ fn run_discovery_rows(
             } else {
                 let resolved = resolve_discovery_entry_for_corpus_row(
                     index,
-                    live_read_selection.as_ref(),
+                    live_read_selection,
                     &row.entry,
                     execution_mode,
                     whole_tree_published_keys.clone(),
@@ -26437,7 +26496,7 @@ fn run_discovery_rows(
         if ctx.is_none() {
             let resolved = resolve_discovery_entry_for_corpus_row(
                 index,
-                live_read_selection.as_ref(),
+                live_read_selection,
                 &row.entry,
                 execution_mode,
                 whole_tree_published_keys.clone(),
