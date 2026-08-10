@@ -3,16 +3,29 @@ module gunbc.dissolution_migration_census
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
 import std.types { NonEmptyStr }
 
-// The residue of the dissolution-carrier migration, at declaration identity.
+// Narrative prose about dissolution that is NOT a lifecycle carrier, at declaration
+// identity, classified by why it stays prose.
 //
-// Every top-level declaration in the corpus whose name is in the lifecycle
-// class and whose declared type is still String/NonEmptyStr appears here with
-// exactly one of five classifications. The population is closed by construction of the
-// name class: an unclassified survivor is a census miss, and the witness that
-// consumes these rows reds on one.
+// The population is `*_note`-class declarations whose TEXT discusses a dissolution -- a
+// receipt that one already fired, a rationale accompanying a condition carried elsewhere, a
+// refusal reason. They are named outside the lifecycle spelling class and are therefore
+// disjoint from the carrier population; classifying them is what keeps a later reader from
+// mistaking a receipt for an unmigrated condition.
 //
-// This is a census of what did NOT become a DissolutionCondition and WHY. The
-// migrated population is not listed here -- it is carried by its own type, and
+// THIS MODULE IS NOT THE COMPLETENESS AUTHORITY, and an earlier revision of this header
+// wrongly said it was: it claimed to hold "every top-level declaration whose name is in the
+// lifecycle class and whose declared type is still String". That was false in both
+// directions -- measured, not argued. Every row here is OUTSIDE the name class, and at the
+// time the claim was written nineteen real in-class survivors existed that this census had
+// never seen. A hand-authored roster cannot ground its own completeness; it answers only
+// "what someone wrote down", which DESIGN section 5 rejects as an oracle.
+//
+// The completeness authority is `gunbc.lifecycle_survivor_scan`, which DERIVES the in-class
+// population from the corpus and gates it at zero. Those nineteen were migrated rather than
+// classified, because an active condition still typed String is a migration miss, not
+// residue. This census retains its own value and none of its completeness claim.
+//
+// The migrated population is not listed here -- it is carried by its own type, and
 // re-listing it would be the parallel ledger this migration exists to close.
 type LifecycleResidueClass
   = HistoricalReceipt

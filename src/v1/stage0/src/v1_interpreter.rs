@@ -11805,6 +11805,15 @@ macro_rules! v1_builtin_arms {
                 )?))
             },
 
+            arm "free_call.data_decl_type_facts" { "data_decl_type_facts" } => {
+                let pool_roots =
+                    expect_str_list($positional.first().copied(), "data_decl_type_facts")?;
+                Ok(Some(crate::coproduct_reflection::eval_data_decl_type_facts(
+                    $ctx,
+                    &pool_roots,
+                )?))
+            },
+
             arm "free_call.export_signature_facts" { "export_signature_facts" } => {
                 let pool_roots =
                     expect_str_list($positional.first().copied(), "export_signature_facts")?;

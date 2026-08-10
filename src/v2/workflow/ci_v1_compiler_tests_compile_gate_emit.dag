@@ -18,6 +18,7 @@ import v2.workflow.effect_plan_bash_materialize {
   effect_plan_bash_materialize,
   effect_plan_bash_refusal_label
 }
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 data ci_v1_compiler_tests_compile_gate_extra_args: List<String> = [
   "-p",
@@ -59,7 +60,7 @@ data ci_v1_compiler_tests_compile_gate_shell_emit_scaffold: Disposition = Scaffo
   }
 }
 
-data ci_v1_compiler_tests_compile_gate_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_v1_compiler_tests_compile_gate_script — foreign-executor (GitHub Actions run:) shell transport for extdeps.cargo_build cargo.Build.Test(extra_args: ci_v1_compiler_tests_compile_gate_extra_args); the EAGAIN retry wrapper lives in gunbc.ci_workflow ci_v1_compiler_tests_compile_gate_run_script (same seam as ci_release_build_script); DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the build-job step to orchestration emit over the typed cargo operation — the same de-fork ci_fmt_gate_line and ci_release_build_script await"
+data ci_v1_compiler_tests_compile_gate_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_v1_compiler_tests_compile_gate_script — foreign-executor (GitHub Actions run:) shell transport for extdeps.cargo_build cargo.Build.Test(extra_args: ci_v1_compiler_tests_compile_gate_extra_args); the EAGAIN retry wrapper lives in gunbc.ci_workflow ci_v1_compiler_tests_compile_gate_run_script (same seam as ci_release_build_script); DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the build-job step to orchestration emit over the typed cargo operation — the same de-fork ci_fmt_gate_line and ci_release_build_script await")
 
 fn ci_v1_compiler_tests_compile_gate_check_step() -> BashBoundOperationInvocation {
   bash_bind_operation_invocation_host_env_executable(
@@ -104,7 +105,7 @@ fn ci_v1_compiler_tests_compile_gate_command() -> String {
 
 fn ci_v1_compiler_tests_compile_gate_script() -> String {
   concat(
-    concat("# ", concat(ci_v1_compiler_tests_compile_gate_shell_emit_dissolution_trigger, "\n")),
+    concat("# ", concat(dissolution_description(condition: ci_v1_compiler_tests_compile_gate_shell_emit_dissolution_trigger), "\n")),
     concat(ci_v1_compiler_tests_compile_gate_command(), "\n")
   )
 }
@@ -118,7 +119,7 @@ data ci_interpreter_parity_controls_shell_emit_scaffold: Disposition = Scaffold 
   }
 }
 
-data ci_interpreter_parity_controls_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_interpreter_parity_controls_run_script — foreign-executor (GitHub Actions run:) shell transport for extdeps.cargo_build cargo.Build.Test(extra_args: ci_interpreter_parity_controls_extra_args); this is the SECOND build-job consumer of the same seam as ci_v1_compiler_tests_compile_gate_script, not an independent transport class, and it dissolves with it WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the build-job steps to orchestration emit over the typed cargo operation. It shares the ci_cargo_eagain_retry_script level-1 retry seam, so it also joins the srvN STEP 2 population ci_v1_compiler_tests_compile_gate_eagain_retry_note tracks for removal"
+data ci_interpreter_parity_controls_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_interpreter_parity_controls_run_script — foreign-executor (GitHub Actions run:) shell transport for extdeps.cargo_build cargo.Build.Test(extra_args: ci_interpreter_parity_controls_extra_args); this is the SECOND build-job consumer of the same seam as ci_v1_compiler_tests_compile_gate_script, not an independent transport class, and it dissolves with it WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the build-job steps to orchestration emit over the typed cargo operation. It shares the ci_cargo_eagain_retry_script level-1 retry seam, so it also joins the srvN STEP 2 population ci_v1_compiler_tests_compile_gate_eagain_retry_note tracks for removal")
 
 fn ci_interpreter_parity_controls_check_step() -> BashBoundOperationInvocation {
   bash_bind_operation_invocation_host_env_executable(

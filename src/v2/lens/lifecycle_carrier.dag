@@ -22,6 +22,7 @@ import v2.std.node {
   TypeNode
 }
 import v2.std.node_query { edge_field_type_name }
+import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.optional {
@@ -77,6 +78,20 @@ data lifecycle_field_name_rows: List<Symbol> = [
 fn name_is_lifecycle_field(name: Symbol) -> Bool {
   fold(lifecycle_field_name_rows, init: false, f: fn(acc, nm) {
     acc || (nm == name)
+  })
+}
+
+// The same eight spellings decide the top-level DECLARATION class, so this roster stays the
+// single naming authority across both grains (DESIGN section 3). The grains differ only in
+// match SHAPE, not in vocabulary: a record field is named exactly `dissolve_on`, while a
+// top-level declaration qualifies its subject and carries the spelling as a suffix
+// (`pin_refresh_window_positivity_note_dissolve_on`). A second roster spelled for
+// declarations would be precisely the nickname the field predicate above exists to prevent,
+// and it would drift silently -- a new spelling would have to be remembered twice.
+fn decl_name_is_lifecycle_carrier(name: String) -> Bool {
+  fold(lifecycle_field_name_rows, init: false, f: fn(acc, nm) {
+    let spelling = symbol_lexeme(sym: nm)
+    acc || (name == spelling) || ends_with(s: name, suffix: concat("_", spelling))
   })
 }
 

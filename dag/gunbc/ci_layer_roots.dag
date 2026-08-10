@@ -103,6 +103,12 @@ data excl_install_media_dissolve: DissolutionCondition = unbound_dissolution(des
 
 data witness_exclusion_frontier: List<WitnessExclusionRow> = [
   WitnessExclusionRow {
+    pattern: "lifecycle_survivor_corpus_census_test.dag",
+    classification: FalsifierSubstrateLongLane,
+    reason: "LIFECYCLE-CARRIER COMPLETENESS CENSUS: derives every top-level data declaration in the corpus with its declared type (data_decl_type_facts over both roots, 16975 declarations / 3475 modules) and gates the raw-string lifecycle survivor population at zero. Its subject IS the corpus breadth, so it cannot be shrunk without measuring less. MEASURED 18482ms eval against the 5s fast-lane budget. The mechanism half is fixture-shaped and stays per-PR in test.claim.lifecycle_survivor_scan_witness (planted survivor selected, migrated control and out-of-class String rejected, ~0ms), so this row carries only the irreducible census — not the discrimination.",
+    dissolution: unbound_dissolution(description: "v2 self-host gains compile-graph access (gunbc#5364, the trigger concept_index carries) so the declared type is reachable from the substrate without a host walk and the census derives at closure cost; then this re-enrolls per-PR discovery and the row deletes")
+  },
+  WitnessExclusionRow {
     pattern: "roadmap_program_view_live_corpus_receipt_test.dag",
     classification: FalsifierSubstrateLongLane,
     reason: "LIVE-AUTHORITY INTEGRATION RECEIPT (operator verdict 2026-08-05, PR #7822): live_roadmap_program_view_corpus_projection_receipt exercises the full declared roadmap closure through gunbc.roadmap_program_view — evidentiary wiring receipt, not ordinary business logic. Business witnesses stay on planted fixtures in test.claim.roadmap_program_view_witness.",
@@ -1188,6 +1194,36 @@ type SubstrateLongLaneRow {
 data falsifier_substrate_long_lane_note: String = "Nightly falsifier batch 6 (test-decomposition Class C, 2026-07-25): the declared Hermetic lane for SubstrateInputsOnly ingest/parse pipeline witnesses whose own eval exceeds the per-PR 5s fast-lane budget (gunbc_ci_fast_lane_rule_note) but are not wet integration — the live-grain half of the provenance-producer Class C split (fixture fail-closed walls stay per-PR via hand-built rows in affected_set_provenance_producer_test.dag and sg_claims_test.dag selectivity receipts). Runs SelectionApplied after the rehomed-bin-wet batch; claim_executor halts this batch if an earlier one fails (fail-closed). Local recipe until enrolled: claim_batch --source-root dag --source-root src/v2 --entry <file> --functions <csv>."
 
 data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/lifecycle_survivor_corpus_census_test.dag",
+    function: "no_raw_lifecycle_string_survivors_remain",
+    reason: "18482ms measured eval (claim_batch, local): the lifecycle-carrier completeness gate derives every top-level data declaration in the corpus with its declared type — 16975 declarations across 3475 modules — and refuses if any raw-string lifecycle carrier survives. Its input is the live tree's breadth, so its cost is not bounded by anything the fast lane can see; that is what disqualifies it, independent of the single measurement. The discriminating half is fixture-shaped and stays per-PR in test.claim.lifecycle_survivor_scan_witness at ~0ms, so this row carries the census and not the mechanism",
+    dissolution: unbound_dissolution(description: "v2 self-host gains compile-graph access (gunbc#5364) so the declared type is reachable from the substrate and the census derives at closure cost rather than a corpus walk; then re-enroll per-PR discovery and delete the five census rows")
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/lifecycle_survivor_corpus_census_test.dag",
+    function: "scan_denominator_is_a_real_corpus",
+    reason: "non-vacuity control for no_raw_lifecycle_string_survivors_remain: zero survivors is also what a producer that read nothing returns, so the denominator is asserted to be a real corpus. Same walk, same cost class",
+    dissolution: unbound_dissolution(description: "same as no_raw_lifecycle_string_survivors_remain row")
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/lifecycle_survivor_corpus_census_test.dag",
+    function: "scan_denominator_contains_bare_string_declarations",
+    reason: "same census cost class: proves the type projection is populated rather than uniformly empty, which a broken projection would also render as zero survivors",
+    dissolution: unbound_dissolution(description: "same as no_raw_lifecycle_string_survivors_remain row")
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/lifecycle_survivor_corpus_census_test.dag",
+    function: "scan_reads_a_declared_type_for_every_declaration",
+    reason: "same census cost class: an unread annotation would classify a survivor as not-a-string and under-report exactly what the gate exists to find",
+    dissolution: unbound_dissolution(description: "same as no_raw_lifecycle_string_survivors_remain row")
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/lifecycle_survivor_corpus_census_test.dag",
+    function: "scan_denominator_includes_test_modules",
+    reason: "same census cost class: decl_facts_corpus_walk skips test .dag files and this walk must not, or a survivor authored in a witness would be invisible to the gate",
+    dissolution: unbound_dissolution(description: "same as no_raw_lifecycle_string_survivors_remain row")
+  },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/realization_attempt_keystone_test.dag",
     function: "witness_planted_minimal_module_emits",
