@@ -8,14 +8,19 @@ import gunbc.devboot.fleet_proof_harvest {
   DevbootModeledFleetProofReceipt,
   DevbootFleetClientObservation,
   harvest_modeled_fleet_proof,
-  devboot_fleet_proof_harvest_bundle,
+}
+import gunbc.devboot.fleet_proof_capture {
+  capture_fleet_proof_harvest_bundle,
+  devboot_fleet_proof_observation_sites,
 }
 
 // THE PRIOR devboot_fleet_proof_rows TRANSCRIPTION IS RETIRED. Those rows described a shell-harness proof that did not exercise devboot_serve_once_entry on srv3.
-data devboot_fleet_proof_transcription_retired_note: String = "RETIRED: devboot_fleet_proof_rows and devboot_fleet_proof_run_provenance described a shell-harness proof (token fnv1a64-0b101ca4d5635461, digest a4cf1e7746...) that did not exercise devboot_serve_once_entry on srv3. Replaced by harvest_modeled_fleet_proof over devboot_fleet_proof_harvest_bundle."
+data devboot_fleet_proof_transcription_retired_note: String = "RETIRED: devboot_fleet_proof_rows and devboot_fleet_proof_run_provenance described a shell-harness proof (token fnv1a64-0b101ca4d5635461, digest a4cf1e7746...) that did not exercise devboot_serve_once_entry on srv3. Replaced by capture_fleet_proof_harvest_bundle reading devboot_fleet_proof_observation_sites paths, then harvest_modeled_fleet_proof."
 
 fn devboot_modeled_fleet_proof_receipt() -> DevbootModeledFleetProofReceipt? {
-  harvest_modeled_fleet_proof(bundle: devboot_fleet_proof_harvest_bundle)
+  harvest_modeled_fleet_proof(
+    bundle: capture_fleet_proof_harvest_bundle(sites: devboot_fleet_proof_observation_sites),
+  )
 }
 
 data devboot_fleet_transport_endpoint: String = "git://192.168.1.221:19419/store.git"

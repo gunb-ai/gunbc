@@ -1,0 +1,74 @@
+module gunbc.devboot.fleet_proof_capture
+
+import extdeps.filesystem.filesystem_io
+import std.types { String, CommitSha, NonEmptyStr }
+import gunbc.devboot.fleet_proof_harvest { DevbootFleetProofHarvestBundle }
+
+// PATHS TO OBSERVATION BYTES ON DISK — not pasted prose. A capture step (fleet script or host-effect read) writes these files; harvest reads them.
+type DevbootFleetProofObservationSites {
+  corpus_head: CommitSha
+  mechanism_branch: NonEmptyStr
+  transport_endpoint: String
+  artifact_object_id: NonEmptyStr
+  srv1_client_receipt_path: String
+  srv2_client_receipt_path: String
+  modeled_serve_log_path: String
+  store_for_each_ref_path: String
+}
+
+fn read_observation_file(path: String) -> String {
+  filesystem_read(path: path).content
+}
+
+fn capture_fleet_proof_harvest_bundle(sites: DevbootFleetProofObservationSites) -> DevbootFleetProofHarvestBundle {
+  DevbootFleetProofHarvestBundle {
+    corpus_head: sites.corpus_head,
+    mechanism_branch: sites.mechanism_branch,
+    transport_endpoint: sites.transport_endpoint,
+    artifact_object_id: sites.artifact_object_id,
+    srv1_client_receipt: read_observation_file(path: sites.srv1_client_receipt_path),
+    srv2_client_receipt: read_observation_file(path: sites.srv2_client_receipt_path),
+    modeled_serve_log: read_observation_file(path: sites.modeled_serve_log_path),
+    store_for_each_ref: read_observation_file(path: sites.store_for_each_ref_path),
+  }
+}
+
+data devboot_fleet_proof_fixture_root: String = "dag/test/fixtures/devboot_fleet_proof"
+
+data devboot_fleet_proof_fixture_observation_sites: DevbootFleetProofObservationSites = DevbootFleetProofObservationSites {
+  corpus_head: "69d07ed69d3a08a6d881a4ed8f3f45e0ec82e8aa",
+  mechanism_branch: "session/keen-moth-104" as NonEmptyStr,
+  transport_endpoint: "git://192.168.1.221:19419/store.git",
+  artifact_object_id: "bb6463edd3ebdae411755239fa2ae9bcadab23ef" as NonEmptyStr,
+  srv1_client_receipt_path: join([devboot_fleet_proof_fixture_root, "/srv1.devboot-receipt"], ""),
+  srv2_client_receipt_path: join([devboot_fleet_proof_fixture_root, "/srv2.devboot-receipt"], ""),
+  modeled_serve_log_path: join([devboot_fleet_proof_fixture_root, "/modeled-serve.log"], ""),
+  store_for_each_ref_path: join([devboot_fleet_proof_fixture_root, "/store-for-each-ref.txt"], ""),
+}
+
+data devboot_fleet_proof_fixture_observation_sites_with_compile_count: DevbootFleetProofObservationSites = DevbootFleetProofObservationSites {
+  corpus_head: "69d07ed69d3a08a6d881a4ed8f3f45e0ec82e8aa",
+  mechanism_branch: "session/keen-moth-104" as NonEmptyStr,
+  transport_endpoint: "git://192.168.1.221:19419/store.git",
+  artifact_object_id: "bb6463edd3ebdae411755239fa2ae9bcadab23ef" as NonEmptyStr,
+  srv1_client_receipt_path: join([devboot_fleet_proof_fixture_root, "/srv1.devboot-receipt"], ""),
+  srv2_client_receipt_path: join([devboot_fleet_proof_fixture_root, "/srv2.devboot-receipt"], ""),
+  modeled_serve_log_path: join([devboot_fleet_proof_fixture_root, "/modeled-serve-with-compile-count.log"], ""),
+  store_for_each_ref_path: join([devboot_fleet_proof_fixture_root, "/store-for-each-ref.txt"], ""),
+}
+
+// Written by scripts/fleet-modeled-proof.sh after a fleet run — receipt reads these paths, never hand-pasted bundle rows.
+data devboot_fleet_proof_capture_root: String = "target/devboot-fleet-proof-observations"
+
+data devboot_fleet_proof_observation_sites: DevbootFleetProofObservationSites = DevbootFleetProofObservationSites {
+  corpus_head: "69d07ed69d3a08a6d881a4ed8f3f45e0ec82e8aa",
+  mechanism_branch: "session/keen-moth-104" as NonEmptyStr,
+  transport_endpoint: "git://192.168.1.221:19419/store.git",
+  artifact_object_id: "bb6463edd3ebdae411755239fa2ae9bcadab23ef" as NonEmptyStr,
+  srv1_client_receipt_path: join([devboot_fleet_proof_capture_root, "/srv1.devboot-receipt"], ""),
+  srv2_client_receipt_path: join([devboot_fleet_proof_capture_root, "/srv2.devboot-receipt"], ""),
+  modeled_serve_log_path: join([devboot_fleet_proof_capture_root, "/modeled-serve.log"], ""),
+  store_for_each_ref_path: join([devboot_fleet_proof_capture_root, "/store-for-each-ref.txt"], ""),
+}
+
+data devboot_fleet_proof_capture_note: String = "Observation capture lands before rerun (operator sequencing 2026-08-10). capture_fleet_proof_harvest_bundle reads observation files from devboot_fleet_proof_observation_sites (target/devboot-fleet-proof-observations/ after fleet-modeled-proof.sh). The 2026-08-09 operator-verified run is preserved as fixture files for witnesses only; its modeled-serve.log predates compile_count= in SERVED prose, so harvest refuses producer_compile_count until a post-seam capture rerun writes a fresh log."

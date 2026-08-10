@@ -1,0 +1,22 @@
+BUILT
+path: /tmp/devboot-fleet/out-srv1
+sha256: 976728c5d2029799f1d89843dfdd70c3b3ed132211126d2752ef8af23b5c146e
+producer_host: srv3
+reused: false
+executed_exit: 0
+executed_stdout: A causal compiler: write .dag, get Rust/Python/Go.
+subject:
+devboot.subject.v1
+tree=918953e9eb1ccbc60e6b91f64d5612a0fffd4871
+package=v1-compiler
+target=bin:gunbc
+toolchain.name=rustc
+toolchain.version=1.93.0
+arch=arch.v1.aarch64
+vendor=vendor.v1.unknown
+os=os.v1.linux
+abi=abi.v1.gnu
+profile=release
+platform_c_library=glibc-2.39
+linker=<absent>
+sysroot=<absent>

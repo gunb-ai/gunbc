@@ -175,11 +175,38 @@ fn request_token_from_store(store: String) -> String? {
   )
 }
 
-fn count_served_lines(log: String) -> Int {
+fn compile_count_from_served_line(line: String) -> Int? {
+  if string_contains(s: line, pattern: " SERVED ") {
+    match split(s: line, sep: "compile_count=").last() {
+      Present { value: tail } =>
+        match split(s: trim(s: tail), sep: " ").first() {
+          Present { value: count_text } => parse_int(s: count_text)
+          Absent => none
+        }
+      Absent => none
+    }
+  } else {
+    none
+  }
+}
+
+fn producer_compile_count_from_log(log: String) -> Int? {
   fold(
     split(s: log, sep: "\n"),
-    init: 0,
-    f: (acc, line) => if string_contains(s: line, pattern: " SERVED ") { acc + 1 } else { acc },
+    init: Present { value: 0 },
+    f: (acc, line) =>
+      if string_contains(s: line, pattern: " SERVED ") {
+        match compile_count_from_served_line(line: line) {
+          Present { value: count } =>
+            match acc {
+              Present { value: sum } => Present { value: sum + count }
+              Absent => none
+            }
+          Absent => none
+        }
+      } else {
+        acc
+      },
   )
 }
 
@@ -229,43 +256,47 @@ fn harvest_modeled_fleet_proof(bundle: DevbootFleetProofHarvestBundle) -> Devboo
                           match producer_served_at_from_log(log: bundle.modeled_serve_log) {
                             Absent => none
                             Present { value: producer_served_at } =>
-                              Present {
-                                value: DevbootModeledFleetProofReceipt {
-                                  producer_served_at: producer_served_at as NonEmptyStr,
-                                  tested_commit: bundle.corpus_head,
-                                  tested_tree: tested_tree_id,
-                                  mechanism_branch: bundle.mechanism_branch,
-                                  request_identity: request_identity as NonEmptyStr,
-                                  producer_host: srv1.producer_host as NonEmptyStr,
-                                  producer_compile_count: count_served_lines(log: bundle.modeled_serve_log),
-                                  produced_commit: produced_commit as NonEmptyStr,
-                                  artifact_object_id: bundle.artifact_object_id,
-                                  artifact_sha256: srv1.sha256,
-                                  clients: [
-                                    DevbootFleetClientObservation {
-                                      host: "srv1" as NonEmptyStr,
-                                      reused: false,
-                                      executed_exit: srv1.executed_exit,
-                                      executed_stdout_fingerprint: srv1.executed_stdout_fingerprint as NonEmptyStr,
+                              match producer_compile_count_from_log(log: bundle.modeled_serve_log) {
+                                Absent => none
+                                Present { value: producer_compile_count } =>
+                                  Present {
+                                    value: DevbootModeledFleetProofReceipt {
+                                      producer_served_at: producer_served_at as NonEmptyStr,
+                                      tested_commit: bundle.corpus_head,
+                                      tested_tree: tested_tree_id,
+                                      mechanism_branch: bundle.mechanism_branch,
+                                      request_identity: request_identity as NonEmptyStr,
+                                      producer_host: srv1.producer_host as NonEmptyStr,
+                                      producer_compile_count: producer_compile_count,
+                                      produced_commit: produced_commit as NonEmptyStr,
+                                      artifact_object_id: bundle.artifact_object_id,
+                                      artifact_sha256: srv1.sha256,
+                                      clients: [
+                                        DevbootFleetClientObservation {
+                                          host: "srv1" as NonEmptyStr,
+                                          reused: false,
+                                          executed_exit: srv1.executed_exit,
+                                          executed_stdout_fingerprint: srv1.executed_stdout_fingerprint as NonEmptyStr,
+                                        },
+                                        DevbootFleetClientObservation {
+                                          host: "srv2" as NonEmptyStr,
+                                          reused: true,
+                                          executed_exit: srv2.executed_exit,
+                                          executed_stdout_fingerprint: srv2.executed_stdout_fingerprint as NonEmptyStr,
+                                        },
+                                      ],
+                                      producer_entry: decl_ref(
+                                        module_path: "gunbc.devboot.serve",
+                                        decl_name: "devboot_serve_once_entry",
+                                      ),
+                                      consumer_entry: decl_ref(
+                                        module_path: "gunbc.devboot.cli",
+                                        decl_name: "devboot_build_cli_output",
+                                      ),
+                                      transport_endpoint: bundle.transport_endpoint,
+                                      store_for_each_ref: bundle.store_for_each_ref,
                                     },
-                                    DevbootFleetClientObservation {
-                                      host: "srv2" as NonEmptyStr,
-                                      reused: true,
-                                      executed_exit: srv2.executed_exit,
-                                      executed_stdout_fingerprint: srv2.executed_stdout_fingerprint as NonEmptyStr,
-                                    },
-                                  ],
-                                  producer_entry: decl_ref(
-                                    module_path: "gunbc.devboot.serve",
-                                    decl_name: "devboot_serve_once_entry",
-                                  ),
-                                  consumer_entry: decl_ref(
-                                    module_path: "gunbc.devboot.cli",
-                                    decl_name: "devboot_build_cli_output",
-                                  ),
-                                  transport_endpoint: bundle.transport_endpoint,
-                                  store_for_each_ref: bundle.store_for_each_ref,
-                                },
+                                  }
                               }
                           }
                       }
@@ -275,15 +306,4 @@ fn harvest_modeled_fleet_proof(bundle: DevbootFleetProofHarvestBundle) -> Devboo
           }
       }
   }
-}
-
-data devboot_fleet_proof_harvest_bundle: DevbootFleetProofHarvestBundle = DevbootFleetProofHarvestBundle {
-  corpus_head: "69d07ed69d3a08a6d881a4ed8f3f45e0ec82e8aa",
-  mechanism_branch: "session/keen-moth-104" as NonEmptyStr,
-  transport_endpoint: "git://192.168.1.221:19419/store.git",
-  artifact_object_id: "bb6463edd3ebdae411755239fa2ae9bcadab23ef" as NonEmptyStr,
-  srv1_client_receipt: "BUILT\npath: /tmp/devboot-fleet/out-srv1\nsha256: 976728c5d2029799f1d89843dfdd70c3b3ed132211126d2752ef8af23b5c146e\nproducer_host: srv3\nreused: false\nexecuted_exit: 0\nexecuted_stdout: A causal compiler: write .dag, get Rust/Python/Go.\nsubject:\ndevboot.subject.v1\ntree=918953e9eb1ccbc60e6b91f64d5612a0fffd4871\npackage=v1-compiler\ntarget=bin:gunbc\ntoolchain.name=rustc\ntoolchain.version=1.93.0\narch=arch.v1.aarch64\nvendor=vendor.v1.unknown\nos=os.v1.linux\nabi=abi.v1.gnu\nprofile=release\nplatform_c_library=glibc-2.39\nlinker=<absent>\nsysroot=<absent>",
-  srv2_client_receipt: "BUILT\npath: /tmp/devboot-fleet/out-srv2\nsha256: 976728c5d2029799f1d89843dfdd70c3b3ed132211126d2752ef8af23b5c146e\nproducer_host: srv3\nreused: true\nexecuted_exit: 0\nexecuted_stdout: A causal compiler: write .dag, get Rust/Python/Go.\nsubject:\ndevboot.subject.v1\ntree=918953e9eb1ccbc60e6b91f64d5612a0fffd4871\npackage=v1-compiler\ntarget=bin:gunbc\ntoolchain.name=rustc\ntoolchain.version=1.93.0\narch=arch.v1.aarch64\nvendor=vendor.v1.unknown\nos=os.v1.linux\nabi=abi.v1.gnu\nprofile=release\nplatform_c_library=glibc-2.39\nlinker=<absent>\nsysroot=<absent>",
-  modeled_serve_log: "2026-08-09T22:13:23+00:00 exit=0 SERVED fnv1a64-dfd0b4abb44e30e7 sha256=976728c5d2029799f1d89843dfdd70c3b3ed132211126d2752ef8af23b5c146e\n2026-08-09T22:15:17+00:00 exit=0 IDLE\n2026-08-09T22:17:07+00:00 exit=0 IDLE\n2026-08-09T22:19:06+00:00 exit=0 IDLE\n2026-08-09T22:20:55+00:00 exit=0 IDLE",
-  store_for_each_ref: "180beeb95ef8dab53c7abf8aa59a728ffc00e4e9 commit\trefs/devboot/produced/fnv1a64-dfd0b4abb44e30e7\na6163bd7f5c101f8f21f758b9edf93068fb47305 commit\trefs/devboot/request/fnv1a64-dfd0b4abb44e30e7",
 }

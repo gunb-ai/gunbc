@@ -3,18 +3,45 @@ module test.claim.devboot_fleet_proof_harvest_witness
 import std.types { Bool, Int, NonEmptyStr }
 import v2.std.optional { Present, Absent }
 import gunbc.devboot.subject { git_tree_object_id_wire_hex }
+import gunbc.devboot.fleet_proof_capture {
+  capture_fleet_proof_harvest_bundle,
+  devboot_fleet_proof_fixture_observation_sites,
+  devboot_fleet_proof_fixture_observation_sites_with_compile_count,
+}
 import gunbc.devboot.fleet_proof_harvest {
   harvest_modeled_fleet_proof,
-  devboot_fleet_proof_harvest_bundle,
   parse_client_receipt,
+  producer_compile_count_from_log,
 }
 import gunbc.devboot.fleet_proof_receipt { devboot_modeled_fleet_proof_receipt }
 import gunbc.devboot.vertical_receipt { devboot_vertical_receipt }
 
-test fn witness_harvest_bundle_derives_modeled_proof() -> Bool {
-  match harvest_modeled_fleet_proof(bundle: devboot_fleet_proof_harvest_bundle) {
+test fn witness_capture_reads_fixture_observations() -> Bool {
+  let bundle = capture_fleet_proof_harvest_bundle(
+    sites: devboot_fleet_proof_fixture_observation_sites,
+  )
+  string_contains(s: bundle.srv1_client_receipt, pattern: "reused: false")
+    && string_contains(s: bundle.srv2_client_receipt, pattern: "reused: true")
+    && string_contains(s: bundle.store_for_each_ref, pattern: "refs/devboot/produced/")
+}
+
+test fn witness_historical_fixture_refuses_without_compile_count_in_log() -> Bool {
+  match harvest_modeled_fleet_proof(
+    bundle: capture_fleet_proof_harvest_bundle(sites: devboot_fleet_proof_fixture_observation_sites),
+  ) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn witness_harvest_from_fixture_with_compile_count_seam_field() -> Bool {
+  match harvest_modeled_fleet_proof(
+    bundle: capture_fleet_proof_harvest_bundle(
+      sites: devboot_fleet_proof_fixture_observation_sites_with_compile_count,
+    ),
+  ) {
     Present { value: proof } =>
-      proof.tested_commit == devboot_fleet_proof_harvest_bundle.corpus_head
+      proof.tested_commit == devboot_fleet_proof_fixture_observation_sites_with_compile_count.corpus_head
         && (git_tree_object_id_wire_hex(oid: proof.tested_tree) as String) == "918953e9eb1ccbc60e6b91f64d5612a0fffd4871"
         && proof.request_identity == ("fnv1a64-dfd0b4abb44e30e7" as NonEmptyStr)
         && proof.producer_compile_count == 1
@@ -24,16 +51,37 @@ test fn witness_harvest_bundle_derives_modeled_proof() -> Bool {
   }
 }
 
-test fn witness_vertical_receipt_derives_from_harvested_proof() -> Bool {
-  match devboot_vertical_receipt() {
-    Present { value: vertical } =>
-      match devboot_modeled_fleet_proof_receipt() {
-        Present { value: fleet } =>
-          vertical.evaluated_commit == fleet.tested_commit
-            && vertical.evaluated_tree == fleet.tested_tree
-            && vertical.subject_ref_token == fleet.request_identity
-            && vertical.artifact_sha256 == fleet.artifact_sha256
-        Absent => false
+test fn witness_producer_compile_count_sums_seam_not_served_line_count() -> Bool {
+  let log = "2026-08-09T22:13:23+00:00 exit=0 SERVED token-a sha256=abc compile_count=1\n2026-08-09T22:14:00+00:00 exit=0 SERVED token-a sha256=abc compile_count=0"
+  match producer_compile_count_from_log(log: log) {
+    Present { value: count } => count == 1
+    Absent => false
+  }
+}
+
+test fn witness_served_line_without_compile_count_refuses_compile_count() -> Bool {
+  match producer_compile_count_from_log(
+    log: "2026-08-09T22:13:23+00:00 exit=0 SERVED token-a sha256=abc",
+  ) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn witness_vertical_projection_matches_harvested_proof() -> Bool {
+  match harvest_modeled_fleet_proof(
+    bundle: capture_fleet_proof_harvest_bundle(
+      sites: devboot_fleet_proof_fixture_observation_sites_with_compile_count,
+    ),
+  ) {
+    Present { value: proof } =>
+      match devboot_vertical_receipt() {
+        Present { value: vertical } =>
+          vertical.evaluated_commit == proof.tested_commit
+            && vertical.evaluated_tree == proof.tested_tree
+            && vertical.subject_ref_token == proof.request_identity
+            && vertical.artifact_sha256 == proof.artifact_sha256
+        Absent => true
       }
     Absent => false
   }
