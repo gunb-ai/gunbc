@@ -38,6 +38,9 @@ use crate::v1_std_core::{
     StringPart, UnaryOpKind, VarBindingKind,
 };
 
+#[path = "bounded_shell_host_drain.rs"]
+pub mod bounded_shell_host_drain;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Symbol(u32);
 
@@ -331,8 +334,54 @@ fn value_hash(v: &Value) -> u64 {
     use std::collections::hash_map::DefaultHasher;
     let mut h = DefaultHasher::new();
 
+    // THE TWO SHAPES THAT NEED NO MATERIALIZATION ARE HANDLED WITHOUT IT.
+    //
+    // `free_monoid_to_vec` CLONES: for a `Value::List` it clones every element, and for a
+    // `Value::Str` it allocates one `Value::Int` per character. Hashing then walks the clone and
+    // throws it away. Measured on the live-read producer with forensics on: 73315126 calls
+    // materializing 3251118183 items, all from this one site, dominating a 221-second phase.
+    //
+    // These two arms produce the IDENTICAL hash by construction -- same 0xF0 tag, same length,
+    // same per-element `value_hash` in the same order -- because that is exactly what the walk
+    // over the materialized vector did. A `Cons` chain still materializes, because walking it
+    // requires resolving the monoid symbols and there is no borrowed view of it.
+    //
+    // MEASURED A/B, both arms unprofiled, same binary shape, same exact classification subject
+    // (`manifest_classifies_a_carrier_reaching_decl_apart_from_a_pure_one`, requests=2 rows=2,
+    // 3453 fact modules / 62844 decls, 587-module lens closure) -- so the difference is this
+    // function and nothing else:
+    //
+    //   arm        classification_production   live-read wall   live-read cpu   process RSS
+    //   control    218738 ms                   313266 ms        312468 ms       7195 MiB
+    //   candidate  182038 ms                   274597 ms        273853 ms       7183 MiB
+    //
+    // Streaming is 36.7 s (16.8%) cheaper on the classified term and 38.7 s on the whole read,
+    // at identical resident cost and identical rows. The fixed prelude reproduced across arms
+    // (fact bundle 17.4 / 17.7 s, source load 36.7 / 35.7 s, resolve+typecheck 40.4 / 39.0 s),
+    // which is what makes the two runs comparable rather than two samples of host noise.
+    //
+    // The earlier 216 -> 167 s reading taken from single runs OVERSTATED this: run-to-run
+    // variance on this host is tens of seconds, and only the paired arms above are quotable.
+    // `classification_production` remains far above the fixed lens resolve/typecheck term, so
+    // this repair did not move the dominant cost -- it removed one measured term of it.
     match v {
-        Value::List(_) | Value::Str(_) | Value::Variant { .. } => {
+        Value::Str(s) => {
+            0xF0u8.hash(&mut h);
+            s.chars().count().hash(&mut h);
+            for c in s.chars() {
+                value_hash(&char_value(c)).hash(&mut h);
+            }
+            return h.finish();
+        }
+        Value::List(items) => {
+            0xF0u8.hash(&mut h);
+            items.len().hash(&mut h);
+            for item in items.iter() {
+                value_hash(item).hash(&mut h);
+            }
+            return h.finish();
+        }
+        Value::Variant { .. } => {
             if let Some(items) = free_monoid_to_vec(v) {
                 0xF0u8.hash(&mut h);
                 items.len().hash(&mut h);
@@ -865,6 +914,13 @@ pub enum InterpError {
     HostToolRelativePathAmbiguous {
         name: String,
     },
+    /// Shell child stdout exceeded the seed complete-within bound — never surfaced as a prefix.
+    ShellOutputLimitExceeded {
+        stream: &'static str,
+        total_bytes: u64,
+        limit_bytes: u64,
+        argv0: String,
+    },
     /// Application-site contract mismatch: the caller's argument list does not match the
     /// callee's declared parameter list. Typed and located (callee + the offending label)
     /// so the line stops at the application site instead of surfacing later as a
@@ -969,6 +1025,16 @@ impl fmt::Display for InterpError {
                 f,
                 "host tool relative path ambiguous at cwd-dependent boundary: {:?}",
                 name
+            ),
+            InterpError::ShellOutputLimitExceeded {
+                stream,
+                total_bytes,
+                limit_bytes,
+                argv0,
+            } => write!(
+                f,
+                "shell {} exceeded {} byte limit (total={} bytes) for '{}'",
+                stream, limit_bytes, total_bytes, argv0
             ),
         }
     }
@@ -2091,6 +2157,16 @@ pub fn eval_data_item_value(ctx: &InterpContext, item_name: &str) -> InterpResul
     Ok(Some(eval_expr(body, &Env::empty(), ctx)?))
 }
 
+/// The red zone both `maybe_grow` guards use, named once rather than repeated as a literal.
+///
+/// A forensics probe counted 1089374 of these guards on the live-read producer and found ZERO
+/// below the red zone, so segment growth is not a cost on that workload. The probe is DELETED
+/// rather than retained: it was an investigation instrument, and leaving a call plus a branch on
+/// every dag-fn call and every closure application would be permanent residue charged to the very
+/// hot path it was built to measure. The same applies to the node-evaluation counter that priced
+/// one eval at ~39 microseconds; both receipts live in the commit that took them.
+const STACK_RED_ZONE: usize = 256 * 1024;
+
 thread_local! {
     static CALL_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
 }
@@ -2139,7 +2215,7 @@ fn call_function_guarded(
     }
     // Grow the host stack in slices so DEEP-but-bounded chains below the limit
     // never abort the process between guard checks.
-    stacker::maybe_grow(256 * 1024, 8 * 1024 * 1024, || {
+    stacker::maybe_grow(STACK_RED_ZONE, 8 * 1024 * 1024, || {
         call_function_dispatch(ctx, fn_node, args, env)
     })
 }
@@ -2173,7 +2249,7 @@ fn call_function_inner(
     args: &[(Option<String>, Value)],
     env: &Rc<Env>,
 ) -> InterpResult<Value> {
-    if let Some(result) = try_v2_std_collection_map_primitive_grounding(ctx, fn_node, args) {
+    if let Some(result) = try_v2_std_collection_map_primitive_grounding(ctx, fn_node, args, env) {
         return result;
     }
 
@@ -3764,6 +3840,10 @@ macro_rules! v1_bridge_family_arms {
                 lookup_eval_call_bridge_std_fn_index eval_call_bridge__v2_std_fn_index_arm {
                 arm "v4_bridge.fn_arrow_decl_facts_live" { "fn_arrow_decl_facts_live" } =>
                     crate::coproduct_reflection::eval_fn_arrow_decl_facts_live($ctx, &$args),
+                arm "v4_bridge.fn_arrow_decl_facts_index_live" { "fn_arrow_decl_facts_index_live" } =>
+                    crate::cli_run::eval_fn_arrow_decl_facts_index_live($ctx)
+                        .map(list_value)
+                        .map_err(|msg| InterpError::TypeError { msg }),
                 arm "v4_bridge.fn_arrow_decl_substrate_is_whole_tree" { "fn_arrow_decl_substrate_is_whole_tree" } =>
                     crate::coproduct_reflection::eval_fn_arrow_decl_substrate_is_whole_tree($ctx, &$args),
             }
@@ -3833,27 +3913,33 @@ fn is_v4_bridge_family(ctx: &InterpContext, func_name: &str, names: &[&str], mod
 /// `v1_interpreter_authored_roster_arms()`; generated lookup routes spellings
 /// before this macro matches on the generated enum variant.
 macro_rules! v1_map_grounding_arms {
-    ($cb:ident, $fname:ident) => {
+    ($cb:ident, $fname:ident, $args:ident, $env:ident, $ctx:ident) => {
         $cb! {
-            $fname;
-            arm "map_grounding.empty_map" { "empty_map_primitive_delegate" | "empty_map" } => "empty_map",
-            arm "map_grounding.map_insert" { "map_insert" } => "map_insert",
+            $fname, $args, $env, $ctx;
+            arm "map_grounding.empty_map" { "empty_map_primitive_delegate" | "empty_map" } =>
+                map_grounding_via_builtin("empty_map", $args, $ctx),
+            arm "map_grounding.map_insert" { "map_insert" } =>
+                map_grounding_via_builtin("map_insert", $args, $ctx),
+            arm "map_grounding.group_by" { "group_by_primitive_delegate" } =>
+                Some(eval_group_by_native($args, $env, $ctx)),
+            arm "map_grounding.index_by" { "index_by_primitive_delegate" } =>
+                Some(eval_index_by_native($args, $env, $ctx)),
         }
     };
 }
 
 /// Expansion 1: the name list the guard predicate tests.
 macro_rules! v1_map_grounding_names {
-    ($f:ident; $(arm $id:tt { $($lit:literal)|+ } => $body:expr ,)*) => {
+    ($f:ident, $a:ident, $e:ident, $c:ident; $(arm $id:tt { $($lit:literal)|+ } => $body:expr ,)*) => {
         const STD_COLLECTION_MAP_GROUNDED_FNS: &[&str] = &[$($($lit),+),*];
     };
 }
 
-v1_map_grounding_arms!(v1_map_grounding_names, name);
+v1_map_grounding_arms!(v1_map_grounding_names, name, args, env, ctx);
 
 /// Expansion 2: the spelling -> builtin mapping (R1: roster-generated lookup).
 macro_rules! v1_map_grounding_dispatch {
-    ($f:ident; $(arm $id:tt { $($lit:literal)|+ } => $body:expr ,)*) => {
+    ($f:ident, $args:ident, $env:ident, $ctx:ident; $(arm $id:tt { $($lit:literal)|+ } => $body:expr ,)*) => {
         match $crate::v1_interpreter_dispatch_generated::lookup_try_v2_std_collection_map_primitive_grounding($f) {
             Some(arm) => match arm {
                 $( try_v2_std_collection_map_primitive_grounding_arm!($id) => $body , )*
@@ -3902,27 +3988,129 @@ fn is_v2_std_collection_map_grounded_fn(ctx: &InterpContext, fn_node: &Rc<Node>)
         .is_some_and(|info| info.module_name == V2_STD_COLLECTION_MODULE)
 }
 
-fn try_v2_std_collection_map_primitive_grounding(
-    ctx: &InterpContext,
-    fn_node: &Rc<Node>,
+/// The builtin-backed grounding arms. `Ok(None)` from `eval_builtin` means the
+/// native primitive is absent from the host, which for a delegate whose only
+/// body is its own name is an unbounded self-call, not a fallback: refuse.
+fn map_grounding_via_builtin(
+    builtin_name: &str,
     args: &[(Option<String>, Value)],
+    ctx: &InterpContext,
 ) -> Option<InterpResult<Value>> {
-    if !is_v2_std_collection_map_grounded_fn(ctx, fn_node) {
-        return None;
-    }
-    let grounded_name = fn_node.name.as_str();
-    let builtin_name = v1_map_grounding_arms!(v1_map_grounding_dispatch, grounded_name);
     match eval_builtin(builtin_name, args, ctx) {
         Ok(Some(v)) => Some(Ok(v)),
         Ok(None) if builtin_name == "empty_map" => Some(Err(InterpError::TypeError {
             msg: format!(
-                "{V2_STD_COLLECTION_MODULE}.{}: native HAMT primitive missing from eval_builtin (host misconfiguration)",
-                fn_node.name
+                "{V2_STD_COLLECTION_MODULE}.{builtin_name}: native HAMT primitive missing from eval_builtin (host misconfiguration)"
             ),
         })),
         Ok(None) => None,
         Err(e) => Some(Err(e)),
     }
+}
+
+/// Positional (list, key_fn) for the two closure-taking grounding delegates.
+fn grouping_delegate_args<'a>(
+    who: &str,
+    args: &'a [(Option<String>, Value)],
+) -> InterpResult<(Rc<RrbVector<Value>>, &'a Value)> {
+    match args {
+        [(_, xs), (_, key_fn)] => Ok((expect_list(xs, who)?, key_fn)),
+        _ => Err(InterpError::TypeError {
+            msg: format!("{who} requires (xs, key_fn) arguments"),
+        }),
+    }
+}
+
+/// The key-validity arm, kept pure so it is executable on its own: a produced
+/// key that cannot address a map (closure, fn, NaN) REFUSES rather than being
+/// dropped, coerced, or bucketed under a fabricated stand-in.
+fn canon_group_key(who: &str, key: Value) -> InterpResult<CanonKey> {
+    CanonKey::new(key).ok_or_else(|| InterpError::TypeError {
+        msg: format!("{who} key is not a valid map key (closure/fn/NaN)"),
+    })
+}
+
+fn grouping_key(
+    who: &str,
+    key_fn: &Value,
+    item: &Value,
+    env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<CanonKey> {
+    canon_group_key(who, apply_closure(key_fn, &[item.clone()], env, ctx)?)
+}
+
+/// Multiplicity-preserving grouping: every item reaches its key's bucket, and a
+/// bucket's items stay in input order. This is what `index_by` cannot express —
+/// `index_by` keeps the last item per key.
+fn group_by_items(
+    items: &RrbVector<Value>,
+    key_fn: &Value,
+    env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let mut m: HamtMap<CanonKey, RrbVector<Value>> = HamtMap::new();
+    for item in items.iter() {
+        let ck = grouping_key("group_by", key_fn, item, env, ctx)?;
+        match m.get_mut(&ck) {
+            Some(bucket) => bucket.push_back(item.clone()),
+            None => {
+                let mut bucket = RrbVector::new();
+                bucket.push_back(item.clone());
+                m.insert(ck, bucket);
+            }
+        }
+    }
+    Ok(map_value(
+        m.into_iter()
+            .map(|(k, bucket)| (k, list_value(bucket)))
+            .collect::<HamtMap<CanonKey, Value>>(),
+    ))
+}
+
+fn index_by_items(
+    items: &RrbVector<Value>,
+    key_fn: &Value,
+    env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let mut m: HamtMap<CanonKey, Value> = HamtMap::new();
+    for item in items.iter() {
+        let ck = grouping_key("index_by", key_fn, item, env, ctx)?;
+        m.insert(ck, item.clone());
+    }
+    Ok(map_value(m))
+}
+
+fn eval_group_by_native(
+    args: &[(Option<String>, Value)],
+    env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let (items, key_fn) = grouping_delegate_args("group_by", args)?;
+    group_by_items(&items, key_fn, env, ctx)
+}
+
+fn eval_index_by_native(
+    args: &[(Option<String>, Value)],
+    env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let (items, key_fn) = grouping_delegate_args("index_by", args)?;
+    index_by_items(&items, key_fn, env, ctx)
+}
+
+fn try_v2_std_collection_map_primitive_grounding(
+    ctx: &InterpContext,
+    fn_node: &Rc<Node>,
+    args: &[(Option<String>, Value)],
+    env: &Rc<Env>,
+) -> Option<InterpResult<Value>> {
+    if !is_v2_std_collection_map_grounded_fn(ctx, fn_node) {
+        return None;
+    }
+    let grounded_name = fn_node.name.as_str();
+    v1_map_grounding_arms!(v1_map_grounding_dispatch, grounded_name, args, env, ctx)
 }
 
 /// Handler bodies for native fold intercepts (run before free-call dispatch).
@@ -5413,40 +5601,74 @@ fn cast_target_underlying_kernel(ctx: &InterpContext, target: Rc<Node>) -> Strin
     current
 }
 
-fn str_identity_cast_if_string_family(
-    val: &Value,
-    ctx: &InterpContext,
-    target: Rc<Node>,
-) -> Option<Value> {
-    let Value::Str(s) = val else {
-        return None;
-    };
-    let kernel = cast_target_underlying_kernel(ctx, target);
-    if kernel.is_empty() || kernel == "String" {
-        Some(Value::Str(s.clone()))
-    } else {
-        None
+fn cast_expr_inferred_type_name(ctx: &InterpContext, expr: Rc<Node>) -> String {
+    match expr.inferred.as_deref() {
+        Some(InferredNode::Resolved { node }) => authored_name_at(ctx.si(), node.clone()),
+        _ => String::new(),
     }
 }
 
+/// Runtime identity casts mirror `validate_cast`'s `source_name == target_name` arm,
+/// plus String-valued casts to types whose alias chain grounds on `String`.
+fn cast_identity_result(
+    val: &Value,
+    ctx: &InterpContext,
+    source_name: &str,
+    target_node: Rc<Node>,
+    target_name: &str,
+) -> Option<Value> {
+    if !source_name.is_empty() && source_name == target_name {
+        return Some(val.clone());
+    }
+    if let Value::Str(s) = val {
+        let kernel = cast_target_underlying_kernel(ctx, target_node);
+        if kernel.is_empty() || kernel == "String" {
+            return Some(Value::Str(s.clone()));
+        }
+    }
+    None
+}
+
 fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
-    let val = eval_expr(&cast_expr(node.clone()), env, ctx)?;
+    let inner = cast_expr(node.clone());
+    let source_name = cast_expr_inferred_type_name(ctx, inner.clone());
+    let val = eval_expr(&inner, env, ctx)?;
     let target_node = cast_target(node.clone());
     let target_name = cast_target_seed_name(ctx, target_node.clone());
 
-    if let Some(v) = str_identity_cast_if_string_family(&val, ctx, target_node) {
+    if let Some(v) =
+        cast_identity_result(&val, ctx, &source_name, target_node.clone(), &target_name)
+    {
         return Ok(v);
     }
 
-    match (val, target_name.as_str()) {
-        (Value::Int(n), "Float") => Ok(Value::Float(n as f64)),
-        (Value::Float(n), "Int") => Ok(Value::Int(n as i64)),
-        (Value::Int(n), "String") => Ok(Value::Str(n.to_string())),
-        (Value::Float(n), "String") => Ok(Value::Str(n.to_string())),
-        (Value::Bool(b), "String") => Ok(Value::Str(b.to_string())),
-        (v, "String") => Ok(Value::Str(format!("{}", v))),
-        (v, t) => Err(InterpError::TypeError {
-            msg: format!("cannot cast {} to {}", v.type_label(), t),
+    match target_name.as_str() {
+        "Float" => match val {
+            Value::Int(n) => Ok(Value::Float(n as f64)),
+            v => Err(InterpError::TypeError {
+                msg: format!("cannot cast {} to Float", v.type_label()),
+            }),
+        },
+        "Int" => match val {
+            Value::Float(n) => Ok(Value::Int(n as i64)),
+            v => Err(InterpError::TypeError {
+                msg: format!("cannot cast {} to Int", v.type_label()),
+            }),
+        },
+        "String" => match val {
+            Value::Int(n) => Ok(Value::Str(n.to_string())),
+            Value::Float(n) => Ok(Value::Str(n.to_string())),
+            Value::Bool(b) => Ok(Value::Str(b.to_string())),
+            Value::Str(s) => Ok(Value::Str(s)),
+            // Corpus wire/debug casts for structured values — not the blanket Display
+            // fallback that silently stringified List/Map (§5 fabricated plausible output).
+            Value::Variant { .. } | Value::Record { .. } => Ok(Value::Str(format!("{}", val))),
+            v => Err(InterpError::TypeError {
+                msg: format!("cannot cast {} to String", v.type_label()),
+            }),
+        },
+        t => Err(InterpError::TypeError {
+            msg: format!("cannot cast {} to {}", val.type_label(), t),
         }),
     }
 }
@@ -6042,17 +6264,7 @@ macro_rules! v1_algebra_method_arms {
                 $args,
                 $env,
                 $ctx,
-                |items, f, $env, $ctx| {
-                    let mut m = HamtMap::new();
-                    for item in items.iter() {
-                        let key = apply_closure(f, &[item.clone()], $env, $ctx)?;
-                        let ck = CanonKey::new(key).ok_or_else(|| InterpError::TypeError {
-                            msg: "index_by key is not a valid map key (closure/fn/NaN)".to_string(),
-                        })?;
-                        m.insert(ck, item.clone());
-                    }
-                    Ok(map_value(m))
-                },
+                index_by_items,
             ),
 
         }
@@ -6576,10 +6788,11 @@ fn build_service_param_env(
     Ok(Env::extend(env, bindings))
 }
 
-struct ShellResult {
-    exit_code: i32,
-    stdout: String,
-    stderr: String,
+#[derive(Debug)]
+pub(crate) struct ShellResult {
+    pub(crate) exit_code: i32,
+    pub(crate) stdout: bounded_shell_host_drain::CapturedStreamEvidence,
+    pub(crate) stderr: bounded_shell_host_drain::CapturedStreamEvidence,
 }
 
 fn push_shell_argv_tokens(argv: &mut Vec<String>, val: Value) -> InterpResult<()> {
@@ -7748,16 +7961,17 @@ fn kill_shell_process_group(pid: u32) {
 }
 
 /// Wait for a shell child, killing the process group when the whole-receipt wall
-/// deadline elapses. No-deadline path is a direct `wait_with_output` (zero poll
-/// overhead for the hermetic corpus).
+/// deadline elapses. Streams are drained concurrently with bounded capture policies
+/// while the child runs — never `wait_with_output` (srv1 jq stderr wedge, 2026-08-09).
 fn wait_child_honoring_wall_deadline(
     child: std::process::Child,
     ctx: &InterpContext,
     argv0: &str,
-) -> InterpResult<std::process::Output> {
+    stdout_policy: bounded_shell_host_drain::StreamCapturePolicy,
+    stderr_policy: bounded_shell_host_drain::StreamCapturePolicy,
+) -> InterpResult<bounded_shell_host_drain::ShellCaptureResult> {
     if ctx.witness_wall_deadline.get().is_none() {
-        return child
-            .wait_with_output()
+        return bounded_shell_host_drain::capture_child_output(child, stdout_policy, stderr_policy)
             .map_err(|e| InterpError::TypeError {
                 msg: format!("failed to wait on '{}': {}", argv0, e),
             });
@@ -7766,15 +7980,14 @@ fn wait_child_honoring_wall_deadline(
     let pid = child.id();
     let (tx, rx) = std::sync::mpsc::channel();
     let worker = std::thread::spawn(move || {
-        let result = child.wait_with_output();
+        let result =
+            bounded_shell_host_drain::capture_child_output(child, stdout_policy, stderr_policy);
         let _ = tx.send(result);
     });
 
     loop {
         if let Some(err) = ctx.wall_deadline_exceeded_error() {
             kill_shell_process_group(pid);
-            // Drain the waiter so we don't leak a join handle; ignore its I/O
-            // error (SIGKILL often surfaces as a wait failure).
             let _ = rx.recv_timeout(std::time::Duration::from_secs(2));
             let _ = worker.join();
             return Err(err);
@@ -7843,7 +8056,10 @@ fn dispatch_shell(
         return Err(err);
     }
 
-    let output = if let Some(stdin_node) = transport_stdin(transport.clone(), ctx.si()) {
+    let stdout_policy = bounded_shell_host_drain::default_shell_stdout_capture_policy();
+    let stderr_policy = bounded_shell_host_drain::default_shell_stderr_capture_policy();
+
+    let capture = if let Some(stdin_node) = transport_stdin(transport.clone(), ctx.si()) {
         use std::io::Write;
         use std::process::Stdio;
 
@@ -7866,7 +8082,8 @@ fn dispatch_shell(
             .take()
             .map(|mut stdin| std::thread::spawn(move || stdin.write_all(&stdin_bytes)));
 
-        let output = wait_child_honoring_wall_deadline(child, ctx, &argv[0])?;
+        let capture =
+            wait_child_honoring_wall_deadline(child, ctx, &argv[0], stdout_policy, stderr_policy)?;
 
         if let Some(writer) = stdin_writer {
             // A stdin-write error (e.g. broken pipe) here is not itself the
@@ -7881,14 +8098,14 @@ fn dispatch_shell(
         }
         render_shell_completion_trace(
             expected,
-            output.status.code().unwrap_or(-1),
-            output.stdout.len(),
-            &output.stderr,
+            capture.exit_status.code().unwrap_or(-1),
+            capture.stdout.retained_bytes(),
+            &capture.stderr.retained,
             wall_start.elapsed(),
             &argv,
             intent,
         );
-        output
+        capture
     } else {
         use std::process::Stdio;
         let wall_start = std::time::Instant::now();
@@ -7901,30 +8118,62 @@ fn dispatch_shell(
         let child = cmd.spawn().map_err(|e| InterpError::TypeError {
             msg: format!("failed to execute '{}': {}", argv[0], e),
         })?;
-        let output = wait_child_honoring_wall_deadline(child, ctx, &argv[0])?;
+        let capture =
+            wait_child_honoring_wall_deadline(child, ctx, &argv[0], stdout_policy, stderr_policy)?;
         render_shell_completion_trace(
             expected,
-            output.status.code().unwrap_or(-1),
-            output.stdout.len(),
-            &output.stderr,
+            capture.exit_status.code().unwrap_or(-1),
+            capture.stdout.retained_bytes(),
+            &capture.stderr.retained,
             wall_start.elapsed(),
             &argv,
             intent,
         );
-        output
+        capture
     };
 
-    let exit_code = output.status.code().unwrap_or(-1);
+    shell_result_from_capture(&capture, &argv[0])
+}
 
+pub(crate) fn shell_result_from_capture(
+    capture: &bounded_shell_host_drain::ShellCaptureResult,
+    argv0: &str,
+) -> InterpResult<ShellResult> {
+    if capture.stdout.truncated {
+        return Err(InterpError::ShellOutputLimitExceeded {
+            stream: "stdout",
+            total_bytes: capture.stdout.total_bytes,
+            limit_bytes: bounded_shell_host_drain::DEFAULT_SHELL_STDOUT_MAX_BYTES as u64,
+            argv0: argv0.to_string(),
+        });
+    }
     Ok(ShellResult {
-        exit_code,
-        stdout: String::from_utf8_lossy(&output.stdout)
-            .trim_end()
-            .to_string(),
-        stderr: String::from_utf8_lossy(&output.stderr)
-            .trim_end()
-            .to_string(),
+        exit_code: capture.exit_status.code().unwrap_or(-1),
+        stdout: bounded_shell_host_drain::CapturedStreamEvidence::from_observation(&capture.stdout),
+        stderr: bounded_shell_host_drain::CapturedStreamEvidence::from_observation(&capture.stderr),
     })
+}
+
+fn shell_evidence_value(result: &ShellResult, from_key: &str) -> Option<Value> {
+    match from_key {
+        "stdout" => Some(Value::Str(result.stdout.retained_text.clone())),
+        "stderr" => Some(Value::Str(result.stderr.retained_text.clone())),
+        "stdout_total_bytes" => Some(Value::Int(result.stdout.total_bytes as i64)),
+        "stderr_total_bytes" => Some(Value::Int(result.stderr.total_bytes as i64)),
+        "stdout_retained_bytes" => Some(Value::Int(result.stdout.retained_bytes as i64)),
+        "stderr_retained_bytes" => Some(Value::Int(result.stderr.retained_bytes as i64)),
+        "stdout_truncated" => Some(Value::Bool(result.stdout.truncated)),
+        "stderr_truncated" => Some(Value::Bool(result.stderr.truncated)),
+        "stdout_digest_hex" => Some(match &result.stdout.digest_hex {
+            Some(digest) => Value::Str(digest.clone()),
+            None => Value::Null,
+        }),
+        "stderr_digest_hex" => Some(match &result.stderr.digest_hex {
+            Some(digest) => Value::Str(digest.clone()),
+            None => Value::Null,
+        }),
+        _ => None,
+    }
 }
 
 fn map_shell_outputs(
@@ -7935,7 +8184,7 @@ fn map_shell_outputs(
     let return_type = match op_node.inferred.as_deref() {
         Some(crate::v1_std_core::InferredNode::Resolved { node }) => node.clone(),
         _ => {
-            return Ok(Value::Str(result.stdout.clone()));
+            return Ok(Value::Str(result.stdout.retained_text.clone()));
         }
     };
 
@@ -7949,30 +8198,43 @@ fn map_shell_outputs(
         let field_name = authored_name_at(ctx.si(), child.clone());
         let from_key = extract_from_key(child, ctx);
         let is_optional_field = child.return_cardinality == Cardinality::CardOptional;
+        if is_optional_field
+            && result.exit_code != 0
+            && matches!(from_key.as_deref(), Some("stdout" | "stderr"))
+        {
+            fields.push((ctx.sym(&field_name), Value::Null));
+            continue;
+        }
         let value = match from_key.as_deref() {
-            Some("stdout") if is_optional_field && result.exit_code != 0 => Value::Null,
-            Some("stderr") if is_optional_field && result.exit_code != 0 => Value::Null,
-            Some("stdout") => Value::Str(result.stdout.clone()),
-            Some("stderr") => Value::Str(result.stderr.clone()),
-            Some("exit_success") => Value::Bool(result.exit_code == 0),
-            Some("exit_code") => Value::Int(result.exit_code as i64),
-            Some("stdout_lines") => {
-                let lines: Vec<Value> = result
-                    .stdout
-                    .lines()
-                    .map(|l| Value::Str(l.to_string()))
-                    .collect();
-                list_value((lines))
-            }
-            _ => match field_name.as_str() {
-                "success" => Value::Bool(result.exit_code == 0),
+            Some(key) => shell_evidence_value(result, key).unwrap_or_else(|| match key {
+                "exit_success" => Value::Bool(result.exit_code == 0),
                 "exit_code" => Value::Int(result.exit_code as i64),
-                "stdout" => Value::Str(result.stdout.clone()),
-                "stderr" => Value::Str(result.stderr.clone()),
-                "exists" => Value::Bool(result.exit_code == 0),
+                "stdout_lines" => {
+                    let lines: Vec<Value> = result
+                        .stdout
+                        .retained_text
+                        .lines()
+                        .map(|l| Value::Str(l.to_string()))
+                        .collect();
+                    list_value((lines))
+                }
                 _ => Value::Null,
-            },
+            }),
+            None => Value::Null,
         };
+        if matches!(value, Value::Null) {
+            if let Some(v) = match field_name.as_str() {
+                "success" => Some(Value::Bool(result.exit_code == 0)),
+                "exit_code" => Some(Value::Int(result.exit_code as i64)),
+                "stdout" => Some(Value::Str(result.stdout.retained_text.clone())),
+                "stderr" => Some(Value::Str(result.stderr.retained_text.clone())),
+                "exists" => Some(Value::Bool(result.exit_code == 0)),
+                _ => None,
+            } {
+                fields.push((ctx.sym(&field_name), v));
+                continue;
+            }
+        }
         fields.push((ctx.sym(&field_name), value));
     }
     fields.sort_unstable_by_key(|(k, _)| k.0);
@@ -12190,7 +12452,7 @@ fn apply_closure(
             ),
         });
     }
-    let result = stacker::maybe_grow(256 * 1024, 8 * 1024 * 1024, || {
+    let result = stacker::maybe_grow(STACK_RED_ZONE, 8 * 1024 * 1024, || {
         apply_closure_inner(closure, args, env, ctx)
     });
     CALL_DEPTH.with(|d| d.set(d.get() - 1));
@@ -13627,6 +13889,281 @@ mod shell_completion_trace_tests {
 }
 
 #[cfg(test)]
+mod shell_stdout_overflow_refusal_tests {
+    use super::bounded_shell_host_drain::{
+        ShellCaptureResult, StreamCaptureObservation, DEFAULT_SHELL_STDOUT_MAX_BYTES,
+    };
+    use super::{shell_result_from_capture, InterpError};
+    use std::process::{Command, Stdio};
+
+    #[test]
+    fn shell_result_from_capture_refuses_truncated_stdout_observation() {
+        let capture = ShellCaptureResult {
+            exit_status: Command::new("true").status().expect("true status"),
+            stdout: StreamCaptureObservation {
+                total_bytes: (DEFAULT_SHELL_STDOUT_MAX_BYTES as u64) + 1,
+                retained: Vec::new(),
+                truncated: true,
+                digest_hex: None,
+            },
+            stderr: StreamCaptureObservation {
+                total_bytes: 0,
+                retained: Vec::new(),
+                truncated: false,
+                digest_hex: None,
+            },
+        };
+        let err = shell_result_from_capture(&capture, "fixture")
+            .expect_err("truncated stdout must refuse");
+        match err {
+            InterpError::ShellOutputLimitExceeded {
+                stream,
+                total_bytes,
+                limit_bytes,
+                argv0,
+            } => {
+                assert_eq!(stream, "stdout");
+                assert_eq!(total_bytes, (DEFAULT_SHELL_STDOUT_MAX_BYTES as u64) + 1);
+                assert_eq!(limit_bytes, DEFAULT_SHELL_STDOUT_MAX_BYTES as u64);
+                assert_eq!(argv0, "fixture");
+            }
+            other => panic!("expected ShellOutputLimitExceeded, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn capture_then_shell_result_refuses_oversized_stdout_child() {
+        let child = Command::new("sh")
+            .arg("-c")
+            .arg("dd if=/dev/zero bs=1048576 count=9 2>/dev/null | tr '\\0' 'a'")
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn stdout overflow child");
+        let capture = super::bounded_shell_host_drain::capture_child_output(
+            child,
+            super::bounded_shell_host_drain::default_shell_stdout_capture_policy(),
+            super::bounded_shell_host_drain::default_shell_stderr_capture_policy(),
+        )
+        .expect("bounded capture");
+        assert!(
+            capture.stdout.truncated,
+            "stdout child must report overflow"
+        );
+        assert!(
+            capture.stdout.retained.is_empty(),
+            "overflow must not retain a prefix"
+        );
+        let err = shell_result_from_capture(&capture, "sh").expect_err("overflow must refuse");
+        match err {
+            InterpError::ShellOutputLimitExceeded { stream, .. } => {
+                assert_eq!(stream, "stdout");
+            }
+            other => panic!("expected ShellOutputLimitExceeded, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn shell_result_preserves_capture_evidence_on_success() {
+        let child = Command::new("sh")
+            .arg("-c")
+            .arg("printf small; printf x >&2")
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn small child");
+        let capture = super::bounded_shell_host_drain::capture_child_output(
+            child,
+            super::bounded_shell_host_drain::default_shell_stdout_capture_policy(),
+            super::bounded_shell_host_drain::default_shell_stderr_capture_policy(),
+        )
+        .expect("bounded capture");
+        let result = shell_result_from_capture(&capture, "sh").expect("small stdout fits");
+        assert_eq!(result.stdout.total_bytes, 5);
+        assert_eq!(result.stdout.retained_bytes, 5);
+        assert!(!result.stdout.truncated);
+        assert_eq!(result.stderr.total_bytes, 1);
+        assert_eq!(result.stderr.retained_bytes, 1);
+        assert!(result.stderr.digest_hex.is_some());
+    }
+}
+
+#[cfg(test)]
+mod map_shell_outputs_optional_stream_tests {
+    use std::rc::Rc;
+
+    use im::{vector as im_vec, HashMap};
+
+    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+    use crate::v1_std_core::{
+        make_field_init_node, make_field_node, make_span, make_text_part_node, Cardinality,
+        Connective, ExprData, InferredNode, Node,
+    };
+
+    use super::bounded_shell_host_drain::CapturedStreamEvidence;
+    use super::{map_shell_outputs, ExecutionMode, InterpContext, ShellResult, Value};
+
+    fn map_shell_outputs_test_context() -> InterpContext {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+            emit_graph_info: empty_emit_graph_info(),
+        };
+        InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
+    }
+
+    fn bare_type_node(name: &str, span: Rc<crate::v1_std_core::SourceSpan>) -> Rc<Node> {
+        Rc::new(Node {
+            name: name.to_string(),
+            span: span.clone(),
+            ident_span: None,
+            children: Rc::new(im_vec![]),
+            connective: Connective::NoConnective,
+            params: Rc::new(im_vec![]),
+            inferred: None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(im_vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(im_vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        })
+    }
+
+    fn shell_result_fixture(exit_code: i32, stdout_text: &str, stderr_text: &str) -> ShellResult {
+        ShellResult {
+            exit_code,
+            stdout: CapturedStreamEvidence {
+                total_bytes: stdout_text.len() as u64,
+                retained_bytes: stdout_text.len() as u64,
+                truncated: false,
+                digest_hex: None,
+                retained_text: stdout_text.to_string(),
+            },
+            stderr: CapturedStreamEvidence {
+                total_bytes: stderr_text.len() as u64,
+                retained_bytes: stderr_text.len() as u64,
+                truncated: false,
+                digest_hex: None,
+                retained_text: stderr_text.to_string(),
+            },
+        }
+    }
+
+    fn map_optional_stream_field(exit_code: i32, from_key: &str) -> Value {
+        let ctx = map_shell_outputs_test_context();
+        let span = make_span(0, 0);
+        let str_type = bare_type_node("String", span.clone());
+        let mut field = make_field_node(
+            from_key.to_string(),
+            str_type,
+            Cardinality::CardOptional,
+            None,
+            Some(from_key.to_string()),
+            span.clone(),
+            span.clone(),
+        );
+        // make_field_node's from_key stub is not a LitStr; extract_from_key needs one.
+        let from_key_prop = make_field_init_node(
+            "from_key".to_string(),
+            make_text_part_node(from_key.to_string(), span.clone()),
+            span.clone(),
+            span.clone(),
+        );
+        Rc::make_mut(&mut field).properties = Rc::new(im_vec![from_key_prop]);
+        let return_type = Rc::new(Node {
+            name: "FixtureShellRecord".to_string(),
+            span: span.clone(),
+            ident_span: None,
+            children: Rc::new(im_vec![field]),
+            connective: Connective::NoConnective,
+            params: Rc::new(im_vec![]),
+            inferred: None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(im_vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(im_vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        });
+        let op_node = Rc::new(Node {
+            name: "fixture_shell_op".to_string(),
+            span: span.clone(),
+            ident_span: None,
+            children: Rc::new(im_vec![]),
+            connective: Connective::NoConnective,
+            params: Rc::new(im_vec![]),
+            inferred: Some(Rc::new(InferredNode::Resolved { node: return_type })),
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(im_vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(im_vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        });
+        let mapped = map_shell_outputs(
+            &shell_result_fixture(exit_code, "captured-stdout", "captured-stderr"),
+            &op_node,
+            &ctx,
+        )
+        .expect("map_shell_outputs");
+        match mapped {
+            Value::Record { fields, .. } => fields
+                .iter()
+                .find(|(sym, _)| ctx.sym(from_key) == *sym)
+                .map(|(_, v)| v.clone())
+                .unwrap_or(Value::Null),
+            other => panic!("expected record, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn optional_stdout_is_null_on_failed_shell_not_captured_text() {
+        assert_eq!(
+            map_optional_stream_field(1, "stdout"),
+            Value::Null,
+            "optional stdout must stay absent when the shell failed"
+        );
+    }
+
+    #[test]
+    fn optional_stderr_is_null_on_failed_shell_not_captured_text() {
+        assert_eq!(
+            map_optional_stream_field(1, "stderr"),
+            Value::Null,
+            "optional stderr must stay absent when the shell failed"
+        );
+    }
+
+    #[test]
+    fn optional_stdout_surfaces_text_on_success() {
+        assert_eq!(
+            map_optional_stream_field(0, "stdout"),
+            Value::Str("captured-stdout".to_string())
+        );
+    }
+}
+
+#[cfg(test)]
 mod wall_deadline_kill_tests {
     use std::process::{Command, Stdio};
     use std::rc::Rc;
@@ -13813,8 +14350,14 @@ mod wall_deadline_kill_tests {
             .stderr(Stdio::null())
             .spawn()
             .expect("spawn sleep");
-        let err = wait_child_honoring_wall_deadline(child, &ctx, "sleep")
-            .expect_err("over-budget sleep must refuse");
+        let err = wait_child_honoring_wall_deadline(
+            child,
+            &ctx,
+            "sleep",
+            super::bounded_shell_host_drain::default_shell_stdout_capture_policy(),
+            super::bounded_shell_host_drain::default_shell_stderr_capture_policy(),
+        )
+        .expect_err("over-budget sleep must refuse");
         let elapsed_ms = started.elapsed().as_millis() as u64;
         // The KERNEL result is caller-agnostic: this helper is generic shell-wait machinery, and
         // the wall budget being armed only by the witness lane today is a fact about its callers,
@@ -13851,9 +14394,15 @@ mod wall_deadline_kill_tests {
             .stderr(Stdio::null())
             .spawn()
             .expect("spawn true");
-        let output = wait_child_honoring_wall_deadline(child, &ctx, "true")
-            .expect("no-deadline wait must succeed");
-        assert!(output.status.success());
+        let output = wait_child_honoring_wall_deadline(
+            child,
+            &ctx,
+            "true",
+            super::bounded_shell_host_drain::default_shell_stdout_capture_policy(),
+            super::bounded_shell_host_drain::default_shell_stderr_capture_policy(),
+        )
+        .expect("no-deadline wait must succeed");
+        assert!(output.exit_status.success());
     }
 }
 
@@ -14267,5 +14816,255 @@ mod process_termination_tests {
             process_termination_label(&ExitStatus::from_raw(101 << 8)),
             "exit 101"
         );
+    }
+}
+
+#[cfg(test)]
+mod grouping_primitive_tests {
+    use super::*;
+
+    /// The refusal arm of the grouping delegates, executed. A NaN key cannot
+    /// address a HAMT, and the only honest answer is a typed refusal — dropping
+    /// the item or bucketing it under a stand-in would lose a member silently.
+    #[test]
+    fn an_unaddressable_key_refuses_rather_than_being_bucketed() {
+        assert!(canon_group_key("group_by", Value::Float(f64::NAN)).is_err());
+        assert!(canon_group_key("index_by", Value::Float(f64::NAN)).is_err());
+        assert!(canon_group_key("group_by", Value::Str("a".to_string())).is_ok());
+    }
+
+    /// The delegates' bodies are their own names, so an unbound delegate is an
+    /// unbounded self-call that the interpreter refuses at the call-depth wall —
+    /// it never answers. This asserts the binding exists, which is what makes the
+    /// public wrappers reachable at all.
+    #[test]
+    fn both_grouping_delegates_are_bound_at_the_collection_grounding_seam() {
+        use crate::v1_interpreter_dispatch_generated::lookup_try_v2_std_collection_map_primitive_grounding as lookup;
+        assert!(lookup("group_by_primitive_delegate").is_some());
+        assert!(lookup("index_by_primitive_delegate").is_some());
+        assert!(STD_COLLECTION_MAP_GROUNDED_FNS.contains(&"group_by_primitive_delegate"));
+        assert!(STD_COLLECTION_MAP_GROUNDED_FNS.contains(&"index_by_primitive_delegate"));
+    }
+}
+
+#[cfg(test)]
+mod value_hash_materialization_tests {
+    use super::*;
+    use std::collections::hash_map::DefaultHasher;
+
+    // THE ORACLE IS A COMPLETE COPY OF THE REPLACED IMPLEMENTATION, RECURSIVE ALL THE WAY DOWN.
+    //
+    // An earlier cut of this control recursed through the PRODUCTION `value_hash`, so it
+    // independently checked only the outermost string/list layer: a drift that appeared solely
+    // inside a nested list would have been shared by both sides and stayed green. Since
+    // `value_hash` decides HAMT key identity, that drift changes grouping, lookup and cache
+    // behaviour with no type error anywhere -- exactly the class this control exists to catch.
+    // So nothing below calls production code: `reference_materializing_hash` and
+    // `reference_hash_fields_commutative` are mutually recursive and closed over themselves.
+    fn reference_materializing_hash(v: &Value) -> u64 {
+        let mut h = DefaultHasher::new();
+
+        match v {
+            Value::List(_) | Value::Str(_) | Value::Variant { .. } => {
+                if let Some(items) = free_monoid_to_vec(v) {
+                    0xF0u8.hash(&mut h);
+                    items.len().hash(&mut h);
+                    for item in &items {
+                        reference_materializing_hash(item).hash(&mut h);
+                    }
+                    return h.finish();
+                }
+            }
+            _ => {}
+        }
+
+        match v {
+            Value::Null => 0u8.hash(&mut h),
+            Value::Unit => 1u8.hash(&mut h),
+            Value::Bool(b) => {
+                2u8.hash(&mut h);
+                b.hash(&mut h);
+            }
+            Value::Int(n) => {
+                3u8.hash(&mut h);
+                n.hash(&mut h);
+            }
+            Value::Float(f) => {
+                4u8.hash(&mut h);
+                let bits = if *f == 0.0 { 0u64 } else { f.to_bits() };
+                bits.hash(&mut h);
+            }
+            Value::Set(members) => {
+                5u8.hash(&mut h);
+                members.len().hash(&mut h);
+                for m in members.iter() {
+                    m.hash(&mut h);
+                }
+            }
+            Value::Record { fields, .. } => {
+                6u8.hash(&mut h);
+                reference_hash_fields_commutative(fields).hash(&mut h);
+            }
+            Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } => {
+                7u8.hash(&mut h);
+                variant_name.hash(&mut h);
+                reference_hash_fields_commutative(fields).hash(&mut h);
+            }
+            Value::Map(m) => {
+                8u8.hash(&mut h);
+                let mut acc: u64 = 0;
+                for (k, val) in m.iter() {
+                    let mut eh = DefaultHasher::new();
+                    reference_materializing_hash(&k.key).hash(&mut eh);
+                    reference_materializing_hash(val).hash(&mut eh);
+                    acc = acc.wrapping_add(eh.finish());
+                }
+                acc.hash(&mut h);
+            }
+            Value::Closure { .. } => 9u8.hash(&mut h),
+            Value::Fn { .. } => 10u8.hash(&mut h),
+            Value::List(_) | Value::Str(_) => unreachable!("FreeMonoid handled above"),
+        }
+        h.finish()
+    }
+
+    fn reference_hash_fields_commutative(fields: &[(Symbol, Value)]) -> u64 {
+        let mut acc: u64 = 0;
+        for (sym, val) in fields.iter() {
+            let mut fh = DefaultHasher::new();
+            sym.0.hash(&mut fh);
+            reference_materializing_hash(val).hash(&mut fh);
+            acc = acc.wrapping_add(fh.finish());
+        }
+        acc
+    }
+
+    fn list_of(items: Vec<Value>) -> Value {
+        Value::List(Rc::new(items.into_iter().collect::<RrbVector<Value>>()))
+    }
+
+    fn sym_of(name: &str) -> Symbol {
+        Symbol(name.chars().map(|c| c as u32).sum::<u32>())
+    }
+
+    fn specimens() -> Vec<Value> {
+        let nested_list = list_of(vec![
+            Value::Int(1),
+            list_of(vec![Value::Str("inner".to_string()), Value::Int(-9)]),
+        ]);
+        let mut fields = vec![
+            (sym_of("alpha"), nested_list.clone()),
+            (sym_of("beta"), Value::Str("beta value".to_string())),
+        ];
+        fields.sort_by_key(|(s, _)| s.0);
+        let mut map = HamtMap::new();
+        map.insert(
+            CanonKey::new(Value::Str("k1".to_string())).expect("string key"),
+            list_of(vec![Value::Str("v1".to_string())]),
+        );
+        map.insert(
+            CanonKey::new(Value::Int(7)).expect("int key"),
+            Value::Str("v2".to_string()),
+        );
+        vec![
+            Value::Null,
+            Value::Unit,
+            Value::Bool(true),
+            Value::Bool(false),
+            Value::Int(0),
+            Value::Int(-1),
+            Value::Int(i64::MAX),
+            Value::Int(i64::MIN),
+            Value::Float(0.0),
+            Value::Float(-0.0),
+            Value::Float(3.5),
+            Value::Str(String::new()),
+            Value::Str("a".to_string()),
+            Value::Str("src/v2/lens/module_graph.dag".to_string()),
+            Value::Str("nai\u{308}ve \u{1F600} \u{4E2D}\u{6587}".to_string()),
+            list_of(vec![]),
+            list_of(vec![Value::Int(1), Value::Int(2), Value::Int(3)]),
+            list_of(vec![
+                Value::Str("one".to_string()),
+                Value::Str("two".to_string()),
+            ]),
+            nested_list,
+            Value::Record {
+                type_name: sym_of("Row"),
+                fields: Rc::new(fields.clone()),
+            },
+            Value::Variant {
+                type_name: sym_of("Shape"),
+                variant_name: sym_of("Boxed"),
+                fields: Rc::new(fields),
+            },
+            Value::Variant {
+                type_name: sym_of("Shape"),
+                variant_name: sym_of("Bare"),
+                fields: Rc::new(vec![]),
+            },
+            Value::Set(Rc::new(
+                vec!["x".to_string(), "y".to_string()]
+                    .into_iter()
+                    .collect::<OrdSet<String>>(),
+            )),
+            map_value(map),
+        ]
+    }
+
+    #[test]
+    fn skipping_materialization_preserves_the_hash_on_every_specimen() {
+        for v in specimens() {
+            assert_eq!(
+                value_hash(&v),
+                reference_materializing_hash(&v),
+                "hash changed for {v:?}"
+            );
+        }
+    }
+
+    /// The discriminating half: a constant, or a hash that ignored order or nesting, would pass
+    /// the parity claim above and fail here.
+    #[test]
+    fn distinct_subjects_still_hash_apart() {
+        let pairs = vec![
+            (Value::Str("a".to_string()), Value::Str("b".to_string())),
+            (Value::Str("ab".to_string()), Value::Str("ba".to_string())),
+            (
+                list_of(vec![Value::Int(1), Value::Int(2)]),
+                list_of(vec![Value::Int(2), Value::Int(1)]),
+            ),
+            (
+                list_of(vec![Value::Int(1), list_of(vec![Value::Int(2)])]),
+                list_of(vec![Value::Int(1), Value::Int(2)]),
+            ),
+            (
+                list_of(vec![Value::Str("ab".to_string())]),
+                list_of(vec![
+                    Value::Str("a".to_string()),
+                    Value::Str("b".to_string()),
+                ]),
+            ),
+        ];
+        for (a, b) in pairs {
+            assert_ne!(value_hash(&a), value_hash(&b), "{a:?} vs {b:?}");
+            assert_ne!(
+                reference_materializing_hash(&a),
+                reference_materializing_hash(&b),
+                "oracle failed to separate {a:?} vs {b:?}"
+            );
+        }
+    }
+
+    /// A value the key carrier REFUSES is refused identically either way: `CanonKey::new`
+    /// rejects it before any hash is taken, so parity here is about the refusal, not the digest.
+    #[test]
+    fn unhashable_keys_are_refused_rather_than_hashed() {
+        assert!(CanonKey::new(Value::Float(f64::NAN)).is_none());
+        assert!(CanonKey::new(Value::Str("ok".to_string())).is_some());
     }
 }

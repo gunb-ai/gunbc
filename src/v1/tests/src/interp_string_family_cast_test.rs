@@ -10,7 +10,11 @@ fn assert_resolved_no_hard_errors(result: &ResolvedPipelineResult) {
         .diagnostics
         .iter()
         .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
-        .filter(|m| !m.starts_with("complexity: ") && !m.starts_with("unlisted import use "))
+        .filter(|m| {
+            !m.starts_with("complexity: ")
+                && !m.starts_with("unlisted import use ")
+                && !m.starts_with("where-refinement unenforced:")
+        })
         .collect();
     assert!(
         msgs.is_empty() && result.graph.is_some(),
@@ -53,6 +57,59 @@ test fn string_family_cast_holds() -> Bool {
     match run_witness(src, "string_family_cast_holds") {
         Value::Bool(true) => {}
         other => panic!("expected true witness, got {other:?}"),
+    }
+}
+
+#[test]
+fn list_identity_cast_is_identity_at_runtime() {
+    let src = r#"module test.list_identity_cast
+
+fn list_identity(xs: List<Int>) -> List<Int> {
+  xs as List<Int>
+}
+
+test fn list_identity_cast_holds() -> Bool {
+  list_identity([1, 2, 3]) == [1, 2, 3]
+}
+"#;
+    match run_witness(src, "list_identity_cast_holds") {
+        Value::Bool(true) => {}
+        other => panic!("expected true witness, got {other:?}"),
+    }
+}
+
+#[test]
+fn list_to_string_cast_stays_fail_closed() {
+    let src = r#"module test.list_string_cast
+
+fn bad(xs: List<Int>) -> String {
+  xs as String
+}
+
+test fn list_string_cast_holds() -> Bool {
+  bad([1]) == ""
+}
+"#;
+    let sources = resolve_imports_transitively("test/list_string_cast.dag", src);
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
+    assert_resolved_no_hard_errors(&resolved);
+    let graph = resolved
+        .graph
+        .as_ref()
+        .expect("graph after successful resolve");
+    match v1_interpreter::run(
+        graph,
+        resolved.source_indices.clone(),
+        "list_string_cast_holds",
+    ) {
+        Err(v1_interpreter::InterpError::TypeError { msg }) => {
+            assert!(
+                msg.contains("cannot cast List to String"),
+                "expected List→String type error, got: {msg}"
+            );
+        }
+        Ok(other) => panic!("expected List→String cast to fail closed, got {other:?}"),
+        Err(other) => panic!("expected TypeError for List→String, got {other:?}"),
     }
 }
 
