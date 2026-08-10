@@ -62,6 +62,8 @@ Pass criteria: `selection_state=SelectionApplied` **and** `selected_entry_groups
 
 **Sequencing:** run behind vivid-gull-155 lane read (`falsifier-pin-8055-7f7da933`, run 31393103250) — not concurrent on the falsifier window.
 
+**Execution owner (2026-08-10):** vivid-gull-155 owns lane read + paired A/B (`bad445b5-6be`) after LanePredictOnly boundary capture on run 31393103250. This session (#8099 harness) holds — no falsifier or A/B dispatch from eager-owl-483. Green read on lane falsifier uses planted-red-row convention (selection-control's one counted divergence = health).
+
 ## Subjects
 
 - `incident` (default) — two-entry roster from `cli_run::selection_control_incident_subject_roster`; control selects 2/2, candidate 1/2 with `skip_before_resolve=1`.
