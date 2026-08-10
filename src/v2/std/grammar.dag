@@ -212,11 +212,21 @@ type TerminalStampMode
 
 type GrammarExpr
   = Terminal { token_class: Symbol, stamp: TerminalStampMode }
+  | TerminalContextual { token_class: Symbol, marker: Symbol }
   | Nonterminal { production: Symbol }
   | Sequence { left: GrammarExpr, right: GrammarExpr }
   | Choice { left: GrammarExpr, right: GrammarExpr }
   | Optional { element: GrammarExpr }
   | Repeat { element: GrammarExpr }
+
+// TerminalContextual is the contextual-keyword terminal (operator ruling msg_2a8e30e8 item 4,
+// firing the dissolve-on the test-marker capture scaffold named): it matches a token of the
+// given class whose interned lexeme equals `marker`, consumes it, and CAPTURES NOTHING —
+// the authored marker admits the production without adding a child, so semantic occurrence
+// identity and every downstream fold are untouched (the DESIGN 4c erasure discipline at the
+// parse layer). Analyses (FIRST, nullable, validation) see it as its token class — the
+// matching constraint narrows acceptance at parse only, which over-approximates FIRST
+// harmlessly (dispatch may enter the branch; the parse then refuses a non-marker lexeme).
 
 fn grammar_expr_optional(element: GrammarExpr) -> GrammarExpr {
   Optional { element: element }
@@ -232,6 +242,10 @@ fn grammar_expr_terminal_bound(token_class: Symbol, binding: Symbol) -> GrammarE
 
 fn grammar_expr_terminal_lexeme(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class, stamp: StampLexeme }
+}
+
+fn grammar_expr_terminal_contextual(token_class: Symbol, marker: Symbol) -> GrammarExpr {
+  TerminalContextual { token_class: token_class, marker: marker }
 }
 
 fn formal_grammar_symbol_to_grammar_expr(sym: FormalGrammarSymbol) -> GrammarExpr {
@@ -265,6 +279,8 @@ fn fold_grammar_expr<R>(expr: GrammarExpr, algebra: GrammarExprFold<R>) -> R {
   match expr {
     Terminal { token_class: token_class, stamp: stamp } =>
       algebra.terminal(token_class, stamp)
+    TerminalContextual { token_class: token_class, marker: _ } =>
+      algebra.terminal(token_class, StampClass)
     Nonterminal { production: production } => algebra.nonterminal(production)
     Sequence { left: left, right: right } =>
       algebra.sequence(

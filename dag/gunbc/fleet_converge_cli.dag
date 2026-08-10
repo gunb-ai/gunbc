@@ -14,6 +14,17 @@ import gunbc.fleet_desired_observe {
   fleet_revision_standing,
 }
 import extdeps.git.object_store { git_object_id_wire_hex }
+import gunbc.host_converge_slice1 {
+  host_converge_slice1_converge_loop,
+  host_converge_slice1_receipt_is_valid,
+  host_converge_slice1_tasks_receipt_is_valid,
+  host_converge_slice1_converge_srv3,
+  host_converge_slice1_host_result_all_valid,
+  host_converge_slice1_host_result_applied_count,
+  host_converge_slice1_host_result_refusal_reason,
+}
+import gunbc.host_runner_memory_provision { runner_memory_host_converge }
+import gunbc.host_runner_memory_cap_verify { runner_memory_cap_verify_run }
 
 
 data gunbc_converge_cli_stage0_receiver_disposition: Disposition = Terminal {
@@ -199,10 +210,6 @@ fn converge_cli_slice1_srv1_receipt() -> ConvergeCliReceipt {
           },
         }
       }
-    // Unreachable today by construction: host_converge_slice1_converge_loop folds the
-    // tasks outcome into the combined Converged arm (or Refused) and never returns
-    // TasksConverged at top level. Handled exhaustively anyway — do not wire new callers
-    // through this arm.
     HostConvergeSlice1TasksConverged { applied_knobs: n, receipt: r } =>
       if host_converge_slice1_tasks_receipt_is_valid(receipt: r) {
         ConvergeCliReceipt {

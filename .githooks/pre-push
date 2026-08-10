@@ -9,6 +9,19 @@ cd "$ROOT"
 'git' 'config' '--local' 'merge.generated-artifact.driver' 'bash .githooks/generated-artifact-merge %O %A %B %P'
 # repo-local git config: core.hooksPath
 'git' 'config' '--local' 'core.hooksPath' '.githooks'
+_gunbc_only_fleet_refs=1
+_gunbc_ref_count=0
+while read -r _lref _lsha _rref _rsha; do
+  _gunbc_ref_count=$((_gunbc_ref_count+1))
+  case "$_rref" in
+    refs/fleet/*) : ;;
+    *) _gunbc_only_fleet_refs=0 ;;
+  esac
+done
+if [[ "$_gunbc_ref_count" -gt 0 && "$_gunbc_only_fleet_refs" == "1" ]]; then
+  echo "[pre-push] refs/fleet/* only — skipping source guards (namespace-scoped)" >&2
+  exit 0
+fi
 echo "[pre-push] cargo fmt --all --check"
 fmt_rc=0
 cargo fmt --all --check || fmt_rc=$?

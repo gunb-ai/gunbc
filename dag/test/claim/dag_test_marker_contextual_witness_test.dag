@@ -1,0 +1,168 @@
+module gunbc.test.claim.dag_test_marker_contextual_witness_test
+
+import v2.std.text { String }
+import v2.std.logic { Bool }
+import v2.std.algebra { fold_list }
+import v2.std.grammar { GrammarRoot, GrammarProduction, GrammarExpr, ParseGrammar, ModeledGrammar, VoidGrammar }
+import v2.std.compilers.lexing { lex_artifact_semantic_tokens }
+import v2.compiler.tokenize { lex_walk_artifact }
+import v2.compiler.parse { parse_module, ParseArtifact }
+import v2.std.node { Node }
+import v2.extdeps.languages.dag {
+  dag_lex_rules,
+  dag_grammar,
+  dag_grammar_choice,
+  dag_grammar_nonterminal
+}
+
+data test_marker_contextual_witness_note: String = "CI2-0 contextual test-marker controls (operator ruling msg_2a8e30e8 item 4, firing the test_marker_capture_note dissolve-on): the authored 'test' marker is admitted by an OPTIONAL contextual-keyword terminal in dag_grammar_top_level_item_expr, admitted only before data_decl/fn_decl, matched by INTERNED lexeme identity (Symbol ==, never a raw string compare across the char-list/native representation straddle), and capturing NOTHING. The erasure control asserts the whole-module emitted TREE of a marked fn equals the unmarked form's tree by structural equality — test-ness stays roster-derived, exactly the invariant the deleted marker-rewrite scaffold enforced by textual rewriting. The rule-removed RED rebuilds the grammar with the top_level_item production's EXPRESSION swapped back to the pre-extension shape, selected by DECLARED production identity with the replacement count asserted, and proves the marked source refuses under it while the unmarked source still parses."
+
+fn artifact_tree(artifact: ParseArtifact) -> Node {
+  artifact.tree
+}
+
+fn parse_tree_with(source: String, grammar: ParseGrammar) -> Optional<Node> {
+  match lex_walk_artifact(source: source, file: ^marker_probe, rules: dag_lex_rules()) {
+    v2.std.diagnostic.Rejected { diagnostics: _ } => Absent
+    v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
+      match parse_module(tokens: lex_artifact_semantic_tokens(artifact: a), grammar: grammar) {
+        v2.std.diagnostic.Accepted { value: artifact, diagnostics: _ } => Present { value: artifact_tree(artifact: artifact) }
+        v2.std.diagnostic.Rejected { diagnostics: _ } => Absent
+      }
+  }
+}
+
+fn parse_accepts_with(source: String, grammar: ParseGrammar) -> Bool {
+  match parse_tree_with(source: source, grammar: grammar) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn parse_accepts(source: String) -> Bool {
+  parse_accepts_with(source: source, grammar: dag_grammar())
+}
+
+data marked_fn_source: String = "module zz_marker_probe\n\ntest fn probe_id(x: Int) -> Int { x }\n"
+
+data unmarked_fn_source: String = "module zz_marker_probe\n\nfn probe_id(x: Int) -> Int { x }\n"
+
+data marked_data_source: String = "module zz_marker_probe\n\ntest data probe_row: Int = 3\n"
+
+data marked_type_source: String = "module zz_marker_probe\n\ntest type AlgX = AlphaX | BetaX\n"
+
+data marked_import_source: String = "module zz_marker_probe\n\ntest import v2.std.logic { Bool }\n"
+
+data fn_named_test_source: String = "module zz_marker_probe\n\nfn test(x: Int) -> Int { x }\n"
+
+data bare_marker_source: String = "module zz_marker_probe\n\ntest\n"
+
+data mixed_module_source: String = "module zz_marker_probe\n\nfn helper_id(x: Int) -> Int { x }\n\ntest fn probe_id(x: Int) -> Int { helper_id(x: x) }\n"
+
+test fn witness_marked_fn_parses() -> Bool {
+  parse_accepts(source: marked_fn_source)
+}
+
+test fn witness_marked_data_parses() -> Bool {
+  parse_accepts(source: marked_data_source)
+}
+
+test fn witness_marked_type_refuses_RED() -> Bool {
+  parse_accepts(source: marked_type_source) == false
+}
+
+test fn witness_marked_import_refuses_RED() -> Bool {
+  parse_accepts(source: marked_import_source) == false
+}
+
+test fn witness_fn_named_test_still_parses() -> Bool {
+  parse_accepts(source: fn_named_test_source)
+}
+
+test fn witness_bare_marker_refuses_RED() -> Bool {
+  parse_accepts(source: bare_marker_source) == false
+}
+
+test fn witness_mixed_marked_and_unmarked_parse() -> Bool {
+  parse_accepts(source: mixed_module_source)
+}
+
+test fn witness_marker_captures_nothing_tree_equal() -> Bool {
+  match parse_tree_with(source: marked_fn_source, grammar: dag_grammar()) {
+    Absent => false
+    Present { value: marked_tree } =>
+      match parse_tree_with(source: unmarked_fn_source, grammar: dag_grammar()) {
+        Absent => false
+        Present { value: unmarked_tree } => marked_tree == unmarked_tree
+      }
+  }
+}
+
+fn pre_extension_top_level_item_expr() -> GrammarExpr {
+  dag_grammar_choice(
+    left: dag_grammar_nonterminal(production: ^dag_production_import_decl),
+    right: dag_grammar_choice(
+      left: dag_grammar_nonterminal(production: ^dag_production_alias_decl),
+      right: dag_grammar_choice(
+        left: dag_grammar_nonterminal(production: ^dag_production_type_decl),
+        right: dag_grammar_choice(
+          left: dag_grammar_nonterminal(production: ^dag_production_data_decl),
+          right: dag_grammar_nonterminal(production: ^dag_production_fn_decl)
+        )
+      )
+    )
+  )
+}
+
+fn no_productions() -> List<GrammarProduction> {
+  []
+}
+
+fn swap_top_level_item(productions: List<GrammarProduction>) -> List<GrammarProduction> {
+  fold_list(xs: productions, empty: no_productions(), cons: fn(acc, prod) {
+    match prod.name == ^dag_production_top_level_item {
+      true => concat(acc, [GrammarProduction {
+        name: prod.name,
+        expression: pre_extension_top_level_item_expr(),
+        emitted: prod.emitted
+      }])
+      false => concat(acc, [prod])
+    }
+  })
+}
+
+fn swapped_count(productions: List<GrammarProduction>) -> Int {
+  fold_list(xs: productions, empty: 0, cons: fn(acc, prod) {
+    match prod.name == ^dag_production_top_level_item {
+      true => acc + 1
+      false => acc
+    }
+  })
+}
+
+fn pre_extension_grammar() -> ParseGrammar {
+  match dag_grammar() {
+    ModeledGrammar { root: r } =>
+      ModeledGrammar {
+        root: GrammarRoot {
+          start: r.start,
+          productions: swap_top_level_item(productions: r.productions),
+          sync_tokens: r.sync_tokens
+        }
+      }
+    VoidGrammar => VoidGrammar
+  }
+}
+
+fn pre_extension_swap_targeted_exactly_one() -> Bool {
+  match dag_grammar() {
+    ModeledGrammar { root: r } => swapped_count(productions: r.productions) == 1
+    VoidGrammar => false
+  }
+}
+
+test fn witness_pre_extension_grammar_restores_the_RED() -> Bool {
+  pre_extension_swap_targeted_exactly_one()
+    && (parse_accepts_with(source: marked_fn_source, grammar: pre_extension_grammar()) == false)
+    && parse_accepts_with(source: unmarked_fn_source, grammar: pre_extension_grammar())
+}

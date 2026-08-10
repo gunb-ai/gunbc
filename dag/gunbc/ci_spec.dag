@@ -440,6 +440,21 @@ fn scheduler_invoke(spec: CiSpec) -> String {
   scheduler_invoke_with(spec: spec, plan_function: CiFloorPlan)
 }
 
+data gunbc_ci2_terminal_outcome_script_note: String = "CI2 TERMINAL OUTCOME (operator repair msg_2a8e30e8 item 5): the terminal contract for the CI2 lane as a REAL executing check, RED while incomplete — never prose in a PR body. claim_executor --terminal-outcome evaluates the SAME floor plan the ci job runs, stops after schedule construction, and refuses unless every scheduled test identity is native-routed with zero identities on any interpreted (v1) lane, sets joined exactly both directions, zero duplicates, zero discovery host errors, nonempty universe. Measured at the scheduler on the scheduler's own data — an identity scheduled to an interpreted lane IS a v1-scheduled row, so scheduled-to-interpreter == 0 is the structural form of 'ordinary v1 interpreter executions = 0'. The counters ([ci2-terminal] canonical/native-routed/v1-scheduled/missing/unexpected/duplicates/host-errors) are the exact frontier; the verdict authority and its RED/GREEN discrimination controls live beside the mode in claim_executor (Ci2TerminalTally unit controls). Honesty row (the emit_determinism precedent): this job lands NON-required on the gunbc main ruleset — flipping it protection-required is an operator ruleset action; until that flip it reds loudly on every run without formally blocking merge."
+
+fn gunbc_ci2_terminal_outcome_script() -> String {
+  concat(
+    concat("ROOT=", ci_repo_root_shell(), "\n"),
+    concat(
+      concat("# ", concat(gunbc_ci2_terminal_outcome_script_note, "\n")),
+      concat(
+        scheduler_invoke_with(spec: gunbc_ci_spec, plan_function: CiFloorPlan),
+        " --terminal-outcome\n"
+      )
+    )
+  )
+}
+
 fn gunbc_ci_floor_only_script(spec: CiSpec) -> String {
   concat(
     concat("ROOT=", ci_repo_root_shell(), "\n"),

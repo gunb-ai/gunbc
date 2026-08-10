@@ -8,14 +8,15 @@ import v2.compiler.infer { infer, InferredTree }
 import v2.compiler.compile { compile_inferred, TranslateTo, TranslateResult, EvalResult, CompileMode }
 import v2.compiler.emit_produced { emit_produced_module_rust }
 import v2.extdeps.languages.rust { rust_target_model_staging }
-import v2.extdeps.languages.dag { dag_language_model }
+import v2.extdeps.languages.dag { dag_language_model, parse_production_emitted_identity_optional, qualified_name_from_module_node }
 import v2.std.collection { list_at_optional }
 import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.qualified_name { QualifiedName }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.communication.medium { Medium }
-import v2.std.diagnostic { Accepted, Rejected, Outcome, Diagnostic, NonEmptyDiagnostics, Textual }
+import v2.std.diagnostic { Accepted, Rejected, Outcome, Diagnostic, NonEmptyDiagnostics, Textual, NodeLocus }
 import v2.std.node { Node, Edge, TypeNode, Arrow, Conj, Named, Symbol, node_synthetic }
-import v2.std.optional { Optional, Present, Absent }
+import v2.std.optional { Optional, Present, Absent, optional_present, optional_absent }
 import v2.std.algebra { fold_list, length }
 import std.algebra { Cons, Empty }
 import v2.std.logic { Bool }
@@ -28,6 +29,8 @@ data attempt_probe_supersession_note: String = "OPERATOR VERDICT (msg_9dec74f7, 
 
 type RealizationPhase
   = PhaseRead
+  | PhaseAssembly
+  | PhaseUnclassified
   | PhaseFrontend
   | PhaseNormalize
   | PhaseResolve
@@ -48,13 +51,23 @@ type EntryRealizationAttempt {
 }
 
 
+// Head-masking (measured, single-entry census on realization_sweep_test's closure):
+// rejected_with_pending PREPENDS pending accepted-carrier diagnostics to a later rejection,
+// so a rejection flowing through a stage that accumulated frontier diagnostics (wrapper-retained
+// is Accepted-with-diagnostics at the body-lowering fold) carries the frontier diag at HEAD and
+// the true rejecting cause behind it — the measured specimen read wrapper_retained_emitted where
+// the rejecting cause was normalize_reason_post_normalize_not_well_formed. The cause read must
+// skip past accepted-carrier reasons, the same way it already skipped choice-overlap residue.
+fn reason_is_masking_carrier(r: Symbol) -> Bool {
+  (r == ^body_lowering_reason_wrapper_retained_emitted) || (r == ^parse_grammar_choice_overlap_residue)
+}
+
 fn first_located_cause(ds: NonEmptyDiagnostics) -> Symbol {
-  let residue = ^parse_grammar_choice_overlap_residue
-  if !(ds.head.reason == residue) {
+  if !reason_is_masking_carrier(r: ds.head.reason) {
     ds.head.reason
   } else {
     fold_list(xs: ds.tail, empty: ds.head.reason, cons: fn(acc, d) {
-      if (acc == residue) && !(d.reason == residue) { d.reason } else { acc }
+      if reason_is_masking_carrier(r: acc) && !reason_is_masking_carrier(r: d.reason) { d.reason } else { acc }
     })
   }
 }
@@ -123,39 +136,10 @@ fn collect_arrows(root: Node, acc: List<Node>) -> List<Node> {
 }
 
 
-data test_marker_capture_note: String = "STAGED SCAFFOLD (escalation msg_628838a5; dissolve-on: GrammarExpr contextual-keyword terminal lands and dag fn_decl/data_decl productions carry the test marker structurally): the v2 dag grammar cannot yet parse the authored test marker ('test' is a module-path segment, so it cannot be a lex keyword; v1's v1_compiler_parse.rs drop_leading_test_marker DISCARDS the marker pre-parse and re-derives test-ness by text scan — cited as the prior art this capture SUPERSEDES, not imitates: this seam captures and counts, that seam discarded, and the distinction is the point (ruling msg_64870b7f)). The realization ATTEMPT captures the marker at its own seam — line-leading 'test fn '/'test data ' rewritten to the unmarked form, capture COUNTED on the attempt row — so the census sweep can measure the rest of the pipeline while the grammar extension is priced as its own top-of-burn-down repair item (it gates 100 percent of test files). Test-ness itself is never derived from this capture: the discovery roster carries it. Scoped deliberately to attempt_entry_source; the canonical production pipeline does NOT route through this fn."
-
-type MarkedSource {
-  unmarked: String
-  captured_markers: Int
-}
-
-fn capture_test_markers(source: String) -> MarkedSource {
-  let folded = fold(
-    split(s: source, delimiter: "\n"),
-    init: MarkedSource { unmarked: "", captured_markers: 0 },
-    f: fn(acc, line) {
-      let stripped =
-        if starts_with(s: line, prefix: "test fn ") || starts_with(s: line, prefix: "test data ") {
-          MarkedSource {
-            unmarked: substring(s: line, start: 5, end: string_length(s: line)),
-            captured_markers: 1
-          }
-        } else {
-          MarkedSource { unmarked: line, captured_markers: 0 }
-        }
-      MarkedSource {
-        unmarked: if acc.unmarked == "" { stripped.unmarked } else { concat(acc.unmarked, "\n", stripped.unmarked) },
-        captured_markers: acc.captured_markers + stripped.captured_markers
-      }
-    }
-  )
-  folded
-}
+data test_marker_dissolved_note: String = "DISSOLVED SCAFFOLD RECORD (dissolve-on fired; operator ruling msg_2a8e30e8 item 4): the marker-rewrite capture (MarkedSource / capture_test_markers / capture_markers_ingest — line-leading 'test fn '/'test data ' rewritten to the unmarked form before assembly) is DELETED because the dag grammar now parses the authored test marker structurally: v2.std.grammar GrammarExpr TerminalContextual is the contextual-keyword terminal, and v2.extdeps.languages.dag dag_grammar_top_level_item_expr admits an OPTIONAL ^test marker before data_decl/fn_decl only, capturing nothing — a marked declaration's emitted tree is structurally EQUAL to the unmarked form (witnessed: gunbc.test.claim.dag_test_marker_contextual_witness_test witness_marker_captures_nothing_tree_equal, with 'test type'/'test import'/bare-marker REDs and the pre-extension-grammar identity-swapped RED). Test-ness itself stays roster-derived, exactly the invariant the rewrite preserved. Prior art superseded twice over: v1's drop_leading_test_marker discards pre-parse and re-derives by text scan; the rewrite captured and counted; the grammar now ADMITS — the marker is source structure the parser sees, not a pre-parse patch."
 
 fn attempt_entry_source(entry: String, source: String) -> EntryRealizationAttempt {
-  let marked = capture_test_markers(source: source)
-  match ingested_resolved_module_from_source(source: marked.unmarked, file: ^realization_attempt_entry_file) {
+  match ingested_resolved_module_from_source(source: source, file: ^realization_attempt_entry_file) {
     Rejected { diagnostics: ds } =>
       attempt_refused_at(
         entry: entry,
@@ -212,6 +196,8 @@ fn attempt_phase_label(a: EntryRealizationAttempt) -> String {
     V2TranslateSerialized { emitted_nonempty: _ } => "emitted"
     V2RealizationRefused { phase: p, exact_cause: _, located: _ } => match p {
       PhaseRead => "read"
+      PhaseAssembly => "assembly"
+      PhaseUnclassified => "unclassified"
       PhaseFrontend => "frontend"
       PhaseNormalize => "normalize"
       PhaseResolve => "resolve"
@@ -233,28 +219,7 @@ fn attempt_cause(a: EntryRealizationAttempt) -> Optional<Symbol> {
 
 data attempt_assembled_note: String = "The CANONICAL closure attempt (operator seven-findings contract, msg_9dec74f7): exact ingest (real file reads as DagSourceReadWitness rows) -> assemble_program_from_ingest (the SAME multi-module assembly the source-root-ingest gate rides — imports resolve against the closure, finding 2; no fixture bridge, finding 1) -> EXACTLY-ONE identity join against the resolved program for the required declaration name (zero and many both refuse with typed causes — finding 6, never a synthetic wrapper) -> infer (finding 3, its own phase) -> compile_inferred TranslateTo (finding 4: assembly, join, infer, translate each report their own phase; the exact cause Symbol locates the true stage inside assembly refusals). rust_target_model_staging remains the target pending the finding-5 canonicality ruling, surfaced in the sweep receipt."
 
-fn decl_edges_named(root: Node, fn_name: Symbol, acc: List<Node>) -> List<Node> {
-  let here = fold(root.children, init: acc, f: fn(inner, e) {
-    match e.label {
-      Named { name: n } =>
-        if n == fn_name {
-          match first_arrow_in(root: e.target) {
-            Present { value: _ } => concat(inner, [node_synthetic(
-              kind: TypeNode { connective: Conj },
-              children: [Edge { label: Named { name: n }, target: e.target }]
-            )])
-            Absent => inner
-          }
-        } else { inner }
-      _ => inner
-    }
-  })
-  fold(root.children, init: here, f: fn(inner, e) {
-    decl_edges_named(root: e.target, fn_name: fn_name, acc: inner)
-  })
-}
-
-data phase_for_reason_note: String = "Finding 4 (per-stage phase precision): an assembly rejection carries the TRUE originating stage inside its reason symbol — parse/tokenize reasons are PhaseFrontend, body_lowering reasons are PhaseNormalize, resolve reasons are PhaseResolve — so the harness classifies the located reason's family instead of flattening every assembly refusal into one phase. An unrecognized family keeps the harness stage's fallback rather than fabricating a stage (§5: never a guessed label)."
+data phase_for_reason_note: String = "Per-stage phase precision (finding 4, tightened per operator repair msg_2a8e30e8 item 3): an assembly rejection carries the TRUE originating stage inside its reason symbol — parse/tokenize reasons are PhaseFrontend, body_lowering reasons are PhaseNormalize, resolve reasons are PhaseResolve — and an UNRECOGNIZED family is PhaseUnclassified, never a guessed stage and never a fallback that silently lands in resolve. Resolve is not the other bucket."
 
 fn phase_for_reason(reason: Symbol, fallback: RealizationPhase) -> RealizationPhase {
   let lexeme = symbol_lexeme(sym: reason)
@@ -267,12 +232,56 @@ fn phase_for_reason(reason: Symbol, fallback: RealizationPhase) -> RealizationPh
   } else if starts_with(s: lexeme, prefix: "infer_") || starts_with(s: lexeme, prefix: "type_") {
     PhaseInfer
   } else {
-    fallback
+    PhaseUnclassified
   }
 }
 
-fn attempt_joined(program: Node, fn_name: Symbol, entry: String) -> EntryRealizationAttempt {
-  let joined = decl_edges_named(root: program, fn_name: fn_name, acc: [])
+data attempt_exact_join_note: String = "Exact-identity join (operator repair msg_2a8e30e8 item 2 — MORE URGENT than the next wall, because a bare-name corpus-wide query can green the WRONG declaration): the required test identity is (entry module identity x declaration identity). The entry module identity comes from the admission subject the entry's own source derived; the join first selects the exactly-one program root whose QualifiedName equals it, then the exactly-one declaration edge named fn_name WITHIN that module subtree, and passes the REAL declaration edge target onward — no bare-name query over the whole assembled program, no synthetic wrapper node."
+
+fn module_roots_matching(program: Node, module_qn: QualifiedName) -> List<Node> {
+  fold(program.children, init: [], f: fn(acc, e) {
+    match qualified_name_from_module_node(root: e.target) {
+      Accepted { value: qn, diagnostics: _ } =>
+        if qn == module_qn { concat(acc, [e.target]) } else { acc }
+      Rejected { diagnostics: _ } => acc
+    }
+  })
+}
+
+fn decl_targets_named_in(root: Node, fn_name: Symbol) -> List<Node> {
+  let here = fold(root.children, init: [], f: fn(acc, e) {
+    match e.label {
+      Named { name: n } =>
+        if n == fn_name {
+          match first_arrow_in(root: e.target) {
+            Present { value: _ } => concat(acc, [e.target])
+            Absent => acc
+          }
+        } else { acc }
+      _ => acc
+    }
+  })
+  fold(root.children, init: here, f: fn(acc, e) {
+    concat(acc, decl_targets_named_in(root: e.target, fn_name: fn_name))
+  })
+}
+
+fn attempt_joined(program: Node, module_qn: QualifiedName, fn_name: Symbol, entry: String) -> EntryRealizationAttempt {
+  let roots = module_roots_matching(program: program, module_qn: module_qn)
+  if length(xs: roots) == 0 {
+    attempt_refused(entry: entry, phase: PhaseAssembly, cause: ^realization_attempt_entry_module_absent)
+  } else if length(xs: roots) > 1 {
+    attempt_refused(entry: entry, phase: PhaseAssembly, cause: ^realization_attempt_entry_module_ambiguous)
+  } else {
+    match list_at_optional(xs: roots, index: 0) {
+      Absent => attempt_refused(entry: entry, phase: PhaseAssembly, cause: ^realization_attempt_entry_module_absent)
+      Present { value: module_root } => attempt_joined_in_module(module_root: module_root, fn_name: fn_name, entry: entry)
+    }
+  }
+}
+
+fn attempt_joined_in_module(module_root: Node, fn_name: Symbol, entry: String) -> EntryRealizationAttempt {
+  let joined = decl_targets_named_in(root: module_root, fn_name: fn_name)
   if length(xs: joined) == 0 {
     attempt_refused(entry: entry, phase: PhaseResolve, cause: ^realization_attempt_identity_absent)
   } else if length(xs: joined) > 1 {
@@ -317,30 +326,11 @@ fn attempt_assembled(
       attempt_refused_at(entry: entry, phase: phase_for_reason(reason: cause, fallback: PhaseResolve), cause: cause, located: first_located_file(ds: ds))
     }
     Accepted { value: program, diagnostics: _ } =>
-      attempt_joined(program: program, fn_name: fn_name, entry: entry)
+      attempt_joined(program: program, module_qn: admission.subject.name, fn_name: fn_name, entry: entry)
   }
 }
 
-data attempt_closure_rows_note: String = "Sweep seam (CI2-0 Commit B): ONE assembly per entry closure, then one attempt_joined per required test-fn identity — the exactly-once accounting grain the mandate names. The ingest is marker-captured at this seam only (test_marker_capture_note: the grammar cannot yet parse the authored test marker, so the capture scaffold rewrites line-leading markers and the count stays observable); an assembly refusal is replicated to EVERY identity in the entry with the reason-classified phase, because each identity is accountable and none of them reached its join."
-
-fn capture_markers_ingest(ingest: SourceRootIngest) -> SourceRootIngest {
-  match ingest {
-    Empty => Empty
-    Cons { head: r, tail: t } =>
-      Cons {
-        head: DagSourceReadWitness {
-          source: Medium {
-            carried: capture_test_markers(source: r.source.carried).unmarked,
-            fidelity: r.source.fidelity
-          },
-          artifact: r.artifact,
-          compilation_unit: r.compilation_unit,
-          source_root: r.source_root
-        },
-        tail: capture_markers_ingest(ingest: t)
-      }
-  }
-}
+data attempt_closure_rows_note: String = "Sweep seam (CI2-0 Commit B): ONE assembly per entry closure, then one attempt_joined per required test-fn identity — the exactly-once accounting grain the mandate names. The ingest is assembled AS AUTHORED — the grammar parses the test marker structurally (test_marker_dissolved_note); an assembly refusal is replicated to EVERY identity in the entry with the reason-classified phase, because each identity is accountable and none of them reached its join."
 
 fn entry_witness_source(ingest: SourceRootIngest, entry: String) -> Optional<String> {
   fold_list(xs: ingest, empty: Absent, cons: fn(acc, r) {
@@ -359,16 +349,108 @@ fn no_attempt_rows() -> List<EntryRealizationAttempt> {
   []
 }
 
+// CI2-0 normalize-wall sizing census (parent directive msg_0a017e48): after the partial body
+// lowering normalize performs, a retained shell still carries its grammar production identity —
+// so the production identities remaining under a joined test-fn declaration ARE the exact
+// construct set the general-body-producer fragment must cover for that body. Walking the joined
+// decl subtree and counting emitted identities buckets the wrapper-retained population by
+// construct, with no second parser and no text scan.
+fn census_collect(root: Node, acc: List<String>) -> List<String> {
+  let here = match parse_production_emitted_identity_optional(node: root) {
+    Present { value: id } => concat(acc, [symbol_lexeme(sym: id)])
+    Absent => acc
+  }
+  fold(root.children, init: here, f: fn(inner, e) { census_collect(root: e.target, acc: inner) })
+}
+
+// Each wrapper-retained diagnostic carries the retained shell node via NodeLocus; the shell's
+// own emitted production identity IS the construct bucket — available even when assembly
+// rejects, which is the entire wrapper-retained population.
+fn census_construct_label(n: Node) -> String {
+  match parse_production_emitted_identity_optional(node: n) {
+    Present { value: id } => symbol_lexeme(sym: id)
+    Absent => "(no-production-identity)"
+  }
+}
+
+fn census_diag_construct_optional(d: Diagnostic) -> Optional<String> {
+  if !(d.reason == ^body_lowering_reason_wrapper_retained_emitted) {
+    optional_absent()
+  } else {
+    match d.at {
+      NodeLocus { anchor: a } => optional_present(value: census_construct_label(n: a.at))
+      _ => optional_absent()
+    }
+  }
+}
+
+fn census_retained_rows(ds: NonEmptyDiagnostics, entry: String) -> List<String> {
+  fold_list(xs: concat([ds.head], ds.tail), empty: no_census_lines(), cons: fn(acc, d) {
+    match census_diag_construct_optional(d: d) {
+      Present { value: prod } =>
+        concat(acc, [census_line(entry: entry, fn_col: "(retained)", phase_col: "construct", cause_col: prod, located_col: "")])
+      Absent => acc
+    }
+  })
+}
+
+fn census_line(entry: String, fn_col: String, phase_col: String, cause_col: String, located_col: String) -> String {
+  concat(entry, concat("	", concat(fn_col, concat("	", concat(phase_col, concat("	", concat(cause_col, concat("	", located_col))))))))
+}
+
+fn census_lines_for_decl(decl: Node, entry: String, fn_name: Symbol) -> List<String> {
+  fold_list(xs: census_collect(root: decl, acc: []), empty: no_census_lines(), cons: fn(acc, prod) {
+    concat(acc, [census_line(entry: entry, fn_col: symbol_lexeme(sym: fn_name), phase_col: "construct", cause_col: prod, located_col: "")])
+  })
+}
+
+fn no_census_lines() -> List<String> {
+  []
+}
+
+fn census_rows(
+  ingest: SourceRootIngest,
+  admission: Admission,
+  fn_names: List<Symbol>,
+  entry: String
+) -> List<String> {
+  match assemble_program_from_ingest(ingest: ingest, admission: admission, lm: dag_language_model()) {
+    Rejected { diagnostics: ds } =>
+      concat(
+        [census_line(
+          entry: entry,
+          fn_col: "(census)",
+          phase_col: "assembly_refused",
+          cause_col: symbol_lexeme(sym: first_located_cause(ds: ds)),
+          located_col: first_located_file(ds: ds)
+        )],
+        census_retained_rows(ds: ds, entry: entry)
+      )
+    Accepted { value: program, diagnostics: _ } =>
+      match list_at_optional(xs: module_roots_matching(program: program, module_qn: admission.subject.name), index: 0) {
+        Absent => [census_line(entry: entry, fn_col: "(census)", phase_col: "assembly", cause_col: "entry_module_absent", located_col: "")]
+        Present { value: module_root } =>
+          fold_list(xs: fn_names, empty: no_census_lines(), cons: fn(acc, fn_name) {
+            let joined = decl_targets_named_in(root: module_root, fn_name: fn_name)
+            match list_at_optional(xs: joined, index: 0) {
+              Absent => concat(acc, [census_line(entry: entry, fn_col: symbol_lexeme(sym: fn_name), phase_col: "join", cause_col: "identity_absent", located_col: "")])
+              Present { value: decl } => concat(acc, census_lines_for_decl(decl: decl, entry: entry, fn_name: fn_name))
+            }
+          })
+      }
+  }
+}
+
 fn attempt_closure_rows(
   ingest: SourceRootIngest,
   admission: Admission,
   fn_names: List<Symbol>,
   entry: String
 ) -> List<EntryRealizationAttempt> {
-  match assemble_program_from_ingest(ingest: capture_markers_ingest(ingest: ingest), admission: admission, lm: dag_language_model()) {
+  match assemble_program_from_ingest(ingest: ingest, admission: admission, lm: dag_language_model()) {
     Rejected { diagnostics: ds } => {
       let cause = first_located_cause(ds: ds)
-      let phase = phase_for_reason(reason: cause, fallback: PhaseResolve)
+      let phase = phase_for_reason(reason: cause, fallback: PhaseAssembly)
       let located = first_located_file(ds: ds)
       fold_list(xs: fn_names, empty: no_attempt_rows(), cons: fn(acc, _name) {
         concat(acc, [attempt_refused_at(entry: entry, phase: phase, cause: cause, located: located)])
@@ -376,7 +458,7 @@ fn attempt_closure_rows(
     }
     Accepted { value: program, diagnostics: _ } =>
       fold_list(xs: fn_names, empty: no_attempt_rows(), cons: fn(acc, name) {
-        concat(acc, [attempt_joined(program: program, fn_name: name, entry: entry)])
+        concat(acc, [attempt_joined(program: program, module_qn: admission.subject.name, fn_name: name, entry: entry)])
       })
   }
 }

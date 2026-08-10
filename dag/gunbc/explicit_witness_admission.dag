@@ -144,6 +144,70 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     dissolve_on: "that lane lands imported-variant value bindings, this witness runs green, and this row deletes"
   ),
   known_red_probe(
+    entry: "src/v1/tests/claim/parser_declaration_requirements_expected_red_test.dag",
+    f: "witness_product_type_declaration_is_declared",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "DERIVED REQUIREMENT, red by construction until commit C of the import-deletion lane: a product type declaration must introduce its type name; the v1 parser mints no type declaration at all. Derived from what the .dag language must bind, never from observed parser output, so it cannot go green over a defect. Owner: gunbc#8084 import deletion.",
+    dissolve_on: "commit C mints type declaration roots as TypeOccurrence and coproduct arms as ConstructorOccurrence through role-directed stamping in stamp_parsed_node_children; this row greens, deletes here, and the witness moves to the file-grain scoped roster as a permanent regression control rather than retiring"
+  ),
+  known_red_probe(
+    entry: "src/v1/tests/claim/parser_declaration_requirements_expected_red_test.dag",
+    f: "witness_coproduct_type_declaration_is_declared",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "DERIVED REQUIREMENT, red by construction until commit C of the import-deletion lane: a coproduct type declaration must introduce its type name; same missing minting as the product form. Derived from what the .dag language must bind, never from observed parser output, so it cannot go green over a defect. Owner: gunbc#8084 import deletion.",
+    dissolve_on: "commit C mints type declaration roots as TypeOccurrence and coproduct arms as ConstructorOccurrence through role-directed stamping in stamp_parsed_node_children; this row greens, deletes here, and the witness moves to the file-grain scoped roster as a permanent regression control rather than retiring"
+  ),
+  known_red_probe(
+    entry: "src/v1/tests/claim/parser_declaration_requirements_expected_red_test.dag",
+    f: "witness_nullary_constructor_is_declared",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "DERIVED REQUIREMENT, red by construction until commit C of the import-deletion lane: a nullary variant arm must introduce its constructor name; asserted separately from the payload form so a nullary-only regression cannot pass. Derived from what the .dag language must bind, never from observed parser output, so it cannot go green over a defect. Owner: gunbc#8084 import deletion.",
+    dissolve_on: "commit C mints type declaration roots as TypeOccurrence and coproduct arms as ConstructorOccurrence through role-directed stamping in stamp_parsed_node_children; this row greens, deletes here, and the witness moves to the file-grain scoped roster as a permanent regression control rather than retiring"
+  ),
+  known_red_probe(
+    entry: "src/v1/tests/claim/parser_declaration_requirements_expected_red_test.dag",
+    f: "witness_payload_constructor_is_declared",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "DERIVED REQUIREMENT, red by construction until commit C of the import-deletion lane: a payload variant arm must introduce its constructor name. Derived from what the .dag language must bind, never from observed parser output, so it cannot go green over a defect. Owner: gunbc#8084 import deletion.",
+    dissolve_on: "commit C mints type declaration roots as TypeOccurrence and coproduct arms as ConstructorOccurrence through role-directed stamping in stamp_parsed_node_children; this row greens, deletes here, and the witness moves to the file-grain scoped roster as a permanent regression control rather than retiring"
+  ),
+  known_red_probe(
+    entry: "src/v1/tests/claim/parser_declaration_requirements_expected_red_test.dag",
+    f: "witness_product_field_is_declared",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "DERIVED REQUIREMENT, red by construction until commit C of the import-deletion lane: a product type's field is declared by the type that owns it; measured absent. Derived from what the .dag language must bind, never from observed parser output, so it cannot go green over a defect. Owner: gunbc#8084 import deletion.",
+    dissolve_on: "commit C mints type declaration roots as TypeOccurrence and coproduct arms as ConstructorOccurrence through role-directed stamping in stamp_parsed_node_children; this row greens, deletes here, and the witness moves to the file-grain scoped roster as a permanent regression control rather than retiring"
+  ),
+  known_red_probe(
+    entry: "src/v1/tests/claim/parser_declaration_requirements_expected_red_test.dag",
+    f: "witness_coproduct_payload_field_is_declared_at_its_declaration_site",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "DERIVED REQUIREMENT, red by construction until commit C of the import-deletion lane: the coproduct's payload field must be declared AT its declaration site (byte 109). Measured: nothing is minted there, while a declaration exists at byte 394, the destructuring pattern. Keyed on exact occurrence identity because both readings give a population of size one, so a count or a name join cannot tell them apart. Derived from what the .dag language must bind, never from observed parser output, so it cannot go green over a defect. Owner: gunbc#8084 import deletion.",
+    dissolve_on: "commit C mints type declaration roots as TypeOccurrence and coproduct arms as ConstructorOccurrence through role-directed stamping in stamp_parsed_node_children; this row greens, deletes here, and the witness moves to the file-grain scoped roster as a permanent regression control rather than retiring"
+  ),
+  known_red_probe(
+    entry: "src/v1/tests/claim/parser_declaration_requirements_expected_red_test.dag",
+    f: "witness_pattern_field_position_is_not_a_declaration",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "DERIVED REQUIREMENT, red by construction until commit C of the import-deletion lane: the pattern's field position NAMES the field being destructured and is therefore a use, not a declaration. Stated separately from the row above: once the declaration at 109 exists, a parser still minting one at 394 would remain wrong and that row alone would not say so. Derived from what the .dag language must bind, never from observed parser output, so it cannot go green over a defect. Owner: gunbc#8084 import deletion.",
+    dissolve_on: "commit C mints type declaration roots as TypeOccurrence and coproduct arms as ConstructorOccurrence through role-directed stamping in stamp_parsed_node_children; this row greens, deletes here, and the witness moves to the file-grain scoped roster as a permanent regression control rather than retiring"
+  ),
+  known_red_probe(
+    entry: "src/v1/tests/claim/import_deletion_bridge_witness_test.dag",
+    f: "witness_import_less_reference_reaches_the_real_provider",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "THE IMPORT-DELETION KEYSTONE, red by construction: a cross-file reference must reach its provider declaration with no import declaration naming that file. Its two controls (provider withheld does not bind; the consumer carries no import) are green and enrolled file-grain. Owner: gunbc#8084.",
+    dissolve_on: "the supplied-provider bridge greens, then this row deletes and the keystone joins its controls in the scoped roster as a permanent regression control"
+  ),
+  known_red_probe(
     entry: "src/v2/test/claim/manual/english_emit_add_test.dag",
     f: "english_emit_add_ingest_round_trip_holds",
     kind: CorpusWitnessKind,

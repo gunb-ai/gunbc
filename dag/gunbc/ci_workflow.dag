@@ -20,6 +20,7 @@ import gunbc.ci_spec {
   ci_heal_author_commit_artifact_includes_hidden_files,
   gunbc_ci_heal_repo_local_git_config_invoke,
   ci_fmt_gate_line,
+  gunbc_ci2_terminal_outcome_script,
   gunbc_ci_srv1_tasks_observation_invoke,
   gunbc_ci_advance_fleet_desired_script,
   gunbc_ci_fleet_reach_probe_invoke,
@@ -971,6 +972,43 @@ fn ci_regen_floor_step() -> Step {
 
 data ci_regen_job_note: String = "The self-host fixed-point regen as its OWN job upstream of ci (operator-directed 2026-07-23: 'regen should be upstream of ci — doesn't ci depend on regen passing anyway?'). It was a step inside the ci job (folded in #6470, 2026-07-11); extracting it makes the dependency explicit — ci needs [build, regen], so a regen fixed-point failure skips ci and blocks the merge, rather than being an early step buried in the ci log. Pipeline shape: build -> regen -> ci -> deploy. It needs [build] for the release bins (regen runs the built gunbc), carries the floor-gate toolchain prelude (regen_stage0 emits rustfmt-formatted .rs), and is read-only (no push — the generated-artifact heal is a separate job with its own contents:write grant)."
 
+data gunbc_ci2_terminal_outcome_job_note: String = "CI2 Terminal Outcome job (operator repair msg_2a8e30e8 item 5): the CI2 lane's ending sentence — EVERY EXACT-HEAD TEST HAS ONE V2-OWNED EXECUTION ROUTE AND NO V1 FALLBACK — as its own named check, RED while incomplete. It needs only the release bins (claim_executor) and a checkout; it evaluates the floor plan, stops after schedule construction, and prints the exact frontier counters before refusing (see gunbc.ci_spec gunbc_ci2_terminal_outcome_script_note for the verdict conditions and the non-required-ruleset honesty row). Runs beside the ci job rather than inside it so the terminal contract's standing is visible at job grain in every PR's check list, not buried in a floor log."
+
+data gunbc_ci2_terminal_outcome_step_timeout_minutes: Int = 20
+
+data gunbc_ci2_terminal_outcome_job_backstop_timeout_minutes: Int = 30
+
+fn ci2_terminal_outcome_step() -> Step {
+  RunStep {
+    name: Present { value: "CI2 Terminal Outcome (scheduler-grain terminal contract; RED while incomplete)" },
+    id: Present { value: "ci2_terminal_outcome" },
+    run: gunbc_ci2_terminal_outcome_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci2_terminal_outcome_step_timeout_minutes }
+  }
+}
+
+fn ci2_terminal_outcome_job() -> Job {
+  Job {
+    id: "ci2_terminal_outcome",
+    name: Present { value: "CI2 Terminal Outcome" },
+    runner: gunbc_ci_selected_runner_spec(),
+    steps: concat(ci_floor_job_prelude_steps(), [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci2_terminal_outcome_step()]),
+    needs: ["build"],
+    env: none,
+    outputs: none,
+    if_condition: none,
+    timeout_minutes: Present { value: gunbc_ci2_terminal_outcome_job_backstop_timeout_minutes },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: none
+  }
+}
+
 fn ci_regen_job() -> Job {
   Job {
     id: "regen",
@@ -1034,5 +1072,5 @@ data ci_workflow: Workflow = {
       id_token: none
     }
   },
-  jobs: concat([ci_build_job(), ci_regen_job(), ci_job()], concat(ci_deploy_jobs(), [ci_heal_generated_artifacts_job(), ci_srv1_tasks_observation_job(), ci_fleet_reach_probe_job(), ci_fleet_timer_install_job(), ci_collect_fleet_convergence_job(), ci_advance_fleet_desired_job()]))
+  jobs: concat([ci_build_job(), ci_regen_job(), ci_job(), ci2_terminal_outcome_job()], concat(ci_deploy_jobs(), [ci_heal_generated_artifacts_job(), ci_srv1_tasks_observation_job(), ci_fleet_reach_probe_job(), ci_fleet_timer_install_job(), ci_collect_fleet_convergence_job(), ci_advance_fleet_desired_job()]))
 }
