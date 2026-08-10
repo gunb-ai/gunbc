@@ -20,9 +20,6 @@ name: spark-canary-probe
 # DISSOLVE-ON: deleted once the canary sequence has produced its receipt.
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - session/spark-serve-0
 
 permissions:
   contents: read

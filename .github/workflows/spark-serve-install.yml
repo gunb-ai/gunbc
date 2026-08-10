@@ -22,11 +22,6 @@ name: spark-serve-install
 # DISSOLVE-ON: deleted once the canary sequence has produced its receipt.
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - session/spark-serve-0
-    paths:
-      - .github/workflows/spark-serve-install.yml
 
 permissions:
   contents: read
