@@ -15,7 +15,10 @@ import v2.lens.live_read_classification {
   runtime_read_touched_by_path_g1,
   runtime_read_touched_by_path_g2,
   g2_implies_reads_live_tree,
-  live_read_selection_projection_from_facts
+  live_read_selection_projection_from_facts,
+  decls_in_modules,
+  decls_matching_callee,
+  g2_decl_index
 }
 import v2.lens.witness_cost_locality { ModuleImportFact }
 import v2.std.live_read {
@@ -30,6 +33,7 @@ import v2.std.live_read {
   live_read_carrier_homes_v0
 }
 import v2.std.collection { List }
+import v2.std.algebra { list_map }
 import v2.std.node { Atom, Conj, Edge, Node, Positional, SyntheticOccurrence, TypeNode }
 import v2.std.compilers.lexing { symbol_intern_lexeme }
 import v2.std.fn_index {
@@ -394,4 +398,80 @@ test fn g2_reachable_carrier_call_with_unknown_argument_is_runtime_read() -> Boo
       ]
     )
   )
+}
+
+data grouped_index_equivalence_law: String = "THE GROUPED INDEX MUST ANSWER THE SAME BAG THE FULL SCAN ANSWERED, and the discriminating fixture is homonyms across nested modules. Three declarations share the name lookup_row: one in module a, one in module b, one in module b.child. A last-wins index keeps exactly one of them, so it reds here while passing every claim about which keys exist. And because module b's prefix contains b.child, the closure filter can legitimately return the same declaration under two module rows - which is why the claim is a BAG equality against the reference scan rather than a set equality, and why the reference implementation is spelled out here instead of asserted from a remembered count."
+
+fn planted_named_decl(qualified: String) -> FnArrowDecl {
+  FnArrowDecl {
+    qualified_name: qualified,
+    name: "lookup_row",
+    output: selection_body_node(callee: "string_concat"),
+    params: []
+  }
+}
+
+data planted_homonym_decls: List<FnArrowDecl> = [
+  planted_named_decl(qualified: "a.lookup_row"),
+  planted_named_decl(qualified: "b.lookup_row"),
+  planted_named_decl(qualified: "b.child.lookup_row"),
+  FnArrowDecl {
+    qualified_name: "a.unrelated",
+    name: "unrelated",
+    output: selection_body_node(callee: "string_concat"),
+    params: []
+  }
+]
+
+data planted_closure_modules: List<String> = ["a", "b", "b.child"]
+
+fn reference_decls_matching_callee(
+  decls: List<FnArrowDecl>,
+  modules: List<String>,
+  callee: String
+) -> List<FnArrowDecl> {
+  filter(
+    xs: decls_in_modules(decls: decls, modules: modules),
+    predicate: fn(decl) { decl.name == callee }
+  )
+}
+
+fn qualified_names_of(decls: List<FnArrowDecl>) -> List<String> {
+  list_map(xs: decls, f: fn(d) { d.qualified_name })
+}
+
+fn grouped_matches(callee: String) -> List<String> {
+  qualified_names_of(
+    decls: decls_matching_callee(
+      index: g2_decl_index(decls: planted_homonym_decls),
+      closure_modules: planted_closure_modules,
+      callee: callee
+    )
+  )
+}
+
+fn reference_matches(callee: String) -> List<String> {
+  qualified_names_of(
+    decls: reference_decls_matching_callee(
+      decls: planted_homonym_decls,
+      modules: planted_closure_modules,
+      callee: callee
+    )
+  )
+}
+
+test fn grouped_callee_lookup_answers_the_reference_scans_bag() -> Bool {
+  grouped_matches(callee: "lookup_row") == reference_matches(callee: "lookup_row")
+    && grouped_matches(callee: "unrelated") == reference_matches(callee: "unrelated")
+    && grouped_matches(callee: "absent_name") == reference_matches(callee: "absent_name")
+}
+
+test fn every_planted_homonym_survives_the_grouped_lookup() -> Bool {
+  contains(xs: grouped_matches(callee: "lookup_row"), item: "a.lookup_row", eq: string_eq_local)
+    && contains(xs: grouped_matches(callee: "lookup_row"), item: "b.lookup_row", eq: string_eq_local)
+    && contains(xs: grouped_matches(callee: "lookup_row"), item: "b.child.lookup_row", eq: string_eq_local)
+}
+
+fn string_eq_local(a: String, b: String) -> Bool {
+  a == b
 }

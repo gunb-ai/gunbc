@@ -145,6 +145,7 @@ data primitive_map_keys: PrimitiveIdentity = primitive_identity_slug(name: "map_
 data primitive_map_values: PrimitiveIdentity = primitive_identity_slug(name: "map_values")
 data primitive_fold_list: PrimitiveIdentity = primitive_identity_slug(name: "fold_list")
 data primitive_index_by: PrimitiveIdentity = primitive_identity_slug(name: "index_by")
+data primitive_group_by: PrimitiveIdentity = primitive_identity_slug(name: "group_by")
 
 data primitive_map_keys_definition: PrimitiveDefinition = PrimitiveDefinition {
   identity: primitive_map_keys,
@@ -166,11 +167,17 @@ data primitive_index_by_definition: PrimitiveDefinition = PrimitiveDefinition {
   semantic_contract: PrimitiveSemanticContract { canonical_name: "index_by" as NonEmptyStr },
 }
 
+data primitive_group_by_definition: PrimitiveDefinition = PrimitiveDefinition {
+  identity: primitive_group_by,
+  semantic_contract: PrimitiveSemanticContract { canonical_name: "group_by" as NonEmptyStr },
+}
+
 data primitive_d0_definitions: List<PrimitiveDefinition> = [
   primitive_map_keys_definition,
   primitive_map_values_definition,
   primitive_fold_list_definition,
   primitive_index_by_definition,
+  primitive_group_by_definition,
 ]
 
 fn surface_row(
@@ -229,6 +236,11 @@ data primitive_d0_surface_alias_bindings: List<PrimitiveSurfaceAliasBinding> = [
     identity: primitive_index_by,
   },
   PrimitiveSurfaceAliasBinding {
+    authority: PrimitiveContractRow,
+    authored_symbol: "group_by" as NonEmptyStr,
+    identity: primitive_group_by,
+  },
+  PrimitiveSurfaceAliasBinding {
     authority: AlgebraTemplate,
     authored_symbol: "map_keys" as NonEmptyStr,
     identity: primitive_map_keys,
@@ -259,6 +271,11 @@ data primitive_d0_surface_alias_bindings: List<PrimitiveSurfaceAliasBinding> = [
     identity: primitive_index_by,
   },
   PrimitiveSurfaceAliasBinding {
+    authority: EmitHandler,
+    authored_symbol: "group_by" as NonEmptyStr,
+    identity: primitive_group_by,
+  },
+  PrimitiveSurfaceAliasBinding {
     authority: InterpreterDispatch,
     authored_symbol: "map_keys" as NonEmptyStr,
     identity: primitive_map_keys,
@@ -277,6 +294,16 @@ data primitive_d0_surface_alias_bindings: List<PrimitiveSurfaceAliasBinding> = [
     authority: InterpreterDispatch,
     authored_symbol: "index_by" as NonEmptyStr,
     identity: primitive_index_by,
+  },
+  PrimitiveSurfaceAliasBinding {
+    authority: InterpreterDispatch,
+    authored_symbol: "index_by_primitive_delegate" as NonEmptyStr,
+    identity: primitive_index_by,
+  },
+  PrimitiveSurfaceAliasBinding {
+    authority: InterpreterDispatch,
+    authored_symbol: "group_by_primitive_delegate" as NonEmptyStr,
+    identity: primitive_group_by,
   },
 ]
 
@@ -433,11 +460,17 @@ data primitive_index_by_traversal: PrimitiveTraversalOrderFact = PrimitiveTraver
   order: TraversalOrderUnclassified,
 }
 
+data primitive_group_by_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact {
+  primitive: primitive_group_by,
+  order: TraversalOrderUnclassified,
+}
+
 data primitive_d0_traversal_facts: List<PrimitiveTraversalOrderFact> = [
   primitive_map_keys_traversal,
   primitive_map_values_traversal,
   primitive_fold_list_traversal,
   primitive_index_by_traversal,
+  primitive_group_by_traversal,
 ]
 
 data primitive_map_keys_cost: PrimitiveCostFact = PrimitiveCostFact {
@@ -457,6 +490,11 @@ data primitive_fold_list_cost: PrimitiveCostFact = PrimitiveCostFact {
 
 data primitive_index_by_cost: PrimitiveCostFact = PrimitiveCostFact {
   primitive: primitive_index_by,
+  cost: ShapeIterateBody,
+}
+
+data primitive_group_by_cost: PrimitiveCostFact = PrimitiveCostFact {
+  primitive: primitive_group_by,
   cost: ShapeIterateBody,
 }
 
@@ -723,6 +761,26 @@ fn primitive_d0_interpreter_rows_are_from_authority() -> Bool {
 fn primitive_d0_derived_rows_are_from_authority() -> Bool {
   primitive_surface_census_derived()
     |> all(fn(row) { row.provenance == DerivedFromAuthority })
+}
+
+// COMPLETENESS IS AN IDENTITY JOIN, NOT A COUNT EQUALITY (DESIGN section 5).
+// The witness over this population previously asserted count(primitive_d0_traversal_facts) == 4 --
+// a literal copied from the tree it measures, which is a change detector rather than an oracle:
+// it went red the moment group_by was added, an addition it has no opinion about, while saying
+// nothing about whether the two order-exposing primitives are still present and still classified.
+// What it was actually guarding is non-vacuity, so that is what this states directly.
+// Exactly-once additionally refuses a duplicate row for one identity, which a count over the
+// whole population cannot see.
+fn primitive_traversal_classified_exactly_once(
+  primitive: PrimitiveIdentity,
+  expected: TraversalOrder,
+) -> Bool {
+  count(
+    primitive_d0_traversal_facts
+      |> filter(fn(fact) {
+        primitive_identity_eq(left: fact.primitive, right: primitive) && fact.order == expected
+      })
+  ) == 1
 }
 
 fn primitive_d0_host_unspecified_traversal_classified() -> Bool {
