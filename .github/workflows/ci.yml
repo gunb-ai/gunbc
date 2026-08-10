@@ -352,7 +352,7 @@ jobs:
     runs-on: [self-hosted, linux, arm64, srv1]
     needs: [ci]
     timeout-minutes: 10
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: "!cancelled() && needs.ci.result == 'success' && github.ref == 'refs/heads/main' && github.event_name == 'push'"
     concurrency:
       group: srv1-dashboard-deploy
       cancel-in-progress: false
@@ -769,7 +769,7 @@ jobs:
     runs-on: [self-hosted, linux, arm64, srv1]
     needs: [ci]
     timeout-minutes: 10
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: "!cancelled() && needs.ci.result == 'success' && github.ref == 'refs/heads/main' && github.event_name == 'push'"
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -818,7 +818,7 @@ jobs:
     runs-on: [self-hosted, linux, arm64]
     needs: [ci]
     timeout-minutes: 10
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: "!cancelled() && needs.ci.result == 'success' && github.ref == 'refs/heads/main' && github.event_name == 'push'"
     permissions:
       contents: write
     steps:

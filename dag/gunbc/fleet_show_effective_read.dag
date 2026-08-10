@@ -1,6 +1,7 @@
 module gunbc.fleet_show_effective_read
 
 import std.algebra { trim }
+import gunbc.host_identity_adopt { srv1_host_identity_ssh_transport, srv2_host_identity_ssh_transport }
 
 
 type RunnerSliceCapLiveReadRow {
