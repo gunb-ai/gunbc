@@ -5623,6 +5623,18 @@ fn cast_target_names(ctx: &InterpContext, target: Rc<Node>) -> Rc<CastTargetName
     let seed = cast_target_seed_name_uncached(ctx, target.clone());
     let kernel = cast_target_underlying_kernel_uncached(ctx, seed.clone());
     let fresh = Rc::new(CastTargetNames { seed, kernel });
+    // DEGENERATE RESOLUTIONS ARE NEVER CACHED, and this bound is load-bearing rather than
+    // tidiness. expr_child_at falls back to make_expr_error_node for a malformed cast, which
+    // Rc::new's a FRESH node per call (name "", ident_span None, inferred CompilerError). That
+    // resolves to an empty seed, and eval_cast's identity arm then returns a Value::Str
+    // unchanged on an empty kernel — so the run does NOT terminate, and a malformed cast inside
+    // a loop would allocate a new address every iteration: permanent cache miss, unbounded
+    // keepalive growth. Skipping the insert bounds the cache by the AST's real cast nodes.
+    // It costs only recomputation on a path that short-circuits before any module scan, and an
+    // empty seed is exactly the signature of a target carrying no resolvable authored name.
+    if fresh.seed.is_empty() {
+        return fresh;
+    }
     ctx.cast_kernel_cache_keepalive
         .borrow_mut()
         .push(target.clone());
@@ -5724,6 +5736,12 @@ fn cast_expr_inferred_type_name(ctx: &InterpContext, expr: Rc<Node>) -> String {
         return hit;
     }
     let fresh = cast_expr_inferred_type_name_uncached(ctx, expr.clone());
+    // Same unbounded-growth bound as cast_target_names: an error node's inferred is
+    // CompilerError rather than Resolved, so it yields "" — never cache it, or a malformed
+    // cast in a loop grows this keepalive without bound on freshly allocated nodes.
+    if fresh.is_empty() {
+        return fresh;
+    }
     ctx.cast_source_name_cache_keepalive
         .borrow_mut()
         .push(expr.clone());
