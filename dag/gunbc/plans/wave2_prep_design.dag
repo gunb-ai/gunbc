@@ -57,7 +57,7 @@ fn section_2() -> List<MarkdownBlock> {
     p(text: "Within the sweep-order prefix, flips group into three bands (not a flat serial list). Band A Wave-1-pre-flip readiness (`FlippableNow | BodyProducerGated | OtherGate`) lives on `v2.compiler.self_host.frontier_band_a_emit_readiness` (`compiler_frontier_band_a_emit_readiness_roster`, witness `compiler_frontier_band_a_emit_readiness_holds`; wired into `compiler_frontier_census_holds` on `frontier`) — cite the carrier, do not transcribe counts here."),
     ul(items: [
       li(text: "**Band A — leaf emit modules** (`parse_engine_hooks`, `use_site_verdict`, `discovery_enumeration`, `self_host`, `materialization_carriers`, `07_target_carriers`): parallelizable after Wave 1 gate 4; receipt = cargo-green + behavioral-equivalence vs seed (NOT byte-identity). Classification on `compiler_frontier_band_a_emit_readiness_roster`."),
-      li(text: "**Band B — body-lowering seam** (`fold_lowering` → `03_normalize`, serial): FLAG E row-fold **remains** (Slice 0 production-identity forward fold; `body_lowering_fold.dag` still interim until Slice 4 deletion); Stage A fn_decl → Arrow rows land. The SymbolIndex prerequisite this line used to assert is NOT restated here: it is the registered design subject `gunbc.design_subject_registry` `namespace_symbol_index_binding_contract`, and its standing is derived by `gunbc.design_truth` `design_authored_standing`."),
+      li(text: "**Band B — body-lowering seam** (`fold_lowering` → `03_normalize`, serial): FLAG E row-fold **remains** (Slice 0 production-identity forward fold; `body_lowering_fold.dag` still interim until Slice 4 deletion); Stage A fn_decl → Arrow rows land."),
       li(text: "**Band C — resolution-dependent pipeline** (`03_name_resolve` → `03_resolve` → `04_infer`, serial): hard-gated on Wave 1 SymbolIndex / namespace; fill before lookup before inference."),
     ]),
     h3(text: "2.3 Census ratchet discipline"),
@@ -122,7 +122,7 @@ fn section_3() -> List<MarkdownBlock> {
     },
     h3(text: "3.7 Dependencies blocking Slice 1"),
     ul(items: [
-      li(text: "**SymbolIndex / namespace (Wave 1 gate 2):** fn_decl binding via module-root edges. This entry previously asserted that Stage A was gated on it; the binding is now the registered design subject `gunbc.design_subject_registry` `namespace_symbol_index_binding_contract` and its standing is derived, never restated. Four copies of that one gate sentence existed when the subject was registered — this file held two of them."),
+      li(text: "**SymbolIndex / namespace (Wave 1 gate 2):** fn_decl binding via module-root edges."),
       li(text: "**FLAG D:** occurrence-normalized param refs until binding-key re-grounding; witness `bind_eval_occurrence_identity_defect_note` documents flip trigger."),
     ]),
   ]
