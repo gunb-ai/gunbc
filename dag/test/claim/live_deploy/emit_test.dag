@@ -712,7 +712,22 @@ test fn fleet_converge_member_installs_self_converging_timer_with_catchup() -> B
     && string_contains(s: live, pattern: "OnCalendar=*:0/15")
     && string_contains(s: live, pattern: "Persistent=true")
     && string_contains(s: live, pattern: "-fleet-converge.timer")
-    && string_contains(s: live, pattern: "install -d -m 0755 /opt/gunbc/receipts")
+    && string_contains(s: live, pattern: "install -d -m 0755 -o briansrls -g briansrls /opt/gunbc/receipts")
+}
+
+// b1 CONVERGE-close witness: the fleet-converge unit MUST run as the repo-owning,
+// credentialed service principal — never root — or its `git ls-remote origin
+// refs/fleet/desired` hits dubious-ownership + no-credential and the desired ref is never
+// observed. RED if the converge unit reverts to User=root (the pre-b1 defect) OR if the
+// receipts dir loses its service-user owner (the coupled write-side half): a root-only
+// receipts dir means the briansrls converge run fails EACCES after the observation.
+test fn fleet_converge_unit_runs_as_credentialed_owner_never_root() -> Bool {
+  let live = live_deploy_apply_script_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
+  string_contains(s: live, pattern: "Description=gunbc fleet converge (self)")
+    && string_contains(s: live, pattern: concat("User=", gunbc_service_user as String))
+    && string_contains(s: live, pattern: concat("Group=", gunbc_service_user as String))
+    && string_contains(s: live, pattern: "install -d -m 0755 -o briansrls -g briansrls /opt/gunbc/receipts")
+    && !string_contains(s: live, pattern: "User=root")
 }
 
 // Teardown owns both files: the retract removes the timer AND the service beside it
