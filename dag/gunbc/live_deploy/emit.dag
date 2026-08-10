@@ -325,6 +325,18 @@ fn apply_belt_service_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
   ], ""))
 }
 
+// b1 fix (CONVERGE close): the fleet-converge unit runs `gunbc converge --host self`, whose
+// first act is `git ls-remote origin refs/fleet/desired` inside WorkingDirectory=svc.repo_root
+// (/opt/gunbc/gunbc on srv1). That tree is owned by svc.service_user (briansrls), and the
+// private-remote credential exists ONLY under that principal on srv1 (emit_systemd_unit_serve_note:
+// "claude auth exists only under briansrls"). A root run therefore hits git dubious-ownership
+// AND has no credential, so the desired ref is never observed and every cadence renders
+// verdict=absent (fleet_converge_cli converge_cli_revision_verdict RevisionUnobserved). Running
+// as the repo owner is exactly what the sibling serve/belt/tree-sync units already do
+// (emit_systemd_unit_doc / emit_belt_service_unit_doc: User=+Group=svc.service_user). The
+// coupled half is the receipts-dir owner in FleetConvergeTimerUnit's install -d step below: the
+// receipt WRITE lands in fleet_converge_receipt_dir, so that dir must be owned by the same
+// principal or the write fails EACCES after the observation succeeds.
 fn emit_fleet_converge_service_unit_doc(spec: DeploymentSpec) -> Doc {
   let svc = spec.service
   doc_concat(parts: [
@@ -335,7 +347,8 @@ fn emit_fleet_converge_service_unit_doc(spec: DeploymentSpec) -> Doc {
     doc_line_of(text: ""),
     doc_line_of(text: "[Service]"),
     doc_line_of(text: "Type=oneshot"),
-    doc_line_of(text: "User=root"),
+    doc_line_of(text: concat("User=", svc.service_user)),
+    doc_line_of(text: concat("Group=", svc.service_user)),
     doc_line_of(text: concat("WorkingDirectory=", svc.repo_root)),
     doc_line_of(text: join([
       "ExecStart=", svc.serve_binary, " converge --host self",
@@ -598,7 +611,7 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
       deploy_raw(command: systemctl_restart_command(unit: deployment_belt_timer_unit_name(names: spec.names), privileged: true)),
     ]
     FleetConvergeTimerUnit => [
-      deploy_raw(command: join(["sudo -n install -d -m 0755 ", fleet_converge_receipt_dir], "")),
+      deploy_raw(command: install_d_owned_command(spec: spec, path: fleet_converge_receipt_dir)),
       apply_fleet_converge_service_unit_write_step(spec: spec),
       apply_fleet_converge_timer_unit_write_step(spec: spec),
       deploy_raw(command: join([
