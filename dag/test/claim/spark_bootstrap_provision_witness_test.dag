@@ -1,5 +1,42 @@
 module test.claim.spark_bootstrap_provision_witness
 
+// Adding ANY explicit import scopes this witness's resolution, so the subject module -- previously
+// reached by bare reference through pool coincidence -- must now be named too. That is the correct
+// direction (a witness should carry its own edge to its subject), but the transition is abrupt:
+// one import turned every bare reference into "no such function".
+import gunbc.spark_bootstrap_provision {
+  SparkCredentialKind, FactoryHotspotCredential, AdministratorCredential,
+  SparkCredentialOccurrence, spark_srv5, spark_srv6, spark_credential_occurrence,
+  spark_credential_population, spark_occurrence_eq, spark_credential_kind_eq,
+  SparkSecretAllocation, SparkSecretAllocated, SparkSecretAllocationPending, spark_secret_allocation,
+  SparkLegacyContainerStanding, ObservedLegacyUnbound, spark_legacy_containers,
+  FleetCloudConvergence, FleetCloudGrantAdministrator, FleetCloudPrincipalKey,
+  FleetCloudConvergencePrincipal, FleetCloudGrantAdministratorPrincipal,
+  FleetCloudPrincipalAllocationStanding, CloudPrincipalUnallocated, CloudPrincipalReported,
+  CloudPrincipalAllocated, fleet_cloud_principal_standing,
+  principal_role_admits_operation, principal_role_admits_operation_ref,
+  no_principal_can_both_grant_and_read,
+  SecretManagerOperation, SmGetSecret, SmGetIamPolicy, SmSetIamPolicy, SmAddVersion,
+  SmAccessVersion, SmDisableVersion, SmDestroyVersion,
+  SparkRosterIdentity, AccessScopeEvolution, FrozenAtGrant, TracksNamespaceMembership,
+  SparkGrantApproval, GrantApprovedBy, GrantApprovalPending, GrantApprovalNotSought,
+  SparkCloudContext, SparkCloudScope, SparkCloudGrant, AccessGrantCell,
+  spark_cloud_grant_decision, spark_principal_decision, spark_actuation_decision,
+  spark_cloud_access_request, spark_cell_eq, spark_cell_in, spark_iam_delta,
+  SparkObservedEtag, SparkEtagObserved, SparkEtagMissing,
+  admit_spark_iam_write, SparkIamWriteAdmitted, SparkIamWriteRefused,
+  ExternalAccessDemand, SelectedSparkEffect, DemandProjection, DemandDerived, DemandIncomplete,
+  spark_plan_demand, spark_demand_for_selected, spark_demand_decision,
+  WifCredentialIssuanceStanding, WifIssuanceObserved, WifIssuanceUnobserved,
+  spark_wif_issuance_standing,
+  EffectiveAccessStanding, EffectiveAccessExact, EffectiveAccessOverbroad,
+  EffectiveAccessPartiallyObserved, EffectiveAccessUnobserved
+}
+
+import extdeps.cloud.gcp.secret_manager {
+  SmAccessVersionEffect, SmAddVersionEffect, SmDestroyVersionEffect, sm_operation_ref
+}
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // Controls over the Spark credential population model. The prior revision of this witness proved
@@ -620,5 +657,114 @@ test fn refusal_subject_is_derived_not_literal() -> Bool {
   match spark_cloud_grant_decision(grant: admin_grant, cell: spark_cell(op: SmAccessVersion, r: spark_srv5_secret())) {
     Permit => false
     Deny { refusal: rf } => rf.location.subject == "FleetCloudGrantAdministrator"
+  }
+}
+
+// ── Demand-derivation controls ────────────────────────────────────────────────────────────
+fn demand_secret_a() -> NonEmptyStr { "projects/p/secrets/alpha" }
+fn demand_secret_b() -> NonEmptyStr { "projects/p/secrets/beta" }
+
+fn demand_executor() -> FleetCloudPrincipalKey {
+  FleetCloudConvergencePrincipal { role: FleetCloudConvergence {} }
+}
+
+fn demand_cells_of(sel: List<SelectedSparkEffect>) -> List<ExternalAccessDemand> {
+  match spark_plan_demand(selected: sel, executor: demand_executor(), context: spark_fixture_context()) {
+    DemandDerived { cells: c } => c
+    DemandIncomplete { step: _, operation: _, cause: _ } => []
+  }
+}
+
+// CONTROL 1: selecting AccessVersion(A) produces exactly its own demand -- one cell, the right
+// permission, and the resource taken from the effect rather than from any roster.
+test fn selecting_access_version_adds_exactly_its_demand() -> Bool {
+  let cells = demand_cells_of(sel: [
+    SelectedSparkEffect { step: "read-fleet-key", effect: SmAccessVersionEffect { secret: demand_secret_a() } }
+  ])
+  count(cells) == 1
+    && match cells |> first {
+      Absent => false
+      Present { value: c } =>
+        (c.permission as String) == "secretmanager.versions.access"
+          && (c.resource as String) == (demand_secret_a() as String)
+          && c.invocation.operation == "AccessVersion"
+          && (c.source_effect as String) == "read-fleet-key"
+    }
+}
+
+// CONTROL 2: removing the effect removes the demand, with NO policy edit. This is the property
+// that makes demand derived rather than authored -- an authored roster would still list it.
+test fn removing_the_effect_removes_the_demand() -> Bool {
+  count(demand_cells_of(sel: [])) == 0
+}
+
+// CONTROL 5: THE CROSS PRODUCT IS GONE. AccessVersion(A) + AddVersion(B) is exactly two cells --
+// access on A and add on B -- never four. The old operations x resources roster produced the
+// four-cell population, which silently granted write on A and read on B.
+test fn two_effects_produce_exactly_two_cells_not_a_cross_product() -> Bool {
+  let cells = demand_cells_of(sel: [
+    SelectedSparkEffect { step: "read-a", effect: SmAccessVersionEffect { secret: demand_secret_a() } },
+    SelectedSparkEffect { step: "write-b", effect: SmAddVersionEffect { secret: demand_secret_b() } }
+  ])
+  count(cells) == 2
+    && count(cells |> filter(c => (c.permission as String) == "secretmanager.versions.access" && (c.resource as String) == (demand_secret_a() as String))) == 1
+    && count(cells |> filter(c => (c.permission as String) == "secretmanager.versions.add" && (c.resource as String) == (demand_secret_b() as String))) == 1
+    && count(cells |> filter(c => (c.permission as String) == "secretmanager.versions.add" && (c.resource as String) == (demand_secret_a() as String))) == 0
+    && count(cells |> filter(c => (c.permission as String) == "secretmanager.versions.access" && (c.resource as String) == (demand_secret_b() as String))) == 0
+}
+
+// CONTROL 3: an UNSELECTED effect produces no demand. Code that merely exists in the repository is
+// not a request for access; only a selected effect is.
+test fn an_unselected_destroy_produces_no_demand() -> Bool {
+  count(demand_cells_of(sel: [
+    SelectedSparkEffect { step: "read-a", effect: SmAccessVersionEffect { secret: demand_secret_a() } }
+  ]) |> filter(c => c.invocation.operation == "DestroyVersion")) == 0
+}
+
+// CONTROL 4: a SELECTED DestroyVersion produces a real demand AND the policy ceiling refuses it.
+// Both halves matter: the demand must be visible (so the request is not hidden), and the ceiling
+// must refuse (so selecting a dangerous call does not authorize it).
+test fn selected_destroy_produces_demand_and_is_refused() -> Bool {
+  let cells = demand_cells_of(sel: [
+    SelectedSparkEffect { step: "destroy-a", effect: SmDestroyVersionEffect { secret: demand_secret_a() } }
+  ])
+  count(cells) == 1
+    && match cells |> first {
+      Absent => false
+      Present { value: c } =>
+        (c.permission as String) == "secretmanager.versions.destroy"
+          && match spark_demand_decision(demand: c) {
+            Permit => false
+            Deny { refusal: _ } => true
+          }
+    }
+}
+
+// CONTROL 4b: the administrator's policy demand is admitted by ITS ceiling while the data plane's
+// same request would not be -- the split is enforced on derived demand, not only on grants.
+test fn ceiling_admits_policy_read_only_for_the_administrator() -> Bool {
+  let admin_cell = ExternalAccessDemand {
+    source_effect: "read-policy",
+    executor: FleetCloudGrantAdministratorPrincipal { role: FleetCloudGrantAdministrator {} },
+    invocation: sm_operation_ref(operation: "GetSecretIamPolicy"),
+    permission: "secretmanager.secrets.getIamPolicy",
+    resource: demand_secret_a(),
+    context: spark_fixture_context()
+  }
+  let data_cell = ExternalAccessDemand {
+    source_effect: "read-policy",
+    executor: demand_executor(),
+    invocation: sm_operation_ref(operation: "GetSecretIamPolicy"),
+    permission: "secretmanager.secrets.getIamPolicy",
+    resource: demand_secret_a(),
+    context: spark_fixture_context()
+  }
+  match spark_demand_decision(demand: admin_cell) {
+    Permit =>
+      match spark_demand_decision(demand: data_cell) {
+        Permit => false
+        Deny { refusal: _ } => true
+      }
+    Deny { refusal: _ } => false
   }
 }

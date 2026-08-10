@@ -5,6 +5,17 @@ import extdeps.cloud.gcp.iam {
   gcp_condition_eq, gcp_cell_eq, gcp_cell_in, reconcile_gcp_policy
 }
 
+import extdeps.cloud.gcp.secret_manager {
+  SecretManagerEffect,
+  SmAccessVersionEffect, SmAddVersionEffect, SmGetSecretEffect,
+  SmGetSecretIamPolicyEffect, SmSetSecretIamPolicyEffect,
+  SmDisableVersionEffect, SmDestroyVersionEffect,
+  secret_manager_effect_operation, secret_manager_effect_resource,
+  secret_manager_effect_required_permissions
+}
+
+import v2.std.operation_argv { OperationRef }
+
 import std.authorization_profile { EffectRequest, EffectAuthorizationAction, effect_access_request }
 
 import std.access {
@@ -165,11 +176,13 @@ type FleetCloudPrincipalKey
 // Which operations a principal ROLE may ever reach, before any grant is consulted.
 // This is a ceiling on the credential itself, so a grant cell naming an operation
 // outside its principal's ceiling cannot be satisfied by adding a binding.
+// Data plane: never setIamPolicy, and never getIamPolicy either -- a principal that can read the
+// policy can enumerate who else holds the key, which is a disclosure the data plane has no
+// business performing. Control plane: reads and writes policy but CANNOT reach a payload, and
+// AddVersion is excluded as well as AccessVersion because a principal that can write a version can
+// overwrite the credential it is only supposed to be adjudicating.
 fn principal_role_admits_operation(principal: FleetCloudPrincipalKey, op: SecretManagerOperation) -> Bool {
   match principal {
-    // Data plane. Never setIamPolicy, and never getIamPolicy either: a principal
-    // that can read the policy can enumerate who else holds the key, which is a
-    // disclosure the data plane has no business performing.
     FleetCloudConvergencePrincipal { role: _ } =>
       match op {
         SmAccessVersion => true
@@ -180,9 +193,6 @@ fn principal_role_admits_operation(principal: FleetCloudPrincipalKey, op: Secret
         SmGetIamPolicy => false
         SmSetIamPolicy => false
       }
-    // Control plane. Reads and writes policy; CANNOT reach a payload. AddVersion is
-    // excluded as well as AccessVersion, because a principal that can write a
-    // version can overwrite the credential it is only supposed to be adjudicating.
     FleetCloudGrantAdministratorPrincipal { role: _ } =>
       match op {
         SmGetIamPolicy => true
@@ -375,11 +385,11 @@ fn spark_grant_refusal_location(grant: SparkCloudGrant, cell: AccessGrantCell) -
   }
 }
 
+// THE CEILING IS CHECKED FIRST, and it is not the same question as the grant. A grant naming an
+// operation outside its principal's role ceiling cannot be satisfied by adding an IAM binding --
+// the credential is not allowed to reach that operation at all -- so that refusal is about the
+// subject, not the action, and adding a binding in response would be the wrong remedy.
 fn spark_cloud_grant_decision(grant: SparkCloudGrant, cell: AccessGrantCell) -> AccessDecision {
-  // THE CEILING IS CHECKED FIRST, and it is not the same question as the grant. A grant naming an
-  // operation outside its principal's role ceiling cannot be satisfied by adding an IAM binding --
-  // the credential is not allowed to reach that operation at all -- so this refusal is about the
-  // subject, not the action, and adding a binding in response would be the wrong remedy.
   if !principal_role_admits_operation(principal: grant.principal, op: cell.operation) {
     Deny { refusal: AccessRefusal {
       cause: AccessSubjectNotRecognized { subject: "operation outside this principal's role ceiling; the split forbids it regardless of any binding" },
@@ -778,5 +788,128 @@ fn compare_spark_readback(
       } else {
         SparkReadbackMismatched { version: v }
       }
+  }
+}
+
+
+// ── Demand: derived from the SELECTED effects, never authored ─────────────────────────────
+// The population of access this workflow needs is a PROJECTION of the effects it will actually
+// perform. An earlier revision authored it: SparkCloudGrant.operations x SparkCloudScope.resources
+// was a hand-maintained roster crossed into cells, which is wrong twice over. It is a second
+// inventory of what the code needs, maintained by hand beside the code, so it drifts; and the
+// cross product grants every listed operation on every listed resource, so a plan that only reads
+// secret A and writes secret B acquires write on A and read on B for free.
+//
+// One cell per (selected invocation, required permission). The resource comes from the effect, so
+// it is exactly the one that effect touches.
+type ExternalAccessDemand {
+  source_effect: NonEmptyStr
+  executor: FleetCloudPrincipalKey
+  invocation: OperationRef
+  permission: NonEmptyStr
+  resource: NonEmptyStr
+  context: SparkCloudContext
+}
+
+data no_access_demand: List<ExternalAccessDemand> = []
+
+// A selected step: the effect plus the identity of the plan step that selected it. source_effect
+// is what makes a demand cell explicable -- it answers "why is this permission being requested"
+// with a step a reader can find, rather than leaving the cell to be justified by the roster it
+// came from.
+type SelectedSparkEffect {
+  step: NonEmptyStr
+  effect: SecretManagerEffect
+}
+
+// An operation whose permission projection is EMPTY blocks actuation rather than producing no
+// demand. Those are different states: "this effect needs nothing" would admit the effect with no
+// grant at all, which is the fail-open an empty list quietly performs.
+type DemandProjection
+  = DemandDerived { cells: List<ExternalAccessDemand> }
+  | DemandIncomplete { step: NonEmptyStr, operation: OperationRef, cause: NonEmptyStr }
+
+fn spark_demand_for_selected(
+  selected: SelectedSparkEffect,
+  executor: FleetCloudPrincipalKey,
+  context: SparkCloudContext
+) -> DemandProjection {
+  let op = secret_manager_effect_operation(e: selected.effect)
+  let perms = secret_manager_effect_required_permissions(e: selected.effect)
+  if count(perms) == 0 {
+    DemandIncomplete {
+      step: selected.step,
+      operation: op,
+      cause: "no extdeps permission mapping for this operation; actuation is blocked rather than admitted with an empty requirement"
+    }
+  } else {
+    DemandDerived {
+      cells: fold(perms, init: no_access_demand, f: (acc, p) =>
+        acc |> list_push(ExternalAccessDemand {
+          source_effect: selected.step,
+          executor: executor,
+          invocation: op,
+          permission: p as NonEmptyStr,
+          resource: secret_manager_effect_resource(e: selected.effect),
+          context: context
+        }))
+    }
+  }
+}
+
+// Fold a selected plan into its exact demand population. A step whose projection is incomplete
+// refuses the WHOLE derivation rather than contributing nothing and letting the rest look
+// complete -- a partial demand population read as total is how an ungranted effect slips through.
+fn spark_plan_demand(
+  selected: List<SelectedSparkEffect>,
+  executor: FleetCloudPrincipalKey,
+  context: SparkCloudContext
+) -> DemandProjection {
+  fold(selected, init: DemandDerived { cells: no_access_demand }, f: (acc, sel) =>
+    match acc {
+      DemandIncomplete { step: st, operation: o, cause: c } => DemandIncomplete { step: st, operation: o, cause: c }
+      DemandDerived { cells: got } =>
+        match spark_demand_for_selected(selected: sel, executor: executor, context: context) {
+          DemandIncomplete { step: st, operation: o, cause: c } => DemandIncomplete { step: st, operation: o, cause: c }
+          DemandDerived { cells: more } =>
+            DemandDerived { cells: fold(more, init: got, f: (inner, c) => inner |> list_push(c)) }
+        }
+    })
+}
+
+// THE CEILING IS NORMATIVE AND SEPARATE. Derived demand says what the code will request; it never
+// says what is allowed. A selected DestroyVersion produces a real demand cell AND is refused here,
+// which is the whole point: adding a dangerous call to the workflow must not authorize it.
+fn spark_demand_decision(demand: ExternalAccessDemand) -> AccessDecision {
+  if !principal_role_admits_operation_ref(principal: demand.executor, op: demand.invocation) {
+    Deny { refusal: AccessRefusal {
+      cause: AccessSubjectNotRecognized { subject: "operation outside this principal's role ceiling; no binding can admit it" },
+      location: AccessRefusalLocation {
+        profile: "spark_access_demand",
+        subject: spark_principal_label(principal: demand.executor),
+        action: demand.invocation.operation,
+        object: demand.resource as String } } }
+  } else {
+    Permit
+  }
+}
+
+
+// THE CEILING, KEYED ON THE REAL OPERATION IDENTITY. This is now the authority; the
+// SecretManagerOperation-keyed function below delegates to it and is a shrinking shim.
+//
+// Naming the operations as strings HERE is not the roster this lane deleted: these are the
+// normative policy rows -- which operations a principal may ever reach -- and policy is authored
+// by definition. What must never be authored is the DEMAND (what the code needs), and that now
+// derives from the selected effects via the extdeps OperationRef.
+//
+// An operation this policy has no row for is REFUSED, not admitted: a new Secret Manager
+// operation must be ruled on before any principal can reach it.
+fn principal_role_admits_operation_ref(principal: FleetCloudPrincipalKey, op: OperationRef) -> Bool {
+  match principal {
+    FleetCloudConvergencePrincipal { role: _ } =>
+      op.operation == "AccessVersion" || op.operation == "AddVersion" || op.operation == "GetSecret"
+    FleetCloudGrantAdministratorPrincipal { role: _ } =>
+      op.operation == "GetSecretIamPolicy" || op.operation == "SetSecretIamPolicy" || op.operation == "GetSecret"
   }
 }
