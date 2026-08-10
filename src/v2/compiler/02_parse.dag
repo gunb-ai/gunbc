@@ -312,6 +312,25 @@ fn parse_g0_tokens_remain_diagnostic(at: Locus) -> Diagnostic {
   }
 }
 
+// Enriched-diagnostics repair (operator item d, CI2 lane): a tokens-remain refusal used to
+// carry only the parse-stage PORT locus — unlocatable, which is exactly the loudness gap the
+// realization sweep measured as an empty located-file column on every frontend refusal. The
+// first unconsumed token IS the location: its file and byte range become a Textual locus, so
+// the refusal points at the exact source position where consumption stopped. Residue, stated
+// honestly: token class, expected production, and remaining count still have no typed channel
+// — Diagnostic is {reason, at, correction} and a richer parse-stage carrier is a modeling
+// extension, not a patch; until it lands, the located span is the recoverable half.
+fn parse_g0_tokens_remain_located_diagnostic(remaining: List<Token>, fallback: Locus) -> Diagnostic {
+  match remaining {
+    Cons { head: tok, tail: _ } =>
+      parse_g0_tokens_remain_diagnostic(at: Textual {
+        file: tok.file,
+        extent: ByteRange { start: tok.start, end: tok.end }
+      })
+    Empty => parse_g0_tokens_remain_diagnostic(at: fallback)
+  }
+}
+
 fn parse_grammar_left_recursive_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
     reason: ^parse_grammar_left_recursive,
@@ -2314,7 +2333,7 @@ fn parse_production_prepared(
               diagnostics: parse_diags_to_diagnostics(diags: diags)
             }
           } else {
-            Rejected { diagnostics: diagnostics_singleton(d: parse_g0_tokens_remain_diagnostic(at: at)) }
+            Rejected { diagnostics: diagnostics_singleton(d: parse_g0_tokens_remain_located_diagnostic(remaining: remaining, fallback: at)) }
           }
         ParseExprRejected { diagnostics: diags, table: _ } =>
           Rejected {
@@ -2410,7 +2429,7 @@ fn parse_module_prepared(
           diagnostics: validation_residue
         }
       } else {
-        Rejected { diagnostics: diagnostics_singleton(d: parse_g0_tokens_remain_diagnostic(at: at)) }
+        Rejected { diagnostics: diagnostics_singleton(d: parse_g0_tokens_remain_located_diagnostic(remaining: token_stream_remaining(stream: tokens), fallback: at)) }
       }
     PreparedModeled { modeled: modeled } =>
       match parse_production_prepared(

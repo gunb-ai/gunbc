@@ -1494,6 +1494,179 @@ struct ParsedWalkPlan {
     on_success_stages: Vec<Vec<Runnable>>,
     ordinary_budget_ms: Option<u64>,
     on_success_budget_ms: Option<u64>,
+    identity_routes: IdentityRouteTable,
+    default_route: TestExecutionRoute,
+}
+
+/// The route carrier at identity grain (std.realization_schedule TestExecutionRoute;
+/// test_execution_route_note is the partition contract). A V2Native row is the ONLY
+/// production path into the terminal tally's native-routed set, and the same row is
+/// what removes the identity from interpreted scheduling — one authority, consulted at
+/// the single point where a demanded identity becomes a scheduled claim, so the two
+/// sets partition by construction rather than by a second bookkeeping pass.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum TestExecutionRoute {
+    V2Native {
+        bundle_selector_entry: String,
+        bundle_selector_function: String,
+        member_symbol: String,
+    },
+    V1Retained {
+        exact_blocker: String,
+        dissolution_trigger: String,
+    },
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct IdentityRouteTable {
+    routes: std::collections::BTreeMap<(String, String), TestExecutionRoute>,
+}
+
+impl IdentityRouteTable {
+    /// Two roster rows for one identity is a contradiction, not a merge: refused at
+    /// insertion so the table can never answer differently depending on row order.
+    fn insert(
+        &mut self,
+        entry: String,
+        function: String,
+        route: TestExecutionRoute,
+    ) -> Result<(), String> {
+        let key = (entry, function);
+        if self.routes.contains_key(&key) {
+            return Err(format!(
+                "identity_routes carries two rows for {}::{} — one identity has exactly one route; delete one row",
+                key.0, key.1
+            ));
+        }
+        self.routes.insert(key, route);
+        Ok(())
+    }
+    fn native_route(&self, entry: &str, function: &str) -> Option<&TestExecutionRoute> {
+        match self.routes.get(&(entry.to_string(), function.to_string())) {
+            Some(route @ TestExecutionRoute::V2Native { .. }) => Some(route),
+            _ => None,
+        }
+    }
+    fn has_native_rows(&self) -> bool {
+        self.routes
+            .values()
+            .any(|r| matches!(r, TestExecutionRoute::V2Native { .. }))
+    }
+}
+
+fn route_string_field(
+    fields: &[(v1_compiler::v1_interpreter::Symbol, Value)],
+    name: &str,
+    context: &str,
+    ctx: &InterpContext,
+) -> Result<String, String> {
+    match ctx.field(fields, name) {
+        Some(Value::Str(s)) if !s.trim().is_empty() => Ok(s.clone()),
+        other => Err(format!(
+            "{context}.{name} must be a non-empty String, got {other:?}"
+        )),
+    }
+}
+
+fn test_execution_route_from_value(
+    value: &Value,
+    ctx: &InterpContext,
+) -> Result<TestExecutionRoute, String> {
+    let Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = value
+    else {
+        return Err(format!(
+            "TestExecutionRoute must be V2NativeRoute or V1RetainedRoute, got {}",
+            ctx.format_value(value)
+        ));
+    };
+    if ctx.sym_eq(*variant_name, "V1RetainedRoute") {
+        return Ok(TestExecutionRoute::V1Retained {
+            exact_blocker: route_string_field(fields, "exact_blocker", "V1RetainedRoute", ctx)?,
+            dissolution_trigger: route_string_field(
+                fields,
+                "dissolution_trigger",
+                "V1RetainedRoute",
+                ctx,
+            )?,
+        });
+    }
+    if !ctx.sym_eq(*variant_name, "V2NativeRoute") {
+        return Err(format!(
+            "TestExecutionRoute has unknown variant {}",
+            ctx.format_value(value)
+        ));
+    }
+    let realization = ctx
+        .field(fields, "realization")
+        .ok_or_else(|| "V2NativeRoute.realization is missing".to_string())?;
+    let Value::Variant {
+        variant_name: real_name,
+        fields: real_fields,
+        ..
+    } = realization
+    else {
+        return Err(format!(
+            "V2NativeRoute.realization must be RustNativeBundleMember, got {}",
+            ctx.format_value(realization)
+        ));
+    };
+    if !ctx.sym_eq(*real_name, "RustNativeBundleMember") {
+        return Err(format!(
+            "V2NativeRoute.realization has unknown variant {}",
+            ctx.format_value(realization)
+        ));
+    }
+    Ok(TestExecutionRoute::V2Native {
+        bundle_selector_entry: route_string_field(
+            real_fields,
+            "bundle_selector_entry",
+            "RustNativeBundleMember",
+            ctx,
+        )?,
+        bundle_selector_function: route_string_field(
+            real_fields,
+            "bundle_selector_function",
+            "RustNativeBundleMember",
+            ctx,
+        )?,
+        member_symbol: route_string_field(
+            real_fields,
+            "member_symbol",
+            "RustNativeBundleMember",
+            ctx,
+        )?,
+    })
+}
+
+fn identity_route_table_from_value(
+    value: &Value,
+    ctx: &InterpContext,
+) -> Result<IdentityRouteTable, String> {
+    let mut table = IdentityRouteTable::default();
+    for elem in free_monoid_elems(value, ctx)? {
+        let fields = match elem {
+            Value::Record { fields, .. } => fields,
+            Value::Variant { fields, .. } => fields,
+            other => {
+                return Err(format!(
+                    "identity_routes element is {}, not a TestIdentityRoute record",
+                    other.type_label_public()
+                ))
+            }
+        };
+        let entry = route_string_field(fields, "entry", "TestIdentityRoute", ctx)?;
+        let function = route_string_field(fields, "function", "TestIdentityRoute", ctx)?;
+        let route_val = ctx
+            .field(fields, "route")
+            .ok_or_else(|| "TestIdentityRoute.route is missing".to_string())?;
+        let route = test_execution_route_from_value(route_val, ctx)?;
+        table.insert(entry, function, route)?;
+    }
+    Ok(table)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1821,7 +1994,28 @@ fn walk_plan_from_plan(plan: &Value, ctx: &InterpContext) -> Result<ParsedWalkPl
     let on_success_budget_val = ctx.field(fields, "on_success_budget").ok_or_else(|| {
         "WalkPlan missing field `on_success_budget` — plans without bounded postconditions declare Absent; the parser never invents a budget".to_string()
     })?;
+    let identity_routes_val = ctx.field(fields, "identity_routes").ok_or_else(|| {
+        "WalkPlan missing field `identity_routes` — a walk with no native routing declares an empty list; the parser never invents an empty roster".to_string()
+    })?;
+    let default_route_val = ctx.field(fields, "default_route").ok_or_else(|| {
+        "WalkPlan missing field `default_route` — every walk declares the disposition of an identity absent from its roster; the parser never invents a default".to_string()
+    })?;
+    let default_route = test_execution_route_from_value(default_route_val, ctx)
+        .map_err(|msg| format!("WalkPlan.default_route: {msg}"))?;
+    // A native DEFAULT would route every unrostered identity to native execution with
+    // no per-identity receipt — the exact silent-migration shape the roster exists to
+    // make unwritable. The default is the retained arm, always.
+    if matches!(default_route, TestExecutionRoute::V2Native { .. }) {
+        return Err(
+            "WalkPlan.default_route must be V1RetainedRoute — a native default would route \
+             identities that carry no per-identity receipt; native routing is per-row only"
+                .to_string(),
+        );
+    }
     Ok(ParsedWalkPlan {
+        identity_routes: identity_route_table_from_value(identity_routes_val, ctx)
+            .map_err(|msg| format!("WalkPlan.identity_routes: {msg}"))?,
+        default_route,
         pre_walk_execution: pre_walk_execution_from_value(pre_walk_execution_val, ctx)?,
         batches: batches_from_plan(batches_val, ctx)
             .map_err(|msg| format!("WalkPlan.batches: {msg}"))?,
@@ -10143,17 +10337,17 @@ fn maybe_run_floor_coordinator(args: &[String]) -> Option<ExitCode> {
 /// duplicate schedule rows, zero discovery host errors, and a nonempty universe (an
 /// empty universe green would be the vacuous-truth absorbing arm DESIGN §5 forbids).
 ///
-/// Today's honest frontier: the native lane's only inhabitant is a plan-grain selector
-/// row, and a `NativeBundleWitnessKind` row IS a selector by that kind's own definition
-/// ("names the pure .dag process-spec selector" — gunbc_pr_native_batch_note), never an
-/// exact-head test identity — so selector rows are counted under `native-selector-rows`
-/// for visibility and enter NEITHER identity set. The fn-grain native route the terminal
-/// state requires has no plan vocabulary yet; `native-routed` (identity grain) is
-/// honestly 0 until it lands. RED by measurement, never by assertion. Stated plainly so
-/// the green path is a declared trigger rather than drift: under today's plan vocabulary
-/// every demanded identity executes on an interpreted lane, so this check CANNOT go
-/// green until the plan can express a scheduled requirement whose execution is native —
-/// that vocabulary is part of the outcome being demanded, not a deficiency of the check.
+/// Today's honest frontier: `NativeBundleWitnessKind` rows remain plan-grain selectors
+/// by that kind's own definition ("names the pure .dag process-spec selector" —
+/// gunbc_pr_native_batch_note), never exact-head test identities — counted under
+/// `native-selector-rows` for visibility and entering NEITHER identity set. The
+/// fn-grain vocabulary now EXISTS: `WalkPlan.identity_routes` (std.realization_schedule
+/// `TestIdentityRoute`) is the roster, and `Ci2TerminalTally::demand` consults it — a
+/// V2NativeRoute row is the ONLY production path into `native_routed`, and the same
+/// consultation removes the identity from `interpreted` (partition, never duplication).
+/// The board therefore moves exactly as fast as roster rows land in the plan, each in
+/// the same commit as its executing native receipt; with an empty roster the check
+/// remains RED by measurement, never by assertion.
 /// The pure accounting half of the terminal check, separated so the RED/GREEN
 /// discrimination controls below exercise every counter without a live tree.
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -10180,7 +10374,19 @@ struct Ci2TerminalTally {
 }
 
 impl Ci2TerminalTally {
-    fn demand(&mut self, entry: String, function: String, origin: &str) {
+    /// The single point where a demanded identity is assigned its execution lane, and
+    /// therefore THE production insertion path into `native_routed`: the plan's own
+    /// `identity_routes` roster (std.realization_schedule TestExecutionRoute) is
+    /// consulted here, so a V2NativeRoute row moves its identity out of `interpreted`
+    /// and into `native_routed` in one motion — the two sets partition `canonical` by
+    /// construction, and the board can only move by roster rows landing in the plan.
+    fn demand(
+        &mut self,
+        entry: String,
+        function: String,
+        origin: &str,
+        routes: &IdentityRouteTable,
+    ) {
         let key = (entry, function);
         if self.canonical.contains(&key) {
             let first = self
@@ -10194,13 +10400,12 @@ impl Ci2TerminalTally {
             self.first_origin.insert(key.clone(), origin.to_string());
             self.canonical.insert(key.clone());
         }
-        self.interpreted.insert(key);
+        if routes.native_route(&key.0, &key.1).is_some() {
+            self.native_routed.insert(key);
+        } else {
+            self.interpreted.insert(key);
+        }
     }
-    // No fn-grain native insertion method exists yet ON PURPOSE: today's plan
-    // vocabulary has no fn-grain native route (NativeBundleWitnessKind rows are
-    // plan-grain selectors and never enter the identity sets), so the insertion
-    // point — with its own duplicate arm and origin label — gets written together
-    // with the vocabulary that produces it, not speculatively before it.
     fn duplicate_rows(&self) -> u64 {
         self.duplicates.len() as u64
     }
@@ -10223,6 +10428,8 @@ impl Ci2TerminalTally {
 fn run_ci2_terminal_outcome(
     source_roots: &[String],
     batches: &[Vec<Runnable>],
+    routes: &IdentityRouteTable,
+    default_route: &TestExecutionRoute,
 ) -> Result<ExitCode, ExitCode> {
     let mut tally = Ci2TerminalTally::default();
     for (batch_index, runnable) in batches.iter().flatten().enumerate() {
@@ -10234,6 +10441,7 @@ fn run_ci2_terminal_outcome(
                     entry.clone(),
                     function.clone(),
                     &format!("single-claim[batch {batch_index}]"),
+                    routes,
                 );
             }
             Runnable::DiscoveryBatch {
@@ -10257,6 +10465,7 @@ fn run_ci2_terminal_outcome(
                                     row.entry,
                                     row.function,
                                     &format!("discovery[batch {batch_index}]"),
+                                    routes,
                                 );
                             }
                         }
@@ -10271,6 +10480,7 @@ fn run_ci2_terminal_outcome(
                         entry.clone(),
                         function.clone(),
                         &format!("explicit[batch {batch_index}]"),
+                        routes,
                     );
                 }
                 for (entry, function) in native_bundle_entries {
@@ -10289,6 +10499,7 @@ fn run_ci2_terminal_outcome(
                                     row.entry,
                                     row.function,
                                     &format!("scoped-discovery[batch {batch_index}]"),
+                                    routes,
                                 );
                             }
                         }
@@ -10312,6 +10523,7 @@ fn run_ci2_terminal_outcome(
                             e.entry.clone(),
                             e.function.clone(),
                             &format!("scoped-roster[batch {batch_index}]"),
+                            routes,
                         );
                     }
                 }
@@ -10332,6 +10544,17 @@ fn run_ci2_terminal_outcome(
     }
     for (entry, function, first, second) in &tally.duplicates {
         println!("[ci2-terminal-duplicate] {entry}\t{function}\tfirst={first}\tagain={second}");
+    }
+    if !tally.interpreted.is_empty() {
+        if let TestExecutionRoute::V1Retained {
+            exact_blocker,
+            dissolution_trigger,
+        } = default_route
+        {
+            println!(
+                "[ci2-terminal-default-route] retained: {exact_blocker} (dissolves: {dissolution_trigger})"
+            );
+        }
     }
     println!(
         "[ci2-terminal] canonical {} | native-routed {} | native-selector-rows {} | v1-scheduled {} | missing {} | unexpected {} | duplicates {} | host-errors {}",
@@ -10627,7 +10850,26 @@ fn run() -> Result<ExitCode, ExitCode> {
     let on_success_budget_ms = walk_plan.on_success_budget_ms;
     let mut batches = walk_plan.batches;
     if terminal_outcome {
-        return run_ci2_terminal_outcome(&source_roots, &batches);
+        return run_ci2_terminal_outcome(
+            &source_roots,
+            &batches,
+            &walk_plan.identity_routes,
+            &walk_plan.default_route,
+        );
+    }
+    // FAIL-CLOSED BRIDGE until the native identity execution leg lands: a V2NativeRoute
+    // roster row promises native execution, and this executor cannot yet deliver it at
+    // identity grain. Running the floor anyway would either silently interpret the
+    // identity (the exact fallback the CI2 contract forbids) or silently skip it (the
+    // empty-observation narrow). Both are worse than a loud stop. This refusal deletes
+    // in the same commit that lands the native identity execution leg.
+    if walk_plan.identity_routes.has_native_rows() {
+        eprintln!(
+            "claim_executor: identity_routes declares V2NativeRoute rows but the native \
+             identity execution leg is unrealized — refusing to run a floor that would \
+             silently interpret or skip a natively-routed identity"
+        );
+        return Err(ExitCode::from(1));
     }
     let mut on_success_stages = walk_plan.on_success_stages;
     let mut floor_finalization: Option<FloorFinalization> = walk_plan.finalization;
@@ -11524,14 +11766,113 @@ mod tests {
     #[test]
     fn ci2_terminal_tally_interpreted_row_refuses() {
         let mut tally = Ci2TerminalTally::default();
+        let routes = IdentityRouteTable::default();
         tally.demand(
             "e1.dag".to_string(),
             "w_one".to_string(),
             "discovery[batch 0]",
+            &routes,
         );
         assert!(!tally.holds());
         assert_eq!(tally.interpreted.len(), 1);
         assert_eq!(tally.missing_rows(), 1);
+    }
+
+    /// THE PRODUCTION INSERTION PATH: a V2NativeRoute roster row moves its identity
+    /// into `native_routed` and OUT of `interpreted` in the same `demand` call — the
+    /// partition the route carrier promises. With every demanded identity routed, the
+    /// verdict accepts; before this path existed the board could only express 0 or
+    /// terminally-complete, never 1.
+    #[test]
+    fn ci2_terminal_tally_native_route_row_moves_the_board() {
+        let mut routes = IdentityRouteTable::default();
+        routes
+            .insert(
+                "e1.dag".to_string(),
+                "w_one".to_string(),
+                TestExecutionRoute::V2Native {
+                    bundle_selector_entry: "sel.dag".to_string(),
+                    bundle_selector_function: "select_bundle".to_string(),
+                    member_symbol: "w_one_member".to_string(),
+                },
+            )
+            .expect("first row inserts");
+        let mut tally = Ci2TerminalTally::default();
+        tally.demand(
+            "e1.dag".to_string(),
+            "w_one".to_string(),
+            "discovery[batch 0]",
+            &routes,
+        );
+        assert!(tally.interpreted.is_empty());
+        assert_eq!(tally.native_routed.len(), 1);
+        assert!(tally.holds());
+        // A second, unrouted identity keeps the verdict red: partial migration is
+        // visible as exactly 1/2, never as green.
+        tally.demand(
+            "e2.dag".to_string(),
+            "w_two".to_string(),
+            "discovery[batch 0]",
+            &routes,
+        );
+        assert!(!tally.holds());
+        assert_eq!(tally.native_routed.len(), 1);
+        assert_eq!(tally.interpreted.len(), 1);
+    }
+
+    /// An EXPLICITLY retained identity (V1RetainedRoute roster row) stays on the
+    /// interpreted side — a named blocker is a red the board reports, never a pass.
+    #[test]
+    fn ci2_terminal_tally_explicit_retained_row_stays_interpreted() {
+        let mut routes = IdentityRouteTable::default();
+        routes
+            .insert(
+                "e1.dag".to_string(),
+                "w_one".to_string(),
+                TestExecutionRoute::V1Retained {
+                    exact_blocker: "normalize-wall".to_string(),
+                    dissolution_trigger: "body-producer fragment".to_string(),
+                },
+            )
+            .expect("first row inserts");
+        let mut tally = Ci2TerminalTally::default();
+        tally.demand(
+            "e1.dag".to_string(),
+            "w_one".to_string(),
+            "discovery[batch 0]",
+            &routes,
+        );
+        assert_eq!(tally.interpreted.len(), 1);
+        assert!(tally.native_routed.is_empty());
+        assert!(!tally.holds());
+    }
+
+    /// Two roster rows for one identity is a contradiction the table refuses at
+    /// insertion — never first-row-wins, never last-row-wins.
+    #[test]
+    fn identity_route_table_refuses_duplicate_identity() {
+        let mut routes = IdentityRouteTable::default();
+        routes
+            .insert(
+                "e1.dag".to_string(),
+                "w_one".to_string(),
+                TestExecutionRoute::V1Retained {
+                    exact_blocker: "a".to_string(),
+                    dissolution_trigger: "b".to_string(),
+                },
+            )
+            .expect("first row inserts");
+        let second = routes.insert(
+            "e1.dag".to_string(),
+            "w_one".to_string(),
+            TestExecutionRoute::V2Native {
+                bundle_selector_entry: "sel.dag".to_string(),
+                bundle_selector_function: "select_bundle".to_string(),
+                member_symbol: "w_one_member".to_string(),
+            },
+        );
+        assert!(second.is_err());
+        assert!(!routes.has_native_rows());
     }
 
     /// A native route for an identity the demand side never names is `unexpected` —
@@ -11550,15 +11891,18 @@ mod tests {
     #[test]
     fn ci2_terminal_tally_duplicate_schedule_row_refuses() {
         let mut tally = Ci2TerminalTally::default();
+        let routes = IdentityRouteTable::default();
         tally.demand(
             "e1.dag".to_string(),
             "w_one".to_string(),
             "discovery[batch 0]",
+            &routes,
         );
         tally.demand(
             "e1.dag".to_string(),
             "w_one".to_string(),
             "explicit[batch 1]",
+            &routes,
         );
         assert_eq!(tally.duplicate_rows(), 1);
         assert_eq!(

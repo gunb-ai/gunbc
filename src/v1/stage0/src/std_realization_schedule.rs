@@ -6,6 +6,7 @@ use self::FloorWorkerIdentity::*;
 use self::FloorWorkerObservationOutcome::*;
 use self::FloorWorkerTerminalReceipt::*;
 use self::FloorWorkerTerminalReport::*;
+use self::NativeRealization::*;
 use self::NoWalkFinalization::*;
 use self::NodeFrontierSelection::*;
 use self::OnSuccessRunnableDisposition::*;
@@ -17,6 +18,7 @@ use self::ScopedWitnessExecutionAuthority::*;
 use self::ScopedWitnessExecutionOutcome::*;
 use self::ScopedWitnessExecutionReceiptDecode::*;
 use self::ScopedWitnessProcessIsolation::*;
+use self::TestExecutionRoute::*;
 use self::WitnessCostBasis::*;
 use self::WitnessKind::*;
 use self::WitnessSpan::*;
@@ -117,6 +119,77 @@ pub enum WitnessKind {
 pub struct WitnessSeam {
     pub producer: String,
     pub consumer: String,
+}
+
+pub fn test_execution_route_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "THE ROUTE CARRIER PARTITIONS, NEVER DUPLICATES (CI2 terminal mandate, parent directive msg_ac777b2f): every exact-head test identity demanded by a walk has exactly one execution route, and the scheduler consults this carrier at the single point where a demanded identity becomes a scheduled claim — so migrating an identity to V2NativeRoute REMOVES it from the interpreted schedule in the same commit that adds the row, by construction rather than by a second bookkeeping pass. An identity with no roster row takes the walk authority's declared default retained disposition (a typed V1RetainedRoute naming its exact blocker and dissolution trigger), never a silent fallback. A V2NativeRoute names its realization exactly: which bundle realizes it (the selector identity) and which member symbol within that bundle carries this identity's terminal assertion. A realization refusal at execution time does NOT fall back to the interpreter dynamically — the run refuses loudly and the repair is either fixing the realization or flipping the roster row back to V1RetainedRoute with the measured blocker; both are commits, so the route ledger always states what actually executes.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum NativeRealization {
+    RustNativeBundleMember {
+        bundle_selector_entry: String,
+        bundle_selector_function: String,
+        member_symbol: String,
+    },
+}
+impl NativeRealization {
+    pub fn bundle_selector_entry(&self) -> String {
+        match self {
+            NativeRealization::RustNativeBundleMember {
+                bundle_selector_entry: __val,
+                ..
+            } => __val.clone(),
+        }
+    }
+    pub fn bundle_selector_function(&self) -> String {
+        match self {
+            NativeRealization::RustNativeBundleMember {
+                bundle_selector_function: __val,
+                ..
+            } => __val.clone(),
+        }
+    }
+    pub fn member_symbol(&self) -> String {
+        match self {
+            NativeRealization::RustNativeBundleMember {
+                member_symbol: __val,
+                ..
+            } => __val.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum TestExecutionRoute {
+    V2NativeRoute {
+        realization: Rc<NativeRealization>,
+    },
+    V1RetainedRoute {
+        exact_blocker: NonEmptyStr,
+        dissolution_trigger: NonEmptyStr,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct TestIdentityRoute {
+    pub entry: String,
+    pub function: String,
+    pub route: Rc<TestExecutionRoute>,
+}
+
+pub fn walk_declares_no_native_routing() -> Rc<TestExecutionRoute> {
+    Rc::new(TestExecutionRoute::V1RetainedRoute {
+        exact_blocker: "walk-declares-no-native-routing".to_string(),
+        dissolution_trigger: "walk-enrolls-in-native-route-program".to_string(),
+    })
 }
 
 pub fn witness_cost_clock_note() -> String {
@@ -1365,6 +1438,8 @@ pub struct WalkPlan<F: Clone> {
     pub on_success_stages: Rc<Vec<Rc<Vec<Rc<Runnable>>>>>,
     pub ordinary_budget: Option<Millisecond>,
     pub on_success_budget: Option<Millisecond>,
+    pub identity_routes: Rc<Vec<Rc<TestIdentityRoute>>>,
+    pub default_route: Rc<TestExecutionRoute>,
     pub _phantom: std::marker::PhantomData<F>,
 }
 

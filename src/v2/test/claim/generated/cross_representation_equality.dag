@@ -61,6 +61,13 @@ fn witness_cross_representation_roster_covers_optional_null() -> Bool {
   roster_covers_genuine_straddle(modeled: ^Optional, native: cross_repr_native_value_null)
 }
 
+// String is a primitive with no corpus coproduct arms, so the genuine-straddle
+// arm-count guard does not apply; membership is the claim (the straddle itself is
+// measured — see cross_repr_string_straddle_receipt_note beside the roster).
+fn witness_cross_representation_roster_covers_string() -> Bool {
+  roster_covers_straddle(modeled: ^String, native: cross_repr_native_value_str)
+}
+
 data witness_cross_representation_equality_is_equals: Bool = witness_cross_representation_claim_is_equals()
 
 data witness_cross_representation_equality_uses_generated_anchor: Bool = witness_cross_representation_uses_generated_anchor()
@@ -68,3 +75,5 @@ data witness_cross_representation_equality_uses_generated_anchor: Bool = witness
 data witness_cross_representation_equality_covers_bool: Bool = witness_cross_representation_roster_covers_bool()
 
 data witness_cross_representation_equality_covers_optional_null: Bool = witness_cross_representation_roster_covers_optional_null()
+
+data witness_cross_representation_equality_covers_string: Bool = witness_cross_representation_roster_covers_string()

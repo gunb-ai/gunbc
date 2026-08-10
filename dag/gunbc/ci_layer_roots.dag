@@ -1459,6 +1459,12 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     dissolve_on: "same as sibling row"
   },
   SubstrateLongLaneRow {
+    entry: "dag/test/claim/dag_test_marker_contextual_witness_test.dag",
+    function: "witness_tokens_remain_refusal_locates_the_unconsumed_token",
+    reason: "same interpreted lex/parse wall as sibling witness_marked_fn_parses (5002ms thread-CPU measured at CI run 31353333267 — 2ms over the fast lane; the located tokens-remain enrichment control)",
+    dissolve_on: "same as sibling row"
+  },
+  SubstrateLongLaneRow {
     entry: "dag/test/claim/witness_execution_class_live_census_test.dag",
     function: "witness_live_roster_census_holds",
     reason: "~150s measured single-walk eval (valiant-boar-65, 2026-08-08): the CI-0 live-roster classification census — a full floor_discovery_producer walk over witness_discovery_scan_dirs (~1k file reads through the interpreted producer) joined against the enrolled bundle plan. Corpus-breadth census, not a fixture-shaped defect (DESIGN witness-cost ruling: the census is irreducible, the mechanism never is); the mechanism fixtures stay per-PR in witness_execution_class_test",

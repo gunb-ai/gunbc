@@ -59,6 +59,10 @@ test fn generated_cross_representation_equality_covers_optional_null() -> Bool {
   witness_cross_representation_equality_covers_optional_null
 }
 
+test fn generated_cross_representation_equality_covers_string() -> Bool {
+  witness_cross_representation_equality_covers_string
+}
+
 test fn generated_refinement_preserves_nonempty_list_base() -> Bool {
   witness_refinement_preserves_nonempty_list_base
 }

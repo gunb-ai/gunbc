@@ -8,6 +8,7 @@ import v2.std.compilers.lexing { lex_artifact_semantic_tokens }
 import v2.compiler.tokenize { lex_walk_artifact }
 import v2.compiler.parse { parse_module, ParseArtifact }
 import v2.std.node { Node }
+import v2.std.diagnostic { Diagnostic, Textual, ByteRange }
 import v2.extdeps.languages.dag {
   dag_lex_rules,
   dag_grammar,
@@ -81,6 +82,34 @@ test fn witness_fn_named_test_still_parses() -> Bool {
 
 test fn witness_bare_marker_refuses_RED() -> Bool {
   parse_accepts(source: bare_marker_source) == false
+}
+
+// Enriched-diagnostics control (operator item d): a tokens-remain refusal names WHERE
+// consumption stopped — the first unconsumed token's file and byte range as a Textual
+// locus — never the unlocatable parse-stage port locus. The bare marker is the exact
+// specimen: `test` alone lexes, the optional marker's Choice(data,fn) rejects without
+// consuming, the star loop ends, and the leftover `test` token is the located subject.
+fn diagnostic_is_located_tokens_remain(d: Diagnostic) -> Bool {
+  (d.reason == ^parse_g0_tokens_remain) && match d.at {
+    Textual { file: f, extent: ByteRange { start: s, end: e } } =>
+      (f == ^marker_probe) && (e > s)
+    _ => false
+  }
+}
+
+test fn witness_tokens_remain_refusal_locates_the_unconsumed_token() -> Bool {
+  match lex_walk_artifact(source: bare_marker_source, file: ^marker_probe, rules: dag_lex_rules()) {
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
+      match parse_module(tokens: lex_artifact_semantic_tokens(artifact: a), grammar: dag_grammar()) {
+        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: ds } =>
+          diagnostic_is_located_tokens_remain(d: ds.head)
+            || fold_list(xs: ds.tail, empty: false, cons: fn(acc, d) {
+                 acc || diagnostic_is_located_tokens_remain(d: d)
+               })
+      }
+  }
 }
 
 test fn witness_mixed_marked_and_unmarked_parse() -> Bool {

@@ -1,6 +1,7 @@
 module v2.test.claim.walk_plan_schedule_lens
 
 import std.execution_mode { Hermetic }
+import std.realization_schedule { walk_declares_no_native_routing }
 import std.realization_schedule {
   RealizationObjective,
   RealizationPlan,
@@ -80,6 +81,8 @@ fn synthetic_walk(stages: List<List<Runnable>>) -> WalkPlan<NoWalkFinalization> 
     on_success_stages: stages,
     ordinary_budget: none,
     on_success_budget: none
+    identity_routes: [],
+    default_route: walk_declares_no_native_routing(),
   }
 }
 
@@ -91,6 +94,8 @@ fn synthetic_walk_with_wrong_ordinary_projection() -> WalkPlan<NoWalkFinalizatio
     on_success_stages: expected_stages(),
     ordinary_budget: none,
     on_success_budget: none
+    identity_routes: [],
+    default_route: walk_declares_no_native_routing(),
   }
 }
 

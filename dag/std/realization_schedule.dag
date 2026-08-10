@@ -72,6 +72,32 @@ type WitnessSeam {
   consumer: String
 }
 
+data test_execution_route_note: String = "THE ROUTE CARRIER PARTITIONS, NEVER DUPLICATES (CI2 terminal mandate, parent directive msg_ac777b2f): every exact-head test identity demanded by a walk has exactly one execution route, and the scheduler consults this carrier at the single point where a demanded identity becomes a scheduled claim — so migrating an identity to V2NativeRoute REMOVES it from the interpreted schedule in the same commit that adds the row, by construction rather than by a second bookkeeping pass. An identity with no roster row takes the walk authority's declared default retained disposition (a typed V1RetainedRoute naming its exact blocker and dissolution trigger), never a silent fallback. A V2NativeRoute names its realization exactly: which bundle realizes it (the selector identity) and which member symbol within that bundle carries this identity's terminal assertion. A realization refusal at execution time does NOT fall back to the interpreter dynamically — the run refuses loudly and the repair is either fixing the realization or flipping the roster row back to V1RetainedRoute with the measured blocker; both are commits, so the route ledger always states what actually executes."
+
+type NativeRealization
+  = RustNativeBundleMember {
+      bundle_selector_entry: String
+      bundle_selector_function: String
+      member_symbol: String
+    }
+
+type TestExecutionRoute
+  = V2NativeRoute { realization: NativeRealization }
+  | V1RetainedRoute { exact_blocker: NonEmptyStr, dissolution_trigger: NonEmptyStr }
+
+type TestIdentityRoute {
+  entry: String
+  function: String
+  route: TestExecutionRoute
+}
+
+fn walk_declares_no_native_routing() -> TestExecutionRoute {
+  V1RetainedRoute {
+    exact_blocker: "walk-declares-no-native-routing" as NonEmptyStr,
+    dissolution_trigger: "walk-enrolls-in-native-route-program" as NonEmptyStr
+  }
+}
+
 data witness_cost_clock_note: String = "Which clock the duration carrier names (operator msg_e24f4cab, 2026-08-04): run_claim_timed builds performance receipts from wall_nanos (performance_receipt_from_witness) while the per-witness eval budget gate consumes thread CPU nanos (budget_completion_outcome). Both cross as std.measure Millisecond — without the clock tag a stored figure is not comparable to a threshold. claim_batch receipt logs cited on MeasuredAtExactSubject rows are WallClock unless re-measured on thread CPU. THE CARRIER IS std.measure ClockBasis, and this note records why it is not a second one. A local WitnessCostClock = WitnessCostWallEval | WitnessCostThreadCpuEval stood here until 2026-08-05, minted one day before std.measure ClockBasis = CpuClock | WallClock and for the SAME stated reason — the sentence above, that an untagged figure is not comparable to a threshold, appears in both notes. Two carriers, one concept, one argument, two names is the section 3 nicknaming violation exactly, and it duplicates at the meaning layer where everything derived duplicates again. It was also not merely redundant, which is what made it urgent rather than tidy: the declared side of a cost comparison was tagged in this vocabulary while the observed side (gunbc.witness_row_cost, ObservationEvent durations) was tagged in ClockBasis, so witness_row_cost_verdict's BasisClockMismatch — the wall built to refuse a thread-CPU figure compared against a wall baseline — could not see across the two spellings. A fork that defeats the mechanism written to catch that mistake reports clean while comparing the two quantities it exists to keep apart. Dissolved by IMPORT rather than by re-declaration, so the arms below are the same values the observation side already carries and a cross-clock pair refuses on one comparator."
 
 type WitnessCostBasis
@@ -730,6 +756,8 @@ type WalkPlan<F> {
   on_success_stages: List<List<Runnable>>
   ordinary_budget: Millisecond?
   on_success_budget: Millisecond?
+  identity_routes: List<TestIdentityRoute>
+  default_route: TestExecutionRoute
 }
 
 type WalkPopulationBudgetRefusal {
