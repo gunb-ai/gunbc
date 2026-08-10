@@ -22,7 +22,7 @@ fn ci_cache_hash_files() -> Expression {
 fn ci_concurrency_discriminator() -> Expression {
   LogicalOr {
     left: ContextAccess { context: Github, path: ["event", "pull_request", "number"] },
-    right: ContextAccess { context: Github, path: ["run_id"] }
+    right: ContextAccess { context: Github, path: ["ref"] }
   }
 }
 
@@ -112,7 +112,7 @@ data ci_floor_upstream_red_refusal_note: String = "THE FLOOR REFUSES ON AN ALREA
 
 data ci_concurrency_cancel_in_progress_if: String = "${{ github.event_name != 'merge_group' }}"
 
-data ci_concurrency_event_scoped_stop_policy_note: String = "Event-scoped stop policy (operator ruling 2026-07-22, fail-fast lane): cancel-in-progress is true for pull_request / push / workflow_dispatch (supersede stale runs on new commits) and false for merge_group (the queue must not kill an in-flight check when another PR enters the queue — gunbc.ci_workflow ci_merge_group_trigger_note). The expression is the single authority; dissolve-on: a typed EventStopPolicy row per trigger replaces the hand-spelled string when the workflow model carries event-grain policy by construction."
+data ci_concurrency_event_scoped_stop_policy_note: String = "Event-scoped stop policy (operator ruling 2026-07-22; CI RESET lane 2026-08-10): cancel-in-progress is true for pull_request / push / workflow_dispatch and false for merge_group (the queue must not kill an in-flight check when another PR enters the queue — gunbc.ci_workflow ci_merge_group_trigger_note). Supersession requires BOTH arms: cancel-in-progress plus a shared group key. ci_concurrency_discriminator groups PR events by pull_request.number and everything else by github.ref — never run_id, which is unique per run and would give every push its own group, making cancellation unreachable while the note above still read as if it worked. The expression pair is the single authority; dissolve-on: typed EventStopPolicy + group-key rows per trigger replace the hand-spelled strings when the workflow model carries event-grain policy by construction."
 
 data ci_concurrency_event_scoped_stop_policy_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
