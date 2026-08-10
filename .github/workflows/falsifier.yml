@@ -172,7 +172,7 @@ jobs:
   cold-corpus:
     runs-on: [self-hosted, linux, arm64]
     needs: [falsifier-build]
-    timeout-minutes: 270
+    timeout-minutes: 280
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -247,6 +247,16 @@ jobs:
           name: floor-component-receipt
           path: target/floor-component-receipt.json
           if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+        if: always()
+        timeout-minutes: 10
+      - name: Upload floor phase journal (survives killed floor)
+        uses: actions/upload-artifact@v4
+        with:
+          name: floor-phase-journal
+          path: target/floor-phase-journal.tsv
+          if-no-files-found: warn
           retention-days: 30
           compression-level: 0
         if: always()

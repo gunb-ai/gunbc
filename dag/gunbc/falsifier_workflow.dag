@@ -23,7 +23,8 @@ import gunbc.ci_workflow {
 }
 import v2.workflow.ci_floor_peak_emit {
   ci_floor_phase_journal_env_name,
-  ci_floor_phase_journal_path
+  ci_floor_phase_journal_path,
+  ci_floor_phase_journal_artifact_name
 }
 import gunbc.floor_component_receipt {
   floor_component_receipt_path,
@@ -175,6 +176,29 @@ fn floor_component_receipt_upload_step() -> Step {
   }
 }
 
+data floor_phase_journal_upload_note: String = "Uploads the synced floor phase journal so post-mortems do not depend on retained console log truncation. The post-read shell step prints the journal, but gh run view --log can end hours before the job completes (run 31334672366: full API job log shows [floor-phase-journal] at 23:52:41 while gh run view stops at 21:52:34). if: always() captures partial journals when the floor step times out. if-no-files-found: warn — absence is a counted signal (env unset or journal never opened), not a silent skip. Its transfer term joins gunbc_falsifier_cold_corpus_job_backstop_timeout_minutes beside floor_component_receipt_upload_step."
+
+fn floor_phase_journal_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload floor phase journal (survives killed floor)" },
+    id: none,
+    uses: upload_artifact_action,
+    with: Present {
+      value: [
+        kv(key: "name", value: yaml_string(s: ci_floor_phase_journal_artifact_name)),
+        kv(key: "path", value: yaml_string(s: ci_floor_phase_journal_path)),
+        kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
+        kv(key: "retention-days", value: yaml_int(n: 30)),
+        kv(key: "compression-level", value: yaml_int(n: 0))
+      ]
+    },
+    env: none,
+    if_condition: Present { value: "always()" },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
 fn gunbc_falsifier_build_job_backstop_timeout_minutes() -> Int {
   gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
 }
@@ -184,7 +208,7 @@ fn gunbc_falsifier_selection_control_job_backstop_timeout_minutes() -> Int {
 }
 
 fn gunbc_falsifier_cold_corpus_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_falsifier_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_falsifier_compile_clean_cold_control_timeout_minutes + gunbc_falsifier_native_cache_cold_control_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+  gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_falsifier_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_falsifier_compile_clean_cold_control_timeout_minutes + gunbc_falsifier_native_cache_cold_control_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
 }
 
 fn gunbc_falsifier_aggregate_verdict_job_backstop_timeout_minutes() -> Int {
@@ -487,7 +511,7 @@ fn falsifier_cold_corpus_job() -> Job {
     id: "cold-corpus",
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
-    steps: concat(ci_floor_job_prelude_steps(), [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_floor_peak_pre_step(), falsifier_step(), floor_component_receipt_upload_step(), compile_clean_cold_control_step(), native_cache_cold_control_step(), ci_floor_peak_post_step()]),
+    steps: concat(ci_floor_job_prelude_steps(), [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_floor_peak_pre_step(), falsifier_step(), floor_component_receipt_upload_step(), floor_phase_journal_upload_step(), compile_clean_cold_control_step(), native_cache_cold_control_step(), ci_floor_peak_post_step()]),
     needs: ["falsifier-build"],
     env: none,
     outputs: none,
