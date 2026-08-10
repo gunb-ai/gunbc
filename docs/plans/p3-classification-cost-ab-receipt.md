@@ -9,20 +9,58 @@ Paired end-to-end comparison for #8055 P3 (not a lane-read selection count):
 
 ## Harness
 
-- `p3_cohort_probe` — branch-neutral probe; build once per arm, invoke directly (no shell wrapper).
+- `p3_cohort_probe` — branch-neutral probe; **identical** measurement plumbing overlaid onto each arm pin (selector differs only in the pinned `cli_run` tree).
+- Precedent: `scripts/arc1_cohort_receipt.sh` (Arc-1) — pinned arms + shared probe copied from the harness tree.
 
-### Paired run (one arm per build)
+### Overlay discipline (pins vs harness)
+
+Arm pins freeze the **selector under test** (`e1c688aec8` = G1, `7f7da93340` = G2). The probe binary and `classification_production_ms` timing hooks exist **only after #8099 merges** — verified absent at both pins (`git show <pin>:src/v1/stage0/src/bin/p3_cohort_probe.rs` is fatal).
+
+| Layer | Control pin | Candidate pin | Harness (#8099 on `main`) |
+|-------|-------------|---------------|---------------------------|
+| Selector / `cli_run` | `e1c688aec8` (G1) | `7f7da93340` (G2 + manifest) | not substituted |
+| `p3_cohort_probe` + `Cargo.toml` `[[bin]]` | overlay (identical bytes) | overlay (identical bytes) | authority |
+| `selection_control_incident_subject_roster` | overlay | overlay | authority |
+| `classification_production_ms` accumulator | overlay (stubs; reports **0**) | overlay (hooks `#8055` phase) | authority |
+
+**Prerequisite:** merge #8099; let `HARNESS_SHA` = that merge commit on `main`.
+
+Committed overlay artifacts (apply inside a detached worktree at the arm pin):
+
+- `docs/plans/receipts/p3-classification-cost-ab/harness-overlay-probe.patch` — probe + `Cargo.toml` (both arms)
+- `docs/plans/receipts/p3-classification-cost-ab/harness-overlay-control-cli_run.patch` — roster + timing API stubs (control only)
+- `docs/plans/receipts/p3-classification-cost-ab/harness-overlay-candidate-cli_run.patch` — roster + timing API + `classification_production` phase hook (candidate only)
+
+### Local paired run (incident subject)
 
 ```bash
-# control arm — build at tag peeled from e1c688aec8 (pre-#8055 main)
-ctrl-build -- cargo build -p v1-compiler --release --bin p3_cohort_probe
-GUNBC_P3_ARM=control GUNBC_P3_SUBJECT=incident ./target/release/p3_cohort_probe 2>&1 | tee control.log
+HARNESS_SHA=<#8099 merge on main>
+CONTROL_PIN=e1c688aec8
+CANDIDATE_PIN=7f7da93340
+ROOT="$(git rev-parse --show-toplevel)"
 
-# candidate arm — build at tag peeled from 7f7da93340 (#8055 merge)
-GUNBC_P3_ARM=candidate GUNBC_P3_SUBJECT=incident ./target/release/p3_cohort_probe 2>&1 | tee candidate.log
+build_arm() {
+  local label=$1 pin=$2 cli_patch=$3
+  local wt="$ROOT/.receipt-worktrees/p3-${label}"
+  rm -rf "$wt"
+  git worktree add -f --detach "$wt" "$pin"
+  cd "$wt"
+  git apply "$ROOT/docs/plans/receipts/p3-classification-cost-ab/harness-overlay-probe.patch"
+  git apply "$ROOT/docs/plans/receipts/p3-classification-cost-ab/${cli_patch}"
+  cargo build -p v1-compiler --release --bin p3_cohort_probe
+  echo "$wt/target/release/p3_cohort_probe"
+}
+
+CONTROL_BIN="$(build_arm control "$CONTROL_PIN" harness-overlay-control-cli_run.patch)"
+CANDIDATE_BIN="$(build_arm candidate "$CANDIDATE_PIN" harness-overlay-candidate-cli_run.patch)"
+
+GUNBC_P3_ARM=control GUNBC_P3_SUBJECT=incident "$CONTROL_BIN" 2>&1 | tee control.log
+GUNBC_P3_ARM=candidate GUNBC_P3_SUBJECT=incident "$CANDIDATE_BIN" 2>&1 | tee candidate.log
 ```
 
 Compare `RECEIPT` lines: `classification_production_ms + prep_exec_ms` (candidate) vs `prep_exec_ms` at higher `selected_entry_groups` (control). Assert `head_sha` on each receipt matches the pinned tag.
+
+**Fleet/corpus A/B** (vivid-gull-155) uses tag-dispatched full floor runs — not `p3_cohort_probe`. Local incident probe is the discriminating same-subject harness; fleet runs need intersection analysis when group counts differ (below).
 
 Env:
 
