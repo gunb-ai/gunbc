@@ -1,8 +1,8 @@
 module test.claim.devboot_fleet_proof_harvest_witness
 
-import std.types { Bool }
+import std.types { Bool, Int, NonEmptyStr }
 import v2.std.optional { Present, Absent }
-import extdeps.git.object_store { git_object_id_wire_hex }
+import gunbc.devboot.subject { git_tree_object_id_wire_hex }
 import gunbc.devboot.fleet_proof_harvest {
   harvest_modeled_fleet_proof,
   devboot_fleet_proof_harvest_bundle,
@@ -14,12 +14,12 @@ import gunbc.devboot.vertical_receipt { devboot_vertical_receipt }
 test fn witness_harvest_bundle_derives_modeled_proof() -> Bool {
   match harvest_modeled_fleet_proof(bundle: devboot_fleet_proof_harvest_bundle) {
     Present { value: proof } =>
-      proof.tested_commit == "69d07ed69d3a08a6d881a4ed8f3f45e0ec82e8aa"
-        && (git_object_id_wire_hex(oid: proof.tested_tree) as String) == "918953e9eb1ccbc60e6b91f64d5612a0fffd4871"
-        && proof.request_identity == "fnv1a64-dfd0b4abb44e30e7"
+      proof.tested_commit == devboot_fleet_proof_harvest_bundle.corpus_head
+        && (git_tree_object_id_wire_hex(oid: proof.tested_tree) as String) == "918953e9eb1ccbc60e6b91f64d5612a0fffd4871"
+        && proof.request_identity == ("fnv1a64-dfd0b4abb44e30e7" as NonEmptyStr)
         && proof.producer_compile_count == 1
-        && proof.produced_commit == "180beeb95ef8dab53c7abf8aa59a728ffc00e4e9"
-        && proof.clients.first() == Present { value: _ } && proof.clients.last() == Present { value: _ }
+        && proof.produced_commit == ("180beeb95ef8dab53c7abf8aa59a728ffc00e4e9" as NonEmptyStr)
+        && length(proof.clients) == 2
     Absent => false
   }
 }

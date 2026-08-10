@@ -1,6 +1,7 @@
 module gunbc.devboot.fleet_proof_harvest
 
 import std.types { String, Bool, Int, CommitSha, NonEmptyStr, List }
+import std.algebra { trim }
 import v2.std.optional { Present, Absent }
 import std.content_hash { Sha256Digest, sha256_hex_digest, content_hash_eq_cryptographic }
 import std.decl_ref { DeclarationRef, decl_ref }
@@ -143,7 +144,11 @@ fn store_ref_commit_for_suffix(store: String, suffix: String) -> String? {
         acc
       } else if string_contains(s: line, pattern: suffix) {
         match split(s: trim(s: line), sep: "\t").first() {
-          Present { value: commit } => Present { value: trim(s: commit) }
+          Present { value: object_field } =>
+            match split(s: object_field, sep: " ").first() {
+              Present { value: commit } => Present { value: trim(s: commit) }
+              Absent => none
+            }
           Absent => none
         }
       } else {
@@ -214,7 +219,7 @@ fn harvest_modeled_fleet_proof(bundle: DevbootFleetProofHarvestBundle) -> Devboo
             } else {
               match git_tree_object_id_from_untagged_hex(hex: srv1.tested_tree_hex) {
                 Absent => none
-                Present { value: tested_tree } =>
+                Present { value: tested_tree_id } =>
                   match request_token_from_store(store: bundle.store_for_each_ref) {
                     Absent => none
                     Present { value: request_identity } =>
@@ -228,7 +233,7 @@ fn harvest_modeled_fleet_proof(bundle: DevbootFleetProofHarvestBundle) -> Devboo
                                 value: DevbootModeledFleetProofReceipt {
                                   producer_served_at: producer_served_at as NonEmptyStr,
                                   tested_commit: bundle.corpus_head,
-                                  tested_tree: tested_tree,
+                                  tested_tree: tested_tree_id,
                                   mechanism_branch: bundle.mechanism_branch,
                                   request_identity: request_identity as NonEmptyStr,
                                   producer_host: srv1.producer_host as NonEmptyStr,
