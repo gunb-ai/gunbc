@@ -99,7 +99,18 @@ jobs:
           # An install is still not a LOAD. Import separately so an installed-but-broken build is a
           # distinct, named outcome rather than surfacing later as a mysterious startup failure.
           ./venv/bin/python -c 'import vllm;print("IMPORT-OK vllm",vllm.__version__)' 2>&1 | tail -5
-          exit ${PIPESTATUS[0]}
+          IMPRC=${PIPESTATUS[0]}
+          [ "$IMPRC" = "0" ] || exit $IMPRC
+          # RESOLVED-CLOSURE LOCK. A pinned model and a pinned vllm still leave the transitive
+          # closure floating: torch and everything under it resolve to whatever pip picks that day.
+          # That is LATENT on one host and becomes a real divergence the moment a second exists, so
+          # the closure is captured HERE, from the host that actually works, and srv6 installs
+          # against it rather than re-resolving. Replaying first and reconciling after is the one
+          # ordering that makes a difference indistinguishable between "the day" and "the host".
+          ./venv/bin/pip freeze > "$HOME/gunbc-serve/constraints.txt"
+          echo "LOCK-LINES=$(wc -l < "$HOME/gunbc-serve/constraints.txt")"
+          echo "LOCK-BEGIN"; cat "$HOME/gunbc-serve/constraints.txt"; echo "LOCK-END"
+          exit 0
           REMOTE
           echo "install rc=$RC"
           [ "$RC" = "0" ] || { echo "MEASURED OUTCOME: vllm 0.26.0 did not install/import on GB10 (rc=$RC)."
@@ -114,7 +125,25 @@ jobs:
           $SSH "${SPARK_USER}@${SPARK_ADDR}" \
             "MODEL_ID='${MODEL_ID}' MODEL_REV='${MODEL_REV}' SERVE_PORT='${SERVE_PORT}' bash -s" <<'REMOTE'
           set -uo pipefail
+          # ENDPOINT AUTHENTICATION. The loopback bind and the fleet key on the transport are real
+          # protection, but the contract word is "authenticated MODEL" and that is a property of the
+          # ENDPOINT, not of the transport. These are two different threats and closing one does not
+          # close the other, so the endpoint gets its own key and the bind stays on loopback.
+          #
+          # The key is generated ON THE HOST into a 0600 file and never leaves it: it is not in the
+          # repo, not in CI logs, not in argv, and not in the unit file. Secret Manager is not the
+          # home for it because this principal holds versions.access ONLY -- it cannot AddVersion --
+          # so storing it there would require a privilege I provably do not have.
           mkdir -p "$HOME/.config/systemd/user"
+          if [ ! -s "$HOME/gunbc-serve/api-key.env" ]; then
+            umask 077
+            printf 'VLLM_API_KEY=%s\n' "$(head -c 32 /dev/urandom | base64 | tr -d '/+=' | head -c 40)" \
+              > "$HOME/gunbc-serve/api-key.env"
+            chmod 600 "$HOME/gunbc-serve/api-key.env"
+            echo "API-KEY=generated-on-host (value never printed)"
+          else
+            echo "API-KEY=already-present (value never printed, not rotated here)"
+          fi
           cat > "$HOME/.config/systemd/user/gunbc-vllm.service" <<UNIT
           [Unit]
           Description=gunbc pinned vLLM serving canary
@@ -124,16 +153,48 @@ jobs:
           Type=simple
           WorkingDirectory=%h/gunbc-serve
           Environment=HF_HUB_ENABLE_HF_TRANSFER=0
+          EnvironmentFile=%h/gunbc-serve/api-key.env
           ExecStart=%h/gunbc-serve/venv/bin/vllm serve ${MODEL_ID} \\
             --revision ${MODEL_REV} \\
+            --api-key \${VLLM_API_KEY} \\
             --host 127.0.0.1 --port ${SERVE_PORT} \\
             --max-model-len 4096
+          ExecStartPost=%h/gunbc-serve/verify-loaded-revision.sh ${MODEL_REV} ${SERVE_PORT}
           Restart=on-failure
           RestartSec=10
 
           [Install]
           WantedBy=default.target
           UNIT
+          # PER-START IDENTITY VERIFICATION. An initial-load readback describes a process that may
+          # since have RESTARTED, and Restart=on-failure can bring the server back on whatever is in
+          # cache -- nothing would distinguish that from the pinned revision. Retry that cannot verify
+          # what came back is precisely the arm the readback exists to close, so the check runs as
+          # ExecStartPost on EVERY start and the unit FAILS if the loaded revision disagrees.
+          #
+          # It reads the same independent fact as the workflow's readback: the snapshot path the
+          # process actually mmapped. It does NOT consult /v1/models, which would echo the launch
+          # argument and pass regardless of what loaded.
+          cat > "$HOME/gunbc-serve/verify-loaded-revision.sh" <<'VERIFY'
+          #!/usr/bin/env bash
+          set -uo pipefail
+          EXPECT="$1"; PORT="$2"
+          for _ in $(seq 1 180); do
+            code=$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://127.0.0.1:${PORT}/health" 2>/dev/null)
+            [ "$code" = "200" ] && break
+            sleep 10
+          done
+          PID=$(pgrep -f 'vllm serve' | head -1)
+          if [ -z "$PID" ]; then echo "verify: REFUSE no serving process"; exit 10; fi
+          GOT=$(grep -o 'snapshots/[0-9a-f]\{40\}' "/proc/$PID/maps" 2>/dev/null | sed 's|snapshots/||' | sort -u)
+          if [ -z "$GOT" ]; then echo "verify: REFUSE loaded revision not observable"; exit 11; fi
+          if [ "$GOT" != "$EXPECT" ]; then
+            echo "verify: REFUSE loaded=$GOT expected=$EXPECT"; exit 12
+          fi
+          echo "verify: OK loaded=$GOT"
+          VERIFY
+          chmod +x "$HOME/gunbc-serve/verify-loaded-revision.sh"
+
           # Lingering is what makes a --user unit survive logout; without it the "continuously
           # serve" requirement is not met by a unit that exists.
           loginctl enable-linger "$USER" 2>&1 | head -2 || echo "linger: refused (no privilege)"
