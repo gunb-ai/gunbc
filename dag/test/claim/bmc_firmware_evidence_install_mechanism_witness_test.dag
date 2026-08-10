@@ -1,17 +1,18 @@
 module test.claim.bmc_firmware_evidence_install_mechanism
 
 import extdeps.bmc.capability {
+  BmcFirmwareCapabilityAmbiguous,
   BmcFirmwareCapabilityKnown,
   BmcFirmwareCapabilityRow,
   BmcFirmwareCapabilityUncatalogued,
-  BmcFirmwareObservation,
   BmcFirmwareVersion,
-  HistoricalEvidenceSnapshot,
   bmc_firmware_capability_row_for,
   bmc_firmware_semantic_version,
   bmc_firmware_version_eq,
   firmware_has_capability,
+  CapabilityBootSourceOverride,
   CapabilityNbdProxyVirtualMedia,
+  CapabilityPowerControl,
   CapabilityVirtualMedia,
 }
 import extdeps.boards.asrock_rack {
@@ -24,6 +25,7 @@ import gunbc.fleet_bmc_firmware_evidence {
   BmcFirmwareAttestation,
   BmcFirmwareCapabilityEvidenceAbsent,
   BmcFirmwareCapabilityResolved,
+  BmcFirmwareCapabilityVersionAmbiguous,
   BmcFirmwareCapabilityVersionUncatalogued,
   BmcFirmwareEvidence,
   BmcFirmwareEvidenceAttested,
@@ -41,12 +43,20 @@ import gunbc.fleet_bmc_firmware_evidence {
 import gunbc.os_install_mechanism {
   FirmwareUpdateThenVirtualMedia,
   InstallFirmwareEvidenceAbsent,
+  InstallFirmwareVersionAmbiguous,
   InstallFirmwareVersionUncatalogued,
+  InstallNoBootSourceOverride,
+  InstallNoVirtualMediaAndNetworkBootUnestablished,
+  NetworkBootDeliveryEstablished,
+  NetworkBootDeliveryStanding,
+  NetworkBootDeliveryUnestablished,
+  NetworkBootRequirement,
   NbdProxyVirtualMediaInstall,
   OsInstallMechanismRefused,
   OsInstallMechanismSelected,
   PxeHttpInstall,
   VirtualMediaInstall,
+  solve_delivery_from_capability_row,
   solve_install_mechanism,
   solve_install_mechanism_from_evidence,
   srv1_install_mechanism_solution,
@@ -57,7 +67,19 @@ import gunbc.os_install_mechanism {
   srv4_install_mechanism_solution,
 }
 import std.bmc { BmcEndpoint, OpenBmc, Redfish }
-import std.types { Bool }
+import std.types { Bool, List, list_length }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// Control-only: an Established standing does not exist for any real host (see
+// network_boot_requirements_all), so the positive PXE arm is exercised from a locally
+// constructed one. That asymmetry IS the finding — no fleet host can reach PXE today.
+data established_network_boot_for_control: NetworkBootDeliveryStanding = NetworkBootDeliveryEstablished {
+  boot_mode_authority: DeclarationRef {
+    module_path: "gunbc.os_install",
+    decl_name: "srv3_pxe_network_boot_chain",
+    field: WholeDeclaration,
+  },
+}
 
 data unknown_endpoint: BmcEndpoint = BmcEndpoint { host: "192.168.1.254", protocol: Redfish }
 
@@ -66,30 +88,34 @@ data uncatalogued_firmware: BmcFirmwareVersion = BmcFirmwareVersion {
   version: bmc_firmware_semantic_version(major: 2, minor: 7, patch: 1),
 }
 
-// THE FINDING, made executable. srv4's observed firmware (OpenBMC 3.22.00) carries neither
-// virtual-media capability, so its derived delivery mechanism is PXE — while the pre-repair
-// board-default read answers NbdProxyVirtualMediaInstall for the same host. Both halves are
-// asserted together: the claim is the DISAGREEMENT, not either value alone.
-test fn srv4_evidence_derived_mechanism_is_pxe_and_board_default_disagrees() -> Bool {
+// THE FINDING, made executable, at its honest strength. srv4's observed firmware (OpenBMC
+// 3.22.00) carries neither virtual-media capability, and no network-boot delivery is established
+// for it, so the evidence-derived answer is a REFUSAL naming what is missing. The pre-repair
+// board-default read answers NbdProxyVirtualMediaInstall for the same host — a mechanism that
+// firmware does not implement. The claim is the DISAGREEMENT between a refusal and a fabricated
+// selection, not either value alone.
+test fn srv4_evidence_derived_refuses_while_board_default_selects_nbd_proxy() -> Bool {
   let board_default = solve_install_mechanism(
     current: asrock_altrad8ud_shipped_bmc_firmware_capabilities,
     catalog: srv3_firmware_catalog,
   )
   match srv4_install_mechanism_solution {
-    OsInstallMechanismSelected { mechanism: m } =>
-      match m {
-        PxeHttpInstall =>
-          match board_default {
-            NbdProxyVirtualMediaInstall => true
-            PxeHttpInstall => false
-            VirtualMediaInstall => false
-            FirmwareUpdateThenVirtualMedia => false
-          }
-        NbdProxyVirtualMediaInstall => false
-        VirtualMediaInstall => false
-        FirmwareUpdateThenVirtualMedia => false
+    OsInstallMechanismRefused { cause: c } =>
+      match c {
+        InstallNoVirtualMediaAndNetworkBootUnestablished { firmware: _, missing: m } =>
+          list_length(items: m) == 4
+            && match board_default {
+                 NbdProxyVirtualMediaInstall => true
+                 PxeHttpInstall => false
+                 VirtualMediaInstall => false
+                 FirmwareUpdateThenVirtualMedia => false
+               }
+        InstallFirmwareEvidenceAbsent { endpoint: _ } => false
+        InstallFirmwareVersionUncatalogued { firmware: _ } => false
+        InstallFirmwareVersionAmbiguous { firmware: _, count: _ } => false
+        InstallNoBootSourceOverride { firmware: _ } => false
       }
-    OsInstallMechanismRefused { cause: _ } => false
+    OsInstallMechanismSelected { mechanism: _ } => false
   }
 }
 
@@ -174,11 +200,15 @@ test fn unobserved_endpoint_refuses_rather_than_defaulting_to_pxe() -> Bool {
   match solve_install_mechanism_from_evidence(
     evidence: BmcFirmwareEvidenceUnobserved { endpoint: unknown_endpoint },
     catalog: srv3_firmware_catalog,
+    network_boot: established_network_boot_for_control,
   ) {
     OsInstallMechanismRefused { cause: c } =>
       match c {
         InstallFirmwareEvidenceAbsent { endpoint: e } => e == unknown_endpoint
         InstallFirmwareVersionUncatalogued { firmware: _ } => false
+        InstallFirmwareVersionAmbiguous { firmware: _, count: _ } => false
+        InstallNoBootSourceOverride { firmware: _ } => false
+        InstallNoVirtualMediaAndNetworkBootUnestablished { firmware: _, missing: _ } => false
       }
     OsInstallMechanismSelected { mechanism: _ } => false
   }
@@ -198,12 +228,16 @@ test fn uncatalogued_version_refuses_rather_than_matching_nearest() -> Bool {
       },
     },
     catalog: srv3_firmware_catalog,
+    network_boot: established_network_boot_for_control,
   ) {
     OsInstallMechanismRefused { cause: c } =>
       match c {
         InstallFirmwareVersionUncatalogued { firmware: f } =>
           bmc_firmware_version_eq(a: f, b: uncatalogued_firmware)
         InstallFirmwareEvidenceAbsent { endpoint: _ } => false
+        InstallFirmwareVersionAmbiguous { firmware: _, count: _ } => false
+        InstallNoBootSourceOverride { firmware: _ } => false
+        InstallNoVirtualMediaAndNetworkBootUnestablished { firmware: _, missing: _ } => false
       }
     OsInstallMechanismSelected { mechanism: _ } => false
   }
@@ -221,6 +255,7 @@ test fn catalogued_version_resolves_to_its_own_row() -> Bool {
       firmware_has_capability(row: r, cap: CapabilityNbdProxyVirtualMedia)
         && firmware_has_capability(row: r, cap: CapabilityVirtualMedia) == false
     BmcFirmwareCapabilityUncatalogued { firmware: _ } => false
+    BmcFirmwareCapabilityAmbiguous { firmware: _, count: _ } => false
   }
 }
 
@@ -233,6 +268,7 @@ test fn catalogued_3_22_00_row_carries_no_virtual_media_of_either_kind() -> Bool
       firmware_has_capability(row: r, cap: CapabilityVirtualMedia) == false
         && firmware_has_capability(row: r, cap: CapabilityNbdProxyVirtualMedia) == false
     BmcFirmwareCapabilityUncatalogued { firmware: _ } => false
+    BmcFirmwareCapabilityAmbiguous { firmware: _, count: _ } => false
   }
 }
 
@@ -253,5 +289,116 @@ test fn capability_standing_refuses_on_absent_evidence() -> Bool {
     BmcFirmwareCapabilityEvidenceAbsent { endpoint: e } => e == unknown_endpoint
     BmcFirmwareCapabilityResolved { row: _ } => false
     BmcFirmwareCapabilityVersionUncatalogued { firmware: _ } => false
+    BmcFirmwareCapabilityVersionAmbiguous { firmware: _, count: _ } => false
+  }
+}
+
+data no_boot_override_row: BmcFirmwareCapabilityRow = BmcFirmwareCapabilityRow {
+  firmware: uncatalogued_firmware,
+  capabilities: [CapabilityPowerControl],
+}
+
+data duplicated_version_catalog: List<BmcFirmwareCapabilityRow> = [
+  asrock_altrad8ud_openbmc_2_07_00_capabilities,
+  asrock_altrad8ud_openbmc_2_07_00_capabilities,
+]
+
+data attested_2_07_00_evidence: BmcFirmwareEvidence = BmcFirmwareEvidenceAttested {
+  attestation: BmcFirmwareAttestation {
+    endpoint: unknown_endpoint,
+    firmware: asrock_altrad8ud_openbmc_2_07_00_capabilities.firmware,
+    attested_by: "witness",
+    attested_at: 1786320000000,
+  },
+}
+
+// RED CONTROL for the manager-flagged PXE-by-absence defect. A firmware row carrying NO
+// virtual-media capability must not yield PxeHttpInstall merely because the virtual-media arms
+// did not fire. With no declared network-boot delivery it refuses; the paired positive below
+// selects PXE from the SAME row once a delivery is declared, so the refusal is discriminating
+// rather than the function refusing everything.
+test fn no_virtual_media_without_declared_network_boot_refuses_instead_of_inferring_pxe() -> Bool {
+  match solve_install_mechanism_from_evidence(
+    evidence: srv4_bmc_firmware_evidence,
+    catalog: srv3_firmware_catalog,
+    network_boot: NetworkBootDeliveryUnestablished { missing: [] },
+  ) {
+    OsInstallMechanismRefused { cause: c } =>
+      match c {
+        InstallNoVirtualMediaAndNetworkBootUnestablished { firmware: _, missing: _ } => true
+        InstallFirmwareEvidenceAbsent { endpoint: _ } => false
+        InstallFirmwareVersionUncatalogued { firmware: _ } => false
+        InstallFirmwareVersionAmbiguous { firmware: _, count: _ } => false
+        InstallNoBootSourceOverride { firmware: _ } => false
+      }
+    OsInstallMechanismSelected { mechanism: _ } => false
+  }
+}
+
+test fn same_row_selects_pxe_once_a_network_boot_delivery_is_established() -> Bool {
+  match solve_install_mechanism_from_evidence(
+    evidence: srv4_bmc_firmware_evidence,
+    catalog: srv3_firmware_catalog,
+    network_boot: established_network_boot_for_control,
+  ) {
+    OsInstallMechanismSelected { mechanism: m } =>
+      match m {
+        PxeHttpInstall => true
+        NbdProxyVirtualMediaInstall => false
+        VirtualMediaInstall => false
+        FirmwareUpdateThenVirtualMedia => false
+      }
+    OsInstallMechanismRefused { cause: _ } => false
+  }
+}
+
+// RED CONTROL — boot-source-override gates every delivery arm, so a row without it refuses
+// rather than reaching the network-boot arm on a declared standing.
+test fn row_without_boot_source_override_refuses_even_with_declared_network_boot() -> Bool {
+  match solve_delivery_from_capability_row(
+    row: no_boot_override_row,
+    catalog: srv3_firmware_catalog,
+    network_boot: established_network_boot_for_control,
+  ) {
+    OsInstallMechanismRefused { cause: c } =>
+      match c {
+        InstallNoBootSourceOverride { firmware: _ } => true
+        InstallNoVirtualMediaAndNetworkBootUnestablished { firmware: _, missing: _ } => false
+        InstallFirmwareEvidenceAbsent { endpoint: _ } => false
+        InstallFirmwareVersionUncatalogued { firmware: _ } => false
+        InstallFirmwareVersionAmbiguous { firmware: _, count: _ } => false
+      }
+    OsInstallMechanismSelected { mechanism: _ } => false
+  }
+}
+
+// RED CONTROL for the manager-flagged duplicate-match defect. Two catalog rows for one version
+// is a contradiction; answering from whichever was authored first would render it as a verdict.
+test fn duplicate_catalog_rows_for_one_version_refuse_as_ambiguous() -> Bool {
+  match bmc_firmware_capability_row_for(
+    firmware: asrock_altrad8ud_openbmc_2_07_00_capabilities.firmware,
+    catalog: duplicated_version_catalog,
+  ) {
+    BmcFirmwareCapabilityAmbiguous { firmware: _, count: n } => n == 2
+    BmcFirmwareCapabilityKnown { row: _ } => false
+    BmcFirmwareCapabilityUncatalogued { firmware: _ } => false
+  }
+}
+
+test fn ambiguous_catalog_propagates_to_a_mechanism_refusal() -> Bool {
+  match solve_install_mechanism_from_evidence(
+    evidence: attested_2_07_00_evidence,
+    catalog: duplicated_version_catalog,
+    network_boot: established_network_boot_for_control,
+  ) {
+    OsInstallMechanismRefused { cause: c } =>
+      match c {
+        InstallFirmwareVersionAmbiguous { firmware: _, count: n } => n == 2
+        InstallFirmwareEvidenceAbsent { endpoint: _ } => false
+        InstallFirmwareVersionUncatalogued { firmware: _ } => false
+        InstallNoBootSourceOverride { firmware: _ } => false
+        InstallNoVirtualMediaAndNetworkBootUnestablished { firmware: _, missing: _ } => false
+      }
+    OsInstallMechanismSelected { mechanism: _ } => false
   }
 }

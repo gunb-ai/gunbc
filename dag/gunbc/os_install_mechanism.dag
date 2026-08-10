@@ -1,7 +1,8 @@
 module gunbc.os_install_mechanism
 
 import std.bmc { BmcEndpoint }
-import std.types { List, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { Int, List, String }
 import extdeps.bmc.types {
   RedfishBootSourceOverrideTarget,
   BootTargetPxe,
@@ -11,6 +12,7 @@ import extdeps.bmc.capability {
   BmcCapability,
   BmcFirmwareCapabilityRow,
   BmcFirmwareVersion,
+  CapabilityBootSourceOverride,
   CapabilityVirtualMedia,
   CapabilityNbdProxyVirtualMedia,
   CapabilityFirmwareUpdate,
@@ -24,6 +26,7 @@ import extdeps.boards.asrock_rack {
 import gunbc.fleet_bmc_firmware_evidence {
   BmcFirmwareCapabilityEvidenceAbsent,
   BmcFirmwareCapabilityResolved,
+  BmcFirmwareCapabilityVersionAmbiguous,
   BmcFirmwareCapabilityVersionUncatalogued,
   BmcFirmwareEvidence,
   bmc_firmware_capability_standing,
@@ -55,50 +58,155 @@ fn solve_install_mechanism(
   }
 }
 
+// PXE was previously reached by ABSENCE: the pre-repair solver's else-arm answered
+// PxeHttpInstall whenever no virtual-media capability was found, so "this BMC exposes no virtual
+// media" silently became "therefore it network-boots". Those are different states, and a BMC
+// capability roster cannot establish the second — it is a claim about the host's UEFI network
+// stack, the serving infrastructure, and the boot artifacts, none of which the BMC reports.
+//
+// So a network-boot delivery is established only by naming every requirement it rests on. An
+// authored chain or serve plan is NOT such an establishment: gunbc.os_install
+// srv3_pxe_network_boot_chain and gunbc.bmc_netboot_serve srv4_bmc_netboot_serve_plan describe
+// what a network boot WOULD look like, and neither is an observation that the host performed
+// one. Citing them as evidence would be the same substitution one layer up.
+type NetworkBootRequirement
+  = NetworkBootBootSourceOverride
+  | NetworkBootClientBootMode
+  | NetworkBootServingInfrastructure
+  | NetworkBootBootArtifacts
+
+type NetworkBootDeliveryStanding
+  = NetworkBootDeliveryEstablished { boot_mode_authority: DeclarationRef }
+  | NetworkBootDeliveryUnestablished { missing: List<NetworkBootRequirement> }
+
 type OsInstallMechanismRefusalCause
   = InstallFirmwareEvidenceAbsent { endpoint: BmcEndpoint }
   | InstallFirmwareVersionUncatalogued { firmware: BmcFirmwareVersion }
+  | InstallFirmwareVersionAmbiguous { firmware: BmcFirmwareVersion, count: Int }
+  | InstallNoBootSourceOverride { firmware: BmcFirmwareVersion }
+  | InstallNoVirtualMediaAndNetworkBootUnestablished {
+      firmware: BmcFirmwareVersion,
+      missing: List<NetworkBootRequirement>,
+    }
 
 type OsInstallMechanismSolution
   = OsInstallMechanismSelected { mechanism: OsInstallMechanism }
   | OsInstallMechanismRefused { cause: OsInstallMechanismRefusalCause }
 
-// The per-host entry point, and the reason this module now imports host evidence at all:
-// solve_install_mechanism answers a question about a CAPABILITY ROW, and the defect this
-// closes was feeding it the board's shipped-firmware row for every host. A capability roster
-// is per firmware release, so the shipped row is a fact about what the board left the factory
-// with, never about what a given BMC is running now.
+// Every arm is reached from a capability the resolved row NAMES, never from the absence of
+// another. Boot-source-override gates all four delivery mechanisms (each drives the host through
+// a BMC boot override), and the PXE arm additionally requires a declared network-boot delivery
+// rather than falling out of an else.
+fn solve_delivery_from_capability_row(
+  row: BmcFirmwareCapabilityRow,
+  catalog: List<BmcFirmwareCapabilityRow>,
+  network_boot: NetworkBootDeliveryStanding,
+) -> OsInstallMechanismSolution {
+  if firmware_has_capability(row: row, cap: CapabilityBootSourceOverride) == false {
+    OsInstallMechanismRefused {
+      cause: InstallNoBootSourceOverride { firmware: row.firmware },
+    }
+  } else if firmware_has_capability(row: row, cap: CapabilityVirtualMedia) {
+    OsInstallMechanismSelected { mechanism: VirtualMediaInstall }
+  } else if firmware_has_capability(row: row, cap: CapabilityNbdProxyVirtualMedia) {
+    OsInstallMechanismSelected { mechanism: NbdProxyVirtualMediaInstall }
+  } else if firmware_has_capability(row: row, cap: CapabilityFirmwareUpdate)
+         && catalog_has_vm_capable_firmware(catalog: catalog) {
+    OsInstallMechanismSelected { mechanism: FirmwareUpdateThenVirtualMedia }
+  } else {
+    match network_boot {
+      NetworkBootDeliveryEstablished { boot_mode_authority: _ } =>
+        OsInstallMechanismSelected { mechanism: PxeHttpInstall }
+      NetworkBootDeliveryUnestablished { missing: m } =>
+        OsInstallMechanismRefused {
+          cause: InstallNoVirtualMediaAndNetworkBootUnestablished {
+            firmware: row.firmware,
+            missing: m,
+          },
+        }
+    }
+  }
+}
+
+// The per-host entry point, and the reason this module imports host evidence at all:
+// solve_install_mechanism answers a question about a CAPABILITY ROW, and the defect this closes
+// was feeding it the board's shipped-firmware row for every host. A capability roster is per
+// firmware release, so the shipped row is a fact about what the board left the factory with,
+// never about what a given BMC is running now.
 fn solve_install_mechanism_from_evidence(
   evidence: BmcFirmwareEvidence,
-  catalog: List<BmcFirmwareCapabilityRow>
+  catalog: List<BmcFirmwareCapabilityRow>,
+  network_boot: NetworkBootDeliveryStanding,
 ) -> OsInstallMechanismSolution {
   match bmc_firmware_capability_standing(evidence: evidence, catalog: catalog) {
     BmcFirmwareCapabilityResolved { row: r } =>
-      OsInstallMechanismSelected {
-        mechanism: solve_install_mechanism(current: r, catalog: catalog),
-      }
+      solve_delivery_from_capability_row(
+        row: r,
+        catalog: catalog,
+        network_boot: network_boot,
+      )
     BmcFirmwareCapabilityEvidenceAbsent { endpoint: e } =>
       OsInstallMechanismRefused { cause: InstallFirmwareEvidenceAbsent { endpoint: e } }
     BmcFirmwareCapabilityVersionUncatalogued { firmware: fw } =>
       OsInstallMechanismRefused { cause: InstallFirmwareVersionUncatalogued { firmware: fw } }
+    BmcFirmwareCapabilityVersionAmbiguous { firmware: fw, count: n } =>
+      OsInstallMechanismRefused {
+        cause: InstallFirmwareVersionAmbiguous { firmware: fw, count: n },
+      }
   }
 }
 
 data srv3_firmware_catalog: List<BmcFirmwareCapabilityRow> = asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog
 
+// Network-boot standings, per host. NOTHING in the fleet positively establishes a network-boot
+// delivery today: no host carries an observation of a completed network boot, of the client boot
+// mode its firmware negotiated, of the serving infrastructure being reachable at install time, or
+// of the boot artifacts being present. So every host is Unestablished with the full requirement
+// list, and PXE is selectable for none of them.
+//
+// The consequence is deliberate and is the honest reading of the evidence: srv4 has NO modeled
+// install path at all — its firmware offers neither virtual-media mechanism AND its network boot
+// is unestablished. "srv4 installs by PXE" is not something this repository can currently derive;
+// it is a claim awaiting the observations named above.
+data network_boot_requirements_all: List<NetworkBootRequirement> = [
+  NetworkBootBootSourceOverride,
+  NetworkBootClientBootMode,
+  NetworkBootServingInfrastructure,
+  NetworkBootBootArtifacts,
+]
+
+data srv1_network_boot_standing: NetworkBootDeliveryStanding = NetworkBootDeliveryUnestablished {
+  missing: network_boot_requirements_all,
+}
+
+data srv2_network_boot_standing: NetworkBootDeliveryStanding = NetworkBootDeliveryUnestablished {
+  missing: network_boot_requirements_all,
+}
+
+data srv3_network_boot_standing: NetworkBootDeliveryStanding = NetworkBootDeliveryUnestablished {
+  missing: network_boot_requirements_all,
+}
+
+data srv4_network_boot_standing: NetworkBootDeliveryStanding = NetworkBootDeliveryUnestablished {
+  missing: network_boot_requirements_all,
+}
+
 data srv1_install_mechanism_solution: OsInstallMechanismSolution = solve_install_mechanism_from_evidence(
   evidence: srv1_bmc_firmware_evidence,
-  catalog: srv3_firmware_catalog
+  catalog: srv3_firmware_catalog,
+  network_boot: srv1_network_boot_standing
 )
 
 data srv2_install_mechanism_solution: OsInstallMechanismSolution = solve_install_mechanism_from_evidence(
   evidence: srv2_bmc_firmware_evidence,
-  catalog: srv3_firmware_catalog
+  catalog: srv3_firmware_catalog,
+  network_boot: srv2_network_boot_standing
 )
 
 data srv3_install_mechanism_solution: OsInstallMechanismSolution = solve_install_mechanism_from_evidence(
   evidence: srv3_bmc_firmware_evidence,
-  catalog: srv3_firmware_catalog
+  catalog: srv3_firmware_catalog,
+  network_boot: srv3_network_boot_standing
 )
 
 // srv4 is the row that makes this repair load-bearing rather than tidy: its observed firmware
@@ -108,7 +216,8 @@ data srv3_install_mechanism_solution: OsInstallMechanismSolution = solve_install
 // a delivery mechanism its BMC firmware does not implement.
 data srv4_install_mechanism_solution: OsInstallMechanismSolution = solve_install_mechanism_from_evidence(
   evidence: srv4_bmc_firmware_evidence,
-  catalog: srv3_firmware_catalog
+  catalog: srv3_firmware_catalog,
+  network_boot: srv4_network_boot_standing
 )
 
 data srv3_install_mechanism_board_default_residue: String = "🟡 dissolve-on: srv3_install_mechanism and srv3_install_boot_target are the pre-repair rows that read the BOARD's shipped-firmware capability row (asrock_altrad8ud_shipped_bmc_firmware_capabilities) instead of srv3's own firmware evidence. They are retained ONLY because their consumers — gunbc.os_install's srv3_os_install_plan / srv3_seeded_os_install_plan / fleet_install_server_specs, gunbc.nbd_proxy_virtual_media_install, gunbc.srv3_os_install_actuate_scope, gunbc.bmc_onboarding, gunbc.host_standup — are total `data` rows that cannot carry OsInstallMechanismRefused without becoming standings themselves, and fleet_install_server_specs reaches gunbc.generated_artifact. They agree with srv3_install_mechanism_solution TODAY only because srv3's observed firmware happens to equal the board's shipped version; the witness srv3_legacy_row_agrees_with_evidence_derived_solution executes that coincidence so it cannot rot silently, and there is deliberately no srv4 legacy row because it would be wrong. DISSOLVES WHEN those consumers take OsInstallMechanismSolution and the plan rows become standings (BMC-EVIDENCE-1); at that point both rows and this note are DELETED."

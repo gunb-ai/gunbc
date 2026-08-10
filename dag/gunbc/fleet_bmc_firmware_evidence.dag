@@ -1,8 +1,9 @@
 module gunbc.fleet_bmc_firmware_evidence
 
 import std.bmc { BmcEndpoint, OpenBmc }
-import std.types { EpochMs, List, NonEmptyStr, String }
+import std.types { EpochMs, Int, List, NonEmptyStr, String }
 import extdeps.bmc.capability {
+  BmcFirmwareCapabilityAmbiguous,
   BmcFirmwareCapabilityKnown,
   BmcFirmwareCapabilityLookup,
   BmcFirmwareCapabilityRow,
@@ -66,6 +67,7 @@ type BmcFirmwareCapabilityStanding
   = BmcFirmwareCapabilityResolved { row: BmcFirmwareCapabilityRow }
   | BmcFirmwareCapabilityEvidenceAbsent { endpoint: BmcEndpoint }
   | BmcFirmwareCapabilityVersionUncatalogued { firmware: BmcFirmwareVersion }
+  | BmcFirmwareCapabilityVersionAmbiguous { firmware: BmcFirmwareVersion, count: Int }
 
 // host -> host firmware evidence -> capability row. There is no arm that reaches a board-level
 // shipped default: an unobserved endpoint and an uncatalogued version each refuse with the
@@ -83,6 +85,8 @@ fn bmc_firmware_capability_standing(
         BmcFirmwareCapabilityKnown { row: r } => BmcFirmwareCapabilityResolved { row: r }
         BmcFirmwareCapabilityUncatalogued { firmware: missing } =>
           BmcFirmwareCapabilityVersionUncatalogued { firmware: missing }
+        BmcFirmwareCapabilityAmbiguous { firmware: dup, count: n } =>
+          BmcFirmwareCapabilityVersionAmbiguous { firmware: dup, count: n }
       }
   }
 }
