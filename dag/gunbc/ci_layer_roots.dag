@@ -1568,6 +1568,30 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     dissolve_on: "same as sibling row"
   },
   SubstrateLongLaneRow {
+    entry: "dag/test/claim/namespace_graft_body_dissolution_witness_test.dag",
+    function: "witness_type_fn_module_dissolution_refuses_RED",
+    reason: "~16s measured eval (valiant-boar-65, 2026-08-10): interpreted production lex+parse+normalize per control — the graft empty-observation-narrow guard matrix (operator ruling msg_d18a55de: the collector reporting a declaration-carrying module as declaration-free now REFUSES)",
+    dissolve_on: "witness realization lands the lex/parse natively or eval drops under gunbc_ci_fast_lane_witness_eval_budget on a measured run — then re-enroll per-PR discovery and delete this row"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/namespace_graft_body_dissolution_witness_test.dag",
+    function: "witness_type_only_module_dissolution_refuses_RED",
+    reason: "same interpreted lex/parse/normalize wall as sibling witness_type_fn_module_dissolution_refuses_RED (~16s measured)",
+    dissolve_on: "same as sibling row"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/namespace_graft_body_dissolution_witness_test.dag",
+    function: "witness_lowered_body_module_still_grafts",
+    reason: "two full lex/parse/normalize passes over the lowered-body control (~35s measured; acceptance plus the non-vacuous declaration-presence read)",
+    dissolve_on: "same as sibling row"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/namespace_graft_body_dissolution_witness_test.dag",
+    function: "witness_header_only_module_still_accepts",
+    reason: "same interpreted lex/parse/normalize wall as sibling witness_type_fn_module_dissolution_refuses_RED (~18s measured)",
+    dissolve_on: "same as sibling row"
+  },
+  SubstrateLongLaneRow {
     entry: "dag/test/claim/dag_sum_decl_normalize_witness_test.dag",
     function: "witness_real_capture_single_line_lowers_declared_variants",
     reason: "same interpreted lex/parse wall as sibling witness_single_line_sum_normalizes (~17s measured; the real parsed capture lowered directly, exact Disj edge names — non-vacuous by construction)",
