@@ -163,6 +163,20 @@ jobs:
           echo "FACT port11000_body=$(curl -s -m 5 http://127.0.0.1:11000/ 2>/dev/null | head -c 160 | tr -d '\r' | tr '\n' ' ' || echo NO-BODY)"
           echo "FACT port11000_models=$(curl -s -m 5 http://127.0.0.1:11000/v1/models 2>/dev/null | head -c 160 | tr -d '\r' | tr '\n' ' ' || echo NO-REPLY)"
           echo "FACT port11000_server_hdr=$(curl -s -m 5 -D - -o /dev/null http://127.0.0.1:11000/ 2>/dev/null | grep -i '^server:' | tr -d '\r' || echo NO-SERVER-HEADER)"
+
+          # SERVING-TOOLCHAIN FEASIBILITY. GB10 is aarch64 Blackwell, where a serving runtime having
+          # an installable build is a real question and not a formality -- assuming a wheel exists is
+          # how an install step discovers its blocker halfway through a mutation. Observed read-only
+          # first: what is already here, and what resolves for THIS platform.
+          echo "FACT cuda_toolkit=$(command -v nvcc >/dev/null 2>&1 && nvcc --version 2>&1 | tail -1 || echo ABSENT)"
+          echo "FACT ollama=$(command -v ollama >/dev/null 2>&1 && ollama --version 2>&1 | head -1 || echo ABSENT)"
+          echo "FACT uv=$(command -v uv >/dev/null 2>&1 && uv --version 2>&1 || echo ABSENT)"
+          echo "FACT pip=$(command -v pip3 >/dev/null 2>&1 && pip3 --version 2>&1 | cut -d' ' -f1-2 || echo ABSENT)"
+          echo "FACT venv_module=$(python3 -c 'import venv' 2>/dev/null && echo PRESENT || echo ABSENT)"
+          echo "FACT torch=$(python3 -c 'import torch;print(torch.__version__, torch.cuda.is_available())' 2>&1 | head -1)"
+          # A resolvable candidate list is not an install; it only distinguishes "no build exists for
+          # this platform" from "a build exists and the install is the next step".
+          echo "FACT vllm_candidates=$(python3 -m pip index versions vllm 2>&1 | head -2 | tr '\n' ' ')"
           REMOTE
           echo "srv5 facts rc=$RC"
           echo "$OUT"
