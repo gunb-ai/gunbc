@@ -676,7 +676,33 @@ test fn frozen_scoped_execution_reds_on_replay_old_frozen_after_new_prepared_tre
   }
 }
 
-test fn frozen_scoped_population_reds_on_duplicate_candidates_and_selected() -> Bool {
+test fn frozen_scoped_execution_reds_when_prepared_subject_is_unavailable() -> Bool {
+  match prepared_floor_subject_fixture() {
+    Absent => false
+    Present { value: subject } => {
+      let candidates = v1_claim_scoped_witness_batch.entries
+      match reconcile_frozen_scoped_execution(
+        frozen: freeze_scoped_population(
+          subject: subject,
+          comparison: frozen_scoped_comparison_fixture(subject: subject),
+          head_observation: frozen_scoped_head_resolution_fixture(subject: subject),
+          candidates: candidates,
+          selected: candidates,
+          skipped: []
+        ),
+        subject_observation: FrozenScopedPreparedSubjectUnavailable,
+        execution_identities: candidates
+      ) {
+        FrozenScopedPopulationRefused {
+          cause: FrozenScopedPopulationSubjectUnavailable
+        } => true
+        _ => false
+      }
+    }
+  }
+}
+
+test fn frozen_scoped_population_reds_on_duplicate_candidate_selected_and_skipped() -> Bool {
   match prepared_floor_subject_fixture() {
     Absent => false
     Present { value: subject } => {
@@ -702,15 +728,55 @@ test fn frozen_scoped_population_reds_on_duplicate_candidates_and_selected() -> 
           selected: [duplicate, duplicate],
           skipped: []
         )
+        let skipped_red = freeze_scoped_population(
+          subject: subject,
+          comparison: comparison,
+          head_observation: frozen_scoped_head_resolution_fixture(subject: subject),
+          candidates: candidates,
+          selected: [],
+          skipped: [duplicate, duplicate]
+        )
         match candidate_red {
           FrozenScopedPopulationRefused {
             cause: FrozenScopedPopulationDuplicateCandidateIdentity
           } => match selected_red {
             FrozenScopedPopulationRefused {
               cause: FrozenScopedPopulationDuplicateSelectedIdentity
-            } => true
+            } => match skipped_red {
+              FrozenScopedPopulationRefused {
+                cause: FrozenScopedPopulationDuplicateSkippedIdentity
+              } => true
+              _ => false
+            }
             _ => false
           }
+          _ => false
+        }
+      }
+    }
+  }
+}
+
+test fn frozen_scoped_population_reds_on_selected_skipped_overlap() -> Bool {
+  match prepared_floor_subject_fixture() {
+    Absent => false
+    Present { value: subject } => {
+      let candidates = v1_claim_scoped_witness_batch.entries
+      if candidates.count() == 0 {
+        false
+      } else {
+        let overlap = candidates.first()
+        match freeze_scoped_population(
+          subject: subject,
+          comparison: frozen_scoped_comparison_fixture(subject: subject),
+          head_observation: frozen_scoped_head_resolution_fixture(subject: subject),
+          candidates: [overlap],
+          selected: [overlap],
+          skipped: [overlap]
+        ) {
+          FrozenScopedPopulationRefused {
+            cause: FrozenScopedPopulationSelectedSkippedOverlap
+          } => true
           _ => false
         }
       }
@@ -742,6 +808,64 @@ test fn frozen_scoped_population_reds_on_selected_identity_outside_candidates() 
         ) {
           FrozenScopedPopulationRefused {
             cause: FrozenScopedPopulationSelectedIdentityUnknown
+          } => true
+          _ => false
+        }
+      }
+    }
+  }
+}
+
+test fn frozen_scoped_population_reds_on_skipped_identity_outside_candidates() -> Bool {
+  match prepared_floor_subject_fixture() {
+    Absent => false
+    Present { value: subject } => {
+      let candidates = v1_claim_scoped_witness_batch.entries
+      if candidates.count() == 0 {
+        false
+      } else {
+        let candidate = candidates.first()
+        let unknown = ScheduleWitnessEntry {
+          entry: "dag/test/claim/not_in_scoped_candidates_skipped_test.dag",
+          function: candidate.function,
+          kind: candidate.kind
+        }
+        match freeze_scoped_population(
+          subject: subject,
+          comparison: frozen_scoped_comparison_fixture(subject: subject),
+          head_observation: frozen_scoped_head_resolution_fixture(subject: subject),
+          candidates: [candidate],
+          selected: [candidate],
+          skipped: [unknown]
+        ) {
+          FrozenScopedPopulationRefused {
+            cause: FrozenScopedPopulationSkippedIdentityUnknown
+          } => true
+          _ => false
+        }
+      }
+    }
+  }
+}
+
+test fn frozen_scoped_population_reds_when_partition_drops_candidate() -> Bool {
+  match prepared_floor_subject_fixture() {
+    Absent => false
+    Present { value: subject } => {
+      let candidates = v1_claim_scoped_witness_batch.entries
+      if candidates.count() == 0 {
+        false
+      } else {
+        match freeze_scoped_population(
+          subject: subject,
+          comparison: frozen_scoped_comparison_fixture(subject: subject),
+          head_observation: frozen_scoped_head_resolution_fixture(subject: subject),
+          candidates: [candidates.first()],
+          selected: [],
+          skipped: []
+        ) {
+          FrozenScopedPopulationRefused {
+            cause: FrozenScopedPopulationPartitionMissingIdentity
           } => true
           _ => false
         }
