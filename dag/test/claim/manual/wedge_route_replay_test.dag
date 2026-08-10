@@ -1,0 +1,130 @@
+module test.claim.manual.wedge_route_replay_test
+
+import std.types { String, NonEmptyStr, FilePath, Bool, Int }
+import gunbc.roadmap_dashboard_instance {
+  HostDashboardInstance,
+  isolated_dashboard_instance,
+  srv1_host_layout,
+  srv1_dashboard_lab_id,
+  DashboardActuationPosture,
+  DashboardActuating,
+  DashboardProvisionTransport,
+  DashboardSshProvision,
+}
+import gunbc.roadmap_belt_actuate {
+  BeltWorkflowAttempts,
+  WorkflowAttemptsObserved,
+  WorkflowAttemptsRefused,
+  belt_workflow_attempts_observe_for_instance,
+}
+import gunbc.roadmap_serve {
+  ServeHttpResponse,
+  serve_workflow_response_for_instance,
+  serve_daily_page_response_for_instance,
+}
+
+// MANUAL REPLAY HARNESS — not enrolled in per-PR discovery (lives under test/claim/manual).
+//
+// Reproduces the historical dashboard wedge against a LOCAL COPY of srv1's attempt-state so that
+// nothing touches production. The fixture root is a scratch path, so this is not runnable in CI and
+// is not meant to be: it is the Phase-1 discriminator for the 2026-08-09 wedge, run by hand.
+//
+// WHY A ROUTE PAIR RATHER THAN ONE ROUTE. serve_daily_page_response_for_instance and
+// serve_workflow_response_for_instance both call belt_workflow_attempts_observe_for_instance — one
+// observing authority, two projections — so they SHARE the provider-attempt observation and differ
+// only in that the daily page additionally renders. Timing them separately, against one fixture,
+// is what separates "the shared observation is the cost center" from "the render is".
+//
+// FIXTURE PROVENANCE. attempt-state holds several attempts per node and only the -current one is
+// projected; the gate is <root>/attempt-state/<node>-current/attempt-key. The copied fixture
+// preserves the selection that was live at the 2026-08-09 18:00:56 wedge (v2-emitter-direct-rust-door
+// -> a677905e3704d70a3, 20,511,073 B). It is the RETAINED FINAL STATE of that attempt, not the exact
+// bytes the wedged request read: the attempt was in flight and its events mtime is 18:35:37, i.e.
+// during the 18:00:56-to-~19:52 wedge, so the file grew while the route was being polled.
+//
+// Repointing v2-emitter-direct-rust-door-current at acc0923494fc8b9cb reproduces the 2026-08-08
+// selection instead (60,257,673 B) — the wedge the fleet row describes. That symlink is the knob.
+data wedge_replay_fixture_root: String = "/tmp/claude-1000/-home-briansrls--worktrees-crisp-gull-269/f47959f5-c40a-49e4-9610-8d553e6771cd/scratchpad/fixture"
+
+fn wedge_replay_instance() -> HostDashboardInstance {
+  isolated_dashboard_instance(
+    instance_id: srv1_dashboard_lab_id,
+    layout: srv1_host_layout(),
+    root: wedge_replay_fixture_root as FilePath,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    listen_port: 18099,
+    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    provision_transport: DashboardSshProvision { host: "srv1" as NonEmptyStr },
+  )
+}
+
+// LEG 0 — baseline. Same entry, same closure, so it pays the identical resolve/startup cost and
+// nothing else. Every other leg's cost is read as its delta against this, which is what makes
+// wall-clock from an external timer usable at all.
+test fn replay_baseline_noop() -> Bool {
+  true
+}
+
+// LEG 1 — the shared observation alone. Both routes pay this.
+test fn replay_shared_observation() -> Bool {
+  match belt_workflow_attempts_observe_for_instance(instance: wedge_replay_instance()) {
+    WorkflowAttemptsObserved { attempts: _ } => true
+    WorkflowAttemptsRefused { reason: _ } => true
+  }
+}
+
+// LEG 2 — /workflow.json: shared observation + JSON projection.
+//
+// THE BODY IS READ, NOT MATCHED AWAY. The first cut of these two legs was
+// `match serve_..._for_instance(...) { _ => true }`, and it measured NOTHING: a wildcard over an
+// unforced call let the route be elided, so leg 2 timed FASTER than the do-nothing baseline while
+// appearing to pass. That is the discarded-result false-green class, in the harness built to find a
+// cost defect. Reading string_length of the body forces the whole response.
+test fn replay_workflow_route() -> Bool {
+  let r = serve_workflow_response_for_instance(instance: wedge_replay_instance())
+  string_length(s: r.body) > 0
+}
+
+// LEG 3 — daily page: shared observation + RENDER. The delta against leg 2 is the render cost, which
+// is where the interpreter-concat hypothesis lives.
+test fn replay_daily_page_route() -> Bool {
+  let r = serve_daily_page_response_for_instance(instance: wedge_replay_instance())
+  string_length(s: r.body) > 0
+}
+
+// IDENTITY ORACLE. The cast repair is a pure cost change, so the bytes it renders must not
+// move. These two return the response body itself rather than a predicate, so the SAME .dag
+// source can be evaluated by a pre-repair and a post-repair binary and the outputs compared
+// exactly — the interpreter reads .dag at runtime, so no rebuild is needed to add them.
+// A Bool would prove nothing here: the whole risk of memoizing a resolved type name is that
+// it resolves to a DIFFERENT name, which a passing predicate would happily conceal.
+fn replay_daily_page_body() -> String {
+  let r = serve_daily_page_response_for_instance(instance: wedge_replay_instance())
+  r.body
+}
+
+fn replay_workflow_body() -> String {
+  let r = serve_workflow_response_for_instance(instance: wedge_replay_instance())
+  r.body
+}
+
+// LEG 4 — the same observation twice in one evaluation. If per-request cost is roughly additive the
+// route is doing the work again; a sublinear second call would mean something memoizes. This is the
+// in-evaluation half of the repeated-request question (the queued-poll half needs a live listener).
+test fn replay_shared_observation_twice() -> Bool {
+  let a = belt_workflow_attempts_observe_for_instance(instance: wedge_replay_instance())
+  let b = belt_workflow_attempts_observe_for_instance(instance: wedge_replay_instance())
+  match a {
+    WorkflowAttemptsObserved { attempts: _ } =>
+      match b {
+        WorkflowAttemptsObserved { attempts: _ } => true
+        WorkflowAttemptsRefused { reason: _ } => true
+      }
+    WorkflowAttemptsRefused { reason: _ } =>
+      match b {
+        WorkflowAttemptsObserved { attempts: _ } => true
+        WorkflowAttemptsRefused { reason: _ } => true
+      }
+  }
+}
