@@ -4,6 +4,7 @@ import gunbc.ci_workflow { ci_workflow }
 import gunbc.ci_workflow_expressions {
   ci_concurrency_cancel_in_progress_if,
   ci_concurrency_cancel_in_progress_expression,
+  ci_concurrency_group,
 }
 import extdeps.github.actions {
   ConcurrencyMappingQueueNotMax,
@@ -40,5 +41,9 @@ test fn ci_concurrency_stop_policy_discriminates_merge_group() -> Bool {
   ci_concurrency_cancel_in_progress_if != "true"
     && ci_concurrency_cancel_in_progress_if != "false"
     && ci_concurrency_cancel_in_progress_if != "github.event_name != 'merge_group'"
+}
+
+test fn ci_concurrency_group_uses_ref_not_run_id() -> Bool {
+  ci_concurrency_group() == "${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}"
 }
 
