@@ -213,17 +213,17 @@ unresolvable callee still refuses).
   **The prerequisite this section used to state as an open gate is discharged, and neither its
   standing nor its bindings are written here.** The sentence removed from this position read
   *gated on the namespace lane's containment `SymbolIndex`*. It stayed after the gate closed, and
-  a slice was nearly commissioned against it. The binding is now the registered design subject
-  `gunbc.design_subject_registry` `namespace_symbol_index_binding_contract`; standing is derived
-  by `gunbc.design_truth` `design_authored_standing` and rendered into DESIGN.md by
-  `gunbc.design_projection`.
+  a slice was nearly commissioned against it. The three systems that sentence named are carried as
+  typed `DeclarationRef` rows on this document's `HandAuthoredDocBind` in `gunbc.doc_graph_roots`,
+  and the required cited-symbol path resolves them against live declaration facts — so a rename, a
+  deletion, or a fork into two same-named declarations reds without anyone editing this file.
 
-  This paragraph deliberately names **only that one symbol**. An earlier revision of it also
-  restated the contract, implementation and production-consumer declarations in prose, which
-  recreated the exact stale-copy class this migration removes — a repoint in the registry would
-  have left this file false while the typed rows stayed correct. Caught in review of the PR that
-  removed the other four copies, which is a fair demonstration that the habit is the hard part and
-  the wall is what actually holds.
+  This paragraph deliberately names **no system in prose**. Two earlier revisions of it failed that
+  in opposite directions: the first restated the contract, implementation and production-consumer
+  declarations, recreating the exact stale-copy class this migration removes; the second replaced
+  them with citations of a standing subsystem that the same PR then deleted, so the sentence
+  claiming to name one symbol named three that no longer existed. Both were caught in review, which
+  is a fair demonstration that the habit is the hard part and the typed row is what actually holds.
 
   *Deliberately unchanged:* Stage A itself remains open — the producer rows are unwritten and the
   scaffold undissolved. Only the gate claim is retired.
