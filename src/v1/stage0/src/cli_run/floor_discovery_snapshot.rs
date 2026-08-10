@@ -269,7 +269,13 @@ fn floor_tested_commit_and_tree() -> Result<(String, String), String> {
 
 fn verify_floor_worktree_matches_subject(request: &FloorDiscoveryRequest) -> Result<(), String> {
     let diff = std::process::Command::new("git")
-        .args(["diff", "--quiet", &request.tested_commit, "--"])
+        .args([
+            "diff",
+            "--quiet",
+            "--no-ext-diff",
+            &request.tested_commit,
+            "--",
+        ])
         .status()
         .map_err(|e| format!("floor exact-subject tracked-worktree observation: {e}"))?;
     match diff.code() {
@@ -478,10 +484,31 @@ fn digest_facts_snapshot(facts: &ModuleGraphFactsSnapshot) -> String {
     content_hash_atom(json).digest.clone()
 }
 
+#[derive(Serialize)]
+struct FloorDiscoveryPayloadDigestView<'a> {
+    request: &'a FloorDiscoveryRequest,
+    request_identity_digest: &'a str,
+    roster: &'a [DiscoveryRowSnapshot],
+    roster_digest: &'a str,
+    naming_hygiene_refusal: &'a Option<String>,
+    orphan_helper_refusal: &'a Option<String>,
+    module_graph_facts: &'a ModuleGraphFactsSnapshot,
+    module_graph_facts_digest: &'a str,
+}
+
 fn digest_payload(snapshot: &FloorDiscoverySnapshot) -> String {
-    let mut canonical = snapshot.clone();
-    canonical.payload_digest.clear();
-    let json = serde_json::to_string(&canonical).unwrap_or_default();
+    let payload = FloorDiscoveryPayloadDigestView {
+        request: &snapshot.request,
+        request_identity_digest: &snapshot.request_identity_digest,
+        roster: &snapshot.roster,
+        roster_digest: &snapshot.roster_digest,
+        naming_hygiene_refusal: &snapshot.naming_hygiene_refusal,
+        orphan_helper_refusal: &snapshot.orphan_helper_refusal,
+        module_graph_facts: &snapshot.module_graph_facts,
+        module_graph_facts_digest: &snapshot.module_graph_facts_digest,
+    };
+    let json = serde_json::to_string(&payload)
+        .expect("floor discovery payload view contains only infallibly serializable fields");
     content_hash_atom(json).digest.clone()
 }
 
