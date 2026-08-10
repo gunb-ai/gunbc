@@ -1,0 +1,74 @@
+module gunbc.fleet_multi_principal_probe
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.algebra { trim }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.typed_argv_exec { typed_argv_probe_over_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
+import gunbc.clock_read { clock_now_probed_at }
+
+// READ-ONLY measurement (parent msg_e767a783): before anyone grants new access, measure
+// whether the fleet key is already enrolled for SOME pre-existing account on srv3/srv4.
+// gunbc-fleet@srv3/srv4 refusing proves only that the account we just invented is not
+// there — it says nothing about accounts that existed at OOBE (the Sparks carried the
+// fleet key for a pre-existing account). This probes the SAME in-run WIF-materialized
+// key against ALTERNATIVE principals. NO WRITES, no account creation: each leg is a
+// hostname read (command reach) and a `sudo -n -l` (grant listing without prompting).
+// Every leg's outcome is DATA, classified into a typed arm, never a step failure.
+data multi_principal_probe_hosts: List<String> = ["srv3", "srv4"]
+
+data multi_principal_probe_principals: List<String> = ["ubuntu", "briansrls", "ghrunner", "root"]
+
+data fleet_multi_principal_probe_receipt_path: String = "target/fleet-multi-principal-probe-receipt.txt"
+
+// One leg's line: authentication accepted/refused, and if accepted whether a command
+// executed (shell present) — with the observed values carried, never a bare verdict.
+fn multi_principal_reach_line(host: String, principal: String) -> String {
+  let target = join([principal, "@", fleet_probe_endpoint_for(host: host)], "")
+  match typed_argv_probe_over_ssh(host: target as NonEmptyStr, argv: ["hostname"]) {
+    TypedArgvExecConverged { result: r } =>
+      if r.success {
+        join(["reach host=", host, " principal=", principal, " auth=accepted command=executed hostname=", trim(s: r.stdout), "\n"], "")
+      } else {
+        join(["reach host=", host, " principal=", principal, " auth-or-command=refused stderr=", trim(s: r.stderr), " stdout=", trim(s: r.stdout), "\n"], "")
+      }
+    TypedArgvExecRefused { reason: why } =>
+      join(["reach host=", host, " principal=", principal, " probe-refused cause=", why, "\n"], "")
+  }
+}
+
+fn multi_principal_sudo_line(host: String, principal: String) -> String {
+  let target = join([principal, "@", fleet_probe_endpoint_for(host: host)], "")
+  match typed_argv_probe_over_ssh(host: target as NonEmptyStr, argv: ["sudo", "-n", "-l"]) {
+    TypedArgvExecConverged { result: r } =>
+      if r.success {
+        join(["sudo  host=", host, " principal=", principal, " sudo-n-l=listed grants=", trim(s: r.stdout), "\n"], "")
+      } else {
+        join(["sudo  host=", host, " principal=", principal, " sudo-n-l=refused stderr=", trim(s: r.stderr), "\n"], "")
+      }
+    TypedArgvExecRefused { reason: why } =>
+      join(["sudo  host=", host, " principal=", principal, " probe-refused cause=", why, "\n"], "")
+  }
+}
+
+fn multi_principal_host_block(host: String) -> String {
+  join(
+    map(multi_principal_probe_principals, p =>
+      join([multi_principal_reach_line(host: host, principal: p), multi_principal_sudo_line(host: host, principal: p)], "")),
+    "")
+}
+
+func fleet_multi_principal_probe_wet() -> ProcessExit {
+  let now = clock_now_probed_at()
+  let body = join([
+    join(["multi-principal fleet-key probe probed_at=", now as String, " (read-only: hostname + sudo -n -l)\n"], ""),
+    join(map(multi_principal_probe_hosts, h => multi_principal_host_block(host: h)), ""),
+  ], "")
+  let w = Filesystem.Write(path: fleet_multi_principal_probe_receipt_path, content: body)
+  if w.success {
+    ExitSuccess
+  } else {
+    exit_failure(reason: join(["multi-principal probe receipt write failed: ", w.error], ""))
+  }
+}
