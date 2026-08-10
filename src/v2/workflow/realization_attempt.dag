@@ -14,9 +14,9 @@ import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.qualified_name { QualifiedName }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.communication.medium { Medium }
-import v2.std.diagnostic { Accepted, Rejected, Outcome, Diagnostic, NonEmptyDiagnostics, Textual }
+import v2.std.diagnostic { Accepted, Rejected, Outcome, Diagnostic, NonEmptyDiagnostics, Textual, NodeLocus }
 import v2.std.node { Node, Edge, TypeNode, Arrow, Conj, Named, Symbol, node_synthetic }
-import v2.std.optional { Optional, Present, Absent }
+import v2.std.optional { Optional, Present, Absent, optional_present, optional_absent }
 import v2.std.algebra { fold_list, length }
 import std.algebra { Cons, Empty }
 import v2.std.logic { Bool }
@@ -51,13 +51,23 @@ type EntryRealizationAttempt {
 }
 
 
+// Head-masking (measured, single-entry census on realization_sweep_test's closure):
+// rejected_with_pending PREPENDS pending accepted-carrier diagnostics to a later rejection,
+// so a rejection flowing through a stage that accumulated frontier diagnostics (wrapper-retained
+// is Accepted-with-diagnostics at the body-lowering fold) carries the frontier diag at HEAD and
+// the true rejecting cause behind it — the measured specimen read wrapper_retained_emitted where
+// the rejecting cause was normalize_reason_post_normalize_not_well_formed. The cause read must
+// skip past accepted-carrier reasons, the same way it already skipped choice-overlap residue.
+fn reason_is_masking_carrier(r: Symbol) -> Bool {
+  (r == ^body_lowering_reason_wrapper_retained_emitted) || (r == ^parse_grammar_choice_overlap_residue)
+}
+
 fn first_located_cause(ds: NonEmptyDiagnostics) -> Symbol {
-  let residue = ^parse_grammar_choice_overlap_residue
-  if !(ds.head.reason == residue) {
+  if !reason_is_masking_carrier(r: ds.head.reason) {
     ds.head.reason
   } else {
     fold_list(xs: ds.tail, empty: ds.head.reason, cons: fn(acc, d) {
-      if (acc == residue) && !(d.reason == residue) { d.reason } else { acc }
+      if reason_is_masking_carrier(r: acc) && !reason_is_masking_carrier(r: d.reason) { d.reason } else { acc }
     })
   }
 }
@@ -353,6 +363,37 @@ fn census_collect(root: Node, acc: List<String>) -> List<String> {
   fold(root.children, init: here, f: fn(inner, e) { census_collect(root: e.target, acc: inner) })
 }
 
+// Each wrapper-retained diagnostic carries the retained shell node via NodeLocus; the shell's
+// own emitted production identity IS the construct bucket — available even when assembly
+// rejects, which is the entire wrapper-retained population.
+fn census_construct_label(n: Node) -> String {
+  match parse_production_emitted_identity_optional(node: n) {
+    Present { value: id } => symbol_lexeme(sym: id)
+    Absent => "(no-production-identity)"
+  }
+}
+
+fn census_diag_construct_optional(d: Diagnostic) -> Optional<String> {
+  if !(d.reason == ^body_lowering_reason_wrapper_retained_emitted) {
+    optional_absent()
+  } else {
+    match d.at {
+      NodeLocus { anchor: a } => optional_present(value: census_construct_label(n: a.at))
+      _ => optional_absent()
+    }
+  }
+}
+
+fn census_retained_rows(ds: NonEmptyDiagnostics, entry: String) -> List<String> {
+  fold_list(xs: concat([ds.head], ds.tail), empty: no_census_lines(), cons: fn(acc, d) {
+    match census_diag_construct_optional(d: d) {
+      Present { value: prod } =>
+        concat(acc, [census_line(entry: entry, fn_col: "(retained)", phase_col: "construct", cause_col: prod, located_col: "")])
+      Absent => acc
+    }
+  })
+}
+
 fn census_line(entry: String, fn_col: String, phase_col: String, cause_col: String, located_col: String) -> String {
   concat(entry, concat("	", concat(fn_col, concat("	", concat(phase_col, concat("	", concat(cause_col, concat("	", located_col))))))))
 }
@@ -375,13 +416,16 @@ fn census_rows(
 ) -> List<String> {
   match assemble_program_from_ingest(ingest: ingest, admission: admission, lm: dag_language_model()) {
     Rejected { diagnostics: ds } =>
-      [census_line(
-        entry: entry,
-        fn_col: "(census)",
-        phase_col: "assembly_refused",
-        cause_col: symbol_lexeme(sym: first_located_cause(ds: ds)),
-        located_col: first_located_file(ds: ds)
-      )]
+      concat(
+        [census_line(
+          entry: entry,
+          fn_col: "(census)",
+          phase_col: "assembly_refused",
+          cause_col: symbol_lexeme(sym: first_located_cause(ds: ds)),
+          located_col: first_located_file(ds: ds)
+        )],
+        census_retained_rows(ds: ds, entry: entry)
+      )
     Accepted { value: program, diagnostics: _ } =>
       match list_at_optional(xs: module_roots_matching(program: program, module_qn: admission.subject.name), index: 0) {
         Absent => [census_line(entry: entry, fn_col: "(census)", phase_col: "assembly", cause_col: "entry_module_absent", located_col: "")]
