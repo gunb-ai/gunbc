@@ -261,7 +261,7 @@ test fn changed_closure_changes_prepared_artifact_set_identity() -> Bool {
   canonical.artifact_set_identity.digest != changed.artifact_set_identity.digest
 }
 
-fn all_floor_preparation_controls_hold() -> Bool {
+test fn all_floor_preparation_controls_hold() -> Bool {
   exact_prepared_artifact_set_serves()
     && missing_prepared_identity_refuses()
     && absent_artifact_is_typed_miss_without_cold_fallback()

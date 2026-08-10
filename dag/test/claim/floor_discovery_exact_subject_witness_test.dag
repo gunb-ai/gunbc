@@ -201,7 +201,7 @@ test fn canonical_request_identity_matches_bootstrap_golden() -> Bool {
   floor_discovery_request_identity(request: canonical_request()).digest == "f8e90d00ba0ad7f8"
 }
 
-fn all_floor_discovery_exact_subject_controls_hold() -> Bool {
+test fn all_floor_discovery_exact_subject_controls_hold() -> Bool {
   exact_subject_binds()
     && wrong_commit_refuses_at_commit_coordinate()
     && wrong_tree_refuses_at_tree_coordinate()
