@@ -311,7 +311,38 @@ jobs:
           if [ -z "$PID" ]; then echo "READBACK=UNESTABLISHED-no-process"; exit 0; fi
 
           echo "-- DEPENDENT (echoes launch args; recorded for contrast, proves nothing) --"
-          echo "v1_models=$(curl -s -m 5 http://127.0.0.1:${SERVE_PORT}/v1/models | head -c 200)"
+          # The endpoint is behind --api-key now, so an unauthenticated call returns 401 and this
+          # DEPENDENT contrast line would have shown an auth error rather than the echo it exists to
+          # demonstrate. Reads the key from the same 0600 EnvironmentFile the unit uses; the value is
+          # never printed.
+          . "$HOME/gunbc-serve/api-key.env"
+          echo "v1_models=$(curl -s -m 5 -H "Authorization: Bearer ${VLLM_API_KEY}" http://127.0.0.1:${SERVE_PORT}/v1/models | head -c 200)"
+
+          echo "-- AUTHENTICATED GENERATION (the canary had NO generation request at all) --"
+          # This workflow never issued one: every "generation" match in it was prose. A canary whose
+          # stated purpose is an authenticated serving receipt, that loads a model and then asks only
+          # whether a port answers, proves serving-shaped liveness and not that the model computes
+          # anything. /health returning 200 is not a generation.
+          #
+          # Both halves are asserted separately because they fail differently: an UNAUTHENTICATED
+          # request must be REFUSED (else --api-key is decorative and the endpoint-auth claim is
+          # false), and an AUTHENTICATED request must produce content.
+          UNAUTH=$(curl -s -m 30 -o /dev/null -w '%{http_code}' -X POST \
+            -H 'Content-Type: application/json' \
+            -d '{"model":"'"${MODEL_ID}"'","messages":[{"role":"user","content":"hi"}],"max_tokens":8}' \
+            "http://127.0.0.1:${SERVE_PORT}/v1/chat/completions" 2>/dev/null)
+          echo "unauth_generation_http=$UNAUTH (expect 401; a 200 here means --api-key is decorative)"
+
+          GEN=$(curl -s -m 120 -X POST \
+            -H "Authorization: Bearer ${VLLM_API_KEY}" -H 'Content-Type: application/json' \
+            -d '{"model":"'"${MODEL_ID}"'","messages":[{"role":"user","content":"Reply with the single word: canary"}],"max_tokens":16}' \
+            "http://127.0.0.1:${SERVE_PORT}/v1/chat/completions" 2>/dev/null)
+          echo "auth_generation=$(echo "$GEN" | head -c 400)"
+          if echo "$GEN" | grep -q '"content"'; then
+            echo "GENERATION=OK content returned"
+          else
+            echo "GENERATION=REFUSED no content field in response"
+          fi
 
           echo "-- INDEPENDENT (produced by the load, not by the launch) --"
           MAPPED=$(grep -o 'snapshots/[0-9a-f]\{40\}' "/proc/$PID/maps" 2>/dev/null | sed 's|snapshots/||' | sort -u | tr '\n' ' ')
