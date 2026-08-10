@@ -1,0 +1,144 @@
+module gunbc.srv1_tasks_preapply_observation
+
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.types { String, NonEmptyStr, Bool, List }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.host_converge { runner_instance_glob }
+import gunbc.host_converge_slice1 {
+  host_converge_slice1_enumerate_units,
+  host_converge_slice1_read_tasks_max_raw,
+  host_converge_slice1_read_tasks_current_raw,
+}
+import gunbc.systemctl_show_read {
+  systemctl_show_property_read_local,
+  SystemdPropertyCapture,
+  SystemdPropertyCaptured,
+  SystemdPropertyCaptureRefused,
+}
+import extdeps.systemd { ControlGroup }
+import extdeps.linux.procfs { ProcSelfCgroup, procfs_path_literal }
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+
+// STRICTLY READ-ONLY pre-apply observation for the PR 8045 supervised TasksMax apply
+// (operator ruling 2026-08-09: before the apply, re-observe and reduce to ONE exact
+// receipt recording effective TasksMax, pids.max, pids.current, and the relevant
+// ancestor limit; success criterion for the later apply is the independent post-effect
+// readback, never the exit code). Every transport this module reaches is a read:
+// systemctl show (TasksMax / TasksCurrent / ControlGroup) through the typed
+// gunbc.systemctl_show_read seam, and filesystem_read on the cgroupfs pids files at
+// the path SYSTEMD reports (ControlGroup), never a hand-escaped slice path — the
+// system-actions-runner.slice escaping decoy is exactly why the path is observed, not
+// derived. No set-property, no unit operation, no write of any kind exists in this
+// module's reach. The observation runs AS a job on the observed host (LocalShell,
+// the slice1 precedent), so the receipt records the observer's own cgroup membership
+// (/proc/self/cgroup, raw) — a reader can see the read ran INSIDE the observed
+// universe and which slot performed it.
+data srv1_tasks_preapply_cgroupfs_root: String = "/sys/fs/cgroup"
+
+type Srv1TasksAncestorRead {
+  cgroup_dir: String
+  pids_max_raw: String
+}
+
+type Srv1TasksUnitObservation
+  = Srv1TasksUnitObserved {
+      unit: NonEmptyStr
+      tasks_max_effective: String
+      tasks_current: String
+      control_group: String
+      pids_max_raw: String
+      pids_current_raw: String
+      ancestor: Srv1TasksAncestorRead
+    }
+  | Srv1TasksUnitObservationRefused { unit: NonEmptyStr, cause: String }
+
+type Srv1TasksPreApplyReceipt
+  = Srv1TasksPreApplyObserved {
+      host: String
+      desired_tasks_max: String
+      observer_cgroup_membership: String
+      units: List<Srv1TasksUnitObservation>
+    }
+  | Srv1TasksPreApplyRefused { cause: String }
+
+fn cgroup_parent_dir(control_group: String) -> String {
+  let segs = split(s: control_group, delimiter: "/")
+  if length(segs) < 3 {
+    control_group
+  } else {
+    join(segs.take(n: length(segs) - 1), "/")
+  }
+}
+
+fn read_pids_file(control_group: String, leaf: String) -> String {
+  filesystem_read(path: join([srv1_tasks_preapply_cgroupfs_root, control_group, "/", leaf], "")).content
+}
+
+fn observe_unit_tasks(unit: NonEmptyStr) -> Srv1TasksUnitObservation {
+  match host_converge_slice1_read_tasks_max_raw(unit: unit) {
+    Present { value: tmax } =>
+      match host_converge_slice1_read_tasks_current_raw(unit: unit) {
+        Present { value: tcur } =>
+          match systemctl_show_property_read_local(unit: unit, property: ControlGroup) {
+            SystemdPropertyCaptured { value: cg } =>
+              if cg == "" {
+                Srv1TasksUnitObservationRefused { unit: unit, cause: "ControlGroup read returned empty — cannot locate cgroupfs pids files" }
+              } else {
+                Srv1TasksUnitObserved {
+                  unit: unit,
+                  tasks_max_effective: tmax,
+                  tasks_current: tcur,
+                  control_group: cg,
+                  pids_max_raw: read_pids_file(control_group: cg, leaf: "pids.max"),
+                  pids_current_raw: read_pids_file(control_group: cg, leaf: "pids.current"),
+                  ancestor: Srv1TasksAncestorRead {
+                    cgroup_dir: cgroup_parent_dir(control_group: cg),
+                    pids_max_raw: read_pids_file(control_group: cgroup_parent_dir(control_group: cg), leaf: "pids.max"),
+                  },
+                }
+              }
+            SystemdPropertyCaptureRefused { reason: why } =>
+              Srv1TasksUnitObservationRefused { unit: unit, cause: join(["ControlGroup read refused: ", why], "") }
+          }
+        _ => Srv1TasksUnitObservationRefused { unit: unit, cause: "TasksCurrent read refused" }
+      }
+    _ => Srv1TasksUnitObservationRefused { unit: unit, cause: "TasksMax read refused" }
+  }
+}
+
+fn observe_srv1_tasks_preapply() -> Srv1TasksPreApplyReceipt {
+  match host_converge_slice1_enumerate_units(instance_glob: runner_instance_glob(host: "srv1")) {
+    Present { value: units } =>
+      if length(units) == 0 {
+        Srv1TasksPreApplyRefused { cause: "unit enumeration returned zero actions-runner@srv1-* units — refusing an empty observation rather than reporting a vacuous receipt" }
+      } else {
+        Srv1TasksPreApplyObserved {
+          host: "srv1",
+          desired_tasks_max: to_string(gunbc_runner_slot_desired().tasks_max),
+          observer_cgroup_membership: filesystem_read(path: procfs_path_literal(p: ProcSelfCgroup) as String).content,
+          units: map(units, u => observe_unit_tasks(unit: u)),
+        }
+      }
+    _ => Srv1TasksPreApplyRefused { cause: "unit enumeration refused (systemctl list-units transport)" }
+  }
+}
+
+// Receipt landing: gunbc run admits only ProcessExit from a --function wet entry (the
+// first dispatch printed the receipt through the NotProcessExit refusal arm and exited
+// 2 — receipt captured, job red). The typed receipt therefore lands as a FILE the job
+// uploads/cats, and the exit derives from the receipt's own arm — never from transport
+// exit codes (the ruling's success criterion applies to the later apply the same way).
+data srv1_tasks_preapply_receipt_path: String = "target/srv1-tasks-preapply-receipt.txt"
+
+func observe_srv1_tasks_preapply_wet() -> ProcessExit {
+  let receipt = observe_srv1_tasks_preapply()
+  let w = Filesystem.Write(path: srv1_tasks_preapply_receipt_path, content: to_string(receipt))
+  if !w.success {
+    exit_failure(reason: join(["receipt write failed: ", w.error], ""))
+  } else {
+    match receipt {
+      Srv1TasksPreApplyObserved { host: _, desired_tasks_max: _, observer_cgroup_membership: _, units: _ } => ExitSuccess
+      Srv1TasksPreApplyRefused { cause: why } => exit_failure(reason: why)
+    }
+  }
+}

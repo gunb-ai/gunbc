@@ -1,23 +1,30 @@
-# Import-strip measurement — reproducer and receipts
+# Import-strip measurement — retained execution record
 
 The machinery behind §15 of
 [the witness-discovery cascade diagnosis](../import-strip-witness-discovery-cascade-diagnosis.md)
 and behind [`import-strip-residual-ledger.tsv`](../import-strip-residual-ledger.tsv).
 
-It exists because a 3,150-row ledger reads as authoritative, and a number a
-future worker cannot regenerate or perturb is not a measurement — it is a claim
-(DESIGN §5: green by execution, plus a discriminating input). Everything below
-regenerates from a named tree.
+**Read this first: the receipts here are a FROZEN RECORD OF ONE TREE, not a
+reproducer.** The harness that produced them was two Python scripts reading
+`.dag` as text; they were removed from the repository by operator ruling and are
+**no longer tracked**, so nothing below can be re-run from a clean checkout. The
+withdrawal, and what it costs, is stated in full further down; this paragraph
+exists so a reader meets that fact before the recipe rather than after it.
 
-**This is a registered scaffold, not production machinery.** Two Python scripts
-reading `.dag` text are exactly the "second representation" the substrate exists
-to replace: the classification is a `Node`-tree read that a lens should perform.
-**Dissolution trigger:** when B2 lands `OrdinaryLoadedCompilationClosure`
-production, the residual ledger becomes a projection of the loader's own
-accepted-binding/provider output — at which point these scripts, the receipts
-below, and this README delete together. Until then the strip cannot be measured
-any other way, because the thing being measured is what happens when the
-substrate's own resolution is removed.
+The measurement was made because a 3,150-row ledger reads as authoritative, and a
+number nobody can perturb is a claim rather than a measurement (DESIGN §5). That
+reasoning is why the harness existed — it is not a promise that it still does.
+
+**It was always a registered scaffold, never production machinery**, and it was
+removed EARLY rather than at its stated trigger. Two Python scripts reading
+`.dag` text are exactly the "second representation" the substrate exists to
+replace: the classification is a `Node`-tree read a lens should perform. The
+declared **dissolution trigger** — B2 landing `OrdinaryLoadedCompilationClosure`
+production, at which point the residual ledger becomes a projection of the
+loader's own accepted-binding/provider output — **has not fired**. The scripts
+went anyway, which trades re-runnability for not carrying a parallel
+text-scanning classifier in the tree. The receipts and this README stay until
+that trigger fires and production binding observations replace them.
 
 ## Tool identity
 
@@ -32,10 +39,12 @@ substrate's own resolution is removed.
   without checking.
 - Measured base commit and corpus hash: [`receipts/subject-tree-hash.txt`](receipts/subject-tree-hash.txt).
 
-## Regenerate everything
+## How the measurement was produced
 
-From a clean checkout of the measured base, with `$G` the `gunbc` binary and
-`$W` a scratch directory:
+**Not a runnable recipe from this repository** — the two Python steps below name
+a harness that is deliberately not tracked (see the section after this one). This
+records what was executed, so it can be rebuilt; it is not a script you can run
+from a fresh clone. `$G` is the `gunbc` binary and `$W` a scratch directory.
 
 ```sh
 # 0. two copies of the subject tree: one control, one to strip
@@ -75,39 +84,51 @@ Both compiles exit **1**, control included, because the control's 10
 pre-existing annotation-grain diagnostics are themselves hard. Exit status does
 not discriminate between the two trees; only the count and the per-name join do.
 
-## The reproducer claim is itself verified
+## The harness is NOT in the repository — claim withdrawn
 
-"Regenerable" was asserted here once while the two scripts were absent from the
-tree — `.gitignore`'s repo-wide `*.py` rule dropped them silently (review 50719
-caught it). Both now carry negation entries beside the existing exemptions, and
-the claim is checked the way the rest of this lane's claims are — by execution
-against tracked content only:
+An earlier revision of this file said the measurement regenerates byte-identically
+from a clean checkout, and shipped the two Python scripts to make that true.
+**Operator ruling: those scripts do not belong in the repository, and they have
+been deleted** (along with their `.gitignore` allowlist rows, removed at the
+`gunbc.gitignore_authority` single authority rather than by hand-editing the
+generated file).
 
-```sh
-git archive HEAD | tar -x -C $W/src          # ONLY what a fresh clone gets
-python3 $W/src/docs/plans/import-strip-measurement/strip_imports.py …
-python3 $W/src/docs/plans/import-strip-measurement/classify_residual.py …
-```
+So the claim is withdrawn rather than quietly left standing: **the receipts below
+cannot be regenerated from a clean checkout of this repository.** The recipe
+above describes what was run and the corpus-hash anchor still lets you check
+whether the receipts describe your tree, but a fresh clone does not contain the
+harness that produced them. Anyone re-running this must rebuild it from the
+recipe.
 
-Result: the manifest and `import-strip-residual-ledger.tsv` are reproduced
-**byte-identically**, and the classifier prints the reconciliation
-(`3,160 = 10 + 3,150`, ledger rows 3,150, OK). A reproducer that cannot be run
-from a clean checkout is a receipt with a story attached, not a reproducer.
+This is a real reduction in the evidence's strength and is recorded as one. It is
+the right trade: the scripts were a throwaway measurement harness reading `.dag`
+as text — exactly the second representation the substrate exists to replace — and
+their dissolution trigger (B2 landing `OrdinaryLoadedCompilationClosure`
+production, at which point the residual ledger becomes a projection of the
+loader's own output) has not moved. Deleting them early costs re-runnability and
+buys not carrying a parallel text-scanning classifier in the tree.
 
-## What in the receipts is NOT byte-reproducible
+## Which parts of the receipts were stable across runs, and which were not
 
-The compile logs carry wall-clock lines (`compile.reconcile done in 5 minutes`),
-so a re-run reproduces the diagnostics exactly and the timings never. Compare
-receipts with those lines filtered:
+Recorded from when the measurement was made — see the withdrawal above before
+reading this as an instruction. The compile logs carry wall-clock lines
+(`compile.reconcile done in 5 minutes`), so a re-run reproduced the diagnostics
+exactly and the timings never. Runs were compared with those lines filtered:
 
 ```sh
 diff <(grep -v 'done in' new.log) <(grep -v 'done in' receipts/control-diagnostics.log)
 ```
 
 This is not a caveat added to excuse a mismatch — it is how the stamp below was
-checked. Everything the measurement asserts (diagnostic text, counts,
-reconciliation, manifest, ledger) is byte-reproducible; only the durations are
-not, and nothing derives from them.
+checked *at the time the measurement was made*, when the harness was in the tree.
+What it established then: everything the measurement asserts (diagnostic text,
+counts, reconciliation, manifest, ledger) reproduced exactly across runs, and only
+the durations did not, with nothing deriving from them.
+
+**It does not mean you can reproduce them now.** Re-deriving these files requires
+rebuilding the harness from the record above; the repository no longer contains
+it. What a reader can still check without it is the corpus-hash anchor, which
+decides whether these receipts describe the tree in front of them.
 
 ## Receipts
 

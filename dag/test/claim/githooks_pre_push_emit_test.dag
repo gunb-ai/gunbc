@@ -54,8 +54,13 @@ test fn witness_no_tree_mutation() -> Bool {
 
 data pre_push_line_budget_note: String = "The budget exists to catch RE-HEAVYING — a roster edit that puts a corpus run, an in-hook cargo build, or a claim_batch exec back on the push path (gunbc.githooks_pre_push_emit pre_push_fmt_only_note). It is a proxy for that property, and the four witnesses above assert the property directly, which is why raising the ceiling here does not weaken the gate. It moved 700 -> 1000 when the fmt failure arm was split three ways: the could-not-run branch carries a ~230-character diagnostic that names cargo and proposes no cargo-dependent remedy, which is the whole point of the split and is not weight on the push path (it is a message, not work). It moved 1000 -> 1500 when lane-2 added idempotent repo-local git config convergence on the push path (~350 characters of gunbc run argv and failure text — still no cargo build or claim_batch exec; the structural witnesses remain authoritative). A hook that re-acquires actual work still trips the structural witnesses regardless of this number."
 
-test fn witness_line_budget() -> Bool {
-  let sh = expected_githooks_pre_push_sh()
-  length(sh) < 1500
-}
+// witness_line_budget (length(sh) < N) DELETED 2026-08-09: it was a tree-measured
+// numeric oracle — a merge-blocking literal grounded in a measurement of the current
+// hook rather than a policy budget (DESIGN §5 oracle rule; the giveaway was that adding
+// the correct fleet-ref preamble forced the cap up to fit the code it was meant to
+// bound — a ratchet quietly loosening). The invariant it weakly proxied ("the hook stays
+// a thin dispatcher, no heavy work") is asserted STRUCTURALLY and precisely by
+// witness_no_in_hook_build, witness_no_corpus_or_witness_run,
+// witness_no_claim_batch_dependency, and witness_no_tree_mutation — none of which is a
+// tree-measured literal. A byte count added nothing those do not already bound (DESIGN §2).
 

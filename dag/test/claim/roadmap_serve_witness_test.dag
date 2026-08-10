@@ -122,7 +122,7 @@ fn lab_link_selects_something(path: String) -> Bool {
 }
 
 test fn witness_every_lab_nav_link_resolves() -> Bool {
-  count(instrument_lab_links) == 3
+  count(instrument_lab_links) == 4
     && all(instrument_lab_links, l => lab_link_selects_something(path: l.path))
 }
 
