@@ -17042,15 +17042,6 @@ fn dump_residual_hunt_instrumentation() {
     for (name, calls, nanos) in self_times.iter().take(20) {
         eprintln!("  {}  calls={}  self_ms={}", name, calls, nanos / 1_000_000);
     }
-    eprintln!(
-        "--- node evaluations: {} (eval_expr entries; with the phase wall this prices ONE node eval) ---",
-        v1_interpreter::node_eval_snapshot()
-    );
-    let (stack_probes, stack_under_red_zone) = v1_interpreter::stack_probe_snapshot();
-    eprintln!(
-        "--- stack segment probe: probes={} under_red_zone={} (each under-red-zone probe allocates an 8 MiB segment; a high ratio names a per-call cost no per-fn attribution can see) ---",
-        stack_probes, stack_under_red_zone
-    );
     let (memo_lookups, memo_hits, memo_distinct) = v1_interpreter::parse_memo_global_snapshot();
     eprintln!(
         "--- parse memo effectiveness discriminator: lookups={} hits={} distinct_keys={} (lookups>>distinct & hits==0 => memo never serves a re-attempted span) ---",

@@ -2118,51 +2118,15 @@ pub fn eval_data_item_value(ctx: &InterpContext, item_name: &str) -> InterpResul
     Ok(Some(eval_expr(body, &Env::empty(), ctx)?))
 }
 
-// STACK-SEGMENT PROBE (stopped-line audit only, forensics-gated).
-//
-// Every dag-fn call and every closure application passes through
-// `stacker::maybe_grow(256 KiB, 8 MiB, ..)`. When the remaining stack is below the red zone
-// that call ALLOCATES an 8 MiB segment, and a workload sitting chronically near the boundary
-// would pay that on every step -- a cost that is invisible in per-fn attribution because it is
-// charged to whatever frame happens to be running. This counts the probes and how many of them
-// were under the red zone, so "the fold spends milliseconds per item somewhere the profiler
-// cannot name" becomes a decidable question rather than a hypothesis.
-static STACK_PROBES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-static STACK_PROBES_UNDER_RED_ZONE: std::sync::atomic::AtomicU64 =
-    std::sync::atomic::AtomicU64::new(0);
-
+/// The red zone both `maybe_grow` guards use, named once rather than repeated as a literal.
+///
+/// A forensics probe counted 1089374 of these guards on the live-read producer and found ZERO
+/// below the red zone, so segment growth is not a cost on that workload. The probe is DELETED
+/// rather than retained: it was an investigation instrument, and leaving a call plus a branch on
+/// every dag-fn call and every closure application would be permanent residue charged to the very
+/// hot path it was built to measure. The same applies to the node-evaluation counter that priced
+/// one eval at ~39 microseconds; both receipts live in the commit that took them.
 const STACK_RED_ZONE: usize = 256 * 1024;
-
-static NODE_EVALS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-
-/// Forensics-gated node-evaluation counter. It answers the one question the per-fn attribution
-/// cannot: whether an unexplained phase cost is MANY node evaluations or a few expensive ones.
-fn record_node_eval() {
-    if residual_hunt_forensics_enabled() {
-        NODE_EVALS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    }
-}
-
-pub fn node_eval_snapshot() -> u64 {
-    NODE_EVALS.load(std::sync::atomic::Ordering::Relaxed)
-}
-
-fn record_stack_probe() {
-    if !residual_hunt_forensics_enabled() {
-        return;
-    }
-    STACK_PROBES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    if stacker::remaining_stack().is_some_and(|r| r < STACK_RED_ZONE) {
-        STACK_PROBES_UNDER_RED_ZONE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    }
-}
-
-pub fn stack_probe_snapshot() -> (u64, u64) {
-    (
-        STACK_PROBES.load(std::sync::atomic::Ordering::Relaxed),
-        STACK_PROBES_UNDER_RED_ZONE.load(std::sync::atomic::Ordering::Relaxed),
-    )
-}
 
 thread_local! {
     static CALL_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
@@ -2212,7 +2176,6 @@ fn call_function_guarded(
     }
     // Grow the host stack in slices so DEEP-but-bounded chains below the limit
     // never abort the process between guard checks.
-    record_stack_probe();
     stacker::maybe_grow(STACK_RED_ZONE, 8 * 1024 * 1024, || {
         call_function_dispatch(ctx, fn_node, args, env)
     })
@@ -2583,7 +2546,6 @@ pub fn thread_cpu_nanos() -> u128 {
 }
 
 fn eval_expr(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
-    record_node_eval();
     // The stride poll runs when EITHER clock is armed. Gating it on the CPU deadline alone was a
     // real defect, found by executing a wall-only serve process rather than by reading: with no
     // CPU limit the whole poll became unreachable, so a wall-only caller — precisely the
@@ -12367,7 +12329,6 @@ fn apply_closure(
             ),
         });
     }
-    record_stack_probe();
     let result = stacker::maybe_grow(STACK_RED_ZONE, 8 * 1024 * 1024, || {
         apply_closure_inner(closure, args, env, ctx)
     });
@@ -14481,55 +14442,219 @@ mod value_hash_materialization_tests {
     use super::*;
     use std::collections::hash_map::DefaultHasher;
 
-    /// The implementation that was replaced, kept here as the oracle. It materializes; the
-    /// production path no longer does. Both must answer the same u64 or every HAMT keyed on a
-    /// string or list silently changes shape.
+    // THE ORACLE IS A COMPLETE COPY OF THE REPLACED IMPLEMENTATION, RECURSIVE ALL THE WAY DOWN.
+    //
+    // An earlier cut of this control recursed through the PRODUCTION `value_hash`, so it
+    // independently checked only the outermost string/list layer: a drift that appeared solely
+    // inside a nested list would have been shared by both sides and stayed green. Since
+    // `value_hash` decides HAMT key identity, that drift changes grouping, lookup and cache
+    // behaviour with no type error anywhere -- exactly the class this control exists to catch.
+    // So nothing below calls production code: `reference_materializing_hash` and
+    // `reference_hash_fields_commutative` are mutually recursive and closed over themselves.
     fn reference_materializing_hash(v: &Value) -> u64 {
         let mut h = DefaultHasher::new();
-        if let Some(items) = free_monoid_to_vec(v) {
-            0xF0u8.hash(&mut h);
-            items.len().hash(&mut h);
-            for item in &items {
-                value_hash(item).hash(&mut h);
+
+        match v {
+            Value::List(_) | Value::Str(_) | Value::Variant { .. } => {
+                if let Some(items) = free_monoid_to_vec(v) {
+                    0xF0u8.hash(&mut h);
+                    items.len().hash(&mut h);
+                    for item in &items {
+                        reference_materializing_hash(item).hash(&mut h);
+                    }
+                    return h.finish();
+                }
             }
-            return h.finish();
+            _ => {}
         }
-        value_hash(v)
+
+        match v {
+            Value::Null => 0u8.hash(&mut h),
+            Value::Unit => 1u8.hash(&mut h),
+            Value::Bool(b) => {
+                2u8.hash(&mut h);
+                b.hash(&mut h);
+            }
+            Value::Int(n) => {
+                3u8.hash(&mut h);
+                n.hash(&mut h);
+            }
+            Value::Float(f) => {
+                4u8.hash(&mut h);
+                let bits = if *f == 0.0 { 0u64 } else { f.to_bits() };
+                bits.hash(&mut h);
+            }
+            Value::Set(members) => {
+                5u8.hash(&mut h);
+                members.len().hash(&mut h);
+                for m in members.iter() {
+                    m.hash(&mut h);
+                }
+            }
+            Value::Record { fields, .. } => {
+                6u8.hash(&mut h);
+                reference_hash_fields_commutative(fields).hash(&mut h);
+            }
+            Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } => {
+                7u8.hash(&mut h);
+                variant_name.hash(&mut h);
+                reference_hash_fields_commutative(fields).hash(&mut h);
+            }
+            Value::Map(m) => {
+                8u8.hash(&mut h);
+                let mut acc: u64 = 0;
+                for (k, val) in m.iter() {
+                    let mut eh = DefaultHasher::new();
+                    reference_materializing_hash(&k.key).hash(&mut eh);
+                    reference_materializing_hash(val).hash(&mut eh);
+                    acc = acc.wrapping_add(eh.finish());
+                }
+                acc.hash(&mut h);
+            }
+            Value::Closure { .. } => 9u8.hash(&mut h),
+            Value::Fn { .. } => 10u8.hash(&mut h),
+            Value::List(_) | Value::Str(_) => unreachable!("FreeMonoid handled above"),
+        }
+        h.finish()
     }
 
-    #[test]
-    fn skipping_materialization_preserves_the_hash_for_strings_and_lists() {
-        let specimens = vec![
+    fn reference_hash_fields_commutative(fields: &[(Symbol, Value)]) -> u64 {
+        let mut acc: u64 = 0;
+        for (sym, val) in fields.iter() {
+            let mut fh = DefaultHasher::new();
+            sym.0.hash(&mut fh);
+            reference_materializing_hash(val).hash(&mut fh);
+            acc = acc.wrapping_add(fh.finish());
+        }
+        acc
+    }
+
+    fn list_of(items: Vec<Value>) -> Value {
+        Value::List(Rc::new(items.into_iter().collect::<RrbVector<Value>>()))
+    }
+
+    fn sym_of(name: &str) -> Symbol {
+        Symbol(name.chars().map(|c| c as u32).sum::<u32>())
+    }
+
+    fn specimens() -> Vec<Value> {
+        let nested_list = list_of(vec![
+            Value::Int(1),
+            list_of(vec![Value::Str("inner".to_string()), Value::Int(-9)]),
+        ]);
+        let mut fields = vec![
+            (sym_of("alpha"), nested_list.clone()),
+            (sym_of("beta"), Value::Str("beta value".to_string())),
+        ];
+        fields.sort_by_key(|(s, _)| s.0);
+        let mut map = HamtMap::new();
+        map.insert(
+            CanonKey::new(Value::Str("k1".to_string())).expect("string key"),
+            list_of(vec![Value::Str("v1".to_string())]),
+        );
+        map.insert(
+            CanonKey::new(Value::Int(7)).expect("int key"),
+            Value::Str("v2".to_string()),
+        );
+        vec![
+            Value::Null,
+            Value::Unit,
+            Value::Bool(true),
+            Value::Bool(false),
+            Value::Int(0),
+            Value::Int(-1),
+            Value::Int(i64::MAX),
+            Value::Int(i64::MIN),
+            Value::Float(0.0),
+            Value::Float(-0.0),
+            Value::Float(3.5),
             Value::Str(String::new()),
             Value::Str("a".to_string()),
             Value::Str("src/v2/lens/module_graph.dag".to_string()),
-            Value::Str("nai\u{308}ve \u{1F600}".to_string()),
-            Value::List(Rc::new(RrbVector::new())),
-            Value::List(Rc::new(
-                vec![Value::Int(1), Value::Str("b".to_string()), Value::Null]
+            Value::Str("nai\u{308}ve \u{1F600} \u{4E2D}\u{6587}".to_string()),
+            list_of(vec![]),
+            list_of(vec![Value::Int(1), Value::Int(2), Value::Int(3)]),
+            list_of(vec![
+                Value::Str("one".to_string()),
+                Value::Str("two".to_string()),
+            ]),
+            nested_list,
+            Value::Record {
+                type_name: sym_of("Row"),
+                fields: Rc::new(fields.clone()),
+            },
+            Value::Variant {
+                type_name: sym_of("Shape"),
+                variant_name: sym_of("Boxed"),
+                fields: Rc::new(fields),
+            },
+            Value::Variant {
+                type_name: sym_of("Shape"),
+                variant_name: sym_of("Bare"),
+                fields: Rc::new(vec![]),
+            },
+            Value::Set(Rc::new(
+                vec!["x".to_string(), "y".to_string()]
                     .into_iter()
-                    .collect::<RrbVector<Value>>(),
+                    .collect::<OrdSet<String>>(),
             )),
-        ];
-        for v in &specimens {
+            map_value(map),
+        ]
+    }
+
+    #[test]
+    fn skipping_materialization_preserves_the_hash_on_every_specimen() {
+        for v in specimens() {
             assert_eq!(
-                value_hash(v),
-                reference_materializing_hash(v),
+                value_hash(&v),
+                reference_materializing_hash(&v),
                 "hash changed for {v:?}"
             );
         }
     }
 
-    /// The discriminating half: distinct subjects must still hash apart, so a constant would fail.
+    /// The discriminating half: a constant, or a hash that ignored order or nesting, would pass
+    /// the parity claim above and fail here.
     #[test]
-    fn distinct_strings_and_lists_still_hash_apart() {
-        assert_ne!(
-            value_hash(&Value::Str("a".to_string())),
-            value_hash(&Value::Str("b".to_string()))
-        );
-        assert_ne!(
-            value_hash(&Value::Str("ab".to_string())),
-            value_hash(&Value::Str("ba".to_string()))
-        );
+    fn distinct_subjects_still_hash_apart() {
+        let pairs = vec![
+            (Value::Str("a".to_string()), Value::Str("b".to_string())),
+            (Value::Str("ab".to_string()), Value::Str("ba".to_string())),
+            (
+                list_of(vec![Value::Int(1), Value::Int(2)]),
+                list_of(vec![Value::Int(2), Value::Int(1)]),
+            ),
+            (
+                list_of(vec![Value::Int(1), list_of(vec![Value::Int(2)])]),
+                list_of(vec![Value::Int(1), Value::Int(2)]),
+            ),
+            (
+                list_of(vec![Value::Str("ab".to_string())]),
+                list_of(vec![
+                    Value::Str("a".to_string()),
+                    Value::Str("b".to_string()),
+                ]),
+            ),
+        ];
+        for (a, b) in pairs {
+            assert_ne!(value_hash(&a), value_hash(&b), "{a:?} vs {b:?}");
+            assert_ne!(
+                reference_materializing_hash(&a),
+                reference_materializing_hash(&b),
+                "oracle failed to separate {a:?} vs {b:?}"
+            );
+        }
+    }
+
+    /// A value the key carrier REFUSES is refused identically either way: `CanonKey::new`
+    /// rejects it before any hash is taken, so parity here is about the refusal, not the digest.
+    #[test]
+    fn unhashable_keys_are_refused_rather_than_hashed() {
+        assert!(CanonKey::new(Value::Float(f64::NAN)).is_none());
+        assert!(CanonKey::new(Value::Str("ok".to_string())).is_some());
     }
 }
