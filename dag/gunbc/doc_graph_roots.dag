@@ -118,6 +118,785 @@ data body_lowering_production_consumer_ref: DeclarationRef = DeclarationRef { mo
 data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "affected-set-differential-falsifier",
+    primary_work: DeclarationRef { module_path: "v2.lens.module_graph", decl_name: "entry_affected_by_touched_paths", field: WholeDeclaration },
+    additional_works: [
+
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject entry_affected_by_touched_paths describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "affected-set-precompute-pruning",
+    primary_work: DeclarationRef { module_path: "v2.workflow.affected_set_floor_runner", decl_name: "floor_witness_run_disposition", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.workflow.affected_set_floor_runner", decl_name: "floor_test_fn_declaration_edited", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject floor_witness_run_disposition describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "algebra-grounding-unification-design",
+    primary_work: DeclarationRef { module_path: "std.algebra", decl_name: "FreeMonoid", field: WholeDeclaration },
+    additional_works: [
+
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject FreeMonoid describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "body-lowering-design",
+    primary_work: DeclarationRef { module_path: "std.termination", decl_name: "DescentEvidence", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.std.cardinality", decl_name: "node_multiplicity", field: WholeDeclaration },
+      DeclarationRef { module_path: "v2.std.cardinality", decl_name: "loop_bound_witness_for_node", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject DescentEvidence describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "build-cache-placement-receipt",
+    primary_work: DeclarationRef { module_path: "extdeps.cache.sccache", decl_name: "sccache_stats_query_does_not_spawn_note", field: WholeDeclaration },
+    additional_works: [
+
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject sccache_stats_query_does_not_spawn_note describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "c-linkage-unit-realization-design",
+    primary_work: DeclarationRef { module_path: "v2.std.compilers.compilation_unit", decl_name: "CompilationUnit", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.std.compilers.compilation_unit", decl_name: "partition_fold", field: WholeDeclaration },
+      DeclarationRef { module_path: "v2.std.compilers.compilation_unit", decl_name: "CompilationUnitId", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject CompilationUnit describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "cli-run-reconcile-defork",
+    primary_work: DeclarationRef { module_path: "v2.lens.module_graph", decl_name: "import_closure_live", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "extdeps.cache", decl_name: "resolved_graph_cache", field: WholeDeclaration },
+      DeclarationRef { module_path: "extdeps.cache.types", decl_name: "CacheInterfaceCatalogFacts", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject import_closure_live describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "compile-wall-endgame",
+    primary_work: DeclarationRef { module_path: "std.computation_identity", decl_name: "ComputationIdentity", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "std.termination", decl_name: "DescentEvidence", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject ComputationIdentity describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "compiler-algorithm-survey-2026-07-04",
+    primary_work: DeclarationRef { module_path: "v2.std.node", decl_name: "fold_node", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.std.algebra", decl_name: "list_snoc_item", field: WholeDeclaration },
+      DeclarationRef { module_path: "v2.std.compilers.lexing", decl_name: "token_stream_first", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject fold_node describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "containment-binding-cross-module-type-references-design",
+    primary_work: DeclarationRef { module_path: "std.occurrence_binding", decl_name: "OccurrenceBindingResult", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.std.symbol_index", decl_name: "symbol_index_lookup", field: WholeDeclaration },
+      DeclarationRef { module_path: "std.occurrence_binding", decl_name: "occurrence_binding_from_candidates", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject OccurrenceBindingResult describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "cost-risk-benefit-floor-model",
+    primary_work: DeclarationRef { module_path: "std.realization_schedule", decl_name: "WitnessKind", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.std.verification", decl_name: "TestClassification", field: WholeDeclaration },
+      DeclarationRef { module_path: "v2.std.live_tree", decl_name: "LiveTreeDisposition", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject WitnessKind describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "cross-entry-typed-module-memo-sketch",
+    primary_work: DeclarationRef { module_path: "std.computation_identity", decl_name: "ComputationIdentity", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "std.materialization_ladder", decl_name: "CacheProvider", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.host_effect", decl_name: "HostEffect", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject ComputationIdentity describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "cross-worker-typecheck-share-design",
+    primary_work: DeclarationRef { module_path: "v2.workflow.module_resolution_plan", decl_name: "module_resolution_store_value_note", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "extdeps.cache", decl_name: "resolved_graph_cache", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject module_resolution_store_value_note describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "dag-scm-design",
+    primary_work: DeclarationRef { module_path: "gunbc.roster_registry", decl_name: "GroupMembership", field: WholeDeclaration },
+    additional_works: [
+
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject GroupMembership describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "decl-emission-defork-design",
+    primary_work: DeclarationRef { module_path: "v2.std.compilers.target_model", decl_name: "TargetModel", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.std.compilers.semantic_decl_emission", decl_name: "TargetSemanticDeclEmission", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject TargetModel describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "declared-source-ref-selection-design",
+    primary_work: DeclarationRef { module_path: "v2.compiler.source_authority", decl_name: "SourceRef", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.compiler.source_authority", decl_name: "ModuleStorageIndex", field: WholeDeclaration },
+      DeclarationRef { module_path: "std.content_hash", decl_name: "ContentHash", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject SourceRef describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "dependency-fidelity-design",
+    primary_work: DeclarationRef { module_path: "v2.std.fn_index", decl_name: "FnArrowDecl", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.lens.dependency_fidelity", decl_name: "FidelityVerdict", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject FnArrowDecl describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "design-register-library",
+    primary_work: DeclarationRef { module_path: "gunbc.design.material", decl_name: "Material", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "gunbc.design.theme", decl_name: "Theme", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.design.material", decl_name: "AreaClass", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject Material describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "dispatch-maintain-cc",
+    primary_work: DeclarationRef { module_path: "gunbc.roadmap_spawner", decl_name: "dispatch_brief_template", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "gunbc.node_http_server_emit", decl_name: "emit_node_http_static_server_program", field: WholeDeclaration },
+      DeclarationRef { module_path: "extdeps.http.server", decl_name: "NodeHttpServerRouteBinding", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject dispatch_brief_template describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "duplicate-work-graph-lens-design",
+    primary_work: DeclarationRef { module_path: "v2.std.materialize", decl_name: "materialize", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "std.realization", decl_name: "Materialization", field: WholeDeclaration },
+      DeclarationRef { module_path: "v2.std.staging", decl_name: "cached_stage", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject materialize describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "emit-host-batch-isolation",
+    primary_work: DeclarationRef { module_path: "v2.workflow.executor", decl_name: "parallel_executor_plan_from_dependencies", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.workflow.ci_floor_plan", decl_name: "floor_dependencies_with", field: WholeDeclaration },
+      DeclarationRef { module_path: "std.realization_schedule", decl_name: "Runnable", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject parallel_executor_plan_from_dependencies describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "emitted-crate-partition-design",
+    primary_work: DeclarationRef { module_path: "v2.std.compilers.compilation_unit", decl_name: "CompilationUnit", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.std.compilers.compilation_unit", decl_name: "partition_fold", field: WholeDeclaration },
+      DeclarationRef { module_path: "v2.workflow.rust_crate_partition", decl_name: "PartitionPolicy", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject CompilationUnit describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "enforcement-intent-design",
+    primary_work: DeclarationRef { module_path: "v2.lens.enforcement.contract", decl_name: "LensContract", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.lens.enforcement.standing_intent", decl_name: "StandingIntent", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject LensContract describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "entry-graph-union-slice2-typecheck-attribution",
+    primary_work: DeclarationRef { module_path: "std.interface_summary", decl_name: "module_key", field: WholeDeclaration },
+    additional_works: [
+
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject module_key describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "eval-bind-node-eval-propose",
+    primary_work: DeclarationRef { module_path: "v2.compiler.eval", decl_name: "eval_bind_node_eval", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.std.runtime", decl_name: "RuntimeBehaviorInterpreter", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject eval_bind_node_eval describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "execution-spine-design",
+    primary_work: DeclarationRef { module_path: "v2.std.materialize", decl_name: "materialize", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.std.dependency", decl_name: "DependencyView", field: WholeDeclaration },
+      DeclarationRef { module_path: "v2.std.spine", decl_name: "spine_receipt", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject materialize describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "extdeps-std-grounding-inventory",
+    primary_work: DeclarationRef { module_path: "std.measure", decl_name: "Measure", field: WholeDeclaration },
+    additional_works: [
+
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject Measure describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "floor-memory-pool-parse-regression-diagnosis",
+    primary_work: DeclarationRef { module_path: "v2.lens.live_read_classification", decl_name: "live_read_classification", field: WholeDeclaration },
+    additional_works: [
+
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject live_read_classification describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "floor-shared-compute-memoization",
+    primary_work: DeclarationRef { module_path: "gunbc.ci_layer_roots", decl_name: "witness_layer_roots", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.workflow.ci_floor_plan", decl_name: "floor_heavy_resolve_chain_resource_edges", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject witness_layer_roots describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "floor-time-namespace-walk-regression-diagnosis",
+    primary_work: DeclarationRef { module_path: "v2.workflow.ci_floor_plan", decl_name: "gate_runnable_profile", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.workflow.ci_floor_plan", decl_name: "floor_heavy_resolve_chain_resource_edges", field: WholeDeclaration },
+      DeclarationRef { module_path: "v2.workflow.ci_floor_plan", decl_name: "floor_plan_at_most_one_heavy_gate_resolve_per_batch", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject gate_runnable_profile describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "for-sugar-over-fold",
+    primary_work: DeclarationRef { module_path: "v2.compiler.emit_orchestration", decl_name: "orch_emit_step", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.std.compilers.sugar", decl_name: "SugarKey", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject orch_emit_step describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "formal-concepts-extdeps-grounding",
+    primary_work: DeclarationRef { module_path: "std.termination", decl_name: "DescentEvidence", field: WholeDeclaration },
+    additional_works: [
+
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject DescentEvidence describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "func-env-sigs-single-authority",
+    primary_work: DeclarationRef { module_path: "v2.compiler.resolve", decl_name: "ResolvedTree", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "extdeps.cache", decl_name: "resolved_graph_cache", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject ResolvedTree describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "groupcompletion-pair-construction-design",
+    primary_work: DeclarationRef { module_path: "std.algebra", decl_name: "GroupCompletion", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "std.float", decl_name: "Real", field: WholeDeclaration },
+      DeclarationRef { module_path: "std.rational", decl_name: "Rational", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject GroupCompletion describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "gunb-ai-site-subsumption-design",
+    primary_work: DeclarationRef { module_path: "extdeps.languages.typescript.program", decl_name: "TsProgram", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "gunbc.design.material", decl_name: "Material", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.design.material", decl_name: "BuildRule", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject TsProgram describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "gunbc-served-dashboard-design",
+    primary_work: DeclarationRef { module_path: "gunbc.roadmap_belt_actuate", decl_name: "belt_dispatch_node", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "gunbc.roadmap_page", decl_name: "roadmap_daily_workspace_page_for_authority", field: WholeDeclaration },
+      DeclarationRef { module_path: "extdeps.http.server", decl_name: "ServedStaticRouteTable", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject belt_dispatch_node describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "hollow-alias-construction-wall",
+    primary_work: DeclarationRef { module_path: "std.algebra", decl_name: "FieldOfFractions", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "std.algebra", decl_name: "GroupCompletion", field: WholeDeclaration },
+      DeclarationRef { module_path: "std.rational", decl_name: "Rational", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject FieldOfFractions describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "host-converge-inventory",
+    primary_work: DeclarationRef { module_path: "gunbc.host_converge", decl_name: "HostConverge", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "gunbc.host_converge", decl_name: "ConvergeKnob", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.host_converge", decl_name: "ConvergeTarget", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject HostConverge describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "import-strip-witness-discovery-cascade-diagnosis",
+    primary_work: DeclarationRef { module_path: "std.decl_ref", decl_name: "DeclarationRef", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "std.content_hash", decl_name: "ContentHash", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject DeclarationRef describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "ingest-manifest-source-ref-carrier-design",
+    primary_work: DeclarationRef { module_path: "v2.compiler.source_authority", decl_name: "SourceRef", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.compiler.source_authority", decl_name: "SourceRootIngest", field: WholeDeclaration },
+      DeclarationRef { module_path: "std.content_hash", decl_name: "ContentHash", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject SourceRef describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "interface-summary-declared-use-arity",
+    primary_work: DeclarationRef { module_path: "std.interface_summary", decl_name: "InterfaceSummary", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "std.types", decl_name: "NonEmptyStr", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject InterfaceSummary describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "interpreter-memory-chronicle",
+    primary_work: DeclarationRef { module_path: "gunbc.fleet_intent", decl_name: "PerformanceReceipt", field: WholeDeclaration },
+    additional_works: [
+
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject PerformanceReceipt describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "language-support-completion-design",
+    primary_work: DeclarationRef { module_path: "gunbc.ci_layer_roots", decl_name: "falsifier_substrate_long_lane_rows", field: WholeDeclaration },
+    additional_works: [
+
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject falsifier_substrate_long_lane_rows describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "layering-imports-reference-repoint-design",
+    primary_work: DeclarationRef { module_path: "v2.std.layer", decl_name: "LayerImportFact", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.std.layer", decl_name: "layer_import_facts_live", field: WholeDeclaration },
+      DeclarationRef { module_path: "v2.std.cross_tree.resolution", decl_name: "layer_prefix_from_dotted_qualified_name", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject LayerImportFact describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "lens-consolidation-design",
+    primary_work: DeclarationRef { module_path: "std.materialization_ladder", decl_name: "LadderVerdict", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.lens.enforcement.standing_intent", decl_name: "StandingIntent", field: WholeDeclaration },
+      DeclarationRef { module_path: "v2.lens.vacuity", decl_name: "VacuityEvidence", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject LadderVerdict describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "lens-input-authority-design",
+    primary_work: DeclarationRef { module_path: "extdeps.cache.materialization", decl_name: "provider_from_catalog", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.compiler.infer", decl_name: "InferredTree", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject provider_from_catalog describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "mechanism-inventory-red-controls",
+    primary_work: DeclarationRef { module_path: "gunbc.ci_gate", decl_name: "Gate", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "std.process", decl_name: "ProcessExit", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject Gate describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "membership-diff-reconcile-spine-design",
+    primary_work: DeclarationRef { module_path: "gunbc.ownership", decl_name: "Ownership", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "std.change", decl_name: "keyed_two_way_diff", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.membership_reconcile", decl_name: "EffectsOrRefusal", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject Ownership describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "model-grounding-lens-extract",
+    primary_work: DeclarationRef { module_path: "std.types", decl_name: "NonEmptyStr", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "std.realization_schedule", decl_name: "Schedule", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject NonEmptyStr describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "namespace-flip-last-28-root-a-two-std-defork",
+    primary_work: DeclarationRef { module_path: "std.algebra", decl_name: "FreeMonoid", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "std.algebra", decl_name: "PointwisePower", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject FreeMonoid describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "namespace-resolution-design",
+    primary_work: DeclarationRef { module_path: "v2.std.symbol_index", decl_name: "SymbolIndex", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.std.node", decl_name: "Symbol", field: WholeDeclaration },
+      DeclarationRef { module_path: "v2.std.symbol_index", decl_name: "symbol_index_global_unique_lookup", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject SymbolIndex describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "namespace-unique-on-chain-operational-plan",
+    primary_work: DeclarationRef { module_path: "std.occurrence_binding", decl_name: "occurrence_binding_from_candidates", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "std.occurrence_binding", decl_name: "OccurrenceBindingResult", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject occurrence_binding_from_candidates describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "native-selected-witness-bundle-design",
+    primary_work: DeclarationRef { module_path: "std.selected_witness_bundle", decl_name: "NativeWitnessBundleIdentity", field: WholeDeclaration },
+    additional_works: [
+
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject NativeWitnessBundleIdentity describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "node-minimal-representation-sketch",
+    primary_work: DeclarationRef { module_path: "v2.std.node_minimal", decl_name: "MinimalResolvedNode", field: WholeDeclaration },
+    additional_works: [
+
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject MinimalResolvedNode describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "node-subtree-visibility-grants",
+    primary_work: DeclarationRef { module_path: "std.effect_grant", decl_name: "position_under", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "std.effect_grant", decl_name: "NamespacePosition", field: WholeDeclaration },
+      DeclarationRef { module_path: "std.effect_grant", decl_name: "admit_effect", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject position_under describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "non-fold-irreducible-residue-catalogue",
+    primary_work: DeclarationRef { module_path: "v2.lens.complexity_linearity_audit", decl_name: "triage_wildcard", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "std.induction", decl_name: "SubValueRelation", field: WholeDeclaration },
+      DeclarationRef { module_path: "v2.lens.cost", decl_name: "SymbolicCost", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject triage_wildcard describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "orchestration-as-intent-design",
+    primary_work: DeclarationRef { module_path: "v2.std.orchestration", decl_name: "Run", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.std.orchestration", decl_name: "Pipeline", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject Run describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "post-engine-pr-roadmap",
+    primary_work: DeclarationRef { module_path: "std.types", decl_name: "is_container_type", field: WholeDeclaration },
+    additional_works: [
+
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject is_container_type describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "provisioning-window-executor-capability-design",
+    primary_work: DeclarationRef { module_path: "v2.std.execution_surface", decl_name: "ShellEmissionJustification", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.std.execution_surface", decl_name: "ExecutorCapability", field: WholeDeclaration },
+      DeclarationRef { module_path: "v2.std.execution_surface", decl_name: "ProvisioningWindow", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject ShellEmissionJustification describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "real-debt-syntactic-sample-audit",
+    primary_work: DeclarationRef { module_path: "v2.lens.complexity_linearity_audit", decl_name: "triage_wildcard", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.std.verification", decl_name: "ManualAnchorKey", field: WholeDeclaration },
+      DeclarationRef { module_path: "v2.std.compilers.target_model", decl_name: "ConcreteSyntaxToken", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject triage_wildcard describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "regen-divergence-ratchet-shape",
+    primary_work: DeclarationRef { module_path: "tools.regen_verify_transport", decl_name: "run_regen_verify", field: WholeDeclaration },
+    additional_works: [
+
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject run_regen_verify describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "resolve-regression-journey",
+    primary_work: DeclarationRef { module_path: "gunbc.ci_workflow", decl_name: "gunbc_ci_floor_step_timeout_discovery_flip_note", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "gunbc.ci_layer_roots", decl_name: "bin_witness_wet_per_row_wall_budget_seconds", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject gunbc_ci_floor_step_timeout_discovery_flip_note describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "resolved-graph-representation-minimization",
+    primary_work: DeclarationRef { module_path: "std.hermetic_replay", decl_name: "PublishedMockCase", field: WholeDeclaration },
+    additional_works: [
+
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject PublishedMockCase describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "resolver-graph-major-design",
+    primary_work: DeclarationRef { module_path: "v2.std.dependency", decl_name: "DependencyView", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "std.realization_schedule", decl_name: "RealizationPlan", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject DependencyView describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "resource-aware-scheduler",
+    primary_work: DeclarationRef { module_path: "std.realization_schedule", decl_name: "Runnable", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "std.observation", decl_name: "Measured", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.fleet_intent", decl_name: "PerformanceReceipt", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject Runnable describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "roadmap-spawner",
+    primary_work: DeclarationRef { module_path: "gunbc.roadmap_spawner", decl_name: "next_spawnable", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "gunbc.roadmap_model", decl_name: "Acceptance", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.process_algebra", decl_name: "ProcessNodeId", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject next_spawnable describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "s2-v2-self-emit-brief",
+    primary_work: DeclarationRef { module_path: "v2.std.node", decl_name: "Symbol", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "std.algebra", decl_name: "FreeMonoid", field: WholeDeclaration },
+      DeclarationRef { module_path: "v2.std.optional", decl_name: "Optional", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject Symbol describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "s2-v2-self-emit-direction",
+    primary_work: DeclarationRef { module_path: "extdeps.communication.medium", decl_name: "DecodeFidelity", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.std.node", decl_name: "Symbol", field: WholeDeclaration },
+      DeclarationRef { module_path: "v2.compiler.translate", decl_name: "grammar_relation_row_for_emitted", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject DecodeFidelity describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "seed-honesty-discharge-design",
+    primary_work: DeclarationRef { module_path: "v2.workflow.bootstrap", decl_name: "SeedHonestyDischarge", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.workflow.bootstrap", decl_name: "diverse_compilation_agreement_witness", field: WholeDeclaration },
+      DeclarationRef { module_path: "v2.workflow.bootstrap", decl_name: "IndependentCompilerPair", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject SeedHonestyDischarge describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "seed-shrink-census",
+    primary_work: DeclarationRef { module_path: "v2.std.node", decl_name: "content_hash", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "extdeps.cache", decl_name: "resolved_graph_cache", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject content_hash describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "shell-intent-emit-realization-design",
+    primary_work: DeclarationRef { module_path: "v2.std.orchestration", decl_name: "Pipeline", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.std.node", decl_name: "Edge", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.host_effect_realize", decl_name: "host_effect_apply", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject Pipeline describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "shell-to-dag-residual-census-and-arc-completion",
+    primary_work: DeclarationRef { module_path: "gunbc.host_effect_realize", decl_name: "host_effect_apply", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "gunbc.retained_shell_script", decl_name: "RetainedShellScript", field: WholeDeclaration },
+      DeclarationRef { module_path: "extdeps.shell.exec", decl_name: "TransportScript", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject host_effect_apply describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "space-complexity-design",
+    primary_work: DeclarationRef { module_path: "v2.lens.cost.expr", decl_name: "CostExpr", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "std.termination", decl_name: "DescentEvidence", field: WholeDeclaration },
+      DeclarationRef { module_path: "v2.lens.cost.summary", decl_name: "ComplexitySummary", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject CostExpr describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "space-lens-minimal-project",
+    primary_work: DeclarationRef { module_path: "gunbc.fleet_container", decl_name: "ResourceEnvelope", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "std.realization_schedule", decl_name: "cost_account_predicted_zero", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.ci_input_envelope", decl_name: "InputEnvelope", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject ResourceEnvelope describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "srv3-webui-kvm-virtual-media",
+    primary_work: DeclarationRef { module_path: "gunbc.os_install_mechanism", decl_name: "solve_install_mechanism", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "extdeps.external_authority", decl_name: "ExternalAuthority", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject solve_install_mechanism describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "srv4-bmc-onboarding-gap",
+    primary_work: DeclarationRef { module_path: "gunbc.host_standup", decl_name: "host_standup_spine", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "product.placement_supply", decl_name: "HostIdentity", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject host_standup_spine describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "srvn-buildcache-provisioning-design",
+    primary_work: DeclarationRef { module_path: "gunbc.host_converge", decl_name: "ConvergeTarget", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "extdeps.cache.sccache", decl_name: "sccache_local_facts", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject ConvergeTarget describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "type-env-single-authority-design",
+    primary_work: DeclarationRef { module_path: "v2.std.symbol_index", decl_name: "SymbolIndex", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "std.induction", decl_name: "SubValueRelation", field: WholeDeclaration },
+      DeclarationRef { module_path: "v2.compiler.resolve", decl_name: "Scope", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject SymbolIndex describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "v1-run-stability-throughline",
+    primary_work: DeclarationRef { module_path: "gunbc.ci_layer_roots", decl_name: "whole_tree_strict_resolve_exclusion_substrings", field: WholeDeclaration },
+    additional_works: [
+
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject whole_tree_strict_resolve_exclusion_substrings describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "v2-memory-control-audit",
+    primary_work: DeclarationRef { module_path: "std.materialization_ladder", decl_name: "CacheProvider", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.std.dependency", decl_name: "DependencyView", field: WholeDeclaration },
+      DeclarationRef { module_path: "std.realization_schedule", decl_name: "CostAccount", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject CacheProvider describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "vacuity-lens-design",
+    primary_work: DeclarationRef { module_path: "v2.lens.vacuity", decl_name: "VacuityEvidence", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.lens.coverage", decl_name: "coverage_defect_vacuous_arm", field: WholeDeclaration },
+      DeclarationRef { module_path: "v2.std.verification", decl_name: "TestClaim", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject VacuityEvidence describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "witness-subject-execution-audit",
+    primary_work: DeclarationRef { module_path: "v2.std.diagnostic", decl_name: "Outcome", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.lens.module_graph", decl_name: "import_closure_live", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the work this document plans lands and its subject Outcome describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "general-body-producer-design",
     primary_work: body_lowering_symbol_index_ref,
     additional_works: [
