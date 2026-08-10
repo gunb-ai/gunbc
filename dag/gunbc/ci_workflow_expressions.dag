@@ -80,22 +80,29 @@ data ci_workflow_expression_templates: List<ExpressionTemplate> = [
   ci_cache_restore_keys_template
 ]
 
-// MEASURED REPAIR (2026-08-09, CONVERGE acceptance): every job gated by this expression
-// had been SKIPPED on every main push for at least 30 pushes — deploy_dashboard_srv1
-// included, long before the advance/collect jobs joined the family. Root cause is a
-// workflow-graph cascade, not the two clauses: heal_generated_artifacts SKIPS on
-// ordinary pushes, `ci` survives it via its own `!cancelled()`, but a needs:[ci] job
-// whose `if` carries NO status function gets GitHub's implicit success() ANDed in, and
-// success() is false downstream of any transitively skipped job — so the whole
-// push-to-main family silently skipped while every clause it names was true (an
-// empty-observation narrow: 'dependency skipped' rendered as 'condition false'). The
-// expression now carries its own status guard: run unless cancelled, require the ci
-// job's own result to be success explicitly, then the two event clauses. The RED
-// control for this class lives in test.claim.ci_workflow_witness
-// push_to_main_family_carries_explicit_status_guard.
-data ci_deploy_push_to_main_if: String = "!cancelled() && needs.ci.result == 'success' && github.ref == 'refs/heads/main' && github.event_name == 'push'"
-
-data ci_workflow_dispatch_only_if: String = "github.event_name == 'workflow_dispatch'"
+// UNIFIED FLEET JOB condition (operator request 2026-08-10: "a single fleet convergence
+// job — it's overwhelming to see so many"). The ten former deploy/convergence/toolbox
+// jobs collapse into one `fleet` job whose STEPS carry the per-event guard; this is the
+// job-level gate that decides whether the job runs AT ALL, so on ordinary PRs the whole
+// fleet job is skipped as ONE row instead of ~nine. Two arms:
+//   - main-push convergence (deploy + collect + advance): !cancelled() +
+//     needs.ci.result == 'success' + main + push;
+//   - workflow_dispatch toolbox (scan/enroll/probe/observe/timer/authorized-key): the
+//     manual fleet ops.
+//
+// THE !cancelled() + needs.ci.result GUARD ON THE PUSH ARM IS A WALL, NOT DECORATION
+// (MEASURED REPAIR 2026-08-09, CONVERGE acceptance — carried forward from the former
+// ci_deploy_push_to_main_if, which this expression replaced when the family collapsed
+// into one job). Every job in the former push-to-main family had been SKIPPED on every
+// main push for 30+ pushes: heal_generated_artifacts SKIPS on ordinary pushes, `ci`
+// survives it via its own `!cancelled()`, but a needs:[ci] job whose `if` carries NO
+// status function gets GitHub's implicit success() ANDed in, and success() is false
+// downstream of any transitively skipped job — so the whole family silently skipped while
+// every clause it named was true (an empty-observation narrow: 'dependency skipped'
+// rendered as 'condition false'). The push arm therefore carries its own status guard
+// explicitly. The RED control for this class lives in test.claim.ci_workflow_witness
+// push_to_main_family_carries_explicit_status_guard, which now reads this expression.
+data ci_fleet_job_if: String = "!cancelled() && ((github.ref == 'refs/heads/main' && github.event_name == 'push' && needs.ci.result == 'success') || github.event_name == 'workflow_dispatch')"
 
 data ci_floor_runs_unless_cancelled_if: String = "!cancelled()"
 

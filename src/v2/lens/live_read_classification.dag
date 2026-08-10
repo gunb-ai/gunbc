@@ -48,9 +48,9 @@ fn carrier_home_kind_to_g1_carrier(home: LiveReadCarrierHome) -> LiveReadCarrier
 }
 
 fn g1_carriers_from_homes(homes: List<LiveReadCarrierHome>) -> List<LiveReadCarrier> {
-  fold_list(xs: homes, empty: empty_carrier_list, cons: fn(acc, home) {
-    list_snoc_item(xs: acc, item: carrier_home_kind_to_g1_carrier(home: home))
-  })
+  list_reverse(xs: fold_list(xs: homes, empty: empty_carrier_list, cons: fn(acc, home) {
+    list_cons_item(xs: acc, item: carrier_home_kind_to_g1_carrier(home: home))
+  }))
 }
 
 fn live_read_classification_g1(
@@ -107,9 +107,11 @@ fn decls_in_module(decls: List<FnArrowDecl>, mod_path: String) -> List<FnArrowDe
 }
 
 fn decls_in_modules(decls: List<FnArrowDecl>, modules: List<String>) -> List<FnArrowDecl> {
-  fold_list(xs: modules, empty: empty_decl_list, cons: fn(acc, mod_path) {
-    list_append(left: acc, right: decls_in_module(decls: decls, mod_path: mod_path))
-  })
+  list_reverse(xs: fold_list(xs: modules, empty: empty_decl_list, cons: fn(acc, mod_path) {
+    fold_list(xs: decls_in_module(decls: decls, mod_path: mod_path), empty: acc, cons: fn(inner, d) {
+      list_cons_item(xs: inner, item: d)
+    })
+  }))
 }
 
 fn is_path_like_lexeme(text: String) -> Bool {
@@ -162,9 +164,9 @@ fn atom_identities_in_node(node: Node) -> List<Symbol> {
 }
 
 fn param_names_of(decl: FnArrowDecl) -> List<String> {
-  fold_list(xs: decl.params, empty: empty_string_list, cons: fn(acc, p) {
-    list_snoc_item(xs: acc, item: symbol_lexeme(sym: p.name))
-  })
+  list_reverse(xs: fold_list(xs: decl.params, empty: empty_string_list, cons: fn(acc, p) {
+    list_cons_item(xs: acc, item: symbol_lexeme(sym: p.name))
+  }))
 }
 
 fn path_pattern_from_lexeme(text: String, param_names: List<String>) -> PathPattern {
@@ -222,13 +224,13 @@ fn carrier_already_present(carriers: List<LiveReadCarrier>, candidate: LiveReadC
 }
 
 fn merge_carriers(left: List<LiveReadCarrier>, right: List<LiveReadCarrier>) -> List<LiveReadCarrier> {
-  fold_list(xs: right, empty: left, cons: fn(acc, c) {
+  list_reverse(xs: fold_list(xs: right, empty: list_reverse(xs: left), cons: fn(acc, c) {
     if carrier_already_present(carriers: acc, candidate: c) {
       acc
     } else {
-      list_snoc_item(xs: acc, item: c)
+      list_cons_item(xs: acc, item: c)
     }
-  })
+  }))
 }
 
 fn carrier_for_callee_text(
@@ -258,21 +260,21 @@ fn carrier_for_callee_text(
 }
 
 fn positional_child_targets(node: Node) -> List<Node> {
-  fold(node.children, init: empty_node_list, f: fn(acc, e) {
+  list_reverse(xs: fold(node.children, init: empty_node_list, f: fn(acc, e) {
     match e.label {
-      Positional => list_snoc_item(xs: acc, item: e.target)
+      Positional => list_cons_item(xs: acc, item: e.target)
       Named { name: _ } => acc
     }
-  })
+  }))
 }
 
 fn arg_symbols_from_nodes(nodes: List<Node>) -> List<Symbol> {
-  fold_list(xs: nodes, empty: empty_symbol_list, cons: fn(acc, n) {
+  list_reverse(xs: fold_list(xs: nodes, empty: empty_symbol_list, cons: fn(acc, n) {
     match node_atom_identity_optional(node: n) {
-      Present { value: sym } => list_snoc_item(xs: acc, item: sym)
+      Present { value: sym } => list_cons_item(xs: acc, item: sym)
       Absent => acc
     }
-  })
+  }))
 }
 
 fn carriers_from_call_node(node: Node, param_names: List<String>) -> List<LiveReadCarrier> {
@@ -394,14 +396,43 @@ fn callees_from_node(node: Node) -> List<String> {
   )
 }
 
+data g2_decl_index_law: String = "ONE GROUPED INDEX PER BATCH, NOT ONE SCAN PER CALLEE. The reachability walk asks two questions of the declaration population, both by exact string: which declarations bear this callee's name, and which declaration bears this qualified root name. Answered by filtering the population, each question costs the whole population - and the walk asks the first question once per callee of every reached declaration, so the population is re-walked thousands of times per request and the population is roughly 62000 rows.
+
+group_by answers both from one pass. The index is built ONCE, outside the request fold, over the FULL population, because the population is the same for every request in a batch while the import closure is not. THE CLOSURE FILTER THEREFORE STAYS, applied AFTER bucket retrieval: it is what makes the answer request-specific, and dropping it would widen every request's reachable set to the whole tree.
+
+MULTIPLICITY IS LOAD-BEARING, which is why this needs group_by and could not use index_by. Several modules legitimately declare the same function name; index_by keeps one of them, so a bucket built with it would silently drop every homonym but the last, and a declaration the walk should have reached would be invisible. The equivalence claim is a BAG equality against the full scan, not a set equality, and the planted same-name declarations in three modules are what discriminate it."
+
+type G2DeclIndex {
+  by_name: Map<String, List<FnArrowDecl>>
+  by_qualified_name: Map<String, List<FnArrowDecl>>
+}
+
+fn g2_decl_index(decls: List<FnArrowDecl>) -> G2DeclIndex {
+  G2DeclIndex {
+    by_name: group_by(xs: decls, key_fn: fn(d) { d.name }),
+    by_qualified_name: group_by(xs: decls, key_fn: fn(d) { d.qualified_name })
+  }
+}
+
+fn decls_bucket(bucket: Map<String, List<FnArrowDecl>>, key: String) -> List<FnArrowDecl> {
+  match bucket.lookup(key) {
+    Present { value: found } => found
+    Absent => empty_decl_list
+  }
+}
+
+data closure_decls_hoist_law: String = "THE CLOSURE RESTRICTION IS COMPUTED ONCE PER WALK, NOT ONCE PER CALLEE. decls_matching_callee used to call decls_in_modules(decls, modules) itself, which filters every declaration in the population against every module in the import closure. Nothing in that computation depends on the callee, and closure_modules is fixed for the whole reachability walk - so it was being recomputed for every callee of every reached declaration, at 587 closure modules against roughly 62000 declarations each time. The phase receipt that located it measured classification_production at 287414 ms for 91 requests while the lens closure it was blamed on cost 6639 ms.
+
+The repair is a hoist, not a new data structure. The caller restricts the population to the closure ONCE and threads the restricted list; this function then filters that much smaller list by name. It is exactly the same set by construction - filter(filter(xs, in_closure), named) equals filter(filter(xs, named), in_closure) - so no classification changes, and no primitive the substrate does not already have is required. A grouped index keyed by name would remove the remaining per-callee linear scan too, but it needs a multiplicity-preserving native grouping that authored .dag cannot currently reach (index_by is last-wins AND unreachable from source; the modeled closure-chain Map measured 33x slower). The grouping substrate lands in this same change; the hoist is the term-removal that does not depend on it."
+
 fn decls_matching_callee(
-  decls: List<FnArrowDecl>,
-  modules: List<String>,
+  index: G2DeclIndex,
+  closure_modules: List<String>,
   callee: String
 ) -> List<FnArrowDecl> {
-  filter(
-    xs: decls_in_modules(decls: decls, modules: modules),
-    predicate: fn(decl) { string_eq(a: decl.name, b: callee) }
+  decls_in_modules(
+    decls: decls_bucket(bucket: index.by_name, key: callee),
+    modules: closure_modules
   )
 }
 
@@ -415,8 +446,8 @@ fn decl_in_list(decl: FnArrowDecl, xs: List<FnArrowDecl>) -> Bool {
 
 fn call_reachable_decls_go(
   seeds: List<FnArrowDecl>,
+  index: G2DeclIndex,
   closure_modules: List<String>,
-  decls: List<FnArrowDecl>,
   reached: List<FnArrowDecl>
 ) -> List<FnArrowDecl> {
   match list_head(xs: seeds) {
@@ -426,8 +457,8 @@ fn call_reachable_decls_go(
       if decl_in_list(decl: seed, xs: reached) {
         call_reachable_decls_go(
           seeds: rest,
+          index: index,
           closure_modules: closure_modules,
-          decls: decls,
           reached: reached
         )
       } else {
@@ -437,16 +468,16 @@ fn call_reachable_decls_go(
           list_append(
             left: acc,
             right: decls_matching_callee(
-              decls: decls,
-              modules: closure_modules,
+              index: index,
+              closure_modules: closure_modules,
               callee: callee
             )
           )
         })
         call_reachable_decls_go(
           seeds: list_append(left: rest, right: callee_decls),
+          index: index,
           closure_modules: closure_modules,
-          decls: decls,
           reached: next_reached
         )
       }
@@ -467,8 +498,8 @@ fn call_reachable_decls(
 ) -> List<FnArrowDecl> {
   call_reachable_decls_go(
     seeds: decls_in_module(decls: decls, mod_path: entry_module),
+    index: g2_decl_index(decls: decls),
     closure_modules: closure_modules,
-    decls: decls,
     reached: empty_decl_list
   )
 }
@@ -478,13 +509,13 @@ data g2_root_grain_law: String = "THE ROOT IS THE ENROLLED DECLARATION, NOT ITS 
 The seeded variant below takes the exact enrolled function and roots the walk there. Entry-grain skip is then DERIVED by conjunction over the entry rows rather than assumed: an entry may fast-skip only when every enrolled row in it is completely classified and untouched. That derivation is what keeps a single live-read witness from making its siblings unskippable, which is the same precision loss as the G1 union one level down."
 
 fn decl_named_in_module(
-  decls: List<FnArrowDecl>,
+  index: G2DeclIndex,
   mod_path: String,
   fn_name: String
 ) -> List<FnArrowDecl> {
-  filter(
-    xs: decls_in_module(decls: decls, mod_path: mod_path),
-    predicate: fn(decl) { string_eq(a: decl.name, b: fn_name) }
+  decls_in_module(
+    decls: decls_bucket(bucket: index.by_name, key: fn_name),
+    mod_path: mod_path
   )
 }
 
@@ -492,12 +523,12 @@ fn call_reachable_decls_from_root(
   entry_module: String,
   fn_name: String,
   closure_modules: List<String>,
-  decls: List<FnArrowDecl>
+  index: G2DeclIndex
 ) -> List<FnArrowDecl> {
   call_reachable_decls_go(
-    seeds: decl_named_in_module(decls: decls, mod_path: entry_module, fn_name: fn_name),
+    seeds: decl_named_in_module(index: index, mod_path: entry_module, fn_name: fn_name),
+    index: index,
     closure_modules: closure_modules,
-    decls: decls,
     reached: empty_decl_list
   )
 }
@@ -562,10 +593,10 @@ fn live_read_selection_manifest_over(
   nodes: List<ModuleDeclarationFact>,
   decls: List<FnArrowDecl>
 ) -> List<LiveReadSelectionManifestRow> {
-  fold_list(xs: requests, empty: empty_manifest_rows, cons: fn(acc, req) {
-    list_snoc_item(
-      xs: acc,
-      item: LiveReadSelectionManifestRow {
+  let index = g2_decl_index(decls: decls)
+  list_reverse(xs: fold_list(xs: requests, empty: empty_manifest_rows, cons: fn(acc, req) {
+    Cons {
+      head: LiveReadSelectionManifestRow {
         key: live_read_manifest_row_key(entry_path: req.entry_path, fn_name: req.fn_name),
         projection: live_read_selection_projection_live(
           entry_path: req.entry_path,
@@ -573,16 +604,20 @@ fn live_read_selection_manifest_over(
           subject: subject,
           edges: edges,
           nodes: nodes,
-          decls: decls
+          index: index
         )
-      }
-    )
-  })
+      },
+      tail: acc
+    }
+  }))
 }
 
-data whole_tree_subject_mint_site_law: String = "THE COMPLETE SUBJECT IS MINTED WHERE THE WHOLE-TREE PRODUCERS ARE CALLED, AND NOWHERE ELSE. WholeTreeFactSubject carried a caller-supplied subject_id in an earlier revision, which meant the completeness claim was a string a caller wrote beside a fact list it also chose — the two were never related, so a fixture population could be labelled whole-tree and would then be permitted to decide LocalRead. Making the variant nullary removes the thing a caller could author. It is constructed at exactly one site, live_read_selection_manifest_live, which is also the only site that calls dependency_resolution_facts_live, module_declaration_facts_live and fn_arrow_decl_facts_live — so the subject and the facts have one origin by construction rather than by a caller pairing them correctly. RESIDUE, STATED RATHER THAN CLAIMED AWAY: this makes the subject unforgeable from outside, and it does NOT yet prove that fn_arrow_decl_facts_live covers every module the consuming index holds. Until a control shows a declaration outside the producer entry's own closure appearing in that population, the mint site is a construction wall around an unproven premise, not a proof of coverage. The seed-side identity check is the other half — the manifest is stamped with the producing index's generation and refuses a lookup from any other index."
 
-fn live_read_selection_manifest_live(
+data manifest_accumulator_shape_law: String = "THE MANIFEST FOLD PREPENDS AND REVERSES ONCE; IT MAY NOT SNOC. list_snoc_item is list_append(left: xs, right: singleton), so it TRAVERSES THE ACCUMULATED PREFIX on every row: in a left fold that is quadratic in request count. The measured consequence is what makes this a law rather than a preference. A one-request probe cannot observe the quadratic term at all - it reported 101s and was read as a fixed per-invocation cost - while the ordinary floor builds from a roster of thousands, and the completion receipt is emitted only AFTER the fold and decode. So the failure presents as ZERO completion receipts and almost no executed discovery rows (6 rows against main's 4728 in the same window), which reads like a route never entered rather than an accumulator that cannot finish. The cost shape is therefore fixed regardless of the realized n, per DESIGN section 6 bare-minimum-cost: n is not a time-stable fact, and this n is already thousands. ENFORCED STRUCTURALLY, not by a timing threshold: live_read_selection_manifest_over has no call reachability to list_snoc_item, which is decidable from the Node tree and does not depend on a host being fast enough for a threshold to discriminate. The scale control is the second half, and the mutation that reds it is restoring the snoc form."
+
+data whole_tree_subject_mint_site_law: String = "A DECIDING SUBJECT IS MINTED ONLY WHERE THE LIVE PRODUCERS ARE CALLED, AND NOWHERE ELSE. WholeTreeFactSubject carried a caller-supplied subject_id in an earlier revision, which meant the completeness claim was a string a caller wrote beside a fact list it also chose - the two were never related, so a fixture population could be labelled complete and would then be permitted to decide LocalRead. Making the variant nullary removes the thing a caller could author. THE CALLER SUPPLIES REQUEST IDENTITY, NEVER THE FACT POPULATION AND NEVER THE COMPLETENESS CLAIM. THE PREMISE CHANGED, AND THIS LAW CHANGED WITH IT (operator ruling). The former text admitted its own residue: the mint site kept callers from pairing an arbitrary fact list with a completeness token, and it did NOT prove that fn_arrow_decl_facts_live covered the consuming index. It could not, because that producer reflects the EVALUATING CONTEXT's modules, so covering the index meant evaluating against a union of every request root's closure - which was measured at 179125 ms wall and 178751 ms CPU for a single request, and which failed outright once composed: bare names that bind uniquely inside each entry's own import scope stopped binding across the union, and ONE shared refusal denied classification to all 133 enrolled entries. Coverage is now established rather than assumed. fn_arrow_decl_facts_index_live reads the EXACT bound MultiEntryIndex, and the host joins fact population to index population at identity grain in BOTH directions before any subject is minted - a count comparison cannot stand in for that, because a population with one identity missing and one extra has the same size and is a different tree. COMPLETENESS IS PER BOUND REQUEST, NOT GLOBAL. A module that fails to extract refuses only the requests whose required closure contains it; unrelated requests still classify. Reading the subject as the entire index parsed successfully would recreate the union's own failure in another form, where one unrelated bad module denies every classification. The seed-side identity check remains the other half - a row is stamped with the producing index's generation and refuses a lookup from any other index. NAMING RESIDUE, STATED: the variant is still spelled WholeTreeFactSubject while it now means complete-for-this-bound-request. CompleteBoundRequestFactSubject would be the honest name; the rename is deferred for fan-out, and this sentence exists so the prose does not stay false to avoid touching a load-bearing row. 🟡 dissolve-on: rename WholeTreeFactSubject to CompleteBoundRequestFactSubject across its construction and match sites; DEFERRED FOR FAN-OUT, NOT FOR DOUBT - the meaning is settled and only the spelling lags, so this is a mechanical rename awaiting a window where it does not collide with in-flight work on this carrier. Carrying the marker rather than the sentence alone is the point: a residue stated only in prose is not counted, and an uncounted residue does not rank for fixing."
+
+fn live_read_selection_rows_index_live(
   requests: List<LiveReadSelectionRequest>,
   pool_roots: List<String>,
   importer_roots: List<String>,
@@ -597,9 +632,10 @@ fn live_read_selection_manifest_live(
       exclude_substrings: exclude_substrings
     ),
     nodes: module_declaration_facts_live(pool_roots: pool_roots),
-    decls: fn_arrow_decl_facts_live()
+    decls: fn_arrow_decl_facts_index_live()
   )
 }
+
 
 data g2_live_production_boundary_law: String = "THE LIVE BOUNDARY IS ModuleDependencyEdge, NOT ModuleImportFact (operator ruling, 2026-08-07). v2.lens.module_graph declares dependency_resolution_facts_live the single swappable edge producer and forbids a second one, because the namespace terminal step replaces its BODY when the import grammar is deleted. Two consequences bind this module. Calling import_resolution_facts_live instead would omit the strict-tier reference-derived edges that producer already unions in, so a G2 closure would be narrower than the selection closure that decides the same question one axis over — an under-selection source. And it would bind live classification to the import grammar that is scheduled to disappear, so the namespace swap would silently narrow G2 instead of leaving it untouched, which is exactly what the edge-source-agnostic-by-construction note exists to prevent.
 
@@ -628,7 +664,7 @@ fn live_read_classification_g2_from_edges(
   fn_name: String,
   edges: List<ModuleDependencyEdge>,
   nodes: List<ModuleDeclarationFact>,
-  decls: List<FnArrowDecl>
+  index: G2DeclIndex
 ) -> LiveReadClassification {
   let closure_modules = modules_of_closure_paths(
     closure_paths: dependency_closure(
@@ -642,7 +678,7 @@ fn live_read_classification_g2_from_edges(
     entry_module: entry_module,
     fn_name: fn_name,
     closure_modules: closure_modules,
-    decls: decls
+    index: index
   )
   let carriers = carriers_from_reachable_decls(reachable: reachable)
   if length(xs: carriers) == 0 {
@@ -714,9 +750,9 @@ fn live_read_selection_projection_live(
   subject: G2FactSubject,
   edges: List<ModuleDependencyEdge>,
   nodes: List<ModuleDeclarationFact>,
-  decls: List<FnArrowDecl>
+  index: G2DeclIndex
 ) -> LiveReadSelectionProjection {
-  match bind_g2_root(entry_path: entry_path, fn_name: fn_name, nodes: nodes, decls: decls) {
+  match bind_g2_root(entry_path: entry_path, fn_name: fn_name, nodes: nodes, index: index) {
     G2RootUnbound { cause: cause } =>
       LiveReadSelectionRefused {
         cause: concat("G2 root is not exactly bound, so no classification was run: ", cause)
@@ -730,7 +766,7 @@ fn live_read_selection_projection_live(
           fn_name: fn_name,
           edges: edges,
           nodes: nodes,
-          decls: decls
+          index: index
         )
       )
   }
@@ -956,15 +992,9 @@ type G2RootBinding
   | G2RootUnbound { cause: String }
 
 fn module_facts_for_path(path: String, nodes: List<ModuleDeclarationFact>) -> List<ModuleDeclarationFact> {
-  fold_list(xs: nodes, empty: empty_module_declaration_fact_list, cons: fn(acc, n) {
-    if string_eq(a: n.path, b: path) { list_snoc_item(xs: acc, item: n) } else { acc }
-  })
-}
-
-fn decls_with_qualified_name(qualified: String, decls: List<FnArrowDecl>) -> List<FnArrowDecl> {
-  fold_list(xs: decls, empty: empty_decl_list, cons: fn(acc, d) {
-    if string_eq(a: d.qualified_name, b: qualified) { list_snoc_item(xs: acc, item: d) } else { acc }
-  })
+  list_reverse(xs: fold_list(xs: nodes, empty: empty_module_declaration_fact_list, cons: fn(acc, n) {
+    if string_eq(a: n.path, b: path) { list_cons_item(xs: acc, item: n) } else { acc }
+  }))
 }
 
 fn tail_module_facts(xs: List<ModuleDeclarationFact>) -> List<ModuleDeclarationFact> {
@@ -985,7 +1015,7 @@ fn bind_g2_root(
   entry_path: String,
   fn_name: String,
   nodes: List<ModuleDeclarationFact>,
-  decls: List<FnArrowDecl>
+  index: G2DeclIndex
 ) -> G2RootBinding {
   let module_matches = module_facts_for_path(path: entry_path, nodes: nodes)
   match list_head(xs: module_matches) {
@@ -999,7 +1029,7 @@ fn bind_g2_root(
         }
         HeadAbsent => {
           let qualified = concat(concat(first_module.module, "."), fn_name)
-          let decl_matches = decls_with_qualified_name(qualified: qualified, decls: decls)
+          let decl_matches = decls_bucket(bucket: index.by_qualified_name, key: qualified)
           match list_head(xs: decl_matches) {
             HeadAbsent => G2RootUnbound {
               cause: concat("no fn-arrow declaration is named ", qualified)
