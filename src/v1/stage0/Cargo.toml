@@ -202,6 +202,13 @@ path = "src/bin/floor_skip_discovery_witness.rs"
 name = "p1_cohort_probe"
 path = "src/bin/p1_cohort_probe.rs"
 
+# P3 ClassificationCostStanding harness (#8055): same-subject end-to-end A/B of the
+# classification wall + narrowed prep/exec vs the retired G1 selector + over-selected
+# prep/exec. Branch-neutral measurement plumbing — selector behavior is in cli_run.
+[[bin]]
+name = "p3_cohort_probe"
+path = "src/bin/p3_cohort_probe.rs"
+
 # Per-worker private-footprint decomposition (node://adhoc-2a689db3-964). Requires
 # `--features interp_test_witness` for the force/drop handles on MultiEntryIndex.
 # Measurement harness only: builds one index on one thread, never admits a second
