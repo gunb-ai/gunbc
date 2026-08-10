@@ -4,7 +4,7 @@ import std.realization_schedule { RunnableBatchClamp }
 import std.decl_ref { decl_ref }
 import std.measure { second, millisecond, Minute, minute, minute_count }
 
-import gunbc.fleet_ssh_access { fleet_automation_ssh_key_fingerprint }
+import gunbc.fleet_ssh_access { fleet_automation_ssh_key_fingerprint, fleet_automation_privkey_sm_access_url, fleet_automation_privkey_version_segment }
 import gunbc.ci_release_bins {
   ci_floor_required_artifact_names
 }
@@ -614,11 +614,11 @@ fn gunbc_ci_fleet_key_agent_script() -> String {
     "AGENT_STARTED=0\n",
     "cleanup() { rm -f \"$KEY_FILE\"; if [ \"$AGENT_STARTED\" = 1 ] && [ -n \"$\{SSH_AGENT_PID:-}\" ]; then ssh-agent -k >/dev/null 2>&1 || true; fi; }\n",
     "trap cleanup EXIT\n",
-    "curl -sSf -H \"Authorization: Bearer $WIF_ACCESS_TOKEN\" \"https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/fleet-automation-ssh-key/versions/1:access\" | python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(sys.stdin)[\"payload\"][\"data\"]))' > \"$KEY_FILE\"\n",
+    "curl -sSf -H \"Authorization: Bearer $WIF_ACCESS_TOKEN\" \"", fleet_automation_privkey_sm_access_url(), "\" | python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(sys.stdin)[\"payload\"][\"data\"]))' > \"$KEY_FILE\"\n",
     "chmod 600 \"$KEY_FILE\"\n",
     "EXPECTED_FP=\"", fleet_automation_ssh_key_fingerprint, "\"\n",
     "OBSERVED_FP=\"$(ssh-keygen -y -f \"$KEY_FILE\" | ssh-keygen -lf - | awk '\{print $2}')\"\n",
-    "if [ \"$OBSERVED_FP\" != \"$EXPECTED_FP\" ]; then echo \"ProbeCredentialIdentityMismatch: fetched secret versions/1 fingerprint $OBSERVED_FP != modeled $EXPECTED_FP; contacting NO host\" >&2; exit 1; fi\n",
+    "if [ \"$OBSERVED_FP\" != \"$EXPECTED_FP\" ]; then echo \"ProbeCredentialIdentityMismatch: fetched secret ", fleet_automation_privkey_version_segment(), " fingerprint $OBSERVED_FP != modeled $EXPECTED_FP; contacting NO host\" >&2; exit 1; fi\n",
     "eval \"$(ssh-agent -s)\" >/dev/null\n",
     "AGENT_STARTED=1\n",
     "ssh-add \"$KEY_FILE\" 2>/dev/null\n",

@@ -30,11 +30,36 @@ data fleet_automation_ssh_key: SshPublicKey = SshPublicKey {
 // the fleet key absent while it was present on both hosts).
 data fleet_automation_ssh_key_fingerprint: String = "SHA256:mGT7qJsh36VsVb8OPh3m8br3oHedQHxRukRkW5P0CoQ"
 
+// Version pinned to the blessed version 1 (SECRET-VERSION-LIFECYCLE-0: evidence must name
+// a version; never the moving `latest` alias). This SecretRef is the SINGLE version
+// authority (review 50872, §3): the CI materialization URL and the requirement row's
+// pinned_version both DERIVE from it via the helpers below, so there is one place the pin
+// lives. Rotating to version 2 edits this one field and everything downstream follows.
 data fleet_automation_ssh_privkey_secret: SecretRef = SecretRef {
   project: fleet_secrets_gcp_project,
   secret: "fleet-automation-ssh-key" as NonEmptyStr,
-  version: "latest",
+  version: "1",
   hash_state: HashPending,
+}
+
+// The version path segment ("versions/1") derived from the SecretRef's version field.
+fn fleet_automation_privkey_version_segment() -> String {
+  concat("versions/", fleet_automation_ssh_privkey_secret.version)
+}
+
+// The Secret Manager access URL built entirely from the SecretRef fields — project,
+// secret, and version all come from the one authority, so the CI fetch cannot drift from
+// the modeled reference.
+fn fleet_automation_privkey_sm_access_url() -> String {
+  join([
+    "https://secretmanager.googleapis.com/v1/projects/",
+    fleet_secrets_gcp_project as String,
+    "/secrets/",
+    fleet_automation_ssh_privkey_secret.secret as String,
+    "/",
+    fleet_automation_privkey_version_segment(),
+    ":access",
+  ], "")
 }
 
 type SecretOwner {

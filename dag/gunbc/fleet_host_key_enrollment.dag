@@ -11,7 +11,7 @@ import extdeps.exec.command { ArgvCommand, LocalExec }
 import gunbc.command_runner { run_shell_commands, run_shell_command_capture, ShellCaptureResult }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for, fleet_reach_probe_targets }
-import gunbc.fleet_ssh_access { fleet_automation_ssh_key }
+import gunbc.fleet_ssh_access { fleet_automation_ssh_key, fleet_automation_privkey_version_segment }
 
 // CONVERGE acceptance item 4 (operator directive C, 2026-08-09): the host-key
 // fingerprint ENROLLMENT registry. The executed reach probe landed every fleet host at
@@ -321,7 +321,7 @@ type ProbeIdentitySecretAccessRequirement {
 data probe_identity_secret_access_requirement: ProbeIdentitySecretAccessRequirement = ProbeIdentitySecretAccessRequirement {
   secret_project: "gunbai-secrets",
   secret_name: "fleet-automation-ssh-key",
-  pinned_version: "versions/1",
+  pinned_version: fleet_automation_privkey_version_segment(),
   service_account: "fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com",
   service_account_unique_id: "115150029926436834504",
   wif_principal_set: "principalSet://iam.googleapis.com/projects/582015116396/locations/global/workloadIdentityPools/github-actions/attribute.repository/gunb-ai/gunbc",
