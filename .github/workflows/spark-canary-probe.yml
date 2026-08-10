@@ -78,16 +78,19 @@ jobs:
           chmod 600 "$WORK/id"
           echo "key bytes: $(wc -c < "$WORK/id")  (content never printed)"
 
-          echo "=== 3. WHICH principal does srv5 admit? read-only id(1) ==="
+          echo "=== 3. WHICH principal is admitted? read-only, srv5 AND srv6 ==="
+          for HOSTPAIR in "srv5 192.168.1.222" "srv6 192.168.1.223"; do
+          set -- $HOSTPAIR; HOST=$1; ADDR=$2
+          echo "--- $HOST ($ADDR) ---"
           # A FAILED LOGIN IS DATA, NOT A FATAL. GitHub Actions runs `run:` under `bash -e`, so the
           # first ssh returning non-zero aborted the whole step before any principal line printed --
           # the probe's own harness converted its primary observation into a crash. Each attempt now
           # captures its exit code and continues; the step's success does not depend on any login
           # succeeding, because the question is WHICH principal is admitted, not whether one is.
-          for U in gunbc-fleet ghrunner ubuntu nvidia; do
+          for U in briansrls root dgxuser gunbc-fleet ghrunner ubuntu nvidia; do
             if OUT=$(timeout 10 ssh -i "$WORK/id" -o BatchMode=yes -o StrictHostKeyChecking=no \
               -o ConnectTimeout=5 -o UserKnownHostsFile="$WORK/kh" \
-              "$U@192.168.1.222" 'echo PRINCIPAL=$(id -un) UID=$(id -u)' 2>&1 | tr '\n' ' '); then
+              "$U@$ADDR" 'echo PRINCIPAL=$(id -un) UID=$(id -u)' 2>&1 | tr '\n' ' '); then
               RC=0
             else
               RC=$?
@@ -108,6 +111,7 @@ jobs:
               VERDICT="UNRESOLVED-no-marker-no-denial"
             fi
             echo "  $U -> rc=$RC verdict=$VERDICT out=$OUT"
+          done
           done
           echo "principal probe complete (no login required for this step to succeed)"
 
