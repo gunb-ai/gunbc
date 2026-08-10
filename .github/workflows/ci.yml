@@ -663,7 +663,7 @@ jobs:
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet_receipt_collector.dag --function collect_fleet_convergence_wet
           cat "$ROOT/target/fleet-converge-collect-receipt.txt"
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         timeout-minutes: 5
       - name: Advance refs/fleet/desired to the merged revision (CAS, floor-green only)
         run: |

@@ -607,15 +607,30 @@ fn with_step_if(step: Step, cond: String) -> Step {
   }
 }
 
-// Main-push convergence steps: deploy stage(s) + collect + advance, each guarded to the
-// push event (the job-if already ensures main + ci-success for a push).
+// OBSERVATION UNFUSED FROM ACTUATION (operator route 2026-08-10, CONVERGE acceptance).
+// deploy dashboard and advance refs/fleet/desired are WRITES — they stay push-only, so the
+// job-if's !cancelled() + main + needs.ci.result == 'success' guard is what gates them, and
+// a censored/red floor can never let them run. collect_fleet_convergence is a READ: it
+// collects host receipts and folds a verdict, and reading what the hosts CURRENTLY report
+// does not require THIS commit's floor to be green. So the collector also runs on
+// workflow_dispatch. This is NOT a weakening of the gate — it separates observing fleet
+// state from changing it; a dispatch-collected fold describes state relative to the CURRENT
+// refs/fleet/desired (not the dispatched head), so it never advances anything and never
+// stands in for a green-floor acceptance. It exists because two consecutive main pushes hit
+// the cold whole-corpus floor over-budget, so the push-gated collector never got to run and
+// items 3 (per-host receipts) and 5 (the fold) had zero executions.
+data ci_fleet_convergence_write_if: String = "github.event_name == 'push'"
+data ci_fleet_collect_read_if: String = "github.event_name == 'push' || github.event_name == 'workflow_dispatch'"
+
+// Main-push convergence steps: deploy stage(s) + collect + advance. Deploy and advance are
+// push-only WRITES; collect is a READ admitted on push OR workflow_dispatch (see above).
 fn ci_fleet_convergence_steps() -> List<Step> {
-  map(
-    concat(
-      map(gunbc_ci_deploy_stages, s => ci_deploy_step(stage: s)),
-      [ci_collect_fleet_convergence_step(), ci_advance_fleet_desired_step()]
-    ),
-    st => with_step_if(step: st, cond: "github.event_name == 'push'")
+  concat(
+    map(gunbc_ci_deploy_stages, s => with_step_if(step: ci_deploy_step(stage: s), cond: ci_fleet_convergence_write_if)),
+    [
+      with_step_if(step: ci_collect_fleet_convergence_step(), cond: ci_fleet_collect_read_if),
+      with_step_if(step: ci_advance_fleet_desired_step(), cond: ci_fleet_convergence_write_if)
+    ]
   )
 }
 
@@ -822,10 +837,12 @@ fn ci_fleet_timer_install_step() -> Step {
   }
 }
 
-// Fleet convergence collection (join 5 invocation wire): push-to-main downstream of the
-// required ci check, srv1-pinned (the collector reads published receipts over the typed
-// SSH seam FROM inside the fleet) — the collector->fold composition executes per merged
-// revision and prints the collect receipt + fold verdict.
+// Fleet convergence collection (join 5 invocation wire): a READ, srv1-pinned (the collector
+// reads published receipts over the typed SSH seam FROM inside the fleet and folds the
+// verdict). Its guard admits push OR workflow_dispatch (ci_fleet_collect_read_if) — on push
+// it runs per merged revision downstream of the required ci check; on dispatch it observes
+// current fleet state relative to the CURRENT refs/fleet/desired without advancing anything
+// (unfused from the push-only writes; see ci_fleet_convergence_steps).
 fn ci_collect_fleet_convergence_step() -> Step {
   RunStep {
     name: Present { value: "Collect fleet converge receipts and fold the fleet verdict (collect_fleet_convergence_wet)" },
