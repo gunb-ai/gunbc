@@ -1,13 +1,25 @@
 module v2.workflow.floor_discovery
 
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnly }
+import std.execution_mode { ExecutionMode, Hermetic, Wet, Record, execution_mode_eq }
+import std.content_hash {
+  Fnv1a64Structural,
+  content_hash_atom,
+  content_hash_combine_structural,
+}
+import extdeps.git.object_store {
+  GitObjectId,
+  GitSha1ObjectId,
+  GitSha256ObjectId,
+  git_object_id_eq,
+}
 import v2.workflow.floor_naming_hygiene {
   floor_test_marked_decl_allowed_in_entry,
   floor_wire_contract_decl_allowed_in_entry,
   floor_test_sidecar_suffix,
   floor_wire_contract_sidecar_suffix
 }
-import std.types { String, Bool, List }
+import std.types { String, Bool, List, CommitSha }
 import v2.std.optional {
   Absent,
   Optional,
@@ -15,6 +27,221 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
+
+data floor_discovery_exact_subject_note: String = "The exact subject for the cross-worker discovery result. `tested_commit` and `tested_tree` are two different Git facts: the commit names the revision selected for execution, while the GitObjectId is that commit's tree object. The seed formerly stored `git rev-parse HEAD` in a String field named tested_tree, so a commit id inhabited a tree-named coordinate and a consumer could not distinguish same commit/different tree metadata from an exact source-tree binding. Source roots and execution-authority roots remain ordered semantic lists here; a digest is DERIVED only for the storage/request identity and is never carried beside the lists as a caller-asserted duplicate. Naming-authority and tool identities use the existing Fnv1a64Structural family, matching the floor snapshot's current byte/structural identity realization. This is deliberately floor-discovery grain, not a new generic compute subject beside the execution-spine lane and not the gated WalkPlan executor state machine."
+
+type FloorDiscoverySubject {
+  tested_commit: CommitSha
+  tested_tree: GitObjectId
+  source_roots: List<String>
+  execution_authority_source_roots: List<String>
+  naming_authority_identity: Fnv1a64Structural
+  tool_identity: Fnv1a64Structural
+}
+
+type FloorDiscoveryRequest {
+  subject: FloorDiscoverySubject
+  scan_dirs: List<String>
+  exclude_substrings: List<String>
+  discovery_scope_dirs: List<String>
+  execution_mode: ExecutionMode
+}
+
+type FloorDiscoverySubjectMismatch
+  = FloorDiscoveryTestedCommitMismatch { expected: CommitSha, observed: CommitSha }
+  | FloorDiscoveryTestedTreeMismatch { expected: GitObjectId, observed: GitObjectId }
+  | FloorDiscoverySourceRootsMismatch { expected: List<String>, observed: List<String> }
+  | FloorDiscoveryExecutionAuthorityRootsMismatch { expected: List<String>, observed: List<String> }
+  | FloorDiscoveryNamingAuthorityMismatch {
+      expected: Fnv1a64Structural,
+      observed: Fnv1a64Structural
+    }
+  | FloorDiscoveryToolIdentityMismatch {
+      expected: Fnv1a64Structural,
+      observed: Fnv1a64Structural
+    }
+
+type FloorDiscoverySubjectBinding
+  = FloorDiscoverySubjectBound { subject: FloorDiscoverySubject }
+  | FloorDiscoverySubjectRefused { cause: FloorDiscoverySubjectMismatch }
+
+fn floor_discovery_subject_bind(
+  expected: FloorDiscoverySubject,
+  observed: FloorDiscoverySubject,
+) -> FloorDiscoverySubjectBinding {
+  if expected.tested_commit != observed.tested_commit {
+    FloorDiscoverySubjectRefused {
+      cause: FloorDiscoveryTestedCommitMismatch {
+        expected: expected.tested_commit,
+        observed: observed.tested_commit,
+      }
+    }
+  } else if !git_object_id_eq(left: expected.tested_tree, right: observed.tested_tree) {
+    FloorDiscoverySubjectRefused {
+      cause: FloorDiscoveryTestedTreeMismatch {
+        expected: expected.tested_tree,
+        observed: observed.tested_tree,
+      }
+    }
+  } else if expected.source_roots != observed.source_roots {
+    FloorDiscoverySubjectRefused {
+      cause: FloorDiscoverySourceRootsMismatch {
+        expected: expected.source_roots,
+        observed: observed.source_roots,
+      }
+    }
+  } else if expected.execution_authority_source_roots != observed.execution_authority_source_roots {
+    FloorDiscoverySubjectRefused {
+      cause: FloorDiscoveryExecutionAuthorityRootsMismatch {
+        expected: expected.execution_authority_source_roots,
+        observed: observed.execution_authority_source_roots,
+      }
+    }
+  } else if expected.naming_authority_identity.digest != observed.naming_authority_identity.digest {
+    FloorDiscoverySubjectRefused {
+      cause: FloorDiscoveryNamingAuthorityMismatch {
+        expected: expected.naming_authority_identity,
+        observed: observed.naming_authority_identity,
+      }
+    }
+  } else if expected.tool_identity.digest != observed.tool_identity.digest {
+    FloorDiscoverySubjectRefused {
+      cause: FloorDiscoveryToolIdentityMismatch {
+        expected: expected.tool_identity,
+        observed: observed.tool_identity,
+      }
+    }
+  } else {
+    FloorDiscoverySubjectBound { subject: expected }
+  }
+}
+
+type FloorDiscoveryRequestMismatch
+  = FloorDiscoveryRequestSubjectMismatch { cause: FloorDiscoverySubjectMismatch }
+  | FloorDiscoveryScanDirsMismatch { expected: List<String>, observed: List<String> }
+  | FloorDiscoveryExclusionsMismatch { expected: List<String>, observed: List<String> }
+  | FloorDiscoveryScopeMismatch { expected: List<String>, observed: List<String> }
+  | FloorDiscoveryExecutionModeMismatch { expected: ExecutionMode, observed: ExecutionMode }
+
+type FloorDiscoveryRequestBinding
+  = FloorDiscoveryRequestBound { request: FloorDiscoveryRequest }
+  | FloorDiscoveryRequestRefused { cause: FloorDiscoveryRequestMismatch }
+
+fn floor_discovery_request_bind(
+  expected: FloorDiscoveryRequest,
+  observed: FloorDiscoveryRequest,
+) -> FloorDiscoveryRequestBinding {
+  match floor_discovery_subject_bind(expected: expected.subject, observed: observed.subject) {
+    FloorDiscoverySubjectRefused { cause: c } =>
+      FloorDiscoveryRequestRefused { cause: FloorDiscoveryRequestSubjectMismatch { cause: c } }
+    FloorDiscoverySubjectBound { subject: _ } => {
+      if expected.scan_dirs != observed.scan_dirs {
+        FloorDiscoveryRequestRefused {
+          cause: FloorDiscoveryScanDirsMismatch {
+            expected: expected.scan_dirs,
+            observed: observed.scan_dirs,
+          }
+        }
+      } else if expected.exclude_substrings != observed.exclude_substrings {
+        FloorDiscoveryRequestRefused {
+          cause: FloorDiscoveryExclusionsMismatch {
+            expected: expected.exclude_substrings,
+            observed: observed.exclude_substrings,
+          }
+        }
+      } else if expected.discovery_scope_dirs != observed.discovery_scope_dirs {
+        FloorDiscoveryRequestRefused {
+          cause: FloorDiscoveryScopeMismatch {
+            expected: expected.discovery_scope_dirs,
+            observed: observed.discovery_scope_dirs,
+          }
+        }
+      } else if !execution_mode_eq(left: expected.execution_mode, right: observed.execution_mode) {
+        FloorDiscoveryRequestRefused {
+          cause: FloorDiscoveryExecutionModeMismatch {
+            expected: expected.execution_mode,
+            observed: observed.execution_mode,
+          }
+        }
+      } else {
+        FloorDiscoveryRequestBound { request: expected }
+      }
+    }
+  }
+}
+
+fn floor_discovery_execution_mode_identity(mode: ExecutionMode) -> String {
+  match mode {
+    Hermetic => "Hermetic"
+    Wet => "Wet"
+    Record => "Record"
+  }
+}
+
+fn floor_discovery_tree_identity(tree: GitObjectId) -> String {
+  match tree {
+    GitSha1ObjectId { digest: d } => concat("sha1:", d.hex)
+    GitSha256ObjectId { digest: d } => concat("sha256:", d.hex)
+  }
+}
+
+fn floor_discovery_identity_fold_strings(
+  seed: Fnv1a64Structural,
+  values: List<String>,
+) -> Fnv1a64Structural {
+  fold(
+    values,
+    init: seed,
+    f: fn(acc, value) {
+      content_hash_combine_structural(left: acc, right: content_hash_atom(value: value))
+    }
+  )
+}
+
+fn floor_discovery_request_identity(request: FloorDiscoveryRequest) -> Fnv1a64Structural {
+  let with_commit = content_hash_combine_structural(
+    left: content_hash_atom(value: "floor-discovery-request-identity-v2"),
+    right: content_hash_atom(value: request.subject.tested_commit)
+  )
+  let with_tree = content_hash_combine_structural(
+    left: with_commit,
+    right: content_hash_atom(value: floor_discovery_tree_identity(tree: request.subject.tested_tree))
+  )
+  let with_source_roots = floor_discovery_identity_fold_strings(
+    seed: with_tree,
+    values: request.subject.source_roots,
+  )
+  let with_scan_dirs = floor_discovery_identity_fold_strings(
+    seed: with_source_roots,
+    values: request.scan_dirs,
+  )
+  let with_exclusions = floor_discovery_identity_fold_strings(
+    seed: with_scan_dirs,
+    values: request.exclude_substrings,
+  )
+  let with_scope = floor_discovery_identity_fold_strings(
+    seed: with_exclusions,
+    values: request.discovery_scope_dirs,
+  )
+  let with_mode = content_hash_combine_structural(
+    left: with_scope,
+    right: content_hash_atom(value: floor_discovery_execution_mode_identity(mode: request.execution_mode))
+  )
+  let with_execution_authority = floor_discovery_identity_fold_strings(
+    seed: with_mode,
+    values: request.subject.execution_authority_source_roots,
+  )
+  let with_naming_authority = content_hash_combine_structural(
+    left: with_execution_authority,
+    right: request.subject.naming_authority_identity,
+  )
+  content_hash_combine_structural(
+    left: with_naming_authority,
+    right: request.subject.tool_identity,
+  )
+}
+
+data floor_discovery_exact_subject_seed_scaffold_note: String = "DECLARED SCAFFOLD for the existing Rust snapshot transport only. `src/v1/stage0/src/cli_run/floor_discovery_snapshot.rs` observes tested_commit and the format-qualified tree object selected by that commit, refuses cross-process sharing when tracked or untracked worktree bytes differ from the selected commit tree, derives this request identity in the field order above, and refuses a coordinated snapshot whose complete request differs. It does not evaluate this model per floor request because doing so would resolve another compiler world inside the path whose duplicate setup this lane removes. The executable model witness pins the authority and Rust unit controls pin the mirror. DISSOLVE-ON: generated host-effect transport can construct FloorDiscoveryRequest and its typed binding directly; then the Rust request/terminal mirror and this scaffold note delete."
 
 type FloorDiscoveryRow {
   label: String
