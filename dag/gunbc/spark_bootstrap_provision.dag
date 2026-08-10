@@ -14,8 +14,6 @@ import extdeps.cloud.gcp.secret_manager {
   secret_manager_effect_required_permissions
 }
 
-import std.disposition { Disposition, Scaffold, RealizationDispatch }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply { HostIdentity }
 import v2.std.operation_argv { OperationRef }
 
@@ -1010,39 +1008,3 @@ fn srv5_privilege_observation() -> HostPrivilegeObservation {
   }
 }
 
-// THE SPARK SERVING DEPENDENCY INSTALL HAS NO REALIZATION. The scaffold that carried it was
-// DELETED rather than repaired (operator ruling, 2026-08-10).
-//
-// The retired spark-serve-install.yml provisioned the serving runtime with an imperative
-// `pip install 'vllm==0.26.0'` inside an ssh heredoc in hand-authored YAML. It owned the
-// INVOCATION -- nothing was hand-run, the credential was materialized through WIF at job time and
-// never entered argv -- but it did NOT own the install as a modeled effect. That is shell-in-yaml
-// at a runtime-present site: exactly the class the shell -> intent routing forbids.
-//
-// THE RULING THAT RETIRED IT, which is stronger than the routing rule and supersedes the
-// scaffold's own justification: HAND-WRITING A WORKFLOW IS HAND-APPLYING. A workflow owning the
-// invocation buys nothing if a person authored the effects it invokes -- the modeled route was
-// bypassed either way, and the YAML only moved the hand from a terminal to a file. It is also
-// throwaway by construction: anything hand-authored here must be deleted the moment the emitted
-// route lands, so writing it spends the author's time and every later reader's on work with a
-// known expiry. The correct shape already existed and was ignored -- ci.yml is emitted from .dag
-// and its srv1 deploy step is a two-line launcher around a `gunbc run --entry ... --function`
-// invocation, with the effects modeled behind it.
-//
-// Registered rather than described, because DESIGN requires every scaffold to land with a named
-// dissolution trigger and debt that is only described is debt nobody schedules. Counted here, it
-// is prioritizable; in a message it is a paragraph.
-data spark_serving_dependency_install_dissolution_trigger: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "gunbc.host_effect_realize",
-    decl_name: "host_effect_apply",
-    field: WholeDeclaration
-  }
-}
-
-// DISSOLVES WHEN the venv construction, the pinned package install, and the systemd --user unit
-// write are each a typed effect routed through host_effect_apply, so the serving runtime is
-// provisioned by the same authenticated transport dispatch every other host effect uses and the
-// YAML carries no shell leaf. Until then the imperative install stands, loud and counted.
-data spark_serving_dependency_install_scaffold_note: String = "The pinned revision and port are already typed facts; what remains shell is the sequence that applies them. Bind is host_effect_apply because the Spark is a runtime-present site: the fleet key already reaches it over an authenticated transport, so the install has no foreign-executor or pre-runtime-bootstrap excuse for rendering bash. The loopback bind is deliberate and is NOT part of this scaffold: 127.0.0.1:8000 keeps the inference endpoint unreachable to anything lacking the fleet key, and widening it to the LAN would trade the contract word authenticated for reachability. A LAN-reachable endpoint is a separate modeled decision with its own authorization story, never a canary shortcut."
