@@ -5474,14 +5474,33 @@ fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         return Ok(v);
     }
 
-    match (val, target_name.as_str()) {
-        (Value::Int(n), "Float") => Ok(Value::Float(n as f64)),
-        (Value::Float(n), "Int") => Ok(Value::Int(n as i64)),
-        (Value::Int(n), "String") => Ok(Value::Str(n.to_string())),
-        (Value::Float(n), "String") => Ok(Value::Str(n.to_string())),
-        (Value::Bool(b), "String") => Ok(Value::Str(b.to_string())),
-        (v, t) => Err(InterpError::TypeError {
-            msg: format!("cannot cast {} to {}", v.type_label(), t),
+    match target_name.as_str() {
+        "Float" => match val {
+            Value::Int(n) => Ok(Value::Float(n as f64)),
+            v => Err(InterpError::TypeError {
+                msg: format!("cannot cast {} to Float", v.type_label()),
+            }),
+        },
+        "Int" => match val {
+            Value::Float(n) => Ok(Value::Int(n as i64)),
+            v => Err(InterpError::TypeError {
+                msg: format!("cannot cast {} to Int", v.type_label()),
+            }),
+        },
+        "String" => match val {
+            Value::Int(n) => Ok(Value::Str(n.to_string())),
+            Value::Float(n) => Ok(Value::Str(n.to_string())),
+            Value::Bool(b) => Ok(Value::Str(b.to_string())),
+            Value::Str(s) => Ok(Value::Str(s)),
+            // Corpus wire/debug casts for structured values — not the blanket Display
+            // fallback that silently stringified List/Map (§5 fabricated plausible output).
+            Value::Variant { .. } | Value::Record { .. } => Ok(Value::Str(format!("{}", val))),
+            v => Err(InterpError::TypeError {
+                msg: format!("cannot cast {} to String", v.type_label()),
+            }),
+        },
+        t => Err(InterpError::TypeError {
+            msg: format!("cannot cast {} to {}", val.type_label(), t),
         }),
     }
 }
