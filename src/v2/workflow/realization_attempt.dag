@@ -353,9 +353,13 @@ fn census_collect(root: Node, acc: List<String>) -> List<String> {
   fold(root.children, init: here, f: fn(inner, e) { census_collect(root: e.target, acc: inner) })
 }
 
+fn census_line(entry: String, fn_col: String, phase_col: String, cause_col: String, located_col: String) -> String {
+  concat(entry, concat("	", concat(fn_col, concat("	", concat(phase_col, concat("	", concat(cause_col, concat("	", located_col))))))))
+}
+
 fn census_lines_for_decl(decl: Node, entry: String, fn_name: Symbol) -> List<String> {
   fold_list(xs: census_collect(root: decl, acc: []), empty: no_census_lines(), cons: fn(acc, prod) {
-    concat(acc, [concat(entry, concat("	", concat(symbol_lexeme(sym: fn_name), concat("	", prod))))])
+    concat(acc, [census_line(entry: entry, fn_col: symbol_lexeme(sym: fn_name), phase_col: "construct", cause_col: prod, located_col: "")])
   })
 }
 
@@ -371,15 +375,21 @@ fn census_rows(
 ) -> List<String> {
   match assemble_program_from_ingest(ingest: ingest, admission: admission, lm: dag_language_model()) {
     Rejected { diagnostics: ds } =>
-      [concat(entry, concat("	(census)	assembly_refused_", symbol_lexeme(sym: first_located_cause(ds: ds))))]
+      [census_line(
+        entry: entry,
+        fn_col: "(census)",
+        phase_col: "assembly_refused",
+        cause_col: symbol_lexeme(sym: first_located_cause(ds: ds)),
+        located_col: first_located_file(ds: ds)
+      )]
     Accepted { value: program, diagnostics: _ } =>
       match list_at_optional(xs: module_roots_matching(program: program, module_qn: admission.subject.name), index: 0) {
-        Absent => [concat(entry, "	(census)	entry_module_absent")]
+        Absent => [census_line(entry: entry, fn_col: "(census)", phase_col: "assembly", cause_col: "entry_module_absent", located_col: "")]
         Present { value: module_root } =>
           fold_list(xs: fn_names, empty: no_census_lines(), cons: fn(acc, fn_name) {
             let joined = decl_targets_named_in(root: module_root, fn_name: fn_name)
             match list_at_optional(xs: joined, index: 0) {
-              Absent => concat(acc, [concat(entry, concat("	", concat(symbol_lexeme(sym: fn_name), "	identity_absent")))])
+              Absent => concat(acc, [census_line(entry: entry, fn_col: symbol_lexeme(sym: fn_name), phase_col: "join", cause_col: "identity_absent", located_col: "")])
               Present { value: decl } => concat(acc, census_lines_for_decl(decl: decl, entry: entry, fn_name: fn_name))
             }
           })
