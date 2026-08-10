@@ -1,10 +1,36 @@
 module test.claim.floor_materialization_witness
 
 import std.types { Bool, Int, List, String }
-import std.realization_schedule { ScheduleWitnessEntry }
+import std.content_hash {
+  Fnv1a64StructuralDigestHex,
+  content_hash_atom,
+  content_hash_eq_structural,
+  structural_content_hash
+}
+import std.realization_schedule {
+  ScheduleWitnessEntry,
+  schedule_witness_entry_list_eq,
+  scoped_witness_source_roots_digest
+}
+import extdeps.git.object_store { git_sha1_object_id }
 import gunbc.ci_gate { Gate }
+import gunbc.diff_baseline { ExactReplayBaseline }
 import gunbc.commit_workflow { commit_gate_roster, project_ci_floor_gates, project_ci_floor_witness_entries }
+import gunbc.ci_layer_roots { witness_layer_roots, v1_claim_scoped_witness_batch }
 import gunbc.floor_materialization {
+  PreparedFloorDiscoveryIdentity,
+  PreparedFloorOrderedRootViewsIdentity,
+  PreparedFloorSubjectIdentity,
+  PreparedFloorScratchIdentity,
+  PreparedFloorOrdinaryScratch,
+  PreparedFloorScopedScratch,
+  PreparedFloorOrdinaryScratchActive,
+  PreparedFloorOrdinaryScratchReleased,
+  PreparedFloorScopedScratchActive,
+  PreparedFloorPhaseRefused,
+  PreparedFloorReferenceProviderUnavailable,
+  PreparedFloorScopedScratchStartedBeforeOrdinaryRelease,
+  PreparedFloorScopedScratchIdentityReused,
   floor_index_build_identity,
   floor_index_build_share_provider_id,
   floor_index_build_materialization,
@@ -14,13 +40,65 @@ import gunbc.floor_materialization {
   floor_typecheck_store_share_provider_id,
   floor_typecheck_store_materialization,
   floor_typecheck_store_materialization_without_provider,
-  floor_typecheck_store_reader_count
+  floor_typecheck_store_reader_count,
+  floor_prepared_subject_share_provider_id,
+  floor_prepared_subject_value_identity,
+  floor_prepared_subject_materialization,
+  floor_prepared_subject_materialization_without_provider,
+  floor_prepared_subject_reader_count,
+  prepared_floor_subject_content_identity,
+  prepared_floor_discovery_content_identity,
+  prepared_floor_ordered_root_views_content_identity,
+  prepared_floor_subject_identity_eq,
+  prepared_floor_walk_root_view,
+  prepared_floor_scoped_root_view,
+  prepared_floor_root_view_subject,
+  prepared_floor_root_view_source_roots,
+  prepared_floor_root_view_source_roots_digest,
+  prepared_floor_root_view_identity_eq,
+  prepared_floor_initialize,
+  prepared_floor_begin_ordinary,
+  prepared_floor_release_ordinary,
+  prepared_floor_begin_scoped
 }
 import std.materialization_ladder {
   value_verdict_is_shared_by_reference,
   value_verdict_is_refused_needing_reference
 }
+import v2.std.collection { Absent, Present }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.workflow.floor_diff_observe {
+  FloorDiffComparisonReadout,
+  DirectComparison,
+  ComparisonReadoutRefused
+}
+import v2.workflow.frozen_scoped_population {
+  FrozenScopedComparisonHeadObservation,
+  FrozenScopedComparisonHeadResolved,
+  FrozenScopedComparisonHeadResolutionRefused,
+  FrozenScopedPopulationPostselection,
+  FrozenScopedPopulationRefused,
+  FrozenScopedPopulationComparisonRefused,
+  FrozenScopedPopulationComparisonHeadResolutionRefused,
+  FrozenScopedPopulationComparisonSelectedHeadMismatch,
+  FrozenScopedPopulationComparisonHeadCommitMismatch,
+  FrozenScopedPopulationDuplicateCandidateIdentity,
+  FrozenScopedPopulationDuplicateSelectedIdentity,
+  FrozenScopedPopulationDuplicateSkippedIdentity,
+  FrozenScopedPopulationSelectedSkippedOverlap,
+  FrozenScopedPopulationSelectedIdentityUnknown,
+  FrozenScopedPopulationSkippedIdentityUnknown,
+  FrozenScopedPopulationPartitionMissingIdentity,
+  FrozenScopedPopulationSubjectUnavailable,
+  FrozenScopedPopulationPreparedSubjectMismatch,
+  FrozenScopedPopulationExecutionDuplicateIdentity,
+  FrozenScopedPopulationExecutionMissingIdentity,
+  FrozenScopedPopulationExecutionUnexpectedIdentity,
+  FrozenScopedPreparedSubjectObserved,
+  FrozenScopedPreparedSubjectUnavailable,
+  freeze_scoped_population,
+  reconcile_frozen_scoped_execution
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -74,4 +152,781 @@ test fn floor_typecheck_store_reds_without_reference_provider() -> Bool {
     v: floor_typecheck_store_materialization_without_provider(),
     identity: floor_typecheck_store_identity
   )
+}
+
+fn prepared_floor_subject_fixture() -> PreparedFloorSubjectIdentity? {
+  match git_sha1_object_id(hex: "4b825dc642cb6eb9a060e54bf8d69288fbee4904") {
+    Absent => none
+    Present { value: tree } => Present {
+      value: PreparedFloorSubjectIdentity {
+        tested_commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        tested_tree: tree,
+        tool_identity: content_hash_atom(value: "prepared-floor-tool-fixture"),
+        discovery: PreparedFloorDiscoveryIdentity {
+          request_identity: content_hash_atom(value: "prepared-floor-request-fixture"),
+          roster_identity: content_hash_atom(value: "prepared-floor-roster-fixture"),
+          module_graph_facts_identity: content_hash_atom(
+            value: "prepared-floor-module-graph-facts-fixture"
+          ),
+          payload_identity: content_hash_atom(value: "prepared-floor-payload-fixture")
+        },
+        root_views: PreparedFloorOrderedRootViewsIdentity {
+          walk_source_roots: witness_layer_roots,
+          scoped_source_roots: v1_claim_scoped_witness_batch.source_roots
+        }
+      }
+    }
+  }
+}
+
+test fn prepared_floor_rust_wire_matches_modeled_content_identity() -> Bool {
+  match git_sha1_object_id(hex: "2222222222222222222222222222222222222222") {
+    Absent => false
+    Present { value: tree } => {
+      let subject = PreparedFloorSubjectIdentity {
+        tested_commit: "1111111111111111111111111111111111111111",
+        tested_tree: tree,
+        tool_identity: structural_content_hash(
+          digest: "0000000000000005" as Fnv1a64StructuralDigestHex
+        ),
+        discovery: PreparedFloorDiscoveryIdentity {
+          request_identity: structural_content_hash(
+            digest: "0000000000000001" as Fnv1a64StructuralDigestHex
+          ),
+          roster_identity: structural_content_hash(
+            digest: "0000000000000002" as Fnv1a64StructuralDigestHex
+          ),
+          module_graph_facts_identity: structural_content_hash(
+            digest: "0000000000000003" as Fnv1a64StructuralDigestHex
+          ),
+          payload_identity: structural_content_hash(
+            digest: "0000000000000004" as Fnv1a64StructuralDigestHex
+          )
+        },
+        root_views: PreparedFloorOrderedRootViewsIdentity {
+          walk_source_roots: ["dag", "src/v2"],
+          scoped_source_roots: ["dag", "src/v1"]
+        }
+      }
+      content_hash_eq_structural(
+        left: prepared_floor_subject_content_identity(subject: subject),
+        right: structural_content_hash(
+          digest: "63b6a26d156c1119" as Fnv1a64StructuralDigestHex
+        )
+      )
+        && content_hash_eq_structural(
+          left: prepared_floor_ordered_root_views_content_identity(
+            root_views: subject.root_views
+          ),
+          right: structural_content_hash(
+            digest: "5062b329c1182810" as Fnv1a64StructuralDigestHex
+          )
+        )
+    }
+  }
+}
+
+fn prepared_floor_ordinary_scratch_fixture(
+  subject: PreparedFloorSubjectIdentity
+) -> PreparedFloorOrdinaryScratch {
+  PreparedFloorOrdinaryScratch {
+    subject: subject,
+    identity: "ordinary-population-scratch" as PreparedFloorScratchIdentity
+  }
+}
+
+fn prepared_floor_scoped_scratch_fixture(
+  subject: PreparedFloorSubjectIdentity
+) -> PreparedFloorScopedScratch {
+  PreparedFloorScopedScratch {
+    subject: subject,
+    identity: "scoped-population-scratch" as PreparedFloorScratchIdentity
+  }
+}
+
+fn prepared_floor_reused_scoped_scratch_fixture(
+  subject: PreparedFloorSubjectIdentity
+) -> PreparedFloorScopedScratch {
+  PreparedFloorScopedScratch {
+    subject: subject,
+    identity: "ordinary-population-scratch" as PreparedFloorScratchIdentity
+  }
+}
+
+test fn prepared_floor_subject_identity_is_bound_to_commit_tree_and_tool() -> Bool {
+  match prepared_floor_subject_fixture() {
+    Absent => false
+    Present { value: base } =>
+      match git_sha1_object_id(hex: "1111111111111111111111111111111111111111") {
+        Absent => false
+        Present { value: other_tree } => {
+          let changed_commit = PreparedFloorSubjectIdentity {
+            tested_commit: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            tested_tree: base.tested_tree,
+            tool_identity: base.tool_identity,
+            discovery: base.discovery,
+            root_views: base.root_views
+          }
+          let changed_tree = PreparedFloorSubjectIdentity {
+            tested_commit: base.tested_commit,
+            tested_tree: other_tree,
+            tool_identity: base.tool_identity,
+            discovery: base.discovery,
+            root_views: base.root_views
+          }
+          let changed_tool = PreparedFloorSubjectIdentity {
+            tested_commit: base.tested_commit,
+            tested_tree: base.tested_tree,
+            tool_identity: content_hash_atom(value: "different-prepared-floor-tool"),
+            discovery: base.discovery,
+            root_views: base.root_views
+          }
+          !content_hash_eq_structural(
+            left: prepared_floor_subject_content_identity(subject: base),
+            right: prepared_floor_subject_content_identity(subject: changed_commit)
+          )
+            && !content_hash_eq_structural(
+            left: prepared_floor_subject_content_identity(subject: base),
+            right: prepared_floor_subject_content_identity(subject: changed_tree)
+          )
+            && !content_hash_eq_structural(
+              left: prepared_floor_subject_content_identity(subject: base),
+              right: prepared_floor_subject_content_identity(subject: changed_tool)
+            )
+        }
+      }
+  }
+}
+
+test fn prepared_floor_subject_identity_changes_with_discovery_and_ordered_root_views() -> Bool {
+  match prepared_floor_subject_fixture() {
+    Absent => false
+    Present { value: base } => {
+      let changed_request = PreparedFloorDiscoveryIdentity {
+        request_identity: content_hash_atom(value: "different-prepared-floor-request"),
+        roster_identity: base.discovery.roster_identity,
+        module_graph_facts_identity: base.discovery.module_graph_facts_identity,
+        payload_identity: base.discovery.payload_identity
+      }
+      let changed_roster = PreparedFloorDiscoveryIdentity {
+        request_identity: base.discovery.request_identity,
+        roster_identity: content_hash_atom(value: "different-prepared-floor-roster"),
+        module_graph_facts_identity: base.discovery.module_graph_facts_identity,
+        payload_identity: base.discovery.payload_identity
+      }
+      let changed_facts = PreparedFloorDiscoveryIdentity {
+        request_identity: base.discovery.request_identity,
+        roster_identity: base.discovery.roster_identity,
+        module_graph_facts_identity: content_hash_atom(
+          value: "different-prepared-floor-module-graph-facts"
+        ),
+        payload_identity: base.discovery.payload_identity
+      }
+      let changed_payload = PreparedFloorDiscoveryIdentity {
+        request_identity: base.discovery.request_identity,
+        roster_identity: base.discovery.roster_identity,
+        module_graph_facts_identity: base.discovery.module_graph_facts_identity,
+        payload_identity: content_hash_atom(value: "different-prepared-floor-payload")
+      }
+      let changed_root_views = PreparedFloorOrderedRootViewsIdentity {
+        walk_source_roots: ["src/v2", "dag"],
+        scoped_source_roots: base.root_views.scoped_source_roots
+      }
+      let changed_discovery_subject = PreparedFloorSubjectIdentity {
+        tested_commit: base.tested_commit,
+        tested_tree: base.tested_tree,
+        tool_identity: base.tool_identity,
+        discovery: changed_payload,
+        root_views: base.root_views
+      }
+      let changed_root_views_subject = PreparedFloorSubjectIdentity {
+        tested_commit: base.tested_commit,
+        tested_tree: base.tested_tree,
+        tool_identity: base.tool_identity,
+        discovery: base.discovery,
+        root_views: changed_root_views
+      }
+      !content_hash_eq_structural(
+        left: prepared_floor_discovery_content_identity(discovery: base.discovery),
+        right: prepared_floor_discovery_content_identity(discovery: changed_request)
+      )
+        && !content_hash_eq_structural(
+          left: prepared_floor_discovery_content_identity(discovery: base.discovery),
+          right: prepared_floor_discovery_content_identity(discovery: changed_roster)
+        )
+        && !content_hash_eq_structural(
+          left: prepared_floor_discovery_content_identity(discovery: base.discovery),
+          right: prepared_floor_discovery_content_identity(discovery: changed_facts)
+        )
+        && !content_hash_eq_structural(
+          left: prepared_floor_discovery_content_identity(discovery: base.discovery),
+          right: prepared_floor_discovery_content_identity(discovery: changed_payload)
+        )
+        && !content_hash_eq_structural(
+          left: prepared_floor_ordered_root_views_content_identity(
+            root_views: base.root_views
+          ),
+          right: prepared_floor_ordered_root_views_content_identity(
+            root_views: changed_root_views
+          )
+        )
+        && !content_hash_eq_structural(
+          left: prepared_floor_subject_content_identity(subject: base),
+          right: prepared_floor_subject_content_identity(subject: changed_discovery_subject)
+        )
+        && !content_hash_eq_structural(
+          left: prepared_floor_subject_content_identity(subject: base),
+          right: prepared_floor_subject_content_identity(subject: changed_root_views_subject)
+        )
+    }
+  }
+}
+
+test fn prepared_floor_subject_is_shared_by_reference_across_both_populations() -> Bool {
+  match prepared_floor_subject_fixture() {
+    Absent => false
+    Present { value: subject } => value_verdict_is_shared_by_reference(
+      v: floor_prepared_subject_materialization(subject: subject),
+      identity: floor_prepared_subject_value_identity(subject: subject),
+      provider_id: floor_prepared_subject_share_provider_id,
+      reader_count: floor_prepared_subject_reader_count()
+    ) && (floor_prepared_subject_reader_count() == 2)
+  }
+}
+
+test fn prepared_floor_subject_missing_provider_refuses_and_cannot_initialize() -> Bool {
+  match prepared_floor_subject_fixture() {
+    Absent => false
+    Present { value: subject } => {
+      let missing = floor_prepared_subject_materialization_without_provider(subject: subject)
+      value_verdict_is_refused_needing_reference(
+        v: missing,
+        identity: floor_prepared_subject_value_identity(subject: subject)
+        )
+        && match prepared_floor_initialize(
+          subject: subject,
+          materialization: missing
+        ) {
+          PreparedFloorPhaseRefused {
+            subject: _,
+            cause: PreparedFloorReferenceProviderUnavailable
+          } => true
+          _ => false
+        }
+    }
+  }
+}
+
+test fn prepared_floor_root_views_keep_exact_ordered_universes_on_one_subject() -> Bool {
+  match prepared_floor_subject_fixture() {
+    Absent => false
+    Present { value: subject } => {
+      let walk = prepared_floor_walk_root_view(subject: subject)
+      let scoped = prepared_floor_scoped_root_view(subject: subject)
+      let same_roots_subject = PreparedFloorSubjectIdentity {
+          tested_commit: subject.tested_commit,
+          tested_tree: subject.tested_tree,
+          tool_identity: subject.tool_identity,
+          discovery: subject.discovery,
+          root_views: PreparedFloorOrderedRootViewsIdentity {
+            walk_source_roots: witness_layer_roots,
+            scoped_source_roots: witness_layer_roots
+          }
+        }
+      let reordered_walk_subject = PreparedFloorSubjectIdentity {
+          tested_commit: subject.tested_commit,
+          tested_tree: subject.tested_tree,
+          tool_identity: subject.tool_identity,
+          discovery: subject.discovery,
+          root_views: PreparedFloorOrderedRootViewsIdentity {
+            walk_source_roots: ["src/v2", "dag"],
+            scoped_source_roots: v1_claim_scoped_witness_batch.source_roots
+          }
+        }
+      prepared_floor_subject_identity_eq(
+        left: prepared_floor_root_view_subject(view: walk),
+        right: prepared_floor_root_view_subject(view: scoped)
+      )
+        && (prepared_floor_root_view_source_roots(view: walk) == witness_layer_roots)
+        && (prepared_floor_root_view_source_roots(view: scoped) == ["dag", "src/v1"])
+        && content_hash_eq_structural(
+          left: prepared_floor_root_view_source_roots_digest(view: walk),
+          right: scoped_witness_source_roots_digest(source_roots: witness_layer_roots)
+        )
+        && content_hash_eq_structural(
+          left: prepared_floor_root_view_source_roots_digest(view: scoped),
+          right: scoped_witness_source_roots_digest(
+            source_roots: v1_claim_scoped_witness_batch.source_roots
+          )
+        )
+        && !prepared_floor_root_view_identity_eq(
+          left: prepared_floor_walk_root_view(subject: same_roots_subject),
+          right: prepared_floor_scoped_root_view(subject: same_roots_subject)
+        )
+        && !prepared_floor_root_view_identity_eq(
+          left: walk,
+          right: prepared_floor_walk_root_view(subject: reordered_walk_subject)
+        )
+    }
+  }
+}
+
+fn frozen_scoped_comparison_fixture(
+  subject: PreparedFloorSubjectIdentity
+) -> FloorDiffComparisonReadout {
+  DirectComparison {
+    base: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    head: "HEAD",
+    kind: ExactReplayBaseline
+  }
+}
+
+fn frozen_scoped_head_resolution_fixture(
+  subject: PreparedFloorSubjectIdentity
+) -> FrozenScopedComparisonHeadObservation {
+  FrozenScopedComparisonHeadResolved {
+    selected_head: "HEAD",
+    observed_commit: subject.tested_commit
+  }
+}
+
+fn reverse_scoped_identities(
+  identities: List<ScheduleWitnessEntry>
+) -> List<ScheduleWitnessEntry> {
+  identities.reverse()
+}
+
+test fn frozen_scoped_population_binds_postselection_and_preserves_execution_order() -> Bool {
+  match prepared_floor_subject_fixture() {
+    Absent => false
+    Present { value: subject } => {
+      let candidates = v1_claim_scoped_witness_batch.entries
+      if candidates.count() == 0 {
+        false
+      } else {
+        let selected = candidates.skip(n: 1)
+        let skipped = [candidates.first()]
+        let frozen = freeze_scoped_population(
+          subject: subject,
+          comparison: frozen_scoped_comparison_fixture(subject: subject),
+          head_observation: frozen_scoped_head_resolution_fixture(subject: subject),
+          candidates: candidates,
+          selected: selected,
+          skipped: skipped
+        )
+        match reconcile_frozen_scoped_execution(
+          frozen: frozen,
+          subject_observation: FrozenScopedPreparedSubjectObserved { subject: subject },
+          execution_identities: reverse_scoped_identities(identities: selected)
+        ) {
+          FrozenScopedPopulationPostselection {
+            subject: frozen_subject,
+            comparison: comparison,
+            head_observation: frozen_head_observation,
+            candidates: frozen_candidates,
+            selected: frozen_selected,
+            skipped: frozen_skipped
+          } =>
+            prepared_floor_subject_identity_eq(left: frozen_subject, right: subject)
+              && schedule_witness_entry_list_eq(left: frozen_candidates, right: candidates)
+              && schedule_witness_entry_list_eq(left: frozen_selected, right: selected)
+              && schedule_witness_entry_list_eq(left: frozen_skipped, right: skipped)
+              && match comparison {
+                DirectComparison { base: _, head: head, kind: _ } =>
+                  (head == "HEAD")
+                    && match frozen_head_observation {
+                      FrozenScopedComparisonHeadResolved {
+                        selected_head: selected_head,
+                        observed_commit: observed_commit
+                      } =>
+                        (selected_head == "HEAD")
+                          && (observed_commit == subject.tested_commit)
+                      _ => false
+                    }
+                _ => false
+              }
+          _ => false
+        }
+      }
+    }
+  }
+}
+
+test fn frozen_scoped_population_reds_on_comparison_refusal() -> Bool {
+  match prepared_floor_subject_fixture() {
+    Absent => false
+    Present { value: subject } => match freeze_scoped_population(
+      subject: subject,
+      comparison: ComparisonReadoutRefused { reason: "fixture refusal" },
+      head_observation: frozen_scoped_head_resolution_fixture(subject: subject),
+      candidates: v1_claim_scoped_witness_batch.entries,
+      selected: v1_claim_scoped_witness_batch.entries,
+      skipped: []
+    ) {
+      FrozenScopedPopulationRefused {
+        cause: FrozenScopedPopulationComparisonRefused
+      } => true
+      _ => false
+    }
+  }
+}
+
+test fn frozen_scoped_population_reds_on_replay_new_head() -> Bool {
+  match prepared_floor_subject_fixture() {
+    Absent => false
+    Present { value: subject } => match freeze_scoped_population(
+      subject: subject,
+      comparison: DirectComparison {
+        base: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        head: "cccccccccccccccccccccccccccccccccccccccc",
+        kind: ExactReplayBaseline
+      },
+      head_observation: frozen_scoped_head_resolution_fixture(subject: subject),
+      candidates: v1_claim_scoped_witness_batch.entries,
+      selected: v1_claim_scoped_witness_batch.entries,
+      skipped: []
+    ) {
+      FrozenScopedPopulationRefused {
+        cause: FrozenScopedPopulationComparisonSelectedHeadMismatch
+      } => true
+      _ => false
+    }
+  }
+}
+
+test fn frozen_scoped_population_reds_on_comparison_head_resolution_refusal() -> Bool {
+  match prepared_floor_subject_fixture() {
+    Absent => false
+    Present { value: subject } => match freeze_scoped_population(
+      subject: subject,
+      comparison: frozen_scoped_comparison_fixture(subject: subject),
+      head_observation: FrozenScopedComparisonHeadResolutionRefused {
+        reason: "fixture resolution refusal"
+      },
+      candidates: v1_claim_scoped_witness_batch.entries,
+      selected: v1_claim_scoped_witness_batch.entries,
+      skipped: []
+    ) {
+      FrozenScopedPopulationRefused {
+        cause: FrozenScopedPopulationComparisonHeadResolutionRefused
+      } => true
+      _ => false
+    }
+  }
+}
+
+test fn frozen_scoped_population_reds_on_resolved_head_commit_mismatch() -> Bool {
+  match prepared_floor_subject_fixture() {
+    Absent => false
+    Present { value: subject } => match freeze_scoped_population(
+      subject: subject,
+      comparison: frozen_scoped_comparison_fixture(subject: subject),
+      head_observation: FrozenScopedComparisonHeadResolved {
+        selected_head: "HEAD",
+        observed_commit: "cccccccccccccccccccccccccccccccccccccccc"
+      },
+      candidates: v1_claim_scoped_witness_batch.entries,
+      selected: v1_claim_scoped_witness_batch.entries,
+      skipped: []
+    ) {
+      FrozenScopedPopulationRefused {
+        cause: FrozenScopedPopulationComparisonHeadCommitMismatch
+      } => true
+      _ => false
+    }
+  }
+}
+
+test fn frozen_scoped_execution_reds_on_replay_old_frozen_after_new_prepared_tree() -> Bool {
+  match prepared_floor_subject_fixture() {
+    Absent => false
+    Present { value: subject } =>
+      match git_sha1_object_id(hex: "1111111111111111111111111111111111111111") {
+        Absent => false
+        Present { value: new_tree } => {
+          let candidates = v1_claim_scoped_witness_batch.entries
+          let new_subject = PreparedFloorSubjectIdentity {
+            tested_commit: "cccccccccccccccccccccccccccccccccccccccc",
+            tested_tree: new_tree,
+            tool_identity: subject.tool_identity,
+            discovery: subject.discovery,
+            root_views: subject.root_views
+          }
+          match reconcile_frozen_scoped_execution(
+            frozen: freeze_scoped_population(
+              subject: subject,
+              comparison: frozen_scoped_comparison_fixture(subject: subject),
+              head_observation: frozen_scoped_head_resolution_fixture(subject: subject),
+              candidates: candidates,
+              selected: candidates,
+              skipped: []
+            ),
+            subject_observation: FrozenScopedPreparedSubjectObserved {
+              subject: new_subject
+            },
+            execution_identities: candidates
+          ) {
+            FrozenScopedPopulationRefused {
+              cause: FrozenScopedPopulationPreparedSubjectMismatch
+            } => true
+            _ => false
+          }
+        }
+      }
+  }
+}
+
+test fn frozen_scoped_population_reds_on_duplicate_candidates_and_selected() -> Bool {
+  match prepared_floor_subject_fixture() {
+    Absent => false
+    Present { value: subject } => {
+      let candidates = v1_claim_scoped_witness_batch.entries
+      if candidates.count() == 0 {
+        false
+      } else {
+        let duplicate = candidates.first()
+        let comparison = frozen_scoped_comparison_fixture(subject: subject)
+        let candidate_red = freeze_scoped_population(
+          subject: subject,
+          comparison: comparison,
+          head_observation: frozen_scoped_head_resolution_fixture(subject: subject),
+          candidates: [duplicate, duplicate],
+          selected: [],
+          skipped: []
+        )
+        let selected_red = freeze_scoped_population(
+          subject: subject,
+          comparison: comparison,
+          head_observation: frozen_scoped_head_resolution_fixture(subject: subject),
+          candidates: candidates,
+          selected: [duplicate, duplicate],
+          skipped: []
+        )
+        match candidate_red {
+          FrozenScopedPopulationRefused {
+            cause: FrozenScopedPopulationDuplicateCandidateIdentity
+          } => match selected_red {
+            FrozenScopedPopulationRefused {
+              cause: FrozenScopedPopulationDuplicateSelectedIdentity
+            } => true
+            _ => false
+          }
+          _ => false
+        }
+      }
+    }
+  }
+}
+
+test fn frozen_scoped_population_reds_on_selected_identity_outside_candidates() -> Bool {
+  match prepared_floor_subject_fixture() {
+    Absent => false
+    Present { value: subject } => {
+      let candidates = v1_claim_scoped_witness_batch.entries
+      if candidates.count() == 0 {
+        false
+      } else {
+        let candidate = candidates.first()
+        let unknown = ScheduleWitnessEntry {
+          entry: "dag/test/claim/not_in_scoped_candidates_test.dag",
+          function: candidate.function,
+          kind: candidate.kind
+        }
+        match freeze_scoped_population(
+          subject: subject,
+          comparison: frozen_scoped_comparison_fixture(subject: subject),
+          head_observation: frozen_scoped_head_resolution_fixture(subject: subject),
+          candidates: candidates,
+          selected: [unknown],
+          skipped: []
+        ) {
+          FrozenScopedPopulationRefused {
+            cause: FrozenScopedPopulationSelectedIdentityUnknown
+          } => true
+          _ => false
+        }
+      }
+    }
+  }
+}
+
+test fn frozen_scoped_execution_reds_on_missing_identity() -> Bool {
+  match prepared_floor_subject_fixture() {
+    Absent => false
+    Present { value: subject } => {
+      let candidates = v1_claim_scoped_witness_batch.entries
+      if candidates.count() == 0 {
+        false
+      } else {
+        match reconcile_frozen_scoped_execution(
+          frozen: freeze_scoped_population(
+            subject: subject,
+            comparison: frozen_scoped_comparison_fixture(subject: subject),
+            head_observation: frozen_scoped_head_resolution_fixture(subject: subject),
+            candidates: candidates,
+            selected: candidates,
+            skipped: []
+          ),
+          subject_observation: FrozenScopedPreparedSubjectObserved { subject: subject },
+          execution_identities: candidates.skip(n: 1)
+        ) {
+          FrozenScopedPopulationRefused {
+            cause: FrozenScopedPopulationExecutionMissingIdentity
+          } => true
+          _ => false
+        }
+      }
+    }
+  }
+}
+
+test fn frozen_scoped_execution_reds_on_duplicate_identity() -> Bool {
+  match prepared_floor_subject_fixture() {
+    Absent => false
+    Present { value: subject } => {
+      let candidates = v1_claim_scoped_witness_batch.entries
+      if candidates.count() == 0 {
+        false
+      } else {
+        let duplicate = candidates.first()
+        match reconcile_frozen_scoped_execution(
+          frozen: freeze_scoped_population(
+            subject: subject,
+            comparison: frozen_scoped_comparison_fixture(subject: subject),
+            head_observation: frozen_scoped_head_resolution_fixture(subject: subject),
+            candidates: candidates,
+            selected: candidates,
+            skipped: []
+          ),
+          subject_observation: FrozenScopedPreparedSubjectObserved { subject: subject },
+          execution_identities: [duplicate, duplicate]
+        ) {
+          FrozenScopedPopulationRefused {
+            cause: FrozenScopedPopulationExecutionDuplicateIdentity
+          } => true
+          _ => false
+        }
+      }
+    }
+  }
+}
+
+test fn frozen_scoped_execution_reds_on_unexpected_identity() -> Bool {
+  match prepared_floor_subject_fixture() {
+    Absent => false
+    Present { value: subject } => {
+      let candidates = v1_claim_scoped_witness_batch.entries
+      if candidates.count() == 0 {
+        false
+      } else {
+        let candidate = candidates.first()
+        let unexpected = ScheduleWitnessEntry {
+          entry: "dag/test/claim/unexpected_scoped_execution_test.dag",
+          function: candidate.function,
+          kind: candidate.kind
+        }
+        match reconcile_frozen_scoped_execution(
+          frozen: freeze_scoped_population(
+            subject: subject,
+            comparison: frozen_scoped_comparison_fixture(subject: subject),
+            head_observation: frozen_scoped_head_resolution_fixture(subject: subject),
+            candidates: candidates,
+            selected: candidates,
+            skipped: []
+          ),
+          subject_observation: FrozenScopedPreparedSubjectObserved { subject: subject },
+          execution_identities: concat(candidates, [unexpected])
+        ) {
+          FrozenScopedPopulationRefused {
+            cause: FrozenScopedPopulationExecutionUnexpectedIdentity
+          } => true
+          _ => false
+        }
+      }
+    }
+  }
+}
+
+test fn prepared_floor_scoped_scratch_requires_ordinary_scratch_release() -> Bool {
+  match prepared_floor_subject_fixture() {
+    Absent => false
+    Present { value: subject } => {
+      let initialized = prepared_floor_initialize(
+        subject: subject,
+        materialization: floor_prepared_subject_materialization(subject: subject)
+      )
+      let ordinary = prepared_floor_begin_ordinary(
+        phase: initialized,
+        scratch: prepared_floor_ordinary_scratch_fixture(subject: subject)
+      )
+      let premature_scoped = prepared_floor_begin_scoped(
+        phase: ordinary,
+        scratch: prepared_floor_scoped_scratch_fixture(subject: subject)
+      )
+      let released = prepared_floor_release_ordinary(phase: ordinary)
+      let scoped = prepared_floor_begin_scoped(
+        phase: released,
+        scratch: prepared_floor_scoped_scratch_fixture(subject: subject)
+      )
+      match ordinary {
+        PreparedFloorOrdinaryScratchActive {
+          subject: ordinary_subject,
+          scratch: ordinary_scratch
+        } =>
+          match premature_scoped {
+            PreparedFloorPhaseRefused {
+              subject: _,
+              cause: PreparedFloorScopedScratchStartedBeforeOrdinaryRelease
+            } => match released {
+              PreparedFloorOrdinaryScratchReleased {
+                subject: _,
+                released_scratch: _
+              } => match scoped {
+                PreparedFloorScopedScratchActive {
+                  subject: scoped_subject,
+                  scratch: scoped_scratch
+                } =>
+                  prepared_floor_subject_identity_eq(
+                    left: ordinary_subject,
+                    right: scoped_subject
+                  )
+                    && (ordinary_scratch.identity != scoped_scratch.identity)
+                _ => false
+              }
+              _ => false
+            }
+            _ => false
+          }
+        _ => false
+      }
+    }
+  }
+}
+
+
+test fn prepared_floor_same_scratch_identity_refuses_scoped_activation() -> Bool {
+  match prepared_floor_subject_fixture() {
+    Absent => false
+    Present { value: subject } => {
+      let initialized = prepared_floor_initialize(
+        subject: subject,
+        materialization: floor_prepared_subject_materialization(subject: subject)
+      )
+      let ordinary = prepared_floor_begin_ordinary(
+        phase: initialized,
+        scratch: prepared_floor_ordinary_scratch_fixture(subject: subject)
+      )
+      let released = prepared_floor_release_ordinary(phase: ordinary)
+      match prepared_floor_begin_scoped(
+        phase: released,
+        scratch: prepared_floor_reused_scoped_scratch_fixture(subject: subject)
+      ) {
+        PreparedFloorPhaseRefused {
+          subject: _,
+          cause: PreparedFloorScopedScratchIdentityReused
+        } => true
+        _ => false
+      }
+    }
+  }
 }

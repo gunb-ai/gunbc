@@ -83,7 +83,7 @@ import gunbc.ci_spec { gunbc_ci_spec, gunbc_ci_floor_batch_clamp_params, ci_spec
 import std.realization_schedule {
   Runnable, RunnableSingleClaim, RunnableDiscoveryBatch, RunnableScopedWitnessBatch,
   RunnableOwnsBatchClamp, runnable_batch_clamp_source,
-  SequentialChildProcess, InheritedWalkSourceRoots,
+  SharedWalkProcess, InheritedWalkSourceRoots,
   ScopedWitnessExecutionReceiptDecoded, ScopedWitnessExecutionReceiptRefused,
   ScopedWitnessExecuted, ScopedWitnessSelectionSkipped, scoped_witness_execution_receipt_decode,
   FloorWorkerObservation, OrdinaryFloorWorker,
@@ -350,7 +350,7 @@ test fn witness_v1_claim_scoped_batch_is_file_grain_and_batch_owned() -> Bool {
     && (v1_claim_scoped_witness_batch.node_frontier_selection == SelectionApplied)
     && (v1_claim_scoped_witness_batch.execution_authority == InheritedWalkSourceRoots {})
     && execution_mode_eq(left: v1_claim_scoped_witness_batch.execution_mode, right: Hermetic)
-    && (v1_claim_scoped_witness_batch.resource_profile.process_isolation == SequentialChildProcess)
+    && (v1_claim_scoped_witness_batch.resource_profile.process_isolation == SharedWalkProcess)
     && match runnable_batch_clamp_source(r: target) {
       RunnableOwnsBatchClamp { clamp: clamp } => (second_count(s: clamp.overhead) == 480) && (millisecond_count(m: clamp.per_unit) == 0)
       _ => false

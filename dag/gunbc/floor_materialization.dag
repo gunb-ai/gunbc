@@ -1,5 +1,24 @@
 module gunbc.floor_materialization
 
+import extdeps.git.object_store {
+  GitObjectId,
+  git_object_id_content_hash,
+  git_object_id_eq
+}
+import std.content_hash {
+  Fnv1a64Structural,
+  as_content_hash_structural,
+  content_hash_atom,
+  content_hash_combine_structural,
+  content_hash_eq_structural,
+  content_hash_tagged_structural,
+  serialize_content_hash
+}
+import std.realization_schedule {
+  scoped_witness_source_roots_digest
+}
+import std.types { CommitSha, NonEmptyStr }
+
 data floor_materialization_note: String = "P1 — the in-process INDEX-BUILD share, declared. Every floor consumer (spec gates + witness entries + the floor-runner/entry-selection prelude) resolves against ONE shared MultiEntryIndex — union-resolve S1 (#6234) materializes the parse + typecheck index once per (thread, source_roots) via process_shared_index (cli_run.rs:1737); each consumer then assembles its own view over that shared index. N consumers demanding one index-build with no Share is the ladder's rule-1 AuthoredDuplication at a SharedStateFrame (one claim_executor process); S1 already did the rule-1 REWIRE (the index is readonly, so the plural reads are legal at the VALUE tier). This module DECLARES that correct-but-undeclared share as a ReferenceTier provider row so it is ladder-visible and a regression (a consumer that builds a private index instead of reading the share) is countable, not re-discovered per lens/gate."
 
 data floor_three_quantities_note: String = "GRAIN (merry-moth-539, 2026-07-09) — three DISTINCT quantities, kept apart so the share is not mislabeled a lie: (1) index-build(dag,src/v2) = 1 materialization, K readers = THIS module's P1 (identity union-INDEX-build, deliberately NOT 'union-resolve' so it cannot collide with the entry-resolve grain); (2) per-entry CLOSURE resolves = K today = gunbc.ci_materialization's resolves_total receipt (resolve_entry_graph still fires once per distinct entry — S1 shares the INDEX, not the per-entry closures; memo_deduplicates_resolve_count proves once-PER-ENTRY), the ratchet target that the graph-major node-store rewire collapses K->~1; (3) readers of the share = K = this module's reader_count. Case study: S1 already bought index=1 (declared here); the remaining duplication is the K closure resolves (counted there); the graph-major node-store rewire kills those. Declaring the share moves nothing at runtime, so this lane does NOT touch ci_floor_declared_resolve_count."
@@ -142,4 +161,435 @@ fn floor_typecheck_store_materialization_without_provider() -> ValueMaterializat
     usage: floor_typecheck_store_value_usage(),
     providers: floor_typecheck_store_no_providers
   )
+}
+
+data prepared_floor_subject_authority_note: String = "IMMEDIATE ci-scoped-worker-shared-substrate SLICE — PreparedFloorSubjectIdentity is one composite exact subject: tested commit/tree, the exact tool identity, verified discovery request/roster/module-facts/payload identities, and both ordered root universes. PreparedFloorWalkRootView and PreparedFloorScopedRootView are distinct non-widening projections of those stored universes; neither may author substitute roots beside the subject. The ReferenceTier provider covers immutable reusable facts/caches only. Ordinary and scoped populations receive fresh, subject-bound scratch identities, and the phase coproduct makes ordinary-scratch release precede scoped activation. The v1_claim_scoped_witness_batch_note 7.113GB SharedWalkProcess receipt remains evidence against the retired mixed-state current-index realization; it is not erased or generalized into a ban on this measured immutable-subject/fresh-scratch realization. SharedWalkProcess is live only for the bounded prepared-subject plus frozen-scoped-population path: missing or mismatched preparation refuses, and no cold fallback exists. This bounded model is not the full ClaimExecutionState migration and does not open the native-execution cutover gate."
+
+type PreparedFloorDiscoveryIdentity {
+  request_identity: Fnv1a64Structural
+  roster_identity: Fnv1a64Structural
+  module_graph_facts_identity: Fnv1a64Structural
+  payload_identity: Fnv1a64Structural
+}
+
+type PreparedFloorOrderedRootViewsIdentity {
+  walk_source_roots: List<String>
+  scoped_source_roots: List<String>
+}
+
+type PreparedFloorSubjectIdentity {
+  tested_commit: CommitSha
+  tested_tree: GitObjectId
+  tool_identity: Fnv1a64Structural
+  discovery: PreparedFloorDiscoveryIdentity
+  root_views: PreparedFloorOrderedRootViewsIdentity
+}
+
+fn prepared_floor_subject_identity_eq(
+  left: PreparedFloorSubjectIdentity,
+  right: PreparedFloorSubjectIdentity
+) -> Bool {
+  (left.tested_commit == right.tested_commit)
+    && git_object_id_eq(left: left.tested_tree, right: right.tested_tree)
+    && content_hash_eq_structural(left: left.tool_identity, right: right.tool_identity)
+    && content_hash_eq_structural(
+      left: left.discovery.request_identity,
+      right: right.discovery.request_identity
+    )
+    && content_hash_eq_structural(
+      left: left.discovery.roster_identity,
+      right: right.discovery.roster_identity
+    )
+    && content_hash_eq_structural(
+      left: left.discovery.module_graph_facts_identity,
+      right: right.discovery.module_graph_facts_identity
+    )
+    && content_hash_eq_structural(
+      left: left.discovery.payload_identity,
+      right: right.discovery.payload_identity
+    )
+    && (left.root_views.walk_source_roots == right.root_views.walk_source_roots)
+    && (left.root_views.scoped_source_roots == right.root_views.scoped_source_roots)
+}
+
+fn prepared_floor_discovery_content_identity(
+  discovery: PreparedFloorDiscoveryIdentity
+) -> Fnv1a64Structural {
+  content_hash_tagged_structural(
+    tag: "prepared-floor-discovery",
+    payload: content_hash_combine_structural(
+      left: discovery.request_identity,
+      right: content_hash_combine_structural(
+        left: discovery.roster_identity,
+        right: content_hash_combine_structural(
+          left: discovery.module_graph_facts_identity,
+          right: discovery.payload_identity
+        )
+      )
+    )
+  )
+}
+
+fn prepared_floor_ordered_root_views_content_identity(
+  root_views: PreparedFloorOrderedRootViewsIdentity
+) -> Fnv1a64Structural {
+  let walk = content_hash_tagged_structural(
+    tag: "prepared-floor-walk-root-universe",
+    payload: scoped_witness_source_roots_digest(
+      source_roots: root_views.walk_source_roots
+    )
+  )
+  let scoped = content_hash_tagged_structural(
+    tag: "prepared-floor-scoped-root-universe",
+    payload: scoped_witness_source_roots_digest(
+      source_roots: root_views.scoped_source_roots
+    )
+  )
+  content_hash_tagged_structural(
+    tag: "prepared-floor-ordered-root-views",
+    payload: content_hash_combine_structural(left: walk, right: scoped)
+  )
+}
+
+fn prepared_floor_subject_content_identity(
+  subject: PreparedFloorSubjectIdentity
+) -> Fnv1a64Structural {
+  let commit = content_hash_tagged_structural(
+    tag: "prepared-floor-subject-tested-commit",
+    payload: content_hash_atom(value: subject.tested_commit)
+  )
+  let tree = content_hash_tagged_structural(
+    tag: "prepared-floor-subject-tested-tree",
+    payload: content_hash_atom(
+      value: concat(
+        "",
+        serialize_content_hash(hash: git_object_id_content_hash(oid: subject.tested_tree))
+      )
+    )
+  )
+  let tool = content_hash_tagged_structural(
+    tag: "prepared-floor-subject-tool",
+    payload: subject.tool_identity
+  )
+  let discovery = prepared_floor_discovery_content_identity(discovery: subject.discovery)
+  let root_views = prepared_floor_ordered_root_views_content_identity(
+    root_views: subject.root_views
+  )
+  content_hash_combine_structural(
+    left: commit,
+    right: content_hash_combine_structural(
+      left: tree,
+      right: content_hash_combine_structural(
+        left: tool,
+        right: content_hash_combine_structural(left: discovery, right: root_views)
+      )
+    )
+  )
+}
+
+type PreparedFloorRootViewIdentity
+  = PreparedFloorWalkRootView {
+      subject: PreparedFloorSubjectIdentity
+    }
+  | PreparedFloorScopedRootView {
+      subject: PreparedFloorSubjectIdentity
+    }
+
+fn prepared_floor_walk_root_view(
+  subject: PreparedFloorSubjectIdentity
+) -> PreparedFloorRootViewIdentity {
+  PreparedFloorWalkRootView {
+    subject: subject
+  }
+}
+
+fn prepared_floor_scoped_root_view(
+  subject: PreparedFloorSubjectIdentity
+) -> PreparedFloorRootViewIdentity {
+  PreparedFloorScopedRootView {
+    subject: subject
+  }
+}
+
+fn prepared_floor_root_view_subject(
+  view: PreparedFloorRootViewIdentity
+) -> PreparedFloorSubjectIdentity {
+  match view {
+    PreparedFloorWalkRootView { subject: subject } => subject
+    PreparedFloorScopedRootView { subject: subject } => subject
+  }
+}
+
+fn prepared_floor_root_view_source_roots(
+  view: PreparedFloorRootViewIdentity
+) -> List<String> {
+  match view {
+    PreparedFloorWalkRootView { subject: subject } => subject.root_views.walk_source_roots
+    PreparedFloorScopedRootView { subject: subject } => subject.root_views.scoped_source_roots
+  }
+}
+
+fn prepared_floor_root_view_source_roots_digest(
+  view: PreparedFloorRootViewIdentity
+) -> Fnv1a64Structural {
+  scoped_witness_source_roots_digest(
+    source_roots: prepared_floor_root_view_source_roots(view: view)
+  )
+}
+
+fn prepared_floor_root_view_content_identity(
+  view: PreparedFloorRootViewIdentity
+) -> Fnv1a64Structural {
+  let subject = prepared_floor_subject_content_identity(
+    subject: prepared_floor_root_view_subject(view: view)
+  )
+  match view {
+    PreparedFloorWalkRootView { subject: _ } =>
+      content_hash_tagged_structural(
+        tag: "prepared-floor-walk-root-view",
+        payload: subject
+      )
+    PreparedFloorScopedRootView { subject: _ } =>
+      content_hash_tagged_structural(
+        tag: "prepared-floor-scoped-root-view",
+        payload: subject
+      )
+  }
+}
+
+fn prepared_floor_root_view_identity_eq(
+  left: PreparedFloorRootViewIdentity,
+  right: PreparedFloorRootViewIdentity
+) -> Bool {
+  match left {
+    PreparedFloorWalkRootView { subject: left_subject } => match right {
+      PreparedFloorWalkRootView { subject: right_subject } =>
+        prepared_floor_subject_identity_eq(left: left_subject, right: right_subject)
+      PreparedFloorScopedRootView { subject: _ } => false
+    }
+    PreparedFloorScopedRootView { subject: left_subject } => match right {
+      PreparedFloorWalkRootView { subject: _ } => false
+      PreparedFloorScopedRootView { subject: right_subject } =>
+        prepared_floor_subject_identity_eq(left: left_subject, right: right_subject)
+    }
+  }
+}
+
+type PreparedFloorSubjectConsumer
+  = PreparedFloorOrdinaryPopulation
+  | PreparedFloorScopedPopulation
+
+fn prepared_floor_subject_consumer_site(consumer: PreparedFloorSubjectConsumer) -> String {
+  match consumer {
+    PreparedFloorOrdinaryPopulation => "claim-executor:ordinary-floor-population"
+    PreparedFloorScopedPopulation => "claim-executor:scoped-witness-population"
+  }
+}
+
+data floor_prepared_subject_consumers: List<PreparedFloorSubjectConsumer> = [
+  PreparedFloorOrdinaryPopulation,
+  PreparedFloorScopedPopulation
+]
+
+data floor_prepared_subject_share_provider_id: String = "prepared_floor_subject"
+
+fn floor_prepared_subject_value_identity(subject: PreparedFloorSubjectIdentity) -> String {
+  concat(
+    "",
+    serialize_content_hash(
+      hash: as_content_hash_structural(
+        structural: prepared_floor_subject_content_identity(subject: subject)
+      )
+    )
+  )
+}
+
+fn floor_prepared_subject_share_provider(
+  subject: PreparedFloorSubjectIdentity
+) -> CacheProvider {
+  provider_row(
+    id: floor_prepared_subject_share_provider_id,
+    scope: [floor_executor_process_frame()],
+    coverage: CoversIdentities {
+      identities: [floor_prepared_subject_value_identity(subject: subject)]
+    },
+    tier: ReferenceTier,
+    retention: scope_released_retention(capacity: CapacityUnbounded)
+  )
+}
+
+fn floor_prepared_subject_value_usage(
+  subject: PreparedFloorSubjectIdentity
+) -> ValueUsage {
+  ValueUsage {
+    identity: floor_prepared_subject_value_identity(subject: subject),
+    consumers: floor_prepared_subject_consumers
+      |> map(c => ValueConsumerEdge {
+        access: ReadAccess,
+        site: prepared_floor_subject_consumer_site(consumer: c)
+      })
+  }
+}
+
+fn floor_prepared_subject_reader_count() -> Int {
+  floor_prepared_subject_consumers |> count
+}
+
+fn floor_prepared_subject_materialization(
+  subject: PreparedFloorSubjectIdentity
+) -> ValueMaterialization {
+  value_materialization(
+    usage: floor_prepared_subject_value_usage(subject: subject),
+    providers: [floor_prepared_subject_share_provider(subject: subject)]
+  )
+}
+
+fn floor_prepared_subject_materialization_without_provider(
+  subject: PreparedFloorSubjectIdentity
+) -> ValueMaterialization {
+  value_materialization(
+    usage: floor_prepared_subject_value_usage(subject: subject),
+    providers: []
+  )
+}
+
+type PreparedFloorPhaseRefusal
+  = PreparedFloorReferenceProviderUnavailable
+  | PreparedFloorTransitionOutOfOrder
+  | PreparedFloorScopedScratchStartedBeforeOrdinaryRelease
+  | PreparedFloorScratchSubjectMismatch
+  | PreparedFloorScopedScratchIdentityReused
+
+type PreparedFloorScratchIdentity = NonEmptyStr where brand("PreparedFloorScratchIdentity")
+
+type PreparedFloorOrdinaryScratch {
+  subject: PreparedFloorSubjectIdentity
+  identity: PreparedFloorScratchIdentity
+}
+
+type PreparedFloorScopedScratch {
+  subject: PreparedFloorSubjectIdentity
+  identity: PreparedFloorScratchIdentity
+}
+
+type PreparedFloorPhase
+  = PreparedFloorReady { subject: PreparedFloorSubjectIdentity }
+  | PreparedFloorOrdinaryScratchActive {
+      subject: PreparedFloorSubjectIdentity,
+      scratch: PreparedFloorOrdinaryScratch
+    }
+  | PreparedFloorOrdinaryScratchReleased {
+      subject: PreparedFloorSubjectIdentity,
+      released_scratch: PreparedFloorOrdinaryScratch
+    }
+  | PreparedFloorScopedScratchActive {
+      subject: PreparedFloorSubjectIdentity,
+      scratch: PreparedFloorScopedScratch
+    }
+  | PreparedFloorPhaseRefused {
+      subject: PreparedFloorSubjectIdentity,
+      cause: PreparedFloorPhaseRefusal
+    }
+
+fn prepared_floor_phase_subject(phase: PreparedFloorPhase) -> PreparedFloorSubjectIdentity {
+  match phase {
+    PreparedFloorReady { subject: subject } => subject
+    PreparedFloorOrdinaryScratchActive { subject: subject, scratch: _ } => subject
+    PreparedFloorOrdinaryScratchReleased { subject: subject, released_scratch: _ } => subject
+    PreparedFloorScopedScratchActive { subject: subject, scratch: _ } => subject
+    PreparedFloorPhaseRefused { subject: subject, cause: _ } => subject
+  }
+}
+
+fn prepared_floor_refuse(
+  phase: PreparedFloorPhase,
+  cause: PreparedFloorPhaseRefusal
+) -> PreparedFloorPhase {
+  match phase {
+    PreparedFloorPhaseRefused { subject: _, cause: _ } => phase
+    _ => PreparedFloorPhaseRefused {
+      subject: prepared_floor_phase_subject(phase: phase),
+      cause: cause
+    }
+  }
+}
+
+fn prepared_floor_initialize(
+  subject: PreparedFloorSubjectIdentity,
+  materialization: ValueMaterialization
+) -> PreparedFloorPhase {
+  if value_verdict_is_shared_by_reference(
+    v: materialization,
+    identity: floor_prepared_subject_value_identity(subject: subject),
+    provider_id: floor_prepared_subject_share_provider_id,
+    reader_count: floor_prepared_subject_reader_count()
+  ) {
+    PreparedFloorReady { subject: subject }
+  } else {
+    PreparedFloorPhaseRefused {
+      subject: subject,
+      cause: PreparedFloorReferenceProviderUnavailable
+    }
+  }
+}
+
+fn prepared_floor_begin_ordinary(
+  phase: PreparedFloorPhase,
+  scratch: PreparedFloorOrdinaryScratch
+) -> PreparedFloorPhase {
+  match phase {
+    PreparedFloorReady { subject: subject } =>
+      if prepared_floor_subject_identity_eq(left: subject, right: scratch.subject) {
+        PreparedFloorOrdinaryScratchActive { subject: subject, scratch: scratch }
+      } else {
+        PreparedFloorPhaseRefused {
+          subject: subject,
+          cause: PreparedFloorScratchSubjectMismatch
+        }
+      }
+    PreparedFloorPhaseRefused { subject: _, cause: _ } => phase
+    _ => prepared_floor_refuse(phase: phase, cause: PreparedFloorTransitionOutOfOrder)
+  }
+}
+
+fn prepared_floor_release_ordinary(phase: PreparedFloorPhase) -> PreparedFloorPhase {
+  match phase {
+    PreparedFloorOrdinaryScratchActive { subject: subject, scratch: scratch } =>
+      PreparedFloorOrdinaryScratchReleased {
+        subject: subject,
+        released_scratch: scratch
+      }
+    PreparedFloorPhaseRefused { subject: _, cause: _ } => phase
+    _ => prepared_floor_refuse(phase: phase, cause: PreparedFloorTransitionOutOfOrder)
+  }
+}
+
+fn prepared_floor_begin_scoped(
+  phase: PreparedFloorPhase,
+  scratch: PreparedFloorScopedScratch
+) -> PreparedFloorPhase {
+  match phase {
+    PreparedFloorOrdinaryScratchReleased {
+      subject: subject,
+      released_scratch: released
+    } =>
+      if !prepared_floor_subject_identity_eq(left: subject, right: scratch.subject) {
+        PreparedFloorPhaseRefused {
+          subject: subject,
+          cause: PreparedFloorScratchSubjectMismatch
+        }
+      } else if released.identity == scratch.identity {
+        PreparedFloorPhaseRefused {
+          subject: subject,
+          cause: PreparedFloorScopedScratchIdentityReused
+        }
+      } else {
+        PreparedFloorScopedScratchActive { subject: subject, scratch: scratch }
+      }
+    PreparedFloorPhaseRefused { subject: _, cause: _ } => phase
+    _ => prepared_floor_refuse(
+      phase: phase,
+      cause: PreparedFloorScopedScratchStartedBeforeOrdinaryRelease
+    )
+  }
 }

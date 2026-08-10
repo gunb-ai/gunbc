@@ -11,21 +11,24 @@ use std::time::Instant;
 #[cfg(test)]
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::cli_run::{
-    build_floor_discovery_request, compute_histogram_data,
+    build_floor_discovery_request, compute_histogram_data, current_floor_discovery_identity,
     discover_floor_witness_roster_with_snapshot, enable_floor_compile_clean_lazy_install,
     floor_discovery_consumer_role_from_env, heartbeat_feed_enter_batch,
     heartbeat_feed_entry_completed, heartbeat_feed_snapshot, install_floor_compile_clean_receipt,
-    make_eval_context, project_witness_cost_receipt, record_resolution_divergence_phase,
-    render_selection_degradation_receipt_body, request_identity_digest,
-    reset_resolution_divergence_phase_receipt, resolution_divergence_parent_plan_capture_begin,
+    make_eval_context, prepare_process_floor_subject, prepared_floor_subject_counters,
+    project_witness_cost_receipt, record_resolution_divergence_phase,
+    release_process_floor_population_scratch, render_selection_degradation_receipt_body,
+    request_identity_digest, reset_resolution_divergence_phase_receipt,
+    resolution_divergence_parent_plan_capture_begin,
     resolution_divergence_parent_plan_capture_finish, resolve_entry_graph,
-    resolve_entry_graph_shared, run_claim, run_discovery_corpus_with_options, run_value, set_phase,
-    top_n_slowest_witnesses, verify_floor_discovery_terminal_for_coordinator, BudgetKind,
-    ClaimOutcome, DiscoveryCorpusOptions, DiscoverySummary, DiscoveryWidthPolicy,
-    DiscoveryWitnessOutcome, FloorDiscoveryConsumerRole, FloorPhase, HistogramData,
-    NodeFrontierSelectionMode, PhaseProfile, ResolutionDivergencePhase,
-    ResolutionDivergencePhaseState, SelectionDegradationSnapshot, TimingPercentiles,
-    WitnessRowCost, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N, FLOOR_DISCOVERY_CONSUMER_ENV,
+    resolve_entry_graph_shared, run_claim, run_discovery_corpus_with_options,
+    run_scoped_discovery_corpus_with_options, run_value, set_phase, top_n_slowest_witnesses,
+    verify_floor_discovery_terminal_for_coordinator, BudgetKind, ClaimOutcome,
+    DiscoveryCorpusOptions, DiscoverySummary, DiscoveryWidthPolicy, DiscoveryWitnessOutcome,
+    FloorDiscoveryConsumerRole, FloorPhase, HistogramData, NodeFrontierSelectionMode, PhaseProfile,
+    ResolutionDivergencePhase, ResolutionDivergencePhaseState, SelectionDegradationSnapshot,
+    TimingPercentiles, WitnessRowCost, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
+    FLOOR_DISCOVERY_CONSUMER_ENV,
 };
 use v1_compiler::memory_governor::{
     binding_cap_cgroup_dir, binding_high_cgroup_dir, floor_budget_below_minimum_footprint,
@@ -1479,6 +1482,119 @@ fn scoped_batch_clamp(batch: &[Runnable]) -> Result<Option<ResolvedFloorBatchCla
         }
     }
     Ok(owned)
+}
+
+/// Remove modeled `SharedWalkProcess` scoped singletons from the already-parsed walk while
+/// preserving their exact plan positions and aligned, batch-owned clamps. Sequential/fresh rows
+/// are never selected here; their existing process realizations remain separate. This matches the
+/// former coordinator realization: every ordinary batch completes before a process-isolated
+/// scoped consumer, even when a conditional ordinary row was appended after the scoped plan row.
+fn partition_shared_walk_scoped_batches(
+    batches: &mut Vec<Vec<Runnable>>,
+    batch_plan_indices: &mut Vec<usize>,
+    clamps: &mut Option<Vec<Option<ResolvedFloorBatchClamp>>>,
+) -> Result<Vec<(usize, Vec<Runnable>, ResolvedFloorBatchClamp)>, String> {
+    if batch_plan_indices.len() != batches.len() {
+        return Err(format!(
+            "shared scoped partition refused: {} batches have {} original plan indices",
+            batches.len(),
+            batch_plan_indices.len()
+        ));
+    }
+    if let Some(aligned) = clamps.as_ref() {
+        if aligned.len() != batches.len() {
+            return Err(format!(
+                "shared scoped partition refused: {} batches have {} aligned clamp rows",
+                batches.len(),
+                aligned.len()
+            ));
+        }
+    }
+    let shared_indices: Vec<usize> = batches
+        .iter()
+        .enumerate()
+        .filter_map(|(index, batch)| {
+            batch
+                .iter()
+                .any(|runnable| {
+                    matches!(
+                        runnable,
+                        Runnable::ScopedWitnessBatch {
+                            process_isolation: ScopedProcessIsolation::SharedWalkProcess,
+                            ..
+                        }
+                    )
+                })
+                .then_some(index)
+        })
+        .collect();
+    for index in &shared_indices {
+        let batch = &batches[*index];
+        if batch.len() != 1
+            || !matches!(
+                batch.first(),
+                Some(Runnable::ScopedWitnessBatch {
+                    process_isolation: ScopedProcessIsolation::SharedWalkProcess,
+                    ..
+                })
+            )
+        {
+            return Err(format!(
+                "shared scoped partition refused: plan batch {} is not a singleton SharedWalkProcess scoped batch",
+                index + 1
+            ));
+        }
+        if clamps
+            .as_ref()
+            .and_then(|rows| rows.get(*index))
+            .and_then(Option::as_ref)
+            .is_none()
+        {
+            return Err(format!(
+                "shared scoped partition refused: plan batch {} lost its batch-owned clamp",
+                index + 1
+            ));
+        }
+    }
+    if shared_indices.is_empty() {
+        return Ok(Vec::new());
+    }
+    let aligned = clamps.take();
+    let mut ordinary_batches = Vec::with_capacity(batches.len() - shared_indices.len());
+    let mut ordinary_plan_indices = Vec::with_capacity(batches.len() - shared_indices.len());
+    let mut ordinary_clamps = aligned
+        .as_ref()
+        .map(|_| Vec::with_capacity(batches.len() - shared_indices.len()));
+    let mut shared = Vec::with_capacity(shared_indices.len());
+    for (index, batch) in std::mem::take(batches).into_iter().enumerate() {
+        let plan_index = batch_plan_indices[index];
+        let clamp = aligned.as_ref().and_then(|rows| rows[index].clone());
+        if shared_indices.binary_search(&index).is_ok() {
+            shared.push((
+                plan_index,
+                batch,
+                clamp.expect("shared clamp presence validated before partition"),
+            ));
+        } else {
+            ordinary_batches.push(batch);
+            ordinary_plan_indices.push(plan_index);
+            if let Some(rows) = ordinary_clamps.as_mut() {
+                rows.push(clamp);
+            }
+        }
+    }
+    *batches = ordinary_batches;
+    *batch_plan_indices = ordinary_plan_indices;
+    *clamps = ordinary_clamps;
+    Ok(shared)
+}
+
+fn ordinary_terminal_admits_shared_scoped(
+    ordinary_failed: bool,
+    compile_clean_over_budget: bool,
+    compile_clean_drift_receipt_ok: bool,
+) -> bool {
+    !ordinary_failed && !compile_clean_over_budget && compile_clean_drift_receipt_ok
 }
 
 /// The parsed form of `std.realization_schedule.WalkPlan` — the ONE plan shape every
@@ -4297,8 +4413,13 @@ fn run_discovery_batch_node(
     // subject roots here makes a fully-green scoped roster refuse while resolving
     // `gunbc.witness_row_cost` and tempts callers to widen the subject envelope.
     let execution_projection_source_roots = execution_authority_source_roots.clone();
+    let execution_shape = if scoped_receipt.is_some() {
+        "serial freeze/execute"
+    } else {
+        "adaptive width"
+    };
     let label = format!(
-        "{corpus_kind}[{} root(s)+{} explicit, adaptive width{}]",
+        "{corpus_kind}[{} root(s)+{} explicit, {execution_shape}{}]",
         source_roots.len(),
         explicit_entries.len(),
         if batch_entries_all_in(&explicit_entries, &expected_red) {
@@ -4307,23 +4428,35 @@ fn run_discovery_batch_node(
             ""
         },
     );
-    match run_discovery_corpus_with_options(
-        &source_roots,
-        &scan_dirs,
-        &explicit_entries,
-        execution_mode,
-        DiscoveryWidthPolicy::Adaptive(governor),
-        DiscoveryCorpusOptions {
-            node_frontier_selection,
-            execution_authority_source_roots,
-            explicit_roster_only: false,
-            exclude_substrings,
-            discovery_scope_dirs,
-            fast_lane_eval_budget_ms,
-            wet_receipt_wall_budget_ms,
-            wet_receipt_interp_eval_budget_ms,
-        },
-    ) {
+    let options = DiscoveryCorpusOptions {
+        node_frontier_selection,
+        execution_authority_source_roots,
+        explicit_roster_only: false,
+        exclude_substrings,
+        discovery_scope_dirs,
+        fast_lane_eval_budget_ms,
+        wet_receipt_wall_budget_ms,
+        wet_receipt_interp_eval_budget_ms,
+    };
+    let corpus = if scoped_receipt.is_some() {
+        run_scoped_discovery_corpus_with_options(
+            &source_roots,
+            &scan_dirs,
+            &explicit_entries,
+            execution_mode,
+            options,
+        )
+    } else {
+        run_discovery_corpus_with_options(
+            &source_roots,
+            &scan_dirs,
+            &explicit_entries,
+            execution_mode,
+            DiscoveryWidthPolicy::Adaptive(governor),
+            options,
+        )
+    };
+    match corpus {
         Ok(summary) if summary.failures.is_empty() => {
             if let Some(scoped) = &scoped_receipt {
                 if let Err(msg) = append_scoped_witness_receipt_rows(
@@ -5438,8 +5571,16 @@ fn write_floor_component_receipt_at(
     source_roots: &[String],
     batch_records: &[BatchRecord],
     batches: &[Vec<Runnable>],
+    batch_plan_indices: Option<&[usize]>,
     unreached: UnreachedCause,
 ) -> bool {
+    if let Some(indices) = batch_plan_indices {
+        assert_eq!(
+            indices.len(),
+            batches.len(),
+            "floor component receipt batch identity map must align exactly with its batch population"
+        );
+    }
     let total_batches = batches.len();
     let Some(entry) = source_roots
         .iter()
@@ -5510,10 +5651,11 @@ fn write_floor_component_receipt_at(
     // run instead yields `ControlConcluded` with a `Skipped` outcome, and the alert reports
     // the control RED with its real cause.
     for bi in batch_records.len()..total_batches {
+        let batch_index = batch_plan_indices.map_or(bi, |indices| indices[bi]);
         match floor_component_row_value(
             &ctx,
             &run_id,
-            bi as i64 + 1,
+            batch_index as i64 + 1,
             &batch_heartbeat_label(&batches[bi]),
             batch_selection_tag(&batches[bi]),
             0,
@@ -8361,6 +8503,7 @@ fn run_walk(
     source_roots: &[String],
     plan_site: &str,
     batches: &[Vec<Runnable>],
+    batch_plan_indices: Option<&[usize]>,
     on_success_stages: &[Vec<Runnable>],
     floor_finalization: Option<&FloorFinalization>,
     finalization_absence_reason: FloorFinalizationAbsenceReason,
@@ -8393,6 +8536,13 @@ fn run_walk(
     // the assumption that stops being true when someone adds a second caller.
     walk_attempt_id: Option<&str>,
 ) -> WalkOutcome {
+    if let Some(indices) = batch_plan_indices {
+        assert_eq!(
+            indices.len(),
+            batches.len(),
+            "run_walk batch identity map must align exactly with its batch population"
+        );
+    }
     let mut any_failed = false;
     let mut batches_run = 0usize;
     let mut failure_details: Vec<String> = Vec::new();
@@ -8427,6 +8577,8 @@ fn run_walk(
     let memo_path_entries = memo_path_entry_keys(batches);
     let obligation_subjects = obligation_subject_set(floor_finalization);
     for (bi, batch) in batches.iter().enumerate() {
+        let batch_index = batch_plan_indices.map_or(bi, |indices| indices[bi]);
+        let batch_number = batch_index + 1;
         if ordinary_budget_ms
             .is_some_and(|budget| ordinary_start.elapsed().as_millis() >= u128::from(budget))
         {
@@ -8434,11 +8586,11 @@ fn run_walk(
             any_failed = true;
             failure_details.push(format!(
                 "ordinary floor exceeded its population budget before batch {}: budget_ms={budget}",
-                bi + 1
+                batch_number
             ));
             eprintln!(
                 "claim_executor: ORDINARY-FLOOR-OVER-BUDGET before batch {} — budget_ms={budget}; admission postcondition allowance remains reserved",
-                bi + 1
+                batch_number
             );
             // This break is a deadline stop, not a stop-policy skip: the components below
             // were never started because the RUN ran out of time, not because an earlier
@@ -8465,18 +8617,18 @@ fn run_walk(
             any_failed = true;
             failure_details.push(format!(
                 "walk reached its soft deadline before batch {}: deadline_ms={deadline} elapsed_ms={elapsed_ms}",
-                bi + 1
+                batch_number
             ));
             eprintln!(
                 "claim_executor: WALK-SOFT-DEADLINE before batch {} — deadline_ms={deadline} elapsed_ms={elapsed_ms}; \
                  admitting no further components so the receipt concludes before the step's hard kill",
-                bi + 1
+                batch_number
             );
             walk_stop_cause = UnreachedCause::DeadlineReached;
             break;
         }
         batches_run = bi + 1;
-        ordinary_budget_progress.enter(bi + 1, budget_unit_label(batch));
+        ordinary_budget_progress.enter(batch_number, budget_unit_label(batch));
         let StageRun {
             results: batch_results,
             label,
@@ -8492,8 +8644,8 @@ fn run_walk(
             source_roots,
             batch,
             StagePopulation::OrdinaryBatch,
-            bi,
-            bi as u64,
+            batch_index,
+            batch_index as u64,
             &mut walk_memo,
             &memo_path_entries,
             governor,
@@ -8511,7 +8663,7 @@ fn run_walk(
                 println!(
                     "{}",
                     paint(
-                        &format!("✓ PASS [batch {}] {}", bi + 1, result.function),
+                        &format!("✓ PASS [batch {}] {}", batch_number, result.function),
                         sgr::SUCCESS
                     )
                 );
@@ -8521,18 +8673,14 @@ fn run_walk(
                     paint(
                         &format!(
                             "✗ FAIL [batch {}] {} ({})",
-                            bi + 1,
-                            result.function,
-                            result.detail
+                            batch_number, result.function, result.detail
                         ),
                         sgr::ERROR
                     )
                 );
                 failure_details.push(format!(
                     "batch={} fn={} detail={}",
-                    bi + 1,
-                    result.function,
-                    result.detail
+                    batch_number, result.function, result.detail
                 ));
                 any_failed = true;
             }
@@ -8541,13 +8689,13 @@ fn run_walk(
             println!(
                 "{}",
                 paint(
-                    &format!("✗ FAIL [batch {}] <claim thread panicked>", bi + 1),
+                    &format!("✗ FAIL [batch {}] <claim thread panicked>", batch_number),
                     sgr::ERROR
                 )
             );
-            failure_details.push(format!("batch={} infra=thread_panic", bi + 1));
+            failure_details.push(format!("batch={} infra=thread_panic", batch_number));
             infra_faults.push(InfraFault::ClaimThreadPanicked {
-                batch_index: bi + 1,
+                batch_index: batch_number,
             });
             any_failed = true;
         }
@@ -8557,7 +8705,7 @@ fn run_walk(
             any_failed = true;
         }
         batch_records.push(BatchRecord {
-            batch_index: bi,
+            batch_index,
             wall_nanos: batch_wall_nanos,
             clamp_ms: batch_clamp_ms,
             unit_count: batch_unit_count,
@@ -8598,6 +8746,7 @@ fn run_walk(
                 source_roots,
                 &batch_records,
                 &batches,
+                batch_plan_indices,
                 UnreachedCause::RunIncomplete,
             );
         }
@@ -8618,7 +8767,7 @@ fn run_walk(
                 FloorBatchStopPolicy::StopBeforeDependents => {
                     eprintln!(
                         "claim_executor: stopping before dependent batches (batch {} {})",
-                        bi + 1,
+                        batch_number,
                         if this_batch_failed {
                             "failed"
                         } else {
@@ -8630,7 +8779,7 @@ fn run_walk(
                 FloorBatchStopPolicy::FullLedger => {
                     eprintln!(
                         "claim_executor: continuing (FullLedger stop policy) — batch {} {}",
-                        bi + 1,
+                        batch_number,
                         if this_batch_failed {
                             "failed"
                         } else {
@@ -8710,6 +8859,7 @@ fn run_walk(
             source_roots,
             &batch_records,
             &batches,
+            batch_plan_indices,
             walk_stop_cause,
         );
     trace_floor_phase("floor-component-receipt", "completed", "");
@@ -9274,6 +9424,7 @@ fn run_perturb_check(
         &[temp_root],
         &format!("{plan_entry}::{plan_function} (perturb re-walk)"),
         &remapped,
+        None,
         &[],
         None,
         // Diagnostic-only re-walk of a perturbed single witness — the floor's whole-
@@ -10389,8 +10540,11 @@ fn run() -> Result<ExitCode, ExitCode> {
     let ordinary_budget_ms = walk_plan.ordinary_budget_ms;
     let on_success_budget_ms = walk_plan.on_success_budget_ms;
     let mut batches = walk_plan.batches;
+    let mut batch_plan_indices: Vec<usize> = (0..batches.len()).collect();
     let mut on_success_stages = walk_plan.on_success_stages;
     let mut floor_finalization: Option<FloorFinalization> = walk_plan.finalization;
+    let mut shared_scoped_population: Vec<(usize, Vec<Runnable>, ResolvedFloorBatchClamp)> =
+        Vec::new();
     // Captured BEFORE the scoped-worker override below can overwrite `floor_finalization`
     // to `None` for its own, different reason — this is the plan's own fact, not the
     // role's, and the two must not be read back through one collapsed `Option` later
@@ -10416,22 +10570,28 @@ fn run() -> Result<ExitCode, ExitCode> {
                 eprintln!("claim_executor: ordinary floor worker manifest refusal: {msg}");
                 return Err(ExitCode::from(1));
             }
-            batches.retain(|batch| {
-                !batch.iter().any(|runnable| {
-                    matches!(
-                        runnable,
-                        Runnable::ScopedWitnessBatch {
-                            process_isolation: ScopedProcessIsolation::SequentialChildProcess
-                                | ScopedProcessIsolation::FreshJobProcess,
-                            ..
-                        }
-                    )
+            let (retained_batches, retained_indices): (Vec<_>, Vec<_>) = batches
+                .into_iter()
+                .zip(batch_plan_indices)
+                .filter(|(batch, _)| {
+                    !batch.iter().any(|runnable| {
+                        matches!(
+                            runnable,
+                            Runnable::ScopedWitnessBatch {
+                                process_isolation: ScopedProcessIsolation::SequentialChildProcess
+                                    | ScopedProcessIsolation::FreshJobProcess,
+                                ..
+                            }
+                        )
+                    })
                 })
-            });
+                .unzip();
+            batches = retained_batches;
+            batch_plan_indices = retained_indices;
         }
         Some(FloorWorkerRole::Scoped { batch_id }) => {
             let mut selected = Vec::new();
-            for batch in &batches {
+            for (plan_index, batch) in batches.iter().enumerate() {
                 for runnable in batch {
                     if let Runnable::ScopedWitnessBatch {
                         batch_id: candidate,
@@ -10439,7 +10599,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                     } = runnable
                     {
                         if candidate == batch_id {
-                            selected.push(runnable.clone());
+                            selected.push((plan_index, runnable.clone()));
                         }
                     }
                 }
@@ -10451,7 +10611,9 @@ fn run() -> Result<ExitCode, ExitCode> {
                 );
                 return Err(ExitCode::from(1));
             }
-            batches = vec![selected];
+            let (plan_index, runnable) = selected.pop().expect("validated singleton above");
+            batches = vec![vec![runnable]];
+            batch_plan_indices = vec![plan_index];
             on_success_stages.clear();
             floor_finalization = None;
         }
@@ -10677,7 +10839,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     } else {
         None
     };
-    let batch_clamp_params: Option<Vec<Option<ResolvedFloorBatchClamp>>> =
+    let mut batch_clamp_params: Option<Vec<Option<ResolvedFloorBatchClamp>>> =
         if positional_clamps.is_some() || scoped_clamps.iter().any(|clamp| clamp.is_some()) {
             let mut positional_index = 0usize;
             let mut aligned = Vec::with_capacity(batches.len());
@@ -10695,6 +10857,19 @@ fn run() -> Result<ExitCode, ExitCode> {
         } else {
             None
         };
+    if matches!(floor_worker_role, Some(FloorWorkerRole::Ordinary)) {
+        shared_scoped_population = match partition_shared_walk_scoped_batches(
+            &mut batches,
+            &mut batch_plan_indices,
+            &mut batch_clamp_params,
+        ) {
+            Ok(partition) => partition,
+            Err(msg) => {
+                eprintln!("claim_executor: {msg}");
+                return Err(ExitCode::from(1));
+            }
+        };
+    }
     let budget_tighten_ms: Option<u128> = match read_floor_batch_budget_tighten_ms() {
         Ok(v) => v,
         Err(msg) => {
@@ -10732,10 +10907,12 @@ fn run() -> Result<ExitCode, ExitCode> {
         .flat_map(|batch| batch.iter())
         .filter(|runnable| matches!(runnable, Runnable::ScopedWitnessBatch { .. }))
         .collect();
-    if !scoped_rows.is_empty() {
+    let has_shared_scoped_population = !shared_scoped_population.is_empty();
+    if !scoped_rows.is_empty() || has_shared_scoped_population {
         let receipt_arm = scoped_witness_head_sha().and_then(|_| {
             if floor_worker_role.is_none()
                 || matches!(floor_worker_role, Some(FloorWorkerRole::Scoped { .. }))
+                || has_shared_scoped_population
             {
                 initialize_scoped_witness_receipt()
             } else {
@@ -10760,8 +10937,8 @@ fn run() -> Result<ExitCode, ExitCode> {
             Runnable::ScopedWitnessBatch {
                 process_isolation: ScopedProcessIsolation::SharedWalkProcess,
                 ..
-            } if matches!(floor_worker_role, Some(FloorWorkerRole::Scoped { .. })) => Some(
-                "SharedWalkProcess scoped witness execution was routed to a child worker; the mismatched realization refuses",
+            } => Some(
+                "SharedWalkProcess scoped witness execution requires the ordinary worker's prepared-subject partition; a direct or child cold realization refuses",
             ),
             _ => None,
         });
@@ -10797,6 +10974,10 @@ fn run() -> Result<ExitCode, ExitCode> {
     }
     drop(plan_ctx);
     drop(plan_graph);
+    // The prepared subject adopts the one process index after the ordinary population.
+    // The plan evaluator's clone is an ordinary scratch owner, so it must not survive to
+    // that handoff; adoption itself verifies that no other external owner remains.
+    drop(plan_indices);
     phase_mark("plan eval");
 
     eprintln!(
@@ -10865,10 +11046,11 @@ fn run() -> Result<ExitCode, ExitCode> {
         }
     }
 
-    let outcome = run_walk(
+    let mut outcome = run_walk(
         &source_roots,
         &format!("{plan_entry}::{plan_function}"),
         &batches,
+        Some(&batch_plan_indices),
         &on_success_stages,
         floor_finalization.as_ref(),
         if matches!(floor_worker_role, Some(FloorWorkerRole::Scoped { .. })) {
@@ -10884,7 +11066,7 @@ fn run() -> Result<ExitCode, ExitCode> {
         falsifier_soft_deadline_ms,
         &governor,
         fast_lane_eval_budget_ms,
-        falsifier_self_host_wet_budgets,
+        falsifier_self_host_wet_budgets.clone(),
         batch_stop_policy,
         batch_clamp_params.as_deref(),
         budget_tighten_ms,
@@ -10893,8 +11075,130 @@ fn run() -> Result<ExitCode, ExitCode> {
         !matches!(floor_worker_role, Some(FloorWorkerRole::Scoped { .. })),
         walk_attempt_id.as_deref(),
     );
-    // Floor receipts block — data, not outcomes. One named group; pulse glyphs only
-    // (operator live-log 2026-07-25: outcome glyphs for outcomes only).
+    // Compile-clean leg cost gates (prelude coverage follow-up (a)): the enforced clamp
+    // and the counted basis drift, both over the leg's cost snapshot. Post-walk so both
+    // the eager and the lazy install path are covered; no snapshot (skipped/refused leg)
+    // means nothing to clamp and nothing to compare.
+    let compile_clean_over_budget =
+        enforce_floor_compile_clean_clamp(compile_clean_clamp, compile_clean_tighten_ms);
+    let compile_clean_drift_receipt_ok = write_compile_clean_cost_drift_receipt_at(
+        std::path::Path::new("target"),
+        std::path::Path::new("dag/gunbc/compile_clean_cost_basis.tsv"),
+        &source_roots,
+    );
+
+    // The shared scoped population is admitted only by the complete ordinary terminal: batch
+    // outcomes, mandatory receipts, finalization, on-success stages, compile-clean clamp, and
+    // compile-clean drift all precede this branch. Preparation adopts the already-built ordinary
+    // world; any missing/mismatched identity is a typed refusal and no cold constructor is called.
+    let mut shared_scoped_completed_green = false;
+    if ordinary_terminal_admits_shared_scoped(
+        outcome.any_failed,
+        compile_clean_over_budget,
+        compile_clean_drift_receipt_ok,
+    ) {
+        if !shared_scoped_population.is_empty() {
+            let preparation = current_floor_discovery_identity().and_then(|discovery| {
+                prepare_process_floor_subject(
+                    &["dag".to_string(), "src/v2".to_string()],
+                    &["dag".to_string(), "src/v1".to_string()],
+                    &discovery,
+                )
+            });
+            match preparation {
+                Ok(prepared) => {
+                    for (batch_index, scoped_batch, scoped_clamp) in
+                        std::mem::take(&mut shared_scoped_population)
+                    {
+                        let scoped_batches = [scoped_batch];
+                        let scoped_clamps = [Some(scoped_clamp)];
+                        let scoped_plan_indices = [batch_index];
+                        let mut scoped_outcome = run_walk(
+                            &source_roots,
+                            &format!("{plan_entry}::{plan_function} (prepared shared scoped)"),
+                            &scoped_batches,
+                            Some(&scoped_plan_indices),
+                            &[],
+                            None,
+                            FloorFinalizationAbsenceReason::ScopedWorkerByConstruction,
+                            &mut std::io::stderr(),
+                            ordinary_budget_ms,
+                            None,
+                            falsifier_soft_deadline_ms,
+                            &governor,
+                            fast_lane_eval_budget_ms,
+                            falsifier_self_host_wet_budgets.clone(),
+                            batch_stop_policy,
+                            Some(&scoped_clamps),
+                            budget_tighten_ms,
+                            plan_function == "gunbc_falsifier_plan",
+                            Path::new("dag/gunbc/witness_row_cost_basis.tsv"),
+                            false,
+                            None,
+                        );
+                        outcome.any_failed |= scoped_outcome.any_failed;
+                        outcome.batches_run += scoped_outcome.batches_run;
+                        outcome
+                            .failure_details
+                            .append(&mut scoped_outcome.failure_details);
+                        outcome
+                            .infra_faults
+                            .append(&mut scoped_outcome.infra_faults);
+                        if outcome.any_failed {
+                            break;
+                        }
+                    }
+                    match release_process_floor_population_scratch(&prepared) {
+                        Ok(()) if !outcome.any_failed => {
+                            shared_scoped_completed_green = true;
+                        }
+                        Ok(()) => {}
+                        Err(msg) => {
+                            outcome.any_failed = true;
+                            outcome.failure_details.push(msg);
+                        }
+                    }
+                }
+                Err(msg) => {
+                    for runnable in shared_scoped_population
+                        .iter()
+                        .flat_map(|(_, batch, _)| batch.iter())
+                    {
+                        if let Runnable::ScopedWitnessBatch {
+                            batch_id,
+                            source_roots_digest,
+                            entries,
+                            ..
+                        } = runnable
+                        {
+                            if let Err(receipt) = append_scoped_witness_receipt_rows(
+                                batch_id,
+                                source_roots_digest,
+                                entries,
+                                None,
+                                Some(&msg),
+                            ) {
+                                outcome.failure_details.push(format!(
+                                    "prepared scoped refusal receipt write failed: {receipt}"
+                                ));
+                            }
+                        }
+                    }
+                    outcome.any_failed = true;
+                    outcome.failure_details.push(format!(
+                        "prepared shared scoped population refused before execution: {msg}"
+                    ));
+                }
+            }
+        }
+    } else if !shared_scoped_population.is_empty() {
+        eprintln!(
+            "claim_executor: prepared shared scoped population NOT run — ordinary terminal or compile-clean gate is red"
+        );
+    }
+
+    // Terminal resource evidence is observed after both populations, so the process peak and
+    // governor receipt include the prepared scoped epoch rather than describing only ordinary.
     v1_compiler::v1_interpreter::group_begin("floor receipts");
     match peak_rss_bytes() {
         Some(bytes) => {
@@ -10916,25 +11220,67 @@ fn run() -> Result<ExitCode, ExitCode> {
             )
         ),
     }
-    // The governor receipt is the §5-counted degradation story for the run: every graceful
-    // hold, hard back-off, and forced-serial admission, beside the width actually reached.
     eprintln!("{}", governor.receipt_line());
-    // WHOLE-TREE cgroup peak — the SOUND placement divisor input (SELF-RSS above omits
-    // child rustc/sccache PIDs; cgroup-v2 `memory.peak` at the leaf job cgroup is hierarchical and
-    // captures them). Single authority `emit_cgroup_measurement` so the `ci` and `rust_tests` jobs
-    // report an identically-shaped line. Runtime-harmless read-only.
     emit_cgroup_measurement("floor adaptive-width");
-    // Compile-clean leg cost gates (prelude coverage follow-up (a)): the enforced clamp
-    // and the counted basis drift, both over the leg's cost snapshot. Post-walk so both
-    // the eager and the lazy install path are covered; no snapshot (skipped/refused leg)
-    // means nothing to clamp and nothing to compare.
-    let compile_clean_over_budget =
-        enforce_floor_compile_clean_clamp(compile_clean_clamp, compile_clean_tighten_ms);
-    let compile_clean_drift_receipt_ok = write_compile_clean_cost_drift_receipt_at(
-        std::path::Path::new("target"),
-        std::path::Path::new("dag/gunbc/compile_clean_cost_basis.tsv"),
-        &source_roots,
-    );
+    if has_shared_scoped_population {
+        let counters = prepared_floor_subject_counters();
+        eprintln!(
+            "[prepared-floor-subject] process_shared_cold_constructions={} adopted_cold_worlds={} prepared_view_hits={} fresh_view_scratch_shells={} reused_source_files={} newly_read_source_files={} reused_pool_parse_modules={} newly_parsed_pool_parse_modules={} population_scratch_releases={} live_view_scratch_shells={} peak_live_view_scratch_shells={} cold_fallbacks={} strict_refusals={} scoped_source_hits={} scoped_source_ambient_read_attempts={}",
+            counters.process_shared_cold_constructions,
+            counters.adopted_cold_worlds,
+            counters.prepared_view_hits,
+            counters.fresh_view_scratch_shells,
+            counters.reused_source_files,
+            counters.newly_read_source_files,
+            counters.reused_pool_parse_modules,
+            counters.newly_parsed_pool_parse_modules,
+            counters.population_scratch_releases,
+            counters.live_view_scratch_shells,
+            counters.peak_live_view_scratch_shells,
+            counters.cold_fallbacks,
+            counters.strict_refusals,
+            counters.scoped_source_hits,
+            counters.scoped_source_ambient_read_attempts,
+        );
+        // Exactly two shells are structural: the ordinary and scoped source-root views.
+        // Hits are a lower bound because repeated resolver lookups may legitimately read either
+        // already-installed view again; they must never construct a third shell or cold fallback.
+        if shared_scoped_completed_green
+            && (counters.process_shared_cold_constructions != 1
+                || counters.adopted_cold_worlds != 1
+                || counters.fresh_view_scratch_shells != 2
+                || counters.prepared_view_hits < 2
+                || counters.population_scratch_releases != 1
+                || counters.live_view_scratch_shells != 0
+                || counters.peak_live_view_scratch_shells != 2
+                || counters.cold_fallbacks != 0
+                || counters.strict_refusals != 0
+                || counters.scoped_source_ambient_read_attempts != 0)
+        {
+            outcome.any_failed = true;
+            outcome.failure_details.push(format!(
+                "prepared shared scoped terminal counters refused: cold_constructions={} adopted={} fresh_shells={} view_hits={} releases={} live_shells={} peak_shells={} cold_fallbacks={} strict_refusals={} scoped_ambient_reads={}",
+                counters.process_shared_cold_constructions,
+                counters.adopted_cold_worlds,
+                counters.fresh_view_scratch_shells,
+                counters.prepared_view_hits,
+                counters.population_scratch_releases,
+                counters.live_view_scratch_shells,
+                counters.peak_live_view_scratch_shells,
+                counters.cold_fallbacks,
+                counters.strict_refusals,
+                counters.scoped_source_ambient_read_attempts,
+            ));
+        } else if counters.cold_fallbacks != 0 || counters.scoped_source_ambient_read_attempts != 0
+        {
+            outcome.any_failed = true;
+            outcome.failure_details.push(format!(
+                "prepared shared scoped construction wall breached before green completion: cold_fallbacks={} scoped_ambient_reads={}",
+                counters.cold_fallbacks,
+                counters.scoped_source_ambient_read_attempts,
+            ));
+        }
+    }
     v1_compiler::v1_interpreter::group_end();
     let mut terminal_failure_details = outcome.failure_details.clone();
     if compile_clean_over_budget {
@@ -11323,6 +11669,190 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shared_scoped_partition_and_terminal_admission_are_fail_closed() {
+        let scoped = |batch_id: &str, isolation| Runnable::ScopedWitnessBatch {
+            batch_id: batch_id.to_string(),
+            source_roots: vec!["dag".to_string(), "src/v1".to_string()],
+            source_roots_digest: "0123456789abcdef".to_string(),
+            entries: vec![],
+            scan_dirs: vec![],
+            node_frontier_selection: NodeFrontierSelectionMode::Applied,
+            execution_authority: ScopedWitnessExecutionAuthority::InheritedWalkSourceRoots,
+            profile: ParsedRunnableProfile::undeclared(),
+            clamp: ResolvedFloorBatchClamp {
+                overhead_ms: 480_000,
+                per_unit_ms: 0,
+                authority: FloorBatchClampAuthority::ScopedBatchOwnedClamp {
+                    batch_id: batch_id.to_string(),
+                    module_path: "gunbc.ci_layer_roots".to_string(),
+                    decl_name: "v1_claim_scoped_witness_batch".to_string(),
+                },
+            },
+            process_isolation: isolation,
+        };
+        let ordinary_clamp = ResolvedFloorBatchClamp {
+            overhead_ms: 1_000,
+            per_unit_ms: 2,
+            authority: FloorBatchClampAuthority::PositionalCiSpecClamp {
+                module_path: "gunbc.ci_spec".to_string(),
+                decl_name: "gunbc_ci_floor_batch_clamp_params".to_string(),
+                index: 0,
+            },
+        };
+        let sequential_clamp = ResolvedFloorBatchClamp {
+            overhead_ms: 2_000,
+            per_unit_ms: 0,
+            authority: FloorBatchClampAuthority::ScopedBatchOwnedClamp {
+                batch_id: "sequential".to_string(),
+                module_path: "fixture".to_string(),
+                decl_name: "sequential".to_string(),
+            },
+        };
+        let shared_clamp = ResolvedFloorBatchClamp {
+            overhead_ms: 3_000,
+            per_unit_ms: 0,
+            authority: FloorBatchClampAuthority::ScopedBatchOwnedClamp {
+                batch_id: "shared".to_string(),
+                module_path: "fixture".to_string(),
+                decl_name: "shared".to_string(),
+            },
+        };
+        let mut batches = vec![
+            vec![Runnable::SingleClaim {
+                entry: "ordinary.dag".to_string(),
+                function: "ordinary".to_string(),
+                profile: ParsedRunnableProfile::undeclared(),
+            }],
+            vec![scoped(
+                "sequential",
+                ScopedProcessIsolation::SequentialChildProcess,
+            )],
+            vec![scoped("shared", ScopedProcessIsolation::SharedWalkProcess)],
+            vec![Runnable::SingleClaim {
+                entry: "after-shared.dag".to_string(),
+                function: "after_shared".to_string(),
+                profile: ParsedRunnableProfile::undeclared(),
+            }],
+        ];
+        let mut clamps = Some(vec![
+            Some(ordinary_clamp.clone()),
+            Some(sequential_clamp.clone()),
+            Some(shared_clamp.clone()),
+            Some(ordinary_clamp.clone()),
+        ]);
+        let mut plan_indices = vec![0, 1, 2, 3];
+
+        let mut partition =
+            partition_shared_walk_scoped_batches(&mut batches, &mut plan_indices, &mut clamps)
+                .expect("valid shared population");
+        let (offset, scoped_batch, scoped_clamp) = partition.remove(0);
+
+        assert_eq!(offset, 2, "the scoped log index remains its plan index");
+        assert_eq!(batches.len(), 3);
+        assert_eq!(plan_indices, vec![0, 1, 3]);
+        assert!(matches!(
+            &batches[1][0],
+            Runnable::ScopedWitnessBatch {
+                process_isolation: ScopedProcessIsolation::SequentialChildProcess,
+                ..
+            }
+        ));
+        assert_eq!(
+            clamps,
+            Some(vec![
+                Some(ordinary_clamp.clone()),
+                Some(sequential_clamp),
+                Some(ordinary_clamp),
+            ])
+        );
+        assert_eq!(scoped_batch.len(), 1);
+        assert_eq!(scoped_clamp, shared_clamp);
+
+        // The map is consumed by the real walk, not just retained by the partition. A
+        // deliberately-red batch after the removed scoped row must still report batch 4.
+        let fixture = workspace_root().join(format!(
+            "target/claim-executor-shared-plan-index-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&fixture);
+        fs::create_dir_all(&fixture).expect("create plan-index fixture");
+        let entry = fixture.join("mapped_red.dag");
+        fs::write(
+            &entry,
+            "module fixture.mapped_red\nfn mapped_red() -> Bool { false }\n",
+        )
+        .expect("write plan-index fixture");
+        let mapped_batches = vec![vec![Runnable::SingleClaim {
+            entry: entry.to_string_lossy().into_owned(),
+            function: "mapped_red".to_string(),
+            profile: ParsedRunnableProfile::undeclared(),
+        }]];
+        let mapped = run_walk(
+            &[fixture.to_string_lossy().into_owned()],
+            "fixture::mapped_plan_index",
+            &mapped_batches,
+            Some(&[3]),
+            &[],
+            None,
+            FloorFinalizationAbsenceReason::Undeclared,
+            &mut std::io::sink(),
+            None,
+            None,
+            None,
+            &Arc::new(MemoryGovernor::from_environment(1)),
+            None,
+            FalsifierSelfHostWetBudgets::default(),
+            FloorBatchStopPolicy::StopBeforeDependents,
+            None,
+            None,
+            false,
+            Path::new("dag/gunbc/witness_row_cost_basis.tsv"),
+            false,
+            None,
+        );
+        assert!(
+            mapped
+                .failure_details
+                .iter()
+                .any(|detail| detail.starts_with("batch=4 ")),
+            "the row after a removed Shared batch must keep its original receipt/log index: {:?}",
+            mapped.failure_details
+        );
+        fs::remove_dir_all(&fixture).expect("remove plan-index fixture");
+
+        let shared = scoped("shared-refusal", ScopedProcessIsolation::SharedWalkProcess);
+        let ordinary = Runnable::SingleClaim {
+            entry: "ordinary.dag".to_string(),
+            function: "ordinary".to_string(),
+            profile: ParsedRunnableProfile::undeclared(),
+        };
+        let mut misaligned_batches = vec![vec![ordinary.clone()], vec![shared.clone()]];
+        let mut misaligned_indices = vec![0, 1];
+        let mut misaligned_clamps = Some(vec![None]);
+        assert!(partition_shared_walk_scoped_batches(
+            &mut misaligned_batches,
+            &mut misaligned_indices,
+            &mut misaligned_clamps
+        )
+        .is_err());
+
+        let mut non_singleton_batches = vec![vec![shared, ordinary]];
+        let mut non_singleton_indices = vec![0];
+        let mut non_singleton_clamps = Some(vec![None]);
+        assert!(partition_shared_walk_scoped_batches(
+            &mut non_singleton_batches,
+            &mut non_singleton_indices,
+            &mut non_singleton_clamps
+        )
+        .is_err());
+
+        assert!(ordinary_terminal_admits_shared_scoped(false, false, true));
+        assert!(!ordinary_terminal_admits_shared_scoped(true, false, true));
+        assert!(!ordinary_terminal_admits_shared_scoped(false, true, true));
+        assert!(!ordinary_terminal_admits_shared_scoped(false, false, false));
+    }
 
     #[test]
     fn population_budget_watchdog_refuses_and_writes_located_receipt() {
@@ -12279,6 +12809,7 @@ mod tests {
             &[],
             TEST_PLAN_SITE,
             &[],
+            None,
             &[],
             None,
             FloorFinalizationAbsenceReason::IncidentalAbsence,
@@ -13519,6 +14050,7 @@ mod tests {
             &source_roots,
             &batch_records,
             &batches,
+            Some(&[0, 3]),
             UnreachedCause::StopPolicy,
         ));
         let body = fs::read_to_string(base.join("floor-component-receipt.json")).unwrap();
@@ -13536,6 +14068,10 @@ mod tests {
         assert!(
             body.contains("\"outcome\": \"skipped\""),
             "an unreached component concludes Skipped: {body}"
+        );
+        assert!(
+            body.contains("\"index\": 4"),
+            "the planned row after a removed Shared batch must keep its original receipt index: {body}"
         );
         // The placeholder identity is gone.
         assert!(
@@ -13699,6 +14235,7 @@ mod tests {
             &source_roots,
             &batch_records,
             &batches,
+            None,
             UnreachedCause::RunIncomplete,
         ));
         let checkpoint = fs::read_to_string(base.join("floor-component-receipt.json")).unwrap();
@@ -13717,6 +14254,7 @@ mod tests {
             &source_roots,
             &batch_records,
             &batches,
+            None,
             UnreachedCause::StopPolicy,
         ));
         let concluded = fs::read_to_string(base.join("floor-component-receipt.json")).unwrap();
@@ -14696,6 +15234,7 @@ mod tests {
                 &roots,
                 "test::soft_deadline_fixture",
                 &batches,
+                None,
                 &[],
                 None,
                 FloorFinalizationAbsenceReason::Undeclared,
@@ -14780,6 +15319,7 @@ mod tests {
             roots,
             "test::on_success_materialization_fixture",
             &ordinary_batch,
+            None,
             on_success_stages,
             None,
             FloorFinalizationAbsenceReason::Undeclared,

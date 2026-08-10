@@ -52,9 +52,10 @@ mod phase_profile;
 pub(crate) mod test_module_hygiene_bridge;
 pub use floor_discovery_snapshot::{
     append_discovery_trace_row, build_floor_discovery_request, coordinated_discovery_compute_count,
-    discover_floor_witness_roster_with_snapshot, floor_discovery_consumer_role_from_env,
-    request_identity_digest, verify_floor_discovery_terminal_for_coordinator,
-    FloorDiscoveryConsumerRole, FLOOR_DISCOVERY_CONSUMER_ENV,
+    current_floor_discovery_identity, discover_floor_witness_roster_with_snapshot,
+    floor_discovery_consumer_role_from_env, request_identity_digest,
+    verify_floor_discovery_terminal_for_coordinator, FloorDiscoveryConsumerRole,
+    FloorDiscoveryIdentity, FLOOR_DISCOVERY_CONSUMER_ENV,
 };
 #[doc(hidden)]
 pub use materialization_provider_consumer::{
@@ -73,7 +74,10 @@ use crate::resolved_graph_cache::{
     transform_content_digest, write as cross_process_write, CacheLookupResult, CacheProbeResult,
     CacheRejectReason, CachedResolvedGraph,
 };
-use crate::std_content_hash::fnv1a64_structural_hex_digest;
+use crate::std_content_hash::{
+    content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural,
+    fnv1a64_structural_hex_digest, Fnv1a64Structural,
+};
 use crate::std_interface_summary::{module_key, typed_module_key};
 use crate::std_keyed_roster::{keyed_roster_build, KeyedRosterBuild};
 use crate::std_keyed_row::KeyedRow;
@@ -1493,6 +1497,14 @@ fn module_path_collision_panic_message(
 }
 
 pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, String> {
+    refuse_nonowner_prepared_access("build_module_path_index").unwrap_or_else(|error| {
+        // This legacy API cannot carry a typed refusal. A non-owner cache hit is
+        // just as invalid as a non-owner cold build during the prepared epoch.
+        panic!("{error}")
+    });
+    if let Some(prepared) = prepared_module_path_index_for_active_view(source_roots) {
+        return prepared.unwrap_or_else(|error| panic!("{error}"));
+    }
     let key = source_roots
         .iter()
         .map(|r| anchor_source_root(r))
@@ -1509,6 +1521,7 @@ pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, Strin
 }
 
 fn build_module_path_index_uncached(source_roots: &[String]) -> HashMap<String, String> {
+    refuse_active_prepared_cold_construction("build_module_path_index_uncached");
     let mut index: HashMap<String, String> = HashMap::new();
     for_each_parsed_module_binding(source_roots, |root_idx, path, binding| {
         let rel = module_index_path_key(path);
@@ -2563,6 +2576,7 @@ pub(crate) fn brace_delta(line: &str) -> i32 {
 type ModuleSourceIndex = HashMap<String, Rc<v1_compiler_compile::SourceFile>>;
 
 fn build_module_index(source_roots: &[String]) -> ModuleSourceIndex {
+    refuse_active_prepared_cold_construction("build_module_index");
     let mut index = ModuleSourceIndex::new();
     for (root_idx, root) in source_roots.iter().enumerate() {
         let anchored_root = anchor_source_root(root);
@@ -2612,6 +2626,7 @@ fn build_module_index(source_roots: &[String]) -> ModuleSourceIndex {
 /// fill only modules not already present (matches `gunbc compile --dependency-pool-index
 /// primary-precedence` in `dag_compile_clean_transport`).
 fn build_module_index_primary_precedence(source_roots: &[String]) -> ModuleSourceIndex {
+    refuse_active_prepared_cold_construction("build_module_index_primary_precedence");
     let mut index = ModuleSourceIndex::new();
     if source_roots.is_empty() {
         return index;
@@ -2621,6 +2636,227 @@ fn build_module_index_primary_precedence(source_roots: &[String]) -> ModuleSourc
         index_source_root_into_module_index(root, &mut index, true);
     }
     index
+}
+
+#[derive(Clone)]
+struct PreparedSourceInventory {
+    selected: ModuleSourceIndex,
+    /// Every observed `.dag` source in ordered-root / sorted-path order. Unlike
+    /// `selected`, this retains later-root shadowed and moduleless files because the
+    /// module-graph observation accounts for them even though resolution cannot select
+    /// them as a module provider.
+    observed: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    reused_sources: usize,
+    newly_read_sources: usize,
+}
+
+fn source_path_belongs_to_root(path: &str, root: &str) -> bool {
+    let normalized_root = workspace_relative_repo_path(root);
+    source_tree_root_of(&[root.to_string()], path).as_deref()
+        == Some(normalized_root.trim_end_matches('/'))
+}
+
+fn verify_reusable_prefix_inventory_complete(
+    ordinary_index: &MultiEntryIndex,
+    prefix_roots: &[String],
+) -> Result<(), String> {
+    let selected_paths: HashSet<String> = ordinary_index
+        .source_files
+        .values()
+        .filter(|source| {
+            prefix_roots
+                .iter()
+                .any(|root| source_path_belongs_to_root(&source.path, root))
+        })
+        .map(|source| workspace_relative_repo_path(&source.path))
+        .collect();
+    let observed_paths: HashSet<String> = ordinary_index
+        .module_graph_facts
+        .observed_paths
+        .iter()
+        .filter(|path| {
+            prefix_roots
+                .iter()
+                .any(|root| source_path_belongs_to_root(path, root))
+        })
+        .map(|path| workspace_relative_repo_path(path))
+        .collect();
+    let refusals: Vec<_> = ordinary_index
+        .module_graph_facts
+        .read_refusals
+        .iter()
+        .filter(|(path, _)| {
+            prefix_roots
+                .iter()
+                .any(|root| source_path_belongs_to_root(path, root))
+        })
+        .collect();
+    if !refusals.is_empty() {
+        return Err(format!(
+            "prepared floor subject refused: reusable root prefix has {} unreadable source(s); an incomplete inventory cannot be shared",
+            refusals.len()
+        ));
+    }
+    if selected_paths != observed_paths {
+        let missing: Vec<_> = observed_paths
+            .difference(&selected_paths)
+            .cloned()
+            .collect();
+        let unexpected: Vec<_> = selected_paths
+            .difference(&observed_paths)
+            .cloned()
+            .collect();
+        return Err(format!(
+            "prepared floor subject refused: adopted common-root inventory is not closed (observed-but-unselected={}, selected-but-unobserved={}); re-reading the common root is forbidden, so this view cannot be prepared",
+            missing.join(","),
+            unexpected.join(",")
+        ));
+    }
+    Ok(())
+}
+
+fn overlay_disposition_matches_for_reused_prefix(
+    ordinary_roots: &[String],
+    view_roots: &[String],
+    prefix_len: usize,
+) -> bool {
+    MANIFEST_STUB_OVERLAYS.iter().all(|(stub, _)| {
+        (0..prefix_len).all(|root_idx| {
+            let root = workspace_relative_repo_path(&ordinary_roots[root_idx]);
+            if !stub.starts_with(&format!("{}/", root.trim_end_matches('/')))
+                && *stub != root.as_str()
+            {
+                return true;
+            }
+            manifest_stub_superseded_by_overlay(stub, ordinary_roots, root_idx)
+                == manifest_stub_superseded_by_overlay(stub, view_roots, root_idx)
+        })
+    })
+}
+
+fn read_source_root_inventory(
+    root: &str,
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    let anchored = anchor_source_root(root);
+    let mut paths = Vec::new();
+    collect_dag_files(Path::new(&anchored), &mut paths);
+    paths.sort();
+    paths
+        .into_iter()
+        .map(|path| {
+            let content = std::fs::read_to_string(&path)
+                .map_err(|e| format!("prepared root-view read {}: {e}", path.display()))?;
+            Ok(Rc::new(v1_compiler_compile::SourceFile {
+                path: module_index_path_key(&path),
+                content,
+            }))
+        })
+        .collect()
+}
+
+fn prepare_source_inventory_from_ordinary(
+    ordinary_index: &MultiEntryIndex,
+    ordinary_roots: &[String],
+    view_roots: &[String],
+) -> Result<PreparedSourceInventory, String> {
+    let prefix_len = ordinary_roots
+        .iter()
+        .zip(view_roots.iter())
+        .take_while(|(ordinary, view)| ordinary == view)
+        .count();
+    let prefix_roots = &view_roots[..prefix_len];
+    verify_reusable_prefix_inventory_complete(ordinary_index, prefix_roots)?;
+    if !overlay_disposition_matches_for_reused_prefix(ordinary_roots, view_roots, prefix_len) {
+        return Err(
+            "prepared floor subject refused: a reused prefix root has a different manifest-overlay disposition in the requested view"
+                .to_string(),
+        );
+    }
+
+    let mut selected = ModuleSourceIndex::new();
+    let mut observed = Vec::new();
+    let mut reused_sources = 0usize;
+    for root in prefix_roots {
+        let mut rows: Vec<(String, Rc<v1_compiler_compile::SourceFile>)> = ordinary_index
+            .source_files
+            .iter()
+            .filter(|(_, source)| source_path_belongs_to_root(&source.path, root))
+            .map(|(module, source)| (module.clone(), source.clone()))
+            .collect();
+        rows.sort_by(|a, b| a.1.path.cmp(&b.1.path));
+        for (module, source) in rows {
+            selected.insert(module, source.clone());
+            observed.push(source);
+            reused_sources += 1;
+        }
+    }
+
+    let mut newly_read_sources = 0usize;
+    for (root_idx, root) in view_roots.iter().enumerate().skip(prefix_len) {
+        for source in read_source_root_inventory(root)? {
+            newly_read_sources += 1;
+            observed.push(source.clone());
+            let Some(module_path) = extract_module_path(&source.content) else {
+                continue;
+            };
+            if manifest_stub_superseded_by_overlay(&source.path, view_roots, root_idx) {
+                continue;
+            }
+            if let Some(existing) = selected.get(&module_path) {
+                if existing.path != source.path
+                    && !same_canonical_file(&existing.path, &source.path)
+                {
+                    if root_idx > 0 {
+                        continue;
+                    }
+                    return Err(module_path_collision_panic_message(
+                        &module_path,
+                        &existing.path,
+                        &source.path,
+                    ));
+                }
+                continue;
+            }
+            selected.insert(module_path, source);
+        }
+    }
+    Ok(PreparedSourceInventory {
+        selected,
+        observed,
+        reused_sources,
+        newly_read_sources,
+    })
+}
+
+/// Build the exact live graph projection for one prepared ordered-root view from
+/// its source inventory. Both import and namespace reference facts route through
+/// the same pure source-value producers as the filesystem realization; this is an
+/// adapter into the authority, not a second edge algorithm.
+fn module_graph_facts_from_prepared_inventory(
+    inventory: &PreparedSourceInventory,
+) -> ModuleGraphFactsLive {
+    let declared: HashSet<String> = inventory.selected.keys().cloned().collect();
+    let sources = source_content_observations_from_inventory(&inventory.observed);
+    let import_observation = import_resolution_observation_from_sources(&declared, &sources);
+    let mut nodes: Vec<ModuleDeclarationFactRaw> = inventory
+        .selected
+        .iter()
+        .map(|(module, source)| ModuleDeclarationFactRaw {
+            module: module.clone(),
+            path: workspace_relative_repo_path(&source.path),
+        })
+        .collect();
+    nodes.sort_by(|a, b| a.module.cmp(&b.module));
+    let (reference_edges, reference_refusals) =
+        reference_resolution_facts_from_sources(&sources, &sources);
+    assemble_module_graph_facts(
+        import_observation.facts,
+        nodes,
+        reference_edges,
+        reference_refusals,
+        import_observation.observed_paths,
+        import_observation.read_refusals,
+    )
 }
 
 fn index_source_root_into_module_index(
@@ -5933,9 +6169,54 @@ pub(crate) fn reset_module_graph_facts_cache_for_test() {
     reset_module_path_index_cache_for_test();
 }
 
+/// One assembly authority for import/reference observations. Producers decide
+/// how source bytes are observed; this pure fold decides the graph projection.
+fn assemble_module_graph_facts(
+    edges: Vec<ImportResolutionFactRaw>,
+    nodes: Vec<ModuleDeclarationFactRaw>,
+    reference_edges: Vec<ReferenceEdgeRaw>,
+    reference_refusals: Vec<ReferenceAccountingRefusal>,
+    observed_paths: HashSet<String>,
+    read_refusals: Vec<(String, String)>,
+) -> ModuleGraphFactsLive {
+    let adjacency = build_import_adjacency(&edges, &nodes);
+    let mut selection_edges = edges.clone();
+    selection_edges.extend(reference_edges_as_import_facts(&reference_edges, true));
+    let selection_adjacency = build_import_adjacency(&selection_edges, &nodes);
+    let reference_unaccounted = reference_refusals
+        .into_iter()
+        .map(|refusal| workspace_relative_repo_path(&refusal.path))
+        .collect();
+    let declared_paths = nodes
+        .iter()
+        .map(|node| workspace_relative_repo_path(&node.path))
+        .collect();
+    let path_to_module = nodes
+        .iter()
+        .map(|node| {
+            (
+                workspace_relative_repo_path(&node.path),
+                node.module.clone(),
+            )
+        })
+        .collect();
+    ModuleGraphFactsLive {
+        edges,
+        nodes,
+        adjacency,
+        declared_paths,
+        selection_adjacency,
+        reference_unaccounted,
+        path_to_module,
+        observed_paths,
+        read_refusals,
+    }
+}
+
 pub(crate) fn build_module_graph_facts_live_uncached(
     pool_roots: &[String],
 ) -> ModuleGraphFactsLive {
+    refuse_active_prepared_cold_construction("build_module_graph_facts_live_uncached");
     #[cfg(test)]
     MODULE_GRAPH_FACTS_BUILD_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     const EXCLUDE: &[String] = &[];
@@ -5976,43 +6257,22 @@ pub(crate) fn build_module_graph_facts_live_uncached(
     let observation = import_resolution_facts_with_observation(&roots, &roots, EXCLUDE);
     let edges = observation.facts;
     let nodes = module_declaration_facts(&roots);
-    // Loader tier: import edges only, unchanged. Every consumer that goes on to RESOLVE what it
-    // reaches reads this one.
-    let adjacency = build_import_adjacency(&edges, &nodes);
-    // Selection tier: import edges + strict reference edges.
-    let mut selection_edges = edges.clone();
-    selection_edges.extend(reference_edges_as_import_facts(
-        &reference_resolution_facts(&roots, &roots, EXCLUDE),
-        /* strict */ true,
-    ));
-    let selection_adjacency = build_import_adjacency(&selection_edges, &nodes);
-    let reference_unaccounted: HashSet<String> =
-        reference_accounting_refusals(&roots, &roots, EXCLUDE)
-            .into_iter()
-            .map(|r| workspace_relative_repo_path(&r.path))
-            .collect();
-    let declared_paths = nodes
-        .iter()
-        .map(|n| workspace_relative_repo_path(&n.path))
-        .collect();
-    let path_to_module: HashMap<String, String> = nodes
-        .iter()
-        .map(|n| (workspace_relative_repo_path(&n.path), n.module.clone()))
-        .collect();
-    ModuleGraphFactsLive {
+    let reference_edges = reference_resolution_facts(&roots, &roots, EXCLUDE);
+    let reference_refusals = reference_accounting_refusals(&roots, &roots, EXCLUDE);
+    assemble_module_graph_facts(
         edges,
         nodes,
-        adjacency,
-        selection_adjacency,
-        declared_paths,
-        reference_unaccounted,
-        path_to_module,
-        observed_paths: observation.observed_paths,
-        read_refusals: observation.read_refusals,
-    }
+        reference_edges,
+        reference_refusals,
+        observation.observed_paths,
+        observation.read_refusals,
+    )
 }
 
 pub fn build_module_graph_facts_live(pool_roots: &[String]) -> ModuleGraphFactsLive {
+    if let Some(prepared) = prepared_module_graph_facts_for_active_view(pool_roots) {
+        return prepared.unwrap_or_else(|error| panic!("{error}"));
+    }
     let key = pool_roots_for_module_graph_closure(pool_roots).join("\u{1f}");
     MODULE_GRAPH_FACTS_CACHE.with(|cache| {
         if let Some(facts) = cache.borrow().get(&key) {
@@ -7724,6 +7984,13 @@ fn entry_source_from_index_or_disk(
     index: &ModuleSourceIndex,
     entry_path: &str,
 ) -> Result<Rc<v1_compiler_compile::SourceFile>, String> {
+    let entry_rel = workspace_relative_entry_path(entry_path);
+    if let Some(source) = index.values().find(|source| {
+        source.path == entry_path || workspace_relative_entry_path(&source.path) == entry_rel
+    }) {
+        return Ok(source.clone());
+    }
+    refuse_prepared_scoped_source_ambient_read("entry_source_from_index_or_disk")?;
     let path = std::path::Path::new(entry_path);
     if !path.is_file() {
         return Err(format!(
@@ -7839,6 +8106,85 @@ pub fn resolve_entry_graph(
 // semantics unchanged: a miss resolves exactly as before, including the typed
 // error path. Thread-local by design: resolved graphs are Rc-based (not Send);
 // shard threads keep their own store rather than smuggling Rc across threads.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PreparedFloorSubjectIdentity {
+    digest: String,
+    tested_commit: String,
+    tested_tree: String,
+    discovery_request_identity_digest: String,
+    discovery_roster_digest: String,
+    discovery_module_graph_facts_digest: String,
+    discovery_payload_digest: String,
+    tool_identity: String,
+    root_views_digest: String,
+    ordinary_roots: Vec<String>,
+    scoped_roots: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PreparedFloorSubjectCounters {
+    pub process_shared_cold_constructions: usize,
+    pub adopted_cold_worlds: usize,
+    pub prepared_view_hits: usize,
+    pub fresh_view_scratch_shells: usize,
+    pub reused_source_files: usize,
+    pub newly_read_source_files: usize,
+    pub reused_pool_parse_modules: usize,
+    pub newly_parsed_pool_parse_modules: usize,
+    pub population_scratch_releases: usize,
+    pub live_view_scratch_shells: usize,
+    pub peak_live_view_scratch_shells: usize,
+    pub strict_refusals: usize,
+    pub cold_fallbacks: usize,
+    pub scoped_source_hits: usize,
+    pub scoped_source_ambient_read_attempts: usize,
+}
+
+#[derive(Clone)]
+struct PreparedFloorRootView {
+    roots: Vec<String>,
+    source_files: ModuleSourceIndex,
+    /// Ordered source observations for exact-source consumers such as file-grain
+    /// expansion. This is the prepared view, not a path list to re-read.
+    observed_sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    module_graph_facts: ModuleGraphFactsLive,
+    /// Entry-independent semantic state belongs to this exact ordered-root
+    /// universe. The ordinary view adopts its already-warmed handles; the
+    /// distinct scoped view starts fresh and never aliases namespace state.
+    semantic_caches: PreparedRootViewCaches,
+}
+
+struct PreparedFloorSubject {
+    identity: PreparedFloorSubjectIdentity,
+    ordinary_view: PreparedFloorRootView,
+    scoped_view: PreparedFloorRootView,
+    semantic_caches: PreparedSemanticCaches,
+}
+
+static PREPARED_FLOOR_PROCESS_STATE: Mutex<(
+    Option<std::thread::ThreadId>,
+    PreparedFloorSubjectCounters,
+)> = Mutex::new((
+    None,
+    PreparedFloorSubjectCounters {
+        process_shared_cold_constructions: 0,
+        adopted_cold_worlds: 0,
+        prepared_view_hits: 0,
+        fresh_view_scratch_shells: 0,
+        reused_source_files: 0,
+        newly_read_source_files: 0,
+        reused_pool_parse_modules: 0,
+        newly_parsed_pool_parse_modules: 0,
+        population_scratch_releases: 0,
+        live_view_scratch_shells: 0,
+        peak_live_view_scratch_shells: 0,
+        strict_refusals: 0,
+        cold_fallbacks: 0,
+        scoped_source_hits: 0,
+        scoped_source_ambient_read_attempts: 0,
+    },
+));
+
 thread_local! {
     #[allow(clippy::type_complexity)]
     static PROCESS_RESOLVE_STORE: RefCell<
@@ -7863,6 +8209,14 @@ thread_local! {
     #[allow(clippy::type_complexity)]
     static PROCESS_RESOLVE_INDEX: RefCell<Option<(String, Rc<MultiEntryIndex>)>> =
         const { RefCell::new(None) };
+
+    static PROCESS_PREPARED_FLOOR_SUBJECT: RefCell<Option<PreparedFloorSubject>> =
+        const { RefCell::new(None) };
+
+    /// Fresh view-dependent shells for the current population. Scoped-subject
+    /// and inherited-authority roots may coexist; neither replaces the other.
+    static PROCESS_PREPARED_FLOOR_VIEW_INDEXES: RefCell<HashMap<String, Rc<MultiEntryIndex>>> =
+        RefCell::new(HashMap::new());
 
     // While loading the materialization-provider authority, cross-process disk hits
     // must not re-enter provider routing (review 44268: bootstrap recursion).
@@ -7932,6 +8286,1328 @@ fn canonical_shared_index_roots(source_roots: &[String]) -> Vec<String> {
         .collect()
 }
 
+/// Rust wire projection of `gunbc.floor_materialization`
+/// `prepared_floor_subject_content_identity`. Tags and right-nested folds are
+/// kept byte-for-byte aligned with that model authority.
+fn prepared_floor_subject_identity(
+    discovery: &FloorDiscoveryIdentity,
+    ordinary_roots: &[String],
+    scoped_roots: &[String],
+) -> Result<PreparedFloorSubjectIdentity, String> {
+    let source_roots_digest = |source_roots: &[String]| {
+        source_roots.iter().fold(
+            content_hash_atom("scoped-witness-source-roots".to_string()),
+            |digest, root| content_hash_combine_structural(digest, content_hash_atom(root.clone())),
+        )
+    };
+    let structural = |wire: &str, field: &str| {
+        fnv1a64_structural_hex_digest(wire.to_string()).ok_or_else(|| {
+            format!(
+                "prepared floor subject refused: {field} is not a canonical fnv1a64 structural digest: `{wire}`"
+            )
+        })
+    };
+    let request = structural(
+        &discovery.request_identity_digest,
+        "discovery request identity",
+    )?;
+    let roster = structural(&discovery.roster_digest, "discovery roster identity")?;
+    let module_graph = structural(
+        &discovery.module_graph_facts_digest,
+        "discovery module-graph identity",
+    )?;
+    let payload = structural(&discovery.payload_digest, "discovery payload identity")?;
+    let tool = structural(&discovery.tool_identity, "tool identity")?;
+
+    let discovery_digest = content_hash_tagged_structural(
+        "prepared-floor-discovery".to_string(),
+        content_hash_combine_structural(
+            request,
+            content_hash_combine_structural(
+                roster,
+                content_hash_combine_structural(module_graph, payload),
+            ),
+        ),
+    );
+    let ordinary_view = content_hash_tagged_structural(
+        "prepared-floor-walk-root-universe".to_string(),
+        source_roots_digest(ordinary_roots),
+    );
+    let scoped_view = content_hash_tagged_structural(
+        "prepared-floor-scoped-root-universe".to_string(),
+        source_roots_digest(scoped_roots),
+    );
+    let root_views = content_hash_tagged_structural(
+        "prepared-floor-ordered-root-views".to_string(),
+        content_hash_combine_structural(ordinary_view, scoped_view),
+    );
+    let commit = content_hash_tagged_structural(
+        "prepared-floor-subject-tested-commit".to_string(),
+        content_hash_atom(discovery.tested_commit.clone()),
+    );
+    // `serialize_content_hash(git_object_id_content_hash(...))` is raw SHA-1
+    // wire and algorithm-qualified SHA-256 wire.
+    let tree_wire = if discovery.tested_tree.len() == 64 {
+        format!("sha256:{}", discovery.tested_tree)
+    } else {
+        discovery.tested_tree.clone()
+    };
+    let tree = content_hash_tagged_structural(
+        "prepared-floor-subject-tested-tree".to_string(),
+        content_hash_atom(tree_wire),
+    );
+    let tool = content_hash_tagged_structural("prepared-floor-subject-tool".to_string(), tool);
+    let digest = content_hash_combine_structural(
+        commit,
+        content_hash_combine_structural(
+            tree,
+            content_hash_combine_structural(
+                tool,
+                content_hash_combine_structural(discovery_digest, root_views.clone()),
+            ),
+        ),
+    )
+    .digest
+    .clone();
+    Ok(PreparedFloorSubjectIdentity {
+        digest,
+        tested_commit: discovery.tested_commit.clone(),
+        tested_tree: discovery.tested_tree.clone(),
+        discovery_request_identity_digest: discovery.request_identity_digest.clone(),
+        discovery_roster_digest: discovery.roster_digest.clone(),
+        discovery_module_graph_facts_digest: discovery.module_graph_facts_digest.clone(),
+        discovery_payload_digest: discovery.payload_digest.clone(),
+        tool_identity: discovery.tool_identity.clone(),
+        root_views_digest: root_views.digest.clone(),
+        ordinary_roots: ordinary_roots.to_vec(),
+        scoped_roots: scoped_roots.to_vec(),
+    })
+}
+
+fn prepared_floor_refusal(message: impl Into<String>) -> String {
+    PREPARED_FLOOR_PROCESS_STATE
+        .lock()
+        .expect("prepared floor process state lock poisoned")
+        .1
+        .strict_refusals += 1;
+    message.into()
+}
+
+/// Narrow compiler-source construction wall. Prepared execution may observe
+/// witness host effects live, but compiler/selection source bytes must come from
+/// the exact retained views and may never fall through to an ambient disk read.
+fn refuse_prepared_scoped_source_ambient_read(site: &str) -> Result<(), String> {
+    if prepared_floor_subject_active() {
+        PREPARED_FLOOR_PROCESS_STATE
+            .lock()
+            .expect("prepared floor process state lock poisoned")
+            .1
+            .scoped_source_ambient_read_attempts += 1;
+        return Err(prepared_floor_refusal(format!(
+            "prepared floor source read refused: {site} attempted an ambient compiler-source read while the exact prepared subject is active"
+        )));
+    }
+    Ok(())
+}
+
+/// Host-placement wall for resolver-backed floor work. The prepared capability
+/// is `Rc`/thread-local; callers must keep every resolver consumer on this owner
+/// thread while this returns true.
+pub fn prepared_floor_subject_active() -> bool {
+    PREPARED_FLOOR_PROCESS_STATE
+        .lock()
+        .expect("prepared floor process state lock poisoned")
+        .0
+        .is_some()
+}
+
+/// Refuse before consulting any thread-local resolver cache when another thread
+/// owns the process-wide prepared epoch. Otherwise a worker prewarmed before
+/// adoption could serve ambient facts without ever reaching a cold-constructor
+/// guard.
+fn refuse_nonowner_prepared_access(site: &str) -> Result<(), String> {
+    let current = std::thread::current().id();
+    let owned_elsewhere = {
+        let state = PREPARED_FLOOR_PROCESS_STATE
+            .lock()
+            .expect("prepared floor process state lock poisoned");
+        state.0.as_ref().is_some_and(|owner| owner != &current)
+    };
+    if owned_elsewhere {
+        Err(prepared_floor_refusal(format!(
+            "prepared floor owner-thread refusal: {site} reached a non-owner thread while the process-wide prepared epoch is active"
+        )))
+    } else {
+        Ok(())
+    }
+}
+
+/// Active prepared mode is a construction wall, not an advisory counter. Any
+/// old constructor reached after adoption records the violation and stops before
+/// observing filesystem bytes.
+fn refuse_active_prepared_cold_construction(constructor: &str) {
+    if prepared_floor_subject_active() {
+        PREPARED_FLOOR_PROCESS_STATE
+            .lock()
+            .expect("prepared floor process state lock poisoned")
+            .1
+            .cold_fallbacks += 1;
+        panic!(
+            "prepared floor cold fallback forbidden: {constructor} was reached while an exact prepared subject is active"
+        );
+    }
+}
+
+fn prepared_module_graph_facts_for_active_view(
+    view_roots: &[String],
+) -> Option<Result<ModuleGraphFactsLive, String>> {
+    let roots = canonical_shared_index_roots(view_roots);
+    let local = PROCESS_PREPARED_FLOOR_SUBJECT.with(|slot| {
+        let subject = slot.borrow();
+        subject.as_ref().map(|subject| {
+            (if subject.ordinary_view.roots == roots {
+                Some(subject.ordinary_view.clone())
+            } else if subject.scoped_view.roots == roots {
+                Some(subject.scoped_view.clone())
+            } else {
+                None
+            })
+                .map(|view| view.module_graph_facts)
+                .ok_or_else(|| {
+                    prepared_floor_refusal(format!(
+                        "prepared floor subject refused: module-graph roots [{}] are not a declared prepared view; filesystem reconstruction is forbidden",
+                        roots.join(", ")
+                    ))
+                })
+        })
+    });
+    if local.is_none() && prepared_floor_subject_active() {
+        return Some(Err(prepared_floor_refusal(
+            "prepared floor subject refused: resolver work reached a non-owner thread while the process-wide prepared epoch is active",
+        )));
+    }
+    local
+}
+
+/// Exact module-to-path projection for the two retained prepared views. This
+/// preserves the legacy API while making its filesystem constructor unreachable
+/// during the prepared epoch, including owner-thread cache misses.
+fn prepared_module_path_index_for_active_view(
+    view_roots: &[String],
+) -> Option<Result<HashMap<String, String>, String>> {
+    let roots = canonical_shared_index_roots(view_roots);
+    PROCESS_PREPARED_FLOOR_SUBJECT.with(|slot| {
+        let subject = slot.borrow();
+        let subject = subject.as_ref()?;
+        let view = if subject.ordinary_view.roots == roots {
+            Some(&subject.ordinary_view)
+        } else if subject.scoped_view.roots == roots {
+            Some(&subject.scoped_view)
+        } else {
+            None
+        };
+        Some(
+            view.map(|view| {
+                view.source_files
+                    .iter()
+                    .map(|(module, source)| (module.clone(), source.path.clone()))
+                    .collect()
+            })
+            .ok_or_else(|| {
+                prepared_floor_refusal(format!(
+                    "prepared floor module-path index refused: ordered roots [{}] are not a declared prepared view; filesystem reconstruction is forbidden",
+                    roots.join(", ")
+                ))
+            }),
+        )
+    })
+}
+
+/// Project the retained common `dag` inventory for selection/compiler helpers
+/// whose legacy realization built a private dag-only world. This is a source
+/// adapter into the same graph-facts producer, never a second filesystem walk.
+fn prepared_dag_projection_for_active(
+    dag_roots: &[String],
+) -> Option<Result<(ModuleSourceIndex, ModuleGraphFactsLive), String>> {
+    PROCESS_PREPARED_FLOOR_SUBJECT.with(|slot| {
+        let subject = slot.borrow();
+        let subject = subject.as_ref()?;
+        let roots = canonical_shared_index_roots(dag_roots);
+        let common_root = subject.ordinary_view.roots.first();
+        if roots.len() != 1
+            || common_root != roots.first()
+            || subject.scoped_view.roots.first() != common_root
+        {
+            return Some(Err(prepared_floor_refusal(format!(
+                "prepared floor dag projection refused: roots [{}] are not the retained common dag view",
+                roots.join(", ")
+            ))));
+        }
+        let selected: ModuleSourceIndex = subject
+            .ordinary_view
+            .source_files
+            .iter()
+            .filter(|(_, source)| {
+                roots
+                    .iter()
+                    .any(|root| source_path_belongs_to_root(&source.path, root))
+            })
+            .map(|(module, source)| (module.clone(), source.clone()))
+            .collect();
+        if selected.is_empty() {
+            return Some(Err(prepared_floor_refusal(
+                "prepared floor dag projection refused: retained common dag inventory is empty",
+            )));
+        }
+        let mut observed: Vec<_> = selected.values().cloned().collect();
+        observed.sort_by(|a, b| a.path.cmp(&b.path));
+        observed.dedup_by(|a, b| a.path == b.path);
+        let inventory = PreparedSourceInventory {
+            selected: selected.clone(),
+            observed,
+            reused_sources: 0,
+            newly_read_sources: 0,
+        };
+        Some(Ok((
+            selected,
+            module_graph_facts_from_prepared_inventory(&inventory),
+        )))
+    })
+}
+
+fn prepare_process_floor_subject_from_adopted_index(
+    ordinary_roots: &[String],
+    scoped_roots: &[String],
+    discovery: &FloorDiscoveryIdentity,
+    exact_roots: Option<&[String]>,
+) -> Result<PreparedFloorSubjectIdentity, String> {
+    if ordinary_roots.is_empty() || scoped_roots.is_empty() {
+        return Err(prepared_floor_refusal(
+            "prepared floor subject refused: ordinary and scoped root views must both be nonempty",
+        ));
+    }
+    if ordinary_roots == scoped_roots {
+        return Err(prepared_floor_refusal(
+            "prepared floor subject refused: ordinary and scoped root views must remain distinct",
+        ));
+    }
+    if prepared_floor_subject_active() {
+        return Err(prepared_floor_refusal(
+            "prepared floor subject refused: a prepared subject is already active in this process",
+        ));
+    }
+    let ordinary_key = ordinary_roots.join("\u{1f}");
+    let ordinary_index = PROCESS_RESOLVE_INDEX.with(|slot| {
+        slot.borrow().as_ref().and_then(|(key, index)| {
+            if key == &ordinary_key {
+                Some(index.clone())
+            } else {
+                None
+            }
+        })
+    });
+    let Some(ordinary_index) = ordinary_index else {
+        return Err(prepared_floor_refusal(format!(
+            "prepared floor subject refused: no already-built ordinary process_shared_index exists for ordered roots [{}]; cold construction is forbidden",
+            ordinary_roots.join(", ")
+        )));
+    };
+    if Rc::strong_count(&ordinary_index) != 2 {
+        return Err(prepared_floor_refusal(format!(
+            "prepared floor subject refused: adopted ordinary shell has {} Rc owners; exactly PROCESS_RESOLVE_INDEX plus the local adoption handle are required before dismantling ordinary scratch",
+            Rc::strong_count(&ordinary_index)
+        )));
+    }
+
+    let scoped_inventory =
+        prepare_source_inventory_from_ordinary(&ordinary_index, ordinary_roots, scoped_roots)
+            .map_err(prepared_floor_refusal)?;
+    let scoped_facts = module_graph_facts_from_prepared_inventory(&scoped_inventory);
+    let identity = prepared_floor_subject_identity(discovery, ordinary_roots, scoped_roots)
+        .map_err(prepared_floor_refusal)?;
+    if let Some(exact_roots) = exact_roots {
+        let mut retained: Vec<(String, String)> = ordinary_index
+            .source_files
+            .values()
+            .chain(scoped_inventory.observed.iter())
+            .map(|source| (source.path.clone(), source.content.clone()))
+            .collect();
+        retained.sort_by(|a, b| a.0.cmp(&b.0));
+        retained.dedup();
+        floor_discovery_snapshot::verify_source_roots_match_tested_commit(
+            &discovery.tested_commit,
+            exact_roots,
+            Some(&retained),
+        )
+        .map_err(prepared_floor_refusal)?;
+    }
+    let semantic_caches = PreparedSemanticCaches {
+        source_hash_by_file: ordinary_index.source_hash_by_file.clone(),
+        intern_table: ordinary_index.intern_table.clone(),
+        parse_cache: ordinary_index.parse_cache.clone(),
+        normalize_diag_cache: ordinary_index.normalize_diag_cache.clone(),
+    };
+    let shared_root_count = ordinary_roots
+        .iter()
+        .zip(scoped_roots.iter())
+        .take_while(|(ordinary, scoped)| ordinary == scoped)
+        .count();
+    let (scoped_pool_parse, reused_pool_parse_modules, newly_parsed_pool_parse_modules) =
+        prepared_scoped_pool_parse_from_ordinary(
+            &ordinary_index,
+            &scoped_inventory.selected,
+            &ordinary_roots[..shared_root_count],
+        )
+        .map_err(prepared_floor_refusal)?;
+    let ordinary_view_semantic_caches = PreparedRootViewCaches {
+        typed_module_cache: ordinary_index.typed_module_cache.clone(),
+        ownership_diag_cache: ordinary_index.ownership_diag_cache.clone(),
+        pool_parse: ordinary_index.pool_parse.clone(),
+        pool_qualified_fill: ordinary_index.pool_qualified_fill.clone(),
+        tree_bare_census: ordinary_index.tree_bare_census.clone(),
+        pool_bare_census: ordinary_index.pool_bare_census.clone(),
+        both_closure_edges: ordinary_index.both_closure_edges.clone(),
+    };
+    let ordinary_view = PreparedFloorRootView {
+        roots: ordinary_roots.to_vec(),
+        source_files: ordinary_index.source_files.clone(),
+        observed_sources: {
+            let mut sources: Vec<_> = ordinary_index.source_files.values().cloned().collect();
+            sources.sort_by(|a, b| a.path.cmp(&b.path));
+            sources.dedup_by(|a, b| a.path == b.path);
+            sources
+        },
+        module_graph_facts: ordinary_index.module_graph_facts.clone(),
+        semantic_caches: ordinary_view_semantic_caches,
+    };
+    let scoped_observed_sources = scoped_inventory.observed.clone();
+    let scoped_view = PreparedFloorRootView {
+        roots: scoped_roots.to_vec(),
+        source_files: scoped_inventory.selected,
+        observed_sources: scoped_observed_sources,
+        module_graph_facts: scoped_facts,
+        semantic_caches: PreparedRootViewCaches {
+            pool_parse: Rc::new(RefCell::new(Some(scoped_pool_parse))),
+            ..PreparedRootViewCaches::default()
+        },
+    };
+    {
+        let mut state = PREPARED_FLOOR_PROCESS_STATE
+            .lock()
+            .expect("prepared floor process state lock poisoned");
+        if state.0.is_some() {
+            state.1.strict_refusals += 1;
+            return Err(
+                "prepared floor subject refused: another prepared epoch became active during adoption"
+                    .to_string(),
+            );
+        }
+        state.1.reused_source_files += scoped_inventory.reused_sources;
+        state.1.newly_read_source_files += scoped_inventory.newly_read_sources;
+        state.1.reused_pool_parse_modules += reused_pool_parse_modules;
+        state.1.newly_parsed_pool_parse_modules += newly_parsed_pool_parse_modules;
+        state.1.adopted_cold_worlds += 1;
+        // Publish the process-wide wall before installing the owner-local Rc
+        // capability. Concurrent non-owner threads can no longer observe an
+        // inactive process during this handoff window.
+        state.0 = Some(std::thread::current().id());
+    }
+
+    // Drop the old all-purpose shell before any prepared population shell can
+    // be activated. Immutable source/cache handles above are the only survivors.
+    PROCESS_RESOLVE_INDEX.with(|slot| *slot.borrow_mut() = None);
+    PROCESS_RESOLVE_STORE.with(|store| store.borrow_mut().clear());
+    PROCESS_PREPARED_FLOOR_VIEW_INDEXES.with(|indexes| indexes.borrow_mut().clear());
+    PREPARED_FLOOR_PROCESS_STATE
+        .lock()
+        .expect("prepared floor process state lock poisoned")
+        .1
+        .live_view_scratch_shells = 0;
+    PROCESS_PREPARED_FLOOR_SUBJECT.with(|slot| {
+        *slot.borrow_mut() = Some(PreparedFloorSubject {
+            identity: identity.clone(),
+            ordinary_view,
+            scoped_view,
+            semantic_caches,
+        });
+    });
+    Ok(identity)
+}
+
+/// Adopt the already-built ordinary world and prepare exactly one ordinary plus
+/// one scoped ordered-root view. No arm constructs a missing ordinary index.
+pub fn prepare_process_floor_subject(
+    ordinary_roots: &[String],
+    scoped_roots: &[String],
+    discovery: &FloorDiscoveryIdentity,
+) -> Result<PreparedFloorSubjectIdentity, String> {
+    let ordinary_roots = canonical_shared_index_roots(ordinary_roots);
+    let scoped_roots = canonical_shared_index_roots(scoped_roots);
+    if ordinary_roots != ["dag", "src/v2"] || scoped_roots != ["dag", "src/v1"] {
+        return Err(prepared_floor_refusal(format!(
+            "prepared floor subject refused: this bounded substrate supports only ordinary [dag, src/v2] plus scoped [dag, src/v1], got ordinary [{}] and scoped [{}]",
+            ordinary_roots.join(", "),
+            scoped_roots.join(", ")
+        )));
+    }
+    let installed = current_floor_discovery_identity().map_err(prepared_floor_refusal)?;
+    if installed != *discovery {
+        return Err(prepared_floor_refusal(
+            "prepared floor subject refused: requested discovery identity is not the integrity-verified identity installed in this process",
+        ));
+    }
+    let mut exact_roots = ordinary_roots.clone();
+    for root in &scoped_roots {
+        if !exact_roots.contains(root) {
+            exact_roots.push(root.clone());
+        }
+    }
+    prepare_process_floor_subject_from_adopted_index(
+        &ordinary_roots,
+        &scoped_roots,
+        discovery,
+        Some(&exact_roots),
+    )
+}
+
+/// Obtain one declared prepared view. A wrong identity or unknown roots refuse;
+/// there is deliberately no call to any cold constructor.
+pub fn prepared_process_shared_index(
+    view_roots: &[String],
+    expected: &PreparedFloorSubjectIdentity,
+) -> Result<Rc<MultiEntryIndex>, String> {
+    let roots = canonical_shared_index_roots(view_roots);
+    let roots_key = roots.join("\u{1f}");
+    let view_and_caches = PROCESS_PREPARED_FLOOR_SUBJECT.with(|slot| {
+        let subject = slot.borrow();
+        let subject = subject.as_ref().ok_or_else(|| {
+            prepared_floor_refusal(
+                "prepared floor subject refused: no prepared subject is active",
+            )
+        })?;
+        if subject.identity != *expected {
+            return Err(prepared_floor_refusal(
+                "prepared floor subject refused: expected identity does not match the active subject",
+            ));
+        }
+        let view = (if subject.ordinary_view.roots == roots {
+            Some(subject.ordinary_view.clone())
+        } else if subject.scoped_view.roots == roots {
+            Some(subject.scoped_view.clone())
+        } else {
+            None
+        })
+        .ok_or_else(|| {
+            prepared_floor_refusal(format!(
+                "prepared floor subject refused: ordered roots [{}] are neither the declared ordinary nor scoped view; cold fallback is forbidden",
+                roots.join(", ")
+            ))
+        })?;
+        Ok((
+            view.clone(),
+            view.semantic_caches,
+            subject.semantic_caches.clone(),
+        ))
+    })?;
+    if let Some(index) = PROCESS_PREPARED_FLOOR_VIEW_INDEXES
+        .with(|indexes| indexes.borrow().get(&roots_key).cloned())
+    {
+        PREPARED_FLOOR_PROCESS_STATE
+            .lock()
+            .expect("prepared floor process state lock poisoned")
+            .1
+            .prepared_view_hits += 1;
+        return Ok(index);
+    }
+    let (view, view_semantic_caches, semantic_caches) = view_and_caches;
+    let index = Rc::new(new_multi_entry_index_shell_with_facts_and_caches(
+        view.source_files,
+        &view.roots,
+        view.module_graph_facts,
+        None,
+        view_semantic_caches,
+        semantic_caches,
+    ));
+    PROCESS_PREPARED_FLOOR_VIEW_INDEXES.with(|indexes| {
+        indexes.borrow_mut().insert(roots_key, index.clone());
+    });
+    {
+        let mut state = PREPARED_FLOOR_PROCESS_STATE
+            .lock()
+            .expect("prepared floor process state lock poisoned");
+        state.1.prepared_view_hits += 1;
+        state.1.fresh_view_scratch_shells += 1;
+        state.1.live_view_scratch_shells += 1;
+        state.1.peak_live_view_scratch_shells = state
+            .1
+            .peak_live_view_scratch_shells
+            .max(state.1.live_view_scratch_shells);
+    }
+    Ok(index)
+}
+
+/// Exact source observations for the one frozen scoped root view. Consumers may
+/// filter or expand these immutable values, but must not reopen their paths.
+pub fn prepared_scoped_source_inventory(
+    expected: &PreparedFloorSubjectIdentity,
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    let sources = PROCESS_PREPARED_FLOOR_SUBJECT.with(|slot| {
+        let subject = slot.borrow();
+        let subject = subject.as_ref().ok_or_else(|| {
+            prepared_floor_refusal(
+                "prepared floor scoped source refused: no prepared subject is active",
+            )
+        })?;
+        if subject.identity != *expected {
+            return Err(prepared_floor_refusal(
+                "prepared floor scoped source refused: expected identity does not match the active subject",
+            ));
+        }
+        Ok(subject.scoped_view.observed_sources.clone())
+    })?;
+    PREPARED_FLOOR_PROCESS_STATE
+        .lock()
+        .expect("prepared floor process state lock poisoned")
+        .1
+        .scoped_source_hits += 1;
+    Ok(sources)
+}
+
+/// Look up one scoped entry in the prepared inventory. Missing content refuses;
+/// there is no filesystem fallback.
+pub fn prepared_scoped_source(
+    expected: &PreparedFloorSubjectIdentity,
+    entry: &str,
+) -> Result<Rc<v1_compiler_compile::SourceFile>, String> {
+    let wanted = workspace_relative_entry_path(entry);
+    let sources = prepared_scoped_source_inventory(expected)?;
+    sources
+        .into_iter()
+        .find(|source| workspace_relative_repo_path(&source.path) == wanted)
+        .ok_or_else(|| {
+            prepared_floor_refusal(format!(
+                "prepared floor scoped source refused: `{wanted}` is absent from the exact scoped source inventory; ambient read fallback is forbidden"
+            ))
+        })
+}
+
+/// One source-byte seam for static compiler/selection scans. Prepared mode
+/// searches the two exact retained inventories and refuses a miss; legacy mode
+/// preserves the existing live filesystem observation. Interpreter host effects
+/// do not call this helper and remain live.
+fn selection_source_content(path: &str) -> Result<String, String> {
+    let wanted = workspace_relative_entry_path(path);
+    let prepared = PROCESS_PREPARED_FLOOR_SUBJECT.with(|slot| {
+        let subject = slot.borrow();
+        subject.as_ref().map(|subject| {
+            subject
+                .scoped_view
+                .observed_sources
+                .iter()
+                .chain(subject.ordinary_view.observed_sources.iter())
+                .find(|source| workspace_relative_entry_path(&source.path) == wanted)
+                .map(|source| source.content.clone())
+        })
+    });
+    match prepared {
+        Some(Some(content)) => {
+            PREPARED_FLOOR_PROCESS_STATE
+                .lock()
+                .expect("prepared floor process state lock poisoned")
+                .1
+                .scoped_source_hits += 1;
+            Ok(content)
+        }
+        Some(None) => {
+            PREPARED_FLOOR_PROCESS_STATE
+                .lock()
+                .expect("prepared floor process state lock poisoned")
+                .1
+                .scoped_source_ambient_read_attempts += 1;
+            Err(prepared_floor_refusal(format!(
+                "prepared floor selection source refused: `{wanted}` is absent from both exact retained root views; ambient read fallback is forbidden"
+            )))
+        }
+        None if prepared_floor_subject_active() => {
+            PREPARED_FLOOR_PROCESS_STATE
+                .lock()
+                .expect("prepared floor process state lock poisoned")
+                .1
+                .scoped_source_ambient_read_attempts += 1;
+            Err(prepared_floor_refusal(
+                "prepared floor selection source refused: static source access reached a non-owner thread while the process-wide prepared epoch is active",
+            ))
+        }
+        None => std::fs::read_to_string(path)
+            .map_err(|error| format!("selection source read {path}: {error}")),
+    }
+}
+
+/// Terminal release for the bounded scoped epoch. Both scoped-subject and
+/// inherited-authority shells must have no external owners; release then drops
+/// the exact subject and clears the process-wide active wall.
+pub fn release_process_floor_population_scratch(
+    expected: &PreparedFloorSubjectIdentity,
+) -> Result<(), String> {
+    PROCESS_PREPARED_FLOOR_SUBJECT.with(|slot| {
+        let subject = slot.borrow();
+        let subject = subject.as_ref().ok_or_else(|| {
+            prepared_floor_refusal(
+                "prepared floor scratch release refused: no prepared subject is active",
+            )
+        })?;
+        if subject.identity != *expected {
+            return Err(prepared_floor_refusal(
+                "prepared floor scratch release refused: expected identity does not match the active subject",
+            ));
+        }
+        Ok(())
+    })?;
+    PROCESS_PREPARED_FLOOR_VIEW_INDEXES.with(|indexes| {
+        let indexes = indexes.borrow();
+        let retained: Vec<_> = indexes
+            .iter()
+            .filter(|(_, index)| Rc::strong_count(index) != 1)
+            .map(|(roots, index)| format!("{roots}:strong_count={}", Rc::strong_count(index)))
+            .collect();
+        if retained.is_empty() {
+            Ok(())
+        } else {
+            Err(prepared_floor_refusal(format!(
+                "prepared floor scratch release refused: view shells are still retained outside the registry ({})",
+                retained.join(", ")
+            )))
+        }
+    })?;
+    PROCESS_PREPARED_FLOOR_VIEW_INDEXES.with(|indexes| indexes.borrow_mut().clear());
+    PROCESS_RESOLVE_INDEX.with(|slot| *slot.borrow_mut() = None);
+    PROCESS_RESOLVE_STORE.with(|store| store.borrow_mut().clear());
+    PROCESS_PREPARED_FLOOR_SUBJECT.with(|slot| *slot.borrow_mut() = None);
+    {
+        let mut state = PREPARED_FLOOR_PROCESS_STATE
+            .lock()
+            .expect("prepared floor process state lock poisoned");
+        state.1.live_view_scratch_shells =
+            PROCESS_PREPARED_FLOOR_VIEW_INDEXES.with(|indexes| indexes.borrow().len());
+        state.1.population_scratch_releases += 1;
+        state.0 = None;
+    }
+    Ok(())
+}
+
+pub fn prepared_floor_subject_counters() -> PreparedFloorSubjectCounters {
+    PREPARED_FLOOR_PROCESS_STATE
+        .lock()
+        .expect("prepared floor process state lock poisoned")
+        .1
+}
+
+#[cfg(test)]
+fn reset_prepared_floor_subject_for_test() {
+    PROCESS_PREPARED_FLOOR_VIEW_INDEXES.with(|indexes| indexes.borrow_mut().clear());
+    PROCESS_PREPARED_FLOOR_SUBJECT.with(|slot| *slot.borrow_mut() = None);
+    PROCESS_RESOLVE_INDEX.with(|slot| *slot.borrow_mut() = None);
+    PROCESS_RESOLVE_STORE.with(|store| store.borrow_mut().clear());
+    *PREPARED_FLOOR_PROCESS_STATE
+        .lock()
+        .expect("prepared floor process state lock poisoned") = (None, Default::default());
+}
+
+#[cfg(test)]
+mod prepared_floor_subject_tests {
+    use super::*;
+
+    #[test]
+    fn prepared_two_view_subject_reuses_sources_and_forbids_every_cold_fallback() {
+        let fixture = workspace_root().join(format!(
+            "target/prepared-floor-subject-test-{}-{}",
+            std::process::id(),
+            next_index_generation()
+        ));
+        let common = fixture.join("common");
+        let ordinary = fixture.join("ordinary");
+        let scoped = fixture.join("scoped");
+        std::fs::create_dir_all(&common).expect("create common root");
+        std::fs::create_dir_all(&ordinary).expect("create ordinary root");
+        std::fs::create_dir_all(&scoped).expect("create scoped root");
+        std::fs::write(
+            common.join("common.dag"),
+            "module prepared.common\n\nfn common_value() -> Bool { true }\n",
+        )
+        .expect("write common source");
+        std::fs::write(
+            ordinary.join("ordinary.dag"),
+            "module prepared.ordinary\n\nfn ordinary_value() -> Bool { true }\n",
+        )
+        .expect("write ordinary source");
+        std::fs::write(
+            scoped.join("scoped.dag"),
+            "module prepared.scoped\n\ndata live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly\n\ntest fn scoped_holds() -> Bool { true }\n",
+        )
+        .expect("write scoped source");
+
+        let relative_fixture = repo_relative_path_normalized(&fixture);
+        let common_root = format!("{relative_fixture}/common");
+        let ordinary_root = format!("{relative_fixture}/ordinary");
+        let scoped_root = format!("{relative_fixture}/scoped");
+        let ordinary_roots = vec![common_root.clone(), ordinary_root];
+        let scoped_roots = vec![common_root, scoped_root.clone()];
+        let ordinary_entry = ordinary.join("ordinary.dag").to_string_lossy().into_owned();
+        let scoped_entry = scoped.join("scoped.dag").to_string_lossy().into_owned();
+        let explicit_file_grain = vec![(scoped_entry.clone(), String::new())];
+        let ordinary_paths_baseline = build_module_path_index(&ordinary_roots);
+        let scoped_paths_baseline = build_module_path_index(&scoped_roots);
+        let ordinary_facts_baseline = build_module_graph_facts_live(&ordinary_roots);
+        let scoped_facts_baseline = build_module_graph_facts_live(&scoped_roots);
+        let live_expansion =
+            test_module_hygiene_bridge::expand_explicit_entries(&explicit_file_grain)
+                .expect("legacy expansion over fixture bytes");
+        let expansion_ctx =
+            test_module_hygiene_bridge::resolve_hygiene_ctx(&default_source_roots())
+                .expect("prepare a population-scoped expansion context");
+        let discovery = FloorDiscoveryIdentity {
+            tested_commit: "1111111111111111111111111111111111111111".to_string(),
+            tested_tree: "2222222222222222222222222222222222222222".to_string(),
+            request_identity_digest: "0000000000000001".to_string(),
+            roster_digest: "0000000000000002".to_string(),
+            module_graph_facts_digest: "0000000000000003".to_string(),
+            payload_digest: "0000000000000004".to_string(),
+            tool_identity: "0000000000000005".to_string(),
+        };
+        let golden = prepared_floor_subject_identity(
+            &discovery,
+            &["dag".to_string(), "src/v2".to_string()],
+            &["dag".to_string(), "src/v1".to_string()],
+        )
+        .expect("modeled prepared-subject golden");
+        assert_eq!(golden.digest, "63b6a26d156c1119");
+        assert_eq!(golden.root_views_digest, "5062b329c1182810");
+        assert_eq!(golden.ordinary_roots, ["dag", "src/v2"]);
+        assert_eq!(golden.scoped_roots, ["dag", "src/v1"]);
+
+        // Prewarm every resolver cache on a long-lived worker before the owner
+        // adopts its subject. The active epoch must wall even these HIT paths;
+        // a cold-only worker control would not catch a lookup-before-guard bug.
+        let worker_roots = ordinary_roots.clone();
+        let worker_entry = ordinary_entry.clone();
+        let (worker_ready_tx, worker_ready_rx) = std::sync::mpsc::channel();
+        let (worker_go_tx, worker_go_rx) = std::sync::mpsc::channel();
+        let prewarmed_worker = std::thread::spawn(move || {
+            let paths = build_module_path_index(&worker_roots);
+            assert!(paths.contains_key("prepared.common"));
+            let index = process_shared_index(&worker_roots);
+            resolve_entry_graph_shared(&worker_roots, &worker_entry)
+                .expect("prewarm worker resolved-graph store");
+            worker_ready_tx.send(()).expect("signal worker prewarmed");
+            worker_go_rx.recv().expect("wait for prepared epoch");
+            let path_hit_refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                build_module_path_index(&worker_roots)
+            }))
+            .is_err();
+            let index_hit_refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                process_shared_index(&worker_roots)
+            }))
+            .is_err();
+            let graph_hit_refused =
+                resolve_entry_graph_shared(&worker_roots, &worker_entry).is_err();
+            drop(index);
+            (path_hit_refused, index_hit_refused, graph_hit_refused)
+        });
+        worker_ready_rx.recv().expect("worker caches prewarmed");
+
+        reset_prepared_floor_subject_for_test();
+        let (adopted_generation, adopted_shell_weak, adopted_view_caches, adopted_shared_caches) = {
+            let adopted = process_shared_index(&ordinary_roots);
+            resolve_entry_with_index(&adopted, &ordinary_entry)
+                .expect("warm ordinary typed-module universe");
+            force_pool_parse_for_test(&adopted).expect("warm ordinary pool parse");
+            force_pool_qualified_fill_for_test(&adopted).expect("warm ordinary qualified fill");
+            for root in &ordinary_roots {
+                force_tree_bare_census_for_test(&adopted, root)
+                    .expect("warm ordinary per-tree census");
+            }
+            force_pool_bare_census_for_test(&adopted).expect("warm ordinary pool census");
+            force_both_closure_edges_for_test(&adopted).expect("warm ordinary both-closure edges");
+            assert!(!adopted.typed_module_cache.borrow().is_empty());
+            assert!(adopted.pool_parse.borrow().is_some());
+            assert!(adopted.pool_qualified_fill.borrow().is_some());
+            assert_eq!(
+                adopted.tree_bare_census.borrow().len(),
+                ordinary_roots.len()
+            );
+            assert!(adopted.pool_bare_census.borrow().is_some());
+            assert!(adopted.both_closure_edges.borrow().is_some());
+            assert!(!adopted.entry_closure_sources.borrow().is_empty());
+            assert!(!adopted.resolved_graph_memo.borrow().is_empty());
+            *adopted.live_read_manifest.borrow_mut() =
+                Some(Err("ordinary population scratch sentinel".to_string()));
+            *adopted.schedule_retention.borrow_mut() =
+                Some(ScheduleRetention::armed(Vec::new(), false));
+            adopted.typed_cache_evictions.set(7);
+            let _ = typed_module_cache_cap(&adopted);
+            (
+                adopted.generation,
+                Rc::downgrade(&adopted),
+                PreparedRootViewCaches {
+                    typed_module_cache: adopted.typed_module_cache.clone(),
+                    ownership_diag_cache: adopted.ownership_diag_cache.clone(),
+                    pool_parse: adopted.pool_parse.clone(),
+                    pool_qualified_fill: adopted.pool_qualified_fill.clone(),
+                    tree_bare_census: adopted.tree_bare_census.clone(),
+                    pool_bare_census: adopted.pool_bare_census.clone(),
+                    both_closure_edges: adopted.both_closure_edges.clone(),
+                },
+                PreparedSemanticCaches {
+                    source_hash_by_file: adopted.source_hash_by_file.clone(),
+                    intern_table: adopted.intern_table.clone(),
+                    parse_cache: adopted.parse_cache.clone(),
+                    normalize_diag_cache: adopted.normalize_diag_cache.clone(),
+                },
+            )
+        };
+        let prepared = prepare_process_floor_subject_from_adopted_index(
+            &canonical_shared_index_roots(&ordinary_roots),
+            &canonical_shared_index_roots(&scoped_roots),
+            &discovery,
+            None,
+        )
+        .expect("adopt exact ordinary index");
+        assert!(prepared_floor_subject_active());
+        assert!(
+            adopted_shell_weak.upgrade().is_none(),
+            "the pre-prepare ordinary population shell must be dismantled before the scoped epoch"
+        );
+
+        let (ordinary_common, scoped_common) = PROCESS_PREPARED_FLOOR_SUBJECT.with(|slot| {
+            let subject = slot.borrow();
+            let subject = subject.as_ref().expect("prepared subject");
+            let ordinary_common = subject
+                .ordinary_view
+                .observed_sources
+                .iter()
+                .find(|source| source.path.ends_with("/common/common.dag"))
+                .expect("ordinary common source")
+                .clone();
+            let scoped_common = subject
+                .scoped_view
+                .observed_sources
+                .iter()
+                .find(|source| source.path.ends_with("/common/common.dag"))
+                .expect("scoped common source")
+                .clone();
+            (ordinary_common, scoped_common)
+        });
+        assert!(
+            Rc::ptr_eq(&ordinary_common, &scoped_common),
+            "the common root must reuse the exact ordinary SourceFile allocation"
+        );
+
+        let ordinary_index = prepared_process_shared_index(&ordinary_roots, &prepared)
+            .expect("ordinary prepared view");
+        let scoped_index =
+            prepared_process_shared_index(&scoped_roots, &prepared).expect("scoped prepared view");
+        // These are two authority views inside ONE scoped epoch: the scoped
+        // subject plus its inherited ordinary executor/projector roots. The
+        // ordinary population shell above is already gone (weak upgrade RED).
+        assert_eq!(index_source_roots_for_test(&ordinary_index), ordinary_roots);
+        assert_eq!(index_source_roots_for_test(&scoped_index), scoped_roots);
+        assert_eq!(
+            build_module_path_index(&ordinary_roots),
+            ordinary_paths_baseline
+        );
+        assert_eq!(
+            build_module_path_index(&scoped_roots),
+            scoped_paths_baseline
+        );
+        assert_ne!(ordinary_index.generation, adopted_generation);
+        assert_ne!(ordinary_index.generation, scoped_index.generation);
+        assert!(Rc::ptr_eq(
+            &ordinary_index.typed_module_cache,
+            &adopted_view_caches.typed_module_cache
+        ));
+        assert!(Rc::ptr_eq(
+            &ordinary_index.ownership_diag_cache,
+            &adopted_view_caches.ownership_diag_cache
+        ));
+        assert!(Rc::ptr_eq(
+            &ordinary_index.pool_parse,
+            &adopted_view_caches.pool_parse
+        ));
+        assert!(Rc::ptr_eq(
+            &ordinary_index.pool_qualified_fill,
+            &adopted_view_caches.pool_qualified_fill
+        ));
+        assert!(Rc::ptr_eq(
+            &ordinary_index.tree_bare_census,
+            &adopted_view_caches.tree_bare_census
+        ));
+        assert!(Rc::ptr_eq(
+            &ordinary_index.pool_bare_census,
+            &adopted_view_caches.pool_bare_census
+        ));
+        assert!(Rc::ptr_eq(
+            &ordinary_index.both_closure_edges,
+            &adopted_view_caches.both_closure_edges
+        ));
+        assert!(Rc::ptr_eq(
+            &ordinary_index.source_hash_by_file,
+            &adopted_shared_caches.source_hash_by_file
+        ));
+        assert!(Rc::ptr_eq(
+            &ordinary_index.intern_table,
+            &adopted_shared_caches.intern_table
+        ));
+        assert!(Rc::ptr_eq(
+            &ordinary_index.parse_cache,
+            &adopted_shared_caches.parse_cache
+        ));
+        assert!(Rc::ptr_eq(
+            &ordinary_index.normalize_diag_cache,
+            &adopted_shared_caches.normalize_diag_cache
+        ));
+        assert!(
+            !Rc::ptr_eq(
+                &scoped_index.typed_module_cache,
+                &ordinary_index.typed_module_cache
+            ),
+            "typed state must remain private to one exact root view"
+        );
+        assert!(
+            !Rc::ptr_eq(&scoped_index.pool_parse, &ordinary_index.pool_parse),
+            "the scoped pool is a distinct ordered-root projection"
+        );
+        let ordinary_common_head = adopted_view_caches
+            .pool_parse
+            .borrow()
+            .as_ref()
+            .expect("warmed adopted pool")
+            .nodes_by_file
+            .iter()
+            .find(|(file, _)| file == &ordinary_common.path)
+            .expect("ordinary common module head")
+            .1
+            .clone();
+        let scoped_common_head = scoped_index
+            .pool_parse
+            .borrow()
+            .as_ref()
+            .expect("prepared scoped pool projection")
+            .nodes_by_file
+            .iter()
+            .find(|(file, _)| file == &scoped_common.path)
+            .expect("scoped common module head")
+            .1
+            .clone();
+        assert!(
+            Rc::ptr_eq(&ordinary_common_head, &scoped_common_head),
+            "the scoped pool must reuse the common-root parsed module head"
+        );
+
+        // Population scratch is deliberately fresh even though the exact
+        // ordinary semantic substrate above is pointer-reused.
+        assert!(ordinary_index.module_source_identity.borrow().is_empty());
+        assert!(ordinary_index.entry_closure_sources.borrow().is_empty());
+        assert!(ordinary_index.resolved_graph_memo.borrow().is_empty());
+        assert!(ordinary_index.live_read_manifest.borrow().is_none());
+        assert!(ordinary_index.schedule_retention.borrow().is_none());
+        assert_eq!(ordinary_index.typed_cache_evictions.get(), 0);
+        assert!(ordinary_index.typed_module_cache_cap.get().is_none());
+
+        let typechecks_before_reuse = typecheck_compute_count();
+        let stages_before_reuse = resolve_stage_totals();
+        force_pool_parse_for_test(&ordinary_index).expect("reuse ordinary pool parse");
+        force_pool_qualified_fill_for_test(&ordinary_index).expect("reuse ordinary qualified fill");
+        for root in &ordinary_roots {
+            force_tree_bare_census_for_test(&ordinary_index, root)
+                .expect("reuse ordinary per-tree census");
+        }
+        force_pool_bare_census_for_test(&ordinary_index).expect("reuse ordinary pool census");
+        force_both_closure_edges_for_test(&ordinary_index)
+            .expect("reuse ordinary both-closure edges");
+        resolve_entry_with_index(&ordinary_index, &ordinary_entry)
+            .expect("resolve through transferred ordinary semantic state");
+        let stages_after_reuse = resolve_stage_totals();
+        assert_eq!(
+            typecheck_compute_count(),
+            typechecks_before_reuse,
+            "the replacement ordinary shell must not recompute a typed module"
+        );
+        assert_eq!(
+            stages_after_reuse.edge_index_builds, stages_before_reuse.edge_index_builds,
+            "the replacement ordinary shell must not rebuild both-closure edges"
+        );
+        assert_eq!(
+            stages_after_reuse.edge_index_tree_census_misses,
+            stages_before_reuse.edge_index_tree_census_misses,
+            "the replacement ordinary shell must not rebuild a tree census"
+        );
+
+        let strict_before_worker_hits = prepared_floor_subject_counters().strict_refusals;
+        worker_go_tx.send(()).expect("release prewarmed worker");
+        let (path_hit_refused, index_hit_refused, graph_hit_refused) =
+            prewarmed_worker.join().expect("prewarmed worker joins");
+        assert!(path_hit_refused, "module-path cache hit must be walled");
+        assert!(index_hit_refused, "shared-index cache hit must be walled");
+        assert!(graph_hit_refused, "resolved-graph cache hit must be walled");
+        assert_eq!(
+            prepared_floor_subject_counters().strict_refusals,
+            strict_before_worker_hits + 3
+        );
+        let ordinary_facts =
+            build_module_graph_facts_live(&index_source_roots_for_test(&ordinary_index));
+        let scoped_facts =
+            build_module_graph_facts_live(&index_source_roots_for_test(&scoped_index));
+        for (label, baseline, prepared_facts) in [
+            ("ordinary", &ordinary_facts_baseline, &ordinary_facts),
+            ("scoped", &scoped_facts_baseline, &scoped_facts),
+        ] {
+            assert_eq!(
+                format!("{:?}", baseline.edges),
+                format!("{:?}", prepared_facts.edges),
+                "{label} import edges"
+            );
+            assert_eq!(
+                format!("{:?}", baseline.nodes),
+                format!("{:?}", prepared_facts.nodes),
+                "{label} declaration nodes"
+            );
+            assert_eq!(
+                baseline.adjacency, prepared_facts.adjacency,
+                "{label} adjacency"
+            );
+            assert_eq!(
+                baseline.declared_paths, prepared_facts.declared_paths,
+                "{label} declared paths"
+            );
+            assert_eq!(
+                baseline.selection_adjacency, prepared_facts.selection_adjacency,
+                "{label} selection adjacency"
+            );
+            assert_eq!(
+                baseline.reference_unaccounted, prepared_facts.reference_unaccounted,
+                "{label} reference refusals"
+            );
+            assert_eq!(
+                baseline.path_to_module, prepared_facts.path_to_module,
+                "{label} path map"
+            );
+            assert_eq!(
+                baseline.observed_paths, prepared_facts.observed_paths,
+                "{label} observed paths"
+            );
+            assert_eq!(
+                baseline.read_refusals, prepared_facts.read_refusals,
+                "{label} read refusals"
+            );
+        }
+        let (common_index, common_facts) =
+            prepared_dag_projection_for_active(&[ordinary_roots[0].clone()])
+                .expect("prepared subject active")
+                .expect("retained common-root projection");
+        assert!(common_index.contains_key("prepared.common"));
+        assert!(common_facts
+            .declared_repo_paths()
+            .iter()
+            .any(|path| path.ends_with("/common/common.dag")));
+
+        let inventory = prepared_scoped_source_inventory(&prepared).expect("scoped inventory");
+        let source = prepared_scoped_source(&prepared, &scoped_entry).expect("scoped source");
+        assert!(inventory
+            .iter()
+            .any(|candidate| Rc::ptr_eq(candidate, &source)));
+        assert!(
+            !parse_entry_live_tree_disposition(&source.path, &source.content)
+                .expect("prepared disposition")
+        );
+        assert!(!read_entry_live_tree_disposition(&scoped_entry)
+            .expect("live-tree disposition must use the prepared bytes"));
+        let retained_entry =
+            entry_source_from_index_or_disk(&scoped_index.source_files, &scoped_entry)
+                .expect("prepared entry loader must hit retained source before disk");
+        assert!(Rc::ptr_eq(&source, &retained_entry));
+        let prepared_supplied = vec![(scoped_entry.clone(), String::new(), source.content.clone())];
+        let prepared_expansion =
+            test_module_hygiene_bridge::expand_explicit_entries_from_supplied_content_with_context(
+                &expansion_ctx,
+                &prepared_supplied,
+            )
+            .expect("prepared supplied-content file-grain expansion");
+        assert_eq!(prepared_expansion, live_expansion);
+
+        let first = prepared_floor_subject_counters();
+        assert_eq!(first.process_shared_cold_constructions, 1);
+        assert_eq!(first.adopted_cold_worlds, 1);
+        assert_eq!(first.prepared_view_hits, 2);
+        assert_eq!(first.fresh_view_scratch_shells, 2);
+        assert_eq!(first.reused_source_files, 1);
+        assert_eq!(first.newly_read_source_files, 1);
+        assert_eq!(first.reused_pool_parse_modules, 1);
+        assert_eq!(first.newly_parsed_pool_parse_modules, 1);
+        assert_eq!(first.live_view_scratch_shells, 2);
+        assert_eq!(first.cold_fallbacks, 0);
+        assert_eq!(first.scoped_source_ambient_read_attempts, 0);
+
+        let mut wrong = prepared.clone();
+        wrong.digest = "ffffffffffffffff".to_string();
+        assert!(prepared_process_shared_index(&ordinary_roots, &wrong).is_err());
+        assert!(prepared_scoped_source_inventory(&wrong).is_err());
+        assert!(prepared_process_shared_index(&["missing/root".to_string()], &prepared).is_err());
+        assert!(prepared_scoped_source(&prepared, "missing/entry.dag").is_err());
+        assert!(release_process_floor_population_scratch(&wrong).is_err());
+
+        let unknown_view = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            process_shared_index(&["missing/root".to_string()])
+        }));
+        assert!(
+            unknown_view.is_err(),
+            "unknown prepared view must panic loudly"
+        );
+        assert_eq!(prepared_floor_subject_counters().cold_fallbacks, 0);
+
+        let unknown_path_view = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            build_module_path_index(&["missing/root".to_string()])
+        }));
+        assert!(
+            unknown_path_view.is_err(),
+            "an owner-thread module-path miss must refuse before filesystem construction"
+        );
+        assert_eq!(prepared_floor_subject_counters().cold_fallbacks, 0);
+
+        let path_constructor = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            build_module_path_index_uncached(&scoped_roots)
+        }));
+        assert!(
+            path_constructor.is_err(),
+            "the uncached module-path constructor must be structurally walled"
+        );
+        assert_eq!(prepared_floor_subject_counters().cold_fallbacks, 1);
+
+        let base = prepared_floor_subject_identity(&discovery, &ordinary_roots, &scoped_roots)
+            .expect("base identity");
+        for (field, changed) in [
+            ("commit", {
+                let mut d = discovery.clone();
+                d.tested_commit = "3333333333333333333333333333333333333333".to_string();
+                d
+            }),
+            ("tree", {
+                let mut d = discovery.clone();
+                d.tested_tree = "4444444444444444444444444444444444444444".to_string();
+                d
+            }),
+            ("request", {
+                let mut d = discovery.clone();
+                d.request_identity_digest = "0000000000000011".to_string();
+                d
+            }),
+            ("roster", {
+                let mut d = discovery.clone();
+                d.roster_digest = "0000000000000012".to_string();
+                d
+            }),
+            ("facts", {
+                let mut d = discovery.clone();
+                d.module_graph_facts_digest = "0000000000000013".to_string();
+                d
+            }),
+            ("payload", {
+                let mut d = discovery.clone();
+                d.payload_digest = "0000000000000014".to_string();
+                d
+            }),
+            ("tool", {
+                let mut d = discovery.clone();
+                d.tool_identity = "0000000000000015".to_string();
+                d
+            }),
+        ] {
+            assert_ne!(
+                base.digest,
+                prepared_floor_subject_identity(&changed, &ordinary_roots, &scoped_roots)
+                    .unwrap_or_else(|error| panic!("{field}: {error}"))
+                    .digest,
+                "{field} must bind the prepared identity"
+            );
+        }
+        let mut ordinary_reordered = ordinary_roots.clone();
+        ordinary_reordered.reverse();
+        assert_ne!(
+            base.digest,
+            prepared_floor_subject_identity(&discovery, &ordinary_reordered, &scoped_roots)
+                .expect("reordered identity")
+                .digest
+        );
+
+        let cold_constructor = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            build_multi_entry_index(&scoped_roots)
+        }));
+        assert!(
+            cold_constructor.is_err(),
+            "a cold constructor must stop before reading while prepared mode is active"
+        );
+        assert_eq!(prepared_floor_subject_counters().cold_fallbacks, 2);
+
+        let v1_attribution_constructor =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                build_v1_attribution_multi_entry_index()
+            }));
+        assert!(
+            v1_attribution_constructor.is_err(),
+            "a private v1-attribution union build must trip the prepared construction wall"
+        );
+        assert_eq!(prepared_floor_subject_counters().cold_fallbacks, 3);
+
+        assert_eq!(
+            prepared_floor_subject_counters().scoped_source_ambient_read_attempts,
+            0
+        );
+        let legacy_expansion =
+            test_module_hygiene_bridge::expand_explicit_entries(&explicit_file_grain)
+                .expect_err("legacy file-grain expansion must not reopen prepared source");
+        assert!(legacy_expansion.contains("ambient compiler-source read"));
+        assert_eq!(
+            prepared_floor_subject_counters().scoped_source_ambient_read_attempts,
+            1
+        );
+        let missing_entry = format!("{scoped_root}/missing.dag");
+        let missing_loader =
+            entry_source_from_index_or_disk(&scoped_index.source_files, &missing_entry)
+                .expect_err("prepared entry loader must refuse a disk fallback");
+        assert!(missing_loader.contains("ambient compiler-source read"));
+        assert_eq!(
+            prepared_floor_subject_counters().scoped_source_ambient_read_attempts,
+            2
+        );
+
+        let worker_roots = scoped_roots.clone();
+        let worker_cold = std::thread::spawn(move || {
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                build_module_index(&worker_roots)
+            }))
+            .is_err()
+        })
+        .join()
+        .expect("prepared cold-wall worker joins");
+        assert!(
+            worker_cold,
+            "a non-owner thread must observe the process-wide prepared epoch and refuse cold construction"
+        );
+        assert_eq!(prepared_floor_subject_counters().cold_fallbacks, 4);
+
+        drop(ordinary_index);
+        drop(scoped_index);
+        release_process_floor_population_scratch(&prepared).expect("terminal scratch release");
+        assert!(!prepared_floor_subject_active());
+        let released = prepared_floor_subject_counters();
+        assert_eq!(released.live_view_scratch_shells, 0);
+        assert_eq!(released.peak_live_view_scratch_shells, 2);
+        assert_eq!(released.population_scratch_releases, 1);
+
+        reset_prepared_floor_subject_for_test();
+        std::fs::remove_dir_all(&fixture).expect("remove prepared subject fixture");
+    }
+}
+
 /// The thread-local shared resolve index for `source_roots` (union-resolve S1). Built once
 /// per (thread, canonical roots) and reused, so consumers that resolve distinct entries
 /// against it share one typed_module_cache — the union closure typechecks once per node.
@@ -7942,7 +9618,23 @@ fn canonical_shared_index_roots(source_roots: &[String]) -> Vec<String> {
 /// identity. The divergence census walls that site with parent-owned `Rc` identity;
 /// the class-wide next rung is canonical `SourceFile` identity at construction.
 pub fn process_shared_index(source_roots: &[String]) -> Rc<MultiEntryIndex> {
+    refuse_nonowner_prepared_access("process_shared_index").unwrap_or_else(|error| {
+        // This legacy signature cannot carry a typed refusal.
+        panic!("{error}")
+    });
     let roots = canonical_shared_index_roots(source_roots);
+    let prepared_identity = PROCESS_PREPARED_FLOOR_SUBJECT.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .map(|subject| subject.identity.clone())
+    });
+    if let Some(identity) = prepared_identity {
+        return prepared_process_shared_index(&roots, &identity).unwrap_or_else(|error| {
+            // This legacy signature cannot carry a typed refusal. Panic is deliberate:
+            // active prepared mode must never fall through into a cold constructor.
+            panic!("{error}")
+        });
+    }
     let roots_key = roots.join("\u{1f}");
     let existing = PROCESS_RESOLVE_INDEX.with(|s| {
         s.borrow().as_ref().and_then(|(k, idx)| {
@@ -7956,6 +9648,11 @@ pub fn process_shared_index(source_roots: &[String]) -> Rc<MultiEntryIndex> {
     if let Some(idx) = existing {
         return idx;
     }
+    PREPARED_FLOOR_PROCESS_STATE
+        .lock()
+        .expect("prepared floor process state lock poisoned")
+        .1
+        .process_shared_cold_constructions += 1;
     let build_started = std::time::Instant::now();
     let idx = Rc::new(build_multi_entry_index(&roots));
     discovery_phase_totals::add(
@@ -7978,6 +9675,7 @@ pub fn resolve_entry_graph_shared(
     ),
     String,
 > {
+    refuse_nonowner_prepared_access("resolve_entry_graph_shared")?;
     let key = (source_roots.join("\u{1f}"), entry_file.to_string());
     let hit = PROCESS_RESOLVE_STORE.with(|s| s.borrow().get(&key).cloned());
     if let Some(found) = hit {
@@ -8898,6 +10596,45 @@ mod live_read_selection_manifest_producer_tests {
     }
 }
 
+/// Facts that are safe to reuse between exact root-universe views of one tested
+/// tree. Every key is content/path based, and the parse cache travels with the one
+/// intern table that minted its symbols. View-dependent namespace fills, closure
+/// memos, assembled graphs, retention, and host-budget state deliberately do not
+/// inhabit this carrier.
+#[derive(Clone)]
+struct PreparedSemanticCaches {
+    source_hash_by_file: Rc<RefCell<std::collections::HashMap<String, String>>>,
+    intern_table: Rc<RefCell<Rc<InternTable>>>,
+    parse_cache: Rc<
+        RefCell<
+            std::collections::HashMap<
+                String,
+                (Rc<v1_compiler_parse::ParseResult>, Rc<NewlineIndex>),
+            >,
+        >,
+    >,
+    normalize_diag_cache:
+        Rc<RefCell<std::collections::HashMap<String, Rc<im::Vector<Rc<ErrorNode>>>>>>,
+}
+
+/// Semantic state whose keys and values are valid only for one exact ordered
+/// root view. These handles survive replacement of the ordinary population's
+/// shell; entry graphs, live-read manifests, retention, and budget accounting
+/// remain fresh on the replacement shell.
+#[derive(Clone, Default)]
+struct PreparedRootViewCaches {
+    typed_module_cache: Rc<
+        RefCell<std::collections::HashMap<String, Rc<v1_compiler_infer::TypecheckModuleResult>>>,
+    >,
+    ownership_diag_cache:
+        Rc<RefCell<std::collections::HashMap<String, Rc<im::Vector<Rc<ErrorNode>>>>>>,
+    pool_parse: Rc<RefCell<Option<Rc<PoolParse>>>>,
+    pool_qualified_fill: Rc<RefCell<Option<Rc<SymbolIndex>>>>,
+    tree_bare_census: Rc<RefCell<std::collections::HashMap<String, Rc<SymbolIndex>>>>,
+    pool_bare_census: Rc<RefCell<Option<Rc<SymbolIndex>>>>,
+    both_closure_edges: Rc<RefCell<Option<Rc<BothClosureEdgeIndex>>>>,
+}
+
 pub struct MultiEntryIndex {
     /// Opaque identity of THIS index, minted at construction (see `next_index_generation`).
     generation: u64,
@@ -8911,8 +10648,9 @@ pub struct MultiEntryIndex {
     /// 2026-07-16); within one process it also makes a same-name/different-file
     /// collision structurally unable to serve the wrong typecheck (the name-keyed
     /// store relied on `module_source_identity` failing loud instead).
-    typed_module_cache:
+    typed_module_cache: Rc<
         RefCell<std::collections::HashMap<String, Rc<v1_compiler_infer::TypecheckModuleResult>>>,
+    >,
     /// Counted evictions from the host-budget-derived typed-cache entry cap (width=1
     /// drain accumulation lane). Each eviction is a typed, located diagnostic — never
     /// a silent widen (§5).
@@ -8932,35 +10670,42 @@ pub struct MultiEntryIndex {
     /// `SourceFile.content` is in hand) — the source-hash key term for
     /// `typed_module_content_key`. A reconcile of a module whose file never passed
     /// the parse loop is a fail-closed error, never a silently keyless entry.
-    source_hash_by_file: RefCell<std::collections::HashMap<String, String>>,
+    source_hash_by_file: Rc<RefCell<std::collections::HashMap<String, String>>>,
     /// Per-index collision registry when `cross_worker_store` is absent.
     module_source_identity: RefCell<std::collections::HashMap<String, String>>,
     /// Cross-worker serde-byte transport when increment C is explicitly armed (tests / future Arc).
     cross_worker_store: Option<Arc<RwLock<SharedTypecheckCaches>>>,
     /// Per-index intern table — paired with `parse_cache` on this worker (never shared).
-    intern_table: RefCell<Rc<InternTable>>,
-    parse_cache: RefCell<
-        std::collections::HashMap<String, (Rc<v1_compiler_parse::ParseResult>, Rc<NewlineIndex>)>,
+    intern_table: Rc<RefCell<Rc<InternTable>>>,
+    parse_cache: Rc<
+        RefCell<
+            std::collections::HashMap<
+                String,
+                (Rc<v1_compiler_parse::ParseResult>, Rc<NewlineIndex>),
+            >,
+        >,
     >,
-    normalize_diag_cache: RefCell<std::collections::HashMap<String, Rc<im::Vector<Rc<ErrorNode>>>>>,
-    ownership_diag_cache: RefCell<std::collections::HashMap<String, Rc<im::Vector<Rc<ErrorNode>>>>>,
+    normalize_diag_cache:
+        Rc<RefCell<std::collections::HashMap<String, Rc<im::Vector<Rc<ErrorNode>>>>>>,
+    ownership_diag_cache:
+        Rc<RefCell<std::collections::HashMap<String, Rc<im::Vector<Rc<ErrorNode>>>>>>,
     /// The source roots this index was built from — the tree identities behind the
     /// per-tree bare census layers (a module's bare-name universe is its own tree).
     source_roots: Vec<String>,
     /// Parse-grade pool snapshot (every indexed module parsed once, with pool-wide
     /// newline indexes) — the shared input of the qualified fill and the per-tree
     /// bare layers below. Entry-independent, built once per process.
-    pool_parse: RefCell<Option<Rc<PoolParse>>>,
+    pool_parse: Rc<RefCell<Option<Rc<PoolParse>>>>,
     /// Whole-pool QUALIFIED-ONLY census layer (entries keyed by qualified name;
     /// empty global_bare/services), built once per process and underlaid beneath
     /// each entry's closure census (namespace-resolution-design.md §7.5: "fill =
     /// whole tree; policy gates lookup, never fill").
-    pool_qualified_fill: RefCell<Option<Rc<SymbolIndex>>>,
+    pool_qualified_fill: Rc<RefCell<Option<Rc<SymbolIndex>>>>,
     /// Per-source-root full census (bare + qualified + services) over that root's
     /// pool modules — the SAME-TREE bare layer underlaid beneath a module's closure
     /// census when it typechecks (bare = own tree; qualified = whole pool; cross-
     /// tree bare reach stays refused). Keyed by source root, built lazily.
-    tree_bare_census: RefCell<std::collections::HashMap<String, Rc<SymbolIndex>>>,
+    tree_bare_census: Rc<RefCell<std::collections::HashMap<String, Rc<SymbolIndex>>>>,
     /// Whole-pool census (every pool module, both trees) — the LOADER's cross-
     /// tree fallback: a bare reference that misses the referencing file's own
     /// tree census resolves here so the provider still gets pulled into the
@@ -8969,7 +10714,7 @@ pub struct MultiEntryIndex {
     /// steal a same-tree name. Typecheck-side bare visibility is unchanged
     /// (closure census + own-tree underlay); the pulled provider becomes
     /// closure-visible, which is what serves the name at typecheck.
-    pool_bare_census: RefCell<Option<Rc<SymbolIndex>>>,
+    pool_bare_census: Rc<RefCell<Option<Rc<SymbolIndex>>>>,
     /// Memo: normalized entry path → name-derived closure sources. The bare-
     /// reference fixpoint (`extend_sources_to_both_closure_fixpoint`) is pure
     /// for a fixed pool; witnesses sharing an entry file within one floor worker
@@ -8982,7 +10727,7 @@ pub struct MultiEntryIndex {
     /// generation and its own empty cell. A refusal is memoized too — recomputing a producer that
     /// already refused would only refuse again, more slowly.
     live_read_manifest: RefCell<Option<Result<Rc<LiveReadSelectionManifest>, String>>>,
-    both_closure_edges: RefCell<Option<Rc<BothClosureEdgeIndex>>>,
+    both_closure_edges: Rc<RefCell<Option<Rc<BothClosureEdgeIndex>>>>,
     // Per-process subject-digest → resolved-graph share, the ReferenceTier in
     // front of the cross-process store (materialization-ladder tier ordering:
     // the share serves repeats, the store serves the process's FIRST touch of a
@@ -9352,29 +11097,53 @@ fn new_multi_entry_index_shell(
     source_roots: &[String],
     cross_worker_store: Option<Arc<RwLock<SharedTypecheckCaches>>>,
 ) -> MultiEntryIndex {
+    let module_graph_facts = build_module_graph_facts_live(source_roots);
+    new_multi_entry_index_shell_with_facts_and_caches(
+        source_files,
+        source_roots,
+        module_graph_facts,
+        cross_worker_store,
+        PreparedRootViewCaches::default(),
+        PreparedSemanticCaches {
+            source_hash_by_file: Rc::new(RefCell::new(std::collections::HashMap::new())),
+            intern_table: Rc::new(RefCell::new(seed_kernel_intern_names(empty_intern_table()))),
+            parse_cache: Rc::new(RefCell::new(std::collections::HashMap::new())),
+            normalize_diag_cache: Rc::new(RefCell::new(std::collections::HashMap::new())),
+        },
+    )
+}
+
+fn new_multi_entry_index_shell_with_facts_and_caches(
+    source_files: ModuleSourceIndex,
+    source_roots: &[String],
+    module_graph_facts: ModuleGraphFactsLive,
+    cross_worker_store: Option<Arc<RwLock<SharedTypecheckCaches>>>,
+    view_semantic_caches: PreparedRootViewCaches,
+    semantic_caches: PreparedSemanticCaches,
+) -> MultiEntryIndex {
     MultiEntryIndex {
         generation: next_index_generation(),
         source_files,
-        module_graph_facts: build_module_graph_facts_live(source_roots),
-        typed_module_cache: RefCell::new(std::collections::HashMap::new()),
+        module_graph_facts,
+        typed_module_cache: view_semantic_caches.typed_module_cache,
         typed_cache_evictions: Cell::new(0),
         typed_module_cache_cap: std::cell::OnceCell::new(),
-        source_hash_by_file: RefCell::new(std::collections::HashMap::new()),
+        source_hash_by_file: semantic_caches.source_hash_by_file,
         module_source_identity: RefCell::new(std::collections::HashMap::new()),
         cross_worker_store,
-        intern_table: RefCell::new(seed_kernel_intern_names(empty_intern_table())),
-        parse_cache: RefCell::new(std::collections::HashMap::new()),
-        normalize_diag_cache: RefCell::new(std::collections::HashMap::new()),
-        ownership_diag_cache: RefCell::new(std::collections::HashMap::new()),
+        intern_table: semantic_caches.intern_table,
+        parse_cache: semantic_caches.parse_cache,
+        normalize_diag_cache: semantic_caches.normalize_diag_cache,
+        ownership_diag_cache: view_semantic_caches.ownership_diag_cache,
         resolved_graph_memo: RefCell::new(HashMap::new()),
         schedule_retention: RefCell::new(None),
         source_roots: source_roots.to_vec(),
-        pool_parse: RefCell::new(None),
-        pool_qualified_fill: RefCell::new(None),
-        tree_bare_census: RefCell::new(std::collections::HashMap::new()),
-        pool_bare_census: RefCell::new(None),
+        pool_parse: view_semantic_caches.pool_parse,
+        pool_qualified_fill: view_semantic_caches.pool_qualified_fill,
+        tree_bare_census: view_semantic_caches.tree_bare_census,
+        pool_bare_census: view_semantic_caches.pool_bare_census,
         entry_closure_sources: RefCell::new(HashMap::new()),
-        both_closure_edges: RefCell::new(None),
+        both_closure_edges: view_semantic_caches.both_closure_edges,
         live_read_manifest: RefCell::new(None),
     }
 }
@@ -9399,6 +11168,74 @@ struct PoolParse {
     /// Workspace-relative file path → census-head module node.
     nodes_by_file: Vec<(String, Rc<Node>)>,
     combined_si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+}
+
+/// Project the warmed ordinary pool parse into the one distinct scoped view.
+/// Common-prefix module heads and newline indexes retain their exact Rc identity;
+/// only modules contributed by the scoped suffix are parsed. Module-name sort
+/// order stays identical to `pool_parse`, so this is one producer with a retained
+/// prefix, not a parallel census algorithm.
+fn prepared_scoped_pool_parse_from_ordinary(
+    ordinary_index: &MultiEntryIndex,
+    scoped_sources: &ModuleSourceIndex,
+    common_roots: &[String],
+) -> Result<(Rc<PoolParse>, usize, usize), String> {
+    let ordinary_pool = pool_parse(ordinary_index)?;
+    let ordinary_nodes: HashMap<String, Rc<Node>> =
+        ordinary_pool.nodes_by_file.iter().cloned().collect();
+    let mut module_paths: Vec<_> = scoped_sources.keys().cloned().collect();
+    module_paths.sort();
+    let mut nodes_by_file = Vec::with_capacity(module_paths.len());
+    let mut combined_si = HashMap::new();
+    let mut reused = 0usize;
+    let mut parsed = 0usize;
+    for module_path in module_paths {
+        let source = scoped_sources
+            .get(&module_path)
+            .cloned()
+            .expect("scoped pool path came from scoped_sources keys");
+        let from_common_root = common_roots
+            .iter()
+            .any(|root| source_path_belongs_to_root(&source.path, root));
+        let (module, newline_index) = if from_common_root {
+            let module = ordinary_nodes.get(&source.path).cloned().ok_or_else(|| {
+                format!(
+                    "prepared scoped pool parse refused: common-prefix source {} has no warmed ordinary module head",
+                    source.path
+                )
+            })?;
+            let newline_index = ordinary_pool
+                .combined_si
+                .get(&source.path)
+                .cloned()
+                .ok_or_else(|| {
+                    format!(
+                        "prepared scoped pool parse refused: common-prefix source {} has no warmed ordinary newline index",
+                        source.path
+                    )
+                })?;
+            reused += 1;
+            (module, newline_index)
+        } else {
+            parsed += 1;
+            parse_module_heads_for_pool_census(
+                &ordinary_index.source_hash_by_file,
+                &ordinary_index.intern_table,
+                source,
+            )?
+        };
+        let file = newline_index.file.clone();
+        combined_si.insert(file.clone(), newline_index);
+        nodes_by_file.push((file, module));
+    }
+    Ok((
+        Rc::new(PoolParse {
+            nodes_by_file,
+            combined_si: Rc::new(combined_si),
+        }),
+        reused,
+        parsed,
+    ))
 }
 
 // Shared per-thread stand-in so stripped fn decls keep `body.is_some()` for
@@ -12990,7 +14827,7 @@ fn resolved_graph_from_sources_with_index(
 
     let parse_started = std::time::Instant::now();
     for source in &sources {
-        note_source_hash(index, source);
+        note_source_hash(&index.source_hash_by_file, source);
         let cached = index.parse_cache.borrow().get(&source.path).cloned();
 
         let (parse_result, nl_index) = match cached {
@@ -13709,8 +15546,11 @@ fn collect_qualified_projection_module_paths_from_node(
 /// key term of `typed_module_content_key`; it is recorded exactly where the content is
 /// already in hand — never re-read from disk at key-derivation time (purity: the key
 /// derives from declared inputs, not a fresh WorldRead).
-fn note_source_hash(index: &MultiEntryIndex, source: &Rc<v1_compiler_compile::SourceFile>) {
-    let mut map = index.source_hash_by_file.borrow_mut();
+fn note_source_hash(
+    source_hash_by_file: &Rc<RefCell<std::collections::HashMap<String, String>>>,
+    source: &Rc<v1_compiler_compile::SourceFile>,
+) {
+    let mut map = source_hash_by_file.borrow_mut();
     if !map.contains_key(&source.path) {
         map.insert(
             source.path.clone(),
@@ -13720,20 +15560,21 @@ fn note_source_hash(index: &MultiEntryIndex, source: &Rc<v1_compiler_compile::So
 }
 
 fn parse_module_heads_for_pool_census(
-    index: &MultiEntryIndex,
+    source_hash_by_file: &Rc<RefCell<std::collections::HashMap<String, String>>>,
+    intern_table: &Rc<RefCell<Rc<InternTable>>>,
     source: Rc<v1_compiler_compile::SourceFile>,
 ) -> Result<(Rc<Node>, Rc<NewlineIndex>), String> {
-    note_source_hash(index, &source);
+    note_source_hash(source_hash_by_file, &source);
     let tokens = v1_compiler_tokenize::tokenize(source.content.clone(), source.path.clone());
     let nl_index = build_newline_index(source.path.clone(), source.content.clone());
-    let current_table = index.intern_table.borrow().clone();
+    let current_table = intern_table.borrow().clone();
     let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
         let mut m = HashMap::new();
         m.insert(source.path.clone(), nl_index.clone());
         m
     });
     let parsed = v1_compiler_parse::parse_with_table(tokens, single_si, current_table);
-    *index.intern_table.borrow_mut() = parsed.intern_table.clone();
+    *intern_table.borrow_mut() = parsed.intern_table.clone();
     // Pool census needs declaration heads only — do NOT install full-body ASTs into
     // `parse_cache` here. Closure resolve retains full bodies on its own cache miss.
     if let Some(err) = &parsed.result.error {
@@ -13758,7 +15599,7 @@ fn parse_module_node_from_index_source(
     index: &MultiEntryIndex,
     source: Rc<v1_compiler_compile::SourceFile>,
 ) -> Result<(Rc<Node>, Rc<NewlineIndex>), String> {
-    note_source_hash(index, &source);
+    note_source_hash(&index.source_hash_by_file, &source);
     let cached = index.parse_cache.borrow().get(&source.path).cloned();
     let (parse_result, nl_index) = match cached {
         Some(entry) => entry,
@@ -13832,7 +15673,11 @@ fn pool_parse(index: &MultiEntryIndex) -> Result<Rc<PoolParse>, String> {
             .get(&module_path)
             .cloned()
             .expect("pool path came from source_files keys");
-        let (module, nl_index) = parse_module_heads_for_pool_census(index, source)?;
+        let (module, nl_index) = parse_module_heads_for_pool_census(
+            &index.source_hash_by_file,
+            &index.intern_table,
+            source,
+        )?;
         let file = nl_index.file.clone();
         combined_si.insert(file.clone(), nl_index);
         nodes_by_file.push((file, module));
@@ -14723,7 +16568,13 @@ pub fn precompute_whole_tree_published_mock_keys(
     if dag_roots.is_empty() {
         return Ok(std::collections::HashSet::new());
     }
-    let index = build_module_index(&dag_roots);
+    let (index, facts) = if let Some(prepared) = prepared_dag_projection_for_active(&dag_roots) {
+        prepared?
+    } else {
+        let index = build_module_index(&dag_roots);
+        let facts = build_module_graph_facts_live(&dag_roots);
+        (index, facts)
+    };
     // Only modules that DECLARE a `PublishedMockCase` corpus can contribute keys —
     // `resolve_published_mock_keys` reads them by exact type annotation. Strict-
     // resolving the whole 600+ module tree to find the ~13 declarers is §2
@@ -14742,7 +16593,6 @@ pub fn precompute_whole_tree_published_mock_keys(
     if declarers.is_empty() {
         return Ok(std::collections::HashSet::new());
     }
-    let facts = build_module_graph_facts_live(&dag_roots);
     let all_sources = resolve_transitively(declarers, &index, &facts)?;
     if all_sources.is_empty() {
         return Ok(std::collections::HashSet::new());
@@ -17743,8 +19593,18 @@ pub fn discover_owned_data_decls(
     collect_dag_files(scan_path, &mut files);
     files.retain(|p| !path_excluded(p, exclude_subpaths));
 
-    let module_index = build_module_index(source_roots);
-    let module_graph_facts = build_module_graph_facts_live(source_roots);
+    let (module_index, module_graph_facts) = if prepared_floor_subject_active() {
+        // Discovery's live scan above remains live. Only its compiler substrate
+        // comes from the exact prepared view, so active mode neither cold-builds
+        // nor changes the host observation being classified.
+        let index = process_shared_index(source_roots);
+        (index.source_files.clone(), index.module_graph_facts.clone())
+    } else {
+        (
+            build_module_index(source_roots),
+            build_module_graph_facts_live(source_roots),
+        )
+    };
 
     let mut names_by_file: HashMap<String, Rc<Vec<String>>> = HashMap::new();
     let mut groups: Vec<DiscoveryResolveGroup> = Vec::new();
@@ -21300,6 +23160,15 @@ pub enum DiscoveryWidthPolicy {
     Adaptive(std::sync::Arc<crate::memory_governor::MemoryGovernor>),
 }
 
+/// Whether selection and evaluation stay fused at entry grain or selection must
+/// conclude for the complete scoped population first. This is execution ordering,
+/// not another selector: both arms pass through the same row decision code below.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DiscoveryExecutionDiscipline {
+    Fused,
+    FreezeBeforeExecute,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct FileLineRange {
     start: i64,
@@ -21844,7 +23713,7 @@ fn collect_sorted_decl_lines_for_file(
 ) -> Result<Vec<i64>, String> {
     let file_norm = normalize_repo_path(file_path);
     let (graph, source_indices) = resolve_entry_with_index(index, file_path)?;
-    let content = std::fs::read_to_string(file_path)
+    let content = selection_source_content(file_path)
         .map_err(|e| format!("read {file_path} for decl span: {e}"))?;
     let mut decls: Vec<i64> = Vec::new();
     for module in graph.modules.iter() {
@@ -22220,7 +24089,7 @@ fn parse_entry_live_tree_disposition(entry: &str, content: &str) -> Result<bool,
 }
 
 fn read_entry_live_tree_disposition(entry: &str) -> Result<bool, String> {
-    let content = std::fs::read_to_string(entry).map_err(|e| {
+    let content = selection_source_content(entry).map_err(|e| {
         format!(
             "failed to read entry {entry} for live-tree disposition: {e} — a \
              discovered roster row's file must be readable; no silent reclassification"
@@ -22331,8 +24200,10 @@ fn effect_reach_derived_reads_live_tree_for_closure_paths(closure_paths: &HashSe
         } else {
             workspace_root().join(rel).to_string_lossy().into_owned()
         };
-        let Ok(content) = std::fs::read_to_string(&path) else {
-            continue;
+        let content = match selection_source_content(&path) {
+            Ok(content) => content,
+            Err(error) if prepared_floor_subject_active() => panic!("{error}"),
+            Err(_) => continue,
         };
         if source_has_path_like_string_data(&content) {
             has_path_data = true;
@@ -22384,8 +24255,10 @@ fn effect_reach_touched_via_path_literals(
         } else {
             workspace_root().join(&rel).to_string_lossy().into_owned()
         };
-        let Ok(content) = std::fs::read_to_string(&path) else {
-            continue;
+        let content = match selection_source_content(&path) {
+            Ok(content) => content,
+            Err(error) if prepared_floor_subject_active() => panic!("{error}"),
+            Err(_) => continue,
         };
         if touched_paths
             .iter()
@@ -22545,8 +24418,10 @@ fn collect_declared_source_ref_paths_for_closure(closure_paths: &HashSet<String>
         } else {
             workspace_root().join(rel).to_string_lossy().into_owned()
         };
-        let Ok(content) = std::fs::read_to_string(&path) else {
-            continue;
+        let content = match selection_source_content(&path) {
+            Ok(content) => content,
+            Err(error) if prepared_floor_subject_active() => panic!("{error}"),
+            Err(_) => continue,
         };
         let named = parse_named_source_ref_paths(&content);
         if let Some(mut declared) = parse_declared_source_ref_paths_from_content(&content, &named) {
@@ -22573,6 +24448,9 @@ fn declared_source_ref_storage_resolves(
 ) -> bool {
     if path_to_module.contains_key(path) {
         return true;
+    }
+    if prepared_floor_subject_active() {
+        return selection_source_content(path).is_ok();
     }
     let ws = workspace_root();
     for root in source_roots {
@@ -23024,10 +24902,18 @@ fn floor_diff_edits_from_line_ranges(
     // #6269 attributes src/v1/ .dag changes through a dedicated index; the structural-∅ fix
     // dropped the saw_non_dag/saw_dag refusal (a non-.dag-only diff is a nominal empty frontier,
     // handled by the `continue` arm below), so neither flag is needed here.
-    let v1_attribution_index = if line_ranges_by_file
+    let needs_v1_attribution = line_ranges_by_file
         .keys()
-        .any(|p| normalize_repo_path(p).starts_with("src/v1/"))
-    {
+        .any(|p| normalize_repo_path(p).starts_with("src/v1/"));
+    let supplied_index_has_v1 = canonical_shared_index_roots(&index.source_roots)
+        .iter()
+        .any(|root| root.trim_end_matches('/') == "src/v1");
+    let v1_attribution_index = if needs_v1_attribution && !supplied_index_has_v1 {
+        if prepared_floor_subject_active() {
+            return Err(prepared_floor_refusal(
+                "prepared floor selection refused: src/v1 attribution was requested from a view without the declared src/v1 root; widening to a private attribution index is forbidden",
+            ));
+        }
         Some(build_v1_attribution_multi_entry_index())
     } else {
         None
@@ -23045,31 +24931,41 @@ fn floor_diff_edits_from_line_ranges(
         }
         let file_norm = normalize_repo_path(file_path);
         let disk_path = process_workspace_root().join(&file_norm);
-        if !disk_path.is_file() {
-            if departed_paths.contains(&file_norm) {
-                // Departed per the diff (deletion / rename-from): its decl set
-                // is empty by construction — the file has no declarations to
-                // attribute. The path-grain fact stays in changed_paths;
-                // dependents that imported it fail loudly at their own resolve.
-                continue;
+        let content = if prepared_floor_subject_active() {
+            match selection_source_content(&file_norm) {
+                Ok(content) => content,
+                Err(_) if departed_paths.contains(&file_norm) => continue,
+                Err(error) => return Err(error),
             }
-            // Absent from the tree but NOT marked departed by the diff: the
-            // observation is incoherent (stale tree, quoting artifact, bogus
-            // path). Structural-∅ and ignorance are different states — refuse.
-            return Err(format!(
-                "affected-set derivation refused: diff names {file_path} with \
-                 content changes but the path is absent from the working tree \
-                 and the diff does not mark it departed (deletion/rename)"
-            ));
-        }
+        } else {
+            if !disk_path.is_file() {
+                if departed_paths.contains(&file_norm) {
+                    // Departed per the diff (deletion / rename-from): its decl set
+                    // is empty by construction — the file has no declarations to
+                    // attribute. The path-grain fact stays in changed_paths;
+                    // dependents that imported it fail loudly at their own resolve.
+                    continue;
+                }
+                // Absent from the tree but NOT marked departed by the diff: the
+                // observation is incoherent (stale tree, quoting artifact, bogus
+                // path). Structural-∅ and ignorance are different states — refuse.
+                return Err(format!(
+                    "affected-set derivation refused: diff names {file_path} with \
+                     content changes but the path is absent from the working tree \
+                     and the diff does not mark it departed (deletion/rename)"
+                ));
+            }
+            std::fs::read_to_string(&disk_path)
+                .map_err(|error| format!("read failed for {file_path}: {error}"))?
+        };
         let resolve_index = if file_norm.starts_with("src/v1/") {
-            v1_attribution_index.as_ref().expect("v1 attribution index")
+            if supplied_index_has_v1 {
+                index
+            } else {
+                v1_attribution_index.as_ref().expect("v1 attribution index")
+            }
         } else {
             index
-        };
-        let content = match std::fs::read_to_string(&disk_path) {
-            Ok(c) => c,
-            Err(e) => return Err(format!("read failed for {file_path}: {e}")),
         };
         // Attribution is a PARSE-grade fact: it needs each touched file's
         // declaration line map (names + spans + data/fn kind), never its typecheck.
@@ -23477,6 +25373,41 @@ pub fn run_discovery_corpus_with_options(
         execution_mode,
         width_policy,
         options,
+        DiscoveryExecutionDiscipline::Fused,
+    );
+    discovery_phase_totals::add(
+        &discovery_phase_totals::PUMP_WALL_MS,
+        pump_started.elapsed(),
+    );
+    if let Ok(summary) = &out {
+        emit_selection_degradation_receipt(source_roots, selection, summary);
+    }
+    out
+}
+
+/// Scoped discovery keeps the existing affected-set selector intact but inserts one
+/// post-selection barrier before the first witness evaluation. The caller does not
+/// choose a width: retaining the selected entries' `Rc` interpreter contexts across
+/// that barrier is owner-thread work, so this bounded realization is serial by
+/// construction. Phase B receives only the frozen rows and contexts; it cannot
+/// re-run or amend selection.
+pub fn run_scoped_discovery_corpus_with_options(
+    source_roots: &[String],
+    scan_dirs: &[String],
+    explicit_entries: &[(String, String)],
+    execution_mode: v1_interpreter::ExecutionMode,
+    options: DiscoveryCorpusOptions,
+) -> Result<DiscoverySummary, String> {
+    let pump_started = std::time::Instant::now();
+    let selection = options.node_frontier_selection;
+    let out = run_discovery_corpus_with_options_inner(
+        source_roots,
+        scan_dirs,
+        explicit_entries,
+        execution_mode,
+        DiscoveryWidthPolicy::Serial,
+        options,
+        DiscoveryExecutionDiscipline::FreezeBeforeExecute,
     );
     discovery_phase_totals::add(
         &discovery_phase_totals::PUMP_WALL_MS,
@@ -23491,6 +25422,32 @@ pub fn run_discovery_corpus_with_options(
 pub fn expand_explicit_witness_entries(
     explicit_entries: &[(String, String)],
 ) -> Result<Vec<(String, String)>, String> {
+    if prepared_floor_subject_active() {
+        let identity = PROCESS_PREPARED_FLOOR_SUBJECT.with(|slot| {
+            slot.borrow()
+                .as_ref()
+                .map(|subject| subject.identity.clone())
+        });
+        let mut supplied = Vec::with_capacity(explicit_entries.len());
+        for (entry, function) in explicit_entries {
+            let content = if test_module_hygiene_bridge::is_file_grain_function(function) {
+                prepared_scoped_source(
+                    identity
+                        .as_ref()
+                        .expect("active prepared subject must expose its identity"),
+                    entry,
+                )?
+                .content
+                .clone()
+            } else {
+                String::new()
+            };
+            supplied.push((entry.clone(), function.clone(), content));
+        }
+        return test_module_hygiene_bridge::expand_explicit_entries_from_supplied_content(
+            &supplied,
+        );
+    }
     test_module_hygiene_bridge::expand_explicit_entries(explicit_entries)
 }
 
@@ -23501,7 +25458,16 @@ fn run_discovery_corpus_with_options_inner(
     execution_mode: v1_interpreter::ExecutionMode,
     width_policy: DiscoveryWidthPolicy,
     options: DiscoveryCorpusOptions,
+    execution_discipline: DiscoveryExecutionDiscipline,
 ) -> Result<DiscoverySummary, String> {
+    if execution_discipline == DiscoveryExecutionDiscipline::FreezeBeforeExecute
+        && !matches!(&width_policy, DiscoveryWidthPolicy::Serial)
+    {
+        return Err(
+            "scoped freeze-before-execute discovery requires Serial owner-thread execution"
+                .to_string(),
+        );
+    }
     let mut rows =
         if options.explicit_roster_only || (scan_dirs.is_empty() && !explicit_entries.is_empty()) {
             Vec::new()
@@ -23521,7 +25487,7 @@ fn run_discovery_corpus_with_options_inner(
         .map(|r| (r.entry.clone(), r.function.clone()))
         .collect();
     // U3 — empty function = file-grain: enumerate via the same test-decl scan discovery uses.
-    let expanded_explicit = test_module_hygiene_bridge::expand_explicit_entries(explicit_entries)?;
+    let expanded_explicit = expand_explicit_witness_entries(explicit_entries)?;
     for (entry, function) in &expanded_explicit {
         if seen.insert((entry.clone(), function.clone())) {
             rows.push(DiscoveryRow {
@@ -23565,6 +25531,16 @@ fn run_discovery_corpus_with_options_inner(
                 .to_string(),
         );
     }
+    // The scoped barrier carries the comparison readout itself, not a Rust
+    // reconstruction of base/head/relation. The raw selected head is resolved
+    // and bound to the exact discovery/prepared commit only after all selector
+    // decisions have completed, immediately before the population can seal.
+    let frozen_subject_binding =
+        if execution_discipline == DiscoveryExecutionDiscipline::FreezeBeforeExecute {
+            Some(frozen_scoped_subject_binding()?)
+        } else {
+            None
+        };
     let execution_authority_is_subject = options.execution_authority_source_roots == source_roots;
     // No degradation arm: a non-Off node_frontier_selection is a DECLARED capability,
     // so every input it needs (the git-diff observation, the frontier attribution, the
@@ -23844,6 +25820,8 @@ fn run_discovery_corpus_with_options_inner(
                     color: floor_color,
                     stream: floor_stream,
                 },
+                execution_discipline,
+                frozen_subject_binding.as_ref(),
             )?;
             // Definition-drift oracle (single-authority reconciliation, executable): on a
             // COMPLETED serial run the pre-resolve import walk and the post-resolve
@@ -23980,6 +25958,8 @@ fn run_discovery_corpus_with_options_inner(
                                 keys.clone(),
                                 budget_policy_for_workers,
                                 style,
+                                DiscoveryExecutionDiscipline::Fused,
+                                None,
                             ) {
                                 Ok(summary) => worker_summaries.push(summary),
                                 Err(e) => {
@@ -24112,6 +26092,8 @@ fn run_discovery_corpus_with_options_inner(
                         whole_tree_published_keys.clone(),
                         options.witness_budget_policy(),
                         style,
+                        DiscoveryExecutionDiscipline::Fused,
+                        None,
                     )?;
                     // The rest of this block is P1 scaffold bookkeeping (per-group wall
                     // timing, typecheck-memo before/after, and the resolved-graph-hit
@@ -24322,6 +26304,8 @@ fn run_discovery_corpus_with_options_inner(
                                 keys.clone(),
                                 budget_policy_for_workers,
                                 style,
+                                DiscoveryExecutionDiscipline::Fused,
+                                None,
                             ) {
                                 Ok(summary) => {
                                     worker_summaries.push(summary);
@@ -24734,6 +26718,446 @@ impl ShardStyle {
     }
 }
 
+/// One row whose selector decision is sealed. `predicted_unaffected` is the only
+/// selection fact evaluation needs for the PredictOnly divergence receipt; phase B
+/// receives neither the selector mode nor any diff/frontier input.
+#[derive(Clone)]
+struct FrozenDiscoveryRow {
+    row: DiscoveryRow,
+    predicted_unaffected: bool,
+}
+
+/// Entry-local interpreter state retained across the scoped post-selection barrier.
+/// This is deliberately private v1 scratch, never the public prepared-subject API.
+struct FrozenDiscoveryEntry {
+    entry: String,
+    closure_subject: String,
+    ctx: v1_interpreter::InterpContext,
+    rows: Vec<FrozenDiscoveryRow>,
+}
+
+/// Capability created only after the exact comparison subject and the complete
+/// candidate/selected/skipped partition have reconciled. Phase B consumes this
+/// value, so there is no callable evaluation path that accepts an unsealed
+/// scoped population.
+struct SealedFrozenScopedPopulation {
+    entries: Vec<FrozenDiscoveryEntry>,
+    selected: Vec<FrozenScopedWitnessIdentity>,
+    subject: PreparedFloorSubjectIdentity,
+}
+
+/// Capability proving that the exact prepared subject sealed by phase A is
+/// still active at the phase-B boundary. Keeping this wrapper distinct makes
+/// the subject check structurally unavoidable for the evaluator entrypoint.
+struct PreparedFrozenScopedPopulation(SealedFrozenScopedPopulation);
+
+/// Exact comparison subject carried from the existing modeled comparison
+/// projection into the post-selection seal. `head` is a ref spelling (normally
+/// `HEAD`), not a commit id; host physics resolves it separately below.
+#[derive(Clone)]
+struct FrozenScopedSubjectBinding {
+    comparison: FreezeBaselineComparison,
+    subject: PreparedFloorSubjectIdentity,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FrozenScopedComparisonHeadObservation {
+    selected_head: String,
+    observed_commit: String,
+}
+
+fn frozen_scoped_subject_binding() -> Result<FrozenScopedSubjectBinding, String> {
+    let comparison = floor_diff_comparison_readout().map_err(|reason| {
+        format!(
+            "FROZEN-SCOPED-POPULATION-REFUSED cause=FrozenScopedPopulationComparisonRefused detail={reason}"
+        )
+    })?;
+    let subject = PROCESS_PREPARED_FLOOR_SUBJECT
+        .with(|slot| slot.borrow().as_ref().map(|subject| subject.identity.clone()))
+        .ok_or_else(|| {
+            "FROZEN-SCOPED-POPULATION-REFUSED cause=FrozenScopedPopulationSubjectUnavailable detail=no exact prepared floor subject is active"
+                .to_string()
+        })?;
+    Ok(FrozenScopedSubjectBinding {
+        comparison,
+        subject,
+    })
+}
+
+fn observe_frozen_scoped_comparison_head(
+    binding: &FrozenScopedSubjectBinding,
+) -> Result<FrozenScopedComparisonHeadObservation, String> {
+    let selected_head = binding.comparison.head().to_string();
+    let revision = format!("{selected_head}^{{commit}}");
+    let output = std::process::Command::new("git")
+        .args(["rev-parse", "--verify", "--quiet", revision.as_str()])
+        .current_dir(workspace_root())
+        .output()
+        .map_err(|error| {
+            format!(
+                "FROZEN-SCOPED-POPULATION-REFUSED cause=FrozenScopedPopulationComparisonHeadResolutionRefused selected_head={selected_head} detail={error}"
+            )
+        })?;
+    let observed_commit = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if !output.status.success() || observed_commit.is_empty() {
+        return Err(format!(
+            "FROZEN-SCOPED-POPULATION-REFUSED cause=FrozenScopedPopulationComparisonHeadResolutionRefused selected_head={selected_head}"
+        ));
+    }
+    let observation = FrozenScopedComparisonHeadObservation {
+        selected_head,
+        observed_commit,
+    };
+    verify_frozen_scoped_comparison_head(binding, &observation)?;
+    Ok(observation)
+}
+
+fn verify_frozen_scoped_comparison_head(
+    binding: &FrozenScopedSubjectBinding,
+    observation: &FrozenScopedComparisonHeadObservation,
+) -> Result<(), String> {
+    if observation.selected_head != binding.comparison.head() {
+        return Err(format!(
+            "FROZEN-SCOPED-POPULATION-REFUSED cause=FrozenScopedPopulationComparisonSelectedHeadMismatch selected_head={} comparison_head={}",
+            observation.selected_head,
+            binding.comparison.head(),
+        ));
+    }
+    if observation.observed_commit != binding.subject.tested_commit {
+        return Err(format!(
+            "FROZEN-SCOPED-POPULATION-REFUSED cause=FrozenScopedPopulationComparisonHeadCommitMismatch selected_head={} observed_commit={} tested_commit={}",
+            observation.selected_head, observation.observed_commit, binding.subject.tested_commit,
+        ));
+    }
+    Ok(())
+}
+
+fn verify_frozen_scoped_prepared_subject(
+    expected: &PreparedFloorSubjectIdentity,
+    observed: Option<&PreparedFloorSubjectIdentity>,
+) -> Result<(), String> {
+    let observed = observed.ok_or_else(|| {
+        "FROZEN-SCOPED-POPULATION-REFUSED cause=FrozenScopedPopulationSubjectUnavailable detail=no exact prepared floor subject is active before phase-B evaluation"
+            .to_string()
+    })?;
+    if observed != expected {
+        return Err(
+            "FROZEN-SCOPED-POPULATION-REFUSED cause=FrozenScopedPopulationPreparedSubjectMismatch detail=commit/tree/tool/discovery/root-view identity changed after the population was sealed"
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
+fn prepare_frozen_scoped_population_for_execution(
+    population: SealedFrozenScopedPopulation,
+    observed: Option<&PreparedFloorSubjectIdentity>,
+) -> Result<PreparedFrozenScopedPopulation, String> {
+    verify_frozen_scoped_prepared_subject(&population.subject, observed)?;
+    Ok(PreparedFrozenScopedPopulation(population))
+}
+
+type FrozenScopedWitnessIdentity = (String, String);
+
+fn frozen_discovery_row_identity(row: &DiscoveryRow) -> FrozenScopedWitnessIdentity {
+    (row.entry.clone(), row.function.clone())
+}
+
+fn frozen_discovery_selected_identities(
+    entries: &[FrozenDiscoveryEntry],
+) -> Vec<FrozenScopedWitnessIdentity> {
+    entries
+        .iter()
+        .flat_map(|entry| entry.rows.iter())
+        .map(|row| frozen_discovery_row_identity(&row.row))
+        .collect()
+}
+
+fn frozen_scoped_duplicate_identity(
+    identities: &[FrozenScopedWitnessIdentity],
+) -> Option<&FrozenScopedWitnessIdentity> {
+    let mut seen = std::collections::BTreeSet::new();
+    identities
+        .iter()
+        .find(|identity| !seen.insert((*identity).clone()))
+}
+
+/// Construction wall at the selector/executor seam. Candidate, selected, and
+/// skipped are three observations of the same expanded roster; none may be
+/// silently dropped, duplicated, or invented before evaluation starts.
+fn reconcile_frozen_scoped_partition(
+    candidates: &[FrozenScopedWitnessIdentity],
+    selected: &[FrozenScopedWitnessIdentity],
+    skipped: &[FrozenScopedWitnessIdentity],
+) -> Result<(), String> {
+    if let Some(identity) = frozen_scoped_duplicate_identity(candidates) {
+        return Err(format!(
+            "FROZEN-SCOPED-POPULATION-REFUSED cause=FrozenScopedPopulationDuplicateCandidateIdentity entry={} function={}",
+            identity.0, identity.1
+        ));
+    }
+    if let Some(identity) = frozen_scoped_duplicate_identity(selected) {
+        return Err(format!(
+            "FROZEN-SCOPED-POPULATION-REFUSED cause=FrozenScopedPopulationDuplicateSelectedIdentity entry={} function={}",
+            identity.0, identity.1
+        ));
+    }
+    if let Some(identity) = frozen_scoped_duplicate_identity(skipped) {
+        return Err(format!(
+            "FROZEN-SCOPED-POPULATION-REFUSED cause=FrozenScopedPopulationDuplicateSkippedIdentity entry={} function={}",
+            identity.0, identity.1
+        ));
+    }
+
+    let candidate_set: std::collections::BTreeSet<_> = candidates.iter().cloned().collect();
+    let selected_set: std::collections::BTreeSet<_> = selected.iter().cloned().collect();
+    let skipped_set: std::collections::BTreeSet<_> = skipped.iter().cloned().collect();
+    if let Some(identity) = selected_set.intersection(&skipped_set).next() {
+        return Err(format!(
+            "FROZEN-SCOPED-POPULATION-REFUSED cause=FrozenScopedPopulationSelectedSkippedOverlap entry={} function={}",
+            identity.0, identity.1
+        ));
+    }
+    if let Some(identity) = selected_set.difference(&candidate_set).next() {
+        return Err(format!(
+            "FROZEN-SCOPED-POPULATION-REFUSED cause=FrozenScopedPopulationSelectedIdentityUnknown entry={} function={}",
+            identity.0, identity.1
+        ));
+    }
+    if let Some(identity) = skipped_set.difference(&candidate_set).next() {
+        return Err(format!(
+            "FROZEN-SCOPED-POPULATION-REFUSED cause=FrozenScopedPopulationSkippedIdentityUnknown entry={} function={}",
+            identity.0, identity.1
+        ));
+    }
+    let partition: std::collections::BTreeSet<_> =
+        selected_set.union(&skipped_set).cloned().collect();
+    if let Some(identity) = candidate_set.difference(&partition).next() {
+        return Err(format!(
+            "FROZEN-SCOPED-POPULATION-REFUSED cause=FrozenScopedPopulationPartitionMissingIdentity entry={} function={}",
+            identity.0, identity.1
+        ));
+    }
+    Ok(())
+}
+
+fn reconcile_frozen_scoped_execution(
+    selected: &[FrozenScopedWitnessIdentity],
+    executed: &[FrozenScopedWitnessIdentity],
+) -> Result<(), String> {
+    if let Some(identity) = frozen_scoped_duplicate_identity(executed) {
+        return Err(format!(
+            "FROZEN-SCOPED-POPULATION-REFUSED cause=FrozenScopedPopulationExecutionDuplicateIdentity entry={} function={}",
+            identity.0, identity.1
+        ));
+    }
+    let selected_set: std::collections::BTreeSet<_> = selected.iter().cloned().collect();
+    let executed_set: std::collections::BTreeSet<_> = executed.iter().cloned().collect();
+    if let Some(identity) = selected_set.difference(&executed_set).next() {
+        return Err(format!(
+            "FROZEN-SCOPED-POPULATION-REFUSED cause=FrozenScopedPopulationExecutionMissingIdentity entry={} function={}",
+            identity.0, identity.1
+        ));
+    }
+    if let Some(identity) = executed_set.difference(&selected_set).next() {
+        return Err(format!(
+            "FROZEN-SCOPED-POPULATION-REFUSED cause=FrozenScopedPopulationExecutionUnexpectedIdentity entry={} function={}",
+            identity.0, identity.1
+        ));
+    }
+    // `v2.workflow.frozen_scoped_population` defines reconciliation as exact
+    // bidirectional membership. The selected vector still supplies execution
+    // order, but a sibling reorder is not itself a subject mutation.
+    Ok(())
+}
+
+fn seal_frozen_scoped_population(
+    binding: &FrozenScopedSubjectBinding,
+    candidates: &[FrozenScopedWitnessIdentity],
+    skipped: &[FrozenScopedWitnessIdentity],
+    entries: Vec<FrozenDiscoveryEntry>,
+) -> Result<
+    (
+        SealedFrozenScopedPopulation,
+        FrozenScopedComparisonHeadObservation,
+    ),
+    String,
+> {
+    let selected = frozen_discovery_selected_identities(&entries);
+    let head_observation = observe_frozen_scoped_comparison_head(binding)?;
+    reconcile_frozen_scoped_partition(candidates, &selected, skipped)?;
+    Ok((
+        SealedFrozenScopedPopulation {
+            entries,
+            selected,
+            subject: binding.subject.clone(),
+        },
+        head_observation,
+    ))
+}
+
+#[cfg(test)]
+thread_local! {
+    static FROZEN_SCOPED_TEST_EVALUATION_COUNT: Cell<usize> = const { Cell::new(0) };
+}
+
+#[cfg(test)]
+fn reset_frozen_scoped_test_evaluation_count() {
+    FROZEN_SCOPED_TEST_EVALUATION_COUNT.with(|count| count.set(0));
+}
+
+#[cfg(test)]
+fn frozen_scoped_test_evaluation_count() -> usize {
+    FROZEN_SCOPED_TEST_EVALUATION_COUNT.with(Cell::get)
+}
+
+fn record_frozen_scoped_test_evaluation() {
+    #[cfg(test)]
+    FROZEN_SCOPED_TEST_EVALUATION_COUNT.with(|count| count.set(count.get() + 1));
+}
+
+fn seal_frozen_discovery_entry(
+    index: &MultiEntryIndex,
+    entry: String,
+    closure_subject: &mut Option<String>,
+    ctx: &mut Option<v1_interpreter::InterpContext>,
+    rows: &mut Vec<FrozenDiscoveryRow>,
+    frozen: &mut Vec<FrozenDiscoveryEntry>,
+) -> Result<(), String> {
+    if rows.is_empty() {
+        let subject = closure_subject.take();
+        *ctx = None;
+        return index_schedule_entry_completed(index, &entry, subject.as_deref());
+    }
+    let closure_subject = closure_subject.take().ok_or_else(|| {
+        format!("frozen scoped population refused: selected entry `{entry}` has no closure subject")
+    })?;
+    let ctx = ctx.take().ok_or_else(|| {
+        format!("frozen scoped population refused: selected entry `{entry}` has no context")
+    })?;
+    frozen.push(FrozenDiscoveryEntry {
+        entry,
+        closure_subject,
+        ctx,
+        rows: std::mem::take(rows),
+    });
+    Ok(())
+}
+
+fn execute_frozen_discovery_row(
+    row: &FrozenDiscoveryRow,
+    index: &MultiEntryIndex,
+    ctx: &v1_interpreter::InterpContext,
+    closure_subject: &str,
+    summary: &mut DiscoverySummary,
+    style: ShardStyle,
+) -> Result<(), String> {
+    set_phase(
+        FloorPhase::Eval,
+        &format!("{}::{}", row.row.entry, row.row.function),
+    );
+    let (outcome, receipt) = run_claim_measured(ctx, closure_subject, &row.row.function);
+    let wall_nanos = receipt.wall_nanos;
+    summary.total_measured_nanos += wall_nanos;
+    summary.performance_receipts.push(receipt);
+    let execution_leg = witness_execution_leg_label(&row.row.entry);
+    let entry_repo_path = workspace_relative_repo_path(&row.row.entry);
+    let module_path = index
+        .module_graph_facts
+        .path_to_module
+        .get(&entry_repo_path)
+        .cloned()
+        .ok_or_else(|| {
+            format!(
+                "{}: discovery witness entry has no module identity in the live module graph (refuse; DeclarationRef cannot be fabricated)",
+                row.row.entry
+            )
+        })?;
+    summary.witness_outcomes.push(DiscoveryWitnessOutcome {
+        entry: row.row.entry.clone(),
+        module_path,
+        function: row.row.function.clone(),
+        outcome: outcome.clone(),
+        execution_leg: execution_leg.clone(),
+    });
+    style.stream_witness(
+        &row.row.function,
+        &row.row.entry,
+        &execution_leg,
+        wall_nanos,
+        matches!(outcome, ClaimOutcome::Pass),
+    );
+    if row.predicted_unaffected && !matches!(outcome, ClaimOutcome::Pass) {
+        let line = format!(
+            "DIVERGENCE [affected-set-falsifier] {} ({}) predicted=unaffected \
+             actual=red class=node-frontier",
+            row.row.function, row.row.entry
+        );
+        eprintln!("{line}");
+        summary.divergences.push(line);
+    }
+    match outcome {
+        ClaimOutcome::Pass => summary.passed += 1,
+        ClaimOutcome::Fail => {
+            let mut failure = format!(
+                "{} ({}) returned Bool(false)",
+                row.row.function, row.row.entry
+            );
+            append_failure_receipt_companion_loudness(&mut failure, ctx, &row.row.function);
+            summary.failures.push(failure);
+        }
+        ClaimOutcome::NotBool { got } => summary.failures.push(format!(
+            "{} ({}) returned `{}`, not Bool",
+            row.row.function, row.row.entry, got
+        )),
+        ClaimOutcome::RuntimeError { message } => summary.failures.push(format!(
+            "{} ({}) runtime error: {}",
+            row.row.function, row.row.entry, message
+        )),
+        ClaimOutcome::TimedOut {
+            elapsed_ms,
+            budget_ms,
+            kind,
+        } => summary.failures.push(format!(
+            "{} ({}) killed at its {} budget: {}ms elapsed > {}ms budget \
+             (elapsed is a ceiling, not a completed duration)",
+            row.row.function,
+            row.row.entry,
+            kind.label(),
+            elapsed_ms,
+            budget_ms
+        )),
+    }
+    Ok(())
+}
+
+/// Phase B. Its signature intentionally has no selection mode, changed paths,
+/// diff edits, frontier context, or selector callback. It can only evaluate the
+/// exact rows phase A retained in their exact entry contexts.
+fn execute_frozen_discovery_entries(
+    population: PreparedFrozenScopedPopulation,
+    index: &MultiEntryIndex,
+    summary: &mut DiscoverySummary,
+    style: ShardStyle,
+) -> Result<Vec<FrozenScopedWitnessIdentity>, String> {
+    let population = population.0;
+    for entry in population.entries {
+        for row in &entry.rows {
+            record_frozen_scoped_test_evaluation();
+            execute_frozen_discovery_row(
+                row,
+                index,
+                &entry.ctx,
+                &entry.closure_subject,
+                summary,
+                style,
+            )?;
+        }
+        index_schedule_entry_completed(index, &entry.entry, Some(&entry.closure_subject))?;
+    }
+    Ok(population.selected)
+}
+
 #[allow(clippy::too_many_arguments)]
 fn run_discovery_rows(
     rows: &[DiscoveryRow],
@@ -24747,7 +27171,15 @@ fn run_discovery_rows(
     whole_tree_published_keys: Option<std::collections::HashSet<String>>,
     budgets: WitnessBudgetPolicy,
     style: ShardStyle,
+    execution_discipline: DiscoveryExecutionDiscipline,
+    frozen_subject_binding: Option<&FrozenScopedSubjectBinding>,
 ) -> Result<DiscoverySummary, String> {
+    let freeze_before_execute =
+        execution_discipline == DiscoveryExecutionDiscipline::FreezeBeforeExecute;
+    let freeze_started = freeze_before_execute.then(std::time::Instant::now);
+    let freeze_rss_before = freeze_before_execute.then(current_rss_bytes).flatten();
+    let mut frozen_entries: Vec<FrozenDiscoveryEntry> = Vec::new();
+    let mut current_frozen_rows: Vec<FrozenDiscoveryRow> = Vec::new();
     let mut summary = DiscoverySummary {
         total: rows.len(),
         passed: 0,
@@ -24808,7 +27240,6 @@ fn run_discovery_rows(
     let mut current_entry_file_touched = true;
     let mut current_entry_runtime_dependency_touched = true;
     let touched_entry_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
-    let pool_roots = witness_layer_roots();
     let whole_tree_published_keys = whole_tree_published_keys.map(Rc::new);
     let entry_fast_skip = if selection == NodeFrontierSelectionMode::Applied {
         discovery_entry_fast_skip_without_resolve(
@@ -24839,7 +27270,22 @@ fn run_discovery_rows(
                 // (it is reassigned only in the resolve block below), so it keys the
                 // previous entry's ResolvedGraph for eviction; None when that entry was
                 // skip-before-resolved (no graph to drop).
-                index_schedule_entry_completed(index, &prev, current_closure_subject.as_deref())?;
+                if freeze_before_execute {
+                    seal_frozen_discovery_entry(
+                        index,
+                        prev,
+                        &mut current_closure_subject,
+                        &mut ctx,
+                        &mut current_frozen_rows,
+                        &mut frozen_entries,
+                    )?;
+                } else {
+                    index_schedule_entry_completed(
+                        index,
+                        &prev,
+                        current_closure_subject.as_deref(),
+                    )?;
+                }
             }
             schedule_prev_entry = Some(row.entry.clone());
         }
@@ -25043,90 +27489,23 @@ fn run_discovery_rows(
                 c.set_witness_wall_budget(budgets.wet_receipt_wall_budget_ms);
             }
         }
-        let ctx_ref = ctx.as_ref().expect("ctx set above");
-        let closure_subject = current_closure_subject
-            .as_deref()
-            .expect("closure subject set above");
-        set_phase(
-            FloorPhase::Eval,
-            &format!("{}::{}", row.entry, row.function),
-        );
-        let (outcome, receipt) = run_claim_measured(ctx_ref, closure_subject, &row.function);
-        let wall_nanos = receipt.wall_nanos;
-        summary.total_measured_nanos += wall_nanos;
-        summary.performance_receipts.push(receipt);
-        let execution_leg = witness_execution_leg_label(&row.entry);
-        let entry_repo_path = workspace_relative_repo_path(&row.entry);
-        let module_path = index
-            .module_graph_facts
-            .path_to_module
-            .get(&entry_repo_path)
-            .cloned()
-            .ok_or_else(|| {
-                format!(
-                    "{}: discovery witness entry has no module identity in the live module graph (refuse; DeclarationRef cannot be fabricated)",
-                    row.entry
-                )
-            })?;
-        summary.witness_outcomes.push(DiscoveryWitnessOutcome {
-            entry: row.entry.clone(),
-            module_path,
-            function: row.function.clone(),
-            outcome: outcome.clone(),
-            execution_leg: execution_leg.clone(),
-        });
-        style.stream_witness(
-            &row.function,
-            &row.entry,
-            &execution_leg,
-            wall_nanos,
-            matches!(outcome, ClaimOutcome::Pass),
-        );
-        if selection == NodeFrontierSelectionMode::PredictOnly
-            && would_skip
-            && !matches!(outcome, ClaimOutcome::Pass)
-        {
-            // The red itself already fails the batch through the failure channel below;
-            // this line is the ATTRIBUTION receipt — a missing selection edge, counted.
-            let line = format!(
-                "DIVERGENCE [affected-set-falsifier] {} ({}) predicted=unaffected \
-                 actual=red class=node-frontier",
-                row.function, row.entry
-            );
-            eprintln!("{line}");
-            summary.divergences.push(line);
-        }
-        match outcome {
-            ClaimOutcome::Pass => summary.passed += 1,
-            ClaimOutcome::Fail => {
-                let mut failure = format!("{} ({}) returned Bool(false)", row.function, row.entry);
-                append_failure_receipt_companion_loudness(&mut failure, ctx_ref, &row.function);
-                summary.failures.push(failure);
-            }
-            ClaimOutcome::NotBool { got } => summary.failures.push(format!(
-                "{} ({}) returned `{}`, not Bool",
-                row.function, row.entry, got
-            )),
-            ClaimOutcome::RuntimeError { message } => summary.failures.push(format!(
-                "{} ({}) runtime error: {}",
-                row.function, row.entry, message
-            )),
-            // Rendered so the elapsed value is never mistaken for a completed duration:
-            // the row was killed AT the budget, so this is a ceiling, not a cost. The
-            // clock (cpu vs wall) is named because the two have different remedies.
-            ClaimOutcome::TimedOut {
-                elapsed_ms,
-                budget_ms,
-                kind,
-            } => summary.failures.push(format!(
-                "{} ({}) killed at its {} budget: {}ms elapsed > {}ms budget \
-                 (elapsed is a ceiling, not a completed duration)",
-                row.function,
-                row.entry,
-                kind.label(),
-                elapsed_ms,
-                budget_ms
-            )),
+        let frozen_row = FrozenDiscoveryRow {
+            row: row.clone(),
+            predicted_unaffected: selection == NodeFrontierSelectionMode::PredictOnly && would_skip,
+        };
+        if freeze_before_execute {
+            current_frozen_rows.push(frozen_row);
+        } else {
+            execute_frozen_discovery_row(
+                &frozen_row,
+                index,
+                ctx.as_ref().expect("ctx set above"),
+                current_closure_subject
+                    .as_deref()
+                    .expect("closure subject set above"),
+                &mut summary,
+                style,
+            )?;
         }
     }
     // Per-shard input-size receipt: distinct modules in THIS shard's union closure, counted from the
@@ -25134,10 +27513,282 @@ fn run_discovery_rows(
     // on `DiscoverySummary::roster_closure_nodes` for why the counter is not bounded to this window).
     // The final entry's rows are done — its state is now unreachable too.
     if let Some(prev) = schedule_prev_entry.take() {
-        index_schedule_entry_completed(index, &prev, current_closure_subject.as_deref())?;
+        if freeze_before_execute {
+            seal_frozen_discovery_entry(
+                index,
+                prev,
+                &mut current_closure_subject,
+                &mut ctx,
+                &mut current_frozen_rows,
+                &mut frozen_entries,
+            )?;
+        } else {
+            index_schedule_entry_completed(index, &prev, current_closure_subject.as_deref())?;
+        }
     }
     summary.roster_closure_nodes = closure_modules.len();
+    if freeze_before_execute {
+        let candidates: Vec<_> = rows.iter().map(frozen_discovery_row_identity).collect();
+        let skipped: Vec<_> = summary
+            .selection_skipped_rows
+            .iter()
+            .map(|row| (row.entry.clone(), row.function.clone()))
+            .collect();
+        let binding = frozen_subject_binding.ok_or_else(|| {
+            "FROZEN-SCOPED-POPULATION-REFUSED cause=FrozenScopedPopulationSubjectUnavailable — freeze-before-execute has no exact comparison/commit binding"
+                .to_string()
+        })?;
+        let (sealed, head_observation) =
+            seal_frozen_scoped_population(binding, &candidates, &skipped, frozen_entries)?;
+        let selected_count = sealed.selected.len();
+        let freeze_wall_ms = freeze_started
+            .expect("freeze timer armed with freeze-before-execute")
+            .elapsed()
+            .as_millis();
+        let freeze_rss_after = current_rss_bytes();
+        eprintln!(
+            "[scoped-freeze] candidates={} selected={} skipped={} retained_entry_contexts={} selected_head={} observed_commit={} freeze_wall_ms={} rss_before_bytes={} rss_after_bytes={}",
+            candidates.len(),
+            selected_count,
+            skipped.len(),
+            sealed.entries.len(),
+            head_observation.selected_head,
+            head_observation.observed_commit,
+            freeze_wall_ms,
+            freeze_rss_before
+                .map(|bytes| bytes.to_string())
+                .unwrap_or_else(|| "unavailable".to_string()),
+            freeze_rss_after
+                .map(|bytes| bytes.to_string())
+                .unwrap_or_else(|| "unavailable".to_string()),
+        );
+        let active_subject = PROCESS_PREPARED_FLOOR_SUBJECT.with(|slot| {
+            slot.borrow()
+                .as_ref()
+                .map(|subject| subject.identity.clone())
+        });
+        let prepared =
+            prepare_frozen_scoped_population_for_execution(sealed, active_subject.as_ref())?;
+        let selected = execute_frozen_discovery_entries(prepared, index, &mut summary, style)?;
+        let executed: Vec<_> = summary
+            .witness_outcomes
+            .iter()
+            .map(|row| (row.entry.clone(), row.function.clone()))
+            .collect();
+        reconcile_frozen_scoped_execution(&selected, &executed)?;
+        eprintln!(
+            "[scoped-freeze] reconciled candidates={} selected={} skipped={} executed={} duplicate=0 missing=0 unexpected=0",
+            candidates.len(),
+            selected.len(),
+            skipped.len(),
+            executed.len(),
+        );
+    }
     Ok(summary)
+}
+
+#[cfg(test)]
+mod frozen_scoped_population_tests {
+    use super::*;
+
+    fn witness(entry: &str, function: &str) -> FrozenScopedWitnessIdentity {
+        (entry.to_string(), function.to_string())
+    }
+
+    fn head_commit() -> String {
+        let output = std::process::Command::new("git")
+            .args(["rev-parse", "--verify", "HEAD^{commit}"])
+            .current_dir(workspace_root())
+            .output()
+            .expect("observe repository HEAD commit");
+        assert!(output.status.success());
+        String::from_utf8(output.stdout)
+            .expect("git commit is utf8")
+            .trim()
+            .to_string()
+    }
+
+    fn head_binding(tested_commit: String) -> FrozenScopedSubjectBinding {
+        FrozenScopedSubjectBinding {
+            comparison: FreezeBaselineComparison::Direct {
+                base: "HEAD".to_string(),
+                head: "HEAD".to_string(),
+                kind: "OperatorOverrideBaseline".to_string(),
+            },
+            subject: PreparedFloorSubjectIdentity {
+                digest: "0000000000000001".to_string(),
+                tested_commit,
+                tested_tree: "0000000000000000000000000000000000000002".to_string(),
+                discovery_request_identity_digest: "0000000000000003".to_string(),
+                discovery_roster_digest: "0000000000000004".to_string(),
+                discovery_module_graph_facts_digest: "0000000000000005".to_string(),
+                discovery_payload_digest: "0000000000000006".to_string(),
+                tool_identity: "0000000000000007".to_string(),
+                root_views_digest: "0000000000000008".to_string(),
+                ordinary_roots: vec!["dag".to_string(), "src/v2".to_string()],
+                scoped_roots: vec!["dag".to_string(), "src/v1".to_string()],
+            },
+        }
+    }
+
+    fn refusal(result: Result<(), String>, cause: &str) {
+        let reason = result.expect_err("control must refuse");
+        assert!(
+            reason.contains(&format!("cause={cause}")),
+            "unexpected refusal: {reason}"
+        );
+    }
+
+    #[test]
+    fn frozen_scoped_partition_is_exact_and_order_insensitive() {
+        let a = witness("a.dag", "a");
+        let b = witness("b.dag", "b");
+        let c = witness("c.dag", "c");
+        reconcile_frozen_scoped_partition(
+            &[a.clone(), b.clone(), c.clone()],
+            &[b.clone(), a.clone()],
+            &[c],
+        )
+        .expect("selected plus skipped exactly partitions candidates");
+    }
+
+    #[test]
+    fn frozen_scoped_partition_refuses_identity_drift() {
+        let a = witness("a.dag", "a");
+        let b = witness("b.dag", "b");
+        let c = witness("c.dag", "c");
+
+        refusal(
+            reconcile_frozen_scoped_partition(&[a.clone(), a.clone()], &[a.clone()], &[]),
+            "FrozenScopedPopulationDuplicateCandidateIdentity",
+        );
+        refusal(
+            reconcile_frozen_scoped_partition(&[a.clone()], &[a.clone(), a.clone()], &[]),
+            "FrozenScopedPopulationDuplicateSelectedIdentity",
+        );
+        refusal(
+            reconcile_frozen_scoped_partition(&[a.clone()], &[], &[a.clone(), a.clone()]),
+            "FrozenScopedPopulationDuplicateSkippedIdentity",
+        );
+        refusal(
+            reconcile_frozen_scoped_partition(&[a.clone()], &[a.clone()], &[a.clone()]),
+            "FrozenScopedPopulationSelectedSkippedOverlap",
+        );
+        refusal(
+            reconcile_frozen_scoped_partition(&[a.clone()], &[b.clone()], &[]),
+            "FrozenScopedPopulationSelectedIdentityUnknown",
+        );
+        refusal(
+            reconcile_frozen_scoped_partition(&[a.clone()], &[], &[b]),
+            "FrozenScopedPopulationSkippedIdentityUnknown",
+        );
+        refusal(
+            reconcile_frozen_scoped_partition(&[a, c], &[], &[]),
+            "FrozenScopedPopulationPartitionMissingIdentity",
+        );
+    }
+
+    #[test]
+    fn frozen_scoped_execution_reconciles_membership_not_sibling_order() {
+        let a = witness("a.dag", "a");
+        let b = witness("b.dag", "b");
+        reconcile_frozen_scoped_execution(&[a.clone(), b.clone()], &[b, a])
+            .expect("sibling reorder is not a subject mutation");
+    }
+
+    #[test]
+    fn frozen_scoped_execution_refuses_duplicate_missing_and_unexpected() {
+        let a = witness("a.dag", "a");
+        let b = witness("b.dag", "b");
+        refusal(
+            reconcile_frozen_scoped_execution(&[a.clone()], &[a.clone(), a.clone()]),
+            "FrozenScopedPopulationExecutionDuplicateIdentity",
+        );
+        refusal(
+            reconcile_frozen_scoped_execution(&[a.clone()], &[]),
+            "FrozenScopedPopulationExecutionMissingIdentity",
+        );
+        refusal(
+            reconcile_frozen_scoped_execution(&[a], &[b]),
+            "FrozenScopedPopulationExecutionMissingIdentity",
+        );
+        // Once every selected identity is present, an extra identity reaches the
+        // independently discriminating unexpected-execution arm.
+        let a = witness("a.dag", "a");
+        let b = witness("b.dag", "b");
+        refusal(
+            reconcile_frozen_scoped_execution(&[a.clone()], &[a, b]),
+            "FrozenScopedPopulationExecutionUnexpectedIdentity",
+        );
+    }
+
+    #[test]
+    fn frozen_scoped_comparison_head_is_bound_to_exact_tested_commit() {
+        let commit = head_commit();
+        let binding = head_binding(commit.clone());
+        let observed = observe_frozen_scoped_comparison_head(&binding)
+            .expect("HEAD observation matches exact tested commit");
+        assert_eq!(observed.selected_head, "HEAD");
+        assert_eq!(observed.observed_commit, commit);
+
+        let wrong_head = FrozenScopedComparisonHeadObservation {
+            selected_head: "HEAD~1".to_string(),
+            observed_commit: observed.observed_commit.clone(),
+        };
+        refusal(
+            verify_frozen_scoped_comparison_head(&binding, &wrong_head),
+            "FrozenScopedPopulationComparisonSelectedHeadMismatch",
+        );
+        let wrong_commit = FrozenScopedComparisonHeadObservation {
+            selected_head: "HEAD".to_string(),
+            observed_commit: "0000000000000000000000000000000000000000".to_string(),
+        };
+        refusal(
+            verify_frozen_scoped_comparison_head(&binding, &wrong_commit),
+            "FrozenScopedPopulationComparisonHeadCommitMismatch",
+        );
+    }
+
+    #[test]
+    fn frozen_scoped_seal_refusal_cannot_reach_witness_evaluation() {
+        reset_frozen_scoped_test_evaluation_count();
+        let binding = head_binding(head_commit());
+        let a = witness("a.dag", "a");
+        let sealed = seal_frozen_scoped_population(&binding, &[a.clone(), a], &[], Vec::new());
+        let reason = match sealed {
+            Err(reason) => reason,
+            Ok(_) => panic!("duplicate candidate identity must refuse before sealing"),
+        };
+        assert!(reason.contains("cause=FrozenScopedPopulationDuplicateCandidateIdentity"));
+        assert_eq!(frozen_scoped_test_evaluation_count(), 0);
+    }
+
+    #[test]
+    fn frozen_scoped_noncommit_subject_drift_refuses_before_evaluation() {
+        reset_frozen_scoped_test_evaluation_count();
+        let binding = head_binding(head_commit());
+        let mut wrong_subject = binding.subject.clone();
+        wrong_subject.tested_tree = "ffffffffffffffffffffffffffffffffffffffff".to_string();
+        let population = SealedFrozenScopedPopulation {
+            entries: Vec::new(),
+            selected: Vec::new(),
+            subject: binding.subject,
+        };
+        let result =
+            prepare_frozen_scoped_population_for_execution(population, Some(&wrong_subject));
+        if result.is_ok() {
+            record_frozen_scoped_test_evaluation();
+        }
+        refusal(
+            result.map(|_| ()),
+            "FrozenScopedPopulationPreparedSubjectMismatch",
+        );
+        assert_eq!(
+            frozen_scoped_test_evaluation_count(),
+            0,
+            "same-commit tree/tool/discovery/root-view drift must refuse before phase-B evaluation"
+        );
+    }
 }
 
 #[cfg(test)]
@@ -30905,6 +33556,91 @@ pub(crate) struct ImportResolutionObservation {
     pub(crate) read_refusals: Vec<(String, String)>,
 }
 
+/// One observed source path and either its immutable bytes or the located read
+/// refusal. Filesystem walks and prepared inventories both feed this carrier so
+/// import/reference meaning has one pure producer over source values.
+#[derive(Clone)]
+struct SourceContentObservation {
+    path: String,
+    source: Result<Rc<v1_compiler_compile::SourceFile>, String>,
+}
+
+fn source_content_observations_from_roots(
+    roots: &[String],
+    exclude_substrings: &[String],
+) -> Vec<SourceContentObservation> {
+    let mut observations = Vec::new();
+    for root in pool_roots_abs(roots) {
+        let root_path = Path::new(&root);
+        if !root_path.is_dir() {
+            continue;
+        }
+        let mut dag_files = Vec::new();
+        collect_dag_files_tolerant(root_path, &mut dag_files);
+        dag_files.sort();
+        for file in dag_files {
+            let path = rel_path_for_layer_import(&file);
+            if is_excluded_import_path(&path, exclude_substrings) {
+                continue;
+            }
+            let source = std::fs::read_to_string(&file)
+                .map(|content| {
+                    Rc::new(v1_compiler_compile::SourceFile {
+                        path: path.clone(),
+                        content,
+                    })
+                })
+                .map_err(|error| error.to_string());
+            observations.push(SourceContentObservation { path, source });
+        }
+    }
+    observations
+}
+
+fn source_content_observations_from_inventory(
+    sources: &[Rc<v1_compiler_compile::SourceFile>],
+) -> Vec<SourceContentObservation> {
+    sources
+        .iter()
+        .map(|source| SourceContentObservation {
+            path: workspace_relative_repo_path(&source.path),
+            source: Ok(source.clone()),
+        })
+        .collect()
+}
+
+fn import_resolution_observation_from_sources(
+    declared: &HashSet<String>,
+    sources: &[SourceContentObservation],
+) -> ImportResolutionObservation {
+    let mut facts = Vec::new();
+    let mut observed_paths = HashSet::new();
+    let mut read_refusals = Vec::new();
+    for observation in sources {
+        let path = workspace_relative_repo_path(&observation.path);
+        observed_paths.insert(path.clone());
+        let source = match &observation.source {
+            Ok(source) => source,
+            Err(error) => {
+                read_refusals.push((path, error.clone()));
+                continue;
+            }
+        };
+        for import_module in extract_import_paths(&source.content) {
+            facts.push(ImportResolutionFactRaw {
+                path: observation.path.clone(),
+                target_declared: declared.contains(&import_module),
+                import_module,
+            });
+        }
+    }
+    ImportResolutionObservation {
+        facts,
+        observed_paths,
+        read_refusals,
+    }
+}
+
 pub(crate) fn import_resolution_facts_with_observation(
     pool_roots: &[String],
     importer_roots: &[String],
@@ -30913,50 +33649,12 @@ pub(crate) fn import_resolution_facts_with_observation(
     #[cfg(test)]
     IMPORT_RESOLUTION_FACTS_CALL_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     let abs_pool_roots = pool_roots_abs(pool_roots);
-    let abs_importer_roots = pool_roots_abs(importer_roots);
     let declared: HashSet<String> = build_module_path_index(&abs_pool_roots)
         .into_iter()
         .map(|(k, _)| k)
         .collect();
-    let mut out = Vec::new();
-    let mut observed_paths: HashSet<String> = HashSet::new();
-    let mut read_refusals: Vec<(String, String)> = Vec::new();
-    for root in &abs_importer_roots {
-        let root_path = Path::new(root);
-        if !root_path.is_dir() {
-            continue;
-        }
-        let mut dag_files: Vec<PathBuf> = Vec::new();
-        collect_dag_files_tolerant(root_path, &mut dag_files);
-        dag_files.sort();
-        for file in dag_files {
-            let rel = rel_path_for_layer_import(&file);
-            if is_excluded_import_path(&rel, exclude_substrings) {
-                continue;
-            }
-            observed_paths.insert(workspace_relative_repo_path(&rel));
-            let content = match std::fs::read_to_string(&file) {
-                Ok(c) => c,
-                Err(e) => {
-                    read_refusals.push((workspace_relative_repo_path(&rel), e.to_string()));
-                    continue;
-                }
-            };
-            for import_module in extract_import_paths(&content) {
-                let target_declared = declared.contains(&import_module);
-                out.push(ImportResolutionFactRaw {
-                    path: rel.clone(),
-                    import_module,
-                    target_declared,
-                });
-            }
-        }
-    }
-    ImportResolutionObservation {
-        facts: out,
-        observed_paths,
-        read_refusals,
-    }
+    let sources = source_content_observations_from_roots(importer_roots, exclude_substrings);
+    import_resolution_observation_from_sources(&declared, &sources)
 }
 
 pub fn import_resolution_facts(
@@ -31278,9 +33976,198 @@ pub struct ReferenceAccountingRefusal {
     pub cause: &'static str,
 }
 
-/// Reference-derived analogue of `import_resolution_facts`: emit one edge per (file, referenced
-/// module). Same row shape channel as import facts, plus a `resolution` confidence tag. Cached by
-/// (pool_roots, importer_roots, excludes).
+/// The single namespace-edge producer over immutable source observations. The
+/// filesystem and prepared-subject paths are adapters into this function.
+fn reference_resolution_facts_from_sources(
+    pool_sources: &[SourceContentObservation],
+    importer_sources: &[SourceContentObservation],
+) -> (Vec<ReferenceEdgeRaw>, Vec<ReferenceAccountingRefusal>) {
+    let mut unaccounted: Vec<ReferenceAccountingRefusal> = Vec::new();
+
+    // ── Pass 1: parse the pool once. Build the exported-name→module index (precedence: first root
+    // wins, mirroring `build_module_path_index`) and the declared-module-name set. Keep each file's
+    // parsed tree so edge emission does not re-parse.
+    let mut decl_index: HashMap<String, std::collections::BTreeSet<String>> = HashMap::new();
+    let mut module_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut seen_modules: std::collections::HashSet<String> = std::collections::HashSet::new();
+    // `has_imports` decides per-file whether reference edges are emitted at all: a file that still
+    // carries `import` lines is covered EXACTLY by `import_resolution_facts` (no regression, no
+    // over-connection). Only an import-less (stripped) file falls back to reference edges. So on the
+    // un-stripped tree this producer emits nothing and the module graph is byte-identical to before.
+    let mut pool_trees: HashMap<String, (String, Rc<crate::v1_std_core::Node>, bool)> =
+        HashMap::new();
+    for observation in pool_sources {
+        let rel = observation.path.clone();
+        let content = match &observation.source {
+            Ok(source) => &source.content,
+            Err(_) => continue,
+        };
+        let module_name = match extract_module_path(&content) {
+            Some(m) => m,
+            None => continue,
+        };
+        let tree = match parse_module_node_tolerant(&rel, &content) {
+            Some(t) => t,
+            None => continue,
+        };
+        let has_imports = !extract_import_paths(&content).is_empty();
+        // Precedence: a module name already claimed by an earlier root does not re-contribute
+        // exported names (first-root-wins, as `build_module_path_index`).
+        if seen_modules.insert(module_name.clone()) {
+            module_names.insert(module_name.clone());
+            for name in collect_module_decl_names(&tree) {
+                decl_index
+                    .entry(name)
+                    .or_default()
+                    .insert(module_name.clone());
+            }
+        }
+        pool_trees
+            .entry(rel)
+            .or_insert((module_name, tree, has_imports));
+    }
+
+    // ── Pass 2: for each importer file, collect its reference use sites and resolve them to modules.
+    let mut edges: Vec<ReferenceEdgeRaw> = Vec::new();
+    for observation in importer_sources {
+        let rel = observation.path.clone();
+        let (self_module, tree) = match pool_trees.get(&rel) {
+            // A file that still carries imports is covered exactly by `import_resolution_facts`;
+            // emitting reference edges for it would only over-connect. Skip — reference edges are
+            // for import-less (stripped) files.
+            Some((_, _, true)) => continue,
+            Some((m, t, false)) => (m.clone(), t.clone()),
+            // Absent from pass 1 means pass 1 skipped it: unreadable, no module line, or a
+            // parse failure. Each is the producer being UNABLE TO ASK what this file depends
+            // on — ignorance, not an answer — so each is recorded as a located refusal rather
+            // than silently yielding an edgeless file that downstream reads as "no
+            // dependencies" (DESIGN §5: a failure arm must refuse, never widen).
+            None => {
+                let content = match &observation.source {
+                    Ok(source) => &source.content,
+                    Err(_) => {
+                        unaccounted.push(ReferenceAccountingRefusal {
+                            path: rel.clone(),
+                            cause: "unreadable",
+                        });
+                        continue;
+                    }
+                };
+                // Import-bearing: accounted EXACTLY by `import_resolution_facts`, so this is
+                // not a refusal — the other producer owns this file's edges.
+                if !extract_import_paths(&content).is_empty() {
+                    continue;
+                }
+                let module_name = match extract_module_path(&content) {
+                    Some(m) => m,
+                    None => {
+                        unaccounted.push(ReferenceAccountingRefusal {
+                            path: rel.clone(),
+                            cause: "no-module-line",
+                        });
+                        continue;
+                    }
+                };
+                match parse_module_node_tolerant(&rel, &content) {
+                    Some(t) => (module_name, t),
+                    None => {
+                        unaccounted.push(ReferenceAccountingRefusal {
+                            path: rel.clone(),
+                            cause: "parse-failed",
+                        });
+                        continue;
+                    }
+                }
+            }
+        };
+        let mut bare: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut chains: Vec<Vec<String>> = Vec::new();
+        for item in tree.children.iter() {
+            collect_node_refs(item, &mut bare, &mut chains);
+        }
+        // Resolve to per-file (target_module → strongest confidence).
+        let mut file_edges: std::collections::BTreeMap<String, RefEdgeResolution> =
+            std::collections::BTreeMap::new();
+        let mut upgrade = |m: String, res: RefEdgeResolution| {
+            let entry = file_edges.entry(m).or_insert(res);
+            if res.rank() > entry.rank() {
+                *entry = res;
+            }
+        };
+        for chain in &chains {
+            if let Some(m) = longest_declared_module_prefix(chain, &module_names) {
+                if m != self_module {
+                    upgrade(m, RefEdgeResolution::Qualified);
+                }
+            }
+        }
+        for name in &bare {
+            if let Some(mods) = decl_index.get(name) {
+                // Same-module declaration wins by lexical scope (namespace-only): a bare name the
+                // referencing file itself declares resolves LOCALLY — no cross-module edge. This
+                // is what keeps a ubiquitous fixture `data` (e.g. `live_tree_disposition`,
+                // declared top-level in ~670 test files) from fanning every referrer out to every
+                // declarer.
+                if mods.contains(&self_module) {
+                    continue;
+                }
+                // Proximity disambiguation (namespace-only "nearest in the containment tree"):
+                // among declarers, prefer the one sharing the longest module-path prefix with the
+                // referencing module. A single nearest → UniqueBare; a tie at the nearest depth →
+                // AmbiguousBare (a genuine homonym the source must qualify — the bright-cat lane).
+                let mut best_len = 0usize;
+                let mut winners: Vec<&String> = Vec::new();
+                for m in mods.iter() {
+                    let shared = module_prefix_shared_len(&self_module, m);
+                    if winners.is_empty() || shared > best_len {
+                        best_len = shared;
+                        winners.clear();
+                        winners.push(m);
+                    } else if shared == best_len {
+                        winners.push(m);
+                    }
+                }
+                match winners.len() {
+                    0 => {}
+                    1 => upgrade(winners[0].clone(), RefEdgeResolution::UniqueBare),
+                    _ => {
+                        // Homonym-qualification worklist dump (bright-cat lane (c) seed): each
+                        // AmbiguousBare is a bare ref, in a file that does not declare it, whose
+                        // nearest declarers tie — the definitive "needs qualification" site.
+                        if std::env::var("REFAMBIG_DUMP").is_ok() {
+                            let is_witness = rel.contains("/test/") || rel.ends_with("_test.dag");
+                            let cands: Vec<String> = winners.iter().map(|s| (*s).clone()).collect();
+                            eprintln!(
+                                "REFAMBIG\t{}\t{}\t{}\t{}",
+                                if is_witness { "witness" } else { "compile" },
+                                rel,
+                                name,
+                                cands.join(",")
+                            );
+                        }
+                        for t in winners {
+                            upgrade(t.clone(), RefEdgeResolution::AmbiguousBare);
+                        }
+                    }
+                }
+            }
+        }
+        for (m, res) in file_edges {
+            edges.push(ReferenceEdgeRaw {
+                path: rel.clone(),
+                target_module: m,
+                resolution: res,
+            });
+        }
+    }
+
+    unaccounted.sort_by(|a, b| a.path.cmp(&b.path));
+    (edges, unaccounted)
+}
+
+/// Reference-derived analogue of `import_resolution_facts`: emit one edge per
+/// (file, referenced module). Cached by (pool roots, importer roots, excludes);
+/// the cached value is produced by the source-value core above.
 pub fn reference_resolution_facts(
     pool_roots: &[String],
     importer_roots: &[String],
@@ -31297,211 +34184,14 @@ pub fn reference_resolution_facts(
     if let Some(cached) = REFERENCE_EDGE_CACHE.with(|c| c.borrow().get(&cache_key).cloned()) {
         return cached;
     }
-    let mut unaccounted: Vec<ReferenceAccountingRefusal> = Vec::new();
-
-    // ── Pass 1: parse the pool once. Build the exported-name→module index (precedence: first root
-    // wins, mirroring `build_module_path_index`) and the declared-module-name set. Keep each file's
-    // parsed tree so edge emission does not re-parse.
-    let mut decl_index: HashMap<String, std::collections::BTreeSet<String>> = HashMap::new();
-    let mut module_names: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut seen_modules: std::collections::HashSet<String> = std::collections::HashSet::new();
-    // `has_imports` decides per-file whether reference edges are emitted at all: a file that still
-    // carries `import` lines is covered EXACTLY by `import_resolution_facts` (no regression, no
-    // over-connection). Only an import-less (stripped) file falls back to reference edges. So on the
-    // un-stripped tree this producer emits nothing and the module graph is byte-identical to before.
-    let mut pool_trees: HashMap<String, (String, Rc<crate::v1_std_core::Node>, bool)> =
-        HashMap::new();
-    for root in &abs_pool_roots {
-        let root_path = Path::new(root);
-        if !root_path.is_dir() {
-            continue;
-        }
-        let mut files: Vec<PathBuf> = Vec::new();
-        collect_dag_files_tolerant(root_path, &mut files);
-        files.sort();
-        for file in files {
-            let rel = rel_path_for_layer_import(&file);
-            let content = match std::fs::read_to_string(&file) {
-                Ok(c) => c,
-                Err(_) => continue,
-            };
-            let module_name = match extract_module_path(&content) {
-                Some(m) => m,
-                None => continue,
-            };
-            let tree = match parse_module_node_tolerant(&rel, &content) {
-                Some(t) => t,
-                None => continue,
-            };
-            let has_imports = !extract_import_paths(&content).is_empty();
-            // Precedence: a module name already claimed by an earlier root does not re-contribute
-            // exported names (first-root-wins, as `build_module_path_index`).
-            if seen_modules.insert(module_name.clone()) {
-                module_names.insert(module_name.clone());
-                for name in collect_module_decl_names(&tree) {
-                    decl_index
-                        .entry(name)
-                        .or_default()
-                        .insert(module_name.clone());
-                }
-            }
-            pool_trees
-                .entry(rel)
-                .or_insert((module_name, tree, has_imports));
-        }
-    }
-
-    // ── Pass 2: for each importer file, collect its reference use sites and resolve them to modules.
-    let mut edges: Vec<ReferenceEdgeRaw> = Vec::new();
-    for root in &abs_importer_roots {
-        let root_path = Path::new(root);
-        if !root_path.is_dir() {
-            continue;
-        }
-        let mut files: Vec<PathBuf> = Vec::new();
-        collect_dag_files_tolerant(root_path, &mut files);
-        files.sort();
-        for file in files {
-            let rel = rel_path_for_layer_import(&file);
-            if is_excluded_import_path(&rel, exclude_substrings) {
-                continue;
-            }
-            let (self_module, tree) = match pool_trees.get(&rel) {
-                // A file that still carries imports is covered exactly by `import_resolution_facts`;
-                // emitting reference edges for it would only over-connect. Skip — reference edges are
-                // for import-less (stripped) files.
-                Some((_, _, true)) => continue,
-                Some((m, t, false)) => (m.clone(), t.clone()),
-                // Absent from pass 1 means pass 1 skipped it: unreadable, no module line, or a
-                // parse failure. Each is the producer being UNABLE TO ASK what this file depends
-                // on — ignorance, not an answer — so each is recorded as a located refusal rather
-                // than silently yielding an edgeless file that downstream reads as "no
-                // dependencies" (DESIGN §5: a failure arm must refuse, never widen).
-                None => {
-                    let content = match std::fs::read_to_string(&file) {
-                        Ok(c) => c,
-                        Err(_) => {
-                            unaccounted.push(ReferenceAccountingRefusal {
-                                path: rel.clone(),
-                                cause: "unreadable",
-                            });
-                            continue;
-                        }
-                    };
-                    // Import-bearing: accounted EXACTLY by `import_resolution_facts`, so this is
-                    // not a refusal — the other producer owns this file's edges.
-                    if !extract_import_paths(&content).is_empty() {
-                        continue;
-                    }
-                    let module_name = match extract_module_path(&content) {
-                        Some(m) => m,
-                        None => {
-                            unaccounted.push(ReferenceAccountingRefusal {
-                                path: rel.clone(),
-                                cause: "no-module-line",
-                            });
-                            continue;
-                        }
-                    };
-                    match parse_module_node_tolerant(&rel, &content) {
-                        Some(t) => (module_name, t),
-                        None => {
-                            unaccounted.push(ReferenceAccountingRefusal {
-                                path: rel.clone(),
-                                cause: "parse-failed",
-                            });
-                            continue;
-                        }
-                    }
-                }
-            };
-            let mut bare: std::collections::HashSet<String> = std::collections::HashSet::new();
-            let mut chains: Vec<Vec<String>> = Vec::new();
-            for item in tree.children.iter() {
-                collect_node_refs(item, &mut bare, &mut chains);
-            }
-            // Resolve to per-file (target_module → strongest confidence).
-            let mut file_edges: std::collections::BTreeMap<String, RefEdgeResolution> =
-                std::collections::BTreeMap::new();
-            let mut upgrade = |m: String, res: RefEdgeResolution| {
-                let entry = file_edges.entry(m).or_insert(res);
-                if res.rank() > entry.rank() {
-                    *entry = res;
-                }
-            };
-            for chain in &chains {
-                if let Some(m) = longest_declared_module_prefix(chain, &module_names) {
-                    if m != self_module {
-                        upgrade(m, RefEdgeResolution::Qualified);
-                    }
-                }
-            }
-            for name in &bare {
-                if let Some(mods) = decl_index.get(name) {
-                    // Same-module declaration wins by lexical scope (namespace-only): a bare name the
-                    // referencing file itself declares resolves LOCALLY — no cross-module edge. This
-                    // is what keeps a ubiquitous fixture `data` (e.g. `live_tree_disposition`,
-                    // declared top-level in ~670 test files) from fanning every referrer out to every
-                    // declarer.
-                    if mods.contains(&self_module) {
-                        continue;
-                    }
-                    // Proximity disambiguation (namespace-only "nearest in the containment tree"):
-                    // among declarers, prefer the one sharing the longest module-path prefix with the
-                    // referencing module. A single nearest → UniqueBare; a tie at the nearest depth →
-                    // AmbiguousBare (a genuine homonym the source must qualify — the bright-cat lane).
-                    let mut best_len = 0usize;
-                    let mut winners: Vec<&String> = Vec::new();
-                    for m in mods.iter() {
-                        let shared = module_prefix_shared_len(&self_module, m);
-                        if winners.is_empty() || shared > best_len {
-                            best_len = shared;
-                            winners.clear();
-                            winners.push(m);
-                        } else if shared == best_len {
-                            winners.push(m);
-                        }
-                    }
-                    match winners.len() {
-                        0 => {}
-                        1 => upgrade(winners[0].clone(), RefEdgeResolution::UniqueBare),
-                        _ => {
-                            // Homonym-qualification worklist dump (bright-cat lane (c) seed): each
-                            // AmbiguousBare is a bare ref, in a file that does not declare it, whose
-                            // nearest declarers tie — the definitive "needs qualification" site.
-                            if std::env::var("REFAMBIG_DUMP").is_ok() {
-                                let is_witness =
-                                    rel.contains("/test/") || rel.ends_with("_test.dag");
-                                let cands: Vec<String> =
-                                    winners.iter().map(|s| (*s).clone()).collect();
-                                eprintln!(
-                                    "REFAMBIG\t{}\t{}\t{}\t{}",
-                                    if is_witness { "witness" } else { "compile" },
-                                    rel,
-                                    name,
-                                    cands.join(",")
-                                );
-                            }
-                            for t in winners {
-                                upgrade(t.clone(), RefEdgeResolution::AmbiguousBare);
-                            }
-                        }
-                    }
-                }
-            }
-            for (m, res) in file_edges {
-                edges.push(ReferenceEdgeRaw {
-                    path: rel.clone(),
-                    target_module: m,
-                    resolution: res,
-                });
-            }
-        }
-    }
-
-    unaccounted.sort_by(|a, b| a.path.cmp(&b.path));
-    REFERENCE_UNACCOUNTED_CACHE.with(|c| c.borrow_mut().insert(cache_key.clone(), unaccounted));
-    REFERENCE_EDGE_CACHE.with(|c| c.borrow_mut().insert(cache_key, edges.clone()));
+    let pool_sources = source_content_observations_from_roots(pool_roots, &[]);
+    let importer_sources =
+        source_content_observations_from_roots(importer_roots, exclude_substrings);
+    let (edges, unaccounted) =
+        reference_resolution_facts_from_sources(&pool_sources, &importer_sources);
+    REFERENCE_UNACCOUNTED_CACHE
+        .with(|cache| cache.borrow_mut().insert(cache_key.clone(), unaccounted));
+    REFERENCE_EDGE_CACHE.with(|cache| cache.borrow_mut().insert(cache_key, edges.clone()));
     edges
 }
 

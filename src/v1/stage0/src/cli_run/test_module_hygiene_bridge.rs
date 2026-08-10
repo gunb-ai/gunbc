@@ -245,7 +245,7 @@ fn module_surface_to_value(surface: &ModuleSurface, ctx: &InterpContext) -> Valu
     }
 }
 
-fn resolve_hygiene_ctx(source_roots: &[String]) -> Result<InterpContext, String> {
+pub(crate) fn resolve_hygiene_ctx(source_roots: &[String]) -> Result<InterpContext, String> {
     let entry = hygiene_entry_file();
     let (graph, indices) = super::resolve_entry_graph_shared(source_roots, &entry)
         .map_err(|e| format!("test_module_hygiene resolve: {e}"))?;
@@ -430,22 +430,44 @@ pub(crate) fn enumerate_entry_test_fns(entry_path: &str) -> Result<Vec<String>, 
 pub(crate) fn expand_explicit_entries(
     explicit_entries: &[(String, String)],
 ) -> Result<Vec<(String, String)>, String> {
-    let roots = super::default_source_roots();
-    let ctx = resolve_hygiene_ctx(&roots)?;
-    let mut inputs = Vec::new();
+    let mut supplied = Vec::with_capacity(explicit_entries.len());
     for (entry, function) in explicit_entries {
         let content = if is_file_grain_function(function) {
+            super::refuse_prepared_scoped_source_ambient_read(
+                "test_module_hygiene_bridge::expand_explicit_entries",
+            )?;
             std::fs::read_to_string(entry)
                 .map_err(|e| format!("file-grain expand read {entry}: {e}"))?
         } else {
             String::new()
         };
+        supplied.push((entry.clone(), function.clone(), content));
+    }
+    expand_explicit_entries_from_supplied_content(&supplied)
+}
+
+/// The single expansion authority after source observation. The legacy wrapper
+/// above observes the filesystem; prepared execution supplies content retained
+/// by its exact scoped source view. Both evaluate the same modeled fold.
+pub(crate) fn expand_explicit_entries_from_supplied_content(
+    explicit_entries: &[(String, String, String)],
+) -> Result<Vec<(String, String)>, String> {
+    let ctx = resolve_hygiene_ctx(&super::default_source_roots())?;
+    expand_explicit_entries_from_supplied_content_with_context(&ctx, explicit_entries)
+}
+
+pub(crate) fn expand_explicit_entries_from_supplied_content_with_context(
+    ctx: &InterpContext,
+    explicit_entries: &[(String, String, String)],
+) -> Result<Vec<(String, String)>, String> {
+    let mut inputs = Vec::new();
+    for (entry, function, content) in explicit_entries {
         inputs.push(Value::Record {
             type_name: ctx.sym("ExplicitExpandInput"),
             fields: Rc::new(sorted_fields(vec![
                 (ctx.sym("entry"), Value::Str(entry.clone())),
                 (ctx.sym("function"), Value::Str(function.clone())),
-                (ctx.sym("content"), Value::Str(content)),
+                (ctx.sym("content"), Value::Str(content.clone())),
             ])),
         });
     }

@@ -1,0 +1,259 @@
+module v2.workflow.frozen_scoped_population
+
+import std.types { Bool, CommitSha, List, String }
+import std.realization_schedule {
+  ScheduleWitnessEntry,
+  schedule_witness_entry_roster_contains
+}
+import gunbc.floor_materialization {
+  PreparedFloorSubjectIdentity,
+  prepared_floor_subject_identity_eq
+}
+import v2.workflow.floor_diff_observe {
+  FloorDiffComparisonReadout,
+  DirectComparison,
+  MergeBaseComparison,
+  ComparisonReadoutRefused
+}
+
+data frozen_scoped_population_note: String = "POST-SELECTION BARRIER — FrozenScopedPopulation binds one PreparedFloorSubjectIdentity to the existing selector's independently observed candidate, selected, and selection-skipped ScheduleWitnessEntry populations plus the exact successful FloorDiffComparisonReadout. Candidate, selected, and skipped identities must each be duplicate-free, selected and skipped must be disjoint, and their union must exactly partition the candidates. A typed host observation binds the readout's selected head ref (normally HEAD) to the observed commit and that commit to the prepared tested commit. It does not select: affected_set_floor_runner remains the sole selection authority. The selected list's stored order is the execution order. Reconciliation refuses an unavailable or changed active prepared subject, then compares execution membership in both directions, so a sibling reorder is not a mutation, while a missing, unexpected, or duplicate execution identity refuses."
+
+type FrozenScopedComparisonHeadObservation
+  = FrozenScopedComparisonHeadResolved {
+      selected_head: String,
+      observed_commit: CommitSha
+    }
+  | FrozenScopedComparisonHeadResolutionRefused {
+      reason: String
+    }
+
+type FrozenScopedPopulationRefusal
+  = FrozenScopedPopulationComparisonRefused
+  | FrozenScopedPopulationComparisonHeadResolutionRefused
+  | FrozenScopedPopulationComparisonSelectedHeadMismatch
+  | FrozenScopedPopulationComparisonHeadCommitMismatch
+  | FrozenScopedPopulationDuplicateCandidateIdentity
+  | FrozenScopedPopulationDuplicateSelectedIdentity
+  | FrozenScopedPopulationDuplicateSkippedIdentity
+  | FrozenScopedPopulationSelectedSkippedOverlap
+  | FrozenScopedPopulationSelectedIdentityUnknown
+  | FrozenScopedPopulationSkippedIdentityUnknown
+  | FrozenScopedPopulationPartitionMissingIdentity
+  | FrozenScopedPopulationSubjectUnavailable
+  | FrozenScopedPopulationPreparedSubjectMismatch
+  | FrozenScopedPopulationExecutionDuplicateIdentity
+  | FrozenScopedPopulationExecutionMissingIdentity
+  | FrozenScopedPopulationExecutionUnexpectedIdentity
+
+type FrozenScopedPreparedSubjectObservation
+  = FrozenScopedPreparedSubjectObserved {
+      subject: PreparedFloorSubjectIdentity
+    }
+  | FrozenScopedPreparedSubjectUnavailable
+
+type FrozenScopedPopulation
+  = FrozenScopedPopulationPostselection {
+      subject: PreparedFloorSubjectIdentity,
+      comparison: FloorDiffComparisonReadout,
+      head_observation: FrozenScopedComparisonHeadObservation,
+      candidates: List<ScheduleWitnessEntry>,
+      selected: List<ScheduleWitnessEntry>,
+      skipped: List<ScheduleWitnessEntry>
+    }
+  | FrozenScopedPopulationRefused {
+      cause: FrozenScopedPopulationRefusal
+    }
+
+fn frozen_scoped_population_has_duplicate_identities(
+  identities: List<ScheduleWitnessEntry>
+) -> Bool {
+  if identities.count() == 0 {
+    false
+  } else {
+    let tail = identities.skip(n: 1)
+    schedule_witness_entry_roster_contains(xs: tail, w: identities.first())
+      || frozen_scoped_population_has_duplicate_identities(identities: tail)
+  }
+}
+
+fn frozen_scoped_population_all_members_in(
+  members: List<ScheduleWitnessEntry>,
+  population: List<ScheduleWitnessEntry>
+) -> Bool {
+  members |> all(w => schedule_witness_entry_roster_contains(xs: population, w: w))
+}
+
+fn frozen_scoped_populations_overlap(
+  left: List<ScheduleWitnessEntry>,
+  right: List<ScheduleWitnessEntry>
+) -> Bool {
+  if left.count() == 0 {
+    false
+  } else {
+    schedule_witness_entry_roster_contains(xs: right, w: left.first())
+      || frozen_scoped_populations_overlap(left: left.skip(n: 1), right: right)
+  }
+}
+
+fn freeze_scoped_population_with_comparison_head(
+  subject: PreparedFloorSubjectIdentity,
+  comparison: FloorDiffComparisonReadout,
+  comparison_head: String,
+  head_observation: FrozenScopedComparisonHeadObservation,
+  candidates: List<ScheduleWitnessEntry>,
+  selected: List<ScheduleWitnessEntry>,
+  skipped: List<ScheduleWitnessEntry>
+) -> FrozenScopedPopulation {
+  match head_observation {
+    FrozenScopedComparisonHeadResolutionRefused { reason: _ } =>
+      FrozenScopedPopulationRefused {
+        cause: FrozenScopedPopulationComparisonHeadResolutionRefused
+      }
+    FrozenScopedComparisonHeadResolved {
+      selected_head: selected_head,
+      observed_commit: observed_commit
+    } => {
+      if selected_head != comparison_head {
+        FrozenScopedPopulationRefused {
+          cause: FrozenScopedPopulationComparisonSelectedHeadMismatch
+        }
+      } else if observed_commit != subject.tested_commit {
+        FrozenScopedPopulationRefused {
+          cause: FrozenScopedPopulationComparisonHeadCommitMismatch
+        }
+      } else if frozen_scoped_population_has_duplicate_identities(identities: candidates) {
+        FrozenScopedPopulationRefused {
+          cause: FrozenScopedPopulationDuplicateCandidateIdentity
+        }
+      } else if frozen_scoped_population_has_duplicate_identities(identities: selected) {
+        FrozenScopedPopulationRefused {
+          cause: FrozenScopedPopulationDuplicateSelectedIdentity
+        }
+      } else if frozen_scoped_population_has_duplicate_identities(identities: skipped) {
+        FrozenScopedPopulationRefused {
+          cause: FrozenScopedPopulationDuplicateSkippedIdentity
+        }
+      } else if frozen_scoped_populations_overlap(left: selected, right: skipped) {
+        FrozenScopedPopulationRefused {
+          cause: FrozenScopedPopulationSelectedSkippedOverlap
+        }
+      } else if !frozen_scoped_population_all_members_in(
+        members: selected,
+        population: candidates
+      ) {
+        FrozenScopedPopulationRefused {
+          cause: FrozenScopedPopulationSelectedIdentityUnknown
+        }
+      } else if !frozen_scoped_population_all_members_in(
+        members: skipped,
+        population: candidates
+      ) {
+        FrozenScopedPopulationRefused {
+          cause: FrozenScopedPopulationSkippedIdentityUnknown
+        }
+      } else if !frozen_scoped_population_all_members_in(
+        members: candidates,
+        population: concat(selected, skipped)
+      ) {
+        FrozenScopedPopulationRefused {
+          cause: FrozenScopedPopulationPartitionMissingIdentity
+        }
+      } else {
+        FrozenScopedPopulationPostselection {
+          subject: subject,
+          comparison: comparison,
+          head_observation: head_observation,
+          candidates: candidates,
+          selected: selected,
+          skipped: skipped
+        }
+      }
+    }
+  }
+}
+
+fn freeze_scoped_population(
+  subject: PreparedFloorSubjectIdentity,
+  comparison: FloorDiffComparisonReadout,
+  head_observation: FrozenScopedComparisonHeadObservation,
+  candidates: List<ScheduleWitnessEntry>,
+  selected: List<ScheduleWitnessEntry>,
+  skipped: List<ScheduleWitnessEntry>
+) -> FrozenScopedPopulation {
+  match comparison {
+    ComparisonReadoutRefused { reason: _ } => FrozenScopedPopulationRefused {
+      cause: FrozenScopedPopulationComparisonRefused
+    }
+    DirectComparison { base: _, head: head, kind: _ } =>
+      freeze_scoped_population_with_comparison_head(
+        subject: subject,
+        comparison: comparison,
+        comparison_head: head,
+        head_observation: head_observation,
+        candidates: candidates,
+        selected: selected,
+        skipped: skipped
+      )
+    MergeBaseComparison { base: _, head: head, kind: _ } =>
+      freeze_scoped_population_with_comparison_head(
+        subject: subject,
+        comparison: comparison,
+        comparison_head: head,
+        head_observation: head_observation,
+        candidates: candidates,
+        selected: selected,
+        skipped: skipped
+      )
+  }
+}
+
+fn reconcile_frozen_scoped_execution(
+  frozen: FrozenScopedPopulation,
+  subject_observation: FrozenScopedPreparedSubjectObservation,
+  execution_identities: List<ScheduleWitnessEntry>
+) -> FrozenScopedPopulation {
+  match frozen {
+    FrozenScopedPopulationRefused { cause: _ } => frozen
+    FrozenScopedPopulationPostselection {
+      subject: frozen_subject,
+      comparison: _,
+      head_observation: _,
+      candidates: _,
+      selected: selected,
+      skipped: _
+    } => match subject_observation {
+      FrozenScopedPreparedSubjectUnavailable => FrozenScopedPopulationRefused {
+        cause: FrozenScopedPopulationSubjectUnavailable
+      }
+      FrozenScopedPreparedSubjectObserved { subject: subject } => {
+        if !prepared_floor_subject_identity_eq(left: frozen_subject, right: subject) {
+          FrozenScopedPopulationRefused {
+            cause: FrozenScopedPopulationPreparedSubjectMismatch
+          }
+        } else if frozen_scoped_population_has_duplicate_identities(
+          identities: execution_identities
+        ) {
+          FrozenScopedPopulationRefused {
+            cause: FrozenScopedPopulationExecutionDuplicateIdentity
+          }
+        } else if !frozen_scoped_population_all_members_in(
+          members: selected,
+          population: execution_identities
+        ) {
+          FrozenScopedPopulationRefused {
+            cause: FrozenScopedPopulationExecutionMissingIdentity
+          }
+        } else if !frozen_scoped_population_all_members_in(
+          members: execution_identities,
+          population: selected
+        ) {
+          FrozenScopedPopulationRefused {
+            cause: FrozenScopedPopulationExecutionUnexpectedIdentity
+          }
+        } else {
+          frozen
+        }
+      }
+    }
+  }
+}
