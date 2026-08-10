@@ -14692,6 +14692,27 @@ fn dag_source_roots(source_roots: &[String]) -> Vec<String> {
     dag
 }
 
+/// Structural mirror of `v1_interpreter::type_annotation_names` for the pre-resolve
+/// window: the interpreter's copy needs an `InterpContext`, and declarer selection
+/// happens before any graph exists. Same walk, same exactness — a type annotation
+/// names the target, or one of its children/params does.
+fn type_annotation_names_in(
+    si: Rc<im::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    ty: &Rc<Node>,
+    target: &str,
+) -> bool {
+    if ty.name == target || authored_name_at(si.clone(), ty.clone()) == target {
+        return true;
+    }
+    ty.children
+        .iter()
+        .any(|c| type_annotation_names_in(si.clone(), c, target))
+        || ty
+            .params
+            .iter()
+            .any(|c| type_annotation_names_in(si.clone(), c, target))
+}
+
 pub fn precompute_whole_tree_published_mock_keys(
     source_roots: &[String],
 ) -> Result<std::collections::HashSet<String>, String> {
@@ -14705,16 +14726,48 @@ pub fn precompute_whole_tree_published_mock_keys(
     // resolving the whole 600+ module tree to find the ~13 declarers is §2
     // irrelevant work, and that transient whole-tree `ResolvedGraph` is the floor's
     // dominant RSS (measured ~1.46 GiB to produce ~58 strings). Select the
-    // declarers and resolve only their transitive import closures. The `.contains`
-    // prefilter is a safe over-inclusive candidate set: `.dag` has no comment
-    // syntax (a string match is structural), and the downstream
-    // `type_annotation_names(.., "PublishedMockCase")` check is exact, so a
-    // false-positive file only widens the closure slightly — it cannot fabricate a key.
-    let declarers: Vec<Rc<v1_compiler_compile::SourceFile>> = index
-        .values()
-        .filter(|sf| sf.content.contains("PublishedMockCase"))
-        .cloned()
-        .collect();
+    // declarers and resolve only their transitive import closures.
+    //
+    // The `.contains` scan is a CANDIDATE prefilter and nothing more: the DECISION
+    // is the structural one below. A previous revision let the substring decide, on
+    // the reasoning that a false positive "only widens the closure slightly — it
+    // cannot fabricate a key." That is true about keys and false about builds. A
+    // `.dag` file under `dag/` that merely MENTIONS the string — a documentary bind
+    // row naming the type, a note quoting it — was selected as a declarer, and if it
+    // imports `src/v2` its closure cannot resolve under these dag-only roots, so the
+    // whole precompute returned Err and the floor exited before running a witness.
+    // Measured on gunbc#8092: one `HandAuthoredDocBind` row naming
+    // `std.hermetic_replay` `PublishedMockCase` as a document subject red the floor.
+    // A substring is not a declaration observation, so the exact check that already
+    // existed downstream now runs BEFORE the closure is taken.
+    let mut declarers: Vec<Rc<v1_compiler_compile::SourceFile>> = Vec::new();
+    for sf in index.values() {
+        if !sf.content.contains("PublishedMockCase") {
+            continue;
+        }
+        // Observation failure refuses; it never reports absence (DESIGN §5 — a
+        // candidate we could not parse is not a candidate we know is clean).
+        let Some(parsed) = crate::module_path_index::parsed_dag_file::parse_dag_file(
+            std::path::Path::new(&sf.path),
+        ) else {
+            return Err(format!(
+                "whole-tree published mock corpus: candidate {} matched the PublishedMockCase \
+                 scan but could not be parsed, so its declarer status is unobserved",
+                sf.path
+            ));
+        };
+        let si = parsed.source_indices;
+        let declares = parsed
+            .items
+            .iter()
+            .any(|item| match item.type_annotation.clone() {
+                Some(ty) => type_annotation_names_in(si.clone(), &ty, "PublishedMockCase"),
+                None => false,
+            });
+        if declares {
+            declarers.push(sf.clone());
+        }
+    }
     if declarers.is_empty() {
         return Ok(std::collections::HashSet::new());
     }

@@ -115,6 +115,8 @@ data body_lowering_lexical_lookup_ref: DeclarationRef = DeclarationRef { module_
 
 data body_lowering_production_consumer_ref: DeclarationRef = DeclarationRef { module_path: "v2.compiler.resolve", decl_name: "lookup_symbol_index_atom_identity", field: WholeDeclaration }
 
+data mock_corpus_prefilter_control_note: String = "LIVE CONTROL FOR THE MOCK-CORPUS DECLARER OBSERVATION, and the reason this sentence names the type it does. This module imports v2 modules and sits under dag/, so it is exactly the shape that broke the floor when whole-tree published-mock declarer selection was decided by a substring scan: a documentary row naming PublishedMockCase made this file read as a corpus declarer, its closure could not resolve under the dag-only roots that precompute uses, and the run refused before any witness executed. The declarer decision is now the exact type-annotation check. This sentence therefore MENTIONS PublishedMockCase without declaring one, so if the substring shortcut is ever restored the floor reds here first."
+
 data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: PlanDoc,
