@@ -46,11 +46,16 @@ import gunbc.fleet_ssh_access { fleet_automation_ssh_key, fleet_automation_privk
 //     claim this arm without naming a non-empty authority: the "anchored but unnamed"
 //     state has no constructor (construction over validation, §5 — no witness restates
 //     what the carrier already forbids). The srv5/srv6 DGX Spark units are the intended
-//     inhabitant (gunbc.dgx_spark_procurement carries their cited reservations), but they
-//     stay ScannedFirstContact here until their slot->box assignment is resolved: that
-//     binding is an open operator decision, and asserting IndependentlyAnchored for the
-//     srv5 SLOT would encode the 50/50 guess DESIGN §5 forbids. The arm is ready for
-//     that lane to flip them once the binding lands — no widening edit needed.
+//     inhabitant (gunbc.dgx_spark_procurement carries their cited CR1000A reservations,
+//     and the slot->box assignment IS decided — dgx_spark_router_binding_operator_allocation,
+//     SPARK-ALLOC-LAND-0 2026-08-07, ascending address order: srv5->192.168.1.222,
+//     srv6->192.168.1.223). They stay ScannedFirstContact here NOT because the binding is
+//     open (it is not) but because the anchored-enrollment JOIN has not been PERFORMED: no
+//     one has yet enrolled a Spark host key, observed the MAC at that address, and matched
+//     it against the cited reservation row. IndependentlyAnchored would be a claim about
+//     work that has not happened — the same over-claim in a different place. The anchor is
+//     AVAILABLE but UNUSED; the arm is ready for bold-eagle to flip these two once that
+//     join executes, with no widening edit.
 type HostKeyEnrollmentProvenance
   = ScannedFirstContact { scanned_from: NonEmptyStr }
   | IndependentlyAnchored { authority: NonEmptyStr }
@@ -122,7 +127,7 @@ data fleet_host_key_enrollments: List<KnownHostKeyRow> = [
     key_type: "ssh-ed25519",
     public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAICIFwSNG7dFfeQLdMR70e/xbYdfGO9O/ArmOkB33kG/T",
     sha256_fingerprint: "SHA256:AnxYhYR+Cz5EbOCVxirsoZlUwLRENLJmeNyk0ukD/s4",
-    provenance: ScannedFirstContact { scanned_from: "192.168.1.222 via ssh-keyscan -t ed25519; a cited CR1000A reservation exists in gunbc.dgx_spark_procurement but the srv5 slot->box assignment is an open operator decision, so this stays first-contact until bold-eagle resolves the binding and flips it to IndependentlyAnchored" as NonEmptyStr },
+    provenance: ScannedFirstContact { scanned_from: "192.168.1.222 via ssh-keyscan -t ed25519; slot->box IS decided (srv5->192.168.1.222, SPARK-ALLOC-LAND-0 2026-08-07) and a CR1000A reservation is cited, but the anchored-enrollment join (enrolled key + MAC-at-address + reservation match) has not been performed, so this stays first-contact until bold-eagle runs that join and flips it to IndependentlyAnchored" as NonEmptyStr },
   },
   KnownHostKeyRow {
     host: "srv6" as HostIdentity,
@@ -130,7 +135,7 @@ data fleet_host_key_enrollments: List<KnownHostKeyRow> = [
     key_type: "ssh-ed25519",
     public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAIEnpVavWbt8VTjUMprf+CbKCw0tS2nQIVuN49Ob5gEsc",
     sha256_fingerprint: "SHA256:Y5wB4G/qZFXZBaXbjWdK/HtWJP2pUgupsyjwBPehqMs",
-    provenance: ScannedFirstContact { scanned_from: "192.168.1.223 via ssh-keyscan -t ed25519; a cited CR1000A reservation exists in gunbc.dgx_spark_procurement but the srv6 slot->box assignment is an open operator decision, so this stays first-contact until bold-eagle resolves the binding and flips it to IndependentlyAnchored" as NonEmptyStr },
+    provenance: ScannedFirstContact { scanned_from: "192.168.1.223 via ssh-keyscan -t ed25519; slot->box IS decided (srv6->192.168.1.223, SPARK-ALLOC-LAND-0 2026-08-07) and a CR1000A reservation is cited, but the anchored-enrollment join (enrolled key + MAC-at-address + reservation match) has not been performed, so this stays first-contact until bold-eagle runs that join and flips it to IndependentlyAnchored" as NonEmptyStr },
   },
 ]
 
