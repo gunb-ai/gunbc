@@ -68,6 +68,7 @@ import std.occurrence_identity {
   CallableOccurrence,
   NamespaceSegmentOccurrence,
   FieldOccurrence,
+  ConstructorOccurrence,
   MethodOccurrence,
   authored_token_ordinal_space_from_allocator,
   occurrence_id_allocator_initial,
@@ -1064,7 +1065,7 @@ fn stamp_parsed_pattern(
         nodes: field_bindings,
         ancestors: ancestors,
         ctx: ctx,
-        role: ParsedOccurrenceDeclaration { category: FieldOccurrence }
+        role: ParsedOccurrenceReference { category: FieldOccurrence }
       )
       ParsedPatternStampResult {
         pattern: Present {
@@ -1145,6 +1146,58 @@ fn parsed_occurrence_role_for_node(
   }
 }
 
+// A module item that introduces a TYPE NAME. This is deliberately NOT `infer_items` `item_kind`, and
+// is not a second copy of it: `item_kind` answers which item FORM a module item has, and its TypeItem
+// arm keys on `connective != NoConnective`, which is true of anonymous inline record nodes and false
+// of a type ALIAS (`type X = Other`, which parse authors as NoConnective with `inferred` Present). The
+// question here is different — does this node bind a type name into its module — so both shapes must
+// answer yes and an unnamed node must answer no. Changing `item_kind` to agree would move the export
+// classification of every alias in the corpus, which is a separate decision with its own receipt.
+//
+// This is only ever asked of a node reached AS A MODULE ITEM. It cannot be asked shape-first: a
+// product FIELD node carries `inferred` Present with a Present ident_span, and a payload VARIANT node
+// carries `connective: Conj` with a Present ident_span, so both would answer yes on shape alone. That
+// is why minting is role-directed below rather than folded into parsed_occurrence_role_for_node.
+fn parsed_module_item_declares_type_name(item: Node) -> Bool {
+  item.transport == none
+    && item.body == none
+    && item.ident_span != none
+    && item.name != ""
+    && (item.connective != NoConnective || item.inferred != none)
+}
+
+fn parsed_module_item_role(item: Node) -> ParsedOccurrenceRole {
+  if parsed_module_item_declares_type_name(item: item) {
+    ParsedOccurrenceDeclaration { category: TypeOccurrence }
+  } else {
+    ParsedOccurrenceUnclassified
+  }
+}
+
+// Module items are heterogeneous, so their roles cannot come from one list-wide role the way a
+// parameter list's can. Each item's role is computed from the item itself.
+fn stamp_parsed_module_item_list(
+  nodes: List<Node>,
+  ancestors: FreeMonoid<OccurrenceId>,
+  ctx: ParseContext
+) -> ParsedNodeListStampResult {
+  fold(
+    nodes,
+    init: ParsedNodeListStampResult { nodes: [], ctx: ctx },
+    f: (acc, node) =>
+      let stamped = stamp_parsed_node(
+        node: node,
+        ancestors: ancestors,
+        ctx: acc.ctx,
+        role: parsed_module_item_role(item: node)
+      )
+      ParsedNodeListStampResult {
+        nodes: list_push(acc.nodes, stamped.node),
+        ctx: stamped.ctx,
+      }
+  )
+}
+
 fn parse_context_record_occurrence(
   ctx: ParseContext,
   role: ParsedOccurrenceRole,
@@ -1222,6 +1275,17 @@ fn stamp_parsed_node_list_with_head_role(
   }
 }
 
+// Minting is role-directed here rather than shape-inferred per node, because the member kind of a
+// type declaration's child is a fact about the PARENT: a product's children are fields, a coproduct's
+// are constructors, an alias has none. The shapes themselves do not separate — a product FIELD node
+// and its owning type declaration share `body: Absent`, and a payload VARIANT node carries the same
+// `connective: Conj` a product declaration does. Directing the role from the parent is what keeps a
+// field from arriving Unclassified and being re-classified as the declaration above it.
+//
+// Two arms are deliberately not forked. The module root's children ARE its items, and only there is
+// an item's own shape a safe discriminator (see parsed_module_item_declares_type_name). And a nullary
+// constructor takes the same arm as a payload one — it simply has no children — so the rule does not
+// fork on arity.
 fn stamp_parsed_node_children(
   node: Node,
   ancestors: FreeMonoid<OccurrenceId>,
@@ -1261,6 +1325,43 @@ fn stamp_parsed_node_children(
             ctx: ctx,
             head_role: ParsedOccurrenceReference { category: TypeOccurrence },
             tail_role: ParsedOccurrenceUnclassified
+          )
+        ParsedOccurrenceDeclaration { category: NamespaceSegmentOccurrence } =>
+          stamp_parsed_module_item_list(
+            nodes: node.children,
+            ancestors: ancestors,
+            ctx: ctx
+          )
+        ParsedOccurrenceDeclaration { category: TypeOccurrence } =>
+          match node.connective {
+            Disj =>
+              stamp_parsed_node_list(
+                nodes: node.children,
+                ancestors: ancestors,
+                ctx: ctx,
+                role: ParsedOccurrenceDeclaration { category: ConstructorOccurrence }
+              )
+            Conj =>
+              stamp_parsed_node_list(
+                nodes: node.children,
+                ancestors: ancestors,
+                ctx: ctx,
+                role: ParsedOccurrenceDeclaration { category: FieldOccurrence }
+              )
+            _ =>
+              stamp_parsed_node_list(
+                nodes: node.children,
+                ancestors: ancestors,
+                ctx: ctx,
+                role: ParsedOccurrenceUnclassified
+              )
+          }
+        ParsedOccurrenceDeclaration { category: ConstructorOccurrence } =>
+          stamp_parsed_node_list(
+            nodes: node.children,
+            ancestors: ancestors,
+            ctx: ctx,
+            role: ParsedOccurrenceDeclaration { category: FieldOccurrence }
           )
         _ =>
           stamp_parsed_node_list(

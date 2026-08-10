@@ -315,3 +315,67 @@ pub fn pdc_identity_row(name: String, expected: String) -> bool {
         } => (pdc_identity_population(transport.clone(), name.clone()) == expected.clone()),
     }
 }
+
+pub fn pdc_non_type_item_source() -> String {
+    (((((((((("module app.pdc_non_type\n".to_string() + &"\n".to_string())
+        + &"data pdc_nt_datum: Int = 7\n".to_string())
+        + &"\n".to_string())
+        + &"fn pdc_nt_fn(pdc_nt_param: Int) -> Int {\n".to_string())
+        + &"  pdc_nt_param\n".to_string())
+        + &"}\n".to_string())
+        + &"\n".to_string())
+        + &"func pdc_nt_func(pdc_nt_func_param: Int) -> Int {\n".to_string())
+        + &"  pdc_nt_func_param\n".to_string())
+        + &"}\n".to_string())
+}
+
+pub fn pdc_parse_non_type_items() -> Rc<PdcTransport> {
+    match (*parse_authored_occurrence_binding_source(
+        "app/pdc_non_type.dag".to_string(),
+        pdc_non_type_item_source(),
+    ))
+    .clone()
+    {
+        ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceRefused => {
+            Rc::new(PdcTransport::PdcTransportRefused)
+        }
+        ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceReady { transport, .. } => {
+            Rc::new(PdcTransport::PdcTransportReady {
+                transport: transport.clone(),
+            })
+        }
+    }
+}
+
+pub fn pdc_declared_category_count(transport: Rc<OccurrenceTransport>, tag: String) -> i64 {
+    transport.declarations.clone().iter().cloned().fold(
+        0,
+        |acc: i64, declaration: Rc<DeclarationOccurrence>| match (pdc_category_tag(
+            declaration.category.clone(),
+        ) == tag.clone())
+        {
+            true => (acc.clone() + 1),
+            false => acc.clone(),
+        },
+    )
+}
+
+pub fn pdc_matrix_category_count(tag: String) -> i64 {
+    match (*pdc_parse_matrix()).clone() {
+        PdcTransport::PdcTransportRefused => (0 - 1),
+        PdcTransport::PdcTransportReady {
+            transport: transport,
+            ..
+        } => pdc_declared_category_count(transport.clone(), tag.clone()),
+    }
+}
+
+pub fn pdc_non_type_category_count(tag: String) -> i64 {
+    match (*pdc_parse_non_type_items()).clone() {
+        PdcTransport::PdcTransportRefused => (0 - 1),
+        PdcTransport::PdcTransportReady {
+            transport: transport,
+            ..
+        } => pdc_declared_category_count(transport.clone(), tag.clone()),
+    }
+}

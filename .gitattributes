@@ -207,7 +207,6 @@ src/v1/stage0/src/v1_tests_claim_occurrence_identity_debt_receipt_test.rs merge=
 src/v1/stage0/src/v1_tests_claim_ordinary_frontend_observation_test.rs merge=generated-artifact
 src/v1/stage0/src/v1_tests_claim_parser_declaration_category_matrix_witness_test.rs merge=generated-artifact
 src/v1/stage0/src/v1_tests_claim_parser_declaration_matrix_support.rs merge=generated-artifact
-src/v1/stage0/src/v1_tests_claim_parser_declaration_requirements_expected_red_test.rs merge=generated-artifact
 src/v1/stage0/src/v1_tests_claim_pattern_binder_declaration_node_test.rs merge=generated-artifact
 src/v1/stage0/src/v1_tests_claim_required_expr_newline_continuation_test.rs merge=generated-artifact
 src/v1/stage0/src/v1_tests_claim_v1_annotation_binding_test.rs merge=generated-artifact

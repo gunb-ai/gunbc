@@ -297,3 +297,72 @@ fn pdc_identity_row(name: String, expected: String) -> Bool {
       pdc_identity_population(transport: transport, name: name) == expected
   }
 }
+
+// THE FALSE-POSITIVE DENOMINATOR for type-declaration minting.
+//
+// Minting a type declaration requires deciding, of a module item, whether it binds a type name. The
+// matrix fixture above only proves the two forms that DO are minted; on its own it says nothing about
+// the forms that do not, and the shapes are close enough to collide: a product FIELD node carries an
+// `inferred` type with a Present ident_span, a payload VARIANT node carries the same `connective:
+// Conj` a product declaration does, and every module item form other than `type` has to be excluded
+// by something. This module authors ONLY non-type item forms, so the whole-population claim is
+// available and needs no per-name join: the transport must carry zero type declarations.
+//
+// `service` and `resource` are deliberately absent -- they are excluded by carrying a transport, an
+// independent axis from the body/connective test, and authoring one here would be authoring the
+// dependency's shape rather than the language's. That residue is named, not silently dropped.
+fn pdc_non_type_item_source() -> String {
+  "module app.pdc_non_type\n" +
+    "\n" +
+    "data pdc_nt_datum: Int = 7\n" +
+    "\n" +
+    "fn pdc_nt_fn(pdc_nt_param: Int) -> Int {\n" +
+    "  pdc_nt_param\n" +
+    "}\n" +
+    "\n" +
+    "func pdc_nt_func(pdc_nt_func_param: Int) -> Int {\n" +
+    "  pdc_nt_func_param\n" +
+    "}\n"
+}
+
+fn pdc_parse_non_type_items() -> PdcTransport {
+  match parse_authored_occurrence_binding_source(
+    file: "app/pdc_non_type.dag",
+    source: pdc_non_type_item_source(),
+  ) {
+    ParsedOccurrenceBindingSourceRefused => PdcTransportRefused
+    ParsedOccurrenceBindingSourceReady { transport: transport, module_path: _ } =>
+      PdcTransportReady { transport: transport }
+  }
+}
+
+fn pdc_declared_category_count(
+  transport: OccurrenceTransport,
+  tag: String
+) -> Int {
+  fold(
+    transport.declarations,
+    init: 0,
+    f: (acc, declaration) =>
+      match pdc_category_tag(category: declaration.category) == tag {
+        true => acc + 1
+        false => acc
+      },
+  )
+}
+
+fn pdc_matrix_category_count(tag: String) -> Int {
+  match pdc_parse_matrix() {
+    PdcTransportRefused => 0 - 1
+    PdcTransportReady { transport: transport } =>
+      pdc_declared_category_count(transport: transport, tag: tag)
+  }
+}
+
+fn pdc_non_type_category_count(tag: String) -> Int {
+  match pdc_parse_non_type_items() {
+    PdcTransportRefused => 0 - 1
+    PdcTransportReady { transport: transport } =>
+      pdc_declared_category_count(transport: transport, tag: tag)
+  }
+}
