@@ -2,8 +2,8 @@ module test.claim.host_converge_slice1_witness
 
 import std.types { Bool, NonEmptyStr, List, String }
 import gunbc.runner_host_deploy { runner_index_seq }
-import extdeps.systemd { systemd_memory_max_property, MemoryMax }
-import gunbc.host_converge { Drifted, PerSlotMemoryCap }
+import extdeps.systemd { systemd_memory_max_property, MemoryMax, systemd_tasks_max_property, parse_systemd_task_limit_show }
+import gunbc.host_converge { Drifted, PerSlotMemoryCap, VerdictConverged }
 import gunbc.fleet_intent_network { operator_host_srv1 }
 import gunbc.runner_unit_live_read {
   gunbc_srv1_runner_unit_live_read_fixture,
@@ -41,6 +41,14 @@ import gunbc.host_converge_slice1 {
   HostConvergeSlice1UnitUsageGuardRefused,
   HostConvergeSlice1Refused,
   host_converge_slice1_unit_outcome_to_legacy_result,
+  host_converge_slice1_tasks_knob_name,
+  host_converge_slice1_tasks_knob,
+  host_converge_slice1_tasks_verdict,
+  host_converge_slice1_tasks_receipt,
+  host_converge_slice1_tasks_receipt_is_valid,
+  host_converge_slice1_tasks_headroom_refuses,
+  HostConvergeSlice1UnitTasksConverged,
+  HostConvergeSlice1TasksConverged,
 }
 import gunbc.fleet_intent_network { operator_host_srv3 }
 import gunbc.fleet_host_budget { declared_runner_count_for }
@@ -189,3 +197,110 @@ test fn witness_usage_guard_refusal_routes_to_legacy_refused_with_retryable_reas
   }
 }
 
+
+// --- TasksMax knob (second knob on the slice1 circuit; desired = 16384, the incident
+// repair value — 512 is the diagnosed EAGAIN outage value and must read Drifted) ---
+
+test fn witness_tasks_knob_is_per_slot_tasks_max_on_srv1_and_srv3() -> Bool {
+  match host_converge_slice1_tasks_knob(host: operator_host_srv1) {
+    Present { value: knob } =>
+      knob.name == host_converge_slice1_tasks_knob_name
+        && knob.desired == "16384"
+        && match knob.target {
+          PerSlotMemoryCap { dropin_path: _, instance_glob: _, property: p, bytes_value: b } =>
+            p == (systemd_tasks_max_property as String) && b == knob.desired
+          _ => false
+        }
+        && match host_converge_slice1_tasks_knob(host: operator_host_srv3) {
+          Present { value: k3 } => k3.desired == "16384"
+          Absent => false
+        }
+    Absent => false
+  }
+}
+
+// TasksMax=512 is the diagnosed EAGAIN/process-creation outage value (operator ruling on
+// PR 8045, restoring the 2026-06-21 repair 16384); the discriminating claim is that the
+// outage value reads Drifted against the repaired desired, never Converged — a converge
+// circuit that would re-apply 512 is the outage made reproducible by construction.
+test fn witness_tasks_verdict_outage_512_drifts() -> Bool {
+  match host_converge_slice1_tasks_knob(host: operator_host_srv1) {
+    Present { value: knob } =>
+      host_converge_slice1_tasks_verdict(limit: parse_systemd_task_limit_show(raw: "512"), knob: knob) == Drifted
+        && host_converge_slice1_tasks_verdict(limit: parse_systemd_task_limit_show(raw: "infinity"), knob: knob) == Drifted
+    Absent => false
+  }
+}
+
+test fn witness_tasks_verdict_desired_count_converges_and_offbyone_drifts() -> Bool {
+  match host_converge_slice1_tasks_knob(host: operator_host_srv1) {
+    Present { value: knob } =>
+      host_converge_slice1_tasks_verdict(limit: parse_systemd_task_limit_show(raw: "16384"), knob: knob) == VerdictConverged
+        && host_converge_slice1_tasks_verdict(limit: parse_systemd_task_limit_show(raw: "16383"), knob: knob) == Drifted
+    Absent => false
+  }
+}
+
+test fn witness_tasks_parse_empty_or_junk_is_absent_verdict() -> Bool {
+  match host_converge_slice1_tasks_knob(host: operator_host_srv1) {
+    Present { value: knob } =>
+      host_converge_slice1_tasks_verdict(limit: parse_systemd_task_limit_show(raw: ""), knob: knob) == Absent
+        && host_converge_slice1_tasks_verdict(limit: parse_systemd_task_limit_show(raw: "not-a-count"), knob: knob) == Absent
+    Absent => false
+  }
+}
+
+test fn witness_tasks_outcome_routes_to_tasks_legacy_arm_preserving_applied() -> Bool {
+  match host_converge_slice1_tasks_knob(host: operator_host_srv1) {
+    Present { value: knob } => {
+      let receipt = host_converge_slice1_tasks_receipt(
+        host: operator_host_srv1,
+        unit: host_converge_slice1_probe_unit,
+        knob: knob,
+        limit: parse_systemd_task_limit_show(raw: "16384"),
+        probed_at: "witness-fixture" as NonEmptyStr,
+        applied: true,
+        read_back_converged: true,
+        reapply_noop: true,
+      )
+      host_converge_slice1_tasks_receipt_is_valid(receipt: receipt)
+        && match host_converge_slice1_unit_outcome_to_legacy_result(
+             HostConvergeSlice1UnitTasksConverged { unit: host_converge_slice1_probe_unit, applied: true, receipt: receipt }
+           ) {
+          HostConvergeSlice1TasksConverged { applied_knobs: n, receipt: r } =>
+            n == 1 && r.verdict == VerdictConverged
+          _ => false
+        }
+    }
+    Absent => false
+  }
+}
+
+// RED control: a receipt whose live read still shows the outage value must fail the
+// validity gate even when the boolean flags claim success — the verdict is derived from
+// the read, never from the flags.
+test fn witness_tasks_receipt_invalid_when_read_still_drifted() -> Bool {
+  match host_converge_slice1_tasks_knob(host: operator_host_srv1) {
+    Present { value: knob } => {
+      let receipt = host_converge_slice1_tasks_receipt(
+        host: operator_host_srv1,
+        unit: host_converge_slice1_probe_unit,
+        knob: knob,
+        limit: parse_systemd_task_limit_show(raw: "512"),
+        probed_at: "witness-fixture" as NonEmptyStr,
+        applied: true,
+        read_back_converged: true,
+        reapply_noop: true,
+      )
+      !host_converge_slice1_tasks_receipt_is_valid(receipt: receipt)
+    }
+    Absent => false
+  }
+}
+
+// Guard boundary: equality is zero headroom and refuses; one below the cap admits.
+test fn witness_tasks_guard_boundary_equality_refuses() -> Bool {
+  host_converge_slice1_tasks_headroom_refuses(current: 16384, target: 16384)
+    && host_converge_slice1_tasks_headroom_refuses(current: 16385, target: 16384)
+    && !host_converge_slice1_tasks_headroom_refuses(current: 16383, target: 16384)
+}

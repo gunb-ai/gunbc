@@ -7,6 +7,7 @@ import gunbc.live_deploy.spec {
   DeploymentSpec,
   OwnedArtifactKind,
   DeploymentDependencyStep,
+  EnsuredPackage,
   TailscalePackage,
   TmuxPackage,
   deployment_spec_srv1,
@@ -229,10 +230,10 @@ test fn witness_tailnet_url_absent_not_fabricated() -> Bool {
 
 test fn witness_dependency_ensure_is_idempotent() -> Bool {
   let tailscale = deployment_ensure_dependency_script(
-    dep: DeploymentDependencyStep { kind: TailscalePackage, package: package_tailscale }
+    dep: DeploymentDependencyStep { kind: TailscalePackage, subject: EnsuredPackage { package: package_tailscale } }
   )
   let tmux = deployment_ensure_dependency_script(
-    dep: DeploymentDependencyStep { kind: TmuxPackage, package: package_tmux }
+    dep: DeploymentDependencyStep { kind: TmuxPackage, subject: EnsuredPackage { package: package_tmux } }
   )
   string_contains(s: tailscale, pattern: "dpkg -s tailscale")
     && string_contains(s: tailscale, pattern: "apt-get install --yes tailscale")
@@ -366,6 +367,16 @@ test fn witness_retract_owned_process_removes_serve_service() -> Bool {
     && !string_contains(s: sh, pattern: "roadmap-site-readback")
 }
 
+// THE PIN NOW ALSO GUARDS THE EVALUATION BUDGET, AND THAT IS THE POINT OF EXTENDING IT
+// RATHER THAN ADDING A SEPARATE CONTAINS-CHECK. srv1 served with
+// eval_budget_cpu_ms=unset eval_budget_wall_ms=unset on every restart of 2026-08-10
+// because the unit passed neither flag; the deadline was armed with None on every request,
+// and since the accept loop is serial an unbounded request held the queue for hours. A
+// whole-line assertion is what makes silently dropping a flag red — a prefix check ending
+// at --port 8080 stays green with both caps missing, which is precisely how the gap
+// survived.
+data execstart_budget_pin_note: String = "The two caps are pinned at their declared values, not merely asserted present. A present-but-different value is a policy amendment and must red here so it is reviewed as one; gunbc.live_deploy.spec dashboard_serve_budget_basis_note carries the measured basis those numbers answer to."
+
 data execstart_pinned_exactly_note: String = "THE FULL ExecStart LINE, PINNED, WITH THE REVISION IN IT — WHICH IS WHAT THE DELETED GOLDEN NEVER ASSERTED. The committed script golden compared whole files, so it would have reddened on any change anywhere and located none of them; the sibling unit witness asserts only a command PREFIX and stops before the flag. Between them, a unit that emitted no --release-revision at all, or emitted it twice, or emitted a different value, passed every check in this file.\\n\\nSo this pins the entire line and the three REDs each break exactly one way it could be wrong: the flag missing, the value belonging to another candidate, or the flag duplicated. A prefix check cannot distinguish any of them, which is why the assertion is the whole line rather than a longer prefix."
 
 test fn witness_execstart_carries_exactly_the_admitted_revision() -> Bool {
@@ -378,6 +389,8 @@ test fn witness_execstart_carries_exactly_the_admitted_revision() -> Bool {
     " --entry dag/gunbc/roadmap_serve.dag --function roadmap_serve_handle",
     " --host 0.0.0.0 --port 8080",
     " --release-revision ", deploy_witness_release_revision as String,
+    " --eval-budget-cpu-ms 30000",
+    " --eval-budget-wall-ms 30000",
   ], "")
   string_contains(s: unit, pattern: expected)
     && !string_contains(s: unit, pattern: concat(expected, " --release-revision"))
@@ -453,7 +466,7 @@ test fn witness_dependency_graph_emit_frontier_binds_orch_emit_pipeline() -> Boo
 data emit_poison_backstop_witness_note: String = "GOLDEN-INDEPENDENT backstop (calm-ferret pass-2 flag 2): the emit-level poison markers (teardown-dependency-unreachable, wholesale-refused) are the defense-in-depth backstop to the PRIMARY typed refusal (the EffectsOrRefusal SUM, proven golden-independent by w_effects_refuses_wholesale_on_any_refusal in the spine test). But the poison backstops are golden-DEPENDENT — a regen while a refusal was buggily active could commit a poisoned golden and the drift gate would then pass. These two witnesses call the refusal producers directly and assert the marker is present, golden-INDEPENDENT, so a golden-absorption can never hide that the arm still refuses loudly."
 
 test fn witness_teardown_dependency_arm_refuses_golden_independent() -> Bool {
-  let steps = emit_deploy_teardown_dependency_refusal(dep: DeploymentDependencyStep { kind: TmuxPackage, package: package_tmux })
+  let steps = emit_deploy_teardown_dependency_refusal(dep: DeploymentDependencyStep { kind: TmuxPackage, subject: EnsuredPackage { package: package_tmux } })
   count(steps) == 1
     && any(steps, s => match s {
          Do { run: r } => string_contains(s: r.command, pattern: "__GUNBC_DEPLOY_UNREACHABLE__")
@@ -609,7 +622,7 @@ test fn teardown_disposition_separates_owned_from_ensured() -> Bool {
   }
   let package = match deployment_step_teardown_disposition(
     step: Dependency {
-      step: DeploymentDependencyStep { kind: TailscalePackage, package: package_tailscale },
+      step: DeploymentDependencyStep { kind: TailscalePackage, subject: EnsuredPackage { package: package_tailscale } },
     },
   ) {
     TeardownActs => false
@@ -686,4 +699,41 @@ test fn retract_is_not_emitted_without_an_observed_scoped_removal() -> Bool {
     && !string_contains(s: too_old, pattern: "sudo -n tailscale")
     && !string_contains(s: measured, pattern: "__GUNBC_DEPLOY_REFUSED__")
     && string_contains(s: measured, pattern: "sudo -n tailscale serve --https=443 off")
+}
+
+// CONVERGE-0 loop member: the deployment installs a per-instance fleet-converge timer
+// whose service converges SELF via the deployed binary, with calendar catch-up
+// (Persistent=true — the offline-host property) and the receipts dir the publication
+// leg writes into. Cadence facts derive from the gunbc.fleet_converge_timer authority,
+// so a drifted cadence here reds against that one row, not a second copy.
+test fn fleet_converge_member_installs_self_converging_timer_with_catchup() -> Bool {
+  let live = live_deploy_apply_script_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
+  string_contains(s: live, pattern: " converge --host self")
+    && string_contains(s: live, pattern: "OnCalendar=*:0/15")
+    && string_contains(s: live, pattern: "Persistent=true")
+    && string_contains(s: live, pattern: "-fleet-converge.timer")
+    && string_contains(s: live, pattern: "install -d -m 0755 -o briansrls -g briansrls /opt/gunbc/receipts")
+}
+
+// b1 CONVERGE-close witness: the fleet-converge unit MUST run as the repo-owning,
+// credentialed service principal — never root — or its `git ls-remote origin
+// refs/fleet/desired` hits dubious-ownership + no-credential and the desired ref is never
+// observed. RED if the converge unit reverts to User=root (the pre-b1 defect) OR if the
+// receipts dir loses its service-user owner (the coupled write-side half): a root-only
+// receipts dir means the briansrls converge run fails EACCES after the observation.
+test fn fleet_converge_unit_runs_as_credentialed_owner_never_root() -> Bool {
+  let live = live_deploy_apply_script_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
+  string_contains(s: live, pattern: "Description=gunbc fleet converge (self)")
+    && string_contains(s: live, pattern: concat("User=", gunbc_service_user as String))
+    && string_contains(s: live, pattern: concat("Group=", gunbc_service_user as String))
+    && string_contains(s: live, pattern: "install -d -m 0755 -o briansrls -g briansrls /opt/gunbc/receipts")
+    && !string_contains(s: live, pattern: "User=root")
+}
+
+// Teardown owns both files: the retract removes the timer AND the service beside it
+// (the belt-member one-member-two-files shape), never production's fixed-name units.
+test fn fleet_converge_member_retract_removes_both_unit_files() -> Bool {
+  let retract = live_deploy_retract_script_for(spec: deployment_spec_srv1())
+  string_contains(s: retract, pattern: "-fleet-converge.timer")
+    && string_contains(s: retract, pattern: "-fleet-converge.service")
 }

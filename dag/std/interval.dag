@@ -1,0 +1,73 @@
+module std.interval
+
+import std.types { Bool, NonEmptyStr }
+
+// An ordered closed interval over a totally ordered carrier. It exists because an uncertainty
+// region needs a representation whose endpoints CANNOT be reversed: a `{low, high}` record written
+// by hand admits `low > high`, and a reversed interval is not a wide interval — it is a region that
+// denotes nothing, which downstream width arithmetic will happily turn into a plausible number.
+//
+// The wall is structural, not a check: the carrier is `sole_constructor`, so no other module can
+// write the record literal or cast into it, and the single mint refuses the reversed case. The
+// invalid state therefore has no constructor anywhere outside this module (DESIGN section 4b, rung
+// four for this class) rather than being validated after the fact.
+//
+// Ordering is supplied by the caller as `le` rather than assumed, because the substrate has no
+// typeclass to demand it from and a carrier-specific comparison is exactly the fact the domain
+// owns. That is also the seam that keeps this honest for richer regions later: an interval is the
+// one-dimensional case, and a point, pose, or polygon needs a radius, bounding box, or covariance
+// region instead — those are separate carriers, not a widened `low`/`high`.
+type OrderedClosedInterval<T> sole_constructor {
+  low: T
+  high: T
+}
+
+type IntervalConstruction<T>
+  = IntervalReady { interval: OrderedClosedInterval<T> }
+  | IntervalRefused { reason: NonEmptyStr }
+
+// The ONE mint. A reversed pair is refused, typed and located, never silently swapped into order —
+// swapping would be the absorbing fallback (DESIGN section 5): it would answer plausibly while
+// destroying the evidence that the caller's endpoints were wrong.
+fn closed_interval<T>(
+  low: T,
+  high: T,
+  le: fn(T, T) -> Bool,
+) -> IntervalConstruction<T> {
+  if le(low, high) {
+    IntervalReady { interval: OrderedClosedInterval { low: low, high: high } }
+  } else {
+    IntervalRefused { reason: "interval endpoints reversed: low exceeds high" }
+  }
+}
+
+// The degenerate interval [x, x] is TOTAL and needs no comparison: a point is ordered with respect
+// to itself by reflexivity, so this cannot produce a reversed pair. It is the one constructor that
+// is safe to offer unconditionally, and it is not a default — a caller that wants a WIDTH must
+// still go through the refusing mint.
+fn degenerate_interval<T>(point: T) -> OrderedClosedInterval<T> {
+  OrderedClosedInterval { low: point, high: point }
+}
+
+fn interval_low<T>(interval: OrderedClosedInterval<T>) -> T {
+  interval.low
+}
+
+fn interval_high<T>(interval: OrderedClosedInterval<T>) -> T {
+  interval.high
+}
+
+type IntervalConstructionFold<T, R> {
+  ready: fn(OrderedClosedInterval<T>) -> R
+  refused: fn(NonEmptyStr) -> R
+}
+
+fn interval_construction_fold<T, R>(
+  construction: IntervalConstruction<T>,
+  fold: IntervalConstructionFold<T, R>,
+) -> R {
+  match construction {
+    IntervalReady { interval: i } => fold.ready(i)
+    IntervalRefused { reason: r } => fold.refused(r)
+  }
+}

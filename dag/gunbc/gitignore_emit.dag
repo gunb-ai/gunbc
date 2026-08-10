@@ -22,6 +22,7 @@ import gunbc.gitignore_model {
   OpenClawSoulFile, OpenClawToolsFile, OpenClawUserFile, OpenClawWorkboardFile,
   OpenClawScriptsDir, V2InspectFile, V2InspectErrorsFile, GithubCLICacheDir,
   PythonLocalDevScriptFile, PythonAuditScriptAllowlisted, DissolutionCensusProjectionScriptAllowlisted,
+
   PythonBytecodeCacheDir, PythonCompiledBytecode,
   ClaimMapDir, ScratchProbeFile,
   GunbcPlanningDir, ScriptsFixturesDir

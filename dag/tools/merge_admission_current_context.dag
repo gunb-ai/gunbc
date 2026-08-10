@@ -51,7 +51,7 @@ fn optional_env(name: NonEmptyStr) -> String? {
   }
 }
 
-fn current_walk_attempt_id() -> WalkAttemptId? {
+fn merge_admission_context_walk_attempt_id() -> WalkAttemptId? {
   match optional_env(name: "GUNBC_WALK_ATTEMPT_ID") {
     Present { value: explicit } => compose_explicit_walk_attempt_id(explicit: explicit)
     Absent =>
@@ -82,7 +82,7 @@ fn denied_exit(verdict: MergeAdmissionVerdict) -> ProcessExit {
 }
 
 func main() -> ProcessExit {
-  let attempt = match current_walk_attempt_id() {
+  let attempt = match merge_admission_context_walk_attempt_id() {
     Present { value: value } => value
     Absent => return exit_failure(reason: "merge_admission_current_context: walk attempt identity absent or invalid")
   }

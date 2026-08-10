@@ -110,6 +110,20 @@ enum Commands {
         /// identity (gunbc.running_release_identity).
         #[arg(long = "release-revision")]
         release_revision: String,
+        /// Per-request THREAD-CPU evaluation budget in milliseconds. Omitted means this process
+        /// declares no CPU bound — today's behavior, stated rather than implied. Deliberately has
+        /// no default: no measurement of normal `roadmap_serve_handle` evaluation cost exists, and
+        /// the one adjacent figure available (~70s cold graph compile) gives no reason to believe
+        /// a sub-second ceiling is safe, so inventing a production value here would risk refusing
+        /// legitimate requests to close a hypothetical one.
+        #[arg(long = "eval-budget-cpu-ms")]
+        eval_budget_cpu_ms: Option<u64>,
+        /// Per-request MONOTONIC-WALL evaluation budget in milliseconds. Separate from the CPU
+        /// bound because they catch different failures: CPU catches a spin, wall catches a stall
+        /// that consumes almost no CPU while still holding the listener. Neither contains an
+        /// evaluation blocked inside a single native primitive — that needs worker isolation.
+        #[arg(long = "eval-budget-wall-ms")]
+        eval_budget_wall_ms: Option<u64>,
     },
 }
 
@@ -667,8 +681,21 @@ fn main() {
             host,
             port,
             release_revision,
+            eval_budget_cpu_ms,
+            eval_budget_wall_ms,
         } => {
-            cli_run::handle_serve(source_roots, entry, function, host, port, release_revision);
+            cli_run::handle_serve(
+                source_roots,
+                entry,
+                function,
+                host,
+                port,
+                release_revision,
+                cli_run::ServeEvaluationBudget {
+                    cpu_limit_ms: eval_budget_cpu_ms,
+                    wall_limit_ms: eval_budget_wall_ms,
+                },
+            );
         }
     };
 }

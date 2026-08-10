@@ -40,7 +40,7 @@ data sample_network_stats: NetworkStats = NetworkStats {
 }
 
 data sample_networks: Networks = Networks {
-  interfaces: [extdeps.docker.container_stats.NetworkInterface { name: "eth0", stats: sample_network_stats }]
+  interfaces: [extdeps.docker.container_stats.DockerContainerNetworkInterfaceStats { name: "eth0", stats: sample_network_stats }]
 }
 
 data sample_container_stats: ContainerStats = ContainerStats {

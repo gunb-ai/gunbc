@@ -19,7 +19,7 @@ import v2.lens.module_graph {
   dependency_resolution_facts_live,
   import_resolution_facts_live,
   module_declaration_facts_live,
-  reference_resolution_facts_live,
+  reference_derived_import_resolution_facts_live,
 }
 import v2.workflow.floor_diff_observe {
   FloorNameStatusDiffResult,

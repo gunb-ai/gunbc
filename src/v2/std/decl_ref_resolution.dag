@@ -3,6 +3,7 @@ module v2.std.decl_ref_resolution
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField }
 import v2.lens.module_graph { ModuleDeclarationFact }
 import v2.std.decl_index { DeclFact, ItemKind, logical_qualified_name_from_module }
+import v2.std.decl_facts_skeleton { decl_facts_matching_qualified_name }
 
 data decl_ref_resolution_authority_note: String = "G1 cited-symbol resolution (feature:cited-symbol-resolution): every typed DeclarationRef resolves to exactly one declaration_identity in decl_facts over a declared module, or refuses with one of five typed arms — module absent, declaration absent, field absent, ambiguous, or resolved. Qualified-name join uses logical_qualified_name_from_module — the same strip-v2. rule as decl_facts rows. Module membership reads module_declaration_facts — the containment-tree module census, not text scan. Ambiguity is its own arm: two or more decl_facts rows for one logical qualified name returns DeclarationRefAmbiguous with every candidate identity BEFORE any fact.node field walk — bounded refusal by construction, never a divergent chase. Witness modules must not name a test fn identically to an imported resolver helper (bare-name shadowing recurses to call depth, not an ambiguous corpus row). dissolve-on: substrate construction refuses unresolvable DeclarationRef literals at definition sites; this module remains the runtime resolution authority for lens walks."
 
@@ -40,15 +41,6 @@ fn module_path_declared(module_path: String, modules: List<ModuleDeclarationFact
   any(xs: modules, predicate: fn(m) { m.module == module_path })
 }
 
-fn decl_facts_matching_qualified_name(qn: String, facts: List<DeclFact>) -> List<DeclFact> {
-  fold(facts, init: std.algebra.Empty, f: fn(acc, fact) {
-    if fact.qualified_name == qn {
-      list_snoc_item(xs: acc, item: fact)
-    } else {
-      acc
-    }
-  })
-}
 
 fn declaration_identities_from_facts(facts: List<DeclFact>) -> List<DeclarationIdentity> {
   list_map(xs: facts, f: fn(fact) { declaration_identity_from_fact(fact: fact) })

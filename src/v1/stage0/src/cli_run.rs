@@ -3778,6 +3778,30 @@ pub const SELECTION_CONTROL_DECLARED_ENTRIES: &[&str] = &[
     SELECTION_CONTROL_CI_FLOOR_PLAN_REL,
 ];
 
+/// The two-entry incident subject for live-read selection controls and P3 A/B parity.
+///
+/// A = the node-precise discriminator fixture (the entry the diff touches).
+/// B = the affected-set floor runner test (the unrelated entry whose closure reaches a
+/// live-read carrier home). B is what the retired predicate made unskippable on any nonempty
+/// `.dag` diff, which is the `2 selected / 1 expected` incident.
+pub fn selection_control_incident_subject_roster() -> Vec<(String, String)> {
+    let ws = workspace_root();
+    vec![
+        (
+            ws.join(SELECTION_CONTROL_NODE_PRECISE_REL)
+                .to_string_lossy()
+                .into_owned(),
+            "floor_disc_witness_a_only_holds".to_string(),
+        ),
+        (
+            ws.join(SELECTION_CONTROL_FLOOR_RUNNER_TEST_REL)
+                .to_string_lossy()
+                .into_owned(),
+            "floor_test_untouched_skips_assumed_green_holds".to_string(),
+        ),
+    ]
+}
+
 /// The suite's source roots — `[src/v2, dag]`, the roots its rosters resolve against.
 /// Single authority for the same reason as the entry consts above.
 pub fn selection_control_source_roots(workspace: &Path) -> Vec<PathBuf> {
@@ -15417,8 +15441,14 @@ pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOu
             ExitClass::Failure { .. } => ClaimOutcome::Fail,
             ExitClass::NotProcessExit { type_name } => ClaimOutcome::NotBool { got: type_name },
         },
+        // THE WITNESS BOUNDARY. The kernel raises the caller-agnostic
+        // `EvaluationBudgetExceeded`; this is where the witness lane maps it into its own
+        // refusal so its operator-ruling guidance (the 5s fast-lane rule, and the
+        // relocating-the-file-does-not-discharge-it text) reaches the witness author. Mapping
+        // here rather than in the kernel is what keeps a served HTTP route from receiving
+        // witness guidance it cannot act on.
         Err(e) => ClaimOutcome::RuntimeError {
-            message: format!("{}", e),
+            message: format!("{}", v1_interpreter::map_budget_error_to_witness_refusal(e)),
         },
     }
 }
@@ -16285,6 +16315,89 @@ fn replay_scoped_run_stderr(bytes: &[u8]) {
     let _ = stderr.write_all(bytes).and_then(|_| stderr.flush());
 }
 
+/// Emit the interpreter's per-`Expr`-variant evaluation profile after a `gunbc run`, when
+/// `GUNBC_INTERP_PROFILE=1` is set. Off by default and zero-cost when off: the counters are only
+/// accumulated under the same env flag, so this reads whatever the run already gathered.
+///
+/// WHY THIS EXISTS. The profiler and its printer both predate this, but the printer lived only in
+/// `claim_batch`, which evaluates HERMETICALLY and refuses host effects rather than fabricating
+/// them. So the one runner that could produce a profile could not execute any route that reads the
+/// filesystem or shells out, and the one runner that executes wet (`gunbc run`) discarded the
+/// profile it had already collected. That gap is why the 2026-08-09 dashboard wedge was profiled
+/// with `perf` — which can only name `eval_expr_inner`, never a `.dag` subject — while the
+/// interpreter held the structural identity the whole time and simply never printed it on the wet
+/// path.
+///
+/// SCOPE, STATED HONESTLY: this is variant grain (`Call`, `Match`, `StrConcat`, …), NOT declaration
+/// identity. It can say which expression KIND dominates a wet run; it cannot say which `.dag`
+/// declaration. Naming a declaration needs the caller→callee edge and per-declaration inclusive CPU
+/// that the operator's Phase-2 trace specifies, and this is the seam that work extends rather than
+/// a substitute for it.
+fn emit_run_eval_profile(function: &str) {
+    use crate::v1_interpreter::{
+        cast_lookup_counters, eval_profile_snapshot, expr_variant_name, EXPR_VARIANT_COUNT,
+    };
+    let prof = eval_profile_snapshot();
+    let total_ns: u128 = prof.self_nanos.iter().sum();
+    let total_count: u64 = prof.counts.iter().sum();
+    if total_count == 0 {
+        return;
+    }
+    let mut rows: Vec<usize> = (0..EXPR_VARIANT_COUNT)
+        .filter(|&i| prof.counts[i] > 0)
+        .collect();
+    rows.sort_by(|&a, &b| prof.self_nanos[b].cmp(&prof.self_nanos[a]));
+    eprintln!(
+        "[eval-profile] {}: {} node-evals, {:.3}ms self-time total (sorted by self-time)",
+        function,
+        total_count,
+        total_ns as f64 / 1.0e6,
+    );
+    for i in rows {
+        let ns = prof.self_nanos[i];
+        let count = prof.counts[i];
+        eprintln!(
+            "  {:<16} {:>12} evals  {:>10.3}ms self ({:>5.1}%)  {:>8.0}ns/eval",
+            expr_variant_name(i),
+            count,
+            ns as f64 / 1.0e6,
+            if total_ns == 0 {
+                0.0
+            } else {
+                100.0 * ns as f64 / total_ns as f64
+            },
+            if count == 0 {
+                0.0
+            } else {
+                ns as f64 / count as f64
+            },
+        );
+    }
+    // The cast cost center is a SCAN, not a per-cast constant: each alias-chain hop walks
+    // every item of every module extracting authored source text. Printing the three
+    // counters together is what turns "casts are expensive" into a named multiplier —
+    // items-per-lookup is the corpus-denominated term, and it grows with the closure.
+    let (kernel_calls, lookup_calls, lookup_items) = cast_lookup_counters();
+    if kernel_calls > 0 || lookup_calls > 0 {
+        eprintln!(
+            "[eval-profile] cast-kernel walks: {}  type-lookups: {}  items scanned: {}  ({:.1} lookups/walk, {:.0} items/lookup)",
+            kernel_calls,
+            lookup_calls,
+            lookup_items,
+            if kernel_calls == 0 {
+                0.0
+            } else {
+                lookup_calls as f64 / kernel_calls as f64
+            },
+            if lookup_calls == 0 {
+                0.0
+            } else {
+                lookup_items as f64 / lookup_calls as f64
+            },
+        );
+    }
+}
+
 pub fn handle_run_with_options(
     source_roots: Vec<String>,
     function: String,
@@ -16582,6 +16695,7 @@ pub fn handle_run_with_options(
                         }
                     }
                 }
+                emit_run_eval_profile(&function);
                 match classify_exit(&val, &ctx) {
                     ExitClass::Success => {
                         if let Some(observation) = scoped_observation.as_mut() {
@@ -16681,6 +16795,61 @@ fn release_revision_text_valid(text: &str) -> bool {
             .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c))
 }
 
+/// The process-wide evaluation budget this serve process enforces.
+///
+/// PROCESS-WIDE, NOT PER-ROUTE, and the distinction is load-bearing rather than a simplification.
+/// A per-route budget would have to be known BEFORE `run_in_context_with_args` begins, so
+/// discovering it by evaluating a `.dag` function would mean entering the very unbounded
+/// evaluator the budget exists to constrain (operator review 2026-08-09). Startup configuration
+/// is the seam that avoids that, and this server has exactly one entry — `roadmap_serve_handle`,
+/// named in its systemd unit — so a process-wide value is sufficient here rather than merely
+/// convenient. A genuinely per-route policy needs either separate processes or a generated
+/// route-policy manifest read before evaluation; neither is built.
+#[derive(Debug, Clone, Copy)]
+pub struct ServeEvaluationBudget {
+    pub cpu_limit_ms: Option<u64>,
+    pub wall_limit_ms: Option<u64>,
+}
+
+/// The machine-readable refusal. The stable `code` is the contract — `std.evaluation_budget`
+/// `evaluation_budget_refusal_code` — and both quantities plus the clock are reported so a
+/// consumer can tell a spin from a stall without parsing prose.
+fn serve_budget_refusal_body(
+    entry: &str,
+    clock_key: &str,
+    elapsed_nanos: u128,
+    limit_ms: u64,
+) -> String {
+    format!(
+        "{{\"code\":\"evaluation_budget_exceeded\",\"entry\":{},\"clock\":\"{}\",\"elapsed_ns\":{},\"limit_ms\":{}}}\n",
+        serve_json_string(entry),
+        clock_key,
+        elapsed_nanos,
+        limit_ms
+    )
+}
+
+/// Minimal JSON string escaping for the refusal body. The entry name comes from a launch
+/// argument rather than a request, but it is escaped anyway: a body that can be malformed by its
+/// own configuration is a fabricated-output path, and the cost of not assuming is two lines.
+fn serve_json_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
 pub fn handle_serve(
     source_roots: Vec<String>,
     entry_file: String,
@@ -16688,6 +16857,7 @@ pub fn handle_serve(
     host: String,
     port: u16,
     release_revision: String,
+    serve_budget: ServeEvaluationBudget,
 ) {
     if source_roots.is_empty() {
         eprintln!("error: provide at least one --source-root");
@@ -16754,9 +16924,23 @@ pub fn handle_serve(
             std::process::exit(1);
         }
     };
+    // The budget is announced at startup because "unset" is a policy state that must be visible.
+    // A process serving with no bound and a process serving with a bound are different
+    // operational facts, and the difference has to be readable without inspecting argv.
     eprintln!(
-        "gunbc serve listening on {}:{} -> {}() release_revision={}",
-        host, port, function, release_revision
+        "gunbc serve listening on {}:{} -> {}() release_revision={} eval_budget_cpu_ms={} eval_budget_wall_ms={}",
+        host,
+        port,
+        function,
+        release_revision,
+        serve_budget
+            .cpu_limit_ms
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "unset".to_string()),
+        serve_budget
+            .wall_limit_ms
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "unset".to_string()),
     );
     v1_interpreter::with_active_context(&ctx, || {
         for stream in listener.incoming() {
@@ -16790,7 +16974,58 @@ pub fn handle_serve(
                             v1_interpreter::Value::Str(release_revision.clone()),
                         ),
                     ];
-                    match v1_interpreter::run_in_context_with_args(&ctx, &function, &args, true) {
+                    // THE DEADLINE IS ARMED HERE, AROUND THIS CALL, AND THE SCOPE IS THE POINT.
+                    // Before this existed the serve path armed nothing, so a route evaluation
+                    // that did not return also prevented the `Err` arm below from ever running:
+                    // the 500 existed and was unreachable, and because the loop is serial the
+                    // stuck request held the accept queue for every later one. The guard both
+                    // arms and restores — a leaked deadline would be worse than none here,
+                    // since `ctx` outlives every request and a stale CPU baseline would refuse
+                    // all subsequent requests for the life of the process.
+                    let result = {
+                        let _budget = ctx.enter_evaluation_budget(
+                            &function,
+                            serve_budget.cpu_limit_ms,
+                            serve_budget.wall_limit_ms,
+                        );
+                        v1_interpreter::run_in_context_with_args(&ctx, &function, &args, true)
+                    };
+                    match result {
+                        Err(v1_interpreter::InterpError::EvaluationBudgetExceeded {
+                            entry,
+                            clock,
+                            elapsed_nanos,
+                            limit_ms,
+                        }) => {
+                            // Refusal rendering is HOST-SIDE by necessity, not by preference:
+                            // the evaluation that would have rendered it is the one that was
+                            // just aborted, so asking it to describe its own abort would put
+                            // recovery behind the evaluator that failed.
+                            //
+                            // 500, not 503: this request is deterministic against a fixed
+                            // policy, so it will cross again on retry. A status meaning
+                            // "temporary capacity" would assert something the model does not
+                            // know, and no `Retry-After` is attached for the same reason
+                            // (`std.evaluation_budget.evaluation_budget_retry_semantics_note`).
+                            eprintln!(
+                                "serve: refused {} on {} clock: elapsed_ns={} limit_ms={}",
+                                entry,
+                                clock.key(),
+                                elapsed_nanos,
+                                limit_ms
+                            );
+                            serve_write_response(
+                                &mut stream,
+                                500,
+                                "application/json; charset=utf-8",
+                                &serve_budget_refusal_body(
+                                    &entry,
+                                    clock.key(),
+                                    elapsed_nanos,
+                                    limit_ms,
+                                ),
+                            )
+                        }
                         Err(e) => serve_write_response(
                             &mut stream,
                             500,
@@ -19009,7 +19244,7 @@ fn witness_admission_entry_function_keys_from_source(
     keys
 }
 
-fn witness_admission_explicit_consumer_keys() -> Vec<String> {
+pub fn witness_admission_explicit_consumer_keys() -> Vec<String> {
     static KEYS: OnceLock<Vec<String>> = OnceLock::new();
     KEYS.get_or_init(|| {
         let mut keys = witness_admission_entry_function_keys_from_source(

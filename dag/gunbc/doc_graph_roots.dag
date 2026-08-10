@@ -110,6 +110,45 @@ fn hand_authored_doc_path(b: HandAuthoredDocBind) -> String {
 data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "general-body-producer-design",
+    primary_work: DeclarationRef { module_path: "v2.std.symbol_index", decl_name: "SymbolIndex", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.std.symbol_index", decl_name: "symbol_index_lexical_lookup", field: WholeDeclaration },
+      DeclarationRef { module_path: "v2.compiler.resolve", decl_name: "lookup_symbol_index_atom_identity", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.roadmap_authority", decl_name: "five_minute_ci_gate_program_note", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the general body producer lands and the document describes a shipped fold rather than a planned one. THIS BIND EXISTS BECAUSE OF A MEASURED FAILURE IN THIS EXACT DOCUMENT: it named v2.std.symbol_index SymbolIndex as an open prerequisite gating Stage A, the prerequisite was discharged, and the sentence stayed -- four copies of that one claim were live across DESIGN.md and two plan documents. Nothing was wrong with the declaration, so no declaration-level check could fire; the sentence was not a reference to anything, so no reference-level check could either. Binding the three systems it discusses puts them inside the cited-symbol population, so a rename or deletion reds without anyone editing the prose. WHAT THIS DOES NOT ESTABLISH, stated so the bind is not over-read: a resolved reference proves the system EXISTS and is uniquely identified, not that the named consumer invokes the named implementation on a production path -- that is a relationship claim, it needs an executing witness, and this row makes none." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "ci0-witness-execution-census",
+    primary_work: DeclarationRef { module_path: "gunbc.witness_execution_class", decl_name: "witness_execution_class_note", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "gunbc.witness_execution_class", decl_name: "native_blocked_cause_note", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the general witness→TargetModel producer lands (body-lowering keystone) and the enrolled-roster census is re-derived from executed emission attempts rather than the fixture-bound dispatch surface; the census numbers are superseded by that re-derivation and this receipt deletes with the NativeBlocked\{GeneralWitnessTargetModelUnavailable\} population it counts." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "ci2-native-cutover-reobservation",
+    primary_work: DeclarationRef { module_path: "gunbc.ci_workflow", decl_name: "ci_floor_native_cache_root_note", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "gunbc.ci_materialization", decl_name: "ci_native_cache_root_exempt_note", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.native_witness_transition_receipt", decl_name: "native_at_small_scale_transition_receipt", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the CI2 correctness flip lands — the native-selected population is native-required with the counted interpreter fallback deleted — and a main floor run's [native-selected-bundle] receipt shows verdict accepted with fallback = interpreted = unavailable = 0. The measured-standing content is superseded at that point by the run receipts and the transition-receipt authority; this doc records the pre-flip standing and its two located defects, and deletes with the fallback machinery it diagnosed." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "witness-bridge-reobservation",
+    primary_work: DeclarationRef { module_path: "v2.compiler.body_producer_forward", decl_name: "body_producer_forward_note", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lowering_fold_note", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the first witness-bridge stage lands (lowered body -> derived TargetModel -> bundle member -> native execution with planted-red control) and the bridge carrier's own notes record the standing this receipt captured; then this doc folds into the bridge design/receipt and deletes." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "review-surface-subject-map",
     primary_work: DeclarationRef { module_path: "v2.lens.registry.completeness", decl_name: "lens_registry_completeness_consolidated_roster_note", field: WholeDeclaration },
     additional_works: [
@@ -578,6 +617,13 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     primary_work: DeclarationRef { module_path: "gunbc.p1_retention_cohort_receipt", decl_name: "p1_retention_cohort_receipt_reproduction_steps", field: WholeDeclaration },
     additional_works: [DeclarationRef { module_path: "gunbc.p1_retention_cohort_receipt", decl_name: "p1_retention_cohort_receipt_verdict", field: WholeDeclaration }],
     dissolution: HasTrigger { text: "the redirected assembly/materialization lane this receipt's REJECT verdict points to is picked up and either supersedes this pinned measurement with a canonical carrier or the parent floor-prep-tax-program plan closes P1 outright — then this receipt and its anchor module delete together, per the same scaffold trigger named beside p1_cohort_receipt_enabled in cli_run.rs." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "p3-classification-cost-ab-receipt",
+    primary_work: DeclarationRef { module_path: "v2.lens.live_read_classification", decl_name: "live_read_classification_law", field: WholeDeclaration },
+    additional_works: [],
+    dissolution: HasTrigger { text: "paired fleet receipts for ClassificationCostStanding land on the pinned merge SHA with headSha-verified control/candidate arms and the five-valued verdict is recorded — then surviving measurement facts migrate to the canonical carrier and this bind deletes with the doc." },
   },
   HandAuthoredDocBind {
     home: PlanDoc,

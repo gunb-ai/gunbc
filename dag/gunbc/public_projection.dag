@@ -19,7 +19,7 @@ import gunbc.publication_policy {
 
 data public_projection_note: String = "Derived public projection plan over authored subjects. Requires AdmittedPublicationPolicy from admit_publication_policy — illegal policies are unrepresentable on this path. Never the unrestricted authored tree and never a pathname census: policy resolves each subject's disposition, included_subjects carries only PublishPublic rows, omitted_subjects carries WithholdPrivate rows, and projection_digest fingerprints the admitted set."
 
-type PublicationSubject {
+type PublicProjectionSubject {
   subject_identity: ContentHash
   content_identity: ContentHash
   path: FilePath
@@ -28,12 +28,12 @@ type PublicationSubject {
 type PublicProjectionPlan {
   source_revision: CommitSha
   policy_version: NonEmptyStr
-  included_subjects: List<PublicationSubject>
-  omitted_subjects: List<PublicationSubject>
+  included_subjects: List<PublicProjectionSubject>
+  omitted_subjects: List<PublicProjectionSubject>
   projection_digest: ContentHash
 }
 
-fn publication_subject_digest(subject: PublicationSubject) -> ContentHash {
+fn publication_subject_digest(subject: PublicProjectionSubject) -> ContentHash {
   content_hash_tagged(
     tag: "publication-subject",
     payload: content_hash_combine_structural(
@@ -43,7 +43,7 @@ fn publication_subject_digest(subject: PublicationSubject) -> ContentHash {
   )
 }
 
-fn projection_digest_from_subjects(subjects: List<PublicationSubject>) -> ContentHash {
+fn projection_digest_from_subjects(subjects: List<PublicProjectionSubject>) -> ContentHash {
   let digests = map(subjects, subject => publication_subject_digest(subject: subject))
   as_content_hash_structural(
     structural: fold(
@@ -60,13 +60,13 @@ fn projection_digest_from_subjects(subjects: List<PublicationSubject>) -> Conten
 }
 
 type AuthoredSubjectPartition {
-  included: List<PublicationSubject>
-  omitted: List<PublicationSubject>
+  included: List<PublicProjectionSubject>
+  omitted: List<PublicProjectionSubject>
 }
 
 fn partition_authored_subjects(
   admitted: AdmittedPublicationPolicy,
-  authored_subjects: List<PublicationSubject>,
+  authored_subjects: List<PublicProjectionSubject>,
 ) -> AuthoredSubjectPartition {
   fold(
     authored_subjects,
@@ -94,7 +94,7 @@ fn partition_authored_subjects(
 fn derive_public_projection_plan(
   admitted: AdmittedPublicationPolicy,
   source_revision: CommitSha,
-  authored_subjects: List<PublicationSubject>,
+  authored_subjects: List<PublicProjectionSubject>,
 ) -> PublicProjectionPlan {
   let parts = partition_authored_subjects(
     admitted: admitted,

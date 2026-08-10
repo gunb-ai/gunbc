@@ -19,7 +19,7 @@ import gunbc.roadmap_publish {
   adjudicate_publication,
   publication_detail,
   publication_offers_the_expected_head,
-  PublicationSubject,
+  RoadmapPublicationSubject,
   PublicationReceipt,
   PublicationReceiptOutcome,
   ReceiptBound, ReceiptHeadDiverged, ReceiptBindingAmbiguous,
@@ -438,8 +438,8 @@ data fixture_other_repository: Repository = Repository {
   default_branch: "main",
 }
 
-fn subject_for(head: CommitSha) -> PublicationSubject {
-  PublicationSubject {
+fn subject_for(head: CommitSha) -> RoadmapPublicationSubject {
+  RoadmapPublicationSubject {
     node_id: "some-node",
     attempt_key: "a7",
     repository: fixture_repository,
@@ -686,7 +686,7 @@ test fn an_ambiguous_binding_round_trips_its_pull_request_numbers() -> Bool {
 
 // THE DECODER USED TO REBUILD THE REPOSITORY IT DID NOT STORE - full_name by concatenation, private as false, and default_branch from the subject's expected_base. For this repository the base IS the default branch, so the round trip compared equal and nothing looked wrong. This claim uses a subject whose base is NOT the default branch, which is the case that would have produced a repository nobody recorded and a false wrong-subject refusal in the one function whose job is to tell those apart.
 test fn a_subject_against_a_non_default_base_still_round_trips_its_repository() -> Bool {
-  let subject = PublicationSubject {
+  let subject = RoadmapPublicationSubject {
     node_id: "some-node",
     attempt_key: "a7",
     repository: fixture_repository,
@@ -734,7 +734,7 @@ test fn a_receipt_that_is_not_json_refuses() -> Bool {
 
 data subject_check_witness_note: String = "THE NEGATIVE HALF IS THE POINT. A claim that a bound receipt paints the lamp green proves only that the happy path works; it would stay green under the exact defect this rewrite exists to remove, which is a consumer that finds a receipt at a path and trusts it.\\n\\nSo each claim below pairs one receipt with TWO expectations - the subject it was written for, and a subject differing in exactly one field - and asserts that the first is evidence and the second is not. Six fields, six ways to be about the wrong question, and heads are only one of them: attempt keys and node ids collide far more readily than shas do, so a head-only comparison would pass these claims and still be wrong."
 
-fn evidence_for_subject_of(expected: PublicationSubject, receipt: String) -> PublicationEvidence {
+fn evidence_for_subject_of(expected: RoadmapPublicationSubject, receipt: String) -> PublicationEvidence {
   publication_evidence_for(
     expected: expected,
     source: ReceiptSourcePresent { text: receipt },
@@ -777,7 +777,7 @@ test fn a_receipt_for_another_head_is_not_evidence_for_this_one() -> Bool {
 }
 
 test fn a_receipt_for_another_node_is_not_evidence_for_this_one() -> Bool {
-  let expected = PublicationSubject {
+  let expected = RoadmapPublicationSubject {
     node_id: "another-node",
     attempt_key: "a7",
     repository: fixture_repository,
@@ -793,7 +793,7 @@ test fn a_receipt_for_another_node_is_not_evidence_for_this_one() -> Bool {
 }
 
 test fn a_receipt_for_another_attempt_of_this_node_is_not_evidence() -> Bool {
-  let expected = PublicationSubject {
+  let expected = RoadmapPublicationSubject {
     node_id: "some-node",
     attempt_key: "a8",
     repository: fixture_repository,
@@ -811,7 +811,7 @@ test fn a_receipt_for_another_attempt_of_this_node_is_not_evidence() -> Bool {
 data repository_identity_is_owner_and_name_note: String = "THE REPOSITORY IS COMPARED BY ITS IDENTITY, WHICH IS OWNER AND NAME, and the refusal names which half differs rather than saying `repository`. Those are different situations for a reader: a different owner usually means a fork or another organization, while a different name under the same owner usually means the receipt is about a sibling repository - and the remedies diverge from there. The receipt also records full_name, private and default_branch, which are ATTRIBUTES the judgment was made against rather than identity, so they round trip and are not part of the match."
 
 test fn a_receipt_about_a_repository_of_another_name_is_not_evidence() -> Bool {
-  let expected = PublicationSubject {
+  let expected = RoadmapPublicationSubject {
     node_id: "some-node",
     attempt_key: "a7",
     repository: fixture_other_repository,
@@ -827,7 +827,7 @@ test fn a_receipt_about_a_repository_of_another_name_is_not_evidence() -> Bool {
 }
 
 test fn a_receipt_about_another_owners_repository_is_not_evidence() -> Bool {
-  let expected = PublicationSubject {
+  let expected = RoadmapPublicationSubject {
     node_id: "some-node",
     attempt_key: "a7",
     repository: Repository {
@@ -849,7 +849,7 @@ test fn a_receipt_about_another_owners_repository_is_not_evidence() -> Bool {
 }
 
 test fn a_receipt_against_another_base_is_not_evidence() -> Bool {
-  let expected = PublicationSubject {
+  let expected = RoadmapPublicationSubject {
     node_id: "some-node",
     attempt_key: "a7",
     repository: fixture_repository,

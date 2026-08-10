@@ -3,6 +3,7 @@ module test.claim.ci_workflow_witness_test
 import std.types { Bool, Int }
 import std.measure { minute_count }
 import gunbc.ci_workflow {
+  ci_workflow,
   gunbc_ci_job_backstop_timeout_minutes,
   gunbc_ci_build_job_backstop_timeout_minutes,
   gunbc_ci_artifact_transfer_step_timeout_minutes,
@@ -13,6 +14,7 @@ import gunbc.ci_workflow {
   gunbc_ci_release_build_step_timeout_minutes,
   gunbc_ci_prelude_allowance_minutes,
 }
+import gunbc.ci_workflow_expressions { ci_fleet_job_if }
 import gunbc.ci_spec {
   gunbc_ci_ordinary_floor_budget_minutes,
   gunbc_ci_admission_postcondition_budget_minutes,
@@ -46,4 +48,60 @@ test fn ci_workflow_witness_holds() -> Bool {
     && (minute_count(m: gunbc_ci_walk_overhead_allowance_minutes) == 15)
     && (minute_count(m: gunbc_ci_workflow_wrapper_budget_minutes()) == minute_count(m: gunbc_ci_ordinary_floor_budget_minutes) + minute_count(m: gunbc_ci_admission_postcondition_budget_minutes) + minute_count(m: gunbc_ci_walk_overhead_allowance_minutes))
     && (gunbc_ci_workflow_wrapper_timeout_minutes == minute_count(m: gunbc_ci_workflow_wrapper_budget_minutes()))
+}
+
+// RED control for the push-to-main skip cascade (measured 2026-08-09: >=30 main pushes
+// silently skipped deploy_dashboard_srv1 — and later advance/collect — because
+// heal_generated_artifacts skips on ordinary pushes and a needs:[ci] job whose if
+// carries NO status function gets GitHub's implicit success() ANDed in, which is false
+// downstream of any transitively skipped job). The wall: every job gating on the
+// main-push event must carry its OWN status guard, so a skipped dependency can never
+// silently read as 'condition false'. This test REDS if the guard is removed from the
+// authority row, if any push-to-main job's condition drops it, or if the family
+// becomes vacuously empty.
+//
+// CONSOLIDATION (operator request 2026-08-10): the deploy/collect/advance family (and
+// the workflow_dispatch toolbox) collapsed into ONE `fleet` job (gunbc.ci_workflow
+// ci_fleet_job) whose job-level if is ci_fleet_job_if — carrying the same !cancelled()
+// + needs.ci.result guard on its push arm. The guard-bearing count is therefore 1 now,
+// not >= 2; the per-job status-guard check still holds on that one job, and >= 1 keeps
+// the "not vacuously empty" protection (a fleet job that drops its main-push arm or its
+// status guard still REDs).
+test fn push_to_main_family_carries_explicit_status_guard() -> Bool {
+  string_contains(s: ci_fleet_job_if, pattern: "!cancelled()")
+    && string_contains(s: ci_fleet_job_if, pattern: "needs.ci.result == 'success'")
+    && fold_list(
+      xs: ci_workflow.jobs,
+      empty: true,
+      cons: fn(ok, j) {
+        if !ok {
+          false
+        } else {
+          match j.if_condition {
+            Present { value: c } =>
+              if string_contains(s: c, pattern: "refs/heads/main") && string_contains(s: c, pattern: "github.event_name == 'push'") {
+                string_contains(s: c, pattern: "!cancelled()") && string_contains(s: c, pattern: "needs.ci.result == 'success'")
+              } else {
+                true
+              }
+            _ => true
+          }
+        }
+      }
+    )
+    && fold_list(
+      xs: ci_workflow.jobs,
+      empty: 0,
+      cons: fn(n, j) {
+        match j.if_condition {
+          Present { value: c } =>
+            if string_contains(s: c, pattern: "refs/heads/main") && string_contains(s: c, pattern: "github.event_name == 'push'") {
+              n + 1
+            } else {
+              n
+            }
+          _ => n
+        }
+      }
+    ) >= 1
 }

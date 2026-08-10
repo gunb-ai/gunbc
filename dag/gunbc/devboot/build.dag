@@ -1,0 +1,1305 @@
+module gunbc.devboot.build
+
+import std.types { String, Bool, Int, List }
+import std.measure { Second, second, second_count }
+import std.content_hash { Sha256Digest, sha256_hex_digest, content_hash_eq_cryptographic }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.gunbc
+import extdeps.filesystem.filesystem_io
+import extdeps.git { git_ref_missing_exit_code, git_repository_unusable_exit_code }
+import gunbc.devboot.transport {
+  devboot_witness_run,
+  retained_devboot_rm_rf,
+  retained_devboot_mkdir,
+  retained_devboot_git_read_tree,
+  retained_devboot_git_checkout_index,
+  retained_devboot_git_fetch,
+  retained_devboot_sleep,
+  retained_devboot_git_init,
+  retained_devboot_git_update_index,
+  retained_devboot_git_push,
+  retained_devboot_git_hash_object,
+  retained_devboot_git_write_tree,
+  retained_devboot_git_commit_tree,
+  retained_devboot_git_cat_file,
+  retained_devboot_git_rev_parse,
+  retained_devboot_git_update_ref,
+  retained_devboot_sha256sum,
+  retained_devboot_cp,
+  retained_devboot_chmod,
+  retained_devboot_uname,
+  retained_devboot_cargo_build,
+}
+import gunbc.devboot.lease {
+  request_ref_namespace,
+  produced_ref_namespace,
+  content_hash_ref_token,
+}
+import gunbc.devboot.subject {
+  BuildSubject,
+  BuildSubjectRefusalCause,
+  admit_build_subject,
+  render_build_subject,
+  build_subject_digest,
+  SubjectAdmitted,
+  SubjectRefused,
+}
+import gunbc.devboot.produce {
+  devboot_snapshot,
+  SnapshotTaken,
+  SnapshotRefused,
+  observe_toolchain,
+  ToolchainObserved,
+  ToolchainObservationRefused,
+  build_subject_refusal_reason,
+  devboot_materialize_source,
+  SourceMaterialized,
+  SourceMaterializationRefused,
+  devboot_target_dir,
+  snapshot_step_refusal,
+  observe_platform_c_library,
+  receipt_write_refusal,
+}
+import gunbc.devboot.program {
+  ProgramSelected,
+  ProgramNotOffered,
+  select_program,
+  offered_programs_rendering,
+}
+import extdeps.git.object_store { git_object_id_from_untagged_hex }
+import extdeps.toolchain.types { ToolchainRequirement, TargetTriple }
+
+// GUNBC BUILD RETURNS ONE EXACT EXECUTABLE TO A REMOTE AGENT.
+//
+// This module is the whole of what a caller sees. It takes a program name and returns either an executable file on disk whose bytes are bound to a digest, or a refusal that says which step refused and why. It does not return a lease, a ref, a store path, a provider, a token or a host, and none of those words appear in BuildOutcome -- they are how the operation works, not what it means, and a product interface that leaks its mechanism has to keep leaking it forever.
+//
+// THE EXCHANGE FORMAT LIVES HERE, ONCE, FOR BOTH SIDES. The caller writes a request tree and reads a produced tree; the producer reads a request tree and writes a produced tree. That is one fact -- what the two trees contain -- and its two readings are the forward and backward directions of a single format, so they are declared together. Splitting them across a client module and a producer module would let one side gain an entry the other never learns to read, and the failure would look like an empty result rather than a disagreement.
+//
+// NOTHING CROSSES THE WIRE BUT GIT. The channels that exist between these hosts are git's, so the request travels as objects under a ref and the answer comes back the same way. There is no ssh on this path and no HTTP body: those were available for standing the harness up and are deliberately absent from the operation, because a product path that quietly acquires a second transport acquires a second set of failures nobody modeled.
+data request_source_entry: String = "source"
+
+data request_subject_entry: String = "subject"
+
+data request_program_entry: String = "program"
+
+data produced_subject_entry: String = "subject"
+
+data produced_artifact_entry: String = "artifact"
+
+data produced_digest_entry: String = "sha256"
+
+data produced_refusal_entry: String = "refusal"
+
+data produced_host_entry: String = "host"
+
+
+fn request_ref_of(token: String) -> String {
+  join([request_ref_namespace, token], "")
+}
+
+fn produced_ref_of(token: String) -> String {
+  join([produced_ref_namespace, token], "")
+}
+
+// THE ARTIFACT NEVER TRAVELS THROUGH A PIPE. An earlier shape of this read the built binary with cat-file and carried it as a string: the transport strips a trailing newline and a string is not a byte sequence, so a 24-megabyte executable arriving that way is silently truncated or re-encoded and the digest check then fails for a reason that has nothing to do with the store. Every blob that is bytes rather than text is materialized by checkout-index straight to a file, and only the small text entries -- a digest, a rendered subject, a refusal sentence -- are ever read as strings.
+fn exchange_out_dir(work_root: String, token: String) -> String {
+  join([work_root, "/", token, "/exchange"], "")
+}
+
+fn exchange_index_path(work_root: String, token: String) -> String {
+  join([work_root, "/", token, "/exchange.index"], "")
+}
+
+fn materialize_ref_tree(repo_root: String, work_root: String, token: String, ref_name: String) -> Bool {
+  let out_dir = exchange_out_dir(work_root: work_root, token: token)
+  let index_path = exchange_index_path(work_root: work_root, token: token)
+  let fresh = devboot_witness_run(
+    site: retained_devboot_rm_rf,
+    workdir: repo_root,
+    bin_path: "rm",
+    args: ["-rf", out_dir, index_path],
+  )
+  let made = devboot_witness_run(
+    site: retained_devboot_mkdir,
+    workdir: repo_root,
+    bin_path: "mkdir",
+    args: ["-p", out_dir],
+  )
+  let loaded = devboot_witness_run(
+    site: retained_devboot_git_read_tree,
+    workdir: repo_root,
+    bin_path: "env",
+    args: [concat("GIT_INDEX_FILE=", index_path), "git", "read-tree", join([ref_name, "^\{tree}"], "")],
+  )
+  if !loaded.success {
+    false
+  } else {
+    devboot_witness_run(
+      site: retained_devboot_git_checkout_index,
+      workdir: repo_root,
+      bin_path: "env",
+      args: [
+        concat("GIT_INDEX_FILE=", index_path),
+        "git",
+        "checkout-index",
+        "-a",
+        "-f",
+        concat("--prefix=", join([out_dir, "/"], "")),
+      ],
+    ).success
+  }
+}
+
+type TextFileReadOutcome
+  = TextFilePresent { text: String }
+  | TextFileReadFailed { error: String }
+  | TextFileAbsent
+
+fn read_text_file(repo_root: String, path: String) -> TextFileReadOutcome {
+  let read = Filesystem.Read(path: path)
+  if read.success {
+    TextFilePresent { text: trim(s: read.content) }
+  } else {
+    if read.error == "" {
+      TextFileAbsent
+    } else {
+      TextFileReadFailed { error: read.error }
+    }
+  }
+}
+
+type DigestScan {
+  index: Int
+  found: String
+}
+
+fn digest_field(acc: DigestScan, part: String) -> DigestScan {
+  if acc.index == 0 {
+    DigestScan { index: acc.index + 1, found: part }
+  } else {
+    DigestScan { index: acc.index + 1, found: acc.found }
+  }
+}
+
+type FileSha256Outcome
+  = FileSha256Present { digest: Sha256Digest }
+  | FileSha256CommandFailed { exit_code: Int, stderr: String }
+  | FileSha256PathUnreadable { path: String }
+
+fn file_sha256(repo_root: String, path: String) -> FileSha256Outcome {
+  let hashed = devboot_witness_run(
+    site: retained_devboot_sha256sum,
+    workdir: repo_root,
+    bin_path: "sha256sum",
+    args: [path],
+  )
+  if !hashed.success {
+    FileSha256CommandFailed { exit_code: hashed.exit_code, stderr: trim(s: hashed.stderr) }
+  } else {
+    let hex = fold(
+      split(s: trim(s: hashed.stdout), sep: " "),
+      init: DigestScan { index: 0, found: "" },
+      f: (acc, part) => digest_field(acc: acc, part: part),
+    ).found
+    match sha256_hex_digest(hex: hex) {
+      Absent => FileSha256PathUnreadable { path: path }
+      Present { value: digest } => FileSha256Present { digest: digest }
+    }
+  }
+}
+
+fn render_sha256_digest(digest: Sha256Digest) -> String {
+  digest.hex as String
+}
+
+// WHAT A CALLER RECEIVES. An artifact is a path plus the digest that binds it, and both are present or the outcome is a refusal -- there is no arm carrying a path whose bytes were never checked, because that arm is how a stale binary passed for a produced one once already.
+type BuiltArtifact {
+  path: String
+  sha256: Sha256Digest
+}
+
+// THE RECEIPT IS WHERE PROCESS IDENTITY LIVES. Which host produced the bytes, which executable did it, what the invocation was: all of it is real and worth keeping, and none of it may reach the artifact's identity. A key that carries the producing host means the same tree built on two machines is two subjects, so the second caller rebuilds what the first already produced and the dedup this service exists for silently stops happening. So these facts are reported and never keyed.
+type BuildReceipt {
+  invocation: String
+  producer_host: String
+  reused: Bool
+}
+
+type BuildRefusal
+  = ProgramNotBuildable { program: String, offered: String }
+  | WorktreeNotSnapshotted { refusal: SnapshotRefused }
+  | ToolchainNotObserved { refusal: ToolchainObservationRefused }
+  | SourceTreeOidUnusable { hex: String }
+  | SubjectNotAdmitted { cause: BuildSubjectRefusalCause }
+  | ProducerUnreachable { detail: String }
+  | ProducerDidNotAnswer { waited: Second }
+  | ProducerRefusedRequest { detail: String }
+  | SubjectMismatch { requested: String, produced: String }
+  | ArtifactNotRetrievable { detail: String }
+  | ArtifactDigestMismatch { expected: Sha256Digest, observed: Sha256Digest }
+
+type BuildOutcome
+  = Built { program_subject: String, artifact: BuiltArtifact, receipt: BuildReceipt }
+  | BuildRefused { cause: BuildRefusal }
+
+fn build_refusal_sentence(cause: BuildRefusal) -> String {
+  match cause {
+    ProgramNotBuildable { program, offered } =>
+      join(["no program named ", program, " is offered (offered: ", offered, ")"], "")
+    WorktreeNotSnapshotted { refusal: SnapshotRefused { detail } } =>
+      join(["the working tree could not be snapshotted: ", detail], "")
+    ToolchainNotObserved { refusal: ToolchainObservationRefused { detail } } =>
+      join(["the local toolchain could not be observed: ", detail], "")
+    SourceTreeOidUnusable { hex } => join(["unusable tree oid: ", hex], "")
+    SubjectNotAdmitted { cause: subject_cause } =>
+      join(["the build subject was refused: ", build_subject_refusal_reason(cause: subject_cause)], "")
+    ProducerUnreachable { detail } => join(["the producer could not be reached: ", detail], "")
+    ProducerDidNotAnswer { waited } =>
+      join(["the producer did not answer within ", to_string(second_count(waited)), " seconds"], "")
+    ProducerRefusedRequest { detail } => join(["the producer refused: ", detail], "")
+    SubjectMismatch { requested, produced } =>
+      join(["the producer built a different subject than the one requested\nrequested:\n", requested, "\nproduced:\n", produced], "")
+    ArtifactNotRetrievable { detail } => join(["the artifact could not be retrieved: ", detail], "")
+    ArtifactDigestMismatch { expected, observed } =>
+      join([
+        "the retrieved bytes do not match their digest (expected ",
+        render_sha256_digest(digest: expected),
+        ", observed ",
+        render_sha256_digest(digest: observed),
+        ")",
+      ], "")
+  }
+}
+
+fn outcome_delivers_executable(outcome: BuildOutcome) -> Bool {
+  match outcome {
+    Built { program_subject, artifact, receipt } => true
+    BuildRefused { cause } => false
+  }
+}
+
+// THE POLL ABSORBS ONCE SETTLED, for the reason every wait in this service does: a later tick that looks again can overwrite a terminal answer with a transient one, so a caller holding a verified artifact could report a refusal produced by a hiccup after the fact.
+type PollState
+  = PollAnswered { ref_name: String }
+  | PollWaiting
+  | PollUnreachable { detail: String }
+
+fn poll_settled(acc: PollState) -> Bool {
+  match acc {
+    PollAnswered { ref_name } => true
+    PollWaiting => false
+    PollUnreachable { detail } => true
+  }
+}
+
+// THE POLL INTERVAL IS A DURATION, not a number that happens to be counted in seconds. A scale unit living in a name rather than in the type is the conflation this repository treats as a hard block, and leaving it here while the producer's wait was migrated to Second in this same change would have been worse than either choice alone: two representations of one concept, one file apart from the authority that already models it.
+fn poll_interval() -> Second {
+  second(count: 5)
+}
+
+fn poll_interval_argv() -> String {
+  to_string(second_count(poll_interval()))
+}
+
+fn poll_tick_unit() -> List<Int> {
+  [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+}
+
+fn poll_attempts() -> List<Int> {
+  fold([1, 2, 3, 4, 5, 6], init: [], f: (acc, outer) => concat(acc, poll_tick_unit()))
+}
+
+fn poll_budget() -> Second {
+  second(count: (poll_attempts() |> count) * second_count(poll_interval()))
+}
+
+fn poll_once(repo_root: String, endpoint: String, ref_name: String) -> PollState {
+  let fetched = devboot_witness_run(
+    site: retained_devboot_git_fetch,
+    workdir: repo_root,
+    bin_path: "git",
+    args: ["fetch", "--quiet", "--force", endpoint, join([ref_name, ":", ref_name], "")],
+  )
+  if fetched.success {
+    PollAnswered { ref_name: ref_name }
+  } else {
+    if string_contains(s: fetched.stderr, pattern: "couldn't find remote ref") {
+      PollWaiting
+    } else {
+      PollUnreachable { detail: trim(s: fetched.stderr) }
+    }
+  }
+}
+
+fn poll_step(acc: PollState, repo_root: String, endpoint: String, ref_name: String) -> PollState {
+  if poll_settled(acc: acc) {
+    acc
+  } else {
+    let slept = devboot_witness_run(
+      site: retained_devboot_sleep,
+      workdir: repo_root,
+      bin_path: "sleep",
+      args: [poll_interval_argv()],
+    )
+    poll_once(repo_root: repo_root, endpoint: endpoint, ref_name: ref_name)
+  }
+}
+
+fn poll_for_answer(repo_root: String, endpoint: String, ref_name: String) -> PollState {
+  fold(
+    poll_attempts(),
+    init: poll_once(repo_root: repo_root, endpoint: endpoint, ref_name: ref_name),
+    f: (acc, attempt) => poll_step(acc: acc, repo_root: repo_root, endpoint: endpoint, ref_name: ref_name),
+  )
+}
+
+// THE CALLER'S OWN REPOSITORY IS SCRATCH. Fetching the producer's answer into the caller's real repository would put the service's refs in a developer's namespace and make a build observable as history; it also means a failed fetch leaves debris where it is least welcome. The exchange happens in a scratch repository under the work root, which is created if absent and is not the tree being built.
+fn client_repo_dir(work_root: String) -> String {
+  join([work_root, "/exchange.git"], "")
+}
+
+fn ensure_client_repo(repo_root: String, work_root: String) -> Bool {
+  let made = devboot_witness_run(
+    site: retained_devboot_mkdir,
+    workdir: repo_root,
+    bin_path: "mkdir",
+    args: ["-p", client_repo_dir(work_root: work_root)],
+  )
+  devboot_witness_run(
+    site: retained_devboot_git_init,
+    workdir: repo_root,
+    bin_path: "git",
+    args: ["init", "--quiet", client_repo_dir(work_root: work_root)],
+  ).success
+}
+
+// THE TEXT ENTRIES ARE WRITTEN THROUGH THE TYPED FILESYSTEM SURFACE, not through a shell. Rendering a subject into a shell command means the subject's own bytes become part of a command line -- a quoting question at a runtime-present site, where a typed write exists and answers it structurally. The write's own report is not consulted because the hash immediately after it is the stronger observation: hash-object refuses on a file that is not there, so a failed write cannot pass for a staged entry.
+type GitOidOutcome
+  = GitOidPresent { oid: String }
+  | GitOidCommandFailed { exit_code: Int, stderr: String }
+
+fn stage_text_blob(repo_root: String, path: String, text: String) -> GitOidOutcome {
+  let written = Filesystem.Write(path: path, content: text)
+  if !written.success {
+    GitOidCommandFailed { exit_code: 1, stderr: written.error }
+  } else {
+    hash_blob_file(repo_root: repo_root, path: path)
+  }
+}
+
+fn hash_blob_file(repo_root: String, path: String) -> GitOidOutcome {
+  let hashed = devboot_witness_run(
+    site: retained_devboot_git_hash_object,
+    workdir: repo_root,
+    bin_path: "git",
+    args: ["hash-object", "-w", path],
+  )
+  if !hashed.success {
+    GitOidCommandFailed { exit_code: hashed.exit_code, stderr: trim(s: hashed.stderr) }
+  } else {
+    GitOidPresent { oid: trim(s: hashed.stdout) }
+  }
+}
+
+fn stage_blob_entry(repo_root: String, index_path: String, oid: String, entry: String, mode: String) -> Bool {
+  devboot_witness_run(
+    site: retained_devboot_git_update_index,
+    workdir: repo_root,
+    bin_path: "env",
+    args: [
+      concat("GIT_INDEX_FILE=", index_path),
+      "git",
+      "update-index",
+      "--add",
+      "--cacheinfo",
+      join([mode, ",", oid, ",", entry], ""),
+    ],
+  ).success
+}
+
+type GitTreeOutcome
+  = GitTreePresent { tree_hex: String }
+  | GitTreeCommandFailed { exit_code: Int, stderr: String }
+
+fn write_staged_tree(repo_root: String, index_path: String) -> GitTreeOutcome {
+  let written = devboot_witness_run(
+    site: retained_devboot_git_write_tree,
+    workdir: repo_root,
+    bin_path: "env",
+    args: [concat("GIT_INDEX_FILE=", index_path), "git", "write-tree"],
+  )
+  if !written.success {
+    GitTreeCommandFailed { exit_code: written.exit_code, stderr: trim(s: written.stderr) }
+  } else {
+    GitTreePresent { tree_hex: trim(s: written.stdout) }
+  }
+}
+
+type GitCommitOutcome
+  = GitCommitPresent { commit_hex: String }
+  | GitCommitCommandFailed { exit_code: Int, stderr: String }
+
+fn commit_tree_parentless(repo_root: String, tree_hex: String, message: String) -> GitCommitOutcome {
+  let committed = devboot_witness_run(
+    site: retained_devboot_git_commit_tree,
+    workdir: repo_root,
+    bin_path: "git",
+    args: ["commit-tree", tree_hex, "-m", message],
+  )
+  if !committed.success {
+    GitCommitCommandFailed { exit_code: committed.exit_code, stderr: trim(s: committed.stderr) }
+  } else {
+    GitCommitPresent { commit_hex: trim(s: committed.stdout) }
+  }
+}
+
+type RequestPublication
+  = RequestPublished { token: String }
+  | RequestPublicationRefused { detail: String }
+
+fn publish_request(
+  repo_root: String,
+  work_root: String,
+  endpoint: String,
+  token: String,
+  tree_hex: String,
+  subject_text: String,
+  program: String,
+) -> RequestPublication {
+  let staging = join([work_root, "/", token, "/request"], "")
+  let index_path = join([work_root, "/", token, "/request.index"], "")
+  let fresh = devboot_witness_run(
+    site: retained_devboot_rm_rf,
+    workdir: repo_root,
+    bin_path: "rm",
+    args: ["-rf", staging, index_path],
+  )
+  let made = devboot_witness_run(
+    site: retained_devboot_mkdir,
+    workdir: repo_root,
+    bin_path: "mkdir",
+    args: ["-p", staging],
+  )
+  let subject_path = join([staging, "/subject"], "")
+  let program_path = join([staging, "/program"], "")
+  match stage_text_blob(repo_root: repo_root, path: subject_path, text: subject_text) {
+    GitOidCommandFailed { exit_code, stderr } =>
+      RequestPublicationRefused { detail: join(["could not stage the requested subject: ", stderr], "") }
+    GitOidPresent { oid: subject_oid } =>
+      match stage_text_blob(repo_root: repo_root, path: program_path, text: program) {
+        GitOidCommandFailed { exit_code, stderr } =>
+          RequestPublicationRefused { detail: join(["could not stage the requested program: ", stderr], "") }
+        GitOidPresent { oid: program_oid } =>
+          let loaded = devboot_witness_run(
+            site: retained_devboot_git_read_tree,
+            workdir: repo_root,
+            bin_path: "env",
+            args: [
+              concat("GIT_INDEX_FILE=", index_path),
+              "git",
+              "read-tree",
+              concat("--prefix=", request_source_entry),
+              tree_hex,
+            ],
+          )
+          if !loaded.success {
+            RequestPublicationRefused {
+              detail: snapshot_step_refusal(step: "read-tree --prefix=source", exit_code: loaded.exit_code, stderr: loaded.stderr),
+            }
+          } else {
+            let staged_subject = stage_blob_entry(repo_root: repo_root, index_path: index_path, oid: subject_oid, entry: request_subject_entry, mode: "100644")
+            let staged_program = stage_blob_entry(repo_root: repo_root, index_path: index_path, oid: program_oid, entry: request_program_entry, mode: "100644")
+            if !(staged_subject && staged_program) {
+              RequestPublicationRefused { detail: "could not stage the request entries" }
+            } else {
+              match write_staged_tree(repo_root: repo_root, index_path: index_path) {
+                GitTreeCommandFailed { exit_code, stderr } =>
+                  RequestPublicationRefused { detail: join(["could not write the request tree: ", stderr], "") }
+                GitTreePresent { tree_hex: request_tree } =>
+                  match commit_tree_parentless(repo_root: repo_root, tree_hex: request_tree, message: "devboot build request") {
+                    GitCommitCommandFailed { exit_code, stderr } =>
+                      RequestPublicationRefused { detail: join(["could not form the request commit: ", stderr], "") }
+                    GitCommitPresent { commit_hex: request_commit } =>
+                      let pushed = devboot_witness_run(
+                        site: retained_devboot_git_push,
+                        workdir: repo_root,
+                        bin_path: "git",
+                        args: [
+                          "push",
+                          "--quiet",
+                          "--force",
+                          endpoint,
+                          join([request_commit, ":", request_ref_of(token: token)], ""),
+                        ],
+                      )
+                      if !pushed.success {
+                        RequestPublicationRefused {
+                          detail: join(["push to the producer failed: ", trim(s: pushed.stderr)], ""),
+                        }
+                      } else {
+                        RequestPublished { token: token }
+                      }
+                  }
+              }
+            }
+          }
+      }
+  }
+}
+
+// THE OPERATION. Everything above is how; this is what. A caller names a program and a place to put the result, and receives an executable or a reason.
+fn devboot_build(
+  program: String,
+  repo_root: String,
+  work_root: String,
+  endpoint: String,
+  out_path: String,
+) -> BuildOutcome {
+  match select_program(program: program) {
+    ProgramNotOffered { program: unknown } =>
+      BuildRefused {
+        cause: ProgramNotBuildable { program: unknown, offered: offered_programs_rendering() },
+      }
+    ProgramSelected { package, cargo_target, bin_name } =>
+      match devboot_snapshot(repo_root: repo_root, work_root: work_root) {
+        SnapshotRefused { detail } => BuildRefused { cause: WorktreeNotSnapshotted { refusal: SnapshotRefused { detail: detail } } }
+        SnapshotTaken { tree_hex } =>
+          match observe_toolchain(repo_root: repo_root) {
+            ToolchainObservationRefused { detail } =>
+              BuildRefused {
+                cause: ToolchainNotObserved { refusal: ToolchainObservationRefused { detail: detail } },
+              }
+            ToolchainObserved { toolchain, host } =>
+              match git_object_id_from_untagged_hex(hex: tree_hex) {
+                Absent =>
+                  BuildRefused { cause: SourceTreeOidUnusable { hex: tree_hex } }
+                Present { value: tree_oid } =>
+                  match admit_build_subject(
+                    tree_oid: tree_oid,
+                    package: package,
+                    cargo_target: cargo_target,
+                    toolchain: toolchain,
+                    target: host,
+                    profile: "release",
+                    features: [],
+                    rustflags: [],
+                    linker: none,
+                    sysroot: none,
+                    cargo_config: [],
+                    platform_c_library: observe_platform_c_library(repo_root: repo_root),
+                  ) {
+                    SubjectRefused { cause } =>
+                      BuildRefused { cause: SubjectNotAdmitted { cause: cause } }
+                    SubjectAdmitted { subject } =>
+                      devboot_build_admitted(
+                        program: bin_name,
+                        repo_root: repo_root,
+                        work_root: work_root,
+                        endpoint: endpoint,
+                        out_path: out_path,
+                        tree_hex: tree_hex,
+                        subject: subject,
+                        token: content_hash_ref_token(hash: build_subject_digest(subject: subject)),
+                      )
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn devboot_build_admitted(
+  program: String,
+  repo_root: String,
+  work_root: String,
+  endpoint: String,
+  out_path: String,
+  tree_hex: String,
+  subject: BuildSubject,
+  token: String,
+) -> BuildOutcome {
+  let subject_text = render_build_subject(subject: subject)
+  let prepared = ensure_client_repo(repo_root: repo_root, work_root: work_root)
+  let exchange_repo = client_repo_dir(work_root: work_root)
+  if !prepared {
+    BuildRefused { cause: ProducerUnreachable { detail: "could not prepare the local exchange repository" } }
+  } else {
+    match publish_request(
+      repo_root: repo_root,
+      work_root: work_root,
+      endpoint: endpoint,
+      token: token,
+      tree_hex: tree_hex,
+      subject_text: subject_text,
+      program: program,
+    ) {
+      RequestPublicationRefused { detail } =>
+        BuildRefused { cause: ProducerUnreachable { detail: detail } }
+      RequestPublished { token: published } =>
+        match poll_for_answer(
+          repo_root: exchange_repo,
+          endpoint: endpoint,
+          ref_name: produced_ref_of(token: published),
+        ) {
+          PollUnreachable { detail } => BuildRefused { cause: ProducerUnreachable { detail: detail } }
+          PollWaiting => BuildRefused { cause: ProducerDidNotAnswer { waited: poll_budget() } }
+          PollAnswered { ref_name } =>
+            devboot_receive_answer(
+              exchange_repo: exchange_repo,
+              work_root: work_root,
+              out_path: out_path,
+              token: published,
+              ref_name: ref_name,
+              subject_text: subject_text,
+            )
+        }
+    }
+  }
+}
+
+// THE ANSWER IS CHECKED BEFORE IT IS BELIEVED, in the order that makes each check meaningful. The producer's refusal is read first, because a refusal has no artifact and treating a missing artifact as a retrieval failure would report the wrong cause. The subject is compared next and EXACTLY -- not by prefix, which is how a caller asking for less once received a binary carrying configuration it never named -- because a digest that matches proves the bytes are the bytes that were stored, never that the right thing was stored. Only then are the bytes bound to their digest.
+fn devboot_receive_answer(
+  exchange_repo: String,
+  work_root: String,
+  out_path: String,
+  token: String,
+  ref_name: String,
+  subject_text: String,
+) -> BuildOutcome {
+  if !materialize_ref_tree(repo_root: exchange_repo, work_root: work_root, token: token, ref_name: ref_name) {
+    BuildRefused { cause: ArtifactNotRetrievable { detail: "the producer's answer could not be materialized" } }
+  } else {
+    let out_dir = exchange_out_dir(work_root: work_root, token: token)
+    match read_text_file(repo_root: exchange_repo, path: join([out_dir, "/", produced_refusal_entry], "")) {
+      TextFileReadFailed { error } =>
+        BuildRefused { cause: ArtifactNotRetrievable { detail: join(["could not read the producer refusal: ", error], "") } }
+      TextFileAbsent =>
+        match read_text_file(repo_root: exchange_repo, path: join([out_dir, "/", produced_subject_entry], "")) {
+          TextFileReadFailed { error } =>
+            BuildRefused { cause: ArtifactNotRetrievable { detail: join(["could not read the produced subject: ", error], "") } }
+          TextFileAbsent =>
+            BuildRefused { cause: ArtifactNotRetrievable { detail: "the produced subject entry is absent" } }
+          TextFilePresent { text: produced_subject } =>
+            devboot_receive_answer_subject(
+              exchange_repo: exchange_repo,
+              out_path: out_path,
+              out_dir: out_dir,
+              produced_subject: produced_subject,
+              subject_text: subject_text,
+            )
+        }
+      TextFilePresent { text: refusal_text } =>
+        if !(refusal_text == "") {
+          BuildRefused { cause: ProducerRefusedRequest { detail: refusal_text } }
+        } else {
+          match read_text_file(repo_root: exchange_repo, path: join([out_dir, "/", produced_subject_entry], "")) {
+            TextFileReadFailed { error } =>
+              BuildRefused { cause: ArtifactNotRetrievable { detail: join(["could not read the produced subject: ", error], "") } }
+            TextFileAbsent =>
+              BuildRefused { cause: ArtifactNotRetrievable { detail: "the produced subject entry is absent" } }
+            TextFilePresent { text: produced_subject } =>
+              devboot_receive_answer_subject(
+                exchange_repo: exchange_repo,
+                out_path: out_path,
+                out_dir: out_dir,
+                produced_subject: produced_subject,
+                subject_text: subject_text,
+              )
+          }
+        }
+    }
+  }
+}
+
+fn devboot_receive_answer_subject(
+  exchange_repo: String,
+  out_path: String,
+  out_dir: String,
+  produced_subject: String,
+  subject_text: String,
+) -> BuildOutcome {
+  if !(produced_subject == trim(s: subject_text)) {
+    BuildRefused { cause: SubjectMismatch { requested: trim(s: subject_text), produced: produced_subject } }
+  } else {
+    let artifact_path = join([out_dir, "/", produced_artifact_entry], "")
+    match read_text_file(repo_root: exchange_repo, path: join([out_dir, "/", produced_digest_entry], "")) {
+      TextFileReadFailed { error } =>
+        BuildRefused { cause: ArtifactNotRetrievable { detail: join(["could not read the expected digest: ", error], "") } }
+      TextFileAbsent =>
+        BuildRefused { cause: ArtifactNotRetrievable { detail: "the expected digest entry is absent" } }
+      TextFilePresent { text: expected_hex } =>
+        match sha256_hex_digest(hex: expected_hex) {
+          Absent =>
+            BuildRefused { cause: ArtifactNotRetrievable { detail: join(["the expected digest is invalid: ", expected_hex], "") } }
+          Present { value: expected } =>
+            match file_sha256(repo_root: exchange_repo, path: artifact_path) {
+              FileSha256CommandFailed { exit_code, stderr } =>
+                BuildRefused {
+                  cause: ArtifactNotRetrievable {
+                    detail: join(["the delivered artifact could not be hashed: ", stderr], ""),
+                  },
+                }
+              FileSha256PathUnreadable { path } =>
+                BuildRefused { cause: ArtifactNotRetrievable { detail: join(["the delivered artifact could not be read at ", path], "") } }
+              FileSha256Present { digest: observed } =>
+                if !content_hash_eq_cryptographic(left: expected, right: observed) {
+                  BuildRefused { cause: ArtifactDigestMismatch { expected: expected, observed: observed } }
+                } else {
+                  let installed = devboot_witness_run(
+                    site: retained_devboot_cp,
+                    workdir: exchange_repo,
+                    bin_path: "cp",
+                    args: [artifact_path, out_path],
+                  )
+                  let executable = devboot_witness_run(
+                    site: retained_devboot_chmod,
+                    workdir: exchange_repo,
+                    bin_path: "chmod",
+                    args: ["+x", out_path],
+                  )
+                  if !(installed.success && executable.success) {
+                    BuildRefused {
+                      cause: ArtifactNotRetrievable { detail: join(["could not install the artifact at ", out_path], "") },
+                    }
+                  } else {
+                    match read_text_file(repo_root: exchange_repo, path: join([out_dir, "/", produced_host_entry], "")) {
+                      TextFileReadFailed { error } =>
+                        BuildRefused { cause: ArtifactNotRetrievable { detail: join(["could not read the producer host: ", error], "") } }
+                      TextFileAbsent =>
+                        BuildRefused { cause: ArtifactNotRetrievable { detail: "the producer host entry is absent" } }
+                      TextFilePresent { text: producer_host } =>
+                        Built {
+                          program_subject: produced_subject,
+                          artifact: BuiltArtifact { path: out_path, sha256: observed },
+                          receipt: BuildReceipt {
+                            invocation: join(["devboot_build -> ", out_path], ""),
+                            producer_host: producer_host,
+                            reused: false,
+                          },
+                        }
+                    }
+                  }
+                }
+            }
+        }
+    }
+  }
+}
+
+// THE PRODUCER READS THE SAME FORMAT BACKWARD. Everything above describes a caller writing a request and reading an answer; this is the other direction of the identical structure, which is why it lives here rather than in a module of its own. A producer that learned the format separately could gain or lose an entry without the caller ever disagreeing out loud -- the caller would simply see an answer with a missing field and report a retrieval failure for what is actually a version skew.
+//
+// THE PRODUCER'S TOOLCHAIN IS THE ONE THAT BUILDS, so the subject it publishes is derived from its own observation and never copied from the request. Copying the requested subject through would make the exchange agree by construction and mean nothing: the caller's check would compare the producer's echo of the caller's own text. Deriving it independently is what makes the comparison at the far end a real one, and it is the only thing standing between a caller and a binary built by a different compiler than the one it asked for.
+type ProducerHome {
+  cargo_bin: String
+  rustup_home: String
+  cargo_home: String
+  build_jobs: String
+}
+
+type ServeReport
+  = ServeProduced { token: String, sha256: Sha256Digest }
+  | ServeRefused { token: String, detail: String }
+
+type RequestEntryOutcome
+  = RequestEntryPresent { text: String }
+  | RequestEntryAbsent
+  | RequestEntryReadFailed { exit_code: Int, stderr: String }
+
+fn read_request_entry(repo_root: String, ref_name: String, entry: String) -> RequestEntryOutcome {
+  let shown = devboot_witness_run(
+    site: retained_devboot_git_cat_file,
+    workdir: repo_root,
+    bin_path: "git",
+    args: ["cat-file", "blob", join([ref_name, ":", entry], "")],
+  )
+  if !shown.success {
+    if string_contains(s: shown.stderr, pattern: "Not a valid object name") {
+      RequestEntryAbsent
+    } else {
+      RequestEntryReadFailed { exit_code: shown.exit_code, stderr: trim(s: shown.stderr) }
+    }
+  } else {
+    RequestEntryPresent { text: trim(s: shown.stdout) }
+  }
+}
+
+type SourceTreeOutcome
+  = SourceTreePresent { tree_hex: String }
+  | SourceTreeAbsent
+  | SourceTreeResolveFailed { exit_code: Int, stderr: String }
+
+fn read_request_source_tree(repo_root: String, ref_name: String) -> SourceTreeOutcome {
+  let resolved = devboot_witness_run(
+    site: retained_devboot_git_rev_parse,
+    workdir: repo_root,
+    bin_path: "git",
+    args: ["rev-parse", join([ref_name, ":", request_source_entry], "")],
+  )
+  if !resolved.success {
+    if string_contains(s: resolved.stderr, pattern: "not a git repository")
+      || resolved.exit_code == git_repository_unusable_exit_code
+        && !string_contains(s: resolved.stderr, pattern: "does not exist in")
+        && !string_contains(s: resolved.stderr, pattern: "invalid object name")
+        && !string_contains(s: resolved.stderr, pattern: "Not a valid object name") {
+      SourceTreeResolveFailed { exit_code: resolved.exit_code, stderr: trim(s: resolved.stderr) }
+    } else if resolved.exit_code == git_ref_missing_exit_code
+      || string_contains(s: resolved.stderr, pattern: "does not exist in")
+      || string_contains(s: resolved.stderr, pattern: "invalid object name")
+      || string_contains(s: resolved.stderr, pattern: "Not a valid object name") {
+      SourceTreeAbsent
+    } else {
+      SourceTreeResolveFailed { exit_code: resolved.exit_code, stderr: trim(s: resolved.stderr) }
+    }
+  } else {
+    SourceTreePresent { tree_hex: trim(s: resolved.stdout) }
+  }
+}
+
+fn publish_produced_tree(
+  repo_root: String,
+  work_root: String,
+  token: String,
+  subject_text: String,
+  artifact_path: String,
+  artifact_sha256: Sha256Digest?,
+  refusal_text: String,
+) -> Bool {
+  let staging = join([work_root, "/", token, "/produced"], "")
+  let index_path = join([work_root, "/", token, "/produced.index"], "")
+  let fresh = devboot_witness_run(
+    site: retained_devboot_rm_rf,
+    workdir: repo_root,
+    bin_path: "rm",
+    args: ["-rf", staging, index_path],
+  )
+  let made = devboot_witness_run(
+    site: retained_devboot_mkdir,
+    workdir: repo_root,
+    bin_path: "mkdir",
+    args: ["-p", staging],
+  )
+  match stage_text_blob(repo_root: repo_root, path: join([staging, "/subject"], ""), text: subject_text) {
+    GitOidCommandFailed { exit_code, stderr } => false
+    GitOidPresent { oid: subject_oid } =>
+      let staged_subject = stage_blob_entry(repo_root: repo_root, index_path: index_path, oid: subject_oid, entry: produced_subject_entry, mode: "100644")
+      match stage_text_blob(repo_root: repo_root, path: join([staging, "/host"], ""), text: observed_producer_host(repo_root: repo_root)) {
+        GitOidCommandFailed { exit_code, stderr } => false
+        GitOidPresent { oid: host_oid } =>
+          let staged_host = stage_blob_entry(repo_root: repo_root, index_path: index_path, oid: host_oid, entry: produced_host_entry, mode: "100644")
+          let bound_body =
+            if refusal_text == "" {
+              match artifact_sha256 {
+                Absent => false
+                Present { value: digest } =>
+                  match hash_blob_file(repo_root: repo_root, path: artifact_path) {
+                    GitOidCommandFailed { exit_code, stderr } => false
+                    GitOidPresent { oid: artifact_oid } =>
+                      match stage_text_blob(
+                        repo_root: repo_root,
+                        path: join([staging, "/sha256"], ""),
+                        text: render_sha256_digest(digest: digest),
+                      ) {
+                        GitOidCommandFailed { exit_code, stderr } => false
+                        GitOidPresent { oid: digest_oid } =>
+                          stage_blob_entry(repo_root: repo_root, index_path: index_path, oid: artifact_oid, entry: produced_artifact_entry, mode: "100755")
+                            && stage_blob_entry(repo_root: repo_root, index_path: index_path, oid: digest_oid, entry: produced_digest_entry, mode: "100644")
+                      }
+                  }
+              }
+            } else {
+              match stage_text_blob(repo_root: repo_root, path: join([staging, "/refusal"], ""), text: refusal_text) {
+                GitOidCommandFailed { exit_code, stderr } => false
+                GitOidPresent { oid: refusal_oid } =>
+                  stage_blob_entry(repo_root: repo_root, index_path: index_path, oid: refusal_oid, entry: produced_refusal_entry, mode: "100644")
+              }
+            }
+          if !(staged_subject && staged_host && bound_body) {
+            false
+          } else {
+            match write_staged_tree(repo_root: repo_root, index_path: index_path) {
+              GitTreeCommandFailed { exit_code, stderr } => false
+              GitTreePresent { tree_hex: produced_tree } =>
+                match commit_tree_parentless(repo_root: repo_root, tree_hex: produced_tree, message: "devboot build answer") {
+                  GitCommitCommandFailed { exit_code, stderr } => false
+                  GitCommitPresent { commit_hex: produced_commit } =>
+                    devboot_witness_run(
+                      site: retained_devboot_git_update_ref,
+                      workdir: repo_root,
+                      bin_path: "git",
+                      args: ["update-ref", produced_ref_of(token: token), produced_commit],
+                    ).success
+                }
+            }
+          }
+      }
+  }
+}
+
+fn serve_refusal(repo_root: String, work_root: String, token: String, subject_text: String, detail: String) -> ServeReport {
+  let published = publish_produced_tree(
+    repo_root: repo_root,
+    work_root: work_root,
+    token: token,
+    subject_text: subject_text,
+    artifact_path: "",
+    artifact_sha256: none,
+    refusal_text: detail,
+  )
+  ServeRefused { token: token, detail: detail }
+}
+
+fn devboot_serve_request(
+  repo_root: String,
+  work_root: String,
+  home: ProducerHome,
+  token: String,
+) -> ServeReport {
+  let ref_name = request_ref_of(token: token)
+  match read_request_entry(repo_root: repo_root, ref_name: ref_name, entry: request_subject_entry) {
+    RequestEntryReadFailed { exit_code, stderr } =>
+      serve_refusal(repo_root: repo_root, work_root: work_root, token: token, subject_text: "", detail: join(["could not read request subject: ", stderr], ""))
+    RequestEntryAbsent =>
+      serve_refusal(repo_root: repo_root, work_root: work_root, token: token, subject_text: "", detail: "the request carried no subject entry")
+    RequestEntryPresent { text: requested_subject } =>
+      match read_request_entry(repo_root: repo_root, ref_name: ref_name, entry: request_program_entry) {
+        RequestEntryReadFailed { exit_code, stderr } =>
+          serve_refusal(repo_root: repo_root, work_root: work_root, token: token, subject_text: "", detail: join(["could not read request program: ", stderr], ""))
+        RequestEntryAbsent =>
+          serve_refusal(repo_root: repo_root, work_root: work_root, token: token, subject_text: "", detail: "the request carried no program entry")
+        RequestEntryPresent { text: requested_program } =>
+          match read_request_source_tree(repo_root: repo_root, ref_name: ref_name) {
+            SourceTreeResolveFailed { exit_code, stderr } =>
+              serve_refusal(repo_root: repo_root, work_root: work_root, token: token, subject_text: "", detail: join(["could not resolve request source tree: ", stderr], ""))
+            SourceTreeAbsent =>
+              serve_refusal(repo_root: repo_root, work_root: work_root, token: token, subject_text: "", detail: "the request carried no source tree")
+            SourceTreePresent { tree_hex: source_tree } =>
+              match select_program(program: requested_program) {
+                ProgramNotOffered { program: unknown } =>
+                  serve_refusal(
+                    repo_root: repo_root,
+                    work_root: work_root,
+                    token: token,
+                    subject_text: "",
+                    detail: join(["no program named ", unknown, " is offered (offered: ", offered_programs_rendering(), ")"], ""),
+                  )
+                ProgramSelected { package, cargo_target, bin_name } =>
+                  match observe_toolchain(repo_root: repo_root) {
+                    ToolchainObservationRefused { detail } =>
+                      serve_refusal(repo_root: repo_root, work_root: work_root, token: token, subject_text: "", detail: detail)
+                    ToolchainObserved { toolchain, host } =>
+                      match git_object_id_from_untagged_hex(hex: source_tree) {
+                        Absent =>
+                          serve_refusal(
+                            repo_root: repo_root,
+                            work_root: work_root,
+                            token: token,
+                            subject_text: "",
+                            detail: concat("unusable source tree oid: ", source_tree),
+                          )
+                        Present { value: tree_oid } =>
+                          match admit_build_subject(
+                            tree_oid: tree_oid,
+                            package: package,
+                            cargo_target: cargo_target,
+                            toolchain: toolchain,
+                            target: host,
+                            profile: "release",
+                            features: [],
+                            rustflags: [],
+                            linker: none,
+                            sysroot: none,
+                            cargo_config: [],
+                            platform_c_library: observe_platform_c_library(repo_root: repo_root),
+                          ) {
+                            SubjectRefused { cause } =>
+                              serve_refusal(
+                                repo_root: repo_root,
+                                work_root: work_root,
+                                token: token,
+                                subject_text: "",
+                                detail: build_subject_refusal_reason(cause: cause),
+                              )
+                            SubjectAdmitted { subject } =>
+                              devboot_serve_admitted(
+                                repo_root: repo_root,
+                                work_root: work_root,
+                                home: home,
+                                token: token,
+                                requested_subject: requested_subject,
+                                subject: subject,
+                                source_tree: source_tree,
+                                package: package,
+                                bin_name: bin_name,
+                              )
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn devboot_serve_admitted(
+  repo_root: String,
+  work_root: String,
+  home: ProducerHome,
+  token: String,
+  requested_subject: String,
+  subject: BuildSubject,
+  source_tree: String,
+  package: String,
+  bin_name: String,
+) -> ServeReport {
+  let produced_subject = trim(s: render_build_subject(subject: subject))
+  if !(produced_subject == trim(s: requested_subject)) {
+    serve_refusal(
+      repo_root: repo_root,
+      work_root: work_root,
+      token: token,
+      subject_text: produced_subject,
+      detail: join(["this producer builds a different subject than the one requested\nrequested:\n", trim(s: requested_subject), "\nthis producer:\n", produced_subject], ""),
+    )
+  } else {
+    match devboot_materialize_source(repo_root: repo_root, work_root: work_root, token: token, tree_hex: source_tree) {
+      SourceMaterializationRefused { detail } =>
+        serve_refusal(repo_root: repo_root, work_root: work_root, token: token, subject_text: produced_subject, detail: detail)
+      SourceMaterialized { source_dir } =>
+        devboot_serve_built(
+          repo_root: repo_root,
+          work_root: work_root,
+          home: home,
+          token: token,
+          produced_subject: produced_subject,
+          source_dir: source_dir,
+          package: package,
+          bin_name: bin_name,
+        )
+    }
+  }
+}
+
+fn devboot_serve_built(
+  repo_root: String,
+  work_root: String,
+  home: ProducerHome,
+  token: String,
+  produced_subject: String,
+  source_dir: String,
+  package: String,
+  bin_name: String,
+) -> ServeReport {
+  let target_dir = devboot_target_dir(work_root: work_root, token: token)
+  let built = devboot_witness_run(
+    site: retained_devboot_cargo_build,
+    workdir: source_dir,
+    bin_path: "env",
+    args: [
+      concat("RUSTUP_HOME=", home.rustup_home),
+      concat("CARGO_HOME=", home.cargo_home),
+      concat("CARGO_TARGET_DIR=", target_dir),
+      concat("CARGO_BUILD_JOBS=", home.build_jobs),
+      "RUSTC_WRAPPER=",
+      home.cargo_bin,
+      "build",
+      "--release",
+      "--package",
+      package,
+      "--bin",
+      bin_name,
+    ],
+  )
+  if !built.success {
+    serve_refusal(
+      repo_root: repo_root,
+      work_root: work_root,
+      token: token,
+      subject_text: produced_subject,
+      detail: join(["the build failed (cargo exit ", to_string(built.exit_code), "): ", trim(s: built.stderr)], ""),
+    )
+  } else {
+    let artifact_path = join([target_dir, "/release/", bin_name], "")
+    match file_sha256(repo_root: repo_root, path: artifact_path) {
+      FileSha256CommandFailed { exit_code, stderr } =>
+        serve_refusal(
+          repo_root: repo_root,
+          work_root: work_root,
+          token: token,
+          subject_text: produced_subject,
+          detail: join(["the build reported success but the artifact could not be hashed: ", stderr], ""),
+        )
+      FileSha256PathUnreadable { path } =>
+        serve_refusal(
+          repo_root: repo_root,
+          work_root: work_root,
+          token: token,
+          subject_text: produced_subject,
+          detail: join(["the build reported success but produced no readable artifact at ", path], ""),
+        )
+      FileSha256Present { digest: artifact_sha256 } =>
+        if !publish_produced_tree(
+          repo_root: repo_root,
+          work_root: work_root,
+          token: token,
+          subject_text: produced_subject,
+          artifact_path: artifact_path,
+          artifact_sha256: Present { value: artifact_sha256 },
+          refusal_text: "",
+        ) {
+          ServeRefused { token: token, detail: "the artifact could not be published to the store" }
+        } else {
+          ServeProduced { token: token, sha256: artifact_sha256 }
+        }
+    }
+  }
+}
+
+// THE PRODUCING HOST IS OBSERVED WHERE IT IS TRUE. The producer knows which machine it is; the caller does not, and a caller-side guess would be a fabricated fact in a receipt whose purpose is to record what actually happened. So the host travels with the answer as an ordinary entry, and it lands in the receipt rather than anywhere near the subject.
+fn observed_producer_host(repo_root: String) -> String {
+  let named = devboot_witness_run(
+    site: retained_devboot_uname,
+    workdir: repo_root,
+    bin_path: "uname",
+    args: ["-n"],
+  )
+  if !named.success { "unknown-host" } else { trim(s: named.stdout) }
+}
+
+// THE ENTRY POINTS RETURN PROCESS EXIT CODES, NOT SENTENCES. gunbc run treats a non-ProcessExit return as a refusal, so a String-returning entry that had genuinely built an executable exited nonzero and printed BUILT underneath REFUSED -- success reported as failure (DESIGN section 5). The typed outcome is decided first; prose is written to the receipt file; the shell reads the exit code.
+fn render_build_outcome(outcome: BuildOutcome) -> String {
+  match outcome {
+    BuildRefused { cause } => join(["REFUSED: ", build_refusal_sentence(cause: cause)], "")
+    Built { program_subject, artifact, receipt } =>
+      join([
+        "BUILT\npath: ", artifact.path,
+        "\nsha256: ", render_sha256_digest(digest: artifact.sha256),
+        "\nproducer_host: ", receipt.producer_host,
+        "\nsubject:\n", program_subject,
+      ], "")
+  }
+}
+
+fn build_outcome_exit(outcome: BuildOutcome) -> ProcessExit {
+  match outcome {
+    Built { program_subject, artifact, receipt } => ExitSuccess
+    BuildRefused { cause } => exit_failure(reason: build_refusal_sentence(cause: cause))
+  }
+}
+
+fn render_serve_report(report: ServeReport) -> String {
+  match report {
+    ServeProduced { token, sha256 } =>
+      join(["SERVED ", token, " sha256=", render_sha256_digest(digest: sha256)], "")
+    ServeRefused { token, detail } => join(["SERVE-REFUSED ", token, ": ", detail], "")
+  }
+}
+
+fn serve_report_exit(report: ServeReport) -> ProcessExit {
+  match report {
+    ServeProduced { token, sha256 } => ExitSuccess
+    ServeRefused { token, detail } => exit_failure(reason: detail)
+  }
+}
+
+// THE ENTRY POINTS ARE FLAT BECAUSE THE COMMAND LINE IS. A named argument arrives as a String, so a record cannot cross that boundary; the producer's home is assembled here from the four strings that describe it rather than being spelled inside the operation, which keeps every host fact on the outside of the model.
+fn devboot_build_entry(
+  program: String,
+  repo_root: String,
+  work_root: String,
+  endpoint: String,
+  out_path: String,
+  receipt_path: String,
+) -> ProcessExit {
+  let outcome = devboot_build(
+    program: program,
+    repo_root: repo_root,
+    work_root: work_root,
+    endpoint: endpoint,
+    out_path: out_path,
+  )
+  let written = Filesystem.Write(
+    path: receipt_path,
+    content: render_build_outcome(outcome: outcome),
+  )
+  if !written.success {
+    receipt_write_refusal(receipt_path: receipt_path, detail: written.error)
+  } else {
+    build_outcome_exit(outcome: outcome)
+  }
+}
+
+fn devboot_serve_entry(
+  repo_root: String,
+  work_root: String,
+  token: String,
+  cargo_bin: String,
+  rustup_home: String,
+  cargo_home: String,
+  build_jobs: String,
+  receipt_path: String,
+) -> ProcessExit {
+  let report = devboot_serve_request(
+    repo_root: repo_root,
+    work_root: work_root,
+    home: ProducerHome {
+      cargo_bin: cargo_bin,
+      rustup_home: rustup_home,
+      cargo_home: cargo_home,
+      build_jobs: build_jobs,
+    },
+    token: token,
+  )
+  let written = Filesystem.Write(
+    path: receipt_path,
+    content: render_serve_report(report: report),
+  )
+  if !written.success {
+    receipt_write_refusal(receipt_path: receipt_path, detail: written.error)
+  } else {
+    serve_report_exit(report: report)
+  }
+}
+
+// A BISECTION PROBE kept because the failure it found is a real one and a future change can reintroduce it: this walks the operation's front half and reports which stage it reached, so a fault between snapshot and request publication is located to a stage rather than to the whole entry.
+fn devboot_subject_probe(program: String, repo_root: String, work_root: String) -> String {
+  match select_program(program: program) {
+    ProgramNotOffered { program: unknown } => "stage=select: refused"
+    ProgramSelected { package, cargo_target, bin_name } =>
+      match devboot_snapshot(repo_root: repo_root, work_root: work_root) {
+        SnapshotRefused { detail } => join(["stage=snapshot: refused: ", detail], "")
+        SnapshotTaken { tree_hex } =>
+          match observe_toolchain(repo_root: repo_root) {
+            ToolchainObservationRefused { detail } => join(["stage=toolchain: refused: ", detail], "")
+            ToolchainObserved { toolchain, host } =>
+              match git_object_id_from_untagged_hex(hex: tree_hex) {
+                Absent => join(["stage=oid: unusable ", tree_hex], "")
+                Present { value: tree_oid } =>
+                  match admit_build_subject(
+                    tree_oid: tree_oid,
+                    package: package,
+                    cargo_target: cargo_target,
+                    toolchain: toolchain,
+                    target: host,
+                    profile: "release",
+                    features: [],
+                    rustflags: [],
+                    linker: none,
+                    sysroot: none,
+                    cargo_config: [],
+                    platform_c_library: observe_platform_c_library(repo_root: repo_root),
+                  ) {
+                    SubjectRefused { cause } => join(["stage=subject: refused: ", build_subject_refusal_reason(cause: cause)], "")
+                    SubjectAdmitted { subject } =>
+                      join([
+                        "stage=token tree=", tree_hex,
+                        " token=", content_hash_ref_token(hash: build_subject_digest(subject: subject)),
+                      ], "")
+                  }
+              }
+          }
+      }
+  }
+}
+
+
+

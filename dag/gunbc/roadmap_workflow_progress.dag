@@ -99,7 +99,7 @@ import gunbc.roadmap_verification_receipt {
   legacy_validation_receipt_detail,
 }
 import gunbc.roadmap_publish {
-  PublicationSubject,
+  RoadmapPublicationSubject,
   PublicationSubjectObservation,
   PublicationSubjectObserved,
   PublicationSubjectUnobserved,

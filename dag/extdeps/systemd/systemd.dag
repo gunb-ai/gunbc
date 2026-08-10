@@ -1,6 +1,6 @@
 module extdeps.systemd
 
-import std.types { NonEmptyStr, String }
+import std.types { NonEmptyStr, String, Int }
 import std.types { List }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import extdeps.external_authority { ExternalAuthority }
@@ -32,6 +32,9 @@ type SystemdUnitProperty
   | MemoryHigh
   | CPUWeight
   | MemoryCurrent
+  | TasksMax
+  | TasksCurrent
+  | ControlGroup
 
 fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
   match property {
@@ -40,6 +43,9 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     MemoryHigh => "MemoryHigh" as NonEmptyStr
     CPUWeight => "CPUWeight" as NonEmptyStr
     MemoryCurrent => "MemoryCurrent" as NonEmptyStr
+    TasksMax => "TasksMax" as NonEmptyStr
+    TasksCurrent => "TasksCurrent" as NonEmptyStr
+    ControlGroup => "ControlGroup" as NonEmptyStr
   }
 }
 
@@ -54,6 +60,10 @@ data systemd_memory_high_property: NonEmptyStr = systemd_unit_property_wire(prop
 data systemd_cpu_weight_property: NonEmptyStr = systemd_unit_property_wire(property: CPUWeight)
 
 data systemd_memory_current_property: NonEmptyStr = systemd_unit_property_wire(property: MemoryCurrent)
+
+data systemd_tasks_max_property: NonEmptyStr = systemd_unit_property_wire(property: TasksMax)
+
+data systemd_tasks_current_property: NonEmptyStr = systemd_unit_property_wire(property: TasksCurrent)
 
 type SystemdCgroupMemoryLimit
   = MemoryLimitUnbounded
@@ -74,6 +84,35 @@ fn systemd_memory_limit_wire_label(lim: SystemdCgroupMemoryLimit) -> String {
     MemoryLimitUnbounded => "infinity"
     MemoryLimitBytes { bytes: b } => to_string(byte_size_count(b: b))
     MemoryLimitAbsent => ""
+  }
+}
+
+type SystemdCgroupTaskLimit
+  = TaskLimitUnbounded
+  | TaskLimitCount { count: Int }
+  | TaskLimitAbsent
+
+// parse_systemd_task_limit_show mirrors parse_systemd_memory_limit_show because a systemd
+// cgroup limit shown by `systemctl show` is one wire shape — a decimal count or the literal
+// "infinity" — differing only in the magnitude it grounds into (ByteSize vs a cardinal task
+// count). 🟡 feature:task-count-measure-carrier dissolve-on: a single limit parse
+// parameterized by magnitude (the SystemdCgroupLimit<M> consolidation) with the count arm
+// grounding into a std.measure TaskCount carrier (the HardwareThreadCount shape) instead of
+// bare Int, at which point both hand parses derive from it and the flat scalar retires.
+fn parse_systemd_task_limit_show(raw: String) -> SystemdCgroupTaskLimit {
+  if raw == "" { TaskLimitAbsent }
+  else { if raw == "infinity" { TaskLimitUnbounded }
+  else { match parse_int(s: raw) {
+    Present { value: n } => TaskLimitCount { count: n }
+    Absent => TaskLimitAbsent
+  } } }
+}
+
+fn systemd_task_limit_wire_label(lim: SystemdCgroupTaskLimit) -> String {
+  match lim {
+    TaskLimitUnbounded => "infinity"
+    TaskLimitCount { count: n } => to_string(n)
+    TaskLimitAbsent => ""
   }
 }
 

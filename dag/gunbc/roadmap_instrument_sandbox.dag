@@ -243,7 +243,7 @@ fn fragment_row(cells: List<Fragment>) -> Fragment {
   el_class("div", instrument_row_class, cells)
 }
 
-fn note(s: String) -> Fragment {
+fn instrument_note(s: String) -> Fragment {
   el_class("p", instrument_note_class, [ txt(s) ])
 }
 
@@ -294,10 +294,10 @@ fn camera_section() -> Fragment {
   el("section", concat(
     [
       el("h2", [ txt("semantic camera") ]),
-      note(s: "Five depths on one axis, three modes across it. A depth change crosses exactly one detent, and every move carries the selected subject unchanged."),
+      instrument_note(s: "Five depths on one axis, three modes across it. A depth change crosses exactly one detent, and every move carries the selected subject unchanged."),
       fragment_row(cells: map(program_depths(), d => depth_cell(d: d))),
       el("h3", [ txt("state ownership") ]),
-      note(s: "Only one owner may write a domain fact, and it is not reachable from the instrument."),
+      instrument_note(s: "Only one owner may write a domain fact, and it is not reachable from the instrument."),
       fragment_row(cells: map(
         [AuthoritativeProgramView, LocalInstrumentState, InstrumentObservation, RendererEphemera],
         o => owner_cell(o: o))),
@@ -421,7 +421,7 @@ fn salience_block(label: String, camera: ProgramCamera, refusal: RefusalAggregat
 fn salience_section() -> Fragment {
   el("section", [
     el("h2", [ txt("focal salience, derived") ]),
-    note(s: "No row on this page carries an authored role. The selected subject is Focal, its region siblings are Supporting, everything else is Ground, and an active refusal is one Critical subject however many refuse."),
+    instrument_note(s: "No row on this page carries an authored role. The selected subject is Focal, its region siblings are Supporting, everything else is Ground, and an active refusal is one Critical subject however many refuse."),
     salience_block(label: "nothing selected", camera: camera_initial, refusal: NoActiveRefusal),
     salience_block(label: "compiler fixed point selected", camera: exemplar_camera(), refusal: NoActiveRefusal),
     salience_block(
@@ -448,14 +448,14 @@ fn audition_card(i: AuditionIntensity) -> Fragment {
   el_class("div", audition_card_class(i: i), [
     el("h3", [ txt(audition_intensity_key(i: i)) ]),
     fragment_cell(s: "Compiler fixed point"),
-    note(s: audition_verdict_text(a: verdict)),
+    instrument_note(s: audition_verdict_text(a: verdict)),
   ])
 }
 
 fn audition_section() -> Fragment {
   el("section", [
     el("h2", [ txt("focal audition — one real subject, three energies") ]),
-    note(s: "The same finish line rendered at three grants of the same budget. Restrained is the register before the amendment; hero sits at the emission envelope's admissible maximum, so the comparison shows where the bound actually is."),
+    instrument_note(s: "The same finish line rendered at three grants of the same budget. Restrained is the register before the amendment; hero sits at the emission envelope's admissible maximum, so the comparison shows where the bound actually is."),
     el_class("div", instrument_row_class, map(audition_intensities, i => audition_card(i: i))),
   ])
 }
@@ -511,18 +511,18 @@ fn physical_section() -> Fragment {
     concat(
       [
         el("h2", [ txt("physical screen") ]),
-        note(s: "Press the frame below: the impulse glitch is a real response built through the ordinary ResponseRule machinery, so it obeys the same still-until-touched law every other control does. The idle channels are budgeted here but not animated — ambient motion has no constructor in this register yet, and emitting one past that wall would be an unmarked workaround."),
+        instrument_note(s: "Press the frame below: the impulse glitch is a real response built through the ordinary ResponseRule machinery, so it obeys the same still-until-touched law every other control does. The idle channels are budgeted here but not animated — ambient motion has no constructor in this register yet, and emitting one past that wall would be an unmarked workaround."),
         el_attrs("button", [
           attr(name: "class", value: instrument_frame_class ),
           attr(name: "type", value: "button" ),
         ], [
           el("h3", [ txt("instrument enclosure — press to see the impulse transient") ]),
-          note(s: join(["impulse decay: ", glitch_duration_key(g: preference_default.glitch_duration)], "")),
+          instrument_note(s: join(["impulse decay: ", glitch_duration_key(g: preference_default.glitch_duration)], "")),
         ]),
       ],
       map([ChannelOpticalJitter, ChannelVerticalShift, ChannelBuoyantDrift, ChannelImpulseGlitch], c => channel_row(p: preference_default, c: c))),
     concat(
-      [ note(s: displacement_text(p: preference_default)), el("h3", [ txt("impulse admission") ]) ],
+      [ instrument_note(s: displacement_text(p: preference_default)), el("h3", [ txt("impulse admission") ]) ],
       map([SyntheticImpulse, HostAccelerometer, HostDeviceMotion], s => impulse_row(s: s)))))
 }
 

@@ -1,0 +1,130 @@
+module test.claim.fleet_receipt_collector_witness
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Join 5 (operator verdict): the collector's parse is the BACKWARD read of the same
+// byte-locked line the CLI renders forward — a rendered receipt round-trips to an equal
+// receipt, and the three refusal shapes (wrong prefix, missing field, unknown verdict
+// label) all refuse rather than guessing a verdict.
+test fn witness_receipt_line_round_trips_and_refuses_malformed() -> Bool {
+  let r = ConvergeCliReceipt { host: "srv2", applied: 3, drifted: 1, verdict: VerdictConverged, reason: none }
+  match parse_converge_receipt_line(line: converge_cli_receipt_line(r: r)) {
+    Present { value: back } =>
+      back.host == "srv2"
+        && back.applied == 3
+        && back.drifted == 1
+        && converge_cli_receipt_converged(r: back)
+    Absent => false
+  }
+    && match parse_converge_receipt_line(line: "not-a-receipt host=srv2 applied=0 drifted=0 verdict=converged") {
+      Present { value: _ } => false
+      Absent => true
+    }
+    && match parse_converge_receipt_line(line: "converge-receipt host=srv2 applied=0 drifted=0 verdict=plausible") {
+      Present { value: _ } => false
+      Absent => true
+    }
+    && match parse_converge_receipt_line(line: "converge-receipt host=srv2 verdict=converged") {
+      Present { value: _ } => false
+      Absent => true
+    }
+}
+
+// A parsed non-converged label stays non-converged (drifted/absent never launder into
+// converged through the round trip).
+test fn witness_parse_preserves_non_converged_verdicts() -> Bool {
+  match parse_converge_receipt_line(line: "converge-receipt host=srv1 applied=0 drifted=2 verdict=drifted") {
+    Present { value: r } =>
+      !converge_cli_receipt_converged(r: r)
+        && r.drifted == 2
+        && converge_verdict_label(v: r.verdict) == "drifted"
+    Absent => false
+  }
+    && match parse_converge_receipt_line(line: "converge-receipt host=srv1 applied=0 drifted=0 verdict=absent") {
+      Present { value: r } =>
+        !converge_cli_receipt_converged(r: r) && converge_verdict_label(v: r.verdict) == "absent"
+      Absent => false
+    }
+    && match parse_converge_receipt_line(line: "converge-receipt host=srv1 applied=x drifted=0 verdict=converged") {
+      Present { value: _ } => false
+      Absent => true
+    }
+}
+
+// Only Collected rows reach the fold: Absent and Unparseable are typed evidence that
+// keep the host knob-unobserved, never silently dropped INTO the fold as data and never
+// widened into a fabricated receipt.
+test fn witness_only_collected_rows_enter_the_fold_registry() -> Bool {
+  let collected = [
+    ReceiptCollected {
+      host: "srv1",
+      receipt: ConvergeCliReceipt { host: "srv1", applied: 1, drifted: 0, verdict: VerdictConverged, reason: none },
+    },
+    ReceiptAbsent { host: "srv2", cause: "No such file or directory" },
+    ReceiptUnparseable { host: "srv3", line: "converge-receipt host=srv3 verdict=???" },
+  ]
+  let rows = collected_receipts_only(collected: collected)
+  length(rows) == 1
+    && match rows.first() {
+      Present { value: r } => r.host == "srv1"
+      Absent => false
+    }
+    && string_contains(s: collected_line(c: ReceiptAbsent { host: "srv2", cause: "x" }), pattern: "outcome=absent")
+    && string_contains(
+      s: collected_line(c: ReceiptUnparseable { host: "srv3", line: "y" }),
+      pattern: "outcome=unparseable"
+    )
+}
+
+// b1 CONVERGE-close discriminator (the third fact): a line-1 verdict=converged is admitted
+// to the fold ONLY when the SAME receipt carries an observed revision cell. The stale receipt
+// a pre-#8101 binary persisted — line1 verdict=converged beside line2 "converge-revision
+// verdict=unobserved" — is ConvergedUnbacked and NEVER folds as converged (the §5
+// fabricated-plausible-output: converged asserted by a run that never observed the ref). The
+// honest new-binary receipt — line1 converged beside line2 "converge-revision observed=<hex>"
+// — is Collected. RED if the collector reverts to reading line 1 alone, or if the observed
+// backing is dropped. Not a freshness heuristic: the observed revision is either present in
+// the receipt or the receipt is unusable (parent ruling).
+test fn witness_converged_receipt_refused_unless_backed_by_observed_revision() -> Bool {
+  let honest = join([
+    "converge-receipt host=srv1 applied=1 drifted=0 verdict=converged", "\n",
+    "converge-revision observed=1111111111111111111111111111111111111111", "\n",
+  ], "")
+  let stale = join([
+    "converge-receipt host=srv1 applied=0 drifted=0 verdict=converged", "\n",
+    "converge-revision verdict=unobserved cause=ls-remote refused: no route", "\n",
+  ], "")
+  match classify_receipt_stdout(host: "srv1", raw: honest) {
+    ReceiptCollected { host: h, receipt: _ } => h == "srv1"
+    _ => false
+  }
+    && length(collected_receipts_only(collected: [classify_receipt_stdout(host: "srv1", raw: honest)])) == 1
+    && match classify_receipt_stdout(host: "srv1", raw: stale) {
+      ReceiptConvergedUnbacked { host: h, line: _ } => h == "srv1"
+      _ => false
+    }
+    && length(collected_receipts_only(collected: [classify_receipt_stdout(host: "srv1", raw: stale)])) == 0
+    && string_contains(
+      s: collected_line(c: classify_receipt_stdout(host: "srv1", raw: stale)),
+      pattern: "outcome=converged-unbacked"
+    )
+    && match converge_revision_observed_hex(raw: honest) { Present { value: _ } => true Absent => false }
+    && match converge_revision_observed_hex(raw: stale) { Present { value: _ } => false Absent => true }
+}
+
+// The composed fold over a collector-shaped registry: one collected-converged receipt
+// alone still yields FleetNotConverged (unobserved cells and knob-unobserved hosts
+// block), pinning that the collector cannot manufacture fleet convergence from partial
+// collection — the leg-f hermetic RED at the collector seam.
+test fn witness_partial_collection_never_yields_fleet_converged() -> Bool {
+  let rows = collected_receipts_only(collected: [
+    ReceiptCollected {
+      host: "srv1",
+      receipt: ConvergeCliReceipt { host: "srv1", applied: 1, drifted: 0, verdict: VerdictConverged, reason: none },
+    },
+  ])
+  match fleet_convergence_verdict(enrollments: fleet_subsumption_enrollments, receipts: rows) {
+    FleetConverged { host_count: _ } => false
+    FleetNotConverged { standings: s } => length(s) > 0
+  }
+}

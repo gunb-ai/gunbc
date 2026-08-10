@@ -528,7 +528,7 @@ fn projection_with_publishing(
   )
 }
 
-fn fixture_repository() -> MercurialRepositoryState? {
+fn mercurial_fixture_repository() -> MercurialRepositoryState? {
   match mercurial_decode_projection(projection: fixture_projection()) {
     MercurialDecoded { repository } => Present { value: repository }
     MercurialDecodeRefused { cause: _ } => Absent
@@ -688,7 +688,7 @@ test fn witness_mercurial_fixture_decodes_and_projects_without_loss() -> Bool {
 }
 
 test fn witness_mercurial_readback_assessment_rejects_perturbed_observation() -> Bool {
-  match fixture_repository() {
+  match mercurial_fixture_repository() {
     Absent => false
     Present { value: repository } =>
       let projected = mercurial_project_repository(repository: repository)
@@ -712,7 +712,7 @@ test fn witness_mercurial_readback_assessment_rejects_perturbed_observation() ->
 }
 
 test fn witness_mercurial_manifest_flags_and_raw_path_remain_distinct() -> Bool {
-  match fixture_repository() {
+  match mercurial_fixture_repository() {
     Absent => false
     Present { value: repository } =>
       let contents = repository.contents
@@ -749,7 +749,7 @@ test fn witness_mercurial_manifest_flags_and_raw_path_remain_distinct() -> Bool 
 }
 
 test fn witness_mercurial_copy_metadata_stays_on_file_revision() -> Bool {
-  match fixture_repository() {
+  match mercurial_fixture_repository() {
     Absent => false
     Present { value: repository } =>
       let contents = repository.contents
@@ -858,7 +858,7 @@ test fn witness_mercurial_clone_local_revision_can_change_without_identity_chang
 }
 
 test fn witness_mercurial_named_branch_bookmark_and_heads_do_not_collapse() -> Bool {
-  match fixture_repository() {
+  match mercurial_fixture_repository() {
     Absent => false
     Present { value: repository } =>
       let contents = repository.contents
@@ -874,7 +874,7 @@ test fn witness_mercurial_named_branch_bookmark_and_heads_do_not_collapse() -> B
 }
 
 test fn witness_mercurial_public_draft_secret_phases_remain_distinct() -> Bool {
-  match fixture_repository() {
+  match mercurial_fixture_repository() {
     Absent => false
     Present { value: repository } =>
       let contents = repository.contents
@@ -984,7 +984,7 @@ test fn witness_mercurial_phase_monotonicity_violation_refuses() -> Bool {
 }
 
 test fn witness_mercurial_evolution_metadata_is_orthogonal_to_portable_history() -> Bool {
-  match fixture_repository() {
+  match mercurial_fixture_repository() {
     Absent => false
     Present { value: with_evolution } =>
       match mercurial_decode_projection(

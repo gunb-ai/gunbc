@@ -1,6 +1,8 @@
 module gunbc.live_deploy.spec
 
 import std.types { String, NonEmptyStr, List, Int, Bool, FilePath }
+import std.evaluation_budget { EvaluationLimit, LimitSet, LimitUnset }
+import std.measure { PositiveMillisecond, positive_millisecond, positive_measure_count }
 import std.os.types { NobleNumbat2404Lts, OsPackageManager }
 import extdeps.os.ubuntu { ubuntu_distribution_catalog_row }
 import extdeps.apt {
@@ -31,6 +33,7 @@ import gunbc.host_layout {
   srv1_gunbc_serve_binary,
   srv1_dispatch_worktree_root,
   srv1_dispatch_attempt_state_root,
+  srv1_devboot_artifact_store_root,
 }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
@@ -56,11 +59,26 @@ type OwnedArtifactKind =
   | AttemptStateRoot
   | SystemdUnit
   | BeltTimerUnit
+  | FleetConvergeTimerUnit
   | TailscaleServeMapping
 
 type EnsuredDependencyKind =
     TailscalePackage
   | TmuxPackage
+  | DevbootArtifactStoreDirectory
+
+data ensured_subject_note: String = "ONE CONCEPT -- AN ENSURED HOST RESOURCE -- WITH N KINDS, not a second ensured mechanism beside the first. What Ensured means was already exactly right for the build service's artifact store: converged on every apply, never torn down, TeardownRefuses{TeardownOutsideOwnership}. What was wrong was that a dependency could only BE a package, so a directory had nowhere to live and got put in the owned roster instead -- where Owned means torn down by retract, and produced artifacts are the one thing a deploy must never delete.\\n\\nTHE HAZARD THAT RULED THIS, recorded because it was caught rather than reasoned: appending a host-level root to every per-instance spec made a lab twin's retract remove the production artifact store. Two existing claims went red on it. The claims were right and the placement was wrong, so the category moved and the claims were not touched.\\n\\nThe package arm keeps its exact prior behaviour -- same ensure step, same emitted bytes -- because this widening is about admitting a second KIND of ensured resource, not about changing what ensuring a package means. The directory arm carries its own owner rather than reading a deployment spec, so an ensured host resource stays a fact about the HOST and needs no instance to be stated."
+
+type EnsuredSubject
+  = EnsuredPackage { package: NonEmptyStr }
+  | EnsuredHostDirectory { path: NonEmptyStr, owner: NonEmptyStr }
+
+fn ensured_subject_identity(subject: EnsuredSubject) -> NonEmptyStr {
+  match subject {
+    EnsuredPackage { package } => package
+    EnsuredHostDirectory { path, owner } => path
+  }
+}
 
 type DeploymentArtifactStep {
   kind: OwnedArtifactKind
@@ -69,7 +87,7 @@ type DeploymentArtifactStep {
 
 type DeploymentDependencyStep {
   kind: EnsuredDependencyKind
-  package: NonEmptyStr
+  subject: EnsuredSubject
 }
 
 type DeploymentStep
@@ -100,6 +118,7 @@ fn owned_artifact_teardown_disposition(kind: OwnedArtifactKind) -> TeardownDispo
     AttemptStateRoot => TeardownActs
     SystemdUnit => TeardownActs
     BeltTimerUnit => TeardownActs
+    FleetConvergeTimerUnit => TeardownActs
     TailscaleServeMapping => TeardownActs
   }
 }
@@ -131,6 +150,40 @@ type DeploymentServiceConfig {
   repo_root: NonEmptyStr
   service_user: NonEmptyStr
   listen: HttpServerListenConfig
+  serve_cpu_limit: EvaluationLimit
+  serve_wall_limit: EvaluationLimit
+}
+
+// THE BOUND EXISTS BECAUSE ITS ABSENCE WAS MEASURED IN PRODUCTION, NOT BECAUSE A BOUND IS
+// TIDY. Read off srv1 2026-08-10, on every restart that day including the process then
+// serving: `gunbc serve listening on 0.0.0.0:8080 -> roadmap_serve_handle()
+// eval_budget_cpu_ms=unset eval_budget_wall_ms=unset`. The per-request deadline machinery
+// existed and was armed around every route call, and both CLI flags existed typed
+// Option<u64> — the unit simply never passed them, so every request was armed with None.
+// cli_run handle_serve states the consequence itself: the 500 existed and was unreachable,
+// and because the accept loop is serial the stuck request held the accept queue for every
+// later one. That is how ~1.5s of per-request work became a 10-16 hour unresponsive
+// dashboard: nothing made a request slow, nothing made it STOP.
+//
+// WHY A DECLARED POLICY ROW RATHER THAN A CONSTANT. DESIGN's oracle rule admits a numeric
+// literal grounded in an explicit policy budget, and rejects one grounded in a measurement
+// of the current tree. The measurement below is the BASIS recorded beside the policy, not
+// its justification: a later reader changing this number is amending a declared cap, not
+// tuning a constant, and the row is falsifiable when its basis moves.
+//
+// BOTH CLOCKS ARE SET, for the reason std.evaluation_budget evaluation_clock_split_note
+// already gives — CPU catches a spin, wall catches a stall that consumes almost no CPU
+// while still holding the listener. The measured serve cost is mostly the SECOND kind: a
+// jq subprocess over the attempt event files, which is wait rather than CPU and would
+// never cross a CPU cap.
+data dashboard_serve_budget_basis_note: String = "MEASURED BASIS FOR THE DECLARED CAP (session crisp-gull-269, 2026-08-10, replay against a local copy of srv1 attempt-state). Per request on the daily page: render evaluation 840ms self-time; jq provider projection 486ms across 25,744,152 B spanning five current attempts; ~1.5s total. The largest retained attempt (60,257,673 B, the 2026-08-08 wedge artifact) is roughly three times the jq term, putting a realistic worst case near 2.5-3s. The declared caps are an order of magnitude above that so a legitimate render is never refused, while still converting an unbounded listener hold into a bounded typed refusal. THE ASYMMETRY THAT SETS THE DIRECTION: today's failure mode is a silent multi-hour hang observable only to whoever eventually restarts the process; a too-tight cap fails as an immediate, typed, visible 500 on one request. Those are not equally bad, which argues for arming a defensible cap now and refining it against this basis rather than converging on a perfect number first. VALUE IS OPERATOR POLICY: these numbers are a proposal carrying their basis, not a derivation that forecloses the operator's choice."
+
+fn dashboard_serve_cpu_limit() -> EvaluationLimit {
+  LimitSet { limit: positive_millisecond(count: positive_measure_count(predecessor: 29999)) }
+}
+
+fn dashboard_serve_wall_limit() -> EvaluationLimit {
+  LimitSet { limit: positive_millisecond(count: positive_measure_count(predecessor: 29999)) }
 }
 
 data deployment_spec_carries_no_release_note: String = "THE SPEC ANSWERS WHERE, THE CANDIDATE ANSWERS WHAT, AND THE FIELD THAT FUSED THEM IS GONE. DeploymentServiceConfig briefly carried release_revision, which put a per-invocation fact inside the slot topology — and the tell was visible on the retract path: a retract installs no release, yet it had to construct a DeploymentSpec and therefore had to name a revision it never read. A field that is meaningful on one path and merely along for the ride on another is not a model of either.\\n\\nEvery field that remains here is stable across deploys of this slot: which unit name, which binary, which handler, which root, which principal, which port. Deploying blue twice at two different commits produces the SAME DeploymentServiceConfig both times, which is what makes it a topology rather than a log.\\n\\nThe launch identity now travels beside the spec as gunbc.live_deploy.emit ReleaseRevisionBinding, supplied at the apply seam and read only where ExecStart is rendered. The retract fold passes RevisionNotInstalled and can therefore not name a revision even by accident — the arm that would render one refuses loudly instead of emitting a plausible line."
@@ -173,6 +226,33 @@ fn deployment_belt_service_unit_path(names: DeploymentNames) -> NonEmptyStr {
 
 fn deployment_belt_timer_unit_path(names: DeploymentNames) -> NonEmptyStr {
   join(["/etc/systemd/system/", deployment_belt_timer_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+// CONVERGE-0 loop member (operator directive 2026-08-09: 'timer in deployment membership').
+// The fleet-converge timer rides the belt-timer precedent EXACTLY — per-deployment names
+// derived from the instance stem (unconditional membership, so the twin mirror holds and
+// two instances cannot mint one path), one member owning .timer + .service, teardown
+// removes both, retirement stops the runtime. The converge pass itself is idempotent
+// observe→verdict→apply-on-drift, so a twin's duplicate cadence against the same host is
+// duplicated observation, never duplicated mutation. CONTENT cadence/catch-up facts
+// (OnCalendar, Persistent=true, jitter) derive from the gunbc.fleet_converge_timer
+// authority rows; only the NAMES derive here. That module's fixed ctrl-fleet-converge
+// unit-name rows remain the standalone/host-standup authority and are not consumed by
+// this member.
+fn deployment_fleet_converge_service_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-fleet-converge.service"], "") as NonEmptyStr
+}
+
+fn deployment_fleet_converge_timer_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-fleet-converge.timer"], "") as NonEmptyStr
+}
+
+fn deployment_fleet_converge_service_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_fleet_converge_service_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+fn deployment_fleet_converge_timer_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_fleet_converge_timer_unit_name(names: names) as String], "") as NonEmptyStr
 }
 
 data tailscale_default_https_port: Port = 443
@@ -265,14 +345,32 @@ fn deployment_owned_steps(
     DeploymentArtifactStep { kind: AttemptStateRoot, path: dashboard_instance_dispatch_attempt_state_root(instance: instance) as String as NonEmptyStr },
     DeploymentArtifactStep { kind: SystemdUnit, path: deployment_systemd_unit_path(names: names) },
     DeploymentArtifactStep { kind: BeltTimerUnit, path: deployment_belt_timer_unit_path(names: names) },
+    DeploymentArtifactStep { kind: FleetConvergeTimerUnit, path: deployment_fleet_converge_timer_unit_path(names: names) },
     DeploymentArtifactStep { kind: TailscaleServeMapping, path: tailscale_serve_endpoint_key(endpoint: names.tailscale_serve_endpoint) },
   ]
 }
 
+
+data devboot_root_membership_note: String = "THE BUILD SERVICE'S ROOTS ARE MEMBERSHIP, PROJECTED, AND SEPARATE FROM THE PER-INSTANCE STEPS -- three claims, and the third is the one that took a correction. Membership: these are directories the service WRITES, which is the same property that makes DispatchWorktreeRoot and AttemptStateRoot owned members, and attempt_state_root_member_note records what it cost to learn that a written path outside the roster is a path nothing creates. Projected: the paths come from the gunbc.host_layout rows, never spelled here, so the belt and the deploy cannot drift to two spellings of one directory.\\n\\nSEPARATE, because the first cut put them in deployment_owned_steps beside the dashboard's own members and that was wrong in a way the srv1-only scope hides. Those steps are built PER INSTANCE, and every instance would then have received srv1's literal paths under its own name -- srv2's preview slot creating /var/lib/gunbc directories for a service that does not run there. gunbc_host_layout_note names that exact defect for the exact reason it is dangerous: no value is visibly wrong, so nothing surfaces, and the first host whose layout genuinely diverged would silently inherit srv1's body.\\n\\nSo the projection is its own function, called for the host that actually runs the build service, rather than folded into a per-instance list that would answer for hosts nobody asked about. Dissolve-on: devboot deployed to a second host. At that point the roots become fields of a host layout resolved through a total host-identity lookup -- the next-rung trigger dispatch_state_scope_carries_its_roots_note already names -- and this srv1-shaped function retires into that derivation."
+
+
 fn deployment_ensured_steps() -> List<DeploymentDependencyStep> {
   [
-    DeploymentDependencyStep { kind: TailscalePackage, package: package_tailscale },
-    DeploymentDependencyStep { kind: TmuxPackage, package: package_tmux },
+    DeploymentDependencyStep {
+      kind: TailscalePackage,
+      subject: EnsuredPackage { package: package_tailscale },
+    },
+    DeploymentDependencyStep {
+      kind: TmuxPackage,
+      subject: EnsuredPackage { package: package_tmux },
+    },
+    DeploymentDependencyStep {
+      kind: DevbootArtifactStoreDirectory,
+      subject: EnsuredHostDirectory {
+        path: srv1_devboot_artifact_store_root as String as NonEmptyStr,
+        owner: gunbc_service_user,
+      },
+    },
   ]
 }
 
@@ -288,6 +386,8 @@ fn deployment_steps_apply_order(
     )
   )
 }
+
+data devboot_root_apply_membership_note: String = "THE STORE ROOT IS AN ENSURED HOST RESOURCE, NOT AN OWNED ARTIFACT, and the route to that answer is worth keeping because the obvious fix was the dangerous one. Review asked for devboot_owned_steps to be wired into deployment_steps_apply_order. That was done, and two existing claims went red immediately: a_twin_deployment_on_one_host_collides_with_nothing and twin_teardown_removes_nothing_production_owns. The second is not a technicality -- appending a host-level root to every per-instance spec means a lab twin retract would rm the PRODUCTION artifact store.\\n\\nThe claims were right and the placement was wrong. Owned means torn down by retract, and produced artifacts are exactly what a deploy must never delete -- devboot_root_realization_note argued this while the root sat in the owned roster anyway. So the root moved to the ensured side, where converged-on-apply and never-torn-down are what the category already means, and neither claim was edited. The rejected alternative was to narrow those two claims to per-instance ownership so a host-shared resource fell outside them; it was refused because editing a safety claim to accommodate a change is the DESIGN section 5 tell, and a claim that has just caught a real hazard is not the thing to weaken (operator ruling, 2026-08-08).\\n\\nThe service still runs git init --bare itself, which remains correct and is not made redundant: the deploy ensures the DIRECTORY exists and is owned, and only the service can turn a directory into a repository, because git is not on the deploy principal sudo roster."
 
 data deployment_retract_order_derivation_note: String = "RETRACT IS THE REVERSE OF WHAT THIS SPEC APPLIES, derived from the spec rather than transcribed beside it. It used to be a second hand-written list repeating the same five steps in opposite order — one fact in two places, so editing either alone makes them disagree, and the disagreement surfaces as a teardown that removes the binary while the unit still references it. deployment_apply_order_note states the ordering law in prose; this computes it.\\n\\nDeriving from spec.steps rather than re-deriving from instance and identity matters: it makes the retract order the reverse of THE ORDER THIS SPEC ACTUALLY APPLIED, not the reverse of what a freshly built spec would apply. Those differ exactly when a spec is constructed with something other than the standard order, which is the case a hand-mirrored list gets wrong. Ensured dependencies drop out because they are never torn down (R5) — the filter states that, rather than a comment claiming it."
 
@@ -337,6 +437,8 @@ fn deployment_service_config(
       host: instance.listen_host as String,
       port: instance.listen_port,
     },
+    serve_cpu_limit: dashboard_serve_cpu_limit(),
+    serve_wall_limit: dashboard_serve_wall_limit(),
   }
 }
 
@@ -389,6 +491,7 @@ fn owned_artifact_retirement_disposition(kind: OwnedArtifactKind) -> RetirementD
     AttemptStateRoot => RetirementPreserves
     SystemdUnit => RetiresRuntime
     BeltTimerUnit => RetiresRuntime
+    FleetConvergeTimerUnit => RetiresRuntime
     TailscaleServeMapping => RetirementPreserves
   }
 }
