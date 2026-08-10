@@ -32,6 +32,7 @@ import v2.lens.machine_shape { machine_shape_compile_gate }
 import v2.lens.mandatory_tag { mandatory_tag_compile_gate }
 import v2.lens.fact_density { fact_density_hollow_alias_gate }
 import v2.lens.unit_modeling { unit_modeling_gate }
+import v2.lens.lifecycle_carrier { lifecycle_carrier_gate }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { list_append, list_reverse }
 import v2.std.collection { List }
@@ -117,8 +118,10 @@ data fact_density_lens: CompileLens = CompileLens { gate: fact_density_hollow_al
 
 data unit_modeling_lens: CompileLens = CompileLens { gate: unit_modeling_compile_gate }
 
+data lifecycle_carrier_lens: CompileLens = CompileLens { gate: lifecycle_carrier_compile_gate }
+
 fn always_required_lenses() -> List<CompileLens> {
-  [fact_density_lens, unit_modeling_lens]
+  [fact_density_lens, unit_modeling_lens, lifecycle_carrier_lens]
 }
 
 data required_lens_grain_note: String = "Two required-roster grains, one door (validate_then_compile is the single gate authority; per sharp-bee-290 contract 2026-07-13 no second gate surface exists). always_required_lenses runs PER SUBTREE NODE (node-local predicates: fact_density, unit_modeling — each gate reads only the node's direct children; a nested subtree walk inside the gate would stack with run_required_lens_gates_on_subtree's fold_node and be O(n^2)). always_required_root_lenses runs ONCE at the tree root — the grain for rooted whole-tree walks (accumulator-copy carrier threading), where per-node invocation would be O(n^2): the enforcement of the complexity lens must not itself violate the complexity lens (DESIGN 7 self-application). Witness accumulation on the subtree fold uses prepend-then-reverse, not append-in-step. Root-required lenses fire on every validate_then_compile call regardless of caller-supplied lenses, exactly like the subtree roster."
@@ -159,6 +162,10 @@ fn fact_density_hollow_alias_compile_gate(tree: InferredTree) -> Outcome<Witness
 
 fn unit_modeling_compile_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
   unit_modeling_gate(node: tree.root)
+}
+
+fn lifecycle_carrier_compile_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
+  lifecycle_carrier_gate(node: tree.root)
 }
 
 fn run_compile_lens_gate(lens: CompileLens, inferred: InferredTree) -> Outcome<Witness<Node>> {

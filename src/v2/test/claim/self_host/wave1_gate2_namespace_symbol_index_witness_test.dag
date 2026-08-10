@@ -35,7 +35,7 @@ test fn wave1_gate2_symbol_index_containment_red_controls_holds() -> Bool {
 }
 
 test fn wave1_gate2_name_resolution_gap_modules_import_resolve_holds() -> Bool {
-  (length(xs: always_required_lenses()) == 2)
+  (length(xs: always_required_lenses()) == 3)
     && (compiler_frontier_row_00_compile.module_path == "src/v2/compiler/00_compile.dag")
     && (compiler_frontier_row_01_tokenize.module_path == "src/v2/compiler/01_tokenize.dag")
     && (compiler_frontier_row_03_body_producer.module_path == "src/v2/compiler/03_body_producer.dag")

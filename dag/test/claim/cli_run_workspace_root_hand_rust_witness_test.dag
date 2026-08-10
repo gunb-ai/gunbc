@@ -1,5 +1,10 @@
 module test.claim.cli_run_workspace_root_hand_rust_witness
 
+import gunbc.cli_run_workspace_root_scaffold { cli_run_source_root_anchor_dissolve_trigger, cli_run_source_root_anchor_loc_delta_net, cli_run_source_root_anchor_receipt_plan_anchor, cli_run_source_root_anchor_scaffold, cli_run_source_root_anchor_test_discriminator_absent_root, cli_run_source_root_anchor_test_discriminator_present_root, cli_run_workspace_root_discovery_dissolve_trigger, cli_run_workspace_root_discovery_loc_delta_net, cli_run_workspace_root_discovery_scaffold, cli_run_workspace_root_discovery_test_discriminator_cwd_ascent, cli_run_workspace_root_discovery_test_discriminator_git_toplevel, cli_run_workspace_root_hand_rust_receipt_plan_anchor }
+import std.disposition { SingleAuthority }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.dissolution { dissolution_description }
+
 
 test fn workspace_root_hand_rust_scaffold_is_seed_retained() -> Bool {
   match cli_run_workspace_root_discovery_scaffold {
@@ -10,15 +15,15 @@ test fn workspace_root_hand_rust_scaffold_is_seed_retained() -> Bool {
 
 test fn workspace_root_hand_rust_dissolve_trigger_names_site_and_lane() -> Bool {
   string_contains(
-    s: cli_run_workspace_root_discovery_dissolve_trigger,
+    s: dissolution_description(condition: cli_run_workspace_root_discovery_dissolve_trigger),
     pattern: "workspace_root_from"
   ) &&
     string_contains(
-      s: cli_run_workspace_root_discovery_dissolve_trigger,
+      s: dissolution_description(condition: cli_run_workspace_root_discovery_dissolve_trigger),
       pattern: "cli-run-reconcile-defork"
     ) &&
     string_contains(
-      s: cli_run_workspace_root_discovery_dissolve_trigger,
+      s: dissolution_description(condition: cli_run_workspace_root_discovery_dissolve_trigger),
       pattern: "5-dissolve-patches"
     )
 }
@@ -50,19 +55,19 @@ test fn source_root_anchor_hand_rust_scaffold_is_seed_retained() -> Bool {
 
 test fn source_root_anchor_dissolve_trigger_names_site_and_lane() -> Bool {
   string_contains(
-    s: cli_run_source_root_anchor_dissolve_trigger,
+    s: dissolution_description(condition: cli_run_source_root_anchor_dissolve_trigger),
     pattern: "try_anchor_source_root"
   ) &&
     string_contains(
-      s: cli_run_source_root_anchor_dissolve_trigger,
+      s: dissolution_description(condition: cli_run_source_root_anchor_dissolve_trigger),
       pattern: "modeled-before-implemented"
     ) &&
     string_contains(
-      s: cli_run_source_root_anchor_dissolve_trigger,
+      s: dissolution_description(condition: cli_run_source_root_anchor_dissolve_trigger),
       pattern: "cli-run-reconcile-defork"
     ) &&
     string_contains(
-      s: cli_run_source_root_anchor_dissolve_trigger,
+      s: dissolution_description(condition: cli_run_source_root_anchor_dissolve_trigger),
       pattern: "5-dissolve-patches"
     )
 }

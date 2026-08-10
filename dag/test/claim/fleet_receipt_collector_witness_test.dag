@@ -76,6 +76,42 @@ test fn witness_only_collected_rows_enter_the_fold_registry() -> Bool {
     )
 }
 
+// b1 CONVERGE-close discriminator (the third fact): a line-1 verdict=converged is admitted
+// to the fold ONLY when the SAME receipt carries an observed revision cell. The stale receipt
+// a pre-#8101 binary persisted — line1 verdict=converged beside line2 "converge-revision
+// verdict=unobserved" — is ConvergedUnbacked and NEVER folds as converged (the §5
+// fabricated-plausible-output: converged asserted by a run that never observed the ref). The
+// honest new-binary receipt — line1 converged beside line2 "converge-revision observed=<hex>"
+// — is Collected. RED if the collector reverts to reading line 1 alone, or if the observed
+// backing is dropped. Not a freshness heuristic: the observed revision is either present in
+// the receipt or the receipt is unusable (parent ruling).
+test fn witness_converged_receipt_refused_unless_backed_by_observed_revision() -> Bool {
+  let honest = join([
+    "converge-receipt host=srv1 applied=1 drifted=0 verdict=converged", "\n",
+    "converge-revision observed=1111111111111111111111111111111111111111", "\n",
+  ], "")
+  let stale = join([
+    "converge-receipt host=srv1 applied=0 drifted=0 verdict=converged", "\n",
+    "converge-revision verdict=unobserved cause=ls-remote refused: no route", "\n",
+  ], "")
+  match classify_receipt_stdout(host: "srv1", raw: honest) {
+    ReceiptCollected { host: h, receipt: _ } => h == "srv1"
+    _ => false
+  }
+    && length(collected_receipts_only(collected: [classify_receipt_stdout(host: "srv1", raw: honest)])) == 1
+    && match classify_receipt_stdout(host: "srv1", raw: stale) {
+      ReceiptConvergedUnbacked { host: h, line: _ } => h == "srv1"
+      _ => false
+    }
+    && length(collected_receipts_only(collected: [classify_receipt_stdout(host: "srv1", raw: stale)])) == 0
+    && string_contains(
+      s: collected_line(c: classify_receipt_stdout(host: "srv1", raw: stale)),
+      pattern: "outcome=converged-unbacked"
+    )
+    && match converge_revision_observed_hex(raw: honest) { Present { value: _ } => true Absent => false }
+    && match converge_revision_observed_hex(raw: stale) { Present { value: _ } => false Absent => true }
+}
+
 // The composed fold over a collector-shaped registry: one collected-converged receipt
 // alone still yields FleetNotConverged (unobserved cells and knob-unobserved hosts
 // block), pinning that the collector cannot manufacture fleet convergence from partial

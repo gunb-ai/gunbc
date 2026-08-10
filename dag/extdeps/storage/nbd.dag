@@ -1,5 +1,7 @@
 module extdeps.storage.nbd
 
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
+
 import std.types { NonEmptyStr, String, Int, Bool, List, Port }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -19,7 +21,7 @@ type NbdExport {
   read_only: Bool
 }
 
-data nbd_server_config_render_dissolution_trigger: String = "🟡 dissolve-on: nbd_server_config_text — the NbdExport is the typed authority; this renders it to nbd-server's INI config-file format (a rendered artifact like grub_config_render, not shell). The section/key layout is joined inline. DISSOLVES WHEN a shared std ini/config-file grammar (emit direction of extdeps.languages) renders NbdExport structurally instead of the inline join."
+data nbd_server_config_render_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: nbd_server_config_text — the NbdExport is the typed authority; this renders it to nbd-server's INI config-file format (a rendered artifact like grub_config_render, not shell). The section/key layout is joined inline. DISSOLVES WHEN a shared std ini/config-file grammar (emit direction of extdeps.languages) renders NbdExport structurally instead of the inline join.")
 
 fn nbd_bool_word(b: Bool) -> String {
   if b { "true" } else { "false" }

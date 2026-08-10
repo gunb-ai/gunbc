@@ -22,6 +22,7 @@ import v2.workflow.rust_crate_partition {
   rust_crate_partition_declared_core_target,
   stage0_partition_package_names
 }
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 data ci_stage0_partition_compile_gate_cargo_path: String = "dag/extdeps/rust/cargo_build.dag"
 data ci_stage0_partition_compile_gate_cargo_service: String = "cargo.Build"
@@ -41,7 +42,7 @@ data ci_stage0_partition_compile_gate_shell_emit_scaffold: Disposition = Scaffol
   }
 }
 
-data ci_stage0_partition_compile_gate_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_stage0_partition_compile_gate_script — foreign-executor (GitHub Actions run:) shell transport for seven partition-crate cargo.Build.Check invocations; DISSOLVES WHEN bash-emit (#5828 / shell→intent Phase 2) binds the build-job step to orchestration emit over the typed cargo operations — same de-fork as ci_v1_compiler_tests_compile_gate_script and ci_fmt_gate_line"
+data ci_stage0_partition_compile_gate_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_stage0_partition_compile_gate_script — foreign-executor (GitHub Actions run:) shell transport for seven partition-crate cargo.Build.Check invocations; DISSOLVES WHEN bash-emit (#5828 / shell→intent Phase 2) binds the build-job step to orchestration emit over the typed cargo operations — same de-fork as ci_v1_compiler_tests_compile_gate_script and ci_fmt_gate_line")
 
 fn ci_stage0_partition_compile_gate_extra_args(package_name: String) -> List<String> {
   ["-p", package_name]
@@ -91,7 +92,7 @@ fn ci_stage0_partition_compile_gate_render(
 
 fn ci_stage0_partition_compile_gate_script() -> String {
   concat(
-    concat("# ", concat(ci_stage0_partition_compile_gate_shell_emit_dissolution_trigger, "\n")),
+    concat("# ", concat(dissolution_description(condition: ci_stage0_partition_compile_gate_shell_emit_dissolution_trigger), "\n")),
     concat(ci_stage0_partition_compile_gate_render(plan: ci_stage0_partition_compile_gate_intent()), "\n")
   )
 }

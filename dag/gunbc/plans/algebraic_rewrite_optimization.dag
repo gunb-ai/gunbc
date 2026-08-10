@@ -1,6 +1,7 @@
 module gunbc.plans.algebraic_rewrite_optimization
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownBlock, TableBlock, BlockquoteBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, li_blocks, ul, ol, cell, row }
 
@@ -173,7 +174,6 @@ data algebraic_rewrite_optimization_plan: Plan = Plan {
   slug: "algebraic-rewrite-optimization",
   title: "Plan — algorithmic-cost reduction by construction (rewrite suboptimal patterns)",
   body: algebraic_rewrite_optimization_body(),
-  dissolution: HasTrigger {
-    text: "Delete this doc when the rewrite framework + the seed rules have landed (each carrying its four-witness test), the catalog lives as discoverable rule-rows, and the corpus hit-rate gate runs in CI. At that point the rule carriers + their witnesses tell the whole story and this design doc is redundant."
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the rewrite framework + the seed rules have landed (each carrying its four-witness test), the catalog lives as discoverable rule-rows, and the corpus hit-rate gate runs in CI. At that point the rule carriers + their witnesses tell the whole story and this design doc is redundant.")
   }
 }

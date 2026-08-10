@@ -1,6 +1,7 @@
 module gunbc.plans.invert_hand_maintained
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownDocument, MarkdownBlock, TableBlock, BlockquoteBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, li_blocks, ul, ol, cell, row }
 
@@ -89,7 +90,6 @@ data invert_hand_maintained_plan: Plan = Plan {
   slug: "invert-hand-maintained",
   title: "Inverting hand-maintained artifacts — generate from `.dag`, drift-gate the projection",
   body: invert_hand_maintained_body(),
-  dissolution: HasTrigger {
-    text: "Delete this doc when every invertible hand-maintained artifact in the §4 census is emitted and drift-gated from its .dag authority (ROADMAP/.gitignore/ci.yml already inverted; the remaining .githooks/pre-push and the plan-doc frames land), so 'invert everything hand-maintained' is a witnessed property rather than a tracked spectrum — at which point the §5 fidelity boundary is the only residue and this tracker is redundant."
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when every invertible hand-maintained artifact in the §4 census is emitted and drift-gated from its .dag authority (ROADMAP/.gitignore/ci.yml already inverted; the remaining .githooks/pre-push and the plan-doc frames land), so 'invert everything hand-maintained' is a witnessed property rather than a tracked spectrum — at which point the §5 fidelity boundary is the only residue and this tracker is redundant.")
   }
 }

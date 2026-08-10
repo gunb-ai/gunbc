@@ -1,5 +1,7 @@
 module extdeps.transports.rest
 
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
 import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, FermiDepth, NonEmptyStr, HttpStatus, Bool, String, Int, List }
 import std.content_hash { Fnv1a64Structural }
 import std.serialization { WireFormat }
@@ -234,3 +236,7 @@ fn rest_exchange_resolution(
     }
   }
 }
+
+data rest_auth_scheme_dissolve_on: DissolutionCondition = unbound_dissolution(description: "a REST realization selects its auth by matching RestAuthScheme rather than reading auth by shape (config-level Bearer/Header via svc_auth, transport-level BasicCredentials via the inline auth_basic record); until then the type is forward-looking scaffolding with no matching consumer")
+
+data rest_target_form_dissolve_on: DissolutionCondition = unbound_dissolution(description: "a REST realization matches RestTargetForm rather than reaching absolute-form targeting through an empty config base plus a full-URL path template; until then the interp/emit concat of base_url and path is the only realization and the type has no matching consumer")

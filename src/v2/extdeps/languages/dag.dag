@@ -1029,6 +1029,12 @@ fn dag_formal_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^dag_production_expr,
       rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^dag_production_arrow_lambda)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^dag_production_expr,
+      rhs: [
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_binary_expr)
       ]
     ),
@@ -1594,6 +1600,26 @@ fn dag_formal_productions() -> List<FormalProduction> {
         grammar_formal_terminal(identity: ^dag_token_arrow),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_type_expr),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_fn_body)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^dag_production_arrow_lambda,
+      rhs: [
+        grammar_formal_terminal_lexeme(identity: ^dag_token_ident),
+        grammar_formal_terminal(identity: ^dag_token_fat_arrow),
+        grammar_formal_nonterminal_occurrence(identity: ^dag_production_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^dag_production_arrow_lambda,
+      rhs: [
+        grammar_formal_terminal(identity: ^dag_token_lparen),
+        grammar_formal_terminal_lexeme(identity: ^dag_token_ident),
+        grammar_formal_terminal(identity: ^dag_token_comma),
+        grammar_formal_nonterminal_occurrence(identity: ^dag_production_comma_ident_list),
+        grammar_formal_terminal(identity: ^dag_token_rparen),
+        grammar_formal_terminal(identity: ^dag_token_fat_arrow),
+        grammar_formal_nonterminal_occurrence(identity: ^dag_production_expr)
       ]
     ),
     grammar_formal_production(
@@ -2226,7 +2252,10 @@ fn dag_grammar_expr_expr() -> GrammarExpr {
           left: dag_grammar_nonterminal(production: ^dag_production_fn_literal),
           right: dag_grammar_choice(
             left: dag_grammar_nonterminal(production: ^dag_production_block_expr),
-            right: dag_grammar_nonterminal(production: ^dag_production_binary_expr)
+            right: dag_grammar_choice(
+              left: dag_grammar_nonterminal(production: ^dag_production_arrow_lambda),
+              right: dag_grammar_nonterminal(production: ^dag_production_binary_expr)
+            )
           )
         )
       )
@@ -2702,6 +2731,53 @@ fn dag_grammar_fn_literal_expr() -> GrammarExpr {
               )
             ),
             right: dag_grammar_nonterminal(production: ^dag_production_fn_body)
+          )
+        )
+      )
+    )
+  )
+}
+
+// Arrow lambda, mirroring the v1 frontend's admission exactly (v1_compiler_parse.rs
+// parse_ident_expr / try_lambda_params): a single BARE ident before `=>`, or a
+// PARENTHESIZED comma list of two or more idents — v1 treats `()` as the empty
+// record literal and `(x)` as a parenthesized expression, so neither is a lambda
+// and neither is admitted here. Parse-admitting only (CI2-0): the captured node
+// is a grammar-shaped surface for normalize to wrapper-retain, never a fabricated
+// semantic form. The single-ident form's FIRST set overlaps binary_expr's, so the
+// expr-level choice routes through the ordered backtrack residue by construction.
+fn dag_grammar_arrow_lambda_expr() -> GrammarExpr {
+  dag_grammar_choice(
+    left: dag_grammar_sequence(
+      left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
+      right: dag_grammar_sequence(
+        left: dag_grammar_terminal(token_class: ^dag_token_fat_arrow),
+        right: dag_grammar_nonterminal(production: ^dag_production_expr)
+      )
+    ),
+    right: dag_grammar_sequence(
+      left: dag_grammar_terminal(token_class: ^dag_token_lparen),
+      right: dag_grammar_sequence(
+        left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
+        right: dag_grammar_sequence(
+          left: dag_grammar_terminal(token_class: ^dag_token_comma),
+          right: dag_grammar_sequence(
+            left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
+            right: dag_grammar_sequence(
+              left: dag_grammar_repeat(
+                element: dag_grammar_sequence(
+                  left: dag_grammar_terminal(token_class: ^dag_token_comma),
+                  right: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident)
+                )
+              ),
+              right: dag_grammar_sequence(
+                left: dag_grammar_terminal(token_class: ^dag_token_rparen),
+                right: dag_grammar_sequence(
+                  left: dag_grammar_terminal(token_class: ^dag_token_fat_arrow),
+                  right: dag_grammar_nonterminal(production: ^dag_production_expr)
+                )
+              )
+            )
           )
         )
       )
@@ -3217,6 +3293,11 @@ fn dag_grammar_root() -> GrammarRoot {
     expression: dag_grammar_fn_literal_expr(),
     emitted: ^dag_surface_fn_literal
   )
+  let arrow_lambda = dag_grammar_production(
+    name: ^dag_production_arrow_lambda,
+    expression: dag_grammar_arrow_lambda_expr(),
+    emitted: ^dag_surface_arrow_lambda
+  )
   GrammarRoot {
     start: ^dag_production_module,
     productions: [
@@ -3256,7 +3337,8 @@ fn dag_grammar_root() -> GrammarRoot {
       pattern,
       field_pattern,
       if_expr,
-      fn_literal
+      fn_literal,
+      arrow_lambda
     ],
     sync_tokens: dag_sync_tokens()
   }

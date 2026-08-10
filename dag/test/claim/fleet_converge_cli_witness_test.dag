@@ -137,35 +137,50 @@ test fn witness_converge_cli_output_projects_receipt_and_exit_signal() -> Bool {
 }
 
 
-// Join 1 (operator verdict): the revision cell gates the self route. Converged passes
-// the knob output through untouched; Drifted demotes to not-converged carrying BOTH
-// revisions (the catch-up realization needs the prior); Unobserved demotes with the
-// typed cause and is never satisfied. The rendered receipt line carries the cell for
-// the collector, one verdict token per arm.
-test fn witness_revision_gate_demotes_drift_and_unobserved_never_converged_passthrough() -> Bool {
+// Join 1 (operator verdict) — construction rework 2026-08-10, the §5 empty-observation
+// narrow. converge_cli_receipt_join_revision MEETS the knob verdict with the revision
+// standing (converge_verdict_meet), and the RENDERED converge-receipt line is derived from
+// that joint — so a knob run that converged its knobs but never observed the desired
+// revision renders verdict=absent on line 1, NOT converged. This is the exact srv1 defect
+// (applied=0 drifted=0 verdict=converged persisted while the revision was unobserved, and
+// the collector then folded it as converged). RED both directions: an unobserved/drifted
+// standing must never render verdict=converged on the receipt line, and a converged standing
+// must pass the knob verdict through. The end-to-end clause feeds the joint line back through
+// the collector's own parser (parse_converge_receipt_line) and asserts the collector reads
+// NOT-converged — the narrow is closed at the seam the collector actually reads. Also asserts
+// the converge-revision line now carries the OBSERVATION as evidence (observed=/drift/
+// unobserved), never a second verdict= token, so the receipt holds exactly one verdict.
+test fn witness_self_receipt_verdict_is_joint_never_false_converged() -> Bool {
   let a = revision_fixture_oid(hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
   let b = revision_fixture_oid(hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
-  let out = ConvergeCliOutput { line: "converge-receipt host=srv1 applied=1 drifted=0 verdict=converged", converged: true, reason: none }
-  let gated_ok = converge_cli_revision_gate(out: out, standing: RevisionConverged { revision: a })
-  let gated_drift = converge_cli_revision_gate(out: out, standing: RevisionDrifted { desired: a, local: b })
-  let gated_unobs = converge_cli_revision_gate(out: out, standing: RevisionUnobserved { cause: "ls-remote refused: no route" })
-  gated_ok.converged
-    && !gated_drift.converged
-    && match gated_drift.reason {
-      Present { value: why } =>
-        string_contains(s: why, pattern: "revision drift")
-          && string_contains(s: why, pattern: "aaaaaaaa")
-          && string_contains(s: why, pattern: "bbbbbbbb")
-      _ => false
+  // knob run converged (nothing to apply) — the srv1 shape
+  let knob = ConvergeCliReceipt { host: "srv1", applied: 0, drifted: 0, verdict: VerdictConverged, reason: none }
+  let joint_ok = converge_cli_receipt_join_revision(r: knob, standing: RevisionConverged { revision: a })
+  let joint_drift = converge_cli_receipt_join_revision(r: knob, standing: RevisionDrifted { desired: a, local: b })
+  let joint_unobs = converge_cli_receipt_join_revision(r: knob, standing: RevisionUnobserved { cause: "ls-remote refused: no route" })
+  // revision converged: knob verdict passes through -> converged, line says verdict=converged
+  converge_verdict_label(v: joint_ok.verdict) == "converged"
+    && converge_cli_receipt_converged(r: joint_ok)
+    && string_contains(s: converge_cli_receipt_line(r: joint_ok), pattern: "verdict=converged")
+    // revision drift: joint demotes to drifted, line does NOT say converged
+    && converge_verdict_label(v: joint_drift.verdict) == "drifted"
+    && !converge_cli_receipt_converged(r: joint_drift)
+    && !string_contains(s: converge_cli_receipt_line(r: joint_drift), pattern: "verdict=converged")
+    // revision unobserved: joint demotes to absent, line says absent NOT converged (srv1 narrow, closed)
+    && converge_verdict_label(v: joint_unobs.verdict) == "absent"
+    && !converge_cli_receipt_converged(r: joint_unobs)
+    && string_contains(s: converge_cli_receipt_line(r: joint_unobs), pattern: "verdict=absent")
+    && !string_contains(s: converge_cli_receipt_line(r: joint_unobs), pattern: "verdict=converged")
+    // end-to-end: the collector's OWN parser, fed the joint unobserved line, reads not-converged
+    && match parse_converge_receipt_line(line: converge_cli_receipt_line(r: joint_unobs)) {
+      Present { value: parsed } => !converge_cli_receipt_converged(r: parsed)
+      Absent => false
     }
-    && !gated_unobs.converged
-    && match gated_unobs.reason {
-      Present { value: why } => string_contains(s: why, pattern: "unobserved")
-      _ => false
-    }
-    && string_contains(s: converge_cli_revision_line(standing: RevisionConverged { revision: a }), pattern: "verdict=converged")
-    && string_contains(s: converge_cli_revision_line(standing: RevisionDrifted { desired: a, local: b }), pattern: "verdict=drifted")
-    && string_contains(s: converge_cli_revision_line(standing: RevisionUnobserved { cause: "x" }), pattern: "verdict=unobserved")
+    // the revision line carries the observation as evidence, never a second verdict= token
+    && string_contains(s: converge_cli_revision_line(standing: RevisionConverged { revision: a }), pattern: "observed=")
+    && string_contains(s: converge_cli_revision_line(standing: RevisionDrifted { desired: a, local: b }), pattern: "drift desired=")
+    && string_contains(s: converge_cli_revision_line(standing: RevisionUnobserved { cause: "x" }), pattern: "unobserved cause=")
+    && !string_contains(s: converge_cli_revision_line(standing: RevisionUnobserved { cause: "x" }), pattern: "verdict=")
 }
 
 fn revision_fixture_oid(hex: String) -> GitObjectId {

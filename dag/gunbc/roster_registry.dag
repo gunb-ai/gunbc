@@ -1,6 +1,7 @@
 module gunbc.roster_registry
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
 
 data roster_registry_taxonomy_note: String = "Group-of-units standard representation (operator ruling 2026-07-22, roadmap group 5a): a plurality of units must have a standard representation, never a nickname. Membership in a group is known exactly one of four ways — POSITIONAL (containment: being-in IS being-there, e.g. a module's members or a directory-grain lane), DERIVED (a computed relation: closure reachability, inhabitance, measurement), FRONTIER (asserted per-row WITH a reason and a dissolve_on trigger — countable, prioritizable, the typed self-host-frontier pattern), or NICKNAME (asserted, string-keyed, no trigger — the violation this registry exists to make visible). The migration pipeline for any hand-kept list is mint -> frontier -> query: a new group lands as typed frontier rows, and graduates to a derived query when its membership predicate is modelable. Every known unit-naming roster is enrolled below; the lens v2.lens.roster_registry holds each registration to ByContainment, ByDerivation, or DeclaredFrontier-with-nonempty-reason-and-trigger."
 
@@ -13,7 +14,7 @@ data roster_registry_upcoming_targets_note: String = "Walls for in-flight lanes 
 type GroupMembership
   = ByContainment
   | ByDerivation { predicate: DeclarationRef }
-  | DeclaredFrontier { reason: String, dissolve_on: String }
+  | DeclaredFrontier { reason: String, dissolution: DissolutionCondition }
 
 type RosterRegistration {
   roster: DeclarationRef
@@ -35,7 +36,7 @@ data roster_registry: List<RosterRegistration> = [
     unit_kind: "method call whose receiver establishes no method surface, keyed (module, method, receiver_shape)",
     membership: DeclaredFrontier {
       reason: "The method-existence wall refuses an unresolved method rather than inheriting the receiver type, but it can only PROVE absence against a receiver that has a complete declared surface. These rows are the calls whose receiver has none — each an upstream receiver-resolution defect (a lambda parameter whose type never propagates, a coproduct payload typed as its variant name, a bare type variable, an optional whose cardinality is dropped before lookup) rather than a fact about the method. Refusing them would fabricate a refusal over correct working code, including the v2 tokenizer's own LexMatchThunk idiom; admitting them silently would fabricate a success. The rows carry the residue as counted MethodExistenceFrontierAdmitted diagnostics instead. The key includes the receiver SHAPE because that shape IS the evidence, so a new call is refused unless it reproduces the exact unestablished shape the row was measured on.",
-      dissolve_on: "feature:primitive-realization-single-authority — one PrimitiveDefinition identity joining semantic definition, interpreter dispatch and per-target emit handler, at which point every receiver has a complete declared surface and the wall decides these directly. Each row also dissolves individually when its own named receiver-resolution defect is fixed."
+      dissolution: unbound_dissolution(description: "feature:primitive-realization-single-authority — one PrimitiveDefinition identity joining semantic definition, interpreter dispatch and per-target emit handler, at which point every receiver has a complete declared surface and the wall decides these directly. Each row also dissolves individually when its own named receiver-resolution defect is fixed.")
     }
   },
   RosterRegistration {
@@ -43,7 +44,7 @@ data roster_registry: List<RosterRegistration> = [
     unit_kind: "witness discovery-exclusion path substring",
     membership: DeclaredFrontier {
       reason: "each excluded witness path pattern is an operator-ruled or structurally-forced exception to per-PR hermetic discovery; every row carries its consumer classification, reason, and trigger in-row",
-      dissolve_on: "witness rows carry derived consumer classification (per witness_exclusion_single_authority_reconciliation_note) or the enforcement-intent registry absorbs the roster"
+      dissolution: unbound_dissolution(description: "witness rows carry derived consumer classification (per witness_exclusion_single_authority_reconciliation_note) or the enforcement-intent registry absorbs the roster")
     }
   },
   RosterRegistration {
@@ -51,7 +52,7 @@ data roster_registry: List<RosterRegistration> = [
     unit_kind: "strict-resolve probe path substring",
     membership: DeclaredFrontier {
       reason: "the strict-resolve-broken set, baked as single authority per operator ruling 2026-07-13; per-row audit receipts in whole_tree_strict_resolve_scaffold_exclusion_note",
-      dissolve_on: "per row: the file relocates under a /test/ path or the blanket /test/ exclusion policy changes so its resolve repairs; a row that excludes nothing deletes"
+      dissolution: unbound_dissolution(description: "per row: the file relocates under a /test/ path or the blanket /test/ exclusion policy changes so its resolve repairs; a row that excludes nothing deletes")
     }
   },
   RosterRegistration {
@@ -59,7 +60,7 @@ data roster_registry: List<RosterRegistration> = [
     unit_kind: "schedule witness entry (entry file x function)",
     membership: DeclaredFrontier {
       reason: "bin-execution witness class: fns run compiled seed witness binaries (host effects on non-commit-deterministic inputs), so the hermetic envelope refuses them by construction; they run as the declared Wet-profiled batch (bin_witness_wet_note)",
-      dissolve_on: "these files migrate under the execution-corpus scope prefix and enroll as ExecutionWitnessKind rows in gunbc.commit_workflow; then this roster and its exclusion rows delete"
+      dissolution: unbound_dissolution(description: "these files migrate under the execution-corpus scope prefix and enroll as ExecutionWitnessKind rows in gunbc.commit_workflow; then this roster and its exclusion rows delete")
     }
   },
   RosterRegistration {
@@ -67,7 +68,7 @@ data roster_registry: List<RosterRegistration> = [
     unit_kind: "scoped witness batch instance",
     membership: DeclaredFrontier {
       reason: "source-root envelopes outside ordinary discovery enroll through the generic std.realization_schedule ScopedWitnessBatch carrier; the current v1 claim instance is the first live member",
-      dissolve_on: "per instance: its source-root envelope joins ordinary discovery or its typed instance dissolution trigger fires; roster-wide, scoped batches derive from declarations that require a non-ordinary source-root envelope"
+      dissolution: unbound_dissolution(description: "per instance: its source-root envelope joins ordinary discovery or its typed instance dissolution trigger fires; roster-wide, scoped batches derive from declarations that require a non-ordinary source-root envelope")
     }
   },
   RosterRegistration {
@@ -75,7 +76,7 @@ data roster_registry: List<RosterRegistration> = [
     unit_kind: "file-grain schedule witness entry",
     membership: DeclaredFrontier {
       reason: "these two v1 claim files require the dag plus src/v1 envelope declared by v1_claim_scoped_witness_batch and are outside ordinary dag plus src/v2 discovery",
-      dissolve_on: "gunbc.ci_layer_roots v1_claim_scoped_witness_dissolve_on: V2ParserOwnsV1Claims"
+      dissolution: unbound_dissolution(description: "gunbc.ci_layer_roots v1_claim_scoped_witness_dissolve_on: V2ParserOwnsV1Claims")
     }
   },
   RosterRegistration {
@@ -83,7 +84,7 @@ data roster_registry: List<RosterRegistration> = [
     unit_kind: "schedule witness entry (entry file x function)",
     membership: DeclaredFrontier {
       reason: "bin-execution rows re-homed off the per-PR wet batch because their measured wall exceeds bin_witness_wet_per_row_wall_budget_seconds (CI floor endgame D6); per-row measured wall, reason, and dissolve_on in-row",
-      dissolve_on: "per row: the row's realization lands under the per-row budget on a measured run and it re-enrolls per-PR (or deletes as a duplicate); roster-wide, the enforcement-intent registry absorbs the frontier"
+      dissolution: unbound_dissolution(description: "per row: the row's realization lands under the per-row budget on a measured run and it re-enrolls per-PR (or deletes as a duplicate); roster-wide, the enforcement-intent registry absorbs the frontier")
     }
   },
   RosterRegistration {
@@ -91,7 +92,7 @@ data roster_registry: List<RosterRegistration> = [
     unit_kind: "schedule witness entry (entry file x function)",
     membership: DeclaredFrontier {
       reason: "SubstrateInputsOnly ingest/parse pipeline rows re-homed off per-PR discovery because their own eval exceeds the 5s fast-lane budget (test-decomposition Class C); per-row reason and dissolve_on in falsifier_substrate_long_lane_note",
-      dissolve_on: "per row: eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery (or deletes as duplicate); roster-wide, the enforcement-intent registry absorbs the frontier"
+      dissolution: unbound_dissolution(description: "per row: eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery (or deletes as duplicate); roster-wide, the enforcement-intent registry absorbs the frontier")
     }
   },
   RosterRegistration {
@@ -109,7 +110,7 @@ data roster_registry: List<RosterRegistration> = [
     unit_kind: "schedule witness entry (entry file x function)",
     membership: DeclaredFrontier {
       reason: "known-red frontier: witnesses red on main for feature gaps owned by named lanes, run on the falsifier probe cadence expecting red; per-entry diagnosis, owner, and trigger in known_red_frontier_note",
-      dissolve_on: "per entry: the owning lane greens the witness locally and the entry deletes (greening is a counted un-quarantine event)"
+      dissolution: unbound_dissolution(description: "per entry: the owning lane greens the witness locally and the entry deletes (greening is a counted un-quarantine event)")
     }
   },
   RosterRegistration {
@@ -117,7 +118,7 @@ data roster_registry: List<RosterRegistration> = [
     unit_kind: "module path prefix",
     membership: DeclaredFrontier {
       reason: "v2.test.* intentional-ambiguity harness modules are excluded from the fn_parent_first_hit subset construction invariant (not from the genuine silent-pick join gate); receipts in falsifier_silent_pick_gate_note",
-      dissolve_on: "unique-on-chain resolution ships as the resolver's actual behavior; then telemetry, the gate witness, and this roster delete together"
+      dissolution: unbound_dissolution(description: "unique-on-chain resolution ships as the resolver's actual behavior; then telemetry, the gate witness, and this roster delete together")
     }
   },
   RosterRegistration {
@@ -135,7 +136,7 @@ data roster_registry: List<RosterRegistration> = [
     unit_kind: "interpreter-surviving wet live-effect dispatch surface",
     membership: DeclaredFrontier {
       reason: "field-granular declaration-Node enumeration is unavailable; every surface row carries its closest .dag authorities and its own reason/dissolve-on",
-      dissolve_on: "gunbc#5364 resolves exact DeclarationRef targets, rows graduate to NodeTreeDerived membership, and the roster reaches zero as v2-emitted per-grant handlers replace the seed surfaces"
+      dissolution: unbound_dissolution(description: "gunbc#5364 resolves exact DeclarationRef targets, rows graduate to NodeTreeDerived membership, and the roster reaches zero as v2-emitted per-grant handlers replace the seed surfaces")
     }
   },
   RosterRegistration {
@@ -143,7 +144,7 @@ data roster_registry: List<RosterRegistration> = [
     unit_kind: ".dag file path",
     membership: DeclaredFrontier {
       reason: "paths granted import of the confined meta-exec module outside realization edges; per-row reasons and triggers in-row (aggregate law in meta_exec_confinement_law)",
-      dissolve_on: "the meta-exec heavy-sequestration milestone lands (module-isolated bottom transport or symbol-level import visibility); rows delete as their sites migrate"
+      dissolution: unbound_dissolution(description: "the meta-exec heavy-sequestration milestone lands (module-isolated bottom transport or symbol-level import visibility); rows delete as their sites migrate")
     }
   },
   RosterRegistration {
@@ -151,7 +152,7 @@ data roster_registry: List<RosterRegistration> = [
     unit_kind: ".dag file path",
     membership: DeclaredFrontier {
       reason: "exact (importer_path, vocab_module) edges granted import of the target-AST vocabulary outside realization-edge prefixes; per-row reasons, debt classes, and triggers in-row",
-      dissolve_on: "shell-to-intent phase 3 (bash-AST containment wall green) re-homes or dissolves each site; rows delete as their sites migrate"
+      dissolution: unbound_dissolution(description: "shell-to-intent phase 3 (bash-AST containment wall green) re-homes or dissolves each site; rows delete as their sites migrate")
     }
   },
   RosterRegistration {
@@ -159,7 +160,7 @@ data roster_registry: List<RosterRegistration> = [
     unit_kind: "type name",
     membership: DeclaredFrontier {
       reason: "modeled domain carriers with no live consumer yet (facts-before-abstraction: the data row lands ahead of its reader); per-row reasons and triggers in-row",
-      dissolve_on: "per row: a live consumer reads the carrier (the lens's stale-roster check forces the row's deletion when the carrier stops being inert)"
+      dissolution: unbound_dissolution(description: "per row: a live consumer reads the carrier (the lens's stale-roster check forces the row's deletion when the carrier stops being inert)")
     }
   },
   RosterRegistration {
@@ -167,7 +168,7 @@ data roster_registry: List<RosterRegistration> = [
     unit_kind: "path::fn site key",
     membership: DeclaredFrontier {
       reason: "closed-coproduct wildcard sites classified migration-debt rather than kernel-permanent; per-row reasons and triggers in-row",
-      dissolve_on: "per row: the site's wildcard arm migrates to a total match and the row deletes; roster-wide, the construction justification dissolves to SubstrateMandatoryTag"
+      dissolution: unbound_dissolution(description: "per row: the site's wildcard arm migrates to a total match and the row deletes; roster-wide, the construction justification dissolves to SubstrateMandatoryTag")
     }
   },
   RosterRegistration {
@@ -175,7 +176,7 @@ data roster_registry: List<RosterRegistration> = [
     unit_kind: "lens module path",
     membership: DeclaredFrontier {
       reason: "registry-infrastructure modules under v2.lens.* that are not themselves enforcing lenses; per-row reasons and triggers in-row",
-      dissolve_on: "per row: the module becomes an enforcing lens (then it enrolls in lens_registry_v0) or leaves src/v2/lens"
+      dissolution: unbound_dissolution(description: "per row: the module becomes an enforcing lens (then it enrolls in lens_registry_v0) or leaves src/v2/lens")
     }
   },
   RosterRegistration {
@@ -183,7 +184,7 @@ data roster_registry: List<RosterRegistration> = [
     unit_kind: "lens module path",
     membership: DeclaredFrontier {
       reason: "lens modules deliberately without distinct registry rows because they consolidate onto an already-enrolled verdict authority; per-row reasons and triggers in-row (aggregate rationale in lens_registry_completeness_consolidated_roster_note)",
-      dissolve_on: "per row: the module gains its own verdict authority (then it enrolls) or folds entirely into its host lens and the module deletes"
+      dissolution: unbound_dissolution(description: "per row: the module gains its own verdict authority (then it enrolls) or folds entirely into its host lens and the module deletes")
     }
   },
   RosterRegistration {
@@ -196,7 +197,7 @@ data roster_registry: List<RosterRegistration> = [
     unit_kind: "path-deferred witness identity (entry::function)",
     membership: DeclaredFrontier {
       reason: "the exact population that broad OfflineLocalRecipe path policy admitted with no executing consumer at the moment that stopped being an admission answer (2026-08-04). It is enumerated rather than computed on purpose: a predicate over the long/ prefix would re-admit every future relocation and the freeze would mean nothing. Aggregate rationale, specimen and dissolution in witness_deferral_freeze_authority_note; the roster carries no per-row reason because no row HAS one — that these identities were deferred without a declared purpose, cost or consumer is the debt itself. A row asserts MEMBERSHIP at the freeze point and no verdict: which disposition each owes — a scheduled consumer, a pinned-and-dated one-shot dissolution, or deletion — is undecided, and witness_deferral_freeze_purpose_frontier_note carries why labelling it here would bake a wrong label into the baseline. No count is stored here, per this registry's own rule that a hand-kept number rots silently; the freeze-point measurement lives once, in witness_deferral_freeze_purpose_frontier_note, where it is a dated historical fact rather than a running total",
-      dissolve_on: "per row: the witness gains an exact gunbc.explicit_witness_admission row naming the cadence that executes it, or leaves the offline class, and the row deletes (a row outliving its witness already refuses as StaleFrozenPathDeferral). Roster-wide: reaching empty deletes the path-policy pass-through arm in v2.workflow.witness_admission and its host projection with it, at which point OfflineLocalRecipe stops being an admission answer at all"
+      dissolution: unbound_dissolution(description: "per row: the witness gains an exact gunbc.explicit_witness_admission row naming the cadence that executes it, or leaves the offline class, and the row deletes (a row outliving its witness already refuses as StaleFrozenPathDeferral). Roster-wide: reaching empty deletes the path-policy pass-through arm in v2.workflow.witness_admission and its host projection with it, at which point OfflineLocalRecipe stops being an admission answer at all")
     }
   },
   RosterRegistration {
@@ -204,7 +205,7 @@ data roster_registry: List<RosterRegistration> = [
     unit_kind: "non-fold-residue site key (path::fn)",
     membership: DeclaredFrontier {
       reason: "closed-coproduct wildcard sites classified un-migrated modeling (DESIGN §6); per-row reasons and dissolution triggers in-row via shared class strings, dated landing receipts preserved; the host census (nfr_residue_sites) reads the rows through the record-row reader",
-      dissolve_on: "per row: the site's wildcard arm migrates to a total match (or the fn is declared kernel-permanent, forcing deletion — DESIGN §6 exclusivity) and the row deletes; roster-wide, the host scan and reader fold into a pure .dag Node-tree lens when compile-graph access lands (gunbc#5364)"
+      dissolution: unbound_dissolution(description: "per row: the site's wildcard arm migrates to a total match (or the fn is declared kernel-permanent, forcing deletion — DESIGN §6 exclusivity) and the row deletes; roster-wide, the host scan and reader fold into a pure .dag Node-tree lens when compile-graph access lands (gunbc#5364)")
     }
   },
   RosterRegistration {
@@ -212,7 +213,7 @@ data roster_registry: List<RosterRegistration> = [
     unit_kind: "BeltDispatchResult variant exemplar",
     membership: DeclaredFrontier {
       reason: "hand variant enumeration standing in for coproduct-arm enumeration: belt_dispatch_result_exemplars lists one exemplar per BeltDispatchResult arm to derive the wire-label set (belt_dispatch_all_status_labels). belt_dispatch_status_label's total match walls an 8th VARIANT at compile time, but nothing ties THIS list to the variant set, so a missed exemplar would silently narrow both the derived label set and the component wire-total that reads it while the live server emits the unmodeled label",
-      dissolve_on: "substrate inhabitance enumeration lands (DESIGN section 4, fold over a coproduct's arms without a hand roster), or the exemplars derive from the serve JSON emit's own total match (belt_dispatch_result_json_value); then this list and its roster row delete"
+      dissolution: unbound_dissolution(description: "substrate inhabitance enumeration lands (DESIGN section 4, fold over a coproduct's arms without a hand roster), or the exemplars derive from the serve JSON emit's own total match (belt_dispatch_result_json_value); then this list and its roster row delete")
     }
   },
   RosterRegistration {
@@ -220,7 +221,7 @@ data roster_registry: List<RosterRegistration> = [
     unit_kind: "release bin name (WitnessBin-addressable)",
     membership: DeclaredFrontier {
       reason: "witness-declared bin needs for the CI release-bins pack. The pack list ci_floor_required_artifact_names() is DERIVED (ci_floor_invoked_bins ∪ this list) — the former hand List in gunbc.ci_spec was deleted 2026-07-26. Fan-out (build --bin / pack / verify) needs no migration. Construction half: tools.host_prelude.witness_bin_ensure_built_typed refuses WitnessBinNotEnrolled for a name absent from the derived pack, so an unenrolled bin cannot silently cargo-build mid-floor. Measured gap that priced the move: cssl_assemble and frontier_probe_survey were production-addressed but absent from the old hand pack",
-      dissolve_on: "a host census of production WitnessBin.bin_name literals (non_fold_residue_units_from_module_source shape) derives this list, so a transport spelling a free string not yet enrolled is a typed census refusal rather than a hand edit; then this list and this row delete"
+      dissolution: unbound_dissolution(description: "a host census of production WitnessBin.bin_name literals (non_fold_residue_units_from_module_source shape) derives this list, so a transport spelling a free string not yet enrolled is a typed census refusal rather than a hand edit; then this list and this row delete")
     }
   },
   RosterRegistration {
@@ -228,7 +229,7 @@ data roster_registry: List<RosterRegistration> = [
     unit_kind: "per-batch floor wall budget (seconds, positional by batch index)",
     membership: DeclaredFrontier {
       reason: "per-batch wall ceilings enforced by claim_executor as FLOOR-BATCH-OVER-BUDGET refusals under the operator-signed raise discipline. Membership is POSITIONAL against the batch list gunbc_ci_floor_ordinary_batches but the coupling is by index rather than identity, so a schedule reorder misassigns every ceiling; the carrier's own follow-up row (b) IDENTITY-KEYED BUDGETS names this, and its raise history (1320 -> 1440 -> 1680 -> 2100 on batch 3 alone) is the record of the list being re-fitted to cost rather than derived from it",
-      dissolve_on: "#7216's derived clamps absorb the width axis so a ceiling becomes a re-signed rate (units x rate) rather than a literal, and budgets key by batch content-identity rather than index (the carrier's follow-up (b), riding the ComputationIdentity lane); then the literal list and this row delete"
+      dissolution: unbound_dissolution(description: "#7216's derived clamps absorb the width axis so a ceiling becomes a re-signed rate (units x rate) rather than a literal, and budgets key by batch content-identity rather than index (the carrier's follow-up (b), riding the ComputationIdentity lane); then the literal list and this row delete")
     }
   },
   RosterRegistration {
@@ -236,7 +237,7 @@ data roster_registry: List<RosterRegistration> = [
     unit_kind: "commit check enrollment (gate x lane)",
     membership: DeclaredFrontier {
       reason: "the single enrollment authority for commit and CI gates; its three lane projections in gunbc.ci_spec (gunbc_ci_floor_gates, gunbc_ci_regen_floor_gates, gunbc_ci_floor_witness_entries) are already derived from it, so the fan-out is not the debt. The hand-kept fact is which gates enroll in which lane — substantially a policy declaration and registered as such — but nothing ties this roster to the Gate coproduct, so a newly-added Gate arm can exist wholly unenrolled with no signal, the same silent-narrowing class belt_dispatch_result_exemplars is enrolled for",
-      dissolve_on: "substrate inhabitance enumeration over the Gate coproduct (DESIGN section 4: fold over a coproduct's arms without a hand roster) makes an unenrolled arm unwritable, leaving only genuine lane policy per gate; then this roster narrows to that policy and the completeness half of this row deletes"
+      dissolution: unbound_dissolution(description: "substrate inhabitance enumeration over the Gate coproduct (DESIGN section 4: fold over a coproduct's arms without a hand roster) makes an unenrolled arm unwritable, leaving only genuine lane policy per gate; then this roster narrows to that policy and the completeness half of this row deletes")
     }
   },
   RosterRegistration {
@@ -244,7 +245,7 @@ data roster_registry: List<RosterRegistration> = [
     unit_kind: "cheap-floor gate",
     membership: DeclaredFrontier {
       reason: "explicit cheap-batch gate membership, deliberately NOT inferred from gate profile fields so enrollment changes are counted roster edits rather than silent drift (the carrier's own membership note); these gates also serve as floor_resource_anchor nodes whose batch-0 placement avoids a scheduler deadlock, so membership carries a structural obligation beyond cost. The carrier already declares Disposition Scaffold dissolves_to SingleAuthority, and this row is that declaration made countable at the registry grain",
-      dissolve_on: "per-gate cost attribution lands and membership derives from measurement rather than assertion (the carrier's own declared trigger); then the literal list and this row delete"
+      dissolution: unbound_dissolution(description: "per-gate cost attribution lands and membership derives from measurement rather than assertion (the carrier's own declared trigger); then the literal list and this row delete")
     }
   },
   RosterRegistration {
@@ -252,7 +253,7 @@ data roster_registry: List<RosterRegistration> = [
     unit_kind: "workflow step name (cost-floor exemption)",
     membership: DeclaredFrontier {
       reason: "steps exempted from the materialization cost floor, keyed BY STEP NAME and resolved to script identities against the live workflow at gate time rather than held as a stale copied string; each named step is a sub-second environment write whose store-tier discharge would cost more than the recompute it would save, so the exemption is a cost fact asserted per row rather than measured",
-      dissolve_on: "per-step cost attribution lands so exemption derives from measured sub-threshold cost rather than a named list; per row, a row naming a step the live workflow no longer contains deletes (the gate-time resolution already makes such a row loud rather than silent)"
+      dissolution: unbound_dissolution(description: "per-step cost attribution lands so exemption derives from measured sub-threshold cost rather than a named list; per row, a row naming a step the live workflow no longer contains deletes (the gate-time resolution already makes such a row loud rather than silent)")
     }
   },
   RosterRegistration {
@@ -260,7 +261,7 @@ data roster_registry: List<RosterRegistration> = [
     unit_kind: "dated budget-raise receipt (prose-embedded)",
     membership: DeclaredFrontier {
       reason: "CENSUS-CLASS DEBT, registered not rewritten (census 2026-07-25): the operator-signed raise discipline requires appending a dated receipt naming the run id and the enrollment that grew the batch, so the note has accreted a genuine SEQUENCE OF CHANGE EVENTS — batch 3 alone reads 1320 -> 1440 -> 1680 -> 2100 across three signed raises — held as prose inside a 10KB String literal beside the seven-int list it documents. Because the receipts are narrated rather than rowed, the discipline is enforced by author diligence instead of construction: nothing can count the raises, order them, attribute one to its enrollment, or gate a raise that lands without its receipt, and the note's own text records the tell (one raise's ENROLLMENT THAT GREW THE BATCH field reads 'none, and that mismatch with this discipline's template IS the receipt')",
-      dissolve_on: "raise receipts become typed rows (date, run id, batch identity, prior value, new value, signer, attributed cause) so the signed-raise discipline is checkable by construction rather than narrated; rides the carrier's own follow-up (b) identity-keyed budgets on the ComputationIdentity lane, and retires entirely when #7216's derived clamps replace the literal ceilings with a re-signed rate"
+      dissolution: unbound_dissolution(description: "raise receipts become typed rows (date, run id, batch identity, prior value, new value, signer, attributed cause) so the signed-raise discipline is checkable by construction rather than narrated; rides the carrier's own follow-up (b) identity-keyed budgets on the ComputationIdentity lane, and retires entirely when #7216's derived clamps replace the literal ceilings with a re-signed rate")
     }
   },
   RosterRegistration {
@@ -268,7 +269,7 @@ data roster_registry: List<RosterRegistration> = [
     unit_kind: "dated step-timeout bounce receipt (prose-embedded)",
     membership: DeclaredFrontier {
       reason: "CENSUS-CLASS DEBT, registered not rewritten (census 2026-07-25): the same shape as the batch-budget note above, one layer up — a 6KB String whose body is the step cap's bounce history (30 -> 60 -> 90 -> 120 -> 180 -> 270 -> 55), each bounce citing a run id and a date, none of them a queryable row. The note itself names why this matters ('the record of the budget being raised to fit'), so the sequence is load-bearing evidence about a recurring cost regression, yet answering 'how many times has this cap moved, and which enrollment moved it' requires reading the prose end to end. Excluded from this class after inspection: ci_floor_resolve_receipt_note and known_red_frontier_note are comparably large and dated but record MEASUREMENTS and per-entry diagnoses, not a sequence of budget mutations, so they are not receipt ledgers and are deliberately not enrolled here",
-      dissolve_on: "bounce events become typed receipt rows alongside the batch-budget receipts above (one shared receipt shape, not a second ledger); the prose history retires with the step cap itself when per-batch wall budgets carry typed receipts and the cap stops being the diagnostic"
+      dissolution: unbound_dissolution(description: "bounce events become typed receipt rows alongside the batch-budget receipts above (one shared receipt shape, not a second ledger); the prose history retires with the step cap itself when per-batch wall budgets carry typed receipts and the cap stops being the diagnostic")
     }
   },
   RosterRegistration {
@@ -286,7 +287,7 @@ data roster_registry: List<RosterRegistration> = [
     unit_kind: "stage0 seed module basename per partition crate",
     membership: DeclaredFrontier {
       reason: "the hand-drawn stage0 crate split: per-crate module membership is hand-listed (stage0_std_primitive_modules and siblings) while the true relation is the module import closure — enrolled 2026-07-23 off two drift incidents this class caused silently (std_currency absent from std-core after #6977 added the measure→currency edge, so v1-stage0-std-core stopped building standalone; the partition allow-block lacked the monolith's recursion_limit so v1-stage0-extdeps-languages failed on serde json_internal). Nothing in CI builds the partition crate libs, so the drift had zero signal (sheet row ts-group-partition-drift)",
-      dissolve_on: "the emitted-crate-partition thread derives the crate layout ByDerivation from the module graph (docs/plans/emitted-crate-partition-design.md), at which point the hand lists delete; interim backstop = an executing per-crate cargo-check consumer in the CI build job"
+      dissolution: unbound_dissolution(description: "the emitted-crate-partition thread derives the crate layout ByDerivation from the module graph (docs/plans/emitted-crate-partition-design.md), at which point the hand lists delete; interim backstop = an executing per-crate cargo-check consumer in the CI build job")
     }
   },
   RosterRegistration {
@@ -294,7 +295,7 @@ data roster_registry: List<RosterRegistration> = [
     unit_kind: "ad-hoc cache consumer target (CacheInterfaceId) of the std.materialization_provider contract",
     membership: DeclaredFrontier {
       reason: "each row names an existing cited cache row that today answers lookups through an ad-hoc carrier and later consumes the contract's typed provider_serve/provider_admit outcomes; per-row reason and dissolve_on live in the ProviderContractTarget rows (parent mandate 6B, model-only — targets declared, no consumer flips)",
-      dissolve_on: "consumer flips route each cache's lookups through std.materialization_provider; rows retire per flip and the roster deletes when empty"
+      dissolution: unbound_dissolution(description: "consumer flips route each cache's lookups through std.materialization_provider; rows retire per flip and the roster deletes when empty")
     }
   },
   RosterRegistration {
@@ -302,7 +303,7 @@ data roster_registry: List<RosterRegistration> = [
     unit_kind: "tracked .rs path outside derived authority joins (file-grain residue)",
     membership: DeclaredFrontier {
       reason: "file-grain paths tracked on disk that no authority join classifies yet — bootstrap copies, hand-retained harness kernels, module_path_index files, frontier layout lag, and authority contradictions (stage0_core lib.rs vs partition rows); each row carries reason and dissolve_on. Cargo [[bin]] paths are host-derived (gunbc.stage0_cargo_manifest), not residue rows",
-      dissolve_on: "per row: the path derives from generated_stage0_files, hand_maintained_stage0_filenames, stage0_cargo_bin_paths_observed (PR B host boundary), or stage0_partition_crate_rows and the row deletes; roster-wide, rust_source_host_observation_note host boundary supplies path evidence and promotes the scaffold to ZeroHandMaintainedRust acceptance (V1FinishLine, dag/gunbc/v1_deletion_plan.dag)"
+      dissolution: unbound_dissolution(description: "per row: the path derives from generated_stage0_files, hand_maintained_stage0_filenames, stage0_cargo_bin_paths_observed (PR B host boundary), or stage0_partition_crate_rows and the row deletes; roster-wide, rust_source_host_observation_note host boundary supplies path evidence and promotes the scaffold to ZeroHandMaintainedRust acceptance (V1FinishLine, dag/gunbc/v1_deletion_plan.dag)")
     }
   },
   RosterRegistration {
@@ -310,7 +311,7 @@ data roster_registry: List<RosterRegistration> = [
     unit_kind: "module path admitted by emit_fn_def Clone-bound override (param_node_type_expr opacity)",
     membership: DeclaredFrontier {
       reason: "emit_fn_def module_path allowlist: List<KeyedRow<..>> value-param type exprs reach emit as opaque containers, so v1_fn_param_type_needs_clone_bound cannot derive K/V; the override emits Clone on every item generic for listed modules only — extending the list is a counted roster edit, not a silent OR branch (trait_derive_emit_fn_clone_bound_keyed_carrier_module_scaffold_note)",
-      dissolve_on: "v1 param_node_type_expr preserves container element applied-type children (or an equivalent typed surface) so v1_fn_generic_clone_bound_via_bounded_container_element / v1_fn_generic_clone_bound_via_referenced_decl derive keyed-row carrier bounds without the module_path arm; then delete the allowlist, its emit_fn_def consumer, and this registration"
+      dissolution: unbound_dissolution(description: "v1 param_node_type_expr preserves container element applied-type children (or an equivalent typed surface) so v1_fn_generic_clone_bound_via_bounded_container_element / v1_fn_generic_clone_bound_via_referenced_decl derive keyed-row carrier bounds without the module_path arm; then delete the allowlist, its emit_fn_def consumer, and this registration")
     }
   },
   RosterRegistration {
@@ -318,7 +319,7 @@ data roster_registry: List<RosterRegistration> = [
     unit_kind: "V1SeedEmitter module path with producer emission receipt",
     membership: DeclaredFrontier {
       reason: "each row binds an EmitterProduced disposition to a producer emission receipt with enrolled behavioral witness citation; no producer claim without receipt evidence (2026-07-20 flip-wave reverted after 0/6 cargo-green)",
-      dissolve_on: "per-module frontier_probe_survey receipts bind execution-measured digests and rows graduate to ByDerivation membership"
+      dissolution: unbound_dissolution(description: "per-module frontier_probe_survey receipts bind execution-measured digests and rows graduate to ByDerivation membership")
     }
   }
 ]
@@ -327,7 +328,7 @@ fn registration_membership_is_standard(r: RosterRegistration) -> Bool {
   match r.membership {
     ByContainment => true
     ByDerivation { predicate: _ } => true
-    DeclaredFrontier { reason: reason, dissolve_on: dissolve_on } =>
-      !(reason == "") && !(dissolve_on == "")
+    DeclaredFrontier { reason: reason, dissolution: d } =>
+      !(reason == "") && !(dissolution_description(condition: d) == "")
   }
 }

@@ -4,6 +4,9 @@
 use self::OccurrenceBindingFoldState::*;
 use self::OccurrenceBindingResult::*;
 pub use crate::std_algebra::FreeMonoid;
+pub use crate::std_dissolution::unbound_dissolution;
+pub use crate::std_dissolution::DissolutionCondition;
+use crate::std_dissolution::DissolutionCondition::*;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -15,15 +18,6 @@ pub fn occurrence_binding_staged_adoption_scaffold_note() -> String {
     thread_local! {
         static CACHED: String = {
             "STAGED ADOPTION: v1 and v2 execute over distinct Node algebras, so their shared occurrence-binding semantics must land here before either concrete Node instantiation. The next consumers are #7306/P1's fresh-successor v1 declaration-backed resolver instantiation, followed by the v2 resolver instantiation and its DependencyView BindsTo projection. LexicalLookup is not an interim consumer: it has no exact reference-occurrence Node or occurrence containment identity, so binding it here would fabricate the relation this carrier preserves.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn occurrence_binding_staged_adoption_dissolve_on() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "DISSOLVE-ON: both production resolver paths consume OccurrenceBindingResult by execution — v1 emits declaration-backed occurrence bindings, and v2 emits the same result and derives DependencyView BindsTo from OccurrenceBound — then delete this staged-adoption scaffold note and this dissolution row.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -176,4 +170,13 @@ pub fn occurrence_binding_from_candidates<N: Clone>(
             }),
         }
     }
+}
+
+pub fn occurrence_binding_staged_adoption_dissolve_on() -> Rc<DissolutionCondition> {
+    thread_local! {
+        static CACHED: Rc<DissolutionCondition> = {
+            unbound_dissolution("DISSOLVE-ON: both production resolver paths consume OccurrenceBindingResult by execution — v1 emits declaration-backed occurrence bindings, and v2 emits the same result and derives DependencyView BindsTo from OccurrenceBound — then delete this staged-adoption scaffold note and this dissolution row.".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
 }

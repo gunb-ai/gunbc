@@ -2,6 +2,7 @@ module gunbc.v1_interpreter_primitive_surface
 
 import std.types { NonEmptyStr }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
+import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
 
 data v1_interpreter_source_path: String = "src/v1/stage0/src/v1_interpreter.rs"
 
@@ -18,7 +19,7 @@ type InterpreterPrimitiveArmId {
 
 type ArmEnumeration
   = AuthoredInRoster
-  | DeclaredHere { dissolve_on: NonEmptyStr }
+  | DeclaredHere { dissolution: DissolutionCondition }
 
 type InterpreterDispatchEmitSite
   = EvalBuiltinInnerSite
@@ -93,9 +94,7 @@ fn v1_interpreter_declared_arms() -> List<InterpreterPrimitiveDispatchArm> {
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_method_call",
       dispatch_emit_site: EvalMethodCallShortCircuitSite,
-      enumeration: DeclaredHere {
-        dissolve_on: "eval_method_call's lookup short-circuit is an if-guard rather than a match arm, so it has no token authority to expand from. It dissolves when the short-circuit is either deleted in favour of the algebra arm it shadows, or rewritten as an arm of a v1_method_short_circuit_arms macro in the shape the other five sites now use.",
-      },
+      enumeration: DeclaredHere { dissolution: unbound_dissolution(description: "eval_method_call's lookup short-circuit is an if-guard rather than a match arm, so it has no token authority to expand from. It dissolves when the short-circuit is either deleted in favour of the algebra arm it shadows, or rewritten as an arm of a v1_method_short_circuit_arms macro in the shape the other five sites now use.") },
     },
     InterpreterPrimitiveDispatchArm {
       arm: InterpreterPrimitiveArmId { identity: "service_dispatch.Filesystem.Read" },
@@ -104,16 +103,25 @@ fn v1_interpreter_declared_arms() -> List<InterpreterPrimitiveDispatchArm> {
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_service_call",
       dispatch_emit_site: EvalServiceCallCarveOutSite,
-      enumeration: DeclaredHere {
-        dissolve_on: "the hermetic checkout carve-out in eval_service_call is the interpreter's only service-name dispatch of its own; every other service operation resolves against ctx.service_ops from the declared .dag corpus. This row dissolves when the carve-out does.",
-      },
+      enumeration: DeclaredHere { dissolution: unbound_dissolution(description: "the hermetic checkout carve-out in eval_service_call is the interpreter's only service-name dispatch of its own; every other service operation resolves against ctx.service_ops from the declared .dag corpus. This row dissolves when the carve-out does.") },
     },
   ]
 }
 
+fn arm_is_declared_here(arm: InterpreterPrimitiveDispatchArm) -> Bool {
+  match arm.enumeration {
+    DeclaredHere { dissolution: _ } => true
+    AuthoredInRoster => false
+  }
+}
+
+// Restored with the field. The predecessor scanned the sentence for the phrase
+// "dissolves when", which is a text check over prose; nonemptiness of the typed
+// condition is what is actually decidable here, and the roster acceptance test
+// asserts it so the contract note above is enforced rather than merely stated.
 fn arm_declares_dissolution_trigger(arm: InterpreterPrimitiveDispatchArm) -> Bool {
   match arm.enumeration {
-    DeclaredHere { dissolve_on } => string_contains(s: dissolve_on, pattern: "dissolves when")
+    DeclaredHere { dissolution: d } => !(dissolution_description(condition: d) == "")
     AuthoredInRoster => false
   }
 }
@@ -792,6 +800,15 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       arm: InterpreterPrimitiveArmId { identity: "free_call.concept_decl_facts" },
       form: FreeCall,
       authored_spelling: "concept_decl_facts",
+      realization_module: "v1_interpreter",
+      dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
+      enumeration: AuthoredInRoster,
+    },
+    InterpreterPrimitiveDispatchArm {
+      arm: InterpreterPrimitiveArmId { identity: "free_call.data_decl_type_facts" },
+      form: FreeCall,
+      authored_spelling: "data_decl_type_facts",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
       dispatch_emit_site: EvalBuiltinInnerSite,

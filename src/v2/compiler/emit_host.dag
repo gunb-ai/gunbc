@@ -1,5 +1,7 @@
 module v2.compiler.emit_host
 
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
+
 import v2.compiler.emit { emit }
 import v2.compiler.emit_module { emit_module }
 import v2.compiler.infer { InferredTree }
@@ -117,7 +119,7 @@ data emit_host_access_decision_seed_transport_scaffold: Disposition = Scaffold {
 
 data emit_host_access_decision_seed_transport_receipt: String = "HAND-RUST receipt for v1_interpreter.rs require_permitted_transport and its emit_host_admission_flip_test RED control. The seed adds no authorization policy: v2.compiler.build_transport_admission build_transport_admissible constructs the AccessDecision, and the Rust transport only refuses anything other than that exact carrier's Permit arm before realizing the host effect. Checkable executing receipt: cargo test -p v1-compiler emit_host_admission_flip_test -- --nocapture; permit_arm_from_another_carrier_refuses goes red if a same-named arm from another carrier can authorize."
 
-data emit_host_access_decision_seed_transport_dissolve_trigger: String = "DISSOLVES WHEN the v1-exit lane's concrete ROADMAP row v1-zero-hand-maintained-rust is accepted (authority gunbc.roadmap_authority roadmap_nodes): emit_host transport is generated from this module or deleted, so require_permitted_transport and its hand-written Rust tests no longer exist."
+data emit_host_access_decision_seed_transport_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "DISSOLVES WHEN the v1-exit lane's concrete ROADMAP row v1-zero-hand-maintained-rust is accepted (authority gunbc.roadmap_authority roadmap_nodes): emit_host transport is generated from this module or deleted, so require_permitted_transport and its hand-written Rust tests no longer exist.")
 
 fn emit_host_run_unsupported_target_diagnostic() -> Diagnostic {
   Diagnostic {

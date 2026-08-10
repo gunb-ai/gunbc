@@ -1,5 +1,7 @@
 module std.occurrence_binding_candidates
 
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
 import std.types { String, Int, Bool, List, NonEmptyStr, CommitSha, FilePath }
 import std.algebra { FreeMonoid, Empty, Cons }
 import std.occurrence_binding {
@@ -1116,7 +1118,9 @@ fn direct_module_dependencies_from_bound_population(
 
 data module_path_file_row_note: String = "ModulePathFileRow is the parser-embedded storage-realization join for cross-file binding provenance at the N3-B substrate seam: one symbolic module path maps to exactly one authored file path. Single authority for path⇄module binding is v2.compiler.source_authority.ModuleStorageBinding / ModuleStorageIndex (module_storage_binding_authority_note); this row is a scaffold projection of that fact from parser-walk inputs until B2 wires OrdinaryLoadedCompilationClosure through source_authority directly. Deliberately separate from OccurrenceModulePathRow (module membership only) and from import lists (transitional loading data). File projection refuses when either side of a bound reference lacks a row — never fabricates a path from module_to_filename heuristics at this seam. Duplicate identical rows are ModulePathFileDuplicateSame; conflicting paths for one module are ModulePathFileConflict — last-write-wins map_insert is forbidden."
 
-data module_path_file_row_dissolution_note: String = "Dissolve-on: cross-file binding production consumes ModuleStorageBinding rows from v2.compiler.source_authority (module_storage_binding_module_dotted × module_storage_binding_file_path) on OrdinaryLoadedCompilationClosure; ModulePathFileRow, ModulePathFileIndex, and this note delete in the completing change. Until then parser-walk supplies rows with ParsedFromSource provenance only."
+data module_path_file_row_dissolution_note: String = "See module_path_file_row_dissolution_note_dissolve_on for the lifecycle condition this row's rationale accompanies."
+
+data module_path_file_row_dissolve_on: DissolutionCondition = unbound_dissolution(description: "Dissolve-on: cross-file binding production consumes ModuleStorageBinding rows from v2.compiler.source_authority (module_storage_binding_module_dotted × module_storage_binding_file_path) on OrdinaryLoadedCompilationClosure; ModulePathFileRow, ModulePathFileIndex, and this note delete in the completing change. Until then parser-walk supplies rows with ParsedFromSource provenance only.")
 
 type ModulePathFileRow {
   module_path: NonEmptyStr
@@ -1943,7 +1947,6 @@ fn merge_occurrence_transports(
   }
 }
 
-
 fn cross_file_binding_closure_row(
   transport: OccurrenceTransport,
   inputs: OccurrenceBindingCandidateInputs,
@@ -2591,8 +2594,6 @@ fn section13_population_law_id_eq(
 
 data section13_module_path_is_symbolic_note: String = "Interim oracle only: refuses DeclarationRef.module_path strings that look positional (contain '/' or '.dag'). This is a §5 heuristic standing where a type should stand — the same class occurrence_module_path_convergence_note names. It is NOT the long-term authority for symbolic vs positional module identity."
 
-data section13_module_path_is_symbolic_dissolve_on: String = "feature:module-path-qualified-name — DISSOLVE-ON: DeclarationRef.module_path / OccurrenceModulePathRow.module_path become v2.std.qualified_name.QualifiedName (same trigger as occurrence_module_path_convergence_note / std.observation observation_segment_grounding_note); then positional file-path inhabitance is unwritable, this string-grep oracle deletes, and section13_adjudicate_row stops calling it."
-
 fn section13_module_path_is_symbolic(module_path: NonEmptyStr) -> Bool {
   let path = module_path as String
   !string_contains(s: path, pattern: "/")
@@ -2793,3 +2794,5 @@ fn section13_population_law_roster_denominator_holds(
     _ => false
   }
 }
+
+data section13_module_path_is_symbolic_dissolve_on: DissolutionCondition = unbound_dissolution(description: "feature:module-path-qualified-name — DISSOLVE-ON: DeclarationRef.module_path / OccurrenceModulePathRow.module_path become v2.std.qualified_name.QualifiedName (same trigger as occurrence_module_path_convergence_note / std.observation observation_segment_grounding_note); then positional file-path inhabitance is unwritable, this string-grep oracle deletes, and section13_adjudicate_row stops calling i")

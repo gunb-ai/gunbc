@@ -11134,6 +11134,70 @@ fn push_ordinary_receipt_write_refusals(
 /// nothing is worse than none (DESIGN §5; receipt: run 31263508328 printed
 /// `detail=walk terminal exit code 1` while the worker had already emitted the real
 /// witness-red batch line on stderr that Actions dropped).
+/// Whether a walk `failure_details` row names a located witness/content failure rather
+/// than a walk-level cost interrupt or receipt fault. Batch rows whose `detail=` prose
+/// merely mentions `eval budget exceeded` inside a multi-failure summary still count —
+/// substring sniffing on the whole walk must not collapse those into BudgetExceeded
+/// (receipt: cold-corpus walk-terminal printed mode=BudgetExceeded while detail= carried
+/// ~10 typed witness findings plus one budget fact).
+fn walk_detail_is_semantic_batch_finding(d: &str) -> bool {
+    if !d.starts_with("batch=") || !d.contains("fn=") {
+        return false;
+    }
+    if d.contains("BudgetExceeded{wall_ms") || d.contains("walk reached its soft deadline") {
+        return false;
+    }
+    if d.contains("receipt write refused") || d.contains("floor finalization refused") {
+        return false;
+    }
+    let body = d.split_once("detail=").map(|(_, b)| b).unwrap_or(d);
+    if body.contains("eval budget exceeded")
+        || body.contains("witness receipt wall budget exceeded")
+        || body.contains("wet self-host receipt wall budget exceeded")
+    {
+        // A lone budget interrupt on one witness is not a semantic finding; a batch
+        // summary that also names resolve/cast/expectation failures is.
+        return body.contains("failed:")
+            || body.contains("resolve")
+            || body.contains("StaleKnownRed")
+            || body.contains("ExpectedRedPreVerdictUnverified")
+            || body.contains("cannot cast")
+            || body.contains("is not a published mock case")
+            || body.contains("returned Bool(false)");
+    }
+    true
+}
+
+/// Strictly per-row derived: a walk carries semantic findings exactly when some row IS
+/// one. An earlier revision also short-circuited on `batch_rows > 1`, which classified two
+/// pure budget interrupts as WitnessRed — this fix's own defect run backwards, a cost
+/// interrupt reported as a semantic verdict. A count cannot answer which rows are
+/// semantic; `walk_detail_is_semantic_batch_finding` is that property, and where the
+/// property already decides, the count adds only false positives.
+fn walk_has_semantic_witness_findings(details: &[String]) -> bool {
+    details
+        .iter()
+        .any(|d| walk_detail_is_semantic_batch_finding(d))
+}
+
+/// Walk-terminal mode: semantic witness findings outrank cost interrupts in the
+/// emitted mode. BudgetExceeded remains in the detail string as interruption evidence;
+/// it must not become the sole terminal class when located findings already exist.
+fn walk_terminal_failure_mode(details: &[String], infra_faults: &[InfraFault]) -> &'static str {
+    if !infra_faults.is_empty() {
+        return "Infra";
+    }
+    if walk_has_semantic_witness_findings(details) {
+        return "WitnessRed";
+    }
+    if details.iter().any(|d| {
+        d.contains("walk reached its soft deadline") || d.contains("ORDINARY-FLOOR-OVER-BUDGET")
+    }) {
+        return "BudgetExceeded";
+    }
+    falsifier_failure_mode(details)
+}
+
 fn walk_terminal_detail(
     any_failed: bool,
     failure_details: &[String],
@@ -11144,7 +11208,7 @@ fn walk_terminal_detail(
     if !any_failed {
         return "walk terminal exit code 0".to_string();
     }
-    let mode = falsifier_failure_mode_with_faults(failure_details, infra_faults);
+    let mode = walk_terminal_failure_mode(failure_details, infra_faults);
     let mut parts = vec![format!(
         "walk terminal exit code 1 mode={mode} ci_failure_class_arm={}",
         ci_failure_class_arm(mode)
@@ -12314,6 +12378,108 @@ mod tests {
         let detail = walk_terminal_detail(true, &[], &[], true, false);
         assert!(detail.contains("compile_clean_over_budget"));
         assert!(detail.contains("compile_clean_cost_drift_receipt_refused"));
+    }
+
+    /// Receipted cold-corpus shape: ten typed witness findings plus one eval-budget fact
+    /// and a walk soft-deadline interrupt must emit WitnessRed, not BudgetExceeded-only mode.
+    #[test]
+    fn walk_terminal_mode_witness_findings_outrank_budget_interrupt() {
+        let detail = walk_terminal_detail(
+            true,
+            &[
+                "batch=2 fn=discovery-corpus detail=10 of 8158 discovery witness(es) failed: \
+                 english_emit_add_prose_holds StaleKnownRed; \
+                 realization_vocab_live_corpus_receipt_holds returned Bool(false)"
+                    .to_string(),
+                "batch=2 fn=discovery-corpus detail=3 of 8158 discovery witness(es) failed: \
+                 cannot cast List to List"
+                    .to_string(),
+                "walk reached its soft deadline before batch 9: deadline_ms=9000000 \
+                 elapsed_ms=9000123"
+                    .to_string(),
+                "batch=7 fn=explicit-corpus detail=wave1_gate1_d eval budget exceeded: \
+                 180002ms elapsed > 180000ms substrate long lane budget"
+                    .to_string(),
+            ],
+            &[],
+            false,
+            true,
+        );
+        assert!(
+            detail.contains("mode=WitnessRed"),
+            "semantic findings must set terminal mode, got: {detail}"
+        );
+        assert!(
+            !detail.contains("mode=BudgetExceeded"),
+            "budget interrupt must not collapse terminal mode: {detail}"
+        );
+        assert!(
+            detail
+                .contains("ci_failure_class_arm=FloorFailed{class:Structural{reason:WitnessRed}}"),
+            "arm must carry WitnessRed reason: {detail}"
+        );
+        assert!(
+            detail.contains("soft deadline"),
+            "interrupt evidence must remain in detail: {detail}"
+        );
+        assert!(
+            detail.contains("eval budget exceeded"),
+            "budget lower bound must remain in detail: {detail}"
+        );
+    }
+
+    #[test]
+    fn walk_terminal_mode_budget_only_interrupt_stays_budget_exceeded() {
+        let detail = walk_terminal_detail(
+            true,
+            &[
+                "walk reached its soft deadline before batch 3: deadline_ms=9000000 \
+                 elapsed_ms=9000123"
+                    .to_string(),
+            ],
+            &[],
+            false,
+            true,
+        );
+        assert!(
+            detail.contains("mode=BudgetExceeded"),
+            "a lone deadline interrupt with no witness findings stays BudgetExceeded: {detail}"
+        );
+    }
+
+    /// The discriminating control for dropping the `batch_rows > 1` short-circuit. Two
+    /// batch rows that are BOTH pure budget interrupts must stay BudgetExceeded: the count
+    /// arm classified them WitnessRed, reporting a cost interrupt as a semantic verdict —
+    /// the mirror of the defect this classifier exists to fix. The sibling budget-only test
+    /// above carries zero batch rows, so it cannot reach this arm; without this case the
+    /// removal is indistinguishable from never having had the bug.
+    #[test]
+    fn walk_terminal_mode_two_budget_only_batch_rows_stay_budget_exceeded() {
+        let detail = walk_terminal_detail(
+            true,
+            &[
+                "batch=7 fn=explicit-corpus detail=wave1_gate1_d eval budget exceeded: \
+                 180002ms elapsed > 180000ms substrate long lane budget"
+                    .to_string(),
+                "batch=8 fn=explicit-corpus detail=wave2_gate3_a eval budget exceeded: \
+                 180011ms elapsed > 180000ms substrate long lane budget"
+                    .to_string(),
+                "walk reached its soft deadline before batch 9: deadline_ms=9000000 \
+                 elapsed_ms=9000123"
+                    .to_string(),
+            ],
+            &[],
+            false,
+            true,
+        );
+        assert!(
+            detail.contains("mode=BudgetExceeded"),
+            "two budget-only batch rows carry no semantic finding: {detail}"
+        );
+        assert!(
+            !detail.contains("mode=WitnessRed"),
+            "row count must not stand in for the semantic property: {detail}"
+        );
     }
 
     #[test]

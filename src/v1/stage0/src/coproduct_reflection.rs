@@ -309,11 +309,15 @@ struct ParsedTypeDecl {
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 }
 
-/// Parse-only type-decl extraction over `build_module_path_index` — fail-closed on parse
-/// errors (no silent skip). Shared substrate for `concept_decl_facts(pool_roots)`; distinct
-/// from `decl_facts_corpus_walk` which skips test `.dag` files and tolerates parse failure.
-fn type_decls_parse_only_fail_closed(
+/// Parse-only decl extraction over `build_module_path_index` — fail-closed on parse
+/// errors (no silent skip). Shared substrate for `concept_decl_facts(pool_roots)` and
+/// `data_decl_type_facts(pool_roots)`; distinct from `decl_facts_corpus_walk` which skips
+/// test `.dag` files and tolerates parse failure. A completeness census cannot be grounded
+/// on a walk that silently skips a file, so both callers share this one.
+fn decls_parse_only_fail_closed(
     roots: &[String],
+    want_kind: ItemKind,
+    caller: &str,
 ) -> Result<(Vec<ParsedTypeDecl>, usize), String> {
     let ws = workspace_root();
     let index = crate::cli_run::build_module_path_index(roots);
@@ -324,13 +328,11 @@ fn type_decls_parse_only_fail_closed(
     for (module_path, rel_path) in modules {
         let abs = ws.join(&rel_path);
         let parsed = parse_dag_file(&abs).ok_or_else(|| {
-            format!(
-                "concept_decl_facts: failed to parse `{rel_path}` (fail-closed; no silent skip)"
-            )
+            format!("{caller}: failed to parse `{rel_path}` (fail-closed; no silent skip)")
         })?;
         let si = parsed.source_indices;
         for item in parsed.items.iter() {
-            if item_kind(item.clone()) != ItemKind::TypeItem {
+            if item_kind(item.clone()) != want_kind {
                 continue;
             }
             let name = authored_name_at(si.clone(), item.clone());
@@ -399,8 +401,9 @@ pub fn eval_concept_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> In
         .iter()
         .map(|r| ws.join(r).to_string_lossy().into_owned())
         .collect();
-    let (type_decls, module_count) = type_decls_parse_only_fail_closed(&abs_pool_roots)
-        .map_err(|msg| InterpError::TypeError { msg })?;
+    let (type_decls, module_count) =
+        decls_parse_only_fail_closed(&abs_pool_roots, ItemKind::TypeItem, "concept_decl_facts")
+            .map_err(|msg| InterpError::TypeError { msg })?;
     let files_parsed = module_count;
     let mut rows: Vec<Value> = Vec::new();
     for decl in type_decls {
@@ -422,6 +425,70 @@ pub fn eval_concept_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> In
     }
     eprintln!(
         "concept_decl_facts: {} type concepts from {module_count} modules ({files_parsed} files parsed)",
+        rows.len()
+    );
+    Ok(crate::v1_interpreter::list_value(rows))
+}
+
+/// The authored declared-type head name of a top-level `data` declaration.
+///
+/// `decl_facts` marshals a `DataItem`'s node through the initializer projection, which drops
+/// `type_annotation` entirely — so the declared type is not reachable from that producer at
+/// all. This projects the annotation's head name (`String`, `NonEmptyStr`, `List`, ...). Head
+/// name is sufficient and deliberately not a full type rendering: the only consumer asks
+/// whether a declaration is still a bare string, and a second type-printer would be a
+/// nickname for a rendering the emitter already owns.
+///
+/// An absent annotation yields the empty string rather than a guess. `data` requires an
+/// annotation, so empty means the parse did not carry one, and a consumer that treated
+/// unknown as "not a string" would silently under-report exactly the survivors a census
+/// exists to find.
+fn data_decl_type_name(decl: &ParsedTypeDecl) -> String {
+    match decl.item.type_annotation.as_ref() {
+        Some(ann) => {
+            let authored = authored_name_at(decl.source_indices.clone(), ann.clone());
+            if authored.is_empty() {
+                ann.name.clone()
+            } else {
+                authored
+            }
+        }
+        None => String::new(),
+    }
+}
+
+/// Corpus-wide top-level `data` declarations with their declared type, keyed at declaration
+/// identity (`module_path` + `decl_name`).
+///
+/// `module_path` is the module's own authored path, UNSTRIPPED (`v2.` retained), because a
+/// `DeclarationRef` names the module as authored; `decl_facts`'s stripped `qualified_name`
+/// cannot be un-stripped back into a module identity.
+pub fn eval_data_decl_type_facts(
+    ctx: &InterpContext,
+    pool_roots: &[String],
+) -> InterpResult<Value> {
+    let ws = crate::cli_run::workspace_root();
+    let abs_pool_roots: Vec<String> = pool_roots
+        .iter()
+        .map(|r| ws.join(r).to_string_lossy().into_owned())
+        .collect();
+    let (data_decls, module_count) =
+        decls_parse_only_fail_closed(&abs_pool_roots, ItemKind::DataItem, "data_decl_type_facts")
+            .map_err(|msg| InterpError::TypeError { msg })?;
+    let mut rows: Vec<Value> = Vec::with_capacity(data_decls.len());
+    for decl in data_decls.iter() {
+        rows.push(Value::Record {
+            type_name: ctx.sym("DataDeclTypeFact"),
+            fields: Rc::new(sorted_fields(vec![
+                (ctx.sym("module_path"), Value::Str(decl.module_path.clone())),
+                (ctx.sym("decl_name"), Value::Str(decl.name.clone())),
+                (ctx.sym("type_name"), Value::Str(data_decl_type_name(decl))),
+                (ctx.sym("rel_path"), Value::Str(decl.rel_path.clone())),
+            ])),
+        });
+    }
+    eprintln!(
+        "data_decl_type_facts: {} data declarations from {module_count} modules",
         rows.len()
     );
     Ok(crate::v1_interpreter::list_value(rows))

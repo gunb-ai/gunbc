@@ -3778,6 +3778,30 @@ pub const SELECTION_CONTROL_DECLARED_ENTRIES: &[&str] = &[
     SELECTION_CONTROL_CI_FLOOR_PLAN_REL,
 ];
 
+/// The two-entry incident subject for live-read selection controls and P3 A/B parity.
+///
+/// A = the node-precise discriminator fixture (the entry the diff touches).
+/// B = the affected-set floor runner test (the unrelated entry whose closure reaches a
+/// live-read carrier home). B is what the retired predicate made unskippable on any nonempty
+/// `.dag` diff, which is the `2 selected / 1 expected` incident.
+pub fn selection_control_incident_subject_roster() -> Vec<(String, String)> {
+    let ws = workspace_root();
+    vec![
+        (
+            ws.join(SELECTION_CONTROL_NODE_PRECISE_REL)
+                .to_string_lossy()
+                .into_owned(),
+            "floor_disc_witness_a_only_holds".to_string(),
+        ),
+        (
+            ws.join(SELECTION_CONTROL_FLOOR_RUNNER_TEST_REL)
+                .to_string_lossy()
+                .into_owned(),
+            "floor_test_untouched_skips_assumed_green_holds".to_string(),
+        ),
+    ]
+}
+
 /// The suite's source roots — `[src/v2, dag]`, the roots its rosters resolve against.
 /// Single authority for the same reason as the entry consts above.
 pub fn selection_control_source_roots(workspace: &Path) -> Vec<PathBuf> {
@@ -15820,6 +15844,27 @@ fn dag_source_roots(source_roots: &[String]) -> Vec<String> {
     dag
 }
 
+/// Structural mirror of `v1_interpreter::type_annotation_names` for the pre-resolve
+/// window: the interpreter's copy needs an `InterpContext`, and declarer selection
+/// happens before any graph exists. Same walk, same exactness — a type annotation
+/// names the target, or one of its children/params does.
+fn type_annotation_names_in(
+    si: Rc<im::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    ty: &Rc<Node>,
+    target: &str,
+) -> bool {
+    if ty.name == target || authored_name_at(si.clone(), ty.clone()) == target {
+        return true;
+    }
+    ty.children
+        .iter()
+        .any(|c| type_annotation_names_in(si.clone(), c, target))
+        || ty
+            .params
+            .iter()
+            .any(|c| type_annotation_names_in(si.clone(), c, target))
+}
+
 pub fn precompute_whole_tree_published_mock_keys(
     source_roots: &[String],
 ) -> Result<std::collections::HashSet<String>, String> {
@@ -15833,16 +15878,48 @@ pub fn precompute_whole_tree_published_mock_keys(
     // resolving the whole 600+ module tree to find the ~13 declarers is §2
     // irrelevant work, and that transient whole-tree `ResolvedGraph` is the floor's
     // dominant RSS (measured ~1.46 GiB to produce ~58 strings). Select the
-    // declarers and resolve only their transitive import closures. The `.contains`
-    // prefilter is a safe over-inclusive candidate set: `.dag` has no comment
-    // syntax (a string match is structural), and the downstream
-    // `type_annotation_names(.., "PublishedMockCase")` check is exact, so a
-    // false-positive file only widens the closure slightly — it cannot fabricate a key.
-    let declarers: Vec<Rc<v1_compiler_compile::SourceFile>> = index
-        .values()
-        .filter(|sf| sf.content.contains("PublishedMockCase"))
-        .cloned()
-        .collect();
+    // declarers and resolve only their transitive import closures.
+    //
+    // The `.contains` scan is a CANDIDATE prefilter and nothing more: the DECISION
+    // is the structural one below. A previous revision let the substring decide, on
+    // the reasoning that a false positive "only widens the closure slightly — it
+    // cannot fabricate a key." That is true about keys and false about builds. A
+    // `.dag` file under `dag/` that merely MENTIONS the string — a documentary bind
+    // row naming the type, a note quoting it — was selected as a declarer, and if it
+    // imports `src/v2` its closure cannot resolve under these dag-only roots, so the
+    // whole precompute returned Err and the floor exited before running a witness.
+    // Measured on gunbc#8092: one `HandAuthoredDocBind` row naming
+    // `std.hermetic_replay` `PublishedMockCase` as a document subject red the floor.
+    // A substring is not a declaration observation, so the exact check that already
+    // existed downstream now runs BEFORE the closure is taken.
+    let mut declarers: Vec<Rc<v1_compiler_compile::SourceFile>> = Vec::new();
+    for sf in index.values() {
+        if !sf.content.contains("PublishedMockCase") {
+            continue;
+        }
+        // Observation failure refuses; it never reports absence (DESIGN §5 — a
+        // candidate we could not parse is not a candidate we know is clean).
+        let Some(parsed) = crate::module_path_index::parsed_dag_file::parse_dag_file(
+            std::path::Path::new(&sf.path),
+        ) else {
+            return Err(format!(
+                "whole-tree published mock corpus: candidate {} matched the PublishedMockCase \
+                 scan but could not be parsed, so its declarer status is unobserved",
+                sf.path
+            ));
+        };
+        let si = parsed.source_indices;
+        let declares = parsed
+            .items
+            .iter()
+            .any(|item| match item.type_annotation.clone() {
+                Some(ty) => type_annotation_names_in(si.clone(), &ty, "PublishedMockCase"),
+                None => false,
+            });
+        if declares {
+            declarers.push(sf.clone());
+        }
+    }
     if declarers.is_empty() {
         return Ok(std::collections::HashSet::new());
     }
@@ -17452,6 +17529,89 @@ fn replay_scoped_run_stderr(bytes: &[u8]) {
     let _ = stderr.write_all(bytes).and_then(|_| stderr.flush());
 }
 
+/// Emit the interpreter's per-`Expr`-variant evaluation profile after a `gunbc run`, when
+/// `GUNBC_INTERP_PROFILE=1` is set. Off by default and zero-cost when off: the counters are only
+/// accumulated under the same env flag, so this reads whatever the run already gathered.
+///
+/// WHY THIS EXISTS. The profiler and its printer both predate this, but the printer lived only in
+/// `claim_batch`, which evaluates HERMETICALLY and refuses host effects rather than fabricating
+/// them. So the one runner that could produce a profile could not execute any route that reads the
+/// filesystem or shells out, and the one runner that executes wet (`gunbc run`) discarded the
+/// profile it had already collected. That gap is why the 2026-08-09 dashboard wedge was profiled
+/// with `perf` — which can only name `eval_expr_inner`, never a `.dag` subject — while the
+/// interpreter held the structural identity the whole time and simply never printed it on the wet
+/// path.
+///
+/// SCOPE, STATED HONESTLY: this is variant grain (`Call`, `Match`, `StrConcat`, …), NOT declaration
+/// identity. It can say which expression KIND dominates a wet run; it cannot say which `.dag`
+/// declaration. Naming a declaration needs the caller→callee edge and per-declaration inclusive CPU
+/// that the operator's Phase-2 trace specifies, and this is the seam that work extends rather than
+/// a substitute for it.
+fn emit_run_eval_profile(function: &str) {
+    use crate::v1_interpreter::{
+        cast_lookup_counters, eval_profile_snapshot, expr_variant_name, EXPR_VARIANT_COUNT,
+    };
+    let prof = eval_profile_snapshot();
+    let total_ns: u128 = prof.self_nanos.iter().sum();
+    let total_count: u64 = prof.counts.iter().sum();
+    if total_count == 0 {
+        return;
+    }
+    let mut rows: Vec<usize> = (0..EXPR_VARIANT_COUNT)
+        .filter(|&i| prof.counts[i] > 0)
+        .collect();
+    rows.sort_by(|&a, &b| prof.self_nanos[b].cmp(&prof.self_nanos[a]));
+    eprintln!(
+        "[eval-profile] {}: {} node-evals, {:.3}ms self-time total (sorted by self-time)",
+        function,
+        total_count,
+        total_ns as f64 / 1.0e6,
+    );
+    for i in rows {
+        let ns = prof.self_nanos[i];
+        let count = prof.counts[i];
+        eprintln!(
+            "  {:<16} {:>12} evals  {:>10.3}ms self ({:>5.1}%)  {:>8.0}ns/eval",
+            expr_variant_name(i),
+            count,
+            ns as f64 / 1.0e6,
+            if total_ns == 0 {
+                0.0
+            } else {
+                100.0 * ns as f64 / total_ns as f64
+            },
+            if count == 0 {
+                0.0
+            } else {
+                ns as f64 / count as f64
+            },
+        );
+    }
+    // The cast cost center is a SCAN, not a per-cast constant: each alias-chain hop walks
+    // every item of every module extracting authored source text. Printing the three
+    // counters together is what turns "casts are expensive" into a named multiplier —
+    // items-per-lookup is the corpus-denominated term, and it grows with the closure.
+    let (kernel_calls, lookup_calls, lookup_items) = cast_lookup_counters();
+    if kernel_calls > 0 || lookup_calls > 0 {
+        eprintln!(
+            "[eval-profile] cast-kernel walks: {}  type-lookups: {}  items scanned: {}  ({:.1} lookups/walk, {:.0} items/lookup)",
+            kernel_calls,
+            lookup_calls,
+            lookup_items,
+            if kernel_calls == 0 {
+                0.0
+            } else {
+                lookup_calls as f64 / kernel_calls as f64
+            },
+            if lookup_calls == 0 {
+                0.0
+            } else {
+                lookup_items as f64 / lookup_calls as f64
+            },
+        );
+    }
+}
+
 pub fn handle_run_with_options(
     source_roots: Vec<String>,
     function: String,
@@ -17749,6 +17909,7 @@ pub fn handle_run_with_options(
                         }
                     }
                 }
+                emit_run_eval_profile(&function);
                 match classify_exit(&val, &ctx) {
                     ExitClass::Success => {
                         if let Some(observation) = scoped_observation.as_mut() {

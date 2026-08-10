@@ -4,6 +4,9 @@
 pub use crate::extdeps_external_authority::ExternalAuthority;
 use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
+pub use crate::std_dissolution::unbound_dissolution;
+pub use crate::std_dissolution::DissolutionCondition;
+use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_emit_model::SimpleMethodSpec;
 use crate::std_trait_derive_shape::PairCompletionBody::{
     PairCompletionCanonicalQuotient, PairCompletionNegatedAddend, PairCompletionSumOfProducts,
@@ -646,24 +649,6 @@ pub fn rust_pair_completion_spelling_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_pair_completion_dissolve_on() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Dissolves when the emitted-target operator surface is selected by the grammar-row inverse in extdeps.languages.rust rather than by this per-op spelling table, at which point trait_path/method/where_bounds become ordinary terminal rows on the Rust target model.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn rust_pair_completion_nonpolynomial_body_dissolve_on() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "dissolve-on: the Sub and Div bodies rendered below. Scope honesty (review 43189): only Add, Mul and Neg are fully row-data — their bodies are rendered from the PairCompletionSumOfProducts polynomial arms, so perturbing a row changes the emission. Sub and Div are NOT polynomials in the four operand components, so today they render as literals keyed by variant name: Sub is a DERIVED op (Add composed with Neg) and Div quotients the canonical representative (pos-neg). They dissolve when the row vocabulary gains the two constructions their shapes actually need — an op-composition arm, so Sub is expressed as Add(self, Neg(rhs)) and derived rather than spelled, and a canonical-representative projection for the fraction field — at which point every arm of PairCompletionBody renders from rows and the variant-keyed literals here delete. Deliberately NOT extended by widening the polynomial type: forcing a composition and a quotient into a sum-of-products would be a nickname for two constructions that are not sums of products.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RustPairCompletionSpelling {
     pub method: String,
@@ -923,9 +908,27 @@ pub fn rust_pair_completion_impl_render(row: Rc<PairCompletionOpRow>) -> String 
 }
 
 pub fn rust_supplemental_impls_group_completion() -> String {
-    v1_rt::concat(v1_rt::concat(v1_rt::concat("\n// repr-grounding arm (b): GroupCompletion<M> carrier arithmetic, rendered from the\n".to_string(), "// pair-completion rows in std.trait_derive_shape (Add/Mul/Neg are row data; Sub/Div bodies\n".to_string()), "// remain keyed literals — see rust_pair_completion_nonpolynomial_body_dissolve_on).\n".to_string()), Rc::new({ let mut __result = Vec::new(); for row in pair_completion_op_rows().iter().cloned() { __result.push(rust_pair_completion_impl_render(row.clone())); } __result }).join(&"".to_string()))
+    v1_rt::concat(v1_rt::concat(v1_rt::concat("\n// repr-grounding arm (b): GroupCompletion<M> carrier arithmetic, rendered from the\n".to_string(), "// pair-completion rows in std.trait_derive_shape (Add/Mul/Neg are row data; Sub/Div bodies\n".to_string()), "// remain keyed literals: only Add, Mul and Neg render from the PairCompletionSumOfProducts polynomial arms).\n".to_string()), Rc::new({ let mut __result = Vec::new(); for row in pair_completion_op_rows().iter().cloned() { __result.push(rust_pair_completion_impl_render(row.clone())); } __result }).join(&"".to_string()))
 }
 
 pub fn rust_supplemental_impls_bool_coproduct() -> String {
     v1_rt::concat(v1_rt::concat(v1_rt::concat("\n// repr-grounding arm (b): Bool coproduct ↔ host bool bridge (v1 seed emit)\n".to_string(), "impl From<Bool> for bool {\n".to_string()), "    fn from(b: Bool) -> bool { match b { Bool::True => true, Bool::False => false } }\n".to_string()), "}\n".to_string())
+}
+
+pub fn rust_pair_completion_dissolve_on() -> Rc<DissolutionCondition> {
+    thread_local! {
+        static CACHED: Rc<DissolutionCondition> = {
+            unbound_dissolution("Dissolves when the emitted-target operator surface is selected by the grammar-row inverse in extdeps.languages.rust rather than by this per-op spelling table, at which point trait_path/method/where_bounds become ordinary terminal rows on the Rust target model.".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
+}
+
+pub fn rust_pair_completion_nonpolynomial_body_dissolve_on() -> Rc<DissolutionCondition> {
+    thread_local! {
+        static CACHED: Rc<DissolutionCondition> = {
+            unbound_dissolution("dissolve-on: the Sub and Div bodies rendered below. Scope honesty (review 43189): only Add, Mul and Neg are fully row-data — their bodies are rendered from the PairCompletionSumOfProducts polynomial arms, so perturbing a row changes the emission. Sub and Div are NOT polynomials in the four operand components, so today they render as literals keyed by variant name: Sub is a DERIVED op (Add composed".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
 }

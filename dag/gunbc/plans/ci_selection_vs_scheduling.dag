@@ -1,6 +1,7 @@
 module gunbc.plans.ci_selection_vs_scheduling
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownBlock, MarkdownTableRow, TableBlock, BlockquoteBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, p, li, ul, ol, cell }
 
@@ -73,7 +74,6 @@ data ci_selection_vs_scheduling_plan: Plan = Plan {
   slug: "ci-selection-vs-scheduling",
   title: "CI selection vs scheduling — the two orthogonal axes (§1/§4 seam)",
   body: ci_selection_vs_scheduling_body(),
-  dissolution: HasTrigger {
-    text: "Delete this doc when the per-PR gate is the affected set (step 2 landed on top of #5427's baseline), the nightly cadence is the full-corpus backstop + non-hermetic residue (no cost-based selector), and the completeness lens runs executably — at which point the carriers (the lens + the CI-gen spec) state the policy and this framing is redundant."
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the per-PR gate is the affected set (step 2 landed on top of #5427's baseline), the nightly cadence is the full-corpus backstop + non-hermetic residue (no cost-based selector), and the completeness lens runs executably — at which point the carriers (the lens + the CI-gen spec) state the policy and this framing is redundant.")
   }
 }

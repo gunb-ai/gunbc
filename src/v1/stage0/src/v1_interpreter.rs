@@ -1568,6 +1568,27 @@ pub struct InterpContext {
     // call node — keyed by node pointer, kept alive via call_func_name_cache_keepalive as above.
     call_func_name_cache: std::cell::RefCell<HashMap<usize, String>>,
     call_func_name_cache_keepalive: std::cell::RefCell<Vec<Rc<Node>>>,
+    // Same chokepoint, ExprCast arm — the one the three caches above missed. A cast resolved
+    // its target type per EVALUATION: cast_target_seed_name re-sliced authored source text
+    // (authored_name_at), and for any target whose name is not already "String" the alias-chain
+    // walk called lookup_type_item_across_modules, which SCANS every item of every module and
+    // extracts authored source text for each item it compares — once per hop, up to 32 hops.
+    // Both names are pure functions of the target node and the module set, and both are fixed
+    // for a ctx, so they are memoized per target node — keyed by node pointer, kept alive via
+    // cast_kernel_cache_keepalive exactly as call_func_name_cache above.
+    cast_kernel_cache: std::cell::RefCell<HashMap<usize, Rc<CastTargetNames>>>,
+    cast_kernel_cache_keepalive: std::cell::RefCell<Vec<Rc<Node>>>,
+    // The alias walk's per-hop `lookup_type_item_across_modules` was a LINEAR SCAN over every
+    // item of every module, extracting authored source text per item compared. Measured on one
+    // daily-page render: 700 lookups scanned 1,967,155 items (~2,810 each), which accounted for
+    // essentially all of ExprCast's 2,027ms — and the term grows with the closure, not the
+    // request. A name->item map is the same fact indexed instead of searched, built once per
+    // ctx. `or_insert` preserves the scan's first-match-wins order.
+    type_item_index: std::cell::RefCell<Option<Rc<HashMap<String, Rc<Node>>>>>,
+    // The cast's SOURCE-side name, same class as cast_kernel_cache above (see
+    // cast_expr_inferred_type_name).
+    cast_source_name_cache: std::cell::RefCell<HashMap<usize, String>>,
+    cast_source_name_cache_keepalive: std::cell::RefCell<Vec<Rc<Node>>>,
     pure_call_memo: std::cell::RefCell<PureCallMemo>,
     parse_table_memo: std::cell::RefCell<ParseTableMemo>,
     eval_recompute_trace: std::cell::RefCell<EvalRecomputeTrace>,
@@ -1797,6 +1818,11 @@ impl InterpContext {
             var_sym_cache_keepalive: std::cell::RefCell::new(Vec::new()),
             call_func_name_cache: std::cell::RefCell::new(HashMap::new()),
             call_func_name_cache_keepalive: std::cell::RefCell::new(Vec::new()),
+            cast_kernel_cache: std::cell::RefCell::new(HashMap::new()),
+            cast_kernel_cache_keepalive: std::cell::RefCell::new(Vec::new()),
+            type_item_index: std::cell::RefCell::new(None),
+            cast_source_name_cache: std::cell::RefCell::new(HashMap::new()),
+            cast_source_name_cache_keepalive: std::cell::RefCell::new(Vec::new()),
             pure_call_memo: std::cell::RefCell::new(PureCallMemo::default()),
             parse_table_memo: std::cell::RefCell::new(ParseTableMemo::default()),
             eval_recompute_trace: std::cell::RefCell::new(EvalRecomputeTrace::default()),
@@ -5499,14 +5525,33 @@ fn eval_string_interp(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> In
 }
 
 fn lookup_type_item_across_modules(ctx: &InterpContext, type_name: &str) -> Option<Rc<Node>> {
-    for module in ctx.modules.iter() {
-        for item in module.items.iter() {
-            if authored_name_at(ctx.si(), item.clone()) == type_name {
-                return Some(item.clone());
-            }
-        }
+    if eval_profile_enabled() {
+        TYPE_LOOKUP_CALLS.with(|c| c.set(c.get() + 1));
     }
-    None
+    let existing = ctx.type_item_index.borrow().clone();
+    let index = match existing {
+        Some(index) => index,
+        None => {
+            let mut built: HashMap<String, Rc<Node>> = HashMap::new();
+            for module in ctx.modules.iter() {
+                for item in module.items.iter() {
+                    if eval_profile_enabled() {
+                        TYPE_LOOKUP_ITEMS.with(|c| c.set(c.get() + 1));
+                    }
+                    let name = authored_name_at(ctx.si(), item.clone());
+                    if name.is_empty() {
+                        continue;
+                    }
+                    // First declaration wins, matching the scan's early return.
+                    built.entry(name).or_insert_with(|| item.clone());
+                }
+            }
+            let built = Rc::new(built);
+            *ctx.type_item_index.borrow_mut() = Some(built.clone());
+            built
+        }
+    };
+    index.get(type_name).cloned()
 }
 
 fn alias_rhs_next_name(ctx: &InterpContext, rhs: Rc<Node>) -> Option<String> {
@@ -5543,7 +5588,71 @@ fn type_item_alias_rhs_name(ctx: &InterpContext, item: &Rc<Node>) -> Option<Stri
     alias_rhs_next_name(ctx, rhs)
 }
 
+/// Both authored names a cast needs for its target, resolved once per target node.
+struct CastTargetNames {
+    seed: String,
+    kernel: String,
+}
+
+/// Resolve-and-memoize the cast target's authored names. Sound because both are functions of
+/// the target node and `ctx.modules` / `ctx.source_indices`, all fixed for the ctx's lifetime.
+fn cast_target_names(ctx: &InterpContext, target: Rc<Node>) -> Rc<CastTargetNames> {
+    let key = Rc::as_ptr(&target) as usize;
+    let existing = ctx.cast_kernel_cache.borrow().get(&key).cloned();
+    if let Some(hit) = existing {
+        // A pointer-keyed memo's one silent-wrongness class is address reuse: if a cached node
+        // were freed and a new node landed at the same address, this would answer a cast with
+        // ANOTHER type's name — no crash, just a wrong type. On the normal path that is
+        // unreachable (cast_target returns an AST-owned child, alive for the ctx's lifetime),
+        // but expr_child_at SYNTHESIZES an error node when a child is missing, and that node is
+        // temporary. Rather than inherit the keepalive discipline by imitation, GUNBC_MEMO_VERIFY=1
+        // recomputes the uncached answer on every hit and REFUSES on divergence, so the class is
+        // checked by execution over the real corpus instead of assumed.
+        if memo_verify_enabled() {
+            let recomputed_seed = cast_target_seed_name_uncached(ctx, target.clone());
+            if recomputed_seed != hit.seed {
+                panic!(
+                    "cast memo divergence at key {key:#x}: cached seed {:?} != recomputed {:?} \
+                     — pointer-keyed cache collision (keepalive failed to retain the node)",
+                    hit.seed, recomputed_seed
+                );
+            }
+        }
+        return hit;
+    }
+    let seed = cast_target_seed_name_uncached(ctx, target.clone());
+    let kernel = cast_target_underlying_kernel_uncached(ctx, seed.clone());
+    let fresh = Rc::new(CastTargetNames { seed, kernel });
+    // DEGENERATE RESOLUTIONS ARE NEVER CACHED, and this bound is load-bearing rather than
+    // tidiness. expr_child_at falls back to make_expr_error_node for a malformed cast, which
+    // Rc::new's a FRESH node per call (name "", ident_span None, inferred CompilerError). That
+    // resolves to an empty seed, and eval_cast's identity arm then returns a Value::Str
+    // unchanged on an empty kernel — so the run does NOT terminate, and a malformed cast inside
+    // a loop would allocate a new address every iteration: permanent cache miss, unbounded
+    // keepalive growth. Skipping the insert bounds the cache by the AST's real cast nodes.
+    // It costs only recomputation on a path that short-circuits before any module scan, and an
+    // empty seed is exactly the signature of a target carrying no resolvable authored name.
+    if fresh.seed.is_empty() {
+        return fresh;
+    }
+    ctx.cast_kernel_cache_keepalive
+        .borrow_mut()
+        .push(target.clone());
+    ctx.cast_kernel_cache
+        .borrow_mut()
+        .insert(key, fresh.clone());
+    fresh
+}
+
 fn cast_target_seed_name(ctx: &InterpContext, target: Rc<Node>) -> String {
+    cast_target_names(ctx, target).seed.clone()
+}
+
+fn cast_target_underlying_kernel(ctx: &InterpContext, target: Rc<Node>) -> String {
+    cast_target_names(ctx, target).kernel.clone()
+}
+
+fn cast_target_seed_name_uncached(ctx: &InterpContext, target: Rc<Node>) -> String {
     let from_span = authored_name_at(ctx.si(), target.clone());
     if !from_span.is_empty() {
         return from_span;
@@ -5569,8 +5678,11 @@ fn cast_target_seed_name(ctx: &InterpContext, target: Rc<Node>) -> String {
     String::new()
 }
 
-fn cast_target_underlying_kernel(ctx: &InterpContext, target: Rc<Node>) -> String {
-    let mut current = cast_target_seed_name(ctx, target);
+fn cast_target_underlying_kernel_uncached(ctx: &InterpContext, seed: String) -> String {
+    if eval_profile_enabled() {
+        CAST_KERNEL_CALLS.with(|c| c.set(c.get() + 1));
+    }
+    let mut current = seed;
     let mut seen = BTreeSet::new();
 
     for _ in 0..32 {
@@ -5601,7 +5713,45 @@ fn cast_target_underlying_kernel(ctx: &InterpContext, target: Rc<Node>) -> Strin
     current
 }
 
+/// The cast's SOURCE type name. Same defect as the target side and the same repair: this is a
+/// pure function of the expression node, but was re-extracting authored source text on every
+/// evaluation. Measured on one daily-page render: +27.1ms across 59,858 casts (~452ns each,
+/// ExprCast 42.8ms -> 69.9ms) once #8098 added this second `authored_name_at` beside the
+/// target-side one. Memoized per expression node under the same pointer-key + keepalive
+/// discipline as `cast_kernel_cache`.
 fn cast_expr_inferred_type_name(ctx: &InterpContext, expr: Rc<Node>) -> String {
+    let key = Rc::as_ptr(&expr) as usize;
+    let existing = ctx.cast_source_name_cache.borrow().get(&key).cloned();
+    if let Some(hit) = existing {
+        if memo_verify_enabled() {
+            let recomputed = cast_expr_inferred_type_name_uncached(ctx, expr.clone());
+            if recomputed != hit {
+                panic!(
+                    "cast source-name memo divergence at key {key:#x}: cached {:?} != recomputed {:?} \
+                     — pointer-keyed cache collision (keepalive failed to retain the node)",
+                    hit, recomputed
+                );
+            }
+        }
+        return hit;
+    }
+    let fresh = cast_expr_inferred_type_name_uncached(ctx, expr.clone());
+    // Same unbounded-growth bound as cast_target_names: an error node's inferred is
+    // CompilerError rather than Resolved, so it yields "" — never cache it, or a malformed
+    // cast in a loop grows this keepalive without bound on freshly allocated nodes.
+    if fresh.is_empty() {
+        return fresh;
+    }
+    ctx.cast_source_name_cache_keepalive
+        .borrow_mut()
+        .push(expr.clone());
+    ctx.cast_source_name_cache
+        .borrow_mut()
+        .insert(key, fresh.clone());
+    fresh
+}
+
+fn cast_expr_inferred_type_name_uncached(ctx: &InterpContext, expr: Rc<Node>) -> String {
     match expr.inferred.as_deref() {
         Some(InferredNode::Resolved { node }) => authored_name_at(ctx.si(), node.clone()),
         _ => String::new(),
@@ -11805,6 +11955,15 @@ macro_rules! v1_builtin_arms {
                 )?))
             },
 
+            arm "free_call.data_decl_type_facts" { "data_decl_type_facts" } => {
+                let pool_roots =
+                    expect_str_list($positional.first().copied(), "data_decl_type_facts")?;
+                Ok(Some(crate::coproduct_reflection::eval_data_decl_type_facts(
+                    $ctx,
+                    &pool_roots,
+                )?))
+            },
+
             arm "free_call.export_signature_facts" { "export_signature_facts" } => {
                 let pool_roots =
                     expect_str_list($positional.first().copied(), "export_signature_facts")?;
@@ -12972,6 +13131,40 @@ thread_local! {
     static SUBJECT_SELF_NANOS: RefCell<HashMap<String, u128>> = RefCell::new(HashMap::new());
     static CHILD_NANOS: Cell<u128> = const { Cell::new(0) };
     static PROFILE_FLAG: Cell<Option<bool>> = const { Cell::new(None) };
+    static MEMO_VERIFY_FLAG: Cell<Option<bool>> = const { Cell::new(None) };
+    /// DIAGNOSTIC (2026-08-10 wedge RCA, behind GUNBC_INTERP_PROFILE=1 only).
+    /// `ExprCast` measured at 72.9% of daily-page render self-time at ~38.5us/cast. The
+    /// suspected shape is that a cast resolves its target type by SCANNING every item of
+    /// every module and extracting authored source text per item, once per alias-chain hop.
+    /// These three counters make the multiplier observable instead of argued: calls to the
+    /// kernel walk, lookups it drives, and items those lookups actually touch.
+    static CAST_KERNEL_CALLS: Cell<u64> = const { Cell::new(0) };
+    static TYPE_LOOKUP_CALLS: Cell<u64> = const { Cell::new(0) };
+    static TYPE_LOOKUP_ITEMS: Cell<u64> = const { Cell::new(0) };
+}
+
+/// Diagnostic counters for the cast cost center. Zero-cost when profiling is off.
+pub fn cast_lookup_counters() -> (u64, u64, u64) {
+    (
+        CAST_KERNEL_CALLS.with(|c| c.get()),
+        TYPE_LOOKUP_CALLS.with(|c| c.get()),
+        TYPE_LOOKUP_ITEMS.with(|c| c.get()),
+    )
+}
+
+/// Verification mode for the pointer-keyed cast memo (see cast_target_names). Off by default;
+/// when on, every cache hit is checked against a fresh uncached resolution.
+fn memo_verify_enabled() -> bool {
+    MEMO_VERIFY_FLAG.with(|c| match c.get() {
+        Some(b) => b,
+        None => {
+            let b = std::env::var("GUNBC_MEMO_VERIFY")
+                .map(|v| v == "1")
+                .unwrap_or(false);
+            c.set(Some(b));
+            b
+        }
+    })
 }
 
 fn eval_profile_enabled() -> bool {

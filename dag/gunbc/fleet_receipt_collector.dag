@@ -51,6 +51,7 @@ type CollectedHostReceipt
   = ReceiptCollected { host: String, receipt: ConvergeCliReceipt }
   | ReceiptAbsent { host: String, cause: String }
   | ReceiptUnparseable { host: String, line: String }
+  | ReceiptConvergedUnbacked { host: String, line: String }
 
 // Forward grammar lives in converge_cli_receipt_line; this is the backward read of the
 // SAME line shape: "converge-receipt host=H applied=N drifted=N verdict=V". A missing
@@ -155,14 +156,7 @@ fn collect_host_receipt(host: String) -> CollectedHostReceipt {
   ) {
     TypedArgvExecConverged { result: r } =>
       if r.success {
-        match receipt_first_line(raw: r.stdout) {
-          Present { value: line } =>
-            match parse_converge_receipt_line(line: line) {
-              Present { value: receipt } => ReceiptCollected { host: host, receipt: receipt }
-              Absent => ReceiptUnparseable { host: host, line: line }
-            }
-          Absent => ReceiptAbsent { host: host, cause: "receipt file empty" }
-        }
+        classify_receipt_stdout(host: host, raw: r.stdout)
       } else {
         ReceiptAbsent { host: host, cause: trim(s: r.stderr) }
       }
@@ -178,11 +172,64 @@ fn receipt_first_line(raw: String) -> String? {
   }
 }
 
+// The pure classification of a receipt's raw bytes, split out from the wet SSH seam so the
+// b1 converged-must-be-backed discriminator is testable hermetically with synthetic bytes.
+// A converged line-1 verdict is admitted as Collected ONLY when the receipt also carries an
+// observed revision cell; otherwise it is ConvergedUnbacked (refused from the fold), never
+// laundered into the registry as converged. Drifted/absent verdicts do not require the
+// observed cell (they are not claiming convergence). Empty stdout -> Absent; an undecodable
+// first line -> Unparseable (contradiction-shaped, never absence).
+fn classify_receipt_stdout(host: String, raw: String) -> CollectedHostReceipt {
+  match receipt_first_line(raw: raw) {
+    Present { value: line } =>
+      match parse_converge_receipt_line(line: line) {
+        Present { value: receipt } =>
+          match receipt.verdict {
+            VerdictConverged =>
+              match converge_revision_observed_hex(raw: raw) {
+                Present { value: _ } => ReceiptCollected { host: host, receipt: receipt }
+                Absent => ReceiptConvergedUnbacked { host: host, line: line }
+              }
+            Drifted => ReceiptCollected { host: host, receipt: receipt }
+            Absent => ReceiptCollected { host: host, receipt: receipt }
+          }
+        Absent => ReceiptUnparseable { host: host, line: line }
+      }
+    Absent => ReceiptAbsent { host: host, cause: "receipt file empty" }
+  }
+}
+
+// b1 CONVERGE-close discriminator: a line-1 verdict=converged is only trustworthy when the
+// SAME receipt's revision cell (line 2, converge_cli_revision_line) is the OBSERVED form —
+// "converge-revision observed=<hex>". #8101 makes the CLI unable to render converged without
+// an observed+matched revision, so a new-binary converged receipt always carries observed=<hex>.
+// The stale receipt a pre-#8101 binary persisted carries line1 verdict=converged beside line2
+// "converge-revision verdict=unobserved" (no observed hex) — the fabricated-plausible-output §5
+// forbids: converged asserted by a run that never observed the ref. This scans the receipt for
+// the revision cell and returns the observed hex only for the observed form; drift, unobserved,
+// the old verdict= form, and a missing cell all return none. It is a structural presence test,
+// NOT a freshness heuristic (parent ruling: either the revision is in the receipt or the receipt
+// is unusable — no timestamp, no threshold).
+fn converge_revision_observed_hex(raw: String) -> String? {
+  fold(split(s: raw, delimiter: "\n"), init: none, f: fn(acc, l) {
+    let tokens = split(s: trim(s: l), delimiter: " ")
+    if match tokens.first() { Present { value: t } => t == "converge-revision" Absent => false } {
+      match receipt_field(tokens: tokens, key: "observed=") {
+        Present { value: hex } => Present { value: hex }
+        Absent => acc
+      }
+    } else {
+      acc
+    }
+  })
+}
+
 fn collected_receipts_only(collected: List<CollectedHostReceipt>) -> List<ConvergeCliReceipt> {
   collected.flat_map(c => match c {
     ReceiptCollected { host: _, receipt: r } => [r]
     ReceiptAbsent { host: _, cause: _ } => []
     ReceiptUnparseable { host: _, line: _ } => []
+    ReceiptConvergedUnbacked { host: _, line: _ } => []
   })
 }
 
@@ -191,6 +238,7 @@ fn collected_line(c: CollectedHostReceipt) -> String {
     ReceiptCollected { host: h, receipt: _ } => join(["collect host=", h, " outcome=collected"], "")
     ReceiptAbsent { host: h, cause: why } => join(["collect host=", h, " outcome=absent cause=", why], "")
     ReceiptUnparseable { host: h, line: l } => join(["collect host=", h, " outcome=unparseable line=", l], "")
+    ReceiptConvergedUnbacked { host: h, line: l } => join(["collect host=", h, " outcome=converged-unbacked line=", l], "")
   }
 }
 
@@ -201,15 +249,16 @@ data fleet_collect_receipt_path: String = "target/fleet-converge-collect-receipt
 // and publish one collect receipt naming each host's collection outcome plus the fold
 // verdict. Exit reflects publication only: an honest NotConverged is a successful
 // collection, not a process failure.
+//
+// Enrollment rides with the run, SAME path as probe_fleet_reach_wet (review 50900, §3
+// one enrollment authority / §5 no ambient trust): the collector runs in its OWN
+// isolated main-push job with a fresh ephemeral HOME and WIF-materialized key but no
+// durable known_hosts, so it MUST materialize the pinned enrolled-only config before
+// its SSH legs — otherwise fleet_host_key_enroll_apply's StrictHostKeyChecking-yes pin
+// never lands here and the collector's ssh either refuses or falls back to ambient
+// known_hosts (the exact anchor hole the pin closes for the probe). Call it FIRST and
+// carry its readback in the collect receipt, mirroring the probe entry.
 func collect_fleet_convergence_wet() -> ProcessExit {
-  // Enrollment rides with the run, SAME path as probe_fleet_reach_wet (review 50900, §3
-  // one enrollment authority / §5 no ambient trust): the collector runs in its OWN
-  // isolated main-push job with a fresh ephemeral HOME and WIF-materialized key but no
-  // durable known_hosts, so it MUST materialize the pinned enrolled-only config before
-  // its SSH legs — otherwise fleet_host_key_enroll_apply's StrictHostKeyChecking-yes pin
-  // never lands here and the collector's ssh either refuses or falls back to ambient
-  // known_hosts (the exact anchor hole the pin closes for the probe). Call it FIRST and
-  // carry its readback in the collect receipt, mirroring the probe entry.
   let enroll_lines = fleet_host_key_enroll_apply()
   let collected = map(fleet_reach_probe_targets, h => collect_host_receipt(host: h))
   let verdict = fleet_convergence_verdict(

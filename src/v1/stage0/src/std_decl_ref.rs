@@ -64,3 +64,53 @@ pub fn decl_field_ref(
         }),
     })
 }
+
+pub fn decl_field_eq(a: Rc<DeclField>, b: Rc<DeclField>) -> bool {
+    match (*a.clone()).clone() {
+        DeclField::WholeDeclaration => match (*b.clone()).clone() {
+            DeclField::WholeDeclaration => true,
+            DeclField::NamedField { field_name: _, .. } => false,
+        },
+        DeclField::NamedField { field_name: fa, .. } => match (*b.clone()).clone() {
+            DeclField::WholeDeclaration => false,
+            DeclField::NamedField { field_name: fb, .. } => (fa.clone() == fb.clone()),
+        },
+    }
+}
+
+pub fn declaration_ref_eq(a: Rc<DeclarationRef>, b: Rc<DeclarationRef>) -> bool {
+    (((a.module_path.clone() == b.module_path.clone())
+        && (a.decl_name.clone() == b.decl_name.clone()))
+        && decl_field_eq(a.field.clone(), b.field.clone()))
+}
+
+pub fn declaration_ref_in_list(
+    target: Rc<DeclarationRef>,
+    refs: Rc<Vec<Rc<DeclarationRef>>>,
+) -> bool {
+    refs.clone()
+        .iter()
+        .cloned()
+        .fold(false, |acc: bool, r: Rc<DeclarationRef>| {
+            (acc || declaration_ref_eq(target.clone(), r.clone()))
+        })
+}
+
+pub fn declaration_ref_display_key(ref_: Rc<DeclarationRef>) -> String {
+    match (*ref_.field.clone()).clone() {
+        DeclField::WholeDeclaration => v1_rt::concat(
+            ref_.module_path.clone(),
+            v1_rt::concat("::".to_string(), ref_.decl_name.clone()),
+        ),
+        DeclField::NamedField { field_name: f, .. } => v1_rt::concat(
+            ref_.module_path.clone(),
+            v1_rt::concat(
+                "::".to_string(),
+                v1_rt::concat(
+                    ref_.decl_name.clone(),
+                    v1_rt::concat("::".to_string(), f.clone()),
+                ),
+            ),
+        ),
+    }
+}

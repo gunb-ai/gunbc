@@ -14,6 +14,7 @@ import std.artifact_store {
 }
 import std.realization { Materialization, Share, Recompute }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 data emit_on_demand_module_note: String = "Witness-realization kernel (plan P3): the pure-spec authority for emit-on-demand native execution — closure ContentHash -> artifact store lookup -> cold (emit+build+run+put) | warm (run-only, compile skipped). Composes P2 std.artifact_store (ContentKeyed, eviction counted) and std.realization (Share on store hit). Source grain (toolchain: source-artifact) is the emit cache; native grain (toolchain: native-artifact) is the zero-compile warm path. The interpreter's surviving roles are named here with dissolution triggers (P3 ACCEPT (c)). Host transport: extdeps.realization.emit_on_demand_host; spine/realize_pack scheduling: v2.std.emit_on_demand. Serial kernel family: emit_host_add (#6879). Fan-out lane 2 (swift-stag-662): emit_host_field_access + emit_host_complement. Width-5 partition ratified on #6879 comment."
 
@@ -91,7 +92,7 @@ fn materialization_for_lookup(lookup: EmitOnDemandLookup) -> Materialization {
 type InterpreterSurvivingRole {
   id: String
   purpose: String
-  dissolution_trigger: String
+  dissolution: DissolutionCondition
 }
 
 type InterpreterWetSurfaceMembership
@@ -99,7 +100,7 @@ type InterpreterWetSurfaceMembership
   | DeclaredFrontier {
       authorities: List<DeclarationRef>,
       reason: String,
-      dissolve_on: String
+      dissolution: DissolutionCondition
     }
 
 type InterpreterWetSurface {
@@ -132,7 +133,7 @@ data gunbc_serve_wet_surface: InterpreterWetSurface = InterpreterWetSurface {
       wet_surface_ref(module_path: "gunbc.roadmap_belt_actuate", decl_name: "belt_dispatch_node")
     ],
     reason: "the in-process belt dispatch is modeled, but the gunbc serve socket accept-loop remains a seed Rust seam and exact declaration-Node resolution is unavailable",
-    dissolve_on: "emit-on-demand materializes the serve closure and its host accept-loop, then the seed handle_serve seam deletes"
+    dissolution: unbound_dissolution(description: "emit-on-demand materializes the serve closure and its host accept-loop, then the seed handle_serve seam deletes")
   }
 }
 
@@ -143,7 +144,7 @@ data main_wet_regen_surface: InterpreterWetSurface = InterpreterWetSurface {
       wet_surface_ref(module_path: "tools.generated_artifact_gate", decl_name: "main_wet")
     ],
     reason: "main_wet is a .dag declaration, but its live Filesystem.Write dispatch still crosses the seed interpreter and exact declaration-Node resolution is unavailable",
-    dissolve_on: "generated-artifact emission runs through a v2-emitted per-grant HandlerBinding and the seed main_wet dispatch path deletes"
+    dissolution: unbound_dissolution(description: "generated-artifact emission runs through a v2-emitted per-grant HandlerBinding and the seed main_wet dispatch path deletes")
   }
 }
 
@@ -154,7 +155,7 @@ data gunbc_ci_emission_surface: InterpreterWetSurface = InterpreterWetSurface {
       wet_surface_ref(module_path: "tools.gunbc_ci", decl_name: "main")
     ],
     reason: "gunbc ci is modeled, but its shell Exec.Run realization still dispatches through the seed interpreter and exact declaration-Node resolution is unavailable",
-    dissolve_on: "the typed CI plan runs through the v2-emitted shell handler selected from its covering grant"
+    dissolution: unbound_dissolution(description: "the typed CI plan runs through the v2-emitted shell handler selected from its covering grant")
   }
 }
 
@@ -166,7 +167,7 @@ data pre_push_transport_surface: InterpreterWetSurface = InterpreterWetSurface {
       wet_surface_ref(module_path: "gunbc.githooks_pre_push_plan", decl_name: "pre_push_active_kinds")
     ],
     reason: "the typed pre-push plan is modeled, while its on-demand claim_batch argv/stdin transport remains in seed Rust and exact declaration-Node resolution is unavailable",
-    dissolve_on: "the emitted crate partition deletes pre_push.rs and the on-demand seed transport, or a usage census proves the transport has no consumers"
+    dissolution: unbound_dissolution(description: "the emitted crate partition deletes pre_push.rs and the on-demand seed transport, or a usage census proves the transport has no consumers")
   }
 }
 
@@ -177,7 +178,7 @@ data probe_bins_surface: InterpreterWetSurface = InterpreterWetSurface {
       wet_surface_ref(module_path: "gunbc.ci_release_bins", decl_name: "witness_declared_release_bins")
     ],
     reason: "witness_declared_release_bins is the exact production WitnessBin transport-name frontier; the binaries remain seed host transports and exact declaration-Node resolution is unavailable",
-    dissolve_on: "probe-bin consumers migrate to v2-emitted execution surfaces and witness_declared_release_bins reaches its host-census-derived form"
+    dissolution: unbound_dissolution(description: "probe-bin consumers migrate to v2-emitted execution surfaces and witness_declared_release_bins reaches its host-census-derived form")
   }
 }
 
@@ -193,17 +194,17 @@ data interpreter_base_surviving_roles: List<InterpreterSurvivingRole> = [
   InterpreterSurvivingRole {
     id: "bootstrap-receipts",
     purpose: "S1 parse census and seed-honesty receipts until native artifacts cover the corpus",
-    dissolution_trigger: "witness_family_fanout complete + ci_floor_cutover on v2-emitted execution"
+    dissolution: unbound_dissolution(description: "witness_family_fanout complete + ci_floor_cutover on v2-emitted execution")
   },
   InterpreterSurvivingRole {
     id: "compile-time-eval",
     purpose: "EqualsClaim expected arm and emit-vs-eval oracle during the emit_host transition",
-    dissolution_trigger: "emit_on_demand agreement witnesses green for every enrolled family"
+    dissolution: unbound_dissolution(description: "emit_on_demand agreement witnesses green for every enrolled family")
   },
   InterpreterSurvivingRole {
     id: "terminal-bootstrap-kernel",
     purpose: "claim_executor host physics (pinned HAND roster — recorded_fixture, resolved_graph_cache)",
-    dissolution_trigger: "v1_quarantine — seed crates frozen as bootstrap artifact only"
+    dissolution: unbound_dissolution(description: "v1_quarantine — seed crates frozen as bootstrap artifact only")
   }
 ]
 
@@ -219,7 +220,7 @@ fn interpreter_surviving_roles_from_wet_surfaces(
         InterpreterSurvivingRole {
           id: "wet-effect-surfaces",
           purpose: "Wet/Record live-effect dispatch for the countable interpreter_wet_surfaces membership",
-          dissolution_trigger: "interpreter_wet_surfaces reaches zero after every effect dispatch selects HandlerBinding from covering_grant + ci_floor_cutover on v2-emitted execution"
+          dissolution: unbound_dissolution(description: "interpreter_wet_surfaces reaches zero after every effect dispatch selects HandlerBinding from covering_grant + ci_floor_cutover on v2-emitted execution")
         }
       ]
     )

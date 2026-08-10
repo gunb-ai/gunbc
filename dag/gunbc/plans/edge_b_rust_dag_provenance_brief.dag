@@ -1,6 +1,7 @@
 module gunbc.plans.edge_b_rust_dag_provenance_brief
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownBlock }
 import gunbc.plans.md_helpers { h2, p, li, ul, ol }
 
@@ -57,7 +58,6 @@ data edge_b_rust_dag_provenance_brief_plan: Plan = Plan {
   slug: "edge-b-rust-dag-provenance-brief",
   title: "Edge-(b) scoped dispatch brief — rust-test ↔ consumed-.dag provenance (the coverage keystone)",
   body: edge_b_rust_dag_provenance_brief_body(),
-  dissolution: HasTrigger {
-    text: "Delete this brief once edge-(b) is built and merged — the rust-test→consumed-.dag closure is a structurally-derived (drift-proof) declared fact on the NodeArtifactProvenance carrier, the coverage wall fires the rust gate on an in-closure .dag change (closure ⊇ actual-reads, lens-checked on correctness not presence), and the affordability selector skips unaffected rust tests — so the scoping decision this doc records is realized."
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this brief once edge-(b) is built and merged — the rust-test→consumed-.dag closure is a structurally-derived (drift-proof) declared fact on the NodeArtifactProvenance carrier, the coverage wall fires the rust gate on an in-closure .dag change (closure ⊇ actual-reads, lens-checked on correctness not presence), and the affordability selector skips unaffected rust tests — so the scoping decision this doc records is realized.")
   }
 }

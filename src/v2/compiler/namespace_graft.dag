@@ -152,6 +152,48 @@ fn namespace_graft_collect_body_edges(root: Node) -> List<Edge> {
   )
 }
 
+// The empty-observation narrow made unwritable (operator ruling msg_d18a55de): a
+// collector that cannot express a module's declarations must not report "this module
+// has none". A pre-graft tree that carries top-level declarations (the
+// dag_surface_top_level_item identity atoms survive the normalize fold on every
+// measured shape) while the collected body is EMPTY is the collector failing to
+// carry the forest — a decidable comparison of two trees in hand, refused loudly.
+// A module with no declarations at all (header only) keeps its legitimate empty
+// body: the discriminant is declaration presence, not body emptiness alone. This
+// guard covers total dissolution; partial-drop fidelity is the deeper graft repair.
+fn namespace_graft_subtree_contains_atom(n: Node, sym: Symbol) -> Bool {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if id == sym {
+        true
+      } else {
+        namespace_graft_children_contain_atom(n: n, sym: sym)
+      }
+    _ => namespace_graft_children_contain_atom(n: n, sym: sym)
+  }
+}
+
+fn namespace_graft_children_contain_atom(n: Node, sym: Symbol) -> Bool {
+  fold(n.children, init: false, f: fn(found, e) {
+    if found {
+      true
+    } else {
+      namespace_graft_subtree_contains_atom(n: e.target, sym: sym)
+    }
+  })
+}
+
+fn namespace_graft_body_dissolved(root: Node, body_edges: List<Edge>) -> Bool {
+  if count(body_edges) == 0 {
+    namespace_graft_subtree_contains_atom(
+      n: namespace_graft_unwrap_module_working_root(root: root),
+      sym: ^dag_surface_top_level_item
+    )
+  } else {
+    false
+  }
+}
+
 fn namespace_graft_build_body_conj(edges: List<Edge>) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -276,9 +318,17 @@ fn module_header_containment_graft(root: Node) -> Outcome<Node> {
             })
           Cons { head: _, tail: _ } => {
             let body_edges = namespace_graft_collect_body_edges(root: root)
-            let body = namespace_graft_build_body_conj(edges: body_edges)
-            let spine = namespace_graft_fold_spine(qn: qn, body: body)
-            outcome_accepted(value: namespace_graft_wrap_module_shell(captured: spine))
+            if namespace_graft_body_dissolved(root: root, body_edges: body_edges) {
+              outcome_rejected(Diagnostic {
+                reason: ^namespace_graft_body_dissolved_refused,
+                at: node_locus(node: root),
+                correction: Unavailable { reason: ExternalContractUnknown }
+              })
+            } else {
+              let body = namespace_graft_build_body_conj(edges: body_edges)
+              let spine = namespace_graft_fold_spine(qn: qn, body: body)
+              outcome_accepted(value: namespace_graft_wrap_module_shell(captured: spine))
+            }
           }
         }
     }

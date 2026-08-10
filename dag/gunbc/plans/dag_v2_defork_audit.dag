@@ -1,6 +1,7 @@
 module gunbc.plans.dag_v2_defork_audit
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone, ThematicBreak }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row }
 
@@ -135,7 +136,6 @@ data dag_v2_defork_audit_plan: Plan = Plan {
   slug: "dag-v2-defork-audit",
   title: "Plan — De-fork `dag/` ↔ `src/v2/` (collapse the duplicated standard library)",
   body: dag_v2_defork_audit_body(),
-  dissolution: HasTrigger {
-    text: "Delete this doc when the fork census reaches zero — when no `std` basename denotes two concepts and every concept has a single authority. The census now has **three categories**, dissolving on different triggers: **(a) True mirrors** (`reducible`, `measure`) — mechanical collapse; dissolve into their carriers (absent files, re-pointed imports) as each PR lands. Plus `probe_selector` (the step-4 data-import unblock), independent. **(b) Grounding divergences** (`algebra`, `logic`, `nat`, `integer`, `float`, `effects`, `verification`) — downstream of the operator's grounding-unification design; tracked here as decision-input until that design lands and the repoints become mechanical. **(c) v1-artifact collisions** (`node`, `coercion`) — deferred to v1-shrink; trigger \"when v1's consumers of `dag/std/\{node,coercion\}` are removed\" (`node` self-dissolves, `coercion` shrinks to a v1-free rename). At the point all three are resolved the carriers tell the whole story and this audit is redundant."
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the fork census reaches zero — when no `std` basename denotes two concepts and every concept has a single authority. The census now has **three categories**, dissolving on different triggers: **(a) True mirrors** (`reducible`, `measure`) — mechanical collapse; dissolve into their carriers (absent files, re-pointed imports) as each PR lands. Plus `probe_selector` (the step-4 data-import unblock), independent. **(b) Grounding divergences** (`algebra`, `logic`, `nat`, `integer`, `float`, `effects`, `verification`) — downstream of the operator's grounding-unification design; tracked here as decision-input until that design lands and the repoints become mechanical. **(c) v1-artifact collisions** (`node`, `coercion`) — deferred to v1-shrink; trigger \"when v1's consumers of `dag/std/\{node,coercion\}` are removed\" (`node` self-dissolves, `coercion` shrinks to a v1-free rename). At the point all three are resolved the carriers tell the whole story and this audit is redundant.")
   }
 }

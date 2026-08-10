@@ -1,7 +1,30 @@
 module std.roster_frontier
 
 import std.keyed_row { KeyedRow }
-import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, decl_ref, decl_field_ref }
+import std.decl_ref {
+  DeclarationRef,
+  DeclField,
+  WholeDeclaration,
+  NamedField,
+  decl_ref,
+  decl_field_ref,
+  declaration_ref_display_key,
+  declaration_ref_eq,
+  declaration_ref_in_list,
+}
+import std.dissolution {
+  DissolutionCondition,
+  BoundDissolution,
+  UnboundDissolution,
+  DeclarationAppears,
+  dissolution_trigger_ref,
+  DissolutionUnbound,
+  DissolutionPending,
+  DissolutionFired,
+  dissolution_status,
+  bound_dissolution,
+  unbound_dissolution,
+}
 import std.keyed_roster {
   KeyedRosterBuild,
   KeyedRosterBuilt,
@@ -10,84 +33,39 @@ import std.keyed_roster {
 }
 import std.types { NonEmptyStr }
 
-data roster_frontier_note: String = "The typed declared-frontier row (DESIGN section 7 self-host-frontier pattern generalized to any group of units, operator ruling 2026-07-22): a row is admissible only as a counted carrier beside its subject, carrying reason and a typed migration trigger — never a bare string in a nickname list. subject anchors the annotated declaration (DeclSubject) or a path-keyed roster member (PathSubject); reason says why the row exists; trigger names the checkable condition under which the row deletes. The group-grain taxonomy and enrolled roster registry live in gunbc.roster_registry; this module owns only the row shape so std-, lens-, and workflow-layer rosters share one carrier instead of re-minting it per file."
-
 type FrontierSubject
   = PathSubject { path: String }
   | DeclSubject { ref: DeclarationRef }
 
-type DissolveTrigger
-  = TriggerDeclExists { ref: DeclarationRef }
-  | TriggerProse { text: String }
-
 type FrontierRow {
   subject: FrontierSubject
-  reason: String
-  trigger: DissolveTrigger
+  reason: NonEmptyStr
+  dissolution: DissolutionCondition
 }
 
-fn frontier_row_path(path: String, reason: String, trigger: DissolveTrigger) -> FrontierRow {
-  FrontierRow { subject: PathSubject { path: path }, reason: reason, trigger: trigger }
-}
-
-fn frontier_row(unit: String, reason: String, dissolve_on: String) -> FrontierRow {
-  frontier_row_path(
-    path: unit,
-    reason: reason,
-    trigger: TriggerProse { text: dissolve_on },
-  )
-}
-
-fn frontier_row_decl(ref: DeclarationRef, reason: String, trigger: DissolveTrigger) -> FrontierRow {
-  FrontierRow { subject: DeclSubject { ref: ref }, reason: reason, trigger: trigger }
-}
-
-fn decl_field_eq(a: DeclField, b: DeclField) -> Bool {
-  match a {
-    WholeDeclaration =>
-      match b {
-        WholeDeclaration => true
-        NamedField { field_name: _ } => false
-      }
-    NamedField { field_name: fa } =>
-      match b {
-        WholeDeclaration => false
-        NamedField { field_name: fb } => fa == fb
-      }
+fn frontier_row_path(path: String, reason: String, dissolution: DissolutionCondition) -> FrontierRow {
+  FrontierRow {
+    subject: PathSubject { path: path },
+    reason: reason as NonEmptyStr,
+    dissolution: dissolution,
   }
 }
 
-fn declaration_ref_eq(a: DeclarationRef, b: DeclarationRef) -> Bool {
-  a.module_path == b.module_path
-    && a.decl_name == b.decl_name
-    && decl_field_eq(a: a.field, b: b.field)
-}
-
-fn declaration_ref_in_list(target: DeclarationRef, refs: List<DeclarationRef>) -> Bool {
-  fold(refs, init: false, f: fn(acc, r) { acc || declaration_ref_eq(a: target, b: r) })
-}
-
-fn prose_in_list(text: String, prose_fired: List<String>) -> Bool {
-  fold(prose_fired, init: false, f: fn(acc, t) { acc || t == text })
-}
-
-fn dissolve_trigger_fired(
-  trigger: DissolveTrigger,
-  prose_fired: List<String>,
-  present_decls: List<DeclarationRef>,
-) -> Bool {
-  match trigger {
-    TriggerDeclExists { ref: r } => declaration_ref_in_list(target: r, refs: present_decls)
-    TriggerProse { text: t } => prose_in_list(text: t, prose_fired: prose_fired)
+fn frontier_row_decl(ref: DeclarationRef, reason: String, dissolution: DissolutionCondition) -> FrontierRow {
+  FrontierRow {
+    subject: DeclSubject { ref: ref },
+    reason: reason as NonEmptyStr,
+    dissolution: dissolution,
   }
 }
 
 fn frontier_row_well_formed(row: FrontierRow) -> Bool {
-  !(row.reason == "")
-    && match row.trigger {
-      TriggerDeclExists { ref: r } =>
-        !(r.module_path == "") && !(r.decl_name == "")
-      TriggerProse { text: t } => !(t == "")
+  !(row.reason as String == "")
+    && match row.dissolution {
+      BoundDissolution { trigger: t } =>
+        !(dissolution_trigger_ref(trigger: t).module_path == "")
+          && !(dissolution_trigger_ref(trigger: t).decl_name == "")
+      UnboundDissolution { description: d } => !(d as String == "")
     }
     && match row.subject {
       PathSubject { path: p } => !(p == "")
@@ -97,18 +75,6 @@ fn frontier_row_well_formed(row: FrontierRow) -> Bool {
 
 fn frontier_rows_well_formed(rows: List<FrontierRow>) -> Bool {
   fold(rows, init: true, f: fn(acc, row) { acc && frontier_row_well_formed(row: row) })
-}
-
-fn declaration_ref_display_key(ref: DeclarationRef) -> String {
-  match ref.field {
-    WholeDeclaration =>
-      concat(ref.module_path as String, concat("::", ref.decl_name as String))
-    NamedField { field_name: f } =>
-      concat(
-        ref.module_path as String,
-        concat("::", concat(ref.decl_name as String, concat("::", f as String))),
-      )
-  }
 }
 
 fn frontier_subject_eq(a: FrontierSubject, b: FrontierSubject) -> Bool {
@@ -146,33 +112,38 @@ fn concat_frontier_row_groups(groups: List<List<FrontierRow>>) -> List<FrontierR
 }
 
 type FrontierExpiryReport {
-  unfired_count: Int
+  unbound_count: Int
+  pending_count: Int
   fired_still_present_count: Int
 }
 
 fn fold_frontier_expiry(
   rows: List<FrontierRow>,
-  prose_fired: List<String>,
   present_decls: List<DeclarationRef>,
 ) -> FrontierExpiryReport {
   fold(
     rows,
-    init: FrontierExpiryReport { unfired_count: 0, fired_still_present_count: 0 },
+    init: FrontierExpiryReport { unbound_count: 0, pending_count: 0, fired_still_present_count: 0 },
     f: fn(acc, row) {
-      if dissolve_trigger_fired(
-        trigger: row.trigger,
-        prose_fired: prose_fired,
-        present_decls: present_decls,
-      ) {
-        FrontierExpiryReport {
-          unfired_count: acc.unfired_count,
-          fired_still_present_count: acc.fired_still_present_count + 1,
-        }
-      } else {
-        FrontierExpiryReport {
-          unfired_count: acc.unfired_count + 1,
-          fired_still_present_count: acc.fired_still_present_count,
-        }
+      match dissolution_status(condition: row.dissolution, present_decls: present_decls) {
+        DissolutionUnbound =>
+          FrontierExpiryReport {
+            unbound_count: acc.unbound_count + 1,
+            pending_count: acc.pending_count,
+            fired_still_present_count: acc.fired_still_present_count,
+          }
+        DissolutionPending =>
+          FrontierExpiryReport {
+            unbound_count: acc.unbound_count,
+            pending_count: acc.pending_count + 1,
+            fired_still_present_count: acc.fired_still_present_count,
+          }
+        DissolutionFired =>
+          FrontierExpiryReport {
+            unbound_count: acc.unbound_count,
+            pending_count: acc.pending_count,
+            fired_still_present_count: acc.fired_still_present_count + 1,
+          }
       }
     },
   )

@@ -1,5 +1,7 @@
 module tools.dag_compile_clean_shard_roster
 
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
+
 import gunbc.ci_layer_roots { witness_layer_roots }
 import tools.dag_compile_clean_partition {
   CompileCleanModuleShard,
@@ -187,7 +189,7 @@ data compile_clean_shard_entry_paths_fast_hand_rust_scaffold: Disposition = Scaf
 
 data compile_clean_shard_entry_paths_fast_hand_rust_receipt_census: String = "rg '^pub(crate) const CLI_RUN_COMPILE_CLEAN_SHARD_ENTRY_PATHS_FAST_SCAFFOLD_MARKER' src/v1/stage0/src/cli_run.rs == 1"
 
-data compile_clean_shard_entry_paths_fast_hand_rust_dissolve_trigger: String = "🟡 dissolve-on: CLI_RUN_COMPILE_CLEAN_SHARD_ENTRY_PATHS_FAST_SCAFFOLD_MARKER (src/v1/stage0/src/cli_run.rs compile_clean_shard_entry_paths_from_decl_facts / compile_clean_shard_entry_paths_fast) — host floor-CI realization of tools.dag_compile_clean_shard_roster.compile_clean_shard_entry_paths_from keyed via std.keyed_roster.keyed_roster_build because the wet interpreter path cold-scans ~minutes (dag_compile_clean_scope import note). Not a second roster authority: duplicate-key refusal must match KeyedRosterBuildDuplicateKey / RefuseShardRosterDuplicate semantics proven on compile_clean_shard_entry_paths_fast_hand_rust_receipt_census and compile_clean_shard_entry_paths_fast_scaffold_marker_declaration_is_singular in cli_run.rs until deletion. DISSOLVES WHEN docs/plans/floor-shared-compute-memoization.md M2 entry-graph union / per-entry memoization or docs/plans/witness-realization-plan.md makes the modeled .dag entry callable on the floor hot path without this parallel Rust keyed_roster_build."
+data compile_clean_shard_entry_paths_fast_hand_rust_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: CLI_RUN_COMPILE_CLEAN_SHARD_ENTRY_PATHS_FAST_SCAFFOLD_MARKER (src/v1/stage0/src/cli_run.rs compile_clean_shard_entry_paths_from_decl_facts / compile_clean_shard_entry_paths_fast) — host floor-CI realization of tools.dag_compile_clean_shard_roster.compile_clean_shard_entry_paths_from keyed via std.keyed_roster.keyed_roster_build because the wet interpreter path cold-scans ~minutes (dag_compile_clean_scope import note). Not a second roster authority: duplicate-key refusal must match KeyedRosterBuildDuplicateKey / RefuseShardRosterDuplicate semantics proven on compile_clean_shard_entry_paths_fast_hand_rust_receipt_census and compile_clean_shard_entry_paths_fast_scaffold_marker_declaration_is_singular in cli_run.rs until deletion. DISSOLVES WHEN docs/plans/floor-shared-compute-memoization.md M2 entry-graph union / per-entry memoization or docs/plans/witness-realization-plan.md makes the modeled .dag entry callable on the floor hot path without this parallel Rust keyed_roster_build.")
 
 data compile_clean_shard_entry_paths_fast_hand_rust_receipt_plan_anchor: String = "tools.dag_compile_clean_shard_roster compile_clean_shard_entry_paths_from"
 
