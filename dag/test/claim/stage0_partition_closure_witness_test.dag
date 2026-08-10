@@ -1,0 +1,184 @@
+module test.claim.stage0_partition_closure_witness_test
+
+import std.types { Bool, String, List, Int }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.stage0_crate_partition_generated {
+  GeneratedPartitionCrateRow,
+  generated_partition_crate_rows,
+}
+import gunbc.stage0_partition_closure {
+  PartitionClosureVerdict,
+  PartitionClosureHolds,
+  PartitionClosureRefused,
+  PartitionClosureDefect,
+  PartitionAuthorityId,
+  PartitionCrateRoster,
+  PartitionModuleEdgeList,
+  partition_closure_verdict,
+  partition_closure_verdict_for_rows,
+  reachable_basenames_in,
+  list_contains_string,
+}
+
+data witness_live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data witness_subject_note: String = "SUBJECT: adding one module must be ONE action, and the drift gate must REFUSE when it is not. The incident this reproduces cost three separate hand commits discovered by three CI round trips - the ci.yml heal exclusion list, the stage0 seed .rs, and the crate partition roster plus a lib.rs mod line - because each generator derives from a different partial authority and none knows about the others. The generated-artifact gate reported ZERO DRIFT throughout, because its roster covers neither the emitted stage0 seed nor the partition crate lib.rs files; it was answering a question about its own registered population and being read as answering one about the tree. The RED below removes a roster row from a COPY of the live rows and requires a located refusal naming the roster; the positive controls require that the unmodified live corpus holds and that transitive reexport visibility is honoured, because a check that refuses correct rows is worse than none."
+
+// ---------------------------------------------------------------------------
+// Positive controls
+// ---------------------------------------------------------------------------
+
+// The live corpus must HOLD. This is the control that would have caught the three invariant
+// candidates that were tried and discarded during design: roster-completeness (75 emit-plan
+// modules are legitimately unassigned), roster-mates-only (`use crate::NonEmptyVec` names a
+// type, not a module), and own-pub-mod-only (crates reach each other by glob reexport). Each
+// of those would refuse rows that are correct, and each would red exactly here.
+test fn w_live_corpus_partition_closure_holds() -> Bool {
+  match partition_closure_verdict() {
+    PartitionClosureHolds { extent: _ } => true
+    PartitionClosureRefused { extent: _, defects: _ } => false
+  }
+}
+
+// Transitive reexport visibility: v1-stage0-std-surface reexports v1-stage0-std-core, so a
+// std-core module is reachable from std-surface. Membership alone is not reachability.
+test fn w_transitive_reexport_is_reachable() -> Bool {
+  let reach = reachable_basenames_in(
+    rows: generated_partition_crate_rows,
+    package: "v1-stage0-std-surface",
+    fuel: 8
+  )
+  list_contains_string(xs: reach, needle: "std_types")
+    && list_contains_string(xs: reach, needle: "std_effects")
+}
+
+// A crate that reexports nothing must NOT see another crate's modules. Without this, the
+// reachability rule could be vacuously true by returning everything, and the RED below would
+// pass for the wrong reason.
+test fn w_reachability_is_not_universal() -> Bool {
+  let runtime_reach = reachable_basenames_in(
+    rows: generated_partition_crate_rows,
+    package: "v1-stage0-runtime",
+    fuel: 8
+  )
+  !list_contains_string(xs: runtime_reach, needle: "std_measure")
+}
+
+// THE VERDICT CARRIES ITS OWN EXTENT. A clean answer that does not state the population it
+// covered is the exact shape that let "zero drift" be read as "tree consistent".
+test fn w_verdict_carries_its_extent() -> Bool {
+  match partition_closure_verdict() {
+    PartitionClosureHolds { extent: e } =>
+      e.crates_considered > 0 && e.modules_considered > 0 && e.edges_considered > 0
+    PartitionClosureRefused { extent: e, defects: _ } =>
+      e.crates_considered > 0 && e.modules_considered > 0 && e.edges_considered > 0
+  }
+}
+
+// ---------------------------------------------------------------------------
+// RED controls — the incident, reproduced against live rows
+// ---------------------------------------------------------------------------
+
+// Drop one module from one crate's roster, exactly as a forgotten roster row would.
+fn rows_without_module(drop_package: String, drop_module: String) -> List<GeneratedPartitionCrateRow> {
+  generated_partition_crate_rows
+    |> fold(init: [], f: fn(acc, row) {
+      if row.package_name == drop_package {
+        concat(acc, [GeneratedPartitionCrateRow {
+          package_name: row.package_name,
+          crate_dir: row.crate_dir,
+          kind: row.kind,
+          modules: row.modules |> fold(init: [], f: fn(ms, m) {
+            if m == drop_module { ms } else { concat(ms, [m]) }
+          }),
+          reexport_packages: row.reexport_packages,
+          carries_non_empty_wrappers: row.carries_non_empty_wrappers,
+        }])
+      } else {
+        concat(acc, [row])
+      }
+    })
+}
+
+fn defect_count(v: PartitionClosureVerdict) -> Int {
+  match v {
+    PartitionClosureHolds { extent: _ } => 0
+    PartitionClosureRefused { extent: _, defects: d } =>
+      d |> fold(init: 0, f: fn(a, x) { a + 1 })
+  }
+}
+
+// RED 1 — THE INCIDENT. std_measure consumes std_types; remove std_types from the roster and
+// the gate must REFUSE. This is the iso_80000_3 failure in the shape the live tree can express:
+// a module the partition needs, absent from the hand-authored roster, with every generated
+// artifact still self-consistent. If this returns Holds, the gate is the lie it replaces.
+test fn red_missing_roster_row_refuses() -> Bool {
+  let perturbed = partition_closure_verdict_for_rows(
+    rows: rows_without_module(drop_package: "v1-stage0-std-core", drop_module: "std_types")
+  )
+  defect_count(v: perturbed) > 0
+}
+
+// RED 2 — the refusal must be LOCATED and must name WHICH authority is incomplete, not merely
+// report that something is wrong. A refusal that does not name the roster sends the author
+// round the loop to find it.
+test fn red_refusal_names_the_incomplete_authority() -> Bool {
+  match partition_closure_verdict_for_rows(
+    rows: rows_without_module(drop_package: "v1-stage0-std-core", drop_module: "std_types")
+  ) {
+    PartitionClosureHolds { extent: _ } => false
+    PartitionClosureRefused { extent: _, defects: d } =>
+      d |> fold(init: false, f: fn(found, x) {
+        if found {
+          true
+        } else {
+          (x.target_basename as String) == "std_types"
+            && !((x.importer_basename as String) == "")
+            && !((x.owning_package as String) == "")
+            && authority_is_roster(a: x.incomplete_authority)
+        }
+      })
+  }
+}
+
+fn authority_is_roster(a: PartitionAuthorityId) -> Bool {
+  match a {
+    PartitionCrateRoster => true
+    PartitionModuleEdgeList => false
+  }
+}
+
+// RED 3 — ALL incomplete authorities in ONE run. Dropping two modules must produce defects for
+// both, not just the first one hit. A refusal that stops at the first re-serialises exactly the
+// round trips this gate exists to collapse.
+test fn red_reports_every_incomplete_authority_in_one_run() -> Bool {
+  let two_dropped = rows_without_module(drop_package: "v1-stage0-std-core", drop_module: "std_types")
+    |> fold(init: [], f: fn(acc, row) {
+      if row.package_name == "v1-stage0-std-core" {
+        concat(acc, [GeneratedPartitionCrateRow {
+          package_name: row.package_name,
+          crate_dir: row.crate_dir,
+          kind: row.kind,
+          modules: row.modules |> fold(init: [], f: fn(ms, m) {
+            if m == "std_nat" { ms } else { concat(ms, [m]) }
+          }),
+          reexport_packages: row.reexport_packages,
+          carries_non_empty_wrappers: row.carries_non_empty_wrappers,
+        }])
+      } else {
+        concat(acc, [row])
+      }
+    })
+  match partition_closure_verdict_for_rows(rows: two_dropped) {
+    PartitionClosureHolds { extent: _ } => false
+    PartitionClosureRefused { extent: _, defects: d } => {
+      let saw_types = d |> fold(init: false, f: fn(f0, x) {
+        if f0 { true } else { (x.target_basename as String) == "std_types" }
+      })
+      let saw_nat = d |> fold(init: false, f: fn(f1, x) {
+        if f1 { true } else { (x.target_basename as String) == "std_nat" }
+      })
+      saw_types && saw_nat
+    }
+  }
+}

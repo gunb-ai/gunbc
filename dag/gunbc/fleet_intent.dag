@@ -36,6 +36,7 @@ import std.realization_schedule { CostAccount }
 import std.realization_measurement { cost_account_measured_from_time_and_space, space_measure_list_seq }
 import std.nat { Nat }
 import std.float { Float }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 type IsolationBoundary = SharedHostHome | PerJobFilesystem | ContainerHermetic | Vm
 type ContainerRuntime = Docker | Podman | Gvisor | Ubicloud | GcloudRun
@@ -286,14 +287,14 @@ type FleetHostMemoryPopulationDeferral {
   host: HostIdentity
   bmc_host: NonEmptyStr
   cause: NonEmptyStr
-  dissolution_trigger: NonEmptyStr
+  dissolution: DissolutionCondition
 }
 
 data srv4_memory_population_deferral: FleetHostMemoryPopulationDeferral = FleetHostMemoryPopulationDeferral {
   host: operator_host_srv4,
   bmc_host: "192.168.1.195",
   cause: "per-DIMM Redfish observation not yet taken: srv4 BMC credential is rotated and stored (bmc-srv4-admin) but this session has no reach-secrets path to authenticate the read (fleet_subsumption_manual_gaps A2)",
-  dissolution_trigger: "authenticated read of 192.168.1.195 /redfish/v1/Systems/system/Memory — cite srv4_memory_population rows against the sk_hynix catalog (decode part numbers, never assume srv1's uniform AFR4N population), replace srv4_host.memory literal with memory_devices_from_population(pop: srv4_memory_population), and retire this deferral exactly as srv1/srv2's were at their 2026-07-16 observations (fleet_host_memory_nominal_vs_usable_note governs the usable-vs-nominal split)",
+  dissolution: unbound_dissolution(description: "authenticated read of 192.168.1.195 /redfish/v1/Systems/system/Memory — cite srv4_memory_population rows against the sk_hynix catalog (decode part numbers, never assume srv1's uniform AFR4N population), replace srv4_host.memory literal with memory_devices_from_population(pop: srv4_memory_population), and retire this deferral exactly as srv1/srv2's were at their 2026-07-16 observations (fleet_host_memory_nominal_vs_usable_note governs the usable-vs-nominal split)"),
 }
 
 data srv4_memory_population_deferral_disposition: Disposition = Scaffold {

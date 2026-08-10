@@ -38,7 +38,9 @@ import gunbc.merge_admission_produce { ci_repo_root_shell }
 import v2.workflow.ci_retry_emit { ci_cargo_eagain_retry_script }
 import v2.workflow.ci_v1_compiler_tests_compile_gate_emit {
   ci_v1_compiler_tests_compile_gate_command,
+  ci_interpreter_parity_controls_command,
   ci_v1_compiler_tests_compile_gate_shell_emit_dissolution_trigger,
+  ci_interpreter_parity_controls_shell_emit_dissolution_trigger,
 }
 import v2.workflow.ci_heal_revalidation_preflight_emit {
   ci_heal_revalidation_preflight_script,
@@ -93,6 +95,7 @@ import extdeps.github.actions {
   google_auth_action,
   upload_artifact_action, download_artifact_action
 }
+import std.dissolution { dissolution_description }
 
 fn ci_checkout_step() -> Step {
   UsesStep {
@@ -335,12 +338,42 @@ fn ci_v1_compiler_tests_compile_gate_run_script() -> String {
       concat(
         concat(
           "# ",
-          concat(ci_v1_compiler_tests_compile_gate_shell_emit_dissolution_trigger, "\n")
+          concat(dissolution_description(condition: ci_v1_compiler_tests_compile_gate_shell_emit_dissolution_trigger), "\n")
         ),
         ci_cargo_eagain_retry_script(command: ci_v1_compiler_tests_compile_gate_command())
       )
     )
   )
+}
+
+fn ci_interpreter_parity_controls_run_script() -> String {
+  concat(
+    "set -e\n",
+    concat(
+      concat("ROOT=", ci_repo_root_shell(), "\n"),
+      concat(
+        concat(
+          "# ",
+          concat(ci_interpreter_parity_controls_shell_emit_dissolution_trigger, "\n")
+        ),
+        ci_cargo_eagain_retry_script(command: ci_interpreter_parity_controls_command())
+      )
+    )
+  )
+}
+
+fn ci_interpreter_parity_controls_step() -> Step {
+  RunStep {
+    name: Present { value: "cargo test -p v1-compiler --release --lib value_hash_materialization grouping_primitive (executes the interpreter controls the compile gate only compiles)" },
+    id: none,
+    run: ci_interpreter_parity_controls_run_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
 }
 
 fn ci_v1_compiler_tests_compile_gate_step() -> Step {
@@ -1048,7 +1081,7 @@ fn ci_build_job() -> Job {
     id: "build",
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
-    steps: concat(ci_heal_revalidation_prelude_steps(), [ci_fmt_gate_step(), ci_release_build_step(), ci_v1_compiler_tests_compile_gate_step(), ci_stage0_partition_compile_gate_step(), ci_release_bins_pack_step(), ci_release_bins_upload_step()]),
+    steps: concat(ci_heal_revalidation_prelude_steps(), [ci_fmt_gate_step(), ci_release_build_step(), ci_v1_compiler_tests_compile_gate_step(), ci_interpreter_parity_controls_step(), ci_stage0_partition_compile_gate_step(), ci_release_bins_pack_step(), ci_release_bins_upload_step()]),
     needs: [],
     env: none,
     outputs: none,
@@ -1110,7 +1143,7 @@ fn ci_regen_job() -> Job {
   }
 }
 
-data ci_merge_group_trigger_note: String = "merge_group trigger: the merge queue constructs the tree that will actually land on main and asks for checks on THAT tree — the queue is the operational realization of gunbc.merge_admission KeyedReceipt on the tree axis (the verdict's identity IS the landing tree's identity), and the roster axis rides along because the gate roster is in-tree, so a roster change is a tree change. The theorem that this is the policy admitting zero unverified tips across every bounded interleaving — and that GitHub's strict-up-to-date boolean is NOT sufficient — is test.claim.merge_lifecycle_interleaving_witness. Queue runs see github.ref = gh-readonly-queue/*, so the deploy job's main-push guard skips them, the concurrency group falls through pull_request.number to run_id (no cross-cancellation), and the merge-admission stamp takes its non-PR arm (absent pr_number). If the floor's merge-base diff observation cannot resolve on a queue ref it falls through to the full floor — fail-closed, never widening; affected-set-scoping queue runs is a later optimization. The trigger is inert until the operator adds the merge_queue rule to the main ruleset (Rulesets API write needs the admin grant this integration lacks — gunbc.plans.branch_merge_admission_model section 5); land the trigger FIRST, flip the rule SECOND, else the queue waits forever on a check the workflow never reports."
+data ci_merge_group_trigger_note: String = "merge_group trigger: the merge queue constructs the tree that will actually land on main and asks for checks on THAT tree — the queue is the operational realization of gunbc.merge_admission KeyedReceipt on the tree axis (the verdict's identity IS the landing tree's identity), and the roster axis rides along because the gate roster is in-tree, so a roster change is a tree change. The theorem that this is the policy admitting zero unverified tips across every bounded interleaving — and that GitHub's strict-up-to-date boolean is NOT sufficient — is test.claim.merge_lifecycle_interleaving_witness. Queue runs see github.ref = gh-readonly-queue/*, so the deploy job's main-push guard skips them, the concurrency group falls through pull_request.number to github.ref (shared per queue ref; cancel-in-progress is false for merge_group), and the merge-admission stamp takes its non-PR arm (absent pr_number). If the floor's merge-base diff observation cannot resolve on a queue ref it falls through to the full floor — fail-closed, never widening; affected-set-scoping queue runs is a later optimization. The trigger is inert until the operator adds the merge_queue rule to the main ruleset (Rulesets API write needs the admin grant this integration lacks — gunbc.plans.branch_merge_admission_model section 5); land the trigger FIRST, flip the rule SECOND, else the queue waits forever on a check the workflow never reports."
 
 data ci_workflow: Workflow = {
   name: "ci",

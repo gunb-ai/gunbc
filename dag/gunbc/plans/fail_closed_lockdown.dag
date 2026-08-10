@@ -1,6 +1,7 @@
 module gunbc.plans.fail_closed_lockdown
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone, Checked, Unchecked }
 import gunbc.plans.md_helpers { h2, p, li, ul, ol, task, tasks, cell, row }
 
@@ -90,7 +91,6 @@ data fail_closed_lockdown_plan: Plan = Plan {
   slug: "fail-closed-lockdown",
   title: "Plan — Fail-closed lock-down (make fail-open physically impossible to write)",
   body: fail_closed_lockdown_body(),
-  dissolution: HasTrigger {
-    text: "Delete this doc when the §4 checklist is green: every discipline has a discovered, fail-closed, discriminating CI witness, and the meta-invariant gate exists so a new inert lens cannot be added. At that point the floor *is* the lock-down and this audit is redundant."
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the §4 checklist is green: every discipline has a discovered, fail-closed, discriminating CI witness, and the meta-invariant gate exists so a new inert lens cannot be added. At that point the floor *is* the lock-down and this audit is redundant.")
   }
 }

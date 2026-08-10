@@ -12,8 +12,7 @@ import gunbc.generated_artifact {
   GeneratedArtifact, CiYamlArtifact, FalsifierYamlArtifact, GithooksPrePushArtifact, artifact_path
 }
 import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
-import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField }
-import std.roster_frontier { declaration_ref_eq, declaration_ref_in_list }
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, declaration_ref_eq, declaration_ref_in_list }
 import std.types { NonEmptyStr, FilePath }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import extdeps.git

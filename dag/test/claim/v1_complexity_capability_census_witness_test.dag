@@ -1,5 +1,7 @@
 module test.claim.v1_complexity_capability_census_witness_test
 
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
 import std.types { String, NonEmptyStr, Bool, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import gunbc.v1_complexity_capability_census {
@@ -320,3 +322,5 @@ test fn w_cited_carrier_absence_is_structural_not_a_lookup_failure() -> Bool {
     Absent => false
   }
 }
+
+data w_retirement_is_owed_until_replacement_dissolve_on: DissolutionCondition = unbound_dissolution(description: "the replacement for the v1 walker realization EXECUTES; retirement is owed, not due, because retiring before the replacement executes deletes a live capability, so the trigger is the replacement running green and not the migration row being authored")

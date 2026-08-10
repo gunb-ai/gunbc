@@ -1,5 +1,7 @@
 module v1.tests.claim.required_expr_newline_continuation_test
 
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
 import v1.std.core {
   NewlineIndex,
   build_newline_index,
@@ -12,8 +14,6 @@ import v1.compiler.parse {
 }
 
 data required_expr_newline_continuation_offline_recipe: String = "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/required_expr_newline_continuation_test.dag --functions w_untyped_let_newline_before_initializer,w_typed_let_newline_before_initializer,w_return_newline_before_expression,w_for_newline_before_collection,w_statement_boundary_after_complete_initializer,w_untyped_let_newline_then_rbrace_refuses,w_return_newline_then_rbrace_refuses,w_for_newline_then_block_without_collection_refuses"
-
-data required_expr_newline_continuation_dissolve_on: String = "DISSOLVE-ON: fold into v2 parser witness corpus when v1 claim discovery is retired; until then this is the durable floor-enrolled authority for required-expression newline continuation (review #7564)."
 
 fn newline_parse_ctx(file: String, source: String) -> ParseContext {
   ParseContext {
@@ -103,3 +103,5 @@ test fn w_for_newline_then_block_without_collection_refuses() -> Bool {
     file: "for_newline_missing_collection.dag"
   )
 }
+
+data required_expr_newline_continuation_dissolve_on: DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: fold into v2 parser witness corpus when v1 claim discovery is retired; until then this is the durable floor-enrolled authority for required-expression newline continuation (review #7564).")

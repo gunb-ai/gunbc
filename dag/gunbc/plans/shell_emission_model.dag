@@ -1,6 +1,7 @@
 module gunbc.plans.shell_emission_model
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownBlock, CodeBlock, TableBlock, BlockquoteBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row }
 
@@ -67,7 +68,6 @@ data shell_emission_model_plan: Plan = Plan {
   slug: "shell-emission-model",
   title: "Shell emission model — orchestration intent to bash via emit(intent, Bash)",
   body: shell_emission_model_body(),
-  dissolution: HasTrigger {
-    text: "Delete this doc when all shell-emit sites route through emit(intent,Bash), host_effect Phase B has dissolved ShellCommand\{script\} onto modeled orchestration intent, and the intent-layer residual census (Categories A–C) is empty. (`program.dag` sidecar deletion is complete — #6831.)"
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when all shell-emit sites route through emit(intent,Bash), host_effect Phase B has dissolved ShellCommand\{script\} onto modeled orchestration intent, and the intent-layer residual census (Categories A–C) is empty. (`program.dag` sidecar deletion is complete — #6831.)")
   }
 }

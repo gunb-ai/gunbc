@@ -1,5 +1,7 @@
 module v2.workflow.ci_release_build_emit
 
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
+
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.ci_spec {
@@ -21,11 +23,11 @@ data ci_release_build_shell_emit_scaffold: Disposition = Scaffold {
   }
 }
 
-data ci_release_build_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_release_build_script — concat-built foreign-executor (GitHub Actions run:) release-build runner (ROOT stamp + verify-artifacts + sccache stats wrapping the orch-emitted EAGAIN retry core); membership of --bin / verify paths is derived from gunbc.ci_release_bins, but the runner transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the release-build runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold"
+data ci_release_build_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_release_build_script — concat-built foreign-executor (GitHub Actions run:) release-build runner (ROOT stamp + verify-artifacts + sccache stats wrapping the orch-emitted EAGAIN retry core); membership of --bin / verify paths is derived from gunbc.ci_release_bins, but the runner transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the release-build runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold")
 
 fn ci_release_build_script() -> String {
   concat(
-    concat("# ", concat(ci_release_build_shell_emit_dissolution_trigger, "\n")),
+    concat("# ", concat(dissolution_description(condition: ci_release_build_shell_emit_dissolution_trigger), "\n")),
     concat(
       concat("ROOT=", ci_repo_root_shell(), "\n"),
       concat(

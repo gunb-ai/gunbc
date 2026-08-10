@@ -309,11 +309,15 @@ struct ParsedTypeDecl {
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 }
 
-/// Parse-only type-decl extraction over `build_module_path_index` — fail-closed on parse
-/// errors (no silent skip). Shared substrate for `concept_decl_facts(pool_roots)`; distinct
-/// from `decl_facts_corpus_walk` which skips test `.dag` files and tolerates parse failure.
-fn type_decls_parse_only_fail_closed(
+/// Parse-only decl extraction over `build_module_path_index` — fail-closed on parse
+/// errors (no silent skip). Shared substrate for `concept_decl_facts(pool_roots)` and
+/// `data_decl_type_facts(pool_roots)`; distinct from `decl_facts_corpus_walk` which skips
+/// test `.dag` files and tolerates parse failure. A completeness census cannot be grounded
+/// on a walk that silently skips a file, so both callers share this one.
+fn decls_parse_only_fail_closed(
     roots: &[String],
+    want_kind: ItemKind,
+    caller: &str,
 ) -> Result<(Vec<ParsedTypeDecl>, usize), String> {
     let ws = workspace_root();
     let index = crate::cli_run::build_module_path_index(roots);
@@ -324,13 +328,11 @@ fn type_decls_parse_only_fail_closed(
     for (module_path, rel_path) in modules {
         let abs = ws.join(&rel_path);
         let parsed = parse_dag_file(&abs).ok_or_else(|| {
-            format!(
-                "concept_decl_facts: failed to parse `{rel_path}` (fail-closed; no silent skip)"
-            )
+            format!("{caller}: failed to parse `{rel_path}` (fail-closed; no silent skip)")
         })?;
         let si = parsed.source_indices;
         for item in parsed.items.iter() {
-            if item_kind(item.clone()) != ItemKind::TypeItem {
+            if item_kind(item.clone()) != want_kind {
                 continue;
             }
             let name = authored_name_at(si.clone(), item.clone());
@@ -399,8 +401,9 @@ pub fn eval_concept_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> In
         .iter()
         .map(|r| ws.join(r).to_string_lossy().into_owned())
         .collect();
-    let (type_decls, module_count) = type_decls_parse_only_fail_closed(&abs_pool_roots)
-        .map_err(|msg| InterpError::TypeError { msg })?;
+    let (type_decls, module_count) =
+        decls_parse_only_fail_closed(&abs_pool_roots, ItemKind::TypeItem, "concept_decl_facts")
+            .map_err(|msg| InterpError::TypeError { msg })?;
     let files_parsed = module_count;
     let mut rows: Vec<Value> = Vec::new();
     for decl in type_decls {
@@ -422,6 +425,70 @@ pub fn eval_concept_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> In
     }
     eprintln!(
         "concept_decl_facts: {} type concepts from {module_count} modules ({files_parsed} files parsed)",
+        rows.len()
+    );
+    Ok(crate::v1_interpreter::list_value(rows))
+}
+
+/// The authored declared-type head name of a top-level `data` declaration.
+///
+/// `decl_facts` marshals a `DataItem`'s node through the initializer projection, which drops
+/// `type_annotation` entirely — so the declared type is not reachable from that producer at
+/// all. This projects the annotation's head name (`String`, `NonEmptyStr`, `List`, ...). Head
+/// name is sufficient and deliberately not a full type rendering: the only consumer asks
+/// whether a declaration is still a bare string, and a second type-printer would be a
+/// nickname for a rendering the emitter already owns.
+///
+/// An absent annotation yields the empty string rather than a guess. `data` requires an
+/// annotation, so empty means the parse did not carry one, and a consumer that treated
+/// unknown as "not a string" would silently under-report exactly the survivors a census
+/// exists to find.
+fn data_decl_type_name(decl: &ParsedTypeDecl) -> String {
+    match decl.item.type_annotation.as_ref() {
+        Some(ann) => {
+            let authored = authored_name_at(decl.source_indices.clone(), ann.clone());
+            if authored.is_empty() {
+                ann.name.clone()
+            } else {
+                authored
+            }
+        }
+        None => String::new(),
+    }
+}
+
+/// Corpus-wide top-level `data` declarations with their declared type, keyed at declaration
+/// identity (`module_path` + `decl_name`).
+///
+/// `module_path` is the module's own authored path, UNSTRIPPED (`v2.` retained), because a
+/// `DeclarationRef` names the module as authored; `decl_facts`'s stripped `qualified_name`
+/// cannot be un-stripped back into a module identity.
+pub fn eval_data_decl_type_facts(
+    ctx: &InterpContext,
+    pool_roots: &[String],
+) -> InterpResult<Value> {
+    let ws = crate::cli_run::workspace_root();
+    let abs_pool_roots: Vec<String> = pool_roots
+        .iter()
+        .map(|r| ws.join(r).to_string_lossy().into_owned())
+        .collect();
+    let (data_decls, module_count) =
+        decls_parse_only_fail_closed(&abs_pool_roots, ItemKind::DataItem, "data_decl_type_facts")
+            .map_err(|msg| InterpError::TypeError { msg })?;
+    let mut rows: Vec<Value> = Vec::with_capacity(data_decls.len());
+    for decl in data_decls.iter() {
+        rows.push(Value::Record {
+            type_name: ctx.sym("DataDeclTypeFact"),
+            fields: Rc::new(sorted_fields(vec![
+                (ctx.sym("module_path"), Value::Str(decl.module_path.clone())),
+                (ctx.sym("decl_name"), Value::Str(decl.name.clone())),
+                (ctx.sym("type_name"), Value::Str(data_decl_type_name(decl))),
+                (ctx.sym("rel_path"), Value::Str(decl.rel_path.clone())),
+            ])),
+        });
+    }
+    eprintln!(
+        "data_decl_type_facts: {} data declarations from {module_count} modules",
         rows.len()
     );
     Ok(crate::v1_interpreter::list_value(rows))
@@ -891,6 +958,57 @@ pub fn eval_fn_arrow_decl_facts_live(
     Ok(crate::v1_interpreter::list_value(rows))
 }
 
+/// `FnArrowDecl` rows over an EXPLICIT source population, projected from the shared
+/// declaration facts rather than from the eval context's resolved modules.
+///
+/// Why it exists, measured rather than argued. `eval_fn_arrow_decl_facts_live` reflects
+/// `ctx.modules`, so a caller needing whole-tree facts must EVALUATE against the whole tree —
+/// and the live-read manifest producer did exactly that, resolving and typechecking a
+/// 545-module union program to answer ONE classification request: 179125 ms wall, 178751 ms
+/// CPU, 9.4 GiB whole-process RSS, measured on this container. Every fact it then read is
+/// syntactic, so the population is derivable from a parse.
+///
+/// It is not a second definition of a fn-arrow fact. The module walk is
+/// `decl_facts_from_sources`, the same projection `decl_facts_corpus_walk` uses; the per-item
+/// record is `fn_arrow_decl_record`, shared verbatim with the live producer above. This
+/// function only selects the fn/func kinds out of that one population.
+///
+/// `ctx` supplies symbols. Source lookups go through EACH FACT'S OWN indices, because the spans
+/// name the files parsed for that fact and are in general not the files the evaluating context
+/// resolved — reusing `ctx.source_indices()` would silently yield empty lexemes for every module
+/// outside the eval closure, which is this lane's coverage hole in a quieter form.
+pub fn fn_arrow_decl_facts_from_sources(
+    ctx: &InterpContext,
+    sources: &[(String, String)],
+) -> (Vec<Value>, Vec<DeclFactSourceRefusal>) {
+    let (facts, refusals, _parsed) = decl_facts_from_sources(sources);
+    (fn_arrow_decl_rows_from_facts(ctx, &facts), refusals)
+}
+
+/// The fn-arrow marshal over an ALREADY-WALKED declaration population.
+///
+/// Split out because the transport producer holds cached raw facts and must not re-walk sources
+/// to marshal them: the parse is the expensive half and is cached on the index, while marshalling
+/// is per-evaluation because a marshalled `Value` carries symbols interned in the calling context.
+pub fn fn_arrow_decl_rows_from_facts(ctx: &InterpContext, facts: &[DeclFactRaw]) -> Vec<Value> {
+    let mut rows = Vec::new();
+    for fact in facts.iter() {
+        if fact.kind != ItemKind::FnItem && fact.kind != ItemKind::FuncItem {
+            continue;
+        }
+        if let Some(row) = fn_arrow_decl_record(
+            ctx,
+            &fact.source_indices,
+            &fact.module_path,
+            &fact.name,
+            &fact.node,
+        ) {
+            rows.push(row);
+        }
+    }
+    rows
+}
+
 /// module census (same exclude set as `whole_tree_resolved_ctx` / measurement probe).
 pub fn eval_fn_arrow_decl_substrate_is_whole_tree(
     ctx: &InterpContext,
@@ -999,6 +1117,12 @@ pub fn eval_data_init_decl_facts_live(
 #[derive(Debug, Clone)]
 pub struct DeclFactRaw {
     pub qualified_name: String,
+    /// The module's own authored path, UNSTRIPPED. `qualified_name` above passes through
+    /// `decl_logical_qualified_name`, which drops the `v2.` layer prefix for `decl_index`
+    /// consumers -- so it cannot be un-stripped back into a module identity. fn-arrow and concept
+    /// reflection keep the full path, and a consumer that reconstructs the module from the
+    /// stripped name produces facts under a name no root ever asks for.
+    pub module_path: String,
     pub name: String,
     pub kind: ItemKind,
     pub node: Rc<Node>,
@@ -1046,6 +1170,94 @@ pub struct DeclFactsCorpusWalk {
 // dependency-pool-index / the module source index used by compile/load. Where roots
 // shadow the same module path, this producer may emit facts for both the winning
 // source and the shadowed stub; compile binds only the winner.
+/// The per-module declaration projection, shared by every population that walks one.
+///
+/// Extracted so an index-scoped walk is the SAME projection over a different source medium
+/// rather than a second definition of what a declaration fact is (§3). Everything that decides
+/// a fact — the authored name, the item kind, the logical qualified name — lives here and
+/// nowhere else; a caller chooses only which modules to visit.
+fn push_decl_facts_from_parsed(
+    rel: &str,
+    module_path: &str,
+    parsed: &crate::module_path_index::parsed_dag_file::ParsedDagFile,
+    out: &mut Vec<DeclFactRaw>,
+) {
+    let si = parsed.source_indices.clone();
+    for item in parsed.items.iter() {
+        let name = authored_name_at(si.clone(), item.clone());
+        if name.is_empty() {
+            continue;
+        }
+        let kind = item_kind(item.clone());
+        out.push(DeclFactRaw {
+            qualified_name: decl_logical_qualified_name(module_path, &name),
+            module_path: module_path.to_string(),
+            name,
+            kind,
+            node: item.clone(),
+            rel_path: rel.to_string(),
+            source_indices: si.clone(),
+        });
+    }
+}
+
+/// One module that could not contribute declarations, named with its cause.
+#[derive(Debug, Clone)]
+pub struct DeclFactSourceRefusal {
+    pub rel_path: String,
+    pub cause: String,
+}
+
+/// Declaration facts over an EXPLICIT source population — the in-memory pool a
+/// `MultiEntryIndex` holds — rather than over a filesystem walk.
+///
+/// Two deliberate differences from `decl_facts_corpus_walk`, each load-bearing for the
+/// live-read classification consumer:
+///
+/// The test-file boundary is NOT applied. That walk skips `is_test_dag` because its consumers
+/// ask about the production corpus; live-read classification asks about ENROLLED WITNESS
+/// declarations, which are exactly the files that filter removes. Reusing it unchanged would
+/// return an empty population for every subject the consumer cares about, and an empty
+/// population reads as "no runtime reads" — a silent narrow, not a refusal.
+///
+/// A module that cannot parse becomes a NAMED REFUSAL rather than a silent omission. The
+/// filesystem walk drops such files (`parse_dag_file` returns `None`), which is tolerable when
+/// the consumer is a census and intolerable when a consumer decides skips: a dropped module's
+/// declarations report as unbound, and "unbound" would then mean either "no such declaration"
+/// or "its module did not parse" — two states with different remedies. The caller refuses the
+/// affected key and leaves every other key classifiable.
+pub fn decl_facts_from_sources(
+    sources: &[(String, String)],
+) -> (Vec<DeclFactRaw>, Vec<DeclFactSourceRefusal>, Vec<String>) {
+    let mut out = Vec::new();
+    let mut refusals = Vec::new();
+    // Parsed successfully, INDEPENDENT of whether any declaration came out. A module may
+    // legitimately declare nothing, so "absent from the facts" does not distinguish
+    // parsed-and-empty from never-visited — and only the second is a defect in the walk. The
+    // caller's identity join needs that distinction, so the walk reports it rather than letting
+    // the caller guess from an absence.
+    let mut parsed_paths = Vec::new();
+    for (rel, content) in sources {
+        let module_path = extract_module_path(content).unwrap_or_default();
+        match crate::module_path_index::parsed_dag_file::parse_dag_source(rel, content) {
+            Ok(parsed) => {
+                parsed_paths.push(rel.clone());
+                push_decl_facts_from_parsed(rel, &module_path, &parsed, &mut out);
+            }
+            Err(cause) => refusals.push(DeclFactSourceRefusal {
+                rel_path: rel.clone(),
+                cause: cause.to_string(),
+            }),
+        }
+    }
+    parsed_paths.sort();
+    out.sort_by(|a, b| {
+        (a.rel_path.as_str(), a.name.as_str()).cmp(&(b.rel_path.as_str(), b.name.as_str()))
+    });
+    refusals.sort_by(|a, b| a.rel_path.cmp(&b.rel_path));
+    (out, refusals, parsed_paths)
+}
+
 pub fn decl_facts_corpus_walk(pool_roots: &[String]) -> DeclFactsCorpusWalk {
     let mut out = Vec::new();
     let mut files_scanned = 0usize;
@@ -1065,22 +1277,7 @@ pub fn decl_facts_corpus_walk(pool_roots: &[String]) -> DeclFactsCorpusWalk {
             continue;
         };
         files_parsed += 1;
-        let si = parsed.source_indices;
-        for item in parsed.items.iter() {
-            let name = authored_name_at(si.clone(), item.clone());
-            if name.is_empty() {
-                continue;
-            }
-            let kind = item_kind(item.clone());
-            out.push(DeclFactRaw {
-                qualified_name: decl_logical_qualified_name(&module_path, &name),
-                name,
-                kind,
-                node: item.clone(),
-                rel_path: rel.clone(),
-                source_indices: si.clone(),
-            });
-        }
+        push_decl_facts_from_parsed(&rel, &module_path, &parsed, &mut out);
     }
     out.sort_by(|a, b| {
         let kind_ord = |k: ItemKind| match k {

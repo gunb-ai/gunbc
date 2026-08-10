@@ -1,5 +1,7 @@
 module tools.emit_host_gate
 
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
+
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -25,7 +27,7 @@ data emit_host_verdict_narration_scaffold: Disposition = Scaffold {
   }
 }
 
-data emit_host_verdict_narration_dissolution_trigger: String = "🟡 dissolve-on: gate_failure_exit narration — the per-smoke verdict line is shelled out (shell.Exec.Run of shell_printf_line) ONLY because the claim wrapper emit_host_gate_passes = exit_ok(run_spec_gate) discards ProcessExit.reason, so the floor's claim path would otherwise surface bare Bool(false) again (the 2026-07-13 srv3 forensics receipt this fix dissolves). DISSOLVES WHEN the claim path carries typed refusal reasons to the executor surface (ExitFailure.reason printed for gate-class claim rows, or witness refusals typed end-to-end) — then delete the narration op here and the reason field is the single carrier."
+data emit_host_verdict_narration_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gate_failure_exit narration — the per-smoke verdict line is shelled out (shell.Exec.Run of shell_printf_line) ONLY because the claim wrapper emit_host_gate_passes = exit_ok(run_spec_gate) discards ProcessExit.reason, so the floor's claim path would otherwise surface bare Bool(false) again (the 2026-07-13 srv3 forensics receipt this fix dissolves). DISSOLVES WHEN the claim path carries typed refusal reasons to the executor surface (ExitFailure.reason printed for gate-class claim rows, or witness refusals typed end-to-end) — then delete the narration op here and the reason field is the single carrier.")
 
 fn smoke_verdict(name: String, ok: Bool) -> String {
   concat(name, if ok { "=pass" } else { "=FAIL" })

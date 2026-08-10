@@ -20,7 +20,6 @@ test fn enforcement_live_witness_exclusion_inventory_matches_frontier() -> Bool 
         ExclusionRowFound { value: excl } =>
           witness_exclusion_lookup_is_offline(lookup: row.exclusion)
             && !(excl.reason == "")
-            && !(excl.dissolve_on == "")
             && scheduling_disposition_is_enrolled(disposition: cadence_disposition_for_offline_recipe(rows: row.cadence_rows))
             && scheduling_disposition_is_excluded(disposition: cadence_disposition_for_pr_floor(rows: row.cadence_rows))
             && scheduling_disposition_is_excluded(disposition: cadence_disposition_for_main_push(rows: row.cadence_rows))
@@ -44,7 +43,7 @@ test fn enforcement_inventory_witness_excluded_via_frontier() -> Bool {
     WitnessAdmissionRowFound { value: row } =>
       match row.exclusion {
         ExclusionRowFound { value: excl } =>
-          witness_exclusion_lookup_is_offline(lookup: row.exclusion) && !(excl.dissolve_on == "")
+          witness_exclusion_lookup_is_offline(lookup: row.exclusion)
         ExclusionRowAbsent => false
       }
   }

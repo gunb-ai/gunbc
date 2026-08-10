@@ -23,6 +23,22 @@ fn export_signature_facts(pool_roots: List<String>) -> List<DeclFact> {
   export_signature_facts(pool_roots: pool_roots)
 }
 
+// A top-level `data` declaration with its DECLARED TYPE, keyed at declaration identity.
+// `DeclFact` cannot answer this: for a DataItem its `node` is the initializer projection,
+// which drops the type annotation, so no consumer of `decl_facts` can decide whether a
+// declaration is still typed `String`. `module_path` is authored and UNSTRIPPED (`v2.`
+// retained) so it composes with `DeclarationRef` directly.
+type DataDeclTypeFact {
+  module_path: String
+  decl_name: String
+  type_name: String
+  rel_path: String
+}
+
+fn data_decl_type_facts(pool_roots: List<String>) -> List<DataDeclTypeFact> {
+  data_decl_type_facts(pool_roots: pool_roots)
+}
+
 data export_signature_facts_host_scaffold_dissolution_trigger: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {

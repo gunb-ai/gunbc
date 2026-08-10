@@ -26,6 +26,7 @@ import v2.workflow.effect_plan_bash_materialize {
   effect_plan_bash_materialize
 }
 import std.disposition { Scaffold }
+import std.dissolution { dissolution_description }
 
 fn gate_materialized_render(plan: EffectPlan<BashBoundOperationInvocation>) -> String {
   ci_stage0_partition_compile_gate_render(plan: plan)
@@ -71,7 +72,7 @@ test fn w_stage0_partition_gate_script_is_typed_plan_plus_marker() -> Bool {
   let expected = concat(
     concat(
       "# ",
-      concat(ci_stage0_partition_compile_gate_shell_emit_dissolution_trigger, "\n")
+      concat(dissolution_description(condition: ci_stage0_partition_compile_gate_shell_emit_dissolution_trigger), "\n")
     ),
     concat(
       gate_materialized_render(plan: ci_stage0_partition_compile_gate_intent()),

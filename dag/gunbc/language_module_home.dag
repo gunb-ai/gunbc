@@ -29,6 +29,7 @@ import gunbc.language_target_registry {
   webassembly_language_subject_ref,
   yaml_format_subject_ref
 }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 data language_module_home_law: String = "WHERE A TARGET'S SURFACES LIVE IS ORGANIZATIONAL POLICY, NEVER IDENTITY (operator verdict relayed 2026-08-05). DeclarationRef remains the single identity authority for a language target; a canonical_prefix says where that target's modules SHOULD be stored and decides nothing about what the target IS. The two must not fuse, because a path prefix is exactly the kind of positional fact that would start competing with the symbolic key if it ever became a discriminant — the class DESIGN section 3 rules on when it says paths are discriminators, not gospel. WHAT THIS MODULE ENFORCES, STATED AS NARROWLY AS IT IS TRUE (operator REQUEST_CHANGES, 2026-08-05): a file ADDED under dag/extdeps/languages/ must sit inside a DECLARED TARGET DIRECTORY, or be one of the four exact legacy flat modules. That is a directory-membership ratchet. IT IS NOT A TARGET-PAIRING WALL, and an earlier revision of this module claimed it was — the law read 'a module misfiled under another target's directory is therefore REFUSED', which was false of the mechanism that shipped. The gate observes added PATH STRINGS and nothing ever supplies or resolves a module's declared extdeps_model_scope.subject, so dag/extdeps/languages/html/verilog_emit.dag is ADMITTED — html/ is a declared home — even if that file declares the Verilog subject. Wrong-target placement is precisely what the claim promised and precisely what the predicate never asked. WHY THE OVERCLAIM SURVIVED REVIEW is worth recording with it: a witness did exercise the relational property, but it associated the path with the HTML home by reading html/ OUT OF THE PATH — the path-to-identity fusion this very note forbids, performed by the control meant to prove it never happens. A correct control names verilog_language_subject_ref and demands the Verilog prefix; it cannot be written against a caller that only has a string. THE RELATIONAL WALL IS A SEPARATE CHANGE, and it needs a real join: a placement observation carrying (file_path, target) resolved from each added carrier's own scope, looked up in this roster by THAT target. The predicates that decided the relational case correctly were DELETED here rather than left beside an unwired claim, because machinery kept for a future consumer is the inert-lens tier DESIGN section 6 names and this module already shipped one of those."
 
@@ -149,7 +150,7 @@ type LegacyLanguageModuleHome {
   module_path: String
   target: DeclarationRef
   moves_to: String
-  dissolves_on: String
+  dissolution: DissolutionCondition
 }
 
 data legacy_language_module_homes: List<LegacyLanguageModuleHome> = [
@@ -158,28 +159,28 @@ data legacy_language_module_homes: List<LegacyLanguageModuleHome> = [
     module_path: "extdeps.languages.html",
     target: html_language_subject_ref,
     moves_to: "dag/extdeps/languages/html/medium.dag",
-    dissolves_on: "a typed move receipt records the file at its canonical address and this row deletes"
+    dissolution: unbound_dissolution(description: "a typed move receipt records the file at its canonical address and this row deletes")
   },
   LegacyLanguageModuleHome {
     file_path: "dag/extdeps/languages/html_fragment.dag",
     module_path: "extdeps.languages.html_fragment",
     target: html_language_subject_ref,
     moves_to: "dag/extdeps/languages/html/fragment.dag",
-    dissolves_on: "a typed move receipt records the file at its canonical address and this row deletes"
+    dissolution: unbound_dissolution(description: "a typed move receipt records the file at its canonical address and this row deletes")
   },
   LegacyLanguageModuleHome {
     file_path: "dag/extdeps/languages/markdown.dag",
     module_path: "extdeps.languages.markdown",
     target: commonmark_format_subject_ref,
     moves_to: "dag/extdeps/languages/markdown/commonmark_emit.dag",
-    dissolves_on: "a typed move receipt records the file at its canonical address and this row deletes"
+    dissolution: unbound_dissolution(description: "a typed move receipt records the file at its canonical address and this row deletes")
   },
   LegacyLanguageModuleHome {
     file_path: "dag/extdeps/languages/react_jsx.dag",
     module_path: "extdeps.languages.react_jsx",
     target: jsx_language_subject_ref,
     moves_to: "dag/extdeps/languages/jsx/emit.dag",
-    dissolves_on: "a typed move receipt records the file at its canonical address and this row deletes; the module name drops React, which names a framework this repository does not target, in favour of the JSX subject D0 registered"
+    dissolution: unbound_dissolution(description: "a typed move receipt records the file at its canonical address and this row deletes; the module name drops React, which names a framework this repository does not target, in favour of the JSX subject D0 registered")
   }
 ]
 

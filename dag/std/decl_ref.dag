@@ -29,3 +29,40 @@ fn decl_field_ref(module_path: String, decl_name: String, field_name: String) ->
     field: NamedField { field_name: field_name as NonEmptyStr },
   }
 }
+
+fn decl_field_eq(a: DeclField, b: DeclField) -> Bool {
+  match a {
+    WholeDeclaration =>
+      match b {
+        WholeDeclaration => true
+        NamedField { field_name: _ } => false
+      }
+    NamedField { field_name: fa } =>
+      match b {
+        WholeDeclaration => false
+        NamedField { field_name: fb } => fa == fb
+      }
+  }
+}
+
+fn declaration_ref_eq(a: DeclarationRef, b: DeclarationRef) -> Bool {
+  a.module_path == b.module_path
+    && a.decl_name == b.decl_name
+    && decl_field_eq(a: a.field, b: b.field)
+}
+
+fn declaration_ref_in_list(target: DeclarationRef, refs: List<DeclarationRef>) -> Bool {
+  fold(refs, init: false, f: fn(acc, r) { acc || declaration_ref_eq(a: target, b: r) })
+}
+
+fn declaration_ref_display_key(ref: DeclarationRef) -> String {
+  match ref.field {
+    WholeDeclaration =>
+      concat(ref.module_path as String, concat("::", ref.decl_name as String))
+    NamedField { field_name: f } =>
+      concat(
+        ref.module_path as String,
+        concat("::", concat(ref.decl_name as String, concat("::", f as String))),
+      )
+  }
+}

@@ -1,5 +1,7 @@
 module gunbc.bmc_fan_converge
 
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
+
 import std.algebra { trim }
 
 import extdeps.bmc.capability {
@@ -176,7 +178,7 @@ import std.upsert_decision {
 }
 import extdeps.shell
 
-data bmc_fan_atomic_transaction_dissolution_trigger: String = "🟡 dissolve-on: replace the phase-partial mutation refusal when one atomically published content-addressed backup manifest binds manifest identity, exact target and stable BMC identity, firmware, config path, before/backup digests, and creation generation; restore proves the manifest identity, restored-byte digest, controller readback, and bounded thermal/tach monitoring receipt. Until then the live actuator is observation-only and cannot mutate."
+data bmc_fan_atomic_transaction_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: replace the phase-partial mutation refusal when one atomically published content-addressed backup manifest binds manifest identity, exact target and stable BMC identity, firmware, config path, before/backup digests, and creation generation; restore proves the manifest identity, restored-byte digest, controller readback, and bounded thermal/tach monitoring receipt. Until then the live actuator is observation-only and cannot mutate.")
 
 type BmcFanConvergeTarget {
   host: ComputeHost

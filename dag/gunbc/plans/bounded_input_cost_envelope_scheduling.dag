@@ -1,6 +1,7 @@
 module gunbc.plans.bounded_input_cost_envelope_scheduling
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownBlock, MarkdownTableRow, TableBlock, BlockquoteBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row, quote }
 
@@ -118,7 +119,6 @@ data bounded_input_cost_envelope_scheduling_plan: Plan = Plan {
   slug: "bounded-input-cost-envelope-scheduling",
   title: "Bounded-input / cost-envelope scheduling — operator-signed design",
   body: bounded_input_cost_envelope_scheduling_body(),
-  dissolution: HasTrigger {
-    text: "Delete this doc when `gunbc_ci_corpus_envelope` carries derived `BoundedInput` ceilings (P5), every floor `Runnable` carries Predicted `CostEnvelope`-derived cost, `spawn_width` is derived from `WidthBoundedRealization` (no side-channel), `gunbc.fleet_intent.PerformanceReceipt` falsifies Predicted with a discriminating RED, runtime admission consumes `input_admitted` on the live floor path, and the selection/scheduling axis split is witnessed — at which point the carriers state the policy and companion trackers (`resource-aware-scheduler.md`, `input-envelope-roadmap.md`) may dissolve."
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when `gunbc_ci_corpus_envelope` carries derived `BoundedInput` ceilings (P5), every floor `Runnable` carries Predicted `CostEnvelope`-derived cost, `spawn_width` is derived from `WidthBoundedRealization` (no side-channel), `gunbc.fleet_intent.PerformanceReceipt` falsifies Predicted with a discriminating RED, runtime admission consumes `input_admitted` on the live floor path, and the selection/scheduling axis split is witnessed — at which point the carriers state the policy and companion trackers (`resource-aware-scheduler.md`, `input-envelope-roadmap.md`) may dissolve.")
   }
 }

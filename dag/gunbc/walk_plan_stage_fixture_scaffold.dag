@@ -1,5 +1,7 @@
 module gunbc.walk_plan_stage_fixture_scaffold
 
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
+
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Int, List, String }
@@ -13,7 +15,7 @@ data walk_plan_stage_fixture_hand_rust_scaffold: Disposition = Scaffold {
   }
 }
 
-data walk_plan_stage_fixture_hand_rust_dissolve_trigger: String = "🟡 dissolve-on: src/v1/stage0/tests/walk_plan_stage_fixture.rs — seed subprocess transport that drives plan.dag recipes through claim_executor for cold production-path controls (~7m each, #[ignore]). The behavioral contract lives in v2.test.fixture.walk_plan_stage.\{plan,common\}.dag; Rust materializes harness env from common.dag (walk_plan_stage_materialize_harness_authority_holds) and must not fork attempt/receipt/path literals. DISSOLVES WHEN ROADMAP.md v1-materialization-kernel (Compute things once and reuse the result — docs/plans/witness-realization-plan.md) lands a typed host-effect transport for plan-driven walks OR the controls run exclusively via documented plan.dag recipes without a parallel Rust authority fork — same dissolution family as std.realization_schedule walk_plan_run_stage_claim_executor_seed_deferral."
+data walk_plan_stage_fixture_hand_rust_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: src/v1/stage0/tests/walk_plan_stage_fixture.rs — seed subprocess transport that drives plan.dag recipes through claim_executor for cold production-path controls (~7m each, #[ignore]). The behavioral contract lives in v2.test.fixture.walk_plan_stage.\{plan,common\}.dag; Rust materializes harness env from common.dag (walk_plan_stage_materialize_harness_authority_holds) and must not fork attempt/receipt/path literals. DISSOLVES WHEN ROADMAP.md v1-materialization-kernel (Compute things once and reuse the result — docs/plans/witness-realization-plan.md) lands a typed host-effect transport for plan-driven walks OR the controls run exclusively via documented plan.dag recipes without a parallel Rust authority fork — same dissolution family as std.realization_schedule walk_plan_run_stage_claim_executor_seed_deferral.")
 
 data walk_plan_stage_fixture_hand_rust_loc_delta_net: Int = 1
 

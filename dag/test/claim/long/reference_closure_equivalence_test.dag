@@ -1,5 +1,7 @@
 module test.claim.long.reference_closure_equivalence
 
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
 import v2.lens.module_graph { no_paths, module_graph_exclude_substrings }
 
 data expected_conformance_closure: FreeMonoid<String> = [
@@ -84,3 +86,5 @@ test fn reference_closure_b2_safety_wall_holds() -> Bool {
     Accepted { value: _, diagnostics: _ } => false
   }
 }
+
+data conformance_import_envelope_dissolve_on: DissolutionCondition = unbound_dissolution(description: "v2 parse_module accepts test fn bodies, at which point the equivalence gates stop needing the import-envelope-only mirror conformance_imports_only.dag and it deletes with this row")

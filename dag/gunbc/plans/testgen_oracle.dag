@@ -1,6 +1,7 @@
 module gunbc.plans.testgen_oracle
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, p, li, ol, cell, row }
 
@@ -97,7 +98,6 @@ data testgen_oracle_plan: Plan = Plan {
   slug: "testgen-oracle",
   title: "Plan — testgen as the bug-class oracle (coverage by construction)",
   body: testgen_oracle_body(),
-  dissolution: HasTrigger {
-    text: "Delete this doc when testgen's generated output is floor-gated (drift-closed), the structural categories are derived from `node_query` (not hand-rosters), and the bug-class→category map has no structural-class \"no\" — at which point a new bug in a structural class is caught by the generator that already enumerates it, and this tracker is redundant."
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when testgen's generated output is floor-gated (drift-closed), the structural categories are derived from `node_query` (not hand-rosters), and the bug-class→category map has no structural-class \"no\" — at which point a new bug in a structural class is caught by the generator that already enumerates it, and this tracker is redundant.")
   }
 }

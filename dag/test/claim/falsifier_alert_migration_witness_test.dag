@@ -352,7 +352,7 @@ test fn the_embedded_program_is_declared_as_replaceable_residue() -> Bool {
       runtime: GithubScriptAction,
       kind: ExecutableSourceString,
       disposition: ReplaceWithLanguageIndependentBehavior,
-      dissolves_on: trigger
+      dissolution: trigger
     } =>
       (site as String) == ".github/workflows/falsifier-alert.yml"
         && (trigger as String) != ""

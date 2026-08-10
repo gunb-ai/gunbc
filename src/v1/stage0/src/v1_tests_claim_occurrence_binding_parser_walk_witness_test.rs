@@ -2,6 +2,9 @@
 // Source module: v1.tests.claim.occurrence_binding_parser_walk_witness_test
 
 use self::ObcpwParsed::*;
+pub use crate::std_dissolution::unbound_dissolution;
+pub use crate::std_dissolution::DissolutionCondition;
+use crate::std_dissolution::DissolutionCondition::*;
 use crate::std_occurrence_binding_candidates::AuthoredOrderIndexRefusal::MissingAuthoredOrderRow;
 use crate::std_occurrence_binding_candidates::BoundReferencePopulation::AllReferencesBound;
 use crate::std_occurrence_binding_candidates::DeclarationExposure::LexicalExposure;
@@ -64,15 +67,6 @@ pub fn occurrence_binding_parser_walk_offline_recipe() -> String {
     thread_local! {
         static CACHED: String = {
             "OFFLINE LOCAL RECIPE (requires v1 parser pool): target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/occurrence_binding_parser_walk_witness_test.dag --functions namespace_reference_derived_closure_parser_integration_holds".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn occurrence_binding_parser_walk_dissolve_on() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "DISSOLVE-ON: witness_layer_roots admits src/v1 for parser-transport witnesses without Node ambiguity, or execution corpus carries per-entry source roots — then this recipe deletes and discovery enrollment suffices.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -1024,4 +1018,13 @@ pub fn namespace_reference_derived_closure_parser_integration_holds() -> bool {
         && parser_module_sibling_without_module_exposure_reds())
         && parser_missing_declaration_exposure_refuses_holds())
         && parser_missing_authored_order_refuses_holds())
+}
+
+pub fn occurrence_binding_parser_walk_dissolve_on() -> Rc<DissolutionCondition> {
+    thread_local! {
+        static CACHED: Rc<DissolutionCondition> = {
+            unbound_dissolution("DISSOLVE-ON: witness_layer_roots admits src/v1 for parser-transport witnesses without Node ambiguity, or execution corpus carries per-entry source roots — then this recipe deletes and discovery enrollment suffices.".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
 }

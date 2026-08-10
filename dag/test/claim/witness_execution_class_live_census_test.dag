@@ -76,7 +76,7 @@ fn plan_carries(plan: SelectedWitnessPlan, entry: String, function: String) -> B
     match member {
       NativeSelected { witness: w, realization: _ } =>
         (w.entry == entry) && (w.function == function)
-      InterpreterFrontier { witness: _, cause: _, reason: _, dissolve_on: _ } => false
+      InterpreterFrontier { witness: _, cause: _, reason: _, dissolution: _ } => false
     }
   })
 }
@@ -109,7 +109,7 @@ fn plan_member_rows(plan: SelectedWitnessPlan, state: FloorDiscoveryWalkState) -
             )
           }])
         }
-      InterpreterFrontier { witness: _, cause: _, reason: _, dissolve_on: _ } => acc
+      InterpreterFrontier { witness: _, cause: _, reason: _, dissolution: _ } => acc
     }
   })
 }
@@ -152,7 +152,7 @@ test fn witness_live_roster_census_holds() -> Bool {
           Present { value: _ } => true
           Absent => false
         }
-      InterpreterFrontier { witness: _, cause: _, reason: _, dissolve_on: _ } => true
+      InterpreterFrontier { witness: _, cause: _, reason: _, dissolution: _ } => true
     }
   })
   let carried_rows = fold_list(xs: rows, empty: empty_class_rows(), cons: fn(acc, r) {
@@ -166,7 +166,7 @@ test fn witness_live_roster_census_holds() -> Bool {
       acc && match member {
         NativeSelected { witness: w, realization: _ } =>
           any(xs: carried_rows, predicate: fn(r) { (r.entry == w.entry) && (r.function == w.function) })
-        InterpreterFrontier { witness: _, cause: _, reason: _, dissolve_on: _ } => true
+        InterpreterFrontier { witness: _, cause: _, reason: _, dissolution: _ } => true
       }
     })
   walk_loud
