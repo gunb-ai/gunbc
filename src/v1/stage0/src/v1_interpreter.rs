@@ -5433,40 +5433,74 @@ fn cast_target_underlying_kernel(ctx: &InterpContext, target: Rc<Node>) -> Strin
     current
 }
 
-fn str_identity_cast_if_string_family(
-    val: &Value,
-    ctx: &InterpContext,
-    target: Rc<Node>,
-) -> Option<Value> {
-    let Value::Str(s) = val else {
-        return None;
-    };
-    let kernel = cast_target_underlying_kernel(ctx, target);
-    if kernel.is_empty() || kernel == "String" {
-        Some(Value::Str(s.clone()))
-    } else {
-        None
+fn cast_expr_inferred_type_name(ctx: &InterpContext, expr: Rc<Node>) -> String {
+    match expr.inferred.as_deref() {
+        Some(InferredNode::Resolved { node }) => authored_name_at(ctx.si(), node.clone()),
+        _ => String::new(),
     }
 }
 
+/// Runtime identity casts mirror `validate_cast`'s `source_name == target_name` arm,
+/// plus String-valued casts to types whose alias chain grounds on `String`.
+fn cast_identity_result(
+    val: &Value,
+    ctx: &InterpContext,
+    source_name: &str,
+    target_node: Rc<Node>,
+    target_name: &str,
+) -> Option<Value> {
+    if !source_name.is_empty() && source_name == target_name {
+        return Some(val.clone());
+    }
+    if let Value::Str(s) = val {
+        let kernel = cast_target_underlying_kernel(ctx, target_node);
+        if kernel.is_empty() || kernel == "String" {
+            return Some(Value::Str(s.clone()));
+        }
+    }
+    None
+}
+
 fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
-    let val = eval_expr(&cast_expr(node.clone()), env, ctx)?;
+    let inner = cast_expr(node.clone());
+    let source_name = cast_expr_inferred_type_name(ctx, inner.clone());
+    let val = eval_expr(&inner, env, ctx)?;
     let target_node = cast_target(node.clone());
     let target_name = cast_target_seed_name(ctx, target_node.clone());
 
-    if let Some(v) = str_identity_cast_if_string_family(&val, ctx, target_node) {
+    if let Some(v) =
+        cast_identity_result(&val, ctx, &source_name, target_node.clone(), &target_name)
+    {
         return Ok(v);
     }
 
-    match (val, target_name.as_str()) {
-        (Value::Int(n), "Float") => Ok(Value::Float(n as f64)),
-        (Value::Float(n), "Int") => Ok(Value::Int(n as i64)),
-        (Value::Int(n), "String") => Ok(Value::Str(n.to_string())),
-        (Value::Float(n), "String") => Ok(Value::Str(n.to_string())),
-        (Value::Bool(b), "String") => Ok(Value::Str(b.to_string())),
-        (v, "String") => Ok(Value::Str(format!("{}", v))),
-        (v, t) => Err(InterpError::TypeError {
-            msg: format!("cannot cast {} to {}", v.type_label(), t),
+    match target_name.as_str() {
+        "Float" => match val {
+            Value::Int(n) => Ok(Value::Float(n as f64)),
+            v => Err(InterpError::TypeError {
+                msg: format!("cannot cast {} to Float", v.type_label()),
+            }),
+        },
+        "Int" => match val {
+            Value::Float(n) => Ok(Value::Int(n as i64)),
+            v => Err(InterpError::TypeError {
+                msg: format!("cannot cast {} to Int", v.type_label()),
+            }),
+        },
+        "String" => match val {
+            Value::Int(n) => Ok(Value::Str(n.to_string())),
+            Value::Float(n) => Ok(Value::Str(n.to_string())),
+            Value::Bool(b) => Ok(Value::Str(b.to_string())),
+            Value::Str(s) => Ok(Value::Str(s)),
+            // Corpus wire/debug casts for structured values — not the blanket Display
+            // fallback that silently stringified List/Map (§5 fabricated plausible output).
+            Value::Variant { .. } | Value::Record { .. } => Ok(Value::Str(format!("{}", val))),
+            v => Err(InterpError::TypeError {
+                msg: format!("cannot cast {} to String", v.type_label()),
+            }),
+        },
+        t => Err(InterpError::TypeError {
+            msg: format!("cannot cast {} to {}", val.type_label(), t),
         }),
     }
 }
