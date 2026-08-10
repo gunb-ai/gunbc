@@ -38,6 +38,9 @@ use crate::v1_std_core::{
     StringPart, UnaryOpKind, VarBindingKind,
 };
 
+#[path = "bounded_shell_host_drain.rs"]
+pub mod bounded_shell_host_drain;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Symbol(u32);
 
@@ -865,6 +868,13 @@ pub enum InterpError {
     HostToolRelativePathAmbiguous {
         name: String,
     },
+    /// Shell child stdout exceeded the seed complete-within bound — never surfaced as a prefix.
+    ShellOutputLimitExceeded {
+        stream: &'static str,
+        total_bytes: u64,
+        limit_bytes: u64,
+        argv0: String,
+    },
     /// Application-site contract mismatch: the caller's argument list does not match the
     /// callee's declared parameter list. Typed and located (callee + the offending label)
     /// so the line stops at the application site instead of surfacing later as a
@@ -969,6 +979,16 @@ impl fmt::Display for InterpError {
                 f,
                 "host tool relative path ambiguous at cwd-dependent boundary: {:?}",
                 name
+            ),
+            InterpError::ShellOutputLimitExceeded {
+                stream,
+                total_bytes,
+                limit_bytes,
+                argv0,
+            } => write!(
+                f,
+                "shell {} exceeded {} byte limit (total={} bytes) for '{}'",
+                stream, limit_bytes, total_bytes, argv0
             ),
         }
     }
@@ -6576,10 +6596,11 @@ fn build_service_param_env(
     Ok(Env::extend(env, bindings))
 }
 
-struct ShellResult {
-    exit_code: i32,
-    stdout: String,
-    stderr: String,
+#[derive(Debug)]
+pub(crate) struct ShellResult {
+    pub(crate) exit_code: i32,
+    pub(crate) stdout: bounded_shell_host_drain::CapturedStreamEvidence,
+    pub(crate) stderr: bounded_shell_host_drain::CapturedStreamEvidence,
 }
 
 fn push_shell_argv_tokens(argv: &mut Vec<String>, val: Value) -> InterpResult<()> {
@@ -7748,16 +7769,17 @@ fn kill_shell_process_group(pid: u32) {
 }
 
 /// Wait for a shell child, killing the process group when the whole-receipt wall
-/// deadline elapses. No-deadline path is a direct `wait_with_output` (zero poll
-/// overhead for the hermetic corpus).
+/// deadline elapses. Streams are drained concurrently with bounded capture policies
+/// while the child runs — never `wait_with_output` (srv1 jq stderr wedge, 2026-08-09).
 fn wait_child_honoring_wall_deadline(
     child: std::process::Child,
     ctx: &InterpContext,
     argv0: &str,
-) -> InterpResult<std::process::Output> {
+    stdout_policy: bounded_shell_host_drain::StreamCapturePolicy,
+    stderr_policy: bounded_shell_host_drain::StreamCapturePolicy,
+) -> InterpResult<bounded_shell_host_drain::ShellCaptureResult> {
     if ctx.witness_wall_deadline.get().is_none() {
-        return child
-            .wait_with_output()
+        return bounded_shell_host_drain::capture_child_output(child, stdout_policy, stderr_policy)
             .map_err(|e| InterpError::TypeError {
                 msg: format!("failed to wait on '{}': {}", argv0, e),
             });
@@ -7766,15 +7788,14 @@ fn wait_child_honoring_wall_deadline(
     let pid = child.id();
     let (tx, rx) = std::sync::mpsc::channel();
     let worker = std::thread::spawn(move || {
-        let result = child.wait_with_output();
+        let result =
+            bounded_shell_host_drain::capture_child_output(child, stdout_policy, stderr_policy);
         let _ = tx.send(result);
     });
 
     loop {
         if let Some(err) = ctx.wall_deadline_exceeded_error() {
             kill_shell_process_group(pid);
-            // Drain the waiter so we don't leak a join handle; ignore its I/O
-            // error (SIGKILL often surfaces as a wait failure).
             let _ = rx.recv_timeout(std::time::Duration::from_secs(2));
             let _ = worker.join();
             return Err(err);
@@ -7843,7 +7864,10 @@ fn dispatch_shell(
         return Err(err);
     }
 
-    let output = if let Some(stdin_node) = transport_stdin(transport.clone(), ctx.si()) {
+    let stdout_policy = bounded_shell_host_drain::default_shell_stdout_capture_policy();
+    let stderr_policy = bounded_shell_host_drain::default_shell_stderr_capture_policy();
+
+    let capture = if let Some(stdin_node) = transport_stdin(transport.clone(), ctx.si()) {
         use std::io::Write;
         use std::process::Stdio;
 
@@ -7866,7 +7890,8 @@ fn dispatch_shell(
             .take()
             .map(|mut stdin| std::thread::spawn(move || stdin.write_all(&stdin_bytes)));
 
-        let output = wait_child_honoring_wall_deadline(child, ctx, &argv[0])?;
+        let capture =
+            wait_child_honoring_wall_deadline(child, ctx, &argv[0], stdout_policy, stderr_policy)?;
 
         if let Some(writer) = stdin_writer {
             // A stdin-write error (e.g. broken pipe) here is not itself the
@@ -7881,14 +7906,14 @@ fn dispatch_shell(
         }
         render_shell_completion_trace(
             expected,
-            output.status.code().unwrap_or(-1),
-            output.stdout.len(),
-            &output.stderr,
+            capture.exit_status.code().unwrap_or(-1),
+            capture.stdout.retained_bytes(),
+            &capture.stderr.retained,
             wall_start.elapsed(),
             &argv,
             intent,
         );
-        output
+        capture
     } else {
         use std::process::Stdio;
         let wall_start = std::time::Instant::now();
@@ -7901,30 +7926,62 @@ fn dispatch_shell(
         let child = cmd.spawn().map_err(|e| InterpError::TypeError {
             msg: format!("failed to execute '{}': {}", argv[0], e),
         })?;
-        let output = wait_child_honoring_wall_deadline(child, ctx, &argv[0])?;
+        let capture =
+            wait_child_honoring_wall_deadline(child, ctx, &argv[0], stdout_policy, stderr_policy)?;
         render_shell_completion_trace(
             expected,
-            output.status.code().unwrap_or(-1),
-            output.stdout.len(),
-            &output.stderr,
+            capture.exit_status.code().unwrap_or(-1),
+            capture.stdout.retained_bytes(),
+            &capture.stderr.retained,
             wall_start.elapsed(),
             &argv,
             intent,
         );
-        output
+        capture
     };
 
-    let exit_code = output.status.code().unwrap_or(-1);
+    shell_result_from_capture(&capture, &argv[0])
+}
 
+pub(crate) fn shell_result_from_capture(
+    capture: &bounded_shell_host_drain::ShellCaptureResult,
+    argv0: &str,
+) -> InterpResult<ShellResult> {
+    if capture.stdout.truncated {
+        return Err(InterpError::ShellOutputLimitExceeded {
+            stream: "stdout",
+            total_bytes: capture.stdout.total_bytes,
+            limit_bytes: bounded_shell_host_drain::DEFAULT_SHELL_STDOUT_MAX_BYTES as u64,
+            argv0: argv0.to_string(),
+        });
+    }
     Ok(ShellResult {
-        exit_code,
-        stdout: String::from_utf8_lossy(&output.stdout)
-            .trim_end()
-            .to_string(),
-        stderr: String::from_utf8_lossy(&output.stderr)
-            .trim_end()
-            .to_string(),
+        exit_code: capture.exit_status.code().unwrap_or(-1),
+        stdout: bounded_shell_host_drain::CapturedStreamEvidence::from_observation(&capture.stdout),
+        stderr: bounded_shell_host_drain::CapturedStreamEvidence::from_observation(&capture.stderr),
     })
+}
+
+fn shell_evidence_value(result: &ShellResult, from_key: &str) -> Option<Value> {
+    match from_key {
+        "stdout" => Some(Value::Str(result.stdout.retained_text.clone())),
+        "stderr" => Some(Value::Str(result.stderr.retained_text.clone())),
+        "stdout_total_bytes" => Some(Value::Int(result.stdout.total_bytes as i64)),
+        "stderr_total_bytes" => Some(Value::Int(result.stderr.total_bytes as i64)),
+        "stdout_retained_bytes" => Some(Value::Int(result.stdout.retained_bytes as i64)),
+        "stderr_retained_bytes" => Some(Value::Int(result.stderr.retained_bytes as i64)),
+        "stdout_truncated" => Some(Value::Bool(result.stdout.truncated)),
+        "stderr_truncated" => Some(Value::Bool(result.stderr.truncated)),
+        "stdout_digest_hex" => Some(match &result.stdout.digest_hex {
+            Some(digest) => Value::Str(digest.clone()),
+            None => Value::Null,
+        }),
+        "stderr_digest_hex" => Some(match &result.stderr.digest_hex {
+            Some(digest) => Value::Str(digest.clone()),
+            None => Value::Null,
+        }),
+        _ => None,
+    }
 }
 
 fn map_shell_outputs(
@@ -7935,7 +7992,7 @@ fn map_shell_outputs(
     let return_type = match op_node.inferred.as_deref() {
         Some(crate::v1_std_core::InferredNode::Resolved { node }) => node.clone(),
         _ => {
-            return Ok(Value::Str(result.stdout.clone()));
+            return Ok(Value::Str(result.stdout.retained_text.clone()));
         }
     };
 
@@ -7949,30 +8006,43 @@ fn map_shell_outputs(
         let field_name = authored_name_at(ctx.si(), child.clone());
         let from_key = extract_from_key(child, ctx);
         let is_optional_field = child.return_cardinality == Cardinality::CardOptional;
+        if is_optional_field
+            && result.exit_code != 0
+            && matches!(from_key.as_deref(), Some("stdout" | "stderr"))
+        {
+            fields.push((ctx.sym(&field_name), Value::Null));
+            continue;
+        }
         let value = match from_key.as_deref() {
-            Some("stdout") if is_optional_field && result.exit_code != 0 => Value::Null,
-            Some("stderr") if is_optional_field && result.exit_code != 0 => Value::Null,
-            Some("stdout") => Value::Str(result.stdout.clone()),
-            Some("stderr") => Value::Str(result.stderr.clone()),
-            Some("exit_success") => Value::Bool(result.exit_code == 0),
-            Some("exit_code") => Value::Int(result.exit_code as i64),
-            Some("stdout_lines") => {
-                let lines: Vec<Value> = result
-                    .stdout
-                    .lines()
-                    .map(|l| Value::Str(l.to_string()))
-                    .collect();
-                list_value((lines))
-            }
-            _ => match field_name.as_str() {
-                "success" => Value::Bool(result.exit_code == 0),
+            Some(key) => shell_evidence_value(result, key).unwrap_or_else(|| match key {
+                "exit_success" => Value::Bool(result.exit_code == 0),
                 "exit_code" => Value::Int(result.exit_code as i64),
-                "stdout" => Value::Str(result.stdout.clone()),
-                "stderr" => Value::Str(result.stderr.clone()),
-                "exists" => Value::Bool(result.exit_code == 0),
+                "stdout_lines" => {
+                    let lines: Vec<Value> = result
+                        .stdout
+                        .retained_text
+                        .lines()
+                        .map(|l| Value::Str(l.to_string()))
+                        .collect();
+                    list_value((lines))
+                }
                 _ => Value::Null,
-            },
+            }),
+            None => Value::Null,
         };
+        if matches!(value, Value::Null) {
+            if let Some(v) = match field_name.as_str() {
+                "success" => Some(Value::Bool(result.exit_code == 0)),
+                "exit_code" => Some(Value::Int(result.exit_code as i64)),
+                "stdout" => Some(Value::Str(result.stdout.retained_text.clone())),
+                "stderr" => Some(Value::Str(result.stderr.retained_text.clone())),
+                "exists" => Some(Value::Bool(result.exit_code == 0)),
+                _ => None,
+            } {
+                fields.push((ctx.sym(&field_name), v));
+                continue;
+            }
+        }
         fields.push((ctx.sym(&field_name), value));
     }
     fields.sort_unstable_by_key(|(k, _)| k.0);
@@ -13627,6 +13697,281 @@ mod shell_completion_trace_tests {
 }
 
 #[cfg(test)]
+mod shell_stdout_overflow_refusal_tests {
+    use super::bounded_shell_host_drain::{
+        ShellCaptureResult, StreamCaptureObservation, DEFAULT_SHELL_STDOUT_MAX_BYTES,
+    };
+    use super::{shell_result_from_capture, InterpError};
+    use std::process::{Command, Stdio};
+
+    #[test]
+    fn shell_result_from_capture_refuses_truncated_stdout_observation() {
+        let capture = ShellCaptureResult {
+            exit_status: Command::new("true").status().expect("true status"),
+            stdout: StreamCaptureObservation {
+                total_bytes: (DEFAULT_SHELL_STDOUT_MAX_BYTES as u64) + 1,
+                retained: Vec::new(),
+                truncated: true,
+                digest_hex: None,
+            },
+            stderr: StreamCaptureObservation {
+                total_bytes: 0,
+                retained: Vec::new(),
+                truncated: false,
+                digest_hex: None,
+            },
+        };
+        let err = shell_result_from_capture(&capture, "fixture")
+            .expect_err("truncated stdout must refuse");
+        match err {
+            InterpError::ShellOutputLimitExceeded {
+                stream,
+                total_bytes,
+                limit_bytes,
+                argv0,
+            } => {
+                assert_eq!(stream, "stdout");
+                assert_eq!(total_bytes, (DEFAULT_SHELL_STDOUT_MAX_BYTES as u64) + 1);
+                assert_eq!(limit_bytes, DEFAULT_SHELL_STDOUT_MAX_BYTES as u64);
+                assert_eq!(argv0, "fixture");
+            }
+            other => panic!("expected ShellOutputLimitExceeded, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn capture_then_shell_result_refuses_oversized_stdout_child() {
+        let child = Command::new("sh")
+            .arg("-c")
+            .arg("dd if=/dev/zero bs=1048576 count=9 2>/dev/null | tr '\\0' 'a'")
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn stdout overflow child");
+        let capture = super::bounded_shell_host_drain::capture_child_output(
+            child,
+            super::bounded_shell_host_drain::default_shell_stdout_capture_policy(),
+            super::bounded_shell_host_drain::default_shell_stderr_capture_policy(),
+        )
+        .expect("bounded capture");
+        assert!(
+            capture.stdout.truncated,
+            "stdout child must report overflow"
+        );
+        assert!(
+            capture.stdout.retained.is_empty(),
+            "overflow must not retain a prefix"
+        );
+        let err = shell_result_from_capture(&capture, "sh").expect_err("overflow must refuse");
+        match err {
+            InterpError::ShellOutputLimitExceeded { stream, .. } => {
+                assert_eq!(stream, "stdout");
+            }
+            other => panic!("expected ShellOutputLimitExceeded, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn shell_result_preserves_capture_evidence_on_success() {
+        let child = Command::new("sh")
+            .arg("-c")
+            .arg("printf small; printf x >&2")
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn small child");
+        let capture = super::bounded_shell_host_drain::capture_child_output(
+            child,
+            super::bounded_shell_host_drain::default_shell_stdout_capture_policy(),
+            super::bounded_shell_host_drain::default_shell_stderr_capture_policy(),
+        )
+        .expect("bounded capture");
+        let result = shell_result_from_capture(&capture, "sh").expect("small stdout fits");
+        assert_eq!(result.stdout.total_bytes, 5);
+        assert_eq!(result.stdout.retained_bytes, 5);
+        assert!(!result.stdout.truncated);
+        assert_eq!(result.stderr.total_bytes, 1);
+        assert_eq!(result.stderr.retained_bytes, 1);
+        assert!(result.stderr.digest_hex.is_some());
+    }
+}
+
+#[cfg(test)]
+mod map_shell_outputs_optional_stream_tests {
+    use std::rc::Rc;
+
+    use im::{vector as im_vec, HashMap};
+
+    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+    use crate::v1_std_core::{
+        make_field_init_node, make_field_node, make_span, make_text_part_node, Cardinality,
+        Connective, ExprData, InferredNode, Node,
+    };
+
+    use super::bounded_shell_host_drain::CapturedStreamEvidence;
+    use super::{map_shell_outputs, ExecutionMode, InterpContext, ShellResult, Value};
+
+    fn map_shell_outputs_test_context() -> InterpContext {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+            emit_graph_info: empty_emit_graph_info(),
+        };
+        InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
+    }
+
+    fn bare_type_node(name: &str, span: Rc<crate::v1_std_core::SourceSpan>) -> Rc<Node> {
+        Rc::new(Node {
+            name: name.to_string(),
+            span: span.clone(),
+            ident_span: None,
+            children: Rc::new(im_vec![]),
+            connective: Connective::NoConnective,
+            params: Rc::new(im_vec![]),
+            inferred: None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(im_vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(im_vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        })
+    }
+
+    fn shell_result_fixture(exit_code: i32, stdout_text: &str, stderr_text: &str) -> ShellResult {
+        ShellResult {
+            exit_code,
+            stdout: CapturedStreamEvidence {
+                total_bytes: stdout_text.len() as u64,
+                retained_bytes: stdout_text.len() as u64,
+                truncated: false,
+                digest_hex: None,
+                retained_text: stdout_text.to_string(),
+            },
+            stderr: CapturedStreamEvidence {
+                total_bytes: stderr_text.len() as u64,
+                retained_bytes: stderr_text.len() as u64,
+                truncated: false,
+                digest_hex: None,
+                retained_text: stderr_text.to_string(),
+            },
+        }
+    }
+
+    fn map_optional_stream_field(exit_code: i32, from_key: &str) -> Value {
+        let ctx = map_shell_outputs_test_context();
+        let span = make_span(0, 0);
+        let str_type = bare_type_node("String", span.clone());
+        let mut field = make_field_node(
+            from_key.to_string(),
+            str_type,
+            Cardinality::CardOptional,
+            None,
+            Some(from_key.to_string()),
+            span.clone(),
+            span.clone(),
+        );
+        // make_field_node's from_key stub is not a LitStr; extract_from_key needs one.
+        let from_key_prop = make_field_init_node(
+            "from_key".to_string(),
+            make_text_part_node(from_key.to_string(), span.clone()),
+            span.clone(),
+            span.clone(),
+        );
+        Rc::make_mut(&mut field).properties = Rc::new(im_vec![from_key_prop]);
+        let return_type = Rc::new(Node {
+            name: "FixtureShellRecord".to_string(),
+            span: span.clone(),
+            ident_span: None,
+            children: Rc::new(im_vec![field]),
+            connective: Connective::NoConnective,
+            params: Rc::new(im_vec![]),
+            inferred: None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(im_vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(im_vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        });
+        let op_node = Rc::new(Node {
+            name: "fixture_shell_op".to_string(),
+            span: span.clone(),
+            ident_span: None,
+            children: Rc::new(im_vec![]),
+            connective: Connective::NoConnective,
+            params: Rc::new(im_vec![]),
+            inferred: Some(Rc::new(InferredNode::Resolved { node: return_type })),
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(im_vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(im_vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        });
+        let mapped = map_shell_outputs(
+            &shell_result_fixture(exit_code, "captured-stdout", "captured-stderr"),
+            &op_node,
+            &ctx,
+        )
+        .expect("map_shell_outputs");
+        match mapped {
+            Value::Record { fields, .. } => fields
+                .iter()
+                .find(|(sym, _)| ctx.sym(from_key) == *sym)
+                .map(|(_, v)| v.clone())
+                .unwrap_or(Value::Null),
+            other => panic!("expected record, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn optional_stdout_is_null_on_failed_shell_not_captured_text() {
+        assert_eq!(
+            map_optional_stream_field(1, "stdout"),
+            Value::Null,
+            "optional stdout must stay absent when the shell failed"
+        );
+    }
+
+    #[test]
+    fn optional_stderr_is_null_on_failed_shell_not_captured_text() {
+        assert_eq!(
+            map_optional_stream_field(1, "stderr"),
+            Value::Null,
+            "optional stderr must stay absent when the shell failed"
+        );
+    }
+
+    #[test]
+    fn optional_stdout_surfaces_text_on_success() {
+        assert_eq!(
+            map_optional_stream_field(0, "stdout"),
+            Value::Str("captured-stdout".to_string())
+        );
+    }
+}
+
+#[cfg(test)]
 mod wall_deadline_kill_tests {
     use std::process::{Command, Stdio};
     use std::rc::Rc;
@@ -13813,8 +14158,14 @@ mod wall_deadline_kill_tests {
             .stderr(Stdio::null())
             .spawn()
             .expect("spawn sleep");
-        let err = wait_child_honoring_wall_deadline(child, &ctx, "sleep")
-            .expect_err("over-budget sleep must refuse");
+        let err = wait_child_honoring_wall_deadline(
+            child,
+            &ctx,
+            "sleep",
+            super::bounded_shell_host_drain::default_shell_stdout_capture_policy(),
+            super::bounded_shell_host_drain::default_shell_stderr_capture_policy(),
+        )
+        .expect_err("over-budget sleep must refuse");
         let elapsed_ms = started.elapsed().as_millis() as u64;
         // The KERNEL result is caller-agnostic: this helper is generic shell-wait machinery, and
         // the wall budget being armed only by the witness lane today is a fact about its callers,
@@ -13851,9 +14202,15 @@ mod wall_deadline_kill_tests {
             .stderr(Stdio::null())
             .spawn()
             .expect("spawn true");
-        let output = wait_child_honoring_wall_deadline(child, &ctx, "true")
-            .expect("no-deadline wait must succeed");
-        assert!(output.status.success());
+        let output = wait_child_honoring_wall_deadline(
+            child,
+            &ctx,
+            "true",
+            super::bounded_shell_host_drain::default_shell_stdout_capture_policy(),
+            super::bounded_shell_host_drain::default_shell_stderr_capture_policy(),
+        )
+        .expect("no-deadline wait must succeed");
+        assert!(output.exit_status.success());
     }
 }
 

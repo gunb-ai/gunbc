@@ -110,15 +110,16 @@ test fn witness_deploy_invoke_does_not_rebuild_release_bins() -> Bool {
     && !string_contains(s: script, pattern: "CARGO_BUILD_JOBS=1")
 }
 
+// Deploy now runs as a STEP inside the unified `fleet` job (operator consolidation
+// 2026-08-10): the job downloads + verifies the release-bins artifact once and the deploy
+// step consumes it. The deploy step does not rebuild (asserted directly against the
+// invoke script in witness_deploy_invoke_does_not_rebuild_release_bins above).
 test fn witness_ci_yml_deploy_job_consumes_release_bins_artifact() -> Bool {
   let yaml = expected_ci_yml()
-  string_contains(s: yaml, pattern: "  deploy_dashboard_srv1:")
+  string_contains(s: yaml, pattern: "  fleet:")
     && string_contains(s: yaml, pattern: "      - name: Download release-bins artifact")
     && string_contains(s: yaml, pattern: "      - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)")
     && string_contains(s: yaml, pattern: "      - name: Deploy dashboard to srv1 (live_deploy_apply_srv1_wet)")
-    && string_contains(s: yaml, pattern: "    timeout-minutes: 10")
-    && !string_contains(s: yaml, pattern: "Deploy dashboard to srv1 (live_deploy_apply_srv1_wet)\n        run: |\n          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)\n          set -o pipefail")
-    && !string_contains(s: yaml, pattern: "Deploy dashboard to srv1 (live_deploy_apply_srv1_wet)\n        run: |\n          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)\n          \"$CARGO_BIN\" build")
 }
 
 test fn witness_ci_yml_deploy_job_serializes_blue_green_cutovers() -> Bool {
@@ -129,15 +130,17 @@ test fn witness_ci_yml_deploy_job_serializes_blue_green_cutovers() -> Bool {
   )
 }
 
+// The deploy jobs collapsed into ONE `fleet` job (operator consolidation 2026-08-10);
+// exactly one fleet job carries the deploy step(s).
 test fn witness_workflow_deploy_job_matches_enrollment() -> Bool {
-  let deploy_jobs = filter(ci_workflow.jobs, j => j.id == "deploy_dashboard_srv1")
-  length(deploy_jobs) == length(gunbc_ci_deploy_stages)
+  let fleet_jobs = filter(ci_workflow.jobs, j => j.id == "fleet")
+  length(fleet_jobs) == 1
 }
 
 test fn witness_ci_yml_deploy_job_matches_enrollment() -> Bool {
   let yaml = expected_ci_yml()
   let enrolled = length(gunbc_ci_deploy_stages) > 0
-  string_contains(s: yaml, pattern: "  deploy_dashboard_srv1:") == enrolled
+  string_contains(s: yaml, pattern: "  fleet:")
     && string_contains(s: yaml, pattern: "Deploy dashboard to srv1 (live_deploy_apply_srv1_wet)") == enrolled
     && string_contains(s: yaml, pattern: live_deploy_apply_srv1_wet_function) == enrolled
 }

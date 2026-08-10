@@ -507,6 +507,8 @@ data serve_workflow_note: String = "GET /workflow.json is the evidence-derived a
 
 data serve_daily_page_observed_note: String = "The daily page consumes the SAME attempt observation the /workflow.json wire serves (one observing authority, two projections): an observed ledger renders real activity regions and the active band; a refused ledger renders the page with the ONE workspace observation banner carrying the located reason — the page itself stays a 200 because the roadmap authority rendered fine; what failed is the activity channel, and that failure is narrated once, in place, exactly as the client would narrate it on a later poll."
 
+data roadmap_serve_host_shell_bounded_drain_receipt_note: String = "HOST-BOUNDARY AMPLIFIER REPAIR (PR #8087, operator ruling 2026-08-10): v1_interpreter dispatch_shell drains child stdout/stderr concurrently while the child runs. Bounded the measured ~59.5 MB stderr buffer+clone amplifier on the shell success path — stderr retains bounded tail (16 KiB) with total_bytes, truncated, and FNV digest_hex surfaced via CapturedStreamEvidence / map_shell_outputs from_key fields; stdout complete-within 8 MiB or typed ShellOutputLimitExceeded refusal (never a silent prefix). INCIDENT NOT CLOSED: wedge was finite/self-recovered; wedged route unproven (workflow.json inferred from journal tail; 2026-08-08 wedge may be daily page); interpreter-concat hypothesis live and may be primary; share of two-hour peg versus queued duplicate polls unmeasured. Witness: bounded_shell_stream_capture_replay. Dissolve-on: emit-on-demand native serve and shared CapturedProcessStream carrier subsume this seed-only drain."
+
 fn serve_daily_page_response_for_instance(
   instance: HostDashboardInstance,
 ) -> ServeHttpResponse {
