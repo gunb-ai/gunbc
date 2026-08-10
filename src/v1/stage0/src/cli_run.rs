@@ -23376,6 +23376,16 @@ pub fn run_discovery_corpus_with_options(
     );
     if let Ok(summary) = &out {
         emit_selection_degradation_receipt(source_roots, selection, summary);
+        if selection == NodeFrontierSelectionMode::PredictOnly {
+            match resolution_divergence_prewarm_closure_scoped_for_falsifier(source_roots) {
+                Ok(detail) => {
+                    eprintln!("[resolution-divergence] closure-scoped prewarm: {detail}");
+                }
+                Err(e) => {
+                    eprintln!("[resolution-divergence] closure-scoped prewarm refused: {e}");
+                }
+            }
+        }
     }
     out
 }
@@ -33151,6 +33161,44 @@ pub fn project_resolution_divergence_census(
     }
 }
 
+/// After predict-only affected-set discovery, assemble the closure-scoped resolved
+/// graph once and install it in `resolved_graph_memo` so the falsifier's silent-pick
+/// gate witness serves it from the in-process share instead of cold-resolving the
+/// same closure again (FALSIFIER-COST-0).
+pub fn resolution_divergence_prewarm_closure_scoped_for_falsifier(
+    source_roots: &[String],
+) -> Result<String, String> {
+    let index = process_shared_index(source_roots);
+    let sources = resolution_divergence_closure_scoped_sources_from_shared_index(&index)?;
+    let subject = subject_digest_for_closure(&sources);
+    let modules = sources.len();
+    if index.resolved_graph_memo.borrow().contains_key(&subject) {
+        return Ok(format!(
+            "already memoized subject={subject} modules={modules}"
+        ));
+    }
+    record_resolution_divergence_phase(
+        ResolutionDivergencePhase::ParentWholeTreeResolve,
+        ResolutionDivergencePhaseState::Started,
+        "predict-only post-walk closure-scoped prewarm",
+    )?;
+    resolved_graph_from_sources_with_index(
+        &index,
+        sources,
+        ResolveTypecheckGate::Strict,
+        "resolution-divergence-predict-only-prewarm",
+        ResolvedGraphMemoShare::Memoize,
+    )?;
+    record_resolution_divergence_phase(
+        ResolutionDivergencePhase::ParentWholeTreeResolve,
+        ResolutionDivergencePhaseState::Completed,
+        &format!("modules={modules}; prewarm_memo=true"),
+    )?;
+    Ok(format!(
+        "installed closure-scoped memo subject={subject} modules={modules}"
+    ))
+}
+
 /// CI witness implementation over the parent process's shared SymbolIndex. The old
 /// adapter launched `resolution_divergence_census --closure-scoped`, which built a
 /// second index and cold-resolved the closure in a child process. This path keeps the
@@ -33176,15 +33224,27 @@ pub fn resolution_divergence_silent_pick_gate_in_process(
                 "in-process census uses parent-owned shared index",
             )?;
 
-            record_resolution_divergence_phase(
-                ResolutionDivergencePhase::ParentWholeTreeResolve,
-                ResolutionDivergencePhaseState::Started,
-                "parent shared-index closure walk + resolve",
-            )?;
             let roots = default_source_roots();
             let index = process_shared_index(&roots);
             let sources = resolution_divergence_closure_scoped_sources_from_shared_index(&index)?;
             let modules_resolved = sources.len();
+            let subject = subject_digest_for_closure(&sources);
+            let memo_hit = index.resolved_graph_memo.borrow().contains_key(&subject);
+            if memo_hit {
+                record_resolution_divergence_phase(
+                    ResolutionDivergencePhase::ParentWholeTreeResolve,
+                    ResolutionDivergencePhaseState::Skipped,
+                    &format!(
+                        "closure-scoped memo served predict-only prewarm; modules={modules_resolved}"
+                    ),
+                )?;
+            } else {
+                record_resolution_divergence_phase(
+                    ResolutionDivergencePhase::ParentWholeTreeResolve,
+                    ResolutionDivergencePhaseState::Started,
+                    "parent shared-index closure walk + resolve",
+                )?;
+            }
             let (graph, source_indices, _) = resolved_graph_from_sources_with_index(
                 &index,
                 sources,
@@ -33192,15 +33252,17 @@ pub fn resolution_divergence_silent_pick_gate_in_process(
                 "resolution-divergence-census-in-process",
                 ResolvedGraphMemoShare::Ephemeral,
             )?;
+            if !memo_hit {
+                record_resolution_divergence_phase(
+                    ResolutionDivergencePhase::ParentWholeTreeResolve,
+                    ResolutionDivergencePhaseState::Completed,
+                    &format!("modules={modules_resolved}; shared_index=true"),
+                )?;
+            }
             Ok((graph, source_indices, modules_resolved))
         })();
         let subsequent_silent_picks = crate::v1_rt::resolution_silent_pick_disable();
         let (graph, source_indices, modules_resolved) = resolve_setup?;
-        record_resolution_divergence_phase(
-            ResolutionDivergencePhase::ParentWholeTreeResolve,
-            ResolutionDivergencePhaseState::Completed,
-            &format!("modules={modules_resolved}; shared_index=true"),
-        )?;
         let ctx = v1_interpreter::InterpContext::with_runtime_options(
             graph.as_ref(),
             source_indices,
@@ -33810,6 +33872,66 @@ fn caller() -> Bool {
             super::project_resolution_divergence_census(&after),
             super::project_resolution_divergence_census(&before),
             "the process-boundary cut must preserve census bytes and gate verdict on a frozen tree",
+        );
+        let _ = std::fs::remove_dir_all(fixture);
+    }
+
+    #[test]
+    fn predict_only_prewarm_closure_scoped_memo_skips_second_resolve() {
+        let fixture = super::process_workspace_root()
+            .join("target")
+            .join(format!("gunbc-resdiv-prewarm-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&fixture);
+        write_fixture(
+            &fixture,
+            "callee.dag",
+            r#"module test.prewarm.callee
+
+import std.types { Bool }
+
+fn identity(a: Bool) -> Bool {
+  return a
+}
+"#,
+        );
+        write_fixture(
+            &fixture,
+            "caller.dag",
+            r#"module test.prewarm.caller
+
+import std.types { Bool }
+import test.prewarm.callee { identity }
+
+fn caller() -> Bool {
+  return identity(False)
+}
+"#,
+        );
+        let roots = fixture_roots(&fixture);
+        super::resolution_divergence_prewarm_closure_scoped_for_falsifier(&roots)
+            .expect("predict-only prewarm");
+        let index = super::process_shared_index(&roots);
+        let sources =
+            super::resolution_divergence_closure_scoped_sources_from_shared_index(index.as_ref())
+                .expect("closure-scoped fixture sources");
+        let subject = crate::resolved_graph_cache::subject_digest_for_closure(&sources);
+        assert!(
+            index.resolved_graph_memo.borrow().contains_key(&subject),
+            "prewarm must install closure-scoped subject in resolved_graph_memo"
+        );
+        super::reset_typecheck_compute_count();
+        super::resolved_graph_from_sources_with_index(
+            index.as_ref(),
+            sources,
+            super::ResolveTypecheckGate::Strict,
+            "resolution-divergence-prewarm-second-resolve",
+            super::ResolvedGraphMemoShare::Ephemeral,
+        )
+        .expect("memo-served second closure resolve");
+        assert_eq!(
+            super::typecheck_compute_count(),
+            0,
+            "memo-served second closure resolve must not recompute typecheck"
         );
         let _ = std::fs::remove_dir_all(fixture);
     }
