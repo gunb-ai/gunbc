@@ -2,7 +2,7 @@ module gunbc.os_install_mechanism
 
 import std.bmc { BmcEndpoint }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.types { Int, List, String }
+import std.types { EpochMs, Int, List, String }
 import extdeps.bmc.types {
   RedfishBootSourceOverrideTarget,
   BootTargetPxe,
@@ -75,9 +75,49 @@ type NetworkBootRequirement
   | NetworkBootServingInfrastructure
   | NetworkBootBootArtifacts
 
+// One observation per requirement axis. A single DeclarationRef standing for all four was the
+// same substitution this carrier exists to forbid, one level in: it let an authored plan satisfy
+// axes nobody observed. Establishing the delivery now requires naming an observation for each
+// axis, so a false claim has to be told four times rather than once.
+type NetworkBootRequirementEvidence {
+  requirement: NetworkBootRequirement
+  observation: DeclarationRef
+  observed_at: EpochMs
+}
+
+type NetworkBootDeliveryEstablishment {
+  boot_source_override: NetworkBootRequirementEvidence
+  client_boot_mode: NetworkBootRequirementEvidence
+  serving_infrastructure: NetworkBootRequirementEvidence
+  boot_artifacts: NetworkBootRequirementEvidence
+}
+
 type NetworkBootDeliveryStanding
-  = NetworkBootDeliveryEstablished { boot_mode_authority: DeclarationRef }
+  = NetworkBootDeliveryEstablished { evidence: NetworkBootDeliveryEstablishment }
   | NetworkBootDeliveryUnestablished { missing: List<NetworkBootRequirement> }
+
+// CapabilityFirmwareUpdate means "this firmware exposes an update operation", NOT "therefore a
+// VM-capable firmware is reachable from here". The pre-repair FirmwareUpdateThenVirtualMedia arm
+// inferred the second from the first plus "the catalog contains SOME VM-capable row", which
+// establishes no admissible transition: not the exact target release, not upgrade vs downgrade,
+// not board compatibility, not artifact availability or integrity, not whether the transition
+// preserves the BMC functions the install depends on, and not a policy permitting it.
+type FirmwareTransitionRequirement
+  = FirmwareTransitionTargetRelease
+  | FirmwareTransitionDirection
+  | FirmwareTransitionBoardCompatibility
+  | FirmwareTransitionArtifactIntegrity
+  | FirmwareTransitionFunctionPreservation
+  | FirmwareTransitionPolicyPermission
+
+type FirmwareTransitionStanding
+  = FirmwareTransitionEstablished {
+      from: BmcFirmwareVersion,
+      to: BmcFirmwareVersion,
+      artifact: DeclarationRef,
+    }
+  | FirmwareTransitionUnestablished { missing: List<FirmwareTransitionRequirement> }
+  | FirmwareTransitionAmbiguous { candidates: Int }
 
 type OsInstallMechanismRefusalCause
   = InstallFirmwareEvidenceAbsent { endpoint: BmcEndpoint }
@@ -87,6 +127,14 @@ type OsInstallMechanismRefusalCause
   | InstallNoVirtualMediaAndNetworkBootUnestablished {
       firmware: BmcFirmwareVersion,
       missing: List<NetworkBootRequirement>,
+    }
+  | InstallFirmwareTransitionUnestablished {
+      firmware: BmcFirmwareVersion,
+      missing: List<FirmwareTransitionRequirement>,
+    }
+  | InstallFirmwareTransitionAmbiguous {
+      firmware: BmcFirmwareVersion,
+      candidates: Int,
     }
 
 type OsInstallMechanismSolution
@@ -101,6 +149,7 @@ fn solve_delivery_from_capability_row(
   row: BmcFirmwareCapabilityRow,
   catalog: List<BmcFirmwareCapabilityRow>,
   network_boot: NetworkBootDeliveryStanding,
+  firmware_transition: FirmwareTransitionStanding,
 ) -> OsInstallMechanismSolution {
   if firmware_has_capability(row: row, cap: CapabilityBootSourceOverride) == false {
     OsInstallMechanismRefused {
@@ -112,10 +161,21 @@ fn solve_delivery_from_capability_row(
     OsInstallMechanismSelected { mechanism: NbdProxyVirtualMediaInstall }
   } else if firmware_has_capability(row: row, cap: CapabilityFirmwareUpdate)
          && catalog_has_vm_capable_firmware(catalog: catalog) {
-    OsInstallMechanismSelected { mechanism: FirmwareUpdateThenVirtualMedia }
+    match firmware_transition {
+      FirmwareTransitionEstablished { from: _, to: _, artifact: _ } =>
+        OsInstallMechanismSelected { mechanism: FirmwareUpdateThenVirtualMedia }
+      FirmwareTransitionUnestablished { missing: m } =>
+        OsInstallMechanismRefused {
+          cause: InstallFirmwareTransitionUnestablished { firmware: row.firmware, missing: m },
+        }
+      FirmwareTransitionAmbiguous { candidates: n } =>
+        OsInstallMechanismRefused {
+          cause: InstallFirmwareTransitionAmbiguous { firmware: row.firmware, candidates: n },
+        }
+    }
   } else {
     match network_boot {
-      NetworkBootDeliveryEstablished { boot_mode_authority: _ } =>
+      NetworkBootDeliveryEstablished { evidence: _ } =>
         OsInstallMechanismSelected { mechanism: PxeHttpInstall }
       NetworkBootDeliveryUnestablished { missing: m } =>
         OsInstallMechanismRefused {
@@ -137,6 +197,7 @@ fn solve_install_mechanism_from_evidence(
   evidence: BmcFirmwareEvidence,
   catalog: List<BmcFirmwareCapabilityRow>,
   network_boot: NetworkBootDeliveryStanding,
+  firmware_transition: FirmwareTransitionStanding,
 ) -> OsInstallMechanismSolution {
   match bmc_firmware_capability_standing(evidence: evidence, catalog: catalog) {
     BmcFirmwareCapabilityResolved { row: r } =>
@@ -144,6 +205,7 @@ fn solve_install_mechanism_from_evidence(
         row: r,
         catalog: catalog,
         network_boot: network_boot,
+        firmware_transition: firmware_transition,
       )
     BmcFirmwareCapabilityEvidenceAbsent { endpoint: e } =>
       OsInstallMechanismRefused { cause: InstallFirmwareEvidenceAbsent { endpoint: e } }
@@ -168,6 +230,21 @@ data srv3_firmware_catalog: List<BmcFirmwareCapabilityRow> = asrock_altrad8ud_1l
 // install path at all — its firmware offers neither virtual-media mechanism AND its network boot
 // is unestablished. "srv4 installs by PXE" is not something this repository can currently derive;
 // it is a claim awaiting the observations named above.
+data firmware_transition_requirements_all: List<FirmwareTransitionRequirement> = [
+  FirmwareTransitionTargetRelease,
+  FirmwareTransitionDirection,
+  FirmwareTransitionBoardCompatibility,
+  FirmwareTransitionArtifactIntegrity,
+  FirmwareTransitionFunctionPreservation,
+  FirmwareTransitionPolicyPermission,
+]
+
+// No firmware transition is established for any host either: nothing in the tree names a target
+// release, an artifact with verified integrity, or a policy permitting the change.
+data fleet_firmware_transition_standing: FirmwareTransitionStanding = FirmwareTransitionUnestablished {
+  missing: firmware_transition_requirements_all,
+}
+
 data network_boot_requirements_all: List<NetworkBootRequirement> = [
   NetworkBootBootSourceOverride,
   NetworkBootClientBootMode,
@@ -194,19 +271,22 @@ data srv4_network_boot_standing: NetworkBootDeliveryStanding = NetworkBootDelive
 data srv1_install_mechanism_solution: OsInstallMechanismSolution = solve_install_mechanism_from_evidence(
   evidence: srv1_bmc_firmware_evidence,
   catalog: srv3_firmware_catalog,
-  network_boot: srv1_network_boot_standing
+  network_boot: srv1_network_boot_standing,
+  firmware_transition: fleet_firmware_transition_standing
 )
 
 data srv2_install_mechanism_solution: OsInstallMechanismSolution = solve_install_mechanism_from_evidence(
   evidence: srv2_bmc_firmware_evidence,
   catalog: srv3_firmware_catalog,
-  network_boot: srv2_network_boot_standing
+  network_boot: srv2_network_boot_standing,
+  firmware_transition: fleet_firmware_transition_standing
 )
 
 data srv3_install_mechanism_solution: OsInstallMechanismSolution = solve_install_mechanism_from_evidence(
   evidence: srv3_bmc_firmware_evidence,
   catalog: srv3_firmware_catalog,
-  network_boot: srv3_network_boot_standing
+  network_boot: srv3_network_boot_standing,
+  firmware_transition: fleet_firmware_transition_standing
 )
 
 // srv4 is the row that makes this repair load-bearing rather than tidy: its observed firmware
@@ -217,7 +297,8 @@ data srv3_install_mechanism_solution: OsInstallMechanismSolution = solve_install
 data srv4_install_mechanism_solution: OsInstallMechanismSolution = solve_install_mechanism_from_evidence(
   evidence: srv4_bmc_firmware_evidence,
   catalog: srv3_firmware_catalog,
-  network_boot: srv4_network_boot_standing
+  network_boot: srv4_network_boot_standing,
+  firmware_transition: fleet_firmware_transition_standing
 )
 
 data srv3_install_mechanism_board_default_residue: String = "🟡 dissolve-on: srv3_install_mechanism and srv3_install_boot_target are the pre-repair rows that read the BOARD's shipped-firmware capability row (asrock_altrad8ud_shipped_bmc_firmware_capabilities) instead of srv3's own firmware evidence. They are retained ONLY because their consumers — gunbc.os_install's srv3_os_install_plan / srv3_seeded_os_install_plan / fleet_install_server_specs, gunbc.nbd_proxy_virtual_media_install, gunbc.srv3_os_install_actuate_scope, gunbc.bmc_onboarding, gunbc.host_standup — are total `data` rows that cannot carry OsInstallMechanismRefused without becoming standings themselves, and fleet_install_server_specs reaches gunbc.generated_artifact. They agree with srv3_install_mechanism_solution TODAY only because srv3's observed firmware happens to equal the board's shipped version; the witness srv3_legacy_row_agrees_with_evidence_derived_solution executes that coincidence so it cannot rot silently, and there is deliberately no srv4 legacy row because it would be wrong. DISSOLVES WHEN those consumers take OsInstallMechanismSolution and the plan rows become standings (BMC-EVIDENCE-1); at that point both rows and this note are DELETED."
