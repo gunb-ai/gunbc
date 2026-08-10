@@ -131,20 +131,65 @@ data no_absent_prerequisite: SparkServingRefusal? = none
 
 data no_further_refusals: List<SparkServingRefusal> = []
 
+// EVERY PREREQUISITE AND OBSERVATION IS BOUND TO ITS SUBJECT HOST. This function existed because
+// the first draft discarded the host from all five carrier positions (`host: _`), which made the
+// reconciliation answer a question about one host using another host's facts: srv6's observation
+// satisfied srv5's desired occurrence whenever the release digests agreed, and an absent
+// prerequisite on srv6 refused srv5. That is the copied-receipt class fleet_posix_accounts already
+// names -- a receipt produced for one host consumed as another's answer with nothing to detect the
+// swap -- and it is the failure the two-replica design is most exposed to, because srv5 and srv6
+// are deliberately configured to share one release identity. The digest being right is exactly
+// what makes the subject being wrong invisible.
+fn host_matches(a: HostIdentity, b: HostIdentity) -> Bool {
+  (a as String) == (b as String)
+}
+
 // A prerequisite that is ABSENT carries its own requirement and cause, so the refusal names what
-// is missing instead of a bare false that erases which of several remedies applies.
-fn first_absent_prerequisite(prerequisites: List<SparkServingPrerequisite>) -> SparkServingRefusal? {
+// is missing instead of a bare false that erases which of several remedies applies. Only
+// prerequisites recorded FOR THE SUBJECT are consulted: another host's absent prerequisite is not
+// evidence about this one, in either direction.
+fn first_absent_prerequisite(subject: HostIdentity, prerequisites: List<SparkServingPrerequisite>) -> SparkServingRefusal? {
   fold_list(xs: prerequisites, empty: no_absent_prerequisite, cons: fn(acc, p) {
     match acc {
       Present { value: found } => Present { value: found }
       Absent => match p {
-        PrerequisiteAbsent { host: _, requirement: req, cause: why } => Present { value: SparkServingRefusal { subject: req, cause: why } }
+        PrerequisiteAbsent { host: h, requirement: req, cause: why } => if host_matches(a: h, b: subject) { Present { value: SparkServingRefusal { subject: req, cause: why } } } else { none }
         HostIdentityBindingAdmitted { host: _ } => none
         ManagedHostAccessGrounded { host: _ } => none
       }
     }
   })
 }
+
+// PRESENCE IS REQUIRED, NOT MERELY NON-ABSENCE. Checking only for an explicit PrerequisiteAbsent
+// row let an EMPTY prerequisite list read as satisfied -- silence answering as consent, which is
+// the empty-observation narrow (DESIGN section 5): "nobody recorded a prerequisite for srv5" and
+// "srv5's prerequisites hold" are different states and the first must not actuate.
+fn admits_identity_binding(subject: HostIdentity, prerequisites: List<SparkServingPrerequisite>) -> Bool {
+  fold_list(xs: prerequisites, empty: false, cons: fn(acc, p) {
+    match p {
+      HostIdentityBindingAdmitted { host: h } => acc || host_matches(a: h, b: subject)
+      ManagedHostAccessGrounded { host: _ } => acc
+      PrerequisiteAbsent { host: _, requirement: _, cause: _ } => acc
+    }
+  })
+}
+
+fn admits_managed_access(subject: HostIdentity, prerequisites: List<SparkServingPrerequisite>) -> Bool {
+  fold_list(xs: prerequisites, empty: false, cons: fn(acc, p) {
+    match p {
+      ManagedHostAccessGrounded { host: h } => acc || host_matches(a: h, b: subject)
+      HostIdentityBindingAdmitted { host: _ } => acc
+      PrerequisiteAbsent { host: _, requirement: _, cause: _ } => acc
+    }
+  })
+}
+
+data missing_identity_binding_refusal: SparkServingRefusal = SparkServingRefusal { subject: "host identity binding", cause: "no admitted host-identity binding is recorded for this subject; an unanchored host cannot be the subject of a serving claim" }
+
+data missing_managed_access_refusal: SparkServingRefusal = SparkServingRefusal { subject: "managed host access", cause: "no grounded managed access is recorded for this subject; convergence cannot be owned through a human bootstrap account" }
+
+data observation_subject_mismatch_refusal: SparkServingRefusal = SparkServingRefusal { subject: "observation subject", cause: "the observation was taken on a different host than the desired occurrence names; a matching release digest across replicas makes a swapped subject invisible, so it refuses rather than comparing" }
 
 // THE MECHANISM. Desired x observation x prerequisites -> exactly one arm. This is what makes the
 // structural no-op real rather than a shape: SparkServingAlreadyConverged is reachable ONLY when
@@ -160,18 +205,30 @@ fn reconcile_spark_serving(
   observation: SparkServingObservation,
   prerequisites: List<SparkServingPrerequisite>,
 ) -> SparkServingReconciliation {
-  match first_absent_prerequisite(prerequisites: prerequisites) {
+  match first_absent_prerequisite(subject: desired.host, prerequisites: prerequisites) {
     Present { value: absent } => SparkServingRefused { first: absent, more: no_further_refusals }
     Absent =>
-      match observation {
-        SparkServingObservationRefused { host: _, cause: why } =>
-          SparkServingRefused { first: SparkServingRefusal { subject: "observation", cause: why }, more: no_further_refusals }
-        SparkServingObserved { host: _, loaded_release: loaded } =>
-          if (loaded.digest.digest as String) == (desired.release_identity.digest.digest as String) {
-            SparkServingAlreadyConverged { converged_release: loaded }
-          } else {
-            SparkServingDeltaRequired { plan_subject: "loaded release differs from desired release" as NonEmptyStr }
+      if admits_identity_binding(subject: desired.host, prerequisites: prerequisites) == false {
+        SparkServingRefused { first: missing_identity_binding_refusal, more: no_further_refusals }
+      } else {
+        if admits_managed_access(subject: desired.host, prerequisites: prerequisites) == false {
+          SparkServingRefused { first: missing_managed_access_refusal, more: no_further_refusals }
+        } else {
+          match observation {
+            SparkServingObservationRefused { host: _, cause: why } =>
+              SparkServingRefused { first: SparkServingRefusal { subject: "observation", cause: why }, more: no_further_refusals }
+            SparkServingObserved { host: seen, loaded_release: loaded } =>
+              if host_matches(a: seen, b: desired.host) == false {
+                SparkServingRefused { first: observation_subject_mismatch_refusal, more: no_further_refusals }
+              } else {
+                if (loaded.digest.digest as String) == (desired.release_identity.digest.digest as String) {
+                  SparkServingAlreadyConverged { converged_release: loaded }
+                } else {
+                  SparkServingDeltaRequired { plan_subject: "loaded release differs from desired release" as NonEmptyStr }
+                }
+              }
           }
+        }
       }
   }
 }

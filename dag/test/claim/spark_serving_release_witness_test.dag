@@ -56,7 +56,19 @@ fn occ_srv6_other() -> SparkServingOccurrence {
   SparkServingOccurrence { host: "srv6", release_identity: spark_serving_release_identity(spec: release_other_revision()), endpoint_credential: SecretVersionRef { secret: "spark-serving-api-key", version: "3" } }
 }
 
-data grounded_prereqs: List<SparkServingPrerequisite> = [ManagedHostAccessGrounded { host: "srv5" }]
+// BOTH prerequisites, and both naming srv5. This list previously carried only the managed-access
+// row, and the reconciler passed anyway -- because it checked only for an explicit absence, so a
+// prerequisite nobody had recorded read as one that held.
+data grounded_prereqs: List<SparkServingPrerequisite> = [HostIdentityBindingAdmitted { host: "srv5" }, ManagedHostAccessGrounded { host: "srv5" }]
+
+data no_prereqs: List<SparkServingPrerequisite> = []
+
+// Both prerequisites grounded, both for the WRONG host.
+data grounded_prereqs_srv6: List<SparkServingPrerequisite> = [HostIdentityBindingAdmitted { host: "srv6" }, ManagedHostAccessGrounded { host: "srv6" }]
+
+fn observed_on_srv6() -> SparkServingObservation {
+  SparkServingObserved { host: "srv6", loaded_release: spark_serving_release_identity(spec: release_base()) }
+}
 
 data absent_prereqs: List<SparkServingPrerequisite> = [PrerequisiteAbsent { host: "srv5", requirement: "managed automation principal", cause: "only the human bootstrap account is admitted" }]
 
@@ -102,6 +114,32 @@ test fn unobservable_host_refuses_rather_than_drifting() -> Bool {
 // override a missing prerequisite is how an ungrounded host reports as fine.
 test fn missing_prerequisite_refuses_even_when_observation_matches() -> Bool {
   reconcile_arm(observation: observed_matching(), prereqs: absent_prereqs) == "refused"
+}
+
+// CONTROL 9: THE OBSERVATION'S SUBJECT IS BOUND. srv5 and srv6 are deliberately configured to
+// share one release identity, so a digest comparison alone CANNOT tell the two apart -- an
+// observation taken on srv6 satisfied srv5's desired occurrence, and the matching digest is
+// precisely what made the swapped subject invisible. This is the copied-receipt class: a receipt
+// produced for one host consumed as another's answer with nothing to detect the swap. It refuses
+// rather than converging, and refuses rather than reporting a delta, because the subject being
+// wrong is not evidence about what srv5 is running.
+test fn observation_from_the_other_replica_cannot_satisfy_this_one() -> Bool {
+  reconcile_arm(observation: observed_on_srv6(), prereqs: grounded_prereqs) == "refused"
+}
+
+// CONTROL 10: SILENCE IS NOT CONSENT. An empty prerequisite list contains no absent row, so a
+// reconciler that checks only for explicit absence converges on a host for which nothing was ever
+// established. "Nobody recorded a prerequisite for srv5" and "srv5's prerequisites hold" are
+// different states, and the first must not reach an actuator.
+test fn absent_prerequisite_records_do_not_read_as_satisfied() -> Bool {
+  reconcile_arm(observation: observed_matching(), prereqs: no_prereqs) == "refused"
+}
+
+// CONTROL 11: PREREQUISITES ARE BOUND TO THEIR SUBJECT TOO. Grounding srv6 does not ground srv5.
+// Without this, the two-replica fleet grounds itself: whichever host was established first would
+// silently authorize convergence on the other.
+test fn the_other_replica_grounding_does_not_ground_this_one() -> Bool {
+  reconcile_arm(observation: observed_matching(), prereqs: grounded_prereqs_srv6) == "refused"
 }
 
 // CONTROL 1: the no-op is STRUCTURAL. A converged host cannot reach an actuator, and the arm that
