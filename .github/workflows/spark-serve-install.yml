@@ -265,7 +265,15 @@ jobs:
           set -uo pipefail
           WORK="${RUNNER_TEMP}/serve"
           SSH="ssh -i $WORK/id -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o UserKnownHostsFile=$WORK/kh"
-          for i in $(seq 1 90); do
+          # WAIT BUDGET DERIVED FROM MEASURED PHASES, not from a guess. Run 31350806927 recorded
+          # weights loading in 111s and the model resident at 14.29 GiB in 112.6s -- then entering
+          # FIRST-RUN torch.compile, which binds no port until it completes. My previous 30-minute
+          # flat budget expired during that compile and reported a healthy, ACTIVE unit as a failed
+          # load. Three harness timeouts in a row now (ExecStartPost deadline, then this) share one
+          # cause: I set time bounds from what I imagined the work costs instead of from what the
+          # journal says it costs. Phases: download, load ~2min, compile (first run only, cached
+          # after), bind. Budget 80 minutes, inside the 120-minute job timeout.
+          for i in $(seq 1 240); do
             OUT=$($SSH "${SPARK_USER}@${SPARK_ADDR}" \
               "curl -s -m 5 -o /dev/null -w '%{http_code}' http://127.0.0.1:${SERVE_PORT}/health 2>/dev/null; \
                echo \" state=\$(systemctl --user is-active gunbc-vllm.service 2>&1)\"" 2>&1)
@@ -277,7 +285,8 @@ jobs:
                                      exit 1;; esac
             sleep 20
           done
-          echo "TIMED OUT waiting for load"
+          echo "TIMED OUT waiting for load -- last journal lines below name the phase reached,"
+          echo "so a budget overrun is distinguishable from a hang or a crash:"
           $SSH "${SPARK_USER}@${SPARK_ADDR}" 'journalctl --user -u gunbc-vllm.service -n 40 --no-pager' 2>&1 | tail -40
           exit 1
 
