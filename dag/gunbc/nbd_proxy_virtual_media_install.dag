@@ -41,7 +41,11 @@ import gunbc.os_install_mechanism {
   NbdProxyVirtualMediaInstall,
   PxeHttpInstall,
   FirmwareUpdateThenVirtualMedia,
-  srv3_install_mechanism,
+  OsInstallMechanismRefusalCause,
+  OsInstallMechanismRefused,
+  OsInstallMechanismSelected,
+  OsInstallMechanismSolution,
+  srv3_install_mechanism_solution,
   install_boot_target_for,
 }
 import gunbc.host_effect {
@@ -143,8 +147,25 @@ data srv3_nbd_proxy_export_placeholder: NbdProxyServeInterface = NbdProxyServeIn
   export_byte_count: byte_size(0),
 }
 
-data srv3_os_install_actuator_plan: OsInstallActuatorPlan = os_install_actuator_plan(
-  mechanism: srv3_install_mechanism,
+// The actuator plan carries the refusal rather than erasing it: a host whose firmware justifies
+// no delivery mechanism has no actuator step sequence, and must not be handed a plausible one.
+type OsInstallActuatorPlanStanding
+  = ActuatorPlanReady { plan: OsInstallActuatorPlan }
+  | ActuatorPlanRefused { cause: OsInstallMechanismRefusalCause }
+
+fn os_install_actuator_plan_standing_for(
+  solution: OsInstallMechanismSolution,
+  export: NbdProxyServeInterface,
+) -> OsInstallActuatorPlanStanding {
+  match solution {
+    OsInstallMechanismSelected { mechanism: m } =>
+      ActuatorPlanReady { plan: os_install_actuator_plan(mechanism: m, export: export) }
+    OsInstallMechanismRefused { cause: c } => ActuatorPlanRefused { cause: c }
+  }
+}
+
+data srv3_os_install_actuator_plan_standing: OsInstallActuatorPlanStanding = os_install_actuator_plan_standing_for(
+  solution: srv3_install_mechanism_solution,
   export: srv3_nbd_proxy_export_placeholder
 )
 

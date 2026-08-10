@@ -5,11 +5,15 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn srv3_actuator_plan_has_three_steps() -> Bool {
   srv3_os_install_actuator_step_count_is_three()
-    && match srv3_os_install_actuator_plan.mechanism {
-      NbdProxyVirtualMediaInstall => true
-      PxeHttpInstall => false
-      VirtualMediaInstall => false
-      FirmwareUpdateThenVirtualMedia => false
+    && match srv3_os_install_actuator_plan_standing {
+      ActuatorPlanRefused { cause: _ } => false
+      ActuatorPlanReady { plan: p } =>
+        match p.mechanism {
+          NbdProxyVirtualMediaInstall => true
+          PxeHttpInstall => false
+          VirtualMediaInstall => false
+          FirmwareUpdateThenVirtualMedia => false
+        }
     }
 }
 

@@ -11,7 +11,11 @@ import gunbc.workflow_escalation {
   StepAwaitingApproval,
   workflow_step_disposition_for_approval,
 }
-import gunbc.nbd_proxy_virtual_media_install { srv3_os_install_actuator_plan }
+import gunbc.nbd_proxy_virtual_media_install {
+  ActuatorPlanReady,
+  ActuatorPlanRefused,
+  srv3_os_install_actuator_plan_standing,
+}
 import gunbc.srv3_bmc_credential_resolve { srv3_os_install_actuate_credential_intent }
 
 type OsInstallActuateWorkflowStep
@@ -89,5 +93,8 @@ fn srv3_os_install_actuate_workflow_credential_intent_is_declared() -> Bool {
 }
 
 fn srv3_os_install_actuator_plan_step_count_matches_workflow_tail() -> Bool {
-  srv3_os_install_actuator_plan.steps.length() == 3
+  match srv3_os_install_actuator_plan_standing {
+    ActuatorPlanReady { plan: p } => p.steps.length() == 3
+    ActuatorPlanRefused { cause: _ } => false
+  }
 }
