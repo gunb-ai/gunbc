@@ -78,6 +78,32 @@ named.** Probing stopped by directive, not by resolution. A compiler behaving di
 position with no named reason will silently decide later questions, so it is recorded as an
 open question rather than left as folklore.
 
+## A measurement tax anyone reading these reasons will pay
+
+**The first reason in a rejection is systematically not the cause.** `rejected_with_pending`
+PREPENDS the pending accepted-carrier diagnostics — the wrapper-retention carriers, which are
+*not* failures — to a later rejection. So the head of the diagnostic list is routinely a
+retention carrier while the actual refusal sits further down, and any consumer that reads the
+first reason attributes the wrong cause.
+
+Three specimens, all from this lane within two days:
+
+- The sweep census bucketed **every** row under `body_lowering_reason_wrapper_retained_emitted`
+  when the true cause was `normalize_reason_post_normalize_not_well_formed`. That is a whole
+  census whose population claim was wrong at the head.
+- A witness asserting a guard's typed reason went **red against a guard that was working**,
+  because the assertion read the head instead of the list.
+- Consequently every reason assertion in the corpus must be a **containment** read
+  (`all_reasons` / `reasons_contain`), never a head read — including the ones in
+  `dag/test/claim/namespace_graft_body_dissolution_witness_test.dag`, which are written that
+  way for exactly this reason.
+
+The per-module reason sets in the table above are **deduplicated whole-list reads**, so they
+are not subject to this. Anything re-deriving them from a head read will disagree, and the
+head read is the one that is wrong. `v2.compiler.normalize` `first_located_cause` already
+skips accepted-carrier reasons for this reason; consumers that do their own reading need the
+same skip.
+
 ## Reproducing
 
 The instruments were scratch host bins (deliberately never committed) that loaded an
