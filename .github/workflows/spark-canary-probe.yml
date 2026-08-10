@@ -137,8 +137,32 @@ jobs:
           echo "FACT disk_root=$(df -BG --output=avail / 2>/dev/null | tail -1 | tr -d ' ' || echo ABSENT)"
           echo "FACT mem_total=$(awk '/MemTotal/{print $2$3}' /proc/meminfo 2>/dev/null || echo ABSENT)"
           echo "FACT listeners=$( (ss -ltnp 2>/dev/null || netstat -ltn 2>/dev/null) | awk 'NR>1{print $4}' | tr '\n' ',' || echo ABSENT)"
-          echo "FACT existing_serving=$(pgrep -af 'vllm|text-generation|ollama|llama' 2>/dev/null | head -3 | tr '\n' ';' || echo NONE)"
-          echo "FACT hf_cache=$(du -sh ~/.cache/huggingface 2>/dev/null | cut -f1 || echo ABSENT)"
+          # `pgrep -af ... | head` left the || arm unreachable (head succeeds regardless), so a
+          # no-match and a failed probe printed the SAME empty string -- in the two fields a serving
+          # canary most relies on to claim the host was not already serving. pgrep's own exit code
+          # separates them exactly: 1 is "ran, matched nothing", >1 is "did not run".
+          if SERV=$(pgrep -af 'vllm|text-generation|ollama|llama|sglang' 2>/dev/null); then
+            echo "FACT existing_serving=MATCHED:$(echo "$SERV" | head -3 | tr '\n' ';')"
+          else
+            SRC=$?
+            if [ "$SRC" = 1 ]; then echo "FACT existing_serving=NONE-MATCHED"
+            else echo "FACT existing_serving=PROBE-FAILED-rc$SRC"; fi
+          fi
+          if [ -d "$HOME/.cache/huggingface" ]; then
+            echo "FACT hf_cache=PRESENT:$(du -sh "$HOME/.cache/huggingface" 2>/dev/null | cut -f1)"
+          else
+            echo "FACT hf_cache=ABSENT-no-such-dir"
+          fi
+
+          # :11000 -- an unidentified listener on a host about to run an inference server. Privilege
+          # will not name the process, so ASK IT WHAT IT IS over HTTP from the host itself. Silence is
+          # recorded as a typed unknown, never as absence: a port that is open but does not speak HTTP
+          # is a different state from a port that is closed, and both differ from a probe that failed.
+          P11=$(curl -s -m 5 -o /dev/null -w '%{http_code}' http://127.0.0.1:11000/ 2>/dev/null) || P11="NO-HTTP-REPLY"
+          echo "FACT port11000_http=$P11"
+          echo "FACT port11000_body=$(curl -s -m 5 http://127.0.0.1:11000/ 2>/dev/null | head -c 160 | tr -d '\r' | tr '\n' ' ' || echo NO-BODY)"
+          echo "FACT port11000_models=$(curl -s -m 5 http://127.0.0.1:11000/v1/models 2>/dev/null | head -c 160 | tr -d '\r' | tr '\n' ' ' || echo NO-REPLY)"
+          echo "FACT port11000_server_hdr=$(curl -s -m 5 -D - -o /dev/null http://127.0.0.1:11000/ 2>/dev/null | grep -i '^server:' | tr -d '\r' || echo NO-SERVER-HEADER)"
           REMOTE
           echo "srv5 facts rc=$RC"
           echo "$OUT"
