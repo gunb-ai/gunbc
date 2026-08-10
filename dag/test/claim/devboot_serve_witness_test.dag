@@ -165,7 +165,7 @@ test fn an_absent_digest_entry_alone_refuses() -> Bool {
   ) {
     ServeRefused { token, detail } =>
       token == witness_subject_token && string_contains(s: detail, pattern: "digest entry is absent")
-    ServeProduced { token: _, sha256: _ } => false
+    ServeProduced { token: _, sha256: _, compile_count: _ } => false
   }
 }
 
@@ -175,7 +175,7 @@ test fn a_handled_serve_maps_to_exit_success() -> Bool {
     Present { value: digest } =>
       match serve_once_outcome_exit(
         outcome: ServeOnceHandled {
-          report: ServeProduced { token: witness_subject_token, sha256: digest },
+          report: ServeProduced { token: witness_subject_token, sha256: digest, compile_count: 1 },
         },
       ) {
         ExitSuccess => true

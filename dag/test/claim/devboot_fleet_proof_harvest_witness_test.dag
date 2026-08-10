@@ -1,0 +1,47 @@
+module test.claim.devboot_fleet_proof_harvest_witness
+
+import std.types { Bool }
+import v2.std.optional { Present, Absent }
+import extdeps.git.object_store { git_object_id_wire_hex }
+import gunbc.devboot.fleet_proof_harvest {
+  harvest_modeled_fleet_proof,
+  devboot_fleet_proof_harvest_bundle,
+  parse_client_receipt,
+}
+import gunbc.devboot.fleet_proof_receipt { devboot_modeled_fleet_proof_receipt }
+import gunbc.devboot.vertical_receipt { devboot_vertical_receipt }
+
+test fn witness_harvest_bundle_derives_modeled_proof() -> Bool {
+  match harvest_modeled_fleet_proof(bundle: devboot_fleet_proof_harvest_bundle) {
+    Present { value: proof } =>
+      proof.tested_commit == "69d07ed69d3a08a6d881a4ed8f3f45e0ec82e8aa"
+        && (git_object_id_wire_hex(oid: proof.tested_tree) as String) == "918953e9eb1ccbc60e6b91f64d5612a0fffd4871"
+        && proof.request_identity == "fnv1a64-dfd0b4abb44e30e7"
+        && proof.producer_compile_count == 1
+        && proof.produced_commit == "180beeb95ef8dab53c7abf8aa59a728ffc00e4e9"
+        && proof.clients.first() == Present { value: _ } && proof.clients.last() == Present { value: _ }
+    Absent => false
+  }
+}
+
+test fn witness_vertical_receipt_derives_from_harvested_proof() -> Bool {
+  match devboot_vertical_receipt() {
+    Present { value: vertical } =>
+      match devboot_modeled_fleet_proof_receipt() {
+        Present { value: fleet } =>
+          vertical.evaluated_commit == fleet.tested_commit
+            && vertical.evaluated_tree == fleet.tested_tree
+            && vertical.subject_ref_token == fleet.request_identity
+            && vertical.artifact_sha256 == fleet.artifact_sha256
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+test fn witness_client_receipt_parser_refuses_missing_execution_fields() -> Bool {
+  match parse_client_receipt(prose: "BUILT\nsha256: 976728c5d2029799f1d89843dfdd70c3b3ed132211126d2752ef8af23b5c146e\nproducer_host: srv3\nreused: false") {
+    Present { value: _ } => false
+    Absent => true
+  }
+}

@@ -17,6 +17,7 @@ import extdeps.git.object_store {
   GitObjectFormatSha256,
   git_object_id_wire_hex,
   git_object_id_format,
+  git_object_id_from_untagged_hex,
 }
 import extdeps.toolchain.types {
   TargetTriple,
@@ -99,6 +100,13 @@ type BuildSubject {
   profile: NonEmptyStr
   features: List<NonEmptyStr>
   environment: BuildEnvironmentSpec
+}
+
+// THE TREE OID CARRIED AS ITS OWN NAME WHERE COMMIT PROVENANCE IS SEPARATE. Build content identity is the tree; a commit names that tree plus history and must not stand in for it in a receipt that joins on content.
+type GitTreeObjectId = GitObjectId
+
+fn git_tree_object_id_from_untagged_hex(hex: String) -> GitTreeObjectId? {
+  git_object_id_from_untagged_hex(hex: hex)
 }
 
 // ADMISSION IS THE ONLY DOOR, and it exists because the fields it fills are non-empty by type while the request that arrives is not. The earlier revision cast raw strings into NonEmptyStr at the digest, which is the fabrication this repository forbids: a cast asserts the property rather than establishing it, so an empty feature name would have travelled into the identity as though it had been checked.

@@ -274,7 +274,15 @@ fn render_serve_once(outcome: ServeOnceOutcome) -> String {
     ServeOnceIdle => "IDLE"
     ServeOnceHandled { report } =>
       match report {
-        ServeProduced { token, sha256 } => join(["SERVED ", token, " sha256=", render_sha256_digest(digest: sha256)], "")
+        ServeProduced { token, sha256, compile_count } =>
+          join([
+            "SERVED ",
+            token,
+            " sha256=",
+            render_sha256_digest(digest: sha256),
+            " compile_count=",
+            to_string(compile_count),
+          ], "")
         ServeRefused { token, detail } => join(["SERVE-REFUSED ", token, ": ", detail], "")
       }
     ServeOnceRefused { detail } => join(["REFUSED: ", detail], "")

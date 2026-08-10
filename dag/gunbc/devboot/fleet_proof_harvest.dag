@@ -1,0 +1,284 @@
+module gunbc.devboot.fleet_proof_harvest
+
+import std.types { String, Bool, Int, CommitSha, NonEmptyStr, List }
+import v2.std.optional { Present, Absent }
+import std.content_hash { Sha256Digest, sha256_hex_digest, content_hash_eq_cryptographic }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.devboot.subject { GitTreeObjectId, git_tree_object_id_from_untagged_hex }
+
+type DevbootFleetClientObservation {
+  host: NonEmptyStr
+  reused: Bool
+  executed_exit: Int
+  executed_stdout_fingerprint: NonEmptyStr
+}
+
+type DevbootModeledFleetProofReceipt {
+  producer_served_at: NonEmptyStr
+  tested_commit: CommitSha
+  tested_tree: GitTreeObjectId
+  mechanism_branch: NonEmptyStr
+  request_identity: NonEmptyStr
+  producer_host: NonEmptyStr
+  producer_compile_count: Int
+  produced_commit: NonEmptyStr
+  artifact_object_id: NonEmptyStr
+  artifact_sha256: Sha256Digest
+  clients: List<DevbootFleetClientObservation>
+  producer_entry: DeclarationRef
+  consumer_entry: DeclarationRef
+  transport_endpoint: String
+  store_for_each_ref: String
+}
+
+type DevbootFleetProofHarvestBundle {
+  corpus_head: CommitSha
+  mechanism_branch: NonEmptyStr
+  transport_endpoint: String
+  artifact_object_id: NonEmptyStr
+  srv1_client_receipt: String
+  srv2_client_receipt: String
+  modeled_serve_log: String
+  store_for_each_ref: String
+}
+
+type ParsedDevbootClientReceipt {
+  sha256: Sha256Digest
+  producer_host: String
+  reused: Bool
+  executed_exit: Int
+  executed_stdout_fingerprint: String
+  tested_tree_hex: String
+}
+
+fn drop_prefix(s: String, prefix: String) -> String {
+  substring(s: s, start: prefix.length(), end: s.length())
+}
+
+fn receipt_line_after_prefix(prose: String, prefix: String) -> String? {
+  fold(
+    split(s: prose, sep: "\n"),
+    init: none,
+    f: (acc, line) =>
+      if acc != none {
+        acc
+      } else if starts_with(s: line, prefix: prefix) {
+        Present { value: trim(s: drop_prefix(s: line, prefix: prefix)) }
+      } else {
+        acc
+      },
+  )
+}
+
+fn parse_bool_field(prose: String, prefix: String) -> Bool? {
+  match receipt_line_after_prefix(prose: prose, prefix: prefix) {
+    Absent => none
+    Present { value: text } =>
+      if text == "true" {
+        Present { value: true }
+      } else {
+        if text == "false" {
+          Present { value: false }
+        } else {
+          none
+        }
+      }
+  }
+}
+
+fn parse_int_field(prose: String, prefix: String) -> Int? {
+  match receipt_line_after_prefix(prose: prose, prefix: prefix) {
+    Absent => none
+    Present { value: text } => parse_int(s: text)
+  }
+}
+
+fn parse_client_receipt(prose: String) -> ParsedDevbootClientReceipt? {
+  match receipt_line_after_prefix(prose: prose, prefix: "sha256: ") {
+    Absent => none
+    Present { value: hex } =>
+      match sha256_hex_digest(hex: hex) {
+        Absent => none
+        Present { value: digest } =>
+          match receipt_line_after_prefix(prose: prose, prefix: "producer_host: ") {
+            Absent => none
+            Present { value: producer_host } =>
+              match parse_bool_field(prose: prose, prefix: "reused: ") {
+                Absent => none
+                Present { value: reused } =>
+                  match parse_int_field(prose: prose, prefix: "executed_exit: ") {
+                    Absent => none
+                    Present { value: executed_exit } =>
+                      match receipt_line_after_prefix(prose: prose, prefix: "executed_stdout: ") {
+                        Absent => none
+                        Present { value: executed_stdout } =>
+                          match receipt_line_after_prefix(prose: prose, prefix: "tree=") {
+                            Absent => none
+                            Present { value: tested_tree_hex } =>
+                              Present {
+                                value: ParsedDevbootClientReceipt {
+                                  sha256: digest,
+                                  producer_host: producer_host,
+                                  reused: reused,
+                                  executed_exit: executed_exit,
+                                  executed_stdout_fingerprint: executed_stdout,
+                                  tested_tree_hex: tested_tree_hex,
+                                },
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn store_ref_commit_for_suffix(store: String, suffix: String) -> String? {
+  fold(
+    split(s: store, sep: "\n"),
+    init: none,
+    f: (acc, line) =>
+      if acc != none {
+        acc
+      } else if string_contains(s: line, pattern: suffix) {
+        match split(s: trim(s: line), sep: "\t").first() {
+          Present { value: commit } => Present { value: trim(s: commit) }
+          Absent => none
+        }
+      } else {
+        acc
+      },
+  )
+}
+
+fn request_token_from_store(store: String) -> String? {
+  fold(
+    split(s: store, sep: "\n"),
+    init: none,
+    f: (acc, line) =>
+      if acc != none {
+        acc
+      } else if string_contains(s: line, pattern: "refs/devboot/request/") {
+        match split(s: line, sep: "refs/devboot/request/").last() {
+          Present { value: token } => Present { value: trim(s: token) }
+          Absent => none
+        }
+      } else {
+        acc
+      },
+  )
+}
+
+fn count_served_lines(log: String) -> Int {
+  fold(
+    split(s: log, sep: "\n"),
+    init: 0,
+    f: (acc, line) => if string_contains(s: line, pattern: " SERVED ") { acc + 1 } else { acc },
+  )
+}
+
+fn producer_served_at_from_log(log: String) -> String? {
+  fold(
+    split(s: log, sep: "\n"),
+    init: none,
+    f: (acc, line) =>
+      if acc != none {
+        acc
+      } else if string_contains(s: line, pattern: " SERVED ") {
+        match split(s: line, sep: " ").first() {
+          Present { value: stamp } => Present { value: trim(s: stamp) }
+          Absent => none
+        }
+      } else {
+        acc
+      },
+  )
+}
+
+fn harvest_modeled_fleet_proof(bundle: DevbootFleetProofHarvestBundle) -> DevbootModeledFleetProofReceipt? {
+  match parse_client_receipt(prose: bundle.srv1_client_receipt) {
+    Absent => none
+    Present { value: srv1 } =>
+      match parse_client_receipt(prose: bundle.srv2_client_receipt) {
+        Absent => none
+        Present { value: srv2 } =>
+          if !(content_hash_eq_cryptographic(left: srv1.sha256, right: srv2.sha256)
+            && srv1.tested_tree_hex == srv2.tested_tree_hex
+            && srv1.executed_stdout_fingerprint == srv2.executed_stdout_fingerprint
+            && srv2.reused) {
+            none
+          } else {
+            if srv1.reused {
+              none
+            } else {
+              match git_tree_object_id_from_untagged_hex(hex: srv1.tested_tree_hex) {
+                Absent => none
+                Present { value: tested_tree } =>
+                  match request_token_from_store(store: bundle.store_for_each_ref) {
+                    Absent => none
+                    Present { value: request_identity } =>
+                      match store_ref_commit_for_suffix(store: bundle.store_for_each_ref, suffix: "refs/devboot/produced/") {
+                        Absent => none
+                        Present { value: produced_commit } =>
+                          match producer_served_at_from_log(log: bundle.modeled_serve_log) {
+                            Absent => none
+                            Present { value: producer_served_at } =>
+                              Present {
+                                value: DevbootModeledFleetProofReceipt {
+                                  producer_served_at: producer_served_at as NonEmptyStr,
+                                  tested_commit: bundle.corpus_head,
+                                  tested_tree: tested_tree,
+                                  mechanism_branch: bundle.mechanism_branch,
+                                  request_identity: request_identity as NonEmptyStr,
+                                  producer_host: srv1.producer_host as NonEmptyStr,
+                                  producer_compile_count: count_served_lines(log: bundle.modeled_serve_log),
+                                  produced_commit: produced_commit as NonEmptyStr,
+                                  artifact_object_id: bundle.artifact_object_id,
+                                  artifact_sha256: srv1.sha256,
+                                  clients: [
+                                    DevbootFleetClientObservation {
+                                      host: "srv1" as NonEmptyStr,
+                                      reused: false,
+                                      executed_exit: srv1.executed_exit,
+                                      executed_stdout_fingerprint: srv1.executed_stdout_fingerprint as NonEmptyStr,
+                                    },
+                                    DevbootFleetClientObservation {
+                                      host: "srv2" as NonEmptyStr,
+                                      reused: true,
+                                      executed_exit: srv2.executed_exit,
+                                      executed_stdout_fingerprint: srv2.executed_stdout_fingerprint as NonEmptyStr,
+                                    },
+                                  ],
+                                  producer_entry: decl_ref(
+                                    module_path: "gunbc.devboot.serve",
+                                    decl_name: "devboot_serve_once_entry",
+                                  ),
+                                  consumer_entry: decl_ref(
+                                    module_path: "gunbc.devboot.cli",
+                                    decl_name: "devboot_build_cli_output",
+                                  ),
+                                  transport_endpoint: bundle.transport_endpoint,
+                                  store_for_each_ref: bundle.store_for_each_ref,
+                                },
+                              }
+                          }
+                      }
+                  }
+              }
+            }
+          }
+      }
+  }
+}
+
+data devboot_fleet_proof_harvest_bundle: DevbootFleetProofHarvestBundle = DevbootFleetProofHarvestBundle {
+  corpus_head: "69d07ed69d3a08a6d881a4ed8f3f45e0ec82e8aa",
+  mechanism_branch: "session/keen-moth-104" as NonEmptyStr,
+  transport_endpoint: "git://192.168.1.221:19419/store.git",
+  artifact_object_id: "bb6463edd3ebdae411755239fa2ae9bcadab23ef" as NonEmptyStr,
+  srv1_client_receipt: "BUILT\npath: /tmp/devboot-fleet/out-srv1\nsha256: 976728c5d2029799f1d89843dfdd70c3b3ed132211126d2752ef8af23b5c146e\nproducer_host: srv3\nreused: false\nexecuted_exit: 0\nexecuted_stdout: A causal compiler: write .dag, get Rust/Python/Go.\nsubject:\ndevboot.subject.v1\ntree=918953e9eb1ccbc60e6b91f64d5612a0fffd4871\npackage=v1-compiler\ntarget=bin:gunbc\ntoolchain.name=rustc\ntoolchain.version=1.93.0\narch=arch.v1.aarch64\nvendor=vendor.v1.unknown\nos=os.v1.linux\nabi=abi.v1.gnu\nprofile=release\nplatform_c_library=glibc-2.39\nlinker=<absent>\nsysroot=<absent>",
+  srv2_client_receipt: "BUILT\npath: /tmp/devboot-fleet/out-srv2\nsha256: 976728c5d2029799f1d89843dfdd70c3b3ed132211126d2752ef8af23b5c146e\nproducer_host: srv3\nreused: true\nexecuted_exit: 0\nexecuted_stdout: A causal compiler: write .dag, get Rust/Python/Go.\nsubject:\ndevboot.subject.v1\ntree=918953e9eb1ccbc60e6b91f64d5612a0fffd4871\npackage=v1-compiler\ntarget=bin:gunbc\ntoolchain.name=rustc\ntoolchain.version=1.93.0\narch=arch.v1.aarch64\nvendor=vendor.v1.unknown\nos=os.v1.linux\nabi=abi.v1.gnu\nprofile=release\nplatform_c_library=glibc-2.39\nlinker=<absent>\nsysroot=<absent>",
+  modeled_serve_log: "2026-08-09T22:13:23+00:00 exit=0 SERVED fnv1a64-dfd0b4abb44e30e7 sha256=976728c5d2029799f1d89843dfdd70c3b3ed132211126d2752ef8af23b5c146e\n2026-08-09T22:15:17+00:00 exit=0 IDLE\n2026-08-09T22:17:07+00:00 exit=0 IDLE\n2026-08-09T22:19:06+00:00 exit=0 IDLE\n2026-08-09T22:20:55+00:00 exit=0 IDLE",
+  store_for_each_ref: "180beeb95ef8dab53c7abf8aa59a728ffc00e4e9 commit\trefs/devboot/produced/fnv1a64-dfd0b4abb44e30e7\na6163bd7f5c101f8f21f758b9edf93068fb47305 commit\trefs/devboot/request/fnv1a64-dfd0b4abb44e30e7",
+}

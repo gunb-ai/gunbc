@@ -849,7 +849,7 @@ type ProducerHome {
 }
 
 type ServeReport
-  = ServeProduced { token: String, sha256: Sha256Digest }
+  = ServeProduced { token: String, sha256: Sha256Digest, compile_count: Int }
   | ServeRefused { token: String, detail: String }
 
 type RequestEntryOutcome
@@ -1078,7 +1078,7 @@ fn serve_report_from_digest_entry(
             token: token,
             detail: join(["an existing produced digest is invalid: ", digest_hex], ""),
           }
-        Present { value: digest } => ServeProduced { token: token, sha256: digest }
+        Present { value: digest } => ServeProduced { token: token, sha256: digest, compile_count: 0 }
       }
   }
 }
@@ -1321,7 +1321,7 @@ fn devboot_serve_built(
         ) {
           ServeRefused { token: token, detail: "the artifact could not be published to the store" }
         } else {
-          ServeProduced { token: token, sha256: artifact_sha256 }
+          ServeProduced { token: token, sha256: artifact_sha256, compile_count: 1 }
         }
     }
   }
@@ -1364,15 +1364,22 @@ fn build_outcome_exit(outcome: BuildOutcome) -> ProcessExit {
 
 fn render_serve_report(report: ServeReport) -> String {
   match report {
-    ServeProduced { token, sha256 } =>
-      join(["SERVED ", token, " sha256=", render_sha256_digest(digest: sha256)], "")
+    ServeProduced { token, sha256, compile_count } =>
+      join([
+        "SERVED ",
+        token,
+        " sha256=",
+        render_sha256_digest(digest: sha256),
+        " compile_count=",
+        to_string(compile_count),
+      ], "")
     ServeRefused { token, detail } => join(["SERVE-REFUSED ", token, ": ", detail], "")
   }
 }
 
 fn serve_report_exit(report: ServeReport) -> ProcessExit {
   match report {
-    ServeProduced { token, sha256 } => ExitSuccess
+    ServeProduced { token, sha256, compile_count: _ } => ExitSuccess
     ServeRefused { token, detail } => exit_failure(reason: detail)
   }
 }
