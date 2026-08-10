@@ -8006,14 +8006,14 @@ fn map_shell_outputs(
         let field_name = authored_name_at(ctx.si(), child.clone());
         let from_key = extract_from_key(child, ctx);
         let is_optional_field = child.return_cardinality == Cardinality::CardOptional;
+        if is_optional_field
+            && result.exit_code != 0
+            && matches!(from_key.as_deref(), Some("stdout" | "stderr"))
+        {
+            fields.push((ctx.sym(&field_name), Value::Null));
+            continue;
+        }
         let value = match from_key.as_deref() {
-            Some(key)
-                if is_optional_field
-                    && result.exit_code != 0
-                    && (key == "stdout" || key == "stderr") =>
-            {
-                Value::Null
-            }
             Some(key) => shell_evidence_value(result, key).unwrap_or_else(|| match key {
                 "exit_success" => Value::Bool(result.exit_code == 0),
                 "exit_code" => Value::Int(result.exit_code as i64),
@@ -13795,6 +13795,179 @@ mod shell_stdout_overflow_refusal_tests {
         assert_eq!(result.stderr.total_bytes, 1);
         assert_eq!(result.stderr.retained_bytes, 1);
         assert!(result.stderr.digest_hex.is_some());
+    }
+}
+
+#[cfg(test)]
+mod map_shell_outputs_optional_stream_tests {
+    use std::rc::Rc;
+
+    use im::{vector as im_vec, HashMap};
+
+    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+    use crate::v1_std_core::{
+        make_field_init_node, make_field_node, make_span, make_text_part_node, Cardinality,
+        Connective, ExprData, InferredNode, Node,
+    };
+
+    use super::bounded_shell_host_drain::CapturedStreamEvidence;
+    use super::{map_shell_outputs, ExecutionMode, InterpContext, ShellResult, Value};
+
+    fn map_shell_outputs_test_context() -> InterpContext {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+            emit_graph_info: empty_emit_graph_info(),
+        };
+        InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
+    }
+
+    fn bare_type_node(name: &str, span: Rc<crate::v1_std_core::SourceSpan>) -> Rc<Node> {
+        Rc::new(Node {
+            name: name.to_string(),
+            span: span.clone(),
+            ident_span: None,
+            children: Rc::new(im_vec![]),
+            connective: Connective::NoConnective,
+            params: Rc::new(im_vec![]),
+            inferred: None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(im_vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(im_vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        })
+    }
+
+    fn shell_result_fixture(exit_code: i32, stdout_text: &str, stderr_text: &str) -> ShellResult {
+        ShellResult {
+            exit_code,
+            stdout: CapturedStreamEvidence {
+                total_bytes: stdout_text.len() as u64,
+                retained_bytes: stdout_text.len() as u64,
+                truncated: false,
+                digest_hex: None,
+                retained_text: stdout_text.to_string(),
+            },
+            stderr: CapturedStreamEvidence {
+                total_bytes: stderr_text.len() as u64,
+                retained_bytes: stderr_text.len() as u64,
+                truncated: false,
+                digest_hex: None,
+                retained_text: stderr_text.to_string(),
+            },
+        }
+    }
+
+    fn map_optional_stream_field(exit_code: i32, from_key: &str) -> Value {
+        let ctx = map_shell_outputs_test_context();
+        let span = make_span(0, 0);
+        let str_type = bare_type_node("String", span.clone());
+        let mut field = make_field_node(
+            from_key.to_string(),
+            str_type,
+            Cardinality::CardOptional,
+            None,
+            Some(from_key.to_string()),
+            span.clone(),
+            span.clone(),
+        );
+        // make_field_node's from_key stub is not a LitStr; extract_from_key needs one.
+        let from_key_prop = make_field_init_node(
+            "from_key".to_string(),
+            make_text_part_node(from_key.to_string(), span.clone()),
+            span.clone(),
+            span.clone(),
+        );
+        Rc::make_mut(&mut field).properties = Rc::new(im_vec![from_key_prop]);
+        let return_type = Rc::new(Node {
+            name: "FixtureShellRecord".to_string(),
+            span: span.clone(),
+            ident_span: None,
+            children: Rc::new(im_vec![field]),
+            connective: Connective::NoConnective,
+            params: Rc::new(im_vec![]),
+            inferred: None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(im_vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(im_vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        });
+        let op_node = Rc::new(Node {
+            name: "fixture_shell_op".to_string(),
+            span: span.clone(),
+            ident_span: None,
+            children: Rc::new(im_vec![]),
+            connective: Connective::NoConnective,
+            params: Rc::new(im_vec![]),
+            inferred: Some(Rc::new(InferredNode::Resolved { node: return_type })),
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(im_vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(im_vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        });
+        let mapped = map_shell_outputs(
+            &shell_result_fixture(exit_code, "captured-stdout", "captured-stderr"),
+            &op_node,
+            &ctx,
+        )
+        .expect("map_shell_outputs");
+        match mapped {
+            Value::Record { fields, .. } => fields
+                .iter()
+                .find(|(sym, _)| ctx.sym(from_key) == *sym)
+                .map(|(_, v)| v.clone())
+                .unwrap_or(Value::Null),
+            other => panic!("expected record, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn optional_stdout_is_null_on_failed_shell_not_captured_text() {
+        assert_eq!(
+            map_optional_stream_field(1, "stdout"),
+            Value::Null,
+            "optional stdout must stay absent when the shell failed"
+        );
+    }
+
+    #[test]
+    fn optional_stderr_is_null_on_failed_shell_not_captured_text() {
+        assert_eq!(
+            map_optional_stream_field(1, "stderr"),
+            Value::Null,
+            "optional stderr must stay absent when the shell failed"
+        );
+    }
+
+    #[test]
+    fn optional_stdout_surfaces_text_on_success() {
+        assert_eq!(
+            map_optional_stream_field(0, "stdout"),
+            Value::Str("captured-stdout".to_string())
+        );
     }
 }
 
