@@ -1103,3 +1103,36 @@ imports to close fail-open pool reliance under *today's* compiler: those are
 interim containment and need a dissolution trigger tied to the production
 changeover, or the temporary mechanism hardens into the concept this lane exists
 to delete.
+
+## 16. Independent corroboration of pool-membership coincidence (relayed, 2026-08-10)
+
+Class B says a stripped file's own bare cross-module references resolve only by
+**pool-membership coincidence** — `resolve_in` finds the target exactly when some
+unrelated import elsewhere in the assembled closure has already dragged it into
+the pool, never from the bare-reference closure itself binding it. Until now the
+evidence for that was this lane's own probes, which is a single observer.
+
+Three corroborations arrived from other lanes on one day, relayed via
+witty-raven-412. They are recorded here **as relayed, not as observations of
+mine** — I did not run any of them, and none of the three was constructed to test
+this claim, which is precisely what makes them worth keeping:
+
+- wise-moth — bare slice-1 references broke on their first real dispatch.
+- valiant-boar — parse-wall hypotheses were confounded by closure membership.
+- a production entry, `fleet_converge_cli`, failed to compile **on main** through
+  its own collect entry because nothing dragged its dependencies into the pool.
+
+The third is the strongest of the three and the one that changes the claim's
+standing. Every prior specimen was a *stripped* file, so "coincidence" could be
+read as an artifact of stripping. `fleet_converge_cli` is an ordinary production
+entry on main with its imports intact, and it still failed for want of pool
+membership — so the coincidence is a property of how the pool is assembled, not a
+consequence of removing imports. Stripping does not create the defect; it removes
+the accidental cover that hides it.
+
+What this does NOT establish, stated because the temptation is to over-read three
+agreeing reports: none of them measures the size of the affected population, none
+identifies which references are covered by coincidence today, and a relayed
+summary is weaker evidence than a run. The blocking condition on further
+`dag/**` import-stripping is unchanged, and so is its discharge — a
+closure-independent binding fix, or a provable-coverage construction check.
