@@ -137,13 +137,20 @@ fn main() -> ExitCode {
     let subject = subject_label();
     let head_sha = workspace_head_sha();
 
-    let _diff_guards = if std::env::var("GUNBC_CI_DIFF_UNIFIED").is_ok() {
+    if subject != "incident" && subject != "discovery" {
+        eprintln!(
+            "p3_cohort_probe: REFUSED unknown GUNBC_P3_SUBJECT={subject:?} \
+             (expected incident|discovery)"
+        );
+        return ExitCode::from(1);
+    }
+
+    let incident = subject == "incident";
+    let _diff_guards = if !incident || std::env::var("GUNBC_CI_DIFF_UNIFIED").is_ok() {
         None
     } else {
         Some(inject_incident_diff())
     };
-
-    let incident = subject == "incident";
     let explicit_entries = if incident {
         incident_subject_roster()
     } else {
