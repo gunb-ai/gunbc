@@ -1,10 +1,11 @@
 module test.claim.fleet_host_key_enrollment_witness
 
-import std.types { Bool, String, List }
+import std.types { Bool, String, List, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_host_key_enrollment {
   KnownHostKeyRow,
+  ScannedFirstContact,
   fleet_host_key_enrollments,
   enrolled_fingerprint_for,
   known_hosts_line,
@@ -31,6 +32,7 @@ test fn witness_empty_registry_yields_no_expectation_and_line_shape_is_exact() -
       key_type: "ssh-ed25519",
       public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAIFAKEFAKEFAKE",
       sha256_fingerprint: "SHA256:fakefake",
+      provenance: ScannedFirstContact { scanned_from: "192.168.1.222 fixture" as NonEmptyStr },
     }) == "192.168.1.222 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFAKEFAKEFAKE"
 }
 

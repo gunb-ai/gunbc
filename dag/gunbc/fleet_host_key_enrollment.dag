@@ -28,12 +28,40 @@ import gunbc.fleet_ssh_access { fleet_automation_ssh_key, fleet_automation_privk
 // Once enrolled, a verification failure at probe time is a REAL ProbeHostKeyMismatch
 // (enrolled expectation contradicted) rather than Unenrolled — the constructor split's
 // second arm becomes reachable with a Present expectation.
+//
+// HostKeyEnrollmentProvenance names WHAT GROUNDS an enrolled host key, because a
+// fingerprint row is only as trustworthy as the fact behind it (host-key audit,
+// witty-raven-412 / bold-eagle-107 cross-check, 2026-08-10). Two arms, a genuine
+// fleet-wide distinction rather than one lane's state:
+//   - ScannedFirstContact: the key was captured by ssh-keyscan from the very address the
+//     probe is about to trust — trust-on-first-use, grounded in NOTHING but first
+//     contact. This is the measured, honest state for srv1..srv4: no cited router
+//     reservation, no procurement/serial record, no external key authority exists for
+//     those hosts (checked in fleet_physical_inventory and fleet_intent_network before
+//     concluding). scanned_from records the address+method so the TOFU is visible.
+//   - IndependentlyAnchored: the enrollment is corroborated by an externally-authored
+//     fact tying the address to a known unit (a cited CR1000A MAC reservation, ARP-
+//     confirmed, authored independently of anything the host says) — an identity join,
+//     not trust-on-first-use. authority is REQUIRED and NonEmptyStr, so a row cannot
+//     claim this arm without naming a non-empty authority: the "anchored but unnamed"
+//     state has no constructor (construction over validation, §5 — no witness restates
+//     what the carrier already forbids). The srv5/srv6 DGX Spark units are the intended
+//     inhabitant (gunbc.dgx_spark_procurement carries their cited reservations), but they
+//     stay ScannedFirstContact here until their slot->box assignment is resolved: that
+//     binding is an open operator decision, and asserting IndependentlyAnchored for the
+//     srv5 SLOT would encode the 50/50 guess DESIGN §5 forbids. The arm is ready for
+//     that lane to flip them once the binding lands — no widening edit needed.
+type HostKeyEnrollmentProvenance
+  = ScannedFirstContact { scanned_from: NonEmptyStr }
+  | IndependentlyAnchored { authority: NonEmptyStr }
+
 type KnownHostKeyRow {
   host: HostIdentity
   endpoint: String
   key_type: String
   public_key_base64: String
   sha256_fingerprint: String
+  provenance: HostKeyEnrollmentProvenance
 }
 
 // 🟡 dissolve-on: like the probe-receipt ledger, rows land here as the provenance-backed
@@ -62,6 +90,7 @@ data fleet_host_key_enrollments: List<KnownHostKeyRow> = [
     key_type: "ssh-ed25519",
     public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAIErU2itxhvGPRx1UxiuCYkikYIV9DtuXiELy64bQpAXL",
     sha256_fingerprint: "SHA256:hIxG0YT2jIxXbxs4XGqwehgoA63kxD4xKP2j6YjG86w",
+    provenance: ScannedFirstContact { scanned_from: "srv1 via ssh-keyscan -t ed25519 from the LAN probe position; no cited reservation, procurement, or external key authority exists" as NonEmptyStr },
   },
   KnownHostKeyRow {
     host: "srv2" as HostIdentity,
@@ -69,6 +98,7 @@ data fleet_host_key_enrollments: List<KnownHostKeyRow> = [
     key_type: "ssh-ed25519",
     public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAIOcg37ZIA2yVtNBV6dbVIvHjrNxzOI7gEOAF6uGAAJ48",
     sha256_fingerprint: "SHA256:XbC63cRNKr8kCy4UoXD20QKCNLNY4iMV1B61HMDHFno",
+    provenance: ScannedFirstContact { scanned_from: "srv2 via ssh-keyscan -t ed25519 from the LAN probe position; no cited reservation, procurement, or external key authority exists" as NonEmptyStr },
   },
   KnownHostKeyRow {
     host: "srv3" as HostIdentity,
@@ -76,6 +106,7 @@ data fleet_host_key_enrollments: List<KnownHostKeyRow> = [
     key_type: "ssh-ed25519",
     public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAIFLymLSidHDQS5dyzq/KZTXsFsTxjZSmDUbSBqHUuWTN",
     sha256_fingerprint: "SHA256:y3Uq5S1Ibtd6RoN+bzyk79jKqhWVVoM37oL6lQg4tgk",
+    provenance: ScannedFirstContact { scanned_from: "srv3 via ssh-keyscan -t ed25519 from the LAN probe position; the operator's DHCP-table MAC is prose in fleet_intent_network, not a cited carrier row, so no external key authority" as NonEmptyStr },
   },
   KnownHostKeyRow {
     host: "srv4" as HostIdentity,
@@ -83,6 +114,7 @@ data fleet_host_key_enrollments: List<KnownHostKeyRow> = [
     key_type: "ssh-ed25519",
     public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAID5/OXS9/f1VdH5sOKS+RL5MDKrfGtwFtFDJDvSz+IPB",
     sha256_fingerprint: "SHA256:nU6X9fCjhRYdvvvuKCbS7egf9CJMbJI6vYJ/Wgf5zxI",
+    provenance: ScannedFirstContact { scanned_from: "srv4 via ssh-keyscan -t ed25519 from the LAN probe position; host address still a DHCP lease (not reserved), no cited external key authority" as NonEmptyStr },
   },
   KnownHostKeyRow {
     host: "srv5" as HostIdentity,
@@ -90,6 +122,7 @@ data fleet_host_key_enrollments: List<KnownHostKeyRow> = [
     key_type: "ssh-ed25519",
     public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAICIFwSNG7dFfeQLdMR70e/xbYdfGO9O/ArmOkB33kG/T",
     sha256_fingerprint: "SHA256:AnxYhYR+Cz5EbOCVxirsoZlUwLRENLJmeNyk0ukD/s4",
+    provenance: ScannedFirstContact { scanned_from: "192.168.1.222 via ssh-keyscan -t ed25519; a cited CR1000A reservation exists in gunbc.dgx_spark_procurement but the srv5 slot->box assignment is an open operator decision, so this stays first-contact until bold-eagle resolves the binding and flips it to IndependentlyAnchored" as NonEmptyStr },
   },
   KnownHostKeyRow {
     host: "srv6" as HostIdentity,
@@ -97,6 +130,7 @@ data fleet_host_key_enrollments: List<KnownHostKeyRow> = [
     key_type: "ssh-ed25519",
     public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAIEnpVavWbt8VTjUMprf+CbKCw0tS2nQIVuN49Ob5gEsc",
     sha256_fingerprint: "SHA256:Y5wB4G/qZFXZBaXbjWdK/HtWJP2pUgupsyjwBPehqMs",
+    provenance: ScannedFirstContact { scanned_from: "192.168.1.223 via ssh-keyscan -t ed25519; a cited CR1000A reservation exists in gunbc.dgx_spark_procurement but the srv6 slot->box assignment is an open operator decision, so this stays first-contact until bold-eagle resolves the binding and flips it to IndependentlyAnchored" as NonEmptyStr },
   },
 ]
 
@@ -111,6 +145,16 @@ fn enrolled_fingerprint_for(host: String) -> String? {
 
 fn known_hosts_line(k: KnownHostKeyRow) -> String {
   join([k.endpoint, " ", k.key_type, " ", k.public_key_base64], "")
+}
+
+// The honest provenance label carried into the enroll receipt so a reader sees WHAT
+// grounds each pinned key — trust-on-first-use vs an independent anchor — rather than
+// reading "found" and inferring verification the row does not claim.
+fn host_key_provenance_label(p: HostKeyEnrollmentProvenance) -> String {
+  match p {
+    ScannedFirstContact { scanned_from: _ } => "scanned-first-contact"
+    IndependentlyAnchored { authority: _ } => "independently-anchored"
+  }
 }
 
 data fleet_host_key_scan_receipt_path: String = "target/fleet-host-key-scan-receipt.txt"
@@ -162,19 +206,38 @@ func fleet_host_key_scan_wet() -> ProcessExit
 
 data fleet_host_key_enroll_receipt_path: String = "target/fleet-host-key-enroll-receipt.txt"
 
-// The ENROLL apply: registry rows -> a staged fragment -> appended to the probing
-// account's known_hosts -> per-host independent readback (ssh-keygen -F at the
-// endpoint), which is the success criterion — never the append's exit code. Refuses
-// loudly when the registry is empty: enrolling nothing must not read as enrolled.
+// The ENROLL apply: registry rows -> a staged enrolled-ONLY known_hosts fragment -> a
+// SCOPED ssh config that PINS the probe to that fragment for the fleet endpoints ->
+// per-host independent readback (ssh-keygen -F against the fragment), which is the
+// success criterion — never the write's exit code. Refuses loudly when the registry is
+// empty: enrolling nothing must not read as enrolled.
+//
+// HOST-KEY ANCHOR PIN (host-key audit, witty-raven-412 / bold-eagle-107 cross-check,
+// 2026-08-10): the earlier form APPENDED the fragment to $HOME/.ssh/known_hosts with no
+// StrictHostKeyChecking, so ssh accepted a host key matching ANY line — including a
+// pre-existing AMBIENT entry of unaudited provenance (OOBE / prior manual TOFU). That
+// left every host-scoped observation anchored to whatever the runner account already
+// trusted rather than to this registry: observed_principal/observed_short_hostname were
+// genuine remote readbacks, but from a machine verified against something we do not
+// control. The pin closes it non-destructively: a scoped `Host <fleet endpoints>` block
+// sets UserKnownHostsFile to the enrolled-ONLY fragment and StrictHostKeyChecking yes, so
+// for fleet hosts ssh consults ONLY this registry and REFUSES an unknown or mismatched
+// key (a key change now trips ProbeHostKeyMismatch instead of silently passing). It is
+// scoped to the fleet endpoints so non-fleet ssh (e.g. git) is untouched even on a
+// durable HOME, and marker-guarded (`# gunbc-fleet-pin`) so a repeated run appends once.
+// The enrolled baseline itself is ScannedFirstContact for srv1..srv4 (see
+// HostKeyEnrollmentProvenance) — the pin lifts the anchor from ambient-unaudited to
+// this-registry, NOT to an externally-verified key; that ceiling is carried by the
+// provenance type, not hidden. The banked probe run 31346260819 PRE-DATES this pin and
+// rode ambient known_hosts; the enrolled-anchored re-observe lands post-merge (probe
+// jobs run on main/dispatch, skip on PR) in the same window as the host-receipt item.
 //
 // MEASURED CORRECTION (runs 31323572188): enrollment is NOT durable host state on a CI
 // runner — GitHub Actions overrides HOME to a per-job temp directory, so a separate
-// enroll job writes known_hosts into an ephemeral HOME that is discarded at job end,
-// and a probe job's ssh reads its OWN temp HOME (all six readbacks said found while the
-// probe still refused verification — the readback was true of a universe that no longer
-// existed). The registry is therefore materialized into the CURRENT process's HOME by
-// fleet_host_key_enroll_apply, which the probe entry calls FIRST — enrollment rides
-// with every probe run instead of pretending to persist.
+// enroll job writes into an ephemeral HOME discarded at job end, and a probe job reads
+// its OWN temp HOME. The registry is therefore materialized into the CURRENT process's
+// HOME by fleet_host_key_enroll_apply, which the probe entry calls FIRST — enrollment
+// rides with every probe run instead of pretending to persist.
 func fleet_host_key_enroll_apply() -> String
   uses net: Network
 {
@@ -183,12 +246,19 @@ func fleet_host_key_enroll_apply() -> String
   } else {
     let fragment = join(map(fleet_host_key_enrollments, k => concat(known_hosts_line(k: k), "\n")), "")
     let staged = "target/fleet-known-hosts-fragment"
+    let endpoints = join(map(fleet_host_key_enrollments, k => k.endpoint), " ")
     let w = Filesystem.Write(path: staged, content: fragment)
     if w.success {
+      let pin_cmd = join([
+        "set -e; mkdir -p \"$HOME/.ssh\"; CFG=\"$HOME/.ssh/config\"; touch \"$CFG\"; ",
+        "if ! grep -q gunbc-fleet-pin \"$CFG\"; then ",
+        "( echo '# gunbc-fleet-pin'; echo 'Host ", endpoints, "'; ",
+        "echo '  StrictHostKeyChecking yes'; ",
+        "echo \"  UserKnownHostsFile $(pwd)/target/fleet-known-hosts-fragment\" ) >> \"$CFG\"; ",
+        "fi; chmod 600 \"$CFG\"",
+      ], "")
       let applied = run_shell_commands(
-        commands: [
-          ArgvCommand { argv: ["sh", "-c", "mkdir -p \"$HOME/.ssh\" && touch \"$HOME/.ssh/known_hosts\" && cat target/fleet-known-hosts-fragment >> \"$HOME/.ssh/known_hosts\"" ] },
-        ],
+        commands: [ ArgvCommand { argv: ["sh", "-c", pin_cmd] } ],
         transport: LocalExec,
       )
       match applied {
@@ -196,12 +266,13 @@ func fleet_host_key_enroll_apply() -> String
         ExitSuccess =>
           join(map(fleet_host_key_enrollments, k => {
             let f = run_shell_command_capture(
-              command: ArgvCommand { argv: ["ssh-keygen", "-F", k.endpoint] },
+              command: ArgvCommand { argv: ["ssh-keygen", "-F", k.endpoint, "-f", staged] },
               transport: LocalExec,
             )
             join([
               "enroll host=", k.host as String, " endpoint=", k.endpoint,
-              if f.success { " readback=found" } else { " readback=ABSENT" }, "\n",
+              " provenance=", host_key_provenance_label(p: k.provenance),
+              if f.success { " readback=found-in-pinned-fragment" } else { " readback=ABSENT" }, "\n",
             ], "")
           }), "")
       }
