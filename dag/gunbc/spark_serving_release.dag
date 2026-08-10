@@ -26,7 +26,13 @@ type ModelArtifactIdentity { repository: NonEmptyStr  revision: NonEmptyStr }
 
 type ServingConfigurationIdentity { configuration_digest: NonEmptyStr }
 
-// The credential is referenced BY EXACT VERSION. A moving `latest` alias defeats the
+// The credential belongs to the OCCURRENCE, not the release. It sat inside SparkServingRelease
+// while the comment below said prerequisites stay outside precisely so a rotation cannot change
+// the release identity -- a self-contradiction ten lines apart, and the same defect class as prose
+// asserting a guarantee the mechanism does not implement. Rotating an endpoint credential now
+// changes the occurrence's desired state without pretending the model or runtime artifact changed.
+//
+// It is referenced BY EXACT VERSION. A moving `latest` alias defeats the
 // exact-version discipline this repo already models: a rotation between observation and
 // reapplication changes the actuator identity with no receipt saying so.
 type SecretVersionRef { secret: NonEmptyStr  version: NonEmptyStr }
@@ -40,10 +46,19 @@ type SparkServingRelease {
   runtime: RuntimeArtifactIdentity
   model: ModelArtifactIdentity
   serving_configuration: ServingConfigurationIdentity
-  api_credential: SecretVersionRef
   capacity: InferenceCapacityPolicy
 }
 
+// UNGROUNDED: this identity is CALLER-AUTHORED, not derived. No function computes it from a
+// SparkServingRelease, so today the same digest can be assigned to different releases, different
+// digests to the same release, and an identity can be constructed with no release at all. That is
+// a string labelled "digest", not content addressing, and calling it content-addressed was an
+// overclaim of exactly the kind this module's own comments warn about.
+//
+// DISSOLVE-ON: spark_serving_release_identity(release) derived through std.content_hash, with the
+// discriminating RED both directions -- change any release input and the identity CHANGES; build
+// the same release independently and the identity is IDENTICAL. Until that lands, every claim of
+// exact replication rests on an author typing the same string twice.
 type SparkServingReleaseIdentity { digest: NonEmptyStr }
 
 // The occurrence binds ONE release identity to a host. srv5 and srv6 share release R and differ
@@ -54,6 +69,7 @@ type SparkServingReleaseIdentity { digest: NonEmptyStr }
 type SparkServingOccurrence {
   host: HostIdentity
   release_identity: SparkServingReleaseIdentity
+  endpoint_credential: SecretVersionRef
 }
 
 // Prerequisites are ADMITTED DEPENDENCIES, not booleans and not release fields. Each names what

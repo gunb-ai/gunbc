@@ -2,7 +2,7 @@ module test.claim.spark_serving_release_witness_test
 
 import std.types { String, Bool, List, Int, NonEmptyStr }
 import gunbc.spark_serving_release {
-  SparkServingReleaseIdentity, SparkServingOccurrence,
+  SparkServingReleaseIdentity, SparkServingOccurrence, SecretVersionRef,
   SparkServingReconciliation, SparkServingAlreadyConverged, SparkServingDeltaRequired,
   SparkServingRefused, SparkServingRefusal,
   spark_serving_may_actuate, spark_occurrences_share_release,
@@ -13,15 +13,15 @@ fn refusal_specimen() -> SparkServingReconciliation {
 }
 
 fn occ_srv5() -> SparkServingOccurrence {
-  SparkServingOccurrence { host: "srv5", release_identity: SparkServingReleaseIdentity { digest: "R" } }
+  SparkServingOccurrence { host: "srv5", release_identity: SparkServingReleaseIdentity { digest: "R" }, endpoint_credential: SecretVersionRef { secret: "spark-serving-api-key", version: "3" } }
 }
 
 fn occ_srv6_same() -> SparkServingOccurrence {
-  SparkServingOccurrence { host: "srv6", release_identity: SparkServingReleaseIdentity { digest: "R" } }
+  SparkServingOccurrence { host: "srv6", release_identity: SparkServingReleaseIdentity { digest: "R" }, endpoint_credential: SecretVersionRef { secret: "spark-serving-api-key", version: "3" } }
 }
 
 fn occ_srv6_other() -> SparkServingOccurrence {
-  SparkServingOccurrence { host: "srv6", release_identity: SparkServingReleaseIdentity { digest: "R-prime" } }
+  SparkServingOccurrence { host: "srv6", release_identity: SparkServingReleaseIdentity { digest: "R-prime" }, endpoint_credential: SecretVersionRef { secret: "spark-serving-api-key", version: "3" } }
 }
 
 // CONTROL 1: the no-op is STRUCTURAL. A converged host cannot reach an actuator, and the arm that
