@@ -6596,15 +6596,11 @@ fn build_service_param_env(
     Ok(Env::extend(env, bindings))
 }
 
-struct ShellResult {
-    exit_code: i32,
-    stdout: String,
-    stderr: String,
-    stdout_total_bytes: u64,
-    stderr_total_bytes: u64,
-    stdout_truncated: bool,
-    stderr_truncated: bool,
-    stderr_digest_hex: Option<String>,
+#[derive(Debug)]
+pub(crate) struct ShellResult {
+    pub(crate) exit_code: i32,
+    pub(crate) stdout: bounded_shell_host_drain::CapturedStreamEvidence,
+    pub(crate) stderr: bounded_shell_host_drain::CapturedStreamEvidence,
 }
 
 fn push_shell_argv_tokens(argv: &mut Vec<String>, val: Value) -> InterpResult<()> {
@@ -7947,7 +7943,7 @@ fn dispatch_shell(
     shell_result_from_capture(&capture, &argv[0])
 }
 
-fn shell_result_from_capture(
+pub(crate) fn shell_result_from_capture(
     capture: &bounded_shell_host_drain::ShellCaptureResult,
     argv0: &str,
 ) -> InterpResult<ShellResult> {
@@ -7961,14 +7957,31 @@ fn shell_result_from_capture(
     }
     Ok(ShellResult {
         exit_code: capture.exit_status.code().unwrap_or(-1),
-        stdout: capture.stdout.retained_utf8_lossy_trimmed(),
-        stderr: capture.stderr.retained_utf8_lossy_trimmed(),
-        stdout_total_bytes: capture.stdout.total_bytes,
-        stderr_total_bytes: capture.stderr.total_bytes,
-        stdout_truncated: capture.stdout.truncated,
-        stderr_truncated: capture.stderr.truncated,
-        stderr_digest_hex: capture.stderr.digest_hex.clone(),
+        stdout: bounded_shell_host_drain::CapturedStreamEvidence::from_observation(&capture.stdout),
+        stderr: bounded_shell_host_drain::CapturedStreamEvidence::from_observation(&capture.stderr),
     })
+}
+
+fn shell_evidence_value(result: &ShellResult, from_key: &str) -> Option<Value> {
+    match from_key {
+        "stdout" => Some(Value::Str(result.stdout.retained_text.clone())),
+        "stderr" => Some(Value::Str(result.stderr.retained_text.clone())),
+        "stdout_total_bytes" => Some(Value::Int(result.stdout.total_bytes as i64)),
+        "stderr_total_bytes" => Some(Value::Int(result.stderr.total_bytes as i64)),
+        "stdout_retained_bytes" => Some(Value::Int(result.stdout.retained_bytes as i64)),
+        "stderr_retained_bytes" => Some(Value::Int(result.stderr.retained_bytes as i64)),
+        "stdout_truncated" => Some(Value::Bool(result.stdout.truncated)),
+        "stderr_truncated" => Some(Value::Bool(result.stderr.truncated)),
+        "stdout_digest_hex" => Some(match &result.stdout.digest_hex {
+            Some(digest) => Value::Str(digest.clone()),
+            None => Value::Null,
+        }),
+        "stderr_digest_hex" => Some(match &result.stderr.digest_hex {
+            Some(digest) => Value::Str(digest.clone()),
+            None => Value::Null,
+        }),
+        _ => None,
+    }
 }
 
 fn map_shell_outputs(
@@ -7979,7 +7992,7 @@ fn map_shell_outputs(
     let return_type = match op_node.inferred.as_deref() {
         Some(crate::v1_std_core::InferredNode::Resolved { node }) => node.clone(),
         _ => {
-            return Ok(Value::Str(result.stdout.clone()));
+            return Ok(Value::Str(result.stdout.retained_text.clone()));
         }
     };
 
@@ -7994,29 +8007,42 @@ fn map_shell_outputs(
         let from_key = extract_from_key(child, ctx);
         let is_optional_field = child.return_cardinality == Cardinality::CardOptional;
         let value = match from_key.as_deref() {
-            Some("stdout") if is_optional_field && result.exit_code != 0 => Value::Null,
-            Some("stderr") if is_optional_field && result.exit_code != 0 => Value::Null,
-            Some("stdout") => Value::Str(result.stdout.clone()),
-            Some("stderr") => Value::Str(result.stderr.clone()),
-            Some("exit_success") => Value::Bool(result.exit_code == 0),
-            Some("exit_code") => Value::Int(result.exit_code as i64),
-            Some("stdout_lines") => {
-                let lines: Vec<Value> = result
-                    .stdout
-                    .lines()
-                    .map(|l| Value::Str(l.to_string()))
-                    .collect();
-                list_value((lines))
+            Some(key)
+                if is_optional_field
+                    && result.exit_code != 0
+                    && (key == "stdout" || key == "stderr") =>
+            {
+                Value::Null
             }
-            _ => match field_name.as_str() {
-                "success" => Value::Bool(result.exit_code == 0),
+            Some(key) => shell_evidence_value(result, key).unwrap_or_else(|| match key {
+                "exit_success" => Value::Bool(result.exit_code == 0),
                 "exit_code" => Value::Int(result.exit_code as i64),
-                "stdout" => Value::Str(result.stdout.clone()),
-                "stderr" => Value::Str(result.stderr.clone()),
-                "exists" => Value::Bool(result.exit_code == 0),
+                "stdout_lines" => {
+                    let lines: Vec<Value> = result
+                        .stdout
+                        .retained_text
+                        .lines()
+                        .map(|l| Value::Str(l.to_string()))
+                        .collect();
+                    list_value((lines))
+                }
                 _ => Value::Null,
-            },
+            }),
+            None => Value::Null,
         };
+        if matches!(value, Value::Null) {
+            if let Some(v) = match field_name.as_str() {
+                "success" => Some(Value::Bool(result.exit_code == 0)),
+                "exit_code" => Some(Value::Int(result.exit_code as i64)),
+                "stdout" => Some(Value::Str(result.stdout.retained_text.clone())),
+                "stderr" => Some(Value::Str(result.stderr.retained_text.clone())),
+                "exists" => Some(Value::Bool(result.exit_code == 0)),
+                _ => None,
+            } {
+                fields.push((ctx.sym(&field_name), v));
+                continue;
+            }
+        }
         fields.push((ctx.sym(&field_name), value));
     }
     fields.sort_unstable_by_key(|(k, _)| k.0);
@@ -13667,6 +13693,108 @@ mod shell_completion_trace_tests {
             "target read must refuse as non-commit-deterministic"
         );
         std::fs::remove_dir_all(&dir).ok();
+    }
+}
+
+#[cfg(test)]
+mod shell_stdout_overflow_refusal_tests {
+    use super::bounded_shell_host_drain::{
+        ShellCaptureResult, StreamCaptureObservation, DEFAULT_SHELL_STDOUT_MAX_BYTES,
+    };
+    use super::{shell_result_from_capture, InterpError};
+    use std::process::{Command, Stdio};
+
+    #[test]
+    fn shell_result_from_capture_refuses_truncated_stdout_observation() {
+        let capture = ShellCaptureResult {
+            exit_status: Command::new("true").status().expect("true status"),
+            stdout: StreamCaptureObservation {
+                total_bytes: (DEFAULT_SHELL_STDOUT_MAX_BYTES as u64) + 1,
+                retained: Vec::new(),
+                truncated: true,
+                digest_hex: None,
+            },
+            stderr: StreamCaptureObservation {
+                total_bytes: 0,
+                retained: Vec::new(),
+                truncated: false,
+                digest_hex: None,
+            },
+        };
+        let err = shell_result_from_capture(&capture, "fixture")
+            .expect_err("truncated stdout must refuse");
+        match err {
+            InterpError::ShellOutputLimitExceeded {
+                stream,
+                total_bytes,
+                limit_bytes,
+                argv0,
+            } => {
+                assert_eq!(stream, "stdout");
+                assert_eq!(total_bytes, (DEFAULT_SHELL_STDOUT_MAX_BYTES as u64) + 1);
+                assert_eq!(limit_bytes, DEFAULT_SHELL_STDOUT_MAX_BYTES as u64);
+                assert_eq!(argv0, "fixture");
+            }
+            other => panic!("expected ShellOutputLimitExceeded, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn capture_then_shell_result_refuses_oversized_stdout_child() {
+        let child = Command::new("sh")
+            .arg("-c")
+            .arg("dd if=/dev/zero bs=1048576 count=9 2>/dev/null | tr '\\0' 'a'")
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn stdout overflow child");
+        let capture = super::bounded_shell_host_drain::capture_child_output(
+            child,
+            super::bounded_shell_host_drain::default_shell_stdout_capture_policy(),
+            super::bounded_shell_host_drain::default_shell_stderr_capture_policy(),
+        )
+        .expect("bounded capture");
+        assert!(
+            capture.stdout.truncated,
+            "stdout child must report overflow"
+        );
+        assert!(
+            capture.stdout.retained.is_empty(),
+            "overflow must not retain a prefix"
+        );
+        let err = shell_result_from_capture(&capture, "sh").expect_err("overflow must refuse");
+        match err {
+            InterpError::ShellOutputLimitExceeded { stream, .. } => {
+                assert_eq!(stream, "stdout");
+            }
+            other => panic!("expected ShellOutputLimitExceeded, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn shell_result_preserves_capture_evidence_on_success() {
+        let child = Command::new("sh")
+            .arg("-c")
+            .arg("printf small; printf x >&2")
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn small child");
+        let capture = super::bounded_shell_host_drain::capture_child_output(
+            child,
+            super::bounded_shell_host_drain::default_shell_stdout_capture_policy(),
+            super::bounded_shell_host_drain::default_shell_stderr_capture_policy(),
+        )
+        .expect("bounded capture");
+        let result = shell_result_from_capture(&capture, "sh").expect("small stdout fits");
+        assert_eq!(result.stdout.total_bytes, 5);
+        assert_eq!(result.stdout.retained_bytes, 5);
+        assert!(!result.stdout.truncated);
+        assert_eq!(result.stderr.total_bytes, 1);
+        assert_eq!(result.stderr.retained_bytes, 1);
+        assert!(result.stderr.digest_hex.is_some());
     }
 }
 

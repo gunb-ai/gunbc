@@ -1,8 +1,8 @@
 //! Interim v1_interpreter seed host-effect: bounded concurrent shell stream drain.
 //!
-//! Scaffold authority: `std.shell_stream_capture` (`seed_host_shell_stream_bounded_drain_*`).
-//! Not a modeled policy surface — constants and refusal semantics live here until
-//! emit-on-demand native serve and the shared `CapturedProcessStream` carrier land.
+//! Single authority for enforcement constants and drain semantics until emit-on-demand
+//! native serve and the shared `CapturedProcessStream` carrier land. `std.shell_stream_capture`
+//! carries scaffold prose and predicate witnesses only — not parallel limits.
 
 use std::io::Read;
 use std::process::{Child, ExitStatus};
@@ -42,6 +42,27 @@ impl StreamCaptureObservation {
 
     pub fn retained_bytes(&self) -> usize {
         self.retained.len()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CapturedStreamEvidence {
+    pub total_bytes: u64,
+    pub retained_bytes: u64,
+    pub truncated: bool,
+    pub digest_hex: Option<String>,
+    pub retained_text: String,
+}
+
+impl CapturedStreamEvidence {
+    pub fn from_observation(obs: &StreamCaptureObservation) -> Self {
+        Self {
+            total_bytes: obs.total_bytes,
+            retained_bytes: obs.retained.len() as u64,
+            truncated: obs.truncated,
+            digest_hex: obs.digest_hex.clone(),
+            retained_text: obs.retained_utf8_lossy_trimmed(),
+        }
     }
 }
 
