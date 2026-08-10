@@ -144,19 +144,19 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     dissolve_on: "that lane lands imported-variant value bindings, this witness runs green, and this row deletes"
   ),
   known_red_probe(
+    entry: "src/v1/tests/claim/import_deletion_bridge_witness_test.dag",
+    f: "witness_import_less_reference_reaches_the_real_provider",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "THE IMPORT-DELETION KEYSTONE, red by construction: a cross-file reference must reach its provider declaration with no import declaration naming that file. Its two controls (provider withheld does not bind; the consumer carries no import) are green and enrolled file-grain. Owner: gunbc#8084.",
+    dissolve_on: "the supplied-provider bridge greens, then this row deletes and the keystone joins its controls in the scoped roster as a permanent regression control"
+  ),
+  known_red_probe(
     entry: "src/v2/test/claim/manual/english_emit_add_test.dag",
     f: "english_emit_add_ingest_round_trip_holds",
     kind: CorpusWitnessKind,
     budget: FastLaneEvalBudget,
     reason: "the english-language emit-ingest round trip returns false undiagnosed. Owner: the S2 emit family / behavioral-closure lane.",
-    dissolve_on: "the S2 behavioral-closure lane greens it locally, then this row deletes"
-  ),
-  known_red_probe(
-    entry: "src/v2/test/claim/manual/english_emit_add_test.dag",
-    f: "english_emit_add_prose_holds",
-    kind: CorpusWitnessKind,
-    budget: FastLaneEvalBudget,
-    reason: "the english emit prose projection, same S2 emit-family root as its round-trip sibling. Owner: the S2 behavioral-closure lane.",
     dissolve_on: "the S2 behavioral-closure lane greens it locally, then this row deletes"
   ),
   known_red_probe(

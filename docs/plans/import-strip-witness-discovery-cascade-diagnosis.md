@@ -1103,3 +1103,226 @@ imports to close fail-open pool reliance under *today's* compiler: those are
 interim containment and need a dissolution trigger tied to the production
 changeover, or the temporary mechanism hardens into the concept this lane exists
 to delete.
+
+## 16. Independent corroboration of pool-membership coincidence (relayed, 2026-08-10)
+
+Class B says a stripped file's own bare cross-module references resolve only by
+**pool-membership coincidence** — `resolve_in` finds the target exactly when some
+unrelated import elsewhere in the assembled closure has already dragged it into
+the pool, never from the bare-reference closure itself binding it. Until now the
+evidence for that was this lane's own probes, which is a single observer.
+
+Three corroborations arrived from other lanes on one day, relayed via
+witty-raven-412. They are recorded here **as relayed, not as observations of
+mine** — I did not run any of them, and none of the three was constructed to test
+this claim, which is precisely what makes them worth keeping:
+
+- wise-moth — bare slice-1 references broke on their first real dispatch.
+- valiant-boar — parse-wall hypotheses were confounded by closure membership.
+- a production entry, `fleet_converge_cli`, failed to compile **on main** through
+  its own collect entry because nothing dragged its dependencies into the pool.
+
+The third is the strongest of the three and the one that changes the claim's
+standing. Every prior specimen was a *stripped* file, so "coincidence" could be
+read as an artifact of stripping. `fleet_converge_cli` is an ordinary production
+entry on main with its imports intact, and it still failed for want of pool
+membership — so the coincidence is a property of how the pool is assembled, not a
+consequence of removing imports. Stripping does not create the defect; it removes
+the accidental cover that hides it.
+
+What this does NOT establish, stated because the temptation is to over-read three
+agreeing reports: none of them measures the size of the affected population, none
+identifies which references are covered by coincidence today, and a relayed
+summary is weaker evidence than a run. The blocking condition on further
+`dag/**` import-stripping is unchanged, and so is its discharge — a
+closure-independent binding fix, or a provable-coverage construction check.
+
+## 17. The import gate: a two-sided control for the dependency-producer cutover
+
+Measured by deep-fox-168 on the live tree, 2026-08-10, and reproduced here as the
+control for replacing `dependency_resolution_facts_live`'s body. Recorded verbatim
+rather than paraphrased, because the probe's validity turns on one detail that is
+easy to lose.
+
+**The mechanism, verified in code** (`src/v1/stage0/src/cli_run.rs`,
+`build_both_closure_edge_index`). Per source file the loop inserts `ref_out`, then:
+
+```rust
+if source_declares_import_lines(&sf.content) {
+    continue;
+}
+bare_scan_eligible.insert(file_rel.clone());
+```
+
+and `source_declares_import_lines` is a raw text scan — `any line
+trim_start().starts_with("import ")`. So **declaring any import at all switches off
+a file's entire bare-reference scan.** An import-free file gets full bare coverage;
+a fully-imported file is covered by `ref_out`; only the mixture falls through the
+gap. `dag/std/syntax.dag` declares zero imports and its emitted `std_syntax.rs`
+contains `crate::std_types`, so that real dependency is discoverable *only* through
+the bare scan.
+
+**Exact reproduction (~30s).**
+
+1. `dag/probe_tmp/entry.dag`:
+
+   ```
+   module probe_tmp.entry
+
+   import std.syntax { LiteralValue, LitBool }
+
+   fn probe() -> LiteralValue {
+     LitBool { value: true }
+   }
+   ```
+
+2. Baseline, `syntax.dag` untouched — observed **resolved 5 sources**:
+
+   ```
+   gunbc run --source-root dag --source-root src/v2 \
+     --entry dag/probe_tmp/entry.dag --function probe
+   ```
+
+3. `dag/probe_tmp/leaf.dag` — **the zero-dependency module is what makes the test
+   valid**:
+
+   ```
+   module probe_tmp.leaf
+
+   type ProbeLeaf
+     = ProbeLeafOnly
+     | ProbeLeafOther
+   ```
+
+4. Insert exactly one line into `dag/std/syntax.dag` after the module line:
+   `import probe_tmp.leaf { ProbeLeaf }`
+
+5. Re-run the same command — observed **resolved 3 sources**.
+
+6. Revert `syntax.dag`, delete `dag/probe_tmp`.
+
+**Why attempt 1 could not fail, kept so nobody rebuilds it.** The first attempt
+added `import std.nat`, and still resolved 5 sources. `std.nat` transitively imports
+`std.types` — so the probe *supplied* the very dependency it was testing for and had
+no failing branch. Any import added here must pull nothing transitively. Substituting
+a real module for `leaf.dag` without checking its transitive closure silently
+recreates the cannot-fail form.
+
+**The bound — SUPERSEDED, see §17.2.** This paragraph originally read that a build
+break was NOT established. That is false, and the correction is recorded rather than
+silently patched because the wrong version was banked here first: a hard resolution
+failure has since been demonstrated. The `5 → 3` figure is also NET rather than a
+count of departures — the perturbation adds `leaf.dag` while three modules leave.
+Read §17.2, not this paragraph, for the measured claim.
+
+**Why this is the cutover control and not someone else's fix.** It is two-sided.
+Under the old import-derived producer the perturbation MUST shrink the closure by
+two; under the accepted-binding-derived producer it MUST change nothing, because the
+file's own reference set never changed. A hand-authored disagreement only asserts the
+new behaviour; this runs in both directions. It is also the §Class B blocker that
+gates further `dag/**` stripping — and the cutover does not patch it, it dissolves
+it, because once dependencies derive from accepted bindings the text-scan predicate
+is no longer on the path.
+
+**Three live specimens** of the import-free class, measured: `dag/std/syntax.dag`,
+`dag/std/coercion.dag`, `dag/std/http_path.dag` — all declare zero imports, all
+reference `std_types`.
+
+**One false-positive class to pre-empt.** v2 compiler modules that appear to
+reference without importing (`03_normalize` → `usv_pilot_v2_std_algebra` and
+friends) are artifacts of naive name comparison: `usv_pilot_v2_std_algebra.rs` is the
+emitted realization of `v2.std.algebra`, which those files DO import explicitly.
+Comparing `.dag` import names against emitted `use crate::` names without mapping the
+`usv_pilot_` prefix produces four phantom findings.
+
+### 17.1 How the count is read, and why the count is not enough for item 7
+
+**Reading it.** No instrumentation and no flag: `gunbc run` prints `resolved N
+sources` on stdout before `compile.frontend` starts, read with `grep -E '^resolved'`
+on the run output, baseline then perturbed, same entry and same source roots both
+times. That is part of why the probe is cheap.
+
+**The count is closure SIZE, not IDENTITY — and item 7 needs identity.** `5 → 3`
+establishes that two modules left; it does not name them. A classification step whose
+job is to say *which* edges the old and new producers disagree about would pass on a
+coincidental `5 → 3` that dropped two different modules. For the existence claim the
+count is sufficient and that is all it was collected for; for the disagreement
+classifier the control must read the **edge set**, not the cardinality. This is
+recorded as a required strengthening of the instrument, not a caveat on the finding.
+
+**Order of operations.** Same entry, same source roots, and `dag/std/syntax.dag`
+reverted between runs — the edit is to a live std file, so a leaked edit poisons
+anything else running against that tree.
+
+**Two claims, labelled differently on purpose.**
+
+| side | status |
+|---|---|
+| OLD import-derived producer: perturbation shrinks the closure 5 → 3 | **OBSERVED** (deep-fox-168, live tree, 2026-08-10) |
+| NEW binding-derived producer: perturbation changes nothing | **PREDICTION** — unobservable until item 7 exists to run it against |
+
+The two-sidedness is what makes this the right control, but only one side has been
+run. Writing them as one measured fact would be exactly the inflation this lane keeps
+catching.
+
+**Available, not yet requested:** a narrower entry that actually reaches a
+`std_types`-dependent declaration inside `std.syntax`, which would settle whether the
+closure shrink produces a hard resolution failure — the difference between *one
+import shrinks the closure* and *one import breaks the build*.
+
+### 17.2 CORRECTED — the closure shrink DOES break resolution, and the first probe was invalid
+
+**This section replaces an earlier version that reported the opposite.** That version
+said a live attempt to break the build had failed to break it, and it was wrong: the
+probe never reached its target. The wrong version is not preserved above, because a
+falsified claim sitting in the canonical record is what §3's stale-citation class
+costs; what is preserved is the fact that it was made, and why it misled.
+
+Measured by deep-fox-168, 2026-08-10, after closing the identity residue §17.1 said
+was required. Closing it inverted the earlier conclusion — which is the strongest
+argument in this document for why cardinality is not identity.
+
+**The departed set is THREE modules, and it is now named.** `std.types`,
+`std.algebra` (imported by types), `std.error_primitives` (imported by algebra).
+Baseline 5 = entry + syntax + types + algebra + error_primitives. Perturbed 3 = entry
++ syntax + **leaf**. So `5 → 3` was a NET figure: three modules leave and the probe's
+own `leaf.dag` arrives. A cardinality that had not been decomposed.
+
+**Membership tested directly**, since no source-listing flag exists: an entry that
+declares an import (so its own bare scan is off) making a bare reference to
+`NonEmptyStr`, which only `std.types` provides — it resolves iff `std_types` is in the
+pool.
+
+| run | result |
+|---|---|
+| baseline (5 sources) | resolves |
+| perturbed (3 sources) | **`error: unresolved type 'NonEmptyStr'`** |
+
+**Why the earlier probe was invalid.** `probe2` exercised `algebra_field_entries`,
+typed `List<AlgebraFieldEntry>`. `std_types` *is* among the departed modules, so
+probe2 returning 8 at 3 sources was not `std.types` surviving — it was `List` being
+reachable without `std.types` in the closure at all. Its null result says nothing
+about the module it aimed at. The accurate description of probe2 is **a live attempt
+that did not reach its target**, not one that failed to break anything.
+
+**The measured claim, in the form that should travel.**
+
+> One import edit to an import-free file silently removes that file's bare-reference
+> dependencies from the closure (measured: `std.types`, `std.algebra`,
+> `std.error_primitives`). Programs reaching those modules by bare reference then fail
+> to resolve (measured: `unresolved type NonEmptyStr`). Programs that import them
+> directly are unaffected. An earlier probe that appeared to show no failure was
+> invalid — it exercised `List`, which resolves without `std.types` in the closure.
+
+**The qualifier is the part that matters to this lane.** Breakage is confined to
+references that depend on pool coincidence — a program that properly imports
+`std.types` supplies it itself and is untouched. **Import deletion produces more of
+exactly that pattern**, so exposure to this class GROWS as this lane proceeds. It is
+not a latent hazard that stripping happens to reveal; it is a hazard stripping
+enlarges, which is a stronger reason to close it in the cutover rather than around it.
+
+**Two-directional disagreement, with a concrete instance on each arm.** The old
+producer DROPS real dependencies (these three, now named) and evidently CARRIES
+modules nothing needs (probe2 resolved `List` with none of them present). The
+classifier catches the first arm as a build break eventually; the second never fails
+anything and only costs closure size forever — the absorbing shape §5 names.

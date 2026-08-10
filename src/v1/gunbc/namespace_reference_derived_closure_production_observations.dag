@@ -2,6 +2,7 @@ module v1.gunbc.namespace_reference_derived_closure_production_observations
 
 import std.occurrence_identity { OccurrenceTransport, OccurrenceId }
 import std.occurrence_binding_candidates {
+  ModuleLocalMemberExposure,
   OccurrenceBindingCandidateInputs,
 }
 import std.reference_binding_observation {
@@ -51,6 +52,7 @@ fn nrdfc_parse(file: String, source: String) -> NrdfcParsed {
         inputs: occurrence_binding_inputs_from_transport(
           module_path: module_path,
           transport: transport,
+          grounding: ModuleLocalMemberExposure,
         ),
       }
   }

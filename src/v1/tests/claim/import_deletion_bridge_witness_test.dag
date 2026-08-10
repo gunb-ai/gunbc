@@ -1,0 +1,203 @@
+module v1.tests.claim.import_deletion_bridge_witness
+
+import std.types { Bool, String, List, NonEmptyStr }
+import std.occurrence_identity {
+  OccurrenceId, OccurrenceIndexEntry, OccurrenceTransport,
+  ReferenceOccurrence, DeclarationOccurrence,
+}
+import std.occurrence_binding_candidates {
+  OccurrenceBindingCandidateInputs,
+  CrossFileBindingClosureRow,
+  AssembledCrossFileBindingClosure,
+  AssembledCrossFileBindingClosureReady,
+  AssembledCrossFileBindingClosureRefused,
+  assemble_cross_file_binding_closure,
+  BoundReferenceProvider,
+  DeclarationExposureGrounding,
+  ModuleLocalMemberExposure,
+  CrossFileProviderExportedExposure,
+  ReferenceBindingProjectionBound,
+  resolve_reference_binding_via_structural_candidates,
+}
+import v1.gunbc.occurrence_binding_parser_walk {
+  ParsedOccurrenceBindingSource,
+  ParsedOccurrenceBindingSourceReady,
+  ParsedOccurrenceBindingSourceRefused,
+  parse_authored_occurrence_binding_source,
+  occurrence_binding_inputs_from_transport,
+}
+
+data stage0_emission_model_gap_note: String = "BLOCKER FOUND WHILE MAKING THIS BRANCH MECHANICALLY COMPLETE — an emission-model gap, not a registration oversight, and it is the reason regen refuses with this witness present.
+
+Reading real source requires filesystem_read, which requires the Filesystem SERVICE in the import closure. Any service in the v1 emission closure makes the emitter generate `dry_run.rs` — service dry-run support (`pub struct DryRunMode(pub bool)`), verified by emitting fresh and reading the file's own header rather than inferred from the name.
+
+`dry_run.rs` HAS NO SOURCE MODULE. Every other emitted stage0 file corresponds to one (`v1_rt.rs` is module v1.rt), and `gunbc.stage0_emit_plan` derives the plan FROM the parse-observed module closure — so a file emitted as a consequence of service PRESENCE, rather than from a module, is structurally invisible to the derivation. regen therefore refuses it as unregistered, and correctly refuses the obvious repair too: the CI auto-heal hand-added two rows to the projection, which is exactly what the refusal text forbids.
+
+No src/v1 module used a service before, which is why this never surfaced. It is not caused by this lane and is not this lane's to fix casually: the plan model must learn that service presence in the closure contributes emitter-support files, or those files must be classified through v2.compiler.self_host.frontier. Either is a change to a load-bearing regen gate and needs its own modelling, not a path added here.
+
+CONSEQUENCE FOR THIS WITNESS, stated rather than worked around: it cannot both live under src/v1 (needed to import v1.gunbc.occurrence_binding_parser_walk, which the dag+src/v2 compile-clean roots cannot see) and read the live tree (which drags a service into the v1 seed). That is a genuine placement contradiction, not a filing preference, and it is the next thing to resolve."
+
+data import_deletion_bridge_offline_recipe: String = "OFFLINE LOCAL RECIPE (requires the v1 parser pool, exactly as the sibling occurrence_binding_parser_walk witness does). This file lives under src/v1/tests/claim/ and NOT under dag/test/claim/ for a structural reason, not a filing preference: it imports v1.gunbc.occurrence_binding_parser_walk, and the compile-clean gate compiles dag + src/v2 only, so a copy under dag/ fails to resolve the module it exists to exercise. Placing it here is the same resolution the sibling witness already made.
+
+  target/release/claim_batch --source-root dag --source-root src/v1 --source-root src/v2 --entry src/v1/tests/claim/import_deletion_bridge_witness_test.dag --functions witness_import_less_reference_reaches_the_real_provider,witness_subject_does_not_bind_without_its_provider,witness_consumer_carries_no_import_declaration --claim-run --wet
+
+ALL THREE FUNCTIONS ARE IN THAT ROSTER ON PURPOSE, INCLUDING THE EXPECTED-RED ONE. An earlier revision listed only the two controls, which made the claim that the positive red stays visible untrue: the documented recipe did not run it and this directory is not discovery-enrolled, so nothing executed it at all. Exactly one expected semantic red is carried here — witness_import_less_reference_reaches_the_real_provider — and it is named rather than implied.
+
+STATED PLAINLY BECAUSE IT IS A REAL COVERAGE GAP, NOT A DETAIL: witnesses here are not per-PR discovery-enrolled, so these controls execute locally and on demand rather than on every change. DISSOLVE-ON is the sibling's, unchanged and shared rather than re-minted: witness_layer_roots admits src/v1 for parser-transport witnesses without Node ambiguity, or the execution corpus carries per-entry source roots — then this recipe deletes and discovery enrollment suffices."
+
+data bridge_witness_note: String = "CHECKPOINT 1 OF IMPORT DELETION — the bridge from the real source population to production occurrence binding, proven on the largest falsifier rather than on a fixture pair.
+
+WHAT THIS PROVES, AND WHAT IT DOES NOT. It is a SUPPLIED-PROVIDER binding keystone: the provider path is an INPUT to the operation under test, so it establishes that ordinary parser facts can bind across files when handed the right provider. It does NOT establish provider DISCOVERY, and it does not yet project a provider-file edge — it checks provider module identity only. Those are separate milestones and this witness must not be read as closing them.
+
+WHAT THIS PROVES. An import-less consumer reaches a declaration in a REAL production module — v2.std.live_tree, read off disk, not a fixture provider and not an embedded source string — with no import participating in the decision anywhere. LiveTreeDisposition is the subject because it is the largest population that loses its sole provider under strip: 1,673 references corpus-wide. If reference-derived binding cannot reach this declaration, deleting imports cannot work at all.
+
+SCOPE REDUCED, LOUDLY, WITH A TRIGGER. An earlier revision read BOTH files off disk, so the provider was the ordinary production module rather than anything authored for this test — strictly better evidence. It is not possible today: filesystem_read needs the Filesystem service, and a service in the v1 emission closure emits an unmodelled `dry_run.rs` (see the gap note above), while the witness must live under src/v1 to import the module it exercises at all. Both sources are therefore EMBEDDED, exactly as the sibling parser-walk witness does.
+
+WHAT THAT COSTS, so nobody reads more into this than it carries: the provider is now an authored copy of v2.std.live_tree's type declaration, not the real module, so this no longer witnesses anything about the live corpus and cannot catch drift between the two. It proves the binding mechanism only. DISSOLVE-ON: the stage0 emission model accounts for service-support files (or classifies them through v2.compiler.self_host.frontier), after which both sides return to filesystem_read and the provider becomes the real module again.
+
+THE PARSER FINDING BELOW DOES NOT DEPEND ON THIS. It was established by a structural census of v1.02_parse's declaration-minting sites, not by reading the corpus, so the reduction costs the keystone's reach and costs the finding nothing.
+
+WHY PER-REFERENCE RESOLVE AND NOT structural_binding_walk. The walk demands AllReferencesBound over the whole transport. A real production module references types this two-file closure does not contain, so the walk would refuse for reasons that have nothing to do with the claim — and a refusal read as a failure here would be a false red. Resolving the one reference under test keeps the discriminator on the claim.
+
+THE DISCRIMINATING CONTROL IS THE SECOND TEST, NOT AN ASSERTION IN THIS ONE. Binding the reference proves little on its own: it must FAIL when the provider is absent from the assembled closure. Without that control this witness would pass on any closure that happened to contain the name, which is precisely the pool-membership coincidence the whole lane exists to eliminate."
+
+data idb_live_tree_source_path: String = "src/v2/std/live_tree.dag"
+data idb_consumer_source_path: String = "dag/test/fixture/import_deletion_bridge/live_tree_consumer_bare.dag"
+data idb_provider_module_name: String = "v2.std.live_tree"
+data idb_subject_name: String = "LiveTreeDisposition"
+
+fn idb_consumer_source() -> String {
+  "module test.fixture.import_deletion_bridge.live_tree_consumer_bare\n\nfn bridge_consumer_reads_disposition(d: LiveTreeDisposition) -> LiveTreeDisposition {\n  d\n}\n"
+}
+
+fn idb_provider_source() -> String {
+  "module v2.std.live_tree\n\ntype LiveTreeDisposition\n  = ReadsLiveTree\n  | SubstrateInputsOnly\n"
+}
+
+fn idb_source_for(path: String) -> String {
+  match path == idb_consumer_source_path {
+    true => idb_consumer_source()
+    false => idb_provider_source()
+  }
+}
+
+fn idb_parsed_row(path: String) -> ParsedOccurrenceBindingSource {
+  parse_authored_occurrence_binding_source(file: path, source: idb_source_for(path: path))
+}
+
+fn idb_closure_row_for(
+  path: String,
+  grounding: DeclarationExposureGrounding
+) -> List<CrossFileBindingClosureRow> {
+  match idb_parsed_row(path: path) {
+    ParsedOccurrenceBindingSourceRefused => []
+    ParsedOccurrenceBindingSourceReady { transport: t, module_path: m } =>
+      [ CrossFileBindingClosureRow {
+          transport: t,
+          inputs: occurrence_binding_inputs_from_transport(
+            module_path: m, transport: t, grounding: grounding,
+          ),
+          module_path: m,
+          file_path: path,
+        } ]
+  }
+}
+
+fn idb_index_entry_for_occurrence(
+  transport: OccurrenceTransport,
+  occurrence: OccurrenceId
+) -> OccurrenceIndexEntry? {
+  fold(transport.index.entries, init: none, f: (found, entry) =>
+    match found {
+      Present { value: _ } => found
+      Absent =>
+        match entry.projection.occurrence.value == occurrence.value {
+          true => Present { value: entry }
+          false => Absent
+        }
+    })
+}
+
+fn idb_references_named(transport: OccurrenceTransport, name: String) -> List<ReferenceOccurrence> {
+  fold(transport.references, init: [], f: (acc, reference) =>
+    match idb_index_entry_for_occurrence(transport: transport, occurrence: reference.occurrence) {
+      Absent => acc
+      Present { value: entry } =>
+        match entry.projection.authored_name == name {
+          true => concat(acc, [reference])
+          false => acc
+        }
+    })
+}
+
+fn idb_bound_provider_for_subject(
+  consumer_path: String,
+  provider_paths: List<String>
+) -> BoundReferenceProvider? {
+  let consumers = idb_closure_row_for(path: consumer_path, grounding: ModuleLocalMemberExposure)
+  let providers = fold(provider_paths, init: [], f: (acc, p) =>
+    concat(acc, idb_closure_row_for(path: p, grounding: CrossFileProviderExportedExposure)))
+  fold(consumers, init: none, f: (outer, consumer_row) =>
+    match outer {
+      Present { value: _ } => outer
+      Absent =>
+        match assemble_cross_file_binding_closure(consumer: consumer_row, providers: providers) {
+          AssembledCrossFileBindingClosureRefused { refusal: _ } => none
+          AssembledCrossFileBindingClosureReady { transport: t, inputs: i, module_files: _, consumer_file: _ } =>
+            fold(idb_references_named(transport: t, name: idb_subject_name), init: none, f: (found, reference) =>
+              match found {
+                Present { value: _ } => found
+                Absent =>
+                  match resolve_reference_binding_via_structural_candidates(
+                    transport: t, inputs: i, reference: reference,
+                  ) {
+                    ReferenceBindingProjectionBound { provider: provider } => Present { value: provider }
+                    _ => none
+                  }
+              })
+        }
+    })
+}
+
+test fn witness_import_less_reference_reaches_the_real_provider() -> Bool {
+  match idb_bound_provider_for_subject(
+    consumer_path: idb_consumer_source_path,
+    provider_paths: [idb_live_tree_source_path],
+  ) {
+    Absent => false
+    Present { value: provider } =>
+      provider.provider_module == idb_provider_module_name
+        && !(provider.consumer_module == idb_provider_module_name)
+  }
+}
+
+data bridge_red_control_note: String = "THE CONTROL. Same consumer, same subject, provider file withheld from the assembled closure. A binding here would mean the reference resolved against something other than the declaration in v2.std.live_tree — pool coincidence rather than derivation — and would invalidate the positive case above."
+
+test fn witness_subject_does_not_bind_without_its_provider() -> Bool {
+  match idb_bound_provider_for_subject(consumer_path: idb_consumer_source_path, provider_paths: []) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+data bridge_no_import_note: String = "The consumer carries NO import declaration. This asserts that directly against the bytes on disk rather than trusting the fixture to stay import-less: if someone repairs the fixture by adding an import, the bridge claim would silently become a claim about import-based resolution, and this reds instead."
+
+test fn witness_consumer_carries_no_import_declaration() -> Bool {
+  let source = idb_consumer_source()
+  !string_contains(s: source, pattern: "import ")
+    && string_contains(s: source, pattern: idb_subject_name)
+}
+
+
+data checkpoint_one_finding_note: String = "WHAT THIS WITNESS FOUND, BY EXECUTION, ON ITS FIRST RUN.
+
+The positive case below currently REDS, and the reason is the load-bearing checkpoint-1 finding: the parser mints declaration occurrences for `fn` and `data` declarations but NOT for `type` declarations or their coproduct variants. Narrowed by discriminating probes rather than inferred — the assembled closure is Ready, the consumer's LiveTreeDisposition REFERENCE is present in it, the provider transport carries MORE THAN ONE declaration, and yet neither `LiveTreeDisposition` nor its variant `ReadsLiveTree` appears among them. So the failure is not assembly, not the read, not the reference side, and not an empty provider: it is that the type declaration was never minted.
+
+ROOT LOCATED STRUCTURALLY, NOT INFERRED FROM THE FAILURE. v1.02_parse has ten sites that mint a ParsedOccurrenceDeclaration, and the categories they mint are exactly CallableOccurrence, FieldOccurrence, LexicalValueOccurrence and NamespaceSegmentOccurrence. NOT ONE mints TypeOccurrence. Type REFERENCES are stamped — stamp_parsed_inferred emits ParsedOccurrenceReference { category: TypeOccurrence } — so the model is asymmetric by construction: a type can be referred to and can never be declared. parsed_occurrence_role_for_node reaches a type declaration only through its NoExprData arm, which classifies on body/type_annotation shape and returns ParsedOccurrenceUnclassified for it, and an unclassified occurrence is recorded as neither side.
+
+WHY THIS BLOCKS THE WHOLE LANE. Type references are the dominant residual category (1,893 unique-declaration unresolved plus 603 variant-shaped rows). If a type declaration is not a declaration occurrence, NO type reference can bind by derivation, cross-file or otherwise — so deleting imports is impossible until this closes, and no amount of closure or loader work reaches it.
+
+ONE REAL REPAIR ALREADY LANDED FROM THIS RUN, and it was masked by the above: occurrence_binding_inputs_from_transport hardwired ModuleLocalMemberExposure, which derives ModuleExposure — visible only WITHIN one module — so a provider's exported declarations were unexposed to any cross-file consumer and the candidate population was empty by construction. The grounding is now a parameter chosen at derivation, as DeclarationExposure's own authority requires. That defect was real and would have blocked binding independently; it is simply not the only one.
+
+The two controls below PASS and stay enrolled: they are what make the red above a located finding rather than an unexplained failure."
+

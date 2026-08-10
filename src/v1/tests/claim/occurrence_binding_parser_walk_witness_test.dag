@@ -10,6 +10,7 @@ import std.occurrence_identity {
   AuthoredTokenOrdinal,
 }
 import std.occurrence_binding_candidates {
+  ModuleLocalMemberExposure,
   OccurrenceBindingCandidateInputs,
   DeclarationExposureRow,
   LexicalExposure,
@@ -69,6 +70,7 @@ fn obcpw_parse(file: String, source: String) -> ObcpwParsed {
         inputs: occurrence_binding_inputs_from_transport(
           module_path: module_path,
           transport: transport,
+          grounding: ModuleLocalMemberExposure,
         ),
       }
   }

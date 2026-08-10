@@ -5,6 +5,7 @@ use self::ObcpwParsed::*;
 use crate::std_occurrence_binding_candidates::AuthoredOrderIndexRefusal::MissingAuthoredOrderRow;
 use crate::std_occurrence_binding_candidates::BoundReferencePopulation::AllReferencesBound;
 use crate::std_occurrence_binding_candidates::DeclarationExposure::LexicalExposure;
+use crate::std_occurrence_binding_candidates::DeclarationExposureGrounding::ModuleLocalMemberExposure;
 use crate::std_occurrence_binding_candidates::DeclarationExposureIndexRefusal::MissingDeclarationExposure;
 use crate::std_occurrence_binding_candidates::DirectModuleDependencyBuild::DirectModuleDependencyListReady;
 use crate::std_occurrence_binding_candidates::OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexReady;
@@ -26,9 +27,10 @@ pub use crate::std_occurrence_binding_candidates::{
 };
 pub use crate::std_occurrence_binding_candidates::{
     AuthoredOrderIndexRefusal, AuthoredOrderRow, BoundReferencePopulation, BoundReferenceProvider,
-    DeclarationExposure, DeclarationExposureIndexRefusal, DeclarationExposureRow,
-    DirectModuleDependencyBuild, OccurrenceBindingCandidateInputs, OccurrenceCandidateIndexBuild,
-    ReferenceBindingProjection, StructuralBindingIndexRefusal, StructuralBindingWalk,
+    DeclarationExposure, DeclarationExposureGrounding, DeclarationExposureIndexRefusal,
+    DeclarationExposureRow, DirectModuleDependencyBuild, OccurrenceBindingCandidateInputs,
+    OccurrenceCandidateIndexBuild, ReferenceBindingProjection, StructuralBindingIndexRefusal,
+    StructuralBindingWalk,
 };
 pub use crate::std_occurrence_identity::{
     AuthoredTokenOrdinal, DeclarationOccurrence, OccurrenceId, OccurrenceIndexEntry,
@@ -128,6 +130,7 @@ pub fn obcpw_parse(file: String, source: String) -> Rc<ObcpwParsed> {
             inputs: occurrence_binding_inputs_from_transport(
                 module_path.clone(),
                 transport.clone(),
+                DeclarationExposureGrounding::ModuleLocalMemberExposure,
             ),
         }),
     }

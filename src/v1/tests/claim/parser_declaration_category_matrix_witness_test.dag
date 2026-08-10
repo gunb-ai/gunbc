@@ -1,0 +1,194 @@
+module v1.tests.claim.parser_declaration_category_matrix_witness_test
+
+import std.types { Bool }
+import std.occurrence_identity { DeclarationOccurrence }
+import v1.tests.claim.parser_declaration_matrix_support {
+  pdc_row,
+  pdc_zero_row,
+  pdc_identity_row,
+  pdc_parse_matrix,
+  pdc_declares_nothing,
+  pdc_index_entry_for_declaration,
+  pdc_matrix_category_count,
+  pdc_non_type_category_count,
+  PdcTransportReady,
+  PdcTransportRefused,
+}
+
+data pdc_matrix_witness_note: String = "Parser declaration-category denominator. Pins, per authored declaration form, the OccurrenceCategory population the v1 parser mints — including the forms that mint nothing. Observation-only: no resolution, exposure, or binding claim. The zero rows are the load-bearing half; minting a category later must edit this file."
+
+data pdc_offline_recipe: String = "OFFLINE LOCAL RECIPE (requires v1 parser pool): target/release/claim_batch --roster-from-discovery --source-root dag --source-root src/v1 --scan-dir src/v1/tests/claim. The function list is deliberately NOT enumerated here: this file is enrolled file-grain, so the empty-function authority expands it, and a hand-copied list of test fn names beside a file that already names them is a second representation that rots on the next rename."
+
+data pdc_dissolve_on: String = "DISSOLVE-ON: witness_layer_roots admits src/v1 for parser-transport witnesses, or the execution corpus carries per-entry source roots — then this recipe deletes and discovery enrollment suffices."
+
+// One module carrying every declaration form the matrix ranges over, each with a distinct authored
+// name so a per-name join is exact. Named `pdc_*` throughout: an authored name that collided with a
+// real corpus declaration would make the join ambiguous against a homonym rather than wrong-looking.
+
+// POSITIVE CONTROL. Without it, every "mints nothing" row below would pass vacuously if the fixture
+// stopped parsing, and the matrix would describe a parser that mints nothing at all.
+test fn witness_matrix_fixture_parses() -> Bool {
+  match pdc_parse_matrix() {
+    PdcTransportRefused => false
+    PdcTransportReady { transport: transport } =>
+      length(transport.declarations) > 0 && length(transport.references) > 0
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Derived requirements the parser ALREADY meets. These are regression controls: each is required by
+// the language, and each happens to hold today, so a commit C that breaks one is caught.
+// ---------------------------------------------------------------------------------------------
+
+// A function declaration introduces a callable name into its module.
+test fn witness_function_declaration_mints_callable() -> Bool {
+  pdc_row(name: "pdc_function", expected: "|CallableOccurrence")
+}
+
+test fn witness_second_function_declaration_mints_callable() -> Bool {
+  pdc_row(name: "pdc_matcher", expected: "|CallableOccurrence")
+}
+
+// A parameter binds a name in the function body's scope, so it is a declaration.
+test fn witness_function_parameter_binds() -> Bool {
+  pdc_row(name: "pdc_parameter", expected: "|LexicalValueOccurrence")
+}
+
+test fn witness_match_scrutinee_parameter_binds() -> Bool {
+  pdc_row(name: "pdc_scrutinee", expected: "|LexicalValueOccurrence")
+}
+
+// A let introduces a binding.
+test fn witness_let_binder_binds() -> Bool {
+  pdc_row(name: "pdc_let_binder", expected: "|LexicalValueOccurrence")
+}
+
+// A destructuring pattern binds its binder name into the arm's scope.
+test fn witness_pattern_binder_binds() -> Bool {
+  pdc_row(name: "pdc_pattern_binder", expected: "|LexicalValueOccurrence")
+}
+
+// ---------------------------------------------------------------------------------------------
+// LANDED BY COMMIT C. These eight rows were authored as deliberately-red acceptance targets in a
+// separate file, because this roster is uniformly file-grain and an enrolled file cannot mix green
+// with expected-red. Role-directed minting in `stamp_parsed_node_children` greened them, so they MOVE
+// here rather than retiring: the requirement they state did not stop being a requirement when it
+// started holding, and deleting the discriminating evidence with the machinery would recreate
+// specification-without-execution one rung up (DESIGN section 4b(4)).
+// ---------------------------------------------------------------------------------------------
+
+// A named type declaration introduces a type name into its module. Both the product and the
+// coproduct form must; a type ALIAS must too, and is a third shape (NoConnective with `inferred`
+// present) that a connective-keyed rule would miss.
+test fn witness_product_type_declaration_is_declared() -> Bool {
+  pdc_row(name: "PdcProduct", expected: "|TypeOccurrence")
+}
+
+test fn witness_coproduct_type_declaration_is_declared() -> Bool {
+  pdc_row(name: "PdcSum", expected: "|TypeOccurrence")
+}
+
+// A variant arm introduces a constructor name, whether or not it carries a payload. Both forms
+// follow the same rule; asserting only the payload form would let a nullary-only regression pass.
+test fn witness_nullary_constructor_is_declared() -> Bool {
+  pdc_row(name: "PdcNullary", expected: "|ConstructorOccurrence")
+}
+
+test fn witness_payload_constructor_is_declared() -> Bool {
+  pdc_row(name: "PdcPayload", expected: "|ConstructorOccurrence")
+}
+
+// A product type's field is declared by the type that owns it.
+test fn witness_product_field_is_declared() -> Bool {
+  pdc_row(name: "pdc_product_field", expected: "|FieldOccurrence")
+}
+
+// THE TWO ROWS THAT A NAME JOIN CANNOT STATE, and the reason this file keys on identity.
+//
+// `pdc_payload_field` is authored twice: at byte 109 as the coproduct's payload FIELD DECLARATION,
+// and at byte 394 as the field position of the destructuring pattern. The second is a USE of the
+// first — it names which field is being destructured; the binder is `pdc_pattern_binder`. So the
+// language requires exactly one DECLARATION of this name, at 109, and the pattern position must not
+// produce one.
+//
+// Today the parser does the opposite: the only declaration it mints sits at 394, and 109 mints
+// nothing. Because both readings yield a population of size one, a count or a name assertion cannot
+// tell them apart — which is why the earlier version of this file passed while describing the wrong
+// occurrence. The spans are hard-coded deliberately: this fixture authors its own source, and a
+// fixture edit that moves these positions SHOULD break these rows rather than silently re-point them.
+test fn witness_coproduct_payload_field_is_declared_at_its_declaration_site() -> Bool {
+  pdc_identity_row(
+    name: "pdc_payload_field",
+    expected: "|pdc_payload_field#FieldOccurrence#span:109-126#path:>app.pdc_matrix>PdcSum>PdcPayload",
+  )
+}
+
+// Stated separately from the row above so the two defects are counted separately: even once the
+// declaration at 109 exists, a parser that ALSO kept minting a declaration at 394 would still be
+// wrong, and the row above alone would not say so.
+test fn witness_pattern_field_position_is_not_a_declaration() -> Bool {
+  match pdc_parse_matrix() {
+    PdcTransportRefused => false
+    PdcTransportReady { transport: transport } =>
+      fold(
+        transport.declarations,
+        init: true,
+        f: (acc, declaration) =>
+          match pdc_index_entry_for_declaration(transport: transport, declaration: declaration) {
+            Absent => acc
+            Present { value: entry } =>
+              acc && entry.projection.diagnostic_span.start != 394
+          },
+      )
+  }
+}
+
+// THE THIRD ROW, so the two defects are independently discriminated.
+//
+// The population row above bundles two facts -- that a declaration exists at 109, and that nothing
+// else carries this name -- so its failure cannot say which held. The sibling row isolates the
+// second defect (a declaration at 394). This row isolates the FIRST: a declaration exists at the
+// coproduct's declaration site, said without any claim about what else exists.
+//
+// With all three, commit C cannot green by fixing one defect and masking the other: this row fails
+// if the declaration at 109 is still missing, the sibling fails if the use at 394 is still minted as
+// a declaration, and the population row fails if a third occurrence of the name appears anywhere.
+test fn witness_a_declaration_exists_at_the_coproduct_field_site() -> Bool {
+  match pdc_parse_matrix() {
+    PdcTransportRefused => false
+    PdcTransportReady { transport: transport } =>
+      fold(
+        transport.declarations,
+        init: false,
+        f: (found, declaration) =>
+          match pdc_index_entry_for_declaration(transport: transport, declaration: declaration) {
+            Absent => found
+            Present { value: entry } =>
+              found || entry.projection.diagnostic_span.start == 109
+          },
+      )
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE FALSE-POSITIVE DENOMINATOR. Deciding that an item binds a type name requires excluding every
+// item form that does not, and the rows above only exercise the two that do. These two rows are a
+// self-denominating pair over two fixtures: the matrix authors exactly two named type declarations,
+// and the sibling fixture authors none, so a rule that over-mints fails the second and a rule that
+// stops minting fails the first. Neither can pass by the counter being vacuously zero.
+// ---------------------------------------------------------------------------------------------
+
+test fn witness_matrix_declares_exactly_its_two_named_types() -> Bool {
+  pdc_matrix_category_count(tag: "TypeOccurrence") == 2
+}
+
+test fn witness_no_non_type_item_form_becomes_a_type_declaration() -> Bool {
+  pdc_non_type_category_count(tag: "TypeOccurrence") == 0
+}
+
+// POSITIVE CONTROL for the row above: without it, a fixture that stopped parsing would satisfy the
+// zero claim. A refused parse answers -1 rather than 0 for the same reason, so the claim is
+// fail-closed on both the parse and the population.
+test fn witness_non_type_item_fixture_declares_its_callables() -> Bool {
+  pdc_non_type_category_count(tag: "CallableOccurrence") == 2
+}
