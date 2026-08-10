@@ -1,5 +1,7 @@
 module test.claim.compile_diagnostic_census_witness
 
+import std.dissolution { dissolution_description }
+
 import gunbc.compile_diagnostic_census {
   compile_diagnostic_census_hand_rust_dissolve_trigger,
   CompileDiagnosticCensus,
@@ -93,10 +95,10 @@ test fn census_not_runnable_is_not_an_empty_observation() -> Bool {
 data scaffold_trigger_citation_note: String = "THE SCAFFOLD'S TRIGGER IS ITSELF CHECKED, because a dissolution trigger that nobody executes rots exactly like any other prose claim (DESIGN 3: a cited name is decidable, so decide it). This asserts the hand-Rust dissolve-trigger row names the concrete roadmap row it defers to, so an edit that reopens the trigger into an unevaluable disjunction reds here rather than passing review twice. The precedent is stage0_rust_source_lifecycle_scaffold_witness_test scaffold_note_cites_zero_hand_maintained_rust_roadmap_row, which is where the convention comes from. ONE DELIBERATE DIVERGENCE from that precedent: it also asserts the note contains the literal ROADMAP.md:24, and this file does NOT copy that half. A line offset into a generated artifact is the positional citation DESIGN 3 rules out - it decays silently when anything above line 24 changes, and nothing about the roadmap row moving would red it. The row id is the symbol the namespace already names, so the id alone is asserted here."
 
 test fn scaffold_trigger_cites_the_concrete_roadmap_row() -> Bool {
-  string_contains(s: compile_diagnostic_census_hand_rust_dissolve_trigger, pattern: "v1-zero-hand-maintained-rust")
+  string_contains(s: dissolution_description(condition: compile_diagnostic_census_hand_rust_dissolve_trigger), pattern: "v1-zero-hand-maintained-rust")
 }
 
 test fn scaffold_trigger_is_singular_not_an_open_disjunction() -> Bool {
-  string_contains(s: compile_diagnostic_census_hand_rust_dissolve_trigger, pattern: "TRIGGER, one and checkable")
-    && string_contains(s: compile_diagnostic_census_hand_rust_dissolve_trigger, pattern: "EARLIER REMOVAL IS PERMITTED AND EXPECTED, but it is not the trigger")
+  string_contains(s: dissolution_description(condition: compile_diagnostic_census_hand_rust_dissolve_trigger), pattern: "TRIGGER, one and checkable")
+    && string_contains(s: dissolution_description(condition: compile_diagnostic_census_hand_rust_dissolve_trigger), pattern: "EARLIER REMOVAL IS PERMITTED AND EXPECTED, but it is not the trigger")
 }

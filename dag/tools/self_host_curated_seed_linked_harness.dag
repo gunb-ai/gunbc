@@ -1,5 +1,7 @@
 module tools.self_host_curated_seed_linked_harness
 
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
+
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
 import extdeps.cargo_build
@@ -20,7 +22,7 @@ data cssl_std_seed_link_followup_note: String = "LANDED (2026-07-17): generic se
 
 data cssl_std_bridge_shims_rel: String = "dag/tools/self_host_std_bridge_shims"
 
-data cssl_std_bridge_scaffold_dissolution_trigger: String = "dissolve-on: dag/tools/self_host_std_bridge_shims/* shared std-bridge (emitted-side ONLY; seed oracle uses v1_compiler real std). DISSOLVES WHEN v2 std self-emits and gunbc emits seed-linked extern imports without hand ABI bridges."
+data cssl_std_bridge_scaffold_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: dag/tools/self_host_std_bridge_shims/* shared std-bridge (emitted-side ONLY; seed oracle uses v1_compiler real std). DISSOLVES WHEN v2 std self-emits and gunbc emits seed-linked extern imports without hand ABI bridges.")
 
 data cssl_closure_assembly_note: String = "Generic closure assembly: dep manifest = gunbc-emitted src/lib.rs pub mod list (structural closure-membership authority). Entry module bytes hash-locked. Emit-retain rule: any module listed in the emitted closure manifest with a matching emitted src sibling .rs is emit-retained — seed lib.rs pub mod presence is external-oracle only and must NOT trigger seed-replace (seed stubs may lack gunbc type surface). Hand shim_lib_rel/shim_writes = optional fast-path override (body_producer / behavioral receipts)."
 

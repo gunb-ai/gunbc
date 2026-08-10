@@ -93,6 +93,7 @@ import extdeps.github.actions {
   google_auth_action,
   upload_artifact_action, download_artifact_action
 }
+import std.dissolution { dissolution_description }
 
 fn ci_checkout_step() -> Step {
   UsesStep {
@@ -335,7 +336,7 @@ fn ci_v1_compiler_tests_compile_gate_run_script() -> String {
       concat(
         concat(
           "# ",
-          concat(ci_v1_compiler_tests_compile_gate_shell_emit_dissolution_trigger, "\n")
+          concat(dissolution_description(condition: ci_v1_compiler_tests_compile_gate_shell_emit_dissolution_trigger), "\n")
         ),
         ci_cargo_eagain_retry_script(command: ci_v1_compiler_tests_compile_gate_command())
       )

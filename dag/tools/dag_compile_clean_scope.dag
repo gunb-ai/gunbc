@@ -1,5 +1,7 @@
 module tools.dag_compile_clean_scope
 
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
+
 import gunbc.ci_layer_roots { witness_layer_roots }
 import tools.dag_compile_clean_partition { compile_clean_partition_boundary }
 import tools.dag_compile_clean_shard_roster {
@@ -37,7 +39,7 @@ data compile_clean_docs_universe_path_grain_scaffold: Disposition = Scaffold {
   }
 }
 
-data compile_clean_docs_universe_path_grain_dissolve_trigger: String = "🟡 dissolve-on: compile_clean_docs_universe_path_grain — docs/** path-prefix predicate short-circuits floor admission ahead of import-closure entry selection; DISSOLVES WHEN v2.lens.module_graph.entry_affected_by_touched_paths over the merge-base diff is the sole authority for the docs-only skip (docs paths fall out of every entry closure structurally, so the prefix predicate becomes a redundant second representation and the witness bin reads the scope disposition without a path-grain short-circuit)"
+data compile_clean_docs_universe_path_grain_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: compile_clean_docs_universe_path_grain — docs/** path-prefix predicate short-circuits floor admission ahead of import-closure entry selection; DISSOLVES WHEN v2.lens.module_graph.entry_affected_by_touched_paths over the merge-base diff is the sole authority for the docs-only skip (docs paths fall out of every entry closure structurally, so the prefix predicate becomes a redundant second representation and the witness bin reads the scope disposition without a path-grain short-circuit)")
 
 fn compile_clean_pool_roots() -> List<String> {
   compile_clean_partition_boundary().pool_roots

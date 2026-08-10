@@ -5,6 +5,7 @@ import std.realization_schedule { ScheduleWitnessEntry }
 import std.types { String, Int, List }
 import v2.std.algebra { any, filter, fold_list, length }
 import v2.std.node { Symbol }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 data proactive_verification_ledger_law: String = "The PROACTIVE VERIFICATION LEDGER (operator no-soak ruling 2026-07-20; gunbc.roadmap_authority v1-verification-ledger, gating v1-interpreter-delete through the cutover chain): enumerated executed receipts — never calendar soak, never elapsed-time claims. Each row is ONE deliberate run with a typed execution shape, a disposition (ExecutableNow | KnownRedPendingUnquarantine | BlockedOnCiFloorCutover), and an execution outcome (OutcomeGreen | OutcomePending | OutcomeRed) recorded only after a real run — never fabricated. Spine rows carry hand-declared disposition (BlockedOnCiFloorCutover until cutover). Family disposition is DERIVED by projecting gunbc.ci_layer_roots known_red_probe_roster (derived from the gunbc.explicit_witness_admission rows) — never hand-declared (§3 single authority). Spine: (1) whole-corpus cold v1-vs-v2 witness parity — falsifier predict-only cadence, zero unexplained divergence; (2) compile-clean parity; (3) regen behavioral fixed point. Families: nine #6879 partition families as equals_eval receipts (meet_join contributes meet + join peer primaries — review 43336). Dissolve-on: ci_floor_cutover + ledger all OutcomeGreen."
 
@@ -35,14 +36,14 @@ type SpineVerificationLedgerRow {
   title: String,
   execution: VerificationExecutionShape,
   disposition: VerificationDisposition,
-  dissolve_trigger: String
+  dissolution: DissolutionCondition
 }
 
 type FamilyVerificationLedgerRow {
   id: Symbol,
   title: String,
   execution: VerificationExecutionShape,
-  dissolve_trigger: String
+  dissolution: DissolutionCondition
 }
 
 data spine_witness_parity_recipe: String = "claim_executor --source-root dag --source-root src/v2 --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_falsifier_plan (batch 0 = SelectionPredictOnly whole-corpus cold affected-set falsifier; zero unexplained divergence vs predict-only expectations — a rerun-everything arm is the absorbing-fallback hard reject)"
@@ -60,7 +61,7 @@ data proactive_verification_spine_rows: List<SpineVerificationLedgerRow> = [
     title: "Whole-corpus cold v1-vs-v2 witness parity (falsifier predict-only batch)",
     execution: FalsifierPredictOnlyBatch,
     disposition: BlockedOnCiFloorCutover,
-    dissolve_trigger: "ci_floor_cutover; falsifier cold sweep records zero unexplained divergence rows"
+    dissolution: unbound_dissolution(description: "ci_floor_cutover; falsifier cold sweep records zero unexplained divergence rows")
   },
   SpineVerificationLedgerRow {
     id: ^compile_clean_parity,
@@ -68,7 +69,7 @@ data proactive_verification_spine_rows: List<SpineVerificationLedgerRow> = [
     title: "Compile-clean parity (whole-tree --target dag gate)",
     execution: CompileCleanGate,
     disposition: BlockedOnCiFloorCutover,
-    dissolve_trigger: "ci_floor_cutover; whole-tree compile-clean gate green on v2-emitted execution path"
+    dissolution: unbound_dissolution(description: "ci_floor_cutover; whole-tree compile-clean gate green on v2-emitted execution path")
   },
   SpineVerificationLedgerRow {
     id: ^regen_behavioral_fixed_point,
@@ -76,7 +77,7 @@ data proactive_verification_spine_rows: List<SpineVerificationLedgerRow> = [
     title: "Regen behavioral fixed point (regen_stage0 --verify two-generation equivalence)",
     execution: RegenVerifyGate,
     disposition: BlockedOnCiFloorCutover,
-    dissolve_trigger: "emitter_fixed_point + ci_floor_cutover; regen_verify gate green by execution"
+    dissolution: unbound_dissolution(description: "emitter_fixed_point + ci_floor_cutover; regen_verify gate green by execution")
   }
 ]
 
@@ -88,7 +89,7 @@ data proactive_verification_family_rows: List<FamilyVerificationLedgerRow> = [
       entry: "src/v2/test/claim/execution/emit_host_add_equals_eval_test.dag",
       function: "emit_host_add_equals_eval_holds"
     },
-    dissolve_trigger: "ledger all-green at v1_delete"
+    dissolution: unbound_dissolution(description: "ledger all-green at v1_delete")
   },
   FamilyVerificationLedgerRow {
     id: ^family_equals_match,
@@ -97,7 +98,7 @@ data proactive_verification_family_rows: List<FamilyVerificationLedgerRow> = [
       entry: "src/v2/test/claim/execution/emit_host_match_equals_eval_test.dag",
       function: "emit_host_match_equals_eval_holds"
     },
-    dissolve_trigger: "ledger all-green at v1_delete"
+    dissolution: unbound_dissolution(description: "ledger all-green at v1_delete")
   },
   FamilyVerificationLedgerRow {
     id: ^family_equals_loop,
@@ -106,7 +107,7 @@ data proactive_verification_family_rows: List<FamilyVerificationLedgerRow> = [
       entry: "src/v2/test/claim/execution/emit_host_loop_equals_eval_test.dag",
       function: "emit_host_loop_equals_eval_holds"
     },
-    dissolve_trigger: "ledger all-green at v1_delete"
+    dissolution: unbound_dissolution(description: "ledger all-green at v1_delete")
   },
   FamilyVerificationLedgerRow {
     id: ^family_equals_classical_not_ingested,
@@ -115,7 +116,7 @@ data proactive_verification_family_rows: List<FamilyVerificationLedgerRow> = [
       entry: "src/v2/test/claim/execution/emit_host_classical_not_ingested_equals_eval_test.dag",
       function: "emit_host_classical_not_ingested_equals_eval_holds"
     },
-    dissolve_trigger: "ledger all-green at v1_delete"
+    dissolution: unbound_dissolution(description: "ledger all-green at v1_delete")
   },
   FamilyVerificationLedgerRow {
     id: ^family_equals_field_access,
@@ -124,7 +125,7 @@ data proactive_verification_family_rows: List<FamilyVerificationLedgerRow> = [
       entry: "src/v2/test/claim/execution/emit_host_field_access_equals_eval_test.dag",
       function: "emit_host_field_access_equals_eval_holds"
     },
-    dissolve_trigger: "explicit_witness_admission row deletes on green (swift-stag-662)"
+    dissolution: unbound_dissolution(description: "explicit_witness_admission row deletes on green (swift-stag-662)")
   },
   FamilyVerificationLedgerRow {
     id: ^family_equals_complement,
@@ -133,7 +134,7 @@ data proactive_verification_family_rows: List<FamilyVerificationLedgerRow> = [
       entry: "src/v2/test/claim/execution/emit_host_complement_equals_eval_test.dag",
       function: "emit_host_complement_equals_eval_holds"
     },
-    dissolve_trigger: "explicit_witness_admission row deletes on green (swift-stag-662)"
+    dissolution: unbound_dissolution(description: "explicit_witness_admission row deletes on green (swift-stag-662)")
   },
   FamilyVerificationLedgerRow {
     id: ^family_equals_meet_join,
@@ -142,7 +143,7 @@ data proactive_verification_family_rows: List<FamilyVerificationLedgerRow> = [
       entry: "src/v2/test/claim/execution/emit_host_meet_join_equals_eval_test.dag",
       function: "emit_host_meet_equals_eval_holds"
     },
-    dissolve_trigger: "ledger all-green at v1_delete"
+    dissolution: unbound_dissolution(description: "ledger all-green at v1_delete")
   },
   FamilyVerificationLedgerRow {
     id: ^family_equals_join,
@@ -151,7 +152,7 @@ data proactive_verification_family_rows: List<FamilyVerificationLedgerRow> = [
       entry: "src/v2/test/claim/execution/emit_host_meet_join_equals_eval_test.dag",
       function: "emit_host_join_equals_eval_holds"
     },
-    dissolve_trigger: "ledger all-green at v1_delete"
+    dissolution: unbound_dissolution(description: "ledger all-green at v1_delete")
   },
   FamilyVerificationLedgerRow {
     id: ^family_equals_variant_construct,
@@ -160,7 +161,7 @@ data proactive_verification_family_rows: List<FamilyVerificationLedgerRow> = [
       entry: "src/v2/test/claim/execution/emit_host_variant_construct_equals_eval_test.dag",
       function: "emit_host_variant_construct_equals_eval_holds"
     },
-    dissolve_trigger: "ledger all-green at v1_delete"
+    dissolution: unbound_dissolution(description: "ledger all-green at v1_delete")
   },
   FamilyVerificationLedgerRow {
     id: ^family_equals_fold_closure,
@@ -169,7 +170,7 @@ data proactive_verification_family_rows: List<FamilyVerificationLedgerRow> = [
       entry: "src/v2/test/claim/execution/emit_host_fold_closure_equals_eval_test.dag",
       function: "emit_host_fold_closure_equals_eval_holds"
     },
-    dissolve_trigger: "explicit_witness_admission row deletes on green (jolly-dove-581)"
+    dissolution: unbound_dissolution(description: "explicit_witness_admission row deletes on green (jolly-dove-581)")
   }
 ]
 
@@ -279,15 +280,15 @@ fn ledger_executable_family_rows() -> List<FamilyVerificationLedgerRow> {
 fn disposition_to_pending_outcome_for_family(row: FamilyVerificationLedgerRow) -> VerificationExecutionOutcome {
   match family_row_disposition(row: row) {
     ExecutableNow => OutcomePending { reason: "not yet executed this session" }
-    KnownRedPendingUnquarantine => OutcomePending { reason: row.dissolve_trigger }
-    BlockedOnCiFloorCutover => OutcomePending { reason: row.dissolve_trigger }
+    KnownRedPendingUnquarantine => OutcomePending { reason: row.dissolution }
+    BlockedOnCiFloorCutover => OutcomePending { reason: row.dissolution }
   }
 }
 
 fn disposition_to_pending_outcome_for_spine(row: SpineVerificationLedgerRow) -> VerificationExecutionOutcome {
   match row.disposition {
     ExecutableNow => OutcomePending { reason: "not yet executed this session" }
-    KnownRedPendingUnquarantine => OutcomePending { reason: row.dissolve_trigger }
-    BlockedOnCiFloorCutover => OutcomePending { reason: row.dissolve_trigger }
+    KnownRedPendingUnquarantine => OutcomePending { reason: row.dissolution }
+    BlockedOnCiFloorCutover => OutcomePending { reason: row.dissolution }
   }
 }

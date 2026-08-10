@@ -326,8 +326,6 @@ type SchedulerHold
 
 data observation_scheduler_hold_note: String = "SchedulerHold is the substrate authority for why admission was withheld this poll; the seed's v1_compiler memory_governor HoldReason is the realization that must stay in lockstep with it (the .dag graph is the authority and Rust is the seed). The lockstep witness proves arity and variant names match by reading the live seed, so a variant added on one side and not the other reds instead of drifting."
 
-data observation_psi_pressure_unit_note: String = "avg10 is a MAGNITUDE WITH A SCALE and is carried as one: std.measure.BasisPoint, not a bare scalar. The reading is a utilization ratio — the share of a ten-second window in which work stalled on memory — which is the exact semantic axis basis_point_unit_note names for that carrier, so this is a consumer of an existing authority rather than a new unit. Resolution is exact at the seed's fidelity: the governor reads one decimal of a percentage, and one basis point is a hundredth of a percentage point, so 37.5 percent is 3750 with nothing truncated. NO NEW CARRIER IS MINTED HERE DELIBERATELY: basis_point_dissolve_on already warns that a third dimensionless-ratio use-case minting a third nickname is the failure mode, and this module is that third use-case. When the Ratio<Scale> unification that row calls for lands, this field follows Percent and BasisPoint onto it and needs no change of meaning."
-
 type ContendedResource
   = MemoryBudget
   | AdmissionWindow

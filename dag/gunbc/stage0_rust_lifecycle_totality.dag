@@ -1,5 +1,7 @@
 module gunbc.stage0_rust_lifecycle_totality
 
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
 import gunbc.stage0_rust_host_observation {
   GitObservationRefused,
   RustManifestObserved,
@@ -28,8 +30,6 @@ type LifecycleTotalityUnderivedAxis
   = LifecycleTotalityRetirementTriggerUnmodeled {}
 
 data lifecycle_totality_retirement_trigger_underived_reason: String = "RetirementTrigger carrier not modeled — cannot derive disposition-without-retirement-trigger path set until gunbc.stage0_rust_source_lifecycle_scaffold lands the authority (see zero_hand_maintained_rust_finish_line_attachment_note). Named LifecycleTotalityRetirementTriggerUnmodeled rather than a bare RetirementTrigger declaration: a bare RetirementTrigger already exists elsewhere in the tree as an unrelated RustHonestFrontierDeferredAxis variant (gunbc.stage0_rust_honest_frontier_projection), and gunbc.v1_complexity_capability_census documents a prior real incident of exactly this class — a top-level RetirementTrigger declaration shadowing that variant and breaking an unrelated module's CI. Declaring a placeholder RetirementTrigger type here would also pre-empt the name owed to the real carrier's single authority, gunbc.stage0_rust_source_lifecycle_scaffold, before it lands. This carrier fabricates neither. (One-variant sum spelled as an empty-record variant, not `type X = Y`, per the documented language-layer finding in std.realization_schedule: that alias production reads its RHS as an existing type name, which is the exact trap the original defect fell into.)"
-
-data lifecycle_totality_retirement_trigger_dissolve_on: String = "dissolve-on: RetirementTrigger carrier lands in gunbc.stage0_rust_source_lifecycle_scaffold and C1 derives exact disposition_without_retirement_trigger_paths via that single authority; LifecycleTotalityRetirementTriggerUnmodeled retires in favor of the real carrier"
 
 data stage0_rust_lifecycle_totality_underived_axes: List<LifecycleTotalityUnderivedAxis> = [
   LifecycleTotalityRetirementTriggerUnmodeled {}
@@ -266,3 +266,5 @@ fn lifecycle_totality_witness_observation(extra_paths: List<String>) -> RustMani
     cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
   }
 }
+
+data lifecycle_totality_retirement_trigger_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: RetirementTrigger carrier lands in gunbc.stage0_rust_source_lifecycle_scaffold and C1 derives exact disposition_without_retirement_trigger_paths via that single authority; LifecycleTotalityRetirementTriggerUnmodeled retires in favor of the real carrier")

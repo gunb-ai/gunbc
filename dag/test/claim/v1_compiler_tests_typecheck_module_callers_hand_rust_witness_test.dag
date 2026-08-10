@@ -12,6 +12,7 @@ import gunbc.v1_compiler_tests_typecheck_module_callers_scaffold {
 import std.disposition { Scaffold, SingleAuthority }
 import std.types { Bool }
 import v2.std.algebra { length }
+import std.dissolution { dissolution_description }
 
 test fn v1_compiler_tests_typecheck_module_callers_hand_rust_scaffold_is_seed_retained() -> Bool {
   match v1_compiler_tests_typecheck_module_callers_hand_rust_scaffold {
@@ -21,7 +22,7 @@ test fn v1_compiler_tests_typecheck_module_callers_hand_rust_scaffold_is_seed_re
 }
 
 test fn v1_compiler_tests_typecheck_module_callers_scaffold_names_receipt_fields() -> Bool {
-  !(v1_compiler_tests_typecheck_module_callers_hand_rust_dissolve_trigger == "")
+  !(dissolution_description(condition: v1_compiler_tests_typecheck_module_callers_hand_rust_dissolve_trigger) == "")
     && !(v1_compiler_tests_typecheck_module_callers_hand_rust_receipt_plan_anchor == "")
     && !(v1_compiler_tests_typecheck_module_callers_hand_rust_roadmap_lane_anchor == "")
     && v1_compiler_tests_typecheck_module_callers_hand_rust_receipt_witness_entry == "dag/test/claim/v1_compiler_tests_typecheck_module_callers_hand_rust_witness_test.dag"
@@ -33,11 +34,11 @@ test fn v1_compiler_tests_typecheck_module_callers_loc_delta_matches_roster() ->
 
 test fn v1_compiler_tests_typecheck_module_callers_dissolve_trigger_cites_compile_gate_receipt() -> Bool {
   string_contains(
-    s: v1_compiler_tests_typecheck_module_callers_hand_rust_dissolve_trigger,
+    s: dissolution_description(condition: v1_compiler_tests_typecheck_module_callers_hand_rust_dissolve_trigger),
     pattern: "ci_v1_compiler_tests_compile_gate_emit"
   )
     && string_contains(
-      s: v1_compiler_tests_typecheck_module_callers_hand_rust_dissolve_trigger,
+      s: dissolution_description(condition: v1_compiler_tests_typecheck_module_callers_hand_rust_dissolve_trigger),
       pattern: "global_variant_base"
     )
 }

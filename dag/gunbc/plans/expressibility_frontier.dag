@@ -1,6 +1,7 @@
 module gunbc.plans.expressibility_frontier
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, quote, cell, row }
 
@@ -80,7 +81,6 @@ data expressibility_frontier_plan: Plan = Plan {
   slug: "expressibility-frontier",
   title: "The expressibility frontier — what a modeling discipline can gate, and what stays review",
   body: expressibility_frontier_body(),
-  dissolution: HasTrigger {
-    text: "Delete this doc when the frontier partition stops being a standalone methodology held beside DESIGN — either the wall/lens/review trichotomy-as-method is absorbed into DESIGN §5 itself (the authority doc carries it, so a parallel methodology doc becomes the §6 parallel-ledger violation), or §6's open question is answered by a landed gate-classifier lens that mechanizes the ①/②/③ partition and fails closed on a ① claimed over an undecidable set — at which point the executable check supersedes the prose and this doc dissolves into its witness."
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the frontier partition stops being a standalone methodology held beside DESIGN — either the wall/lens/review trichotomy-as-method is absorbed into DESIGN §5 itself (the authority doc carries it, so a parallel methodology doc becomes the §6 parallel-ledger violation), or §6's open question is answered by a landed gate-classifier lens that mechanizes the ①/②/③ partition and fails closed on a ① claimed over an undecidable set — at which point the executable check supersedes the prose and this doc dissolves into its witness.")
   }
 }

@@ -16,6 +16,7 @@ import gunbc.legacy_test_behavior_disposition {
   test_behavior_witness_id,
 }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.dissolution { unbound_dissolution }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -43,7 +44,7 @@ data fixture_covered_disposition: LegacyTestBehaviorDisposition = CoveredByWitne
 data fixture_retained_disposition: LegacyTestBehaviorDisposition = RetainedNonMigratableBehavior {
   behavior: fixture_retained_behavior,
   reason: "fixture host-only behavior cannot yet execute through the substrate" as NonEmptyStr,
-  dissolution_trigger: "the fixture host surface becomes a modeled effect" as NonEmptyStr,
+  dissolution: unbound_dissolution(description: "the fixture host surface becomes a modeled effect"),
 }
 
 fn fixture_discovered_legacy() -> List<String> {

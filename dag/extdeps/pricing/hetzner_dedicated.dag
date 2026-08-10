@@ -21,7 +21,8 @@ import std.types { NonEmptyStr, List }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.roster_frontier { FrontierRow, TriggerProse, frontier_row_decl }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
 import std.decl_ref { decl_field_ref }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -41,9 +42,7 @@ data cpu_description_string_leaf_frontier_rows: List<FrontierRow> = [
       field_name: "cpu_description",
     ),
     reason: "cpu_description: NonEmptyStr is a cited-boundary locator string at current catalog size; decompose into extdeps.cpu CpuModelCatalogRow (vendor, codename, core count, architecture) when rows grow beyond price-only facts",
-    trigger: TriggerProse {
-      text: "hetzner_dedicated rows carry CpuFacts catalog instead of cpu_description",
-    },
+    dissolution: unbound_dissolution(description: "hetzner_dedicated rows carry CpuFacts catalog instead of cpu_description"),
   )
 ]
 

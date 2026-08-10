@@ -1,5 +1,7 @@
 module extdeps.bmc.capability
 
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
 import std.bmc { BmcFirmwareFamily, BmcEndpoint }
 import std.nat { Nat }
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
@@ -35,8 +37,6 @@ type BmcFirmwareSemanticVersion {
 type BmcFirmwareVersionParse
   = BmcFirmwareVersionParsed { version: BmcFirmwareSemanticVersion }
   | BmcFirmwareVersionRefused { wire: String }
-
-data bmc_firmware_semver_parser_dissolve_on: String = "🟡 dissolve-on: a cited semantic-version grammar row set lands in the shared grammar substrate with forward ingest. bmc_firmware_version_from_wire then consumes that grammar fold instead of its local three-component parser; until then this is the declared Redfish/OpenBMC wire scaffold and refuses every non-exact or non-Nat component through BmcFirmwareVersionRefused."
 
 fn bmc_firmware_semantic_version(
   major: Nat,
@@ -202,3 +202,5 @@ fn firmware_has_capability(row: BmcFirmwareCapabilityRow, cap: BmcCapability) ->
 fn catalog_has_vm_capable_firmware(catalog: List<BmcFirmwareCapabilityRow>) -> Bool {
   catalog |> any(row => firmware_has_capability(row: row, cap: CapabilityVirtualMedia))
 }
+
+data bmc_firmware_semver_parser_dissolve_on: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: a cited semantic-version grammar row set lands in the shared grammar substrate with forward ingest. bmc_firmware_version_from_wire then consumes that grammar fold instead of its local three-component parser; until then this is the declared Redfish/OpenBMC wire scaffold and refuses every non-exact or non-Nat component through BmcFirmwareVersionRefused.")

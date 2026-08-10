@@ -1,5 +1,7 @@
 module test.claim.resolved_graph_cache_hand_rust_witness
 
+import std.dissolution { dissolution_description }
+
 import gunbc.resolved_graph_cache_hand_rust_scaffold {
   resolved_graph_cache_hand_rust_scaffold,
   resolved_graph_cache_hand_rust_dissolve_trigger,
@@ -30,7 +32,7 @@ test fn resolved_graph_cache_hand_rust_scaffold_is_seed_retained() -> Bool {
 }
 
 test fn resolved_graph_cache_hand_rust_receipt_is_checkable() -> Bool {
-  !(resolved_graph_cache_hand_rust_dissolve_trigger == "")
+  !(dissolution_description(condition: resolved_graph_cache_hand_rust_dissolve_trigger) == "")
     && !(resolved_graph_cache_hand_rust_receipt_plan_anchor == "")
     && !(resolved_graph_cache_hand_rust_roadmap_lane_anchor == "")
     && resolved_graph_cache_hand_rust_receipt_witness_entry ==

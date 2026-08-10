@@ -5,6 +5,7 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.text { String }
+import std.dissolution { DissolutionCondition }
 
 type ForeignExecutorKind
   = GitHubActionsRunStep
@@ -38,13 +39,13 @@ type ShellEmissionSiteId = Symbol
 type ShellEmissionRosterEntry {
   site: ShellEmissionSiteId
   roster_key: String
-  dissolve_trigger: String
+  dissolution: DissolutionCondition
 }
 
 type ShellEmissionJustification
   = ForeignExecutorMandated { capability: ExecutorCapability }
   | BootstrapProvisioned { window: ProvisioningWindow, site: ShellEmissionSiteId }
-  | RosterException { roster_key: String, dissolve_trigger: String }
+  | RosterException { roster_key: String, dissolution: DissolutionCondition }
 
 type ShellEmissionRefusal
   = RuntimePresentRequiresTypedRealization { capability: ExecutorCapability }
@@ -112,7 +113,7 @@ fn shell_emission_authorize_steady_state(
       Authorized {
         justification: RosterException {
           roster_key: entry.roster_key,
-          dissolve_trigger: entry.dissolve_trigger
+          dissolution: entry.dissolution
         }
       }
     HeadAbsent =>

@@ -1,5 +1,7 @@
 module std.cache_identity
 
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
 import std.types { NonEmptyStr }
 import std.content_hash { ContentHash, content_hash_of_value }
 
@@ -28,4 +30,4 @@ data typed_module_artifact_kind: ArtifactKindId = "typed_module"
 
 data hermetic_fixture_artifact_kind: ArtifactKindId = "hermetic_fixture"
 
-data cache_interface_product_dissolve_on: String = "dissolve-on: std.cache_identity.CacheInterfaceProduct — deleted closed enum fork; sole cache-backend identity authority is CacheInterfaceId (extdeps/cache/*.dag cited rows keyed by id)."
+data cache_interface_product_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: std.cache_identity.CacheInterfaceProduct — deleted closed enum fork; sole cache-backend identity authority is CacheInterfaceId (extdeps/cache/*.dag cited rows keyed by id).")

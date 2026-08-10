@@ -7,6 +7,7 @@ import gunbc.infer_occurrence_binding_scaffold {
   infer_occurrence_binding_v1_adapter_dissolve_trigger,
   infer_occurrence_binding_v1_adapter_receipt_plan_anchor,
 }
+import std.dissolution { dissolution_description }
 
 test fn infer_occurrence_binding_v1_adapter_scaffold_is_seed_retained() -> Bool {
   match infer_occurrence_binding_v1_adapter_scaffold {
@@ -24,11 +25,11 @@ test fn infer_occurrence_binding_v1_adapter_scaffold_is_seed_retained() -> Bool 
 
 test fn infer_occurrence_binding_v1_adapter_dissolve_trigger_names_authority_and_lane() -> Bool {
   string_contains(
-    s: infer_occurrence_binding_v1_adapter_dissolve_trigger,
+    s: dissolution_description(condition: infer_occurrence_binding_v1_adapter_dissolve_trigger),
     pattern: "occurrence_binding_from_candidates",
   ) &&
     string_contains(
-      s: infer_occurrence_binding_v1_adapter_dissolve_trigger,
+      s: dissolution_description(condition: infer_occurrence_binding_v1_adapter_dissolve_trigger),
       pattern: "namespace-binding-kernel",
     )
 }

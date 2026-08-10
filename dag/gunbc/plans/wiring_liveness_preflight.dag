@@ -1,6 +1,7 @@
 module gunbc.plans.wiring_liveness_preflight
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, p, li, ul, ol, cell, row }
 
@@ -67,7 +68,6 @@ data wiring_liveness_preflight_plan: Plan = Plan {
   slug: "wiring-liveness-preflight",
   title: "Plan — wiring-liveness: the input→output dependence oracle + the execution preflight",
   body: wiring_liveness_preflight_body(),
-  dissolution: HasTrigger {
-    text: "Delete this doc when: (a) the wiring-liveness oracle is a single carrier shared with the cache-purity oracle (one perturbation kernel, two readings — not two representations); (b) the static-reach lens covers every `.dag`-modeled input→output relation; and (c) the preflight runs over the affected frontier ahead of interpreter execution, fail-closed on a dead wire — at which point \"a declared input wired into nothing\" is unwritable for modeled realizations and caught-before-firing for the opaque residue, and this tracker is redundant."
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when: (a) the wiring-liveness oracle is a single carrier shared with the cache-purity oracle (one perturbation kernel, two readings — not two representations); (b) the static-reach lens covers every `.dag`-modeled input→output relation; and (c) the preflight runs over the affected frontier ahead of interpreter execution, fail-closed on a dead wire — at which point \"a declared input wired into nothing\" is unwritable for modeled realizations and caught-before-firing for the opaque residue, and this tracker is redundant.")
   }
 }

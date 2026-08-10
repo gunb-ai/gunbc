@@ -24,6 +24,9 @@ use crate::gunbc_stage0_crate_partition_generated::GeneratedPartitionCrateKind::
 pub use crate::gunbc_stage0_crate_partition_generated::{
     GeneratedPartitionCrateKind, GeneratedPartitionCrateRow,
 };
+pub use crate::std_dissolution::unbound_dissolution;
+pub use crate::std_dissolution::DissolutionCondition;
+use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::v1_compiler_emit_rust::{emit_cargo_dep, emit_non_empty_wrappers};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -65,15 +68,6 @@ pub fn stage0_crate_plan_note() -> String {
     thread_local! {
         static CACHED: String = {
             "Derived from v2.workflow.rust_crate_partition via gunbc.stage0_crate_partition_generated (HandExplicit ~8-crate interim partition). Dissolve-on: rust_crate_partition_interim_explicit when PolicyPartition lands.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn stage0_crate_plan_list_wrapper_dissolve_on() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "dissolve-on: stage0_crate_plan — deleted; receipt paths must call stage0_crate_plan_outcome (§5 empty-plan wrapper collapsed Stage0CratePlanRefused to crates:[]). workspace_members and regen_stage0 consume outcome surfaces only.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -1086,6 +1080,15 @@ pub fn stage0_crate_boundary_emit_outcome() -> Rc<Stage0CrateBoundaryEmitOutcome
             emit_stage0_crate_boundary_files_outcome(plan.clone())
         }
     }
+}
+
+pub fn stage0_crate_plan_list_wrapper_dissolve_on() -> Rc<DissolutionCondition> {
+    thread_local! {
+        static CACHED: Rc<DissolutionCondition> = {
+            unbound_dissolution("dissolve-on: stage0_crate_plan — deleted; receipt paths must call stage0_crate_plan_outcome (§5 empty-plan wrapper collapsed Stage0CratePlanRefused to crates:[]). workspace_members and regen_stage0 consume outcome surfaces only.".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

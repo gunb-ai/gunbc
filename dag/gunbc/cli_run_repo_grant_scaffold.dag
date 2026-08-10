@@ -1,5 +1,7 @@
 module gunbc.cli_run_repo_grant_scaffold
 
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
+
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -12,7 +14,7 @@ data cli_run_repo_grant_hand_rust_scaffold: Disposition = Scaffold {
   }
 }
 
-data cli_run_repo_grant_dissolve_trigger: String = "🟡 dissolve-on: repo_relative_path/repo_relative_path_normalized HAND-Rust containment gate; DISSOLVES WHEN cli_run.rs Chunk F lands (docs/plans/cli-run-reconcile-defork.md → GENERATED workflow host-effect apply, seed-shrink-census Chunk F) OR ROADMAP 5-dissolve-patches retires HAND path handling — not indefinite interim debt."
+data cli_run_repo_grant_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: repo_relative_path/repo_relative_path_normalized HAND-Rust containment gate; DISSOLVES WHEN cli_run.rs Chunk F lands (docs/plans/cli-run-reconcile-defork.md → GENERATED workflow host-effect apply, seed-shrink-census Chunk F) OR ROADMAP 5-dissolve-patches retires HAND path handling — not indefinite interim debt.")
 
 data cli_run_repo_grant_receipt_plan_anchor: String = "docs/plans/cli-run-reconcile-defork.md#interim-workspace-root-scaffold"
 

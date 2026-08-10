@@ -1,6 +1,7 @@
 module gunbc.plans.regime2_shared_emission_fold
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownBlock, TableBlock, BlockquoteBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row }
 
@@ -63,7 +64,6 @@ data regime2_shared_emission_fold_plan: Plan = Plan {
   slug: "regime2-shared-emission-fold",
   title: "Regime-2 emission: one shared fold for the pure-projection formats",
   body: regime2_shared_emission_fold_body(),
-  dissolution: HasTrigger {
-    text: "Delete this doc when the three regime-2 pure-projection serializers (serialize_yaml/serialize_gitignore/serialize_runner_deploy) are collapsed into one render fold over a shared std layout Doc IR — byte-identical-witnessed against the committed ci.yml/.gitignore/runner manifest with a format-agnostic-render witness — so the boutique *_emit.dag duplication is gone; the scaffold's own dissolution (the v2 TargetModel grammar-row inverse subsuming the shared fold at self-host) then carries the rest."
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the three regime-2 pure-projection serializers (serialize_yaml/serialize_gitignore/serialize_runner_deploy) are collapsed into one render fold over a shared std layout Doc IR — byte-identical-witnessed against the committed ci.yml/.gitignore/runner manifest with a format-agnostic-render witness — so the boutique *_emit.dag duplication is gone; the scaffold's own dissolution (the v2 TargetModel grammar-row inverse subsuming the shared fold at self-host) then carries the rest.")
   }
 }

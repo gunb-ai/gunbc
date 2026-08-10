@@ -1,5 +1,7 @@
 module test.claim.systemctl_status_read_scaffold
 
+import std.dissolution { dissolution_description }
+
 import std.types { Bool, NonEmptyStr, String }
 import gunbc.systemctl_status_read {
   systemctl_status_read_local,
@@ -55,7 +57,7 @@ test fn witness_status_tail_scaffold_binds_dissolution_trigger() -> Bool {
       m == "gunbc.live_deploy.intent"
         && n == "live_deploy_unit_diagnosis_dissolution_trigger"
         && string_contains(
-          s: live_deploy_unit_diagnosis_dissolution_trigger,
+          s: dissolution_description(condition: live_deploy_unit_diagnosis_dissolution_trigger),
           pattern: "never masked",
         )
     Terminal { reason: _ } => false
