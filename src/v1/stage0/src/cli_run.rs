@@ -6460,153 +6460,6 @@ fn entry_file_touched_via_import_closure(
 /// (`live_read_carrier_home_modules_v0_is_superset_of_dag_authority`) evaluates the `.dag`
 /// authority through a real interpreter context and fails the build the moment this const falls
 /// behind, so the mismatch cannot silently pass.
-/// Dissolution trigger: every caller of `runtime_data_dependency_touched_via_carrier_closure`
-/// (the skip-before-resolve fast path and the precompute-count helpers below) is itself a named
-/// `SCAFFOLD (§7 hand-Rust shrink-to-zero)` whose own DELETE WHEN note ties dissolution to
-/// `v2.workflow.affected_set_floor_runner`'s `.dag` disposition owning the same predicate
-/// end-to-end. This const has no independent dissolution path or generator lane because it has
-/// no independent caller: when those scaffolds delete, this const and its drift gate delete with
-/// them, not before.
-const LIVE_READ_CARRIER_HOME_MODULES_V0: &[&str] = &[
-    "v2.lens.enforcement.cost_coverage",
-    "v2.lens.enforcement.grammar_coverage",
-    "v2.lens.complexity_accumulator_copy.roster_gate",
-    "v2.compiler.self_host",
-    "v2.std.decl_index",
-    "v2.lens.module_graph",
-    "tools.dag_compile_clean_shard_roster",
-    "tools.dag_compile_clean_scope",
-];
-
-/// Axis (iv) of the fourth-axis law (`docs/plans/live-read-witness-classification-design.md`
-/// §7): does `entry_path`'s import closure reach a declared live-read carrier home, and is
-/// any path touched at all? This is a G1-only (module-closure) mirror of the landed G2
-/// call-reachability lens (`v2.lens.live_read_classification`) — G2's carrier set is always
-/// a superset of G1's under the same closure (`merge_g1_and_g2_carriers`), so this coarser
-/// Rust check is fail-closed-safe relative to the full `.dag` authority: it may over-report
-/// (an extra witness run) but never under-report (a missed run). It does not attempt to
-/// prove which touched path a reached carrier actually reads at runtime (that precision is
-/// G2/G3's job) — reachability plus any touch is treated as a hit.
-fn import_closure_module_reaches_carrier_home(
-    closure_modules: &HashSet<String>,
-    carrier_home: &str,
-) -> bool {
-    closure_modules.iter().any(|module| {
-        module == carrier_home
-            || module
-                .strip_prefix(carrier_home)
-                .is_some_and(|suffix| suffix.starts_with('.'))
-    })
-}
-
-fn runtime_data_dependency_touched_via_carrier_closure(
-    entry_path: &str,
-    facts: &ModuleGraphFactsLive,
-    touched_paths: &[String],
-) -> bool {
-    if touched_paths.is_empty() {
-        return false;
-    }
-    let mut closure_modules: HashSet<String> = HashSet::new();
-    let closure_paths: HashSet<String> = import_closure_live_paths_with_facts(entry_path, facts)
-        .into_iter()
-        .map(|p| workspace_relative_repo_path(&p))
-        .collect();
-    for node in &facts.nodes {
-        let rel = workspace_relative_repo_path(&node.path);
-        if closure_paths.contains(&rel)
-            || closure_paths
-                .iter()
-                .any(|closure_path| repo_paths_match_touched(closure_path, &rel))
-        {
-            closure_modules.insert(node.module.clone());
-        }
-    }
-    LIVE_READ_CARRIER_HOME_MODULES_V0
-        .iter()
-        .any(|carrier_home| {
-            import_closure_module_reaches_carrier_home(&closure_modules, carrier_home)
-        })
-}
-
-#[cfg(test)]
-mod live_read_carrier_home_roster_drift_gate_tests {
-    use super::{
-        build_multi_entry_index, make_eval_context, resolve_entry_with_index_for_discovery_corpus,
-        workspace_root, LIVE_READ_CARRIER_HOME_MODULES_V0,
-    };
-    use crate::v1_interpreter::{self, ExecutionMode, Value};
-    use std::collections::HashSet;
-
-    const LIVE_READ_ENTRY: &str = "src/v2/std/live_read.dag";
-
-    fn record_field<'a>(
-        ctx: &v1_interpreter::InterpContext,
-        fields: &'a [(v1_interpreter::Symbol, Value)],
-        field_name: &str,
-    ) -> Option<&'a Value> {
-        fields
-            .iter()
-            .find(|(sym, _)| ctx.sym_eq(*sym, field_name))
-            .map(|(_, v)| v)
-    }
-
-    // Reads the `.dag`-side single authority directly by evaluating
-    // `live_read_carrier_homes_v0` in a real interpreter context — not a re-hand-authored Rust
-    // copy of the roster — so this test's own expectation cannot drift the same way the
-    // production const can.
-    fn dag_carrier_home_modules() -> HashSet<String> {
-        std::env::set_current_dir(workspace_root()).expect("chdir workspace");
-        let index = build_multi_entry_index(&["dag".to_string(), "src/v2".to_string()]);
-        let (graph, indices) =
-            resolve_entry_with_index_for_discovery_corpus(&index, LIVE_READ_ENTRY)
-                .unwrap_or_else(|e| panic!("resolve {LIVE_READ_ENTRY}: {e}"));
-        let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
-        let val = v1_interpreter::with_active_context(&ctx, || {
-            v1_interpreter::eval_data_item_value(&ctx, "live_read_carrier_homes_v0")
-        })
-        .unwrap_or_else(|e| panic!("eval live_read_carrier_homes_v0: {e}"))
-        .unwrap_or_else(|| panic!("live_read_carrier_homes_v0 not found as a data item"));
-        let Value::List(items) = val else {
-            panic!("live_read_carrier_homes_v0 is not a List: {val:?}");
-        };
-        items
-            .iter()
-            .map(|item| {
-                let Value::Record { fields, .. } = item else {
-                    panic!("live_read_carrier_homes_v0 entry is not a Record: {item:?}");
-                };
-                match record_field(&ctx, fields, "module") {
-                    Some(Value::Str(s)) => s.clone(),
-                    other => panic!("LiveReadCarrierHome.module is not a String: {other:?}"),
-                }
-            })
-            .collect()
-    }
-
-    // The safety-critical drift direction (axis (iv)'s fail-closed-safe requirement, see the
-    // doc-comment on `LIVE_READ_CARRIER_HOME_MODULES_V0`): the Rust const must be a SUPERSET of
-    // the `.dag` roster. A `.dag`-only addition this const misses makes
-    // `runtime_data_dependency_touched_via_carrier_closure` return `false` for that carrier —
-    // silently fail-open on the exact axis this const backs.
-    #[test]
-    fn live_read_carrier_home_modules_v0_is_superset_of_dag_authority() {
-        let dag_modules = dag_carrier_home_modules();
-        let rust_modules: HashSet<String> = LIVE_READ_CARRIER_HOME_MODULES_V0
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-        let missing: Vec<&String> = dag_modules.difference(&rust_modules).collect();
-        assert!(
-            missing.is_empty(),
-            "`.dag` authority `live_read_carrier_homes_v0` declares carrier home module(s) \
-             {missing:?} not mirrored in Rust `LIVE_READ_CARRIER_HOME_MODULES_V0` \
-             (src/v1/stage0/src/cli_run.rs) — add them there or axis (iv) silently fails open \
-             for that carrier"
-        );
-    }
-}
-
 // SCAFFOLD (§7 HAND-RUST — `cli_run_discovery_skip_before_resolve`):
 // ROADMAP lane `2-provenance-ingest` (gunbc.roadmap_authority / ROADMAP.md;
 // docs/plans/affected-set-precompute-pruning.md Step 4 migrate floor) — host-side
@@ -6633,6 +6486,23 @@ fn collect_import_closure_module_names_from_facts(
     collect_both_closure_module_names_for_entry(index, entry_path, out)
 }
 
+/// Unwrap the selection context at a site that is about to decide axis (iv).
+///
+/// The context is optional only because selection-Off callers never reach an axis at all. Anywhere
+/// the axis is actually consulted, its absence is a typed refusal — not a `false` standing in for
+/// "no classification available", which is the reading that would license a skip.
+fn live_read_selection_plan<'a>(
+    plan: Option<&'a LiveReadSelectionPlan>,
+    entry_path: &str,
+) -> Result<&'a LiveReadSelectionPlan, String> {
+    plan.ok_or_else(|| {
+        format!(
+            "AFFECTED-SET REFUSAL cause=LiveReadPlanAbsent entry={entry_path} — the live-read \
+             selection axis was consulted with no selection plan built for this run."
+        )
+    })
+}
+
 fn entry_has_edited_test_fn_in_entry(diff_edits: &FloorDiffEdits, entry_path: &str) -> bool {
     diff_edits
         .edited_test_fns
@@ -6652,6 +6522,11 @@ fn entry_eligible_for_discovery_skip_before_resolve(
     skip_enabled: bool,
     reads_live_tree: bool,
     entry_path: &str,
+    index: &MultiEntryIndex,
+    // `None` only when selection is Off, where this function returns before any axis is
+    // consulted. Every reachable use below unwraps it into a typed refusal rather than a
+    // default: an absent plan must never present as an absent runtime read.
+    plan: Option<&LiveReadSelectionPlan>,
     facts: &ModuleGraphFactsLive,
     declared_paths: &HashSet<String>,
     touched_paths: &[String],
@@ -6660,37 +6535,25 @@ fn entry_eligible_for_discovery_skip_before_resolve(
     if !skip_enabled {
         return Ok(false);
     }
-    // Fail-closed on the substrate-declared disposition (v2.std.live_tree): a
-    // `ReadsLiveTree` entry reads state outside its resolved closure, so the diff
-    // cannot bound its inputs — it never predict-skips. Replaces the deleted
-    // entry-text classifier (`entry_text_indicates_live_host_scan`); the disposition
-    // is entry-grain, parsed onto every DiscoveryRow of the entry.
-    if reads_live_tree {
-        return Ok(false);
-    }
-    if entry_has_edited_test_fn_in_entry(diff_edits, entry_path) {
-        return Ok(false);
-    }
-    if entry_file_touched_via_import_closure(entry_path, facts, declared_paths, touched_paths)? {
-        return Ok(false);
-    }
-    if runtime_data_dependency_touched_via_carrier_closure(entry_path, facts, touched_paths) {
-        return Ok(false);
-    }
-    let declared_axis = declared_source_refs_axis_for_entry(
+    // The SAME cheap-axis authority the plan derived its candidates from, so this predicate and
+    // the filter cannot disagree about which rows a classification is available for.
+    if entry_blocked_by_cheap_axes(
         entry_path,
+        reads_live_tree,
         facts,
-        &default_source_roots(),
+        declared_paths,
         touched_paths,
-    );
-    if declared_axis != DeclaredSourceRefAxis::Absent {
-        if declared_source_refs_blocks_skip(declared_axis) {
-            return Ok(false);
-        }
-    } else if effect_reach_touched_via_path_literals(entry_path, facts, touched_paths) {
+        touched_paths,
+        diff_edits,
+    )? != CheapAxisDisposition::NotBlocked
+    {
         return Ok(false);
     }
-    if compile_clean_broad_stop_line_blocks_skip(entry_path, touched_paths) {
+    if live_read_selection_plan(plan, entry_path)?.entry_must_run(
+        index,
+        entry_path,
+        touched_paths,
+    )? {
         return Ok(false);
     }
     Ok(true)
@@ -6709,6 +6572,7 @@ struct DiscoveryEntryResolve {
 
 fn resolve_discovery_entry_for_corpus_row(
     index: &MultiEntryIndex,
+    plan: Option<&LiveReadSelectionPlan>,
     entry_path: &str,
     execution_mode: v1_interpreter::ExecutionMode,
     whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
@@ -6768,20 +6632,20 @@ fn resolve_discovery_entry_for_corpus_row(
                 &default_source_roots(),
                 touched_entry_paths,
             );
-            let entry_runtime_dependency_touched =
-                runtime_data_dependency_touched_via_carrier_closure(
+            // CHEAP AXIS FIRST. `||` short-circuits, so ordering decides whether the G2
+            // classification is consulted at all -- and G2 is the only expensive disjunct here.
+            // When the declared-source/effect-reach axis already answers "do not skip", the
+            // live-read answer cannot change the verdict, so asking for it is pure cost.
+            let entry_runtime_dependency_touched = match declared_axis {
+                DeclaredSourceRefAxis::Absent => effect_reach_touched_via_path_literals(
                     entry_path,
                     &index.module_graph_facts,
                     touched_entry_paths,
-                ) || match declared_axis {
-                    DeclaredSourceRefAxis::Absent => effect_reach_touched_via_path_literals(
-                        entry_path,
-                        &index.module_graph_facts,
-                        touched_entry_paths,
-                    ),
-                    DeclaredSourceRefAxis::Touched | DeclaredSourceRefAxis::Unresolved => true,
-                    DeclaredSourceRefAxis::Untouched => false,
-                };
+                ),
+                DeclaredSourceRefAxis::Touched | DeclaredSourceRefAxis::Unresolved => true,
+                DeclaredSourceRefAxis::Untouched => false,
+            } || live_read_selection_plan(plan, entry_path)?
+                .entry_must_run(index, entry_path, touched_entry_paths)?;
             (
                 frontier_nodes,
                 touches_frontier,
@@ -9139,7 +9003,7 @@ mod prepared_floor_subject_tests {
             assert!(adopted.both_closure_edges.borrow().is_some());
             assert!(!adopted.entry_closure_sources.borrow().is_empty());
             assert!(!adopted.resolved_graph_memo.borrow().is_empty());
-            *adopted.live_read_manifest.borrow_mut() =
+            *adopted.g2_facts.borrow_mut() =
                 Some(Err("ordinary population scratch sentinel".to_string()));
             *adopted.schedule_retention.borrow_mut() =
                 Some(ScheduleRetention::armed(Vec::new(), false));
@@ -9308,7 +9172,8 @@ mod prepared_floor_subject_tests {
         assert!(ordinary_index.module_source_identity.borrow().is_empty());
         assert!(ordinary_index.entry_closure_sources.borrow().is_empty());
         assert!(ordinary_index.resolved_graph_memo.borrow().is_empty());
-        assert!(ordinary_index.live_read_manifest.borrow().is_none());
+        assert!(ordinary_index.g2_facts.borrow().is_none());
+        assert!(ordinary_index.live_read_rows.borrow().is_empty());
         assert!(ordinary_index.schedule_retention.borrow().is_none());
         assert_eq!(ordinary_index.typed_cache_evictions.get(), 0);
         assert!(ordinary_index.typed_module_cache_cap.get().is_none());
@@ -9850,37 +9715,219 @@ pub struct LiveReadSelectionRequest {
 /// one authority the producer consumes is stated once.
 const LIVE_READ_CLASSIFICATION_ENTRY: &str = "src/v2/lens/live_read_classification.dag";
 
-/// Build the whole-tree live-read manifest by evaluating the `.dag` authority ONCE for the entire
-/// request set.
+thread_local! {
+    // The fact substrate bound to the classification evaluation currently on this thread.
+    //
+    // It is a BINDING, not a fallback switch. `fn_arrow_decl_facts_index_live` refuses when it
+    // is empty rather than quietly reflecting the eval context instead — an unbound producer
+    // returning the historical population would be exactly the silent degrade §5 forbids, and
+    // the two producers answer about different subjects, so substituting one for the other is
+    // never a safe default. `fn_arrow_decl_facts_live` keeps the reflecting behaviour under its
+    // own name for its own consumers; neither one falls back to the other.
+    static BOUND_G2_FACTS: RefCell<Option<Rc<G2FactBundle>>> = const { RefCell::new(None) };
+}
+
+/// Run `f` with `bundle` bound as the fact substrate for `fn_arrow_decl_facts_index_live`.
 ///
-/// The batching is not an optimisation detail, it is the reason the seam has this shape: the G2
-/// classification needs the dependency-edge, module-declaration, and fn-arrow fact populations for
-/// the whole tree, and those are derived per evaluation. A per-declaration call would rebuild all
-/// three for every row — quadratic in the corpus against a population that does not change between
-/// rows. `live_read_selection_manifest_over` therefore derives them once and folds the requests
-/// over the shared closure, and this producer's job is to hand it the full request set in one go.
+/// Restores the previous binding on the way out, including on panic-free early return, so a
+/// nested classification cannot leak its substrate to an outer one.
+pub fn with_bound_g2_facts<T>(bundle: Rc<G2FactBundle>, f: impl FnOnce() -> T) -> T {
+    let previous = BOUND_G2_FACTS.with(|cell| cell.borrow_mut().replace(bundle));
+    let out = f();
+    BOUND_G2_FACTS.with(|cell| *cell.borrow_mut() = previous);
+    out
+}
+
+/// The `fn_arrow_decl_facts_index_live` transport: marshal the BOUND index's raw declaration
+/// facts into the calling evaluator's context.
 ///
-/// Every failure arm REFUSES. There is no arm that returns an empty or partial manifest, because a
-/// manifest is consumed as a completeness claim — `row_for` treats an absent row as a refusal — and
-/// a producer that answered "here is what I could classify" would convert its own failure into a
-/// silent skip licence for everything it dropped (§5: a failure arm must refuse, never widen, and
-/// here widening the *skippable* set is the under-selection direction that reads as a faster green).
+/// It decides nothing. The population is whatever the shared parsed-declaration projection
+/// produced for the exact bound index; this function selects the fn/func kinds out of it and
+/// marshals. No file is read, no graph is resolved, no closure is walked here.
+pub fn eval_fn_arrow_decl_facts_index_live(
+    ctx: &v1_interpreter::InterpContext,
+) -> Result<Vec<v1_interpreter::Value>, String> {
+    let Some(bundle) = BOUND_G2_FACTS.with(|cell| cell.borrow().clone()) else {
+        return Err(
+            "FN-ARROW INDEX REFUSAL cause=NoBoundFactSubstrate — fn_arrow_decl_facts_index_live \
+             was called with no index bound to this evaluation. It answers about the exact \
+             consuming index, so with none bound there is no population to describe. Returning \
+             an empty list would read as 'this tree declares nothing', which licenses a skip; \
+             reflecting the eval context instead would answer about a different subject."
+                .to_string(),
+        );
+    };
+    Ok(crate::coproduct_reflection::fn_arrow_decl_rows_from_facts(
+        ctx,
+        &bundle.decl_facts,
+    ))
+}
+
+/// Evaluate the classification authority once over a batch of requests.
+///
+/// The batching is what the seam is for, and it is no longer a completeness claim. A
+/// per-declaration call would re-resolve the classification lens and re-marshal the fact
+/// population for every row, against a population that does not change between rows; folding a
+/// batch through `live_read_selection_rows_index_live` pays both once. What it is NOT is a demand
+/// that the batch be the whole roster -- the caller passes exactly its cache misses, and the
+/// index keeps the rows.
+///
+/// Every failure arm REFUSES. No arm returns a partial batch, because a caller reads an absent
+/// row as a refusal and a producer answering "here is what I could classify" would convert its
+/// own failure into a silent skip licence for everything it dropped (§5: a failure arm must
+/// refuse, never widen -- and widening the SKIPPABLE set is the under-selection direction, which
+/// reads as a faster green rather than as a failure).
+/// One classification invocation's identity, carried on every receipt line it emits.
+///
+/// Exists so concurrent workers are separable in one log and so a start line can be paired with
+/// its phase ends. The id is derived from the subject plus the pid plus the request count rather
+/// than a counter, because separate PROCESSES emit into the same CI log and a per-process counter
+/// would collide across them at exactly the moment the receipts matter -- when several workers
+/// are each classifying and the question is how many invocations exist.
+#[derive(Debug, Clone)]
+pub struct LiveReadInvocationId {
+    pub id: String,
+    pub subject: u64,
+    pub pid: u32,
+}
+
+impl LiveReadInvocationId {
+    fn mint(index: &MultiEntryIndex, request_count: usize) -> Self {
+        let pid = std::process::id();
+        let subject = index.generation();
+        Self {
+            id: format!("{subject:016x}-{pid}-{request_count}"),
+            subject,
+            pid,
+        }
+    }
+}
+
 pub fn build_live_read_selection_manifest(
     index: &MultiEntryIndex,
     requests: &[LiveReadSelectionRequest],
 ) -> Result<LiveReadSelectionManifest, String> {
     let source_roots = &index.source_roots;
-    let (graph, indices) =
-        resolve_entry_with_index_for_discovery_corpus(index, LIVE_READ_CLASSIFICATION_ENTRY)
-            .map_err(|e| {
-                format!(
-                    "LIVE-READ MANIFEST REFUSAL cause=LensEntryUnresolved entry={LIVE_READ_CLASSIFICATION_ENTRY} \
-                     detail={e} — the classification authority could not be resolved, so no \
-                     declaration has an established classification and none may fast-skip."
-                )
-            })?;
-    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+    let build_started = std::time::Instant::now();
+    let cpu_started_ms = process_cpu_millis();
 
+    // START AND PHASE RECEIPTS, emitted before any expensive work and after each phase.
+    //
+    // The terminal receipt alone could not distinguish three states that need different repairs:
+    // a route never entered, a route entered and stalled, and a route that returned. It reported
+    // only the third, so when the ordinary floor stalled here the log showed NO receipt at all
+    // and that was read -- by me -- as evidence the producer never ran. That is the
+    // absence-of-completion / absence-of-execution conflation, and it cost two investigation
+    // rounds and a wrong attribution to unrelated infrastructure.
+    //
+    // Every line carries the same invocation identity, so concurrent workers are separable and
+    // `start without end` locates the phase rather than merely proving something hung.
+    bump_live_read_classification_invocations();
+    let invocation = LiveReadInvocationId::mint(index, requests.len());
+    eprintln!(
+        "[live-read-start] invocation={} subject={} pid={} requests={} \
+         (emitted BEFORE any expensive work; a start with no matching phase end locates a stall, \
+         and no start at all means this route was never entered)",
+        invocation.id,
+        invocation.subject,
+        invocation.pid,
+        requests.len()
+    );
+    let phase = |name: &str, at: &std::time::Instant, detail: &str| {
+        eprintln!(
+            "[live-read-phase] invocation={} phase={name} ms={} {detail}",
+            invocation.id,
+            at.elapsed().as_millis()
+        );
+    };
+
+    // THE FACT UNIVERSE IS THIS INDEX'S UNIVERSE, and NO EXECUTABLE PROGRAM IS FORMED OVER IT.
+    //
+    // The producer no longer calls `fn_arrow_decl_facts_live()`, which reflects the EVAL CONTEXT's
+    // modules and therefore forced whoever needed whole-tree facts to EVALUATE against the whole
+    // tree. Two revisions failed that way. Resolving the lens entry alone made the declaration
+    // population the LENS'S own closure, so nearly every enrolled witness answered `G2RootUnbound`
+    // and a consumer reading that as "touched" would run the entire corpus on any nonempty diff --
+    // more selection than the G1 predicate this lane replaces, presenting as a slow green.
+    // Resolving the UNION of every request root's closure fixed coverage and broke composition:
+    // it cost 179125 ms wall / 178751 ms CPU for ONE request, and then failed outright, because
+    // bare names that bind uniquely inside each entry's own import scope stop binding once
+    // independently valid programs are composed -- `Holds`, `Finding`, `Exact`, `Refuse`,
+    // `Blocking`, `FailClosed` all went unresolved and one shared refusal denied classification to
+    // all 133 enrolled entries. That is not a repairable module; it is a property of composition,
+    // so no corpus large enough avoids it.
+    //
+    // So the facts come from `G2FactBundle` -- a PARSE of exactly this index's pool, cached on the
+    // index, joined to the index population at identity grain in both directions -- and the eval
+    // context is only the classification lens's own closure, which is what actually has to RUN.
+    // The bundle is bound for the duration of the evaluation and read by
+    // `fn_arrow_decl_facts_index_live`.
+    let at = std::time::Instant::now();
+    let bundle = index.g2_fact_bundle()?;
+    // THE POPULATION THE GROUPED INDEX IS BUILT OVER, measured at the seed because it is the
+    // denominator every interior cost is expressed in. `distinct_names` and `largest_bucket` are
+    // statistics of the INPUT, not a second implementation of the index: they say how much a
+    // name-keyed lookup can possibly save (declarations / distinct names) and what the worst
+    // single bucket still costs after the save. A run where largest_bucket approaches decls is a
+    // run where grouping bought nothing, and that is exactly the state a bare timing number
+    // cannot distinguish from a slow host.
+    let mut name_counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    for fact in &bundle.decl_facts {
+        *name_counts.entry(fact.name.as_str()).or_insert(0) += 1;
+    }
+    let distinct_name_count = name_counts.len();
+    let largest_bucket = name_counts.values().copied().max().unwrap_or(0);
+    phase(
+        "fact_bundle_build",
+        &at,
+        &format!(
+            "modules={} decls={} parse_refusals={} distinct_names={} largest_bucket={}",
+            bundle.module_identities.len(),
+            bundle.decl_facts.len(),
+            bundle.parse_refusals.len(),
+            distinct_name_count,
+            largest_bucket
+        ),
+    );
+
+    let at = std::time::Instant::now();
+    let sources = load_sources_for_entry_with_pool(index, LIVE_READ_CLASSIFICATION_ENTRY)
+        .map_err(|e| {
+            format!(
+                "LIVE-READ ROWS REFUSAL cause=ClassificationLensClosureUnloadable detail={e} --                  the classification lens's own closure could not be loaded, so the authority that                  decides has no program to run. This is about the lens, not about any request."
+            )
+        })?;
+    let source_module_count = sources.len();
+    phase(
+        "lens_closure_source_load",
+        &at,
+        &format!("sources={source_module_count}"),
+    );
+
+    let at = std::time::Instant::now();
+    let (graph, indices, _lens_diags) = resolved_graph_from_sources_with_index(
+        index,
+        sources,
+        ResolveTypecheckGate::DiscoveryCorpusAdvisory,
+        "live-read-classification-lens",
+        ResolvedGraphMemoShare::Ephemeral,
+    )
+    .map_err(|e| {
+        format!(
+            "LIVE-READ ROWS REFUSAL cause=ClassificationLensUnresolved detail={e} -- the              classification lens itself did not resolve. Unlike the union this replaces, the              population here is ONE entry's own closure, so this refusal is about the lens and              cannot be caused by an unrelated module elsewhere in the tree."
+        )
+    })?;
+    phase(
+        "lens_closure_resolve_typecheck",
+        &at,
+        &format!("modules={}", graph.modules.len()),
+    );
+
+    let at = std::time::Instant::now();
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+    phase("eval_context_construction", &at, "");
+
+    let at = std::time::Instant::now();
     let request_values: Vec<v1_interpreter::Value> = requests
         .iter()
         .map(|req| v1_interpreter::Value::Record {
@@ -9921,29 +9968,678 @@ pub fn build_live_read_selection_manifest(
         ),
     ];
 
-    let produced = v1_interpreter::with_active_context(&ctx, || {
-        v1_interpreter::run_in_context_with_args(
-            &ctx,
-            "live_read_selection_manifest_live",
-            &args,
-            false,
-        )
+    phase(
+        "request_marshalling",
+        &at,
+        &format!("requests={}", requests.len()),
+    );
+
+    let at = std::time::Instant::now();
+    let produced = with_bound_g2_facts(bundle.clone(), || {
+        v1_interpreter::with_active_context(&ctx, || {
+            v1_interpreter::run_in_context_with_args(
+                &ctx,
+                "live_read_selection_rows_index_live",
+                &args,
+                false,
+            )
+        })
     })
     .map_err(|e| {
         format!(
-            "LIVE-READ MANIFEST REFUSAL cause=ProducerFailed detail={e} — the classification \
-             authority did not produce a manifest, so no declaration is classified."
+            "LIVE-READ ROWS REFUSAL cause=ProducerFailed detail={e} — the classification \
+             authority did not produce rows, so no declaration is classified."
         )
     })?;
 
-    let v1_interpreter::Value::List(row_values) = &produced else {
-        return Err(format!(
-            "LIVE-READ MANIFEST REFUSAL cause=ProducerShapeUnexpected got={} — expected a \
-             List<LiveReadSelectionManifestRow>.",
-            produced.type_label_public()
-        ));
-    };
+    // Decoded INSIDE the active context, deliberately. `free_monoid_to_vec` resolves the `Empty`,
+    // `Cons`, `head` and `tail` symbols through `active_ctx()`, and with no context active it
+    // cannot name them — so it returns `None` for EVERY variant, and a perfectly well-formed
+    // `Cons` chain reports as a foreign shape. An earlier revision of this call sat outside the
+    // context block and produced exactly that: a refusal whose message said "neither
+    // representation" about a value that was one of them.
+    phase(
+        "classification_production",
+        &at,
+        "the modeled fold: edge/module/fn-arrow production, per-request classification, manifest \
+         construction",
+    );
 
+    // STOPPED-LINE AUDIT ONLY. When the forensics env var is set, dump the interpreter's
+    // per-.dag-fn self time for this evaluation. It reports; it never decides, and it is off by
+    // default because the instrumentation it reads costs time on every call. The phase receipts
+    // above locate WHICH phase is expensive; this is how the dominant term INSIDE the modeled
+    // fold gets a name instead of a guess.
+    if std::env::var("GUNBC_FLATTEN_SITE_DUMP_SECS").is_ok() {
+        dump_residual_hunt_instrumentation();
+    }
+    dump_live_read_eval_profile();
+
+    let at = std::time::Instant::now();
+    // THE WHOLE DECODE runs inside the active context, not just its first step.
+    //
+    // `free_monoid_to_vec` resolves `Empty`/`Cons`/`head`/`tail` against `active_ctx()` and
+    // answers None when there is none -- so outside this scope it cannot distinguish a cons chain
+    // from a foreign shape, and reports the latter. The outer row collection hid that for three
+    // rounds because it arrives as a native `Value::List`, which returns before the symbols are
+    // ever consulted; the nested carrier lists are real cons chains and are not so forgiving. The
+    // context is a property of DECODING a produced value, not of one call within it, so it is
+    // scoped to the decode.
+    let rows = v1_interpreter::with_active_context(&ctx, || {
+        decode_live_read_manifest_rows(&ctx, &produced)
+    })?;
+
+    phase("decode", &at, &format!("rows={}", rows.len()));
+
+    // STEP-6 RECEIPT, emitted unconditionally rather than behind a verbose flag.
+    //
+    // This producer's cost is the open question on this lane: it resolves the union of the request
+    // roots' closures once per index, and that has to be paid back by the entry resolves selection
+    // elides. A cost claim argued from the shape of the code is worth nothing here — two of this
+    // lane's cost readings were already wrong — so the numbers are printed where any run that
+    // builds a manifest will carry them, and a reader can divide them by the resolves saved
+    // instead of taking a summary's word for it.
+    //
+    // RSS is the process resident set at this instant, not an attribution: other work shares the
+    // process. It bounds the manifest's footprint from above, which is the honest reading, and is
+    // labelled so nobody quotes it as the producer's own.
+    eprintln!(
+        "[live-read-rows] requests={} rows={} fact_modules={} fact_decls={} parse_refusals={} \
+         lens_closure_sources={} lens_modules={} wall_ms={} cpu_ms={} process_rss_mib={} \
+         (fact_* describe the cached index-wide parse; lens_* describe the ONLY program resolved \
+         here, the classification lens's own closure -- no union is formed, so no unrelated \
+         module can deny this evaluation. process_rss is whole-process, an upper bound, not this \
+         producer's attribution)",
+        requests.len(),
+        rows.len(),
+        bundle.module_identities.len(),
+        bundle.decl_facts.len(),
+        bundle.parse_refusals.len(),
+        source_module_count,
+        ctx.modules.len(),
+        build_started.elapsed().as_millis(),
+        match (process_cpu_millis(), cpu_started_ms) {
+            (Some(now), Some(then)) => now.saturating_sub(then).to_string(),
+            _ => "unavailable".to_string(),
+        },
+        current_rss_bytes()
+            .map(|b| (b / (1024 * 1024)).to_string())
+            .unwrap_or_else(|| "unavailable".to_string()),
+    );
+
+    Ok(LiveReadSelectionManifest {
+        subject: index.generation,
+        rows,
+    })
+}
+
+/// The index-wide G2 fact substrate: the declaration population of EXACTLY this index's source
+/// pool, derived by parse, with no executable program formed anywhere.
+///
+/// It replaces a union-resolved program, and the reason is semantic before it is economic. The
+/// union composed unrelated modules into one executable context, so one locally invalid module
+/// denied classification to every request — the same widening the G1 answer produced, wearing a
+/// refusal's clothes instead of a `RuntimeRead`. Cost merely confirmed it: one request over a
+/// 545-module union measured 179125 ms wall / 178751 ms CPU at 9.4 GiB.
+///
+/// TWO LEVELS OF FAILURE, deliberately, because collapsing them recreates the defect one layer
+/// down. A bundle that is `Result<Bundle, _>` as a whole may only refuse when the index-wide
+/// population ITSELF cannot be observed. A module that will not parse is a LOCAL fact recorded
+/// in `parse_refusals` — the declarations it would have carried refuse under their own keys, and
+/// every unrelated declaration stays classifiable. `bad A -> A refuses`, never
+/// `bad A -> bundle refuses -> B disappears`.
+///
+/// RAW facts, not marshalled ones. A marshalled `Value` carries symbols interned in the
+/// evaluating context, so caching marshalled rows on the index would hand context-A symbols to a
+/// context-B evaluation. The parse is what is expensive and what is cached; marshalling is cheap
+/// and happens per evaluation.
+#[derive(Debug)]
+pub struct G2FactBundle {
+    /// The index this population describes. Every read re-checks it.
+    pub subject: u64,
+    /// Exact module identities of the index pool, for the bidirectional identity join.
+    pub module_identities: std::collections::BTreeSet<String>,
+    /// The shared declaration projection over that population.
+    pub decl_facts: Vec<crate::coproduct_reflection::DeclFactRaw>,
+    /// Modules that could not contribute declarations, by identity and cause. Local, never global.
+    pub parse_refusals: std::collections::BTreeMap<String, String>,
+}
+
+impl MultiEntryIndex {
+    /// This index's opaque identity, for checking a manifest against the index about to consume it.
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    /// Bind one `(entry path, function spelling)` request to EXACTLY ONE declaration identity.
+    ///
+    /// Binding is separated from classification deliberately. A request names a spelling, and a
+    /// spelling is not an identity: it may match nothing, or match more than one declaration once
+    /// the population includes every module of the tree. Folding that into classification would
+    /// force a single verdict out of an ambiguous subject, and "many" would silently become
+    /// whichever the walk happened to reach first — the heuristic §4 rules out in a closed system.
+    ///
+    /// So all three cardinalities are answered separately, and only the exactly-one case proceeds.
+    /// Zero and many refuse with DIFFERENT causes, because they have different remedies: zero
+    /// means the enrolled declaration is absent or its module did not parse, many means the
+    /// entry's own file declares the spelling twice.
+    fn bind_live_read_request(
+        bundle: &G2FactBundle,
+        entry_rel: &str,
+        fn_name: &str,
+    ) -> Result<crate::data_initializer_identity::ResolvedDeclarationLocator, String> {
+        // The index's OWN key authority decides identity on both sides. Comparing the request's
+        // spelling to the pool key directly is the source-identity fork DESIGN names on this very
+        // index: the pool may hold a relative key while a caller arrives with an absolute path (or
+        // the reverse), and a raw string compare then answers "no such declaration" about a
+        // declaration that is plainly present -- a refusal whose cause is the spelling, not the
+        // subject. Both sides go through `module_index_path_key`, so a mismatch means the entry
+        // really is outside this index.
+        let entry_key = module_index_path_key(std::path::Path::new(entry_rel));
+        let entry_rel = entry_key.as_str();
+        if let Some(cause) = bundle.parse_refusals.get(entry_rel) {
+            return Err(format!(
+                "AFFECTED-SET REFUSAL cause=LiveReadEntryModuleUnparsed entry={entry_rel} \
+                 function={fn_name} detail={cause} — the entry's own module did not parse, so its \
+                 declarations are absent for a reason about the module rather than about the \
+                 declaration. This refusal is LOCAL to this request; unrelated entries are \
+                 unaffected."
+            ));
+        }
+        let matches: Vec<&crate::coproduct_reflection::DeclFactRaw> = bundle
+            .decl_facts
+            .iter()
+            .filter(|f| f.rel_path == entry_rel && f.name == fn_name)
+            .collect();
+        match matches.len() {
+            1 => {
+                let f = matches[0];
+                Ok(
+                    crate::data_initializer_identity::ResolvedDeclarationLocator {
+                        qualified_name: f.qualified_name.clone(),
+                        name: f.name.clone(),
+                        // The AUTHORED path, not the qualified name with its own tail removed.
+                        // The un-stripped derivation was the defect that made every v2-authored
+                        // root report unbound (`decl_logical_qualified_name` drops the `v2.`
+                        // layer, so the reconstruction named a module nothing asks for). It was
+                        // repaired at the fn-arrow projection and this second site kept the old
+                        // spelling -- the same fork, one call away.
+                        module_path: f.module_path.clone(),
+                        rel_path: f.rel_path.clone(),
+                    },
+                )
+            }
+            0 => Err(format!(
+                "AFFECTED-SET REFUSAL cause=LiveReadRootUnbound entry={entry_rel} \
+                 function={fn_name} — the enrolled declaration is not present in this index's \
+                 declaration population. A missing classification is not a missing runtime read, \
+                 so this refuses rather than licensing a skip."
+            )),
+            n => Err(format!(
+                "AFFECTED-SET REFUSAL cause=LiveReadRootAmbiguous entry={entry_rel} \
+                 function={fn_name} candidates={n} — the spelling binds to more than one \
+                 declaration in that module, so no single declaration's runtime-read closure is \
+                 THE answer for this request. Picking one would be a heuristic standing where an \
+                 identity was owed."
+            )),
+        }
+    }
+
+    /// This index's G2 fact substrate, built at most once and reused.
+    ///
+    /// Unlike the manifest memo it replaces, this cell is not sensitive to WHICH declarations a
+    /// caller asks about — the population is the index's, so any roster reads the same facts and
+    /// no roster can prime it partially.
+    pub fn g2_fact_bundle(&self) -> Result<Rc<G2FactBundle>, String> {
+        if let Some(cached) = self.g2_facts.borrow().as_ref() {
+            return cached.clone().map_err(|e| e.clone());
+        }
+        let built = self.build_g2_fact_bundle();
+        *self.g2_facts.borrow_mut() = Some(built.clone());
+        built
+    }
+
+    /// Build the fact substrate for this index, joining fact population to index population at
+    /// IDENTITY grain in both directions.
+    ///
+    /// A count comparison is not this check and cannot be: a population with one identity missing
+    /// and one extra has the same size and passes it, while being a different tree. So the join
+    /// names what is missing and what is foreign, in both directions.
+    fn build_g2_fact_bundle(&self) -> Result<Rc<G2FactBundle>, String> {
+        let sources: Vec<(String, String)> = self
+            .source_files
+            .iter()
+            // The pool is keyed by MODULE PATH (dotted, `std.machine_shape`), not by file path --
+            // `source_files.contains_key(module_path)` elsewhere is the tell. The declaration
+            // population must be identified by FILE, because that is what a diff touches and what
+            // a discovery row names, so the identity here comes from `sf.path`.
+            .map(|(_module_path, sf)| {
+                (
+                    module_index_path_key(std::path::Path::new(&sf.path)),
+                    sf.content.clone(),
+                )
+            })
+            .collect();
+        let index_identities: std::collections::BTreeSet<String> =
+            sources.iter().map(|(p, _)| p.clone()).collect();
+        if index_identities.len() != sources.len() {
+            return Err(format!(
+                "G2 FACT REFUSAL cause=IndexPoolIdentityNotUnique pool={} distinct={} — the \
+                 index's own source pool carries a repeated path identity, so a declaration \
+                 cannot be attributed to one module and the join below would compare a set \
+                 against a multiset.",
+                sources.len(),
+                index_identities.len()
+            ));
+        }
+
+        let (decl_facts, refusals, parsed_paths) =
+            crate::coproduct_reflection::decl_facts_from_sources(&sources);
+
+        // The bidirectional identity join. Every module the facts describe must belong to the
+        // index, and every index module must be accounted for — either by contributing
+        // declarations or by a NAMED parse refusal. A module that is silently absent from both
+        // is the state this join exists to make unreachable: its declarations would report as
+        // unbound for a reason about the walk rather than about the declaration.
+        let refused: std::collections::BTreeMap<String, String> = refusals
+            .into_iter()
+            .map(|r| (r.rel_path, r.cause))
+            .collect();
+        let mut described: std::collections::BTreeSet<String> =
+            decl_facts.iter().map(|f| f.rel_path.clone()).collect();
+        let foreign: Vec<&String> = described
+            .iter()
+            .filter(|p| !index_identities.contains(*p))
+            .collect();
+        if !foreign.is_empty() {
+            return Err(format!(
+                "G2 FACT REFUSAL cause=FactSubjectForeignToIndex foreign={} first={} — the \
+                 declaration population describes a module the consuming index does not hold, so \
+                 the facts and the decision are about different trees.",
+                foreign.len(),
+                foreign[0]
+            ));
+        }
+        // The other direction. A module may legitimately parse and declare nothing, so absence
+        // from `decl_facts` proves nothing on its own — the question is whether it was VISITED.
+        // Every index module must therefore appear as parsed or as refused; anything else means
+        // the walk silently skipped a module the decision will later be made over.
+        let mut visited: std::collections::BTreeSet<String> = parsed_paths.into_iter().collect();
+        visited.extend(refused.keys().cloned());
+        let unvisited: Vec<&String> = index_identities
+            .iter()
+            .filter(|p| !visited.contains(*p))
+            .collect();
+        if !unvisited.is_empty() {
+            return Err(format!(
+                "G2 FACT REFUSAL cause=IndexModuleUnvisited unvisited={} first={} — an index \
+                 module was neither parsed nor refused, so the fact population is a strict subset \
+                 of the tree the consumer decides over. Every declaration in it would report as \
+                 unbound for a reason about this walk rather than about the declaration.",
+                unvisited.len(),
+                unvisited[0]
+            ));
+        }
+
+        Ok(Rc::new(G2FactBundle {
+            subject: self.generation,
+            module_identities: index_identities,
+            decl_facts,
+            parse_refusals: refused,
+        }))
+    }
+
+    /// How many declarations this index has already classified. Observable so a cache HIT can be
+    /// proven by execution -- a test that only re-called and compared values could not tell a hit
+    /// from a silent recomputation that happened to agree.
+    pub fn live_read_rows_cached(&self) -> usize {
+        self.live_read_rows.borrow().len()
+    }
+
+    /// Classification rows for `requests`, computing ONLY what this index has not already
+    /// classified.
+    ///
+    /// What this replaces is worth naming, because its shape was the defect. The prior accessor
+    /// memoized ONE manifest per index and was insensitive to which declarations a caller asked
+    /// about, so the first call had to carry every request any later call might make; a partial
+    /// first roster poisoned the index and every declaration outside it refused with
+    /// `MemoRequestPopulationIncomplete`. The suite disproved that as a property an index can
+    /// have -- the same immutable index is legitimately reused across scenarios with DIFFERENT
+    /// rosters -- so "complete on first access" was an external scheduling convention real
+    /// callers cannot satisfy, not a discipline they were failing to keep.
+    ///
+    /// Here a roster asks whatever it likes. Hits are served from the per-declaration cache,
+    /// misses are batched into ONE evaluation (which keeps the useful half of "one eval, many
+    /// rows" without resurrecting the convention), and each resulting row is cached under its own
+    /// bound declaration identity. A binding refusal is cached too, under the same identity: it
+    /// is a fact about that declaration, and recomputing it would only refuse again more slowly.
+    pub fn live_read_rows_for(
+        &self,
+        requests: &[LiveReadSelectionRequest],
+    ) -> Result<HashMap<String, LiveReadSelectionRow>, String> {
+        let bundle = self.g2_fact_bundle()?;
+        let mut out: HashMap<String, LiveReadSelectionRow> = HashMap::new();
+        let mut misses: Vec<LiveReadSelectionRequest> = Vec::new();
+        let mut locators: HashMap<
+            String,
+            crate::data_initializer_identity::ResolvedDeclarationLocator,
+        > = HashMap::new();
+
+        for req in requests {
+            let key = live_read_manifest_key(&req.entry_path, &req.fn_name);
+            let entry_rel = repo_rel(std::path::Path::new(&req.entry_path));
+            // A LOCAL REFUSAL IS A REFUSED ROW, NOT AN ABORTED BATCH.
+            //
+            // This arm used to `return Err`, under a comment asserting the opposite -- so one
+            // unbindable request erased the answers for every unrelated request beside it, and a
+            // caller could not tell "B is undecidable" from "B was never asked". Both directions
+            // matter: the batch must keep classifying B, and the floor must still refuse to skip
+            // A. `Refused` carries exactly that, because the consumer already reads it as
+            // do-not-skip -- so isolation costs no fail-closed strength.
+            //
+            // Not cached: the durable cache is keyed by resolved declaration identity, and an
+            // unbindable request has none. Binding is a lookup over the already-built bundle, so
+            // re-deciding it per invocation is cheap; inventing a key to cache it under would be
+            // a second identity space for declarations that do not exist.
+            let locator = match Self::bind_live_read_request(&bundle, &entry_rel, &req.fn_name) {
+                Ok(l) => l,
+                Err(cause) => {
+                    out.insert(key, LiveReadSelectionRow::Refused { cause });
+                    continue;
+                }
+            };
+            if let Some(cached) = self.live_read_rows.borrow().get(&locator) {
+                let row = match cached {
+                    Ok(row) => row.clone(),
+                    Err(cause) => LiveReadSelectionRow::Refused {
+                        cause: cause.clone(),
+                    },
+                };
+                out.insert(key, row);
+                continue;
+            }
+            locators.insert(key, locator);
+            misses.push(req.clone());
+        }
+
+        if !misses.is_empty() {
+            let produced = build_live_read_selection_manifest(self, &misses)?;
+            for (key, row) in produced.rows.into_iter() {
+                if let Some(locator) = locators.get(&key) {
+                    self.live_read_rows
+                        .borrow_mut()
+                        .insert(locator.clone(), Ok(row.clone()));
+                }
+                out.insert(key, row);
+            }
+        }
+        Ok(out)
+    }
+}
+
+/// Decode the producer's returned collection, accepting BOTH representations a `List<T>` has.
+///
+/// `List<T>` in the substrate is `FreeMonoid<T>` — `Empty | Cons { head, tail }` — and whether an
+/// expression of that type reaches the Rust boundary as a native `Value::List` or as the modeled
+/// coproduct chain is a property of which operations happened to have native interpreter arms, not
+/// of the type. `fold_list` has a native arm; `list_snoc_item` does not, so it runs its modeled
+/// body and returns the chain. Requiring `Value::List` here therefore encoded an accident of the
+/// realization as a contract, and refused every manifest the producer could actually build.
+///
+/// That mismatch was latent in #7997 rather than introduced later: a producer with no production
+/// consumer is never asked for its value, so nothing decoded it. It surfaced the first time a
+/// consumer ran — which is the point of consumers.
+///
+/// Both accepted shapes must produce identical rows; a foreign variant or a malformed tail
+/// refuses, located, rather than decoding to a short list that would read as a smaller manifest.
+/// `ctx` is used ONLY to resolve a foreign variant's symbol for the refusal text. It is optional
+/// so the refusal arm is reachable from a control without standing up a resolved graph; a caller
+/// that has a context passes it and gets the variant named, one that does not gets the type label.
+pub fn decode_manifest_row_collection(
+    ctx: Option<&v1_interpreter::InterpContext>,
+    produced: &v1_interpreter::Value,
+) -> Result<Vec<v1_interpreter::Value>, String> {
+    // The interpreter's own FreeMonoid decoder is the single authority for this walk — it already
+    // handles the native list, the empty variant, and the cons chain, and re-deriving the walk
+    // here would be a second definition of what `List<T>` means (§3).
+    v1_interpreter::free_monoid_to_vec(produced).ok_or_else(|| {
+        // Name the variant. `type_label_public()` answers "Variant" for every coproduct, which
+        // cannot distinguish a foreign type from a malformed chain from a decoder that could not
+        // resolve its own symbols — three different defects with three different repairs. A
+        // diagnostic that cannot separate them sends the next reader guessing, which is how the
+        // previous two rounds on this boundary were spent.
+        let named = ctx
+            .and_then(|ctx| {
+                variant_parts(produced)
+                    .map(|(variant_name, _)| format!("Variant::{}", ctx.resolve(variant_name)))
+            })
+            .unwrap_or_else(|| produced.type_label_public().to_string());
+        format!(
+            "LIVE-READ MANIFEST REFUSAL cause=ProducerCollectionShapeUnexpected got={named} — \
+             expected a List<LiveReadSelectionManifestRow> in either the native list \
+             representation or the modeled Empty/Cons chain. A shape that is neither cannot be \
+             attributed to a row population, and decoding it partially would under-report the \
+             manifest."
+        )
+    })
+}
+
+/// One invocation's live-read selection view over the index's per-declaration cache.
+///
+/// THE COMPLETE-ROSTER CONVENTION IS DELETED, and this comment used to be its charter: it said
+/// the request population "must be COMPLETE at the first call", because a single immutable
+/// manifest was built once and every later decision read it. That design was disproved by
+/// disjoint-roster use -- two callers legitimately ask different questions of one index -- and
+/// replaced by a cache keyed on resolved declaration identity. With an incremental cache the
+/// premise is gone: a caller asks about its own demand, a later caller asking about a row this
+/// one skipped simply classifies it then, and nothing needs priming.
+///
+/// Keeping the convention after its mechanism changed was not merely stale prose. It kept the
+/// first consumer in the run building from every enrolled row, which is how 8538 requests entered
+/// one classification that never returned while the phases showed the stall.
+///
+/// Holding the roster's function list beside the rows is what lets the decision be entry-grain
+/// while the classification stays declaration-grain.
+#[derive(Debug, Clone)]
+pub struct LiveReadSelectionContext {
+    /// The rows this invocation's roster resolved to. Held directly rather than as a manifest
+    /// object, because the index now owns the durable per-declaration cache and this struct is
+    /// only the ROSTER-SCOPED view over it: it lives for one invocation, and a second roster
+    /// builds its own view against the same index without disturbing this one.
+    rows: HashMap<String, LiveReadSelectionRow>,
+    /// The index this manifest was built against. Carried so every lookup re-checks the subject
+    /// rather than trusting that the context reached the right consumer.
+    subject: u64,
+    functions_by_entry: HashMap<String, Vec<String>>,
+}
+
+impl LiveReadSelectionContext {
+    /// Build from the COMPLETE discovery roster.
+    ///
+    /// Every distinct `(entry, function)` becomes one request. A duplicate identity refuses here
+    /// rather than at the producer: two roster rows claiming one declaration key is a roster
+    /// defect, and the producer's `DuplicateManifestKey` arm would report it as a classification
+    /// collision — the same red for a different reason, one layer further from the cause.
+    pub fn build(index: &MultiEntryIndex, roster: &[DiscoveryRow]) -> Result<Self, String> {
+        let mut functions_by_entry: HashMap<String, Vec<String>> = HashMap::new();
+        let mut requests: Vec<LiveReadSelectionRequest> = Vec::new();
+        let mut seen: HashSet<String> = HashSet::new();
+        for row in roster {
+            let entry = workspace_relative_repo_path(&row.entry);
+            let key = live_read_manifest_key(&entry, &row.function);
+            if !seen.insert(key.clone()) {
+                // Not a dedup: the roster is the identity population, and two rows under one key
+                // are two witnesses the floor cannot tell apart. Silently keeping one would make
+                // whichever row lost invisible to selection.
+                return Err(format!(
+                    "AFFECTED-SET REFUSAL cause=LiveReadDuplicateRosterIdentity key={key} — two \
+                     discovery rows carry the same (entry, function) identity, so a per-declaration \
+                     classification cannot be attributed to one of them."
+                ));
+            }
+            functions_by_entry
+                .entry(entry.clone())
+                .or_default()
+                .push(row.function.clone());
+            requests.push(LiveReadSelectionRequest {
+                entry_path: entry,
+                fn_name: row.function.clone(),
+            });
+        }
+        let rows = index.live_read_rows_for(&requests)?;
+        Ok(Self {
+            rows,
+            subject: index.generation(),
+            functions_by_entry,
+        })
+    }
+
+    /// The classified row for one enrolled declaration in this view, by request identity.
+    pub fn row_for(&self, entry: &str, function: &str) -> Result<&LiveReadSelectionRow, String> {
+        let key = live_read_manifest_key(entry, function);
+        self.rows.get(&key).ok_or_else(|| {
+            format!(
+                "AFFECTED-SET REFUSAL cause=LiveReadRowAbsent entry={entry} function={function} \
+                 — this view carries no row for that declaration."
+            )
+        })
+    }
+
+    /// Axis (iv), decided from the typed classification: does the diff touch any runtime read
+    /// reachable from a declaration enrolled in this entry?
+    ///
+    /// This is the ONE production answer — both the per-row selection and the precompute call it,
+    /// so parity is construction rather than two implementations a later edit can separate.
+    ///
+    /// The entry may answer `false` (skippable on this axis) only when EVERY enrolled declaration
+    /// is present, classified, and untouched. A producer failure, a subject mismatch, an absent
+    /// row, or an entry carrying no enrolled declaration all return `Err`: the line stops, typed
+    /// and located. None of them may fall back to the retired carrier-home predicate, silently
+    /// widen to a whole-corpus run, or license a skip — a missing classification is not a missing
+    /// runtime read.
+    pub fn runtime_dependency_touched_for_entry(
+        &self,
+        index: &MultiEntryIndex,
+        entry_path: &str,
+        touched_paths: &[String],
+    ) -> Result<bool, String> {
+        if index.generation() != self.subject {
+            return Err(format!(
+                "AFFECTED-SET REFUSAL cause=LiveReadContextSubjectMismatch context_subject={} \
+                 current_subject={} entry={entry_path} — the selection context was built against a \
+                 different index, so its classifications describe another source population.",
+                self.subject,
+                index.generation()
+            ));
+        }
+        let entry = workspace_relative_repo_path(entry_path);
+        let functions = self.functions_by_entry.get(&entry).ok_or_else(|| {
+            format!(
+                "AFFECTED-SET REFUSAL cause=LiveReadEntryAbsent entry={entry} — the entry is not in \
+                 the roster the selection context was built from, so no declaration of it is \
+                 classified. Callers ask about their own demand, so this means the entry was \
+                 not among the rows THIS view was built for -- not that the roster was \
+                 incomplete."
+            )
+        })?;
+        if functions.is_empty() {
+            return Err(format!(
+                "AFFECTED-SET REFUSAL cause=LiveReadEntryHasNoDeclarations entry={entry} — an entry \
+                 with no enrolled declaration has no classified runtime reads, which is not the \
+                 same fact as having none."
+            ));
+        }
+        for function in functions {
+            // The subject is re-checked here rather than trusted from construction: a view built
+            // against one index must never answer for another, even though `build` already
+            // matched them.
+            if index.generation() != self.subject {
+                return Err(format!(
+                    "AFFECTED-SET REFUSAL cause=LiveReadContextSubjectMismatch entry={entry} \
+                     function={function} context_subject={} index_subject={} — this view's rows \
+                     were classified against a different index, so they describe a different \
+                     tree.",
+                    self.subject,
+                    index.generation()
+                ));
+            }
+            let key = live_read_manifest_key(&entry, function);
+            let row = self.rows.get(&key).ok_or_else(|| {
+                format!(
+                    "AFFECTED-SET REFUSAL cause=LiveReadRowAbsent entry={entry} \
+                     function={function} — the roster named this declaration but no row was \
+                     resolved for it. A missing classification is not a missing runtime read."
+                )
+            })?;
+            // A MODELLED refusal must reach the caller AS a refusal.
+            //
+            // `touched_by` answers `true` for a `Refused` row, which is the right conservative
+            // answer for a path-intersection question but the WRONG thing for a consumer to act
+            // on: routed through the boolean, an undecidable classification is indistinguishable
+            // from a decided "this diff touches a runtime read". A producer that cannot classify
+            // anything then presents as `SelectionSuperset` — everything ran, slow but apparently
+            // valid — instead of as `the manifest cannot decide`. That is the absorbing fallback
+            // in its purest form: the deficit's frequency is zeroed by construction, so it never
+            // ranks for fixing, and the cost is denominated in the corpus rather than the change.
+            //
+            // So the arm is matched explicitly here rather than folded into the boolean. The
+            // entry still does not skip — but it does not skip because the line STOPPED, typed
+            // and located, not because a widened answer looked like a decision.
+            match row {
+                LiveReadSelectionRow::Refused { cause } => {
+                    return Err(format!(
+                        "AFFECTED-SET REFUSAL cause=LiveReadClassificationRefused entry={entry} \
+                         function={function} detail={cause} — the manifest carries a row for this \
+                         declaration and that row is a modelled refusal, so its runtime reads are \
+                         undecided. Undecided is not untouched, and it is not touched either: it \
+                         is the classification authority declining to answer, which must surface \
+                         as a counted refusal rather than as a selection that quietly ran \
+                         everything."
+                    ));
+                }
+                LiveReadSelectionRow::Classified(_) => {
+                    if row.touched_by(touched_paths) {
+                        return Ok(true);
+                    }
+                }
+            }
+        }
+        Ok(false)
+    }
+}
+
+/// Test-only constructor over an explicit declaration list.
+///
+/// Unit fixtures decide one synthetic entry, so their "complete roster" is the declarations they
+/// name. It goes through the ordinary `build` — same producer, same subject check, same duplicate
+/// refusal — so a fixture cannot reach a classification path production cannot.
+#[cfg(test)]
+pub(crate) fn live_read_context_for_declarations(
+    index: &MultiEntryIndex,
+    declarations: &[(&str, &str)],
+) -> Result<LiveReadSelectionContext, String> {
+    let roster: Vec<DiscoveryRow> = declarations
+        .iter()
+        .map(|(entry, function)| DiscoveryRow {
+            label: (*function).to_string(),
+            entry: (*entry).to_string(),
+            function: (*function).to_string(),
+            reads_live_tree: false,
+        })
+        .collect();
+    LiveReadSelectionContext::build(index, &roster)
+}
+
+/// Decode the produced manifest into rows, keyed by declaration.
+///
+/// Separated from the producer call so the ENTIRE walk runs under one active context (see the
+/// call site): every nested list in a projection is a cons chain whose decode needs the
+/// interpreter's symbols, and the walk is several coproducts deep.
+fn decode_live_read_manifest_rows(
+    ctx: &v1_interpreter::InterpContext,
+    produced: &v1_interpreter::Value,
+) -> Result<std::collections::HashMap<String, LiveReadSelectionRow>, String> {
+    let row_values = decode_manifest_row_collection(Some(ctx), produced)?;
     let mut rows = std::collections::HashMap::new();
     for row in row_values.iter() {
         let v1_interpreter::Value::Record { fields, .. } = row else {
@@ -9971,7 +10667,12 @@ pub fn build_live_read_selection_manifest(
                 ))
             }
         };
-        let decoded = decode_live_read_selection_row(&ctx, &projection)?;
+        // The nested decoders refuse with a cause but cannot name a subject -- they see one
+        // projection, not which declaration produced it. An unlocated refusal is only half of
+        // what §5 asks for: it stops the line, but analysis cannot begin without re-deriving the
+        // culprit by hand. The key is in scope here, so attribution belongs here.
+        let decoded = decode_live_read_selection_row(&ctx, &projection)
+            .map_err(|cause| format!("{cause} subject_key={key}"))?;
         // A duplicate key REFUSES rather than overwriting. `HashMap::insert` returns the old value
         // and drops it, so two requests colliding on one `path::fn` key would silently keep the
         // last — and the two rows are exactly the case where they might disagree. Losing one
@@ -9984,35 +10685,7 @@ pub fn build_live_read_selection_manifest(
             ));
         }
     }
-
-    Ok(LiveReadSelectionManifest {
-        subject: index.generation,
-        rows,
-    })
-}
-
-impl MultiEntryIndex {
-    /// This index's opaque identity, for checking a manifest against the index about to consume it.
-    pub fn generation(&self) -> u64 {
-        self.generation
-    }
-
-    /// The live-read selection manifest for this index, built once and reused.
-    ///
-    /// The memo lives on the index rather than beside it because the index is what the subject
-    /// identifies: a second index — including one over byte-identical source roots — gets its own
-    /// generation and its own empty cell, so it cannot be served rows derived from another tree.
-    pub fn live_read_manifest(
-        &self,
-        requests: &[LiveReadSelectionRequest],
-    ) -> Result<Rc<LiveReadSelectionManifest>, String> {
-        if let Some(cached) = self.live_read_manifest.borrow().as_ref() {
-            return cached.clone().map_err(|e| e.clone()).map(|m| m);
-        }
-        let built = build_live_read_selection_manifest(self, requests).map(Rc::new);
-        *self.live_read_manifest.borrow_mut() = Some(built.clone());
-        built
-    }
+    Ok(rows)
 }
 
 /// Decode one `v2.std.live_read.LiveReadSelectionProjection` value.
@@ -10104,15 +10777,51 @@ fn decode_live_read_classification(
                 .to_string(),
         );
     }
-    let Some(v1_interpreter::Value::List(items)) = ctx.field(fields, "carriers") else {
-        return Err(
-            "LIVE-READ MANIFEST REFUSAL cause=CarrierListAbsent — a RuntimeRead whose carrier list \
-             is missing or not a list. An empty carrier set intersects no diff, so accepting this \
-             shape would license exactly the skip the runtime read forbids."
-                .to_string(),
-        );
+    // Decoded through the interpreter's FreeMonoid authority rather than by matching
+    // `Value::List`, because `List<T>` has TWO live representations and this field reaches both.
+    // The lens folds its carriers with `list_snoc_item` onto an empty literal, so a decl with no
+    // carrier arrives as the native empty list while one with carriers arrives as a cons chain --
+    // and a bare `Value::List` match therefore refused exactly the RuntimeReads that had
+    // something to say. The same boundary, one level up, is what
+    // `decode_manifest_row_collection` already exists to handle; this is that fix applied where
+    // the second representation actually surfaced.
+    // ABSENT and WRONG-SHAPE are separate refusals. They were one arm for three rounds, and the
+    // conflation is what made each round guess: a missing field means the producer emits this
+    // variant under a different field name, a malformed one means the representation is not the
+    // one the decoder walks, and the repairs share nothing. Neither arm may report the expected
+    // shape without naming the received one -- an expectation is not an observation.
+    let Some(carriers_field) = ctx.field(fields, "carriers") else {
+        return Err(format!(
+            "LIVE-READ MANIFEST REFUSAL cause=CarrierFieldAbsent — a RuntimeRead with no \
+             `carriers` field at all. Fields present: {:?}. An empty carrier set intersects no \
+             diff, so inferring one here would license exactly the skip the runtime read forbids.",
+            fields
+                .iter()
+                .map(|(n, _)| ctx.resolve(*n))
+                .collect::<Vec<_>>()
+        ));
     };
-    let carriers = items
+    let carrier_values = v1_interpreter::free_monoid_to_vec(&carriers_field).ok_or_else(|| {
+        let named = variant_parts(&carriers_field)
+            .map(|(variant_name, inner)| {
+                format!(
+                    "Variant::{}{:?}",
+                    ctx.resolve(variant_name),
+                    inner
+                        .iter()
+                        .map(|(n, _)| ctx.resolve(*n))
+                        .collect::<Vec<_>>()
+                )
+            })
+            .unwrap_or_else(|| carriers_field.type_label_public().to_string());
+        format!(
+            "LIVE-READ MANIFEST REFUSAL cause=CarrierListShapeUnexpected got={named} — a \
+             RuntimeRead whose carriers are neither the native list nor a modeled Empty/Cons \
+             chain. An empty carrier set intersects no diff, so accepting this shape would \
+             license exactly the skip the runtime read forbids."
+        )
+    })?;
+    let carriers = carrier_values
         .iter()
         .map(|item| decode_live_read_carrier(ctx, item))
         .collect::<Result<Vec<LiveReadCarrier>, String>>()?;
@@ -10345,24 +11054,398 @@ mod live_read_selection_manifest_producer_tests {
         );
     }
 
-    // The memo is on the index, so the same index builds once and a distinct index rebuilds.
+    // FAST PROBE: does the bundle actually CONTAIN an enrolled witness declaration?
+    //
+    // Written because the floor takes ten minutes to answer this, and two rounds of reasoning
+    // about why a root would not bind were both refuted by execution. This isolates the bundle
+    // from the lens, the floor and the interpreter: it asks only whether the parse-derived
+    // population holds the declaration a discovery row names, and whether binding resolves it to
+    // exactly one identity.
+    //
+    // The subject is the one CI named (`LiveReadRootUnbound` on this exact declaration), so the
+    // probe reds for the reason the floor did rather than for a reason of its own.
     #[test]
-    fn manifest_is_memoized_per_index_and_a_distinct_index_rebuilds() {
+    fn the_fact_bundle_contains_an_enrolled_witness_declaration() {
         enter_workspace();
         let index = build_multi_entry_index(&source_roots());
-        let first = index.live_read_manifest(&requests()).expect("first build");
-        let second = index.live_read_manifest(&requests()).expect("memo hit");
+        let bundle = index
+            .g2_fact_bundle()
+            .expect("the index population must be observable");
+
+        let rel = "dag/test/claim/accelerator_demo_execution_witness_test.dag";
+        let function = "accelerator_demo_execution_lane_witnesses";
+
+        // (1) the FILE is in the population at all.
         assert!(
-            Rc::ptr_eq(&first, &second),
-            "the second call rebuilt instead of hitting the memo"
+            bundle.module_identities.iter().any(|p| p == rel),
+            "the index pool does not carry {rel} (pool={}); the walk, not the projection, is the \
+             defect",
+            bundle.module_identities.len()
         );
+        assert!(
+            !bundle.parse_refusals.contains_key(rel),
+            "{rel} failed to parse: {:?}",
+            bundle.parse_refusals.get(rel)
+        );
+
+        // (2) the DECLARATION is in the population, and its kind is what the fn-arrow projection
+        // selects. Reported separately because "absent" and "present but the wrong kind" have
+        // different repairs, and a single assertion would conflate them.
+        let for_file: Vec<_> = bundle
+            .decl_facts
+            .iter()
+            .filter(|f| f.rel_path == rel)
+            .collect();
+        assert!(
+            !for_file.is_empty(),
+            "{rel} contributed no declarations at all, though it parsed"
+        );
+        let named: Vec<_> = for_file.iter().filter(|f| f.name == function).collect();
+        assert_eq!(
+            named.len(),
+            1,
+            "expected exactly one declaration named {function} in {rel}, found {} (kinds present \
+             in this file: {:?})",
+            named.len(),
+            for_file
+                .iter()
+                .map(|f| (f.name.as_str(), f.kind))
+                .collect::<Vec<_>>()
+        );
+        let fact = named[0];
+        assert!(
+            matches!(fact.kind, crate::v1_compiler_infer_items::ItemKind::FnItem)
+                || matches!(
+                    fact.kind,
+                    crate::v1_compiler_infer_items::ItemKind::FuncItem
+                ),
+            "{function} has kind {:?}, which the fn-arrow projection does not select",
+            fact.kind
+        );
+
+        // (3) the module path is the AUTHORED one, unstripped. A stripped `v2.` here is the
+        // defect that made every root unbindable under a name the lens never asks for.
+        assert!(
+            !fact.module_path.is_empty(),
+            "{function} carries no module path, so its qualified name cannot be built"
+        );
+
+        // (4) binding resolves it to exactly one identity.
+        let locator = super::MultiEntryIndex::bind_live_read_request(&bundle, rel, function)
+            .expect("an enrolled declaration must bind to exactly one identity");
+        assert_eq!(locator.name, function);
+        assert_eq!(locator.rel_path, rel);
+    }
+
+    /// The `v2.` layer prefix survives on `module_path` and is absent from `qualified_name`.
+    ///
+    /// These two names are deliberately different and were, for four failing runs, treated as one:
+    /// `decl_logical_qualified_name` drops `v2.` for `decl_index` consumers, so a projection that
+    /// reconstructs a module by un-stripping the declaration's own name from `qualified_name`
+    /// yields `test.workflow.x` where the fn-arrow root is authored `v2.test.workflow.x`. Every
+    /// such root then reports G2RootUnbound -- not because the declaration is missing, but because
+    /// the population is filed under a name no root ever asks for. The two directions are asserted
+    /// TOGETHER because either alone is satisfied by the defect: with the un-strip in place,
+    /// `qualified_name` lacked `v2.` exactly as it does now.
+    #[test]
+    fn v2_layer_facts_keep_the_authored_module_path_and_drop_it_from_the_qualified_name() {
+        enter_workspace();
+        let index = build_multi_entry_index(&source_roots());
+        let bundle = index
+            .g2_fact_bundle()
+            .expect("the index substrate must yield a fact bundle");
+
+        let v2_facts: Vec<_> = bundle
+            .decl_facts
+            .iter()
+            .filter(|f| f.module_path.starts_with("v2."))
+            .collect();
+        assert!(
+            !v2_facts.is_empty(),
+            "no fact carries a v2.-authored module path, so this control proves nothing; the \
+             bundle covers {} modules",
+            bundle.module_identities.len()
+        );
+
+        for fact in v2_facts.iter().take(200) {
+            assert!(
+                !fact.qualified_name.starts_with("v2."),
+                "{} kept the v2. layer in its qualified_name; decl_index consumers expect it \
+                 stripped",
+                fact.qualified_name
+            );
+            let unstripped = format!(
+                "{}.{}",
+                fact.module_path.trim_start_matches("v2."),
+                fact.name
+            );
+            assert_eq!(
+                fact.qualified_name, unstripped,
+                "the two names disagree on more than the layer prefix, so neither can be derived \
+                 from the other"
+            );
+        }
+    }
+
+    // ZERO CANDIDATES COST ZERO CLASSIFICATION (proof-ladder gate 5).
+    //
+    // Candidate filtering reduces the number of REQUESTS through the modeled fold; it does not by
+    // itself remove the fixed startup, because a context built unconditionally still resolves the
+    // ~587-module classification lens whether it has one candidate or none. That fixed term is
+    // ~7 seconds on the measured CI run, so "the roster filter appears to work" and "the run
+    // stopped paying for the classifier" are different claims and only the second is asserted
+    // here.
+    //
+    // Counted, not grepped: the assertion is on an invocation COUNTER, because a test that reads
+    // its own stderr proves a line was printed rather than that the work was skipped.
+    #[test]
+    fn a_fully_excluded_roster_resolves_no_classification_lens() {
+        enter_workspace();
+        let index = build_multi_entry_index(&source_roots());
+        let entry = "dag/test/claim/accelerator_demo_execution_witness_test.dag";
+
+        // Every row ReadsLiveTree, so every row is AlreadySelected and none is a candidate.
+        let rows = vec![super::DiscoveryRow {
+            label: format!("{entry}::accelerator_demo_execution_lane_witnesses"),
+            entry: entry.to_string(),
+            function: "accelerator_demo_execution_lane_witnesses".to_string(),
+            reads_live_tree: true,
+        }];
+
+        super::with_typecheck_compute_count_receipt(|| {
+            super::reset_live_read_classification_invocations();
+            let plan = super::LiveReadSelectionPlan::build(
+                &rows,
+                &index,
+                &super::FloorDiffEdits::default(),
+                &[],
+            )
+            .expect("a fully excluded roster still plans");
+
+            assert_eq!(
+                super::live_read_classification_invocations(),
+                0,
+                "a roster with no candidates still resolved the classification lens, so the \
+                 fixed startup survives the filter that was supposed to remove it"
+            );
+            // And the plan is still USABLE -- zero classification must not mean zero answers.
+            assert!(
+                plan.entry_must_run(&index, entry, &[])
+                    .expect("an excluded entry answers from its cause"),
+                "the excluded entry must still be forced to run"
+            );
+        });
+    }
+
+    // CHEAP-AXIS EXCLUSION CROSS-PRODUCT (proof-ladder gate 4).
+    //
+    // One control per exclusion reason, because the reasons are separate arms of one disjunction
+    // and a single specimen proves only its own arm. The property under test is the one the
+    // sparse context could not express: an excluded entry must be answerable WITHOUT consulting
+    // the classification, since it is deliberately absent from it. Before the plan existed, each
+    // of these produced `LiveReadEntryAbsent` at whichever consumer asked first.
+    //
+    // Asserted in BOTH directions per arm: the excluded entry must report `AlreadySelected` with
+    // the expected cause AND must answer `entry_must_run == true` -- because "not queried" and
+    // "not selected" are the two ways this could go wrong, and they fail in opposite directions.
+    // An arm that only checked the cause would pass while the entry silently became skippable.
+    #[test]
+    fn every_cheap_axis_excludes_without_the_classification_being_consulted() {
+        enter_workspace();
+        let index = build_multi_entry_index(&source_roots());
+        let entry = "dag/test/claim/accelerator_demo_execution_witness_test.dag";
+        let function = "accelerator_demo_execution_lane_witnesses";
+
+        let row = |reads_live_tree: bool| super::DiscoveryRow {
+            label: format!("{entry}::{function}"),
+            entry: entry.to_string(),
+            function: function.to_string(),
+            reads_live_tree,
+        };
+
+        // (reads_live_tree, diff edits, changed paths, expected cause)
+        let cases: Vec<(
+            bool,
+            super::FloorDiffEdits,
+            Vec<String>,
+            super::CheapAxisCause,
+        )> = vec![
+            (
+                true,
+                super::FloorDiffEdits::default(),
+                Vec::new(),
+                super::CheapAxisCause::ReadsLiveTree,
+            ),
+            (
+                false,
+                super::FloorDiffEdits {
+                    edited_test_fns: [(entry.to_string(), function.to_string())]
+                        .into_iter()
+                        .collect(),
+                    ..Default::default()
+                },
+                Vec::new(),
+                super::CheapAxisCause::EditedTestFn,
+            ),
+            (
+                false,
+                super::FloorDiffEdits {
+                    touched_entry_files: [entry.to_string()].into_iter().collect(),
+                    ..Default::default()
+                },
+                Vec::new(),
+                super::CheapAxisCause::EntryFileTouched,
+            ),
+        ];
+
+        for (reads_live_tree, diff_edits, changed, expected) in cases {
+            let rows = vec![row(reads_live_tree)];
+            let plan = super::LiveReadSelectionPlan::build(&rows, &index, &diff_edits, &changed)
+                .expect("the plan must build for an excluded row without classifying it");
+            match plan.demand_for(entry).expect("planned") {
+                super::LiveReadDemand::AlreadySelected { cause } => assert_eq!(
+                    *cause, expected,
+                    "excluded for the wrong reason, which means a different axis fired"
+                ),
+                super::LiveReadDemand::NeedsClassification => {
+                    panic!("{expected:?} did not exclude the row, so it would be classified")
+                }
+            }
+            assert!(
+                plan.entry_must_run(&index, entry, &changed)
+                    .expect("an excluded entry answers from its own cause, never a lookup"),
+                "{expected:?} excluded the row from classification AND let it skip -- the \
+                 fail-open direction"
+            );
+        }
+    }
+
+    /// An entry the plan never saw is a REAL gap and refuses, distinctly from a deliberate
+    /// exclusion. Without this the plan would be a way to make every absence silent, which is
+    /// the opposite of the defect being repaired.
+    #[test]
+    fn an_unplanned_entry_refuses_rather_than_reading_as_already_selected() {
+        enter_workspace();
+        let index = build_multi_entry_index(&source_roots());
+        let plan = super::LiveReadSelectionPlan::build(
+            &[],
+            &index,
+            &super::FloorDiffEdits::default(),
+            &[],
+        )
+        .expect("an empty roster plans");
+        let err = plan
+            .demand_for("dag/test/claim/accelerator_demo_execution_witness_test.dag")
+            .expect_err("an entry outside the plan must refuse");
+        assert!(
+            err.contains("LiveReadEntryNotPlanned"),
+            "the refusal must name the gap, got: {err}"
+        );
+    }
+
+    // LOCAL FAILURE ISOLATION (proof-ladder gate 3).
+    //
+    // The predecessor of this control did not exist, and the code it would have covered returned
+    // `Err` for the whole batch on one unbindable request -- beneath a comment claiming the
+    // refusal was local. A comment is not a mechanism, and the two disagreed for as long as
+    // nothing executed the case.
+    //
+    // Both halves are asserted together because either alone is satisfied by a defect: isolating
+    // by ANSWERING for A would be fail-open (A is undecidable and must not skip), and refusing
+    // correctly for A while dropping B is the abort this repairs.
+    #[test]
+    fn one_unbindable_request_refuses_locally_without_erasing_its_batch() {
+        enter_workspace();
+        let index = build_multi_entry_index(&source_roots());
+
+        let good = LiveReadSelectionRequest {
+            entry_path: "dag/test/claim/accelerator_demo_execution_witness_test.dag".to_string(),
+            fn_name: "accelerator_demo_execution_lane_witnesses".to_string(),
+        };
+        // Same real entry, a function that does not exist in it. This makes the request
+        // unbindable for a reason about the DECLARATION rather than about the file, so the
+        // control cannot pass merely because the module failed to parse.
+        let bad = LiveReadSelectionRequest {
+            entry_path: "dag/test/claim/accelerator_demo_execution_witness_test.dag".to_string(),
+            fn_name: "no_such_declaration_exists_here".to_string(),
+        };
+
+        let rows = index
+            .live_read_rows_for(&[bad.clone(), good.clone()])
+            .expect("one unbindable request must not fail the batch");
+
+        let bad_key = super::live_read_manifest_key(&bad.entry_path, &bad.fn_name);
+        let good_key = super::live_read_manifest_key(&good.entry_path, &good.fn_name);
+
+        match rows.get(&bad_key) {
+            Some(LiveReadSelectionRow::Refused { cause }) => assert!(
+                cause.contains("LiveReadRootUnbound"),
+                "the refusal must name why it could not bind, got: {cause}"
+            ),
+            other => panic!("an unbindable request must produce a Refused row, got {other:?}"),
+        }
+        assert!(
+            !matches!(rows.get(&good_key), None),
+            "the valid request's answer was erased by an unrelated request's refusal -- the \
+             abort this control exists to prevent"
+        );
+    }
+
+    // INCREMENTALITY + CACHE HIT (proof-ladder gates 1 and 2).
+    //
+    // The predecessor of this test asserted `Rc::ptr_eq` on one whole manifest, which is exactly
+    // the property being deleted: it could only hold if a single object served every request, and
+    // that object required its first caller to carry the complete roster. What must hold now is
+    // the opposite -- disjoint rosters may ask different questions of the same index in any
+    // order, and a repeat ask must not recompute.
+    #[test]
+    fn disjoint_rosters_classify_incrementally_and_repeat_asks_hit_the_cache() {
+        enter_workspace();
+        let index = build_multi_entry_index(&source_roots());
+        assert_eq!(
+            index.live_read_rows_cached(),
+            0,
+            "a fresh index must start with nothing classified"
+        );
+
+        let first = requests();
+        let a = index
+            .live_read_rows_for(&first)
+            .expect("the first roster must classify");
+        let after_first = index.live_read_rows_cached();
+        assert!(
+            after_first > 0,
+            "classifying a roster cached nothing, so no later ask can hit"
+        );
+
+        // REPEAT: the same roster again. Occupancy must not grow -- growth would mean the
+        // declarations were classified a second time under new keys, which is a miss wearing a
+        // correct answer.
+        let a_again = index
+            .live_read_rows_for(&first)
+            .expect("a repeat ask must be served");
+        assert_eq!(
+            index.live_read_rows_cached(),
+            after_first,
+            "a repeat ask recomputed instead of hitting the per-declaration cache"
+        );
+        assert_eq!(
+            a.len(),
+            a_again.len(),
+            "the repeat ask served a different row population"
+        );
+
+        // A DISTINCT INDEX owns its own cache and classifies for itself.
         let other = build_multi_entry_index(&source_roots());
-        let third = other.live_read_manifest(&requests()).expect("other build");
-        assert!(
-            !Rc::ptr_eq(&first, &third),
-            "a distinct index served another index's manifest"
+        assert_eq!(
+            other.live_read_rows_cached(),
+            0,
+            "a distinct index inherited another index's classifications"
         );
-        assert_eq!(third.subject, other.generation());
+        other
+            .live_read_rows_for(&first)
+            .expect("a distinct index must classify for itself");
+        assert!(other.live_read_rows_cached() > 0);
     }
 
     // ---- decoder controls, one per coproduct arm ----------------------------------------
@@ -10619,7 +11702,7 @@ struct PreparedSemanticCaches {
 
 /// Semantic state whose keys and values are valid only for one exact ordered
 /// root view. These handles survive replacement of the ordinary population's
-/// shell; entry graphs, live-read manifests, retention, and budget accounting
+/// shell; entry graphs, G2/live-read classification rows, retention, and budget accounting
 /// remain fresh on the replacement shell.
 #[derive(Clone, Default)]
 struct PreparedRootViewCaches {
@@ -10726,7 +11809,28 @@ pub struct MultiEntryIndex {
     /// nothing because the index IS the key: a different index is a different object with its own
     /// generation and its own empty cell. A refusal is memoized too — recomputing a producer that
     /// already refused would only refuse again, more slowly.
-    live_read_manifest: RefCell<Option<Result<Rc<LiveReadSelectionManifest>, String>>>,
+    /// The index-wide G2 fact substrate, built at most once. A GLOBAL refusal is memoized here
+    /// and only ever means "this index's population cannot be observed" — a module-local parse
+    /// failure lives inside the bundle, under that module's identity, and never reaches this
+    /// cell (see `G2FactBundle`).
+    g2_facts: RefCell<Option<Result<Rc<G2FactBundle>, String>>>,
+    /// Per-declaration classification, keyed by BOUND DECLARATION IDENTITY rather than by a
+    /// rendered `entry::name` string, so two same-named declarations in different modules cannot
+    /// share a verdict.
+    ///
+    /// It is a map that fills incrementally, NOT one manifest primed by its first caller. The
+    /// prior shape required the first call to carry every request any later call might make,
+    /// which the suite disproved as a property an index can have: the same immutable index is
+    /// legitimately reused across scenarios with different rosters, so "complete on first
+    /// access" was an external scheduling convention real callers cannot satisfy. Here a second
+    /// roster may freely ask different questions of the same index, and a miss classifies one
+    /// declaration instead of poisoning the index.
+    live_read_rows: RefCell<
+        std::collections::HashMap<
+            crate::data_initializer_identity::ResolvedDeclarationLocator,
+            Result<LiveReadSelectionRow, String>,
+        >,
+    >,
     both_closure_edges: Rc<RefCell<Option<Rc<BothClosureEdgeIndex>>>>,
     // Per-process subject-digest → resolved-graph share, the ReferenceTier in
     // front of the cross-process store (materialization-ladder tier ordering:
@@ -11144,7 +12248,8 @@ fn new_multi_entry_index_shell_with_facts_and_caches(
         pool_bare_census: view_semantic_caches.pool_bare_census,
         entry_closure_sources: RefCell::new(HashMap::new()),
         both_closure_edges: view_semantic_caches.both_closure_edges,
-        live_read_manifest: RefCell::new(None),
+        g2_facts: RefCell::new(None),
+        live_read_rows: RefCell::new(std::collections::HashMap::new()),
     }
 }
 
@@ -11417,6 +12522,30 @@ pub fn reset_typecheck_compute_count() {
 
 fn bump_typecheck_compute_count() {
     TYPECHECK_COMPUTE_COUNT.fetch_add(1, Ordering::SeqCst);
+}
+
+// How many times the live-read classification lens was RESOLVED AND EVALUATED in this process.
+//
+// The unit is the expensive thing: one increment per `build_live_read_selection_manifest`, which
+// is one lens-closure resolve plus one modeled fold. It exists because two claims on this lane
+// are otherwise unfalsifiable from outside -- "zero candidates cost nothing" and "classification
+// happens once per subject, not once per worker". Both are statements about a COUNT, and a
+// receipt line printed to stderr cannot be asserted by a consumer; a counter can.
+//
+// Deliberately not derived from the phase receipts: a test that greps its own stderr proves the
+// line was printed, not that the work was skipped.
+static LIVE_READ_CLASSIFICATION_INVOCATIONS: AtomicUsize = AtomicUsize::new(0);
+
+pub fn live_read_classification_invocations() -> usize {
+    LIVE_READ_CLASSIFICATION_INVOCATIONS.load(Ordering::SeqCst)
+}
+
+pub fn reset_live_read_classification_invocations() {
+    LIVE_READ_CLASSIFICATION_INVOCATIONS.store(0, Ordering::SeqCst);
+}
+
+fn bump_live_read_classification_invocations() {
+    LIVE_READ_CLASSIFICATION_INVOCATIONS.fetch_add(1, Ordering::SeqCst);
 }
 
 fn shared_caches_read<'a>(
@@ -16561,6 +17690,27 @@ fn dag_source_roots(source_roots: &[String]) -> Vec<String> {
     dag
 }
 
+/// Structural mirror of `v1_interpreter::type_annotation_names` for the pre-resolve
+/// window: the interpreter's copy needs an `InterpContext`, and declarer selection
+/// happens before any graph exists. Same walk, same exactness — a type annotation
+/// names the target, or one of its children/params does.
+fn type_annotation_names_in(
+    si: Rc<im::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    ty: &Rc<Node>,
+    target: &str,
+) -> bool {
+    if ty.name == target || authored_name_at(si.clone(), ty.clone()) == target {
+        return true;
+    }
+    ty.children
+        .iter()
+        .any(|c| type_annotation_names_in(si.clone(), c, target))
+        || ty
+            .params
+            .iter()
+            .any(|c| type_annotation_names_in(si.clone(), c, target))
+}
+
 pub fn precompute_whole_tree_published_mock_keys(
     source_roots: &[String],
 ) -> Result<std::collections::HashSet<String>, String> {
@@ -16580,16 +17730,48 @@ pub fn precompute_whole_tree_published_mock_keys(
     // resolving the whole 600+ module tree to find the ~13 declarers is §2
     // irrelevant work, and that transient whole-tree `ResolvedGraph` is the floor's
     // dominant RSS (measured ~1.46 GiB to produce ~58 strings). Select the
-    // declarers and resolve only their transitive import closures. The `.contains`
-    // prefilter is a safe over-inclusive candidate set: `.dag` has no comment
-    // syntax (a string match is structural), and the downstream
-    // `type_annotation_names(.., "PublishedMockCase")` check is exact, so a
-    // false-positive file only widens the closure slightly — it cannot fabricate a key.
-    let declarers: Vec<Rc<v1_compiler_compile::SourceFile>> = index
-        .values()
-        .filter(|sf| sf.content.contains("PublishedMockCase"))
-        .cloned()
-        .collect();
+    // declarers and resolve only their transitive import closures.
+    //
+    // The `.contains` scan is a CANDIDATE prefilter and nothing more: the DECISION
+    // is the structural one below. A previous revision let the substring decide, on
+    // the reasoning that a false positive "only widens the closure slightly — it
+    // cannot fabricate a key." That is true about keys and false about builds. A
+    // `.dag` file under `dag/` that merely MENTIONS the string — a documentary bind
+    // row naming the type, a note quoting it — was selected as a declarer, and if it
+    // imports `src/v2` its closure cannot resolve under these dag-only roots, so the
+    // whole precompute returned Err and the floor exited before running a witness.
+    // Measured on gunbc#8092: one `HandAuthoredDocBind` row naming
+    // `std.hermetic_replay` `PublishedMockCase` as a document subject red the floor.
+    // A substring is not a declaration observation, so the exact check that already
+    // existed downstream now runs BEFORE the closure is taken.
+    let mut declarers: Vec<Rc<v1_compiler_compile::SourceFile>> = Vec::new();
+    for sf in index.values() {
+        if !sf.content.contains("PublishedMockCase") {
+            continue;
+        }
+        // Observation failure refuses; it never reports absence (DESIGN §5 — a
+        // candidate we could not parse is not a candidate we know is clean).
+        let Some(parsed) = crate::module_path_index::parsed_dag_file::parse_dag_file(
+            std::path::Path::new(&sf.path),
+        ) else {
+            return Err(format!(
+                "whole-tree published mock corpus: candidate {} matched the PublishedMockCase \
+                 scan but could not be parsed, so its declarer status is unobserved",
+                sf.path
+            ));
+        };
+        let si = parsed.source_indices;
+        let declares = parsed
+            .items
+            .iter()
+            .any(|item| match item.type_annotation.clone() {
+                Some(ty) => type_annotation_names_in(si.clone(), &ty, "PublishedMockCase"),
+                None => false,
+            });
+        if declares {
+            declarers.push(sf.clone());
+        }
+    }
     if declarers.is_empty() {
         return Ok(std::collections::HashSet::new());
     }
@@ -17719,6 +18901,39 @@ pub fn handle_run(
 /// (env `GUNBC_FLATTEN_SITE_DUMP_SECS`) and once, deterministically, right
 /// after a `dag run` entry returns -- the periodic dump alone races the
 /// process's natural completion and under-reports on fast runs.
+/// Per-expression-variant self time for the producer's evaluation, using the interpreter's
+/// existing `GUNBC_INTERP_PROFILE` instrument rather than a second one. Reports; never decides.
+/// It exists because the node-eval counter priced ONE evaluation at roughly 39 microseconds on
+/// this phase -- a per-node cost, not a node-count problem -- and the variant is the next thing
+/// that needs a name rather than a hypothesis.
+fn dump_live_read_eval_profile() {
+    use v1_interpreter::{eval_profile_snapshot, expr_variant_name, EXPR_VARIANT_COUNT};
+    let prof = eval_profile_snapshot();
+    let total_count: u64 = prof.counts.iter().sum();
+    if total_count == 0 {
+        return;
+    }
+    let total_ns: u128 = prof.self_nanos.iter().sum();
+    let mut rows: Vec<usize> = (0..EXPR_VARIANT_COUNT)
+        .filter(|&i| prof.counts[i] > 0)
+        .collect();
+    rows.sort_by(|&a, &b| prof.self_nanos[b].cmp(&prof.self_nanos[a]));
+    eprintln!(
+        "[live-read-eval-profile] {} node-evals, {:.0}ms self-time total",
+        total_count,
+        total_ns as f64 / 1.0e6
+    );
+    for i in rows.into_iter().take(12) {
+        eprintln!(
+            "  {:<20} {:>10} evals  {:>9.0}ms self  {:>9.0}ns/eval",
+            expr_variant_name(i),
+            prof.counts[i],
+            prof.self_nanos[i] as f64 / 1.0e6,
+            prof.self_nanos[i] as f64 / prof.counts[i].max(1) as f64
+        );
+    }
+}
+
 fn dump_residual_hunt_instrumentation() {
     let mut sites = v1_interpreter::flatten_by_site_snapshot();
     sites.sort_by(|a, b| b.3.cmp(&a.3));
@@ -20775,6 +21990,23 @@ fn proc_status_kb_field(prefix: &str) -> Option<u64> {
     Some(kb.saturating_mul(1024))
 }
 
+/// Process CPU time (user + system) in milliseconds, via `getrusage(RUSAGE_SELF)`.
+///
+/// Reported beside wall time because the two answer different questions on a shared runner: wall
+/// includes time this process spent descheduled behind co-resident jobs, so a wall figure alone
+/// cannot distinguish "this producer is expensive" from "this fleet host was busy". A cost claim
+/// that cannot tell those apart is not a measurement.
+pub fn process_cpu_millis() -> Option<u64> {
+    let mut ru: libc::rusage = unsafe { std::mem::zeroed() };
+    // SAFETY: `ru` is a live, fully-owned zeroed `rusage`; `getrusage` only writes it.
+    let rc = unsafe { libc::getrusage(libc::RUSAGE_SELF, &mut ru) };
+    if rc != 0 {
+        return None;
+    }
+    let ms = |sec: i64, usec: i64| (sec as u64).saturating_mul(1000) + (usec as u64) / 1000;
+    Some(ms(ru.ru_utime.tv_sec, ru.ru_utime.tv_usec) + ms(ru.ru_stime.tv_sec, ru.ru_stime.tv_usec))
+}
+
 /// Current resident set from `/proc/self/status` VmRSS, in bytes.
 pub fn current_rss_bytes() -> Option<u64> {
     proc_status_kb_field("VmRSS")
@@ -22529,6 +23761,15 @@ pub fn measure_selected_entry_closure_overlap(
         }
     }
 
+    // The same complete-roster context the executor builds — this measurement must answer from
+    // the production predicate, not a second one that could drift from it.
+    // OFFLINE WHOLE-POPULATION MEASUREMENT, classified deliberately rather than left to look
+    // like a production caller that escaped the plan. This function measures closure overlap over
+    // the WHOLE roster and is not on the ordinary floor's decision path, so it wants every row
+    // classified -- the candidate filter would change what it measures, not just what it costs.
+    // It pays the full population price knowingly and must never be reached from the floor.
+    let live_read_selection = LiveReadSelectionPlan::build(&rows, &index, &diff_edits, &[])?;
+
     let mut selected_entries = Vec::new();
     let mut skipped_entries = Vec::new();
     for (entry, reads_live_tree) in &entries {
@@ -22536,6 +23777,8 @@ pub fn measure_selected_entry_closure_overlap(
             true,
             *reads_live_tree,
             entry,
+            &index,
+            Some(&live_read_selection),
             &index.module_graph_facts,
             &declared_paths,
             &changed_paths,
@@ -24668,25 +25911,39 @@ mod effect_reach_host_sink_markers_drift_gate_tests {
 }
 
 /// Precompute-grain count for axis (iv): the number of distinct entries among `rows` whose
-/// import closure reaches a declared live-read carrier home
-/// (`runtime_data_dependency_touched_via_carrier_closure`), given the full raw touched-path
-/// set. Feeds `floor_row_precompute_would_skip`'s `touched_runtime_dependency_entry_count` —
-/// nonzero pins the whole-tree precompute exactly as the other three axes do.
+/// enrolled declarations have a classified runtime read the diff touches, given the full raw
+/// touched-path set. Feeds `floor_row_precompute_would_skip`'s
+/// `touched_runtime_dependency_entry_count` — nonzero pins the whole-tree precompute exactly as
+/// the other three axes do.
+///
+/// This is the precompute half of the parity requirement, and it is parity by CONSTRUCTION: it
+/// counts entries by calling the same `runtime_dependency_touched_for_entry` the per-row path
+/// decides with, so the two cannot answer differently. Counting through a second implementation
+/// is what made the retired predicate survive its own replacement — the precompute kept a copy.
+///
+/// A refusal propagates rather than being counted as untouched: an entry whose classification
+/// could not be established is not an entry with no runtime read.
 fn discovery_rows_runtime_dependency_touched_count(
     rows: &[DiscoveryRow],
-    facts: &ModuleGraphFactsLive,
+    index: &MultiEntryIndex,
+    plan: &LiveReadSelectionPlan,
     touched_paths: &[String],
-) -> usize {
+) -> Result<usize, String> {
     if touched_paths.is_empty() {
-        return 0;
+        return Ok(0);
     }
     let mut seen: HashSet<&str> = HashSet::new();
-    rows.iter()
-        .filter(|row| seen.insert(row.entry.as_str()))
-        .filter(|row| {
-            runtime_data_dependency_touched_via_carrier_closure(&row.entry, facts, touched_paths)
-        })
-        .count()
+    let mut count = 0usize;
+    for row in rows.iter().filter(|row| seen.insert(row.entry.as_str())) {
+        // Through the PLAN, so an `AlreadySelected` entry answers true from its own cause
+        // rather than being asked a question the candidate context deliberately cannot answer.
+        // The count keeps its original denominator -- every roster entry -- while no excluded
+        // entry is ever queried for a classification it does not have.
+        if plan.entry_must_run(index, &row.entry, touched_paths)? {
+            count += 1;
+        }
+    }
+    Ok(count)
 }
 
 /// Skip-before-resolve fast path (affected-set precompute-pruning Step 4 consumer-2):
@@ -24703,7 +25960,70 @@ fn discovery_rows_runtime_dependency_touched_count(
 // Step 5 (`docs/plans/affected-set-precompute-pruning.md`) when the Rust parallel
 // (`NodeFrontierSeeds`, `run_discovery_rows` selection) is deleted and the `.dag`
 // `floor_witness_run_disposition` query owns the same predicate end-to-end.
-fn entry_qualifies_for_skip_without_resolve(
+/// Is this entry already forced to run by an axis that is NOT the live-read classification?
+///
+/// Factored out of `entry_qualifies_for_skip_without_resolve` so "already decided" has one
+/// definition rather than a second copy that could drift from the predicate it is supposed to
+/// mirror. Drift here would not be cosmetic: this decides which rows are classified at all, so a
+/// copy that forgot an axis would classify rows needlessly (cost), and one that invented an axis
+/// would withhold a classification a consumer then asks for (a refusal at lookup).
+///
+/// Deliberately excludes the G2 axis. That is the whole point -- it answers "can a live-read
+/// verdict still change this row's outcome", and the answer is no exactly when some other axis
+/// has already said "do not skip".
+
+/// Why an entry is already forced to run, without consulting the live-read classification.
+///
+/// A typed cause rather than a `bool` because the answer is consumed in two different ways: the
+/// plan uses it to decide whether to CLASSIFY a row, and post-resolve accounting uses it to say
+/// why the runtime axis was never evaluated. A Boolean forces the second consumer to either
+/// re-derive the reason or fabricate `touched = false`, and "false" would be a claim about the
+/// runtime axis that nothing evaluated.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CheapAxisCause {
+    ReadsLiveTree,
+    EditedTestFn,
+    EntryFileTouched,
+    ImportClosureTouched,
+    DeclaredSourceRefs,
+    EffectReach,
+    CompileCleanStopLine,
+    OverlappingDataItems,
+}
+
+impl CheapAxisCause {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            CheapAxisCause::ReadsLiveTree => "ReadsLiveTree",
+            CheapAxisCause::EditedTestFn => "EditedTestFn",
+            CheapAxisCause::EntryFileTouched => "EntryFileTouched",
+            CheapAxisCause::ImportClosureTouched => "ImportClosureTouched",
+            CheapAxisCause::DeclaredSourceRefs => "DeclaredSourceRefs",
+            CheapAxisCause::EffectReach => "EffectReach",
+            CheapAxisCause::CompileCleanStopLine => "CompileCleanStopLine",
+            CheapAxisCause::OverlappingDataItems => "OverlappingDataItems",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CheapAxisDisposition {
+    NotBlocked,
+    Blocked { cause: CheapAxisCause },
+}
+
+/// Is this entry already forced to run by an axis that is NOT the live-read classification?
+///
+/// THE ONE AUTHORITY. Both production selection predicates call this rather than repeating the
+/// chain, because the filter that decides which rows are CLASSIFIED and the predicate that
+/// decides whether a row RUNS have to agree exactly: a row the filter excludes but the predicate
+/// later asks about produces `LiveReadEntryAbsent`, and a row the filter keeps needlessly
+/// restores the cost the filter exists to remove. Two independently writable copies of one
+/// disjunction is that disagreement waiting to be authored.
+///
+/// Deliberately excludes the G2 axis -- it answers "can a live-read verdict still change this
+/// row's outcome", and the answer is no exactly when some other axis has already decided.
+fn entry_blocked_by_cheap_axes(
     entry_path: &str,
     reads_live_tree: bool,
     facts: &ModuleGraphFactsLive,
@@ -24711,27 +26031,24 @@ fn entry_qualifies_for_skip_without_resolve(
     touched_entry_paths: &[String],
     stop_line_changed_paths: &[String],
     diff_edits: &FloorDiffEdits,
-) -> Result<bool, String> {
-    // Fail-closed on the substrate-declared disposition (v2.std.live_tree): a
-    // `ReadsLiveTree` entry never predict-skips. Replaces the deleted entry-text
-    // classifier's per-function `witness_test_fn_uses_live_host_scan` scan; the
-    // disposition is entry-grain, so one flag decides the whole entry.
+) -> Result<CheapAxisDisposition, String> {
+    let blocked = |cause: CheapAxisCause| Ok(CheapAxisDisposition::Blocked { cause });
     if reads_live_tree {
-        return Ok(false);
+        return blocked(CheapAxisCause::ReadsLiveTree);
     }
     if diff_edits
         .edited_test_fns
         .iter()
         .any(|(file, _)| diff_file_matches_entry(file, entry_path))
     {
-        return Ok(false);
+        return blocked(CheapAxisCause::EditedTestFn);
     }
     if diff_edits
         .touched_entry_files
         .iter()
         .any(|file| diff_file_matches_entry(file, entry_path))
     {
-        return Ok(false);
+        return blocked(CheapAxisCause::EntryFileTouched);
     }
     if entry_file_touched_via_import_closure(
         entry_path,
@@ -24739,10 +26056,7 @@ fn entry_qualifies_for_skip_without_resolve(
         declared_paths,
         touched_entry_paths,
     )? {
-        return Ok(false);
-    }
-    if runtime_data_dependency_touched_via_carrier_closure(entry_path, facts, touched_entry_paths) {
-        return Ok(false);
+        return blocked(CheapAxisCause::ImportClosureTouched);
     }
     let declared_axis = declared_source_refs_axis_for_entry(
         entry_path,
@@ -24752,13 +26066,13 @@ fn entry_qualifies_for_skip_without_resolve(
     );
     if declared_axis != DeclaredSourceRefAxis::Absent {
         if declared_source_refs_blocks_skip(declared_axis) {
-            return Ok(false);
+            return blocked(CheapAxisCause::DeclaredSourceRefs);
         }
     } else if effect_reach_touched_via_path_literals(entry_path, facts, touched_entry_paths) {
-        return Ok(false);
+        return blocked(CheapAxisCause::EffectReach);
     }
     if compile_clean_broad_stop_line_blocks_skip(entry_path, stop_line_changed_paths) {
-        return Ok(false);
+        return blocked(CheapAxisCause::CompileCleanStopLine);
     }
     if !diff_edits.overlapping_data_items.is_empty() {
         let data_item_files: Vec<String> = diff_edits
@@ -24774,14 +26088,235 @@ fn entry_qualifies_for_skip_without_resolve(
             declared_paths,
             &data_item_files,
         )? {
-            return Ok(false);
+            return blocked(CheapAxisCause::OverlappingDataItems);
         }
+    }
+    Ok(CheapAxisDisposition::NotBlocked)
+}
+
+/// What a consumer must do about one entry's live-read axis.
+#[derive(Debug, Clone)]
+pub enum LiveReadDemand {
+    /// An independent axis already forced this entry to run, so G2 was never asked. Consumers
+    /// must NOT query the candidate context for it -- absence is by construction, not a gap.
+    AlreadySelected { cause: CheapAxisCause },
+    /// G2 can still change this entry's verdict, so it is in the candidate context.
+    NeedsClassification,
+}
+
+/// The selection plan: which entries need a live-read verdict, and the classifications for
+/// exactly those.
+///
+/// Exists because a bare sparse context cannot distinguish two states that share one
+/// representation -- "absent because another axis already decided" and "absent because the
+/// classification is unexpectedly missing" -- and those have opposite remedies. The first is
+/// correct and must be silent; the second must refuse. With only a context, every consumer sees
+/// `LiveReadEntryAbsent` for both, which is why filtering the context alone moved the failure
+/// rather than fixing it.
+#[derive(Debug, Clone)]
+pub struct LiveReadSelectionPlan {
+    demand_by_entry: HashMap<String, LiveReadDemand>,
+    classified: LiveReadSelectionContext,
+}
+
+impl LiveReadSelectionPlan {
+    fn build(
+        rows: &[DiscoveryRow],
+        index: &MultiEntryIndex,
+        diff_edits: &FloorDiffEdits,
+        changed_paths: &[String],
+    ) -> Result<Self, String> {
+        let declared_paths = index.module_graph_facts.declared_repo_paths();
+        let touched: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
+        let mut demand_by_entry: HashMap<String, LiveReadDemand> = HashMap::new();
+        let mut candidates: Vec<DiscoveryRow> = Vec::new();
+        for row in rows {
+            let entry = workspace_relative_repo_path(&row.entry);
+            let disposition = entry_blocked_by_cheap_axes(
+                &row.entry,
+                row.reads_live_tree,
+                &index.module_graph_facts,
+                &declared_paths,
+                &touched,
+                changed_paths,
+                diff_edits,
+            )?;
+            match disposition {
+                CheapAxisDisposition::Blocked { cause } => {
+                    demand_by_entry.insert(entry, LiveReadDemand::AlreadySelected { cause });
+                }
+                CheapAxisDisposition::NotBlocked => {
+                    demand_by_entry.insert(entry, LiveReadDemand::NeedsClassification);
+                    candidates.push(row.clone());
+                }
+            }
+        }
+        eprintln!(
+            "[live-read-candidates] roster_rows={} candidate_rows={} excluded_by_cheap_axes={} \
+             (excluded rows are already forced to run by an independent axis, so a G2 answer \
+             cannot change their verdict; counted rather than silently narrowed)",
+            rows.len(),
+            candidates.len(),
+            rows.len().saturating_sub(candidates.len())
+        );
+        Ok(Self {
+            demand_by_entry,
+            classified: LiveReadSelectionContext::build(index, &candidates)?,
+        })
+    }
+}
+
+/// Build the selection plan ONCE PER INDEX, which is the grain the plan's subject actually has.
+///
+/// `LiveReadSelectionPlan::build` folds the COMPLETE roster through the cheap axes and then
+/// classifies the survivors. Its inputs -- roster, index, diff, changed paths -- do not vary
+/// across the entry groups one worker processes, so building it inside the per-group call
+/// recomputed one invariant answer once per group: 719 rebuilds in the run that produced this
+/// function, each reporting the identical `roster_rows=8563 candidate_rows=91`.
+///
+/// It is per-INDEX rather than per-run because a manifest carries the subject of the index that
+/// produced it, and each width>1 worker builds its own `MultiEntryIndex`; handing a worker the
+/// main thread's plan would refuse on subject mismatch at every lookup, correctly. Per-index is
+/// therefore the strongest sharing the subject identity permits, and this is the only production
+/// site that builds one -- so the per-group rebuild is not merely fixed, it is unwritable from
+/// `run_discovery_rows`, which no longer receives the roster it would need.
+/// Built whenever selection is on at all -- PredictOnly included. The falsifier runs PredictOnly
+/// and counts divergences between the prediction and the cold result, so a prediction computed
+/// from a different predicate than the applied one would make the falsifier measure the wrong
+/// thing: it would count agreement with a retired answer.
+///
+/// ONLY THE ROWS WHOSE VERDICT G2 CAN STILL CHANGE. Selection is a disjunction of independent
+/// "do not skip" axes, and every axis except this one is a fact lookup over already-built graph
+/// facts. A row a cheap axis has already forced to run cannot have its verdict changed by a
+/// live-read classification, so classifying it is pure cost -- and, with the classifier as an
+/// eager prerequisite, cost paid before the first discovery row can execute. The measured shape
+/// of that mistake: 6 rows executed in the 55-minute window against main's 4728, with no
+/// completion receipt to say why.
+///
+/// The candidate filter is a COST reduction, not a semantic one: it uses the same predicates in
+/// the same disjunction, so an entry excluded is one already decided by an axis this
+/// classification cannot overturn.
+fn live_read_selection_plan_for_index(
+    selection: NodeFrontierSelectionMode,
+    roster: &[DiscoveryRow],
+    index: &MultiEntryIndex,
+    diff_edits: &FloorDiffEdits,
+    changed_paths: &[String],
+) -> Result<Option<LiveReadSelectionPlan>, String> {
+    if selection == NodeFrontierSelectionMode::Off {
+        return Ok(None);
+    }
+    Ok(Some(LiveReadSelectionPlan::build(
+        roster,
+        index,
+        diff_edits,
+        changed_paths,
+    )?))
+}
+
+impl LiveReadSelectionPlan {
+    /// FIXTURE CONSTRUCTOR: a plan whose entries are all candidates, classified directly.
+    ///
+    /// `cfg(test)` so it cannot become a production route that mints demands without deriving
+    /// them from the cheap axes -- that would be a way to author "this row needs classifying"
+    /// beside a classification, which is the shape of forgery this plan exists to prevent.
+    /// Fixtures legitimately want every declaration classified, because their rosters ARE the
+    /// subject under test.
+    #[cfg(test)]
+    fn for_declarations_fixture(
+        index: &MultiEntryIndex,
+        declarations: &[(&str, &str)],
+    ) -> Result<Self, String> {
+        let mut demand_by_entry = HashMap::new();
+        for (entry, _) in declarations {
+            demand_by_entry.insert(
+                workspace_relative_repo_path(entry),
+                LiveReadDemand::NeedsClassification,
+            );
+        }
+        Ok(Self {
+            demand_by_entry,
+            classified: live_read_context_for_declarations(index, declarations)?,
+        })
+    }
+
+    /// What this entry's live-read axis demands. An entry the plan never saw REFUSES: that is a
+    /// genuine gap, and it is exactly the state the sparse context could not tell apart from a
+    /// deliberate exclusion.
+    pub fn demand_for(&self, entry_path: &str) -> Result<&LiveReadDemand, String> {
+        let entry = workspace_relative_repo_path(entry_path);
+        self.demand_by_entry.get(&entry).ok_or_else(|| {
+            format!(
+                "AFFECTED-SET REFUSAL cause=LiveReadEntryNotPlanned entry={entry} — the entry was                  not in the roster this plan was derived from, so neither its cheap-axis                  disposition nor its classification is known. This is a real gap, distinct from                  an entry deliberately excluded because another axis already decided it."
+            )
+        })
+    }
+
+    /// The candidate classifications. Only valid for entries whose demand is
+    /// `NeedsClassification`.
+    pub fn classified(&self) -> &LiveReadSelectionContext {
+        &self.classified
+    }
+
+    /// Does this entry's runtime axis force it to run? `AlreadySelected` answers true WITHOUT
+    /// consulting G2 -- the entry is forced, and the runtime axis was never evaluated, so this
+    /// is the honest do-not-skip answer rather than a fabricated classification.
+    pub fn entry_must_run(
+        &self,
+        index: &MultiEntryIndex,
+        entry_path: &str,
+        touched_paths: &[String],
+    ) -> Result<bool, String> {
+        match self.demand_for(entry_path)? {
+            LiveReadDemand::AlreadySelected { .. } => Ok(true),
+            LiveReadDemand::NeedsClassification => self
+                .classified
+                .runtime_dependency_touched_for_entry(index, entry_path, touched_paths),
+        }
+    }
+}
+
+fn entry_qualifies_for_skip_without_resolve(
+    entry_path: &str,
+    reads_live_tree: bool,
+    index: &MultiEntryIndex,
+    plan: &LiveReadSelectionPlan,
+    facts: &ModuleGraphFactsLive,
+    declared_paths: &HashSet<String>,
+    touched_entry_paths: &[String],
+    stop_line_changed_paths: &[String],
+    diff_edits: &FloorDiffEdits,
+) -> Result<bool, String> {
+    // ONE AUTHORITY FOR THE CHEAP AXES. This predicate used to repeat the whole disjunction
+    // inline, which made the filter that decides WHICH ROWS ARE CLASSIFIED and the predicate
+    // that decides WHETHER A ROW RUNS two independently writable copies of one rule. They only
+    // have to disagree once: a row the filter drops but this predicate asks about produces
+    // LiveReadEntryAbsent, and a row the filter keeps needlessly restores the cost it exists to
+    // remove.
+    if entry_blocked_by_cheap_axes(
+        entry_path,
+        reads_live_tree,
+        facts,
+        declared_paths,
+        touched_entry_paths,
+        stop_line_changed_paths,
+        diff_edits,
+    )? != CheapAxisDisposition::NotBlocked
+    {
+        return Ok(false);
+    }
+    // G2 LAST, and through the plan: an entry the cheap axes cleared is a candidate by
+    // construction, so this is the one place the classification is genuinely consulted.
+    if plan.entry_must_run(index, entry_path, touched_entry_paths)? {
+        return Ok(false);
     }
     Ok(true)
 }
 
 fn discovery_entry_fast_skip_without_resolve(
     rows: &[DiscoveryRow],
+    index: &MultiEntryIndex,
+    plan: &LiveReadSelectionPlan,
     facts: &ModuleGraphFactsLive,
     declared_paths: &HashSet<String>,
     touched_entry_paths: &[String],
@@ -24800,6 +26335,8 @@ fn discovery_entry_fast_skip_without_resolve(
         if entry_qualifies_for_skip_without_resolve(
             &entry,
             reads_live_tree,
+            index,
+            plan,
             facts,
             declared_paths,
             touched_entry_paths,
@@ -25707,12 +27244,31 @@ fn run_discovery_corpus_with_options_inner(
         let live_row_count = discovery_rows_live_tree_count(&rows);
         match floor_runner_ctx.as_ref() {
             Some(ctx) => {
+                // Candidates only. This was the site that made the whole roster a prerequisite:
+                // it built the context from every row on the theory that it primed a memo for
+                // later decisions. The memo is per-declaration and incremental, so nothing
+                // downstream depends on being primed here, and the complete-roster build is what
+                // put 8538 requests into one classification that never returned.
+                let plan =
+                    LiveReadSelectionPlan::build(&rows, &index, &diff_edits, &changed_paths)?;
+                // CANDIDATES HERE TOO. This consumer asks the view about each row, so handing
+                // it the complete roster asks about rows the view was deliberately not built
+                // for -- which is a LiveReadEntryAbsent refusal, and is exactly how the first
+                // filtered run failed. The short-circuit that makes exclusion safe has to hold
+                // at every consumer, not only at the predicates.
+                //
+                // The count's meaning narrows accordingly, and stating it is the point: it is
+                // now "among entries whose verdict a live-read answer can still change, how many
+                // have a touched runtime dependency". Excluded entries are not uncounted -- they
+                // are already forced to run by the axis that excluded them, so counting them
+                // here would be counting one entry under two axes.
                 let touched_runtime_dependency_entry_count =
                     discovery_rows_runtime_dependency_touched_count(
                         &rows,
-                        &index.module_graph_facts,
+                        &index,
+                        &plan,
                         &changed_paths,
-                    );
+                    )?;
                 let precompute = call_floor_row_precompute_would_skip(
                     ctx,
                     live_row_count,
@@ -25764,13 +27320,19 @@ fn run_discovery_corpus_with_options_inner(
         if options.node_frontier_selection == NodeFrontierSelectionMode::Applied {
             let declared_paths = index.module_graph_facts.declared_repo_paths();
             let touched: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
-            match discovery_entry_fast_skip_without_resolve(
-                &rows,
-                &index.module_graph_facts,
-                &declared_paths,
-                &touched,
-                &changed_paths,
-                &diff_edits,
+            match LiveReadSelectionPlan::build(&rows, &index, &diff_edits, &changed_paths).and_then(
+                |plan| {
+                    discovery_entry_fast_skip_without_resolve(
+                        &rows,
+                        &index,
+                        &plan,
+                        &index.module_graph_facts,
+                        &declared_paths,
+                        &touched,
+                        &changed_paths,
+                        &diff_edits,
+                    )
+                },
             ) {
                 Ok(_) => None,
                 Err(e) => Some(e),
@@ -25803,8 +27365,16 @@ fn run_discovery_corpus_with_options_inner(
             // Arm retention over the WHOLE serial schedule (all rows) before the single drain
             // call — a shared module stays resident until its last scheduled entry consumes it.
             index_arm_schedule_retention(&index, &rows);
+            let live_read_plan = live_read_selection_plan_for_index(
+                options.node_frontier_selection,
+                &rows,
+                &index,
+                &diff_edits,
+                &changed_paths,
+            )?;
             let summary = run_discovery_rows(
                 &rows,
+                live_read_plan.as_ref(),
                 &index,
                 execution_mode,
                 options.node_frontier_selection,
@@ -25899,6 +27469,11 @@ fn run_discovery_corpus_with_options_inner(
                 let seeds = diff_edits.clone();
                 let paths = changed_paths.clone();
                 let keys = whole_tree_published_keys.clone();
+                // The COMPLETE roster, not this worker's chunk: the worker builds its own index
+                // and therefore its own manifest, and that manifest must cover every entry the
+                // run will decide — priming it from `group_rows` would classify one group and
+                // refuse the rest.
+                let roster_for_worker = rows.clone();
                 let store = cross_worker_store.clone();
                 let arm_shared_for_worker = arm_shared_store;
                 let style = ShardStyle {
@@ -25937,6 +27512,16 @@ fn run_discovery_corpus_with_options_inner(
                         } else {
                             None
                         };
+                        // ONCE PER WORKER, because that is once per index: this worker built its
+                        // own `index` above and every group it dequeues below shares it. Building
+                        // inside the loop recomputed one invariant answer per group.
+                        let live_read_plan = live_read_selection_plan_for_index(
+                            selection_for_workers,
+                            &roster_for_worker,
+                            &index,
+                            &seeds,
+                            &paths,
+                        )?;
                         let mut worker_summaries = Vec::new();
                         loop {
                             if abort_for_worker.load(Ordering::SeqCst) {
@@ -25948,6 +27533,7 @@ fn run_discovery_corpus_with_options_inner(
                             };
                             match run_discovery_rows(
                                 &group_rows,
+                                live_read_plan.as_ref(),
                                 &index,
                                 execution_mode,
                                 selection_for_workers,
@@ -26071,6 +27657,14 @@ fn run_discovery_corpus_with_options_inner(
                 let p1_cohort_detail = p1_cohort_receipt_enabled();
                 let mut p1_cohort_seen_subjects: std::collections::HashSet<String> =
                     std::collections::HashSet::new();
+                // ONCE for this index, not once per group.
+                let live_read_plan = live_read_selection_plan_for_index(
+                    options.node_frontier_selection,
+                    &rows,
+                    &index,
+                    &diff_edits,
+                    &changed_paths,
+                )?;
                 for (group_idx, group_indices) in groups.into_iter().enumerate() {
                     let group_rows: Vec<DiscoveryRow> =
                         group_indices.iter().map(|&i| rows[i].clone()).collect();
@@ -26082,6 +27676,7 @@ fn run_discovery_corpus_with_options_inner(
                     let typecheck_misses_before = p1_cohort_detail.then(typecheck_compute_count);
                     let summary = run_discovery_rows(
                         &group_rows,
+                        live_read_plan.as_ref(),
                         &index,
                         execution_mode,
                         options.node_frontier_selection,
@@ -26218,6 +27813,11 @@ fn run_discovery_corpus_with_options_inner(
                 let seeds = diff_edits.clone();
                 let paths = changed_paths.clone();
                 let keys = whole_tree_published_keys.clone();
+                // The COMPLETE roster, not this worker's chunk: the worker builds its own index
+                // and therefore its own manifest, and that manifest must cover every entry the
+                // run will decide — priming it from `group_rows` would classify one group and
+                // refuse the rest.
+                let roster_for_worker = rows.clone();
                 let spawn_target_width = governor.current_target_width();
                 let cross_worker_store_for_worker = if spawn_target_width > 1 {
                     Some(cross_worker_store.clone())
@@ -26279,6 +27879,16 @@ fn run_discovery_corpus_with_options_inner(
                         // The front-loaded admission cost (index build + runner resolve) has
                         // landed and is visible to the creep signals: unblock admission pacing.
                         slot.note_first_cost_paid();
+                        // ONCE PER WORKER, because that is once per index: this worker built its
+                        // own `index` above and every group it dequeues below shares it. Building
+                        // inside the loop recomputed one invariant answer per group.
+                        let live_read_plan = live_read_selection_plan_for_index(
+                            selection_for_workers,
+                            &roster_for_worker,
+                            &index,
+                            &seeds,
+                            &paths,
+                        )?;
                         let mut worker_summaries = Vec::new();
                         loop {
                             // Multiplicative decrease drains here: a worker between groups retires
@@ -26294,6 +27904,7 @@ fn run_discovery_corpus_with_options_inner(
                             };
                             match run_discovery_rows(
                                 &group_rows,
+                                live_read_plan.as_ref(),
                                 &index,
                                 execution_mode,
                                 selection_for_workers,
@@ -26529,15 +28140,26 @@ fn eprintln_affected_set_categorization(
         NodeFrontierSelectionMode::Applied => {
             let declared_paths = index.module_graph_facts.declared_repo_paths();
             let touched: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
-            let skipped = discovery_entry_fast_skip_without_resolve(
-                rows,
-                &index.module_graph_facts,
-                &declared_paths,
-                &touched,
-                changed_paths,
-                diff_edits,
-            )
-            .map(|fast| rows.iter().filter(|r| fast.contains(&r.entry)).count());
+            // THROUGH THE PLAN, not a second full-roster build. This narration site is the
+            // one the review caught still constructing from the complete roster: it could
+            // independently recreate the 8538-request classification the execution sites had
+            // just stopped making, moving the stall from one consumer to another rather than
+            // removing it. A refusal here is carried into the count so the line reports the
+            // refusal rather than a number derived from a partial answer.
+            let skipped = LiveReadSelectionPlan::build(rows, index, diff_edits, changed_paths)
+                .and_then(|plan| {
+                    discovery_entry_fast_skip_without_resolve(
+                        rows,
+                        index,
+                        &plan,
+                        &index.module_graph_facts,
+                        &declared_paths,
+                        &touched,
+                        changed_paths,
+                        diff_edits,
+                    )
+                    .map(|fast| rows.iter().filter(|r| fast.contains(&r.entry)).count())
+                });
             // The baseline is read back ONLY in the state that needs locating, so the
             // ordinary path pays nothing for it.
             let located = changed_paths
@@ -27161,6 +28783,17 @@ fn execute_frozen_discovery_entries(
 #[allow(clippy::too_many_arguments)]
 fn run_discovery_rows(
     rows: &[DiscoveryRow],
+    // The plan for THIS index, built once by `live_read_selection_plan_for_index` at the site
+    // that builds the index. It arrives prebuilt rather than as the complete roster this
+    // function used to fold itself: the inputs are invariant across the entry groups a worker
+    // processes, so building here recomputed one answer once per group. Taking the plan instead
+    // of the roster is what makes that rebuild unwritable from here — the roster it would need
+    // is no longer in scope.
+    //
+    // Still per-index and never per-run: a manifest carries the subject of the index that
+    // produced it, each width>1 worker builds its OWN `MultiEntryIndex`, and handing a worker
+    // the main thread's plan would refuse on subject mismatch at every lookup, correctly.
+    live_read_selection: Option<&LiveReadSelectionPlan>,
     index: &MultiEntryIndex,
     execution_mode: v1_interpreter::ExecutionMode,
     selection: NodeFrontierSelectionMode,
@@ -27242,8 +28875,15 @@ fn run_discovery_rows(
     let touched_entry_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
     let whole_tree_published_keys = whole_tree_published_keys.map(Rc::new);
     let entry_fast_skip = if selection == NodeFrontierSelectionMode::Applied {
+        let live = live_read_selection.ok_or_else(|| {
+            "AFFECTED-SET REFUSAL cause=LiveReadContextAbsent — selection is Applied but no \
+             live-read selection context was built."
+                .to_string()
+        })?;
         discovery_entry_fast_skip_without_resolve(
             rows,
+            index,
+            live,
             &index.module_graph_facts,
             &module_graph_declared_paths,
             &touched_entry_paths,
@@ -27328,6 +28968,8 @@ fn run_discovery_rows(
                 skip_enabled,
                 row.reads_live_tree,
                 &row.entry,
+                index,
+                live_read_selection,
                 &index.module_graph_facts,
                 &module_graph_declared_paths,
                 changed_paths,
@@ -27354,6 +28996,7 @@ fn run_discovery_rows(
             } else {
                 let resolved = resolve_discovery_entry_for_corpus_row(
                     index,
+                    live_read_selection,
                     &row.entry,
                     execution_mode,
                     whole_tree_published_keys.clone(),
@@ -27461,6 +29104,7 @@ fn run_discovery_rows(
         if ctx.is_none() {
             let resolved = resolve_discovery_entry_for_corpus_row(
                 index,
+                live_read_selection,
                 &row.entry,
                 execution_mode,
                 whole_tree_published_keys.clone(),
@@ -28103,29 +29747,30 @@ new file mode 100644
         );
     }
 
-    #[test]
-    fn import_closure_carrier_home_matches_submodules() {
-        use std::collections::HashSet;
-
-        let carrier = "v2.compiler.self_host";
-        let mut exact = HashSet::from([carrier.to_string()]);
-        assert!(super::import_closure_module_reaches_carrier_home(
-            &exact, carrier
-        ));
-        let mut submodule = HashSet::from(["v2.compiler.self_host.frontier".to_string()]);
-        assert!(super::import_closure_module_reaches_carrier_home(
-            &submodule, carrier
-        ));
-        let mut homonym = HashSet::from(["v2.compiler.self_hostile".to_string()]);
-        assert!(!super::import_closure_module_reaches_carrier_home(
-            &homonym, carrier
-        ));
-    }
-
+    // The stamp-honesty census, re-expressed on the authority that now DECIDES selection.
+    //
+    // Its subject is unchanged: a `*_test.dag` entry stamped SubstrateInputsOnly whose code
+    // actually reads the live tree carries a lying stamp, and the stamp is the earlier
+    // fail-closed axis (`reads_live_tree` never predict-skips). What changed is the evidence.
+    // The retired form asked whether the entry's IMPORT CLOSURE reached a hand-listed carrier
+    // home — the G1 question, which over-reports by reachability and needed a second Rust roster
+    // to ask at all. This asks the classification authority directly: does any declaration
+    // enrolled in the entry classify as a runtime read? That is call-reachability, it needs no
+    // mirrored constant, and it cannot drift from the predicate selection uses because it IS
+    // that predicate's manifest.
+    //
+    // A refusal is a census failure, not a pass. An entry whose classification could not be
+    // established has not been shown to be honestly stamped.
+    //
+    // SUBJECT CHANGE, stated rather than left to be noticed: the retired form walked every
+    // `*_test.dag` in the corpus with a parseable disposition, because an entry-grain import
+    // closure needs no declaration names. This one is declaration-grain, so its subject is the
+    // ENROLLED floor roster over the declared discovery scan dirs. A `*_test.dag` outside
+    // discovery is not covered here. It is also not selectable by the floor, so it sits outside
+    // the population the stamp governs — but the two subjects are not identical, and this is
+    // the difference.
     #[test]
     fn lying_substrate_inputs_only_stamp_census() {
-        use std::collections::HashSet;
-
         let ws = workspace_root();
         std::env::set_current_dir(&ws).expect("chdir workspace");
         let roots = vec![
@@ -28133,43 +29778,65 @@ new file mode 100644
             ws.join("dag").to_string_lossy().into_owned(),
         ];
         let index = super::build_multi_entry_index(&roots);
-        let mut lying: Vec<(String, String)> = Vec::new();
-        for (rel, content) in super::corpus_dag_files() {
-            if !super::is_test_dag(&rel) {
-                continue;
-            }
-            let Ok(reads_live_tree) = super::parse_entry_live_tree_disposition(&rel, &content)
-            else {
-                continue;
-            };
-            if reads_live_tree {
-                continue;
-            }
-            let mut closure_modules = HashSet::new();
-            super::collect_import_closure_module_names_from_facts(
-                &index,
-                &rel,
-                &mut closure_modules,
+        let rows =
+            // The floor's own declared scan dirs (`gunbc.ci_layer_roots`
+            // `witness_discovery_scan_dirs`), not a narrower hand-picked one — the census must
+            // not quietly cover less than the population the floor selects over.
+            super::discover_floor_witness_roster(
+                &roots,
+                &[
+                    "dag/test/claim".to_string(),
+                    "src/v2/test/claim/manual".to_string(),
+                    "src/v2/test/claim/emit".to_string(),
+                ],
+                &[],
+                &[],
             )
-            .expect("carrier census entry resolve");
-            for carrier in super::LIVE_READ_CARRIER_HOME_MODULES_V0 {
-                if super::import_closure_module_reaches_carrier_home(&closure_modules, carrier) {
-                    lying.push((rel.clone(), (*carrier).to_string()));
-                    break;
+            .expect("discover floor witness roster");
+        let live = super::LiveReadSelectionContext::build(&index, &rows)
+            .expect("build live-read selection context over the complete roster");
+
+        let mut lying: Vec<(String, String)> = Vec::new();
+        for row in &rows {
+            if row.reads_live_tree {
+                continue;
+            }
+            let entry = super::workspace_relative_repo_path(&row.entry);
+            match live
+                .row_for(&entry, &row.function)
+                .expect("classification for an enrolled declaration")
+            {
+                super::LiveReadSelectionRow::Classified(
+                    super::LiveReadClassification::RuntimeRead { carriers },
+                ) => {
+                    lying.push((
+                        format!("{entry}::{}", row.function),
+                        format!("{carriers:?}"),
+                    ));
                 }
+                super::LiveReadSelectionRow::Refused { cause } => {
+                    lying.push((
+                        format!("{entry}::{}", row.function),
+                        format!("classification refused: {cause}"),
+                    ));
+                }
+                super::LiveReadSelectionRow::Classified(
+                    super::LiveReadClassification::LocalRead,
+                ) => {}
             }
         }
         lying.sort();
         eprintln!(
-            "lying SubstrateInputsOnly stamps (G1 carrier closure): {}",
+            "lying SubstrateInputsOnly stamps (G2 call-reachability): {}",
             lying.len()
         );
-        for (entry, carrier) in &lying {
-            eprintln!("  {entry}  ->  {carrier}");
+        for (decl, why) in &lying {
+            eprintln!("  {decl}  ->  {why}");
         }
         assert!(
             lying.is_empty(),
-            "lying SubstrateInputsOnly stamps must be re-stamped ReadsLiveTree before merge"
+            "declarations stamped SubstrateInputsOnly that classify as runtime reads must be \
+             re-stamped ReadsLiveTree before merge"
         );
     }
 
@@ -29431,11 +31098,23 @@ mod node_frontier_plumbing_controls {
             floor_diff_edits_from_diff_text(&index, &diff).expect("seeds from outside-file diff");
         let declared = index.module_graph_facts.declared_repo_paths();
         let touched_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
+        // The fixture's own declarations are its complete roster.
+        let fixture_live = super::LiveReadSelectionPlan::for_declarations_fixture(
+            &index,
+            &[
+                (&fixture_abs, "floor_disc_witness_a_only_holds"),
+                (&fixture_abs, "floor_disc_witness_b_only_holds"),
+                (&fixture_abs, "floor_disc_witness_transitive_holds"),
+            ],
+        )
+        .expect("live-read selection context for the fixture roster");
         // Substrate-only fixture (reads_live_tree=false) → eligible when unaffected.
         assert!(
             super::entry_qualifies_for_skip_without_resolve(
                 &fixture_abs,
                 false,
+                &index,
+                &fixture_live,
                 &index.module_graph_facts,
                 &declared,
                 &touched_paths,
@@ -29465,10 +31144,21 @@ mod node_frontier_plumbing_controls {
             floor_diff_edits_from_diff_text(&index, &diff).expect("seeds from outside-file diff");
         let declared = index.module_graph_facts.declared_repo_paths();
         let touched_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
+        let fixture_live = super::LiveReadSelectionPlan::for_declarations_fixture(
+            &index,
+            &[
+                (&fixture_abs, "floor_disc_witness_a_only_holds"),
+                (&fixture_abs, "floor_disc_witness_b_only_holds"),
+                (&fixture_abs, "floor_disc_witness_transitive_holds"),
+            ],
+        )
+        .expect("live-read selection context for the fixture roster");
         assert!(
             !super::entry_qualifies_for_skip_without_resolve(
                 &fixture_abs,
                 true,
+                &index,
+                &fixture_live,
                 &index.module_graph_facts,
                 &declared,
                 &touched_paths,
@@ -30561,6 +32251,16 @@ mod node_frontier_plumbing_controls {
             floor_diff_edits_from_diff_text(&index, &diff).expect("seeds from outside-file diff");
         let declared = index.module_graph_facts.declared_repo_paths();
         let touched_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
+        // The fixture's own declarations are its complete roster.
+        let fixture_live = super::LiveReadSelectionPlan::for_declarations_fixture(
+            &index,
+            &[
+                (&fixture_abs, "floor_disc_witness_a_only_holds"),
+                (&fixture_abs, "floor_disc_witness_b_only_holds"),
+                (&fixture_abs, "floor_disc_witness_transitive_holds"),
+            ],
+        )
+        .expect("live-read selection context for the fixture roster");
         assert!(
             !super::effect_reach_touched_via_path_literals(
                 &fixture_abs,
@@ -30573,6 +32273,8 @@ mod node_frontier_plumbing_controls {
             super::entry_qualifies_for_skip_without_resolve(
                 &fixture_abs,
                 false,
+                &index,
+                &fixture_live,
                 &index.module_graph_facts,
                 &declared,
                 &touched_paths,
@@ -30596,11 +32298,27 @@ mod node_frontier_plumbing_controls {
         let diff_edits =
             floor_diff_edits_from_diff_text(&index, &diff).expect("seeds from outside-file diff");
         let declared = index.module_graph_facts.declared_repo_paths();
+        let fixture_live = super::LiveReadSelectionPlan::for_declarations_fixture(
+            &index,
+            &[
+                (
+                    &entry_abs,
+                    "self_host_03_normalize_behavioral_receipt_holds",
+                ),
+                (
+                    &entry_abs,
+                    "self_host_03_normalize_declared_source_refs_complete_holds",
+                ),
+            ],
+        )
+        .expect("live-read selection context for the 03_normalize witness roster");
         let touched = vec!["src/v2/compiler/03_normalize.dag".to_string()];
         assert!(
             !super::entry_qualifies_for_skip_without_resolve(
                 &entry_abs,
                 false,
+                &index,
+                &fixture_live,
                 &index.module_graph_facts,
                 &declared,
                 &touched,
@@ -30624,11 +32342,27 @@ mod node_frontier_plumbing_controls {
         let diff_edits =
             floor_diff_edits_from_diff_text(&index, &diff).expect("seeds from outside-file diff");
         let declared = index.module_graph_facts.declared_repo_paths();
+        let fixture_live = super::LiveReadSelectionPlan::for_declarations_fixture(
+            &index,
+            &[
+                (
+                    &entry_abs,
+                    "self_host_03_normalize_behavioral_receipt_holds",
+                ),
+                (
+                    &entry_abs,
+                    "self_host_03_normalize_declared_source_refs_complete_holds",
+                ),
+            ],
+        )
+        .expect("live-read selection context for the 03_normalize witness roster");
         let touched: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
         assert!(
             super::entry_qualifies_for_skip_without_resolve(
                 &entry_abs,
                 false,
+                &index,
+                &fixture_live,
                 &index.module_graph_facts,
                 &declared,
                 &touched,
@@ -30684,10 +32418,21 @@ mod node_frontier_plumbing_controls {
         );
         let declared = index.module_graph_facts.declared_repo_paths();
         let touched_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
+        let fixture_live = super::LiveReadSelectionPlan::for_declarations_fixture(
+            &index,
+            &[
+                (&fixture_abs, "floor_disc_witness_a_only_holds"),
+                (&fixture_abs, "floor_disc_witness_b_only_holds"),
+                (&fixture_abs, "floor_disc_witness_transitive_holds"),
+            ],
+        )
+        .expect("live-read selection context for the fixture roster");
         assert!(
             !super::entry_qualifies_for_skip_without_resolve(
                 &fixture_abs,
                 false,
+                &index,
+                &fixture_live,
                 &index.module_graph_facts,
                 &declared,
                 &touched_paths,
@@ -41553,8 +43298,18 @@ mod witness_layer_roots_compile_clean_tests {
                 reads_live_tree: false,
             };
             let declared = index.module_graph_facts.declared_repo_paths();
+            let shard_a_live = LiveReadSelectionPlan::for_declarations_fixture(
+                &index,
+                &[(
+                    COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY,
+                    "compile_clean_shard_a_exemplar_compile_green",
+                )],
+            )
+            .expect("live-read selection context for the shard_a roster");
             let fast_skip = discovery_entry_fast_skip_without_resolve(
                 &[shard_a_row],
+                &index,
+                &shard_a_live,
                 &index.module_graph_facts,
                 &declared,
                 &touched_entry_paths,

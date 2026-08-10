@@ -75,6 +75,7 @@ import std.witness_admission {
   FrozenBaselineDebtGrew,
   FrozenBaselineDebtStale
 }
+import std.dissolution { dissolution_description }
 
 fn schedule_row_matches(
   w: ScheduleWitnessEntry,
@@ -413,7 +414,7 @@ fn witness_exclusion_row_well_formed(row: WitnessExclusionRow) -> Bool {
     && !witness_exclusion_row_is_known_red(row: row)
     && !(row.pattern == "")
     && !(row.reason == "")
-    && !(row.dissolve_on == "")
+    && !(dissolution_description(condition: row.dissolution) == "")
     && (
       !witness_exclusion_row_is_no_consumer(row: row)
         || (row.pattern == witness_exclusion_no_consumer_control_pattern)

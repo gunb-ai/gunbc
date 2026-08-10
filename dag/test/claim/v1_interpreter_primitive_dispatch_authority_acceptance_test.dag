@@ -20,7 +20,7 @@ import gunbc.v1_interpreter_primitive_surface {
   FreeCall,
   MethodCall,
   ServiceDispatch,
-  arm_declares_dissolution_trigger,
+  arm_is_declared_here,
   v1_interpreter_authored_roster_arms,
   v1_interpreter_declared_arms,
   v1_interpreter_free_call_arms,
@@ -48,7 +48,7 @@ fn declared_residual_rows_retain_independent_dispositions() -> Bool {
     && count(expected |> filter(e => !actual |> any(s => s == e))) == 0
     && (v1_interpreter_declared_arms() |> all(r =>
       match r.enumeration {
-        DeclaredHere { dissolve_on: _ } => arm_declares_dissolution_trigger(arm: r)
+        DeclaredHere => arm_is_declared_here(arm: r)
         _ => false
       }))
     && (v1_interpreter_declared_arms() |> any(r => r.form == MethodCall))

@@ -9,6 +9,9 @@ use self::OccurrenceRole::*;
 use self::OccurrenceTransportRefusal::*;
 use self::OccurrenceTransportValidation::*;
 pub use crate::std_algebra::FreeMonoid;
+pub use crate::std_dissolution::unbound_dissolution;
+pub use crate::std_dissolution::DissolutionCondition;
+use crate::std_dissolution::DissolutionCondition::*;
 use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, SourceSpan};
 use crate::v1_rt;
@@ -36,15 +39,6 @@ pub fn authored_token_ordinal_typed_bridge_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn authored_token_ordinal_typed_bridge_dissolve_on() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "feature:occurrence-ordinal-value-measure — DISSOLVE-ON: std.nat converges on the modeled Nat inhabitant and Measure<Count, One, Nat> has a compiled faithful/HostNative serde projection; then replace the allocator-backed space payload with that canonical measure and delete both typed-bridge rows.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AuthoredTokenOrdinalSpace {
     pub allocator: OccurrenceIdAllocator,
@@ -60,15 +54,6 @@ pub fn authored_token_ordinal_value_bridge_note() -> String {
     thread_local! {
         static CACHED: String = {
             "AuthoredTokenOrdinal is the comparable source-order carrier (strictly-before gating for ModuleExposure). It is a bare Int brand today — not yet Measure<Count, One, Nat> — because the same feature:occurrence-ordinal-value-measure wall that gates AuthoredTokenOrdinalSpace still blocks a faithful HostNative measure projection. Single authority lives here beside AuthoredTokenOrdinalSpace; consumers import the brand, never re-mint a parallel Int wrapper.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn authored_token_ordinal_value_bridge_dissolve_on() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "feature:occurrence-ordinal-value-measure — DISSOLVE-ON: same trigger as authored_token_ordinal_typed_bridge_dissolve_on; replace AuthoredTokenOrdinal.value with Measure<Count, One, Nat> (or the converged Nat inhabitant) and delete both value-bridge rows with the space-bridge rows.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -99,15 +84,6 @@ pub fn occurrence_containment_storage_projection_note() -> String {
     thread_local! {
         static CACHED: String = {
             "OccurrenceContainmentPath is the concrete compact storage projection of std.occurrence_binding.ContainmentPath<OccurrenceId>. Generic stage0 emission of ContainmentPath<N> with #[derive] carriers needed v1.compiler.trait_derive_emit item-level Clone bounds (PR #7570); that emitter work is prerequisite but does not by itself dissolve this projection — std_occurrence_binding is not on the stage0 roster until PR #7515 lands and proves ContainmentPath<OccurrenceId> compiles there.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn occurrence_containment_storage_projection_dissolve_on() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "DISSOLVE-ON: PR #7515 lands std_occurrence_binding on the stage0 roster and proves ContainmentPath<OccurrenceId> compiles without supplemental derive bounds; then replace OccurrenceContainmentPath with std.occurrence_binding.ContainmentPath<OccurrenceId> across consumers and delete both storage-projection rows.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -945,6 +921,33 @@ pub fn occurrence_transport_refusal(
         } => Some(refusal.clone()),
         OccurrenceTransportValidation::OccurrenceTransportValidated { transport: _, .. } => None,
     }
+}
+
+pub fn authored_token_ordinal_typed_bridge_dissolve_on() -> Rc<DissolutionCondition> {
+    thread_local! {
+        static CACHED: Rc<DissolutionCondition> = {
+            unbound_dissolution("feature:occurrence-ordinal-value-measure — DISSOLVE-ON: std.nat converges on the modeled Nat inhabitant and Measure<Count, One, Nat> has a compiled faithful/HostNative serde projection; then replace the allocator-backed space payload with that canonical measure and delete both typed-bridge rows.".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
+}
+
+pub fn authored_token_ordinal_value_bridge_dissolve_on() -> Rc<DissolutionCondition> {
+    thread_local! {
+        static CACHED: Rc<DissolutionCondition> = {
+            unbound_dissolution("feature:occurrence-ordinal-value-measure — DISSOLVE-ON: same trigger as authored_token_ordinal_typed_bridge_dissolve_on; replace AuthoredTokenOrdinal.value with Measure<Count, One, Nat> (or the converged Nat inhabitant) and delete both value-bridge rows with the space-bridge rows.".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
+}
+
+pub fn occurrence_containment_storage_projection_dissolve_on() -> Rc<DissolutionCondition> {
+    thread_local! {
+        static CACHED: Rc<DissolutionCondition> = {
+            unbound_dissolution("DISSOLVE-ON: PR #7515 lands std_occurrence_binding on the stage0 roster and proves ContainmentPath<OccurrenceId> compiles without supplemental derive bounds; then replace OccurrenceContainmentPath with std.occurrence_binding.ContainmentPath<OccurrenceId> across consumers and delete both storage-projection rows.".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

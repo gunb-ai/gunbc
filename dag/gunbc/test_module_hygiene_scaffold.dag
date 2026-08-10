@@ -1,5 +1,7 @@
 module gunbc.test_module_hygiene_scaffold
 
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
+
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { String }
@@ -13,7 +15,7 @@ data test_module_hygiene_orphan_gate_scaffold: Disposition = Scaffold {
   }
 }
 
-data test_module_hygiene_orphan_gate_dissolve_trigger: String = "🟡 dissolve-on: test_module_hygiene — U2 orphan enroll-or-refuse + U3 file-grain expand live in gunbc.test_module_hygiene.dag; host transport in cli_run/test_module_hygiene_bridge.rs (parse→ModuleSurface projection only). LANDED: src/v1/stage0/src/test_module_hygiene.rs deleted; SeedRetainedIntrinsicRegistration row removed from v2.compiler.self_host.frontier. ROADMAP node v1-test-hygiene-producer-retirement. Discriminating receipt: dag/test/claim/test_module_hygiene_hand_rust_equivalence_witness_test.dag + cli_run.rs test_module_hygiene_bridge_equivalence_tests (not a marker-count rg)."
+data test_module_hygiene_orphan_gate_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: test_module_hygiene — U2 orphan enroll-or-refuse + U3 file-grain expand live in gunbc.test_module_hygiene.dag; host transport in cli_run/test_module_hygiene_bridge.rs (parse→ModuleSurface projection only). LANDED: src/v1/stage0/src/test_module_hygiene.rs deleted; SeedRetainedIntrinsicRegistration row removed from v2.compiler.self_host.frontier. ROADMAP node v1-test-hygiene-producer-retirement. Discriminating receipt: dag/test/claim/test_module_hygiene_hand_rust_equivalence_witness_test.dag + cli_run.rs test_module_hygiene_bridge_equivalence_tests (not a marker-count rg).")
 
 data test_module_hygiene_orphan_gate_receipt_lane_deferral: String = "gunbc.roadmap_authority node v1-test-hygiene-producer-retirement / DESIGN §7 hand-Rust shrink-to-zero — seed producer deleted; orphan fold authority is gunbc.test_module_hygiene; host bridge is transport-only interim (review 43601 pattern), not unmarked workaround."
 

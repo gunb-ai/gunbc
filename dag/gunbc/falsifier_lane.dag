@@ -1,5 +1,7 @@
 module gunbc.falsifier_lane
 
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
 import std.types { String, NonEmptyStr, Bool, List, list_length }
 import std.nat { Nat }
 import gunbc.floor_component_receipt {
@@ -18,8 +20,6 @@ import std.measure { millisecond }
 data falsifier_lane_note: String = "The falsifier's per-component LANE identity, and the two things derived from it: a totality receipt (did every planned component report?) and a routing verdict (which lane owns a failing component?). WHY IT EXISTS, priced: gunbc.floor_component_receipt made the alert read per-component state instead of inferring one causal story from the overall conclusion, but it left the component ANONYMOUS. The label the seed stamps on a discovery batch is generated from the runnable's shape — claim_executor formats 'discovery-corpus[N root(s)+M explicit, adaptive width]' — so two lanes with the same root/entry arithmetic are indistinguishable in the receipt, and no label names the roster that failed. Triage therefore still ends at 'a batch was red', which is the same blindness one level down. THE FIX IS ATTRIBUTION, NOT A SECOND LABEL: the plan already knows which lane each batch is, because each batch is built by a named function over a named roster; that fact is simply discarded when the schedule flattens to List<List<Runnable>>. This module carries the lane vocabulary and the enrollment-ordered projection, and ci_floor_plan derives BOTH the batch schedule and the planned-component roster from one enrollment list — so an added lane cannot appear in the schedule without appearing in the attribution (DESIGN section 3: one authority, no fork to drift)."
 
 data falsifier_lane_index_join_note: String = "The join key is the 1-based batch INDEX, and that is not in tension with floor_component_receipt_role_note's rule against keying on indices. That rule forbids treating an index as a STABLE NAME across runs — 'batch 4 is the silent-pick gate' relocates a hardcoded assumption, because gunbc_falsifier_ordinary_batches composes conditionally on enrollment flags and one flip shifts every later index. Here the index is used only WITHIN ONE RUN, to join a receipt against the very plan that produced it: both sides are projections of the same enrollment state, evaluated for the same run, so the correspondence is exact by construction rather than assumed. What crosses runs is the LANE, which is a name and stays one. The index is the join; the lane is the identity."
-
-data falsifier_lane_receipt_wiring_dissolve_on: String = "dissolve-on: the falsifier receipt document carries these blocks. Today the seed calls gunbc.floor_component_receipt floor_component_receipt_document_with_selection with rows only, and that function is SHARED with the per-PR floor, which has no lane roster — so adding a lane block there unconditionally would fabricate lane identity for components that have none. Wiring is therefore a falsifier-specific document entry point taking the planned roster alongside the rows, and one added seed call site beside write_floor_component_receipt_at; at that point .github/workflows/falsifier-alert.yml reads routed_components instead of rendering the anonymous label, and this row deletes. Until then the algebra here is proven by execution on fixtures and the plan-agreement wall below runs against the live plan — the attribution is derived and witnessed, and what remains unbuilt is its transport into the JSON, named rather than silent (DESIGN section 4b, no untracked stall)."
 
 type FalsifierLane
   = LanePredictOnly
@@ -690,3 +690,5 @@ fn witness_lane_names_are_distinct() -> Bool {
     acc && (fold(names, init: 0, f: fn(c, m) { if m == n { c + 1 } else { c } }) == 1)
   })
 }
+
+data falsifier_lane_receipt_wiring_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the falsifier receipt document carries these blocks. Today the seed calls gunbc.floor_component_receipt floor_component_receipt_document_with_selection with rows only, and that function is SHARED with the per-PR floor, which has no lane roster — so adding a lane block there unconditionally would fabricate lane identity for components that have none. Wiring is therefore a falsifier-spe")

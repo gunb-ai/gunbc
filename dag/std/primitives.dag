@@ -454,6 +454,14 @@ data index_by_contract: PrimitiveContract = {
   carrier_cost: CarrierInsensitive
 }
 
+data group_by_contract: PrimitiveContract = {
+  name: "group_by",
+  work: "n * (key_fn_work + expected HAMT insertion)",
+  output_size: "n items across k buckets",
+  certainty: Expected,
+  carrier_cost: CarrierInsensitive
+}
+
 data with_contract: PrimitiveContract = {
   name: "with",
   work: "n + m",
@@ -651,6 +659,7 @@ fn builtin_registry_surface_names() -> List<String> {
     "concept_decl_facts",
     "decl_facts",
     "export_signature_facts",
+    "data_decl_type_facts",
     "fact_cardinality_decl_facts",
     "languages_consumer_census_data_decl_count",
     "languages_consumer_census_per_language_row_count",
@@ -723,6 +732,7 @@ fn primitive_contract_roster() -> List<PrimitiveContract> {
     map_keys_contract,
     map_values_contract,
     index_by_contract,
+    group_by_contract,
     with_contract,
     filesystem_read_contract,
     to_bytes_contract,

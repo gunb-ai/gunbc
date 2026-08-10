@@ -4,9 +4,10 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use v1_compiler::cli_run::{
-    build_multi_entry_index, resolve_entry_graph_shared, resolve_entry_with_index,
-    run_discovery_corpus_with_options, workspace_root, DiscoveryCorpusOptions, DiscoverySummary,
-    DiscoveryWidthPolicy, NodeFrontierSelectionMode, SELECTION_CONTROL_BUDGET_ROSTER_REL,
+    build_multi_entry_index, decode_manifest_row_collection, resolve_entry_graph_shared,
+    resolve_entry_with_index, run_discovery_corpus_with_options, workspace_root,
+    DiscoveryCorpusOptions, DiscoveryRow, DiscoverySummary, DiscoveryWidthPolicy,
+    LiveReadSelectionContext, NodeFrontierSelectionMode, SELECTION_CONTROL_BUDGET_ROSTER_REL,
     SELECTION_CONTROL_CI_FLOOR_PLAN_REL, SELECTION_CONTROL_DOC_REACHABILITY_REL,
     SELECTION_CONTROL_FALSIFIER_CONTROL_REL, SELECTION_CONTROL_FLOOR_RUNNER_REL,
     SELECTION_CONTROL_FLOOR_RUNNER_TEST_REL, SELECTION_CONTROL_LIVE_TREE_DECLARED_REL,
@@ -649,6 +650,387 @@ fn frontier_warmup_does_not_poison_corpus_resolution() {
     );
 }
 
+/// The two-entry incident subject, named once so every control below decides the SAME subject.
+///
+/// A = the node-precise discriminator fixture (the entry the diff touches).
+/// B = the affected-set floor runner test (the unrelated entry whose 474-module closure reaches a
+/// live-read carrier home). B is what the retired predicate made unskippable on any nonempty
+/// `.dag` diff, which is the `2 selected / 1 expected` incident.
+fn incident_subject_roster() -> Vec<(String, String)> {
+    let ws = workspace_root();
+    vec![
+        (
+            ws.join(SELECTION_CONTROL_NODE_PRECISE_REL)
+                .to_string_lossy()
+                .into_owned(),
+            "floor_disc_witness_a_only_holds".to_string(),
+        ),
+        (
+            ws.join(SELECTION_CONTROL_FLOOR_RUNNER_TEST_REL)
+                .to_string_lossy()
+                .into_owned(),
+            "floor_test_untouched_skips_assumed_green_holds".to_string(),
+        ),
+    ]
+}
+
+/// THE INCIDENT CONTROL, at the grain the incident was measured in.
+///
+/// `entry_file_helper_fn_edit_scopes_runs_to_touched_entry_only` already asserts the row totals
+/// (2/1/1). This asserts the ENTRY-GROUP selection those totals are supposed to come from:
+/// exactly one of the two entry groups is selected. The distinction is the whole finding — a
+/// summary can report one skipped row while both entry groups were selected and resolved, which
+/// is `SelectionSuperset` wearing a passing row count. Under the retired carrier-home predicate
+/// this assertion reads 2, which is the `2 selected / 1 expected` line from the incident.
+fn live_read_selection_narrows_incident_subject_to_touched_entry() {
+    chdir_workspace();
+    let ws = workspace_root();
+    let disc_rel = SELECTION_CONTROL_NODE_PRECISE_REL;
+    let text = std::fs::read_to_string(ws.join(disc_rel)).expect("discriminator fixture readable");
+    let helper_line = fixture_line(&text, "fn floor_disc_helper_fn");
+
+    let summary = run_injected_diff_roster(disc_rel, helper_line, &incident_subject_roster());
+    assert!(
+        summary.failures.is_empty(),
+        "incident-subject roster failures: {:?}",
+        summary.failures
+    );
+    assert_eq!(
+        summary.total_entry_groups, 2,
+        "the incident subject is two entry groups"
+    );
+    assert_eq!(
+        summary.selected_entry_groups, 1,
+        "affected-set selection must narrow the incident subject to the touched entry \
+         (selected/expected — 2 here is the incident: the unrelated entry's import closure \
+         reaches a live-read carrier home, which the retired G1 predicate treated as a hit on \
+         any nonempty diff)"
+    );
+
+    // The counter above proves B ran no witness. It does NOT prove B's cold entry resolve was
+    // elided, because a row skipped as assumed-green AFTER its entry resolved also records no
+    // outcome — and eliding that resolve is the entire cost win this axis exists to buy. So
+    // assert the provenance: B must have taken the skip-BEFORE-resolve fast path.
+    let runner_entry = workspace_root()
+        .join(SELECTION_CONTROL_FLOOR_RUNNER_TEST_REL)
+        .to_string_lossy()
+        .into_owned();
+    let b_skip = summary
+        .selection_skipped_rows
+        .iter()
+        .find(|r| r.entry == runner_entry)
+        .unwrap_or_else(|| {
+            panic!(
+                "the unrelated entry must appear as a selection-skipped row; skipped rows: {:?}",
+                summary.selection_skipped_rows
+            )
+        });
+    assert_eq!(
+        b_skip.provenance, "skip-before-resolve-fast-path",
+        "the unrelated entry must skip BEFORE resolving — a resolve-then-skip still pays the \
+         cold entry resolve this axis exists to elide, and reports identically in every count"
+    );
+}
+
+/// The stop-line population must not re-widen what selection narrowed.
+///
+/// The incident trace carried `stopline_n=1` beside the carrier-home hit, so both facts were
+/// present and either could have been the cause. This separates them: the unified diff still
+/// touches only A, while the name-status population additionally names two floor_skip fixtures
+/// that are not in B's closure. B must still skip. If a later change routes the stop-line
+/// population into the runtime-dependency axis, this reds while the narrowing control above
+/// stays green, so the two axes report separately rather than as one aggregate.
+fn stop_line_population_does_not_widen_incident_subject() {
+    chdir_workspace();
+    let ws = workspace_root();
+    let disc_rel = SELECTION_CONTROL_NODE_PRECISE_REL;
+    let text = std::fs::read_to_string(ws.join(disc_rel)).expect("discriminator fixture readable");
+    let helper_line = fixture_line(&text, "fn floor_disc_helper_fn");
+
+    let unified =
+        format!("+++ b/{disc_rel}\n@@ -{helper_line},0 +{helper_line},1 @@\n+// synthetic touch\n");
+    // The separator is the literal four-character sequence `\000`, not a NUL byte —
+    // `floor_diff_observe` splits the injected value on the string "\\000". An actual NUL here
+    // decodes as one unsplit path and the control would exercise a population it does not name.
+    let name_status = format!(
+        "M\\000{disc_rel}\\000M\\000{}\\000M\\000{}\\000",
+        SELECTION_CONTROL_LIVE_TREE_DECLARED_REL, SELECTION_CONTROL_FALSIFIER_CONTROL_REL,
+    );
+    let _diff = EnvVarGuard::set("GUNBC_CI_DIFF_UNIFIED", &unified);
+    let _ns = EnvVarGuard::set("GUNBC_CI_DIFF_NAME_STATUS", &name_status);
+
+    let summary = run_discovery_corpus_with_options(
+        &floor_skip_source_roots(),
+        &[],
+        &incident_subject_roster(),
+        ExecutionMode::Wet,
+        DiscoveryWidthPolicy::Serial,
+        discovery_options(true),
+    )
+    .expect("stop-line population must not error");
+    assert!(
+        summary.failures.is_empty(),
+        "stop-line population roster failures: {:?}",
+        summary.failures
+    );
+    assert_eq!(summary.total_entry_groups, 2);
+    assert_eq!(
+        summary.selected_entry_groups, 1,
+        "a wider stop-line population must not re-select the unrelated entry — axis (iv) is \
+         decided by classified runtime reads, not by how many paths the diff names"
+    );
+}
+
+/// A missing classification REFUSES; it never licenses a skip.
+///
+/// Executed rather than argued, because the failure mode this guards is precisely the one that
+/// looks green: an entry whose classification is unavailable answering "no runtime read touched"
+/// is the under-selection direction, which presents as a faster floor rather than as a failure.
+fn live_read_missing_classification_refuses() {
+    chdir_workspace();
+    let ws = workspace_root();
+    let roots = floor_skip_source_roots();
+    let index = build_multi_entry_index(&roots);
+    let disc_entry = ws
+        .join(SELECTION_CONTROL_NODE_PRECISE_REL)
+        .to_string_lossy()
+        .into_owned();
+    let runner_entry = ws
+        .join(SELECTION_CONTROL_FLOOR_RUNNER_TEST_REL)
+        .to_string_lossy()
+        .into_owned();
+
+    // A context built from a roster that names only A.
+    let roster = vec![DiscoveryRow {
+        label: "a".to_string(),
+        entry: disc_entry.clone(),
+        function: "floor_disc_witness_a_only_holds".to_string(),
+        reads_live_tree: false,
+    }];
+    let live = LiveReadSelectionContext::build(&index, &roster)
+        .expect("context builds over its own complete roster");
+
+    let touched = vec![SELECTION_CONTROL_NODE_PRECISE_REL.to_string()];
+    // POSITIVE CONTROL: the enrolled entry answers rather than refusing, so the refusal below is
+    // a fact about the missing entry and not about the context being broken.
+    live.runtime_dependency_touched_for_entry(&index, &disc_entry, &touched)
+        .expect("an enrolled entry is decidable");
+
+    // THE REFUSAL: B is outside the roster the context was built from.
+    let err = live
+        .runtime_dependency_touched_for_entry(&index, &runner_entry, &touched)
+        .expect_err("an entry absent from the context must refuse, never answer 'untouched'");
+    assert!(
+        err.contains("LiveReadEntryAbsent"),
+        "the refusal must name its cause, not merely be an error: {err}"
+    );
+}
+
+/// The producer's collection crosses the Rust boundary in EITHER valid representation.
+///
+/// `List<T>` is `FreeMonoid<T>` — `Empty | Cons { head, tail }` — and whether it arrives as a
+/// native `Value::List` or as the modeled chain depends on which operations had native interpreter
+/// arms, not on the type. The decoder therefore accepts both, and this exercises the two shapes
+/// the producer can actually return plus the one it must refuse.
+///
+/// Stated honestly about coverage: the empty and multi-row arms below go through the REAL producer,
+/// so they prove the live path decodes. The "both representations yield identical rows" control is
+/// NOT here, because forcing the producer to return a native list would mean fabricating a path it
+/// does not have — a control that manufactures its own subject proves nothing about the subject.
+/// The shared walk itself is the interpreter's own `free_monoid_to_vec`, already the authority
+/// `coproduct_reflection` uses.
+fn manifest_collection_decodes_both_representations() {
+    chdir_workspace();
+    let ws = workspace_root();
+    let roots = floor_skip_source_roots();
+    let index = build_multi_entry_index(&roots);
+    let disc_entry = ws
+        .join(SELECTION_CONTROL_NODE_PRECISE_REL)
+        .to_string_lossy()
+        .into_owned();
+
+    // (1) EMPTY: no requests → a manifest with zero rows, decoded rather than refused.
+    let empty = LiveReadSelectionContext::build(&index, &[])
+        .expect("an empty roster must decode to an empty manifest, not refuse");
+    // A lookup against it still refuses — empty is a decodable collection, not a licence to skip.
+    let err = empty
+        .runtime_dependency_touched_for_entry(&index, &disc_entry, &[])
+        .expect_err("an entry absent from an empty roster must still refuse");
+    assert!(err.contains("LiveReadEntryAbsent"), "cause: {err}");
+
+    // (2) SEVERAL: three declarations decode, in the population the roster named.
+    let roster: Vec<DiscoveryRow> = [
+        "floor_disc_witness_a_only_holds",
+        "floor_disc_witness_b_only_holds",
+        "floor_disc_witness_transitive_holds",
+    ]
+    .iter()
+    .map(|f| DiscoveryRow {
+        label: (*f).to_string(),
+        entry: disc_entry.clone(),
+        function: (*f).to_string(),
+        reads_live_tree: false,
+    })
+    .collect();
+    let live = LiveReadSelectionContext::build(&index, &roster)
+        .expect("a multi-declaration roster must decode");
+    // Every named declaration is present: a short decode would surface here as a lookup refusal
+    // rather than as a quietly smaller manifest.
+    live.runtime_dependency_touched_for_entry(&index, &disc_entry, &[])
+        .expect("all three declarations must be present and classified");
+
+    // (3) FOREIGN SHAPE: a value that is neither a native list nor a FreeMonoid chain must refuse
+    // by name, not decode to zero rows. An `Int` needs no symbol resolution to reject, so this
+    // exercises the refusal arm itself rather than the decoder's inability to resolve `Empty`.
+    let err = decode_manifest_row_collection(None, &v1_compiler::v1_interpreter::Value::Int(7))
+        .expect_err("a non-collection value must refuse, never decode to an empty manifest");
+    assert!(
+        err.contains("ProducerCollectionShapeUnexpected"),
+        "cause: {err}"
+    );
+}
+
+/// THE DEFECT CONTROL: a declaration OUTSIDE the classification lens's own import closure must
+/// classify, not refuse.
+///
+/// This is the control the branch was missing, and its absence is why an earlier head claimed a
+/// narrowing it did not have. `fn_arrow_decl_facts_live()` reflects the eval context's modules, so
+/// when the manifest producer resolved the lens entry alone, the declaration population was the
+/// LENS'S closure. Every enrolled witness outside it failed to bind, every row was a modelled
+/// refusal, and consuming that manifest would have run the whole corpus on any nonempty diff —
+/// strictly more selection than the predicate the lane replaces.
+///
+/// The subject is deliberately a floor_skip fixture: it is a real enrolled witness entry and it is
+/// not imported by `v2.lens.live_read_classification`, so a classification for it can only come
+/// from a fact universe wider than the lens closure. Mutating the producer back to a lens-entry
+/// context makes this red — that mutation is the receipt that this control discriminates.
+fn live_read_classifies_a_declaration_outside_the_lens_closure() {
+    chdir_workspace();
+    let ws = workspace_root();
+    let roots = floor_skip_source_roots();
+    let index = build_multi_entry_index(&roots);
+    let disc_entry = ws
+        .join(SELECTION_CONTROL_NODE_PRECISE_REL)
+        .to_string_lossy()
+        .into_owned();
+    let roster = vec![DiscoveryRow {
+        label: "outside".to_string(),
+        entry: disc_entry.clone(),
+        function: "floor_disc_witness_a_only_holds".to_string(),
+        reads_live_tree: false,
+    }];
+    let live = LiveReadSelectionContext::build(&index, &roster).expect("manifest builds");
+
+    // An UNRELATED touched path. The declaration is a local read, so a working classification
+    // answers `false` — and answering at all is the point: an unbound root would have returned a
+    // typed refusal from the modelled-refusal arm instead.
+    let unrelated = vec![SELECTION_CONTROL_BUDGET_ROSTER_REL.to_string()];
+    let touched = live
+        .runtime_dependency_touched_for_entry(&index, &disc_entry, &unrelated)
+        .expect(
+            "a declaration outside the lens closure must CLASSIFY — a refusal here means the \
+             fact universe is narrower than the index the consumer decides over, which widens \
+             selection to the whole corpus while reporting green",
+        );
+    assert!(
+        !touched,
+        "a local-read declaration must not report the unrelated diff as touching a runtime read"
+    );
+}
+
+/// A PRESENT row carrying a modelled refusal must reach the consumer as a typed `Err`.
+///
+/// This is a different arm from `live_read_missing_classification_refuses`, and the difference is
+/// the one that matters. That control removes the entry from the context, so the refusal comes
+/// from the ROSTER lookup — it proves nothing about what happens when the manifest DOES carry a
+/// row and that row is `LiveReadSelectionRefused`. `touched_by` answers `true` for such a row,
+/// which is conservative for a path-intersection question but wrong for a consumer to act on:
+/// routed through the boolean, an undecidable classification is indistinguishable from a decided
+/// "this diff touches a runtime read", and a producer that cannot classify anything presents as
+/// `SelectionSuperset` — everything ran, slow but apparently valid — rather than as "the manifest
+/// cannot decide".
+///
+/// The request names a function that does not exist in its entry, so `bind_g2_root` answers
+/// `G2RootUnbound` and the producer emits a row that is present and refused. The consumer must
+/// stop the line on it.
+fn live_read_present_but_refused_row_propagates_refusal() {
+    chdir_workspace();
+    let ws = workspace_root();
+    let roots = floor_skip_source_roots();
+    let index = build_multi_entry_index(&roots);
+    let disc_entry = ws
+        .join(SELECTION_CONTROL_NODE_PRECISE_REL)
+        .to_string_lossy()
+        .into_owned();
+
+    let roster = vec![
+        DiscoveryRow {
+            label: "real".to_string(),
+            entry: disc_entry.clone(),
+            function: "floor_disc_witness_a_only_holds".to_string(),
+            reads_live_tree: false,
+        },
+        DiscoveryRow {
+            label: "unbindable".to_string(),
+            entry: disc_entry.clone(),
+            // No such declaration exists in this entry, so the root cannot bind and the producer
+            // emits a PRESENT row carrying LiveReadSelectionRefused.
+            function: "floor_disc_witness_no_such_declaration_exists".to_string(),
+            reads_live_tree: false,
+        },
+    ];
+    let live = LiveReadSelectionContext::build(&index, &roster)
+        .expect("the manifest builds; an unbindable root is a refused ROW, not a build failure");
+
+    let touched = vec![SELECTION_CONTROL_NODE_PRECISE_REL.to_string()];
+    let err = live
+        .runtime_dependency_touched_for_entry(&index, &disc_entry, &touched)
+        .expect_err(
+            "a present-but-refused row must stop the line, not answer `true` and read as a \
+             decided runtime-read touch",
+        );
+    assert!(
+        err.contains("LiveReadClassificationRefused"),
+        "the refusal must name the modelled-refusal cause so an incomplete producer is counted \
+         rather than absorbed into a superset run: {err}"
+    );
+}
+
+/// A manifest may not be attributed to an index it was not built against.
+///
+/// The subject check is what makes the memo checkable rather than merely fast, so it needs an
+/// executed control: a second index over byte-identical roots is a different subject, and serving
+/// it the first index's classifications would license a skip derived from another tree.
+fn live_read_subject_mismatch_refuses() {
+    chdir_workspace();
+    let ws = workspace_root();
+    let roots = floor_skip_source_roots();
+    let first = build_multi_entry_index(&roots);
+    let second = build_multi_entry_index(&roots);
+    let disc_entry = ws
+        .join(SELECTION_CONTROL_NODE_PRECISE_REL)
+        .to_string_lossy()
+        .into_owned();
+    let roster = vec![DiscoveryRow {
+        label: "a".to_string(),
+        entry: disc_entry.clone(),
+        function: "floor_disc_witness_a_only_holds".to_string(),
+        reads_live_tree: false,
+    }];
+    let live = LiveReadSelectionContext::build(&first, &roster).expect("context builds");
+    let touched = vec![SELECTION_CONTROL_NODE_PRECISE_REL.to_string()];
+
+    live.runtime_dependency_touched_for_entry(&first, &disc_entry, &touched)
+        .expect("its own index decides");
+    let err = live
+        .runtime_dependency_touched_for_entry(&second, &disc_entry, &touched)
+        .expect_err("a different index must refuse, never be served another tree's rows");
+    assert!(
+        err.contains("LiveReadContextSubjectMismatch"),
+        "the refusal must name its cause: {err}"
+    );
+}
+
 fn main() -> ExitCode {
     let _workspace_marker: PathBuf = workspace_root();
 
@@ -721,6 +1103,34 @@ fn main() -> ExitCode {
         (
             "frontier_warmup_does_not_poison_corpus_resolution",
             frontier_warmup_does_not_poison_corpus_resolution,
+        ),
+        (
+            "live_read_selection_narrows_incident_subject_to_touched_entry",
+            live_read_selection_narrows_incident_subject_to_touched_entry,
+        ),
+        (
+            "stop_line_population_does_not_widen_incident_subject",
+            stop_line_population_does_not_widen_incident_subject,
+        ),
+        (
+            "live_read_missing_classification_refuses",
+            live_read_missing_classification_refuses,
+        ),
+        (
+            "live_read_subject_mismatch_refuses",
+            live_read_subject_mismatch_refuses,
+        ),
+        (
+            "live_read_present_but_refused_row_propagates_refusal",
+            live_read_present_but_refused_row_propagates_refusal,
+        ),
+        (
+            "live_read_classifies_a_declaration_outside_the_lens_closure",
+            live_read_classifies_a_declaration_outside_the_lens_closure,
+        ),
+        (
+            "manifest_collection_decodes_both_representations",
+            manifest_collection_decodes_both_representations,
         ),
     ];
 

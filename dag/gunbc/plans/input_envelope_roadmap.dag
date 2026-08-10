@@ -1,6 +1,7 @@
 module gunbc.plans.input_envelope_roadmap
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownBlock }
 import gunbc.plans.md_helpers { h2, p, li, ul, ol }
 
@@ -35,7 +36,6 @@ data input_envelope_roadmap_plan: Plan = Plan {
   slug: "input-envelope-roadmap",
   title: "InputEnvelope: bounded input declaration for WorkDemand + CI corpus instance",
   body: input_envelope_roadmap_body(),
-  dissolution: HasTrigger {
-    text: "Delete when P2 ceiling derivation lands and gunbc_ci_corpus_envelope carries derived values, input_admitted is wired as a runtime gate, and all WorkDemand instances carry either a real BoundedInput or an explicit escalation comment explaining why they are EnvelopeUnknown."
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete when P2 ceiling derivation lands and gunbc_ci_corpus_envelope carries derived values, input_admitted is wired as a runtime gate, and all WorkDemand instances carry either a real BoundedInput or an explicit escalation comment explaining why they are EnvelopeUnknown.")
   }
 }

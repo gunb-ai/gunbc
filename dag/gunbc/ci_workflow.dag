@@ -38,7 +38,9 @@ import gunbc.merge_admission_produce { ci_repo_root_shell }
 import v2.workflow.ci_retry_emit { ci_cargo_eagain_retry_script }
 import v2.workflow.ci_v1_compiler_tests_compile_gate_emit {
   ci_v1_compiler_tests_compile_gate_command,
+  ci_interpreter_parity_controls_command,
   ci_v1_compiler_tests_compile_gate_shell_emit_dissolution_trigger,
+  ci_interpreter_parity_controls_shell_emit_dissolution_trigger,
 }
 import v2.workflow.ci_heal_revalidation_preflight_emit {
   ci_heal_revalidation_preflight_script,
@@ -93,6 +95,7 @@ import extdeps.github.actions {
   google_auth_action,
   upload_artifact_action, download_artifact_action
 }
+import std.dissolution { dissolution_description }
 
 fn ci_checkout_step() -> Step {
   UsesStep {
@@ -335,12 +338,42 @@ fn ci_v1_compiler_tests_compile_gate_run_script() -> String {
       concat(
         concat(
           "# ",
-          concat(ci_v1_compiler_tests_compile_gate_shell_emit_dissolution_trigger, "\n")
+          concat(dissolution_description(condition: ci_v1_compiler_tests_compile_gate_shell_emit_dissolution_trigger), "\n")
         ),
         ci_cargo_eagain_retry_script(command: ci_v1_compiler_tests_compile_gate_command())
       )
     )
   )
+}
+
+fn ci_interpreter_parity_controls_run_script() -> String {
+  concat(
+    "set -e\n",
+    concat(
+      concat("ROOT=", ci_repo_root_shell(), "\n"),
+      concat(
+        concat(
+          "# ",
+          concat(ci_interpreter_parity_controls_shell_emit_dissolution_trigger, "\n")
+        ),
+        ci_cargo_eagain_retry_script(command: ci_interpreter_parity_controls_command())
+      )
+    )
+  )
+}
+
+fn ci_interpreter_parity_controls_step() -> Step {
+  RunStep {
+    name: Present { value: "cargo test -p v1-compiler --release --lib value_hash_materialization grouping_primitive (executes the interpreter controls the compile gate only compiles)" },
+    id: none,
+    run: ci_interpreter_parity_controls_run_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
 }
 
 fn ci_v1_compiler_tests_compile_gate_step() -> Step {
@@ -1048,7 +1081,7 @@ fn ci_build_job() -> Job {
     id: "build",
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
-    steps: concat(ci_heal_revalidation_prelude_steps(), [ci_fmt_gate_step(), ci_release_build_step(), ci_v1_compiler_tests_compile_gate_step(), ci_stage0_partition_compile_gate_step(), ci_release_bins_pack_step(), ci_release_bins_upload_step()]),
+    steps: concat(ci_heal_revalidation_prelude_steps(), [ci_fmt_gate_step(), ci_release_build_step(), ci_v1_compiler_tests_compile_gate_step(), ci_interpreter_parity_controls_step(), ci_stage0_partition_compile_gate_step(), ci_release_bins_pack_step(), ci_release_bins_upload_step()]),
     needs: [],
     env: none,
     outputs: none,

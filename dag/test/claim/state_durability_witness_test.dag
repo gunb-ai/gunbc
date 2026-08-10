@@ -10,6 +10,7 @@ import std.measure {
   positive_millisecond,
 }
 import std.state_durability {
+  symbol_index_subtree_digest_dissolution,
   ActivationVerified,
   CallerAssertedDefinitionLinkage,
   ControlPlaneFirmwareReplacement,
@@ -93,7 +94,7 @@ data fixture_digest_b: Digest = sha256_digest(
 fn fixture_definition_linkage(reason: NonEmptyStr) -> StateDefinitionLinkage {
   CallerAssertedDefinitionLinkage {
     reason: reason,
-    dissolve_on: "namespace content-addressed SymbolIndex subtree digest",
+    dissolution: symbol_index_subtree_digest_dissolution,
   }
 }
 

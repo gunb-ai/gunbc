@@ -7,7 +7,8 @@ import extdeps.tools { CliTool, SourceCoreutils }
 import gunbc.output_policy { OutcomeIsData }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
-import std.roster_frontier { FrontierRow, TriggerProse, frontier_row_decl }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
 import std.decl_ref { decl_ref }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -56,9 +57,7 @@ data sha256_verify_native_transport_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.tools.sha256sum", decl_name: "Sha256VerifyVerdict"),
     reason: "Sha256VerifyVerdict|transport:shell-only",
-    trigger: TriggerProse {
-      text: "a native/library SHA-256 realization lands and is bound as a second handler for the Sha256Verify shape",
-    },
+    dissolution: unbound_dissolution(description: "a native/library SHA-256 realization lands and is bound as a second handler for the Sha256Verify shape"),
   )
 ]
 

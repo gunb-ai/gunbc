@@ -16,6 +16,9 @@ pub use crate::std_content_hash::{
     content_hash_validate_lower_hex_length,
 };
 pub use crate::std_content_hash::{ContentHash, Fnv1a64Structural};
+pub use crate::std_dissolution::DissolutionCondition;
+use crate::std_dissolution::DissolutionCondition::*;
+pub use crate::std_dissolution::{dissolution_description, unbound_dissolution};
 use crate::std_induction::RecursionShape::{
     DirectRecursion, ListRecursion, MapValueRecursion, OptionalRecursion, SetRecursion,
 };
@@ -3706,7 +3709,7 @@ pub fn method_existence_decision(
     kernel_diags: Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::MethodExistenceFrontierAdmitted {
     method: method_name.clone(),
     receiver_type: recv_shape.clone(),
-    trigger: trigger.clone(),
+    trigger: dissolution_description(trigger.clone()),
     span: span.clone(),
 }), scope.module_name.clone())]),
 })
@@ -3809,7 +3812,7 @@ pub struct UnresolvedMethodFrontierRow {
     pub receiver_shape: String,
     pub occurrences: i64,
     pub cause: String,
-    pub dissolution_trigger: String,
+    pub dissolution: Rc<DissolutionCondition>,
 }
 
 pub fn unresolved_method_frontier() -> Rc<Vec<Rc<UnresolvedMethodFrontierRow>>> {
@@ -3819,70 +3822,70 @@ pub fn unresolved_method_frontier() -> Rc<Vec<Rc<UnresolvedMethodFrontierRow>>> 
     occurrences: 7,
     receiver_shape: "Primitive()".to_string(),
     cause: "receiver is a lambda parameter whose type is never inferred, so it arrives with NO authored name at all. The call is a product FIELD holding a callable — the LexMatchThunk { apply: fn(s) } idiom — not a method at all.".to_string(),
-    dissolution_trigger: "lambda-parameter receiver typing, so the receiver resolves to its declared product and apply is found as a field".to_string(),
+    dissolution: unbound_dissolution("lambda-parameter receiver typing, so the receiver resolves to its declared product and apply is found as a field".to_string()),
 }), Rc::new(UnresolvedMethodFrontierRow {
     module_name: "extdeps.git.object_store".to_string(),
     method: "map".to_string(),
     occurrences: 2,
     receiver_shape: "Primitive()".to_string(),
     cause: "receiver is `tree.entries` where `tree` is the parameter of a lambda stored in a StoreObjectFold record field, so the field's declared fn type never reaches the lambda's parameter and the projection off it has no established type.".to_string(),
-    dissolution_trigger: "lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in".to_string(),
+    dissolution: unbound_dissolution("lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in".to_string()),
 }), Rc::new(UnresolvedMethodFrontierRow {
     module_name: "extdeps.git.object_store".to_string(),
     method: "flat_map".to_string(),
     occurrences: 1,
     receiver_shape: "Primitive()".to_string(),
     cause: "same StoreObjectFold lambda-parameter shape as the `map` row above; listed separately because the key names one method on one receiver shape, never a module-wide pass.".to_string(),
-    dissolution_trigger: "lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in".to_string(),
+    dissolution: unbound_dissolution("lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in".to_string()),
 }), Rc::new(UnresolvedMethodFrontierRow {
     module_name: "extdeps.mercurial".to_string(),
     method: "any".to_string(),
     occurrences: 3,
     receiver_shape: "Primitive()".to_string(),
     cause: "receiver is an untyped parameter of a lambda stored in a fold record field, the same shape as the object_store rows.".to_string(),
-    dissolution_trigger: "lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in".to_string(),
+    dissolution: unbound_dissolution("lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in".to_string()),
 }), Rc::new(UnresolvedMethodFrontierRow {
     module_name: "gunbc.scm_compatibility.mercurial".to_string(),
     method: "map".to_string(),
     occurrences: 3,
     receiver_shape: "Primitive()".to_string(),
     cause: "receiver is `missing_changesets`, an untyped parameter of the `partial:` lambda in a MercurialRepositoryCompletenessFold record field.".to_string(),
-    dissolution_trigger: "lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in".to_string(),
+    dissolution: unbound_dissolution("lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in".to_string()),
 }), Rc::new(UnresolvedMethodFrontierRow {
     module_name: "extdeps.dns.domain_name".to_string(),
     method: "list_push".to_string(),
     occurrences: 1,
     receiver_shape: "Primitive(ok)".to_string(),
     cause: "receiver is a coproduct payload bound by pattern destructuring, which arrives typed as the VARIANT name rather than the field type.".to_string(),
-    dissolution_trigger: "coproduct payload binding typed as the field type, at which point the receiver is List and DECIDABLE".to_string(),
+    dissolution: unbound_dissolution("coproduct payload binding typed as the field type, at which point the receiver is List and DECIDABLE".to_string()),
 }), Rc::new(UnresolvedMethodFrontierRow {
     module_name: "v1.compiler.trace".to_string(),
     method: "map".to_string(),
     occurrences: 1,
     receiver_shape: "Product(SpanMapping)".to_string(),
     cause: "receiver is an Optional produced by `|> last`, and the optional functor is being mapped over. It arrives as the INNER product because the optional cardinality is dropped before method lookup, so Optional's own surface is never consulted.".to_string(),
-    dissolution_trigger: "reconciling the two optionality representations (cardinality-marked node vs the nominal Optional coproduct) so an optional receiver keeps its optional surface at method lookup".to_string(),
+    dissolution: unbound_dissolution("reconciling the two optionality representations (cardinality-marked node vs the nominal Optional coproduct) so an optional receiver keeps its optional surface at method lookup".to_string()),
 }), Rc::new(UnresolvedMethodFrontierRow {
     module_name: "gunbc.source_integration_landing_spine".to_string(),
     method: "map".to_string(),
     occurrences: 1,
     receiver_shape: "Node(Optional)".to_string(),
     cause: "same optional-functor class as the v1.compiler.trace row, in its OTHER surface form: here the Optional survives as a named node rather than collapsing to its inner product, and neither form carries a method surface. Two shapes for one concept is itself the defect the trigger names.".to_string(),
-    dissolution_trigger: "reconciling the two optionality representations so an optional receiver keeps its optional surface at method lookup".to_string(),
+    dissolution: unbound_dissolution("reconciling the two optionality representations so an optional receiver keeps its optional surface at method lookup".to_string()),
 }), Rc::new(UnresolvedMethodFrontierRow {
     module_name: "test.claim.sccache_local_content_verified_on_read".to_string(),
     method: "contains".to_string(),
     occurrences: 1,
     receiver_shape: "Primitive(std.types.NonEmptyStr)".to_string(),
     cause: "the brand-alias class in its LEAF form. The receiver is a coproduct variant payload whose declared type is NonEmptyStr, and it arrives not as the refinement Conj the peel walks but as a plain leaf carrying the QUALIFIED name std.types.NonEmptyStr — so there is no refinement chain to descend and no kernel profile under that name. Three head-resolution strategies were tried against this site and measured: resolving the leaf through lookup_type_for, through lookup_type_by_name on the qualified name, and on its last segment. NONE of them recovered the refinement, so the machinery was deleted rather than shipped unproven, and the site is declared here instead. Why the peel reaches the Conj form but not this one is not yet understood, and saying so is more useful than a fourth guess.".to_string(),
-    dissolution_trigger: "one representation for a brand alias at method lookup — the same reconciliation the conformance wall's class (2) names — so the leaf and Conj forms stop being two shapes for one concept".to_string(),
+    dissolution: unbound_dissolution("one representation for a brand alias at method lookup — the same reconciliation the conformance wall's class (2) names — so the leaf and Conj forms stop being two shapes for one concept".to_string()),
 }), Rc::new(UnresolvedMethodFrontierRow {
     module_name: "v2.std.compilers.target_model".to_string(),
     method: "lookup".to_string(),
     occurrences: 1,
     receiver_shape: "Primitive(T)".to_string(),
     cause: "receiver is a bare type variable. This one is genuinely undecidable at this seam rather than a resolution defect: nothing establishes what T offers.".to_string(),
-    dissolution_trigger: "primitive-realization-single-authority, giving every receiver a complete declared method surface".to_string(),
+    dissolution: unbound_dissolution("primitive-realization-single-authority, giving every receiver a complete declared method surface".to_string()),
 })])
 }
 
@@ -4033,7 +4036,7 @@ pub fn unresolved_method_frontier_trigger(
     module_name: String,
     method: String,
     receiver_shape: String,
-) -> Option<String> {
+) -> Option<Rc<DissolutionCondition>> {
     match Rc::new({
         let mut __result = Vec::new();
         for r in unresolved_method_frontier().iter().cloned() {
@@ -4049,7 +4052,7 @@ pub fn unresolved_method_frontier_trigger(
     .first()
     .cloned()
     {
-        Some(row) => Some(row.dissolution_trigger.clone()),
+        Some(row) => Some(row.dissolution.clone()),
         None => None,
     }
 }

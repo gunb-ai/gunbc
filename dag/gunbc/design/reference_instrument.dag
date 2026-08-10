@@ -3,6 +3,7 @@ module gunbc.design.reference_instrument
 import std.types { NonEmptyStr, String, Bool, Int, List }
 import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.external_authority { ExternalSubjectRef, external_subject_ref_eq }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 data reference_instrument_note: String = "THE JOIN, NOT A HUB (DESIGN section 3 'External upstream decomposition', whose own worked example puts extdeps.browser.chromium and extdeps.browser.google_chrome under a gunbc join rather than a generic browser hub). The two cited Pip-Boy products are independently governed upstream subjects with their own modules; this module names the agnostic behaviour axis they inhabit, records which product each axis is cited on BY POINTING AT THE FACT THAT CITES IT, and holds the coverage obligations our own reading created. Nothing here is a fact owned by the observed upstream. Adding a third reference instrument adds evidence rows here and one extdeps module; it must not require editing either existing product."
 
@@ -222,19 +223,19 @@ fn all_sources_read_directly() -> Bool {
 type CoverageObligation {
   question: NonEmptyStr
   blocked_by: NonEmptyStr
-  dissolves_when: NonEmptyStr
+  dissolution: DissolutionCondition
 }
 
 data mk_v_display_effect_obligation: CoverageObligation = CoverageObligation {
   question: "Does the Fallout TV series Pip-Boy 3000 Mk V realize any display-effect axis — optical instability, resting-offset calibration, or impulse glitch?",
   blocked_by: "Its manual grounds display colour, brightness, demo mode, clock, alarm and radio, and states no display-effect setting. Absence from the sections read is not a denial, and no roster in that manual is asserted complete.",
-  dissolves_when: "A Mk V settings enumeration is read that either grounds a display-effect setting or is complete enough for its absence to decide the question.",
+  dissolution: unbound_dissolution(description: "A Mk V settings enumeration is read that either grounds a display-effect setting or is complete enough for its absence to decide the question."),
 }
 
 data mk_v_accelerometer_obligation: CoverageObligation = CoverageObligation {
   question: "Does the Mk V carry an accelerometer, as its sibling does for the tilt-derived Geiger simulation?",
   blocked_by: "Its manual, as read, does not mention an accelerometer or any tilt-driven behaviour.",
-  dissolves_when: "A Mk V source grounds or denies onboard motion sensing.",
+  dissolution: unbound_dissolution(description: "A Mk V source grounds or denies onboard motion sensing."),
 }
 
 data reference_instrument_obligations: List<CoverageObligation> = [

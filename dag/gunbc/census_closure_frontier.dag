@@ -1,6 +1,7 @@
 module gunbc.census_closure_frontier
 
-import std.roster_frontier { FrontierRow, TriggerProse, concat_frontier_row_groups, frontier_row_decl }
+import std.roster_frontier { FrontierRow, concat_frontier_row_groups, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
 import std.decl_ref { decl_ref }
 import extdeps.cloud.hetzner { hetzner_money_rate_frontier_rows }
 import extdeps.dhcp.v4 { mac_address_anemic_brand_frontier_rows }
@@ -21,6 +22,7 @@ import extdeps.docker.endpoint { endpoint_string_type_frontier_rows }
 import extdeps.github.merge_state { merge_state_graphql_transport_frontier_rows }
 import extdeps.github.workflow_runs { conclusion_authority_consolidation_frontier_rows }
 import extdeps.network.ipv6 { ipv6_text_codec_staged_frontier_rows }
+import extdeps.pin { pin_frontier_rows }
 import extdeps.pricing.hetzner_dedicated { cpu_description_string_leaf_frontier_rows }
 import extdeps.router.verizon_cr1000a {
   cr1000a_dhcp_lease_transport_frontier_rows,
@@ -34,12 +36,10 @@ data census_closure_count_witness_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(
       module_path: "test.claim.annotation_carrier",
-      decl_name: "census_closure_frontier_rows_count_is_twenty_one",
+      decl_name: "census_closure_frontier_rows_count_matches_hand_count",
     ),
     reason: "Hand count beside structure is a conversion receipt (#7207 class-5); retires when roster assembly is registry-derived",
-    trigger: TriggerProse {
-      text: "census_closure_frontier_rows is registry-derived without a hand-count witness",
-    },
+    dissolution: unbound_dissolution(description: "census_closure_frontier_rows is registry-derived without a hand-count witness"),
   )
 ]
 
@@ -66,6 +66,7 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     cr1000a_delegated_prefix_length_scalar_frontier_rows,
     cr1000a_expires_in_ui_text_frontier_rows,
     sha256_verify_native_transport_frontier_rows,
+    pin_frontier_rows,
   ]
 }
 

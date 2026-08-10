@@ -1,5 +1,7 @@
 module gunbc.codex_app_server_press
 
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
+
 import std.types { NonEmptyStr, String, FilePath, List, Bool, Int, EpochSecs }
 import std.content_hash { ContentHash, content_hash_of_value }
 import gunbc.provider_interface_binding {
@@ -258,7 +260,7 @@ fn binding_from_initialize_session(
   }
 }
 
-data codex_press_stdio_sentinel_mux_dissolve_note: String = "Interim stdout/stderr/exit capture muxes shell.Exec.Run output through literal ---GUNBC_EXIT---/---GUNBC_STDOUT---/---GUNBC_STDERR--- sentinels (codex_press_account_trip_script → split_gunbc_stdio_capture). Wrapped in retained_foreign with dissolve-on v2.workflow.bash_emit. The sentinel concat itself dissolves when shell→intent typed stdio transport replaces foreign script muxing (docs/plans/shell-intent-emit-realization-design.md Phase 2 host-effect route for runtime-present press sites)."
+data codex_press_stdio_sentinel_mux_dissolve_note: DissolutionCondition = unbound_dissolution(description: "Interim stdout/stderr/exit capture muxes shell.Exec.Run output through literal ---GUNBC_EXIT---/---GUNBC_STDOUT---/---GUNBC_STDERR--- sentinels (codex_press_account_trip_script → split_gunbc_stdio_capture). Wrapped in retained_foreign with dissolve-on v2.workflow.bash_emit. The sentinel concat itself dissolves when shell→intent typed stdio transport replaces foreign script muxing (docs/plans/shell-intent-emit-realization-design.md Phase 2 host-effect route for runtime-present press sites).")
 
 fn codex_press_account_trip_script(
   executable: FilePath,

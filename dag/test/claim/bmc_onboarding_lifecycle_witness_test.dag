@@ -145,15 +145,6 @@ test fn srv3_plan_starts_factory_default_at_192() -> Bool {
   srv3_onboarding_plan.bmc.host == "192.168.1.192"
     && phase_tag(p: srv3_onboarding_plan.start_phase) == 0
     && srv3_onboarding_plan.secret_name == "bmc-srv3-admin"
-    && match srv3_onboarding_plan.os_target {
-      UbuntuOs { distro: d } =>
-        match d {
-          NobleNumbat2404Lts => true
-        }
-      WindowsOs { distro: _ } => false
-      MacosOs { distro: _ } => false
-    }
-    && redfish_boot_target_wire(t: srv3_onboarding_plan.os_install_boot_target) == "Cd"
     && redfish_boot_target_wire(t: BootTargetCd) == "Cd"
     && redfish_account_role_wire(role: srv3_onboarding_plan.rotated_account_role) == "Administrator"
     && redfish_account_role_wire(role: AccountRoleAdministrator) == "Administrator"
@@ -164,15 +155,6 @@ test fn srv4_plan_targets_195_with_srv4_secret() -> Bool {
     && !(srv4_onboarding_plan.bmc.host == srv3_onboarding_plan.bmc.host)
     && phase_tag(p: srv4_onboarding_plan.start_phase) == 0
     && srv4_onboarding_plan.secret_name == "bmc-srv4-admin"
-    && match srv4_onboarding_plan.os_target {
-      UbuntuOs { distro: d } =>
-        match d {
-          NobleNumbat2404Lts => true
-        }
-      WindowsOs { distro: _ } => false
-      MacosOs { distro: _ } => false
-    }
-    && redfish_boot_target_wire(t: srv4_onboarding_plan.os_install_boot_target) == "Cd"
     && redfish_account_role_wire(role: srv4_onboarding_plan.rotated_account_role) == "Administrator"
 }
 
@@ -199,4 +181,36 @@ test fn credential_probe_maps_to_correct_phase() -> Bool {
       Absent => true
       Present { value: _ } => false
     }
+}
+
+// THE CONTRADICTION THIS REPAIR REMOVED, kept as the regression control. BmcOnboardingPlan used
+// to carry os_install_boot_target, and altra_onboarding_plan put srv3's board-default CD target
+// into EVERY host's plan — so srv4, whose firmware evidence justifies no delivery mechanism at
+// all, still carried a plausible "boot CD" instruction. The previous version of this witness
+// asserted exactly that (srv4_onboarding_plan.os_install_boot_target == "Cd"), enshrining the
+// contradiction as the contract.
+//
+// The install fields are gone from the onboarding record entirely rather than wrapped in a
+// standing: no production consumer ever read them (srv3_boot_once_cd, bmc_fan_converge,
+// srv3_bmc_credential_resolve and the bmc_onboard tools use bmc / factory_login / secret_name),
+// so forcing credential-only operations to unwrap an installation plan would have been a second
+// fusion, not a repair. The boot target now lives with the evidence that derives it.
+test fn install_boot_target_is_per_host_and_srv4_has_none() -> Bool {
+  match srv3_install_boot_target_standing {
+    InstallBootTargetSelected { target: t } => redfish_boot_target_wire(t: t) == "Cd"
+    InstallBootTargetRefused { cause: _ } => false
+  }
+    && match srv4_install_boot_target_standing {
+         InstallBootTargetRefused { cause: c } =>
+           match c {
+             InstallNoVirtualMediaAndNetworkBootUnestablished { firmware: _, missing: _ } => true
+             InstallFirmwareEvidenceAbsent { endpoint: _ } => false
+             InstallFirmwareVersionUncatalogued { firmware: _ } => false
+             InstallFirmwareVersionAmbiguous { firmware: _, count: _ } => false
+             InstallNoBootSourceOverride { firmware: _ } => false
+             InstallFirmwareTransitionUnestablished { firmware: _, missing: _ } => false
+             InstallFirmwareTransitionAmbiguous { firmware: _, candidates: _ } => false
+           }
+         InstallBootTargetSelected { target: _ } => false
+       }
 }

@@ -1,6 +1,7 @@
 module gunbc.legacy_test_behavior_disposition
 
 import std.types { Bool, FilePath, Int, List, NonEmptyStr, String }
+import std.dissolution { DissolutionCondition }
 
 type LegacyTestBehavior {
   source_file: FilePath
@@ -25,7 +26,7 @@ type LegacyTestBehaviorDisposition
   | RetainedNonMigratableBehavior {
       behavior: LegacyTestBehavior,
       reason: NonEmptyStr,
-      dissolution_trigger: NonEmptyStr,
+      dissolution: DissolutionCondition,
     }
 
 data legacy_test_behavior_disposition_authority_note: String = "BEHAVIOR GRAIN, NOT MODULE GRAIN. The discovered subject is every line-anchored #[test] function under src/v1/tests/src, identified by its source file and function name. A disposition is admitted only for one such identity. CoveredByWitness additionally names a discovered `test fn` in the floor corpus and the failure that distinguishes equivalent coverage from a guard that merely stays quiet. DeleteLowValueBehavior and RetainedNonMigratableBehavior require their own reasons; retention also names its dissolution trigger and never authorizes deletion. Unclassified is deliberately not a disposition someone can author: it is the set difference discovered legacy behaviors minus disposition identities. Completion is that difference at zero together with no stale or duplicate dispositions and no unresolved witness reference. No numeric snapshot is an oracle."
@@ -49,7 +50,7 @@ fn legacy_test_disposition_behavior(
     RetainedNonMigratableBehavior {
       behavior,
       reason: _,
-      dissolution_trigger: _,
+      dissolution: _,
     } => behavior
   }
 }
@@ -78,7 +79,7 @@ fn legacy_test_disposition_witness_resolves(
     RetainedNonMigratableBehavior {
       behavior: _,
       reason: _,
-      dissolution_trigger: _,
+      dissolution: _,
     } => true
   }
 }

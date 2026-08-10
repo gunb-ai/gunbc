@@ -1,0 +1,68 @@
+module std.dissolution
+
+import std.decl_ref { DeclarationRef, declaration_ref_in_list, declaration_ref_display_key }
+import std.types { NonEmptyStr }
+
+type DissolutionTrigger
+  = DeclarationAppears { ref: DeclarationRef }
+
+type DissolutionCondition
+  = BoundDissolution { trigger: DissolutionTrigger }
+  | UnboundDissolution { description: NonEmptyStr }
+
+type DissolutionStatus
+  = DissolutionUnbound
+  | DissolutionPending
+  | DissolutionFired
+
+fn dissolution_trigger_ref(trigger: DissolutionTrigger) -> DeclarationRef {
+  match trigger {
+    DeclarationAppears { ref: r } => r
+  }
+}
+
+fn dissolution_status(
+  condition: DissolutionCondition,
+  present_decls: List<DeclarationRef>,
+) -> DissolutionStatus {
+  match condition {
+    BoundDissolution { trigger: t } =>
+      if declaration_ref_in_list(target: dissolution_trigger_ref(trigger: t), refs: present_decls) {
+        DissolutionFired
+      } else {
+        DissolutionPending
+      }
+
+    UnboundDissolution { description: _ } =>
+      DissolutionUnbound
+  }
+}
+
+fn bound_dissolution(ref: DeclarationRef) -> DissolutionCondition {
+  BoundDissolution { trigger: DeclarationAppears { ref: ref } }
+}
+
+// The refinement is the PARAMETER, not an internal cast. The cast form was
+// demonstrably not a wall: unbound_dissolution(description: "") constructed, and
+// the downstream well-formedness guards had to be restored to catch what the
+// cast was assumed to prevent. The permitted string payload lives inside
+// UnboundDissolution; it does not cross this authority boundary untyped.
+fn unbound_dissolution(description: NonEmptyStr) -> DissolutionCondition {
+  UnboundDissolution { description: description }
+}
+
+fn dissolution_is_bound(condition: DissolutionCondition) -> Bool {
+  match dissolution_status(condition: condition, present_decls: []) {
+    DissolutionPending => true
+    DissolutionFired => true
+    DissolutionUnbound => false
+  }
+}
+
+fn dissolution_description(condition: DissolutionCondition) -> String {
+  match condition {
+    BoundDissolution { trigger: t } =>
+      declaration_ref_display_key(ref: dissolution_trigger_ref(trigger: t))
+    UnboundDissolution { description: d } => d as String
+  }
+}

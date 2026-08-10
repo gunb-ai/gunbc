@@ -62,7 +62,7 @@ fn is_emit_from_disposition(d: RustMaintenanceDisposition) -> Bool {
     EmitFrom { authority: authority } => true
     DeleteWith { roadmap_node: roadmap_node } => false
     RetainedKernel { reason: reason } => false
-    HandScaffold { reason: reason, dissolve_on: dissolve_on } => false
+    HandScaffold { reason: _, dissolution: _ } => false
   }
 }
 
@@ -72,7 +72,7 @@ fn is_delete_with_disposition(d: RustMaintenanceDisposition) -> Bool {
     EmitFrom { authority: authority } => false
     DeleteWith { roadmap_node: roadmap_node } => true
     RetainedKernel { reason: reason } => false
-    HandScaffold { reason: reason, dissolve_on: dissolve_on } => false
+    HandScaffold { reason: _, dissolution: _ } => false
   }
 }
 
@@ -82,7 +82,7 @@ fn is_retained_kernel_disposition(d: RustMaintenanceDisposition) -> Bool {
     EmitFrom { authority: authority } => false
     DeleteWith { roadmap_node: roadmap_node } => false
     RetainedKernel { reason: reason } => true
-    HandScaffold { reason: reason, dissolve_on: dissolve_on } => false
+    HandScaffold { reason: _, dissolution: _ } => false
   }
 }
 
@@ -92,7 +92,7 @@ fn is_hand_scaffold_disposition(d: RustMaintenanceDisposition) -> Bool {
     EmitFrom { authority: authority } => false
     DeleteWith { roadmap_node: roadmap_node } => false
     RetainedKernel { reason: reason } => false
-    HandScaffold { reason: reason, dissolve_on: dissolve_on } => true
+    HandScaffold { reason: _, dissolution: _ } => true
   }
 }
 

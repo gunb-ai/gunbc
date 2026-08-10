@@ -2,6 +2,7 @@ module gunbc.falsifier_alert_residue
 
 import std.types { NonEmptyStr, String }
 import std.content_hash { Sha256Digest }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 data falsifier_alert_residue_purpose_note: String = "ALERT-0. This module DECLARES the falsifier alert's residue and the laws its migration must satisfy. IT MOVES NO BEHAVIOR. The embedded program still runs exactly where it ran before; what changes is that it is now a counted row with a named disposition and a dissolution trigger rather than an undeclared fact of the tree. That ordering is deliberate — a residue that is not declared cannot be shown to have shrunk, and a migration that starts by moving behavior has no baseline to measure against."
 
@@ -33,7 +34,7 @@ type LanguageNormalFormResidue {
   runtime: ResidueRuntime
   kind: ResidueKind
   disposition: ResidueDisposition
-  dissolves_on: NonEmptyStr
+  dissolution: DissolutionCondition
 }
 
 data falsifier_alert_embedded_program_residue: LanguageNormalFormResidue = LanguageNormalFormResidue {
@@ -42,7 +43,7 @@ data falsifier_alert_embedded_program_residue: LanguageNormalFormResidue = Langu
   runtime: GithubScriptAction,
   kind: ExecutableSourceString,
   disposition: ReplaceWithLanguageIndependentBehavior,
-  dissolves_on: "the generated typed falsifier-alert workflow cutover — the alert's decision algebra runs as .dag over typed receipt, clock, state and issue operations, and the github-script step carries no program"
+  dissolution: unbound_dissolution(description: "the generated typed falsifier-alert workflow cutover — the alert's decision algebra runs as .dag over typed receipt, clock, state and issue operations, and the github-script step carries no program")
 }
 
 data falsifier_alert_residue_registry: List<LanguageNormalFormResidue> = [

@@ -39,6 +39,7 @@ import std.witness_admission {
   FixtureExplicitRoster,
   NoConsumer
 }
+import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
 
 data witness_layer_roots: List<String> = ["dag", "src/v2"]
 
@@ -64,636 +65,574 @@ type WitnessExclusionRow {
   pattern: String
   classification: WitnessConsumerCadence
   reason: String
-  dissolve_on: String
+  dissolution: DissolutionCondition
 }
 
 data excl_bin_wet_reason: String = "bin-execution witness class: fns run compiled seed witness binaries (host effects on non-commit-deterministic inputs) the hermetic envelope refuses by construction; they run every PR as the declared bin-witness wet batch via bin_witness_wet_entries (bin_witness_wet_note)"
 
-data excl_bin_wet_dissolve: String = "the file migrates under the execution-corpus scope prefix and enrolls as ExecutionWitnessKind rows in gunbc.commit_workflow; then this row and the roster entries delete (bin_witness_wet_note)"
+data excl_bin_wet_dissolve: DissolutionCondition = unbound_dissolution(description: "the file migrates under the execution-corpus scope prefix and enrolls as ExecutionWitnessKind rows in gunbc.commit_workflow; then this row and the roster entries delete (bin_witness_wet_note)")
 
 data excl_rehomed_bin_wet_reason: String = "bin-execution witness class re-homed to the falsifier wet cadence (CI floor endgame D6): the file's enrolled fn(s) exceed bin_witness_wet_per_row_wall_budget_seconds, so they run as falsifier batch 5 via falsifier_rehomed_bin_wet_entries (typed frontier rows in falsifier_rehomed_bin_wet_rows)"
 
-data excl_rehomed_bin_wet_dissolve: String = "per falsifier_rehomed_bin_wet_rows dissolve_on: the row's realization lands under the per-row budget on a measured run and re-enrolls per-PR (or deletes as a duplicate); then this classification flips back to BinWitnessWet"
+data excl_rehomed_bin_wet_dissolve: DissolutionCondition = unbound_dissolution(description: "per falsifier_rehomed_bin_wet_rows dissolve_on: the row's realization lands under the per-row budget on a measured run and re-enrolls per-PR (or deletes as a duplicate); then this classification flips back to BinWitnessWet")
 
 data excl_substrate_long_lane_reason: String = "SubstrateInputsOnly long-lane witness class re-homed to the falsifier hermetic cadence (test-decomposition Class C, 2026-07-25): the row's own eval exceeds the per-PR 5s fast-lane budget but the mechanism is fixture-shaped ingest/parse pipeline coverage, not wet integration — so it runs as falsifier batch 6 via falsifier_substrate_long_lane_entries (typed frontier rows in falsifier_substrate_long_lane_rows)"
 
-data excl_substrate_long_lane_dissolve: String = "per falsifier_substrate_long_lane_rows dissolve_on: the row's eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery (or deletes as a duplicate); then this classification flips back to DiscoverySelection"
+data excl_substrate_long_lane_dissolve: DissolutionCondition = unbound_dissolution(description: "per falsifier_substrate_long_lane_rows dissolve_on: the row's eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery (or deletes as a duplicate); then this classification flips back to DiscoverySelection")
 
 data excl_behavioral_receipt_reason: String = "emit->compile->run->equals-seed self-host behavioral receipt class: enrolled fns run on the falsifier nightly Wet cadence (wet_receipt_enrollment / falsifier_self_host_wet_note); non-enrolled fns run by local recipe"
-data excl_behavioral_receipt_dissolve: String = "per-module receipts graduate to per-PR admission when proven cheap enough (falsifier_self_host_wet_note); row deletes"
+data excl_behavioral_receipt_dissolve: DissolutionCondition = unbound_dissolution(description: "per-module receipts graduate to per-PR admission when proven cheap enough (falsifier_self_host_wet_note); row deletes")
 
 data excl_wet_integration_reason: String = "wet-integration class, operator-ruled OFFLINE (hermetic-floor posture 2026-07-11): performs genuinely live host effects the hermetic envelope refuses by construction (wet_integration_offline_note)"
 
-data excl_wet_integration_dissolve: String = "the scheduled (nightly) lane un-darkens and admits wet integration rows under its own budget; then the file enrolls there as declared execution rows and this row deletes (wet_integration_offline_note)"
+data excl_wet_integration_dissolve: DissolutionCondition = unbound_dissolution(description: "the scheduled (nightly) lane un-darkens and admits wet integration rows under its own budget; then the file enrolls there as declared execution rows and this row deletes (wet_integration_offline_note)")
 
 data excl_probe_universe_carrier_reason: String = "non-witness workflow carrier: discovery never scans it (not a *_test.dag); the row exists for the whole_tree_resolve_exclusion_substrings probe-universe consumers"
 
-data excl_probe_universe_carrier_dissolve: String = "the probe universe derives from module identity (module-identity-storage-binding lane) or the carrier relocates; a row that excludes nothing deletes"
+data excl_probe_universe_carrier_dissolve: DissolutionCondition = unbound_dissolution(description: "the probe universe derives from module identity (module-identity-storage-binding lane) or the carrier relocates; a row that excludes nothing deletes")
 
-data excl_roster_gate_dissolve: String = "resolved-graph memoization receipts land AND G2 path-intersection (not G1 module-closure alone) is wired into floor admission axis (iv); then re-enroll consciously through the floor owner's lane"
+data excl_roster_gate_dissolve: DissolutionCondition = unbound_dissolution(description: "resolved-graph memoization receipts land AND G2 path-intersection (not G1 module-closure alone) is wired into floor admission axis (iv); then re-enroll consciously through the floor owner's lane")
 
 data excl_predates_per_row_reason: String = "operator/lane-ruled discovery exclusion predating per-row reasons; Phase 0(b) admission classifies its witnesses OfflineLocalRecipe (local recipe: claim_batch --source-root dag --source-root src/v2 --entry <file> --functions <csv>)"
 
-data excl_predates_per_row_dissolve: String = "the owning lane records a scheduled consumer for the file, or the row proves dead (excludes nothing) and deletes"
+data excl_predates_per_row_dissolve: DissolutionCondition = unbound_dissolution(description: "the owning lane records a scheduled consumer for the file, or the row proves dead (excludes nothing) and deletes")
 
 data excl_install_media_reason: String = "real host-effect execution witness (shell effects with no mock_response coverage, or real network/build effects) refused by the hermetic envelope; runs in the bin-witness wet lane (install_media_real_execution_wet_note)"
 
-data excl_install_media_dissolve: String = "mock_response coverage lands and assertions are re-checked under a fixed mock; then the fns re-enroll as ordinary hermetic discovery rows and this row deletes (install_media_real_execution_wet_note)"
+data excl_install_media_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands and assertions are re-checked under a fixed mock; then the fns re-enroll as ordinary hermetic discovery rows and this row deletes (install_media_real_execution_wet_note)")
 
 data witness_exclusion_frontier: List<WitnessExclusionRow> = [
+  WitnessExclusionRow {
+    pattern: "lifecycle_survivor_corpus_census_test.dag",
+    classification: FalsifierSubstrateLongLane,
+    reason: "LIFECYCLE-CARRIER COMPLETENESS CENSUS: derives every top-level data declaration in the corpus with its declared type (data_decl_type_facts over both roots, 16975 declarations / 3475 modules) and gates the raw-string lifecycle survivor population at zero. Its subject IS the corpus breadth, so it cannot be shrunk without measuring less. MEASURED 18482ms eval against the 5s fast-lane budget. The mechanism half is fixture-shaped and stays per-PR in test.claim.lifecycle_survivor_scan_witness (planted survivor selected, migrated control and out-of-class String rejected, ~0ms), so this row carries only the irreducible census — not the discrimination.",
+    dissolution: unbound_dissolution(description: "v2 self-host gains compile-graph access (gunbc#5364, the trigger concept_index carries) so the declared type is reachable from the substrate without a host walk and the census derives at closure cost; then this re-enrolls per-PR discovery and the row deletes")
+  },
   WitnessExclusionRow {
     pattern: "roadmap_program_view_live_corpus_receipt_test.dag",
     classification: FalsifierSubstrateLongLane,
     reason: "LIVE-AUTHORITY INTEGRATION RECEIPT (operator verdict 2026-08-05, PR #7822): live_roadmap_program_view_corpus_projection_receipt exercises the full declared roadmap closure through gunbc.roadmap_program_view — evidentiary wiring receipt, not ordinary business logic. Business witnesses stay on planted fixtures in test.claim.roadmap_program_view_witness.",
-    dissolve_on: "replaced by a cheaper structural wiring receipt that covers the same live-authority join, or live roadmap projection integration receipts become unnecessary"
+    dissolution: unbound_dissolution(description: "replaced by a cheaper structural wiring receipt that covers the same live-authority join, or live roadmap projection integration receipts become unnecessary")
   },
   WitnessExclusionRow {
     pattern: "roadmap_receipt_continuity_live_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: "SUBSTANTIATED per-row: live_roadmap_acceptance_history_integrity_holds reaches git.Inspect.HeadCommit, git.Inspect.MergeBase, and git.Core.Show without mock_response, so the hermetic discovery envelope REFUSES rather than skipping. The hermetic closing contract in roadmap_receipt_continuity_acceptance_test.dag keeps planted red controls only; this file executes the live git-observed integrity path on the per-PR wet corpora batch.",
-    dissolve_on: "mock_response coverage lands for the git revision-addressed operations used by roadmap_acceptance_history_observation AND live assertions are re-checked under a fixed mock; or merge-base revision evaluation lands so hermetic fixtures can supply observed prior_history without live git. Either way this row deletes."
+    dissolution: unbound_dissolution(description: "mock_response coverage lands for the git revision-addressed operations used by roadmap_acceptance_history_observation AND live assertions are re-checked under a fixed mock; or merge-base revision evaluation lands so hermetic fixtures can supply observed prior_history without live git. Either way this row deletes.")
   },
   WitnessExclusionRow {
     pattern: "stage0_rust_host_observation_live_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: "SUBSTANTIATED per-row: every fn in this file reaches git.Inspect.HeadCommit and git.Inspect.MergeBase without mock_response, so the hermetic discovery envelope REFUSES rather than skipping (a refusing discovery member fails its whole batch — CI receipt on PR 7562). Publishing mocks was tried and reverted: it only moves the refusal to the next unmocked operation, and mocking the whole revision-addressed chain would let a liveness witness pass against a constant sha. The closing contract `live_rust_observation_matches_actions_subject` is enrolled in bin_witness_wet_entries for the per-PR wet corpora batch (GITHUB_SHA supplied by the runner, not hand-set); per-row wet outcomes are not yet observable in Actions job logs (bin_witness_wet_per_row_actions_log_observation_gap_note). The three scaffold witnesses in this file remain offline-local: they are not on the bin roster and the wet cadence they would otherwise need is not scheduled (falsifier_self_host_wet_cadence_active is false).",
-    dissolve_on: "mock_response coverage lands for the git.Inspect revision-addressed operations AND scaffold assertions are re-checked under a fixed mock; or the scaffold fns enroll on a scheduled wet lane. Either way this row deletes."
+    dissolution: unbound_dissolution(description: "mock_response coverage lands for the git.Inspect revision-addressed operations AND scaffold assertions are re-checked under a fixed mock; or the scaffold fns enroll on a scheduled wet lane. Either way this row deletes.")
   },
   WitnessExclusionRow {
     pattern: "stage0_rust_maintenance_census_report_live_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: "SUBSTANTIATED per-row (found 2026-08-06, PR #7894 CI red, run 31069215347): maintenance_census_report_positive_control_derives_from_current_head calls current_rust_maintenance_census_report(), which reaches current_stage0_rust_source_observation() and therefore git.Inspect.HeadCommit without mock_response — the same class stage0_rust_host_observation_live_witness_test.dag documents above; a refusing hermetic discovery member fails its whole batch (batch 3 discovery-corpus, 7298-row corpus). This row alone would only remove the function from hermetic discovery, which is not an executing consumer by itself (DESIGN.md 'witness cost derives from purpose', operator ruling 2026-08-04) — so, mirroring stage0_rust_host_observation_live_witness_test.dag's closing contract, the function is ALSO enrolled in bin_witness_wet_entries below (GITHUB_SHA supplied by the runner, not hand-set), which is its real per-PR executing consumer under WitnessHasExecutingConsumer standing; this exclusion row only keeps it off the hermetic per-PR discovery batch it cannot pass. This origin file has only the one witness, so no scaffold-witness residue remains offline-only.",
-    dissolve_on: "mock_response coverage lands for the git.Inspect revision-addressed operations used by current_stage0_rust_source_observation AND this assertion is re-checked under a fixed mock; or the fn enrolls on a scheduled wet lane. Either way this row deletes."
+    dissolution: unbound_dissolution(description: "mock_response coverage lands for the git.Inspect revision-addressed operations used by current_stage0_rust_source_observation AND this assertion is re-checked under a fixed mock; or the fn enrolls on a scheduled wet lane. Either way this row deletes.")
   },
   WitnessExclusionRow {
     pattern: "claim/long/mandatory_tag_extdeps_corpus",
     classification: OfflineLocalRecipe,
     reason: "interpreted corpus walk prices out of every CI lane (measured ~33s/module parse, hours full run; see corpus_witness_note in the test file); the CI-cadence corpus consumer is the retained host projection v2.lens.mandatory_tag.corpus_scan",
-    dissolve_on: "witness realization executes the corpus walk at native speed; then the witness enrolls and this row deletes"
+    dissolution: unbound_dissolution(description: "witness realization executes the corpus walk at native speed; then the witness enrolls and this row deletes")
   },
   WitnessExclusionRow {
     pattern: "long/cited_symbol_resolution_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: "G1 feature:cited-symbol-resolution (operator 2026-08-03): sixteen witnesses in dag/test/claim/long/cited_symbol_resolution_witness_test.dag pay compile_clean_source_roots decl_facts + module_declaration_facts scans — corpus-scale census witnesses measured ~20-47s eval each (enrolled_population_refusal_proves_gate_not_vacuous ~143s); excluded at test/claim/long/ dir grain, not per-PR discovery. Local recipe: claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/long/cited_symbol_resolution_witness_test.dag --functions cited_symbol_hand_authored_binds_all_resolve,cited_symbol_hand_authored_census_is_zero_refusals,cited_symbol_resolution_lens_is_green_on_live_corpus,doc_graph_works_refs_all_resolve,cited_symbol_post7688_production_census_is_zero_violations,cited_symbol_refusal_count_red_on_dangling_fixture,cited_symbol_planted_doc_graph_controls_all_refuse,cited_symbol_enrolled_population_refusal_proves_gate_not_vacuous,cited_symbol_planted_ambiguous_control_refuses_via_resolver,cited_symbol_production_census_ambiguous_count_is_zero,cited_symbol_resolves_node_kind_authority,cited_symbol_resolves_decl_ref_constructor,cited_symbol_refuses_module_absent,cited_symbol_refuses_declaration_absent,cited_symbol_refuses_ambiguous_binding,cited_symbol_refuses_named_field_absent",
-    dissolve_on: "per-witness declared cost envelopes subsume test/claim/long/ dir grain (long_lane_exclusion_note trigger), or falsifier_substrate_long_lane enrolls rows with measured eval under gunbc_ci_fast_lane_witness_eval_budget; row deletes when per-PR discovery runs them"
+    dissolution: unbound_dissolution(description: "per-witness declared cost envelopes subsume test/claim/long/ dir grain (long_lane_exclusion_note trigger), or falsifier_substrate_long_lane enrolls rows with measured eval under gunbc_ci_fast_lane_witness_eval_budget; row deletes when per-PR discovery runs them")
   },
   WitnessExclusionRow {
     pattern: "impossible_bug",
     classification: OfflineLocalRecipe,
     reason: excl_predates_per_row_reason,
-    dissolve_on: excl_predates_per_row_dissolve
-  },
+    dissolution: excl_predates_per_row_dissolve},
   WitnessExclusionRow {
     pattern: "artifact_store_fs_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: "SUBSTANTIATED per-row (codex review 44306 on PR 7407, replacing the grandfathered excl_predates_per_row_reason this row inherited): every fn in this file performs genuinely live filesystem effects — Filesystem.Write/Read/Delete/List against a real store root — which is precisely the integration-style class the operator's 2026-07-11 hermetic-floor posture rules out of regular CI (see wet_integration_offline_note; the floor runs hermetic/mocked behavior checks). Hermetic mode does not merely skip them, it REFUSES: with no mock_response for Write the run stops rather than fabricating Unit, so there is no hermetic dual to discover for the put/delete/list path. The two remaining routes were both checked and neither is available today. Per-PR enrollment contradicts the operator posture above. Enrollment in the falsifier wet cadence would be enrollment into a roster that does not run — falsifier_self_host_wet_cadence_active is false, the rows are an INTERIM unscheduled home owned by the #7199 lane, and .github/workflows/falsifier-alert.yml exists to alert on exactly that non-execution; adding a row there would satisfy a coverage argument while executing nowhere, which is the coverage-by-illusion this repo already treats as a lie. So the honest state is: excluded, with the reason stated rather than inherited, and the gap counted.",
-    dissolve_on: "the wet lane un-darkens and admits live-filesystem integration rows under its own budget — falsifier_self_host_wet_cadence_active flips true, or a build-verification workflow enrolls the wet rosters — at which point this file's fns enroll there as declared execution rows and this exclusion deletes. Same trigger as the four wet_integration_offline_note rows; this row joins that class rather than minting a second one. Local recipe until then: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/artifact_store_fs_witness_test.dag --functions <csv> (store roots under /tmp must pre-exist; Filesystem.Write does not create parents)."
+    dissolution: unbound_dissolution(description: "the wet lane un-darkens and admits live-filesystem integration rows under its own budget — falsifier_self_host_wet_cadence_active flips true, or a build-verification workflow enrolls the wet rosters — at which point this file's fns enroll there as declared execution rows and this exclusion deletes. Same trigger as the four wet_integration_offline_note rows; this row joins that class rather than minting a second one. Local recipe until then: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/artifact_store_fs_witness_test.dag --functions <csv> (store roots under /tmp must pre-exist; Filesystem.Write does not create parents).")
   },
   WitnessExclusionRow {
     pattern: "direct_rust_door_write_compile_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: "wet-integration class (wet_integration_offline_note posture), substantiated per-row: direct_rust_door_emit_write_compile_holds runs tools.direct_rust_door_transport.run_direct_rust_door_emit_write_compile_smoke, which performs live shell.Mktemp.Dir, Filesystem.Write, and cargo.Build.BuildManifest effects with no hermetic mock_response coverage. Hermetic discovery REFUSES rather than fabricating Unit, so per-PR discovery cannot exercise the write-to-disk + compile receipt. Ingest-path provenance and closing-contract witnesses live in src/v2/test/claim/long/ (5s budget rule); fast closure witnesses stay per-PR in src/v2/test/claim/self_host/.",
-    dissolve_on: "the wet lane un-darkens and admits live cargo compile smokes under its own budget; this witness enrolls there as a declared execution row and this exclusion deletes. Local recipe until then: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/direct_rust_door_write_compile_witness_test.dag --function direct_rust_door_emit_write_compile_holds"
+    dissolution: unbound_dissolution(description: "the wet lane un-darkens and admits live cargo compile smokes under its own budget; this witness enrolls there as a declared execution row and this exclusion deletes. Local recipe until then: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/direct_rust_door_write_compile_witness_test.dag --function direct_rust_door_emit_write_compile_holds")
   },
   WitnessExclusionRow {
     pattern: "external_model_scope_live_cover_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: "wet-integration class (wet_integration_offline_note posture), substantiated per-row at enrollment (the d4bef96 floor red is the receipt): every test fn in this file performs genuinely live host effects — a Filesystem.List directory walk of dag/extdeps and a git.Core.DiffNameStatus diff from the pinned legacy_manifest_freeze_sha to HEAD — and hermetic discovery REFUSES them (no published mock operation for either), so there is no hermetic dual to discover. The discriminating pure logic is NOT excluded: scope_cover_holds / manifest_freeze_holds / carrier_content_declares_scope RED controls and all roster/manifest accounting stay discovery-enrolled in external_model_scope_witness_test.dag per-PR; only the live observations run here.",
-    dissolve_on: "TWO triggers, either deletes this row: (a) the wet lane un-darkens and admits live integration rows under its own budget (the wet_integration_offline_note trigger) — this file's fns enroll there as declared execution rows; or (b) the ExternalModelScope requirement is promoted to its v2.lens.mandatory_tag region (gunbc.extdeps_scope_frontier legacy_manifest_shape_note dissolve-on) — the storage-grain cover deletes outright, file and row together. Local recipe until then: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/external_model_scope_live_cover_witness_test.dag --functions frontier_cover_of_live_extdeps_tree_holds,red_cover_walker_refuses_missing_root,manifest_rows_all_predate_freeze_sha"
+    dissolution: unbound_dissolution(description: "TWO triggers, either deletes this row: (a) the wet lane un-darkens and admits live integration rows under its own budget (the wet_integration_offline_note trigger) — this file's fns enroll there as declared execution rows; or (b) the ExternalModelScope requirement is promoted to its v2.lens.mandatory_tag region (gunbc.extdeps_scope_frontier legacy_manifest_shape_note dissolve-on) — the storage-grain cover deletes outright, file and row together. Local recipe until then: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/external_model_scope_live_cover_witness_test.dag --functions frontier_cover_of_live_extdeps_tree_holds,red_cover_walker_refuses_missing_root,manifest_rows_all_predate_freeze_sha")
   },
   WitnessExclusionRow {
     pattern: "served_surface_browser_artifact_integrity_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: "wet-integration class (wet_integration_offline_note posture), substantiated by CI run 30719890594: witness_checked_in_screenshots_match_receipts executes sha256sum and wc shell transports against checked-in PNG bytes; their real execution reaches shell.Mktemp.Dir and other host effects with no mock_response, so hermetic discovery correctly REFUSES rather than fabricating a temporary directory or file result. The pure FileByteCountVerification coproduct controls are split into wc_byte_count_verification_witness_test.dag and remain ordinary per-PR discovery; only the live artifact observation is excluded.",
-    dissolve_on: "the wet lane un-darkens and admits live checked-in-artifact integrity rows under its own budget; this witness enrolls there as a declared execution row and this exclusion deletes. Local recipe until then: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/served_surface_browser_artifact_integrity_witness_test.dag --function witness_checked_in_screenshots_match_receipts"
+    dissolution: unbound_dissolution(description: "the wet lane un-darkens and admits live checked-in-artifact integrity rows under its own budget; this witness enrolls there as a declared execution row and this exclusion deletes. Local recipe until then: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/served_surface_browser_artifact_integrity_witness_test.dag --function witness_checked_in_screenshots_match_receipts")
   },
   WitnessExclusionRow {
     pattern: "emit_source_store_test.dag",
     classification: OfflineLocalRecipe,
     reason: excl_predates_per_row_reason,
-    dissolve_on: excl_predates_per_row_dissolve
-  },
+    dissolution: excl_predates_per_row_dissolve},
   WitnessExclusionRow {
     pattern: "test/manual/",
     classification: OfflineLocalRecipe,
     reason: "manual-test home at dir grain: fns run by local recipe only, never per-PR discovery",
-    dissolve_on: "manual suites migrate under test/claim with declared consumers; row deletes"
+    dissolution: unbound_dissolution(description: "manual suites migrate under test/claim with declared consumers; row deletes")
   },
   WitnessExclusionRow {
     pattern: "glob_discovery.dag",
     classification: OfflineLocalRecipe,
     reason: excl_probe_universe_carrier_reason,
-    dissolve_on: excl_probe_universe_carrier_dissolve
-  },
+    dissolution: excl_probe_universe_carrier_dissolve},
   WitnessExclusionRow {
     pattern: "glob_discovery_law.dag",
     classification: OfflineLocalRecipe,
     reason: excl_probe_universe_carrier_reason,
-    dissolve_on: excl_probe_universe_carrier_dissolve
-  },
+    dissolution: excl_probe_universe_carrier_dissolve},
   WitnessExclusionRow {
     pattern: "host_discovered_owned_data_manifest.dag",
     classification: OfflineLocalRecipe,
     reason: excl_probe_universe_carrier_reason,
-    dissolve_on: excl_probe_universe_carrier_dissolve
-  },
+    dissolution: excl_probe_universe_carrier_dissolve},
   WitnessExclusionRow {
     pattern: "host_source_root_ingest_manifest.dag",
     classification: OfflineLocalRecipe,
     reason: excl_probe_universe_carrier_reason,
-    dissolve_on: excl_probe_universe_carrier_dissolve
-  },
+    dissolution: excl_probe_universe_carrier_dissolve},
   WitnessExclusionRow {
     pattern: "program_assembly/real_ingest_test.dag",
     classification: OfflineLocalRecipe,
     reason: "transport-run witness consumed by v2.workflow.module_binding_supply_transport (same posture as crate_layout; see crate_layout_transport_exclusion_note)",
-    dissolve_on: "the crate-layout artifact moves to host-driven generation with the index supplied at the boundary; rows delete together (crate_layout_transport_exclusion_note)"
+    dissolution: unbound_dissolution(description: "the crate-layout artifact moves to host-driven generation with the index supplied at the boundary; rows delete together (crate_layout_transport_exclusion_note)")
   },
   WitnessExclusionRow {
     pattern: "self_host/compiler_closure_emit_from_ingest_test.dag",
     classification: OfflineLocalRecipe,
     reason: "transport-run witness (crate_layout_transport_exclusion_note). One of its five fns is separately quarantined known-red at function grain (gunbc.explicit_witness_admission); that is a different fact about that fn, not a restatement of this file-grain transport exclusion",
-    dissolve_on: "the crate-layout artifact moves to host-driven generation; rows delete together (crate_layout_transport_exclusion_note)"
+    dissolution: unbound_dissolution(description: "the crate-layout artifact moves to host-driven generation; rows delete together (crate_layout_transport_exclusion_note)")
   },
   WitnessExclusionRow {
     pattern: "self_host/crate_layout_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: "transport-run witness: hermetic runs read host_module_bindings = Empty and REFUSE; do NOT give it bin_witness_wet_entries rows (see crate_layout_transport_exclusion_note)",
-    dissolve_on: "the crate-layout artifact moves to host-driven generation with the index supplied at the boundary; the hand rows, the parity witness, and this row delete together"
+    dissolution: unbound_dissolution(description: "the crate-layout artifact moves to host-driven generation with the index supplied at the boundary; the hand rows, the parity witness, and this row delete together")
   },
   WitnessExclusionRow {
     pattern: "unified_test_claim_substrate_equivalence.dag",
     classification: OfflineLocalRecipe,
     reason: excl_probe_universe_carrier_reason,
-    dissolve_on: excl_probe_universe_carrier_dissolve
-  },
+    dissolution: excl_probe_universe_carrier_dissolve},
   WitnessExclusionRow {
     pattern: "ci_exclusion_proof_test.dag",
     classification: OfflineLocalRecipe,
     reason: excl_predates_per_row_reason,
-    dissolve_on: excl_predates_per_row_dissolve
-  },
+    dissolution: excl_predates_per_row_dissolve},
   WitnessExclusionRow {
     pattern: "test/claim/execution/",
     classification: OfflineLocalRecipe,
     reason: "emit-vs-eval execution corpus home at dir grain: pure subtests are OfflineLocalRecipe; agreement legs run through explicit rosters (family crate, native routing frontier) checked before this classification",
-    dissolve_on: "witness-cost-locality admission or native routing enrolls rows per-family; the dir row deletes"
+    dissolution: unbound_dissolution(description: "witness-cost-locality admission or native routing enrolls rows per-family; the dir row deletes")
   },
   WitnessExclusionRow {
     pattern: "claim/complexity/accumulator_copy_roster_gate",
     classification: OfflineLocalRecipe,
     reason: "operator-ruled OFFLINE roster gate (~15m serial interpreted resolve; runtime filesystem_read data deps invisible to closure attribution — see accumulator_copy_roster_gate_exclusion_note)",
-    dissolve_on: excl_roster_gate_dissolve
-  },
+    dissolution: excl_roster_gate_dissolve},
   WitnessExclusionRow {
     pattern: "claim/identity_captured_navigation/roster_gate",
     classification: OfflineLocalRecipe,
     reason: "operator-ruled OFFLINE roster gate, identical structural reason as accumulator_copy (see identity_captured_navigation_roster_gate_exclusion_note)",
-    dissolve_on: excl_roster_gate_dissolve
-  },
+    dissolution: excl_roster_gate_dissolve},
   WitnessExclusionRow {
     pattern: "test/claim/enforcement/",
     classification: OfflineLocalRecipe,
     reason: "corpus-denominated enforcement coverage witnesses, operator-ruled OFFLINE (22min/35 percent of floor budget; see enforcement_coverage_exclusion_note)",
-    dissolve_on: "witness rows declare InputEnvelope/CostEnvelope and the scheduled lane admits corpus-input rows; re-enroll through the floor owner (enforcement_coverage_exclusion_note)"
+    dissolution: unbound_dissolution(description: "witness rows declare InputEnvelope/CostEnvelope and the scheduled lane admits corpus-input rows; re-enroll through the floor owner (enforcement_coverage_exclusion_note)")
   },
   WitnessExclusionRow {
     pattern: "enforcement_live_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: "corpus-denominated enforcement witness, operator-ruled OFFLINE (see enforcement_coverage_exclusion_note; its explicit CommitCheckEnrollment was deleted, never exclusion-vetoed)",
-    dissolve_on: "witness rows declare InputEnvelope/CostEnvelope and the scheduled lane admits corpus-input rows; re-enroll through the floor owner (enforcement_coverage_exclusion_note)"
+    dissolution: unbound_dissolution(description: "witness rows declare InputEnvelope/CostEnvelope and the scheduled lane admits corpus-input rows; re-enroll through the floor owner (enforcement_coverage_exclusion_note)")
   },
   WitnessExclusionRow {
     pattern: "enforcement_inventory_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: "corpus-denominated lens enforcement inventory witnesses (lens_enforcement_inventory_live reads decl_facts); operator-ruled OFFLINE same posture as enforcement_live_witness_test.dag (see enforcement_coverage_exclusion_note)",
-    dissolve_on: "witness rows declare InputEnvelope/CostEnvelope and the scheduled lane admits corpus-input rows; re-enroll through the floor owner (enforcement_coverage_exclusion_note)"
+    dissolution: unbound_dissolution(description: "witness rows declare InputEnvelope/CostEnvelope and the scheduled lane admits corpus-input rows; re-enroll through the floor owner (enforcement_coverage_exclusion_note)")
   },
   WitnessExclusionRow {
     pattern: "lever_a_local_receipt_witness",
     classification: OfflineLocalRecipe,
     reason: "operator-ruled OFFLINE: O(rows) full entry-tree walks, 85m+ CI timeout (see lever_a_local_receipt_witness_exclusion_note, which carries the local recipe verbatim)",
-    dissolve_on: "single-roster memo in tools.dag_compile_clean_scope lands AND G2 path-intersection is wired into floor admission axis (iv); re-enroll through the floor owner"
+    dissolution: unbound_dissolution(description: "single-roster memo in tools.dag_compile_clean_scope lands AND G2 path-intersection is wired into floor admission axis (iv); re-enroll through the floor owner")
   },
   WitnessExclusionRow {
     pattern: "host_effect_apply_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: excl_wet_integration_reason,
-    dissolve_on: excl_wet_integration_dissolve
-  },
+    dissolution: excl_wet_integration_dissolve},
   WitnessExclusionRow {
     pattern: "host_effect_plan_real_execution_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: "wet-integration class (wet_integration_offline_note posture); its shell witness fn runs via bin_witness_wet_entries, checked before this classification",
-    dissolve_on: excl_wet_integration_dissolve
-  },
+    dissolution: excl_wet_integration_dissolve},
   WitnessExclusionRow {
     pattern: "deploy_access_privilege_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: excl_wet_integration_reason,
-    dissolve_on: excl_wet_integration_dissolve
-  },
+    dissolution: excl_wet_integration_dissolve},
   WitnessExclusionRow {
     pattern: "ci_deploy_observed_wet_test.dag",
     classification: OfflineLocalRecipe,
     reason: excl_wet_integration_reason,
-    dissolve_on: excl_wet_integration_dissolve
-  },
+    dissolution: excl_wet_integration_dissolve},
   WitnessExclusionRow {
     pattern: "random_bytes_csprng_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: excl_wet_integration_reason,
-    dissolve_on: excl_wet_integration_dissolve
-  },
+    dissolution: excl_wet_integration_dissolve},
   WitnessExclusionRow {
     pattern: "typed_witness_invocation_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
-    dissolve_on: excl_bin_wet_dissolve
-  },
+    dissolution: excl_bin_wet_dissolve},
   WitnessExclusionRow {
     pattern: "namespace_structural_root_exposure_generated_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
-    dissolve_on: excl_bin_wet_dissolve
-  },
+    dissolution: excl_bin_wet_dissolve},
   WitnessExclusionRow {
     pattern: "emit_host_typed_smoke_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
-    dissolve_on: excl_bin_wet_dissolve
-  },
+    dissolution: excl_bin_wet_dissolve},
   WitnessExclusionRow {
     pattern: "build_artifact_corruption_probe_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
-    dissolve_on: excl_bin_wet_dissolve
-  },
+    dissolution: excl_bin_wet_dissolve},
   WitnessExclusionRow {
     pattern: "self_host_logic_behavioral_witness_test.dag",
     classification: FalsifierSelfHostWet,
     reason: "REHOME fulfilled 2026-08-06 (Lane D): falsifier_self_host_wet_cadence_active true; dag/test/claim/self_host_logic_behavioral_witness_test.dag::self_host_logic_behavioral_receipt_holds enrolled on falsifier_self_host_wet_template_entries; path policy keeps the wet receipt out of per-PR hermetic discovery while falsifier batch 2 is the executing consumer",
-    dissolve_on: excl_behavioral_receipt_dissolve
-  },
+    dissolution: excl_behavioral_receipt_dissolve},
   WitnessExclusionRow {
     pattern: "namespace_import_closure_witness_test.dag",
     classification: FalsifierSelfHostWet,
     reason: "REHOME fulfilled 2026-08-06 (Lane D): falsifier_self_host_wet_cadence_active true; dag/test/claim/namespace_import_closure_witness_test.dag::namespace_import_closure_receipt_holds enrolled on falsifier_self_host_wet_template_entries; path policy keeps the wet receipt out of per-PR hermetic discovery while falsifier batch 2 is the executing consumer",
-    dissolve_on: excl_behavioral_receipt_dissolve
-  },
+    dissolution: excl_behavioral_receipt_dissolve},
   WitnessExclusionRow {
     pattern: "interpreter_dispatch_bijection_real_roster_witness_test.dag",
     classification: FalsifierSelfHostWet,
     reason: "R1 real-crate bijection wet receipt (gunbc#7825): cargo-integration witness (git clone, gunbc run main_wet, cold cargo build in clone) enrolled on falsifier_self_host_wet_template_entries when cadence active; must not enter per-PR hermetic discovery",
-    dissolve_on: excl_behavioral_receipt_dissolve
-  },
+    dissolution: excl_behavioral_receipt_dissolve},
   WitnessExclusionRow {
     pattern: "self_host_03_resolve_behavioral_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: excl_behavioral_receipt_reason,
-    dissolve_on: excl_behavioral_receipt_dissolve
-  },
+    dissolution: excl_behavioral_receipt_dissolve},
   WitnessExclusionRow {
     pattern: "self_host_01_tokenize_behavioral_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: excl_behavioral_receipt_reason,
-    dissolve_on: excl_behavioral_receipt_dissolve
-  },
+    dissolution: excl_behavioral_receipt_dissolve},
   WitnessExclusionRow {
     pattern: "self_host_program_assembly_behavioral_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: excl_behavioral_receipt_reason,
-    dissolve_on: excl_behavioral_receipt_dissolve
-  },
+    dissolution: excl_behavioral_receipt_dissolve},
   WitnessExclusionRow {
     pattern: "self_host_program_partition_behavioral_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: excl_behavioral_receipt_reason,
-    dissolve_on: excl_behavioral_receipt_dissolve
-  },
+    dissolution: excl_behavioral_receipt_dissolve},
   WitnessExclusionRow {
     pattern: "self_host_source_authority_behavioral_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: excl_behavioral_receipt_reason,
-    dissolve_on: excl_behavioral_receipt_dissolve
-  },
+    dissolution: excl_behavioral_receipt_dissolve},
   WitnessExclusionRow {
     pattern: "self_host_00_compile_behavioral_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: excl_behavioral_receipt_reason,
-    dissolve_on: excl_behavioral_receipt_dissolve
-  },
+    dissolution: excl_behavioral_receipt_dissolve},
   WitnessExclusionRow {
     pattern: "self_host_04_infer_behavioral_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: excl_behavioral_receipt_reason,
-    dissolve_on: excl_behavioral_receipt_dissolve
-  },
+    dissolution: excl_behavioral_receipt_dissolve},
   WitnessExclusionRow {
     pattern: "self_host_03_normalize_behavioral_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: "PATH POLICY for the file's remaining witness only. Its behavioral receipt is exact-admitted as a wet expect-red quarantine on gunbc.explicit_witness_admission and is not governed by this row; the sibling declared_source_refs_complete_holds has no admission and runs by local recipe, which is what this row states. Until 2026-08-03 this row's reason instead recorded a WORKAROUND — that classifying the FILE QuarantineProbeExpectRed would orphan that sibling, so the file was downgraded to OfflineLocalRecipe — which is the file-grain absorption the exact admission authority removed. Local recipe: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag --function self_host_03_normalize_declared_source_refs_complete_holds",
-    dissolve_on: "the sibling gains a scheduled consumer or the file's receipt greens and both facts collapse to ordinary discovery; then this row deletes"
+    dissolution: unbound_dissolution(description: "the sibling gains a scheduled consumer or the file's receipt greens and both facts collapse to ordinary discovery; then this row deletes")
   },
   WitnessExclusionRow {
     pattern: "self_host_02_parse_behavioral_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: excl_behavioral_receipt_reason,
-    dissolve_on: excl_behavioral_receipt_dissolve
-  },
+    dissolution: excl_behavioral_receipt_dissolve},
   WitnessExclusionRow {
     pattern: "self_host_03_ingest_behavioral_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: excl_behavioral_receipt_reason,
-    dissolve_on: excl_behavioral_receipt_dissolve
-  },
+    dissolution: excl_behavioral_receipt_dissolve},
   WitnessExclusionRow {
     pattern: "self_host_materialization_carriers_behavioral_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: excl_behavioral_receipt_reason,
-    dissolve_on: excl_behavioral_receipt_dissolve
-  },
+    dissolution: excl_behavioral_receipt_dissolve},
   WitnessExclusionRow {
     pattern: "dag_collect_fingerprint_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
-    dissolve_on: excl_bin_wet_dissolve
-  },
+    dissolution: excl_bin_wet_dissolve},
   WitnessExclusionRow {
     pattern: "dag_compile_clean_perturb_receipts_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
-    dissolve_on: excl_bin_wet_dissolve
-  },
+    dissolution: excl_bin_wet_dissolve},
   WitnessExclusionRow {
     pattern: "test/claim/diagnostics_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
-    dissolve_on: excl_bin_wet_dissolve
-  },
+    dissolution: excl_bin_wet_dissolve},
   WitnessExclusionRow {
     pattern: "effects_rest_transport_parse_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
-    dissolve_on: excl_bin_wet_dissolve
-  },
+    dissolution: excl_bin_wet_dissolve},
   WitnessExclusionRow {
     pattern: "floor_skip_discovery_witness_test.dag",
     classification: FalsifierRehomedBinWet,
     reason: excl_rehomed_bin_wet_reason,
-    dissolve_on: excl_rehomed_bin_wet_dissolve
-  },
+    dissolution: excl_rehomed_bin_wet_dissolve},
   WitnessExclusionRow {
     pattern: "affected_set_provenance_producer_witness_test.dag",
     classification: FalsifierSubstrateLongLane,
     reason: excl_substrate_long_lane_reason,
-    dissolve_on: excl_substrate_long_lane_dissolve
-  },
+    dissolution: excl_substrate_long_lane_dissolve},
   WitnessExclusionRow {
     pattern: "edit_locus_source_provenance_witness_test.dag",
     classification: FalsifierSubstrateLongLane,
     reason: excl_substrate_long_lane_reason,
-    dissolve_on: excl_substrate_long_lane_dissolve
-  },
+    dissolution: excl_substrate_long_lane_dissolve},
   WitnessExclusionRow {
     pattern: "long/wave1_gate1_d_mvp_subsumption_witness_test.dag",
     classification: FalsifierSubstrateLongLane,
     reason: excl_substrate_long_lane_reason,
-    dissolve_on: excl_substrate_long_lane_dissolve
-  },
+    dissolution: excl_substrate_long_lane_dissolve},
   WitnessExclusionRow {
     pattern: "long/v1_complexity_capability_census_resolution_test.dag",
     classification: FalsifierSubstrateLongLane,
     reason: excl_substrate_long_lane_reason,
-    dissolve_on: excl_substrate_long_lane_dissolve
-  },
+    dissolution: excl_substrate_long_lane_dissolve},
   WitnessExclusionRow {
     pattern: "long/v1_complexity_decl_classification_totality_test.dag",
     classification: FalsifierSubstrateLongLane,
     reason: excl_substrate_long_lane_reason,
-    dissolve_on: excl_substrate_long_lane_dissolve
-  },
+    dissolution: excl_substrate_long_lane_dissolve},
   WitnessExclusionRow {
     pattern: "fallback_arm_census_witness_test.dag",
     classification: FalsifierSubstrateLongLane,
     reason: excl_substrate_long_lane_reason,
-    dissolve_on: excl_substrate_long_lane_dissolve
-  },
+    dissolution: excl_substrate_long_lane_dissolve},
   WitnessExclusionRow {
     pattern: "long/instrument_sandbox_live_witness_test.dag",
     classification: FalsifierSubstrateLongLane,
     reason: excl_substrate_long_lane_reason,
-    dissolve_on: excl_substrate_long_lane_dissolve
-  },
+    dissolution: excl_substrate_long_lane_dissolve},
   WitnessExclusionRow {
     pattern: "rust_test_fixtures_import_closure_witness_test.dag",
     classification: FalsifierSubstrateLongLane,
     reason: excl_substrate_long_lane_reason,
-    dissolve_on: excl_substrate_long_lane_dissolve
-  },
+    dissolution: excl_substrate_long_lane_dissolve},
   WitnessExclusionRow {
     pattern: "synthetic_orphan_admission_witness_test.dag",
     classification: NoConsumer,
     reason: "deliberate no-consumer synthetic path: the admission RED control keys on this reserved (nonexistent) entry to prove enrolled-with-zero-consumers refuses (witness_admission_test, cli_run admission tests)",
-    dissolve_on: "the admission RED control keys on a typed fixture instead of a reserved path substring; row deletes"
+    dissolution: unbound_dissolution(description: "the admission RED control keys on a typed fixture instead of a reserved path substring; row deletes")
   },
   WitnessExclusionRow {
     pattern: "interp_recorded_fixture_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: "PER-PR ENROLLMENT REVERTED 2026-07-23 (the cold-child class, measured): the witness drives ~13+ claim_batch children each given --source-root <workspace root> — every child indexes the ENTIRE repo cold, serially — 2556s (42.6min) on run 29995111208's wet batch, the dominating row of the 53.2min batch-4 wall. That is a cold corpus-scan on the merge path (the record->replay lifecycle it witnesses is real coverage, but its transport class is the exact disease the pooled-child lever removes elsewhere). Too heavy for the falsifier wet lane's 600s per-receipt wall budget as-is, so it reverts to local recipe rather than enshrining a nightly refusal. Local recipe: target/release/interp_recorded_fixture_witness (builds claim_batch on demand).",
-    dissolve_on: "re-enrolls (falsifier wet or per-PR) when its claim_batch children are pooled/scoped (fixture-dir source roots instead of the workspace root, or one pooled child per lifecycle phase) and a measured run fits the destination lane's budget; the enrollment flip cites that receipt"
+    dissolution: unbound_dissolution(description: "re-enrolls (falsifier wet or per-PR) when its claim_batch children are pooled/scoped (fixture-dir source roots instead of the workspace root, or one pooled child per lifecycle phase) and a measured run fits the destination lane's budget; the enrollment flip cites that receipt")
   },
   WitnessExclusionRow {
     pattern: "test/claim/parse_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
-    dissolve_on: excl_bin_wet_dissolve
-  },
+    dissolution: excl_bin_wet_dissolve},
   WitnessExclusionRow {
     pattern: "v1_dag_parse_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
-    dissolve_on: excl_bin_wet_dissolve
-  },
+    dissolution: excl_bin_wet_dissolve},
   WitnessExclusionRow {
     pattern: "auth_declared_but_unwired_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
-    dissolve_on: excl_bin_wet_dissolve
-  },
+    dissolution: excl_bin_wet_dissolve},
   WitnessExclusionRow {
     pattern: "test/claim/bootstrap_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
-    dissolve_on: excl_bin_wet_dissolve
-  },
+    dissolution: excl_bin_wet_dissolve},
   WitnessExclusionRow {
     pattern: "infer_semantics_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
-    dissolve_on: excl_bin_wet_dissolve
-  },
+    dissolution: excl_bin_wet_dissolve},
   WitnessExclusionRow {
     pattern: "dag_compile_clean_shard_a_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
-    dissolve_on: excl_bin_wet_dissolve
-  },
+    dissolution: excl_bin_wet_dissolve},
   WitnessExclusionRow {
     pattern: "dag_compile_clean_shard_totality_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
-    dissolve_on: excl_bin_wet_dissolve
-  },
+    dissolution: excl_bin_wet_dissolve},
   WitnessExclusionRow {
     pattern: "dag_compile_clean_seam_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
-    dissolve_on: excl_bin_wet_dissolve
-  },
+    dissolution: excl_bin_wet_dissolve},
   WitnessExclusionRow {
     pattern: "test/fixture/floor_skip/",
     classification: FixtureExplicitRoster,
     reason: "floor_skip control fixtures at dir grain: driven by floor_skip_discovery_witness explicit rosters, never corpus witnesses (floor_skip_control_fixture_exclusion_note, witness_admission_fixture_note)",
-    dissolve_on: "fixture-home policy changes (witness_admission_fixture_note); row deletes"
+    dissolution: unbound_dissolution(description: "fixture-home policy changes (witness_admission_fixture_note); row deletes")
   },
   WitnessExclusionRow {
     pattern: "test/fixture/walk_plan_stage/",
     classification: FixtureExplicitRoster,
     reason: "walk_plan_stage production-path fixtures at dir grain: Wet typed-service controls driven only by plan.dag claim_executor recipes, never hermetic discovery witnesses (walk_plan_stage_control_fixture_exclusion_note, witness_admission_fixture_note)",
-    dissolve_on: "fixture-home policy changes (witness_admission_fixture_note); row deletes"
+    dissolution: unbound_dissolution(description: "fixture-home policy changes (witness_admission_fixture_note); row deletes")
   },
   WitnessExclusionRow {
     pattern: "frontier_probe_closure_matrix_integration_test.dag",
     classification: FalsifierRehomedBinWet,
     reason: "PR #7762 frontier probe closure integration matrix (operator msg_b51df9e7): frontier_probe_below_cap_complete_population_gates_pass_holds and frontier_probe_second_source_root_population_gates_pass_holds execute full receipt_for_subject with observed SourceRef rows through assemble — measured claim_batch --wet eval wall: below_cap 784772ms, second_root 742109ms (130x and 123x bin_witness_wet_per_row_wall_budget_seconds). Scheduled consumer: FalsifierCadenceJob enrollment plus falsifier_rehomed_bin_wet_rows. Cheap wet controls (read_failure 3ms, hash_mismatch 2ms, elision boundary 3ms measured eval) run per-PR on GithubActionsCiJob via src/v2/test/claim/workflow/frontier_probe_closure_readthrough_test.dag — not 523ms/181ms (those were erroneous full-resolve figures from an earlier exclusion row before read-through was split out).",
-    dissolve_on: "measured eval for below_cap and second_root lands under bin_witness_wet_per_row_wall_budget_seconds on a measured run — then re-enroll per-PR discovery consciously, or delete when emit-stage positives are no longer full-pipeline priced"
+    dissolution: unbound_dissolution(description: "measured eval for below_cap and second_root lands under bin_witness_wet_per_row_wall_budget_seconds on a measured run — then re-enroll per-PR discovery consciously, or delete when emit-stage positives are no longer full-pipeline priced")
   },
   WitnessExclusionRow {
     pattern: "frontier_probe_closure_readthrough_test.dag",
     classification: OfflineLocalRecipe,
     reason: "PR #7762 wet read-through controls (ReadsLiveTree + frontier_probe_receipt_for_subject Filesystem.Read): hermetic discovery refuses without mock_response. Scheduled per-PR wet on GithubActionsCiJob execution corpus via commit_gate_roster SpanEnrolled rows (read_failure ~3ms, hash_mismatch ~2ms, elision boundary ~3ms measured eval on claim_batch --wet). Local recipe: claim_batch --wet --source-root dag --source-root src/v2 --entry src/v2/test/claim/workflow/frontier_probe_closure_readthrough_test.dag --functions <fn>",
-    dissolve_on: "filesystem_read mock_response covers probe read paths and witnesses re-enroll as hermetic discovery rows, or per-witness exact admission subsumes path exclusion"
+    dissolution: unbound_dissolution(description: "filesystem_read mock_response covers probe read paths and witnesses re-enroll as hermetic discovery rows, or per-witness exact admission subsumes path exclusion")
   },
   WitnessExclusionRow {
     pattern: "test/claim/long/",
     classification: OfflineLocalRecipe,
     reason: "the LONG-test home at dir grain (operator 5-second rule). It removes these entries from per-PR discovery and NOTHING MORE: since 2026-08-04 it no longer answers the admission question, because the eval-deadline backstop it was blessed on is disarmed by the very relocation it was supposed to govern (long_lane_exclusion_note carries the retraction and the gunbc#7762 receipt). Admission is decided at identity grain by gunbc.witness_deferral_freeze plus gunbc.explicit_witness_admission",
-    dissolve_on: "the frozen path-deferral population reaches empty — every resident carrying an exact admission with a declared purpose, cost and executing cadence — then this row and the path-policy pass-through arm delete together"
+    dissolution: unbound_dissolution(description: "the frozen path-deferral population reaches empty — every resident carrying an exact admission with a declared purpose, cost and executing cadence — then this row and the path-policy pass-through arm delete together")
   },
   WitnessExclusionRow {
     pattern: "compiler_frontier_per_module_probe_test.dag",
     classification: OfflineLocalRecipe,
     reason: "operator-ruled OFFLINE long-lane resident (Lane E closeout): per-module frontier_probe_emit_from_ingest over 27 modules exceeds the 5s fast-lane budget; test/claim/long/ dir grain excludes discovery but this row names the OFFLINE local recipe consumer (compiler_frontier_per_module_probe_exclusion_note)",
-    dissolve_on: "all 27 roster modules have execution_measurement receipts at one pinned source_head in host_frontier_probe_survey_manifest, frontier.dag rows hand-authored from that manifest, compiler_frontier_per_module_probe_survey_holds greens via the local recipe, totality wall witnesses pass — then row deletes with the probe scaffold dissolution"
+    dissolution: unbound_dissolution(description: "all 27 roster modules have execution_measurement receipts at one pinned source_head in host_frontier_probe_survey_manifest, frontier.dag rows hand-authored from that manifest, compiler_frontier_per_module_probe_survey_holds greens via the local recipe, totality wall witnesses pass — then row deletes with the probe scaffold dissolution")
   },
   WitnessExclusionRow {
     pattern: "no_fake_anomalies_witness_test.dag",
     classification: FalsifierRehomedBinWet,
     reason: excl_no_fake_anomalies_reason,
-    dissolve_on: excl_no_fake_anomalies_dissolve
-  },
+    dissolution: excl_no_fake_anomalies_dissolve},
   WitnessExclusionRow {
     pattern: "expectation_frontier_witness_test.dag",
     classification: FalsifierRehomedBinWet,
     reason: excl_expectation_frontier_reason,
-    dissolve_on: excl_expectation_frontier_dissolve
-  },
+    dissolution: excl_expectation_frontier_dissolve},
   WitnessExclusionRow {
     pattern: "srv3_install_media_fetch_real_execution_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_install_media_reason,
-    dissolve_on: excl_install_media_dissolve
-  },
+    dissolution: excl_install_media_dissolve},
   WitnessExclusionRow {
     pattern: "srv3_seeded_install_media_real_execution_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_install_media_reason,
-    dissolve_on: excl_install_media_dissolve
-  },
+    dissolution: excl_install_media_dissolve},
   WitnessExclusionRow {
     pattern: "http_client_get_real_execution_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_install_media_reason,
-    dissolve_on: excl_install_media_dissolve
-  },
+    dissolution: excl_install_media_dissolve},
   WitnessExclusionRow {
     pattern: "roadmap_belt_actuate_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
-    dissolve_on: excl_bin_wet_dissolve
-  },
+    dissolution: excl_bin_wet_dissolve},
   WitnessExclusionRow {
     pattern: "host_build_cache_provision_real_execution_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_install_media_reason,
-    dissolve_on: excl_install_media_dissolve
-  },
+    dissolution: excl_install_media_dissolve},
   WitnessExclusionRow {
     pattern: "generated_artifact_merge_driver_real_execution_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_install_media_reason,
-    dissolve_on: excl_install_media_dissolve
-  },
+    dissolution: excl_install_media_dissolve},
   WitnessExclusionRow {
     pattern: "proc_self_cgroup_real_execution_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_install_media_reason,
-    dissolve_on: excl_install_media_dissolve
-  },
+    dissolution: excl_install_media_dissolve},
   WitnessExclusionRow {
     pattern: "repo_local_git_config_real_execution_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_install_media_reason,
-    dissolve_on: excl_install_media_dissolve
-  },
+    dissolution: excl_install_media_dissolve},
   WitnessExclusionRow {
     pattern: "commit_writer_heal_admission_real_execution_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_install_media_reason,
-    dissolve_on: excl_install_media_dissolve
-  },
+    dissolution: excl_install_media_dissolve},
   WitnessExclusionRow {
     pattern: "effect_plan_bash_materialize_real_execution_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
-    dissolve_on: excl_bin_wet_dissolve
-  },
+    dissolution: excl_bin_wet_dissolve},
   WitnessExclusionRow {
     pattern: "claude_sdk_parser_drop_live_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_install_media_reason,
-    dissolve_on: excl_install_media_dissolve
-  },
+    dissolution: excl_install_media_dissolve},
   WitnessExclusionRow {
     pattern: "transport_script_stdin_byte_fidelity_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
-    dissolve_on: excl_bin_wet_dissolve
-  },
+    dissolution: excl_bin_wet_dissolve},
   WitnessExclusionRow {
     pattern: "push_event_witness_wet_test.dag",
     classification: BinWitnessWet,
     reason: excl_install_media_reason,
-    dissolve_on: excl_install_media_dissolve
-  },
+    dissolution: excl_install_media_dissolve},
   WitnessExclusionRow {
     pattern: "codex_package_delivery_wet_witness_test.dag",
     classification: FalsifierRehomedBinWet,
     reason: "wet real-execution class re-homed off the per-PR floor (witness-time ruling + wet_integration posture): DownloadToFile + sha512sum + npm cache add of admitted bytes + npm ci --offline + content-addressed release publish. Measured claim_batch --wet materialize wall ~150s (> bin_witness_wet_per_row_wall_budget_seconds). Exact fns enroll in falsifier_rehomed_bin_wet_rows (falsifier batch 5). OfflineLocalRecipe alone is UnclassifiedPathDeferral since 2026-08-04.",
-    dissolve_on: "a dedicated integration workflow enrolls these exact fns with durable receipts, or measured wall lands under bin_witness_wet_per_row_wall_budget_seconds and re-enrolls per-PR consciously"
+    dissolution: unbound_dissolution(description: "a dedicated integration workflow enrolls these exact fns with durable receipts, or measured wall lands under bin_witness_wet_per_row_wall_budget_seconds and re-enrolls per-PR consciously")
   },
   WitnessExclusionRow {
     pattern: "codex_app_server_press_wet_witness_test.dag",
     classification: FalsifierRehomedBinWet,
     reason: "wet real-execution class re-homed off the per-PR floor: materialize Codex runtime then typed app-server account-standing session. Measured wall >> bin_witness_wet_per_row_wall_budget_seconds. Exact fn enrolls in falsifier_rehomed_bin_wet_rows. OfflineLocalRecipe alone is UnclassifiedPathDeferral since 2026-08-04.",
-    dissolve_on: "a dedicated integration workflow enrolls the account-standing trip with a durable receipt, or measured wall lands under bin_witness_wet_per_row_wall_budget_seconds and re-enrolls per-PR consciously"
+    dissolution: unbound_dissolution(description: "a dedicated integration workflow enrolls the account-standing trip with a durable receipt, or measured wall lands under bin_witness_wet_per_row_wall_budget_seconds and re-enrolls per-PR consciously")
   },
   WitnessExclusionRow {
     pattern: "resolution_divergence_silent_pick_gate_witness_test.dag",
     classification: BinWitnessWet,
     reason: "nightly falsifier batch 4 bin-execution witness: closure-scoped resolution-divergence census with SILENT-PICK-GATE fail-closed arms (falsifier_silent_pick_gate_note)",
-    dissolve_on: "unique-on-chain resolution ships as the resolver behavior; telemetry, witness, and this row delete together (falsifier_silent_pick_gate_note)"
+    dissolution: unbound_dissolution(description: "unique-on-chain resolution ships as the resolver behavior; telemetry, witness, and this row delete together (falsifier_silent_pick_gate_note)")
   }
 ]
 
@@ -828,18 +767,18 @@ fn witness_exclusion_patterns(rows: List<WitnessExclusionRow>) -> List<String> {
 }
 
 fn witness_exclusion_row_waits_on_wet_lane_undarken(row: WitnessExclusionRow) -> Bool {
-  string_contains(s: row.dissolve_on, pattern: "falsifier_self_host_wet_cadence_active")
-    || (row.dissolve_on == excl_wet_integration_dissolve)
-    || (row.dissolve_on == excl_behavioral_receipt_dissolve)
-    || string_contains(s: row.dissolve_on, pattern: "wet lane un-darken")
-    || string_contains(s: row.dissolve_on, pattern: "wet lane un-darkens")
+  string_contains(s: dissolution_description(condition: row.dissolution), pattern: "falsifier_self_host_wet_cadence_active")
+    || (dissolution_description(condition: row.dissolution) == dissolution_description(condition: excl_wet_integration_dissolve))
+    || (dissolution_description(condition: row.dissolution) == dissolution_description(condition: excl_behavioral_receipt_dissolve))
+    || string_contains(s: dissolution_description(condition: row.dissolution), pattern: "wet lane un-darken")
+    || string_contains(s: dissolution_description(condition: row.dissolution), pattern: "wet lane un-darkens")
 }
 
 data witness_exclusion_row_mentions_wet_lane_dark_state_note: String = "witness_exclusion_row_mentions_wet_lane_dark_state is a broader candidate net than witness_exclusion_row_waits_on_wet_lane_undarken's positive arms: any row whose dissolve_on names the falsifier_self_host_wet lane, the cadence flag, or an un-darken trigger in ANY spelling. A row caught by this net but not matched by the positive predicate is a THIRD spelling the positive predicate has not learned yet -- surfaced via falsifier_self_host_wet_dark_lane_unclassified_rows, not silently dropped (still-bat-561 review, 2026-08-05: a derived count is only as good as its predicate, and a predicate with an unclassified residue silently deflates exactly like a hand-typed ordinal goes stale). This is a candidate net, not a second authority: false positives here (a row that mentions the wet lane only as one arm of an unrelated OR-condition) are expected and are why v2.test.claim.witness_exclusion_reconciliation_test asserts the PROPERTY -- every candidate is claimed by exactly one arm -- rather than asserting any specific count."
 
 fn witness_exclusion_row_mentions_wet_lane_dark_state(row: WitnessExclusionRow) -> Bool {
-  string_contains(s: row.dissolve_on, pattern: "falsifier_self_host_wet")
-    || string_contains(s: row.dissolve_on, pattern: "un-darken")
+  string_contains(s: dissolution_description(condition: row.dissolution), pattern: "falsifier_self_host_wet")
+    || string_contains(s: dissolution_description(condition: row.dissolution), pattern: "un-darken")
 }
 
 fn falsifier_self_host_wet_dark_lane_waiting_rows() -> List<WitnessExclusionRow> {
@@ -1038,9 +977,9 @@ data excl_no_fake_anomalies_reason: String = "The expectation-backfill WALL spaw
 
 data excl_expectation_frontier_reason: String = "Reads the [expectation-frontier] receipt out of a real child run's stderr, so it is Wet BY CONSTRUCTION for the same reason the anomaly wall beside it is: the receipt only exists when effects actually dispatch, and a hermetic child emits no real observation stream, so a mocked version could only pass vacuously. Sibling mechanism, same lane, deliberately not a forked one (DESIGN §3). D6-rehomed to FalsifierRehomedBinWet with its anomaly sibling (run 30220304152: ~89–136s/row vs the 60s per-row budget)."
 
-data excl_expectation_frontier_dissolve: String = "fires with the UntracedDefault arm itself: when the counted frontier reaches zero corpus-wide, an undeclared expectation becomes a hard typed refusal at the dispatch boundary, the receipt has nothing left to report, and this witness plus these rows delete together. Until then the frontier is the thing being shrunk, so the receipt that measures it must keep executing."
+data excl_expectation_frontier_dissolve: DissolutionCondition = unbound_dissolution(description: "fires with the UntracedDefault arm itself: when the counted frontier reaches zero corpus-wide, an undeclared expectation becomes a hard typed refusal at the dispatch boundary, the receipt has nothing left to report, and this witness plus these rows delete together. Until then the frontier is the thing being shrunk, so the receipt that measures it must keep executing.")
 
-data excl_no_fake_anomalies_dissolve: String = "paired with falsifier_rehomed_bin_wet_rows dissolve_on for the two no_fake_anomalies check_fns: re-enroll per-PR (flip this row back to BinWitnessWet) only when a measured run lands both under bin_witness_wet_per_row_wall_budget_seconds; if the wall is ever superseded by a structural lens over the effect graph (task #15's call-node admissibility), this row deletes with the witness."
+data excl_no_fake_anomalies_dissolve: DissolutionCondition = unbound_dissolution(description: "paired with falsifier_rehomed_bin_wet_rows dissolve_on for the two no_fake_anomalies check_fns: re-enroll per-PR (flip this row back to BinWitnessWet) only when a measured run lands both under bin_witness_wet_per_row_wall_budget_seconds; if the wall is ever superseded by a structural lens over the effect graph (task #15's call-node admissibility), this row deletes with the witness.")
 
 data install_media_real_execution_wet_note: String = "The four srv3_install_media_fetch_real_execution_witness_test.dag / srv3_seeded_install_media_real_execution_witness_test.dag entries at the tail of bin_witness_wet_entries below share this lane with the bin-execution witnesses (same RunnableDiscoveryBatch Wet mechanism, not a forked one - DESIGN §3) though they are not bin-execution: they drive real shell.Mktemp.Dir/Filesystem.Write/shell.Remove.RecursiveForce effects that dag/extdeps/shell/shell.dag has no mock_response for (only shell.Exec.Run/Check do), so the Hermetic discovery corpus refuses them by construction (typed 'no mock_response for operation Dir' error). Split out of their parent files (shell-to-dag B1, 2026-07-14) so the parent files' pure classification witnesses keep hermetic per-PR discovery undiminished. Dissolve-on: shell.dag's file-effect operations gain mock_response coverage AND these fns' assertions are re-checked for correctness under a fixed mock (some assert behavior-dependent outcomes, e.g. matched == false on a wrong hash, which a naive fixed mock would falsify) - then they re-enroll as ordinary hermetic discovery rows and these rows delete."
 
@@ -1133,7 +1072,7 @@ type RehomedBinWetRow {
   entry: String
   function: String
   reason: String
-  dissolve_on: String
+  dissolution: DissolutionCondition
 }
 
 data falsifier_rehomed_bin_wet_rows: List<RehomedBinWetRow> = [
@@ -1141,97 +1080,97 @@ data falsifier_rehomed_bin_wet_rows: List<RehomedBinWetRow> = [
     entry: "dag/test/claim/floor_skip_discovery_witness_test.dag",
     function: "floor_skip_discovery_keystone_holds",
     reason: "289s measured on run 30009199696 (4.8x the per-row budget). The rehome stands on that measured wall alone. A second clause once stood here claiming the row was ALSO a per-PR duplicate because the ci job runs the floor_skip_discovery_witness binary on every PR; #7446 (Demote the affected-set selection control to the falsifier cadence) moved that step out of ci.yml into falsifier.yml, so the per-PR coverage it cited stopped existing and the sentence became a justification pointing at a step that no longer runs per-PR. The binary now executes on the falsifier cadence only. The detection window is NOT 'within one cadence window' — gunbc_ci_selection_control_step_note already retracted that phrasing as too strong (review correction 2026-07-30): the falsifier is queue-not-cancel and this step sits after the prelude and release build, so a regression landing just after a run passed the control waits for that run's remainder, plus queued-run startup, plus the next run's prelude and build, a sum that can exceed one cadence period. The honest statement is that it reds when the NEXT COMPLETED control runs. Stated here rather than implied by a stale duplicate claim, and stated in the words the retraction settled on rather than the ones it rejected.",
-    dissolve_on: "the selection-control suite's shared-index rework lands the binary under bin_witness_wet_per_row_wall_budget_seconds on a measured run — then either re-enroll per-PR consciously or delete this row as a duplicate of the step (whichever the measured wall admits)"
+    dissolution: unbound_dissolution(description: "the selection-control suite's shared-index rework lands the binary under bin_witness_wet_per_row_wall_budget_seconds on a measured run — then either re-enroll per-PR consciously or delete this row as a duplicate of the step (whichever the measured wall admits)")
   },
   RehomedBinWetRow {
     entry: "dag/test/claim/dag_compile_clean_seam_witness_test.dag",
     function: "cross_shard_seam_preservation_holds_on_live_tree",
     reason: "183s measured on run 30009199696 (3x the per-row budget): the live-tree seam-preservation leg compiles real cross-shard closures per seam; its cheap algebra sibling (cross_shard_seam_algebra_holds) stays per-PR as the smoke row for the concern",
-    dissolve_on: "seam preservation gains a scoped or receipt-consuming realization measured under the per-row budget; then re-enroll per-PR and delete this row"
+    dissolution: unbound_dissolution(description: "seam preservation gains a scoped or receipt-consuming realization measured under the per-row budget; then re-enroll per-PR and delete this row")
   },
   RehomedBinWetRow {
     entry: "dag/test/claim/long/dag_compile_clean_perturb_corpus_witness_test.dag",
     function: "perturb_cross_tree_import_corpus_green_holds",
     reason: "Corpus-grain leg: compiles against compile_clean_source_roots (live-tree pool); monolithic dag_compile_clean_perturb_receipts_holds was ~141s measured head (four serial full-corpus compiles per-PR) — mechanism RED arms decomposed to fixture closure per-PR",
-    dissolve_on: "cross_tree_import gains a scoped fixture realization under bin_witness_wet_per_row_wall_budget_seconds on a measured run; then re-enroll per-PR or keep on falsifier cadence consciously"
+    dissolution: unbound_dissolution(description: "cross_tree_import gains a scoped fixture realization under bin_witness_wet_per_row_wall_budget_seconds on a measured run; then re-enroll per-PR or keep on falsifier cadence consciously")
   },
   RehomedBinWetRow {
     entry: "dag/test/claim/long/dag_compile_clean_perturb_corpus_witness_test.dag",
     function: "perturb_dag_shell_primary_corpus_green_holds",
     reason: "Corpus-grain leg: dag_shell_primary_precedence compiles extdeps.shell against the full compile-clean pool; decomposed off the per-PR row with cross_tree_import",
-    dissolve_on: "dag_shell_primary_precedence gains a scoped fixture realization under bin_witness_wet_per_row_wall_budget_seconds on a measured run; then re-enroll per-PR or keep on falsifier cadence consciously"
+    dissolution: unbound_dissolution(description: "dag_shell_primary_precedence gains a scoped fixture realization under bin_witness_wet_per_row_wall_budget_seconds on a measured run; then re-enroll per-PR or keep on falsifier cadence consciously")
   },
   RehomedBinWetRow {
     entry: "dag/test/claim/dag_compile_clean_shard_totality_witness_test.dag",
     function: "compile_clean_shard_totality_holds_on_live_tree",
     reason: "Class C corpus-totality claim (docs/plans/test-decomposition-wcf-cut.md §5, criterion 2, session bright-newt-31 2026-07-25): shells out git.Inspect.Toplevel + shell.Find.Files over the whole live tree to prove the shard roster is total against the real corpus (~15s) — the claim is legitimately corpus-grain, not shrinkable, since the whole point is whether the REAL tree's partition is still total. The mechanism (orphan/duplicate/surplus verdict algebra) is proven per-PR on synthetic glob results by compile_clean_shard_totality_algebra_holds, which stays per-PR",
-    dissolve_on: "re-priced only if the shard partition boundary itself changes shape enough that a fixture can stand in for the real tree without losing coverage — until then this is the honest corpus-grain residue, not a defect"
+    dissolution: unbound_dissolution(description: "re-priced only if the shard partition boundary itself changes shape enough that a fixture can stand in for the real tree without losing coverage — until then this is the honest corpus-grain residue, not a defect")
   },
   RehomedBinWetRow {
     entry: "dag/test/claim/expectation_frontier_witness_test.dag",
     function: "undeclared_effects_emit_the_frontier_receipt_holds",
     reason: "135556ms measured eval on run 30220304152 (2.3x bin_witness_wet_per_row_wall_budget_seconds): child claim_batch read of a real [expectation-frontier] receipt. Sibling fully_declared arm is the same cost class; together they were ~224s of the batch-4 wall that blew FLOOR-BATCH-OVER-BUDGET (wall_ms=589718 vs clamp_ms=540000) once a broad-diff PR selected the full ExecutionWitnessKind first corpus",
-    dissolve_on: "child-run receipt read lands under bin_witness_wet_per_row_wall_budget_seconds on a measured run — then re-enroll per-PR consciously, or keep on falsifier cadence if the wall stays corpus-grain"
+    dissolution: unbound_dissolution(description: "child-run receipt read lands under bin_witness_wet_per_row_wall_budget_seconds on a measured run — then re-enroll per-PR consciously, or keep on falsifier cadence if the wall stays corpus-grain")
   },
   RehomedBinWetRow {
     entry: "dag/test/claim/expectation_frontier_witness_test.dag",
     function: "fully_declared_effects_emit_no_frontier_receipt_holds",
     reason: "88779ms measured eval on run 30220304152 (1.5x the per-row budget): complementary pole of undeclared_effects_emit_the_frontier_receipt_holds — same child-run receipt subject, re-homed with its sibling so the pair stays together on one cadence",
-    dissolve_on: "fires with undeclared_effects_emit_the_frontier_receipt_holds dissolve_on (same file, same mechanism)"
+    dissolution: unbound_dissolution(description: "fires with undeclared_effects_emit_the_frontier_receipt_holds dissolve_on (same file, same mechanism)")
   },
   RehomedBinWetRow {
     entry: "dag/test/claim/no_fake_anomalies_witness_test.dag",
     function: "passing_run_shows_no_fake_anomaly_holds",
     reason: "89722ms measured eval on run 30220304152 (1.5x the per-row budget): child claim_batch stderr glyph scan. With its RED-control sibling (~85s) this pair was ~174s of the same batch-4 over-budget wall",
-    dissolve_on: "child-run glyph scan lands under bin_witness_wet_per_row_wall_budget_seconds on a measured run — then re-enroll per-PR consciously; wall stays Wet as long as the anomaly-glyph mechanism exists (excl_no_fake_anomalies_dissolve)"
+    dissolution: unbound_dissolution(description: "child-run glyph scan lands under bin_witness_wet_per_row_wall_budget_seconds on a measured run — then re-enroll per-PR consciously; wall stays Wet as long as the anomaly-glyph mechanism exists (excl_no_fake_anomalies_dissolve)")
   },
   RehomedBinWetRow {
     entry: "dag/test/claim/no_fake_anomalies_witness_test.dag",
     function: "red_control_entry_with_real_anomaly_still_shows_glyph_holds",
     reason: "84785ms measured eval on run 30220304152 (1.4x the per-row budget): RED-control pole of passing_run_shows_no_fake_anomaly_holds — re-homed with its sibling so the discriminating pair stays together",
-    dissolve_on: "fires with passing_run_shows_no_fake_anomaly_holds dissolve_on (same file, same mechanism)"
+    dissolution: unbound_dissolution(description: "fires with passing_run_shows_no_fake_anomaly_holds dissolve_on (same file, same mechanism)")
   },
   RehomedBinWetRow {
     entry: "src/v2/test/claim/long/frontier_probe_closure_matrix_integration_test.dag",
     function: "frontier_probe_below_cap_complete_population_gates_pass_holds",
     reason: "784772ms measured eval on claim_batch --wet 2026-08-04 (130x bin_witness_wet_per_row_wall_budget_seconds): full receipt_for_subject with observed SourceRef through assemble on a realistic entry closure — population-totality integration leg, not admission-algebra",
-    dissolve_on: "measured eval lands under bin_witness_wet_per_row_wall_budget_seconds on a measured run — then re-enroll per-PR consciously, or delete when emit-stage receipt is no longer full-pipeline priced"
+    dissolution: unbound_dissolution(description: "measured eval lands under bin_witness_wet_per_row_wall_budget_seconds on a measured run — then re-enroll per-PR consciously, or delete when emit-stage receipt is no longer full-pipeline priced")
   },
   RehomedBinWetRow {
     entry: "src/v2/test/claim/long/frontier_probe_closure_matrix_integration_test.dag",
     function: "frontier_probe_second_source_root_population_gates_pass_holds",
     reason: "742109ms measured eval on claim_batch --wet 2026-08-04 (123x bin_witness_wet_per_row_wall_budget_seconds): full receipt_for_subject with observed SourceRef through assemble on a two-root closure — population-totality integration leg, not admission-algebra",
-    dissolve_on: "measured eval lands under bin_witness_wet_per_row_wall_budget_seconds on a measured run — then re-enroll per-PR consciously, or delete when emit-stage receipt is no longer full-pipeline priced"
+    dissolution: unbound_dissolution(description: "measured eval lands under bin_witness_wet_per_row_wall_budget_seconds on a measured run — then re-enroll per-PR consciously, or delete when emit-stage receipt is no longer full-pipeline priced")
   },
   RehomedBinWetRow {
     entry: "dag/test/claim/codex_package_delivery_wet_witness_test.dag",
     function: "acquire_required_codex_tarball_sha512_matches_lock",
     reason: "Wet Codex package-delivery trip: HTTPS registry acquire + SHA-512 admit of the lock-pinned wrapper tarball. Hermetic discovery refuses host effects; measured sibling materialize wall ~150s so the file is off the per-PR bin wet floor (witness-time ruling). Falsifier batch 5 is the executing consumer.",
-    dissolve_on: "dedicated integration workflow enrolls with durable receipt, or measured wall under bin_witness_wet_per_row_wall_budget_seconds re-enrolls per-PR"
+    dissolution: unbound_dissolution(description: "dedicated integration workflow enrolls with durable receipt, or measured wall under bin_witness_wet_per_row_wall_budget_seconds re-enrolls per-PR")
   },
   RehomedBinWetRow {
     entry: "dag/test/claim/codex_package_delivery_wet_witness_test.dag",
     function: "acquire_exact_target_pair_admits_wrapper_and_platform",
     reason: "Wet Codex package-delivery trip: admit exact wrapper+platform lock-node pair. Same wet cost class as its file siblings; falsifier batch 5 executes.",
-    dissolve_on: "fires with acquire_required_codex_tarball_sha512_matches_lock dissolve_on (same file, same cadence)"
+    dissolution: unbound_dissolution(description: "fires with acquire_required_codex_tarball_sha512_matches_lock dissolve_on (same file, same cadence)")
   },
   RehomedBinWetRow {
     entry: "dag/test/claim/codex_package_delivery_wet_witness_test.dag",
     function: "materialize_codex_runtime_bundle_produces_native_executable",
     reason: "~150s measured claim_batch --wet wall (npm ci --offline + tree/schema receipt + atomic publish): exceeds bin_witness_wet_per_row_wall_budget_seconds; not per-PR floor. Falsifier batch 5 executes.",
-    dissolve_on: "dedicated integration workflow enrolls with durable receipt, or measured wall under bin_witness_wet_per_row_wall_budget_seconds re-enrolls per-PR"
+    dissolution: unbound_dissolution(description: "dedicated integration workflow enrolls with durable receipt, or measured wall under bin_witness_wet_per_row_wall_budget_seconds re-enrolls per-PR")
   },
   RehomedBinWetRow {
     entry: "dag/test/claim/codex_package_delivery_wet_witness_test.dag",
     function: "materialize_identical_input_twice_reuses_same_release_identity",
     reason: "Positive control for content-addressed release reuse after external scratch + atomic no-replace publish. Same materialize cost class (~2x first-trip wall); falsifier batch 5 executes.",
-    dissolve_on: "fires with materialize_codex_runtime_bundle_produces_native_executable dissolve_on (same file, same mechanism)"
+    dissolution: unbound_dissolution(description: "fires with materialize_codex_runtime_bundle_produces_native_executable dissolve_on (same file, same mechanism)")
   },
   RehomedBinWetRow {
     entry: "dag/test/claim/codex_app_server_press_wet_witness_test.dag",
     function: "press_account_trip_yields_standing_or_typed_refusal_never_turn_started",
     reason: "Wet Codex account-standing trip (materialize + app-server initialize/account/rateLimits). Wall >> per-PR bin budget; must never claim turn_started. Falsifier batch 5 is the executing consumer until a dedicated integration workflow lands.",
-    dissolve_on: "dedicated integration workflow enrolls with durable receipt, or measured wall under bin_witness_wet_per_row_wall_budget_seconds re-enrolls per-PR"
+    dissolution: unbound_dissolution(description: "dedicated integration workflow enrolls with durable receipt, or measured wall under bin_witness_wet_per_row_wall_budget_seconds re-enrolls per-PR")
   }
 ]
 
@@ -1249,437 +1188,467 @@ type SubstrateLongLaneRow {
   entry: String
   function: String
   reason: String
-  dissolve_on: String
+  dissolution: DissolutionCondition
 }
 
 data falsifier_substrate_long_lane_note: String = "Nightly falsifier batch 6 (test-decomposition Class C, 2026-07-25): the declared Hermetic lane for SubstrateInputsOnly ingest/parse pipeline witnesses whose own eval exceeds the per-PR 5s fast-lane budget (gunbc_ci_fast_lane_rule_note) but are not wet integration — the live-grain half of the provenance-producer Class C split (fixture fail-closed walls stay per-PR via hand-built rows in affected_set_provenance_producer_test.dag and sg_claims_test.dag selectivity receipts). Runs SelectionApplied after the rehomed-bin-wet batch; claim_executor halts this batch if an earlier one fails (fail-closed). Local recipe until enrolled: claim_batch --source-root dag --source-root src/v2 --entry <file> --functions <csv>."
 
 data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
   SubstrateLongLaneRow {
+    entry: "dag/test/claim/lifecycle_survivor_corpus_census_test.dag",
+    function: "no_raw_lifecycle_string_survivors_remain",
+    reason: "18482ms measured eval (claim_batch, local): the lifecycle-carrier completeness gate derives every top-level data declaration in the corpus with its declared type — 16975 declarations across 3475 modules — and refuses if any raw-string lifecycle carrier survives. Its input is the live tree's breadth, so its cost is not bounded by anything the fast lane can see; that is what disqualifies it, independent of the single measurement. The discriminating half is fixture-shaped and stays per-PR in test.claim.lifecycle_survivor_scan_witness at ~0ms, so this row carries the census and not the mechanism",
+    dissolution: unbound_dissolution(description: "v2 self-host gains compile-graph access (gunbc#5364) so the declared type is reachable from the substrate and the census derives at closure cost rather than a corpus walk; then re-enroll per-PR discovery and delete the five census rows")
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/lifecycle_survivor_corpus_census_test.dag",
+    function: "scan_denominator_is_a_real_corpus",
+    reason: "non-vacuity control for no_raw_lifecycle_string_survivors_remain: zero survivors is also what a producer that read nothing returns, so the denominator is asserted to be a real corpus. Same walk, same cost class",
+    dissolution: unbound_dissolution(description: "same as no_raw_lifecycle_string_survivors_remain row")
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/lifecycle_survivor_corpus_census_test.dag",
+    function: "scan_denominator_contains_bare_string_declarations",
+    reason: "same census cost class: proves the type projection is populated rather than uniformly empty, which a broken projection would also render as zero survivors",
+    dissolution: unbound_dissolution(description: "same as no_raw_lifecycle_string_survivors_remain row")
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/lifecycle_survivor_corpus_census_test.dag",
+    function: "scan_reads_a_declared_type_for_every_declaration",
+    reason: "same census cost class: an unread annotation would classify a survivor as not-a-string and under-report exactly what the gate exists to find",
+    dissolution: unbound_dissolution(description: "same as no_raw_lifecycle_string_survivors_remain row")
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/lifecycle_survivor_corpus_census_test.dag",
+    function: "scan_denominator_includes_test_modules",
+    reason: "same census cost class: decl_facts_corpus_walk skips test .dag files and this walk must not, or a survivor authored in a witness would be invisible to the gate",
+    dissolution: unbound_dissolution(description: "same as no_raw_lifecycle_string_survivors_remain row")
+  },
+  SubstrateLongLaneRow {
     entry: "dag/test/claim/realization_attempt_keystone_test.dag",
     function: "witness_planted_minimal_module_emits",
     reason: "5015ms deadline kill measured on CI run 31290921315 (2026-08-09): every keystone witness runs the real interpreted v2 pipeline (tokenize->parse->normalize->resolve->emit or assemble->join->infer->translate) at least once — the mechanism IS the modeled boundary crossing and its interpreted cost exceeds the 5s fast lane on CI hardware",
-    dissolve_on: "witness realization lands the pipeline natively or eval drops under gunbc_ci_fast_lane_witness_eval_budget on a measured CI run — then re-enroll per-PR discovery and delete the five keystone rows"
+    dissolution: unbound_dissolution(description: "witness realization lands the pipeline natively or eval drops under gunbc_ci_fast_lane_witness_eval_budget on a measured CI run — then re-enroll per-PR discovery and delete the five keystone rows")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/realization_attempt_keystone_test.dag",
     function: "witness_planted_garbage_refuses_frontend_RED",
     reason: "same keystone deadline class as witness_planted_minimal_module_emits (CI run 31290921315)",
-    dissolve_on: "same as witness_planted_minimal_module_emits row"
+    dissolution: unbound_dissolution(description: "same as witness_planted_minimal_module_emits row")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/realization_attempt_keystone_test.dag",
     function: "witness_real_corpus_entry_produces_typed_standing",
     reason: "same keystone deadline class as witness_planted_minimal_module_emits (CI run 31290921315)",
-    dissolve_on: "same as witness_planted_minimal_module_emits row"
+    dissolution: unbound_dissolution(description: "same as witness_planted_minimal_module_emits row")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/realization_attempt_keystone_test.dag",
     function: "witness_assembled_cross_module_subject_reaches_typed_standing",
     reason: "same keystone deadline class as witness_planted_minimal_module_emits (CI run 31290921315)",
-    dissolve_on: "same as witness_planted_minimal_module_emits row"
+    dissolution: unbound_dissolution(description: "same as witness_planted_minimal_module_emits row")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/realization_attempt_keystone_test.dag",
     function: "witness_assembled_identity_absent_refuses_RED",
     reason: "same keystone deadline class as witness_planted_minimal_module_emits (CI run 31290921315)",
-    dissolve_on: "same as witness_planted_minimal_module_emits row"
+    dissolution: unbound_dissolution(description: "same as witness_planted_minimal_module_emits row")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/realization_sweep_test.dag",
     function: "witness_canonical_identities_join_own_enrolled_roster",
     reason: "~150s-class dir walk (floor_discovery_producer over dag/test/claim, the census-walk cost class): the canonical-roster derivation witnessed against this file's own enrolled roster — fixture-controlled identity join, corpus-breadth walk",
-    dissolve_on: "witness realization lands the walk natively or eval drops under gunbc_ci_fast_lane_witness_eval_budget on a measured run — then re-enroll per-PR discovery and delete this row"
+    dissolution: unbound_dissolution(description: "witness realization lands the walk natively or eval drops under gunbc_ci_fast_lane_witness_eval_budget on a measured run — then re-enroll per-PR discovery and delete this row")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/realization_sweep_test.dag",
     function: "witness_sweep_rows_join_planted_roster_exactly_once",
     reason: "~16s measured eval (valiant-boar-65, 2026-08-09): one real canonical two-module closure assembly (tokenize->parse->normalize->resolve) through attempt_closure_rows — the CI2-0 sweep mechanism keystone; the cheap identity-scan and witness-absent RED siblings stay per-PR",
-    dissolve_on: "witness realization lands the assembly natively or eval drops under gunbc_ci_fast_lane_witness_eval_budget on a measured run — then re-enroll per-PR discovery and delete this row"
+    dissolution: unbound_dissolution(description: "witness realization lands the assembly natively or eval drops under gunbc_ci_fast_lane_witness_eval_budget on a measured run — then re-enroll per-PR discovery and delete this row")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/realization_sweep_test.dag",
     function: "witness_sweep_receipt_and_histogram_render_every_row",
     reason: "same Class C assembly wall as sibling witness_sweep_rows_join_planted_roster_exactly_once (~17.5s measured)",
-    dissolve_on: "same as sibling row"
+    dissolution: unbound_dissolution(description: "same as sibling row")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/dag_arrow_lambda_witness_test.dag",
     function: "witness_single_param_lambda_parses",
     reason: "~16s measured eval (valiant-boar-65, 2026-08-10): interpreted production dag_lex_rules + dag_grammar lex+parse per control — the CI2-0 arrow-lambda grammar-admission proof matrix (parse-only, v1-fidelity), same wall as the leading-pipe sibling matrix",
-    dissolve_on: "witness realization lands the lex/parse natively or eval drops under gunbc_ci_fast_lane_witness_eval_budget on a measured run — then re-enroll per-PR discovery and delete this row"
+    dissolution: unbound_dissolution(description: "witness realization lands the lex/parse natively or eval drops under gunbc_ci_fast_lane_witness_eval_budget on a measured run — then re-enroll per-PR discovery and delete this row")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/dag_arrow_lambda_witness_test.dag",
     function: "witness_multi_param_lambda_parses",
     reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~16s measured)",
-    dissolve_on: "same as sibling row"
+    dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/dag_arrow_lambda_witness_test.dag",
     function: "witness_lambda_in_pipeline_parses",
     reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~16s measured)",
-    dissolve_on: "same as sibling row"
+    dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/dag_arrow_lambda_witness_test.dag",
     function: "witness_authored_algebra_shape_parses",
     reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~16s measured; the VERBATIM dag/std/algebra.dag line-370 source — lambda in pipeline in lambda)",
-    dissolve_on: "same as sibling row"
+    dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/dag_arrow_lambda_witness_test.dag",
     function: "witness_lambda_block_body_parses",
     reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~17s measured)",
-    dissolve_on: "same as sibling row"
+    dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/dag_arrow_lambda_witness_test.dag",
     function: "witness_match_arm_fat_arrow_unchanged",
     reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~17s measured)",
-    dissolve_on: "same as sibling row"
+    dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/dag_arrow_lambda_witness_test.dag",
     function: "witness_named_arg_unchanged",
     reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~17s measured)",
-    dissolve_on: "same as sibling row"
+    dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/dag_arrow_lambda_witness_test.dag",
     function: "witness_paren_arithmetic_unchanged",
     reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~17s measured)",
-    dissolve_on: "same as sibling row"
+    dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/dag_arrow_lambda_witness_test.dag",
     function: "witness_sum_decl_unchanged",
     reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~17s measured)",
-    dissolve_on: "same as sibling row"
+    dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/dag_arrow_lambda_witness_test.dag",
     function: "witness_missing_body_refuses_RED",
     reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~17s measured)",
-    dissolve_on: "same as sibling row"
+    dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/dag_arrow_lambda_witness_test.dag",
     function: "witness_missing_param_refuses_RED",
     reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~17s measured)",
-    dissolve_on: "same as sibling row"
+    dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/dag_arrow_lambda_witness_test.dag",
     function: "witness_single_paren_param_refuses_RED",
     reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~17s measured; v1-fidelity refusal — (x) is a parenthesized expr in v1, never a lambda)",
-    dissolve_on: "same as sibling row"
+    dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/dag_arrow_lambda_witness_test.dag",
     function: "witness_zero_param_refuses_RED",
     reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~17s measured; v1-fidelity refusal — () is the empty record literal in v1, never a lambda)",
-    dissolve_on: "same as sibling row"
+    dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/dag_arrow_lambda_witness_test.dag",
     function: "witness_pre_repair_grammar_restores_the_RED",
     reason: "four parses under the identity-swapped pre-extension grammar — the rule-removed RED (~68s measured)",
-    dissolve_on: "same as sibling row"
+    dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/namespace_graft_body_dissolution_witness_test.dag",
     function: "witness_type_fn_module_dissolution_refuses_RED",
     reason: "~16s measured eval (valiant-boar-65, 2026-08-10): interpreted production lex+parse+normalize per control — the graft empty-observation-narrow guard matrix (operator ruling msg_d18a55de: the collector reporting a declaration-carrying module as declaration-free now REFUSES)",
-    dissolve_on: "witness realization lands the lex/parse natively or eval drops under gunbc_ci_fast_lane_witness_eval_budget on a measured run — then re-enroll per-PR discovery and delete this row"
+    dissolution: unbound_dissolution(description: "witness realization lands the lex/parse natively or eval drops under gunbc_ci_fast_lane_witness_eval_budget on a measured run — then re-enroll per-PR discovery and delete this row")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/namespace_graft_body_dissolution_witness_test.dag",
     function: "witness_type_only_module_dissolution_refuses_RED",
     reason: "same interpreted lex/parse/normalize wall as sibling witness_type_fn_module_dissolution_refuses_RED (~16s measured)",
-    dissolve_on: "same as sibling row"
+    dissolution: unbound_dissolution(description: "same as witness_type_fn_module_dissolution_refuses_RED row")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/namespace_graft_body_dissolution_witness_test.dag",
     function: "witness_lowered_body_module_still_grafts",
     reason: "two full lex/parse/normalize passes over the lowered-body control (~35s measured; acceptance plus the non-vacuous declaration-presence read)",
-    dissolve_on: "same as sibling row"
+    dissolution: unbound_dissolution(description: "same as witness_type_fn_module_dissolution_refuses_RED row")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/namespace_graft_body_dissolution_witness_test.dag",
     function: "witness_header_only_module_still_accepts",
     reason: "same interpreted lex/parse/normalize wall as sibling witness_type_fn_module_dissolution_refuses_RED (~18s measured)",
-    dissolve_on: "same as sibling row"
+    dissolution: unbound_dissolution(description: "same as witness_type_fn_module_dissolution_refuses_RED row")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/witness_execution_class_live_census_test.dag",
     function: "witness_live_roster_census_holds",
     reason: "~150s measured single-walk eval (valiant-boar-65, 2026-08-08): the CI-0 live-roster classification census — a full floor_discovery_producer walk over witness_discovery_scan_dirs (~1k file reads through the interpreted producer) joined against the enrolled bundle plan. Corpus-breadth census, not a fixture-shaped defect (DESIGN witness-cost ruling: the census is irreducible, the mechanism never is); the mechanism fixtures stay per-PR in witness_execution_class_test",
-    dissolve_on: "witness realization lands the census natively or the interpreted walk drops under gunbc_ci_fast_lane_witness_eval_budget on a measured run — then re-enroll per-PR discovery and delete this row"
+    dissolution: unbound_dissolution(description: "witness realization lands the census natively or the interpreted walk drops under gunbc_ci_fast_lane_witness_eval_budget on a measured run — then re-enroll per-PR discovery and delete this row")
   },
   SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/wave1_gate1_d_mvp_subsumption_witness_test.dag",
     function: "wave1_gate1_d_census_subsumption_witness_holds",
     reason: "134526ms measured witness wall on a cold run (27x a 5s fast-lane budget, test-decomposition-wcf-cut.md Class C, merry-ibex-306 2026-07-25): the fn builds 10 ingested_fixture_arrows fixtures through a real tokenize->parse_module->normalize->resolve pass each, across two aggregator checks (well-formedness, behavior-kind) — genuine corpus breadth, not a fixture-shaped defect. The mechanism-only sibling (self_host/wave1_gate1_d_mvp_subsumption_witness_test.dag table_fixture check_fns, measured eval_self=0.000ms) is already covered by the source-root *_test.dag discovery walk (gunbc.commit_workflow wave1_gate1_d_census_class_c_split_note) — no explicit per-PR roster row for it",
-    dissolve_on: "the census-ingest fixture pipeline's per-fixture pass drops under the per-PR fast-lane budget on a measured cold run (e.g. shared parse-table/resolve memoization for this closure) — then re-enroll wave1_gate1_d_census_subsumption_witness_holds per-PR and delete this row"
+    dissolution: unbound_dissolution(description: "the census-ingest fixture pipeline's per-fixture pass drops under the per-PR fast-lane budget on a measured cold run (e.g. shared parse-table/resolve memoization for this closure) — then re-enroll wave1_gate1_d_census_subsumption_witness_holds per-PR and delete this row")
   },
   SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/affected_set_provenance_producer_witness_test.dag",
     function: "lens_affected_set_provenance_producer_single_read_emits_row_holds",
     reason: "~9.5s measured eval per witness (proud-bat-741, 2026-07-25): node_artifact_provenance_from_source_root parse pipeline on inline fixture ingest — fixture-shaped, not corpus-breadth; per-PR fast-lane keeps hand-built fail-closed walls only",
-    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
+    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
   },
   SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/affected_set_provenance_producer_witness_test.dag",
     function: "lens_affected_set_provenance_producer_rejects_malformed_ingest_holds",
     reason: "same Class C live-grain row as sibling single_read_emits_row (parse-pipeline wall receipt)",
-    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
+    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
   },
   SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/affected_set_provenance_producer_witness_test.dag",
     function: "lens_affected_set_provenance_producer_rejects_beyond_surface_ingest_holds",
     reason: "same Class C live-grain row as sibling single_read_emits_row (parse-pipeline wall receipt)",
-    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
+    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
   },
   SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/affected_set_provenance_producer_witness_test.dag",
     function: "lens_affected_set_provenance_producer_parse_coverage_known_diff_fail_closed_holds",
     reason: "same Class C live-grain row as sibling single_read_emits_row (parse-pipeline coverage receipt)",
-    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
+    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
   },
   SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/affected_set_provenance_producer_witness_test.dag",
     function: "lens_affected_set_provenance_producer_coverage_receipt_holds",
     reason: "same Class C live-grain row as sibling single_read_emits_row (parse-pipeline coverage receipt)",
-    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
+    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
   },
   SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/affected_set_provenance_producer_witness_test.dag",
     function: "lens_affected_set_provenance_producer_git_diff_wire_holds",
     reason: "same Class C live-grain row as sibling single_read_emits_row (parse-pipeline git-diff wire receipt)",
-    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
+    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
   },
   SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/affected_set_provenance_producer_witness_test.dag",
     function: "lens_affected_set_provenance_producer_unknown_diff_fail_closed_holds",
     reason: "same Class C live-grain row as sibling single_read_emits_row (parse-pipeline fail-closed receipt; per-PR hand-built unknown-path wall lives in affected_set_provenance_producer_test.dag)",
-    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
+    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
   },
   SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/edit_locus_source_provenance_witness_test.dag",
     function: "lens_edit_locus_source_provenance_affected_set_wire_holds",
     reason: "Class C live-grain row (edit-locus provenance producer ×3 family): source_ir_node_artifact_provenance parse pipeline exceeds per-PR 5s budget. Renamed off the imported fn's own name 2026-07-26 — the same-name wrapper self-recursed instead of delegating (edit_locus_source_provenance_wrapper_shadowing_note); the row had never executed",
-    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
+    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
   },
   SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/edit_locus_source_provenance_witness_test.dag",
     function: "lens_edit_locus_source_provenance_producer_rejects_malformed_source_holds",
     reason: "Class C live-grain row (edit-locus provenance producer ×3 family): malformed-source refusal through parse pipeline exceeds per-PR 5s budget. Renamed off the imported fn's own name 2026-07-26 — the same-name wrapper self-recursed instead of delegating (edit_locus_source_provenance_wrapper_shadowing_note); the row had never executed",
-    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
+    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
   },
   SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/edit_locus_source_provenance_witness_test.dag",
     function: "lens_edit_locus_source_provenance_producer_holds",
     reason: "Class C live-grain edit-locus provenance producer (review 43557): was if-false-pinned in the lens module; now a real long/ wrapper on the substrate long lane with its siblings",
-    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
+    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
   },
   SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/edit_locus_source_provenance_witness_test.dag",
     function: "lens_edit_locus_source_provenance_parse_root_span_holds",
     reason: "Class C live-grain edit-locus parse-root-span pole (review 43557); pair with producer_holds",
-    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
+    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
   },
   SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/fallback_arm_census_witness_test.dag",
     function: "fallback_arm_census_reconciliation_holds",
     reason: "W2 fallback-arm census corpus grain (docs/plans/fallback-arm-census.md, 2026-07-25): host-seamed MatchPattern::Wildcard walk over witness_layer_roots via decl_facts — exceeds per-PR 5s fast-lane budget (Class C). Per-PR fixture walls stay in fallback_arm_census_planted_test.dag",
-    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or the host seam dissolves when #5364 exposes MatchPattern to .dag"
+    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or the host seam dissolves when #5364 exposes MatchPattern to .dag")
   },
   SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/fallback_arm_census_witness_test.dag",
     function: "fallback_arm_census_total_nonempty_holds",
     reason: "same W2 census corpus grain as sibling reconciliation_holds",
-    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or the host seam dissolves when #5364 exposes MatchPattern to .dag"
+    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or the host seam dissolves when #5364 exposes MatchPattern to .dag")
   },
   SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/fallback_arm_census_witness_test.dag",
     function: "fallback_arm_census_class_counts_nonnegative_holds",
     reason: "same W2 census corpus grain as sibling reconciliation_holds",
-    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or the host seam dissolves when #5364 exposes MatchPattern to .dag"
+    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or the host seam dissolves when #5364 exposes MatchPattern to .dag")
   },
   SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/fallback_arm_census_witness_test.dag",
     function: "fallback_arm_seed_inventory_count_holds",
     reason: "same W2 census corpus grain as sibling reconciliation_holds (seed inventory count receipt)",
-    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or the host seam dissolves when #5364 exposes MatchPattern to .dag"
+    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or the host seam dissolves when #5364 exposes MatchPattern to .dag")
   },
   SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/fallback_arm_census_witness_test.dag",
     function: "fallback_arm_census_self_applies_holds",
     reason: "same W2 census corpus grain as sibling reconciliation_holds (lens self-application: zero AnswersOnOpen on fallback_arm_census.dag)",
-    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or the host seam dissolves when #5364 exposes MatchPattern to .dag"
+    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or the host seam dissolves when #5364 exposes MatchPattern to .dag")
   },
   SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/vacuity_consumer_witness_long_test.dag",
     function: "vacuity_consumer_witness_real_test_fn_gap_stays_unknown_by_execution",
     reason: "review 47233 (PR #7620): this is the exact ScheduleWitnessEntry lens_contract_vacuity.consumer_witness binds to (src/v2/lens/enforcement/contract.dag). Before this row it had no scheduled CI path at all — test/claim/long/ is excluded from per-PR discovery and no falsifier row named it — so consumer_observed_for resolved WitnessOnly with no execution behind it, exactly the DESIGN §5 specification-without-execution class the vacuity lens exists to catch, recreated in its own binding. Measured 88996ms cold (17.8x the 5s fast-lane budget): corpus_ingest_fixture_module ingests a live snapshot through tokenize->parse_module->normalize->resolve, genuine corpus-breadth cost, not a fixture-shaped one-off",
-    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
+    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
   },
   SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/vacuity_consumer_witness_long_test.dag",
     function: "vacuity_consumer_witness_fixture_ingest_is_accepted_by_execution",
     reason: "sibling corpus-ingest witness in the same file as the bound consumer witness (review 47233 enrollment sweep): proves the fixture module itself ingests Accepted before the gap witness relies on that precondition. Measured 88996ms cold, same corpus_ingest_fixture_module cost as its sibling",
-    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
+    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
   },
   SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/vacuity_consumer_witness_long_test.dag",
     function: "vacuity_consumer_witness_derived_equals_classified_sites",
     reason: "sibling corpus-ingest witness in the same file as the bound consumer witness (review 47233 enrollment sweep): the live-derived-sites vs classified-sites reconciliation. Measured 32423ms cold",
-    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
+    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
   },
   SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/vacuity_consumer_witness_long_test.dag",
     function: "vacuity_consumer_witness_shadows_reconcile_with_admitted_exceptions",
     reason: "sibling corpus-ingest witness in the same file as the bound consumer witness (review 47233 enrollment sweep): live-shadow reconciliation against admitted exceptions. Measured 29754ms cold",
-    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
+    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/long/generated_artifact_drift_fixed_point_witness_test.dag",
     function: "witness_committed_is_fixed_point",
     reason: "ReadsLiveTree fixed-point receipt: reads every committed artifact from disk and asserts artifact_generate reproduces bytes byte-for-byte. Its input is therefore the live tree rather than its own source, so its eval cost is not bounded by anything the fast lane can see — that is what disqualifies it from the fast lane, independent of any single measurement. Measured 1005ms warm on srv_fleet_arm64 (witness_row_cost_basis) and 5004ms in falsifier discovery-corpus batch 1 (run 30550328673, BudgetExceeded); those two figures differ in CLOCK (wall receipt vs CPU kill path), host, head and route at once, so the gap is an observation and not a diagnosis. WHY they differ is adjudicated once, in fixed_point_witness_long_lane_note (dag/test/claim/generated_artifact_drift_test.dag), NOT here: this field carries the enrollment fact and that note carries the cause, so the two cannot drift (DESIGN 3 — the earlier text of this field duplicated the diagnosis and both copies said host contention, which is false on a thread-CPU clock; corrected 2026-08-04)",
-    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
+    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/long/generated_artifact_drift_fixed_point_witness_test.dag",
     function: "witness_committed_fixed_point_red_control",
     reason: "RED control paired with witness_committed_is_fixed_point (same file, same Filesystem.Read + artifact_generate cost shape)",
-    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
+    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
   },
   SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/production_qualification_origin_probe_witness_test.dag",
     function: "witness_production_qualification_origin_probe_admission_holds",
     reason: "production_qualification_origin_probe_admission_holds() walks fn_arrow_decl_facts_live() and exceeded 5000ms fast-lane budget on PR CI (d3fb2fed): eval-budget routing only — planted closed-subject witnesses stay per-PR discovery",
-    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery"
+    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/long/v1_complexity_capability_census_resolution_test.dag",
     function: "census_every_declaration_ref_resolves_exactly",
     reason: "C0(b1) capability-census citation hygiene: exact DeclarationRef resolution over decl_facts plus module_declaration_facts. Measured on dag plus src/v2 walk roots: census_every_declaration_ref_resolves_exactly ~22s, the remaining six ~0.1s each. SubstrateInputsOnly, not wet — v1 declarations are reached through decl_facts POOL ROOTS rather than an import, which is what lets a dag/ entry carry them at all.",
-    dissolve_on: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the resolution census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either"
+    dissolution: unbound_dissolution(description: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the resolution census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/long/v1_complexity_capability_census_resolution_test.dag",
     function: "census_absent_declaration_refuses",
     reason: "C0(b1) capability-census citation hygiene: exact DeclarationRef resolution over decl_facts plus module_declaration_facts. Measured on dag plus src/v2 walk roots: census_every_declaration_ref_resolves_exactly ~22s, the remaining six ~0.1s each. SubstrateInputsOnly, not wet — v1 declarations are reached through decl_facts POOL ROOTS rather than an import, which is what lets a dag/ entry carry them at all.",
-    dissolve_on: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the resolution census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either"
+    dissolution: unbound_dissolution(description: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the resolution census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/long/v1_complexity_capability_census_resolution_test.dag",
     function: "census_absent_module_refuses",
     reason: "C0(b1) capability-census citation hygiene: exact DeclarationRef resolution over decl_facts plus module_declaration_facts. Measured on dag plus src/v2 walk roots: census_every_declaration_ref_resolves_exactly ~22s, the remaining six ~0.1s each. SubstrateInputsOnly, not wet — v1 declarations are reached through decl_facts POOL ROOTS rather than an import, which is what lets a dag/ entry carry them at all.",
-    dissolve_on: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the resolution census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either"
+    dissolution: unbound_dissolution(description: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the resolution census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/long/v1_complexity_capability_census_resolution_test.dag",
     function: "census_prose_only_name_does_not_resolve",
     reason: "C0(b1) capability-census citation hygiene: exact DeclarationRef resolution over decl_facts plus module_declaration_facts. Measured on dag plus src/v2 walk roots: census_every_declaration_ref_resolves_exactly ~22s, the remaining six ~0.1s each. SubstrateInputsOnly, not wet — v1 declarations are reached through decl_facts POOL ROOTS rather than an import, which is what lets a dag/ entry carry them at all.",
-    dissolve_on: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the resolution census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either"
+    dissolution: unbound_dissolution(description: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the resolution census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/long/v1_complexity_capability_census_resolution_test.dag",
     function: "census_resolved_identity_carries_observed_path",
     reason: "C0(b1) capability-census citation hygiene: exact DeclarationRef resolution over decl_facts plus module_declaration_facts. Measured on dag plus src/v2 walk roots: census_every_declaration_ref_resolves_exactly ~22s, the remaining six ~0.1s each. SubstrateInputsOnly, not wet — v1 declarations are reached through decl_facts POOL ROOTS rather than an import, which is what lets a dag/ entry carry them at all.",
-    dissolve_on: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the resolution census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either"
+    dissolution: unbound_dissolution(description: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the resolution census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/long/v1_complexity_capability_census_resolution_test.dag",
     function: "census_shared_substrate_carrier_resolves",
     reason: "C0(b1) capability-census citation hygiene: exact DeclarationRef resolution over decl_facts plus module_declaration_facts. Measured on dag plus src/v2 walk roots: census_every_declaration_ref_resolves_exactly ~22s, the remaining six ~0.1s each. SubstrateInputsOnly, not wet — v1 declarations are reached through decl_facts POOL ROOTS rather than an import, which is what lets a dag/ entry carry them at all.",
-    dissolve_on: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the resolution census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either"
+    dissolution: unbound_dissolution(description: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the resolution census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/long/v1_complexity_capability_census_resolution_test.dag",
     function: "census_complexity_admission_predicate_is_vacuous_by_execution",
     reason: "C0(b1) capability-census citation hygiene: exact DeclarationRef resolution over decl_facts plus module_declaration_facts. Measured on dag plus src/v2 walk roots: census_every_declaration_ref_resolves_exactly ~22s, the remaining six ~0.1s each. SubstrateInputsOnly, not wet — v1 declarations are reached through decl_facts POOL ROOTS rather than an import, which is what lets a dag/ entry carry them at all.",
-    dissolve_on: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the resolution census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either"
+    dissolution: unbound_dissolution(description: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the resolution census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/long/v1_complexity_decl_classification_totality_test.dag",
     function: "w_population_and_roster_counts_match",
     reason: "C0(b2) declaration-to-capability totality: derive v1.compiler.complexity population from decl_facts and prove bijection with the classification roster. Shares the C0(b1) resolution census cost envelope — decl_facts scan over dag plus src/v2 plus src/v1 pool roots.",
-    dissolve_on: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the totality census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either"
+    dissolution: unbound_dissolution(description: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the totality census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/long/v1_complexity_decl_classification_totality_test.dag",
     function: "w_every_population_declaration_is_classified",
     reason: "C0(b2) declaration-to-capability totality: derive v1.compiler.complexity population from decl_facts and prove bijection with the classification roster. Shares the C0(b1) resolution census cost envelope — decl_facts scan over dag plus src/v2 plus src/v1 pool roots.",
-    dissolve_on: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the totality census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either"
+    dissolution: unbound_dissolution(description: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the totality census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/long/v1_complexity_decl_classification_totality_test.dag",
     function: "w_every_classification_row_matches_population",
     reason: "C0(b2) declaration-to-capability totality: derive v1.compiler.complexity population from decl_facts and prove bijection with the classification roster. Shares the C0(b1) resolution census cost envelope — decl_facts scan over dag plus src/v2 plus src/v1 pool roots.",
-    dissolve_on: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the totality census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either"
+    dissolution: unbound_dissolution(description: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the totality census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/long/v1_complexity_decl_classification_totality_test.dag",
     function: "w_no_stale_classification_rows",
     reason: "C0(b2) declaration-to-capability totality: derive v1.compiler.complexity population from decl_facts and prove bijection with the classification roster. Shares the C0(b1) resolution census cost envelope — decl_facts scan over dag plus src/v2 plus src/v1 pool roots.",
-    dissolve_on: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the totality census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either"
+    dissolution: unbound_dissolution(description: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the totality census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/long/v1_complexity_decl_classification_totality_test.dag",
     function: "w_derived_population_is_nonempty",
     reason: "C0(b2) declaration-to-capability totality: derive v1.compiler.complexity population from decl_facts and prove bijection with the classification roster. Shares the C0(b1) resolution census cost envelope — decl_facts scan over dag plus src/v2 plus src/v1 pool roots.",
-    dissolve_on: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the totality census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either"
+    dissolution: unbound_dissolution(description: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the totality census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/long/v1_complexity_decl_classification_totality_test.dag",
     function: "w_population_decl_names_are_distinct",
     reason: "C0(b2) bare-name join precondition, read against the REAL derived population: classification_matches_fact keys on DeclFact.name, which is sound only while the population's top-level names are distinct, and nothing in the carrier makes that true — it is a property of the subject module. Enrolled here rather than per-PR because it reads the same decl_facts population as the five totality rows above and shares their witness-layer scan over a pool including src/v1. The MECHANISM that would catch a broken fold — a planted-duplicate RED plus a distinct positive control over synthetic two-element fixtures — is NOT enrolled here: it runs per-PR in test.claim.v1_complexity_decl_classification_witness_test, so a regression in the fold reds on every PR and only the live-population reading waits for the cadence.",
-    dissolve_on: "the classification roster carries exact DeclFact identity (qualified_name, or name plus kind) so the join is exact by construction and no precondition remains to read; or per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger)."
+    dissolution: unbound_dissolution(description: "the classification roster carries exact DeclFact identity (qualified_name, or name plus kind) so the join is exact by construction and no precondition remains to read; or per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger).")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/long/instrument_sandbox_live_witness_test.dag",
     function: "instrument_sandbox_live_keystone_holds",
     reason: "Re-homed off per-PR discovery after 5074ms thread-CPU in falsifier discovery batch 3 (run 30986055960, BudgetExceeded against the 5000ms fast-lane budget). WHY THE SPLIT, which is structural and does not move with the measurements: every claim on this entry renders the served page or reads the live program view and pays that cost once, while the cheap register-gate claims — derived salience role, emission/admission join, refused-role controls, theme-block position — do not, so those stay per-PR in dag/test/claim/instrument_sandbox_witness_test.dag at 0-2ms each, per the 2026-08-04 admission ruling that a live-population subject decomposes into mechanism fixtures per PR plus the irreducible live half on a cadence. NOT declared irreducible corpus breadth: the cost is measured and its gating term named. WHERE THAT COST IS: dag/test/claim/long/instrument_sandbox_live_witness_test.dag post_7822_attribution_note, which is its single home. This field used to carry an attribution of its own — the served-page render and live_program_view_result named as the dominant term, a 263ms-inputs / 5132ms-derivation split, n=25 declared nodes — and all of it is retracted: the cost location was wrong and the node count was never right. Deleted rather than disclaimed, because reason is read before dissolve_on and a superseded attribution here steers a worker scanning this roster before any correction below it can land (review 48997; the same fix the witness file's header got)",
-    dissolve_on: "PARTIALLY MET AND RE-MEASURED TWICE, 2026-08-05. #7822 landed the keyed-lookup restructure this row originally named, and this witness fell roughly tenfold on the same host and binary, so that condition — eval under gunbc_ci_fast_lane_witness_eval_budget — now HOLDS. The row does not dissolve: the bar moved to a 500ms per-witness warning threshold (operator, 2026-08-05) and this witness is still several times over it. THE SECOND CONDITION THIS ROW NAMED IS ALSO WITHDRAWN. It said the residue was the served-page render and asked for a measured run under the warning line, which pointed the work at the witness file; attribution by execution says the dominant term is constructing declared_roadmap_nodes, several times the warning line on its own and before the page renders anything, so no change confined to dag/test/claim/long/instrument_sandbox_live_witness_test.dag can close the gap. CORRECTED CONDITION: the cost of reading the live roadmap authority — declared_roadmap_nodes construction specifically — drops under the per-witness warning line. That cost is shared with every other witness reading that authority, so it is owned by that authority's lane and tracked with the materialization/native-witness-execution work, not here; when it lands, this witness's own render residue is inside the line, these claims re-merge into dag/test/claim/instrument_sandbox_witness_test.dag per-PR, and this row, the exclusion row, and the long-lane file delete together. Every figure behind this — the per-component thread-CPU breakdown, the clock basis, and both retractions — is carried once in the witness file's post_7822_attribution_note and deferral_floor_note, deliberately not copied here, because two numeric copies of one measurement drift"
+    dissolution: unbound_dissolution(description: "PARTIALLY MET AND RE-MEASURED TWICE, 2026-08-05. #7822 landed the keyed-lookup restructure this row originally named, and this witness fell roughly tenfold on the same host and binary, so that condition — eval under gunbc_ci_fast_lane_witness_eval_budget — now HOLDS. The row does not dissolve: the bar moved to a 500ms per-witness warning threshold (operator, 2026-08-05) and this witness is still several times over it. THE SECOND CONDITION THIS ROW NAMED IS ALSO WITHDRAWN. It said the residue was the served-page render and asked for a measured run under the warning line, which pointed the work at the witness file; attribution by execution says the dominant term is constructing declared_roadmap_nodes, several times the warning line on its own and before the page renders anything, so no change confined to dag/test/claim/long/instrument_sandbox_live_witness_test.dag can close the gap. CORRECTED CONDITION: the cost of reading the live roadmap authority — declared_roadmap_nodes construction specifically — drops under the per-witness warning line. That cost is shared with every other witness reading that authority, so it is owned by that authority's lane and tracked with the materialization/native-witness-execution work, not here; when it lands, this witness's own render residue is inside the line, these claims re-merge into dag/test/claim/instrument_sandbox_witness_test.dag per-PR, and this row, the exclusion row, and the long-lane file delete together. Every figure behind this — the per-component thread-CPU breakdown, the clock basis, and both retractions — is carried once in the witness file's post_7822_attribution_note and deferral_floor_note, deliberately not copied here, because two numeric copies of one measurement drift")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/long/dag_compile_clean_scope_disposition_witness_test.dag",
     function: "dag_compile_clean_scope_all_disposition_rows_hold",
     reason: "Fixture-grain compile-clean scope disposition rows (scope_disposition_witness_roster_note): measured 5002ms thread-CPU against the 5000ms fast-lane budget on PR CI run 31077616566. Per-PR split into two halves FAILED worse — each half paid its own cold module_declaration_facts_live scan (5002ms and 5001ms). Cheap scope witnesses stay per-PR in dag/test/claim/dag_compile_clean_scope_witness_test.dag.",
-    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run (e.g. shared module_declaration_facts memoization for the fixture pool) and re-enrolls per-PR discovery; row deletes with the long-lane file"
+    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run (e.g. shared module_declaration_facts memoization for the fixture pool) and re-enrolls per-PR discovery; row deletes with the long-lane file")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/long/qualified_declaration_reference_emit_cross_module_witness_test.dag",
     function: "cross_module_qualified_reference_emits_call_from_correct_module",
     reason: "compile_dag_rust_emit_check cross-module fixture (std.unicode.types.unicode_scalar_max_code_point — minimal std closure, not the heavy std.emit_on_demand roster the prior fixture dragged in): measured 5436-5544ms thread-CPU vs 5000ms fast-lane cap on srv_fleet_arm64 PR CI discovery batch 3. Same-module sibling stays per-PR in dag/test/claim/qualified_declaration_reference_emit_witness_test.dag.",
-    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery; row deletes with the long-lane file"
+    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery; row deletes with the long-lane file")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/roadmap_program_view_live_corpus_receipt_test.dag",
     function: "live_roadmap_program_view_corpus_projection_receipt",
     reason: "LIVE-AUTHORITY INTEGRATION RECEIPT (operator verdict 2026-08-05, PR #7822): exercises the full declared roadmap closure through gunbc.roadmap_program_view — evidentiary wiring receipt enrolled on the corpus/integration lane for its integration role, not because eval cost exceeds the per-PR business budget. Business algebra stays on planted fixtures in roadmap_program_view_witness_test.dag",
-    dissolve_on: "replaced by a cheaper structural wiring receipt that covers the same live-authority join, or live roadmap projection integration receipts become unnecessary"
+    dissolution: unbound_dissolution(description: "replaced by a cheaper structural wiring receipt that covers the same live-authority join, or live roadmap projection integration receipts become unnecessary")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/rust_test_fixtures_import_closure_witness_test.dag",
     function: "declared_import_closure_lists_rust_import",
     reason: "Class B row 1 (#7835), cold-control pattern (c): falsifier long-lane backstop for selection misses; per-PR merge-blocking consumer is run_class_b_import_closure_gate on source_root_ingest_gate (same shape as compile-clean/regen cold controls). One observe_declared_import_closure_symbol_binding over class_b_declared_import_pool_roots. CI run 30986525413 measured 0.0ms when scheduled after row 2 (warm shared index); cold single-observe cost is substrate-long.",
-    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run with class_b_declared_import_pool_roots and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
+    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run with class_b_declared_import_pool_roots and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/rust_test_fixtures_import_closure_witness_test.dag",
     function: "ambient_pool_provider_preserves_listed_import",
     reason: "Class B row 2 (#7835), cold-control pattern (c): falsifier long-lane backstop for selection misses; per-PR merge-blocking consumer is run_class_b_import_closure_gate on source_root_ingest_gate. Two cold observe_declared_import_closure_symbol_binding calls (baseline + perturbed) over class_b_declared_import_pool_roots. CI run 30986525413 measured 48868.8ms (>5s fast-lane budget; ceiling — row 2 is the cold observe, row 1 was warm). Shrinking pool from witness_layer_roots (~3044 modules) to declared-import footprint (~696) is a stronger control, not a budget remedy.",
-    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run with class_b_declared_import_pool_roots and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
+    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run with class_b_declared_import_pool_roots and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
   },
   SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/realization_vocabulary_containment_witness_test.dag",
     function: "realization_vocab_live_corpus_receipt_holds",
     reason: "TS-0/LANG-2 live-corpus containment receipt: irreducible live-tree census over realization_vocab_consumer_scan_roots verifying every current leak edge is grandfathered and containment holds corpus-wide. Enrolled on the falsifier substrate long lane for its corpus/integration role — the observation that must read the live import graph — not because per-PR discovery is the right admission surface. Per-PR mechanism coverage stays in no_new_debt_gate_test.dag and the existing synthetic/scanner/roster-soundness receipts.",
-    dissolve_on: "replaced by a cheaper structural receipt proving the same live-corpus relation, or live containment observation becomes unnecessary"
+    dissolution: unbound_dissolution(description: "replaced by a cheaper structural receipt proving the same live-corpus relation, or live containment observation becomes unnecessary")
   }
 ]
 

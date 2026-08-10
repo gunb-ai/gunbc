@@ -1,5 +1,7 @@
 module v2.test.claim.build_transport_admission_witness
 
+import std.dissolution { dissolution_description }
+
 import std.types { Bool, String, List }
 import std.effect_grant {
   FilesystemPathTree,
@@ -39,11 +41,11 @@ test fn emit_host_access_decision_seed_transport_is_declared_scaffold() -> Bool 
           pattern: "permit_arm_from_another_carrier_refuses",
         )
         && string_contains(
-          s: emit_host_access_decision_seed_transport_dissolve_trigger,
+          s: dissolution_description(condition: emit_host_access_decision_seed_transport_dissolve_trigger),
           pattern: "v1-zero-hand-maintained-rust",
         )
         && string_contains(
-          s: emit_host_access_decision_seed_transport_dissolve_trigger,
+          s: dissolution_description(condition: emit_host_access_decision_seed_transport_dissolve_trigger),
           pattern: "DISSOLVES WHEN",
         )
     _ => false

@@ -1,5 +1,7 @@
 module std.citation
 
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
 import std.types { NonEmptyStr, String, List, Bool, EpochMs, HttpStatus }
 import std.integer { NonNegativeInt }
 import std.nat { nat_compare }
@@ -461,8 +463,6 @@ data citation_cit1_pdf_profile_scaffold: Disposition = Scaffold {
   },
 }
 
-data citation_cit1_pdf_profile_dissolve_on: String = "dissolve-on: citation_cit1_pdf_profile — ordered RFC 8118 fragment sequence, safe profile (page, nameddest, structelem), navigable URL projection, and one real versioned PDF consumer land in CIT-1 after CIT-0 sign-off."
-
 data citation_cit2_mediawiki_provider_observation_scaffold: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
@@ -471,8 +471,6 @@ data citation_cit2_mediawiki_provider_observation_scaffold: Disposition = Scaffo
     field: WholeDeclaration,
   },
 }
-
-data citation_cit2_mediawiki_provider_observation_dissolve_on: String = "dissolve-on: citation_cit2_mediawiki_provider_observation — provider-bound revision lookup outcomes land in CIT-2 beside generic extdeps MediaWiki protocol shapes separate from site realizations."
 
 type CitationRecordedFact<Selector> {
   cited: CitationTarget<Selector>
@@ -489,3 +487,7 @@ fn citation_recorded_fact<Selector>(
 }
 
 data citation_evidence_interface_note: String = "CitationRecordedFact is the provenance payload consumed by std.claim_evidence EvidenceLink — same authority, provenance, maximum_conclusion, fidelity, supporting/challenging, insufficiency, and EvidenceAdmissionPolicy machinery. Rich citations do not form a competing evidence system."
+
+data citation_cit1_pdf_profile_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: citation_cit1_pdf_profile — ordered RFC 8118 fragment sequence, safe profile (page, nameddest, structelem), navigable URL projection, and one real versioned PDF consumer land in CIT-1 after CIT-0 sign-off.")
+
+data citation_cit2_mediawiki_provider_observation_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: citation_cit2_mediawiki_provider_observation — provider-bound revision lookup outcomes land in CIT-2 beside generic extdeps MediaWiki protocol shapes separate from site realizations.")

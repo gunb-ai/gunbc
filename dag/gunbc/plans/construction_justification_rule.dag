@@ -1,6 +1,7 @@
 module gunbc.plans.construction_justification_rule
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownBlock, TableBlock, BlockquoteBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, p, li, ul, cell, row }
 
@@ -48,7 +49,6 @@ data construction_justification_rule_plan: Plan = Plan {
   slug: "construction-justification-rule",
   title: "The construction-justification rule (authoring-time) — §0",
   body: construction_justification_rule_body(),
-  dissolution: HasTrigger {
-    text: "Delete this doc when the construction-justification rule is fully built: v2.lens.common.construction_justification is the single-authority typed model, every top-level v2.lens.* module carries a recorded justification, and the fail-closed presence check plus discriminating tests run in discover_floor_corpus_rows — at which point the rule is a witnessed property of the floor (the vacuity residual and the per-class correctness review being the honest §3-buckets that remain) and this design doc is redundant."
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the construction-justification rule is fully built: v2.lens.common.construction_justification is the single-authority typed model, every top-level v2.lens.* module carries a recorded justification, and the fail-closed presence check plus discriminating tests run in discover_floor_corpus_rows — at which point the rule is a witnessed property of the floor (the vacuity residual and the per-class correctness review being the honest §3-buckets that remain) and this design doc is redundant.")
   }
 }

@@ -14,6 +14,7 @@ import v2.std.diagnostic {
   port_locus
 }
 import v2.std.node { Symbol }
+import v2.std.text { String }
 import v2.std.optional {
   Absent,
   Optional,
@@ -68,6 +69,28 @@ fn map_insert<K, V>(m: Map<K, V>, key: K, value: V) -> Map<K, V> {
 
 fn map_get<K, V>(m: Map<K, V>, key: K) -> Outcome<Optional<V>> {
   outcome_accepted(value: m.lookup(key))
+}
+
+data grouping_primitive_grounding_note: String = "GROUPING IS A PRIMITIVE, NOT A FOLD OVER map_insert. The modeled Map is a closure chain - map_insert nests one closure per entry and lookup walks them - so building an index by folding map_insert is linear per lookup and measured 33x slower than the linear scan it was meant to replace. The native HAMT that the empty_map delegate already reaches is the realization that makes an index worth building, and group_by is the operation the substrate was missing: index_by is last-wins, so it cannot carry a name that several declarations share.
+
+THE SHAPE IS THE ONE empty_map ALREADY ESTABLISHED. A typed public declaration states the contract in the model; a private delegate whose body is its own name is intercepted at the collection-native grounding seam and never actually recurses. If the native binding is ever absent the delegate is a genuine unbounded self-call, which is why the seam refuses rather than answering - a missing primitive must stop the line, not degrade to a modeled fallback.
+
+DUPLICATE KEYS ARE THE POINT. group_by preserves every item whose key collides, in input order, so the bucket for a name is the exact set a full scan filtered for. index_by keeps the last item per key and is a different operation with a different contract; neither is expressible as the other."
+
+fn group_by_primitive_delegate<T, K>(xs: List<T>, key_fn: fn(T) -> K) -> Map<K, List<T>> {
+  group_by_primitive_delegate(xs: xs, key_fn: key_fn)
+}
+
+fn group_by<T, K>(xs: List<T>, key_fn: fn(T) -> K) -> Map<K, List<T>> {
+  group_by_primitive_delegate(xs: xs, key_fn: key_fn)
+}
+
+fn index_by_primitive_delegate<T, K>(xs: List<T>, key_fn: fn(T) -> K) -> Map<K, T> {
+  index_by_primitive_delegate(xs: xs, key_fn: key_fn)
+}
+
+fn index_by<T, K>(xs: List<T>, key_fn: fn(T) -> K) -> Map<K, T> {
+  index_by_primitive_delegate(xs: xs, key_fn: key_fn)
 }
 fn list_nth<T>(xs: List<T>, wanted: Int, absent: Diagnostic) -> Witness<T> {
   fold_list(

@@ -1,5 +1,7 @@
 module extdeps.bmc.capability
 
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
 import std.bmc { BmcFirmwareFamily, BmcEndpoint }
 import std.nat { Nat }
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
@@ -35,8 +37,6 @@ type BmcFirmwareSemanticVersion {
 type BmcFirmwareVersionParse
   = BmcFirmwareVersionParsed { version: BmcFirmwareSemanticVersion }
   | BmcFirmwareVersionRefused { wire: String }
-
-data bmc_firmware_semver_parser_dissolve_on: String = "🟡 dissolve-on: a cited semantic-version grammar row set lands in the shared grammar substrate with forward ingest. bmc_firmware_version_from_wire then consumes that grammar fold instead of its local three-component parser; until then this is the declared Redfish/OpenBMC wire scaffold and refuses every non-exact or non-Nat component through BmcFirmwareVersionRefused."
 
 fn bmc_firmware_semantic_version(
   major: Nat,
@@ -152,6 +152,49 @@ fn bmc_firmware_observation_intent_verdict(
   )
 }
 
+type BmcFirmwareCapabilityLookup
+  = BmcFirmwareCapabilityKnown { row: BmcFirmwareCapabilityRow }
+  | BmcFirmwareCapabilityUncatalogued { firmware: BmcFirmwareVersion }
+  | BmcFirmwareCapabilityAmbiguous { firmware: BmcFirmwareVersion, count: Int }
+
+fn bmc_firmware_version_eq(a: BmcFirmwareVersion, b: BmcFirmwareVersion) -> Bool {
+  a.family == b.family
+    && a.version.major == b.version.major
+    && a.version.minor == b.version.minor
+    && a.version.patch == b.version.patch
+}
+
+// Exact-version catalog lookup, deliberately total in the REFUSING direction, on BOTH sides of
+// uniqueness. A firmware version the catalog does not carry yields
+// BmcFirmwareCapabilityUncatalogued rather than a nearest-version or shipped-row substitute: a
+// capability roster is a per-release fact — this board GAINED CapabilityNbdProxyVirtualMedia at
+// 2.07.00 and LOST it again by 3.06.00 — so "close enough" version matching would answer with
+// capabilities the observed firmware does not have.
+//
+// Two or more rows for one version yield BmcFirmwareCapabilityAmbiguous rather than the first
+// hit. First-wins over a duplicated key is a silent selection: two rows for one version is a
+// contradiction in the catalog, and answering from whichever was authored first renders that
+// contradiction as a verdict. Same three-arm shape as extdeps.package `package_lock_lookup_node`
+// (absent / unique / duplicate). DESIGN §5: the failure arm refuses, it does not widen.
+fn bmc_firmware_capability_row_for(
+  firmware: BmcFirmwareVersion,
+  catalog: List<BmcFirmwareCapabilityRow>
+) -> BmcFirmwareCapabilityLookup {
+  let hits = catalog |> filter(row => bmc_firmware_version_eq(a: row.firmware, b: firmware))
+  let n = count(hits)
+  if n == 0 {
+    BmcFirmwareCapabilityUncatalogued { firmware: firmware }
+  } else if n == 1 {
+    fold(
+      hits,
+      init: BmcFirmwareCapabilityUncatalogued { firmware: firmware },
+      f: (_acc, row) => BmcFirmwareCapabilityKnown { row: row },
+    )
+  } else {
+    BmcFirmwareCapabilityAmbiguous { firmware: firmware, count: n }
+  }
+}
+
 fn firmware_has_capability(row: BmcFirmwareCapabilityRow, cap: BmcCapability) -> Bool {
   row.capabilities |> any(c => c == cap)
 }
@@ -159,3 +202,5 @@ fn firmware_has_capability(row: BmcFirmwareCapabilityRow, cap: BmcCapability) ->
 fn catalog_has_vm_capable_firmware(catalog: List<BmcFirmwareCapabilityRow>) -> Bool {
   catalog |> any(row => firmware_has_capability(row: row, cap: CapabilityVirtualMedia))
 }
+
+data bmc_firmware_semver_parser_dissolve_on: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: a cited semantic-version grammar row set lands in the shared grammar substrate with forward ingest. bmc_firmware_version_from_wire then consumes that grammar fold instead of its local three-component parser; until then this is the declared Redfish/OpenBMC wire scaffold and refuses every non-exact or non-Nat component through BmcFirmwareVersionRefused.")

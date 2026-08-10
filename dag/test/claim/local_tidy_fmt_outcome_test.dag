@@ -1,5 +1,7 @@
 module test.claim.local_tidy_fmt_outcome
 
+import std.dissolution { dissolution_description }
+
 import gunbc.local_tidy_spec {
   LocalTidyFmtOutcome,
   FmtClean,
@@ -165,9 +167,9 @@ test fn witness_pre_commit_hook_branches_on_exit_status() -> Bool {
 
 test fn witness_hand_rust_receipt_is_counted_and_named() -> Bool {
   githooks_pre_push_fmt_transport_hand_rust_loc_delta_net == 57
-    && has(s: githooks_pre_push_fmt_transport_hand_rust_dissolve_trigger, p: "dissolve-on")
-    && has(s: githooks_pre_push_fmt_transport_hand_rust_dissolve_trigger, p: "emitted crate partition")
-    && has(s: githooks_pre_push_fmt_transport_hand_rust_dissolve_trigger, p: "NOT a census shrink")
+    && has(s: dissolution_description(condition: githooks_pre_push_fmt_transport_hand_rust_dissolve_trigger), p: "dissolve-on")
+    && has(s: dissolution_description(condition: githooks_pre_push_fmt_transport_hand_rust_dissolve_trigger), p: "emitted crate partition")
+    && has(s: dissolution_description(condition: githooks_pre_push_fmt_transport_hand_rust_dissolve_trigger), p: "NOT a census shrink")
 }
 
 test fn witness_hand_rust_receipt_names_a_live_discriminator() -> Bool {
