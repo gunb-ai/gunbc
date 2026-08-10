@@ -13,6 +13,10 @@ pub use crate::extdeps_units_dimensionless::{
 };
 pub use crate::extdeps_units_iec_80000_13::{iec_kibi_factor, octet_bit_count};
 pub use crate::extdeps_units_iso8601::{iso8601_minutes_per_hour, iso8601_seconds_per_minute};
+pub use crate::extdeps_units_iso_80000_3::{
+    arcseconds_per_degree_derived, arcseconds_per_turn, cubic_millimetres_per_cubic_metre,
+    degrees_per_turn, square_millimetres_per_square_metre,
+};
 pub use crate::std_currency::CurrencyCode;
 use crate::std_currency::CurrencyCode::*;
 pub use crate::std_nat::Nat;
@@ -52,6 +56,9 @@ pub enum Quantity {
     Inductance,
     ElectricCharge,
     MagneticFlux,
+    Area,
+    Volume,
+    PlaneAngle,
     Dimensionless,
 }
 
@@ -69,6 +76,10 @@ pub enum Scale {
     One,
     Sixty,
     RackUnitHeight,
+    MilliSquared,
+    MilliCubed,
+    ArcsecondAngle,
+    TurnAngle,
     Kilo,
     Mega,
     Giga,
@@ -90,6 +101,10 @@ pub fn scale_exponent(s: Scale) -> Option<i64> {
         Scale::Micro => Some(-6),
         Scale::Milli => Some(-3),
         Scale::One => Some(0),
+        Scale::MilliSquared => Some(-6),
+        Scale::MilliCubed => Some(-9),
+        Scale::ArcsecondAngle => None,
+        Scale::TurnAngle => None,
         Scale::Sixty => None,
         Scale::RackUnitHeight => None,
         Scale::Kilo => Some(3),
@@ -131,6 +146,10 @@ pub fn milliseconds_per_second() -> Nat {
 pub fn time_scale_factor_seconds(s: Scale) -> Option<Nat> {
     match s.clone() {
         Scale::One => Some(1),
+        Scale::MilliSquared => None,
+        Scale::MilliCubed => None,
+        Scale::ArcsecondAngle => None,
+        Scale::TurnAngle => None,
         Scale::Sixty => Some(seconds_per_minute()),
         Scale::RackUnitHeight => None,
         Scale::Atto => None,
@@ -165,6 +184,10 @@ pub fn memory_scale_factor_bytes(s: Scale) -> Option<Nat> {
         Scale::Nano => None,
         Scale::Micro => None,
         Scale::Milli => None,
+        Scale::MilliSquared => None,
+        Scale::MilliCubed => None,
+        Scale::ArcsecondAngle => None,
+        Scale::TurnAngle => None,
         Scale::Sixty => None,
         Scale::RackUnitHeight => None,
         Scale::Kilo => None,
@@ -310,6 +333,88 @@ pub type Volt = Rc<Measure<(), (), i64>>;
 pub type Ampere = Rc<Measure<(), (), i64>>;
 
 pub type Millimeter = Rc<Measure<(), (), i64>>;
+
+pub type MillimeterCoordinate = Rc<Measure<(), (), i64>>;
+
+pub type MillimeterDisplacementComponent = Rc<Measure<(), (), i64>>;
+
+pub type SquareMillimeter = Rc<Measure<(), (), i64>>;
+
+pub type CubicMillimeter = Rc<Measure<(), (), i64>>;
+
+pub type Arcsecond = Rc<Measure<(), (), i64>>;
+
+pub type ArcsecondDisplacement = Rc<Measure<(), (), i64>>;
+
+pub type Turn = Rc<Measure<(), (), i64>>;
+
+pub type SignedSquareMillimeter = Rc<Measure<(), (), i64>>;
+
+pub fn millimeter_coordinate(count: i64) -> MillimeterCoordinate {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn millimeter_coordinate_count(m: MillimeterCoordinate) -> i64 {
+    measure_count(m.clone())
+}
+
+pub fn millimeter_displacement(count: i64) -> MillimeterDisplacementComponent {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn millimeter_displacement_count(m: MillimeterDisplacementComponent) -> i64 {
+    measure_count(m.clone())
+}
+
+pub fn square_millimeter(count: Nat) -> SquareMillimeter {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn square_millimeter_count(m: SquareMillimeter) -> Nat {
+    measure_count(m.clone())
+}
+
+pub fn cubic_millimeter(count: Nat) -> CubicMillimeter {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn cubic_millimeter_count(m: CubicMillimeter) -> Nat {
+    measure_count(m.clone())
+}
+
+pub fn arcsecond(count: Nat) -> Arcsecond {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn arcsecond_count(a: Arcsecond) -> Nat {
+    measure_count(a.clone())
+}
+
+pub fn arcsecond_displacement(count: i64) -> ArcsecondDisplacement {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn arcsecond_displacement_count(a: ArcsecondDisplacement) -> i64 {
+    measure_count(a.clone())
+}
 
 pub type RackUnit = Rc<Measure<(), (), i64>>;
 
@@ -1040,6 +1145,48 @@ pub fn clock_basis_label(b: ClockBasis) -> String {
     }
 }
 
+pub fn square_metres_to_square_millimetres(count: Nat) -> SquareMillimeter {
+    square_millimeter((count.clone() * square_millimetres_per_square_metre()))
+}
+
+pub fn cubic_metres_to_cubic_millimetres(count: Nat) -> CubicMillimeter {
+    cubic_millimeter((count.clone() * cubic_millimetres_per_cubic_metre()))
+}
+
+pub fn full_turn_arcseconds() -> Arcsecond {
+    arcsecond(arcseconds_per_turn())
+}
+
+pub fn degrees_to_arcseconds(degrees: Nat) -> Arcsecond {
+    arcsecond((degrees.clone() * arcseconds_per_degree_derived()))
+}
+
+pub fn quarter_turn_arcseconds() -> Arcsecond {
+    arcsecond((arcseconds_per_turn() / 4))
+}
+
+pub fn turn(count: Nat) -> Turn {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn turn_count(t: Turn) -> Nat {
+    measure_count(t.clone())
+}
+
+pub fn signed_square_millimeter(count: i64) -> SignedSquareMillimeter {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn signed_square_millimeter_count(m: SignedSquareMillimeter) -> i64 {
+    measure_count(m.clone())
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Time;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -1085,6 +1232,12 @@ pub struct ElectricCharge;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct MagneticFlux;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Area;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Volume;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PlaneAngle;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Dimensionless;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Atto;
@@ -1104,6 +1257,14 @@ pub struct One;
 pub struct Sixty;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RackUnitHeight;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct MilliSquared;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct MilliCubed;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ArcsecondAngle;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TurnAngle;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Kilo;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

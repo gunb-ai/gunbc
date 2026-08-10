@@ -34,6 +34,7 @@ pub mod extdeps_languages_rust_types;
 pub mod extdeps_units_dimensionless;
 pub mod extdeps_units_iec_80000_13;
 pub mod extdeps_units_iso8601;
+pub mod extdeps_units_iso_80000_3;
 pub mod extdeps_uri;
 pub mod extdeps_uri_path;
 pub mod extdeps_version;
