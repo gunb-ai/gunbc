@@ -1,5 +1,20 @@
 module test.claim.fleet_host_key_enrollment_witness
 
+import std.types { Bool, String, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_host_key_enrollment {
+  KnownHostKeyRow,
+  fleet_host_key_enrollments,
+  enrolled_fingerprint_for,
+  known_hosts_line,
+}
+import gunbc.host_reach_identity_probe {
+  classify_reach_probe_wire_with_expectation,
+  ProbeHostKeyUnenrolled,
+  ProbeHostKeyMismatch,
+}
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // Acceptance item 4: an empty registry answers none for every host (nothing enrolled
