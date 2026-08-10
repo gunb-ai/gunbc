@@ -119,18 +119,10 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: PlanDoc,
     slug: "general-body-producer-design",
-<<<<<<< HEAD
     primary_work: body_lowering_symbol_index_ref,
     additional_works: [
       body_lowering_lexical_lookup_ref,
       body_lowering_production_consumer_ref,
-=======
-    primary_work: DeclarationRef { module_path: "v2.std.symbol_index", decl_name: "SymbolIndex", field: WholeDeclaration },
-    additional_works: [
-      DeclarationRef { module_path: "v2.std.symbol_index", decl_name: "symbol_index_lexical_lookup", field: WholeDeclaration },
-      DeclarationRef { module_path: "v2.compiler.resolve", decl_name: "lookup_symbol_index_atom_identity", field: WholeDeclaration },
-      DeclarationRef { module_path: "gunbc.roadmap_authority", decl_name: "five_minute_ci_gate_program_note", field: WholeDeclaration },
->>>>>>> origin/main
     ],
     dissolution: HasTrigger { text: "the general body producer lands and the document describes a shipped fold rather than a planned one. THIS BIND EXISTS BECAUSE OF A MEASURED FAILURE IN THIS EXACT DOCUMENT: it named v2.std.symbol_index SymbolIndex as an open prerequisite gating Stage A, the prerequisite was discharged, and the sentence stayed -- four copies of that one claim were live across DESIGN.md and two plan documents. Nothing was wrong with the declaration, so no declaration-level check could fire; the sentence was not a reference to anything, so no reference-level check could either. Binding the three systems it discusses puts them inside the cited-symbol population, so a rename or deletion reds without anyone editing the prose. WHAT THIS DOES NOT ESTABLISH, stated so the bind is not over-read: a resolved reference proves the system EXISTS and is uniquely identified, not that the named consumer invokes the named implementation on a production path -- that is a relationship claim, it needs an executing witness, and this row makes none." },
   },
