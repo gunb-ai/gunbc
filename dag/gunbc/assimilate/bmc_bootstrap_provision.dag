@@ -107,6 +107,18 @@ fn bmc_secret_iam_bindings_owned_cells() -> List<GcpIamBindingCell> {
     fold(gcp_binding_cells(b: b), init: acc, f: (inner, c) => inner |> list_push(c)))
 }
 
+// KNOWN BYPASS, named rather than hidden. Both arms below return the policy, so a CONVERGED
+// policy is still written: the GcpPolicyAlreadyConverged arm is computed and discarded here, which
+// means the no-op protection the reconcile authority provides does NOT reach this call site. That
+// is a real gap, not a cosmetic one -- an unnecessary setIamPolicy advances the etag, so a
+// convergent re-run looks like it changed something.
+//
+// It is not repaired in place because the caller is a `node bind:` pattern invocation, which
+// cannot branch on a verdict to skip its own effect; making the write conditional requires the
+// call site to become an effect-plan step that can be selected or not.
+// DISSOLVE-ON: the BMC bootstrap patterns become EffectPlan steps, at which point the reconcile
+// verdict selects whether the SetSecretIamPolicy step is present at all, and this wrapper is
+// deleted rather than returning a policy the caller was never meant to write.
 fn bmc_secret_iam_bindings_reconciled_policy(observed: GcpPolicy) -> GcpPolicy {
   match reconcile_gcp_policy(
     observed: observed,
