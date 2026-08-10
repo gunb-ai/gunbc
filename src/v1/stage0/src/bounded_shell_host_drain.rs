@@ -1,7 +1,8 @@
-//! Bounded concurrent shell stream capture for the v1 interpreter seed.
+//! Interim v1_interpreter seed host-effect: bounded concurrent shell stream drain.
 //!
-//! Authority: `dag/std/shell_stream_capture.dag`. Drains stdout/stderr while the
-//! child runs; no stream may grow an unbounded owned `String` in the runtime.
+//! Scaffold authority: `std.shell_stream_capture` (`seed_host_shell_stream_bounded_drain_*`).
+//! Not a modeled policy surface — constants and refusal semantics live here until
+//! emit-on-demand native serve and the shared `CapturedProcessStream` carrier land.
 
 use std::io::Read;
 use std::process::{Child, ExitStatus};
@@ -11,15 +12,19 @@ const FNV1A64_PRIME: u64 = 0x100000001b3;
 
 const READ_CHUNK_BYTES: usize = 64 * 1024;
 
-/// Seed realization of `std.shell_stream_capture.StreamCapturePolicy`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StreamCapturePolicy {
     Discarded,
-    Bounded { max_retained_bytes: usize },
-    DigestAndBoundedTail { max_tail_bytes: usize },
+    /// Stdout default: retain only when the full stream fits; overflow sets `truncated`.
+    CompleteWithin {
+        max_bytes: usize,
+    },
+    /// Stderr default: total byte count + digest + bounded tail; truncation explicit.
+    DigestAndBoundedTail {
+        max_tail_bytes: usize,
+    },
 }
 
-/// Seed realization of `std.shell_stream_capture.CapturedStreamObservation`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StreamCaptureObservation {
     pub total_bytes: u64,
@@ -47,12 +52,12 @@ pub struct ShellCaptureResult {
     pub stderr: StreamCaptureObservation,
 }
 
-pub const DEFAULT_SHELL_STDOUT_MAX_RETAINED_BYTES: usize = 8 * 1024 * 1024;
+pub const DEFAULT_SHELL_STDOUT_MAX_BYTES: usize = 8 * 1024 * 1024;
 pub const DEFAULT_SHELL_STDERR_TAIL_BYTES: usize = 16 * 1024;
 
 pub fn default_shell_stdout_capture_policy() -> StreamCapturePolicy {
-    StreamCapturePolicy::Bounded {
-        max_retained_bytes: DEFAULT_SHELL_STDOUT_MAX_RETAINED_BYTES,
+    StreamCapturePolicy::CompleteWithin {
+        max_bytes: DEFAULT_SHELL_STDOUT_MAX_BYTES,
     }
 }
 
@@ -123,7 +128,6 @@ impl RingTail {
     }
 }
 
-/// Drain one captured pipe according to `policy` while the child is still running.
 pub fn drain_stream<R: Read>(
     mut reader: R,
     policy: StreamCapturePolicy,
@@ -140,8 +144,8 @@ pub fn drain_stream<R: Read>(
     let mut digest = FNV1A64_OFFSET;
     let track_digest = matches!(policy, StreamCapturePolicy::DigestAndBoundedTail { .. });
 
-    let max_bounded = match policy {
-        StreamCapturePolicy::Bounded { max_retained_bytes } => max_retained_bytes,
+    let max_complete = match policy {
+        StreamCapturePolicy::CompleteWithin { max_bytes } => max_bytes,
         _ => usize::MAX,
     };
 
@@ -158,10 +162,9 @@ pub fn drain_stream<R: Read>(
 
         match policy {
             StreamCapturePolicy::Discarded => {}
-            StreamCapturePolicy::Bounded { .. } => {
-                if retained.len() < max_bounded {
-                    let take = max_bounded.saturating_sub(retained.len()).min(n);
-                    retained.extend_from_slice(&chunk[..take]);
+            StreamCapturePolicy::CompleteWithin { .. } => {
+                if total_bytes <= max_complete as u64 {
+                    retained.extend_from_slice(chunk);
                 }
             }
             StreamCapturePolicy::DigestAndBoundedTail { .. } => {
@@ -174,14 +177,23 @@ pub fn drain_stream<R: Read>(
 
     let retained = match policy {
         StreamCapturePolicy::Discarded => Vec::new(),
-        StreamCapturePolicy::Bounded { .. } => retained,
+        StreamCapturePolicy::CompleteWithin { max_bytes } => {
+            if total_bytes > max_bytes as u64 {
+                Vec::new()
+            } else {
+                retained
+            }
+        }
         StreamCapturePolicy::DigestAndBoundedTail { .. } => ring
             .expect("ring buffer initialized for tail policy")
             .into_vec(),
     };
 
     let retained_len = retained.len() as u64;
-    let truncated = total_bytes > retained_len;
+    let truncated = match policy {
+        StreamCapturePolicy::CompleteWithin { max_bytes } => total_bytes > max_bytes as u64,
+        _ => total_bytes > retained_len,
+    };
 
     Ok(StreamCaptureObservation {
         total_bytes,
@@ -195,7 +207,6 @@ pub fn drain_stream<R: Read>(
     })
 }
 
-/// Wait for `child` while concurrently draining stdout/stderr with bounded policies.
 pub fn capture_child_output(
     mut child: Child,
     stdout_policy: StreamCapturePolicy,
@@ -247,17 +258,28 @@ mod tests {
     use std::io::Cursor;
 
     #[test]
-    fn bounded_retains_prefix_only() {
+    fn complete_within_retains_only_when_fits() {
+        let data = vec![b'a'; 64];
+        let obs = drain_stream(
+            Cursor::new(data.clone()),
+            StreamCapturePolicy::CompleteWithin { max_bytes: 128 },
+        )
+        .expect("drain");
+        assert_eq!(obs.total_bytes, 64);
+        assert_eq!(obs.retained, data);
+        assert!(!obs.truncated);
+    }
+
+    #[test]
+    fn complete_within_overflow_does_not_retain_prefix() {
         let data = vec![b'a'; 1024];
         let obs = drain_stream(
             Cursor::new(data),
-            StreamCapturePolicy::Bounded {
-                max_retained_bytes: 64,
-            },
+            StreamCapturePolicy::CompleteWithin { max_bytes: 64 },
         )
         .expect("drain");
         assert_eq!(obs.total_bytes, 1024);
-        assert_eq!(obs.retained.len(), 64);
+        assert!(obs.retained.is_empty());
         assert!(obs.truncated);
     }
 

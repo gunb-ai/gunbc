@@ -1,19 +1,13 @@
-//! Causal A/B replay for the srv1 jq stderr wedge (node adhoc-02b6693e-e6a).
+//! Host-boundary regression receipt for bounded shell stream drain (PR #8087).
 //!
-//! Leg A simulates the pre-fix host (`wait_with_output` full materialization).
-//! Leg B uses the production bounded concurrent drain.
-//! Leg C replays against a protocol-only stdout fixture (diagnostics separated —
-//! production separation is PR 2; this leg measures parser-only cost).
-//!
-//! Wall-time dominance of bounding over legacy is expected at production stderr
-//! scale (~59.5 MiB); at the 8 MiB CI fixture the drain threads can lose to a
-//! single-buffer read — the harness records both legs honestly and asserts the
-//! properties that must hold at any scale (stdout identity, retained bound, total count).
+//! Proves the v1_interpreter seed drain does not retain stderr proportional to child
+//! output and preserves small stdout when the stream fits. Does NOT prove the srv1
+//! two-hour wedge was caused by jq stderr materialization alone (wedged route unproven).
 
 use std::process::{Command, Stdio};
 use std::time::Instant;
 
-use v1_compiler::shell_stream_capture::{
+use v1_compiler::v1_interpreter::bounded_shell_host_drain::{
     capture_child_output, default_shell_stderr_capture_policy, default_shell_stdout_capture_policy,
     StreamCapturePolicy, DEFAULT_SHELL_STDERR_TAIL_BYTES,
 };
@@ -56,7 +50,7 @@ struct LegReceipt {
 impl LegReceipt {
     fn log(&self) {
         eprintln!(
-            "replay: {} wall={}ms stdout={} stderr_total={} stderr_retained={} \
+            "host_boundary_receipt: {} wall={}ms stdout={} stderr_total={} stderr_retained={} \
              runtime_stderr_string_bytes={} truncated={}",
             self.label,
             self.wall_ms,
@@ -159,12 +153,12 @@ fn bounded_capture_preserves_stdout_bytes_against_legacy() {
     let b = leg_b_bounded_capture(STDERR_MEBIBYTES);
     assert_eq!(
         a.stdout_bytes, b.stdout_bytes,
-        "stdout must be byte-identical"
+        "stdout must be byte-identical when within bound"
     );
 }
 
 #[test]
-fn causal_replay_records_three_legs_honestly() {
+fn host_boundary_regression_receipt_records_three_legs_honestly() {
     let a = leg_a_legacy_full_capture(STDERR_MEBIBYTES);
     let b = leg_b_bounded_capture(STDERR_MEBIBYTES);
     let c = leg_c_protocol_only_fixture();
@@ -180,18 +174,14 @@ fn causal_replay_records_three_legs_honestly() {
     );
     assert!(
         b.runtime_stderr_string_bytes < a.runtime_stderr_string_bytes / 100,
-        "runtime Value::Str materialization must not carry full stderr"
+        "runtime stderr materialization must not carry full stderr"
     );
     assert!(c.wall_ms < 5, "protocol-only leg should be negligible");
 
-    // At 8 MiB fixture scale, bounded drain may be slower than one memcpy into a
-    // single Vec — that does not falsify the production hypothesis; it redirects
-    // measurement to retained-bytes and to the roadmap row's concat lane when
-    // wall does not move at incident scale.
     if b.wall_ms > a.wall_ms {
         eprintln!(
-            "replay note: bounded wall {}ms > legacy {}ms at {}MiB fixture; \
-             production stderr is {} bytes",
+            "receipt note: bounded wall {}ms > legacy {}ms at {}MiB fixture; \
+             production stderr is {} bytes — this receipt does not claim incident causal closure",
             b.wall_ms, a.wall_ms, STDERR_MEBIBYTES, INCIDENT_STDERR_BYTES
         );
     }
@@ -211,7 +201,7 @@ fn sequential_eleven_bounded_requests_do_not_multiply_retained_stderr() {
     let wall_1 = one.wall_ms;
 
     eprintln!(
-        "replay: sequential wall_1={}ms wall_11={}ms total_runtime_stderr_string_bytes={}",
+        "receipt: sequential wall_1={}ms wall_11={}ms total_runtime_stderr_string_bytes={}",
         wall_1, wall_11, total_runtime_string_bytes
     );
 
@@ -233,10 +223,9 @@ fn bounded_capture_rss_growth_not_proportional_to_child_stderr() {
     let rss_after = current_rss_kib().expect("VmRSS on linux");
     let delta_kib = rss_after.saturating_sub(rss_before);
     eprintln!(
-        "replay: rss_before={}KiB rss_after={}KiB delta={}KiB child_stderr_mib={}",
+        "receipt: rss_before={}KiB rss_after={}KiB delta={}KiB child_stderr_mib={}",
         rss_before, rss_after, delta_kib, STDERR_MEBIBYTES
     );
-    // 8 MiB stderr retained to 16 KiB — RSS must not jump by megabytes.
     assert!(
         delta_kib < 4096,
         "RSS grew {delta_kib} KiB after bounded capture of {STDERR_MEBIBYTES} MiB stderr"

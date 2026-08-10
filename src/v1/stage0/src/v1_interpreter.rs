@@ -38,6 +38,9 @@ use crate::v1_std_core::{
     StringPart, UnaryOpKind, VarBindingKind,
 };
 
+#[path = "bounded_shell_host_drain.rs"]
+pub mod bounded_shell_host_drain;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Symbol(u32);
 
@@ -865,6 +868,13 @@ pub enum InterpError {
     HostToolRelativePathAmbiguous {
         name: String,
     },
+    /// Shell child stdout exceeded the seed complete-within bound — never surfaced as a prefix.
+    ShellOutputLimitExceeded {
+        stream: &'static str,
+        total_bytes: u64,
+        limit_bytes: u64,
+        argv0: String,
+    },
     /// Application-site contract mismatch: the caller's argument list does not match the
     /// callee's declared parameter list. Typed and located (callee + the offending label)
     /// so the line stops at the application site instead of surfacing later as a
@@ -969,6 +979,16 @@ impl fmt::Display for InterpError {
                 f,
                 "host tool relative path ambiguous at cwd-dependent boundary: {:?}",
                 name
+            ),
+            InterpError::ShellOutputLimitExceeded {
+                stream,
+                total_bytes,
+                limit_bytes,
+                argv0,
+            } => write!(
+                f,
+                "shell {} exceeded {} byte limit (total={} bytes) for '{}'",
+                stream, limit_bytes, total_bytes, argv0
             ),
         }
     }
@@ -7759,25 +7779,21 @@ fn wait_child_honoring_wall_deadline(
     child: std::process::Child,
     ctx: &InterpContext,
     argv0: &str,
-    stdout_policy: crate::shell_stream_capture::StreamCapturePolicy,
-    stderr_policy: crate::shell_stream_capture::StreamCapturePolicy,
-) -> InterpResult<crate::shell_stream_capture::ShellCaptureResult> {
+    stdout_policy: bounded_shell_host_drain::StreamCapturePolicy,
+    stderr_policy: bounded_shell_host_drain::StreamCapturePolicy,
+) -> InterpResult<bounded_shell_host_drain::ShellCaptureResult> {
     if ctx.witness_wall_deadline.get().is_none() {
-        return crate::shell_stream_capture::capture_child_output(
-            child,
-            stdout_policy,
-            stderr_policy,
-        )
-        .map_err(|e| InterpError::TypeError {
-            msg: format!("failed to wait on '{}': {}", argv0, e),
-        });
+        return bounded_shell_host_drain::capture_child_output(child, stdout_policy, stderr_policy)
+            .map_err(|e| InterpError::TypeError {
+                msg: format!("failed to wait on '{}': {}", argv0, e),
+            });
     }
 
     let pid = child.id();
     let (tx, rx) = std::sync::mpsc::channel();
     let worker = std::thread::spawn(move || {
         let result =
-            crate::shell_stream_capture::capture_child_output(child, stdout_policy, stderr_policy);
+            bounded_shell_host_drain::capture_child_output(child, stdout_policy, stderr_policy);
         let _ = tx.send(result);
     });
 
@@ -7852,8 +7868,8 @@ fn dispatch_shell(
         return Err(err);
     }
 
-    let stdout_policy = crate::shell_stream_capture::default_shell_stdout_capture_policy();
-    let stderr_policy = crate::shell_stream_capture::default_shell_stderr_capture_policy();
+    let stdout_policy = bounded_shell_host_drain::default_shell_stdout_capture_policy();
+    let stderr_policy = bounded_shell_host_drain::default_shell_stderr_capture_policy();
 
     let capture = if let Some(stdin_node) = transport_stdin(transport.clone(), ctx.si()) {
         use std::io::Write;
@@ -7928,13 +7944,22 @@ fn dispatch_shell(
         capture
     };
 
-    Ok(shell_result_from_capture(&capture))
+    shell_result_from_capture(&capture, &argv[0])
 }
 
 fn shell_result_from_capture(
-    capture: &crate::shell_stream_capture::ShellCaptureResult,
-) -> ShellResult {
-    ShellResult {
+    capture: &bounded_shell_host_drain::ShellCaptureResult,
+    argv0: &str,
+) -> InterpResult<ShellResult> {
+    if capture.stdout.truncated {
+        return Err(InterpError::ShellOutputLimitExceeded {
+            stream: "stdout",
+            total_bytes: capture.stdout.total_bytes,
+            limit_bytes: bounded_shell_host_drain::DEFAULT_SHELL_STDOUT_MAX_BYTES as u64,
+            argv0: argv0.to_string(),
+        });
+    }
+    Ok(ShellResult {
         exit_code: capture.exit_status.code().unwrap_or(-1),
         stdout: capture.stdout.retained_utf8_lossy_trimmed(),
         stderr: capture.stderr.retained_utf8_lossy_trimmed(),
@@ -7943,7 +7968,7 @@ fn shell_result_from_capture(
         stdout_truncated: capture.stdout.truncated,
         stderr_truncated: capture.stderr.truncated,
         stderr_digest_hex: capture.stderr.digest_hex.clone(),
-    }
+    })
 }
 
 fn map_shell_outputs(
@@ -13836,8 +13861,8 @@ mod wall_deadline_kill_tests {
             child,
             &ctx,
             "sleep",
-            crate::shell_stream_capture::default_shell_stdout_capture_policy(),
-            crate::shell_stream_capture::default_shell_stderr_capture_policy(),
+            super::bounded_shell_host_drain::default_shell_stdout_capture_policy(),
+            super::bounded_shell_host_drain::default_shell_stderr_capture_policy(),
         )
         .expect_err("over-budget sleep must refuse");
         let elapsed_ms = started.elapsed().as_millis() as u64;
@@ -13880,8 +13905,8 @@ mod wall_deadline_kill_tests {
             child,
             &ctx,
             "true",
-            crate::shell_stream_capture::default_shell_stdout_capture_policy(),
-            crate::shell_stream_capture::default_shell_stderr_capture_policy(),
+            super::bounded_shell_host_drain::default_shell_stdout_capture_policy(),
+            super::bounded_shell_host_drain::default_shell_stderr_capture_policy(),
         )
         .expect("no-deadline wait must succeed");
         assert!(output.exit_status.success());
