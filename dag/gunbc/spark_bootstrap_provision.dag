@@ -1,6 +1,9 @@
 module gunbc.spark_bootstrap_provision
 
-import extdeps.cloud.gcp.iam { GcpIamBindingCell, IamCondition }
+import extdeps.cloud.gcp.iam {
+  GcpIamBindingCell, IamCondition, GcpIamOwnedCellUniverse,
+  gcp_condition_eq, gcp_cell_eq, gcp_cell_in, reconcile_gcp_policy
+}
 
 import std.authorization_profile { EffectRequest, EffectAuthorizationAction, effect_access_request }
 
@@ -595,27 +598,20 @@ type SparkIamDelta {
 // member but different conditions are DIFFERENT grants -- one may be time-boxed and the other
 // permanent -- so treating them as equal would let a conditional grant be silently replaced by an
 // unconditional one, or an unconditional one survive a reconcile that meant to bound it.
+// Cell identity and membership are the GCP IAM authority's, consumed here rather than re-derived.
+// An earlier revision of this module defined spark_condition_eq / spark_cell_eq / spark_cell_in
+// locally; once the same mechanism landed in extdeps.cloud.gcp.iam for the BMC callers, keeping
+// these was a second semantics for one concept -- exactly the fork this lane exists to remove.
 fn spark_condition_eq(a: IamCondition?, b: IamCondition?) -> Bool {
-  match a {
-    Absent =>
-      match b {
-        Absent => true
-        Present { value: _ } => false
-      }
-    Present { value: ca } =>
-      match b {
-        Absent => false
-        Present { value: cb } => ca.title == cb.title && ca.expression == cb.expression
-      }
-  }
+  gcp_condition_eq(a: a, b: b)
 }
 
 fn spark_cell_eq(a: GcpIamBindingCell, b: GcpIamBindingCell) -> Bool {
-  a.role == b.role && a.member == b.member && spark_condition_eq(a: a.condition, b: b.condition)
+  gcp_cell_eq(a: a, b: b)
 }
 
 fn spark_cell_in(c: GcpIamBindingCell, xs: List<GcpIamBindingCell>) -> Bool {
-  fold(xs, init: false, f: (acc, x) => acc || spark_cell_eq(a: c, b: x))
+  gcp_cell_in(c: c, xs: xs)
 }
 
 // Ownership is asked at CELL grain too. A model that owns (member M, role accessor) does not

@@ -67,27 +67,120 @@ type GcpIamBindingCell {
 }
 
 // POLICY ASSEMBLY LIVES WITH THE POLICY TYPE, not in a consumer. setIamPolicy replaces the whole
-// document, so every caller needs the same read-modify-write; if each one assembled its own the
-// preserve rule would be re-implemented per site and would drift. merge_policy_bindings takes the
-// OBSERVED policy and the caller's desired bindings and returns the document to write: every
-// observed binding whose role the caller does not author is carried through untouched, the caller's
-// bindings replace only their own roles, and the observed etag rides along so the write is a
-// compare-and-swap rather than a blind overwrite.
+// document, so every caller needs the same read-modify-write; if each one assembled its own, the
+// preserve rule would be re-implemented per site and would drift.
 //
-// Role-grain replacement is the honest bound of this helper: a caller authoring a role takes over
-// that role's whole member list. Cell-grain reconciliation -- preserving other members WITHIN a
-// role the caller also uses -- needs the caller's owned-cell universe, which this function does not
-// have and must not guess.
-fn binding_role_authored(desired: List<GcpBinding>, role: String) -> Bool {
-  fold(desired, init: false, f: (acc, d) => acc || d.role == role)
+// ONE RECONCILIATION MECHANISM, at cell grain, for every caller. An earlier revision of this file
+// carried merge_policy_bindings, which replaced the whole member population of every role the
+// caller authored. That was a SECOND semantics beside the cell-grain reconcile the Spark module
+// already had -- the dual representation this work exists to remove -- and its failure mode is
+// concrete: an unrelated member under a role the caller also uses is dropped without a diagnostic,
+// because whole-role replacement cannot see members it does not author. It is deleted rather than
+// kept beside this, and the callers that used it now pass an explicit owned-cell universe.
+type GcpIamOwnedCellUniverse {
+  cells: List<GcpIamBindingCell>
 }
 
-fn merge_policy_bindings(observed: GcpPolicy, desired: List<GcpBinding>) -> GcpPolicy {
-  let preserved = observed.bindings |> filter(b => !binding_role_authored(desired: desired, role: b.role))
-  GcpPolicy {
-    bindings: fold(desired, init: preserved, f: (acc, d) => acc |> list_push(d)),
-    etag: observed.etag,
-    version: observed.version
+type GcpPolicyReconciliation
+  = GcpPolicyAlreadyConverged { policy: GcpPolicy }
+  | GcpPolicyDeltaRequired {
+      policy: GcpPolicy
+      added: List<GcpIamBindingCell>
+      removed: List<GcpIamBindingCell>
+      preserved: List<GcpIamBindingCell>
+    }
+
+fn gcp_condition_eq(a: IamCondition?, b: IamCondition?) -> Bool {
+  match a {
+    Absent =>
+      match b {
+        Absent => true
+        Present { value: _ } => false
+      }
+    Present { value: ca } =>
+      match b {
+        Absent => false
+        Present { value: cb } => ca.title == cb.title && ca.expression == cb.expression
+      }
+  }
+}
+
+fn gcp_cell_eq(a: GcpIamBindingCell, b: GcpIamBindingCell) -> Bool {
+  a.role == b.role && a.member == b.member && gcp_condition_eq(a: a.condition, b: b.condition)
+}
+
+fn gcp_cell_in(c: GcpIamBindingCell, xs: List<GcpIamBindingCell>) -> Bool {
+  fold(xs, init: false, f: (acc, x) => acc || gcp_cell_eq(a: c, b: x))
+}
+
+data no_gcp_cells: List<GcpIamBindingCell> = []
+
+data no_gcp_bindings: List<GcpBinding> = []
+
+// A wire binding is one role carrying MANY members; a cell is one role and one member. Flattening
+// is what makes the diff answer the question a policy decision is actually made on.
+fn gcp_binding_cells(b: GcpBinding) -> List<GcpIamBindingCell> {
+  fold(b.members, init: no_gcp_cells, f: (acc, m) =>
+    acc |> list_push(GcpIamBindingCell { role: b.role, member: m, condition: b.condition }))
+}
+
+fn gcp_policy_cells(p: GcpPolicy) -> List<GcpIamBindingCell> {
+  fold(p.bindings, init: no_gcp_cells, f: (acc, b) =>
+    fold(gcp_binding_cells(b: b), init: acc, f: (inner, c) => inner |> list_push(c)))
+}
+
+// Regroup cells into the wire shape. Cells sharing a (role, condition) rejoin one binding, so a
+// cell nobody authored survives the round trip instead of being dropped by a role-level replace.
+fn gcp_bindings_add_cell(bs: List<GcpBinding>, c: GcpIamBindingCell) -> List<GcpBinding> {
+  let matched = fold(bs, init: false, f: (acc, b) =>
+    acc || (b.role == c.role && gcp_condition_eq(a: b.condition, b: c.condition)))
+  if matched {
+    fold(bs, init: no_gcp_bindings, f: (acc, b) =>
+      if b.role == c.role && gcp_condition_eq(a: b.condition, b: c.condition) {
+        acc |> list_push(GcpBinding { role: b.role, members: b.members |> list_push(c.member), condition: b.condition })
+      } else {
+        acc |> list_push(b)
+      })
+  } else {
+    bs |> list_push(GcpBinding { role: c.role, members: [c.member], condition: c.condition })
+  }
+}
+
+fn gcp_cells_bindings(cs: List<GcpIamBindingCell>) -> List<GcpBinding> {
+  fold(cs, init: no_gcp_bindings, f: (acc, c) => gcp_bindings_add_cell(bs: acc, c: c))
+}
+
+// reconcile_gcp_policy returns GcpPolicyAlreadyConverged as its OWN arm rather than a delta that
+// happens to be empty, so a caller cannot write an unnecessary setIamPolicy and read the resulting
+// etag bump as progress.
+// Ownership is asked per CELL. Owning (member M, role accessor) does not confer authority over
+// (member M, role admin): that grant may exist for a reason this caller cannot see, so it is
+// preserved even though the member is one the caller recognises.
+fn reconcile_gcp_policy(
+  observed: GcpPolicy,
+  desired_owned: List<GcpIamBindingCell>,
+  owned_universe: GcpIamOwnedCellUniverse
+) -> GcpPolicyReconciliation {
+  let observed_cells = gcp_policy_cells(p: observed)
+  let added = desired_owned |> filter(c => !gcp_cell_in(c: c, xs: observed_cells))
+  let removed = observed_cells |> filter(c =>
+    gcp_cell_in(c: c, xs: owned_universe.cells) && !gcp_cell_in(c: c, xs: desired_owned))
+  let preserved = observed_cells |> filter(c => !gcp_cell_in(c: c, xs: owned_universe.cells))
+  if count(added) == 0 && count(removed) == 0 {
+    GcpPolicyAlreadyConverged { policy: observed }
+  } else {
+    let kept = observed_cells |> filter(c => !gcp_cell_in(c: c, xs: removed))
+    let final_cells = fold(added, init: kept, f: (acc, c) => acc |> list_push(c))
+    GcpPolicyDeltaRequired {
+      policy: GcpPolicy {
+        bindings: gcp_cells_bindings(cs: final_cells),
+        etag: observed.etag,
+        version: observed.version
+      },
+      added: added,
+      removed: removed,
+      preserved: preserved
+    }
   }
 }
 
