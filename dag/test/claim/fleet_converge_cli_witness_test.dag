@@ -29,6 +29,7 @@ test fn witness_converge_cli_run_srv2_fails_closed_on_knob_frontier() -> Bool {
           PolicyUnsound { reason: _ } => false
           UnknownHost { host: _ } => false
           SparkPreEnrollment { host: _ } => false
+          SparkManagedAccessUnmeasured { host: _, dissolves_on: _ } => false
           ComputeInventoryAbsent { host: _ } => false
         }
       _ => false
@@ -49,6 +50,7 @@ test fn witness_converge_cli_run_unknown_host_refuses() -> Bool {
           PolicyUnsound { reason: _ } => false
           KnobFrontier { reason: _ } => false
           SparkPreEnrollment { host: _ } => false
+          SparkManagedAccessUnmeasured { host: _, dissolves_on: _ } => false
           ComputeInventoryAbsent { host: _ } => false
         }
       _ => false
@@ -66,11 +68,13 @@ test fn witness_converge_cli_unknown_host_and_compute_inventory_absent_are_disti
         PolicyUnsound { reason: _ } => false
         KnobFrontier { reason: _ } => false
         SparkPreEnrollment { host: _ } => false
+        SparkManagedAccessUnmeasured { host: _, dissolves_on: _ } => false
       }
     ComputeInventoryAbsent { host: _ } => false
     PolicyUnsound { reason: _ } => false
     KnobFrontier { reason: _ } => false
     SparkPreEnrollment { host: _ } => false
+    SparkManagedAccessUnmeasured { host: _, dissolves_on: _ } => false
   }
     && converge_cli_refusal_message(cause: unknown) != converge_cli_refusal_message(cause: inventory_absent)
     && string_contains(s: converge_cli_refusal_message(cause: unknown), pattern: "unknown fleet host identity")
@@ -94,11 +98,13 @@ test fn witness_converge_cli_refusal_causes_discriminate() -> Bool {
                 PolicyUnsound { reason: _ } => false
                 KnobFrontier { reason: _ } => false
                 SparkPreEnrollment { host: _ } => false
+                SparkManagedAccessUnmeasured { host: _, dissolves_on: _ } => false
                 ComputeInventoryAbsent { host: _ } => false
               }
             PolicyUnsound { reason: _ } => false
             UnknownHost { host: _ } => false
             SparkPreEnrollment { host: _ } => false
+            SparkManagedAccessUnmeasured { host: _, dissolves_on: _ } => false
             ComputeInventoryAbsent { host: _ } => false
           }
         _ => false
@@ -175,13 +181,15 @@ fn revision_fixture_oid(hex: String) -> GitObjectId {
 // Join 3 (operator verdict): applicability is TOTAL over the fleet — srv5/srv6 are a
 // typed pre-enrollment refusal DISTINCT from UnknownHost (they are known fleet
 // identities awaiting SPARK-SERVE-0), and every enrolled host lands one arm.
-test fn witness_spark_pre_enrollment_is_typed_and_distinct_from_unknown() -> Bool {
+test fn witness_spark_managed_access_unmeasured_is_typed_and_distinct_from_unknown() -> Bool {
   let r = converge_cli_run(host: "srv5")
   !converge_cli_receipt_converged(r: r)
     && match r.reason {
       Present { value: cause } =>
         match cause {
-          SparkPreEnrollment { host: h } => h == "srv5"
+          SparkManagedAccessUnmeasured { host: h, dissolves_on: trigger } =>
+            h == "srv5" && string_contains(s: trigger, pattern: "fleet_multi_principal_probe_wet")
+          SparkPreEnrollment { host: _ } => false
           _ => false
         }
       _ => false
