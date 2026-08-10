@@ -47,6 +47,21 @@ Fleet/corpus runs must dispatch against an **immutable tag** (`workflow_dispatch
 
 After tagging, verify each run's `head_sha` equals the tag peel before comparing receipts. Use **group intersection** (below) when comparing per-group cost across arms.
 
+### Pre-flight (required before committing two ~3h fleet runs)
+
+`workflow_dispatch` on a tag is a third event shape (baseline resolves as `PushParent`, not `pull_request` merge-target). Selection narrows against a **diff** — if selection is inert (`selected_entry_groups == total_entry_groups` or `selection_state != SelectionApplied`), the candidate arm pays classification with no prep/exec savings and the A/B is harness artifact, not lane property.
+
+**Cheap check:** dispatch **one** arm (candidate tag on `7f7da93340` is enough), then grep the log before interpreting:
+
+```bash
+gh api repos/gunb-ai/gunbc/actions/jobs/<job-id>/logs --allow-escape-sequences \
+  | rg '\[selection-degradation\] selection_state=|selected_entry_groups='
+```
+
+Pass criteria: `selection_state=SelectionApplied` **and** `selected_entry_groups < total_entry_groups`. If not, stop — design needs an explicit diff subject (e.g. `GUNBC_DIFF_WINDOW_PATH` / injected diff) instead of a bare tag dispatch.
+
+**Sequencing:** run behind vivid-gull-155 lane read (`falsifier-pin-8055-7f7da933`, run 31393103250) — not concurrent on the falsifier window.
+
 ## Subjects
 
 - `incident` (default) — two-entry roster from `cli_run::selection_control_incident_subject_roster`; control selects 2/2, candidate 1/2 with `skip_before_resolve=1`.
