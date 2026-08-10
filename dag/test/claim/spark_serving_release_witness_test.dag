@@ -3,9 +3,37 @@ module test.claim.spark_serving_release_witness_test
 import std.types { String, Bool, List, Int, NonEmptyStr }
 import gunbc.spark_serving_release {
   SparkServingReleaseIdentity, SparkServingOccurrence, SecretVersionRef,
+  SparkServingRelease, RuntimeArtifactIdentity, ModelArtifactIdentity,
+  ServingConfigurationIdentity, InferenceCapacityPolicy, spark_serving_release_identity,
   SparkServingReconciliation, SparkServingAlreadyConverged, SparkServingDeltaRequired,
   SparkServingRefused, SparkServingRefusal,
   spark_serving_may_actuate, spark_occurrences_share_release,
+}
+
+fn release_base() -> SparkServingRelease {
+  SparkServingRelease { runtime: RuntimeArtifactIdentity { closure_digest: "closure-1" }, model: ModelArtifactIdentity { repository: "Qwen/Qwen2.5-7B-Instruct", revision: "a09a35458c702b33eeacc393d103063234e8bc28" }, serving_configuration: ServingConfigurationIdentity { configuration_digest: "cfg-1" }, capacity: InferenceCapacityPolicy { max_model_len: 4096, shared_memory_budget_bytes: 127600816 } }
+}
+
+fn release_other_revision() -> SparkServingRelease {
+  SparkServingRelease { runtime: RuntimeArtifactIdentity { closure_digest: "closure-1" }, model: ModelArtifactIdentity { repository: "Qwen/Qwen2.5-7B-Instruct", revision: "0000000000000000000000000000000000000000" }, serving_configuration: ServingConfigurationIdentity { configuration_digest: "cfg-1" }, capacity: InferenceCapacityPolicy { max_model_len: 4096, shared_memory_budget_bytes: 127600816 } }
+}
+
+fn release_other_capacity() -> SparkServingRelease {
+  SparkServingRelease { runtime: RuntimeArtifactIdentity { closure_digest: "closure-1" }, model: ModelArtifactIdentity { repository: "Qwen/Qwen2.5-7B-Instruct", revision: "a09a35458c702b33eeacc393d103063234e8bc28" }, serving_configuration: ServingConfigurationIdentity { configuration_digest: "cfg-1" }, capacity: InferenceCapacityPolicy { max_model_len: 8192, shared_memory_budget_bytes: 127600816 } }
+}
+
+// CONTROL 5: the identity is a FUNCTION OF THE RELEASE, both directions. An independently
+// constructed but identical release yields the IDENTICAL digest, and changing any single input --
+// here the model revision, and separately the capacity -- CHANGES it. Without the second direction
+// a constant function passes; without the first, a nondeterministic one does.
+fn digest_of(spec: SparkServingRelease) -> String {
+  spark_serving_release_identity(spec: spec).digest.digest as String
+}
+
+test fn release_identity_is_derived_not_authored() -> Bool {
+  digest_of(spec: release_base()) == digest_of(spec: release_base())
+    && digest_of(spec: release_base()) != digest_of(spec: release_other_revision())
+    && digest_of(spec: release_base()) != digest_of(spec: release_other_capacity())
 }
 
 fn refusal_specimen() -> SparkServingReconciliation {
@@ -13,15 +41,15 @@ fn refusal_specimen() -> SparkServingReconciliation {
 }
 
 fn occ_srv5() -> SparkServingOccurrence {
-  SparkServingOccurrence { host: "srv5", release_identity: SparkServingReleaseIdentity { digest: "R" }, endpoint_credential: SecretVersionRef { secret: "spark-serving-api-key", version: "3" } }
+  SparkServingOccurrence { host: "srv5", release_identity: spark_serving_release_identity(spec: release_base()), endpoint_credential: SecretVersionRef { secret: "spark-serving-api-key", version: "3" } }
 }
 
 fn occ_srv6_same() -> SparkServingOccurrence {
-  SparkServingOccurrence { host: "srv6", release_identity: SparkServingReleaseIdentity { digest: "R" }, endpoint_credential: SecretVersionRef { secret: "spark-serving-api-key", version: "3" } }
+  SparkServingOccurrence { host: "srv6", release_identity: spark_serving_release_identity(spec: release_base()), endpoint_credential: SecretVersionRef { secret: "spark-serving-api-key", version: "3" } }
 }
 
 fn occ_srv6_other() -> SparkServingOccurrence {
-  SparkServingOccurrence { host: "srv6", release_identity: SparkServingReleaseIdentity { digest: "R-prime" }, endpoint_credential: SecretVersionRef { secret: "spark-serving-api-key", version: "3" } }
+  SparkServingOccurrence { host: "srv6", release_identity: spark_serving_release_identity(spec: release_other_revision()), endpoint_credential: SecretVersionRef { secret: "spark-serving-api-key", version: "3" } }
 }
 
 // CONTROL 1: the no-op is STRUCTURAL. A converged host cannot reach an actuator, and the arm that

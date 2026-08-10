@@ -2,6 +2,7 @@ module gunbc.spark_serving_release
 
 import std.types { String, Bool, List, Int, NonEmptyStr }
 import product.placement_supply { HostIdentity }
+import std.content_hash { Fnv1a64Structural, content_hash_atom }
 
 // THE SPARK SERVING RELEASE — one content-addressed identity over everything that must be
 // identical on both replicas.
@@ -49,17 +50,29 @@ type SparkServingRelease {
   capacity: InferenceCapacityPolicy
 }
 
-// UNGROUNDED: this identity is CALLER-AUTHORED, not derived. No function computes it from a
-// SparkServingRelease, so today the same digest can be assigned to different releases, different
-// digests to the same release, and an identity can be constructed with no release at all. That is
-// a string labelled "digest", not content addressing, and calling it content-addressed was an
-// overclaim of exactly the kind this module's own comments warn about.
+// The identity is DERIVED from the release, never authored. It previously carried a NonEmptyStr
+// that callers typed by hand -- so the same digest could name different releases, different
+// digests the same release, and an identity could exist with no release at all. That was a string
+// labelled "digest" while the module called it content-addressed, and it hollowed out the exact-
+// replication property the carrier exists to provide: "both hosts run the same thing" rested on an
+// author typing the same string twice.
 //
-// DISSOLVE-ON: spark_serving_release_identity(release) derived through std.content_hash, with the
-// discriminating RED both directions -- change any release input and the identity CHANGES; build
-// the same release independently and the identity is IDENTICAL. Until that lands, every claim of
-// exact replication rests on an author typing the same string twice.
-type SparkServingReleaseIdentity { digest: NonEmptyStr }
+// Fnv1a64Structural rather than the ContentHash union, per the family-grounding rule the same way
+// GateRosterHash and v2.std.node.Hash carry it: a union-typed carrier re-opens the cross-family
+// comparison that grounding closed.
+type SparkServingReleaseIdentity { digest: Fnv1a64Structural }
+
+// The seed is the injective rendering the identity is taken over. Every field appears, each behind
+// its own name, so two releases differing in any single input produce different seed text and
+// therefore a different digest -- which is what makes the identity a function of the release
+// rather than a label beside it.
+fn spark_serving_release_seed(spec: SparkServingRelease) -> NonEmptyStr {
+  "spark-serving-release|runtime={spec.runtime.closure_digest}|repo={spec.model.repository}|rev={spec.model.revision}|config={spec.serving_configuration.configuration_digest}|max_len={spec.capacity.max_model_len}|mem={spec.capacity.shared_memory_budget_bytes}" as NonEmptyStr
+}
+
+fn spark_serving_release_identity(spec: SparkServingRelease) -> SparkServingReleaseIdentity {
+  SparkServingReleaseIdentity { digest: content_hash_atom(value: spark_serving_release_seed(spec: spec)) }
+}
 
 // The occurrence binds ONE release identity to a host. srv5 and srv6 share release R and differ
 // only in host and receipt — that shared identity is the entire point of the release carrier, and
@@ -110,5 +123,5 @@ fn spark_serving_may_actuate(reconciliation: SparkServingReconciliation) -> Bool
 // single release digest rather than field-by-field, because a field-wise comparison is a
 // conjunction that can be weakened one arm at a time.
 fn spark_occurrences_share_release(a: SparkServingOccurrence, b: SparkServingOccurrence) -> Bool {
-  (a.release_identity.digest as String) == (b.release_identity.digest as String)
+  (a.release_identity.digest.digest as String) == (b.release_identity.digest.digest as String)
 }
