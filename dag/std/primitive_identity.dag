@@ -462,7 +462,7 @@ data primitive_index_by_traversal: PrimitiveTraversalOrderFact = PrimitiveTraver
 
 data primitive_group_by_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact {
   primitive: primitive_group_by,
-  order: TraversalOrderUnclassified,
+  order: HostUnspecifiedOrder,
 }
 
 data primitive_d0_traversal_facts: List<PrimitiveTraversalOrderFact> = [
@@ -787,7 +787,8 @@ fn primitive_d0_host_unspecified_traversal_classified() -> Bool {
   primitive_d0_traversal_facts
     |> all(fn(fact) {
       if primitive_identity_eq(left: fact.primitive, right: primitive_map_keys)
-        || primitive_identity_eq(left: fact.primitive, right: primitive_map_values) {
+        || primitive_identity_eq(left: fact.primitive, right: primitive_map_values)
+        || primitive_identity_eq(left: fact.primitive, right: primitive_group_by) {
         fact.order == HostUnspecifiedOrder
       } else {
         true

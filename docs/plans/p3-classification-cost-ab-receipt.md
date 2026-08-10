@@ -38,4 +38,4 @@ Fleet/corpus runs must dispatch against an **immutable tag** on the merge SHA (`
 - `incident` (default) — two-entry roster from `cli_run::selection_control_incident_subject_roster`; control selects 2/2, candidate 1/2 with `skip_before_resolve=1`.
 - `discovery` — full discovery scan with Applied selection (corpus-scale; use pinned tag on fleet).
 
-Populated `.log` files from executed paired runs land in this directory.
+Populated `.log` files from executed paired runs land in `docs/plans/receipts/p3-classification-cost-ab/`.
