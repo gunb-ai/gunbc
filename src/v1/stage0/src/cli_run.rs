@@ -3778,6 +3778,30 @@ pub const SELECTION_CONTROL_DECLARED_ENTRIES: &[&str] = &[
     SELECTION_CONTROL_CI_FLOOR_PLAN_REL,
 ];
 
+/// The two-entry incident subject for live-read selection controls and P3 A/B parity.
+///
+/// A = the node-precise discriminator fixture (the entry the diff touches).
+/// B = the affected-set floor runner test (the unrelated entry whose closure reaches a
+/// live-read carrier home). B is what the retired predicate made unskippable on any nonempty
+/// `.dag` diff, which is the `2 selected / 1 expected` incident.
+pub fn selection_control_incident_subject_roster() -> Vec<(String, String)> {
+    let ws = workspace_root();
+    vec![
+        (
+            ws.join(SELECTION_CONTROL_NODE_PRECISE_REL)
+                .to_string_lossy()
+                .into_owned(),
+            "floor_disc_witness_a_only_holds".to_string(),
+        ),
+        (
+            ws.join(SELECTION_CONTROL_FLOOR_RUNNER_TEST_REL)
+                .to_string_lossy()
+                .into_owned(),
+            "floor_test_untouched_skips_assumed_green_holds".to_string(),
+        ),
+    ]
+}
+
 /// The suite's source roots — `[src/v2, dag]`, the roots its rosters resolve against.
 /// Single authority for the same reason as the entry consts above.
 pub fn selection_control_source_roots(workspace: &Path) -> Vec<PathBuf> {

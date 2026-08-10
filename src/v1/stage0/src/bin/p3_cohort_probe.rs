@@ -24,8 +24,8 @@ use std::time::Instant;
 
 use v1_compiler::cli_run::{
     live_read_classification_production_ms, reset_live_read_classification_production_ms,
-    run_discovery_corpus_with_options, workspace_root, DiscoveryCorpusOptions,
-    DiscoveryWidthPolicy, NodeFrontierSelectionMode, SELECTION_CONTROL_FLOOR_RUNNER_TEST_REL,
+    run_discovery_corpus_with_options, selection_control_incident_subject_roster, workspace_root,
+    DiscoveryCorpusOptions, DiscoveryWidthPolicy, NodeFrontierSelectionMode,
     SELECTION_CONTROL_NODE_PRECISE_REL,
 };
 use v1_compiler::v1_interpreter::ExecutionMode;
@@ -69,24 +69,6 @@ fn fixture_line(text: &str, needle: &str) -> i64 {
 
 fn injected_name_status_modify(rel_path: &str) -> String {
     format!("M\\000{rel_path}\\000")
-}
-
-fn incident_subject_roster() -> Vec<(String, String)> {
-    let ws = workspace_root();
-    vec![
-        (
-            ws.join(SELECTION_CONTROL_NODE_PRECISE_REL)
-                .to_string_lossy()
-                .into_owned(),
-            "floor_disc_witness_a_only_holds".to_string(),
-        ),
-        (
-            ws.join(SELECTION_CONTROL_FLOOR_RUNNER_TEST_REL)
-                .to_string_lossy()
-                .into_owned(),
-            "floor_test_untouched_skips_assumed_green_holds".to_string(),
-        ),
-    ]
 }
 
 fn inject_incident_diff() -> (EnvVarGuard, EnvVarGuard) {
@@ -152,7 +134,7 @@ fn main() -> ExitCode {
         Some(inject_incident_diff())
     };
     let explicit_entries = if incident {
-        incident_subject_roster()
+        selection_control_incident_subject_roster()
     } else {
         vec![]
     };
