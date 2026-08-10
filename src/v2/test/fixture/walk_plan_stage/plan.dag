@@ -1,5 +1,6 @@
 module v2.test.fixture.walk_plan_stage.plan
 
+import std.realization_schedule { walk_declares_no_native_routing }
 import std.realization_schedule {
   WalkPlan,
   NoWalkFinalization,
@@ -38,6 +39,8 @@ fn walk_plan_stage_overlap_barrier_plan() -> WalkPlan<NoWalkFinalization> {
     ],
     ordinary_budget: none,
     on_success_budget: none,
+    identity_routes: [],
+    default_route: walk_declares_no_native_routing(),
   }
 }
 
@@ -52,6 +55,8 @@ fn walk_plan_stage_failure_barrier_plan() -> WalkPlan<NoWalkFinalization> {
     ],
     ordinary_budget: none,
     on_success_budget: none,
+    identity_routes: [],
+    default_route: walk_declares_no_native_routing(),
   }
 }
 
@@ -66,6 +71,8 @@ fn walk_plan_stage_recursion_refusal_barrier_plan() -> WalkPlan<NoWalkFinalizati
     ],
     ordinary_budget: none,
     on_success_budget: none,
+    identity_routes: [],
+    default_route: walk_declares_no_native_routing(),
   }
 }
 
@@ -80,5 +87,7 @@ fn walk_plan_stage_receipt_refusal_barrier_plan() -> WalkPlan<NoWalkFinalization
     ],
     ordinary_budget: none,
     on_success_budget: none,
+    identity_routes: [],
+    default_route: walk_declares_no_native_routing(),
   }
 }

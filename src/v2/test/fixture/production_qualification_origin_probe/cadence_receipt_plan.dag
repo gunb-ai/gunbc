@@ -1,5 +1,6 @@
 module v2.test.fixture.production_qualification_origin_probe.cadence_receipt_plan
 
+import std.realization_schedule { walk_declares_no_native_routing }
 import std.realization_schedule {
   WalkPlan,
   NoWalkFinalization,
@@ -24,5 +25,7 @@ fn gunbc_falsifier_plan() -> WalkPlan<NoWalkFinalization> {
     on_success_stages: [],
     ordinary_budget: none,
     on_success_budget: none,
+    identity_routes: [],
+    default_route: walk_declares_no_native_routing(),
   }
 }

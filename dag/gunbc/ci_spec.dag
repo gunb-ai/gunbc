@@ -38,6 +38,8 @@ import gunbc.commit_workflow {
   project_ci_floor_witness_entries
 }
 import std.realization_schedule { ScheduleWitnessEntry }
+import std.realization_schedule { TestIdentityRoute, TestExecutionRoute, V1RetainedRoute }
+import std.types { NonEmptyStr }
 import gunbc.repo_identity { gunbc_merge_target_ref }
 import gunbc.heal_push_plan {
   auto_push_eligible_committed_artifact_paths,
@@ -453,6 +455,19 @@ fn gunbc_ci2_terminal_outcome_script() -> String {
       )
     )
   )
+}
+
+data gunbc_test_identity_routes_note: String = "THE CI2 ROUTE ROSTER (std.realization_schedule test_execution_route_note is the partition contract): the exact-head identities routed to native execution, plus any identity EXPLICITLY retained with a measured blocker. Empty roster means every demanded identity takes gunbc_default_test_route — the honest current state, and exactly what the CI2 Terminal Outcome check reports as v1-scheduled. The board (native-routed count) moves ONLY by rows landing here, each in the same commit as its executing native receipt; a row without its executing receipt is refused at schedule time (the native leg fails loudly), never silently interpreted."
+
+fn gunbc_test_identity_routes() -> List<TestIdentityRoute> {
+  []
+}
+
+fn gunbc_default_test_route() -> TestExecutionRoute {
+  V1RetainedRoute {
+    exact_blocker: "native-identity-execution-leg-unrealized: no scheduler path yet emits, compiles, and natively executes an exact-head test identity as a bundle member" as NonEmptyStr,
+    dissolution_trigger: "first V2NativeRoute roster row whose member symbol executes natively with a planted-failure RED control, its interpreted scheduling removed by the roster row itself in the same commit" as NonEmptyStr
+  }
 }
 
 fn gunbc_ci_floor_only_script(spec: CiSpec) -> String {

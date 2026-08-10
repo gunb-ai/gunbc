@@ -20,6 +20,7 @@ import v2.compiler.self_host.wet_receipt_enrollment {
   falsifier_self_host_wet_known_red_roster
 }
 import gunbc.ci_materialization { ci_floor_expected_resolve_obligations, FloorFinalization }
+import gunbc.ci_spec { gunbc_test_identity_routes, gunbc_default_test_route }
 import gunbc.ci_spec {
   gunbc_ci_spec, gunbc_ci_regen_spec, CiSpec,
   ci_spec_with_discovery_scan_dirs,
@@ -74,6 +75,7 @@ import std.content_hash { ContentHash, content_hash_of_value }
 import std.nat { Nat }
 import std.measure { Second, second, second_count, millisecond_count, minute_to_millisecond }
 import std.realization_width { width_fold_objective_goals }
+import std.realization_schedule { walk_declares_no_native_routing }
 import std.realization_schedule {
   SelectionApplied,
   SelectionPredictOnly,
@@ -1138,6 +1140,8 @@ fn gunbc_falsifier_native_cache_cold_plan() -> WalkPlan<NoWalkFinalization> {
     on_success_stages: [],
     ordinary_budget: none,
     on_success_budget: none,
+    identity_routes: [],
+    default_route: walk_declares_no_native_routing(),
   }
 }
 
@@ -1500,6 +1504,8 @@ fn gunbc_ci_floor_plan() -> WalkPlan<FloorFinalization> {
     on_success_stages: gunbc_ci_on_success_stages(),
     ordinary_budget: Present { value: minute_to_millisecond(m: gunbc_ci_ordinary_floor_budget_minutes) },
     on_success_budget: Present { value: minute_to_millisecond(m: gunbc_ci_admission_postcondition_budget_minutes) },
+    identity_routes: gunbc_test_identity_routes(),
+    default_route: gunbc_default_test_route(),
   }
 }
 
@@ -1511,6 +1517,8 @@ fn gunbc_ci_regen_floor_plan() -> WalkPlan<NoWalkFinalization> {
     on_success_stages: [],
     ordinary_budget: none,
     on_success_budget: none,
+    identity_routes: [],
+    default_route: walk_declares_no_native_routing(),
   }
 }
 
@@ -1522,6 +1530,8 @@ fn gunbc_ci_plan_artifact_plan() -> WalkPlan<NoWalkFinalization> {
     on_success_stages: [],
     ordinary_budget: none,
     on_success_budget: none,
+    identity_routes: [],
+    default_route: walk_declares_no_native_routing(),
   }
 }
 
@@ -1533,6 +1543,8 @@ fn gunbc_falsifier_plan() -> WalkPlan<NoWalkFinalization> {
     on_success_stages: [],
     ordinary_budget: none,
     on_success_budget: none,
+    identity_routes: [],
+    default_route: walk_declares_no_native_routing(),
   }
 }
 
