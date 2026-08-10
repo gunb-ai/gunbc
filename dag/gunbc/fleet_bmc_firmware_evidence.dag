@@ -1,0 +1,126 @@
+module gunbc.fleet_bmc_firmware_evidence
+
+import std.bmc { BmcEndpoint, OpenBmc }
+import std.types { EpochMs, List, NonEmptyStr, String }
+import extdeps.bmc.capability {
+  BmcFirmwareCapabilityKnown,
+  BmcFirmwareCapabilityLookup,
+  BmcFirmwareCapabilityRow,
+  BmcFirmwareCapabilityUncatalogued,
+  BmcFirmwareObservation,
+  BmcFirmwareVersion,
+  bmc_firmware_capability_row_for,
+  bmc_firmware_semantic_version,
+}
+import gunbc.fleet_intent { srv1_baseboard, srv2_baseboard }
+import gunbc.fleet_bmc_observation {
+  srv3_bmc_firmware_observation,
+  srv4_bmc_firmware_observation,
+}
+
+// An operator statement of a host's BMC firmware version. This is NOT an observation and is
+// deliberately a distinct carrier rather than a BmcEvidenceTemporalScope arm: the scope axis
+// says WHEN evidence was true, this says WHO produced it and by what means. Writing a
+// recollection into BmcFirmwareObservation would make it indistinguishable from an
+// authenticated Redfish read, which is the fabricated-plausible-output failure applied to
+// provenance (DESIGN §5).
+type BmcFirmwareAttestation {
+  endpoint: BmcEndpoint
+  firmware: BmcFirmwareVersion
+  attested_by: NonEmptyStr
+  attested_at: EpochMs
+}
+
+// Three states, not two: an endpoint with no evidence is its own arm. Absence of evidence is
+// not evidence of the shipped default — that conflation is the defect this module exists to
+// close (DESIGN, state-space conflation).
+type BmcFirmwareEvidence
+  = BmcFirmwareEvidenceObserved { observation: BmcFirmwareObservation }
+  | BmcFirmwareEvidenceAttested { attestation: BmcFirmwareAttestation }
+  | BmcFirmwareEvidenceUnobserved { endpoint: BmcEndpoint }
+
+type BmcFirmwareVersionStanding
+  = BmcFirmwareVersionEstablished { firmware: BmcFirmwareVersion }
+  | BmcFirmwareVersionUnestablished { endpoint: BmcEndpoint }
+
+fn bmc_firmware_evidence_endpoint(evidence: BmcFirmwareEvidence) -> BmcEndpoint {
+  match evidence {
+    BmcFirmwareEvidenceObserved { observation: o } => o.endpoint
+    BmcFirmwareEvidenceAttested { attestation: a } => a.endpoint
+    BmcFirmwareEvidenceUnobserved { endpoint: e } => e
+  }
+}
+
+fn bmc_firmware_evidence_version(evidence: BmcFirmwareEvidence) -> BmcFirmwareVersionStanding {
+  match evidence {
+    BmcFirmwareEvidenceObserved { observation: o } =>
+      BmcFirmwareVersionEstablished { firmware: o.firmware }
+    BmcFirmwareEvidenceAttested { attestation: a } =>
+      BmcFirmwareVersionEstablished { firmware: a.firmware }
+    BmcFirmwareEvidenceUnobserved { endpoint: e } =>
+      BmcFirmwareVersionUnestablished { endpoint: e }
+  }
+}
+
+type BmcFirmwareCapabilityStanding
+  = BmcFirmwareCapabilityResolved { row: BmcFirmwareCapabilityRow }
+  | BmcFirmwareCapabilityEvidenceAbsent { endpoint: BmcEndpoint }
+  | BmcFirmwareCapabilityVersionUncatalogued { firmware: BmcFirmwareVersion }
+
+// host -> host firmware evidence -> capability row. There is no arm that reaches a board-level
+// shipped default: an unobserved endpoint and an uncatalogued version each refuse with the
+// fact that is missing, so a consumer cannot proceed on a capability roster that was never
+// established for THAT host.
+fn bmc_firmware_capability_standing(
+  evidence: BmcFirmwareEvidence,
+  catalog: List<BmcFirmwareCapabilityRow>,
+) -> BmcFirmwareCapabilityStanding {
+  match bmc_firmware_evidence_version(evidence: evidence) {
+    BmcFirmwareVersionUnestablished { endpoint: e } =>
+      BmcFirmwareCapabilityEvidenceAbsent { endpoint: e }
+    BmcFirmwareVersionEstablished { firmware: fw } =>
+      match bmc_firmware_capability_row_for(firmware: fw, catalog: catalog) {
+        BmcFirmwareCapabilityKnown { row: r } => BmcFirmwareCapabilityResolved { row: r }
+        BmcFirmwareCapabilityUncatalogued { firmware: missing } =>
+          BmcFirmwareCapabilityVersionUncatalogued { firmware: missing }
+      }
+  }
+}
+
+data fleet_bmc_firmware_attestation_dissolution_trigger: String = "🟡 dissolve-on: an authenticated Redfish read of /redfish/v1/Managers/bmc FirmwareVersion against srv1 (192.168.1.183) and srv2 (192.168.1.184), landed as BmcFirmwareObservation rows in gunbc.fleet_bmc_observation. Both endpoints answer Redfish and return 401 unauthenticated (measured 2026-08-10); the credential is bmc-srvN-admin in Secret Manager, which the session that authored these rows could not reach. Until that read runs, srv1/srv2 firmware is an operator statement and the BmcFirmwareEvidenceAttested arm is what says so. When the observations land, srv1_bmc_firmware_evidence and srv2_bmc_firmware_evidence move to BmcFirmwareEvidenceObserved and the two attestation rows below are DELETED — an attestation superseded by a read is not kept beside it (DESIGN §2)."
+
+data srv1_bmc_firmware_attestation: BmcFirmwareAttestation = BmcFirmwareAttestation {
+  endpoint: srv1_baseboard.bmc,
+  firmware: BmcFirmwareVersion {
+    family: OpenBmc,
+    version: bmc_firmware_semantic_version(major: 2, minor: 7, patch: 0),
+  },
+  attested_by: "briansrls",
+  attested_at: 1786320000000,
+}
+
+data srv2_bmc_firmware_attestation: BmcFirmwareAttestation = BmcFirmwareAttestation {
+  endpoint: srv2_baseboard.bmc,
+  firmware: BmcFirmwareVersion {
+    family: OpenBmc,
+    version: bmc_firmware_semantic_version(major: 2, minor: 7, patch: 0),
+  },
+  attested_by: "briansrls",
+  attested_at: 1786320000000,
+}
+
+data srv1_bmc_firmware_evidence: BmcFirmwareEvidence = BmcFirmwareEvidenceAttested {
+  attestation: srv1_bmc_firmware_attestation,
+}
+
+data srv2_bmc_firmware_evidence: BmcFirmwareEvidence = BmcFirmwareEvidenceAttested {
+  attestation: srv2_bmc_firmware_attestation,
+}
+
+data srv3_bmc_firmware_evidence: BmcFirmwareEvidence = BmcFirmwareEvidenceObserved {
+  observation: srv3_bmc_firmware_observation,
+}
+
+data srv4_bmc_firmware_evidence: BmcFirmwareEvidence = BmcFirmwareEvidenceObserved {
+  observation: srv4_bmc_firmware_observation,
+}

@@ -152,6 +152,44 @@ fn bmc_firmware_observation_intent_verdict(
   )
 }
 
+type BmcFirmwareCapabilityLookup
+  = BmcFirmwareCapabilityKnown { row: BmcFirmwareCapabilityRow }
+  | BmcFirmwareCapabilityUncatalogued { firmware: BmcFirmwareVersion }
+
+fn bmc_firmware_version_eq(a: BmcFirmwareVersion, b: BmcFirmwareVersion) -> Bool {
+  a.family == b.family
+    && a.version.major == b.version.major
+    && a.version.minor == b.version.minor
+    && a.version.patch == b.version.patch
+}
+
+// Exact-version catalog lookup, deliberately total in the REFUSING direction: a firmware
+// version the catalog does not carry yields BmcFirmwareCapabilityUncatalogued rather than a
+// nearest-version or shipped-row substitute. A capability roster is a per-release fact — this
+// board GAINED CapabilityNbdProxyVirtualMedia at 2.07.00 and LOST it again by 3.06.00 — so
+// "close enough" version matching would answer with capabilities the observed firmware does
+// not have. DESIGN §5: the failure arm refuses, it does not widen to a default.
+fn bmc_firmware_capability_row_for(
+  firmware: BmcFirmwareVersion,
+  catalog: List<BmcFirmwareCapabilityRow>
+) -> BmcFirmwareCapabilityLookup {
+  fold(
+    catalog,
+    init: BmcFirmwareCapabilityUncatalogued { firmware: firmware },
+    f: fn(acc, row) {
+      match acc {
+        BmcFirmwareCapabilityKnown { row: _ } => acc
+        BmcFirmwareCapabilityUncatalogued { firmware: want } =>
+          if bmc_firmware_version_eq(a: row.firmware, b: want) {
+            BmcFirmwareCapabilityKnown { row: row }
+          } else {
+            acc
+          }
+      }
+    },
+  )
+}
+
 fn firmware_has_capability(row: BmcFirmwareCapabilityRow, cap: BmcCapability) -> Bool {
   row.capabilities |> any(c => c == cap)
 }
