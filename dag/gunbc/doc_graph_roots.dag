@@ -705,15 +705,6 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
-    slug: "resolved-graph-representation-minimization",
-    primary_work: DeclarationRef { module_path: "std.hermetic_replay", decl_name: "PublishedMockCase", field: WholeDeclaration },
-    additional_works: [
-
-    ],
-    dissolution: HasTrigger { text: "the work this document plans lands and its subject PublishedMockCase describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions." },
-  },
-  HandAuthoredDocBind {
-    home: PlanDoc,
     slug: "resolver-graph-major-design",
     primary_work: DeclarationRef { module_path: "v2.std.dependency", decl_name: "DependencyView", field: WholeDeclaration },
     additional_works: [
