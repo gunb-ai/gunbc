@@ -11168,15 +11168,16 @@ fn walk_detail_is_semantic_batch_finding(d: &str) -> bool {
     true
 }
 
+/// Strictly per-row derived: a walk carries semantic findings exactly when some row IS
+/// one. An earlier revision also short-circuited on `batch_rows > 1`, which classified two
+/// pure budget interrupts as WitnessRed — this fix's own defect run backwards, a cost
+/// interrupt reported as a semantic verdict. A count cannot answer which rows are
+/// semantic; `walk_detail_is_semantic_batch_finding` is that property, and where the
+/// property already decides, the count adds only false positives.
 fn walk_has_semantic_witness_findings(details: &[String]) -> bool {
-    let batch_rows = details
+    details
         .iter()
-        .filter(|d| d.starts_with("batch=") && d.contains("fn="))
-        .count();
-    batch_rows > 1
-        || details
-            .iter()
-            .any(|d| walk_detail_is_semantic_batch_finding(d))
+        .any(|d| walk_detail_is_semantic_batch_finding(d))
 }
 
 /// Walk-terminal mode: semantic witness findings outrank cost interrupts in the
@@ -12443,6 +12444,41 @@ mod tests {
         assert!(
             detail.contains("mode=BudgetExceeded"),
             "a lone deadline interrupt with no witness findings stays BudgetExceeded: {detail}"
+        );
+    }
+
+    /// The discriminating control for dropping the `batch_rows > 1` short-circuit. Two
+    /// batch rows that are BOTH pure budget interrupts must stay BudgetExceeded: the count
+    /// arm classified them WitnessRed, reporting a cost interrupt as a semantic verdict —
+    /// the mirror of the defect this classifier exists to fix. The sibling budget-only test
+    /// above carries zero batch rows, so it cannot reach this arm; without this case the
+    /// removal is indistinguishable from never having had the bug.
+    #[test]
+    fn walk_terminal_mode_two_budget_only_batch_rows_stay_budget_exceeded() {
+        let detail = walk_terminal_detail(
+            true,
+            &[
+                "batch=7 fn=explicit-corpus detail=wave1_gate1_d eval budget exceeded: \
+                 180002ms elapsed > 180000ms substrate long lane budget"
+                    .to_string(),
+                "batch=8 fn=explicit-corpus detail=wave2_gate3_a eval budget exceeded: \
+                 180011ms elapsed > 180000ms substrate long lane budget"
+                    .to_string(),
+                "walk reached its soft deadline before batch 9: deadline_ms=9000000 \
+                 elapsed_ms=9000123"
+                    .to_string(),
+            ],
+            &[],
+            false,
+            true,
+        );
+        assert!(
+            detail.contains("mode=BudgetExceeded"),
+            "two budget-only batch rows carry no semantic finding: {detail}"
+        );
+        assert!(
+            !detail.contains("mode=WitnessRed"),
+            "row count must not stand in for the semantic property: {detail}"
         );
     }
 
