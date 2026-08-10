@@ -1694,6 +1694,9 @@ fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<Tes
 
 data cross_repr_native_value_bool: Symbol = ^native_value_bool
 data cross_repr_native_value_null: Symbol = ^native_value_null
+data cross_repr_native_value_str: Symbol = ^native_value_str
+
+data cross_repr_string_straddle_receipt_note: String = "String x native_value_str registered from a MEASURED straddle, not speculation (parent directive, CI2 lane 2026-08-09): during the dag line-comment grammar repair, comparing a token's raw lexeme (native str) against a modeled char-list-backed String answered false on equal text — the same modeled-vs-native representation straddle the Bool and Optional rows record. The contextual-marker terminal (v2.std.grammar TerminalContextual) works around it by comparing interned Symbols rather than raw strings; receipt: gunbc.test.claim.dag_test_marker_contextual_witness_test and the annotation-channel controls in dag_line_comment_annotation_witness_test. This row keeps the class scheduled until the String grounding dissolves the straddle."
 
 fn cross_representation_equality_anchor(
   modeled_coproduct: Symbol,
@@ -1789,6 +1792,10 @@ fn testgen_scheduled_cross_representation_equality_generators() -> List<Generato
     cross_representation_equality_generator(
       modeled_coproduct: ^Optional,
       native_realization: cross_repr_native_value_null
+    ),
+    cross_representation_equality_generator(
+      modeled_coproduct: ^String,
+      native_realization: cross_repr_native_value_str
     ),
   ]
 }
