@@ -1,0 +1,253 @@
+module gunbc.test.claim.dag_sum_decl_normalize_witness_test
+
+import v2.std.text { String }
+import v2.std.logic { Bool }
+import v2.std.algebra { fold_list, length }
+import v2.std.collection { Absent, Present, optional_absent, optional_present }
+import v2.std.node { Conj, Edge, Named, Node, Positional, Symbol }
+import v2.std.node_shape {
+  NodeShape,
+  atom_shape,
+  named_edge_shape,
+  stamp_node_shape_synthetic,
+  type_shape
+}
+import v2.std.grammar { ParseTree }
+import v2.std.compilers.sugar {
+  sugar_all_coproduct_variants,
+  sugar_first_atom_identity_optional,
+  sugar_fold_coproduct_pipe_chain,
+  sugar_named_child_optional
+}
+import v2.std.compilers.lexing { lex_artifact_semantic_tokens }
+import v2.compiler.tokenize { lex_walk_artifact }
+import v2.compiler.parse { parse_module, ParseArtifact }
+import v2.compiler.normalize { normalize }
+import v2.extdeps.languages.dag { dag_lex_rules, dag_grammar, parse_production_emitted_identity_optional }
+
+data sum_decl_normalize_witness_note: String = "CI2-0 normalize-grain repair matrix for the coproduct pipe-chain sugar (found by the first cross_tree canonical rerun after the arrow-lambda parse admission, 2026-08-10). The leading-pipe grammar admission wrapped type_alias_rhs in an outer sequence whose LEFT is the optional-pipe capture slot — an empty Conj when the pipe is absent, an Atom(dag_token_pipe) when present — and the variant collector still read that slot as the first variant. Two defects, one root: every NO-leading-pipe sum (the dominant corpus shape, incl. dag/std/algebra.dag's =-continuation layout) refused with sugar_reason_malformed on the atomless slot, while every leading-pipe sum LOWERED A PHANTOM VARIANT named by the pipe token — accepted and silently wrong, the worse half. The prior leading-pipe matrix proved parse only; this matrix pins the LOWERING: unit rows call the collector directly on synthetic grammar-shaped captures (exact variant lists, both slot states, the phantom kill, the atomless refusal kept executable), the real-capture rows extract the ACTUAL parsed type_alias_rhs capture and assert the lowered Disj's exact edge names — non-vacuous by construction, immune to the separate pre-existing hollow-graft class this diagnosis also surfaced (normalize's accepted module tree carries no declaration forest; receipts in the PR thread) — and the normalize-verdict rows pin the module-grain RED-to-GREEN this repair delivers."
+
+// ---- unit fixtures: synthetic captures in the exact grammar shape ----
+// captured = seq(slot, seq(first_variant, spine)); spine = seq(item, spine) | empty;
+// item = seq(pipe, variant). Projections are the parse engine's left/right names.
+
+fn seq_shape(left: NodeShape, right: NodeShape) -> NodeShape {
+  type_shape(connective: Conj, children: [
+    named_edge_shape(name: ^grammar_sequence_left_node_projection, target: left),
+    named_edge_shape(name: ^grammar_sequence_right_node_projection, target: right)
+  ])
+}
+
+fn empty_conj_shape() -> NodeShape {
+  type_shape(connective: Conj, children: [])
+}
+
+fn one_item_spine(variant: NodeShape) -> NodeShape {
+  seq_shape(
+    left: seq_shape(left: atom_shape(identity: ^dag_token_pipe), right: variant),
+    right: empty_conj_shape()
+  )
+}
+
+fn captured_with_slot(slot: NodeShape) -> Node {
+  stamp_node_shape_synthetic(shape: seq_shape(
+    left: slot,
+    right: seq_shape(
+      left: atom_shape(identity: ^sum_probe_variant_x),
+      right: one_item_spine(variant: atom_shape(identity: ^sum_probe_variant_y))
+    )
+  ))
+}
+
+fn captured_no_leading_pipe() -> Node {
+  captured_with_slot(slot: empty_conj_shape())
+}
+
+fn captured_leading_pipe() -> Node {
+  captured_with_slot(slot: atom_shape(identity: ^dag_token_pipe))
+}
+
+fn captured_atomless_first_variant() -> Node {
+  stamp_node_shape_synthetic(shape: seq_shape(
+    left: empty_conj_shape(),
+    right: seq_shape(
+      left: empty_conj_shape(),
+      right: one_item_spine(variant: atom_shape(identity: ^sum_probe_variant_y))
+    )
+  ))
+}
+
+fn no_symbols() -> List<Symbol> {
+  []
+}
+
+fn variant_atoms(captured: Node) -> List<Symbol> {
+  fold_list(
+    xs: sugar_all_coproduct_variants(captured: captured),
+    empty: no_symbols(),
+    cons: fn(acc, v) {
+      match sugar_first_atom_identity_optional(node: v) {
+        Present { value: sym } => concat(acc, [sym])
+        Absent => concat(acc, [^sum_probe_variant_atomless])
+      }
+    }
+  )
+}
+
+test fn witness_collector_skips_empty_leading_slot() -> Bool {
+  variant_atoms(captured: captured_no_leading_pipe()) == [^sum_probe_variant_x, ^sum_probe_variant_y]
+}
+
+test fn witness_collector_skips_matched_pipe_slot() -> Bool {
+  variant_atoms(captured: captured_leading_pipe()) == [^sum_probe_variant_x, ^sum_probe_variant_y]
+}
+
+test fn witness_collector_yields_no_phantom_pipe_variant() -> Bool {
+  fold_list(
+    xs: sugar_all_coproduct_variants(captured: captured_leading_pipe()),
+    empty: true,
+    cons: fn(acc, v) {
+      acc && (match sugar_first_atom_identity_optional(node: v) {
+        Present { value: sym } => sym == ^dag_token_pipe
+        Absent => false
+      }) == false
+    }
+  )
+}
+
+test fn witness_atomless_variant_still_refuses_RED() -> Bool {
+  match sugar_fold_coproduct_pipe_chain(
+    captured: captured_atomless_first_variant(),
+    shell: stamp_node_shape_synthetic(shape: empty_conj_shape())
+  ) {
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+// ---- real-capture rows: the ACTUAL parsed type_alias_rhs capture, lowered directly ----
+// The lowered Disj's edge names are asserted exactly, so these rows cannot pass
+// vacuously and do not depend on what later normalize stages retain.
+
+fn artifact_tree(artifact: ParseArtifact) -> ParseTree {
+  artifact.tree
+}
+
+fn parse_tree_as_node(t: ParseTree) -> Node {
+  t
+}
+
+fn node_as_parse_tree(n: Node) -> ParseTree {
+  n
+}
+
+fn parse_tree_optional(source: String) -> Node? {
+  match lex_walk_artifact(source: source, file: ^sum_normalize_probe, rules: dag_lex_rules()) {
+    v2.std.diagnostic.Rejected { diagnostics: _ } => optional_absent()
+    v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
+      match parse_module(tokens: lex_artifact_semantic_tokens(artifact: a), grammar: dag_grammar()) {
+        v2.std.diagnostic.Rejected { diagnostics: _ } => optional_absent()
+        v2.std.diagnostic.Accepted { value: artifact, diagnostics: _ } =>
+          optional_present(value: parse_tree_as_node(t: artifact_tree(artifact: artifact)))
+      }
+  }
+}
+
+fn edge_target(e: Edge) -> Node {
+  e.target
+}
+
+fn edge_label_symbol_optional(e: Edge) -> Symbol? {
+  match e.label {
+    Named { name: name } => optional_present(value: name)
+    Positional => optional_absent()
+  }
+}
+
+fn find_production_node(n: Node, identity: Symbol) -> Node? {
+  match parse_production_emitted_identity_optional(node: n) {
+    Present { value: id } =>
+      match id == identity {
+        true => optional_present(value: n)
+        false => find_production_in_children(n: n, identity: identity)
+      }
+    Absent => find_production_in_children(n: n, identity: identity)
+  }
+}
+
+fn find_production_in_children(n: Node, identity: Symbol) -> Node? {
+  fold_list(xs: n.children, empty: optional_absent(), cons: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => find_production_node(n: edge_target(e: e), identity: identity)
+    }
+  })
+}
+
+fn direct_edge_names(n: Node) -> List<Symbol> {
+  fold_list(xs: n.children, empty: no_symbols(), cons: fn(acc, e) {
+    match edge_label_symbol_optional(e: e) {
+      Present { value: sym } => concat(acc, [sym])
+      Absent => acc
+    }
+  })
+}
+
+fn lowered_sum_edge_names(source: String) -> List<Symbol> {
+  match parse_tree_optional(source: source) {
+    Absent => no_symbols()
+    Present { value: tree } =>
+      match find_production_node(n: tree, identity: ^dag_surface_type_alias_rhs) {
+        Absent => no_symbols()
+        Present { value: rhs_node } =>
+          match sugar_named_child_optional(root: rhs_node, name: ^grammar_production_captured_node_projection) {
+            Absent => no_symbols()
+            Present { value: captured } =>
+              match sugar_fold_coproduct_pipe_chain(captured: captured, shell: rhs_node) {
+                v2.std.diagnostic.Rejected { diagnostics: _ } => no_symbols()
+                v2.std.diagnostic.Accepted { value: lowered, diagnostics: _ } =>
+                  direct_edge_names(n: lowered)
+              }
+          }
+      }
+  }
+}
+
+data single_line_sum_source: String = "module sum_normalize_probe\n\ntype A4 = X4 | Y4\n"
+
+data eq_continuation_sum_source: String = "module sum_normalize_probe\n\ntype A5\n  = X5\n  | Y5\n"
+
+data leading_pipe_sum_source: String = "module sum_normalize_probe\n\ntype A6 =\n  | X6\n  | Y6\n"
+
+test fn witness_real_capture_single_line_lowers_declared_variants() -> Bool {
+  lowered_sum_edge_names(source: single_line_sum_source) == [^X4, ^Y4]
+}
+
+test fn witness_real_capture_leading_pipe_lowers_without_phantom() -> Bool {
+  lowered_sum_edge_names(source: leading_pipe_sum_source) == [^X6, ^Y6]
+}
+
+// ---- normalize-verdict rows: the module-grain RED this repair turned GREEN ----
+
+fn normalize_verdict_accepted(source: String) -> Bool {
+  match parse_tree_optional(source: source) {
+    Absent => false
+    Present { value: tree } =>
+      match normalize(parse_tree: node_as_parse_tree(n: tree)) {
+        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+test fn witness_single_line_sum_normalizes() -> Bool {
+  normalize_verdict_accepted(source: single_line_sum_source)
+}
+
+test fn witness_eq_continuation_sum_normalizes() -> Bool {
+  normalize_verdict_accepted(source: eq_continuation_sum_source)
+}
+
+test fn witness_leading_pipe_sum_normalizes() -> Bool {
+  normalize_verdict_accepted(source: leading_pipe_sum_source)
+}

@@ -197,14 +197,26 @@ fn sugar_collect_pipe_chain_variants(spine: Node) -> FreeMonoid<Node> {
   }
 }
 
+// The captured type_alias_rhs is sequence(optional-leading-pipe, sequence(first_variant,
+// repeat(pipe variant))) since the leading-pipe admission, so the OUTER pair's left is
+// the leading-pipe SLOT — an empty Conj when the pipe is absent, an Atom(^dag_token_pipe)
+// when present — and never a variant. Reading it as the first variant produced both
+// halves of one measured defect: the no-leading-pipe corpus shape refused
+// (sugar_reason_malformed on the atomless empty slot) while the leading-pipe shape
+// lowered a phantom variant named by the pipe token — accepted and silently wrong.
+// Variants therefore come exclusively from the outer pair's right.
 fn sugar_all_coproduct_variants(captured: Node) -> FreeMonoid<Node> {
   match sugar_sequence_pair_optional(node: captured) {
     Absent => std.algebra.Empty
     Present { value: pair } =>
-      list_append(
-        left: Cons { head: pair.left, tail: std.algebra.Empty },
-        right: sugar_collect_pipe_chain_variants(spine: pair.right)
-      )
+      match sugar_sequence_pair_optional(node: pair.right) {
+        Absent => std.algebra.Empty
+        Present { value: inner } =>
+          list_append(
+            left: Cons { head: inner.left, tail: std.algebra.Empty },
+            right: sugar_collect_pipe_chain_variants(spine: inner.right)
+          )
+      }
   }
 }
 
