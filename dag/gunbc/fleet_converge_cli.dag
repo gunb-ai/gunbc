@@ -25,6 +25,15 @@ import gunbc.host_converge_slice1 {
 }
 import gunbc.host_runner_memory_provision { runner_memory_host_converge }
 import gunbc.host_runner_memory_cap_verify { runner_memory_cap_verify_run }
+import gunbc.host_converge { fleet_converge_policy, find_by_identity, converge_verdict, converge_verdict_label }
+import gunbc.fleet_intent_network {
+  operator_host_srv1,
+  operator_host_srv2,
+  operator_host_srv3,
+  operator_host_srv4,
+  operator_host_srv5,
+  operator_host_srv6,
+}
 
 
 data gunbc_converge_cli_stage0_receiver_disposition: Disposition = Terminal {
