@@ -1,6 +1,6 @@
 module v1.tests.claim.import_deletion_bridge_witness
 
-import std.types { Bool, String, List, NonEmptyStr }
+import std.types { Bool, String, List, Int, NonEmptyStr }
 import std.occurrence_identity {
   OccurrenceId, OccurrenceIndexEntry, OccurrenceTransport,
   ReferenceOccurrence, DeclarationOccurrence,
@@ -15,6 +15,22 @@ import std.occurrence_binding_candidates {
   BoundReferenceProvider,
   BoundReferencePopulation,
   AllReferencesBound,
+  ReferencePopulationRefused,
+  ReferenceBindingProjection,
+  ReferenceBindingProjectionUnbound,
+  ReferenceBindingProjectionAmbiguous,
+  StructuralBindingWalk,
+  StructuralBindingWalkReady,
+  StructuralBindingWalkRefused,
+  StructuralBindingIndexRefusal,
+  structural_binding_walk_selected_references,
+  ReferenceDerivedDependencyProjection,
+  ReferenceDerivedDependencyProjectionReady,
+  ReferenceDerivedDependencyProjectionBindingRefused,
+  ReferenceDerivedDependencyProjectionFileRefused,
+  reference_derived_dependency_projection,
+  ModulePathFileIndexRefusal,
+  ModulePathFileIndexRefused,
   CrossFileBindingProvenance,
   CrossFileBindingProvenancePopulation,
   AllCrossFileBindingsBound,
@@ -79,6 +95,8 @@ data idb_consumer_source_path: String = "dag/test/fixture/import_deletion_bridge
 data idb_provider_module_name: String = "v2.std.live_tree"
 data idb_subject_name: String = "LiveTreeDisposition"
 
+data idb_missing_provider_name: String = "MissingProviderType"
+
 fn idb_consumer_source() -> String {
   "module test.fixture.import_deletion_bridge.live_tree_consumer_bare\n\nfn bridge_consumer_reads_disposition(d: LiveTreeDisposition) -> LiveTreeDisposition {\n  d\n}\n"
 }
@@ -87,24 +105,108 @@ fn idb_provider_source() -> String {
   "module v2.std.live_tree\n\ntype LiveTreeDisposition\n  = ReadsLiveTree\n  | SubstrateInputsOnly\n"
 }
 
-fn idb_source_for(path: String) -> String {
-  match path == idb_consumer_source_path {
-    true => idb_consumer_source()
-    false => idb_provider_source()
+
+
+
+data idb_totality_note: String = "THE TOTALITY LAW, and the defect that made it necessary.
+
+An earlier revision of this witness reached its 2-provenance/1-edge result through a FAIL-OPEN ADAPTER: it matched only ReferenceBindingProjectionBound, sent every other outcome to a discard arm, and then hand-constructed AllReferencesBound from the surviving subset. That is the absorbing fallback DESIGN section 5 forbids, built into the evidence for a lane whose whole purpose is deleting a fail-open. It would have reported a complete closure for a population where one reference bound and another did not -- which is the false-skip direction, the one that silently under-loads.
+
+WHAT REPLACED IT. One assembly, then the production total path and nothing local: structural_binding_walk_selected_references returns a BoundReferencePopulation that is either AllReferencesBound or ReferencePopulationRefused carrying the first failure, and reference_derived_dependency_projection turns that into Ready or a typed binding/file refusal. This file never constructs AllReferencesBound, never folds projections itself, and never uses an empty list to mean a stage refused.
+
+WHY THE OUTCOME IS A COPRODUCT. Every stage that can refuse is carried as its own arm, reusing the production refusal types (StructuralBindingIndexRefusal, ModulePathFileIndexRefusal, ReferenceDerivedDependencyProjection's own refusal arms) rather than minting a parallel vocabulary. The two arms that are genuinely local are about the FIXTURE's own population -- an unknown candidate path and a reference-count mismatch -- because those are properties of the controlled input, not of the substrate under test.
+
+WHY THE SELECTION REFUSES ON A COUNT MISMATCH. The subject is mentioned exactly twice by construction. Operating on whichever references happen to be found would make the multiplicity claim self-fulfilling: a parser that stamped one reference would produce one row and the row count would agree with itself. Refusing unless exactly two are observed is what keeps the 2-to-1 law a claim about the projection rather than a restatement of the input.
+
+WHY NOT THE TOP-LEVEL HELPER. reference_derived_dependency_projection_for_assembled_closure selects its references through the clause-e dependency-inducing filter, which deliberately EXCLUDES TypeOccurrence -- that is the N2 lane. The subject here is a type reference, so that helper would select zero references, report Ready with zero provenance rows and zero edges, and every count assertion would pass vacuously. Passing the selected references to the walk directly is what avoids buying a green with an empty population; moving TypeOccurrence into clause e to reuse the walk is the wrong repair and belongs to nobody."
+
+type IdbCandidate {
+  file: String
+  source: String
+}
+
+data idb_candidate_population_note: String = "THE CANDIDATE POPULATION, explicit rather than defaulted. An earlier revision resolved a path to source with `if path == consumer then consumer_source else provider_source`, so ANY path -- including one deliberately unrelated -- silently received the real provider's text. Under that shape an unrelated-candidate control cannot exist, because unrelated and actual provider are not representable as different contents, and a provider-discovery control would be actively misleading. A path absent from this population now REFUSES; it never defaults to provider contents."
+
+fn idb_candidates() -> List<IdbCandidate> {
+  [ IdbCandidate { file: idb_consumer_source_path, source: idb_consumer_source() },
+    IdbCandidate { file: idb_live_tree_source_path, source: idb_provider_source() },
+    IdbCandidate { file: idb_unrelated_source_path, source: idb_unrelated_source() },
+    IdbCandidate { file: idb_second_provider_source_path, source: idb_second_provider_source() },
+    IdbCandidate { file: idb_malformed_source_path, source: idb_malformed_source() },
+    IdbCandidate { file: idb_partial_consumer_source_path, source: idb_partial_consumer_source() },
+    IdbCandidate { file: idb_same_file_source_path, source: idb_same_file_source() },
+  ]
+}
+
+data idb_unrelated_source_path: String = "dag/test/fixture/import_deletion_bridge/unrelated_module.dag"
+
+fn idb_unrelated_source() -> String {
+  "module test.fixture.import_deletion_bridge.unrelated_module\n\ntype UnrelatedCarrier\n  = UnrelatedOne\n  | UnrelatedTwo\n"
+}
+
+data idb_second_provider_source_path: String = "dag/test/fixture/import_deletion_bridge/second_live_tree.dag"
+
+fn idb_second_provider_source() -> String {
+  "module test.fixture.import_deletion_bridge.second_live_tree\n\ntype LiveTreeDisposition\n  = ReadsLiveTree\n  | SubstrateInputsOnly\n"
+}
+
+data idb_malformed_source_path: String = "dag/test/fixture/import_deletion_bridge/malformed_provider.dag"
+
+fn idb_malformed_source() -> String {
+  "module test.fixture.import_deletion_bridge.malformed_provider\n\ntype = = =\n"
+}
+
+data idb_partial_consumer_source_path: String = "dag/test/fixture/import_deletion_bridge/partial_consumer.dag"
+
+fn idb_partial_consumer_source() -> String {
+  "module test.fixture.import_deletion_bridge.partial_consumer\n\nfn bridge_partial(a: LiveTreeDisposition, b: MissingProviderType) -> LiveTreeDisposition {\n  a\n}\n"
+}
+
+data idb_same_file_source_path: String = "dag/test/fixture/import_deletion_bridge/same_file.dag"
+
+fn idb_same_file_source() -> String {
+  "module test.fixture.import_deletion_bridge.same_file\n\ntype LiveTreeDisposition\n  = ReadsLiveTree\n  | SubstrateInputsOnly\n\nfn same_file_reads(d: LiveTreeDisposition) -> LiveTreeDisposition {\n  d\n}\n"
+}
+
+fn idb_source_for_candidate(path: String) -> String? {
+  fold(idb_candidates(), init: none, f: (found, candidate) =>
+    match found {
+      Present { value: _ } => found
+      Absent =>
+        match candidate.file == path {
+          true => Present { value: candidate.source }
+          false => Absent
+        }
+    })
+}
+
+type IdbBridge
+  = IdbBridgeProjected { projection: ReferenceDerivedDependencyProjection }
+  | IdbBridgeWalkRefused { refusal: StructuralBindingIndexRefusal }
+  | IdbBridgeIndexRefused { refusal: ModulePathFileIndexRefusal }
+  | IdbBridgeAssemblyRefused
+  | IdbBridgeParseRefused { file: String }
+  | IdbBridgeCandidateUnknown { file: String }
+  | IdbBridgeSelectionRefused { observed: Int }
+
+fn idb_parsed_row(path: String) -> ParsedOccurrenceBindingSource? {
+  match idb_source_for_candidate(path: path) {
+    Absent => none
+    Present { value: source } =>
+      Present { value: parse_authored_occurrence_binding_source(file: path, source: source) }
   }
 }
 
-fn idb_parsed_row(path: String) -> ParsedOccurrenceBindingSource {
-  parse_authored_occurrence_binding_source(file: path, source: idb_source_for(path: path))
-}
+fn idb_no_closure_rows() -> List<CrossFileBindingClosureRow> { [] }
 
 fn idb_closure_row_for(
   path: String,
   grounding: DeclarationExposureGrounding
 ) -> List<CrossFileBindingClosureRow> {
   match idb_parsed_row(path: path) {
-    ParsedOccurrenceBindingSourceRefused => []
-    ParsedOccurrenceBindingSourceReady { transport: t, module_path: m } =>
+    Absent => idb_no_closure_rows()
+    Present { value: ParsedOccurrenceBindingSourceRefused } => idb_no_closure_rows()
+    Present { value: ParsedOccurrenceBindingSourceReady { transport: t, module_path: m } } =>
       [ CrossFileBindingClosureRow {
           transport: t,
           inputs: occurrence_binding_inputs_from_transport(
@@ -131,8 +233,29 @@ fn idb_index_entry_for_occurrence(
     })
 }
 
+fn idb_no_references() -> List<ReferenceOccurrence> { [] }
+
+fn idb_name_in(names: List<String>, name: String) -> Bool {
+  fold(names, init: false, f: (found, candidate) => found || (candidate == name))
+}
+
+fn idb_references_in_names(
+  transport: OccurrenceTransport,
+  names: List<String>
+) -> List<ReferenceOccurrence> {
+  fold(transport.references, init: idb_no_references(), f: (acc, reference) =>
+    match idb_index_entry_for_occurrence(transport: transport, occurrence: reference.occurrence) {
+      Absent => acc
+      Present { value: entry } =>
+        match idb_name_in(names: names, name: entry.projection.authored_name) {
+          true => concat(acc, [reference])
+          false => acc
+        }
+    })
+}
+
 fn idb_references_named(transport: OccurrenceTransport, name: String) -> List<ReferenceOccurrence> {
-  fold(transport.references, init: [], f: (acc, reference) =>
+  fold(transport.references, init: idb_no_references(), f: (acc, reference) =>
     match idb_index_entry_for_occurrence(transport: transport, occurrence: reference.occurrence) {
       Absent => acc
       Present { value: entry } =>
@@ -143,57 +266,169 @@ fn idb_references_named(transport: OccurrenceTransport, name: String) -> List<Re
     })
 }
 
-fn idb_bound_provider_for_subject(
-  consumer_path: String,
-  provider_paths: List<String>
-) -> BoundReferenceProvider? {
-  let consumers = idb_closure_row_for(path: consumer_path, grounding: ModuleLocalMemberExposure)
-  let providers = fold(provider_paths, init: [], f: (acc, p) =>
-    concat(acc, idb_closure_row_for(path: p, grounding: CrossFileProviderExportedExposure)))
-  fold(consumers, init: none, f: (outer, consumer_row) =>
-    match outer {
-      Present { value: _ } => outer
-      Absent =>
-        match assemble_cross_file_binding_closure(consumer: consumer_row, providers: providers) {
-          AssembledCrossFileBindingClosureRefused { refusal: _ } => none
-          AssembledCrossFileBindingClosureReady { transport: t, inputs: i, module_files: _, consumer_file: _ } =>
-            fold(idb_references_named(transport: t, name: idb_subject_name), init: none, f: (found, reference) =>
-              match found {
-                Present { value: _ } => found
-                Absent =>
-                  match resolve_reference_binding_via_structural_candidates(
-                    transport: t, inputs: i, reference: reference,
-                  ) {
-                    ReferenceBindingProjectionBound { provider: provider } => Present { value: provider }
-                    _ => none
-                  }
-              })
-        }
-    })
+fn idb_references_named_in_consumer(consumer_path: String) -> List<ReferenceOccurrence> {
+  match idb_parsed_row(path: consumer_path) {
+    Absent => idb_no_references()
+    Present { value: ParsedOccurrenceBindingSourceRefused } => idb_no_references()
+    Present { value: ParsedOccurrenceBindingSourceReady { transport: t, module_path: _ } } =>
+      idb_references_named(transport: t, name: idb_subject_name)
+  }
 }
 
-test fn witness_import_less_reference_reaches_the_real_provider() -> Bool {
-  match idb_bound_provider_for_subject(
+fn idb_project_from_assembled(
+  closure: AssembledCrossFileBindingClosure,
+  subject_names: List<String>,
+  expected_references: Int
+) -> IdbBridge {
+  match closure {
+    AssembledCrossFileBindingClosureRefused { refusal: _ } => IdbBridgeAssemblyRefused
+    AssembledCrossFileBindingClosureReady {
+      transport: t, inputs: i, module_files: rows, consumer_file: _,
+    } =>
+      let selected = idb_references_in_names(transport: t, names: subject_names)
+      match length(selected) == expected_references {
+        false => IdbBridgeSelectionRefused { observed: length(selected) }
+        true =>
+          match module_path_file_index_from_rows(rows: rows) {
+            ModulePathFileIndexRefused { refusal: refusal } =>
+              IdbBridgeIndexRefused { refusal: refusal }
+            ModulePathFileIndexReady { entries: entries } =>
+              match structural_binding_walk_selected_references(
+                transport: t, inputs: i, references: selected,
+              ) {
+                StructuralBindingWalkRefused { refusal: refusal } =>
+                  IdbBridgeWalkRefused { refusal: refusal }
+                StructuralBindingWalkReady { population: population } =>
+                  IdbBridgeProjected {
+                    projection: reference_derived_dependency_projection(
+                      population: population, module_files: entries,
+                    ),
+                  }
+              }
+          }
+    }
+  }
+}
+
+fn idb_bridge_for(
+  consumer_path: String,
+  provider_paths: List<String>,
+  subject_names: List<String>,
+  expected_references: Int
+) -> IdbBridge {
+  match idb_source_for_candidate(path: consumer_path) {
+    Absent => IdbBridgeCandidateUnknown { file: consumer_path }
+    Present { value: _ } =>
+      match fold(provider_paths, init: none, f: (missing, p) =>
+        match missing {
+          Present { value: _ } => missing
+          Absent =>
+            match idb_source_for_candidate(path: p) {
+              Absent => Present { value: p }
+              Present { value: _ } => Absent
+            }
+        }) {
+        Present { value: unknown } => IdbBridgeCandidateUnknown { file: unknown }
+        Absent =>
+          match first(idb_closure_row_for(path: consumer_path, grounding: ModuleLocalMemberExposure)) {
+                Absent => IdbBridgeParseRefused { file: consumer_path }
+                Present { value: consumer_row } =>
+                  let provider_rows = fold(provider_paths, init: idb_no_closure_rows(), f: (acc, p) =>
+                    concat(acc, idb_closure_row_for(path: p, grounding: CrossFileProviderExportedExposure)))
+                  match length(provider_rows) == length(provider_paths) {
+                    false => IdbBridgeParseRefused { file: idb_malformed_source_path }
+                    true =>
+                      idb_project_from_assembled(
+                        closure: assemble_cross_file_binding_closure(
+                          consumer: consumer_row, providers: provider_rows,
+                        ),
+                        subject_names: subject_names,
+                        expected_references: expected_references,
+                      )
+                  }
+              }
+      }
+  }
+}
+
+fn idb_supplied_bridge() -> IdbBridge {
+  idb_bridge_for(
     consumer_path: idb_consumer_source_path,
     provider_paths: [idb_live_tree_source_path],
-  ) {
-    Absent => false
-    Present { value: provider } =>
-      provider.provider_module == idb_provider_module_name
-        && !(provider.consumer_module == idb_provider_module_name)
+    subject_names: [idb_subject_name],
+    expected_references: 2,
+  )
+}
+
+fn idb_ready_projection(bridge: IdbBridge) -> ReferenceDerivedDependencyProjection? {
+  match bridge {
+    IdbBridgeProjected { projection: projection } => Present { value: projection }
+    _ => none
   }
 }
 
-data bridge_red_control_note: String = "THE CONTROL. Same consumer, same subject, provider file withheld from the assembled closure. A binding here would mean the reference resolved against something other than the declaration in v2.std.live_tree — pool coincidence rather than derivation — and would invalidate the positive case above."
-
-test fn witness_subject_does_not_bind_without_its_provider() -> Bool {
-  match idb_bound_provider_for_subject(consumer_path: idb_consumer_source_path, provider_paths: []) {
-    Absent => true
-    Present { value: _ } => false
+fn idb_provenances(bridge: IdbBridge) -> List<CrossFileBindingProvenance> {
+  match bridge {
+    IdbBridgeProjected {
+      projection: ReferenceDerivedDependencyProjectionReady {
+        binding_provenance: rows, file_dependencies: _, bound_population: _,
+      },
+    } => rows
+    _ => []
   }
 }
 
-data bridge_no_import_note: String = "The consumer carries NO import declaration. This asserts that directly against the bytes on disk rather than trusting the fixture to stay import-less: if someone repairs the fixture by adding an import, the bridge claim would silently become a claim about import-based resolution, and this reds instead."
+fn idb_file_dependencies(bridge: IdbBridge) -> List<DirectFileDependency> {
+  match bridge {
+    IdbBridgeProjected {
+      projection: ReferenceDerivedDependencyProjectionReady {
+        binding_provenance: _, file_dependencies: edges, bound_population: _,
+      },
+    } => edges
+    _ => []
+  }
+}
+
+fn idb_is_ready(bridge: IdbBridge) -> Bool {
+  match bridge {
+    IdbBridgeProjected {
+      projection: ReferenceDerivedDependencyProjectionReady {
+        binding_provenance: _, file_dependencies: _, bound_population: _,
+      },
+    } => true
+    _ => false
+  }
+}
+
+fn idb_population_refused_unbound(bridge: IdbBridge) -> Bool {
+  match bridge {
+    IdbBridgeProjected {
+      projection: ReferenceDerivedDependencyProjectionBindingRefused { population: population },
+    } =>
+      match population {
+        ReferencePopulationRefused { first_failure: failure, more_failures: _ } =>
+          match failure {
+            ReferenceBindingProjectionUnbound { occurrence: _ } => true
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn witness_import_less_reference_reaches_the_supplied_provider() -> Bool {
+  match idb_supplied_bridge() {
+    IdbBridgeProjected {
+      projection: ReferenceDerivedDependencyProjectionReady {
+        binding_provenance: rows, file_dependencies: _, bound_population: _,
+      },
+    } =>
+      fold(rows, init: length(rows) == 2, f: (ok, row) =>
+        ok && (row.provider_file as String) == idb_live_tree_source_path)
+    _ => false
+  }
+}
 
 test fn witness_consumer_carries_no_import_declaration() -> Bool {
   let source = idb_consumer_source()
@@ -201,139 +436,16 @@ test fn witness_consumer_carries_no_import_declaration() -> Bool {
     && string_contains(s: source, pattern: idb_subject_name)
 }
 
-
-data checkpoint_one_finding_note: String = "WHAT THIS WITNESS FOUND, BY EXECUTION, ON ITS FIRST RUN.
-
-The positive case below currently REDS, and the reason is the load-bearing checkpoint-1 finding: the parser mints declaration occurrences for `fn` and `data` declarations but NOT for `type` declarations or their coproduct variants. Narrowed by discriminating probes rather than inferred — the assembled closure is Ready, the consumer's LiveTreeDisposition REFERENCE is present in it, the provider transport carries MORE THAN ONE declaration, and yet neither `LiveTreeDisposition` nor its variant `ReadsLiveTree` appears among them. So the failure is not assembly, not the read, not the reference side, and not an empty provider: it is that the type declaration was never minted.
-
-ROOT LOCATED STRUCTURALLY, NOT INFERRED FROM THE FAILURE. v1.02_parse has ten sites that mint a ParsedOccurrenceDeclaration, and the categories they mint are exactly CallableOccurrence, FieldOccurrence, LexicalValueOccurrence and NamespaceSegmentOccurrence. NOT ONE mints TypeOccurrence. Type REFERENCES are stamped — stamp_parsed_inferred emits ParsedOccurrenceReference { category: TypeOccurrence } — so the model is asymmetric by construction: a type can be referred to and can never be declared. parsed_occurrence_role_for_node reaches a type declaration only through its NoExprData arm, which classifies on body/type_annotation shape and returns ParsedOccurrenceUnclassified for it, and an unclassified occurrence is recorded as neither side.
-
-WHY THIS BLOCKS THE WHOLE LANE. Type references are the dominant residual category (1,893 unique-declaration unresolved plus 603 variant-shaped rows). If a type declaration is not a declaration occurrence, NO type reference can bind by derivation, cross-file or otherwise — so deleting imports is impossible until this closes, and no amount of closure or loader work reaches it.
-
-ONE REAL REPAIR ALREADY LANDED FROM THIS RUN, and it was masked by the above: occurrence_binding_inputs_from_transport hardwired ModuleLocalMemberExposure, which derives ModuleExposure — visible only WITHIN one module — so a provider's exported declarations were unexposed to any cross-file consumer and the candidate population was empty by construction. The grounding is now a parameter chosen at derivation, as DeclarationExposure's own authority requires. That defect was real and would have blocked binding independently; it is simply not the only one.
-
-The two controls below PASS and stay enrolled: they are what make the red above a located finding rather than an unexplained failure."
-
-data idb_file_projection_note: String = "ITEM 3 -- THE FILE PROJECTION, which is what the deletion actually rests on.
-
-Module identity is not enough to delete an import. An import line names a FILE, so whatever replaces it must produce a file-grain edge: the loader needs to know which file to bring into the closure, and a claim that only says which MODULE a reference belongs to leaves that unanswered. The keystone above proves the reference reaches the right module; these rows prove the same binding projects the provider FILE, through the production projection rather than a copy of it.
-
-WHY TWO MENTIONS. The consumer names LiveTreeDisposition twice -- once as a parameter type, once as the return type -- and both positions are references by the language, so a correct projection yields TWO binding-provenance rows. That count is derived from the fixture's own text, not read off the parser: if only one arrives, some reference position is not being projected, and the single-mention version of this witness could not tell the difference.
-
-WHY EXACTLY ONE FILE DEPENDENCY. Both provenance rows name the same provider file, so the file-grain projection must DEDUPE them to one edge. That makes the pair discriminating in both directions at once: two rows collapsing to two edges is a dedup failure that would over-load the closure, and two rows collapsing to zero is a projection that drops the dependency the loader needs. One is the only answer that is right for a reason.
-
-NO NEW MACHINERY, and that is a constraint rather than an accident. The provenance population and the dedup both come from std.occurrence_binding_candidates (cross_file_binding_provenance_from_bound_population, direct_file_dependencies_from_provenances); the module-to-file index comes from the closure's own module_files rows via module_path_file_index_from_rows. Nothing here walks a filesystem, scans for names, or builds a second module-to-file map -- the point is to exercise the production projection, and re-implementing it here would prove only that this file agrees with itself."
-
-fn idb_no_bound_providers() -> List<BoundReferenceProvider> { [] }
-
-fn idb_no_module_file_rows() -> List<ModulePathFileRow> { [] }
-
-fn idb_references_named_in_consumer() -> List<ReferenceOccurrence> {
-  match idb_parsed_row(path: idb_consumer_source_path) {
-    ParsedOccurrenceBindingSourceRefused => []
-    ParsedOccurrenceBindingSourceReady { transport: t, module_path: _ } =>
-      idb_references_named(transport: t, name: idb_subject_name)
-  }
-}
-
-fn idb_bound_providers_for_subject(
-  consumer_path: String,
-  provider_paths: List<String>
-) -> List<BoundReferenceProvider> {
-  let consumers = idb_closure_row_for(path: consumer_path, grounding: ModuleLocalMemberExposure)
-  let providers = fold(provider_paths, init: [], f: (acc, p) =>
-    concat(acc, idb_closure_row_for(path: p, grounding: CrossFileProviderExportedExposure)))
-  fold(consumers, init: idb_no_bound_providers(), f: (outer, consumer_row) =>
-    match length(outer) > 0 {
-      true => outer
-      false =>
-        match assemble_cross_file_binding_closure(consumer: consumer_row, providers: providers) {
-          AssembledCrossFileBindingClosureRefused { refusal: _ } => idb_no_bound_providers()
-          AssembledCrossFileBindingClosureReady { transport: t, inputs: i, module_files: _, consumer_file: _ } =>
-            fold(idb_references_named(transport: t, name: idb_subject_name), init: idb_no_bound_providers(), f: (acc, reference) =>
-              match resolve_reference_binding_via_structural_candidates(
-                transport: t, inputs: i, reference: reference,
-              ) {
-                ReferenceBindingProjectionBound { provider: provider } => concat(acc, [provider])
-                _ => acc
-              })
-        }
-    })
-}
-
-fn idb_module_files_for_subject(
-  consumer_path: String,
-  provider_paths: List<String>
-) -> List<ModulePathFileRow> {
-  let consumers = idb_closure_row_for(path: consumer_path, grounding: ModuleLocalMemberExposure)
-  let providers = fold(provider_paths, init: [], f: (acc, p) =>
-    concat(acc, idb_closure_row_for(path: p, grounding: CrossFileProviderExportedExposure)))
-  fold(consumers, init: idb_no_module_file_rows(), f: (outer, consumer_row) =>
-    match length(outer) > 0 {
-      true => outer
-      false =>
-        match assemble_cross_file_binding_closure(consumer: consumer_row, providers: providers) {
-          AssembledCrossFileBindingClosureRefused { refusal: _ } => idb_no_module_file_rows()
-          AssembledCrossFileBindingClosureReady { transport: _, inputs: _, module_files: rows, consumer_file: _ } => rows
-        }
-    })
-}
-
-fn idb_provenances_for_subject(
-  consumer_path: String,
-  provider_paths: List<String>
-) -> List<CrossFileBindingProvenance> {
-  let providers = idb_bound_providers_for_subject(
-    consumer_path: consumer_path, provider_paths: provider_paths,
-  )
-  match length(providers) == 0 {
-    true => []
-    false =>
-      match module_path_file_index_from_rows(
-        rows: idb_module_files_for_subject(
-          consumer_path: consumer_path, provider_paths: provider_paths,
-        ),
-      ) {
-        ModulePathFileIndexReady { entries: entries } =>
-          match cross_file_binding_provenance_from_bound_population(
-            population: AllReferencesBound { providers: providers },
-            module_files: entries,
-          ) {
-            AllCrossFileBindingsBound { provenances: rows } => rows
-            _ => []
-          }
-        _ => []
-      }
-  }
-}
-
-fn idb_file_dependencies_for_subject(
-  consumer_path: String,
-  provider_paths: List<String>
-) -> List<DirectFileDependency> {
-  direct_file_dependencies_from_provenances(
-    provenances: idb_provenances_for_subject(
-      consumer_path: consumer_path, provider_paths: provider_paths,
-    ),
-  )
-}
-
 test fn witness_consumer_mentions_the_subject_twice() -> Bool {
-  length(idb_references_named_in_consumer()) == 2
+  length(idb_references_named_in_consumer(consumer_path: idb_consumer_source_path)) == 2
 }
 
 test fn witness_two_mentions_project_two_binding_provenance_rows() -> Bool {
-  length(idb_provenances_for_subject(
-    consumer_path: idb_consumer_source_path,
-    provider_paths: [idb_live_tree_source_path],
-  )) == 2
+  length(idb_provenances(bridge: idb_supplied_bridge())) == 2
 }
 
 test fn witness_provenance_rows_dedupe_to_one_provider_file_dependency() -> Bool {
-  let edges = idb_file_dependencies_for_subject(
-    consumer_path: idb_consumer_source_path,
-    provider_paths: [idb_live_tree_source_path],
-  )
+  let edges = idb_file_dependencies(bridge: idb_supplied_bridge())
   match length(edges) == 1 {
     false => false
     true =>
@@ -347,13 +459,111 @@ test fn witness_provenance_rows_dedupe_to_one_provider_file_dependency() -> Bool
   }
 }
 
-data idb_file_projection_control_note: String = "THE CONTROL FOR THE FILE PROJECTION, distinct from the keystone's own control. With the provider withheld nothing binds, so the projection must produce NO provenance rows and NO file edges. Without this, both rows above would be satisfied by a projection that emits edges from an empty binding population -- which is the direction that would silently load files nothing references."
+data idb_withheld_control_note: String = "THE WITHHELD-PROVIDER CONTROL, asserting a typed refusal rather than an empty result. The earlier version asserted zero provenance rows and zero edges, which is satisfied equally by a REFUSAL and by a successful projection that produced nothing -- and only the first is safe for a loader. This asserts the population is ReferencePopulationRefused with an Unbound first failure, and separately that the projection is NOT Ready, so an empty success cannot pass."
 
-test fn witness_withheld_provider_projects_no_file_dependency() -> Bool {
-  length(idb_provenances_for_subject(
+test fn witness_withheld_provider_refuses_as_unbound() -> Bool {
+  let bridge = idb_bridge_for(
     consumer_path: idb_consumer_source_path, provider_paths: [],
-  )) == 0
-    && length(idb_file_dependencies_for_subject(
-      consumer_path: idb_consumer_source_path, provider_paths: [],
-    )) == 0
+    subject_names: [idb_subject_name], expected_references: 2,
+  )
+  idb_population_refused_unbound(bridge: bridge) && !idb_is_ready(bridge: bridge)
+}
+
+data idb_fail_open_regression_receipt: String = "MEASURED, BY REINSTATING THE DEFECT. The fail-open adapter this file used to contain was put back temporarily -- filter to Bound, hand-mint AllReferencesBound from the survivors -- and exactly TWO rows red: witness_withheld_provider_refuses_as_unbound and witness_partially_bound_population_refuses_whole. Every other row, INCLUDING the 2-provenance-to-1-edge pair, passed under the defect. That is the whole argument for these two controls: the positive law never detected the fail-open and never could, because a fabricated success is still a success. They are the executing evidence that the totality property holds, so they stay enrolled rather than retiring now that the adapter is gone (DESIGN section 4b(4))."
+
+data idb_partial_population_note: String = "THE PLANTED PARTIAL POPULATION -- the control that catches the fail-open this file used to contain. The consumer requires TWO cross-module type references and only ONE provider is supplied, so one reference binds and the other cannot. The whole population must refuse. Under the discarded adapter this case emitted a provider-file edge from the single successful binding and read as a complete closure."
+
+test fn witness_partially_bound_population_refuses_whole() -> Bool {
+  let bridge = idb_bridge_for(
+    consumer_path: idb_partial_consumer_source_path,
+    provider_paths: [idb_live_tree_source_path],
+    subject_names: [idb_subject_name, idb_missing_provider_name],
+    expected_references: 3,
+  )
+  !idb_is_ready(bridge: bridge)
+    && length(idb_provenances(bridge: bridge)) == 0
+    && length(idb_file_dependencies(bridge: bridge)) == 0
+}
+
+data idb_pool_equality_note: String = "POOL INDEPENDENCE, asserted as an EQUALITY rather than as a still-passes. Adding an unrelated module to the candidate population must leave the binding identities and the edge set unchanged -- that is what distinguishes derivation from pool-membership coincidence, which is the failure mode this whole lane exists to eliminate. Asserting only that the positive still greens would not detect an edge set that grew."
+
+fn idb_edge_key(edges: List<DirectFileDependency>) -> String {
+  fold(edges, init: "", f: (acc, edge) =>
+    acc + "|" + (edge.consumer_file as String) + ">" + (edge.provider_file as String))
+}
+
+fn idb_provenance_key(rows: List<CrossFileBindingProvenance>) -> String {
+  fold(rows, init: "", f: (acc, row) =>
+    acc + "|" + to_string(row.reference_occurrence.value) + ">" + to_string(row.declaration_occurrence.value))
+}
+
+test fn witness_unrelated_candidate_changes_nothing() -> Bool {
+  let without = idb_supplied_bridge()
+  let with_unrelated = idb_bridge_for(
+    consumer_path: idb_consumer_source_path,
+    provider_paths: [idb_live_tree_source_path, idb_unrelated_source_path],
+    subject_names: [idb_subject_name],
+    expected_references: 2,
+  )
+  idb_is_ready(bridge: without)
+    && idb_is_ready(bridge: with_unrelated)
+    && (idb_edge_key(edges: idb_file_dependencies(bridge: without)) ==
+      idb_edge_key(edges: idb_file_dependencies(bridge: with_unrelated)))
+    && (idb_provenance_key(rows: idb_provenances(bridge: without)) ==
+      idb_provenance_key(rows: idb_provenances(bridge: with_unrelated)))
+}
+
+data idb_same_file_note: String = "SAME-FILE RULING, exercised rather than trusted. A consumer whose provider declaration lives in its OWN file must retain its binding provenance and emit NO file self-edge -- the carrier law says so, and a projection that emitted a self-edge would make every file depend on itself and defeat the closure."
+
+test fn witness_same_file_binding_retains_provenance_without_self_edge() -> Bool {
+  let bridge = idb_bridge_for(
+    consumer_path: idb_same_file_source_path, provider_paths: [],
+    subject_names: [idb_subject_name], expected_references: 2,
+  )
+  idb_is_ready(bridge: bridge)
+    && length(idb_provenances(bridge: bridge)) == 2
+    && length(idb_file_dependencies(bridge: bridge)) == 0
+}
+
+data idb_unknown_candidate_note: String = "A path absent from the candidate population REFUSES and is never resolved to provider contents by default. This is the control for the defaulting behaviour the candidate rows replaced: under the old path switch this call would have parsed the real provider's text under an unrelated storage path and bound successfully, which would make every later provider-discovery control meaningless."
+
+test fn witness_unknown_candidate_path_refuses() -> Bool {
+  match idb_bridge_for(
+    consumer_path: idb_consumer_source_path,
+    provider_paths: ["dag/test/fixture/import_deletion_bridge/never_declared.dag"],
+    subject_names: [idb_subject_name],
+    expected_references: 2,
+  ) {
+    IdbBridgeCandidateUnknown { file: f } =>
+      f == "dag/test/fixture/import_deletion_bridge/never_declared.dag"
+    _ => false
+  }
+}
+
+data idb_malformed_note: String = "A malformed provider source must surface as a parse refusal, not as an absent provider. Collapsing it to `no providers` would make an unparseable file indistinguishable from one that was never offered, and the remedies differ."
+
+test fn witness_malformed_provider_source_refuses() -> Bool {
+  match idb_bridge_for(
+    consumer_path: idb_consumer_source_path,
+    provider_paths: [idb_malformed_source_path],
+    subject_names: [idb_subject_name],
+    expected_references: 2,
+  ) {
+    IdbBridgeParseRefused { file: _ } => true
+    _ => false
+  }
+}
+
+data idb_selection_note: String = "THE SELECTION REFUSAL. Asking for a reference count the fixture does not carry must refuse rather than proceed on whatever was found -- otherwise the multiplicity law restates its input instead of testing the projection."
+
+test fn witness_reference_count_mismatch_refuses() -> Bool {
+  match idb_bridge_for(
+    consumer_path: idb_consumer_source_path,
+    provider_paths: [idb_live_tree_source_path],
+    subject_names: [idb_subject_name],
+    expected_references: 3,
+  ) {
+    IdbBridgeSelectionRefused { observed: n } => n == 2
+    _ => false
+  }
 }
