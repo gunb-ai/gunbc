@@ -649,6 +649,27 @@ macro_rules! eval_call_bridge__v2_std_concept_index_arm {
 }
 #[rustfmt::skip]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum EvalCallBridgeStdDataIndexArm {
+    V4BridgeDataArrowDeclFactsLive,
+    V4BridgeDataInitDeclFactsLive,
+}
+
+#[rustfmt::skip]
+pub fn lookup_eval_call_bridge_std_data_index(spelling: &str) -> Option<EvalCallBridgeStdDataIndexArm> {
+    match spelling {
+        "data_arrow_decl_facts_live" => Some(EvalCallBridgeStdDataIndexArm::V4BridgeDataArrowDeclFactsLive),
+        "data_init_decl_facts_live" => Some(EvalCallBridgeStdDataIndexArm::V4BridgeDataInitDeclFactsLive),
+        _ => None,
+    }
+}
+
+#[rustfmt::skip]
+macro_rules! eval_call_bridge__v2_std_data_index_arm {
+    ("v4_bridge.data_arrow_decl_facts_live") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeStdDataIndexArm::V4BridgeDataArrowDeclFactsLive };
+    ("v4_bridge.data_init_decl_facts_live") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeStdDataIndexArm::V4BridgeDataInitDeclFactsLive };
+}
+#[rustfmt::skip]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum EvalCallBridgeStdFnIndexArm {
     V4BridgeFnArrowDeclFactsLive,
     V4BridgeFnArrowDeclSubstrateIsWholeTree,
@@ -685,24 +706,6 @@ pub fn lookup_eval_call_bridge_lens_affected_set_corpus_dependency_view(spelling
 #[rustfmt::skip]
 macro_rules! eval_call_bridge__v2_lens_affected_set_corpus_dependency_view_arm {
     ("v4_bridge.corpus_dependency_view_per_pr_substrate_refuse") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeLensAffectedSetCorpusDependencyViewArm::V4BridgeCorpusDependencyViewPerPrSubstrateRefuse };
-}
-#[rustfmt::skip]
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum EvalCallBridgeStdDataIndexArm {
-    V4BridgeDataInitDeclFactsLive,
-}
-
-#[rustfmt::skip]
-pub fn lookup_eval_call_bridge_std_data_index(spelling: &str) -> Option<EvalCallBridgeStdDataIndexArm> {
-    match spelling {
-        "data_init_decl_facts_live" => Some(EvalCallBridgeStdDataIndexArm::V4BridgeDataInitDeclFactsLive),
-        _ => None,
-    }
-}
-
-#[rustfmt::skip]
-macro_rules! eval_call_bridge__v2_std_data_index_arm {
-    ("v4_bridge.data_init_decl_facts_live") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeStdDataIndexArm::V4BridgeDataInitDeclFactsLive };
 }
 #[rustfmt::skip]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]

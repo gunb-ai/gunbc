@@ -1034,6 +1034,59 @@ fn data_init_decl_record(
     })
 }
 
+fn data_arrow_decl_record(
+    ctx: &InterpContext,
+    si: &SourceIndices,
+    module_name: &str,
+    name: &str,
+    item: &Rc<Node>,
+) -> Option<Value> {
+    let body = item.body.as_ref()?;
+    // Same marshal as `fn_arrow_decl_record`'s `output`, with no parameter atoms in scope: a
+    // data declaration has no parameters, so every name in its body resolves as a reference
+    // rather than a ParamRef. Passing an empty slice is the honest input, not a stand-in.
+    let output = marshal_fn_body_skeleton(ctx, body, &[], si);
+    let qualified_name = logical_qualified_name(module_name, name);
+    Some(Value::Record {
+        type_name: ctx.sym("DataArrowDecl"),
+        fields: Rc::new(sorted_fields(vec![
+            (ctx.sym("qualified_name"), Value::Str(qualified_name)),
+            (ctx.sym("name"), Value::Str(name.to_string())),
+            (ctx.sym("output"), output),
+        ])),
+    })
+}
+
+// Corpus-wide data-body reflection: the reachability half of data-declaration reflection,
+// beside `eval_data_init_decl_facts_live`'s literal half below. That one emits NOTHING unless
+// the initializer is a literal and carries a fingerprint String; this one emits one row per
+// `ItemKind::DataItem` with a body, carrying the walkable skeleton. `test data` reaches here
+// because `v1_compiler_parse::parse_item` drops the leading `test` marker before reading the
+// item keyword, so a test data declaration IS an ordinary DataItem.
+//
+// Host SOURCE half, joining the SAME gunbc#5364 corpus-as-node accessor widen trigger as
+// `eval_fn_arrow_decl_facts_live` / `eval_concept_decl_facts_live` / the data-init sibling --
+// same construction, same marshal, same dissolution condition. Spec: `v2.std.data_index`
+// (`DataArrowDecl`, `data_arrow_skeleton_marshal_host_scaffold_note`).
+pub fn eval_data_arrow_decl_facts_live(
+    ctx: &InterpContext,
+    _args: &[(Option<String>, Value)],
+) -> InterpResult<Value> {
+    let si = ctx.source_indices();
+    let mut rows: Vec<Value> = Vec::new();
+    for_each_live_registry_item(
+        ctx,
+        |k| k == ItemKind::DataItem,
+        |module_name, name, item| {
+            if let Some(row) = data_arrow_decl_record(ctx, &si, module_name, name, item) {
+                rows.push(row);
+            }
+            Ok(())
+        },
+    )?;
+    Ok(crate::v1_interpreter::list_value(rows))
+}
+
 // Corpus-wide data-init reflection: sibling of `eval_fn_arrow_decl_facts_live` and
 // `eval_concept_decl_facts_live`. Yields one `DataInitDecl` per `ItemKind::DataItem` whose
 // initializer is a literal, carrying `literal_fp` for literal-mirror detection in

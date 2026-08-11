@@ -1,7 +1,10 @@
 module v2.std.data_index
 
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
+import v2.std.node { Node }
 import v2.std.text { String }
 
 type DataInitDecl {
@@ -9,6 +12,41 @@ type DataInitDecl {
   module: String
   name: String
   literal_fp: String
+}
+
+// A data declaration's body projected to the SAME reachability skeleton `FnArrowDecl.output`
+// carries, so a walk that starts at a data root traverses the identical structure it would
+// from a nullary fn. It is a distinct carrier from `DataInitDecl` above, and deliberately so:
+// that row exists for literal-mirror detection, its producer emits nothing at all unless the
+// initializer is a LITERAL, and it carries a fingerprint String rather than a Node. Widening
+// it to serve reachability would fuse two subjects onto one row (§3) and change the
+// denominator of `v2.lens.no_dual_representation_test`, which is not this repair's business.
+//
+// It is also NOT a nickname for `FnArrowDecl` (§2 — invent on proven coincidence, never
+// bare-alias). The coincidence is real for the three fields present; the difference is the
+// absent one. A data declaration has no parameters — not an empty list of them — so a data
+// root carrying a parameter is unrepresentable rather than merely invalid (§5 construction
+// over validation). Consumers that need one list bind through `v2.lens.live_read_classification`
+// `G2Root`, which is where the two forms meet under a single uniqueness check.
+type DataArrowDecl {
+  qualified_name: String
+  name: String
+  output: Node
+}
+
+data data_arrow_skeleton_marshal_host_scaffold_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.std.data_index",
+    decl_name: "data_arrow_decl_facts_live",
+    field: WholeDeclaration
+  }
+}
+
+data data_arrow_skeleton_marshal_host_scaffold_note: String = "Joins the EXISTING gunbc#5364 corpus-as-node accessor widen trigger rather than opening a new obligation: this producer is the same construction as v2.std.fn_index fn_arrow_decl_facts_live over a different ItemKind filter, calls the same host marshal, and dissolves on the same condition — when body projection becomes a modeled substrate fold, both retire together. It is a third SOURCE projection on one trigger, not a third debt. Named separately because the dissolution obligation is per independently removable unit and this producer can be deleted without deleting the fn one."
+
+fn data_arrow_decl_facts_live() -> List<DataArrowDecl> {
+  data_arrow_decl_facts_live()
 }
 
 fn literal_fingerprint_num_lexeme(lexeme: String) -> String {

@@ -1,0 +1,148 @@
+module test.claim.g2_data_root_binding_witness_test
+
+import std.types { Bool }
+import v2.std.collection { List }
+import v2.std.node { ComputationNode, Node, SyntheticOccurrence, Value }
+import v2.std.fn_index { FnArrowDecl }
+import v2.std.data_index { DataArrowDecl }
+import v2.lens.live_read_classification {
+  G2RootBound,
+  G2RootUnbound,
+  bind_g2_root,
+  g2_root_form_label,
+}
+import v2.lens.module_graph { ModuleDeclarationFact }
+
+data g2_data_root_binding_note: String = "WHY THESE FIXTURES AND NOT THE LIVE CORPUS. The subject here is the BINDER's mechanism — does a data-form root bind at all, and does a name carried by both forms refuse — and that is decidable over four supplied rows. Deriving it from the live population instead would re-walk the corpus to prove a property of a lookup, which is the witness-cost defect the 2026-08-04 ruling names: a test is not entitled to arbitrary computation because it is a test. The live half is a separate obligation, stated in g2_data_root_live_population_residue below and deliberately not smuggled in here.
+
+WHAT EACH ROW DISCRIMINATES. w_data_root_binds goes RED on the pre-repair binder, because a data-form root was absent from the searched population entirely and the refusal read 'no fn-arrow declaration is named'. w_cross_form_collision_refuses is the row that would go green under the WRONG repair — trying fns first and data second passes each population's own uniqueness check independently, binds the fn, and never sees the collision. Neither row alone is sufficient: a binder that refused everything would pass the second and fail the first, and a binder that bound the first match found would pass the first and fail the second."
+
+data fixture_body: Node = Node {
+  kind: ComputationNode { behavior: Value },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data fixture_no_params: List<v2.std.fn_index.FnArrowParam> = []
+
+data fixture_module_facts: List<ModuleDeclarationFact> = [
+  ModuleDeclarationFact {
+    path: "dag/test/claim/fixture_entry.dag",
+    module: "test.claim.fixture_entry"
+  }
+]
+
+data fixture_fn_decls: List<FnArrowDecl> = [
+  FnArrowDecl {
+    qualified_name: "test.claim.fixture_entry.only_a_fn",
+    name: "only_a_fn",
+    output: fixture_body,
+    params: fixture_no_params
+  }
+]
+
+data fixture_data_decls: List<DataArrowDecl> = [
+  DataArrowDecl {
+    qualified_name: "test.claim.fixture_entry.only_a_data",
+    name: "only_a_data",
+    output: fixture_body
+  }
+]
+
+// The collision population: ONE name carried by both declaration forms. This is the shape a
+// per-form fallback cannot see, because each form's own uniqueness check passes.
+data collision_fn_decls: List<FnArrowDecl> = [
+  FnArrowDecl {
+    qualified_name: "test.claim.fixture_entry.same_name",
+    name: "same_name",
+    output: fixture_body,
+    params: fixture_no_params
+  }
+]
+
+data collision_data_decls: List<DataArrowDecl> = [
+  DataArrowDecl {
+    qualified_name: "test.claim.fixture_entry.same_name",
+    name: "same_name",
+    output: fixture_body
+  }
+]
+
+fn bind_fixture(
+  fn_name: String,
+  decls: List<FnArrowDecl>,
+  data_decls: List<DataArrowDecl>
+) -> v2.lens.live_read_classification.G2RootBinding {
+  bind_g2_root(
+    entry_path: "dag/test/claim/fixture_entry.dag",
+    fn_name: fn_name,
+    nodes: fixture_module_facts,
+    decls: decls,
+    data_decls: data_decls
+  )
+}
+
+// A data-form root BINDS, and binds AS a data root. Asserting the form label rather than only
+// the Bound arm is deliberate: a repair that quietly coerced the data row into an FnArrowDecl
+// would also reach Bound, and would then carry a params field the declaration does not have.
+test fn w_data_root_binds_and_reports_its_form() -> Bool {
+  match bind_fixture(
+    fn_name: "only_a_data",
+    decls: fixture_fn_decls,
+    data_decls: fixture_data_decls
+  ) {
+    G2RootUnbound { cause: _ } => false
+    G2RootBound { entry_path: _, entry_module: _, root: r } =>
+      v2.lens.live_read_classification.string_eq(a: g2_root_form_label(root: r), b: "data")
+  }
+}
+
+// The fn form still binds, and still reports as a fn. The positive control for the row above:
+// without it, a binder that labelled everything "data" would pass.
+test fn w_fn_root_still_binds_and_reports_its_form() -> Bool {
+  match bind_fixture(
+    fn_name: "only_a_fn",
+    decls: fixture_fn_decls,
+    data_decls: fixture_data_decls
+  ) {
+    G2RootUnbound { cause: _ } => false
+    G2RootBound { entry_path: _, entry_module: _, root: r } =>
+      v2.lens.live_read_classification.string_eq(a: g2_root_form_label(root: r), b: "fn")
+  }
+}
+
+// THE ROW THAT KILLS THE WRONG REPAIR. One name, both forms. A binder that searches the forms
+// separately binds the fn and reports success. A binder that searches their union sees two and
+// refuses. The refusal must also NAME both forms, so the reader learns which two declarations
+// collided rather than being told a count.
+test fn w_cross_form_collision_refuses_naming_both_forms() -> Bool {
+  match bind_fixture(
+    fn_name: "same_name",
+    decls: collision_fn_decls,
+    data_decls: collision_data_decls
+  ) {
+    G2RootBound { entry_path: _, entry_module: _, root: _ } => false
+    G2RootUnbound { cause: c } =>
+      string_contains(s: c, pattern: "more than one declaration is named")
+        && string_contains(s: c, pattern: "fn")
+        && string_contains(s: c, pattern: "data")
+  }
+}
+
+// A name in NEITHER population still refuses, and the refusal names both forms it looked for.
+// Without this, a binder that bound some default on miss would pass every row above.
+test fn w_absent_name_still_refuses() -> Bool {
+  match bind_fixture(
+    fn_name: "no_such_declaration",
+    decls: fixture_fn_decls,
+    data_decls: fixture_data_decls
+  ) {
+    G2RootBound { entry_path: _, entry_module: _, root: _ } => false
+    G2RootUnbound { cause: c } =>
+      string_contains(s: c, pattern: "no fn-arrow or data-arrow declaration is named")
+  }
+}
+
+data g2_data_root_live_population_residue: String = "WHAT THIS FILE DOES NOT ESTABLISH. It proves the binder admits both declaration forms under one uniqueness check. It does NOT prove that data_arrow_decl_facts_live() actually emits the corpus's test data declarations, because that is a property of the host producer against the live tree rather than of the binder against supplied rows, and measuring it costs a corpus walk. The producer's own coverage claim — one row per ItemKind::DataItem with a body, which reaches test data because parse_item drops the leading test marker before reading the item keyword — is stated at its definition in src/v1/stage0/src/coproduct_reflection.rs eval_data_arrow_decl_facts_live and is UNWITNESSED here.
+
+That is a named gap, not a silent one. It closes when the live-read selection manifest has an executing consumer over the real population; until then the honest reading of this file is that the binding mechanism is correct and its input's completeness is unproven."

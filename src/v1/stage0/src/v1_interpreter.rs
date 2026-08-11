@@ -3820,6 +3820,8 @@ macro_rules! v1_bridge_family_arms {
             }
             family STD_DATA_INDEX_BRIDGE_FNS "v2.std.data_index"
                 lookup_eval_call_bridge_std_data_index eval_call_bridge__v2_std_data_index_arm {
+                arm "v4_bridge.data_arrow_decl_facts_live" { "data_arrow_decl_facts_live" } =>
+                    crate::coproduct_reflection::eval_data_arrow_decl_facts_live($ctx, &$args),
                 arm "v4_bridge.data_init_decl_facts_live" { "data_init_decl_facts_live" } =>
                     crate::coproduct_reflection::eval_data_init_decl_facts_live($ctx, &$args),
             }
