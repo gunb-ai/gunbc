@@ -40,9 +40,11 @@ import gunbc.roadmap_workflow_progress {
   workflow_attempt_progress,
 }
 import gunbc.worker_lifecycle {
+  WorkerProcessEvidence,
   WorkerProcessExited,
   WorkerProcessRunning,
   worker_observation_without_provider_probe,
+  worker_observation_without_provider_probe_for_process,
 }
 import gunbc.roadmap_dispatch_actuator {
   dispatch_tmux_session_name,
@@ -95,8 +97,12 @@ import gunbc.roadmap_belt_actuate {
   BeltNodeLookup, NodeFound, NodeMissing, AuthorityProjectionRefused,
   belt_find_node_in,
   belt_node_session_live,
+  belt_node_session_liveness,
+  BeltSessionLiveness, BeltSessionRunning, BeltSessionStaleTerminal,
+  BeltSessionLivenessUnobserved, BeltSessionAbsent,
   BeltDispatchResult, DispatchSpawned, DispatchAlreadyLive, DispatchDisabled, DispatchNodeNotFound,
   DispatchNodeAlreadyDone, DispatchObserveRefused, DispatchAuthorityRefused, DispatchSpawnFailed,
+  DispatchStaleSession, DispatchSessionLivenessUnobserved,
   belt_dispatch_result_ok,
   belt_dispatch_status_label,
   belt_dispatch_result_json_value,
@@ -173,6 +179,22 @@ fn live_session(node_id: String, verdict: ObservationVerdict) -> DispatchLiveSes
     lease_verdict: verdict,
     worker: worker_observation_without_provider_probe(
       instance: dispatch_provider_instance_for(provider: CodexDispatchProvider),
+    ),
+  }
+}
+
+fn live_session_with_process(
+  node_id: String,
+  process: WorkerProcessEvidence,
+) -> DispatchLiveSession {
+  DispatchLiveSession {
+    session_name: "gunbc-dispatch-{node_id}",
+    node_id: node_id,
+    windows: 1,
+    lease_verdict: Converged,
+    worker: worker_observation_without_provider_probe_for_process(
+      instance: dispatch_provider_instance_for(provider: CodexDispatchProvider),
+      process: process,
     ),
   }
 }
@@ -467,12 +489,88 @@ test fn witness_find_node_first_wins_on_duplicate() -> Bool {
   )) == "first"
 }
 
-test fn witness_node_session_live_true() -> Bool {
-  belt_node_session_live(live: [live_session(node_id: "a", verdict: Converged)], node_id: "a")
+// LIVENESS IS DERIVED FROM PROCESS EVIDENCE, NOT FROM A SESSION NAME. The prior pair of
+// witnesses asserted that a session row matching the node id IS live, over a helper whose
+// worker evidence is the placeholder whose own reason reads "tmux name presence does not
+// observe pane liveness or exit". They therefore pinned the defect: a retained dead pane
+// answered live, DispatchAlreadyLive returned through the accepted band, and the operator
+// got a positive acknowledgement with no agent. Both are replaced rather than kept beside
+// the new ones, because the true arm asserted the exact behaviour that is now wrong.
+test fn witness_node_session_running_is_live() -> Bool {
+  belt_node_session_live(
+    live: [live_session_with_process(
+      node_id: "a",
+      process: WorkerProcessRunning { command: "codex" as NonEmptyStr },
+    )],
+    node_id: "a",
+  )
 }
 
-test fn witness_node_session_live_false() -> Bool {
-  !belt_node_session_live(live: [live_session(node_id: "a", verdict: Converged)], node_id: "b")
+test fn witness_node_session_absent_is_not_live() -> Bool {
+  !belt_node_session_live(
+    live: [live_session_with_process(
+      node_id: "a",
+      process: WorkerProcessRunning { command: "codex" as NonEmptyStr },
+    )],
+    node_id: "b",
+  )
+}
+
+// THE DISCRIMINATING RED for the dead-pane defect: a present session whose pane exited is
+// NOT live, so it cannot suppress a spawn. Under the prior any(node_id) check this returned
+// true and the click was answered "already_live".
+test fn witness_retained_dead_pane_is_not_live() -> Bool {
+  !belt_node_session_live(
+    live: [live_session_with_process(
+      node_id: "a",
+      process: WorkerProcessExited { exit_code: 0, last_command: "codex" },
+    )],
+    node_id: "a",
+  )
+}
+
+// The honest third state refuses in BOTH directions: it is not live (so it never reports a
+// running agent) and it is not the absent path either — the dispatch fold routes it to
+// DispatchSessionLivenessUnobserved rather than spawning blind.
+test fn witness_unobserved_liveness_is_not_live() -> Bool {
+  !belt_node_session_live(
+    live: [live_session(node_id: "a", verdict: Converged)],
+    node_id: "a",
+  )
+}
+
+test fn witness_session_liveness_is_four_valued() -> Bool {
+  let running = belt_node_session_liveness(
+    live: [live_session_with_process(
+      node_id: "a",
+      process: WorkerProcessRunning { command: "codex" as NonEmptyStr },
+    )],
+    node_id: "a",
+  )
+  let dead = belt_node_session_liveness(
+    live: [live_session_with_process(
+      node_id: "a",
+      process: WorkerProcessExited { exit_code: 3, last_command: "codex" },
+    )],
+    node_id: "a",
+  )
+  let unobserved = belt_node_session_liveness(
+    live: [live_session(node_id: "a", verdict: Converged)],
+    node_id: "a",
+  )
+  let absent = belt_node_session_liveness(live: [], node_id: "a")
+  (match running { BeltSessionRunning { session_name: _, command: c } => c == "codex" _ => false })
+    && (match dead { BeltSessionStaleTerminal { session_name: _, detail: d } => string_contains(s: d, pattern: "status 3") _ => false })
+    && (match unobserved { BeltSessionLivenessUnobserved { session_name: _, reason: _ } => true _ => false })
+    && (match absent { BeltSessionAbsent => true _ => false })
+}
+
+// The stale and unobserved arms must never reach the ok band — an accepted no-op is the
+// failure this change exists to remove, and the band is the single ok-authority.
+test fn witness_stale_session_is_never_ok() -> Bool {
+  !belt_dispatch_result_ok(r: DispatchStaleSession { node_id: "a", session_name: "s", detail: "d" })
+    && !belt_dispatch_result_ok(r: DispatchSessionLivenessUnobserved { node_id: "a", session_name: "s", reason: "r" })
+    && belt_dispatch_status_label(r: DispatchStaleSession { node_id: "a", session_name: "s", detail: "d" }) == "stale_session"
 }
 
 test fn witness_dispatch_result_ok_spawned_and_live() -> Bool {
