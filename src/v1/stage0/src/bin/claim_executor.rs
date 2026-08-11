@@ -15948,8 +15948,7 @@ mod tests {
         let _ = fs::remove_dir_all(&base);
         assert!(write_witness_row_cost_receipt_at(
             &base,
-            &zero_eval_collision_records(),
-            false
+            &zero_eval_collision_records()
         ));
         let path = base.join("floor-witness-row-cost-receipt.tsv");
         let body = fs::read_to_string(&path).unwrap();
