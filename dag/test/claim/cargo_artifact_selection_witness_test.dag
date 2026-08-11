@@ -276,3 +276,74 @@ test fn an_empty_stream_is_absent_rather_than_a_parse_refusal() -> Bool {
     CargoMessageTargetNameNotAString { line_number: _ } => false
   }
 }
+
+data recorded_real_stream_note: String = "The fixtures above are hand-authored, which proves the decode logic and proves nothing about whether it matches what cargo actually emits — a decoder can be perfectly self-consistent against a shape its upstream never produces. The rows below are RECORDED from a real run of `cargo build -p v1-compiler --bin claim_batch --message-format=json` (143 messages) and are verbatim except that absolute paths were rewritten to a neutral root, because the recording machine's home directory is not a fact about cargo and would make the claim environment-specific. Every structural property cargo produced is preserved: member names and their order, the nine members a real compiler-artifact carries against the three this module reads, the eight members inside target, and executable as a string on the binary while the libraries carry it as null. TWO THINGS THE RECORDING TAUGHT, both of which the hand fixtures had only guessed at. The real artifact carries SIX members this module ignores entirely (package_id, manifest_path, profile, features, filenames, fresh), so the claim that unmodelled members are skipped is now tested against the real member set rather than an imagined one. And the same-target-name collision is NOT hypothetical: one ordinary build emitted EIGHTEEN compiler-artifact messages all naming the target build-script-build, one per package with a build script. A first-wins selector would answer that with a confident wrong artifact on any workspace build; the ambiguity refusal fires on real bytes, which is why it is a refusal and not a preference."
+
+data real_cargo_artifact_claim_batch: String = "\{\"reason\":\"compiler-artifact\",\"package_id\":\"path+file:///w/src/v1/stage0#v1-compiler@0.1.0\",\"manifest_path\":\"/w/src/v1/stage0/Cargo.toml\",\"target\":\{\"kind\":[\"bin\"],\"crate_types\":[\"bin\"],\"name\":\"claim_batch\",\"src_path\":\"/w/src/v1/stage0/src/bin/claim_batch.rs\",\"edition\":\"2021\",\"doc\":true,\"doctest\":false,\"test\":true\},\"profile\":\{\"opt_level\":\"2\",\"debuginfo\":0,\"debug_assertions\":false,\"overflow_checks\":true,\"test\":false\},\"features\":[\"default\"],\"filenames\":[\"/w/target/debug/claim_batch\"],\"executable\":\"/w/target/debug/claim_batch\",\"fresh\":true\}"
+
+data real_cargo_build_script_build_a: String = "\{\"reason\":\"compiler-artifact\",\"package_id\":\"registry+https://github.com/rust-lang/crates.io-index#proc-macro2@1.0.106\",\"manifest_path\":\"/session-home/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/proc-macro2-1.0.106/Cargo.toml\",\"target\":\{\"kind\":[\"custom-build\"],\"crate_types\":[\"bin\"],\"name\":\"build-script-build\",\"src_path\":\"/session-home/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/proc-macro2-1.0.106/build.rs\",\"edition\":\"2021\",\"doc\":false,\"doctest\":false,\"test\":false\},\"profile\":\{\"opt_level\":\"0\",\"debuginfo\":0,\"debug_assertions\":true,\"overflow_checks\":true,\"test\":false\},\"features\":[\"default\",\"proc-macro\"],\"filenames\":[\"/w/target/debug/build/proc-macro2-034dc6173958fe92/build-script-build\"],\"executable\":null,\"fresh\":true\}"
+
+data real_cargo_build_script_build_b: String = "\{\"reason\":\"compiler-artifact\",\"package_id\":\"registry+https://github.com/rust-lang/crates.io-index#quote@1.0.45\",\"manifest_path\":\"/session-home/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quote-1.0.45/Cargo.toml\",\"target\":\{\"kind\":[\"custom-build\"],\"crate_types\":[\"bin\"],\"name\":\"build-script-build\",\"src_path\":\"/session-home/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quote-1.0.45/build.rs\",\"edition\":\"2021\",\"doc\":false,\"doctest\":false,\"test\":false\},\"profile\":\{\"opt_level\":\"0\",\"debuginfo\":0,\"debug_assertions\":true,\"overflow_checks\":true,\"test\":false\},\"features\":[\"default\",\"proc-macro\"],\"filenames\":[\"/w/target/debug/build/quote-b35f277d63730b30/build-script-build\"],\"executable\":null,\"fresh\":true\}"
+
+data real_cargo_build_finished: String = "\{\"reason\":\"build-finished\",\"success\":true\}"
+test fn selects_the_executable_from_a_recorded_real_cargo_stream() -> Bool {
+  selected_path_or_empty(
+    selection: select_from(
+      lines: [
+        real_cargo_build_script_build_a,
+        real_cargo_artifact_claim_batch,
+        real_cargo_build_finished
+      ],
+      target_name: "claim_batch"
+    )
+  ) == "/w/target/debug/claim_batch"
+}
+
+test fn the_real_build_script_build_collision_refuses_as_ambiguous() -> Bool {
+  match select_from(
+    lines: [
+      real_cargo_build_script_build_a,
+      real_cargo_build_script_build_b,
+      real_cargo_artifact_claim_batch,
+      real_cargo_build_finished
+    ],
+    target_name: "build-script-build"
+  ) {
+    CargoArtifactAmbiguous { target_name: t, count: n } => t == "build-script-build" && n == 2
+    CargoArtifactSelected { executable: _ } => false
+    CargoArtifactAbsent { target_name: _ } => false
+    CargoArtifactWithoutExecutable { target_name: _ } => false
+    CargoArtifactExecutablePathEmpty { target_name: _ } => false
+    CargoArtifactExecutableNotAString { target_name: _ } => false
+    CargoMessageLineUnparseable { line_number: _ } => false
+    CargoMessageLineNotAnObject { line_number: _ } => false
+    CargoMessageReasonAbsent { line_number: _ } => false
+    CargoMessageReasonNotAString { line_number: _ } => false
+    CargoMessageMemberDuplicated { line_number: _, key: _ } => false
+    CargoMessageTargetNotAnObject { line_number: _ } => false
+    CargoMessageTargetNameAbsent { line_number: _ } => false
+    CargoMessageTargetNameNotAString { line_number: _ } => false
+  }
+}
+
+test fn a_real_library_artifact_reports_no_executable() -> Bool {
+  match select_from(
+    lines: [real_cargo_build_script_build_a, real_cargo_build_finished],
+    target_name: "build-script-build"
+  ) {
+    CargoArtifactWithoutExecutable { target_name: t } => t == "build-script-build"
+    CargoArtifactSelected { executable: _ } => false
+    CargoArtifactAbsent { target_name: _ } => false
+    CargoArtifactAmbiguous { target_name: _, count: _ } => false
+    CargoArtifactExecutablePathEmpty { target_name: _ } => false
+    CargoArtifactExecutableNotAString { target_name: _ } => false
+    CargoMessageLineUnparseable { line_number: _ } => false
+    CargoMessageLineNotAnObject { line_number: _ } => false
+    CargoMessageReasonAbsent { line_number: _ } => false
+    CargoMessageReasonNotAString { line_number: _ } => false
+    CargoMessageMemberDuplicated { line_number: _, key: _ } => false
+    CargoMessageTargetNotAnObject { line_number: _ } => false
+    CargoMessageTargetNameAbsent { line_number: _ } => false
+    CargoMessageTargetNameNotAString { line_number: _ } => false
+  }
+}
