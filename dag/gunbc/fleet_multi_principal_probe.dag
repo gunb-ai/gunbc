@@ -16,7 +16,24 @@ import gunbc.clock_read { clock_now_probed_at }
 // key against ALTERNATIVE principals. NO WRITES, no account creation: each leg is a
 // hostname read (command reach) and a `sudo -n -l` (grant listing without prompting).
 // Every leg's outcome is DATA, classified into a typed arm, never a step failure.
-data multi_principal_probe_hosts: List<String> = ["srv3", "srv4"]
+// srv5/srv6 ADDED (2026-08-10). They belong here on the module's own rationale: the comment above
+// cites the Sparks as the REASON this probe exists -- "the Sparks carried the fleet key for a
+// pre-existing account" -- while the population it measured was srv3/srv4, so the two hosts the
+// argument is about were the two it never asked about. Their endpoints were already modeled
+// (fleet_reach_endpoint resolves srv5/srv6 by address because those names are not resolvable), and
+// fleet_reach_probe_targets already carries all six, so this row was the only place the Sparks
+// were missing.
+//
+// This is the observation that lets gunbc.fleet_converge_cli's spark_managed_access_standing stop
+// returning a hardcoded SparkManagedAccessAbsent whose cause claims it measured the host. It is
+// safe to widen because the probe is READ-ONLY by construction -- a hostname read and `sudo -n -l`
+// per leg, every outcome classified as data rather than a step failure -- so it manufactures none
+// of the runner obligations host_assimilation_program forbids crossing a Spark with.
+//
+// It also replaces work rather than adding any: the deleted spark-canary-probe.yml asked exactly
+// this question in hand-authored shell, against this same principal list, and a hand-written
+// workflow is hand-applying (operator ruling, 2026-08-10).
+data multi_principal_probe_hosts: List<String> = ["srv3", "srv4", "srv5", "srv6"]
 
 data multi_principal_probe_principals: List<String> = ["ubuntu", "briansrls", "ghrunner", "root"]
 

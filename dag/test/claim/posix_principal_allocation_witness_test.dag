@@ -1,0 +1,355 @@
+module test.claim.posix_principal_allocation_witness
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// CONTROLS OVER THE NEW ARMS, authored because their absence is what made the previous attempt
+// unverifiable. That attempt reported 25/25 passing witnesses as validation of a new account model
+// while every one of those witnesses enumerated only the four legacy principals -- so the new rows
+// were never evaluated, and the probe spellings they carried would have FAILED the module's own
+// invariant had anything called it. A test population that cannot reach the code under test is not
+// weak evidence; it is no evidence, and it reads exactly like success.
+data posix_principal_allocation_control_note: String = "Every control here names an arm the legacy witnesses cannot reach: the two new semantic principals, the allocation standing, and the grounding outcome. The central claim under test is that one fleet principal may wear different host-local labels and different numeric identities on two hosts while remaining one principal with one policy -- and that nothing can present an unallocated or unobserved account as grounded."
+
+data spark5: HostIdentity = "srv5" as HostIdentity
+data spark6: HostIdentity = "srv6" as HostIdentity
+
+fn occurrence(host: HostIdentity, key: FleetPosixAccountKey) -> PosixAccountOccurrence {
+  PosixAccountOccurrence { host: host, principal: key }
+}
+
+// Two DELIBERATELY DIFFERENT arbitrary labels and two different numeric identities for the SAME
+// semantic principal. The words carry no role, host, product or location -- that is the property
+// under test, and any code that assumes a global static username fails against these immediately.
+fn alloc(host: HostIdentity, name: PosixLoginName, uid: Int) -> PosixAccountAllocation {
+  PosixAccountAllocation {
+    occurrence: occurrence(host: host, key: FleetAccountAutomation),
+    local_name: name,
+    uid: uid,
+    gid: uid,
+    domain: HostLocalIdentityDomain { host: host },
+    name_scheme: "arbitrary-word-v1" as NameSchemeIdentity,
+    name_attempt: 0,
+  }
+}
+
+fn observed(a: PosixAccountAllocation, name: PosixLoginName, uid: Int) -> PosixAccountObservation {
+  PosixAccountObservation {
+    occurrence: a.occurrence,
+    observed_user: PosixUser { name: name, uid: uid, gid: uid,
+  shell: LoginShellUnobserved,
+},
+    effect_receipt: process_receipt(label: "id-probe" as NonEmptyStr, exit_status: 0),
+    raw_output_identity: content_hash_atom(value: "observed-account" as NonEmptyStr),
+    observed_at: "2026-08-09T06:00:00Z",
+  }
+}
+
+fn grounded_name(o: GroundedPosixPrincipalOutcome) -> NonEmptyStr? {
+  match o {
+    PrincipalGrounded { principal: p } => Present { value: p.posix.name }
+    PrincipalRequiresHostScope { principal: _ } => none
+    PrincipalUnallocated { occurrence: _ } => none
+    PrincipalAllocationConflicted { occurrence: _, first: _, more: _ } => none
+    PrincipalUnobserved { allocation: _ } => none
+    PrincipalDrifted { allocation: _, first: _, more: _ } => none
+  }
+}
+
+
+fn outcome_is_drift(o: GroundedPosixPrincipalOutcome) -> Bool {
+  match o {
+    PrincipalDrifted { allocation: _, first: _, more: _ } => true
+    PrincipalGrounded { principal: _ } => false
+    PrincipalRequiresHostScope { principal: _ } => false
+    PrincipalUnallocated { occurrence: _ } => false
+    PrincipalAllocationConflicted { occurrence: _, first: _, more: _ } => false
+    PrincipalUnobserved { allocation: _ } => false
+  }
+}
+
+fn requirements_forbid_domain_meaning(r: NameRequirements) -> Bool {
+  match r.intent.semantic_content {
+    EncodesNoDomainMeaning => true
+    EncodesAuthorityMeaning { authority: _ } => false
+  }
+}
+
+// The axis split made real: an automation label is BOTH pronounceable (a human factor) and free of
+// domain meaning (a semantic-content fact). The earlier fused coproduct could not express that pair
+// at all, which is how a false exclusion hides in a taxonomy that reads fine.
+fn requirements_are_pronounceable(r: NameRequirements) -> Bool {
+  match r.intent.human_factors {
+    Pronounceable => true
+    Opaque => false
+    Compact => false
+    OperatorMeaningful => false
+  }
+}
+
+fn requirements_are_independent_per_occurrence(r: NameRequirements) -> Bool {
+  match r.intent.uniformity {
+    IndependentPerOccurrence => true
+    EqualWithinScope { scope: _ } => false
+  }
+}
+
+// CONTROL 1 -- one principal, two hosts, different labels AND different numeric identities, and it
+// is still one principal with one policy. This is the whole decomposition in a single claim: the
+// label and the uid are host-local allocations, the policy is the principal.
+test fn witness_one_principal_wears_different_local_names_and_uids() -> Bool {
+  let a5 = alloc(host: spark5, name: "lumen" as PosixLoginName, uid: 1500)
+  let a6 = alloc(host: spark6, name: "cobalt" as PosixLoginName, uid: 1732)
+  let g5 = ground_posix_principal(
+    intent: fleet_principal_intent(key: FleetAccountAutomation),
+    standing: AccountAllocated { allocation: a5 },
+    observation: Present { value: observed(a: a5, name: "lumen" as PosixLoginName, uid: 1500) },
+  )
+  let g6 = ground_posix_principal(
+    intent: fleet_principal_intent(key: FleetAccountAutomation),
+    standing: AccountAllocated { allocation: a6 },
+    observation: Present { value: observed(a: a6, name: "cobalt" as PosixLoginName, uid: 1732) },
+  )
+  let n5 = match grounded_name(o: g5) { Present { value: v } => v, Absent => "none" as NonEmptyStr }
+  let n6 = match grounded_name(o: g6) { Present { value: v } => v, Absent => "none" as NonEmptyStr }
+  // Different labels, different numbers, same principal. Both sides must actually have GROUNDED --
+  // asserted explicitly, because two Absent answers would also compare unequal to nothing and the
+  // claim would pass while proving the opposite of what it says.
+  let both_grounded = n5 != "none" as NonEmptyStr && n6 != "none" as NonEmptyStr
+  let same_principal = a5.occurrence.principal == a6.occurrence.principal
+  both_grounded && n5 != n6 && a5.uid != a6.uid && same_principal
+}
+
+// CONTROL 2 -- an unallocated principal cannot be grounded. This is the wall replacing the reverted
+// commit, which presented a desired account as a GroundedPosixPrincipal by authoring a name and uid
+// for it. Nothing here can render useradd, User=, a home path, sudoers or authorized_keys.
+test fn witness_unallocated_principal_cannot_ground() -> Bool {
+  let o = ground_posix_principal(
+    intent: fleet_principal_intent(key: FleetAccountAutomation),
+    standing: spark_automation_allocation_standing(host: spark5),
+    observation: none,
+  )
+  match o {
+    PrincipalUnallocated { occurrence: occ } => occ.host == spark5
+    PrincipalGrounded { principal: _ } => false
+    PrincipalRequiresHostScope { principal: _ } => false
+    PrincipalAllocationConflicted { occurrence: _, first: _, more: _ } => false
+    PrincipalUnobserved { allocation: _ } => false
+    PrincipalDrifted { allocation: _, first: _, more: _ } => false
+  }
+}
+
+// CONTROL 3 -- allocated but never observed is its OWN state, distinct from unallocated. An
+// Optional return would have collapsed these two, and they have different remedies: one needs an
+// allocation decision, the other needs the apply to actually run.
+test fn witness_allocated_but_unobserved_is_its_own_state() -> Bool {
+  let a = alloc(host: spark5, name: "lumen" as PosixLoginName, uid: 1500)
+  match ground_posix_principal(
+    intent: fleet_principal_intent(key: FleetAccountAutomation),
+    standing: AccountAllocated { allocation: a },
+    observation: none,
+  ) {
+    PrincipalUnobserved { allocation: _ } => true
+    PrincipalUnallocated { occurrence: _ } => false
+    PrincipalRequiresHostScope { principal: _ } => false
+    PrincipalAllocationConflicted { occurrence: _, first: _, more: _ } => false
+    PrincipalGrounded { principal: _ } => false
+    PrincipalDrifted { allocation: _, first: _, more: _ } => false
+  }
+}
+
+// CONTROL 4 -- an observation that contradicts the allocation is DRIFT carrying both sides, never a
+// silent acceptance and never rounded to absence. Two shapes: the label differs, and the number
+// differs. The uid case matters most, because an inode records the number.
+test fn witness_observation_contradicting_allocation_is_drift() -> Bool {
+  let a = alloc(host: spark5, name: "lumen" as PosixLoginName, uid: 1500)
+  let name_drift = ground_posix_principal(
+    intent: fleet_principal_intent(key: FleetAccountAutomation),
+    standing: AccountAllocated { allocation: a },
+    observation: Present { value: observed(a: a, name: "somethingelse" as PosixLoginName, uid: 1500) },
+  )
+  let uid_drift = ground_posix_principal(
+    intent: fleet_principal_intent(key: FleetAccountAutomation),
+    standing: AccountAllocated { allocation: a },
+    observation: Present { value: observed(a: a, name: "lumen" as PosixLoginName, uid: 1999) },
+  )
+  outcome_is_drift(o: name_drift) && outcome_is_drift(o: uid_drift)
+}
+
+// CONTROL 5 -- the same label text on two different hosts does NOT merge the accounts. Identity is
+// the occurrence, not the spelling; a name is a host-local handle and nothing more.
+test fn witness_same_label_on_two_hosts_does_not_merge_identities() -> Bool {
+  let a5 = alloc(host: spark5, name: "lumen" as PosixLoginName, uid: 1500)
+  let a6 = alloc(host: spark6, name: "lumen" as PosixLoginName, uid: 1500)
+  // identical label AND identical number, still two distinct occurrences
+  a5.local_name == a6.local_name
+    && a5.uid == a6.uid
+    && a5.occurrence.host != a6.occurrence.host
+}
+
+// CONTROL 6 -- the service identity holds NO privilege, and the human principal is structurally
+// marked human-only. The second half is the live fusion this split exists to end: automation had
+// been resolving through the human principal.
+test fn witness_service_has_no_privilege_and_human_is_marked_human_only() -> Bool {
+  let svc = fleet_principal_intent(key: FleetAccountInferenceService)
+  let human = fleet_principal_intent(key: FleetAccountOperator)
+  let automation = fleet_principal_intent(key: FleetAccountAutomation)
+  let is_human_only = match human.login_policy {
+    HumanAccessOnly => true
+    KeyOnlyAutomation => false
+    NoLoginServiceIdentity => false
+    LegacyHostAccount => false
+  }
+  let is_key_only = match automation.login_policy {
+    KeyOnlyAutomation => true
+    HumanAccessOnly => false
+    NoLoginServiceIdentity => false
+    LegacyHostAccount => false
+  }
+  svc.sudo_grants.length() == 0 && is_human_only && is_key_only
+}
+
+// CONTROL 7 -- the automation and service labels are required to carry NO domain meaning, while the
+// human label is permitted a mnemonic. Asserted on the requirements rather than on any string, so
+// it stays true whatever words a later allocation picks.
+test fn witness_name_requirements_forbid_domain_meaning_for_machine_principals() -> Bool {
+  requirements_forbid_domain_meaning(r: fleet_principal_intent(key: FleetAccountAutomation).name_requirements)
+    && requirements_forbid_domain_meaning(r: fleet_principal_intent(key: FleetAccountInferenceService).name_requirements)
+    && requirements_are_independent_per_occurrence(r: fleet_principal_intent(key: FleetAccountAutomation).name_requirements)
+    && requirements_are_pronounceable(r: fleet_principal_intent(key: FleetAccountAutomation).name_requirements)
+}
+
+// CONTROL 8 -- the two host-scoped principals cannot be answered by the host-less legacy accessor.
+// This is the arm that replaced the fabricated UNALLOCATED-PRINCIPAL value: asking a host-less
+// question about a per-host account now REFUSES with a state a caller must match, rather than
+// returning an ordinary GroundedPosixPrincipal carrying a poison name and uid -1 that any consumer
+// could render into an effect, a path, or a log without ever acknowledging failure.
+test fn witness_host_scoped_principals_refuse_the_hostless_accessor() -> Bool {
+  let a = match fleet_posix_principal(key: FleetAccountAutomation) {
+    PrincipalRequiresHostScope { principal: _ } => true
+    PrincipalGrounded { principal: _ } => false
+    PrincipalUnallocated { occurrence: _ } => false
+    PrincipalAllocationConflicted { occurrence: _, first: _, more: _ } => false
+    PrincipalUnobserved { allocation: _ } => false
+    PrincipalDrifted { allocation: _, first: _, more: _ } => false
+  }
+  let s = match fleet_posix_principal(key: FleetAccountInferenceService) {
+    PrincipalRequiresHostScope { principal: _ } => true
+    PrincipalGrounded { principal: _ } => false
+    PrincipalUnallocated { occurrence: _ } => false
+    PrincipalAllocationConflicted { occurrence: _, first: _, more: _ } => false
+    PrincipalUnobserved { allocation: _ } => false
+    PrincipalDrifted { allocation: _, first: _, more: _ } => false
+  }
+  // and the legacy four still ground through the same accessor
+  let legacy = match fleet_posix_principal(key: FleetAccountCiRunner) {
+    PrincipalGrounded { principal: p } => p.posix.name == "ghrunner"
+    PrincipalRequiresHostScope { principal: _ } => false
+    PrincipalUnallocated { occurrence: _ } => false
+    PrincipalAllocationConflicted { occurrence: _, first: _, more: _ } => false
+    PrincipalUnobserved { allocation: _ } => false
+    PrincipalDrifted { allocation: _, first: _, more: _ } => false
+  }
+  a && s && legacy
+}
+
+// CONTROL 9 -- an observation bound to a DIFFERENT host is drift, not a match. Without this the
+// srv5 observation could ground srv6's allocation, which is the copied-receipt failure at account
+// grain.
+test fn witness_observation_from_another_host_is_drift() -> Bool {
+  let a5 = alloc(host: spark5, name: "lumen" as PosixLoginName, uid: 1500)
+  let a6 = alloc(host: spark6, name: "lumen" as PosixLoginName, uid: 1500)
+  outcome_is_drift(o: ground_posix_principal(
+    intent: fleet_principal_intent(key: FleetAccountAutomation),
+    standing: AccountAllocated { allocation: a5 },
+    observation: Present { value: observed(a: a6, name: "lumen" as PosixLoginName, uid: 1500) },
+  ))
+}
+
+// CONTROL 10 -- the service realization is UNSELECTED, not silently a persistent account.
+test fn witness_service_realization_is_unselected() -> Bool {
+  match spark_inference_realization_standing(host: spark5) {
+    ServicePrincipalRealizationUnselected => true
+    DynamicServicePrincipal { supervisor: _ } => false
+    PersistentServiceAccount { allocation: _ } => false
+  }
+}
+
+fn receipted(a: PosixAccountAllocation, name: PosixLoginName, uid: Int) -> PosixAccountObservation {
+  PosixAccountObservation {
+    occurrence: a.occurrence,
+    observed_user: PosixUser { name: name, uid: uid, gid: uid,
+  shell: LoginShellUnobserved,
+},
+    effect_receipt: process_receipt(label: "id-probe" as NonEmptyStr, exit_status: 0),
+    raw_output_identity: content_hash_atom(value: "uid=1500(lumen)" as NonEmptyStr),
+    observed_at: "2026-08-09T06:00:00Z",
+  }
+}
+
+fn access_obs(a: PosixAccountAllocation, pw_refused: Bool, priv_ok: Bool) -> PosixAccessObservation {
+  PosixAccessObservation {
+    account: receipted(a: a, name: "lumen" as PosixLoginName, uid: 1500),
+    observed_authorized_keys: [],
+    password_login_refused: pw_refused,
+    privileged_probe_succeeded: priv_ok,
+  }
+}
+
+// CONTROL 11 -- an account may be grounded while ACCESS is not. This is the separation the fused
+// fold could not express: it copied DESIRED sudo grants into a grounded result, so an account whose
+// sudoers was never installed still read as fully subsumed. Here the account grounds and the access
+// outcome still refuses, twice, for two different reasons.
+test fn witness_account_grounded_does_not_imply_access_grounded() -> Bool {
+  let a = alloc(host: spark5, name: "lumen" as PosixLoginName, uid: 1500)
+  let standing = AccountAllocated { allocation: a }
+  let intent = fleet_principal_intent(key: FleetAccountAutomation)
+  let still_passworded = ground_host_access(
+    intent: intent, standing: standing, access: access_obs(a: a, pw_refused: false, priv_ok: true),
+  )
+  let no_privilege = ground_host_access(
+    intent: intent, standing: standing, access: access_obs(a: a, pw_refused: true, priv_ok: false),
+  )
+  let fully = ground_host_access(
+    intent: intent, standing: standing, access: access_obs(a: a, pw_refused: true, priv_ok: true),
+  )
+  let is_password = match still_passworded {
+    HostAccessPasswordLoginStillAdmitted => true
+    HostAccessGrounded { principal: _ } => false
+    HostAccessAccountNotGrounded { account_outcome: _ } => false
+    HostAccessKeyPopulationDrifted { expected: _, observed: _ } => false
+    HostAccessPrivilegeNotProven => false
+  }
+  let is_privilege = match no_privilege {
+    HostAccessPrivilegeNotProven => true
+    HostAccessGrounded { principal: _ } => false
+    HostAccessAccountNotGrounded { account_outcome: _ } => false
+    HostAccessKeyPopulationDrifted { expected: _, observed: _ } => false
+    HostAccessPasswordLoginStillAdmitted => false
+  }
+  let is_grounded = match fully {
+    HostAccessGrounded { principal: _ } => true
+    HostAccessAccountNotGrounded { account_outcome: _ } => false
+    HostAccessKeyPopulationDrifted { expected: _, observed: _ } => false
+    HostAccessPasswordLoginStillAdmitted => false
+    HostAccessPrivilegeNotProven => false
+  }
+  is_password && is_privilege && is_grounded
+}
+
+// CONTROL 12 -- an unallocated occurrence cannot reach access grounding at all, whatever the access
+// observation claims. The account layer refuses first, so a fabricated key population or a claimed
+// privileged probe cannot manufacture subsumption for an account nobody allocated.
+test fn witness_unallocated_cannot_reach_access_grounding() -> Bool {
+  let a = alloc(host: spark5, name: "lumen" as PosixLoginName, uid: 1500)
+  match ground_host_access(
+    intent: fleet_principal_intent(key: FleetAccountAutomation),
+    standing: spark_automation_allocation_standing(host: spark5),
+    access: access_obs(a: a, pw_refused: true, priv_ok: true),
+  ) {
+    HostAccessAccountNotGrounded { account_outcome: _ } => true
+    HostAccessGrounded { principal: _ } => false
+    HostAccessKeyPopulationDrifted { expected: _, observed: _ } => false
+    HostAccessPasswordLoginStillAdmitted => false
+    HostAccessPrivilegeNotProven => false
+  }
+}

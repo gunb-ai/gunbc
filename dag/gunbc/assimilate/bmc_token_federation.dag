@@ -1,6 +1,14 @@
 module gunbc.assimilate.bmc_token_federation
 
 import gunbc.repository { gunbc_repository }
+import gunbc.auth.github_gcp_federation {
+  fleet_secrets_project_id, fleet_secrets_project_number,
+  github_wif_pool_id, github_wif_pool_display_name, github_wif_provider_id,
+  github_wif_issuer_uri, github_wif_attribute_mapping, federated_github_repo,
+  github_wif_pool, github_wif_provider,
+  github_wif_provider_resource, github_wif_principal_set, github_wif_attribute_condition,
+  federated_service_account_member
+}
 import extdeps.cloud.gcp.gcp {
   ServiceAccountEmail, GcpProjectId, WifPool, WifProvider,
   wif_provider_resource, wif_principal_set_for_repo
@@ -74,67 +82,43 @@ fn gcp_token_smoke_script() -> String {
   }
 }
 
-data bmc_secrets_project_id: GcpProjectId = "gunbai-secrets"
+data bmc_secrets_project_id: GcpProjectId = fleet_secrets_project_id
 
-data bmc_secrets_project_number: String = "582015116396"
+data bmc_secrets_project_number: String = fleet_secrets_project_number
 
 data bmc_srv3_secret_name: String = "bmc-srv3-admin"
 
 data bmc_assimilator_sa_email: ServiceAccountEmail = "bmc-assimilator@gunbai-secrets.iam.gserviceaccount.com"
 
-data bmc_federated_github_repo: String = gunbc_repository.full_name
+data bmc_federated_github_repo: String = federated_github_repo
 
-data bmc_wif_pool_id: NonEmptyStr = "github-actions"
+data bmc_wif_pool_id: NonEmptyStr = github_wif_pool_id
 
-data bmc_wif_pool_display_name: NonEmptyStr = "GitHub Actions OIDC"
+data bmc_wif_pool_display_name: NonEmptyStr = github_wif_pool_display_name
 
-data bmc_wif_provider_id: NonEmptyStr = "github-oidc"
+data bmc_wif_provider_id: NonEmptyStr = github_wif_provider_id
 
-data bmc_wif_issuer_uri: NonEmptyStr = "https://token.actions.githubusercontent.com"
+data bmc_wif_issuer_uri: NonEmptyStr = github_wif_issuer_uri
 
-data bmc_wif_attribute_mapping: Map<String, String> = {
-  "google.subject": "assertion.sub",
-  "attribute.repository": "assertion.repository",
-  "attribute.ref": "assertion.ref"
-}
+data bmc_wif_attribute_mapping: Map<String, String> = github_wif_attribute_mapping
 
 data bmc_assimilator_account_id: NonEmptyStr = "bmc-assimilator"
 
 data bmc_assimilator_display_name: NonEmptyStr = "BMC assimilator (keyless, srv3 secret only)"
 
-data bmc_wif_pool: WifPool = WifPool {
-  name: bmc_wif_pool_id
-  project: "gunbai-secrets"
-  display_name: Present { value: bmc_wif_pool_display_name }
-  disabled: false
-}
+data bmc_wif_pool: WifPool = github_wif_pool
 
-data bmc_wif_provider: WifProvider = WifProvider {
-  name: bmc_wif_provider_id
-  pool: bmc_wif_pool_id
-  issuer_uri: bmc_wif_issuer_uri
-  attribute_mapping: Present { value: bmc_wif_attribute_mapping }
-}
+data bmc_wif_provider: WifProvider = github_wif_provider
 
 fn bmc_assimilator_sa_member() -> String {
-  concat("serviceAccount:", bmc_assimilator_sa_email as String)
+  federated_service_account_member(email: bmc_assimilator_sa_email)
 }
 
-fn bmc_wif_provider_resource() -> String {
-  wif_provider_resource(project_number: bmc_secrets_project_number, provider: bmc_wif_provider)
-}
+fn bmc_wif_provider_resource() -> String { github_wif_provider_resource() }
 
-fn bmc_wif_principal_set() -> String {
-  wif_principal_set_for_repo(
-    project_number: bmc_secrets_project_number,
-    pool_id: bmc_wif_pool.name,
-    repository: bmc_federated_github_repo
-  )
-}
+fn bmc_wif_principal_set() -> String { github_wif_principal_set() }
 
-fn bmc_wif_attribute_condition() -> String {
-  concat("assertion.repository == '", concat(bmc_federated_github_repo, "'"))
-}
+fn bmc_wif_attribute_condition() -> String { github_wif_attribute_condition() }
 
 data bmc_assimilator_allowed_roles: List<String> = [
   role_secretmanager_secret_accessor,
@@ -250,3 +234,5 @@ data bmc_token_smoke_workflow: Workflow = {
 fn emit_bmc_token_smoke_workflow_yaml() -> String {
   serialize_yaml(v: project_workflow_to_yaml(workflow: bmc_token_smoke_workflow))
 }
+
+data bmc_federation_naming_residue_dissolve_on: String = "dissolve-on: the repository-level federation VALUES now have one authority in gunbc.auth.github_gcp_federation, but seven bmc_-prefixed names in this module still stand for concepts that are not BMC facts (the fleet secrets project and number, the pool, provider, issuer, attribute mapping, federated repo). Those names are a residual second naming scheme for one concept -- weaker than the value fork just removed, since no row can now disagree, but still a nickname. DISSOLVES WHEN consumers (bmc_bootstrap_provision, bmc_wif_delegation_chain, bmc_wif_canary_bootstrap and their witnesses) reference the github_gcp_federation symbols directly and these pass-through rows are deleted. Deferred rather than done here because the rename touches BMC production files and their witnesses, and it is separable from the value consolidation this change lands."
