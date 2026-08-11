@@ -1,0 +1,23 @@
+module extdeps.vendor.atomik
+
+import std.types { NonEmptyStr }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.atomikclimbingholds.com"
+  }
+}
+
+data atomik: Vendor<Hardware> = Vendor { legal_name: "Atomik Climbing Holds" }
+
+// legal_name here carries a TRADING name, not a verified legal entity. No filing, invoice or
+// terms page has been read to establish the registered company behind this brand. Where other
+// vendor rows in this tree carry a full registered form, this one does not, and the difference
+// is real rather than stylistic: a purchase order, a warranty claim or a liability question all
+// need the registered entity, and none of them can be answered from a storefront banner.
+data atomik_legal_entity_standing_note: NonEmptyStr = "Trading name only. The registered legal entity behind the Atomik Climbing Holds brand has not been read from any filing, invoice or terms document."

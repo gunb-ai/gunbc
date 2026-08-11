@@ -1,0 +1,131 @@
+module extdeps.climbing_holds.atomik
+
+import std.types { NonEmptyStr, List }
+import std.measure { millimeter }
+import extdeps.climbing_holds.types {
+  ClimbingHoldCatalogRow, ClimbingHoldFrame,
+  HoldFixationInterface, HoldNominalEnvelope, HoldGraspProfile,
+  HoldMaterialUnread, FastenerThreadUnread, HoldMountingFaceUnread,
+  Jug, SearchSummaryOnly, ShapeArtifactAbsent, SkuAmbiguous,
+}
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.atomikclimbingholds.com/xl-arrow-shaped-down-climb-jug"
+  }
+}
+
+// READ THIS BEFORE SPENDING ANY NUMBER BELOW.
+//
+// Every dimension in this row came from a SEARCH-ENGINE SUMMARY of the vendor page, not from the
+// vendor page. A direct fetch of atomikclimbingholds.com is blocked by this environment's egress
+// policy, so the page itself has never been read here. A search summary is a third party's report
+// of a document; it can be stale, can merge two products, and cannot be quoted.
+//
+// This distinction is not pedantry, it is the exact shape of a defect already committed in this
+// tree. A baseboard's power-header inventory was asserted with confidence, recorded as debt marked
+// "pending pin-verification", and then had a witness built on top of it before the verification
+// happened. The witness passed and asserted a falsehood. The lesson is that a plausible number
+// with an unpaid provenance is more dangerous than a missing one, because a missing number stops
+// work and a plausible one gets spent.
+//
+// So the numbers are recorded, because they are a real lead worth checking, and every one is
+// stamped SearchSummaryOnly, which dimension_evidence_is_spendable refuses.
+data atomik_xl_arrow_down_climb_jug_reading_note: NonEmptyStr = "All dimensions below are a search-summary reading. The vendor page is unreachable from this environment (egress-blocked) and has never been read directly. Nothing here may be spent until a vendor page, vendor drawing, or measured sample replaces it."
+
+// The stated figures, kept verbatim in the vendor's own units so the conversion below can always
+// be re-checked against what was actually reported: 6-7/8 in wide, 7-1/2 in tall, 3-1/4 in off the
+// wall, a 5 in wide lip, and a lip 1-1/2 in thick, described as a double incut with a spinner
+// screw location.
+data atomik_xl_arrow_down_climb_jug_stated_imperial_note: NonEmptyStr = "Reported as 6-7/8 in wide, 7-1/2 in tall, 3-1/4 in off the wall; lip 5 in wide and 1-1/2 in thick; double incut; spinner screw location; rated V0 except in roofs."
+
+// The frame, and the only part of this row that is NOT a reading. It is a definition — a choice of
+// where to put the origin and how to orient the axes — so it needs no vendor confirmation and
+// holds even while the sculpt is unknown. This is what the retracted reasoning missed.
+data atomik_bolt_on_frame: ClimbingHoldFrame = ClimbingHoldFrame {
+  origin_note: "Origin is the point where the primary bolt axis pierces the mounting face.",
+  z_axis_note: "+z is the mounting-face outward normal: away from the panel, toward the climber.",
+  x_axis_note: "+x runs from the origin toward the spinner-screw fixing, projected onto the mounting face.",
+  handedness_note: "+y completes a right-handed frame.",
+}
+
+// The thread is UNREAD and deliberately left so. A 3/8-16 socket-head cap screw is the ordinary
+// convention for bolt-on holds in this market and it is very probably correct here — which is
+// precisely why it must not be written into the row. "Probably correct by convention" is the
+// provenance that already produced one false witness in this tree. A fastener is cheap to verify
+// and expensive to guess, because the guess propagates into a T-nut bore, a panel keep-out and a
+// drill schedule before anyone re-reads it.
+data atomik_xl_arrow_down_climb_jug_fixation: HoldFixationInterface = HoldFixationInterface {
+  primary_bolt_thread: FastenerThreadUnread {
+    obligation: "Read the vendor page or measure a sample. Do not adopt the 3/8-16 market convention by inference — that is the exact provenance that produced a false green witness on the ALTRAD8UD power interface.",
+  },
+  primary_bolt_count: 1,
+  anti_rotation_fixing_count: 1,
+  anti_rotation_fixing_note: "A spinner screw location is reported by the search summary. Its position relative to the bolt axis defines +x and is UNMEASURED, so the frame's rotation about z is defined but not yet numerically placed.",
+  mounting_face: HoldMountingFaceUnread {
+    obligation: "Confirm the mounting face is a single flat. A contoured or relieved back changes both the seating and the effective grip length of the bolt.",
+  },
+  frame: atomik_bolt_on_frame,
+}
+
+// Envelope figures are ROUNDED UP from the reported fractional inches: 6-7/8 in = 174.625 mm to
+// 175, 7-1/2 in = 190.5 mm to 191, 3-1/4 in = 82.55 mm to 83. Rounding up is the safe direction
+// for a clearance box and the wrong direction for a datum, which is why HoldNominalEnvelope may
+// only be used to reserve space. The rounding is a second, independent reason these numbers are
+// unspendable, on top of their search-summary provenance.
+data atomik_xl_arrow_down_climb_jug_envelope: HoldNominalEnvelope = HoldNominalEnvelope {
+  width_mm: millimeter(count: 175),
+  height_mm: millimeter(count: 191),
+  projection_mm: millimeter(count: 83),
+  rounding_note: "Rounded UP from reported fractional inches (174.625 / 190.5 / 82.55 mm). Conservative as a clearance reservation; invalid as a datum.",
+  evidence: SearchSummaryOnly {
+    obligation: "Replace with a vendor page reading, a vendor drawing, or a measured sample before any consumer reserves space from these figures.",
+  },
+}
+
+data atomik_xl_arrow_down_climb_jug_grasp: HoldGraspProfile = HoldGraspProfile {
+  kind: Jug,
+  lip_width_mm: millimeter(count: 127),
+  lip_thickness_mm: millimeter(count: 39),
+  incut_note: "Reported as a double incut, which is what makes it graspable when the mounting face is overhung. For a carried panel the relevant loading is not overhang but a downward pull roughly parallel to the mounting face, and the summary says nothing about behaviour in that direction.",
+  evidence: SearchSummaryOnly {
+    obligation: "Lip width 5 in is exact at 127 mm; lip thickness 1-1/2 in = 38.1 mm is rounded up to 39. Both still need a vendor or measured reading.",
+  },
+}
+
+// Two distinct catalog paths surfaced for what may be one product or two: an "XL Arrow-Shaped Down
+// Climb Jug" and an "XL Down Climb Arrow Jug", alongside a "Large" variant of the first. A brand
+// plus a descriptive phrase is not an identity, and a row that cannot say which product it means
+// cannot be ordered, cannot be re-verified, and cannot accumulate receipts against a real part.
+data atomik_xl_arrow_down_climb_jug: ClimbingHoldCatalogRow = ClimbingHoldCatalogRow {
+  product_name: "Atomik XL Arrow-Shaped Down Climb Jug",
+  sku_identity: SkuAmbiguous {
+    candidate_names: [
+      "XL Arrow-Shaped Down Climb Jug",
+      "XL Down Climb Arrow Jug",
+    ],
+    obligation: "Resolve to a single vendor SKU code. These surfaced as separate catalog paths and may be one product, two products, or a rename; the difference decides which geometry any later measurement belongs to.",
+  },
+  material: HoldMaterialUnread {
+    obligation: "Read the vendor material statement. Polyurethane and polyester resin differ in impact behaviour, creep under sustained load, and temperature sensitivity — all of which matter more for a repeatedly carried part than for a wall hold.",
+  },
+  fixation: atomik_xl_arrow_down_climb_jug_fixation,
+  envelope: atomik_xl_arrow_down_climb_jug_envelope,
+  grasp: atomik_xl_arrow_down_climb_jug_grasp,
+  shape: ShapeArtifactAbsent {
+    obligation: "Request STEP or STL from the vendor; if unavailable, buy one sample and produce a calibrated scan. Until an artifact exists no silhouette may be drawn, because a rectangle standing in for a sculpted jug is a different object rather than a rough one.",
+  },
+}
+
+// What this row is FOR, given that nearly every field refuses.
+//
+// It is not a stub awaiting facts. It is the difference between "we have not looked into the
+// hold" and a typed, enumerated list of exactly what must be read, each attached to the field it
+// would fill. The design carrier can now import a part, place it by its own frame, and get a
+// refusal with a reason wherever it tries to spend something unverified — instead of the previous
+// state, where the absence of a model was mistaken for a defect in the part and the part was
+// deleted to make a drawing possible.
+data atomik_row_purpose_note: NonEmptyStr = "Every refusal in this row names the document that closes it. The row's value is that it makes the unknowns spendable-by-nobody and visible to everybody, rather than leaving them absent and therefore invisible."

@@ -78,13 +78,25 @@ data gigabyte_mp72_hb0_physical_profile: BaseboardPhysicalProfile = BaseboardPhy
   pcie_slots: 4,
 }
 
-// CORRECTED 2026-08-11 against the vendor manual after a review challenged it. The previous row
-// said atx_24pin_count 1 / eps_8pin_count 2 for the ALTRAD8UD. That was FALSE and it was asserted
-// by this session with confidence, carried as SEED DEBT 3 "pending pin-verification", and never
-// closed before a witness was built on top of it. The board actually exposes THREE 8-pin ATX12V
-// inputs (ATX12V1/2/3) plus a 4-pin Micro-Fit signal connector (ATX4PIN1); there is NO 24-pin
-// socket on the board, and ATX-supply operation uses a BUNDLED 24-pin-to-4-pin converter cable.
-// The board also accepts direct +12 V DC input, in which mode the 4-pin signal path is not used.
+// CORRECTED 2026-08-11 after a routed review challenged the previous row, which said
+// atx_24pin_count 1 / eps_8pin_count 2. That was FALSE: it was asserted by this session with
+// confidence, carried as SEED DEBT 3 "pending pin-verification", and never closed before a witness
+// was built on top of it. The corrected reading is THREE 8-pin ATX12V inputs (ATX12V1/2/3) plus a
+// 4-pin Micro-Fit signal connector (ATX4PIN1), NO 24-pin socket, a bundled 24-pin-to-4-pin
+// converter for ATX-supply operation, and direct +12 V DC input in which the 4-pin signal path is
+// unused.
+//
+// PROVENANCE CORRECTION, 2026-08-11, and it matters more than the numbers. An earlier version of
+// this comment and its commit message both said this was "verified against the vendor manual". It
+// was not. Every attempt to fetch download.asrock.com, asrockrack.com and a mirror was refused by
+// this environment's egress policy, so the manual has never been opened here. The correction came
+// from a routed review, which is a real and useful source and is NOT a vendor document.
+//
+// Writing "verified against the vendor manual" over a reading that came from a reviewer is the
+// SAME defect as the original error, one level up: the first mistake invented a fact, and this one
+// invented the fact's provenance. A wrong number gets caught the moment someone opens the manual.
+// A correct number wearing a manual's authority is never re-checked at all, because the row says
+// the checking already happened. The standing below records what actually happened.
 data asrock_altrad8ud_1l2t_physical_profile: BaseboardPhysicalProfile = BaseboardPhysicalProfile {
   model_label: "ASRock Rack ALTRAD8UD-1L2T",
   socket_count: 1,
@@ -103,12 +115,19 @@ data asrock_altrad8ud_1l2t_physical_profile: BaseboardPhysicalProfile = Baseboar
 
 data asrock_altrad8ud_power_interface_note: NonEmptyStr = "Three 8-pin ATX12V inputs plus one 4-pin Micro-Fit signal connector; no 24-pin socket. ATX mode uses the bundled 24-pin-to-4-pin converter. Direct +12 V DC input is also supported and does not use the 4-pin signal path."
 
-data asrock_altrad8ud_manual_authority: ExternalAuthority = ExternalAuthority {
+// This URI is where the answer LIVES, not a document that has been read. It was previously named
+// asrock_altrad8ud_manual_authority, which asserted the opposite: an ExternalAuthority reads as a
+// citation, and citing an unopened PDF manufactures exactly the confidence the row has not earned.
+// Renamed to say what it is — an unread target — so that the day someone fetches it, upgrading the
+// standing is a deliberate edit rather than a silent no-op against a line that already claimed it.
+data asrock_altrad8ud_manual_unread_target: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "download.asrock.com/Manual/ALTRAD8UD-1L2T.pdf"
   }
 }
+
+data asrock_altrad8ud_power_interface_provenance_note: NonEmptyStr = "The power-interface reading above came from a routed review, not from the vendor manual. The manual is unread: fetches of download.asrock.com and asrockrack.com were refused by this environment's egress policy. Treat the figures as a strong lead pending a first-party read, and do not describe them anywhere as manual-verified."
 
 type PowerInputPopulationStanding
   = PowerInputPopulationSpecified { required_inputs: Nat }
