@@ -424,3 +424,35 @@ fn select_spark_serving_realization(
 // so the refutation above is derived rather than recorded. Until then the selector's admission of
 // UserUnitRealization under NoLoginNoSudoIdentity is a KNOWN over-admission, not a passing case.
 data spark_user_unit_identity_contract_refutation_note: String = "A systemd user unit executes as its owning user; measured on srv5 as gunbc-automation. Under NoLoginNoSudoIdentity the serving process must be gunbc-inference, so UserUnitRealization cannot satisfy the intent on these hosts and SystemUnitRealization is the admitted candidate despite its higher effect weight."
+
+// MEASURED SERVING PRECONDITIONS, srv5 as gunbc-automation, 2026-08-11:
+//   aarch64, NVIDIA GB10, 3.5T free on /
+//   docker present at /usr/bin/docker; gunbc-automation CANNOT use it (permission denied on
+//     /var/run/docker.sock -- the narrow grant covers enable-linger and nothing else, which is the
+//     grant behaving exactly as designed)
+//   network egress works
+//   no serving runtime installed: no ollama, no vllm, no running inference unit
+//
+// TWO CONSEQUENCES, and neither is a thing this model may decide on its own.
+//
+// FIRST, THE SERVING INSTALL IS A SECOND PRIVILEGED POPULATION, distinct from the access bootstrap
+// that already landed. Installing a runtime, writing a system unit with User=gunbc-inference, and
+// granting the container runtime to a principal are all privileged, and none is covered by the
+// enable-linger grant. So the derivation reaches OperatorBootstrapCredentialRequired again, with a
+// different effect population -- correctly, because a credential authorized for one named population
+// is not authorization for another. Reusing the first approval here would be exactly the widening
+// the authorization type exists to prevent.
+//
+// SECOND, AND THIS ONE IS AN INTENT GAP RATHER THAN A MISSING EFFECT: the terminal intent declares
+// endpoint: AuthenticatedEndpoint, and the candidate runtimes differ on whether they can satisfy it
+// at all. Ollama serves no authentication -- an ollama endpoint is open to anything that can reach
+// the port, so it satisfies the intent only behind something that does authenticate, which is then a
+// second component with its own identity and failure modes. vLLM accepts an API key directly. A NIM
+// container is NVIDIA's packaged answer for this hardware and carries its own auth and licensing
+// terms. Those are three different products with different obligations, and the model cannot pick
+// among them by derivation: which runtime serves is a DECLARED intent, not a fact about the host.
+//
+// Recording it here rather than choosing keeps the compiler's refusal honest. An unstated preference
+// is never fabricated -- and picking ollama because it is easiest to install would have quietly
+// abandoned the authenticated-endpoint half of the intent while every other row still read green.
+data spark_serving_runtime_selection_is_declared_intent_note: String = "Measured on srv5: aarch64, GB10, docker present but not usable by gunbc-automation, egress works, no serving runtime installed. The serving install is a SECOND privileged effect population, not covered by the enable-linger grant. Runtime choice is declared intent, not derivation: ollama has no authentication and cannot satisfy endpoint: AuthenticatedEndpoint without a second authenticating component; vLLM accepts an API key; a NIM container carries NVIDIA's own auth and licensing. Awaiting an operator declaration before any serving effect is derived."
