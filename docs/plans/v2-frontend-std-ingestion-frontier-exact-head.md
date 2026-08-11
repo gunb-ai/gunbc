@@ -166,14 +166,18 @@ Measured effect, discriminating rather than blanket: `src/v2/std/logic.dag` move
 `src/v2/std/optional.dag` and `src/v2/std/diagnostic.dag` stayed `NORM_RETAINED`, their retention
 being genuine.
 
-**So the retention population is 4 at observation and 3 after the repair**, and the two numbers
-mean different things. `logic.dag` leaving retention is the repair working, NOT the member
-closing: it still does not ingest, and its refusal is now simply reported as the refusal it always
-was. The live retention population to close by producer coverage is `optional`, `diagnostic` and
-`occurrence_identity`; `logic.dag` moves to the population whose refusal cause is now legible and
-unclassified by this receipt.
+**Read this by time grain; the numbers are not one population.** Pre-repair, four members
+retained. Post-repair, exactly three members were rerun: `logic.dag` moved to `NORM_OTHER`, and
+`optional.dag` and `diagnostic.dag` still retain. **`occurrence_identity` was NOT rerun after the
+repair**, so it is post-repair *unknown* rather than confirmed-retained, and an earlier revision of
+this paragraph which called the live population "optional, diagnostic and occurrence_identity" was
+overclaiming on the third. Everything else in the table — the entry, `types`, `node`,
+`content_hash`, both graft rows, and both algebra rows — is also post-repair unknown.
 
-**Not repaired here:** the promotion boundary. `NormalizedTree` is still `= Node` and `resolve`
+`logic.dag` leaving retention is the repair working, NOT the member closing: it still does not
+ingest, and its refusal is now simply reported as the refusal it always was.
+
+**Not repaired here:** the resolve-ready normalized-tree construction boundary. ("Promotion" deliberately avoided: that word belongs to the bootstrap-admission authority, and reusing it for the normalize-side carrier would collide two different authorities.) `NormalizedTree` is still `= Node` and `resolve`
 still consumes that alias, so *retained cannot reach resolve* remains true only by propagation,
 not by construction.
 

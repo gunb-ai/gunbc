@@ -3,7 +3,7 @@ module gunbc.test.claim.normalize_retention_contract_probe_test
 import v2.std.text { String }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
-import gunbc.tools.frontier_ingestion_probe { classify_source, reasons_contain }
+import gunbc.tools.frontier_ingestion_probe { classify_normalize_reasons, classify_source, reasons_contain }
 
 data permanent_witness_scope_note: String = "WHAT THIS WITNESS MAY ASSERT, and why the live-corpus rows are NOT here. A required witness whose success depends on the current defects continuing to exist inverts the moment the defect is repaired: it would go RED on the repair and GREEN on a regression. So the assertions below validate the STAGE CLASSIFIER and the containment-read discipline on synthetic specimens whose stage is a property of the specimen rather than of the frontier. The per-member live population is a revision-scoped OBSERVATION recorded in docs/plans/v2-frontend-std-ingestion-frontier-exact-head.md and reproducible from gunbc.tools.frontier_ingestion_probe, which is deliberately NOT a test module for exactly this reason. The classifier is imported from that one authority rather than restated here, so the thing under test and the thing used for measurement cannot drift apart."
 
@@ -23,6 +23,40 @@ test fn classifier_separates_lex_from_accepted() -> Bool {
 
 test fn classifier_separates_parse_from_lex() -> Bool {
   classify_source(source: unbalanced_brace_source) == "PARSE"
+}
+
+
+
+
+// The normalize classifier is exercised DIRECTLY. Testing reasons_contain alone would not stop
+// classify_normalize_reasons reverting to a head read: each pair below puts an unrelated
+// diagnostic FIRST, so a head read returns the wrong verdict while a containment read does not.
+test fn classifier_reads_graft_refusal_behind_a_prepended_diagnostic() -> Bool {
+  classify_normalize_reasons(
+    rs: [^body_lowering_reason_wrapper_retained_emitted, ^namespace_graft_body_dissolved_refused]
+  ) == "NORM_GRAFT_REFUSED"
+}
+
+test fn classifier_reads_retention_pair_behind_a_prepended_diagnostic() -> Bool {
+  classify_normalize_reasons(
+    rs: [
+      ^body_lowering_reason_unsupported_form,
+      ^body_lowering_reason_wrapper_retained_emitted,
+      ^normalize_reason_post_normalize_not_well_formed
+    ]
+  ) == "NORM_RETAINED"
+}
+
+test fn classifier_calls_a_plain_rejection_other() -> Bool {
+  classify_normalize_reasons(rs: [^body_lowering_reason_unsupported_form]) == "NORM_OTHER"
+}
+
+test fn classifier_does_not_call_retention_alone_retained_RED() -> Bool {
+  classify_normalize_reasons(rs: [^body_lowering_reason_wrapper_retained_emitted]) == "NORM_OTHER"
+}
+
+test fn classifier_calls_an_empty_reason_list_accepted() -> Bool {
+  classify_normalize_reasons(rs: []) == "ACCEPTED"
 }
 
 test fn containment_read_finds_reason_behind_prepended_carrier() -> Bool {

@@ -80,11 +80,17 @@ fn accepted_reasons(id: Symbol) -> List<Symbol> {
   }
 }
 
+// One direct match on the Rejected arm: the REJECTED diagnostic set itself must carry the
+// strategy's own reason and must NOT carry the retention reason. Asserting the absence via
+// accepted_reasons would not establish this, because that helper returns [] for every rejected
+// result — the claim would hold for the wrong reason.
 test fn genuine_rejection_leaves_the_seam_rejected() -> Bool {
-  reasons_contain(
-    reasons: rejected_reasons(id: ^dag_surface_expr),
-    sym: ^body_lowering_reason_unsupported_form
-  )
+  match finish(id: ^dag_surface_expr) {
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
+      reasons_contain(reasons: all_reasons(d: d), sym: ^body_lowering_reason_unsupported_form)
+        && (reasons_contain(reasons: all_reasons(d: d), sym: ^body_lowering_reason_wrapper_retained_emitted) == false)
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+  }
 }
 
 test fn genuine_rejection_lands_on_the_rejected_arm() -> Bool {
