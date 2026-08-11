@@ -527,12 +527,6 @@ fn write_compile_clean_cost_drift_receipt_at(
             }
         }
     }
-    eprintln!(
-        "[compile-clean-cost-drift] basis_absent={basis_absent_count} clock_mismatch={clock_mismatch_count} drift_exceeded={drift_count}"
-    );
-    for line in body.lines() {
-        eprintln!("[compile-clean-cost-drift] {line}");
-    }
     let path = base.join("floor-compile-clean-cost-drift-receipt.tsv");
     if let Err(e) = std::fs::create_dir_all(base).and_then(|_| std::fs::write(&path, &body)) {
         eprintln!(
@@ -5816,12 +5810,8 @@ fn write_batch_wall_receipt_at(base: &std::path::Path, batch_records: &[BatchRec
     true
 }
 
-fn write_gate_warm_cost_receipt(batch_records: &[BatchRecord], emit_full_tsv_log: bool) -> bool {
-    write_gate_warm_cost_receipt_at(
-        std::path::Path::new("target"),
-        batch_records,
-        emit_full_tsv_log,
-    )
+fn write_gate_warm_cost_receipt(batch_records: &[BatchRecord]) -> bool {
+    write_gate_warm_cost_receipt_at(std::path::Path::new("target"), batch_records)
 }
 
 /// Per-gate warm-cost TSV (D2 placement probe, ci-two-tier-placement-redesign §9.1): one row per
@@ -5836,11 +5826,7 @@ fn write_gate_warm_cost_receipt(batch_records: &[BatchRecord], emit_full_tsv_log
 /// probe reads a WARM run's rows; run cold-then-warm on >=2 hosts and the roster records value +
 /// host basis. Fail-closed on a write error (shares target/ with the gated receipts, so a write
 /// failure here is the same disk fault that fails them); never a verdict term.
-fn write_gate_warm_cost_receipt_at(
-    base: &std::path::Path,
-    batch_records: &[BatchRecord],
-    emit_full_tsv_log: bool,
-) -> bool {
+fn write_gate_warm_cost_receipt_at(base: &std::path::Path, batch_records: &[BatchRecord]) -> bool {
     let mut body =
         String::from("gate\tbatch\teval_ms\tresolve_ms\twarm_ms\twitnesses\ts_per_witness_us\n");
     for rec in batch_records {
@@ -5865,14 +5851,6 @@ fn write_gate_warm_cost_receipt_at(
                     result.function
                 ));
             }
-        }
-    }
-    // The falsifier cadence mirrors the TSV into the log (prefixed, grep-collectable) so the
-    // placement probe can lift it from get_job_logs without an artifact-upload step. Per-PR
-    // runs keep only the summary below; the complete file remains available on every cadence.
-    if emit_full_tsv_log {
-        for line in body.lines() {
-            eprintln!("[gate-warm-cost] {line}");
         }
     }
     let path = base.join("floor-gate-warm-cost-receipt.tsv");
@@ -5931,12 +5909,8 @@ fn write_gate_warm_cost_receipt_at(
 ///    that never ran has no cost to report and now says so. The cell is deliberately
 ///    non-numeric so a consumer reaching for a number fails loudly rather than counting an
 ///    unexecuted row as a fast one.
-fn write_witness_row_cost_receipt(batch_records: &[BatchRecord], emit_full_tsv_log: bool) -> bool {
-    write_witness_row_cost_receipt_at(
-        std::path::Path::new("target"),
-        batch_records,
-        emit_full_tsv_log,
-    )
+fn write_witness_row_cost_receipt(batch_records: &[BatchRecord]) -> bool {
+    write_witness_row_cost_receipt_at(std::path::Path::new("target"), batch_records)
 }
 
 /// Rendering for a timing cell whose measurement does not exist. Deliberately NOT a number,
@@ -5985,7 +5959,6 @@ fn drift_row_disposition(outcome_variant: &str, has_basis: bool) -> DriftRowDisp
 fn write_witness_row_cost_receipt_at(
     base: &std::path::Path,
     batch_records: &[BatchRecord],
-    emit_full_tsv_log: bool,
 ) -> bool {
     let mut body = String::from(
         "batch\tentry\tfunction\teval_wall_ms\teval_cpu_ms\tresolve_ms\twarm_ms\toutcome\tdetail\n",
@@ -6034,14 +6007,6 @@ fn write_witness_row_cost_receipt_at(
                 ));
                 row_count += 1;
             }
-        }
-    }
-    // Task #20's falsifier reproduction protocol consumes these grep-collectable lines. The
-    // per-PR floor keeps the identical TSV file plus the summary below without duplicating the
-    // full body on stderr.
-    if emit_full_tsv_log {
-        for line in body.lines() {
-            eprintln!("[witness-row-cost] {line}");
         }
     }
     let path = base.join("floor-witness-row-cost-receipt.tsv");
@@ -6401,12 +6366,6 @@ fn write_witness_row_cost_drift_receipt_at(
             }
         }
     }
-    eprintln!(
-        "[witness-row-cost-drift] basis_absent={basis_absent_count} observation_absent={observation_absent_count} clock_mismatch={clock_mismatch_count} drift_exceeded={drift_count}"
-    );
-    for line in body.lines() {
-        eprintln!("[witness-row-cost-drift] {line}");
-    }
     let path = base.join("floor-witness-row-cost-drift-receipt.tsv");
     if let Err(e) = std::fs::create_dir_all(base).and_then(|_| std::fs::write(&path, &body)) {
         eprintln!(
@@ -6539,9 +6498,6 @@ fn write_witness_row_cost_migration_disclosure_receipt_at(
     }
     worst.sort_by(|a, b| b.0.cmp(&a.0));
     worst.truncate(5);
-    for line in body.lines() {
-        eprintln!("[witness-row-cost-migration-disclosure] {line}");
-    }
     for (ms, entry, function) in &worst {
         eprintln!(
             "[witness-row-cost-migration-disclosure] worst: {entry}::{function} observed={ms}ms threshold={threshold_ms}ms"
@@ -8660,12 +8616,12 @@ fn run_walk(
         !emit_ordinary_floor_receipts || write_batch_wall_receipt(&batch_records);
     trace_floor_phase("batch-wall-receipt", "completed", "");
     trace_floor_phase("gate-warm-cost-receipt", "started", "");
-    let gate_warm_cost_receipt_ok = !emit_ordinary_floor_receipts
-        || write_gate_warm_cost_receipt(&batch_records, falsifier_cadence);
+    let gate_warm_cost_receipt_ok =
+        !emit_ordinary_floor_receipts || write_gate_warm_cost_receipt(&batch_records);
     trace_floor_phase("gate-warm-cost-receipt", "completed", "");
     trace_floor_phase("witness-row-cost-receipt", "started", "");
-    let witness_row_cost_receipt_ok = !emit_ordinary_floor_receipts
-        || write_witness_row_cost_receipt(&batch_records, falsifier_cadence);
+    let witness_row_cost_receipt_ok =
+        !emit_ordinary_floor_receipts || write_witness_row_cost_receipt(&batch_records);
     trace_floor_phase("witness-row-cost-receipt", "completed", "");
     trace_floor_phase("wet-witness-row-outcome-receipt", "started", "");
     let wet_witness_row_outcome_receipt_ok = !emit_ordinary_floor_receipts
@@ -10274,13 +10230,15 @@ fn run() -> Result<ExitCode, ExitCode> {
     };
 
     // Install the host-effect trace policy from the .dag authority FIRST — before the
-    // naming-hygiene walk below and every subsequent corpus read — so `[file] read` /
+    // naming-hygiene walk and every subsequent corpus read — so `[file] read` /
     // `[rest]` / `[hermetic:mock]` etc. are funnelled per `gunbc.output_policy`
     // (Instrumentation is Suppressed at Normal, the CI default) instead of flooding the
     // floor log. Installing AFTER the walk (the prior order) left the walk's whole-tree
     // read at the `Full` default — ~2.3k `[file] read` lines, the firehose the
-    // observation-emit census (`gunbc.observation_emit_census`) targets. The walk still
-    // runs before plan evaluation, so a naming violation stays the cheapest failure.
+    // observation-emit census (`gunbc.observation_emit_census`) targets. That ordering
+    // requirement is unchanged by #8140: the walk moved AFTER plan evaluation (it is now
+    // demand-directed on `schedules_discovery`), so this install precedes it by even
+    // more, and the walk's whole-tree read is still policy-funnelled.
     v1_compiler::cli_run::install_output_policy(&source_roots);
     // Install the per-target group-marker syntax (GitHub Actions `::group::` vs a
     // plain-terminal header) from the .dag authority, so the parallel walk folds each
@@ -10288,47 +10246,22 @@ fn run() -> Result<ExitCode, ExitCode> {
     v1_compiler::cli_run::install_group_syntax(&source_roots);
     phase_mark("output-policy + group-syntax install");
 
-    // Under the opt-in inversion the plan's DiscoveryBatches carry explicit entries
-    // only (or are absent entirely on an empty roster), and the explicit-only path
-    // skips the tree-walk naming hygiene (`test fn` outside `*_test.dag`, `__`
-    // basenames) that glob discovery used to run. A witness must stay NAMEABLE even
-    // when not enrolled (an unnameable witness could never be opted in), so the plan
-    // path always runs the fail-closed walk once up front — before the (expensive)
-    // plan evaluation, so a naming violation is the cheapest possible failure.
-    {
-        let excludes = v1_compiler::cli_run::witness_exclusion_substrings();
-        let walk_attempt_id = match floor_walk_attempt_id() {
-            Ok(id) => id,
-            Err(msg) => {
-                eprintln!("claim_executor: witness naming hygiene walk-attempt refusal: {msg}");
-                return Err(ExitCode::from(1));
-            }
-        };
-        if std::env::var("GUNBC_FLOOR_WALK_ATTEMPT_ID")
-            .map(|v| v.trim().is_empty())
-            .unwrap_or(true)
-        {
-            std::env::set_var("GUNBC_FLOOR_WALK_ATTEMPT_ID", &walk_attempt_id);
-        }
-        let discovery_consumer = match floor_worker_role.as_ref() {
-            Some(FloorWorkerRole::Scoped { .. }) => floor_discovery_consumer_role_from_env(),
-            Some(FloorWorkerRole::Ordinary) | None => FloorDiscoveryConsumerRole::Producer,
-        };
-        if let Err(msg) = discover_floor_witness_roster_with_snapshot(
-            &source_roots,
-            &[],
-            &excludes,
-            &[],
-            &walk_attempt_id,
-            discovery_consumer,
-            "Hermetic",
-            &source_roots,
-        ) {
-            eprintln!("claim_executor: witness naming hygiene (pre-plan walk): {msg}");
+    // The walk-attempt id is a tracing coordinate every later phase stamps, so it is
+    // minted unconditionally here. The corpus WALK it used to gate is not: see the
+    // demand-directed hygiene walk after the plan's batches settle.
+    let floor_walk_attempt_id_value = match floor_walk_attempt_id() {
+        Ok(id) => id,
+        Err(msg) => {
+            eprintln!("claim_executor: witness naming hygiene walk-attempt refusal: {msg}");
             return Err(ExitCode::from(1));
         }
+    };
+    if std::env::var("GUNBC_FLOOR_WALK_ATTEMPT_ID")
+        .map(|v| v.trim().is_empty())
+        .unwrap_or(true)
+    {
+        std::env::set_var("GUNBC_FLOOR_WALK_ATTEMPT_ID", &floor_walk_attempt_id_value);
     }
-    phase_mark("naming-hygiene walk");
 
     if perturb_check {
         return run_perturb_check(&source_roots, &plan_entry, &plan_function);
@@ -10495,6 +10428,40 @@ fn run() -> Result<ExitCode, ExitCode> {
             Runnable::DiscoveryBatch { .. } | Runnable::ScopedWitnessBatch { .. }
         )
     });
+    // Witness naming hygiene (`test fn` outside `*_test.dag`, `__` basenames) is a
+    // property of the witness ROSTER, so it is paid by the plans that have one. It ran
+    // unconditionally before plan evaluation until this change, on the stated ground
+    // that a naming violation should be "the cheapest possible failure"; measured, the
+    // walk is the most expensive phase in the process (5.9 min of a 56.5-min floor,
+    // ~6 min of a ~15-min regen), because the roster producer it calls builds
+    // module-graph facts, a second strict reference-resolution pass, inert-lens
+    // reachability and the construction-justification census. A two-node regen plan
+    // paid all of it to discover a roster it never reads. The roster is memoized by
+    // request digest (IN_PROCESS_ROSTER_BY_REQUEST), so plans that DO schedule
+    // discovery pay exactly what they paid before — the corpus batch hits the memo
+    // this call fills. Plans that do not schedule discovery now pay nothing, and
+    // cannot: they have no roster to be unhygienic about.
+    if schedules_discovery {
+        let excludes = v1_compiler::cli_run::witness_exclusion_substrings();
+        let discovery_consumer = match floor_worker_role.as_ref() {
+            Some(FloorWorkerRole::Scoped { .. }) => floor_discovery_consumer_role_from_env(),
+            Some(FloorWorkerRole::Ordinary) | None => FloorDiscoveryConsumerRole::Producer,
+        };
+        if let Err(msg) = discover_floor_witness_roster_with_snapshot(
+            &source_roots,
+            &[],
+            &excludes,
+            &[],
+            &floor_walk_attempt_id_value,
+            discovery_consumer,
+            "Hermetic",
+            &source_roots,
+        ) {
+            eprintln!("claim_executor: witness naming hygiene (roster walk): {msg}");
+            return Err(ExitCode::from(1));
+        }
+    }
+    phase_mark("naming-hygiene walk");
     let fast_lane_eval_budget_ms: Option<u64> = if schedules_discovery {
         match run_value(&plan_ctx, "gunbc_ci_fast_lane_eval_budget_ms") {
             Ok(Value::Int(n)) if n > 0 => Some(n as u64),
@@ -15992,8 +15959,7 @@ mod tests {
         let _ = fs::remove_dir_all(&base);
         assert!(write_witness_row_cost_receipt_at(
             &base,
-            &zero_eval_collision_records(),
-            false
+            &zero_eval_collision_records()
         ));
         let path = base.join("floor-witness-row-cost-receipt.tsv");
         let body = fs::read_to_string(&path).unwrap();

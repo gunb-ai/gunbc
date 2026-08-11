@@ -1,0 +1,346 @@
+module product.compute_board.article
+
+import std.types { String, NonEmptyStr, List }
+import extdeps.external_authority { ExternalAuthority }
+import product.compute_board.digital_control {
+  DigitalControlIntent,
+  SignalName,
+  board_power_interlock_intent,
+}
+import product.compute_board.analog {
+  AnalogCircuitIntent,
+  CapacitanceNanofarads,
+  ComponentInstanceIdentity,
+  ComponentModelBinding,
+  ElectricalComponentInstance,
+  ElectricalModelCited,
+  ElectricalNet,
+  ElectricalTerminalRef,
+  IdealLumped,
+  IndependentVoltageSource,
+  NetIdentity,
+  PassiveCapacitor,
+  PassiveResistor,
+  PotentialSourceVolts,
+  ResistanceKilohms,
+  TerminalIdentity,
+  terminal_ref,
+}
+import std.measure { Measure }
+
+data article_note: String = "ONE ARTICLE IDENTITY FEEDING EVERY INTERFACE. The analog slice, the digital control, the bonding topology, the platform-firmware contract and the physical and manufacturing standings are fields of ONE root, so a projection cannot quietly acquire its own private copy of the board. That is the property the whole design turns on and it is the one that decays silently: two projections each holding their own fixture agree until someone edits one of them, and nothing reports the divergence because there was never a shared referent to disagree with. THE ARTICLE IS DELIBERATELY SMALL — a two-rail power-good and reset interlock — and is a real future motherboard subassembly rather than a demonstration. It does not claim to implement the Altra power sequence; it crosses every interface that sequence will need, which is a different and more useful thing to have finished."
+
+// ELECTRICAL REFERENCES ARE NOT ONE THING, and fusing them into a single `Ground` is the
+// modelling error this type exists to prevent. A power return, a signal reference, a chassis
+// bond, protective earth and a cable-shield termination are five distinct relations with
+// different currents, different safety consequences and different physical realizations. They
+// are routinely all drawn with the same triangle and then discovered to be different during
+// bring-up, or worse, after an incident.
+//
+// The mounting-hole case is the one worth stating explicitly: a metal standoff bonds the board
+// to chassis ONLY when a declared bonding relation says it does. Mechanical support and
+// electrical bonding are separate facts about the same hole, and a model that infers the second
+// from the first has decided a safety property by accident.
+// The endpoints are IDENTITIES, not prose. An earlier revision carried every endpoint as a bare
+// NonEmptyStr, which made "is this bond attached to the same terminal the circuit nets" a
+// spelling coincidence between two independently authored strings rather than a decidable join
+// — and a bond that referred to a terminal no component owns was perfectly constructible.
+// Electrical endpoints reuse the analog module's identities so the join is the same one the
+// SPICE projection performs; board and chassis features get their own brands because a chassis
+// feature is not a circuit node and the two must never be comparable.
+type BoardFeatureIdentity = NonEmptyStr where brand("BoardFeatureIdentity")
+
+type ChassisFeatureIdentity = NonEmptyStr where brand("ChassisFeatureIdentity")
+
+type EarthSourceIdentity = NonEmptyStr where brand("EarthSourceIdentity")
+
+type ShieldIdentity = NonEmptyStr where brand("ShieldIdentity")
+
+// A chassis-level bond is either something this board DECLARES it requires of its enclosure, or
+// something an integration has been OBSERVED to provide. They are not the same claim and were
+// fused in the earlier revision: a required protective-earth bond recorded as though it existed
+// is a safety property asserted by authoring it. A proposed bond carries no evidence; an
+// observed one names who observed it.
+type ChassisBondStanding
+  = ChassisBondProposed
+  | ChassisBondObserved { observer: NonEmptyStr }
+
+type ElectricalBond
+  = PowerReturnConnection { domain: NetIdentity, terminal: ElectricalTerminalRef }
+  | SignalReferenceConnection { signal_class: NetIdentity, terminal: ElectricalTerminalRef }
+  | ChassisBond {
+      board_feature: BoardFeatureIdentity,
+      chassis_feature: ChassisFeatureIdentity,
+      standing: ChassisBondStanding,
+    }
+  | ProtectiveEarthBond {
+      chassis_feature: ChassisFeatureIdentity,
+      earth_source: EarthSourceIdentity,
+      standing: ChassisBondStanding,
+    }
+  | ShieldTermination {
+      shield: ShieldIdentity,
+      chassis_feature: ChassisFeatureIdentity,
+      standing: ChassisBondStanding,
+    }
+
+// Board-level preconditions for host firmware to START. These are facts the BOARD establishes,
+// and the distinction from what firmware then DOES is load-bearing: PowerPermitAsserted and
+// ResetReleased are observable at the board, while "UEFI executed", "DDR trained" and "devices
+// enumerated" are later observations belonging to entirely different subjects. A contract that
+// let the first imply the second would report a booting machine on the strength of a released
+// reset line.
+type HostFirmwareStartPrecondition
+  = PowerPermitAsserted
+  | ResetReleased
+  | BootStorageReadable
+  | RecoveryRequestObservable
+  | ConsoleAvailable
+
+// Trust is TWO simultaneous standings, not one choice among three. An earlier revision made
+// "the development image is unsigned" and "production signing is unavailable" alternatives in
+// one coproduct, so recording either erased the other — and both are true at once today. They
+// are also owned differently: the first is what we build, the second is what the project can
+// obtain.
+type DevelopmentImageTrust
+  = DevelopmentUnsigned
+  | DevelopmentTestKey { key_identity: NonEmptyStr }
+
+type ProductionSigningStanding
+  = ProductionSigningUnavailable { reason: NonEmptyStr }
+  | ProductionSigningAvailable { authority: NonEmptyStr }
+
+// The SPI-NOR boundary is first-class rather than generic "BIOS flash" prose because its access
+// and write-protection policy has had real security consequences on this exact processor family.
+// Update access, write protection and recovery are therefore separate declared facts.
+type FirmwareWriteProtection
+  = WriteProtectionUnmodelled { reason: NonEmptyStr }
+  | HardwareWriteProtect { control: NonEmptyStr }
+
+type PlatformFirmwareContract {
+  start_preconditions: List<HostFirmwareStartPrecondition>
+  boot_storage: NonEmptyStr
+  reset_owner: NonEmptyStr
+  console: NonEmptyStr
+  recovery_path: NonEmptyStr
+  write_protection: FirmwareWriteProtection
+  development_image_trust: DevelopmentImageTrust
+  production_signing: ProductionSigningStanding
+}
+
+// The physical interface EXISTS with typed pending causes rather than prose, and an earlier
+// revision named the WRONG cause: it said Millimeter is unsigned, therefore an interior board
+// origin is unrepresentable, therefore an operator ruling on signedness is required. No such
+// ruling is open. SPATIAL-2 (gunbc#8091, branch spatial-2-affine) has already decided it —
+// Millimeter stays a nonnegative magnitude, SignedMillimeterComponent is the signed component
+// on an oriented axis, and the coordinate/displacement distinction lives in Point versus Vector
+// and their operations rather than in two scalar aliases. So the blocker is that the carrier
+// has not LANDED, which is a different fact with a different remedy than a decision being open.
+//
+// What genuinely remains beyond that landing is the sub-millimetre quantum — #8091 fixes the
+// quantum at millimetres, which cannot express a 0.5 mm pitch or a 100 um trace — and the
+// shape/topology work that follows it. Each is its own cause so a reader can tell which one
+// moved.
+type PhysicalRealizationPendingCause
+  = RequiresSpatialAffineSubstrateLanded
+  | RequiresExactSubMillimeterCoordinateQuantum
+  | RequiresShapeAndTopology
+  | RequiresPackageFootprintAuthority
+
+type PhysicalRealizationStanding
+  = PhysicalRealizationPending { causes: List<PhysicalRealizationPendingCause> }
+  | PhysicalRealizationAdmitted { outline: NonEmptyStr }
+
+type ManufacturingRealizationStanding
+  = ManufacturingProfileUnselected { pending: NonEmptyStr }
+  | ManufacturingProfileSelected { fabricator: NonEmptyStr, authority: ExternalAuthority }
+
+type BoardArticleIdentity {
+  name: NonEmptyStr
+  revision: NonEmptyStr
+}
+
+type BoardPowerInterfaceArticle {
+  identity: BoardArticleIdentity
+  analog: AnalogCircuitIntent
+  model_bindings: List<ComponentModelBinding>
+  reference_net: NetIdentity
+  digital_control: DigitalControlIntent
+  bonds: List<ElectricalBond>
+  platform_firmware: PlatformFirmwareContract
+  physical: PhysicalRealizationStanding
+  manufacturing: ManufacturingRealizationStanding
+}
+
+data board_power_interlock_firmware_contract: PlatformFirmwareContract = PlatformFirmwareContract {
+  start_preconditions: [PowerPermitAsserted, ResetReleased, RecoveryRequestObservable],
+  boot_storage: "host SPI-NOR, addressed by the platform firmware contract rather than by this board",
+  reset_owner: "board interlock asserts reset_release; the host owns everything after it",
+  console: "serial console header",
+  recovery_path: "recovery request input observable at the interlock",
+  write_protection: WriteProtectionUnmodelled {
+    reason: "SPI-NOR write-protect control is a host-board fact this article does not carry; it is declared unmodelled rather than defaulted to protected",
+  },
+  development_image_trust: DevelopmentUnsigned,
+  production_signing: ProductionSigningUnavailable {
+    reason: "no production signing authority exists for this project and no key material is modelled",
+  },
+}
+
+// The two electrical bonds name the SAME terminals the analog circuit nets, by identity, so the
+// join is decidable. The chassis bond is PROPOSED: this board requires an enclosure bond at
+// mounting hole 1 and no integration has been observed providing one, which is a requirement
+// this article states rather than a connection it claims exists.
+data board_power_interlock_bonds: List<ElectricalBond> = [
+  PowerReturnConnection {
+    domain: power_return_net,
+    terminal: terminal_ref(component: logic_supply_source.identity, terminal: logic_supply_source.negative_terminal),
+  },
+  SignalReferenceConnection {
+    signal_class: pg_raw_net,
+    terminal: terminal_ref(component: pg_conditioning_capacitor.identity, terminal: pg_conditioning_capacitor.positive_terminal),
+  },
+  ChassisBond {
+    board_feature: "mounting_hole_1" as BoardFeatureIdentity,
+    chassis_feature: "chassis_standoff_1" as ChassisFeatureIdentity,
+    standing: ChassisBondProposed,
+  },
+]
+
+data board_power_interlock_physical: PhysicalRealizationStanding = PhysicalRealizationPending {
+  causes: [
+    RequiresSpatialAffineSubstrateLanded,
+    RequiresExactSubMillimeterCoordinateQuantum,
+    RequiresShapeAndTopology,
+    RequiresPackageFootprintAuthority,
+  ],
+}
+
+data board_power_interlock_manufacturing: ManufacturingRealizationStanding = ManufacturingProfileUnselected {
+  pending: "no fabricator selected; the artifact set a profile would carry is modelled at extdeps.ipc.dpmx and extdeps.ucamco.gerber, and which semantics survive is decided by the selected fabricator's capability profile",
+}
+
+fn article_digital_control(a: BoardPowerInterfaceArticle) -> DigitalControlIntent {
+  a.digital_control
+}
+
+fn article_analog(a: BoardPowerInterfaceArticle) -> AnalogCircuitIntent {
+  a.analog
+}
+
+// Two receipts name the same article exactly when BOTH fields agree. Revision is part of the
+// comparison rather than a detail beside it: two revisions of one board share a name, and that
+// is precisely the case where a stale emission is most likely and least visible. An earlier
+// revision flattened the identity into a single "name rev N" label before handing it to a
+// projection, which made the join a string comparison over a spelling this module happened to
+// choose — and let a caller pass any string at all where the source article belonged.
+fn article_identity_eq(a: BoardArticleIdentity, b: BoardArticleIdentity) -> Bool {
+  (a.name as String) == (b.name as String) && (a.revision as String) == (b.revision as String)
+}
+
+// RUNG-HONEST NAMES. An earlier revision called these article_is_physically_realizable and
+// article_is_manufacturable, which overclaimed in both directions: carrying an outline is not a
+// physical realization, and selecting a fabricator profile establishes only which artifact
+// semantics that recipient consumes — not that the article has geometry, placement, routes,
+// stackup, a BOM, or any emitted artifact at all.
+fn article_physical_interface_admitted(a: BoardPowerInterfaceArticle) -> Bool {
+  match a.physical {
+    PhysicalRealizationAdmitted { outline: _ } => true
+    PhysicalRealizationPending { causes: _ } => false
+  }
+}
+
+fn article_manufacturing_profile_selected(a: BoardPowerInterfaceArticle) -> Bool {
+  match a.manufacturing {
+    ManufacturingProfileSelected { fabricator: _, authority: _ } => true
+    ManufacturingProfileUnselected { pending: _ } => false
+  }
+}
+
+// THE CONCRETE ARTICLE, IN THE PRODUCT LAYER. An earlier revision declared the only instance
+// inside a witness module, so the production authority had no production instance and every
+// claim about "one article feeding both projections" was a statement about a test fixture. A
+// root that exists only in its own test is not a root.
+data pg_conditioning_resistor: ElectricalComponentInstance = ElectricalComponentInstance {
+  // The instance identity carries NO element letter. SPICE derives 'R' from the role, so an
+  // identity spelled "R1" would emit "RR1" — and the fix is not to strip a prefix at emission
+  // but to keep the target's naming convention out of the identity in the first place.
+  identity: "pg_cond" as ComponentInstanceIdentity,
+  part: "power-good conditioning resistor",
+  role: PassiveResistor,
+  positive_terminal: "1" as TerminalIdentity,
+  negative_terminal: "2" as TerminalIdentity,
+  value: ResistanceKilohms { magnitude: Measure { count: 10 } },
+}
+
+data pg_conditioning_capacitor: ElectricalComponentInstance = ElectricalComponentInstance {
+  identity: "pg_filt" as ComponentInstanceIdentity,
+  part: "power-good conditioning capacitor",
+  role: PassiveCapacitor,
+  positive_terminal: "1" as TerminalIdentity,
+  negative_terminal: "2" as TerminalIdentity,
+  value: CapacitanceNanofarads { magnitude: Measure { count: 100 } },
+}
+
+data logic_supply_source: ElectricalComponentInstance = ElectricalComponentInstance {
+  identity: "logic_in" as ComponentInstanceIdentity,
+  part: "logic supply input",
+  role: IndependentVoltageSource,
+  positive_terminal: "1" as TerminalIdentity,
+  negative_terminal: "2" as TerminalIdentity,
+  value: PotentialSourceVolts { magnitude: Measure { count: 12 } },
+}
+
+data pg_raw_net: NetIdentity = "pg_raw" as NetIdentity
+
+data power_return_net: NetIdentity = "power_return" as NetIdentity
+
+data power_good_conditioning_intent: AnalogCircuitIntent = AnalogCircuitIntent {
+  title: "power-good conditioning network",
+  components: [logic_supply_source, pg_conditioning_resistor, pg_conditioning_capacitor],
+  nets: [
+    ElectricalNet {
+      identity: pg_raw_net,
+      members: [
+        terminal_ref(component: "logic_in" as ComponentInstanceIdentity, terminal: "1" as TerminalIdentity),
+        terminal_ref(component: "pg_cond" as ComponentInstanceIdentity, terminal: "1" as TerminalIdentity),
+        terminal_ref(component: "pg_filt" as ComponentInstanceIdentity, terminal: "1" as TerminalIdentity),
+      ],
+    },
+    ElectricalNet {
+      identity: power_return_net,
+      members: [
+        terminal_ref(component: "logic_in" as ComponentInstanceIdentity, terminal: "2" as TerminalIdentity),
+        terminal_ref(component: "pg_cond" as ComponentInstanceIdentity, terminal: "2" as TerminalIdentity),
+        terminal_ref(component: "pg_filt" as ComponentInstanceIdentity, terminal: "2" as TerminalIdentity),
+      ],
+    },
+  ],
+}
+
+data power_good_model_bindings: List<ComponentModelBinding> = [
+  ComponentModelBinding {
+    component: "logic_in" as ComponentInstanceIdentity,
+    standing: ElectricalModelCited { model_card: "ideal independent source at declared fidelity", fidelity: IdealLumped },
+  },
+  ComponentModelBinding {
+    component: "pg_cond" as ComponentInstanceIdentity,
+    standing: ElectricalModelCited { model_card: "ideal lumped passive at declared fidelity", fidelity: IdealLumped },
+  },
+  ComponentModelBinding {
+    component: "pg_filt" as ComponentInstanceIdentity,
+    standing: ElectricalModelCited { model_card: "ideal lumped passive at declared fidelity", fidelity: IdealLumped },
+  },
+]
+
+data power_interlock_article: BoardPowerInterfaceArticle = BoardPowerInterfaceArticle {
+  identity: BoardArticleIdentity { name: "board power interlock", revision: "0" },
+  analog: power_good_conditioning_intent,
+  model_bindings: power_good_model_bindings,
+  reference_net: power_return_net,
+  digital_control: board_power_interlock_intent,
+  bonds: board_power_interlock_bonds,
+  platform_firmware: board_power_interlock_firmware_contract,
+  physical: board_power_interlock_physical,
+  manufacturing: board_power_interlock_manufacturing,
+}

@@ -12,7 +12,18 @@ kind	subject	wall_ms_basis	run_ref	host_class	clock
 # diff-denominated and stay BasisAbsent by design; module rows are
 # (module_typecheck, <module path>).
 # UNSEEDED ON PURPOSE (the #7475 discipline): rows may only cite an arm64 srv-fleet
-# run's OWN [compile-clean-cost] receipt lines, and no fleet run has emitted them
-# yet — run 30602520347's walls predate this receipt and its per-module lines were
-# rounded render text, not receipt rows. Until seeded, every row counts BasisAbsent
-# in the [compile-clean-cost-drift] summary — loud, never read as no-drift.
+# run's OWN receipt rows, and no fleet run has produced them yet — run 30602520347's
+# walls predate this receipt and its per-module lines were rounded render text, not
+# receipt rows. Until seeded, every row counts BasisAbsent — loud, never read as
+# no-drift.
+# SEEDING SOURCE, CORRECTED: download the run's floor-receipts artifact and read
+# target/floor-compile-clean-cost-receipt.tsv (pass + module_typecheck rows); the
+# BasisAbsent count is the [receipt] floor compile-clean cost drift summary line, and
+# the full per-row detail is floor-compile-clean-cost-drift-receipt.tsv in the same
+# artifact. These lines previously said to scrape [compile-clean-cost] and
+# [compile-clean-cost-drift] log lines. Those tags have ZERO emit sites now — the
+# receipt bodies were mirrored to stderr only because the files had no way off the
+# runner, and gunbc.ci_workflow ci_floor_receipts_upload_step gave them one. An
+# operator following the old instruction would grep a log and find nothing, so this
+# is corrected rather than left as a second seeding authority beside
+# gunbc.ci_spec gunbc_ci_compile_clean_clamp_note (DESIGN section 3).

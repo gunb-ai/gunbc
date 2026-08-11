@@ -616,13 +616,15 @@ fn idb_ambiguity_candidates_for_two_providers() -> AmbiguousBindingCandidates<Oc
     expected_references: 2,
   ) {
     IdbBridgeProjected {
-      projection: ReferenceDerivedDependencyProjectionBindingRefused {
-        population: ReferencePopulationRefused { first_failure: failure, more_failures: _ },
-      },
+      projection: ReferenceDerivedDependencyProjectionBindingRefused { population: population },
     } =>
-      match failure {
-        ReferenceBindingProjectionAmbiguous { occurrence: _, candidates: candidates } =>
-          Present { value: candidates }
+      match population {
+        ReferencePopulationRefused { first_failure: failure, more_failures: _ } =>
+          match failure {
+            ReferenceBindingProjectionAmbiguous { occurrence: _, candidates: candidates } =>
+              Present { value: candidates }
+            _ => none
+          }
         _ => none
       }
     _ => none
@@ -661,6 +663,12 @@ test fn witness_two_providers_refuse_as_ambiguous_naming_both_candidates() -> Bo
         && length(declared) == 2
   }
 }
+
+data idb_nested_rc_pattern_emitter_defect: String = "EMITTER DEFECT, located rather than routed around silently. The ambiguity control was first authored as one nested pattern -- ReferenceDerivedDependencyProjectionBindingRefused { population: ReferencePopulationRefused { first_failure } } -- which the v1 interpreter accepts and the Rust emitter lowers to `let ... = projection.as_ref()` matching an Rc<BoundReferencePopulation> field against a bare BoundReferencePopulation pattern (E0308, emitted at src/v1/stage0/src/v1_tests_claim_import_deletion_bridge_witness.rs). So a nested coproduct pattern through a reference-counted field does not survive emission, and regen --verify reports divergence 0 while the crate does not compile: byte-fidelity is not target-language validity.
+
+It is written here as two sequential matches, which is semantically identical and is the idiom the surrounding corpus already uses. That is NOT a repair, and it is recorded rather than left implicit because the class is the open Rc wrap-decision lane, whose whole subject is that the emitter decides Rc wrapping without a structural predicate. This control is not the place to change a load-bearing emitter.
+
+DISSOLVE-ON: the wrap-decision predicate lands and a nested pattern through an Rc field emits valid Rust; then this note deletes and the nesting may collapse back to one pattern."
 
 data idb_module_storage_note: String = "MODULE-TO-FILE CONTRADICTIONS MUST REFUSE, not resolve to one of the two answers. Two candidate files declare the SAME module path, so the module-to-file index has no single answer for it. That is a contradiction about storage, and either arm that catches it is a typed refusal -- what may never happen is a successful projection that silently picked a file, because the loader would then bring in one home and ignore the other.
 

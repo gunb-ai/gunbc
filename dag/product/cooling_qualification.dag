@@ -1,0 +1,226 @@
+module product.cooling_qualification
+
+import std.types { Bool, List, String, Int }
+import std.measure { Watt, measure_le }
+import product.placement_supply { HostIdentity, PhysicalAssetIdentity }
+import extdeps.cooling.types { CpuCoolerCatalogRow }
+import extdeps.cpu.types { CpuSocket, CpuModelCatalogRow }
+import extdeps.boards.types { BaseboardModel }
+
+// A CPU cooler is the heat-pickup realization of an installed processor. WHICH cooler is
+// installed on which host is a fleet fact (gunbc.fleet_physical_inventory); whether that
+// installed pairing is admissible against the cited catalog rows is a product decision, and
+// this module owns only the second. The cooler row, the processor row, and the baseboard model
+// are consumed from their existing extdeps authorities — no cooling, CPU, or board fact is
+// restated here.
+//
+// The verdict this module reaches is deliberately narrow, and its name says so:
+// CoolingCatalogCompatible is a CATALOG preflight, never a thermal outcome. The catalog can
+// establish exactly three things — the cooler's socket matches the processor's socket, the
+// cooler vendor's declared supported-board population contains the installed baseboard, and
+// the cooler's maximum design power covers the processor's TDP. What it CANNOT establish, and
+// what therefore stays a live observation on the BMC path: installed mounting quality,
+// thermal-interface application, DIMM/VRM/NIC airflow, sustained workload temperature,
+// throttling absence, acoustic acceptance, and room heat-rejection adequacy. A consumer that
+// reads CoolingCatalogCompatible as "this host runs cool" has substituted a purchase record
+// for a measurement.
+
+type InstalledCoolingRealization {
+  host: HostIdentity
+  cooler_asset: PhysicalAssetIdentity
+  cooler: CpuCoolerCatalogRow
+  processor: CpuModelCatalogRow
+  baseboard_model: BaseboardModel
+}
+
+type CoolingCatalogRefusalCause
+  = CoolerSocketDoesNotMatchProcessorSocket {
+      cooler_socket: CpuSocket
+      processor_socket: CpuSocket
+    }
+  | BaseboardNotInCoolerSupportedPopulation {
+      baseboard_model: BaseboardModel
+    }
+  | CoolerDesignPowerBelowProcessorTdp {
+      cooler_max_design_power: Watt
+      processor_tdp: Watt
+    }
+
+type CoolingCatalogVerdict
+  = CoolingCatalogCompatible {
+      host: HostIdentity
+      cooler_asset: PhysicalAssetIdentity
+    }
+  | CoolingCatalogRefused {
+      host: HostIdentity
+      cause: CoolingCatalogRefusalCause
+    }
+  | InstalledCoolingUnobserved {
+      host: HostIdentity
+    }
+  | InstalledCoolingAmbiguous {
+      host: HostIdentity
+      candidate_count: Int
+    }
+
+fn cooler_supports_baseboard(
+  supported: List<BaseboardModel>,
+  baseboard_model: BaseboardModel,
+) -> Bool {
+  if supported.length() == 0 {
+    false
+  } else {
+    match supported.first() {
+      Absent => false
+      Present { value: candidate } => {
+        if candidate == baseboard_model {
+          true
+        } else {
+          cooler_supports_baseboard(
+            supported: supported.skip(n: 1),
+            baseboard_model: baseboard_model,
+          )
+        }
+      }
+    }
+  }
+}
+
+// Socket equality is decided on the grounded CpuSocket record — package family AND contact
+// count — never on a label. Two sockets whose names print alike but whose contact counts
+// differ are different sockets, and this comparison sees that.
+fn cooler_socket_matches_processor_socket(
+  cooler_socket: CpuSocket,
+  processor_socket: CpuSocket,
+) -> Bool {
+  cooler_socket.package == processor_socket.package
+    && cooler_socket.contact_count == processor_socket.contact_count
+}
+
+// measure_le admits only operands of the SAME quantity and scale, so "design power covers TDP"
+// is dimensionally checked by construction: a Celsius or a bare count cannot enter this
+// comparison.
+fn cooler_design_power_covers_processor_tdp(
+  cooler_max_design_power: Watt,
+  processor_tdp: Watt,
+) -> Bool {
+  measure_le(a: processor_tdp, b: cooler_max_design_power)
+}
+
+fn cooling_catalog_verdict(
+  realization: InstalledCoolingRealization,
+) -> CoolingCatalogVerdict {
+  if !cooler_socket_matches_processor_socket(
+    cooler_socket: realization.cooler.socket,
+    processor_socket: realization.processor.socket,
+  ) {
+    CoolingCatalogRefused {
+      host: realization.host,
+      cause: CoolerSocketDoesNotMatchProcessorSocket {
+        cooler_socket: realization.cooler.socket,
+        processor_socket: realization.processor.socket,
+      },
+    }
+  } else if !cooler_supports_baseboard(
+    supported: realization.cooler.supported_motherboards,
+    baseboard_model: realization.baseboard_model,
+  ) {
+    CoolingCatalogRefused {
+      host: realization.host,
+      cause: BaseboardNotInCoolerSupportedPopulation {
+        baseboard_model: realization.baseboard_model,
+      },
+    }
+  } else if !cooler_design_power_covers_processor_tdp(
+    cooler_max_design_power: realization.cooler.max_design_power,
+    processor_tdp: realization.processor.tdp_watts,
+  ) {
+    CoolingCatalogRefused {
+      host: realization.host,
+      cause: CoolerDesignPowerBelowProcessorTdp {
+        cooler_max_design_power: realization.cooler.max_design_power,
+        processor_tdp: realization.processor.tdp_watts,
+      },
+    }
+  } else {
+    CoolingCatalogCompatible {
+      host: realization.host,
+      cooler_asset: realization.cooler_asset,
+    }
+  }
+}
+
+// Absence of an installed-cooling row is NOT compatibility. A host with no modeled cooler
+// reaches InstalledCoolingUnobserved, which admits observation and refuses qualification — the
+// coverage obligation stays downstream and loud rather than defaulting to a pass.
+// COUNTS FIRST, then decides. The previous implementation walked the list and returned on the
+// FIRST row whose host matched, so two cooler rows accidentally bound to one host were resolved
+// by list order: whichever was written first won, silently, and the second cooler sat in the
+// inventory with no effect on any verdict. That is not a compatibility answer, it is an artifact
+// of authoring order, and it presented as a clean Compatible.
+//
+// This makes visible a relation the inventory previously only assumed: a host has AT MOST ONE
+// installed heat-pickup realization. Zero is Unobserved and refuses qualification; exactly one is
+// decided on its merits; more than one is a modelling error that must REFUSE rather than pick.
+// A host cannot carry two coolers on one socket, so two rows mean the inventory is wrong, and a
+// wrong inventory must never yield a thermal admission.
+fn installed_cooling_matches_for_host(
+  host: HostIdentity,
+  realizations: List<InstalledCoolingRealization>,
+) -> List<InstalledCoolingRealization> {
+  filter(realizations, r => r.host == host)
+}
+
+fn installed_cooling_verdict_for_host(
+  host: HostIdentity,
+  realizations: List<InstalledCoolingRealization>,
+) -> CoolingCatalogVerdict {
+  let matches = installed_cooling_matches_for_host(host: host, realizations: realizations)
+  if count(matches) == 0 {
+    InstalledCoolingUnobserved { host: host }
+  } else if count(matches) > 1 {
+    InstalledCoolingAmbiguous { host: host, candidate_count: count(matches) }
+  } else {
+    match matches.first() {
+      Absent => InstalledCoolingUnobserved { host: host }
+      Present { value: realization } => cooling_catalog_verdict(realization: realization)
+    }
+  }
+}
+
+fn cooling_catalog_verdict_admits_qualification(
+  verdict: CoolingCatalogVerdict,
+) -> Bool {
+  match verdict {
+    CoolingCatalogCompatible { host: _, cooler_asset: _ } => true
+    CoolingCatalogRefused { host: _, cause: _ } => false
+    InstalledCoolingUnobserved { host: _ } => false
+    InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
+  }
+}
+
+fn cooling_catalog_refusal_reason(verdict: CoolingCatalogVerdict) -> String {
+  match verdict {
+    CoolingCatalogCompatible { host: _, cooler_asset: _ } =>
+      "installed cooling is catalog-compatible"
+    InstalledCoolingAmbiguous { host: _, candidate_count: _ } =>
+      "more than one installed cooling realization is modeled for this host: a host carries at most one heat-pickup realization, so this is an inventory error and must refuse rather than resolve by list order"
+    InstalledCoolingUnobserved { host: _ } =>
+      "no installed cooling realization is modeled for this host: thermal qualification cannot be claimed until the cooler is an exact PhysicalAsset with host containment"
+    CoolingCatalogRefused { host: _, cause: cause } =>
+      match cause {
+        CoolerSocketDoesNotMatchProcessorSocket {
+          cooler_socket: _,
+          processor_socket: _,
+        } => "installed cooler socket does not match the installed processor socket"
+        BaseboardNotInCoolerSupportedPopulation { baseboard_model: _ } =>
+          "installed baseboard is not in the cooler vendor's supported-board population"
+        CoolerDesignPowerBelowProcessorTdp {
+          cooler_max_design_power: _,
+          processor_tdp: _,
+        } => "cooler maximum design power does not cover processor TDP"
+      }
+  }
+}
+
+data cooling_catalog_scope_note: String = "CoolingCatalogCompatible is a preflight over cited catalog rows and nothing more. It is never evidence that an installed cooler actually holds a processor within its thermal limits: mounting quality, thermal-interface application, DIMM/VRM/NIC airflow, sustained workload temperature, throttling, acoustics, and room heat rejection are all outside what a purchase record can decide. The live BMC thermal/tach readback remains the only source of those facts, and a compatible catalog verdict must never be substituted for it — a consumer needs BOTH, and this module supplies exactly one."
