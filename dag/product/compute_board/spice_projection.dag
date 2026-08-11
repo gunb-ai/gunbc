@@ -9,6 +9,8 @@ import product.compute_board.analog {
   ComponentInstanceIdentity,
   ComponentModelBinding,
   ElectricalComponentInstance,
+  ElectricalTerminalRef,
+  component_terminals,
   ElectricalModelAbsent,
   ElectricalModelCited,
   ElectricalModelStanding,
@@ -20,6 +22,7 @@ import product.compute_board.analog {
   PassiveResistor,
   PotentialSourceVolts,
   ResistanceKilohms,
+  net_membership_count,
   net_of_terminal,
   terminal_ref,
 }
@@ -35,6 +38,8 @@ type SpiceProjectionRefusal
   | ModelFidelityNotEmittable { part: NonEmptyStr, model_card: NonEmptyStr }
   | ComponentModelBindingMissing { part: NonEmptyStr }
   | TerminalOnNoNet { part: NonEmptyStr }
+  | TerminalOnMultipleNets { part: NonEmptyStr }
+  | DuplicateModelBinding { component: NonEmptyStr }
 
 // The receipt carries the article identity, so an emission is traceable to the root that
 // produced it. Without this, two unrelated articles with equal extracted fields produce
@@ -75,6 +80,17 @@ fn binding_for(bindings: List<ComponentModelBinding>, c: ElectricalComponentInst
   })
 }
 
+// HOW MANY bindings claim this component. binding_for answers with the FIRST match, so two rows
+// disagreeing about one component's model resolved silently by list order — an ideal-lumped row
+// and a vendor-subcircuit row for the same part emit or refuse depending on which was authored
+// first, which is a verdict decided by an editing accident. Ambiguity is not a model standing
+// and is refused rather than resolved.
+fn binding_count(bindings: List<ComponentModelBinding>, c: ElectricalComponentInstance) -> Nat {
+  fold(bindings, init: 0, f: fn(acc, b) {
+    if (b.component as String) == (c.identity as String) { acc + 1 } else { acc }
+  })
+}
+
 fn standing_refusal(c: ElectricalComponentInstance, s: ElectricalModelStanding) -> SpiceProjectionRefusal? {
   match s {
     ElectricalModelAbsent => Present { value: ElectricalModelUnavailable { part: c.part } }
@@ -86,15 +102,36 @@ fn standing_refusal(c: ElectricalComponentInstance, s: ElectricalModelStanding) 
   }
 }
 
-fn terminals_are_netted(intent: AnalogCircuitIntent, c: ElectricalComponentInstance) -> Bool {
-  match net_of_terminal(intent: intent, t: terminal_ref(component: c.identity, terminal: c.positive_terminal)) {
-    Absent => false
-    Present { value: _ } =>
-      match net_of_terminal(intent: intent, t: terminal_ref(component: c.identity, terminal: c.negative_terminal)) {
-        Absent => false
-        Present { value: _ } => true
-      }
+// A terminal sits in exactly one of three states and they have DIFFERENT remedies: on no net
+// (floating), on one net (netted), or on several (shorted between them). The earlier check was a
+// Bool over "did net_of_terminal answer", which collapsed the third into the second — so a
+// terminal shorting two nets emitted a deck naming whichever net was authored first, and the
+// deck simulated cleanly while describing a board that is not the one modelled. That is the
+// exact failure this module's note claims to prevent for the floating case, left open for the
+// shorted one.
+fn terminal_netting_refusal(
+  intent: AnalogCircuitIntent,
+  c: ElectricalComponentInstance,
+  t: ElectricalTerminalRef
+) -> SpiceProjectionRefusal? {
+  let n = net_membership_count(intent: intent, t: t)
+  if n == 0 {
+    Present { value: TerminalOnNoNet { part: c.part } }
+  } else {
+    if n == 1 { none } else { Present { value: TerminalOnMultipleNets { part: c.part } } }
   }
+}
+
+fn terminals_netting_refusal(
+  intent: AnalogCircuitIntent,
+  c: ElectricalComponentInstance
+) -> SpiceProjectionRefusal? {
+  fold(component_terminals(c: c), init: none, f: fn(acc, t) {
+    match acc {
+      Present { value: r } => Present { value: r }
+      Absent => terminal_netting_refusal(intent: intent, c: c, t: t)
+    }
+  })
 }
 
 fn component_refusal(
@@ -102,18 +139,17 @@ fn component_refusal(
   bindings: List<ComponentModelBinding>,
   c: ElectricalComponentInstance
 ) -> SpiceProjectionRefusal? {
-  match binding_for(bindings: bindings, c: c) {
-    Absent => Present { value: ComponentModelBindingMissing { part: c.part } }
-    Present { value: s } =>
-      match standing_refusal(c: c, s: s) {
-        Present { value: r } => Present { value: r }
-        Absent =>
-          if terminals_are_netted(intent: intent, c: c) {
-            none
-          } else {
-            Present { value: TerminalOnNoNet { part: c.part } }
-          }
-      }
+  if binding_count(bindings: bindings, c: c) > 1 {
+    Present { value: DuplicateModelBinding { component: c.identity as NonEmptyStr } }
+  } else {
+    match binding_for(bindings: bindings, c: c) {
+      Absent => Present { value: ComponentModelBindingMissing { part: c.part } }
+      Present { value: s } =>
+        match standing_refusal(c: c, s: s) {
+          Present { value: r } => Present { value: r }
+          Absent => terminals_netting_refusal(intent: intent, c: c)
+        }
+    }
   }
 }
 
