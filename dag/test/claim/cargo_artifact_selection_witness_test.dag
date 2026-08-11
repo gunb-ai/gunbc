@@ -1,0 +1,278 @@
+module test.claim.cargo_artifact_selection_witness
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data cargo_artifact_selection_witness_note: String = "These claims exist because service cargo.Build reports success, stdout and stderr and NEVER the path of the artifact it produced, so a consumer had to assemble that path by convention — and a stale binary at the conventional location satisfies a convention-derived observation completely, giving a digest honestly computed over the wrong bytes. The decode under test reads the path cargo itself reported. The discriminating claims are the refusals, not the happy path: a first-wins selector, a last-wins member lookup, and a decoder that skips lines it cannot read all pass the selection claim below while being exactly the defects that would let a wrong or absent artifact read as a good one. Line numbers in the refusals are asserted as EXACT values rather than merely non-selection, because a decoder that refuses with the wrong location sends the reader to the wrong line of a build log."
+
+data artifact_line_gunbc: String = "\{\"reason\":\"compiler-artifact\",\"package_id\":\"v1-compiler 0.1.0\",\"target\":\{\"name\":\"gunbc\",\"kind\":[\"bin\"]\},\"executable\":\"/w/target/debug/gunbc\",\"fresh\":false\}"
+
+data artifact_line_gunbc_second: String = "\{\"reason\":\"compiler-artifact\",\"package_id\":\"v1-compiler 0.1.0\",\"target\":\{\"name\":\"gunbc\",\"kind\":[\"bin\"]\},\"executable\":\"/w/target/debug/gunbc-other\",\"fresh\":true\}"
+
+data artifact_line_library: String = "\{\"reason\":\"compiler-artifact\",\"target\":\{\"name\":\"v1_compiler\",\"kind\":[\"lib\"]\},\"executable\":null\}"
+
+data artifact_line_empty_path: String = "\{\"reason\":\"compiler-artifact\",\"target\":\{\"name\":\"gunbc\",\"kind\":[\"bin\"]\},\"executable\":\"\"\}"
+
+data compiler_message_line: String = "\{\"reason\":\"compiler-message\",\"message\":\{\"rendered\":\"warning: unused\"\}\}"
+
+data build_script_line: String = "\{\"reason\":\"build-script-executed\",\"package_id\":\"libc 0.2\"\}"
+
+data build_finished_line: String = "\{\"reason\":\"build-finished\",\"success\":true\}"
+
+data reasonless_line: String = "\{\"package_id\":\"v1-compiler 0.1.0\",\"executable\":\"/w/target/debug/gunbc\"\}"
+
+data duplicate_reason_line: String = "\{\"reason\":\"compiler-message\",\"reason\":\"compiler-artifact\",\"target\":\{\"name\":\"gunbc\"\},\"executable\":\"/w/target/debug/gunbc\"\}"
+
+fn stream_of(lines: List<String>) -> String {
+  join(lines, "\n")
+}
+
+fn selected_path_or_empty(selection: CargoArtifactSelection) -> String {
+  match extdeps.cargo_message.cargo_artifact_selected_path(selection: selection) {
+    Present { value: p } => p
+    Absent => ""
+  }
+}
+
+fn select_from(lines: List<String>, target_name: String) -> CargoArtifactSelection {
+  extdeps.cargo_message.cargo_select_artifact_executable(
+    stdout: stream_of(lines: lines),
+    target_name: target_name
+  )
+}
+
+test fn selects_the_executable_path_cargo_reported() -> Bool {
+  selected_path_or_empty(
+    selection: select_from(
+      lines: [build_script_line, artifact_line_gunbc, build_finished_line],
+      target_name: "gunbc"
+    )
+  ) == "/w/target/debug/gunbc"
+}
+
+test fn recognized_other_reasons_are_skipped_not_refused() -> Bool {
+  selected_path_or_empty(
+    selection: select_from(
+      lines: [
+        compiler_message_line,
+        build_script_line,
+        artifact_line_library,
+        artifact_line_gunbc,
+        build_finished_line
+      ],
+      target_name: "gunbc"
+    )
+  ) == "/w/target/debug/gunbc"
+}
+
+test fn an_artifact_for_a_different_target_does_not_satisfy_the_request() -> Bool {
+  match select_from(
+    lines: [artifact_line_library, build_finished_line],
+    target_name: "gunbc"
+  ) {
+    CargoArtifactAbsent { target_name: t } => t == "gunbc"
+    CargoArtifactSelected { executable: _ } => false
+    CargoArtifactAmbiguous { target_name: _, count: _ } => false
+    CargoArtifactWithoutExecutable { target_name: _ } => false
+    CargoArtifactExecutablePathEmpty { target_name: _ } => false
+    CargoArtifactExecutableNotAString { target_name: _ } => false
+    CargoMessageLineUnparseable { line_number: _ } => false
+    CargoMessageLineNotAnObject { line_number: _ } => false
+    CargoMessageReasonAbsent { line_number: _ } => false
+    CargoMessageReasonNotAString { line_number: _ } => false
+    CargoMessageMemberDuplicated { line_number: _, key: _ } => false
+    CargoMessageTargetNotAnObject { line_number: _ } => false
+    CargoMessageTargetNameAbsent { line_number: _ } => false
+    CargoMessageTargetNameNotAString { line_number: _ } => false
+  }
+}
+
+test fn two_artifacts_for_one_target_refuse_instead_of_picking_one() -> Bool {
+  match select_from(
+    lines: [artifact_line_gunbc, artifact_line_gunbc_second, build_finished_line],
+    target_name: "gunbc"
+  ) {
+    CargoArtifactAmbiguous { target_name: t, count: n } => t == "gunbc" && n == 2
+    CargoArtifactSelected { executable: _ } => false
+    CargoArtifactAbsent { target_name: _ } => false
+    CargoArtifactWithoutExecutable { target_name: _ } => false
+    CargoArtifactExecutablePathEmpty { target_name: _ } => false
+    CargoArtifactExecutableNotAString { target_name: _ } => false
+    CargoMessageLineUnparseable { line_number: _ } => false
+    CargoMessageLineNotAnObject { line_number: _ } => false
+    CargoMessageReasonAbsent { line_number: _ } => false
+    CargoMessageReasonNotAString { line_number: _ } => false
+    CargoMessageMemberDuplicated { line_number: _, key: _ } => false
+    CargoMessageTargetNotAnObject { line_number: _ } => false
+    CargoMessageTargetNameAbsent { line_number: _ } => false
+    CargoMessageTargetNameNotAString { line_number: _ } => false
+  }
+}
+
+test fn a_null_executable_is_its_own_state_not_an_absence() -> Bool {
+  match select_from(
+    lines: [artifact_line_library, build_finished_line],
+    target_name: "v1_compiler"
+  ) {
+    CargoArtifactWithoutExecutable { target_name: t } => t == "v1_compiler"
+    CargoArtifactSelected { executable: _ } => false
+    CargoArtifactAbsent { target_name: _ } => false
+    CargoArtifactAmbiguous { target_name: _, count: _ } => false
+    CargoArtifactExecutablePathEmpty { target_name: _ } => false
+    CargoArtifactExecutableNotAString { target_name: _ } => false
+    CargoMessageLineUnparseable { line_number: _ } => false
+    CargoMessageLineNotAnObject { line_number: _ } => false
+    CargoMessageReasonAbsent { line_number: _ } => false
+    CargoMessageReasonNotAString { line_number: _ } => false
+    CargoMessageMemberDuplicated { line_number: _, key: _ } => false
+    CargoMessageTargetNotAnObject { line_number: _ } => false
+    CargoMessageTargetNameAbsent { line_number: _ } => false
+    CargoMessageTargetNameNotAString { line_number: _ } => false
+  }
+}
+
+test fn an_unreadable_line_refuses_the_decode_and_names_its_line() -> Bool {
+  match select_from(
+    lines: [build_script_line, "not json at all", artifact_line_gunbc],
+    target_name: "gunbc"
+  ) {
+    CargoMessageLineUnparseable { line_number: n } => n == 2
+    CargoArtifactSelected { executable: _ } => false
+    CargoArtifactAbsent { target_name: _ } => false
+    CargoArtifactAmbiguous { target_name: _, count: _ } => false
+    CargoArtifactWithoutExecutable { target_name: _ } => false
+    CargoArtifactExecutablePathEmpty { target_name: _ } => false
+    CargoArtifactExecutableNotAString { target_name: _ } => false
+    CargoMessageLineNotAnObject { line_number: _ } => false
+    CargoMessageReasonAbsent { line_number: _ } => false
+    CargoMessageReasonNotAString { line_number: _ } => false
+    CargoMessageMemberDuplicated { line_number: _, key: _ } => false
+    CargoMessageTargetNotAnObject { line_number: _ } => false
+    CargoMessageTargetNameAbsent { line_number: _ } => false
+    CargoMessageTargetNameNotAString { line_number: _ } => false
+  }
+}
+
+test fn a_message_carrying_no_reason_refuses() -> Bool {
+  match select_from(
+    lines: [reasonless_line, artifact_line_gunbc],
+    target_name: "gunbc"
+  ) {
+    CargoMessageReasonAbsent { line_number: n } => n == 1
+    CargoArtifactSelected { executable: _ } => false
+    CargoArtifactAbsent { target_name: _ } => false
+    CargoArtifactAmbiguous { target_name: _, count: _ } => false
+    CargoArtifactWithoutExecutable { target_name: _ } => false
+    CargoArtifactExecutablePathEmpty { target_name: _ } => false
+    CargoArtifactExecutableNotAString { target_name: _ } => false
+    CargoMessageLineUnparseable { line_number: _ } => false
+    CargoMessageLineNotAnObject { line_number: _ } => false
+    CargoMessageReasonNotAString { line_number: _ } => false
+    CargoMessageMemberDuplicated { line_number: _, key: _ } => false
+    CargoMessageTargetNotAnObject { line_number: _ } => false
+    CargoMessageTargetNameAbsent { line_number: _ } => false
+    CargoMessageTargetNameNotAString { line_number: _ } => false
+  }
+}
+
+test fn two_reason_members_on_one_line_refuse_instead_of_last_wins() -> Bool {
+  match select_from(
+    lines: [duplicate_reason_line, build_finished_line],
+    target_name: "gunbc"
+  ) {
+    CargoMessageMemberDuplicated { line_number: n, key: k } => n == 1 && k == "reason"
+    CargoArtifactSelected { executable: _ } => false
+    CargoArtifactAbsent { target_name: _ } => false
+    CargoArtifactAmbiguous { target_name: _, count: _ } => false
+    CargoArtifactWithoutExecutable { target_name: _ } => false
+    CargoArtifactExecutablePathEmpty { target_name: _ } => false
+    CargoArtifactExecutableNotAString { target_name: _ } => false
+    CargoMessageLineUnparseable { line_number: _ } => false
+    CargoMessageLineNotAnObject { line_number: _ } => false
+    CargoMessageReasonAbsent { line_number: _ } => false
+    CargoMessageReasonNotAString { line_number: _ } => false
+    CargoMessageTargetNotAnObject { line_number: _ } => false
+    CargoMessageTargetNameAbsent { line_number: _ } => false
+    CargoMessageTargetNameNotAString { line_number: _ } => false
+  }
+}
+
+test fn an_empty_executable_path_refuses_rather_than_becoming_a_file_path() -> Bool {
+  match select_from(
+    lines: [artifact_line_empty_path, build_finished_line],
+    target_name: "gunbc"
+  ) {
+    CargoArtifactExecutablePathEmpty { target_name: t } => t == "gunbc"
+    CargoArtifactSelected { executable: _ } => false
+    CargoArtifactAbsent { target_name: _ } => false
+    CargoArtifactAmbiguous { target_name: _, count: _ } => false
+    CargoArtifactWithoutExecutable { target_name: _ } => false
+    CargoArtifactExecutableNotAString { target_name: _ } => false
+    CargoMessageLineUnparseable { line_number: _ } => false
+    CargoMessageLineNotAnObject { line_number: _ } => false
+    CargoMessageReasonAbsent { line_number: _ } => false
+    CargoMessageReasonNotAString { line_number: _ } => false
+    CargoMessageMemberDuplicated { line_number: _, key: _ } => false
+    CargoMessageTargetNotAnObject { line_number: _ } => false
+    CargoMessageTargetNameAbsent { line_number: _ } => false
+    CargoMessageTargetNameNotAString { line_number: _ } => false
+  }
+}
+
+test fn one_trailing_newline_is_framing_and_changes_nothing() -> Bool {
+  let body = stream_of(lines: [build_script_line, artifact_line_gunbc, build_finished_line])
+  let framed = concat(body, "\n")
+  let plain = extdeps.cargo_message.cargo_select_artifact_executable(
+    stdout: body,
+    target_name: "gunbc"
+  )
+  let terminated = extdeps.cargo_message.cargo_select_artifact_executable(
+    stdout: framed,
+    target_name: "gunbc"
+  )
+  selected_path_or_empty(selection: plain) == "/w/target/debug/gunbc"
+    && selected_path_or_empty(selection: terminated) == "/w/target/debug/gunbc"
+}
+
+test fn a_blank_line_inside_the_stream_still_refuses() -> Bool {
+  match select_from(
+    lines: [build_script_line, "", artifact_line_gunbc],
+    target_name: "gunbc"
+  ) {
+    CargoMessageLineUnparseable { line_number: n } => n == 2
+    CargoArtifactSelected { executable: _ } => false
+    CargoArtifactAbsent { target_name: _ } => false
+    CargoArtifactAmbiguous { target_name: _, count: _ } => false
+    CargoArtifactWithoutExecutable { target_name: _ } => false
+    CargoArtifactExecutablePathEmpty { target_name: _ } => false
+    CargoArtifactExecutableNotAString { target_name: _ } => false
+    CargoMessageLineNotAnObject { line_number: _ } => false
+    CargoMessageReasonAbsent { line_number: _ } => false
+    CargoMessageReasonNotAString { line_number: _ } => false
+    CargoMessageMemberDuplicated { line_number: _, key: _ } => false
+    CargoMessageTargetNotAnObject { line_number: _ } => false
+    CargoMessageTargetNameAbsent { line_number: _ } => false
+    CargoMessageTargetNameNotAString { line_number: _ } => false
+  }
+}
+
+test fn an_empty_stream_is_absent_rather_than_a_parse_refusal() -> Bool {
+  match extdeps.cargo_message.cargo_select_artifact_executable(
+    stdout: "",
+    target_name: "gunbc"
+  ) {
+    CargoArtifactAbsent { target_name: t } => t == "gunbc"
+    CargoArtifactSelected { executable: _ } => false
+    CargoArtifactAmbiguous { target_name: _, count: _ } => false
+    CargoArtifactWithoutExecutable { target_name: _ } => false
+    CargoArtifactExecutablePathEmpty { target_name: _ } => false
+    CargoArtifactExecutableNotAString { target_name: _ } => false
+    CargoMessageLineUnparseable { line_number: _ } => false
+    CargoMessageLineNotAnObject { line_number: _ } => false
+    CargoMessageReasonAbsent { line_number: _ } => false
+    CargoMessageReasonNotAString { line_number: _ } => false
+    CargoMessageMemberDuplicated { line_number: _, key: _ } => false
+    CargoMessageTargetNotAnObject { line_number: _ } => false
+    CargoMessageTargetNameAbsent { line_number: _ } => false
+    CargoMessageTargetNameNotAString { line_number: _ } => false
+  }
+}

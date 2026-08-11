@@ -1,0 +1,363 @@
+module extdeps.cargo_message
+
+import std.types { Bool, FilePath, Int, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.languages.json.emit {
+  JsonValue,
+  JsonNull,
+  JsonBool,
+  JsonNumber,
+  JsonString,
+  JsonArray,
+  JsonObject
+}
+import extdeps.languages.json.parse {
+  parse_json,
+  json_object_unique_member,
+  JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "doc.rust-lang.org/cargo/reference/external-tools.html#json-messages"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.cargo_message",
+      decl_name: "cargo_artifact_reason",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.cargo_message.extdeps_external_authority_anchor,
+  further_citations: [extdeps.cargo_build.extdeps_external_authority_anchor]
+}
+
+data cargo_message_subject_note: String = "WHY THIS MODULE EXISTS, stated as the defect it closes rather than the feature it adds. service cargo.Build in extdeps.cargo_build reports exactly three outputs on every operation — success, stdout, stderr — and none of them reports the PATH of the artifact the build produced. A consumer that needs the built binary therefore has to assemble the path by convention (target dir, profile, binary name), and a stale binary sitting at that conventional location satisfies the observation completely: the digest downstream would be honestly computed over real bytes that are the wrong bytes, with nothing in the chain able to tell. Cargo will name the artifact itself if asked, which is what --message-format=json is for, so the honest route is to read the path cargo REPORTED rather than the path we predicted. This module owns that reading; extdeps.cargo_build owns the invocation shape."
+
+data cargo_message_boundary_note: String = "SCOPE, deliberately narrow. This decodes ONE fact out of cargo's message stream: which executable a named target produced. It is not a general cargo-message model — compiler-message diagnostics, build-script-executed, and the timing messages are all skipped as OTHER REASONS rather than modeled, because a consumer that needs them should model them under its own subject instead of widening this one. What is NOT skipped is a line this module cannot understand at all: an unparseable line, a line that is not an object, a message carrying no reason, or a reason that is not a string each REFUSE the whole decode rather than being passed over. That asymmetry is the point — skipping a message whose reason we read and recognized is a decision, skipping a line we could not read is an absorbing fallback, and the second one is how a drifted or truncated stream reads as a clean build with no artifact."
+
+data cargo_message_scan_not_fragment_note: String = "The scan parses each line with the shared RFC 8259 parser and looks members up by NAME, rather than searching the raw text for a reason or executable fragment. The distinction is load-bearing and the corpus has already paid for learning it: gunbc.roadmap_provider_events documents a fragment scan that let an agent message quoting a type token reclassify a pane, and repaired it to an anchored walk. A member-name lookup is stronger than an anchored walk here because it does not depend on cargo emitting members in any particular order — cargo documents the members a message carries, not their order, so a position-anchored read would be correct only by accident and would drift silently. Member lookup routes through json_object_unique_member, which reports a DUPLICATED member as its own outcome instead of resolving last-wins; on an identity field like reason or executable, last-wins is precisely how a stream carrying two values reads as whichever one was written second."
+
+data cargo_artifact_reason: String = "compiler-artifact"
+data cargo_message_reason_member: String = "reason"
+data cargo_message_target_member: String = "target"
+data cargo_message_target_name_member: String = "name"
+data cargo_message_executable_member: String = "executable"
+data cargo_message_line_separator: String = "\n"
+
+// One artifact message matching the requested target. The executable member is
+// documented as null for a target that produces no runnable binary (a library), so
+// "cargo reported this target and it has no executable" is a DIFFERENT fact from
+// "cargo never reported this target" and from "cargo reported it with a path". A
+// consumer asking for a compiler generation's binary must be able to tell those
+// apart: the first is a wrong target name or a lib-only crate, the second is a build
+// that did not run or did not produce the target at all.
+type CargoArtifactHit
+  = CargoArtifactHitExecutable { path: String }
+  | CargoArtifactHitWithoutExecutable
+
+// CargoArtifactAmbiguous is refused rather than resolved first-wins or last-wins:
+// two artifact messages naming one target means the stream describes a situation
+// this decode has no way to settle, and picking either reports a guess as an
+// observation. CargoArtifactExecutablePathEmpty exists because FilePath is String
+// where non_empty, so an empty path cannot become one — it refuses by name instead
+// of being cast into a carrier that would reject it anyway.
+type CargoArtifactSelection
+  = CargoArtifactSelected { executable: FilePath }
+  | CargoArtifactAbsent { target_name: String }
+  | CargoArtifactAmbiguous { target_name: String, count: Int }
+  | CargoArtifactWithoutExecutable { target_name: String }
+  | CargoArtifactExecutablePathEmpty { target_name: String }
+  | CargoArtifactExecutableNotAString { target_name: String }
+  | CargoMessageLineUnparseable { line_number: Int }
+  | CargoMessageLineNotAnObject { line_number: Int }
+  | CargoMessageReasonAbsent { line_number: Int }
+  | CargoMessageReasonNotAString { line_number: Int }
+  | CargoMessageMemberDuplicated { line_number: Int, key: String }
+  | CargoMessageTargetNotAnObject { line_number: Int }
+  | CargoMessageTargetNameAbsent { line_number: Int }
+  | CargoMessageTargetNameNotAString { line_number: Int }
+
+// The scan is a fold, and a refusal is ABSORBING within the fold only in the sense
+// that later lines cannot un-refuse it — the first refusal is kept and reported with
+// its own line number. That is the opposite of an absorbing fallback: nothing widens
+// and nothing is skipped, the line that could not be read is named.
+type CargoScanState
+  = CargoScanning { hits: List<CargoArtifactHit>, line_number: Int }
+  | CargoScanRefused { selection: CargoArtifactSelection }
+
+fn cargo_message_string_value(v: JsonValue) -> String? {
+  match v {
+    JsonString { value: s } => Present { value: s }
+    JsonNull => none
+    JsonBool { value: _ } => none
+    JsonNumber { lexeme: _ } => none
+    JsonArray { elements: _ } => none
+    JsonObject { members: _ } => none
+  }
+}
+
+fn cargo_message_is_null(v: JsonValue) -> Bool {
+  match v {
+    JsonNull => true
+    JsonString { value: _ } => false
+    JsonBool { value: _ } => false
+    JsonNumber { lexeme: _ } => false
+    JsonArray { elements: _ } => false
+    JsonObject { members: _ } => false
+  }
+}
+
+// Reads the target name a message declares. Separated from the artifact read below
+// because "this line has no target member" and "this line's target has no name" are
+// distinct drifts in cargo's shape, and a consumer chasing one should not have to
+// read the other's diagnostic.
+type CargoTargetNameRead
+  = CargoTargetNameRead { name: String }
+  | CargoTargetNameReadRefused { selection: CargoArtifactSelection }
+
+fn cargo_message_target_name(doc: JsonValue, line_number: Int) -> CargoTargetNameRead {
+  match json_object_unique_member(v: doc, key: cargo_message_target_member) {
+    JsonMemberAbsent =>
+      CargoTargetNameReadRefused {
+        selection: CargoMessageTargetNameAbsent { line_number: line_number }
+      }
+    JsonMemberDuplicated { count: _ } =>
+      CargoTargetNameReadRefused {
+        selection: CargoMessageMemberDuplicated {
+          line_number: line_number,
+          key: cargo_message_target_member
+        }
+      }
+    JsonMemberNotAnObject =>
+      CargoTargetNameReadRefused {
+        selection: CargoMessageLineNotAnObject { line_number: line_number }
+      }
+    JsonMemberFound { value: target } =>
+      match json_object_unique_member(v: target, key: cargo_message_target_name_member) {
+        JsonMemberAbsent =>
+          CargoTargetNameReadRefused {
+            selection: CargoMessageTargetNameAbsent { line_number: line_number }
+          }
+        JsonMemberDuplicated { count: _ } =>
+          CargoTargetNameReadRefused {
+            selection: CargoMessageMemberDuplicated {
+              line_number: line_number,
+              key: cargo_message_target_name_member
+            }
+          }
+        JsonMemberNotAnObject =>
+          CargoTargetNameReadRefused {
+            selection: CargoMessageTargetNotAnObject { line_number: line_number }
+          }
+        JsonMemberFound { value: name_value } =>
+          match cargo_message_string_value(v: name_value) {
+            Absent =>
+              CargoTargetNameReadRefused {
+                selection: CargoMessageTargetNameNotAString { line_number: line_number }
+              }
+            Present { value: name } => CargoTargetNameRead { name: name }
+          }
+      }
+  }
+}
+
+// Cargo documents executable as present-and-null for a target that produces no
+// runnable binary. An ABSENT member lands on the same arm rather than refusing:
+// both say this target produced no executable, and the consumer's remedy for the
+// two is identical, so splitting them would be a distinction with no different
+// action behind it.
+fn cargo_message_artifact_hit(
+  doc: JsonValue,
+  line_number: Int,
+  target_name: String
+) -> CargoScanState {
+  match json_object_unique_member(v: doc, key: cargo_message_executable_member) {
+    JsonMemberDuplicated { count: _ } =>
+      CargoScanRefused {
+        selection: CargoMessageMemberDuplicated {
+          line_number: line_number,
+          key: cargo_message_executable_member
+        }
+      }
+    JsonMemberNotAnObject =>
+      CargoScanRefused {
+        selection: CargoMessageLineNotAnObject { line_number: line_number }
+      }
+    JsonMemberAbsent =>
+      CargoScanning { hits: [CargoArtifactHitWithoutExecutable], line_number: line_number }
+    JsonMemberFound { value: exe } =>
+      if cargo_message_is_null(v: exe) {
+        CargoScanning { hits: [CargoArtifactHitWithoutExecutable], line_number: line_number }
+      } else {
+        match cargo_message_string_value(v: exe) {
+          Absent =>
+            CargoScanRefused {
+              selection: CargoArtifactExecutableNotAString { target_name: target_name }
+            }
+          Present { value: path } =>
+            CargoScanning {
+              hits: [CargoArtifactHitExecutable { path: path }],
+              line_number: line_number
+            }
+        }
+      }
+  }
+}
+
+fn cargo_message_scan_line(
+  state: CargoScanState,
+  line: String,
+  target_name: String
+) -> CargoScanState {
+  match state {
+    CargoScanRefused { selection: s } => CargoScanRefused { selection: s }
+    CargoScanning { hits: hits, line_number: previous } => {
+      let line_number = previous + 1
+      match parse_json(s: line) {
+        Absent =>
+          CargoScanRefused {
+            selection: CargoMessageLineUnparseable { line_number: line_number }
+          }
+        Present { value: doc } =>
+          match json_object_unique_member(v: doc, key: cargo_message_reason_member) {
+            JsonMemberNotAnObject =>
+              CargoScanRefused {
+                selection: CargoMessageLineNotAnObject { line_number: line_number }
+              }
+            JsonMemberAbsent =>
+              CargoScanRefused {
+                selection: CargoMessageReasonAbsent { line_number: line_number }
+              }
+            JsonMemberDuplicated { count: _ } =>
+              CargoScanRefused {
+                selection: CargoMessageMemberDuplicated {
+                  line_number: line_number,
+                  key: cargo_message_reason_member
+                }
+              }
+            JsonMemberFound { value: reason_value } =>
+              match cargo_message_string_value(v: reason_value) {
+                Absent =>
+                  CargoScanRefused {
+                    selection: CargoMessageReasonNotAString { line_number: line_number }
+                  }
+                Present { value: reason } =>
+                  if reason != cargo_artifact_reason {
+                    CargoScanning { hits: hits, line_number: line_number }
+                  } else {
+                    match cargo_message_target_name(doc: doc, line_number: line_number) {
+                      CargoTargetNameReadRefused { selection: s } =>
+                        CargoScanRefused { selection: s }
+                      CargoTargetNameRead { name: name } =>
+                        if name != target_name {
+                          CargoScanning { hits: hits, line_number: line_number }
+                        } else {
+                          match cargo_message_artifact_hit(
+                            doc: doc,
+                            line_number: line_number,
+                            target_name: target_name
+                          ) {
+                            CargoScanRefused { selection: s } =>
+                              CargoScanRefused { selection: s }
+                            CargoScanning { hits: found, line_number: _ } =>
+                              CargoScanning {
+                                hits: concat(hits, found),
+                                line_number: line_number
+                              }
+                          }
+                        }
+                    }
+                  }
+              }
+          }
+      }
+    }
+  }
+}
+
+// Cargo terminates its final message with a newline, so splitting on the separator
+// yields one trailing empty element that is framing rather than content. Exactly one
+// trailing newline is removed, and an empty line anywhere else still refuses as
+// unparseable — dropping every empty line instead would be the absorbing fallback
+// this module's boundary note refuses, because a truncated stream ending mid-write
+// would then read as a clean stream with fewer messages.
+fn cargo_message_lines(stdout: String) -> List<String> {
+  let body = if ends_with(s: stdout, suffix: cargo_message_line_separator) {
+    substring(s: stdout, start: 0, end: stdout.length() - 1)
+  } else {
+    stdout
+  }
+  split(s: body, delimiter: cargo_message_line_separator)
+}
+
+// An empty stream carries no artifact message, which is CargoArtifactAbsent rather
+// than a parse refusal: nothing was malformed, cargo simply reported nothing.
+fn cargo_select_artifact_executable(
+  stdout: String,
+  target_name: String
+) -> CargoArtifactSelection {
+  if stdout.length() == 0 {
+    CargoArtifactAbsent { target_name: target_name }
+  } else {
+    let scanned = fold(
+      cargo_message_lines(stdout: stdout),
+      init: CargoScanning { hits: [], line_number: 0 },
+      f: (state, line) => cargo_message_scan_line(
+        state: state,
+        line: line,
+        target_name: target_name
+      )
+    )
+    match scanned {
+      CargoScanRefused { selection: s } => s
+      CargoScanning { hits: hits, line_number: _ } => {
+        let n = count(hits)
+        if n == 0 {
+          CargoArtifactAbsent { target_name: target_name }
+        } else if n > 1 {
+          CargoArtifactAmbiguous { target_name: target_name, count: n }
+        } else {
+          match fold(hits, init: CargoArtifactHitWithoutExecutable, f: (acc, h) => h) {
+            CargoArtifactHitWithoutExecutable =>
+              CargoArtifactWithoutExecutable { target_name: target_name }
+            CargoArtifactHitExecutable { path: path } =>
+              if path.length() == 0 {
+                CargoArtifactExecutablePathEmpty { target_name: target_name }
+              } else {
+                CargoArtifactSelected { executable: path as FilePath }
+              }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn cargo_artifact_selected_path(selection: CargoArtifactSelection) -> FilePath? {
+  match selection {
+    CargoArtifactSelected { executable: p } => Present { value: p }
+    CargoArtifactAbsent { target_name: _ } => none
+    CargoArtifactAmbiguous { target_name: _, count: _ } => none
+    CargoArtifactWithoutExecutable { target_name: _ } => none
+    CargoArtifactExecutablePathEmpty { target_name: _ } => none
+    CargoArtifactExecutableNotAString { target_name: _ } => none
+    CargoMessageLineUnparseable { line_number: _ } => none
+    CargoMessageLineNotAnObject { line_number: _ } => none
+    CargoMessageReasonAbsent { line_number: _ } => none
+    CargoMessageReasonNotAString { line_number: _ } => none
+    CargoMessageMemberDuplicated { line_number: _, key: _ } => none
+    CargoMessageTargetNotAnObject { line_number: _ } => none
+    CargoMessageTargetNameAbsent { line_number: _ } => none
+    CargoMessageTargetNameNotAString { line_number: _ } => none
+  }
+}
