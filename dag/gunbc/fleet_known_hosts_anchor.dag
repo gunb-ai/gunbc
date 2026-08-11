@@ -15,7 +15,19 @@ import std.content_hash {
 }
 import std.decl_ref { decl_ref }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.ssh.client_options { SshClientOption, openssh_exclusive_known_hosts_trust_options }
+import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
+import std.types { Int }
+import extdeps.ssh.client_options {
+  SshClientOption,
+  openssh_exclusive_known_hosts_trust_options,
+  openssh_suppress_ambient_configuration_options,
+  openssh_exact_credential_options,
+  serialize_ssh_client_options,
+  serialize_ssh_config_file_flag,
+  User,
+  BatchMode,
+  ConnectTimeout,
+}
 import gunbc.fleet_host_key_enrollment { KnownHostKeyRow, fleet_host_key_enrollments, known_hosts_line, host_key_provenance_label }
 
 // THE TRUST ANCHOR AN SSH INVOCATION IS VERIFIED AGAINST, carried as a value rather than left as
@@ -59,10 +71,17 @@ import gunbc.fleet_host_key_enrollment { KnownHostKeyRow, fleet_host_key_enrollm
 // the sealed value therefore proves what was read AT CONSTRUCTION -- not what ssh will read when the
 // leg actually runs. Nothing in a shared mutable path carries an ownership boundary.
 //
-// So the attempt owns a directory and the digest names the file within it. The attempt segment gives
-// isolation -- no other attempt writes here -- and the digest keeps the filename a claim about the
-// content that the readback then checks. Both live under the repository writable working root, never
-// under $HOME, so the shared-runner defect has no surface left either.
+// So the attempt owns the FILENAME and the digest names the content within it. A flat
+// attempt-prefixed name rather than an attempt-owned directory, for a reason worth stating rather
+// than leaving as an unexplained shape: extdeps.filesystem.filesystem_io models Write, Read, Delete
+// and List, and no directory-creation operation, so a nested path would refuse on every first use.
+// The isolation property is identical either way -- it is "no other attempt writes this path", which
+// a unique prefix satisfies exactly as a directory does. What the directory would additionally have
+// bought is cleanup as one removal, which this module does not yet perform in either shape; adding a
+// filesystem capability to obtain a nicer shape for cleanup that does not exist would be building
+// the second thing to justify the first. The digest keeps the filename a claim about the content
+// that the readback checks. Both parts live under the repository writable working root, never under
+// $HOME, so the shared-runner defect has no surface left either.
 //
 // The lifetime is still not bracketed to the SSH operation: nothing deletes the directory when the
 // legs finish, so a stale attempt directory can outlive its attempt. That is a real remaining gap,
@@ -189,7 +208,7 @@ fn fleet_known_hosts_registry_identity() -> ContentHash {
 fn fleet_known_hosts_anchor_path(attempt: FleetSshAttemptIdentity) -> NonEmptyStr {
   join([
     "target/fleet-ssh-attempt-", attempt as String,
-    "/known-hosts-", serialize_content_hash(hash: fleet_known_hosts_registry_identity()) as String,
+    "-known-hosts-", serialize_content_hash(hash: fleet_known_hosts_registry_identity()) as String,
   ], "") as NonEmptyStr
 }
 
@@ -352,4 +371,181 @@ fn fleet_openssh_trust_policy_of(outcome: KnownHostsMaterializationOutcome) -> F
 // relates.
 fn fleet_openssh_trust_options(policy: FleetOpenSshTrustPolicy) -> List<SshClientOption> {
   openssh_exclusive_known_hosts_trust_options(known_hosts: policy.anchor.path)
+}
+
+// ── The execution context ──────────────────────────────────────────────────────────────────────
+
+// THE CREDENTIAL THE CLIENT AUTHENTICATES WITH, bound rather than ambient. The host-key half of this
+// module establishes which machine we reached; this establishes which key reached it. For the Spark
+// question -- which POSIX account accepts the fleet key -- an unbound credential makes every positive
+// result ambiguous: an agent holding several identities can produce a success no modeled fact caused.
+type FleetSshCredentialBinding sole_constructor {
+  identity_file: NonEmptyStr
+  credential_identity: ContentHash
+}
+
+// The mint is sealed for the same reason the anchor's is. The credential_identity is the identity of
+// the PUBLIC key material, never of the private key: a receipt naming which credential authenticated
+// must be publishable, and a digest of secret bytes in a receipt is credential material wearing a
+// hash.
+fn fleet_ssh_credential_binding_seal(
+  identity_file: NonEmptyStr,
+  credential_identity: ContentHash,
+) -> FleetSshCredentialBinding
+  admit_callers: [
+    decl_ref(module_path: "gunbc.fleet_known_hosts_anchor", decl_name: "fleet_ssh_credential_binding_of_public_material"),
+  ]
+  = FleetSshCredentialBinding { identity_file: identity_file, credential_identity: credential_identity }
+
+fn fleet_ssh_credential_binding_of_public_material(
+  identity_file: NonEmptyStr,
+  public_material: NonEmptyStr,
+) -> FleetSshCredentialBinding {
+  fleet_ssh_credential_binding_seal(
+    identity_file: identity_file,
+    credential_identity: content_hash_of_value(value: public_material),
+  )
+}
+
+// ONE VALUE CARRYING EVERYTHING AN SSH LEG NEEDS TO BE ACCOUNTABLE. Sealed, so it cannot be
+// assembled beside the walls rather than through them, and constructible only from an anchor that
+// passed its content readback plus a bound credential.
+type FleetSshExecutionContext sole_constructor {
+  attempt: FleetSshAttemptIdentity
+  trust: FleetOpenSshTrustPolicy
+  credential: FleetSshCredentialBinding
+}
+
+fn fleet_ssh_execution_context_seal(
+  attempt: FleetSshAttemptIdentity,
+  trust: FleetOpenSshTrustPolicy,
+  credential: FleetSshCredentialBinding,
+) -> FleetSshExecutionContext
+  admit_callers: [
+    decl_ref(module_path: "gunbc.fleet_known_hosts_anchor", decl_name: "fleet_ssh_execution_context_of"),
+  ]
+  = FleetSshExecutionContext { attempt: attempt, trust: trust, credential: credential }
+
+// The only route from a materialization to a context. Absent on refusal, and there is no other
+// constructor, so a caller whose trust preparation failed holds nothing it could hand an SSH leg.
+fn fleet_ssh_execution_context_of(
+  outcome: KnownHostsMaterializationOutcome,
+  credential: FleetSshCredentialBinding,
+) -> FleetSshExecutionContext? {
+  match known_hosts_anchor_of(outcome: outcome) {
+    Present { value: a } => Present {
+      value: fleet_ssh_execution_context_seal(
+        attempt: a.attempt,
+        trust: fleet_openssh_trust_policy_seal(anchor: a),
+        credential: credential,
+      ),
+    }
+    Absent => none
+  }
+}
+
+// WHO WE ARE TALKING TO, as a principal at an endpoint rather than a pre-joined string. The probe's
+// whole product is a claim about a (host, principal) pair, so fusing them into one "user@host" text
+// at the call site would put the thing being measured inside an unparseable leaf.
+type SshTarget {
+  endpoint: NonEmptyStr
+  principal: NonEmptyStr
+}
+
+// A REMOTE WORD THAT SURVIVES THE REMOTE SHELL. The transported command is one string which the
+// remote login shell re-parses, so a word carrying a space, quote, redirect, expansion or separator
+// is not the word that executes. Sealed and admitted through one predicate, so "portable" is a
+// property of the value rather than a promise in a function name -- which is what the previous
+// List<String> parameter was.
+type PortableRemoteWord sole_constructor {
+  value: NonEmptyStr
+}
+
+fn portable_remote_word_char_allowed(cp: Int) -> Bool {
+  (cp >= 97 && cp <= 122) || (cp >= 65 && cp <= 90) || (cp >= 48 && cp <= 57)
+    || cp == 46 || cp == 95 || cp == 45 || cp == 47 || cp == 64 || cp == 58 || cp == 61
+}
+
+fn portable_remote_word_text_ok(text: String, i: Int, len: Int) -> Bool {
+  if i >= len { true } else {
+    if portable_remote_word_char_allowed(cp: code_point(ch: char_at(text, i))) {
+      portable_remote_word_text_ok(text: text, i: i + 1, len: len)
+    } else { false }
+  }
+}
+
+// Refuses rather than quoting: quoting would make the word survive THIS shell, and the remote shell
+// is not known to be the same one. The allowlist is the same conservative alphabet the existing
+// typed-argv edge already enforces, reused rather than re-spelled.
+fn portable_remote_word(raw: String) -> PortableRemoteWord? {
+  if raw != "" && portable_remote_word_text_ok(text: raw, i: 0, len: length(raw)) {
+    Present { value: PortableRemoteWord { value: raw as NonEmptyStr } }
+  } else {
+    none
+  }
+}
+
+// Head-plus-tail, so an empty remote command has no constructor: an SSH leg with no words is an
+// interactive login, which is a different operation from running a command and must not be reachable
+// by passing an empty list to this one.
+type PortableRemoteWords {
+  first: PortableRemoteWord
+  more: List<PortableRemoteWord>
+}
+
+fn portable_remote_words(raws: List<String>) -> PortableRemoteWords? {
+  let admitted = fold(raws, init: Present { value: [] }, f: fn(acc, r) {
+    match acc {
+      Absent => none
+      Present { value: ws } => match portable_remote_word(raw: r) {
+        Present { value: w } => Present { value: concat(ws, [w]) }
+        Absent => none
+      }
+    }
+  })
+  match admitted {
+    Absent => none
+    Present { value: ws } => match list_head(ws) {
+      HeadAbsent => none
+      HeadFound { value: h } => match list_tail(ws) {
+        TailFound { tail: t } => Present { value: PortableRemoteWords { first: h, more: t } }
+        TailAbsent => Present { value: PortableRemoteWords { first: h, more: [] } }
+      }
+    }
+  }
+}
+
+fn portable_remote_words_strings(words: PortableRemoteWords) -> List<String> {
+  concat([words.first.value as String], map(words.more, w => w.value as String))
+}
+
+// THE TERMINAL SHAPER. It takes the sealed context and nothing a caller could widen: there is no
+// options parameter to prepend into, so the first-obtained-value hazard has no surface. Every option
+// is derived here from the context -- trust from the anchor, credential from the binding, ambient
+// suppression unconditionally -- and the principal is projected to an explicit User option rather
+// than joined into the destination, so the account being tested is a modeled field rather than text.
+fn shape_fleet_ssh_exec(
+  context: FleetSshExecutionContext,
+  target: SshTarget,
+  words: PortableRemoteWords,
+) -> List<String> {
+  let config_suppression = openssh_suppress_ambient_configuration_options()
+  let derived = concat(
+    fleet_openssh_trust_options(policy: context.trust),
+    concat(
+      openssh_exact_credential_options(identity_file: context.credential.identity_file),
+      [
+        User { name: target.principal },
+        BatchMode { enabled: true },
+        ConnectTimeout { seconds: 10 },
+      ],
+    ),
+  )
+  concat(
+    concat(
+      concat(["ssh"], flat_map(config_suppression, o => serialize_ssh_config_file_flag(option: o))),
+      serialize_ssh_client_options(options: derived),
+    ),
+    concat([target.endpoint as String, "--"], portable_remote_words_strings(words: words)),
+  )
 }

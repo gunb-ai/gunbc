@@ -117,6 +117,14 @@ type SshClientOption
   | UpdateHostKeys { value: UpdateHostKeysValue }
   | BatchMode { enabled: Bool }
   | ConnectTimeout { seconds: Int }
+  | ConfigFile { path: NonEmptyStr }
+  | IdentityFile { path: NonEmptyStr }
+  | IdentitiesOnly { enabled: Bool }
+  | IdentityAgent { path: NonEmptyStr }
+  | PreferredAuthentications { methods: NonEmptyStr }
+  | PasswordAuthentication { enabled: Bool }
+  | KbdInteractiveAuthentication { enabled: Bool }
+  | User { name: NonEmptyStr }
 
 // The ONE place each keyword's wire spelling lives. A rename upstream is a one-line edit here
 // rather than a corpus-wide grep.
@@ -130,6 +138,14 @@ fn ssh_client_option_keyword(option: SshClientOption) -> String {
     UpdateHostKeys { value: _ } => "UpdateHostKeys"
     BatchMode { enabled: _ } => "BatchMode"
     ConnectTimeout { seconds: _ } => "ConnectTimeout"
+    ConfigFile { path: _ } => "ConfigFile"
+    IdentityFile { path: _ } => "IdentityFile"
+    IdentitiesOnly { enabled: _ } => "IdentitiesOnly"
+    IdentityAgent { path: _ } => "IdentityAgent"
+    PreferredAuthentications { methods: _ } => "PreferredAuthentications"
+    PasswordAuthentication { enabled: _ } => "PasswordAuthentication"
+    KbdInteractiveAuthentication { enabled: _ } => "KbdInteractiveAuthentication"
+    User { name: _ } => "User"
   }
 }
 
@@ -169,6 +185,14 @@ fn ssh_client_option_value(option: SshClientOption) -> String {
     UpdateHostKeys { value: v } => update_host_keys_wire(value: v)
     BatchMode { enabled: e } => if e { "yes" } else { "no" }
     ConnectTimeout { seconds: s } => to_string(s)
+    ConfigFile { path: p } => p as String
+    IdentityFile { path: p } => p as String
+    IdentitiesOnly { enabled: e } => if e { "yes" } else { "no" }
+    IdentityAgent { path: p } => p as String
+    PreferredAuthentications { methods: m } => m as String
+    PasswordAuthentication { enabled: e } => if e { "yes" } else { "no" }
+    KbdInteractiveAuthentication { enabled: e } => if e { "yes" } else { "no" }
+    User { name: n } => n as String
   }
 }
 
@@ -234,4 +258,51 @@ fn shape_openssh_exec_portable_words_argv(
     ),
     words,
   )
+}
+
+// AMBIENT CONFIGURATION IS THE OTHER HALF OF THE PROBLEM, and the host-key options do not touch it.
+// Even with all five trust sources pinned, ordinary ssh_config can still decide the username, resolve
+// the hostname to a different address through a Host alias, insert a ProxyJump, choose which identity
+// file or agent authenticates, and reuse an existing multiplexed connection whose authentication
+// happened under conditions we never observed. Every one of those changes WHO and WHAT was actually
+// contacted, which is precisely what a principal-identity probe is trying to establish.
+//
+// `-o ConfigFile=none` is not the spelling OpenSSH accepts for this; the documented control is the
+// -F flag, which takes a path and suppresses both user and system config when given `none`. It is
+// modeled as ConfigFile here so it serializes through the same one serializer as everything else and
+// is projected to -F by the shaper -- the alternative was a second ad-hoc word-building path beside
+// the option serializer, which is the fork this module exists to prevent.
+fn openssh_suppress_ambient_configuration_options() -> List<SshClientOption> {
+  [ConfigFile { path: "none" as NonEmptyStr }]
+}
+
+// THE CREDENTIAL HALF. A host-key posture can be exact while authentication succeeds through the
+// WRONG LOCAL KEY: an agent holding several identities, an ambient IdentityFile, or a password
+// fallback can all make a command succeed without the modeled credential having caused it. For a
+// probe whose entire product is "which account accepts which exact key", that is not a detail -- it
+// is the difference between an observation and a coincidence.
+//
+// IdentitiesOnly is the load-bearing one: without it OpenSSH offers agent keys BEFORE the file named
+// by IdentityFile, so naming the file does not mean the file authenticated. IdentityAgent=none
+// removes the agent entirely, and the three authentication-method options remove the fallbacks that
+// would otherwise let a success mean something other than publickey.
+fn openssh_exact_credential_options(identity_file: NonEmptyStr) -> List<SshClientOption> {
+  [
+    IdentityFile { path: identity_file },
+    IdentitiesOnly { enabled: true },
+    IdentityAgent { path: "none" as NonEmptyStr },
+    PreferredAuthentications { methods: "publickey" as NonEmptyStr },
+    PasswordAuthentication { enabled: false },
+    KbdInteractiveAuthentication { enabled: false },
+  ]
+}
+
+// -F takes its value as a following word rather than an -o pair, so this projects the ConfigFile
+// option to the flag OpenSSH actually documents while keeping one serializer as the authority for
+// what the value is.
+fn serialize_ssh_config_file_flag(option: SshClientOption) -> List<String> {
+  match option {
+    ConfigFile { path: p } => ["-F", p as String]
+    _ => []
+  }
 }
