@@ -23,6 +23,7 @@ import v2.extdeps.languages.dag {
 import v2.std.compilers.lexing { TokenStream }
 import v2.std.provenance { span_index_empty }
 import std.algebra { Empty, FreeMonoid }
+import std.occurrence_binding_candidates { ModulePathFileRow }
 import v2.std.algebra { fold_list, length, list_snoc_item }
 import v2.std.artifact { Artifact, NodeArtifactProvenance, SourceFile }
 import v2.std.diagnostic {
@@ -671,6 +672,101 @@ type ModuleStorageBinding {
 }
 
 type ModuleStorageIndex = FreeMonoid<ModuleStorageBinding>
+
+data module_path_file_row_projection_note: String = "THE SCAFFOLD PROJECTION, FINALLY PROJECTING. module_path_file_row_note declares this authority -- ModuleStorageBinding / ModuleStorageIndex -- as the single home for the path-to-module binding, and calls ModulePathFileRow a scaffold projection OF it. Until now nothing performed that projection: every ModulePathFileRow in the tree is a hand-authored literal in a witness, which is the parallel-representation state the note said it was avoiding. This is the missing function, and it lives HERE rather than in std because the binding is this module's fact.
+
+TWO ARMS, because a module does not always have a file. ParsedFromSource carries an Artifact whose file_path IS the storage realization, so the row is derivable. ProducedByBehavior means a module the compiler produced -- there is no file, and there is no honest path to invent for it. Fabricating one (the module name reshaped into a path, an empty string, the producer's own file) is exactly the fabricated plausible output DESIGN section 5 forbids, and it would be undetectable downstream because a path-shaped string is indistinguishable from a real path. So the projection REFUSES and names the module and its producer.
+
+WHY THE INDEX PROJECTION REFUSES WHOLE. One unprojectable binding means the derived row set is not the index, and a consumer that received the survivors would believe it held the whole storage picture -- the empty-observation narrow at set grain. Callers that legitimately want only the file-backed subset must say so by filtering the index before projecting, which is a statement about intent rather than a silent loss."
+
+type ModulePathFileRowProjection
+  = ModulePathFileRowProjected { row: ModulePathFileRow }
+  | ModulePathFileRowNoStorageRealization {
+      module: QualifiedName,
+      producer: Symbol,
+    }
+
+fn module_path_file_row_from_storage_binding(
+  binding: ModuleStorageBinding
+) -> ModulePathFileRowProjection {
+  match binding.provenance {
+    ParsedFromSource { artifact: artifact, span_index: _ } =>
+      ModulePathFileRowProjected {
+        row: ModulePathFileRow {
+          module_path: qualified_name_to_dotted_string(qn: binding.module) as NonEmptyStr,
+          file_path: artifact.file_path as FilePath,
+        },
+      }
+    ProducedByBehavior { producer: producer } =>
+      ModulePathFileRowNoStorageRealization {
+        module: binding.module,
+        producer: producer,
+      }
+  }
+}
+
+type ModulePathFileRowsFromIndex
+  = ModulePathFileRowsFromIndexReady { rows: List<ModulePathFileRow> }
+  | ModulePathFileRowsFromIndexRefused {
+      first_failure: ModulePathFileRowProjection,
+      more_failures: List<ModulePathFileRowProjection>,
+    }
+
+type ModulePathFileRowsBuild {
+  rows_reversed: List<ModulePathFileRow>
+  first_failure: ModulePathFileRowProjection?
+  more_failures_reversed: List<ModulePathFileRowProjection>
+}
+
+fn module_path_file_rows_from_storage_index(
+  index: ModuleStorageIndex
+) -> ModulePathFileRowsFromIndex {
+  let build = fold_list(
+    index,
+    ModulePathFileRowsBuild {
+      rows_reversed: [],
+      first_failure: none,
+      more_failures_reversed: [],
+    },
+    (acc, binding) =>
+      match module_path_file_row_from_storage_binding(binding: binding) {
+        ModulePathFileRowProjected { row: row } =>
+          ModulePathFileRowsBuild {
+            rows_reversed: concat([row], acc.rows_reversed),
+            first_failure: acc.first_failure,
+            more_failures_reversed: acc.more_failures_reversed,
+          }
+        ModulePathFileRowNoStorageRealization { module: m, producer: p } =>
+          match acc.first_failure {
+            Absent =>
+              ModulePathFileRowsBuild {
+                rows_reversed: acc.rows_reversed,
+                first_failure: Present {
+                  value: ModulePathFileRowNoStorageRealization { module: m, producer: p },
+                },
+                more_failures_reversed: acc.more_failures_reversed,
+              }
+            Present { value: _ } =>
+              ModulePathFileRowsBuild {
+                rows_reversed: acc.rows_reversed,
+                first_failure: acc.first_failure,
+                more_failures_reversed: concat(
+                  [ModulePathFileRowNoStorageRealization { module: m, producer: p }],
+                  acc.more_failures_reversed,
+                ),
+              }
+          }
+      },
+  )
+  match build.first_failure {
+    Absent => ModulePathFileRowsFromIndexReady { rows: reverse(build.rows_reversed) }
+    Present { value: first_failure } =>
+      ModulePathFileRowsFromIndexRefused {
+        first_failure: first_failure,
+        more_failures: reverse(build.more_failures_reversed),
+      }
+  }
+}
 
 type ModuleStorageFoldState
   = ModuleStorageFoldOk {

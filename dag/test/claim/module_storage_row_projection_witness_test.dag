@@ -1,0 +1,181 @@
+module test.claim.module_storage_row_projection_witness_test
+
+import std.types { Bool, String, List, NonEmptyStr, FilePath }
+import std.algebra { Empty, FreeMonoid }
+import std.occurrence_binding_candidates { ModulePathFileRow }
+import v2.std.artifact { Artifact, TestClaimArtifact, SourceFile }
+import v2.std.provenance { span_index_empty }
+import v2.std.cross_tree.import_model { DagTree, V2Tree }
+import v2.compiler.source_authority {
+  ModuleStorageBinding,
+  ModuleStorageIndex,
+  ParsedFromSource,
+  ProducedByBehavior,
+  ModulePathFileRowProjection,
+  ModulePathFileRowProjected,
+  ModulePathFileRowNoStorageRealization,
+  ModulePathFileRowsFromIndex,
+  ModulePathFileRowsFromIndexReady,
+  ModulePathFileRowsFromIndexRefused,
+  module_path_file_row_from_storage_binding,
+  module_path_file_rows_from_storage_index,
+}
+
+data msrp_note: String = "EXECUTING CONSUMER for the ModulePathFileRow projection off ModuleStorageBinding.
+
+module_path_file_row_note has declared ModuleStorageBinding the single authority for the path-to-module binding, and ModulePathFileRow a scaffold projection OF it, since it was written. Nothing performed that projection: every ModulePathFileRow in the tree was a hand-authored literal inside a witness, so the two representations coexisted with no derivation between them -- the parallel-representation state the note said it was avoiding. These rows exercise the derivation.
+
+The load-bearing row is the WHOLE refusal. A produced-by-behavior module has no file, and the tempting arm is to project the file-backed bindings and drop it: every positive row here would still pass, and a consumer would receive a row set it believed was the whole storage picture with a module silently missing. That is the empty-observation narrow at set grain. So one unprojectable binding refuses the whole index, and a caller wanting only the file-backed subset must filter the index first -- a statement of intent rather than a silent loss."
+
+fn msrp_artifact(path: String) -> Artifact {
+  Artifact {
+    kind: SourceFile,
+    id: ^msrp_fixture,
+    file_path: path,
+  }
+}
+
+fn msrp_parsed(module_leaf: String, path: String) -> ModuleStorageBinding {
+  ModuleStorageBinding {
+    module: [^test, ^fixture, ^msrp],
+    provenance: ParsedFromSource {
+      artifact: msrp_artifact(path: path),
+      span_index: span_index_empty(),
+    },
+    source_root: DagTree,
+  }
+}
+
+fn msrp_other_parsed(path: String) -> ModuleStorageBinding {
+  ModuleStorageBinding {
+    module: [^test, ^fixture, ^msrp_other],
+    provenance: ParsedFromSource {
+      artifact: msrp_artifact(path: path),
+      span_index: span_index_empty(),
+    },
+    source_root: V2Tree,
+  }
+}
+
+fn msrp_produced() -> ModuleStorageBinding {
+  ModuleStorageBinding {
+    module: [^test, ^fixture, ^msrp_produced],
+    provenance: ProducedByBehavior { producer: ^msrp_producer },
+    source_root: DagTree,
+  }
+}
+
+fn msrp_second_produced() -> ModuleStorageBinding {
+  ModuleStorageBinding {
+    module: [^test, ^fixture, ^msrp_second_produced],
+    provenance: ProducedByBehavior { producer: ^msrp_other_producer },
+    source_root: DagTree,
+  }
+}
+
+// A parsed binding projects to a row carrying BOTH derived facts at exact values: the dotted module
+// path and the artifact's own file_path. Asserting only that a row appeared would pass for a
+// projection that produced a row about the wrong module or invented a path from the module name --
+// which is precisely the fabrication the refusal arm exists to prevent, so the positive row has to
+// pin both sides.
+test fn witness_parsed_binding_projects_module_and_its_artifact_path() -> Bool {
+  match module_path_file_row_from_storage_binding(
+    binding: msrp_parsed(module_leaf: "msrp", path: "dag/test/fixture/msrp.dag"),
+  ) {
+    ModulePathFileRowNoStorageRealization { module: _, producer: _ } => false
+    ModulePathFileRowProjected { row: row } =>
+      (row.module_path as String) == "test.fixture.msrp"
+        && (row.file_path as String) == "dag/test/fixture/msrp.dag"
+  }
+}
+
+// A produced module has no storage realization, and the projection must say so rather than answer
+// with a path. Any path it could invent -- the module name reshaped, the empty string, the producer's
+// own file -- is indistinguishable downstream from a real one.
+test fn witness_produced_module_refuses_instead_of_inventing_a_path() -> Bool {
+  match module_path_file_row_from_storage_binding(binding: msrp_produced()) {
+    ModulePathFileRowProjected { row: _ } => false
+    ModulePathFileRowNoStorageRealization { module: _, producer: producer } =>
+      (producer as String) == "msrp_producer"
+  }
+}
+
+test fn witness_index_of_parsed_bindings_projects_every_row_in_order() -> Bool {
+  match module_path_file_rows_from_storage_index(
+    index: [
+      msrp_parsed(module_leaf: "msrp", path: "dag/test/fixture/msrp.dag"),
+      msrp_other_parsed(path: "src/v2/test/fixture/msrp_other.dag"),
+    ],
+  ) {
+    ModulePathFileRowsFromIndexRefused { first_failure: _, more_failures: _ } => false
+    ModulePathFileRowsFromIndexReady { rows: rows } =>
+      length(rows) == 2
+        && msrp_first_row_path(rows: rows) == "dag/test/fixture/msrp.dag"
+        && msrp_last_row_path(rows: rows) == "src/v2/test/fixture/msrp_other.dag"
+  }
+}
+
+// First and last rather than an index lookup, because ORDER is the property under assertion and the
+// two ends are what a reversed or reordered fold would swap.
+fn msrp_first_row_path(rows: List<ModulePathFileRow>) -> String {
+  match first(rows) {
+    Absent => ""
+    Present { value: row } => row.file_path as String
+  }
+}
+
+fn msrp_last_row_path(rows: List<ModulePathFileRow>) -> String {
+  fold(rows, init: "", f: (acc, row) => row.file_path as String)
+}
+
+// THE LOAD-BEARING ROW. Two projectable bindings sit either side of one that is not, so a projection
+// that dropped the unprojectable one would return two rows and read as complete. The refusal must
+// therefore reach the caller, not the survivors.
+test fn witness_one_unprojectable_binding_refuses_the_whole_index() -> Bool {
+  match module_path_file_rows_from_storage_index(
+    index: [
+      msrp_parsed(module_leaf: "msrp", path: "dag/test/fixture/msrp.dag"),
+      msrp_produced(),
+      msrp_other_parsed(path: "src/v2/test/fixture/msrp_other.dag"),
+    ],
+  ) {
+    ModulePathFileRowsFromIndexReady { rows: _ } => false
+    ModulePathFileRowsFromIndexRefused { first_failure: first, more_failures: more } =>
+      length(more) == 0 && msrp_failure_producer_is(failure: first, producer: "msrp_producer")
+  }
+}
+
+// Several unprojectable bindings are all reported, first plus the rest, so a count of the deficit is
+// available. Reporting only the first would make the second invisible and the remedy partial.
+test fn witness_every_unprojectable_binding_is_reported() -> Bool {
+  match module_path_file_rows_from_storage_index(
+    index: [msrp_produced(), msrp_second_produced()],
+  ) {
+    ModulePathFileRowsFromIndexReady { rows: _ } => false
+    ModulePathFileRowsFromIndexRefused { first_failure: first, more_failures: more } =>
+      msrp_failure_producer_is(failure: first, producer: "msrp_producer")
+        && length(more) == 1
+        && fold(more, init: false, f: (found, f) =>
+          found || msrp_failure_producer_is(failure: f, producer: "msrp_other_producer"))
+  }
+}
+
+fn msrp_failure_producer_is(failure: ModulePathFileRowProjection, producer: String) -> Bool {
+  match failure {
+    ModulePathFileRowProjected { row: _ } => false
+    ModulePathFileRowNoStorageRealization { module: _, producer: observed } =>
+      (observed as String) == producer
+  }
+}
+
+// An empty index is Ready with no rows, and that is NOT the narrow: nothing was observed and nothing
+// is claimed, because no binding was supplied to lose. Stated as its own row so the distinction
+// between "no input" and "input whose answer was dropped" stays visible.
+test fn witness_empty_index_projects_no_rows() -> Bool {
+  match module_path_file_rows_from_storage_index(index: msrp_no_bindings()) {
+    ModulePathFileRowsFromIndexRefused { first_failure: _, more_failures: _ } => false
+    ModulePathFileRowsFromIndexReady { rows: rows } => length(rows) == 0
+  }
+}
+
+fn msrp_no_bindings() -> ModuleStorageIndex { Empty }
