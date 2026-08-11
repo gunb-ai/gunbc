@@ -20,6 +20,7 @@ import extdeps.cpu.ampere_altra_package {
   DuplicateContactDesignator,
   altra_pin_summary_total,
   altra_reference_board_collateral_standing,
+  ReferenceBoardCollateralAvailable,
   ReferenceBoardCollateralUnderNda,
   FunctionUnstated,
   PackageContact,
@@ -49,7 +50,6 @@ import product.compute_board.composition {
   ImposedByComponent,
   ProvidesCores,
   ProvidesManagement,
-  project_reference_board_standing,
   requirement_met,
   board_is_ready,
   board_readiness,
@@ -149,7 +149,8 @@ test fn w_altra_contact_map_is_published_and_lands_in_design_family() -> Bool {
       let readiness = board_readiness(
         intent: narrow_compute_node_intent,
         components: [],
-        contact_standing: altra_contact_map_standing()
+        contact_standing: altra_contact_map_standing(),
+        reference_board_standing: ReferenceBoardCollateralAvailable
       )
       list_is_empty(xs: readiness.collateral) && !board_is_ready(r: readiness)
     }
@@ -161,14 +162,26 @@ test fn w_altra_contact_map_is_published_and_lands_in_design_family() -> Bool {
 // the COLLATERAL family. Both arms are asserted together because the correction is precisely
 // that these two are different subjects with different owners; a witness on either alone would
 // have passed under the wrong model too.
-test fn w_reference_board_collateral_remains_a_collateral_refusal() -> Bool {
-  match altra_reference_board_collateral_standing() {
-    ReferenceBoardCollateralUnderNda { subject: _, access_route: _ } =>
-      list_count(
-        xs: project_reference_board_standing(standing: altra_reference_board_collateral_standing()).collateral
-      ) == 1
-    _ => false
-  }
+// ASSERTED THROUGH board_readiness, NOT through the projection. An earlier revision called
+// project_reference_board_standing directly and passed while board_readiness never consulted
+// it at all, so the NDA blocker read as ready on the one surface the module documents as the
+// answer. A claim about a fold has to travel the fold.
+test fn w_reference_board_collateral_reaches_the_readiness_fold() -> Bool {
+  let blocked = board_readiness(
+    intent: narrow_compute_node_intent,
+    components: [],
+    contact_standing: PackageContactMapAdmitted { resolved: 4926 },
+    reference_board_standing: altra_reference_board_collateral_standing()
+  )
+  let clear = board_readiness(
+    intent: narrow_compute_node_intent,
+    components: [],
+    contact_standing: PackageContactMapAdmitted { resolved: 4926 },
+    reference_board_standing: ReferenceBoardCollateralAvailable
+  )
+  list_count(xs: blocked.collateral) == 1
+    && !board_is_ready(r: blocked)
+    && list_is_empty(xs: clear.collateral)
 }
 
 // The cited pin summary cross-foots: 1960 signal + 2927 power/ground + 39 reserved = 4926,
