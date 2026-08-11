@@ -31020,6 +31020,64 @@ pub fn import_resolution_facts(
     import_resolution_facts_with_observation(pool_roots, importer_roots, exclude_substrings).facts
 }
 
+/// The native realization of `v2.lens.module_graph` `dependency_resolution_facts_live`: both
+/// leaves, unioned reference-first through the one dedup authority below, projected to the
+/// dependency-edge triple. `target_module` is the fact's `import_module` — the same renaming the
+/// `.dag` `import_fact_to_dependency_edge` performs, and the reason this returns the raw fact rows
+/// rather than a second edge struct is that the projection is a rename, not a transformation.
+pub fn dependency_resolution_facts(
+    pool_roots: &[String],
+    importer_roots: &[String],
+    exclude_substrings: &[String],
+) -> Vec<ImportResolutionFactRaw> {
+    let reference_edges = reference_edges_as_import_facts(
+        &reference_resolution_facts(pool_roots, importer_roots, exclude_substrings),
+        /* strict */ true,
+    );
+    let import_edges = import_resolution_facts(pool_roots, importer_roots, exclude_substrings);
+    union_dedup_import_facts_reference_first(reference_edges, import_edges)
+}
+
+/// THE UNION, ONCE. Reference-first exact dedup over `{path, import_module, target_declared}`,
+/// keeping first occurrence and therefore a stable order.
+///
+/// This is the single authority for a union that had two independent spellings: the `.dag`
+/// `union_import_resolution_fact_lists` (reference-first, exact dedup, interpreted) and the host
+/// selection-graph twin's `selection_edges` (import-first, dedup deferred to adjacency
+/// construction). Two spellings of one concept is the §3 fork; one helper consumed by both is the
+/// repair, and it is what lets the interpreted composition be retired without the native producer
+/// answering a different question.
+///
+/// WHY IT IS NATIVE. Measured on the live corpus in one process: the two host leaves cost 146ms
+/// and 5ms, while the interpreted union+dedup over the ~18.5k unioned facts cost 104,943ms — the
+/// whole of `dependency_resolution_facts_live`'s 112,261ms, and effectively the whole of the
+/// partition-closure census that consumes it. The cost is the interpreted composition, not the
+/// corpus scan, so caching the leaves recovers 151ms of 112,000ms and the fold has to go.
+///
+/// EXACTNESS IS THE CONTRACT, not a nicety: the partition-closure census judges unresolved targets,
+/// so `target_declared: false` rows must survive, and equality is the same three-field identity the
+/// `.dag` `import_resolution_fact_eq` decides. Nothing here may collapse to a coarser adjacency.
+pub(crate) fn union_dedup_import_facts_reference_first(
+    reference_edges: Vec<ImportResolutionFactRaw>,
+    import_edges: Vec<ImportResolutionFactRaw>,
+) -> Vec<ImportResolutionFactRaw> {
+    let mut seen: HashSet<(String, String, bool)> =
+        HashSet::with_capacity(reference_edges.len() + import_edges.len());
+    let mut out: Vec<ImportResolutionFactRaw> =
+        Vec::with_capacity(reference_edges.len() + import_edges.len());
+    for fact in reference_edges.into_iter().chain(import_edges.into_iter()) {
+        let key = (
+            fact.path.clone(),
+            fact.import_module.clone(),
+            fact.target_declared,
+        );
+        if seen.insert(key) {
+            out.push(fact);
+        }
+    }
+    out
+}
+
 pub fn module_declaration_facts(pool_roots: &[String]) -> Vec<ModuleDeclarationFactRaw> {
     #[cfg(test)]
     MODULE_DECLARATION_FACTS_CALL_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);

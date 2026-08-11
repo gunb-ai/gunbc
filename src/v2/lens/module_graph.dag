@@ -161,7 +161,44 @@ fn dependency_edges_from_import_facts(edges: List<ImportResolutionFact>) -> List
   ))
 }
 
+// NATIVE-REALIZED, and the measurement is the whole argument. This body used to compose the two
+// producers below with union_import_resolution_fact_lists and dependency_edges_from_import_facts.
+// Measured on the live corpus in ONE process, per term:
+//
+//   import_resolution_facts_live                      146ms
+//   reference_derived_import_resolution_facts_live      5ms
+//   union + dedup of the two                      104,943ms
+//   dependency_resolution_facts_live (all of it)  112,261ms
+//
+// So the corpus scans this composition was assumed to be dominated by are 151ms of 112,261ms, and
+// the interpreted composition is the entire cost — which is in turn effectively the whole of the
+// partition-closure census that consumes it. The repair is therefore to move the COMPOSITION, not
+// to cache the leaves: a snapshot join over the producers would have recovered 151ms and left the
+// census over its envelope.
+//
+// The two producers stay exactly where they were. This is the edge-source seam
+// dependency_edge_source_migration_note designates for the namespace terminal step, and it must
+// remain one swappable producer pair rather than becoming a native black box — the native arm
+// composes the same two leaves through the same reference-first exact dedup on
+// {path, import_module, target_declared}, keeping first-occurrence order and every
+// target_declared: false row, because the partition-closure census judges unresolved targets.
 fn dependency_resolution_facts_live(
+  pool_roots: List<String>,
+  importer_roots: List<String>,
+  exclude_substrings: List<String>
+) -> List<ModuleDependencyEdge> {
+  dependency_resolution_facts(
+    pool_roots: pool_roots,
+    importer_roots: importer_roots,
+    exclude_substrings: exclude_substrings
+  )
+}
+
+// The interpreted composition the native arm replaces, retained as the SEAM FIXTURE the ruling
+// requires: it is the executable statement of what the native producer must agree with, and the
+// equivalence witness drives both over the same inputs and compares ordered rows. Deleting it would
+// leave the native arm as the only description of its own contract.
+fn dependency_resolution_facts_interpreted_reference(
   pool_roots: List<String>,
   importer_roots: List<String>,
   exclude_substrings: List<String>
