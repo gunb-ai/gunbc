@@ -1,0 +1,226 @@
+module test.claim.scoped_floor_execution_witness_test
+
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.workflow.affected_set_floor_runner {
+  DiffObservationRefusal,
+  DiffObservationFailClosed,
+  DiffPathsProduced,
+  DependencyObservationRefusal,
+  DispositionAuthorityRefusal,
+  FloorDiffObservation,
+  FrontierQueryRefusal,
+  Refused,
+  RunWitness,
+  SkipAssumedGreen,
+  SubjectObservationRefusal,
+  WitnessRunDisposition
+}
+import gunbc.scoped_floor_execution {
+  ScopedAffectedStanding,
+  ScopedAffectedUndecidable,
+  ScopedDispositionStanding,
+  ScopedDispositionAgrees,
+  ScopedDispositionContradicted,
+  ScopedEntriesAffected,
+  ScopedEntriesUnaffected,
+  ScopedSubjectStanding,
+  ScopedSubjectMatched,
+  ScopedSubjectMismatched,
+  scoped_witness_run_disposition
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data w_subject_note: String = "SUBJECT: the admission that decides whether the dag plus src/v1 scoped world is constructed at all. Every ignorance axis must refuse rather than answer, because a false skip here is silently uncovered rather than merely expensive: the batch it gates carries 31 behavioral test functions whose only other execution route is the main-push SelectionOff control. The positive control pins that an unaffected diff really does reach SkipAssumedGreen - a refusal-only witness would pass on a decision that never skips anything and therefore never saved the 376 seconds this exists to save. These witnesses discriminate the PURE decision on synthetic standings; the live projection scoped_affected_standing_live is the one declaration that reads the corpus, and it is exercised by the floor run that consumes it rather than by a witness that would have to scan the tree to assert anything."
+
+data unrelated_diff: FloorDiffObservation = DiffPathsProduced {
+  changed_paths: ["docs/plans/some-note.md", "src/v2/lens/affected_set.dag"]
+}
+
+data touching_diff: FloorDiffObservation = DiffPathsProduced {
+  changed_paths: ["src/v1/compiler/tokenize.dag"]
+}
+
+data empty_diff: FloorDiffObservation = DiffPathsProduced {
+  changed_paths: []
+}
+
+fn decide(
+  subject: ScopedSubjectStanding,
+  disposition: ScopedDispositionStanding,
+  diff: FloorDiffObservation,
+  departed_paths: List<String>,
+  affected: ScopedAffectedStanding
+) -> WitnessRunDisposition {
+  scoped_witness_run_disposition(
+    subject: subject,
+    disposition: disposition,
+    diff: diff,
+    departed_paths: departed_paths,
+    affected: affected
+  )
+}
+
+fn is_skip(d: WitnessRunDisposition) -> Bool {
+  match d {
+    SkipAssumedGreen => true
+    RunWitness { reason: _ } => false
+    Refused { cause: _ } => false
+  }
+}
+
+fn is_run(d: WitnessRunDisposition) -> Bool {
+  match d {
+    RunWitness { reason: _ } => true
+    SkipAssumedGreen => false
+    Refused { cause: _ } => false
+  }
+}
+
+// POSITIVE CONTROL - the arm the whole change exists to reach. Without this the
+// refusal controls below would all pass on a decision that never skips.
+test fn w_unaffected_diff_skips_the_scoped_world() -> Bool {
+  is_skip(d: decide(
+    subject: ScopedSubjectMatched,
+    disposition: ScopedDispositionAgrees,
+    diff: unrelated_diff,
+    departed_paths: [],
+    affected: ScopedEntriesUnaffected
+  ))
+}
+
+test fn w_affected_closure_runs_the_scoped_batch() -> Bool {
+  is_run(d: decide(
+    subject: ScopedSubjectMatched,
+    disposition: ScopedDispositionAgrees,
+    diff: touching_diff,
+    departed_paths: [],
+    affected: ScopedEntriesAffected
+  ))
+}
+
+// The empty diff must reach the skip through the general affected arm, not a
+// special-cased branch - the same law floor_witness_run_disposition holds.
+test fn w_empty_diff_flows_the_general_skip_arm() -> Bool {
+  is_skip(d: decide(
+    subject: ScopedSubjectMatched,
+    disposition: ScopedDispositionAgrees,
+    diff: empty_diff,
+    departed_paths: [],
+    affected: ScopedEntriesUnaffected
+  ))
+}
+
+// A departure is an OBSERVED change class, so it runs rather than refuses - but
+// it must never skip, because a head-only closure cannot reach the file whose
+// absence is the question.
+test fn w_departed_path_runs_even_when_the_closure_reports_unaffected() -> Bool {
+  is_run(d: decide(
+    subject: ScopedSubjectMatched,
+    disposition: ScopedDispositionAgrees,
+    diff: unrelated_diff,
+    departed_paths: ["src/v1/compiler/tokenize.dag"],
+    affected: ScopedEntriesUnaffected
+  ))
+}
+
+// RED - a declared SubstrateInputsOnly row the derived facts contradict is a
+// broken authority. It must refuse, not degrade to always-run: degrading is
+// operationally safe and epistemically silent, and the stale row would never be
+// repaired. The affected standing here says UNAFFECTED, so a decision that
+// ignored the disposition axis would skip.
+test fn red_contradicted_disposition_refuses_and_names_the_authority() -> Bool {
+  match decide(
+    subject: ScopedSubjectMatched,
+    disposition: ScopedDispositionContradicted { reason: "entry declares SubstrateInputsOnly but derived closure reaches a host-effect sink" },
+    diff: unrelated_diff,
+    departed_paths: [],
+    affected: ScopedEntriesUnaffected
+  ) {
+    Refused { cause: cause } =>
+      match cause {
+        DispositionAuthorityRefusal { reason: _ } => true
+        DiffObservationRefusal { reason: _ } => false
+        FrontierQueryRefusal { reason: _ } => false
+        SubjectObservationRefusal { reason: _ } => false
+        DependencyObservationRefusal { reason: _ } => false
+      }
+    RunWitness { reason: _ } => false
+    SkipAssumedGreen => false
+  }
+}
+
+// RED - an undecidable affected standing is ignorance, not an empty
+// intersection. Answering "nothing is affected" from a query that could not
+// complete is the empty-observation narrow.
+test fn red_undecidable_affected_standing_refuses() -> Bool {
+  match decide(
+    subject: ScopedSubjectMatched,
+    disposition: ScopedDispositionAgrees,
+    diff: unrelated_diff,
+    departed_paths: [],
+    affected: ScopedAffectedUndecidable { reason: "scoped pool roots declared zero modules; the dependency authority could not answer" }
+  ) {
+    Refused { cause: cause } =>
+      match cause {
+        DependencyObservationRefusal { reason: _ } => true
+        DiffObservationRefusal { reason: _ } => false
+        FrontierQueryRefusal { reason: _ } => false
+        SubjectObservationRefusal { reason: _ } => false
+        DispositionAuthorityRefusal { reason: _ } => false
+      }
+    RunWitness { reason: _ } => false
+    SkipAssumedGreen => false
+  }
+}
+
+// RED - an unobserved diff refuses on its own axis, and is not laundered into a
+// dependency or subject refusal.
+test fn red_unobserved_diff_refuses_on_the_diff_axis() -> Bool {
+  match decide(
+    subject: ScopedSubjectMatched,
+    disposition: ScopedDispositionAgrees,
+    diff: DiffObservationFailClosed { reason: "git diff unavailable" },
+    departed_paths: [],
+    affected: ScopedEntriesUnaffected
+  ) {
+    Refused { cause: cause } =>
+      match cause {
+        DiffObservationRefusal { reason: _ } => true
+        DependencyObservationRefusal { reason: _ } => false
+        FrontierQueryRefusal { reason: _ } => false
+        SubjectObservationRefusal { reason: _ } => false
+        DispositionAuthorityRefusal { reason: _ } => false
+      }
+    RunWitness { reason: _ } => false
+    SkipAssumedGreen => false
+  }
+}
+
+// RED - a closure derived from one tree and a diff taken against another is a
+// different question, not a weaker answer. The affected standing here says
+// AFFECTED, so a decision that ignored the subject axis would run and look
+// harmless; the refusal is what makes the mismatch visible.
+test fn red_subject_mismatch_refuses_before_any_affected_reading() -> Bool {
+  match decide(
+    subject: ScopedSubjectMismatched { reason: "closure derived at a revision other than the tested head" },
+    disposition: ScopedDispositionAgrees,
+    diff: touching_diff,
+    departed_paths: [],
+    affected: ScopedEntriesAffected
+  ) {
+    Refused { cause: cause } =>
+      match cause {
+        SubjectObservationRefusal { reason: _ } => true
+        DiffObservationRefusal { reason: _ } => false
+        FrontierQueryRefusal { reason: _ } => false
+        DependencyObservationRefusal { reason: _ } => false
+        DispositionAuthorityRefusal { reason: _ } => false
+      }
+    RunWitness { reason: _ } => false
+    SkipAssumedGreen => false
+  }
+}

@@ -1,0 +1,173 @@
+module gunbc.scoped_floor_execution
+
+import v2.std.algebra { any, length }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.lens.module_graph {
+  entry_affected_by_touched_paths,
+  module_declaration_facts_live
+}
+import v2.workflow.affected_set_floor_runner {
+  DiffObservationRefusal,
+  DiffObservationFailClosed,
+  DiffPathsProduced,
+  DependencyObservationRefusal,
+  DispositionAuthorityRefusal,
+  FloorDiffObservation,
+  Refused,
+  RunWitness,
+  SkipAssumedGreen,
+  SubjectObservationRefusal,
+  WitnessRunDisposition
+}
+
+// WHY THIS EXISTS. The scoped witness batch (gunbc.ci_layer_roots
+// v1_claim_scoped_witness_batch) materializes a SECOND semantic world over the
+// source roots dag plus src/v1 to run five entries. That world costs a measured
+// ~376 seconds and, before this module, was constructed on EVERY pull request:
+// the batch declares SelectionApplied, but none of its five entries declared a
+// live_tree_disposition row, undeclared fail-closes to ReadsLiveTree, and a
+// ReadsLiveTree row can never predict-skip. So the declared selection was inert
+// and the batch's own note - claiming normal affected-set selection avoided the
+// closure materialization on unrelated PRs - described behavior the tree did not
+// have.
+//
+// WHERE THE DECISION HAD TO GO, and why not the plan. The floor plan is a pure
+// argument-free fold evaluated under ExecutionMode Hermetic, where the git diff
+// effect refuses; a diff-dependent plan shape is therefore not merely awkward,
+// it is unavailable at that layer. The ordinary floor worker, by contrast,
+// already observes the diff Wet and already projects the list of scoped batch
+// ids into a manifest that the coordinator spawns children from. An empty
+// manifest already yields zero scoped workers and a successful coordinator, so
+// gating that projection is the whole incision: no plan reshaping, no batch
+// renumbering, and no change to the scoped child itself.
+//
+// WHY THERE IS NO PATH ROSTER HERE. An earlier draft of this module carried the
+// entries' dependency population as authored rows. That would have been a second
+// edge producer beside dependency_resolution_facts_live, which the module_graph
+// authority forbids in terms ("Do not add a second edge producer beside
+// dependency_resolution_facts_live; the swap replaces its body"), and a
+// hand-authored population is exactly the roster that counts the subjects
+// someone remembered to author. The closure question is asked of the existing
+// authority instead, per entry, with the scoped batch's own pool roots - so this
+// module inherits the reference-derived union for free and keeps working when
+// the import grammar is deleted.
+data scoped_floor_execution_note: String = "Pre-construction admission for the dag plus src/v1 scoped witness batch. Returns the EXISTING v2.workflow.affected_set_floor_runner WitnessRunDisposition rather than a second admission coproduct: run, skip-assumed-green, and typed refusal are the same three answers that lane already models, and a scoped-only sum would be a second name for them. The affected relation is v2.lens.module_graph entry_affected_by_touched_paths asked at the scoped pool roots, not a roster authored here. Every ignorance state refuses; none widens and none narrows. The consumer is the ordinary floor worker's scoped-batch manifest projection in claim_executor, which writes the batch id on RunWitness, an empty manifest on SkipAssumedGreen, and fails loudly on Refused."
+
+// The tested tree must be the tree the observations describe. A subject standing
+// exists as its own axis because a diff taken against one commit and a closure
+// derived from another is not a weaker answer, it is a different question, and
+// silently answering it is how a skip becomes unfalsifiable.
+type ScopedSubjectStanding
+  = ScopedSubjectMatched
+  | ScopedSubjectMismatched { reason: String }
+
+// Declared-versus-derived disagreement is a DEFECT, not a conservative input.
+// The seed's reads_live_tree_effective is the OR of declared and derived, which
+// is operationally safe - it degrades to always-run - but where a declaration is
+// consumed to ADMIT expensive work, silently upgrading a stale SubstrateInputsOnly
+// row to ReadsLiveTree hides a broken authority behind a green answer. This axis
+// refuses instead, so the stale row is repaired rather than absorbed.
+type ScopedDispositionStanding
+  = ScopedDispositionAgrees
+  | ScopedDispositionContradicted { reason: String }
+
+// The affected verdict and its ignorance state in ONE carrier, because they are
+// answers to the same question and splitting them into a Bool beside a flag is
+// how "could not decide" starts reading as "unaffected". Undecidable is not a
+// weaker unaffected: a widen is merely expensive, a narrow is silently uncovered.
+type ScopedAffectedStanding
+  = ScopedEntriesAffected
+  | ScopedEntriesUnaffected
+  | ScopedAffectedUndecidable { reason: String }
+
+// LIVE PROJECTION - the only declaration in this module that reads the tree.
+// It is deliberately separated from the decision below so the decision stays a
+// pure fold over observed facts: a witness can then discriminate every arm on
+// synthetic standings without paying a corpus scan, and this projection is
+// exercised by the floor run that consumes it. Mixing them would have made the
+// witness itself a live-tree reader, which is the exact class the disposition
+// wall in this change exists to refuse.
+fn scoped_affected_standing_live(
+  entries: List<String>,
+  pool_roots: List<String>,
+  touched_paths: List<String>
+) -> ScopedAffectedStanding {
+  if length(xs: entries) == 0 {
+    ScopedAffectedUndecidable {
+      reason: "scoped entry roster is empty; no entry population to decide against"
+    }
+  } else if length(xs: module_declaration_facts_live(pool_roots: pool_roots)) == 0 {
+    ScopedAffectedUndecidable {
+      reason: "scoped pool roots declared zero modules; the dependency authority could not answer"
+    }
+  } else if any(
+    xs: entries,
+    predicate: fn(entry) {
+      entry_affected_by_touched_paths(
+        entry_path: entry,
+        pool_roots: pool_roots,
+        touched_paths: touched_paths
+      )
+    }
+  ) {
+    ScopedEntriesAffected
+  } else {
+    ScopedEntriesUnaffected
+  }
+}
+
+// A departed path is a deletion, rename, or copy. Its pre-image is not in the
+// head tree, so a head-only closure cannot decide whether it was a dependency:
+// the file whose absence matters is exactly the file the closure can no longer
+// reach. Until base and head closures are compared exactly, any departure runs
+// the batch. This is a declared response to an observed change class, not a
+// fallback from an instrument failure - the observation succeeded and reported
+// departures.
+fn scoped_departure_forces_run(departed_paths: List<String>) -> Bool {
+  length(xs: departed_paths) > 0
+}
+
+// The decision - a pure fold over already-observed standings. Refusals come
+// first and are exhaustive over the four ignorance axes; only inside a fully
+// observed, non-contradicted world does the positive-evidence ladder run, and
+// its fall-through is the skip. The diff's changed paths are not re-read here
+// because the affected standing already answered the question they exist to ask;
+// an empty diff therefore reaches SkipAssumedGreen through ScopedEntriesUnaffected
+// rather than through a special case, matching floor_witness_run_disposition.
+fn scoped_witness_run_disposition(
+  subject: ScopedSubjectStanding,
+  disposition: ScopedDispositionStanding,
+  diff: FloorDiffObservation,
+  departed_paths: List<String>,
+  affected: ScopedAffectedStanding
+) -> WitnessRunDisposition {
+  match subject {
+    ScopedSubjectMismatched { reason: reason } =>
+      Refused { cause: SubjectObservationRefusal { reason: reason } }
+    ScopedSubjectMatched =>
+      match disposition {
+        ScopedDispositionContradicted { reason: reason } =>
+          Refused { cause: DispositionAuthorityRefusal { reason: reason } }
+        ScopedDispositionAgrees =>
+          match diff {
+            DiffObservationFailClosed { reason: reason } =>
+              Refused { cause: DiffObservationRefusal { reason: reason } }
+            DiffPathsProduced { changed_paths: _ } =>
+              match affected {
+                ScopedAffectedUndecidable { reason: reason } =>
+                  Refused { cause: DependencyObservationRefusal { reason: reason } }
+                ScopedEntriesAffected =>
+                  RunWitness { reason: "scoped entry dependency closure intersects a changed path" }
+                ScopedEntriesUnaffected =>
+                  if scoped_departure_forces_run(departed_paths: departed_paths) {
+                    RunWitness { reason: "scoped diff reports a departed path; head-only closure cannot bound it" }
+                  } else {
+                    SkipAssumedGreen
+                  }
+              }
+          }
+      }
+  }
+}
