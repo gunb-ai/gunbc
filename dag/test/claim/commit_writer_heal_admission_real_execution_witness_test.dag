@@ -4,6 +4,7 @@ import std.logic { Bool }
 import std.types { String, FilePath, GitRef, List }
 import std.algebra { Empty, Cons }
 import extdeps.git
+import gunbc.output_policy { OutcomeIsData }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
 import gunbc.commit_workflow {
@@ -90,7 +91,7 @@ test fn unmerged_index_with_no_markers_refuses_by_real_execution() -> Bool {
   with_witness_repo(scenario: repo => {
     let theirs = commit_witness_side(repo: repo, branch: "theirs", content: "theirs\n")
     let ours = commit_witness_side(repo: repo, branch: "ours", content: "ours\n")
-    let merged = git.Core.MergeNoEditInRepo(repo: repo, branch: "theirs")
+    let merged = git.Core.MergeNoEditInRepo(repo: repo, branch: "theirs", expect: OutcomeIsData)
     let unmerged = git.Core.LsFilesUnmergedInRepo(repo: repo, path: "unclaimed.txt")
     let gated = commit_writer_heal_admission_gate(repo: repo, writer: HealAutocommit)
     let gate_refused = match gated {
