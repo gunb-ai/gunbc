@@ -59,6 +59,19 @@ data backtick_at_comment_source: String = "module annotation_probe\n\n// a `s` @
 
 data url_in_string_source: String = "module annotation_probe\n\ndata d: String = \"http://x.com/a\"\n"
 
+data comment_then_decl_source: String = "module annotation_probe\n\n// c\ndata d: String = \"x\"\n"
+
+data two_comments_source: String = "module annotation_probe\n\n// one\n// two\n"
+
+test fn comment_terminates_at_newline_and_following_decl_survives() -> Bool {
+  (annotation_count(source: comment_then_decl_source) == 1)
+    && lexemes_contain(xs: token_lexemes(source: comment_then_decl_source), s: "dag_token_kw_data")
+}
+
+test fn two_comment_lines_capture_two_annotations() -> Bool {
+  annotation_count(source: two_comments_source) == 2
+}
+
 test fn plain_comment_captures_exactly_one_annotation() -> Bool {
   annotation_count(source: plain_comment_source) == 1
 }

@@ -1,0 +1,92 @@
+module gunbc.test.claim.body_lowering_rejection_propagation_test
+
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.algebra { fold_list }
+import v2.std.collection { List }
+import v2.std.diagnostic { Diagnostic, NonEmptyDiagnostics, None }
+import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, node_synthetic }
+import v2.compiler.body_lowering_fold { body_lower_finish_for_normalize }
+
+data body_lowering_rejection_propagation_note: String = "THE DISCRIMINATING CONTROL for the deleted rejection catch. body_lower_finish_for_normalize used to match EVERY Rejected from body_lower_after_children and return a wrapper-retained Accepted instead, binding the rejection diagnostics to _ and discarding them — so a malformed form, a violated invariant and a genuinely unsupported one all left the seam looking like the same counted frontier state.\n\nThese two claims are the pair that separates them, and they are durable because both are invariants rather than observations of the present frontier: a form the lowering strategies REJECT must leave the seam Rejected carrying its own reason, and an emitted identity with no registered producer must STILL leave it Accepted carrying the retention reason. The first fails on the pre-repair implementation, which returned Accepted; the second fails on any over-correction that deletes the legitimate retention arm along with the catch. Neither claim mentions a specific std module, so neither inverts when the frontier moves.\n\nThe rejecting specimen is a pass-through production (^dag_surface_expr) carrying a production-identity child and NO captured child, which is exactly the shape body_lower_unwrap_pass_through refuses with ^body_lowering_reason_unsupported_form. The retaining specimen carries an identity no producer is registered for, which reaches the final arm of body_lower_production_emitted."
+
+fn atom_node(id: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: [])
+}
+
+fn emitted_shell(id: Symbol) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: ^grammar_production_identity_node_projection },
+        target: atom_node(id: id)
+      }
+    ]
+  )
+}
+
+fn diagnostic_reason(d: Diagnostic) -> Symbol {
+  d.reason
+}
+
+fn all_reasons(d: NonEmptyDiagnostics) -> List<Symbol> {
+  fold_list(xs: d.tail, empty: [diagnostic_reason(d: d.head)], cons: fn(acc, item) {
+    concat(acc, [diagnostic_reason(d: item)])
+  })
+}
+
+fn reasons_contain(reasons: List<Symbol>, sym: Symbol) -> Bool {
+  fold_list(xs: reasons, empty: false, cons: fn(acc, r) {
+    acc || (r == sym)
+  })
+}
+
+fn finish(id: Symbol) -> v2.std.diagnostic.Outcome<Node> {
+  let shell = emitted_shell(id: id)
+  body_lower_finish_for_normalize(
+    n: shell,
+    folded: shell,
+    cd: None,
+    fn_body_pass_through: false
+  )
+}
+
+fn rejected_reasons(id: Symbol) -> List<Symbol> {
+  match finish(id: id) {
+    v2.std.diagnostic.Rejected { diagnostics: d } => all_reasons(d: d)
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => []
+  }
+}
+
+fn accepted_reasons(id: Symbol) -> List<Symbol> {
+  match finish(id: id) {
+    v2.std.diagnostic.Accepted { value: _, diagnostics: d } =>
+      match d {
+        v2.std.diagnostic.Some { diagnostics: ne } => all_reasons(d: ne)
+        None => []
+      }
+    v2.std.diagnostic.Rejected { diagnostics: _ } => []
+  }
+}
+
+test fn genuine_rejection_leaves_the_seam_rejected() -> Bool {
+  reasons_contain(
+    reasons: rejected_reasons(id: ^dag_surface_expr),
+    sym: ^body_lowering_reason_unsupported_form
+  )
+}
+
+test fn genuine_rejection_is_not_relabelled_as_retention_RED() -> Bool {
+  reasons_contain(
+    reasons: accepted_reasons(id: ^dag_surface_expr),
+    sym: ^body_lowering_reason_wrapper_retained_emitted
+  ) == false
+}
+
+test fn unregistered_producer_still_retains() -> Bool {
+  reasons_contain(
+    reasons: accepted_reasons(id: ^probe_unregistered_surface_form),
+    sym: ^body_lowering_reason_wrapper_retained_emitted
+  )
+}
