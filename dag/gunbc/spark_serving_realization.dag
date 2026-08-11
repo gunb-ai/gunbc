@@ -387,3 +387,40 @@ fn select_spark_serving_realization(
       }
   }
 }
+
+// MEASURED, 2026-08-11, as gunbc-automation on both Sparks through the bound-credential context, and
+// the result REFUTES the realization the effect-weight ordering would have selected.
+//
+// The facts:
+//   NVIDIA GB10 visible to gunbc-automation on srv5 and srv6 (accelerator access is real at the
+//     managed principal, not merely at the host)
+//   loginctl enable-linger through the narrow grant succeeds: Linger=no -> Linger=yes
+//   gunbc-inference exists, uid 996, shell /usr/sbin/nologin -- a genuine no-login identity
+//   systemd-run --user --scope reports id -un = gunbc-automation
+//
+// THE LAST ONE IS THE FINDING. A systemd USER unit runs as the user whose manager owns it. There is
+// no arrangement under which a user unit owned by gunbc-automation executes as gunbc-inference. So
+// under the terminal intent -- service_identity: NoLoginNoSudoIdentity, meaning the serving process
+// must NOT be the account that holds automation authority -- UserUnitRealization is STRUCTURALLY
+// INADMISSIBLE on these hosts, however capable they otherwise are.
+//
+// That is a derivation the earlier model could not have produced, because it checked "a user manager
+// exists" and "a no-login identity exists" as INDEPENDENT capabilities and admitted the user unit
+// when both held. Two facts can both be true while the realization joining them does not exist. The
+// requirement each candidate must satisfy is its own IDENTITY CONTRACT:
+//
+//   UserUnitRealization         process identity = the managed executor, necessarily
+//   SystemUnitRealization       process identity = a named service account, or DynamicUser
+//   RootlessContainerRealization host identity and container identity explicitly related
+//
+// The consequence is worth stating plainly because it is the opposite of a convenience: the admitted
+// realization on these hosts is the SYSTEM unit, which needs a privileged install. Privilege is
+// still an output -- nobody decided serving needs root -- but the output is not the answer that
+// would have been most comfortable, and the effect-weight ordering (UserUnit=1) would have selected
+// a realization that cannot satisfy the intent. Weights order candidates that are ADMITTED; they
+// must never be what decides admission.
+//
+// 🟡 dissolve-on: this note is replaced by an executing identity-contract requirement per candidate,
+// so the refutation above is derived rather than recorded. Until then the selector's admission of
+// UserUnitRealization under NoLoginNoSudoIdentity is a KNOWN over-admission, not a passing case.
+data spark_user_unit_identity_contract_refutation_note: String = "A systemd user unit executes as its owning user; measured on srv5 as gunbc-automation. Under NoLoginNoSudoIdentity the serving process must be gunbc-inference, so UserUnitRealization cannot satisfy the intent on these hosts and SystemUnitRealization is the admitted candidate despite its higher effect weight."
