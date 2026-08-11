@@ -4,7 +4,7 @@
 //!
 //! | Consumer site | What it reads from the discovery walk | Closed projection |
 //! |---|---|---|
-//! | Pre-plan `discover_floor_witness_roster([], [])` | Naming hygiene, orphan/helpers, producer roster, module-graph facts, inert-lens + construction-justification gates | Full snapshot payload + installed module-graph cache |
+//! | Demand-directed `discover_floor_witness_roster([], [])` (runs only when the plan schedules a discovery or scoped-witness batch, gunbc#8140) | Naming hygiene, orphan/helpers, producer roster, module-graph facts, effect-reach derivation | Full snapshot payload + installed module-graph cache |
 //! | Discovery corpus with `scan_dirs=[]` + explicit entries | Skips roster walk; still calls `build_module_graph_facts_live` on selection/skip paths | Module-graph facts bytes in snapshot (cache install) |
 //! | Discovery corpus with non-empty `scan_dirs` | Full roster walk for that scan shape | Not covered by pre-plan snapshot (distinct request identity) |
 //!

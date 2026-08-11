@@ -5483,8 +5483,10 @@ pub struct ModuleGraphFactsLive {
     // Every in-scope `.dag` path the importer walk SAW on disk (whether or not it produced
     // facts), and every observed path whose content read refused. The producers skip an
     // unreadable file at scan time, so without these rows a vanished module is
-    // indistinguishable from an absent one — the fail-open undercount consumers like the
-    // inert-lens census must refuse on, never absorb (operator review 2026-07-28, PR #7384).
+    // indistinguishable from an absent one — the fail-open undercount every consumer of these
+    // facts must refuse on, never absorb (operator review 2026-07-28, PR #7384). The
+    // inert-lens census this arm was written for is deleted (gunbc#8141); effect-reach
+    // derivation and the cross-worker snapshot transport are the live consumers.
     pub(crate) observed_paths: HashSet<String>,
     pub(crate) read_refusals: Vec<(String, String)>,
 }
@@ -5945,8 +5947,9 @@ pub(crate) fn build_module_graph_facts_live_uncached(
     // (import-less-but-referencing std files, witnesses that need src/v1 in their pool, the
     // pre-existing fleet_converge Srv3 red, and homonyms the bright-cat lane must qualify), so the
     // loader repoint is staged as a separate part after those land. The REFERENCE producer below is
-    // already live via the inert-lens reach (the strips' documented CI blocker), which is hygiene-
-    // only and cannot regress a compile.
+    // was, until gunbc#8141, already live via the inert-lens reach (the strips' documented CI
+    // blocker); that consumer is deleted, so the reference producer's remaining live readers are
+    // affected-set selection and the loader closure.
     //
     // EDGE SOURCE — the swap `module_graph.dag`'s `dependency_edge_source_migration_note` designates:
     // "when [the namespace terminal step] lands, `dependency_resolution_facts_live` swaps to the
@@ -30398,8 +30401,8 @@ pub(crate) fn module_declaration_facts_call_count_for_test() -> usize {
 /// The import-facts walk plus what it OBSERVED: every in-scope `.dag` path the walk
 /// saw on disk, and every path whose content read refused. The skip arm on an
 /// unreadable file used to be silent (`Err(_) => continue`), which made a vanished
-/// module indistinguishable from an absent one — the fail-open undercount the
-/// inert-lens census must refuse on (operator review 2026-07-28, PR #7384). One walk,
+/// module indistinguishable from an absent one — the fail-open undercount the facts
+/// consumers must refuse on (operator review 2026-07-28, PR #7384). One walk,
 /// projected two ways: `import_resolution_facts` stays the thin fact projection.
 pub(crate) struct ImportResolutionObservation {
     pub(crate) facts: Vec<ImportResolutionFactRaw>,
@@ -30492,22 +30495,23 @@ pub fn module_declaration_facts(pool_roots: &[String]) -> Vec<ModuleDeclarationF
 // so the module graph survives corpus-wide `import` deletion (namespace-only resolution, operator-
 // signed 2026-07-06; the reference is the sole representation of usage, Rule 1). One O(corpus) parse
 // pass over the pool (reusing the real front-end `tokenize` + `parse` — no substring scan), cached.
-// Consumers (`build_module_graph_facts_live`, the inert-lens reach) union these edges onto the import
+// Consumers (`build_module_graph_facts_live`, affected-set selection) union these edges onto the import
 // edges during the transition; when the import grammar is deleted (parent's terminal step) the import
 // term is empty and the module graph is reference-only, the `src/v2/lens/module_graph.dag`
 // single-swap-point end state. Every closure/loader/lens consumer is edge-source-agnostic (reads edge
 // rows as data, never import syntax).
 //
 // Confidence tag (parent ruling, 2026-07-14; DESIGN §5): the LOADER closure and affected-set read
-// ALL edges (over-load is safe — a superset only compiles extra modules). The inert-lens reach reads
-// Qualified + UniqueBare only (dropping AmbiguousBare), so an over-connected graph can never silently
-// clear a truly-inert lens (no fail-open hygiene). AmbiguousBare is a bare identifier declared in >1
+// ALL edges (over-load is safe — a superset only compiles extra modules). SELECTION reads
+// Qualified + UniqueBare only (dropping AmbiguousBare), so an over-connected graph cannot silently
+// widen the selection tier. (The inert-lens reach was the other reader of that tier until gunbc#8141
+// deleted it.) AmbiguousBare is a bare identifier declared in >1
 // module; under namespace-only that is a Rule-2 ambiguity the source should qualify.
 //
 // Dissolve-on: `symbol_index_fill` (SymbolIndex lane) projects exact, scope-aware reference edges from
 // the filled containment tree; when that lands, this parse-and-index approximation (which is liberal
 // on bare-name reference collection — a local binder that shadows a globally-unique declared name
-// yields a spurious UniqueBare edge, safe for the loader, tolerated by the inert-lens grain) deletes.
+// yields a spurious UniqueBare edge, safe for the loader, tolerated at the selection grain) deletes.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum RefEdgeResolution {
     Qualified,
@@ -30539,7 +30543,7 @@ pub struct ReferenceEdgeRaw {
 /// The tier is per-CONSUMER and the two are not interchangeable:
 ///   - `false` (keep AmbiguousBare) for the LOADER — over-connection is harmless there, since a
 ///     superset only compiles extra modules.
-///   - `true` for SELECTION and the inert-lens reach — over-connection is not a safety problem
+///   - `true` for SELECTION — over-connection is not a safety problem
 ///     here, it is what destroys the answer. Measured: at `false` an entry's median closure is
 ///     1136 of 2240 modules (homonyms fan every referrer across the pool); at `true` it is 96,
 ///     the same order as the import-only baseline's 54.
@@ -41259,8 +41263,8 @@ mod import_closure_equivalence_tests {
 
     /// Floor witness entry paths enrolled by the source-root `*_test.dag` pass
     /// (`gunbc.ci_layer_roots.witness_layer_roots`), minus the model exclusion list.
-    /// Avoids `discover_floor_witness_roster` lens-hygiene work — closure set-identity
-    /// only needs the witness entry roster, not inert-lens classification.
+    /// Avoids `discover_floor_witness_roster`'s producer + facts work — closure set-identity
+    /// only needs the witness entry roster.
     fn floor_witness_entry_paths_for_oracle() -> BTreeSet<String> {
         let mut entries = BTreeSet::new();
         for root in default_source_roots() {

@@ -10478,8 +10478,9 @@ fn run() -> Result<ExitCode, ExitCode> {
     // that a naming violation should be "the cheapest possible failure"; measured, the
     // walk is the most expensive phase in the process (5.9 min of a 56.5-min floor,
     // ~6 min of a ~15-min regen), because the roster producer it calls builds
-    // module-graph facts, a second strict reference-resolution pass, inert-lens
-    // reachability and the construction-justification census. A two-node regen plan
+    // module-graph facts, a second strict reference-resolution pass, and (until
+    // gunbc#8141 deleted them) inert-lens reachability plus the
+    // construction-justification census. A two-node regen plan
     // paid all of it to discover a roster it never reads. The roster is memoized by
     // request digest (IN_PROCESS_ROSTER_BY_REQUEST), so plans that DO schedule
     // discovery pay exactly what they paid before — the corpus batch hits the memo
