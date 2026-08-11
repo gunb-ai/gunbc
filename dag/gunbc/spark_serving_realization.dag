@@ -1,0 +1,380 @@
+module gunbc.spark_serving_realization
+
+import std.types { String, Bool, List, Int, NonEmptyStr }
+import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
+
+// SERVING REALIZATION IS DERIVED, NOT OBSERVED AND NOT ASKED.
+//
+// The function this replaces, gunbc.spark_bootstrap_provision derive_install_scope, crossed
+// straight from a privilege observation to an architecture decision:
+//
+//   passwordless_sudo               -> SystemUnitScope
+//   container_socket_admits         -> ContainerScope
+//   otherwise                       -> UserUnitScope
+//
+// Two things are wrong with that, and its own ground string confesses the second: "both closures
+// share one cause, so user scope is what remains". User scope is selected BY ELIMINATION, never by
+// proving it can satisfy the intended lifecycle, identity separation, restart behavior, accelerator
+// access, credential delivery or readback. And granting privilege SILENTLY CHANGES THE DESIRED
+// ARCHITECTURE: a host that gains passwordless sudo is "upgraded" from a user unit to a system unit
+// although the serving intent never changed. Privilege is an input to what is POSSIBLE; it must
+// never be an input to what is WANTED.
+//
+// The derivation this module models instead:
+//
+//   serving intent
+//     x realization contracts
+//     x observed host capabilities
+//     x explicit selection policy
+//   -> admitted realization -> exact effect plan -> required privilege
+//
+// Required privilege is the LAST term, an output. "Does the serving runtime need root" is therefore
+// not a question an operator can answer, because the answer is a property of a selection that has
+// not been made yet. Asking it is how an implementation property gets fixed before the model has
+// represented the behavior it is supposed to follow from.
+
+// ── Intent: what must be true, naming no mechanism ────────────────────────────────────────────
+
+type ServingLifecycleIntent = SurvivesReboot | SessionScoped
+
+type ServingAvailabilityIntent = RestartsOnFailure | ManualRestartAcceptable
+
+type ServingAuthorityIntent = ManagedConvergenceOwned | HumanOperatedAcceptable
+
+// The serving process's own identity. NoLoginNoSudoIdentity is the terminal Spark intent and is
+// already modeled upstream: gunbc.fleet_posix_accounts FleetAccountInferenceService is
+// NoLoginServiceIdentity with an empty sudo-grant population BY CONSTRUCTION, so this intent names
+// an identity the principal model can actually supply rather than a wish.
+type ServiceIdentityIntent
+  = NoLoginNoSudoIdentity
+  | SupervisorManagedDynamicIdentity
+  | ExecutorOwnedIdentity
+
+type ServingEndpointIntent = AuthenticatedEndpoint | UnauthenticatedEndpoint
+
+type ServingObservabilityIntent = IndependentlyObservable | ObservableThroughActuatorOnly
+
+type SparkServingIntent {
+  lifecycle: ServingLifecycleIntent
+  availability: ServingAvailabilityIntent
+  authority: ServingAuthorityIntent
+  service_identity: ServiceIdentityIntent
+  endpoint: ServingEndpointIntent
+  observability: ServingObservabilityIntent
+}
+
+// ── Capability observation: reports what EXISTS, selects nothing ──────────────────────────────
+
+// THREE states, not a Bool, and the distinction is the one this whole lane was built on: a
+// capability nobody has looked for is not an absent capability. CapabilityUnobserved has a
+// different remedy (go look) from CapabilityRefused (provision it), and collapsing them is how a
+// probe that never ran reads as a host that lacks something.
+type CapabilityObservation
+  = CapabilityPresent { evidence: NonEmptyStr }
+  | CapabilityRefused { cause: NonEmptyStr }
+  | CapabilityUnobserved
+
+type SparkHostCapabilityObservation {
+  host: NonEmptyStr
+  managed_executor_account: CapabilityObservation
+  no_login_service_identity: CapabilityObservation
+  system_unit_manager: CapabilityObservation
+  user_unit_manager: CapabilityObservation
+  user_lingering: CapabilityObservation
+  container_runtime: CapabilityObservation
+  accelerator_access: CapabilityObservation
+  writable_artifact_root: CapabilityObservation
+  endpoint_bindable: CapabilityObservation
+}
+
+// ── Candidate realizations and the exact requirements each one imposes ────────────────────────
+
+type SparkServingRealization
+  = UserUnitRealization
+  | SystemUnitRealization
+  | RootlessContainerRealization
+
+type ServingRequirement
+  = RequiresManagedExecutorAccount
+  | RequiresNoLoginServiceIdentity
+  | RequiresSystemUnitManager
+  | RequiresUserUnitManager
+  | RequiresUserLingering
+  | RequiresContainerRuntime
+  | RequiresAcceleratorAccess
+  | RequiresWritableArtifactRoot
+  | RequiresBindableEndpoint
+
+fn requirement_label(requirement: ServingRequirement) -> String {
+  match requirement {
+    RequiresManagedExecutorAccount => "managed executor account"
+    RequiresNoLoginServiceIdentity => "no-login service identity"
+    RequiresSystemUnitManager => "system unit manager"
+    RequiresUserUnitManager => "user unit manager"
+    RequiresUserLingering => "user lingering (unit survives logout/reboot)"
+    RequiresContainerRuntime => "container runtime"
+    RequiresAcceleratorAccess => "accelerator device access"
+    RequiresWritableArtifactRoot => "writable artifact root"
+    RequiresBindableEndpoint => "bindable endpoint"
+  }
+}
+
+fn observation_for(
+  capabilities: SparkHostCapabilityObservation,
+  requirement: ServingRequirement,
+) -> CapabilityObservation {
+  match requirement {
+    RequiresManagedExecutorAccount => capabilities.managed_executor_account
+    RequiresNoLoginServiceIdentity => capabilities.no_login_service_identity
+    RequiresSystemUnitManager => capabilities.system_unit_manager
+    RequiresUserUnitManager => capabilities.user_unit_manager
+    RequiresUserLingering => capabilities.user_lingering
+    RequiresContainerRuntime => capabilities.container_runtime
+    RequiresAcceleratorAccess => capabilities.accelerator_access
+    RequiresWritableArtifactRoot => capabilities.writable_artifact_root
+    RequiresBindableEndpoint => capabilities.endpoint_bindable
+  }
+}
+
+// The requirement population is a function of BOTH the realization and the intent, which is what
+// makes a user unit rejectable rather than merely last. A user unit that must survive reboot needs
+// lingering; the same realization under SessionScoped does not. So "the only unprivileged option"
+// can still fail to satisfy an unchanged intent, instead of being selected because nothing else is
+// left.
+fn realization_requirements(
+  intent: SparkServingIntent,
+  realization: SparkServingRealization,
+) -> List<ServingRequirement> {
+  let common = [
+    RequiresAcceleratorAccess,
+    RequiresWritableArtifactRoot,
+    RequiresBindableEndpoint,
+  ]
+  let identity = match intent.service_identity {
+    NoLoginNoSudoIdentity => [RequiresNoLoginServiceIdentity]
+    SupervisorManagedDynamicIdentity => []
+    ExecutorOwnedIdentity => []
+  }
+  let authority = match intent.authority {
+    ManagedConvergenceOwned => [RequiresManagedExecutorAccount]
+    HumanOperatedAcceptable => []
+  }
+  let mechanism = match realization {
+    SystemUnitRealization => [RequiresSystemUnitManager]
+    RootlessContainerRealization => [RequiresContainerRuntime, RequiresUserUnitManager]
+    UserUnitRealization =>
+      match intent.lifecycle {
+        SurvivesReboot => [RequiresUserUnitManager, RequiresUserLingering]
+        SessionScoped => [RequiresUserUnitManager]
+      }
+  }
+  concat(concat(concat(common, identity), authority), mechanism)
+}
+
+// ── Admission ─────────────────────────────────────────────────────────────────────────────────
+
+type ServingRequirementRefusal {
+  realization_label: String
+  requirement: ServingRequirement
+  cause: NonEmptyStr
+}
+
+type SparkServingRealizationAdmission
+  = RealizationAdmitted { realization: SparkServingRealization }
+  | RealizationNotAdmitted {
+      realization: SparkServingRealization
+      first: ServingRequirementRefusal
+      more: List<ServingRequirementRefusal>
+    }
+
+fn realization_label(realization: SparkServingRealization) -> String {
+  match realization {
+    UserUnitRealization => "user-unit"
+    SystemUnitRealization => "system-unit"
+    RootlessContainerRealization => "rootless-container"
+  }
+}
+
+// An UNOBSERVED capability refuses admission exactly as a refused one does, and carries a different
+// cause so the remedy is legible. Admitting on unobserved would be the empty-observation narrow:
+// treating "nobody looked" as "it is there".
+fn requirement_refusal(
+  realization: SparkServingRealization,
+  capabilities: SparkHostCapabilityObservation,
+  requirement: ServingRequirement,
+) -> ServingRequirementRefusal? {
+  match observation_for(capabilities: capabilities, requirement: requirement) {
+    CapabilityPresent { evidence: _ } => none
+    CapabilityRefused { cause: why } => Present {
+      value: ServingRequirementRefusal {
+        realization_label: realization_label(realization: realization),
+        requirement: requirement,
+        cause: why,
+      }
+    }
+    CapabilityUnobserved => Present {
+      value: ServingRequirementRefusal {
+        realization_label: realization_label(realization: realization),
+        requirement: requirement,
+        cause: concat("unobserved: ", requirement_label(requirement: requirement)) as NonEmptyStr,
+      }
+    }
+  }
+}
+
+fn admit_realization(
+  intent: SparkServingIntent,
+  capabilities: SparkHostCapabilityObservation,
+  realization: SparkServingRealization,
+) -> SparkServingRealizationAdmission {
+  let refusals = fold(
+    realization_requirements(intent: intent, realization: realization),
+    init: [],
+    f: fn(acc, r) {
+      match requirement_refusal(realization: realization, capabilities: capabilities, requirement: r) {
+        Present { value: refusal } => append(acc, items: [refusal])
+        Absent => acc
+      }
+    },
+  )
+  match list_head_of(xs: refusals) {
+    Present { value: first } => RealizationNotAdmitted {
+      realization: realization,
+      first: first,
+      more: list_tail_of(xs: refusals),
+    }
+    Absent => RealizationAdmitted { realization: realization }
+  }
+}
+
+// head/tail come from the std list algebra rather than being re-derived here: a hand-rolled tail
+// was both an empty-literal type error and silently wrong (it never dropped the head), which is
+// what re-inventing an existing concept buys.
+fn list_head_of(xs: List<ServingRequirementRefusal>) -> ServingRequirementRefusal? {
+  match list_head(xs: xs) {
+    HeadFound { value: v } => Present { value: v }
+    HeadAbsent => none
+  }
+}
+
+fn list_tail_of(xs: List<ServingRequirementRefusal>) -> List<ServingRequirementRefusal> {
+  match list_tail(xs: xs) {
+    TailFound { tail: t } => t
+    TailAbsent => xs
+  }
+}
+
+// ── Normative policy and selection ────────────────────────────────────────────────────────────
+
+// Capabilities and contracts say what is POSSIBLE. They cannot rank two equally capable
+// realizations, and a model that silently picked one would be smuggling a preference in as a fact.
+// The policy is therefore explicit and general, never a per-host ruling.
+type PrivilegePolicy = LeastRequiredEffects | PreferSystemIntegration
+
+type SparkServingRealizationPolicy {
+  privilege: PrivilegePolicy
+}
+
+// Effect weight orders realizations by the privilege their effects require, NOT by preference. A
+// system unit mutates system-wide state; a rootless container and a user unit stay inside the
+// executor's own context. Under LeastRequiredEffects the lowest weight admitted wins, which is
+// precisely why gaining passwordless sudo cannot change the selection: it makes system-unit
+// ADMISSIBLE without making it CHEAPER.
+fn realization_effect_weight(realization: SparkServingRealization) -> Int {
+  match realization {
+    UserUnitRealization => 1
+    RootlessContainerRealization => 2
+    SystemUnitRealization => 3
+  }
+}
+
+type SparkServingRealizationSelection
+  = RealizationSelected { realization: SparkServingRealization }
+  | NoRealizationAdmitted {
+      first: ServingRequirementRefusal
+      more: List<ServingRequirementRefusal>
+    }
+  | RealizationChoiceRequired {
+      first: SparkServingRealization
+      more: List<SparkServingRealization>
+      cause: NonEmptyStr
+    }
+
+data spark_serving_candidate_realizations: List<SparkServingRealization> = [
+  UserUnitRealization,
+  RootlessContainerRealization,
+  SystemUnitRealization,
+]
+
+fn admitted_realizations(
+  intent: SparkServingIntent,
+  capabilities: SparkHostCapabilityObservation,
+) -> List<SparkServingRealization> {
+  fold(spark_serving_candidate_realizations, init: [], f: fn(acc, r) {
+    match admit_realization(intent: intent, capabilities: capabilities, realization: r) {
+      RealizationAdmitted { realization: adm } => append(acc, items: [adm])
+      RealizationNotAdmitted { realization: _, first: _, more: _ } => acc
+    }
+  })
+}
+
+fn all_refusals(
+  intent: SparkServingIntent,
+  capabilities: SparkHostCapabilityObservation,
+) -> List<ServingRequirementRefusal> {
+  fold(spark_serving_candidate_realizations, init: [], f: fn(acc, r) {
+    match admit_realization(intent: intent, capabilities: capabilities, realization: r) {
+      RealizationAdmitted { realization: _ } => acc
+      RealizationNotAdmitted { realization: _, first: f0, more: rest } =>
+        append(append(acc, items: [f0]), items: rest)
+    }
+  })
+}
+
+fn lowest_weight_admitted(admitted: List<SparkServingRealization>) -> SparkServingRealization? {
+  fold(admitted, init: none, f: fn(acc, r) {
+    match acc {
+      Absent => Present { value: r }
+      Present { value: best } =>
+        if realization_effect_weight(realization: r) < realization_effect_weight(realization: best) {
+          Present { value: r }
+        } else {
+          Present { value: best }
+        }
+    }
+  })
+}
+
+fn select_spark_serving_realization(
+  intent: SparkServingIntent,
+  capabilities: SparkHostCapabilityObservation,
+  policy: SparkServingRealizationPolicy,
+) -> SparkServingRealizationSelection {
+  let admitted = admitted_realizations(intent: intent, capabilities: capabilities)
+  match lowest_weight_admitted(admitted: admitted) {
+    Absent => {
+      let refusals = all_refusals(intent: intent, capabilities: capabilities)
+      match list_head_of(xs: refusals) {
+        Present { value: first } => NoRealizationAdmitted { first: first, more: list_tail_of(xs: refusals) }
+        Absent => NoRealizationAdmitted {
+          first: ServingRequirementRefusal {
+            realization_label: "none",
+            requirement: RequiresBindableEndpoint,
+            cause: "no candidate realization was evaluated" as NonEmptyStr,
+          },
+          more: [],
+        }
+      }
+    }
+    Present { value: best } =>
+      match policy.privilege {
+        LeastRequiredEffects => RealizationSelected { realization: best }
+        PreferSystemIntegration =>
+          RealizationChoiceRequired {
+            first: best,
+            more: [],
+            cause: "PreferSystemIntegration does not order equally capable realizations by a modeled fact; the tie is a genuine choice rather than a derivation" as NonEmptyStr,
+          }
+      }
+  }
+}
