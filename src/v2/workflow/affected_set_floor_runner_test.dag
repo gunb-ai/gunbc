@@ -32,6 +32,9 @@ import v2.workflow.affected_set_floor_runner {
   Refused,
   DiffObservationRefusal,
   FrontierQueryRefusal,
+  SubjectObservationRefusal,
+  DependencyObservationRefusal,
+  DispositionAuthorityRefusal,
   floor_any_claim_touches_rerun_frontier,
   floor_claim_touches_rerun_frontier,
   floor_row_would_skip,
@@ -227,6 +230,9 @@ test fn floor_test_diff_fail_closed_refuses_holds() -> Bool {
       match cause {
         DiffObservationRefusal { reason: reason } => reason == "git diff unavailable"
         FrontierQueryRefusal { reason: _ } => false
+        SubjectObservationRefusal { reason: _ } => false
+        DependencyObservationRefusal { reason: _ } => false
+        DispositionAuthorityRefusal { reason: _ } => false
       }
     RunWitness { reason: _ } => false
     SkipAssumedGreen => false
@@ -246,6 +252,9 @@ test fn floor_test_frontier_fail_closed_refuses_holds() -> Bool {
       match cause {
         FrontierQueryRefusal { reason: reason } => reason == "provenance unavailable"
         DiffObservationRefusal { reason: _ } => false
+        SubjectObservationRefusal { reason: _ } => false
+        DependencyObservationRefusal { reason: _ } => false
+        DispositionAuthorityRefusal { reason: _ } => false
       }
     RunWitness { reason: _ } => false
     SkipAssumedGreen => false
