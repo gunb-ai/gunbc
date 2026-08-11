@@ -4771,8 +4771,11 @@ fn produce_floor_compile_clean_receipt() -> FloorCompileCleanReceipt {
 
 /// The compile-clean leg's own cost receipt — the "phase_mark walls get their own
 /// receipt keys" prerequisite `gunbc_ci_floor_batch_clamp_note` follow-up (a) names.
-/// Same one-record-two-projections posture as the witness row-cost receipt: every
-/// row prints as a `[compile-clean-cost]` line AND lands in the TSV. Write failure
+/// The rows land in the TSV only; the console carries the `[receipt]` summary naming
+/// that path. They used to also print one `[compile-clean-cost]` line each because the
+/// file had no way off the runner — the `ci` job now uploads it as the `floor-receipts`
+/// artifact (`gunbc.ci_workflow` `ci_floor_receipts_upload_step`), which is where the
+/// basis seeding reads them. Write failure
 /// is loud but does not turn the compile's verdict — the gate's ok is a compile
 /// fact; cost receipts are walk-grain observations (the signed admission/verdict
 /// split in gunbc_ci_floor_batch_wall_budget_note).
@@ -4788,9 +4791,6 @@ fn write_floor_compile_clean_cost_receipt(
     ));
     for (module, ms) in module_rows {
         body.push_str(&format!("module_typecheck\t{module}\t{ms}\t1\n"));
-    }
-    for line in body.lines() {
-        eprintln!("[compile-clean-cost] {line}");
     }
     let path = std::path::Path::new("target").join("floor-compile-clean-cost-receipt.tsv");
     if let Err(e) =

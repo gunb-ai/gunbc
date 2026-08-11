@@ -1,0 +1,229 @@
+module test.claim.compute_board_article_witness
+
+import std.types { String, NonEmptyStr, List }
+import product.compute_board.digital_control { board_power_interlock_intent }
+import product.compute_board.analog { AnalogCircuitIntent, ComponentModelBinding, ElectricalModelAbsent, NetIdentity, ComponentInstanceIdentity, TerminalIdentity, terminal_ref }
+import product.compute_board.spice_projection {
+  SpiceSliceProjected,
+  SpiceSliceRefused,
+  project_analog_to_spice,
+  project_article_to_spice,
+}
+import product.compute_board.article {
+  BoardPowerInterfaceArticle,
+  ChassisBond,
+  ChassisBondProposed,
+  ChassisBondObserved,
+  ElectricalBond,
+  PowerReturnConnection,
+  ProtectiveEarthBond,
+  PhysicalRealizationPending,
+  RequiresSpatialAffineSubstrateLanded,
+  ManufacturingProfileUnselected,
+  SignalReferenceConnection,
+  ShieldTermination,
+  ProductionSigningUnavailable,
+  WriteProtectionUnmodelled,
+  article_analog,
+  article_digital_control,
+  article_identity_eq,
+  article_manufacturing_profile_selected,
+  article_physical_interface_admitted,
+  power_interlock_article,
+  power_good_model_bindings,
+}
+import product.compute_board.verilog_projection {
+  VerilogModuleEmitted,
+  VerilogProjectionRefused,
+  project_intent_to_verilog,
+  project_article_to_verilog,
+  power_interlock_verilog_bindings,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The exact decks. These are FULL EQUALITY, not substring probes: a substring oracle passes on
+// a deck with an extra element, a missing element, a wrong reference node or a reordered
+// netlist, which are all different circuits. An earlier revision of this witness checked three
+// substrings and called the result byte-exact.
+data expected_spice_deck: String = "power-good conditioning network\nVlogic_in pg_raw 0 12\nRpg_cond pg_raw 0 10k\nCpg_filt pg_raw 0 100n"
+
+data expected_verilog_source: String = "module board_power_interlock (\n  input  wire conditioned_good,\n  input  wire fault,\n  output wire power_permit,\n  output wire reset_release\n);\n  assign power_permit = (conditioned_good & ~fault);\n  assign reset_release = (conditioned_good & power_permit);\nendmodule\n"
+
+// ONE ARTICLE FEEDS BOTH EMISSIONS, and both receipts name it. The identity carried in the
+// receipt is what makes this a claim about a shared root rather than a coincidence between two
+// fixtures: without it, two unrelated articles with equal extracted fields emit indistinguishable
+// output and this witness would still be green.
+test fn w_one_article_feeds_both_emissions() -> Bool {
+  match project_article_to_spice(article: power_interlock_article) {
+    SpiceSliceProjected { receipt: sr } =>
+      match project_article_to_verilog(
+        article: power_interlock_article,
+        bindings: power_interlock_verilog_bindings
+      ) {
+        VerilogModuleEmitted { receipt: vr } =>
+          sr.source == expected_spice_deck
+            && vr.source == expected_verilog_source
+            && article_identity_eq(a: sr.source_article, b: vr.source_article)
+            && (sr.source_article.name as String) == "board power interlock"
+            && (sr.source_article.revision as String) == "0"
+        VerilogProjectionRefused { cause: _ } => false
+      }
+    SpiceSliceRefused { cause: _ } => false
+  }
+}
+
+// THE DISCRIMINATING RED for the SPICE oracle. Perturbing exactly one typed value in the model —
+// nothing else — must change the deck. If it did not, the emission would not be a function of
+// the model and the byte equality above would be pinning a constant.
+data perturbed_bindings: List<ComponentModelBinding> = [
+  ComponentModelBinding {
+    component: "pg_cond" as ComponentInstanceIdentity,
+    standing: ElectricalModelAbsent,
+  },
+]
+
+test fn w_spice_refuses_when_one_binding_is_perturbed() -> Bool {
+  match project_analog_to_spice(
+    article_identity: power_interlock_article.identity,
+    intent: article_analog(a: power_interlock_article),
+    bindings: perturbed_bindings,
+    reference: power_interlock_article.reference_net
+  ) {
+    SpiceSliceProjected { receipt: _ } => false
+    SpiceSliceRefused { cause: _ } => true
+  }
+}
+
+// THE DISCRIMINATING RED for Verilog admission. A signal with no binding refuses; it is never
+// spelled by falling back to its logical name, which is the arm that would make a missing
+// binding unobservable.
+test fn w_verilog_refuses_unbound_signal() -> Bool {
+  match project_article_to_verilog(
+    article: power_interlock_article,
+    bindings: []
+  ) {
+    VerilogModuleEmitted { receipt: _ } => false
+    VerilogProjectionRefused { cause: _ } => true
+  }
+}
+
+fn bond_is_chassis(b: ElectricalBond) -> Bool {
+  match b {
+    ChassisBond { board_feature: _, chassis_feature: _, standing: _ } => true
+    PowerReturnConnection { domain: _, terminal: _ } => false
+    SignalReferenceConnection { signal_class: _, terminal: _ } => false
+    ProtectiveEarthBond { chassis_feature: _, earth_source: _, standing: _ } => false
+    ShieldTermination { shield: _, chassis_feature: _, standing: _ } => false
+  }
+}
+
+fn bond_is_power_return(b: ElectricalBond) -> Bool {
+  match b {
+    PowerReturnConnection { domain: _, terminal: _ } => true
+    ChassisBond { board_feature: _, chassis_feature: _, standing: _ } => false
+    SignalReferenceConnection { signal_class: _, terminal: _ } => false
+    ProtectiveEarthBond { chassis_feature: _, earth_source: _, standing: _ } => false
+    ShieldTermination { shield: _, chassis_feature: _, standing: _ } => false
+  }
+}
+
+fn bond_is_signal_reference(b: ElectricalBond) -> Bool {
+  match b {
+    SignalReferenceConnection { signal_class: _, terminal: _ } => true
+    ChassisBond { board_feature: _, chassis_feature: _, standing: _ } => false
+    PowerReturnConnection { domain: _, terminal: _ } => false
+    ProtectiveEarthBond { chassis_feature: _, earth_source: _, standing: _ } => false
+    ShieldTermination { shield: _, chassis_feature: _, standing: _ } => false
+  }
+}
+
+fn bond_is_proposed_chassis(b: ElectricalBond) -> Bool {
+  match b {
+    ChassisBond { board_feature: _, chassis_feature: _, standing: st } =>
+      match st {
+        ChassisBondProposed => true
+        ChassisBondObserved { observer: _ } => false
+      }
+    PowerReturnConnection { domain: _, terminal: _ } => false
+    SignalReferenceConnection { signal_class: _, terminal: _ } => false
+    ProtectiveEarthBond { chassis_feature: _, earth_source: _, standing: _ } => false
+    ShieldTermination { shield: _, chassis_feature: _, standing: _ } => false
+  }
+}
+
+fn count_bonds(bonds: List<ElectricalBond>, pred: fn(ElectricalBond) -> Bool) -> Int {
+  fold(bonds, init: 0, f: fn(acc, b) { if pred(b) { acc + 1 } else { acc } })
+}
+
+// The bonds are three DIFFERENT relations, and the discriminating claim is that a power return
+// and a signal reference remain distinguishable — which is exactly what a single `Ground` value
+// destroys. The chassis bond is additionally PROPOSED, not observed: this board requires an
+// enclosure bond and no integration has been observed providing one, so the safety-bearing fact
+// is a requirement rather than a claim that a connection exists.
+test fn w_electrical_references_are_not_one_ground() -> Bool {
+  let bonds = power_interlock_article.bonds
+  count_bonds(bonds: bonds, pred: b => bond_is_power_return(b: b)) == 1
+    && count_bonds(bonds: bonds, pred: b => bond_is_signal_reference(b: b)) == 1
+    && count_bonds(bonds: bonds, pred: b => bond_is_chassis(b: b)) == 1
+    && count_bonds(bonds: bonds, pred: b => bond_is_proposed_chassis(b: b)) == 1
+}
+
+// The bond endpoints are identities the analog circuit also uses, so this join is decidable
+// rather than a spelling coincidence between two independently authored prose fields.
+test fn w_bond_endpoints_join_the_analog_circuit_by_identity() -> Bool {
+  fold(power_interlock_article.bonds, init: false, f: fn(acc, b) {
+    acc || match b {
+      PowerReturnConnection { domain: d, terminal: t } =>
+        (d as String) == "power_return"
+          && (t.component as String) == "logic_in"
+          && (t.terminal as String) == "2"
+      ChassisBond { board_feature: _, chassis_feature: _, standing: _ } => false
+      SignalReferenceConnection { signal_class: _, terminal: _ } => false
+      ProtectiveEarthBond { chassis_feature: _, earth_source: _, standing: _ } => false
+      ShieldTermination { shield: _, chassis_feature: _, standing: _ } => false
+    }
+  })
+}
+
+// The firmware contract's load-bearing claims are about what it does NOT say: signing is
+// unavailable rather than absent-and-therefore-assumed, and write protection is declared
+// unmodelled rather than defaulted to protected. A contract silent on either would read as safe.
+test fn w_firmware_contract_states_its_unknowns_rather_than_defaulting() -> Bool {
+  match power_interlock_article.platform_firmware.production_signing {
+    ProductionSigningUnavailable { reason: r } =>
+      match power_interlock_article.platform_firmware.write_protection {
+        WriteProtectionUnmodelled { reason: w } =>
+          string_contains(s: r as String, pattern: "no production signing authority")
+            && string_contains(s: w as String, pattern: "unmodelled")
+        HardwareWriteProtect { control: _ } => false
+      }
+    ProductionSigningAvailable { authority: _ } => false
+  }
+}
+
+// Both boundaries EXIST and both refuse, and the physical one names a TYPED cause rather than
+// prose. The rung names were corrected with it: an admitted physical interface is not a realized
+// board, and a selected manufacturing profile is not a manufacturable one.
+test fn w_physical_and_manufacturing_boundaries_refuse_with_named_causes() -> Bool {
+  !article_physical_interface_admitted(a: power_interlock_article)
+    && !article_manufacturing_profile_selected(a: power_interlock_article)
+    && match power_interlock_article.physical {
+      PhysicalRealizationPending { causes: cs } =>
+        fold(cs, init: false, f: fn(acc, c) {
+          acc || match c {
+            RequiresSpatialAffineSubstrateLanded => true
+            RequiresExactSubMillimeterCoordinateQuantum => false
+            RequiresShapeAndTopology => false
+            RequiresPackageFootprintAuthority => false
+          }
+        })
+      PhysicalRealizationAdmitted { outline: _ } => false
+    }
+    && match power_interlock_article.manufacturing {
+      ManufacturingProfileUnselected { pending: p } =>
+        string_contains(s: p as String, pattern: "no fabricator selected")
+      ManufacturingProfileSelected { fabricator: _, authority: _ } => false
+    }
+}

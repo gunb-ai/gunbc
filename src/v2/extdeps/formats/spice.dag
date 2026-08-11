@@ -274,7 +274,7 @@ fn spice_format_grammar_probe() -> GrammarSchemaProbeBinding {
 }
 
 fn spice_text_concat(left: String, right: String) -> String {
-  list_append(left: left, right: right)
+  concat(left, right)
 }
 
 fn spice_text_concat3(left: String, mid: String, right: String) -> String {
