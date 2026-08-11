@@ -16,7 +16,7 @@ import std.content_hash {
 import std.decl_ref { decl_ref }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.ssh.client_options { SshClientOption, openssh_exclusive_known_hosts_trust_options }
-import gunbc.fleet_host_key_enrollment { fleet_host_key_enrollments, known_hosts_line, host_key_provenance_label }
+import gunbc.fleet_host_key_enrollment { KnownHostKeyRow, fleet_host_key_enrollments, known_hosts_line, host_key_provenance_label }
 
 // THE TRUST ANCHOR AN SSH INVOCATION IS VERIFIED AGAINST, carried as a value rather than left as
 // ambient host state.
@@ -98,14 +98,50 @@ type KnownHostsMaterializationOutcome
   | KnownHostsAlreadyConverged { anchor: KnownHostsAnchor, receipt: String }
   | KnownHostsRefused { first: String, more: List<String> }
 
-// The registry rendered to OpenSSH known_hosts wire form. One line per enrolled row, in registry
-// order, so the digest below is a function of the registry alone.
+// CANONICAL, not registry-order. An earlier revision hashed the rows in whatever order the list
+// happened to carry, which made the identity -- and therefore the anchor's filename -- a function of
+// the LIST rather than of the registry it denotes. Two authors reordering the same six enrollments
+// would have produced two different anchors for the same set of trusted keys, and the digest would
+// have reported them as different registries. That is the list-identity defect the corpus has hit
+// before: a mathematical set given an identity that depends on its traversal.
+//
+// Sorting the rendered lines is the canonicalization rather than sorting the rows, because the LINE
+// is what ssh consumes -- so canonical bytes and canonical identity are the same operation, and the
+// emitted file is order-independent too rather than only its hash.
+fn canonical_known_hosts_lines(rows: List<KnownHostKeyRow>) -> List<String> {
+  map(rows, k => known_hosts_line(k: k)) |> sort_by(line => line)
+}
+
+fn canonical_known_hosts_fragment(rows: List<KnownHostKeyRow>) -> String {
+  join(map(canonical_known_hosts_lines(rows: rows), l => concat(l, "\n")), "")
+}
+
+fn canonical_known_hosts_identity(rows: List<KnownHostKeyRow>) -> ContentHash {
+  content_hash_of_value(value: canonical_known_hosts_fragment(rows: rows) as NonEmptyStr)
+}
+
+// A DUPLICATE ENDPOINT IS A CONFLICT, not a redundancy. known_hosts accepts a host key matching ANY
+// line for that endpoint, so two rows naming one endpoint with different keys widen what is trusted
+// while the registry reads as if it pinned one key -- and the digest would happily identify that
+// widened set. Counted at endpoint grain because the endpoint is what ssh matches on.
+fn known_hosts_endpoint_conflict(rows: List<KnownHostKeyRow>) -> String? {
+  let endpoints = map(rows, k => k.endpoint) |> sort_by(e => e)
+  fold(endpoints, init: none, f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      _ => if length(filter(endpoints, x => x == e)) > 1 {
+        Present { value: join(["endpoint ", e, " is enrolled more than once, so known_hosts would accept any of its keys while the registry reads as pinning one"], "") }
+      } else { none }
+    }
+  })
+}
+
 fn fleet_known_hosts_fragment() -> String {
-  join(map(fleet_host_key_enrollments, k => concat(known_hosts_line(k: k), "\n")), "")
+  canonical_known_hosts_fragment(rows: fleet_host_key_enrollments)
 }
 
 fn fleet_known_hosts_registry_identity() -> ContentHash {
-  content_hash_of_value(value: fleet_known_hosts_fragment() as NonEmptyStr)
+  canonical_known_hosts_identity(rows: fleet_host_key_enrollments)
 }
 
 // The filename carries the registry digest, so the path is a claim the readback then verifies.
@@ -139,7 +175,12 @@ func materialize_fleet_known_hosts_anchor() -> KnownHostsMaterializationOutcome
       first: "known-hosts materialization refused: the enrollment registry is empty, so there is no host key to anchor to and every fleet SSH leg would be unverified",
       more: [],
     }
-  } else {
+  } else { match known_hosts_endpoint_conflict(rows: fleet_host_key_enrollments) {
+    Present { value: conflict } => KnownHostsRefused {
+      first: join(["known-hosts materialization refused: ", conflict], ""),
+      more: [],
+    }
+    Absent => {
     let fragment = fleet_known_hosts_fragment()
     let path = fleet_known_hosts_anchor_path()
     let registry_identity = fleet_known_hosts_registry_identity()
@@ -208,7 +249,7 @@ func materialize_fleet_known_hosts_anchor() -> KnownHostsMaterializationOutcome
         more: [],
       }
     }
-  }
+  } } }
 }
 
 // The one projection consumers need: the anchor path, reachable ONLY from an outcome that carries an

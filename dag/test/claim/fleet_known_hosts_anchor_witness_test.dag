@@ -1,0 +1,89 @@
+module test.claim.fleet_known_hosts_anchor_witness_test
+
+import std.types { String, Bool, List, NonEmptyStr }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_host_key_enrollment {
+  KnownHostKeyRow,
+  HostKeyEnrollmentProvenance,
+  ScannedFirstContact,
+}
+import gunbc.fleet_known_hosts_anchor {
+  canonical_known_hosts_fragment,
+  canonical_known_hosts_identity,
+  known_hosts_endpoint_conflict,
+}
+import std.content_hash { compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
+
+fn row(host: String, endpoint: String, key: String) -> KnownHostKeyRow {
+  KnownHostKeyRow {
+    host: host as HostIdentity,
+    endpoint: endpoint,
+    key_type: "ssh-ed25519",
+    public_key_base64: key,
+    sha256_fingerprint: concat("SHA256:", key),
+    provenance: ScannedFirstContact { scanned_from: "synthetic fixture" as NonEmptyStr },
+  }
+}
+
+// The SAME registry authored in two orders. These are one set of trusted keys, so they must be one
+// registry -- and before canonicalization they were two, because the identity was a function of the
+// list's traversal rather than of the enrollments it denotes.
+fn forward_rows() -> List<KnownHostKeyRow> {
+  [row(host: "a", endpoint: "alpha", key: "AAAA"), row(host: "b", endpoint: "bravo", key: "BBBB"), row(host: "c", endpoint: "charlie", key: "CCCC")]
+}
+
+fn reversed_rows() -> List<KnownHostKeyRow> {
+  [row(host: "c", endpoint: "charlie", key: "CCCC"), row(host: "b", endpoint: "bravo", key: "BBBB"), row(host: "a", endpoint: "alpha", key: "AAAA")]
+}
+
+fn identities_agree(left: List<KnownHostKeyRow>, right: List<KnownHostKeyRow>) -> Bool {
+  match compare_content_hash(
+    left: canonical_known_hosts_identity(rows: left),
+    right: canonical_known_hosts_identity(rows: right),
+  ) {
+    ContentHashEqual => true
+    ContentHashDifferent => false
+    ContentHashCrossFamilyIncomparable => false
+  }
+}
+
+// THE REVERSAL CONTROL. Reordering the enrollments must change neither the anchor's identity nor the
+// bytes ssh reads. Asserting BOTH matters: canonicalizing only the hash would give one identity to
+// two different files, which is strictly worse than the defect it replaced -- the digest would then
+// certify bytes it did not describe, and the anchor's whole claim is that its identity IS its
+// content.
+test fn w_reordered_registry_is_the_same_registry() -> Bool {
+  identities_agree(left: forward_rows(), right: reversed_rows()) && canonical_known_hosts_fragment(rows: forward_rows()) == canonical_known_hosts_fragment(rows: reversed_rows())
+}
+
+// POSITIVE CONTROL, without which the reversal claim is satisfiable by a constant. A registry that
+// differs in CONTENT rather than order must still receive a different identity.
+test fn w_a_different_registry_is_a_different_registry() -> Bool {
+  !identities_agree(
+    left: forward_rows(),
+    right: [row(host: "a", endpoint: "alpha", key: "DDDD"), row(host: "b", endpoint: "bravo", key: "BBBB"), row(host: "c", endpoint: "charlie", key: "CCCC")],
+  )
+}
+
+// A duplicate endpoint is a CONFLICT, not a redundancy: known_hosts accepts a key matching any line
+// for that endpoint, so two rows naming one endpoint widen what is trusted while the registry reads
+// as if it pinned one key. Refusing is the only honest arm -- hashing it would mint an anchor
+// certifying a widened trust set.
+test fn w_duplicate_endpoint_refuses() -> Bool {
+  match known_hosts_endpoint_conflict(rows: [
+    row(host: "a", endpoint: "alpha", key: "AAAA"),
+    row(host: "impostor", endpoint: "alpha", key: "EVIL"),
+  ]) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// The refusal must not fire on a registry that is merely varied -- otherwise the arm above would
+// pass by refusing everything, and the live six-row registry could never materialize.
+test fn red_control_distinct_endpoints_do_not_conflict() -> Bool {
+  match known_hosts_endpoint_conflict(rows: forward_rows()) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
