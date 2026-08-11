@@ -5,8 +5,9 @@ import std.nat { Nat }
 import std.measure {
   Arcsecond, SquareMillimeter, CubicMillimeter,
   arcsecond_count, square_millimeter_count, cubic_millimeter_count,
+  square_meter, cubic_meter, degree, turn,
   square_metres_to_square_millimetres, cubic_metres_to_cubic_millimetres,
-  full_turn_arcseconds, quarter_turn_arcseconds, degrees_to_arcseconds,
+  full_turn_arcseconds, quarter_turn_arcseconds, degrees_to_arcseconds, turns_to_arcseconds,
 }
 import extdeps.units.iso_80000_3 {
   degrees_per_turn, arcminutes_per_degree, arcseconds_per_arcminute,
@@ -23,11 +24,11 @@ import extdeps.color.srgb { hsl_to_rgb_scaled, RgbScaled }
 // the ratio itself: a generic linear conversion would give 1000, which is the defect these
 // separate factors exist to prevent.
 fn witness_area_and_volume_scale_nonlinearly() -> Bool {
-  square_millimeter_count(m: square_metres_to_square_millimetres(count: 1)) == 1000000
-    && cubic_millimeter_count(m: cubic_metres_to_cubic_millimetres(count: 1)) == 1000000000
+  square_millimeter_count(m: square_metres_to_square_millimetres(area: square_meter(count: 1))) == 1000000
+    && cubic_millimeter_count(m: cubic_metres_to_cubic_millimetres(volume: cubic_meter(count: 1))) == 1000000000
     && square_millimetres_per_square_metre() == 1000 * 1000
     && cubic_millimetres_per_cubic_metre() == 1000 * 1000 * 1000
-    && square_millimeter_count(m: square_metres_to_square_millimetres(count: 3)) == 3000000
+    && square_millimeter_count(m: square_metres_to_square_millimetres(area: square_meter(count: 3))) == 3000000
 }
 
 // The subdivision chain is exact and rational, which is why the turn is the canonical unit.
@@ -38,7 +39,9 @@ fn witness_turn_subdivision_is_exact() -> Bool {
     && arcseconds_per_degree_derived() == 3600
     && arcseconds_per_turn() == 1296000
     && arcsecond_count(a: full_turn_arcseconds()) == 1296000
-    && arcsecond_count(a: degrees_to_arcseconds(degrees: 90)) == 324000
+    && arcsecond_count(a: degrees_to_arcseconds(degrees: degree(count: 90))) == 324000
+    && arcsecond_count(a: turns_to_arcseconds(turns: turn(count: 1))) == 1296000
+    && arcsecond_count(a: turns_to_arcseconds(turns: turn(count: 2))) == 2592000
 }
 
 // A quarter turn is exact in arcseconds because 1296000 divides by four with no remainder - the
@@ -47,7 +50,7 @@ fn witness_turn_subdivision_is_exact() -> Bool {
 fn witness_quarter_turn_is_exact() -> Bool {
   arcsecond_count(a: quarter_turn_arcseconds()) == 324000
     && arcsecond_count(a: quarter_turn_arcseconds()) * 4 == arcsecond_count(a: full_turn_arcseconds())
-    && arcsecond_count(a: quarter_turn_arcseconds()) == arcsecond_count(a: degrees_to_arcseconds(degrees: 90))
+    && arcsecond_count(a: quarter_turn_arcseconds()) == arcsecond_count(a: degrees_to_arcseconds(degrees: degree(count: 90)))
 }
 
 // REGRESSION CONTROL for the srgb consolidation: srgb no longer mints its own 360 and now consumes

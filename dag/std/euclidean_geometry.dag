@@ -7,13 +7,11 @@ import std.measure {
   Millimeter,
   SignedSquareMillimeter,
   signed_square_millimeter,
-  MillimeterDisplacementComponent,
-  millimeter_displacement,
   SquareMillimeter,
   millimeter,
   square_millimeter,
   square_millimeter_count,
-  millimeter_displacement_count,
+  signed_millimeter_component_count,
 }
 import std.affine_space {
   Vector3,
@@ -35,9 +33,17 @@ import std.affine_space {
 // Rotating (1000, 0) by 30 degrees gives (866.025..., 500). A total integer answer would be an
 // invented precision at the very bottom of the spatial stack, where every later claim inherits it.
 
+// THE UNRESOLVED ARM NAMES THE KERNEL, NOT THE MATHEMATICS, and it took two corrections to get
+// there. It was first LengthRequiresApproximateRealization, false for (3,4,0) whose magnitude is
+// exactly 5. Renaming it to LengthExactRootNotRecognised fixed that population and broke the
+// mirror one: for (1,1,0) there IS no exact integer root to fail to recognise, so the arm then
+// overclaimed in the other direction. Both spellings asserted something about the ROOT. This one
+// asserts only what is true across the whole arm: this exact kernel did not resolve the magnitude.
+// Which of the two reasons applies is a fact about the vector, and a later kernel with an integer
+// square root splits them.
 type ExactLength
   = LengthExact { value: Millimeter }
-  | LengthExactRootNotRecognised {
+  | LengthRootUnresolvedInExactKernel {
       squared: SquareMillimeter
       reason: NonEmptyStr
     }
@@ -47,9 +53,9 @@ type ExactLength
 // erased dimension is how a plausible-looking wrong quantity travels. Sign is retained because a
 // negative dot product means the displacements point away from each other.
 fn dot3<F>(a: Vector3<F>, b: Vector3<F>) -> SignedSquareMillimeter {
-  let px = millimeter_displacement_count(m: a.x) * millimeter_displacement_count(m: b.x)
-  let py = millimeter_displacement_count(m: a.y) * millimeter_displacement_count(m: b.y)
-  let pz = millimeter_displacement_count(m: a.z) * millimeter_displacement_count(m: b.z)
+  let px = signed_millimeter_component_count(m: a.x) * signed_millimeter_component_count(m: b.x)
+  let py = signed_millimeter_component_count(m: a.y) * signed_millimeter_component_count(m: b.y)
+  let pz = signed_millimeter_component_count(m: a.z) * signed_millimeter_component_count(m: b.z)
   signed_square_millimeter(count: px + py + pz)
 }
 
@@ -66,12 +72,12 @@ type AreaVector3<F> {
 }
 
 fn cross3<F>(a: Vector3<F>, b: Vector3<F>) -> AreaVector3<F> {
-  let ax = millimeter_displacement_count(m: a.x)
-  let ay = millimeter_displacement_count(m: a.y)
-  let az = millimeter_displacement_count(m: a.z)
-  let bx = millimeter_displacement_count(m: b.x)
-  let by = millimeter_displacement_count(m: b.y)
-  let bz = millimeter_displacement_count(m: b.z)
+  let ax = signed_millimeter_component_count(m: a.x)
+  let ay = signed_millimeter_component_count(m: a.y)
+  let az = signed_millimeter_component_count(m: a.z)
+  let bx = signed_millimeter_component_count(m: b.x)
+  let by = signed_millimeter_component_count(m: b.y)
+  let bz = signed_millimeter_component_count(m: b.z)
   AreaVector3 {
     x: signed_square_millimeter(count: (ay * bz) - (az * by)),
     y: signed_square_millimeter(count: (az * bx) - (ax * bz)),
@@ -79,18 +85,14 @@ fn cross3<F>(a: Vector3<F>, b: Vector3<F>) -> AreaVector3<F> {
   }
 }
 
-fn millimeter_displacement_component_of(value: Int) -> MillimeterDisplacementComponent {
-  millimeter_displacement(count: value)
-}
-
 // TOTAL and exact: the squared magnitude of an integer vector is an integer. Nonnegative by
 // construction (a sum of squares), so it lands in the Nat-backed area carrier without a sign
 // question. Every consumer that only needs to COMPARE magnitudes should use this and never touch
 // norm - comparing squared lengths is exact and needs no square root at all.
 fn norm_squared3<F>(v: Vector3<F>) -> SquareMillimeter {
-  let x = millimeter_displacement_count(m: v.x)
-  let y = millimeter_displacement_count(m: v.y)
-  let z = millimeter_displacement_count(m: v.z)
+  let x = signed_millimeter_component_count(m: v.x)
+  let y = signed_millimeter_component_count(m: v.y)
+  let z = signed_millimeter_component_count(m: v.z)
   square_millimeter(count: int_square_to_nat(value: x) + int_square_to_nat(value: y) + int_square_to_nat(value: z))
 }
 
@@ -102,25 +104,19 @@ fn int_square_to_nat(value: Int) -> Nat {
 }
 
 // PARTIAL, deliberately. Exact when the displacement lies along a single axis, where the magnitude
-// is that component's absolute value and no root is taken.
-//
-// THE REFUSAL NAMES THE IMPLEMENTATION, NOT THE MATHEMATICS. An earlier revision called this arm
-// LengthRequiresApproximateRealization, which is FALSE for (3, 4, 0): its magnitude is exactly 5,
-// and approximation is not required - this slice simply has no integer square root to recognise a
-// perfect square. Naming a limitation of the code as a property of the problem is the same class of
-// overclaim as reporting a rung that executed evidence does not establish. Widening the exact set
-// is a later increment; answering approximately is not.
+// is that component's absolute value and no root is taken. Widening the exact set is a later
+// increment; answering approximately is not.
 fn norm3<F>(v: Vector3<F>) -> ExactLength {
-  let x = millimeter_displacement_count(m: v.x)
-  let y = millimeter_displacement_count(m: v.y)
-  let z = millimeter_displacement_count(m: v.z)
+  let x = signed_millimeter_component_count(m: v.x)
+  let y = signed_millimeter_component_count(m: v.y)
+  let z = signed_millimeter_component_count(m: v.z)
   let nonzero_axes = axis_count(value: x) + axis_count(value: y) + axis_count(value: z)
   if nonzero_axes <= 1 {
     LengthExact { value: millimeter(count: int_to_nat_nonnegative(value: absolute(value: x + y + z))) }
   } else {
-    LengthExactRootNotRecognised {
+    LengthRootUnresolvedInExactKernel {
       squared: norm_squared3(v: v),
-      reason: "this slice recognises an exact magnitude only for axis-aligned displacements; the root may still be exact (3,4,0 has magnitude 5) and an integer square root would find it",
+      reason: "this exact kernel resolves a magnitude only for an axis-aligned displacement; the root may itself be exact ((3,4,0) has magnitude 5, which an integer square root would find) or irrational ((1,1,0) has none), and this arm distinguishes neither",
     }
   }
 }
@@ -179,46 +175,51 @@ type AxisDirection3<F>
 type Direction3Result<F>
   = DirectionExact { direction: AxisDirection3<F> }
   | DirectionZeroVectorHasNone
-  | DirectionNotAxisAligned {
+  | DirectionUnresolvedInAxisKernel {
       squared_magnitude: SquareMillimeter
       reason: NonEmptyStr
     }
 
 // Normalization refuses the zero vector because zero has magnitude but no direction - that is a
-// genuine mathematical absence, not a numeric limitation, and it is a DIFFERENT arm from the
-// approximation refusal. Collapsing the two would conflate "this has no direction" with "I cannot
-// compute the direction exactly", which have different remedies.
+// genuine mathematical absence, not a kernel limitation, and it is a DIFFERENT arm from the
+// unresolved one. Collapsing the two would conflate "this has no direction" with "this kernel did
+// not resolve the direction", which have different remedies.
 //
-// A unit vector in integer millimetres is only representable when the displacement is axis-aligned;
-// anything else needs division and lands on the approximate realization.
+// A unit direction is representable in this axis kernel only when the displacement is axis-aligned.
+// The unresolved arm does NOT say approximation is the remedy: (3,4,0) has the exact rational
+// direction (3/5, 4/5, 0), so a rational realization resolves it with no error bound at all.
+//
+// THE AXIS CASE ANALYSIS IS INLINE ON PURPOSE, and that is the whole reason the helper is gone. It
+// was a callable axis_direction_of(x, y, z) whose precondition - exactly one component nonzero -
+// lived only in a comment above it, so axis_direction_of(0, 0, 0) answered PositiveZ and
+// axis_direction_of(1, 1, 0) answered PositiveX. Both are fabricated answers reachable by any
+// caller, safe today only because the single call site happened to be guarded. Inlined, the guard
+// is the enclosing branch and the case analysis cannot be reached without it.
 fn normalize3<F>(v: Vector3<F>) -> Direction3Result<F> {
-  let x = millimeter_displacement_count(m: v.x)
-  let y = millimeter_displacement_count(m: v.y)
-  let z = millimeter_displacement_count(m: v.z)
+  let x = signed_millimeter_component_count(m: v.x)
+  let y = signed_millimeter_component_count(m: v.y)
+  let z = signed_millimeter_component_count(m: v.z)
   let nonzero_axes = axis_count(value: x) + axis_count(value: y) + axis_count(value: z)
   if nonzero_axes == 0 {
     DirectionZeroVectorHasNone
   } else {
     if nonzero_axes == 1 {
-      DirectionExact { direction: axis_direction_of(x: x, y: y, z: z) }
-    } else {
-      DirectionNotAxisAligned {
-        squared_magnitude: norm_squared3(v: v),
-        reason: "an exactly representable unit direction needs an axis-aligned displacement; the general case needs division and the approximate realization",
+      DirectionExact {
+        direction: if x != 0 {
+          if x < 0 { NegativeX } else { PositiveX }
+        } else {
+          if y != 0 {
+            if y < 0 { NegativeY } else { PositiveY }
+          } else {
+            if z < 0 { NegativeZ } else { PositiveZ }
+          }
+        },
       }
-    }
-  }
-}
-
-// Exactly one component is nonzero when this is reached, so the axis is determined.
-fn axis_direction_of<F>(x: Int, y: Int, z: Int) -> AxisDirection3<F> {
-  if x != 0 {
-    if x < 0 { NegativeX } else { PositiveX }
-  } else {
-    if y != 0 {
-      if y < 0 { NegativeY } else { PositiveY }
     } else {
-      if z < 0 { NegativeZ } else { PositiveZ }
+      DirectionUnresolvedInAxisKernel {
+        squared_magnitude: norm_squared3(v: v),
+        reason: "this axis kernel resolves a unit direction only for an axis-aligned displacement; the direction may still be exactly representable ((3,4,0) is exactly (3/5,4/5,0)) and a richer realization - rational, algebraic, or error-bounded approximate - resolves it",
+      }
     }
   }
 }

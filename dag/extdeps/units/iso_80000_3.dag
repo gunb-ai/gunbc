@@ -2,21 +2,51 @@ module extdeps.units.iso_80000_3
 
 import std.types { String }
 import std.nat { Nat }
-import extdeps.external_authority { ExternalAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "www.iso.org/search.html?q=ISO%2080000-3"
+    locator: "www.iso.org/standard/64974.html"
   }
 }
 
-data iso_80000_3_version_note: String = "ISO 80000-3 (Quantities and units - Part 3: Space and time): the quantity definitions for length, area, volume, plane angle and solid angle. This module grounds ONLY the exact unit relations the spatial substrate needs; it is not a general physics authority, and no generic extdeps.physics hub is created for it. THE DESIGNATION IS THE CITATION, not a catalogue URL: an earlier revision carried the numeric page www.iso.org/standard/31887.html, which review reported is ISO 80000-2 (mathematical signs and symbols) rather than Part 3. That could not be verified from this environment - iso.org refuses automated fetches with HTTP 403 - and an unverifiable numeric locator that may name the WRONG standard is worse than none, so it was removed rather than corrected on a guess. This is the section 3 cite-the-symbol rule applied to an external authority: the designation identifies the standard, a catalogue id is a second positional naming scheme for it, and the positional one is what rots. EDITION IS DELIBERATELY UNSTATED: the same review reports the 2006 edition is withdrawn and that the current base is 2019 with Amendment 1 in 2025. That is plausible and unverified here, so no edition is asserted. WHAT THIS COSTS: an edition-sensitive claim may not be made against this module until the pin lands. The relations it carries are not edition-sensitive - they are definitional and independently checkable (a turn is 360 degrees by definition of the degree; a square metre is the area of a square of side one metre) - which is precisely why they were safe to carry ahead of the pin and why nothing here depends on the edition question."
+data iso_80000_3_amendment_1_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.iso.org/standard/87100.html"
+  }
+}
 
-data iso_80000_3_plane_angle_note: String = "Plane angle is dimensionless in the SI sense - it is a ratio of two lengths - but it is NOT interchangeable with an ordinary dimensionless count, and the substrate keeps it a distinct Quantity so that adding an angle to a length, or reading an angle as a bare ratio, has no operation. ISO 80000-3 defines the radian as the coherent unit; the degree, arcminute and arcsecond are non-SI units accepted for use with the SI (BIPM SI Brochure), and are carried here as exact rational subdivisions of the turn."
+// THE SUBJECT: the standard itself, as an independently governed upstream entity. It is declared
+// under a unique name with extdeps_model_scope as its alias, following the scope_alias_note reasoning
+// in extdeps.languages.bash.subject: the mandated tag name is identical in every carrier and .dag
+// has no import aliasing, so only a uniquely named declaration can be imported alongside another
+// carrier's scope or pointed AT by a symbolic citation.
+type Iso80000Part3
+  = | Iso80000Part3Standard
 
-data iso_80000_3_turn_exactness_note: String = "THE TURN IS THE EXACT CANONICAL UNIT, deliberately, and this is a numeric-policy fact rather than a taste one: degree-to-turn conversion is rational and therefore exact in integer arithmetic (1 turn = 360 degrees), whereas 1 turn = 2*pi radians is irrational and CANNOT be represented exactly by any integer or rational carrier. A substrate that offered a total degree-to-radian conversion over integers would be silently flooring - inventing precision at the unit boundary, before any geometry ran. Radian therefore has no exact integer conversion function here; it is declared as the coherent unit and its conversion waits on the approximate-numeric realization with a declared error bound."
+data iso_80000_3_standard: Iso80000Part3 = Iso80000Part3Standard
+
+data iso_80000_3_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.units.iso_80000_3",
+      decl_name: "iso_80000_3_standard",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [iso_80000_3_amendment_1_authority]
+}
+
+data extdeps_model_scope: ExternalModelScope = iso_80000_3_model_scope
+
+data iso_80000_3_version_note: String = "ISO 80000-3 (Quantities and units - Part 3: Space and time): the quantity definitions for length, area, volume, plane angle and solid angle. This module grounds ONLY the exact unit relations the spatial substrate needs; it is not a general physics authority, and no generic extdeps.physics hub is created for it. THE PIN, WITH ITS EVIDENCE STANDING STATED: base edition 2, ISO 80000-3:2019, published October 2019 (catalogue 64974), amended by ISO 80000-3:2019/Amd 1:2025 (catalogue 87100), which is why the amendment is a SECOND citation of this one subject rather than a second subject. HOW THAT WAS ESTABLISHED, and how it was not: iso.org returns HTTP 403 to every automated fetch from this environment, so the NORMATIVE TEXT HAS NOT BEEN READ HERE and no claim in this repository may rest on its exact wording. What was verified is the designation-to-catalogue mapping, from the iso.org page titles as indexed by search plus independent resellers agreeing on both ids. An earlier revision carried www.iso.org/standard/31887.html, which review reported is ISO 80000-2 (mathematical signs and symbols); a later one removed the locator entirely and left the edition unstated, on the ground that an unverifiable numeric id is worse than none. The correction to THAT is the distinction between a paywall and an unknown: a paywall lowers evidence standing, and a mutable search-results URL is not a terminal pin. The relations carried below are in any case not edition-sensitive - they are definitional and independently checkable (a turn is 360 degrees by definition of the degree; a square metre is the area of a square of side one metre)."
+
+data iso_80000_3_plane_angle_note: String = "Plane angle is dimensionless in the SI sense - it is a ratio of two lengths - but it is NOT interchangeable with an ordinary dimensionless count, and the substrate keeps it a distinct Quantity so that adding an angle to a length, or reading an angle as a bare ratio, has no operation. ISO 80000-3 defines the radian as the coherent unit. The degree, arcminute and arcsecond are non-SI units accepted for use with the SI - a status stated by the BIPM SI Brochure, which is a SEPARATE independently governed subject and therefore neither a citation of this scope nor modeled here (the extdeps.languages.bash.subject / POSIX distinction: multiple citations may ground one subject, but a second governing body's document is never a citation of the first). Nothing below depends on that status; the subdivisions are carried as exact rational fractions of the turn."
 
 fn degrees_per_turn() -> Nat {
   360

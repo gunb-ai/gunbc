@@ -1,14 +1,10 @@
 module std.affine_space
 
-import std.types { Bool, NonEmptyStr }
 import std.integer { Int }
 import std.measure {
-  MillimeterCoordinate,
-  MillimeterDisplacementComponent,
-  millimeter_coordinate,
-  millimeter_coordinate_count,
-  millimeter_displacement,
-  millimeter_displacement_count,
+  SignedMillimeterComponent,
+  signed_millimeter_component,
+  signed_millimeter_component_count,
 }
 
 // SPATIAL-2: the affine layer. It exists because "can a measurement be negative" was the wrong
@@ -17,9 +13,10 @@ import std.measure {
 // other is a change along it. Millimeter stays Nat-backed and is not widened; what was missing is
 // the layer that says what a signed spatial number means.
 //
-// A POINT IS NOT A VECTOR. Both hold three signed components, and that shared representation is
-// exactly why the distinction has to live in the types rather than in discipline: the operations
-// are what separate them.
+// A POINT IS NOT A VECTOR. Both hold three of the SAME signed component - std.measure declares one
+// SignedMillimeterComponent, not one per role - and that shared scalar is exactly why the
+// distinction has to live in these outer types rather than in the field types or in discipline: the
+// operations are what separate them.
 //
 //   Point + Vector -> Point          a location moved by a displacement
 //   Point - Point  -> Vector         the displacement between two locations
@@ -35,64 +32,60 @@ import std.measure {
 // quantity and scale phantom. So subtracting a room-local point from a building-global point is
 // not a refusal to be checked at runtime; it does not typecheck. That is the stronger of the two
 // options, and it is available here rather than merely preferable.
-
-type Handedness
-  = RightHanded
-  | LeftHanded
-
-// The runtime descriptor of a frame: its identity, handedness and a human-facing name for the
-// origin it is measured from. The frame's TYPE-level identity is the phantom parameter; this
-// carries the facts a type parameter cannot, and the two are bound by the declaring module.
-type CoordinateFrameDescriptor {
-  identity: NonEmptyStr
-  handedness: Handedness
-  origin_description: NonEmptyStr
-}
+//
+// FRAMES ARE RIGHT-HANDED ORTHOGONAL CARTESIAN, and that is a property of this slice rather than a
+// runtime choice. An earlier revision declared Handedness = RightHanded | LeftHanded on a
+// CoordinateFrameDescriptor record - while cross3 and the quarter-turn rotation were unconditionally
+// right-handed, no operation read the descriptor, and nothing bound it to the phantom frame F. A
+// declared alternative that no code honours is worse than an absent one: it invites a caller to say
+// LeftHanded and receive right-handed answers. Other frame orientations are ABSENT until an exact
+// consumer needs one, and frame metadata - display identity, a human-facing origin description -
+// lands with the spatial-world carrier that actually registers frames.
 
 type Vector3<F> {
-  x: MillimeterDisplacementComponent
-  y: MillimeterDisplacementComponent
-  z: MillimeterDisplacementComponent
+  x: SignedMillimeterComponent
+  y: SignedMillimeterComponent
+  z: SignedMillimeterComponent
 }
 
 type Point3<F> {
-  x: MillimeterCoordinate
-  y: MillimeterCoordinate
-  z: MillimeterCoordinate
+  x: SignedMillimeterComponent
+  y: SignedMillimeterComponent
+  z: SignedMillimeterComponent
 }
 
 type Vector2<F> {
-  x: MillimeterDisplacementComponent
-  y: MillimeterDisplacementComponent
+  x: SignedMillimeterComponent
+  y: SignedMillimeterComponent
 }
 
 type Point2<F> {
-  x: MillimeterCoordinate
-  y: MillimeterCoordinate
+  x: SignedMillimeterComponent
+  y: SignedMillimeterComponent
 }
 
 fn vector3<F>(x: Int, y: Int, z: Int) -> Vector3<F> {
   Vector3 {
-    x: millimeter_displacement(count: x),
-    y: millimeter_displacement(count: y),
-    z: millimeter_displacement(count: z),
+    x: signed_millimeter_component(count: x),
+    y: signed_millimeter_component(count: y),
+    z: signed_millimeter_component(count: z),
   }
 }
 
 fn point3<F>(x: Int, y: Int, z: Int) -> Point3<F> {
   Point3 {
-    x: millimeter_coordinate(count: x),
-    y: millimeter_coordinate(count: y),
-    z: millimeter_coordinate(count: z),
+    x: signed_millimeter_component(count: x),
+    y: signed_millimeter_component(count: y),
+    z: signed_millimeter_component(count: z),
   }
 }
 
 fn vector2<F>(x: Int, y: Int) -> Vector2<F> {
-  Vector2 { x: millimeter_displacement(count: x), y: millimeter_displacement(count: y) }
+  Vector2 { x: signed_millimeter_component(count: x), y: signed_millimeter_component(count: y) }
 }
 
 fn point2<F>(x: Int, y: Int) -> Point2<F> {
-  Point2 { x: millimeter_coordinate(count: x), y: millimeter_coordinate(count: y) }
+  Point2 { x: signed_millimeter_component(count: x), y: signed_millimeter_component(count: y) }
 }
 
 fn zero_vector3<F>() -> Vector3<F> {
@@ -103,9 +96,9 @@ fn zero_vector3<F>() -> Vector3<F> {
 // first slice at all: no approximation policy is needed to move a location by a displacement.
 fn translate_point3<F>(point: Point3<F>, by: Vector3<F>) -> Point3<F> {
   point3(
-    x: millimeter_coordinate_count(m: point.x) + millimeter_displacement_count(m: by.x),
-    y: millimeter_coordinate_count(m: point.y) + millimeter_displacement_count(m: by.y),
-    z: millimeter_coordinate_count(m: point.z) + millimeter_displacement_count(m: by.z),
+    x: signed_millimeter_component_count(m: point.x) + signed_millimeter_component_count(m: by.x),
+    y: signed_millimeter_component_count(m: point.y) + signed_millimeter_component_count(m: by.y),
+    z: signed_millimeter_component_count(m: point.z) + signed_millimeter_component_count(m: by.z),
   )
 }
 
@@ -114,33 +107,33 @@ fn translate_point3<F>(point: Point3<F>, by: Vector3<F>) -> Point3<F> {
 // std.euclidean_geometry because it is the operation that stops being exact.
 fn displacement_between3<F>(from: Point3<F>, to: Point3<F>) -> Vector3<F> {
   vector3(
-    x: millimeter_coordinate_count(m: to.x) - millimeter_coordinate_count(m: from.x),
-    y: millimeter_coordinate_count(m: to.y) - millimeter_coordinate_count(m: from.y),
-    z: millimeter_coordinate_count(m: to.z) - millimeter_coordinate_count(m: from.z),
+    x: signed_millimeter_component_count(m: to.x) - signed_millimeter_component_count(m: from.x),
+    y: signed_millimeter_component_count(m: to.y) - signed_millimeter_component_count(m: from.y),
+    z: signed_millimeter_component_count(m: to.z) - signed_millimeter_component_count(m: from.z),
   )
 }
 
 fn add_vector3<F>(a: Vector3<F>, b: Vector3<F>) -> Vector3<F> {
   vector3(
-    x: millimeter_displacement_count(m: a.x) + millimeter_displacement_count(m: b.x),
-    y: millimeter_displacement_count(m: a.y) + millimeter_displacement_count(m: b.y),
-    z: millimeter_displacement_count(m: a.z) + millimeter_displacement_count(m: b.z),
+    x: signed_millimeter_component_count(m: a.x) + signed_millimeter_component_count(m: b.x),
+    y: signed_millimeter_component_count(m: a.y) + signed_millimeter_component_count(m: b.y),
+    z: signed_millimeter_component_count(m: a.z) + signed_millimeter_component_count(m: b.z),
   )
 }
 
 fn subtract_vector3<F>(a: Vector3<F>, b: Vector3<F>) -> Vector3<F> {
   vector3(
-    x: millimeter_displacement_count(m: a.x) - millimeter_displacement_count(m: b.x),
-    y: millimeter_displacement_count(m: a.y) - millimeter_displacement_count(m: b.y),
-    z: millimeter_displacement_count(m: a.z) - millimeter_displacement_count(m: b.z),
+    x: signed_millimeter_component_count(m: a.x) - signed_millimeter_component_count(m: b.x),
+    y: signed_millimeter_component_count(m: a.y) - signed_millimeter_component_count(m: b.y),
+    z: signed_millimeter_component_count(m: a.z) - signed_millimeter_component_count(m: b.z),
   )
 }
 
 fn negate_vector3<F>(v: Vector3<F>) -> Vector3<F> {
   vector3(
-    x: 0 - millimeter_displacement_count(m: v.x),
-    y: 0 - millimeter_displacement_count(m: v.y),
-    z: 0 - millimeter_displacement_count(m: v.z),
+    x: 0 - signed_millimeter_component_count(m: v.x),
+    y: 0 - signed_millimeter_component_count(m: v.y),
+    z: 0 - signed_millimeter_component_count(m: v.z),
   )
 }
 
@@ -149,30 +142,30 @@ fn negate_vector3<F>(v: Vector3<F>) -> Vector3<F> {
 // numeric seam is decided.
 fn scale_vector3<F>(v: Vector3<F>, factor: Int) -> Vector3<F> {
   vector3(
-    x: millimeter_displacement_count(m: v.x) * factor,
-    y: millimeter_displacement_count(m: v.y) * factor,
-    z: millimeter_displacement_count(m: v.z) * factor,
+    x: signed_millimeter_component_count(m: v.x) * factor,
+    y: signed_millimeter_component_count(m: v.y) * factor,
+    z: signed_millimeter_component_count(m: v.z) * factor,
   )
 }
 
 fn translate_point2<F>(point: Point2<F>, by: Vector2<F>) -> Point2<F> {
   point2(
-    x: millimeter_coordinate_count(m: point.x) + millimeter_displacement_count(m: by.x),
-    y: millimeter_coordinate_count(m: point.y) + millimeter_displacement_count(m: by.y),
+    x: signed_millimeter_component_count(m: point.x) + signed_millimeter_component_count(m: by.x),
+    y: signed_millimeter_component_count(m: point.y) + signed_millimeter_component_count(m: by.y),
   )
 }
 
 fn displacement_between2<F>(from: Point2<F>, to: Point2<F>) -> Vector2<F> {
   vector2(
-    x: millimeter_coordinate_count(m: to.x) - millimeter_coordinate_count(m: from.x),
-    y: millimeter_coordinate_count(m: to.y) - millimeter_coordinate_count(m: from.y),
+    x: signed_millimeter_component_count(m: to.x) - signed_millimeter_component_count(m: from.x),
+    y: signed_millimeter_component_count(m: to.y) - signed_millimeter_component_count(m: from.y),
   )
 }
 
 fn add_vector2<F>(a: Vector2<F>, b: Vector2<F>) -> Vector2<F> {
   vector2(
-    x: millimeter_displacement_count(m: a.x) + millimeter_displacement_count(m: b.x),
-    y: millimeter_displacement_count(m: a.y) + millimeter_displacement_count(m: b.y),
+    x: signed_millimeter_component_count(m: a.x) + signed_millimeter_component_count(m: b.x),
+    y: signed_millimeter_component_count(m: a.y) + signed_millimeter_component_count(m: b.y),
   )
 }
 
@@ -190,9 +183,9 @@ type QuarterTurns
 
 // Rotation about +Z, right-handed: (x, y) -> (-y, x) per quarter turn. Z is unchanged.
 fn rotate_quarter_turns_about_z<F>(v: Vector3<F>, turns: QuarterTurns) -> Vector3<F> {
-  let x = millimeter_displacement_count(m: v.x)
-  let y = millimeter_displacement_count(m: v.y)
-  let z = millimeter_displacement_count(m: v.z)
+  let x = signed_millimeter_component_count(m: v.x)
+  let y = signed_millimeter_component_count(m: v.y)
+  let z = signed_millimeter_component_count(m: v.z)
   match turns {
     NoTurn => vector3(x: x, y: y, z: z)
     OneQuarter => vector3(x: 0 - y, y: x, z: z)
@@ -202,26 +195,33 @@ fn rotate_quarter_turns_about_z<F>(v: Vector3<F>, turns: QuarterTurns) -> Vector
 }
 
 // A frame-to-frame transform. Both frames are phantom parameters, so applying a RoomFrame point to
-// a Transform3<BuildingFrame, SiteFrame> does not typecheck - the cross-frame error is unwritable
-// rather than refused. Rotation is restricted to the exact quarter-turn set for the reason above.
-type Transform3<From, To> {
+// a ZQuarterTurnTransform3<BuildingFrame, SiteFrame> does not typecheck - the cross-frame error is
+// unwritable rather than refused.
+//
+// THE NAME STATES THE CAPABILITY. An earlier revision called this Transform3, which claims the
+// general affine transform, while the field was and is rotation about +Z only. The narrower name is
+// the correction: no X or Y rotation was added merely to make an over-broad name true, because a
+// quarter turn about +Z plus a 3D translation is exactly what planar room layout needs, and a later
+// physical consumer should derive the orientation operation it actually requires rather than
+// inherit a preselected rotation group.
+type ZQuarterTurnTransform3<From, To> {
   rotation_about_z: QuarterTurns
   translation: Vector3<To>
 }
 
-fn apply_transform3<From, To>(
-  transform: Transform3<From, To>,
+fn apply_z_quarter_turn_transform3<From, To>(
+  transform: ZQuarterTurnTransform3<From, To>,
   point: Point3<From>,
 ) -> Point3<To> {
   let as_displacement = vector3(
-    x: millimeter_coordinate_count(m: point.x),
-    y: millimeter_coordinate_count(m: point.y),
-    z: millimeter_coordinate_count(m: point.z),
+    x: signed_millimeter_component_count(m: point.x),
+    y: signed_millimeter_component_count(m: point.y),
+    z: signed_millimeter_component_count(m: point.z),
   )
   let rotated = rotate_quarter_turns_about_z(v: as_displacement, turns: transform.rotation_about_z)
   point3(
-    x: millimeter_displacement_count(m: rotated.x) + millimeter_displacement_count(m: transform.translation.x),
-    y: millimeter_displacement_count(m: rotated.y) + millimeter_displacement_count(m: transform.translation.y),
-    z: millimeter_displacement_count(m: rotated.z) + millimeter_displacement_count(m: transform.translation.z),
+    x: signed_millimeter_component_count(m: rotated.x) + signed_millimeter_component_count(m: transform.translation.x),
+    y: signed_millimeter_component_count(m: rotated.y) + signed_millimeter_component_count(m: transform.translation.y),
+    z: signed_millimeter_component_count(m: rotated.z) + signed_millimeter_component_count(m: transform.translation.z),
   )
 }
