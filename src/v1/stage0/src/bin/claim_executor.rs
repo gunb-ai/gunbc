@@ -9697,57 +9697,43 @@ fn scoped_admission_projection(
 /// the same prediction one layer down and back-stop nothing — the 31 scoped test
 /// functions would still be gated by the affected-set answer whose control this is.
 ///
-/// The failure arms EXECUTE rather than predict, and that direction is the point:
-/// on the one lane whose job is to falsify skips, an unresolvable policy that
-/// skipped would be a silent hole in the control itself.
-fn scoped_backstop_requires_full_execution(walk_source_roots: &[String]) -> bool {
+/// Every failure arm REFUSES; none widens to "run everything". Widening here is
+/// the absorbing fallback wearing this seam's own name: the safe-looking arm is
+/// indistinguishable from a normal cold run, so the frequency of "the policy
+/// authority could not be reached" would be zero by construction and the deficit
+/// would never rank for fixing. The line stops instead, typed and located.
+fn scoped_backstop_requires_full_execution(walk_source_roots: &[String]) -> Result<bool, String> {
     let event = std::env::var("GITHUB_EVENT_NAME").unwrap_or_default();
-    let (graph, indices) =
-        match resolve_entry_graph_shared(walk_source_roots, SCOPED_ADMISSION_ENTRY) {
-            Ok(pair) => pair,
-            Err(e) => {
-                eprintln!(
-                    "claim_executor: scoped backstop policy unresolvable ({e}); \
-                 executing the full scoped roster"
-                );
-                return true;
-            }
-        };
+    let (graph, indices) = resolve_entry_graph_shared(walk_source_roots, SCOPED_ADMISSION_ENTRY)
+        .map_err(|e| {
+            format!("scoped backstop policy unresolvable ({SCOPED_ADMISSION_ENTRY}): {e}")
+        })?;
     let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
     match run_in_context_with_args(
         &ctx,
         "scoped_execution_policy_for_event",
-        &[(Some("event".to_string()), Value::Str(event))],
+        &[(Some("event".to_string()), Value::Str(event.clone()))],
         false,
     ) {
         Ok(Value::Variant { variant_name, .. }) => {
             if ctx.sym_eq(variant_name, "ScopedPolicyPredictsFromDiff") {
-                false
+                Ok(false)
             } else if ctx.sym_eq(variant_name, "ScopedPolicyRequiresFullExecution") {
-                true
+                Ok(true)
             } else {
-                eprintln!(
-                    "claim_executor: unmodelled ScopedExecutionPolicy variant; \
-                     executing the full scoped roster"
-                );
-                true
+                Err(format!(
+                    "scoped_execution_policy_for_event returned an unmodelled \
+                     ScopedExecutionPolicy variant for event `{event}`"
+                ))
             }
         }
-        Ok(other) => {
-            eprintln!(
-                "claim_executor: scoped_execution_policy_for_event returned `{}`; \
-                 executing the full scoped roster",
-                ctx.format_value(&other)
-            );
-            true
-        }
-        Err(msg) => {
-            eprintln!(
-                "claim_executor: scoped_execution_policy_for_event unavailable ({msg}); \
-                 executing the full scoped roster"
-            );
-            true
-        }
+        Ok(other) => Err(format!(
+            "scoped_execution_policy_for_event returned `{}`, expected ScopedExecutionPolicy",
+            ctx.format_value(&other)
+        )),
+        Err(msg) => Err(format!(
+            "scoped_execution_policy_for_event unavailable for event `{event}`: {msg}"
+        )),
     }
 }
 
@@ -10709,7 +10695,14 @@ fn run() -> Result<ExitCode, ExitCode> {
                 );
                 return Err(ExitCode::from(1));
             }
-            if scoped_backstop_requires_full_execution(&source_roots) {
+            let backstop = match scoped_backstop_requires_full_execution(&source_roots) {
+                Ok(b) => b,
+                Err(msg) => {
+                    eprintln!("claim_executor: SCOPED-BACKSTOP-REFUSED batch={batch_id}: {msg}");
+                    return Err(ExitCode::from(1));
+                }
+            };
+            if backstop {
                 if let Runnable::ScopedWitnessBatch {
                     node_frontier_selection,
                     ..
