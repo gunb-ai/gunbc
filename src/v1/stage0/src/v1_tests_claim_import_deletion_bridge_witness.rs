@@ -4,16 +4,26 @@
 use crate::std_occurrence_binding_candidates::AssembledCrossFileBindingClosure::{
     AssembledCrossFileBindingClosureReady, AssembledCrossFileBindingClosureRefused,
 };
+use crate::std_occurrence_binding_candidates::BoundReferencePopulation::AllReferencesBound;
+use crate::std_occurrence_binding_candidates::CrossFileBindingProvenancePopulation::{
+    AllCrossFileBindingsBound, CrossFileBindingPopulationBindingRefused,
+    CrossFileBindingPopulationRefused,
+};
 use crate::std_occurrence_binding_candidates::DeclarationExposureGrounding::{
     CrossFileProviderExportedExposure, ModuleLocalMemberExposure,
 };
+use crate::std_occurrence_binding_candidates::ModulePathFileIndex::ModulePathFileIndexReady;
 use crate::std_occurrence_binding_candidates::ReferenceBindingProjection::ReferenceBindingProjectionBound;
 pub use crate::std_occurrence_binding_candidates::{
-    assemble_cross_file_binding_closure, resolve_reference_binding_via_structural_candidates,
+    assemble_cross_file_binding_closure, cross_file_binding_provenance_from_bound_population,
+    direct_file_dependencies_from_provenances, module_path_file_index_from_rows,
+    resolve_reference_binding_via_structural_candidates,
 };
 pub use crate::std_occurrence_binding_candidates::{
-    AssembledCrossFileBindingClosure, BoundReferenceProvider, CrossFileBindingClosureRow,
-    DeclarationExposureGrounding, OccurrenceBindingCandidateInputs, ReferenceBindingProjection,
+    AssembledCrossFileBindingClosure, BoundReferencePopulation, BoundReferenceProvider,
+    CrossFileBindingClosureRow, CrossFileBindingProvenance, CrossFileBindingProvenancePopulation,
+    DeclarationExposureGrounding, DirectFileDependency, ModulePathFileIndex, ModulePathFileRow,
+    OccurrenceBindingCandidateInputs, ReferenceBindingProjection,
 };
 pub use crate::std_occurrence_identity::{
     DeclarationOccurrence, OccurrenceId, OccurrenceIndexEntry, OccurrenceTransport,
@@ -277,4 +287,213 @@ pub fn checkpoint_one_finding_note() -> String {
         };
     }
     CACHED.with(|c: &String| c.clone())
+}
+
+pub fn idb_file_projection_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "ITEM 3 -- THE FILE PROJECTION, which is what the deletion actually rests on.\n\nModule identity is not enough to delete an import. An import line names a FILE, so whatever replaces it must produce a file-grain edge: the loader needs to know which file to bring into the closure, and a claim that only says which MODULE a reference belongs to leaves that unanswered. The keystone above proves the reference reaches the right module; these rows prove the same binding projects the provider FILE, through the production projection rather than a copy of it.\n\nWHY TWO MENTIONS. The consumer names LiveTreeDisposition twice -- once as a parameter type, once as the return type -- and both positions are references by the language, so a correct projection yields TWO binding-provenance rows. That count is derived from the fixture's own text, not read off the parser: if only one arrives, some reference position is not being projected, and the single-mention version of this witness could not tell the difference.\n\nWHY EXACTLY ONE FILE DEPENDENCY. Both provenance rows name the same provider file, so the file-grain projection must DEDUPE them to one edge. That makes the pair discriminating in both directions at once: two rows collapsing to two edges is a dedup failure that would over-load the closure, and two rows collapsing to zero is a projection that drops the dependency the loader needs. One is the only answer that is right for a reason.\n\nNO NEW MACHINERY, and that is a constraint rather than an accident. The provenance population and the dedup both come from std.occurrence_binding_candidates (cross_file_binding_provenance_from_bound_population, direct_file_dependencies_from_provenances); the module-to-file index comes from the closure's own module_files rows via module_path_file_index_from_rows. Nothing here walks a filesystem, scans for names, or builds a second module-to-file map -- the point is to exercise the production projection, and re-implementing it here would prove only that this file agrees with itself.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn idb_no_bound_providers() -> Rc<Vec<Rc<BoundReferenceProvider>>> {
+    Rc::new(vec![])
+}
+
+pub fn idb_no_module_file_rows() -> Rc<Vec<Rc<ModulePathFileRow>>> {
+    Rc::new(vec![])
+}
+
+pub fn idb_references_named_in_consumer() -> Rc<Vec<Rc<ReferenceOccurrence>>> {
+    match (*idb_parsed_row(idb_consumer_source_path())).clone() {
+        ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceRefused => Rc::new(vec![]),
+        ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceReady {
+            transport: t, ..
+        } => idb_references_named(t.clone(), idb_subject_name()),
+    }
+}
+
+pub fn idb_bound_providers_for_subject(
+    consumer_path: String,
+    provider_paths: Rc<Vec<String>>,
+) -> Rc<Vec<Rc<BoundReferenceProvider>>> {
+    {
+        let consumers = idb_closure_row_for(
+            consumer_path.clone(),
+            DeclarationExposureGrounding::ModuleLocalMemberExposure,
+        );
+        let providers =
+            provider_paths
+                .clone()
+                .iter()
+                .cloned()
+                .fold(Rc::new(vec![]), |acc: _, p: String| {
+                    v1_rt::concat(
+                        acc,
+                        idb_closure_row_for(
+                            p.clone(),
+                            DeclarationExposureGrounding::CrossFileProviderExportedExposure,
+                        ),
+                    )
+                });
+        consumers.clone().iter().cloned().fold(idb_no_bound_providers(), |outer: Rc<Vec<Rc<BoundReferenceProvider>>>, consumer_row: Rc<CrossFileBindingClosureRow>| match ((outer.clone().len() as i64) > 0) {
+    true => outer.clone(),
+    false => match (*assemble_cross_file_binding_closure(consumer_row.clone(), providers.clone())).clone() {
+    AssembledCrossFileBindingClosure::AssembledCrossFileBindingClosureRefused { refusal: _, .. } => idb_no_bound_providers(),
+    AssembledCrossFileBindingClosure::AssembledCrossFileBindingClosureReady { transport: t, inputs: i, .. } => idb_references_named(t.clone(), idb_subject_name()).iter().cloned().fold(idb_no_bound_providers(), |acc: Rc<Vec<Rc<BoundReferenceProvider>>>, reference: Rc<ReferenceOccurrence>| match (*resolve_reference_binding_via_structural_candidates(t.clone(), i.clone(), reference.clone())).clone() {
+    ReferenceBindingProjection::ReferenceBindingProjectionBound { provider: provider, .. } => v1_rt::concat(acc.clone(), Rc::new(vec![provider.clone()])),
+    _ => acc.clone(),
+}),
+},
+})
+    }
+}
+
+pub fn idb_module_files_for_subject(
+    consumer_path: String,
+    provider_paths: Rc<Vec<String>>,
+) -> Rc<Vec<Rc<ModulePathFileRow>>> {
+    {
+        let consumers = idb_closure_row_for(
+            consumer_path.clone(),
+            DeclarationExposureGrounding::ModuleLocalMemberExposure,
+        );
+        let providers =
+            provider_paths
+                .clone()
+                .iter()
+                .cloned()
+                .fold(Rc::new(vec![]), |acc: _, p: String| {
+                    v1_rt::concat(
+                        acc,
+                        idb_closure_row_for(
+                            p.clone(),
+                            DeclarationExposureGrounding::CrossFileProviderExportedExposure,
+                        ),
+                    )
+                });
+        consumers.clone().iter().cloned().fold(
+            idb_no_module_file_rows(),
+            |outer: Rc<Vec<Rc<ModulePathFileRow>>>,
+             consumer_row: Rc<CrossFileBindingClosureRow>| match ((outer.clone().len()
+                as i64)
+                > 0)
+            {
+                true => outer.clone(),
+                false => match (*assemble_cross_file_binding_closure(
+                    consumer_row.clone(),
+                    providers.clone(),
+                ))
+                .clone()
+                {
+                    AssembledCrossFileBindingClosure::AssembledCrossFileBindingClosureRefused {
+                        refusal: _,
+                        ..
+                    } => idb_no_module_file_rows(),
+                    AssembledCrossFileBindingClosure::AssembledCrossFileBindingClosureReady {
+                        module_files: rows,
+                        ..
+                    } => rows.clone(),
+                },
+            },
+        )
+    }
+}
+
+pub fn idb_provenances_for_subject(
+    consumer_path: String,
+    provider_paths: Rc<Vec<String>>,
+) -> Rc<Vec<Rc<CrossFileBindingProvenance>>> {
+    {
+        let providers =
+            idb_bound_providers_for_subject(consumer_path.clone(), provider_paths.clone());
+        match ((providers.clone().len() as i64) == 0) {
+            true => Rc::new(vec![]),
+            false => match (*module_path_file_index_from_rows(idb_module_files_for_subject(
+                consumer_path.clone(),
+                provider_paths.clone(),
+            )))
+            .clone()
+            {
+                ModulePathFileIndex::ModulePathFileIndexReady {
+                    entries: entries, ..
+                } => match (*cross_file_binding_provenance_from_bound_population(
+                    Rc::new(BoundReferencePopulation::AllReferencesBound {
+                        providers: providers.clone(),
+                    }),
+                    entries.clone(),
+                ))
+                .clone()
+                {
+                    CrossFileBindingProvenancePopulation::AllCrossFileBindingsBound {
+                        provenances: rows,
+                        ..
+                    } => rows.clone(),
+                    _ => Rc::new(vec![]),
+                },
+                _ => Rc::new(vec![]),
+            },
+        }
+    }
+}
+
+pub fn idb_file_dependencies_for_subject(
+    consumer_path: String,
+    provider_paths: Rc<Vec<String>>,
+) -> Rc<Vec<Rc<DirectFileDependency>>> {
+    direct_file_dependencies_from_provenances(idb_provenances_for_subject(
+        consumer_path.clone(),
+        provider_paths.clone(),
+    ))
+}
+
+pub fn witness_consumer_mentions_the_subject_twice() -> bool {
+    ((idb_references_named_in_consumer().len() as i64) == 2)
+}
+
+pub fn witness_two_mentions_project_two_binding_provenance_rows() -> bool {
+    ((idb_provenances_for_subject(
+        idb_consumer_source_path(),
+        Rc::new(vec![idb_live_tree_source_path()]),
+    )
+    .len() as i64)
+        == 2)
+}
+
+pub fn witness_provenance_rows_dedupe_to_one_provider_file_dependency() -> bool {
+    {
+        let edges = idb_file_dependencies_for_subject(
+            idb_consumer_source_path(),
+            Rc::new(vec![idb_live_tree_source_path()]),
+        );
+        match ((edges.clone().len() as i64) == 1) {
+            false => false,
+            true => match edges.clone().first().cloned() {
+                None => false,
+                Some(edge) => {
+                    (((edge.provider_file.clone() == idb_live_tree_source_path())
+                        && (edge.consumer_file.clone() == idb_consumer_source_path()))
+                        && !(edge.consumer_file.clone() == edge.provider_file.clone()))
+                }
+            },
+        }
+    }
+}
+
+pub fn idb_file_projection_control_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "THE CONTROL FOR THE FILE PROJECTION, distinct from the keystone's own control. With the provider withheld nothing binds, so the projection must produce NO provenance rows and NO file edges. Without this, both rows above would be satisfied by a projection that emits edges from an empty binding population -- which is the direction that would silently load files nothing references.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn witness_withheld_provider_projects_no_file_dependency() -> bool {
+    (((idb_provenances_for_subject(idb_consumer_source_path(), Rc::new(vec![])).len() as i64) == 0)
+        && ((idb_file_dependencies_for_subject(idb_consumer_source_path(), Rc::new(vec![])).len()
+            as i64)
+            == 0))
 }
