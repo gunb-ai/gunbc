@@ -1,0 +1,241 @@
+module test.claim.spark_serving_realization_witness_test
+
+import std.types { String, Bool, List, NonEmptyStr }
+import gunbc.spark_serving_realization {
+  SparkServingIntent,
+  SparkHostCapabilityObservation,
+  SparkServingRealization,
+  UserUnitRealization,
+  SystemUnitRealization,
+  RootlessContainerRealization,
+  CapabilityObservation,
+  CapabilityPresent,
+  CapabilityRefused,
+  CapabilityUnobserved,
+  SurvivesReboot,
+  SessionScoped,
+  RestartsOnFailure,
+  ManagedConvergenceOwned,
+  NoLoginNoSudoIdentity,
+  AuthenticatedEndpoint,
+  IndependentlyObservable,
+  SparkServingRealizationPolicy,
+  LeastRequiredEffects,
+  select_spark_serving_realization,
+  SparkServingRealizationSelection,
+  RealizationSelected,
+  NoRealizationAdmitted,
+  RealizationChoiceRequired,
+}
+
+// The terminal Spark intent, named in one place so every control varies ONE axis against it.
+fn spark_intent() -> SparkServingIntent {
+  SparkServingIntent {
+    lifecycle: SurvivesReboot,
+    availability: RestartsOnFailure,
+    authority: ManagedConvergenceOwned,
+    service_identity: NoLoginNoSudoIdentity,
+    endpoint: AuthenticatedEndpoint,
+    observability: IndependentlyObservable,
+  }
+}
+
+fn present(evidence: String) -> CapabilityObservation {
+  CapabilityPresent { evidence: evidence as NonEmptyStr }
+}
+
+fn refused(cause: String) -> CapabilityObservation {
+  CapabilityRefused { cause: cause as NonEmptyStr }
+}
+
+// A host where the least-privileged realization already satisfies the intent.
+fn host_user_unit_capable() -> SparkHostCapabilityObservation {
+  SparkHostCapabilityObservation {
+    host: "srv5" as NonEmptyStr,
+    managed_executor_account: present("fleet automation account observed"),
+    no_login_service_identity: present("inference service identity observed"),
+    system_unit_manager: refused("no passwordless sudo"),
+    user_unit_manager: present("systemd --user observed"),
+    user_lingering: present("lingering enabled"),
+    container_runtime: refused("no container runtime"),
+    accelerator_access: present("accelerator device readable"),
+    writable_artifact_root: present("artifact root writable"),
+    endpoint_bindable: present("endpoint bindable"),
+  }
+}
+
+// The SAME host after gaining passwordless sudo. Nothing about the intent changed.
+fn host_user_unit_capable_plus_sudo() -> SparkHostCapabilityObservation {
+  SparkHostCapabilityObservation {
+    host: "srv5" as NonEmptyStr,
+    managed_executor_account: present("fleet automation account observed"),
+    no_login_service_identity: present("inference service identity observed"),
+    system_unit_manager: present("passwordless sudo granted"),
+    user_unit_manager: present("systemd --user observed"),
+    user_lingering: present("lingering enabled"),
+    container_runtime: refused("no container runtime"),
+    accelerator_access: present("accelerator device readable"),
+    writable_artifact_root: present("artifact root writable"),
+    endpoint_bindable: present("endpoint bindable"),
+  }
+}
+
+fn least_privilege_policy() -> SparkServingRealizationPolicy {
+  SparkServingRealizationPolicy { privilege: LeastRequiredEffects }
+}
+
+fn selects_user_unit(capabilities: SparkHostCapabilityObservation) -> Bool {
+  match select_spark_serving_realization(
+    intent: spark_intent(),
+    capabilities: capabilities,
+    policy: least_privilege_policy(),
+  ) {
+    RealizationSelected { realization: r } =>
+      match r {
+        UserUnitRealization => true
+        SystemUnitRealization => false
+        RootlessContainerRealization => false
+      }
+    NoRealizationAdmitted { first: _, more: _ } => false
+    RealizationChoiceRequired { first: _, more: _, cause: _ } => false
+  }
+}
+
+// THE DISCRIMINATING CONTROL, and the one the function this replaces would fail. Granting
+// passwordless sudo makes the system-unit realization ADMISSIBLE; it must not make it SELECTED,
+// because the serving intent did not change. derive_install_scope returns SystemUnitScope the
+// instant passwordless_sudo is true, so this pair is exactly where the old model silently
+// "upgraded" the architecture in response to a privilege grant.
+test fn w_granting_sudo_does_not_change_the_selected_realization() -> Bool {
+  selects_user_unit(capabilities: host_user_unit_capable()) && selects_user_unit(capabilities: host_user_unit_capable_plus_sudo())
+}
+
+// A user unit is NOT selected merely because it is what remains. Under SurvivesReboot it needs
+// lingering, and without it the candidate is refused rather than defaulted to.
+test fn w_user_unit_refused_when_it_cannot_satisfy_the_lifecycle() -> Bool {
+  let no_lingering = SparkHostCapabilityObservation {
+    host: "srv5" as NonEmptyStr,
+    managed_executor_account: present("fleet automation account observed"),
+    no_login_service_identity: present("inference service identity observed"),
+    system_unit_manager: refused("no passwordless sudo"),
+    user_unit_manager: present("systemd --user observed"),
+    user_lingering: refused("lingering disabled: unit dies at logout"),
+    container_runtime: refused("no container runtime"),
+    accelerator_access: present("accelerator device readable"),
+    writable_artifact_root: present("artifact root writable"),
+    endpoint_bindable: present("endpoint bindable"),
+  }
+  match select_spark_serving_realization(
+    intent: spark_intent(),
+    capabilities: no_lingering,
+    policy: least_privilege_policy(),
+  ) {
+    NoRealizationAdmitted { first: _, more: _ } => true
+    RealizationSelected { realization: _ } => false
+    RealizationChoiceRequired { first: _, more: _, cause: _ } => false
+  }
+}
+
+// UNOBSERVED IS NOT ABSENT AND IS ALSO NOT PRESENT. A capability nobody looked at refuses
+// admission, so a realization is never selected on the strength of a question never asked.
+test fn w_unobserved_capability_refuses_rather_than_admitting() -> Bool {
+  let unobserved = SparkHostCapabilityObservation {
+    host: "srv6" as NonEmptyStr,
+    managed_executor_account: present("fleet automation account observed"),
+    no_login_service_identity: present("inference service identity observed"),
+    system_unit_manager: refused("no passwordless sudo"),
+    user_unit_manager: present("systemd --user observed"),
+    user_lingering: present("lingering enabled"),
+    container_runtime: refused("no container runtime"),
+    accelerator_access: CapabilityUnobserved,
+    writable_artifact_root: present("artifact root writable"),
+    endpoint_bindable: present("endpoint bindable"),
+  }
+  match select_spark_serving_realization(
+    intent: spark_intent(),
+    capabilities: unobserved,
+    policy: least_privilege_policy(),
+  ) {
+    NoRealizationAdmitted { first: _, more: _ } => true
+    RealizationSelected { realization: _ } => false
+    RealizationChoiceRequired { first: _, more: _, cause: _ } => false
+  }
+}
+
+// POSITIVE CONTROL for the pair above: with sudo the ONLY mechanism available, system-unit is
+// selected. Without this, a model that refused everything would pass the sudo-invariance control.
+test fn w_system_unit_selected_when_it_is_the_only_admitted_mechanism() -> Bool {
+  let system_only = SparkHostCapabilityObservation {
+    host: "srv5" as NonEmptyStr,
+    managed_executor_account: present("fleet automation account observed"),
+    no_login_service_identity: present("inference service identity observed"),
+    system_unit_manager: present("passwordless sudo granted"),
+    user_unit_manager: refused("no user unit manager"),
+    user_lingering: refused("no user unit manager"),
+    container_runtime: refused("no container runtime"),
+    accelerator_access: present("accelerator device readable"),
+    writable_artifact_root: present("artifact root writable"),
+    endpoint_bindable: present("endpoint bindable"),
+  }
+  match select_spark_serving_realization(
+    intent: spark_intent(),
+    capabilities: system_only,
+    policy: least_privilege_policy(),
+  ) {
+    RealizationSelected { realization: r } =>
+      match r {
+        SystemUnitRealization => true
+        UserUnitRealization => false
+        RootlessContainerRealization => false
+      }
+    NoRealizationAdmitted { first: _, more: _ } => false
+    RealizationChoiceRequired { first: _, more: _, cause: _ } => false
+  }
+}
+
+// The managed-executor requirement is a function of the AUTHORITY intent, so a host with no managed
+// account cannot serve under ManagedConvergenceOwned however capable it otherwise is. This is what
+// makes "briansrls plus the fleet key" insufficient rather than merely untidy.
+test fn w_no_managed_executor_refuses_under_managed_authority() -> Bool {
+  let human_only = SparkHostCapabilityObservation {
+    host: "srv5" as NonEmptyStr,
+    managed_executor_account: refused("only the human bootstrap account exists"),
+    no_login_service_identity: present("inference service identity observed"),
+    system_unit_manager: refused("no passwordless sudo"),
+    user_unit_manager: present("systemd --user observed"),
+    user_lingering: present("lingering enabled"),
+    container_runtime: refused("no container runtime"),
+    accelerator_access: present("accelerator device readable"),
+    writable_artifact_root: present("artifact root writable"),
+    endpoint_bindable: present("endpoint bindable"),
+  }
+  match select_spark_serving_realization(
+    intent: spark_intent(),
+    capabilities: human_only,
+    policy: least_privilege_policy(),
+  ) {
+    NoRealizationAdmitted { first: _, more: _ } => true
+    RealizationSelected { realization: _ } => false
+    RealizationChoiceRequired { first: _, more: _, cause: _ } => false
+  }
+}
+
+// RED CONTROL, stated as a rejection so it PASSES when the model is correct (an enrolled test fn
+// returning false is a FAIL, not a control -- a mistake made earlier in this session). The wrong
+// outcome is the old function's behavior: selecting system-unit because privilege appeared.
+test fn red_control_privilege_does_not_select_the_architecture() -> Bool {
+  match select_spark_serving_realization(
+    intent: spark_intent(),
+    capabilities: host_user_unit_capable_plus_sudo(),
+    policy: least_privilege_policy(),
+  ) {
+    RealizationSelected { realization: r } =>
+      match r {
+        SystemUnitRealization => false
+        UserUnitRealization => true
+        RootlessContainerRealization => true
+      }
+    NoRealizationAdmitted { first: _, more: _ } => false
+    RealizationChoiceRequired { first: _, more: _, cause: _ } => false
+  }
+}
