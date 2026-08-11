@@ -14,7 +14,7 @@ data compute_board_intent_note: String = "THE MACHINE CONTRACT, WHICH IS WHERE A
 // carried as `enabled: false`, or the type keeps describing a machine we are not building.
 type BoardCapability
   = Compute
-  | Memory
+  | MemorySubsystem
   | Networking
   | BootStorage
   | Management
@@ -41,7 +41,7 @@ type CapabilityRequirement
 fn requirement_capability(r: CapabilityRequirement) -> BoardCapability {
   match r {
     ComputeCores { minimum_cores: _ } => Compute
-    MemoryCapacity { minimum_capacity: _ } => Memory
+    MemoryCapacity { minimum_capacity: _ } => MemorySubsystem
     NetworkPaths { minimum_paths: _ } => Networking
     BootStoragePaths { minimum_paths: _ } => BootStorage
     RemoteManagement { power_control: _, console: _, recovery: _ } => Management
@@ -61,7 +61,7 @@ fn requirement_capability(r: CapabilityRequirement) -> BoardCapability {
 fn capability_ordinal(c: BoardCapability) -> Int {
   match c {
     Compute => 0
-    Memory => 1
+    MemorySubsystem => 1
     Networking => 2
     BootStorage => 3
     Management => 4

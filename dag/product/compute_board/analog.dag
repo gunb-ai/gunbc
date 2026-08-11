@@ -103,6 +103,17 @@ fn net_of_terminal(intent: AnalogCircuitIntent, t: ElectricalTerminalRef) -> Net
   })
 }
 
+// HOW MANY nets contain this terminal, not merely whether one does. Two nets containing one
+// terminal is a SHORT between them — a real and different circuit — and net_of_terminal answers
+// with the first match, so a caller asking only "is it netted" cannot tell a netted terminal
+// from a shorted one. The count is what makes that distinction available; the projection decides
+// what to do with it.
+fn net_membership_count(intent: AnalogCircuitIntent, t: ElectricalTerminalRef) -> Nat {
+  fold(intent.nets, init: 0, f: fn(acc, net) {
+    if net_contains_terminal(net: net, t: t) { acc + 1 } else { acc }
+  })
+}
+
 fn component_terminals(c: ElectricalComponentInstance) -> List<ElectricalTerminalRef> {
   [
     terminal_ref(component: c.identity, terminal: c.positive_terminal),
