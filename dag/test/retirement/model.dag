@@ -47,6 +47,8 @@ fn retained_legacy_rust_test_modules() -> List<RetainedLegacyRustTestModule> {
     retained_field_of_fractions_single_declaration,
     retained_field_of_fractions_construction,
     retained_whole_tree_wiring_enum,
+    retained_resolve_cross_process_cache,
+    retained_resolved_graph_cache_size_bound,
     retained_helpers,
   ]
 }
@@ -114,6 +116,36 @@ data retained_whole_tree_wiring_enum: RetainedLegacyRustTestModule = RetainedLeg
   source_file: "whole_tree_wiring_enum_test.rs",
   purpose: "Green-by-execution anchor for the gunbc#5364 whole-tree wiring-liveness enumeration widening: cli_run::whole_tree_resolved_ctx resolves every .dag module under the given source roots in one pass, so decl-facts enumeration sees fn-arrow decls across the WHOLE tree rather than one per-entry closure. The claim is about the seed's whole-tree resolve entry, which the substrate reaches only per-entry." as NonEmptyStr,
   dissolution: UnboundDissolution { description: "The substrate gains a whole-tree resolve entry whose enumeration the floor can observe directly, at which point the anchor migrates." as NonEmptyStr },
+}
+
+// RESTORED 2026-08-11 after review 51132. These two were deleted in the first
+// cut of this PR, and that deletion was wrong for a reason worth stating
+// exactly: they are the EXECUTING EVIDENCE for clauses that other carriers
+// still report as Delivered.
+//
+// DESIGN §4b meta-obligation (4) governs this directly — a climb deletes the
+// redundant lower-rung production machinery it obsoletes, but "the class's
+// discriminating RED and positive control REMAIN ENROLLED as the executing
+// evidence that the higher rung stays real". Deleting them while
+// gunbc.materialization_kernel_closing_frontier_audit and
+// gunbc.ci_cost_arc_closeout_receipt kept reading Delivered would have produced
+// specification-without-execution in four carriers at once: the claim intact,
+// the proof gone, every witness still green.
+//
+// The alternative repair — demote those clauses to NotDelivered — was available
+// and is the WRONG one. The capability did not regress; only the proof would
+// have. Retaining the evidence keeps the reported rung equal to the rung
+// established by executed evidence, which is what §4b(1) requires.
+data retained_resolve_cross_process_cache: RetainedLegacyRustTestModule = RetainedLegacyRustTestModule {
+  source_file: "resolve_cross_process_cache_test.rs",
+  purpose: "The executing evidence for two Delivered clauses in gunbc.materialization_kernel_closing_frontier_audit (warm-hit-skips-semantic-recompute, corruption-identity-completeness-overcap-refuse) and for gunbc.ci_cost_arc_closeout_receipt warm_hit_settle = ClosedSkipProofLanded. cross_process_hit_skips_semantic_recompute reads the seed's TYPECHECK_COMPUTE_COUNT under the exclusive with_typecheck_compute_count_receipt wrapper to prove a warm disk-tier hit computes NOTHING — a regression that silently fell back to full recompute would still return a correct graph, so a result comparison cannot substitute for the counter, and the counter is host runtime state with no substrate-observable surface." as NonEmptyStr,
+  dissolution: UnboundDissolution { description: "The materialization provider exposes a typed semantic-recompute receipt the substrate can read, at which point the counter assertions migrate to floor witnesses and the audit clauses re-cite them. Same trigger as retained_materialization_provider_resolved_graph_consumer — they close together or not at all." as NonEmptyStr },
+}
+
+data retained_resolved_graph_cache_size_bound: RetainedLegacyRustTestModule = RetainedLegacyRustTestModule {
+  source_file: "resolved_graph_cache_size_bound_test.rs",
+  purpose: "The executing evidence for the bounded-eviction-and-full-store clause in gunbc.materialization_kernel_closing_frontier_audit. Writes sixteen content-addressed artifacts against a cap sized for three and asserts the on-disk footprint stays at or under the cap by execution, and that the Rust-enforced cap equals the modeled ceiling in extdeps.realization.resolved_graph. The subject is on-disk byte footprint under host mtime-ordered eviction, which the substrate cannot observe." as NonEmptyStr,
+  dissolution: UnboundDissolution { description: "Cache footprint and eviction order become observable through a typed store receipt, at which point the cap-equality half migrates to a floor witness against extdeps.realization.resolved_graph and only the physical-footprint half would remain host-bound." as NonEmptyStr },
 }
 
 // The shared harness for the retained kernel, and a retained module in its own

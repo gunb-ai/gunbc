@@ -8,6 +8,10 @@ import v2.lens.test_migration_debt {
   names_are_duplicate_free,
   list_contains_name,
   retained_module_has_a_discovered_test,
+  module_body_has_no_skip_attribute,
+  manifest_uses_default_harness,
+  no_retained_module_is_skipped,
+  retained_kernel_uses_default_harness,
 }
 import v2.std.logic { Bool }
 import v2.std.text { String }
@@ -69,6 +73,44 @@ test fn clean_fixture_is_admitted() -> Bool {
 // A retained row pointing at a module with no discovered #[test] must red.
 test fn planted_module_without_tests_refuses() -> Bool {
   return !retained_module_has_a_discovered_test(source_file: "zzz_nonexistent_module_test.rs")
+}
+
+// THE EXECUTION-WALL CONTROLS. Each plants the exact route by which a retained
+// test could stay discovered and compiled while never running.
+test fn planted_ignored_test_refuses() -> Bool {
+  return !module_body_has_no_skip_attribute(body: "#[test]\n#[ignore]\nfn t() {}")
+}
+
+test fn planted_should_panic_test_refuses() -> Bool {
+  return !module_body_has_no_skip_attribute(body: "#[test]\n#[should_panic]\nfn t() {}")
+}
+
+test fn plain_test_body_is_admitted() -> Bool {
+  return module_body_has_no_skip_attribute(body: "#[test]\nfn t() { assert!(true); }")
+}
+
+test fn planted_custom_harness_refuses() -> Bool {
+  return !manifest_uses_default_harness(manifest: "[[test]]\nname = \"x\"\nharness = false\n")
+}
+
+test fn planted_unspaced_custom_harness_refuses() -> Bool {
+  return !manifest_uses_default_harness(manifest: "[lib]\nharness=false\n")
+}
+
+// An unreadable or absent manifest must refuse rather than read as "no custom
+// harness found" — absence of evidence is not evidence of the default harness.
+test fn planted_empty_manifest_refuses() -> Bool {
+  return !manifest_uses_default_harness(manifest: "")
+}
+
+test fn default_harness_manifest_is_admitted() -> Bool {
+  return manifest_uses_default_harness(manifest: "[package]\nname = \"x\"\n")
+}
+
+// And the same two clauses against the LIVE tree, so the controls above are not
+// merely exercising a function nothing calls in production.
+test fn live_retained_kernel_is_fully_executed() -> Bool {
+  return no_retained_module_is_skipped() && retained_kernel_uses_default_harness()
 }
 
 // Live populations are nonempty, so an emptied tree cannot pass the equality

@@ -275,12 +275,38 @@ fn legacy_test_behavior_unclassified_count_live() -> Int {
   count(legacy_test_behavior_unclassified_live())
 }
 
+// KNOWN POSITIVES FOR THE TWO DISCOVERY SCANNERS.
+//
+// The deleted anchor was self-referential — it asserted the presence of a
+// behavior this very migration was removing, so it could only ever go green by
+// its own subject departing. Replacing it with `count(...) > 0` was WORSE, not
+// merely weaker: a nonempty population proves a scanner returned SOMETHING, not
+// that it can see the kind of thing the control exists to observe, so a scanner
+// silently returning an unrelated partial population reads as healthy.
+//
+// Each side therefore names ONE exact identity that exists independently of
+// this migration. Both are full `path::fn` identities, the format the scanners
+// actually emit (verified by execution, not assumed).
+data legacy_discovery_known_positive: String = "src/v1/tests/src/class_b_trim_specimen_test.rs::trim_free_call_refuses_in_narrow_pool_without_algebra_authority"
+
+// Deliberately a witness with no relationship to test migration, so that
+// draining the retained kernel to zero cannot silently drain this control too.
+data witness_discovery_known_positive: String = "dag/test/claim/content_hash_family_grounded_witness_test.dag::content_hash_cited_sha256_literals_validate"
+
+fn legacy_discovery_known_positive_present(discovered_legacy: List<String>) -> Bool {
+  discovered_legacy |> any(id => id == legacy_discovery_known_positive)
+}
+
+fn witness_discovery_known_positive_present(discovered_witnesses: List<String>) -> Bool {
+  discovered_witnesses |> any(id => id == witness_discovery_known_positive)
+}
+
 fn legacy_test_behavior_declared_slice_holds() -> Bool {
   let discovered_legacy = legacy_test_behavior_ids_live()
   let discovered_witnesses = test_behavior_witness_ids_live()
   test_migration_behavior_discovery_holds()
-    && count(discovered_legacy) > 0
-    && count(discovered_witnesses) > 0
+    && legacy_discovery_known_positive_present(discovered_legacy: discovered_legacy)
+    && witness_discovery_known_positive_present(discovered_witnesses: discovered_witnesses)
     && count(legacy_test_behavior_stale_dispositions(
       discovered_legacy: discovered_legacy,
       dispositions: legacy_test_behavior_dispositions(),

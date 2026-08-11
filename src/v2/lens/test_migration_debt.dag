@@ -5,6 +5,7 @@ import std.disposition { SingleAuthority }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
+import extdeps.filesystem.filesystem_io
 import test.retirement.model {
   RetainedLegacyRustTestModule,
   retained_legacy_rust_test_modules,
@@ -86,6 +87,86 @@ fn retention_populations_are_nonempty() -> Bool {
     && count(discovered_legacy_behavior_ids()) > 0
 }
 
+// THE EXECUTION WALL.
+//
+// The identity join above proves `declared == discovered` over the SOURCE TREE.
+// It says nothing about what the CI run actually ran, and that gap is exactly
+// the class this cutover exists to delete: a retained test could acquire
+// `#[ignore]` and remain discovered, compiled, not executed, and green —
+// recreating compile-only coverage one rung down.
+//
+// The honest construction here is narrower than an executed-identity receipt
+// (which needs libtest's own output, and whose home is claim_executor). What is
+// provable from the substrate is that the ONE required command executes the
+// WHOLE discovered population unfiltered:
+//
+//   1. the emitted gate command carries no name filter and no --no-run,
+//   2. no retained module contains #[ignore] or #[should_panic] on any test,
+//   3. the crate uses the default libtest harness (no `harness = false`,
+//      no [[test]] target), so there is no custom filtering route.
+//
+// Under those three, "every discovered test is executed" follows from libtest's
+// default behavior rather than from a count anyone transcribed. The claim is
+// deliberately stated at that strength and no higher.
+data retained_kernel_manifest_path: String = "src/v1/tests/Cargo.toml"
+
+fn retained_module_path(source_file: String) -> String {
+  concat("src/v1/tests/src/", source_file)
+}
+
+// A retained module must contain no attribute that removes a test from the run.
+// `#[ignore]` skips it; `#[should_panic]` inverts its meaning, which is not a
+// skip but is an execution-semantics fact a reader of "30 passed" would get
+// wrong, so both refuse here rather than only the first.
+// Split from the live read so the planted controls can exercise the DECISION on
+// fixture content: the tree cannot be perturbed from inside a witness, and a
+// clause only reachable through a live read is a clause no control can refuse.
+fn module_body_has_no_skip_attribute(body: String) -> Bool {
+  !string_contains(s: body, pattern: "#[ignore")
+    && !string_contains(s: body, pattern: "#[should_panic")
+}
+
+// An unreadable module REFUSES rather than reading as skip-free: a failed read
+// is ignorance, not evidence of absence, and a scan over empty content finds no
+// `#[ignore]` for exactly the wrong reason.
+//
+// FilesystemReadResult carries only `content` — there is no success flag to
+// consult (the seed's runtime struct has one field), so emptiness is the only
+// available failure signal. A genuinely empty retained module also refuses,
+// which is the conservative direction: an empty module cannot host the test the
+// identity join says it has.
+fn retained_module_has_no_skip_attribute(source_file: String) -> Bool {
+  let body = filesystem_read(path: retained_module_path(source_file: source_file)).content
+  string_length(s: body) > 0 && module_body_has_no_skip_attribute(body: body)
+}
+
+fn no_retained_module_is_skipped() -> Bool {
+  retained_declared_source_files()
+    |> all(f => retained_module_has_no_skip_attribute(source_file: f))
+}
+
+// The default libtest harness is what makes "unfiltered command runs every
+// test" true. A custom harness or an explicit [[test]] target would introduce a
+// filtering route this wall cannot see, so their ABSENCE is asserted rather
+// than assumed.
+fn manifest_uses_default_harness(manifest: String) -> Bool {
+  string_length(s: manifest) > 0
+    && !string_contains(s: manifest, pattern: "harness = false")
+    && !string_contains(s: manifest, pattern: "harness=false")
+    && !string_contains(s: manifest, pattern: "[[test]]")
+}
+
+fn retained_kernel_uses_default_harness() -> Bool {
+  manifest_uses_default_harness(
+    manifest: filesystem_read(path: retained_kernel_manifest_path).content
+  )
+}
+
+fn retained_kernel_execution_wall_holds() -> Bool {
+  no_retained_module_is_skipped()
+    && retained_kernel_uses_default_harness()
+}
+
 fn retained_rust_kernel_wall_holds() -> Bool {
   retention_populations_are_nonempty()
     && names_are_duplicate_free(xs: retained_declared_source_files())
@@ -93,6 +174,7 @@ fn retained_rust_kernel_wall_holds() -> Bool {
     && every_retained_row_resolves()
     && every_discovered_module_is_retained()
     && every_retained_module_has_a_test()
+    && retained_kernel_execution_wall_holds()
 }
 
 fn retained_rust_kernel_wall_holds_live() -> Bool {
