@@ -1,0 +1,418 @@
+module v2.workflow.floor_preparation
+
+import std.types { Bool, List, Map, String }
+import std.content_hash {
+  Fnv1a64Structural,
+  content_hash_atom,
+  content_hash_combine_structural,
+  serialize_content_hash,
+}
+import std.materialization_provider {
+  ArtifactRequest,
+  MaterializedArtifact,
+  ProviderProbe,
+  ProviderLookup,
+  ProviderHit,
+  ResolveClosureRequest,
+  compiler_identity_input,
+  provider_serve,
+  request_key,
+}
+import std.realization_schedule {
+  ScheduleWitnessEntry,
+  CorpusWitnessKind,
+  ExecutionWitnessKind,
+  NativeBundleWitnessKind,
+}
+import v2.workflow.floor_discovery {
+  FloorDiscoveryRequest,
+  floor_discovery_request_identity,
+}
+import v2.std.algebra { list_reverse }
+import v2.std.optional { Absent, Present }
+
+data prepared_floor_subject_authority_note: String = "The prepared floor subject is an opaque semantic identity over the exact discovery request, selected witness identities, and the existing std.materialization_provider ResolveClosureRequest keys. It deliberately does NOT carry MultiEntryIndex or any other compiler container. ProviderProbe is the host read-back seam and provider_serve remains the one request/artifact binding authority. A miss, damaged artifact, incomplete artifact, wrong key, wrong content, or wrong hash family remains the corresponding typed ProviderLookup inside PreparedFloorProviderRefused. There is no cold-construction or fallback arm. SequentialChildProcess may therefore realize this identity as verified materialized resolved-closure artifacts while SharedWalkProcess may realize it as live capabilities; neither realization changes the semantic identity. FIRST CONSUMER: the scoped-witness population named by ROADMAP ci-scoped-worker-shared-substrate. The old scoped cold constructor may delete only after that consumer can serve every exact selected identity through this contract."
+
+type FloorPreparationPolicy
+  = ResolveSelectedClosuresV1 {}
+
+type PreparedFloorEntryRequest {
+  witness: ScheduleWitnessEntry
+  closure_digest: Fnv1a64Structural
+}
+
+type PreparedFloorSubjectRequest {
+  discovery: FloorDiscoveryRequest
+  selected: List<PreparedFloorEntryRequest>
+  policy: FloorPreparationPolicy
+}
+
+type PreparedClaimSubjectIdentity sole_constructor {
+  discovery_request_identity: Fnv1a64Structural
+  selected_identity_digest: Fnv1a64Structural
+  preparation_policy_identity: Fnv1a64Structural
+  artifact_set_identity: Fnv1a64Structural
+}
+
+type PreparedFloorEntryProbe {
+  witness: ScheduleWitnessEntry
+  probe: ProviderProbe
+}
+
+type PreparedFloorEntryArtifact {
+  witness: ScheduleWitnessEntry
+  artifact: MaterializedArtifact
+}
+
+type PreparedFloorSubjectRefusal
+  = PreparedFloorDuplicateSelectedIdentities { duplicates: List<ScheduleWitnessEntry> }
+  | PreparedFloorDuplicateProbeIdentities { duplicates: List<ScheduleWitnessEntry> }
+  | PreparedFloorMissingProbeIdentities { missing: List<ScheduleWitnessEntry> }
+  | PreparedFloorUnexpectedProbeIdentities { unexpected: List<ScheduleWitnessEntry> }
+  | PreparedFloorProviderRefused { witness: ScheduleWitnessEntry, lookup: ProviderLookup }
+
+type PreparedFloorSubjectServe
+  = PreparedFloorSubjectReady {
+      identity: PreparedClaimSubjectIdentity
+      entries: List<PreparedFloorEntryArtifact>
+    }
+  | PreparedFloorSubjectRefused { cause: PreparedFloorSubjectRefusal }
+
+fn floor_preparation_policy_identity(policy: FloorPreparationPolicy) -> Fnv1a64Structural {
+  match policy {
+    ResolveSelectedClosuresV1 {} => content_hash_atom(value: "floor-preparation.resolve-selected-closures-v1")
+  }
+}
+
+fn prepared_floor_witness_kind_identity(witness: ScheduleWitnessEntry) -> String {
+  match witness.kind {
+    CorpusWitnessKind => "corpus"
+    ExecutionWitnessKind => "execution"
+    NativeBundleWitnessKind => "native-bundle"
+  }
+}
+
+fn prepared_floor_witness_identity(witness: ScheduleWitnessEntry) -> Fnv1a64Structural {
+  let with_entry = content_hash_combine_structural(
+    left: content_hash_atom(value: "prepared-floor-witness-v1"),
+    right: content_hash_atom(value: witness.entry),
+  )
+  let with_function = content_hash_combine_structural(
+    left: with_entry,
+    right: content_hash_atom(value: witness.function),
+  )
+  content_hash_combine_structural(
+    left: with_function,
+    right: content_hash_atom(value: prepared_floor_witness_kind_identity(witness: witness)),
+  )
+}
+
+fn prepared_floor_selected_identity(
+  selected: List<PreparedFloorEntryRequest>,
+) -> Fnv1a64Structural {
+  selected |> fold(
+    init: content_hash_atom(value: "prepared-floor-selected-v1"),
+    f: (acc, entry) => content_hash_combine_structural(
+      left: acc,
+      right: prepared_floor_witness_identity(witness: entry.witness),
+    )
+  )
+}
+
+fn prepared_floor_entry_artifact_request(
+  discovery: FloorDiscoveryRequest,
+  entry: PreparedFloorEntryRequest,
+) -> ArtifactRequest {
+  ResolveClosureRequest {
+    closure_digest: entry.closure_digest,
+    compiler: compiler_identity_input(digest: discovery.subject.tool_identity),
+  }
+}
+
+fn prepared_floor_artifact_set_identity(
+  request: PreparedFloorSubjectRequest,
+) -> Fnv1a64Structural {
+  request.selected |> fold(
+    init: content_hash_atom(value: "prepared-floor-artifact-set-v1"),
+    f: (acc, entry) => content_hash_combine_structural(
+      left: acc,
+      right: content_hash_atom(
+        value: serialize_content_hash(
+          hash: request_key(
+            req: prepared_floor_entry_artifact_request(
+              discovery: request.discovery,
+              entry: entry,
+            )
+          )
+        )
+      ),
+    )
+  )
+}
+
+fn prepared_claim_subject_identity(
+  request: PreparedFloorSubjectRequest,
+) -> PreparedClaimSubjectIdentity {
+  PreparedClaimSubjectIdentity {
+    discovery_request_identity: floor_discovery_request_identity(request: request.discovery),
+    selected_identity_digest: prepared_floor_selected_identity(selected: request.selected),
+    preparation_policy_identity: floor_preparation_policy_identity(policy: request.policy),
+    artifact_set_identity: prepared_floor_artifact_set_identity(request: request),
+  }
+}
+
+type PreparedFloorWitnessMultiplicityIndex {
+  witnessed: Map<ScheduleWitnessEntry, Bool>
+  duplicated: Map<ScheduleWitnessEntry, Bool>
+}
+
+fn prepared_floor_identity_map_contains(
+  identities: Map<ScheduleWitnessEntry, Bool>,
+  witness: ScheduleWitnessEntry,
+) -> Bool {
+  match map_get(identities, witness) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+fn prepared_floor_witness_multiplicity_step(
+  index: PreparedFloorWitnessMultiplicityIndex,
+  witness: ScheduleWitnessEntry,
+) -> PreparedFloorWitnessMultiplicityIndex {
+  if prepared_floor_identity_map_contains(identities: index.witnessed, witness: witness) {
+    PreparedFloorWitnessMultiplicityIndex {
+      witnessed: index.witnessed,
+      duplicated: map_insert(index.duplicated, witness, true),
+    }
+  } else {
+    PreparedFloorWitnessMultiplicityIndex {
+      witnessed: map_insert(index.witnessed, witness, true),
+      duplicated: index.duplicated,
+    }
+  }
+}
+
+fn prepared_floor_selected_multiplicity_index(
+  selected: List<PreparedFloorEntryRequest>,
+) -> PreparedFloorWitnessMultiplicityIndex {
+  selected |> fold(
+    init: PreparedFloorWitnessMultiplicityIndex {
+      witnessed: empty_map(),
+      duplicated: empty_map(),
+    },
+    f: (index, entry) => prepared_floor_witness_multiplicity_step(
+      index: index,
+      witness: entry.witness,
+    )
+  )
+}
+
+type PreparedFloorProbeIndex {
+  multiplicity: PreparedFloorWitnessMultiplicityIndex
+  by_witness: Map<ScheduleWitnessEntry, PreparedFloorEntryProbe>
+}
+
+fn prepared_floor_probe_index_step(
+  index: PreparedFloorProbeIndex,
+  entry: PreparedFloorEntryProbe,
+) -> PreparedFloorProbeIndex {
+  PreparedFloorProbeIndex {
+    multiplicity: prepared_floor_witness_multiplicity_step(
+      index: index.multiplicity,
+      witness: entry.witness,
+    ),
+    by_witness: map_insert(index.by_witness, entry.witness, entry),
+  }
+}
+
+fn prepared_floor_probe_index(
+  probes: List<PreparedFloorEntryProbe>,
+) -> PreparedFloorProbeIndex {
+  probes |> fold(
+    init: PreparedFloorProbeIndex {
+      multiplicity: PreparedFloorWitnessMultiplicityIndex {
+        witnessed: empty_map(),
+        duplicated: empty_map(),
+      },
+      by_witness: empty_map(),
+    },
+    f: (index, entry) => prepared_floor_probe_index_step(index: index, entry: entry)
+  )
+}
+
+type PreparedFloorIdentityIndex {
+  selected: PreparedFloorWitnessMultiplicityIndex
+  probes: PreparedFloorProbeIndex
+}
+
+fn prepared_floor_identity_index(
+  selected: List<PreparedFloorEntryRequest>,
+  probes: List<PreparedFloorEntryProbe>,
+) -> PreparedFloorIdentityIndex {
+  PreparedFloorIdentityIndex {
+    selected: prepared_floor_selected_multiplicity_index(selected: selected),
+    probes: prepared_floor_probe_index(probes: probes),
+  }
+}
+
+fn prepared_floor_probe_for_witness(
+  index: PreparedFloorIdentityIndex,
+  witness: ScheduleWitnessEntry,
+) -> PreparedFloorEntryProbe? {
+  map_get(index.probes.by_witness, witness)
+}
+
+data prepared_floor_identity_index_cost_law: String = "THE SELECTED/PROBE JOIN IS INDEXED ON THE EXISTING ScheduleWitnessEntry IDENTITY. The former duplicate, missing, unexpected, and serve lookups filtered an entire population once per row, so preparing n witnesses performed quadratic identity comparisons before any artifact could be served. Each side now makes one pass through the existing native Map substrate: the witnessed map establishes membership, the duplicated map preserves multiplicity standing, and the probe map serves the already-proven singleton row. The four refusal projections then make one linear pass each while preserving input order. There is no digest-key shortcut and therefore no collision state — every map key is ScheduleWitnessEntry itself, whose structural equality is the same entry/function/kind grain as schedule_witness_entry_eq."
+
+fn prepared_floor_duplicate_selected_identities(
+  selected: List<PreparedFloorEntryRequest>,
+  index: PreparedFloorIdentityIndex,
+) -> List<ScheduleWitnessEntry> {
+  selected
+    |> filter(entry => prepared_floor_identity_map_contains(
+      identities: index.selected.duplicated,
+      witness: entry.witness,
+    ))
+    |> map(entry => entry.witness)
+}
+
+fn prepared_floor_duplicate_probe_identities(
+  probes: List<PreparedFloorEntryProbe>,
+  index: PreparedFloorIdentityIndex,
+) -> List<ScheduleWitnessEntry> {
+  probes
+    |> filter(entry => prepared_floor_identity_map_contains(
+      identities: index.probes.multiplicity.duplicated,
+      witness: entry.witness,
+    ))
+    |> map(entry => entry.witness)
+}
+
+fn prepared_floor_missing_probe_identities(
+  selected: List<PreparedFloorEntryRequest>,
+  index: PreparedFloorIdentityIndex,
+) -> List<ScheduleWitnessEntry> {
+  selected
+    |> filter(entry => !prepared_floor_identity_map_contains(
+      identities: index.probes.multiplicity.witnessed,
+      witness: entry.witness,
+    ))
+    |> map(entry => entry.witness)
+}
+
+fn prepared_floor_unexpected_probe_identities(
+  probes: List<PreparedFloorEntryProbe>,
+  index: PreparedFloorIdentityIndex,
+) -> List<ScheduleWitnessEntry> {
+  probes
+    |> filter(entry => !prepared_floor_identity_map_contains(
+      identities: index.selected.witnessed,
+      witness: entry.witness,
+    ))
+    |> map(entry => entry.witness)
+}
+
+type PreparedFloorServeFold
+  = PreparedFloorServeContinue { entries: List<PreparedFloorEntryArtifact> }
+  | PreparedFloorServeStopped { cause: PreparedFloorSubjectRefusal }
+
+fn prepared_floor_serve_one(
+  request: PreparedFloorSubjectRequest,
+  index: PreparedFloorIdentityIndex,
+  state: PreparedFloorServeFold,
+  entry: PreparedFloorEntryRequest,
+) -> PreparedFloorServeFold {
+  match state {
+    PreparedFloorServeStopped { cause: c } => PreparedFloorServeStopped { cause: c }
+    PreparedFloorServeContinue { entries: entries } => {
+      match prepared_floor_probe_for_witness(
+        index: index,
+        witness: entry.witness,
+      ) {
+        Absent => PreparedFloorServeStopped {
+          cause: PreparedFloorMissingProbeIdentities { missing: [entry.witness] }
+        }
+        Present { value: prepared_probe } => match provider_serve(
+          req: prepared_floor_entry_artifact_request(
+            discovery: request.discovery,
+            entry: entry,
+          ),
+          probe: prepared_probe.probe,
+        ) {
+          ProviderHit { artifact: artifact, identity: _ } =>
+            PreparedFloorServeContinue {
+              entries: concat([PreparedFloorEntryArtifact {
+                witness: entry.witness,
+                artifact: artifact,
+              }], entries),
+            }
+          other => PreparedFloorServeStopped {
+            cause: PreparedFloorProviderRefused {
+              witness: entry.witness,
+              lookup: other,
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+data prepared_floor_serve_accumulator_cost_law: String = "THE SERVE FOLD PREPENDS AND REVERSES ONCE. Right-appending one artifact to the growing prefix copied the accumulated list on every selected witness, making the success path quadratic even after identity lookup was indexed. prepared_floor_serve_one now conses the singleton artifact before the accumulator; prepared_floor_subject_serve reverses exactly once at the successful boundary so PreparedFloorSubjectReady.entries remains in selected-request order. The exact_prepared_artifact_set_serves control observes that order and reds if the terminal reverse is removed."
+
+fn prepared_floor_subject_serve(
+  request: PreparedFloorSubjectRequest,
+  probes: List<PreparedFloorEntryProbe>,
+) -> PreparedFloorSubjectServe {
+  let index = prepared_floor_identity_index(selected: request.selected, probes: probes)
+  let duplicate_selected = prepared_floor_duplicate_selected_identities(
+    selected: request.selected,
+    index: index,
+  )
+  let duplicate_probes = prepared_floor_duplicate_probe_identities(
+    probes: probes,
+    index: index,
+  )
+  let missing = prepared_floor_missing_probe_identities(
+    selected: request.selected,
+    index: index,
+  )
+  let unexpected = prepared_floor_unexpected_probe_identities(
+    probes: probes,
+    index: index,
+  )
+  if duplicate_selected.count() > 0 {
+    PreparedFloorSubjectRefused {
+      cause: PreparedFloorDuplicateSelectedIdentities { duplicates: duplicate_selected }
+    }
+  } else if duplicate_probes.count() > 0 {
+    PreparedFloorSubjectRefused {
+      cause: PreparedFloorDuplicateProbeIdentities { duplicates: duplicate_probes }
+    }
+  } else if missing.count() > 0 {
+    PreparedFloorSubjectRefused {
+      cause: PreparedFloorMissingProbeIdentities { missing: missing }
+    }
+  } else if unexpected.count() > 0 {
+    PreparedFloorSubjectRefused {
+      cause: PreparedFloorUnexpectedProbeIdentities { unexpected: unexpected }
+    }
+  } else {
+    match request.selected |> fold(
+      init: PreparedFloorServeContinue { entries: [] },
+      f: (state, entry) => prepared_floor_serve_one(
+        request: request,
+        index: index,
+        state: state,
+        entry: entry,
+      )
+    ) {
+      PreparedFloorServeContinue { entries: entries } => PreparedFloorSubjectReady {
+        identity: prepared_claim_subject_identity(request: request),
+        entries: list_reverse(xs: entries),
+      }
+      PreparedFloorServeStopped { cause: cause } => PreparedFloorSubjectRefused { cause: cause }
+    }
+  }
+}

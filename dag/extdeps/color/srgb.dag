@@ -1,6 +1,7 @@
 module extdeps.color.srgb
 
 import std.types { Int, String, Bool }
+import extdeps.units.iso_80000_3 { degrees_per_turn }
 import std.integer { uint8_channel_inclusive_max_value_derived }
 import std.measure {
   basis_point_unity_count,
@@ -84,7 +85,10 @@ fn imin(a: Int, b: Int) -> Int {
   if a < b { a } else { b }
 }
 
-data full_turn_degrees: Int = 360
+// Consumes the plane-angle authority rather than re-minting it: "360 degrees per turn" is one
+// definitional fact, and a second copy here could drift from the spatial lane's independently.
+// ISO 80000-3 owns plane angle, so extdeps.units.iso_80000_3 is the surviving anchor.
+data full_turn_degrees: Int = degrees_per_turn()
 
 data hexcone_sextant_count: Int = 6
 

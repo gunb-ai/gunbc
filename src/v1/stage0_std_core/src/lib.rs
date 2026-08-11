@@ -90,6 +90,9 @@ pub mod std_computation;
 #[path = "../../stage0/src/std_termination.rs"]
 pub mod std_termination;
 #[rustfmt::skip]
+#[path = "../../stage0/src/std_checked_arithmetic.rs"]
+pub mod std_checked_arithmetic;
+#[rustfmt::skip]
 #[path = "../../stage0/src/std_induction.rs"]
 pub mod std_induction;
 #[rustfmt::skip]
@@ -119,6 +122,9 @@ pub mod extdeps_units_iec_80000_13;
 #[rustfmt::skip]
 #[path = "../../stage0/src/extdeps_units_iso8601.rs"]
 pub mod extdeps_units_iso8601;
+#[rustfmt::skip]
+#[path = "../../stage0/src/extdeps_units_iso_80000_3.rs"]
+pub mod extdeps_units_iso_80000_3;
 #[rustfmt::skip]
 #[path = "../../stage0/src/std_occurrence_identity.rs"]
 pub mod std_occurrence_identity;
