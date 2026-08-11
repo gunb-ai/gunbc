@@ -183,6 +183,29 @@ test fn witness_self_receipt_verdict_is_joint_never_false_converged() -> Bool {
     && !string_contains(s: converge_cli_revision_line(standing: RevisionUnobserved { cause: "x" }), pattern: "verdict=")
 }
 
+// The meet's FULL table, all nine pairs. The joint-verdict witness above drives only the
+// a=VerdictConverged row, so the a=Drifted row -- where the fold carried a wildcard arm
+// until the totalling in this change -- had no executing consumer at all. A wildcard is
+// exactly the shape a later variant silently joins, and the nfr census counted this site
+// as un-migrated modeling for that reason; the enumeration only preserves behaviour if
+// something asserts what the behaviour IS, so the table is the evidence and not the note.
+//
+// Read as a lattice Absent < Drifted < VerdictConverged: the meet is the weaker of the two,
+// commutative, idempotent, with VerdictConverged as the identity and Absent absorbing. The
+// clauses run in that order: Absent absorbing from either side, then the Drifted row the
+// wildcard used to answer, then converged reachable only when both sides are converged.
+test fn witness_converge_verdict_meet_is_total_over_every_pair() -> Bool {
+  converge_verdict_label(v: converge_verdict_meet(a: Absent, b: Absent)) == "absent"
+    && converge_verdict_label(v: converge_verdict_meet(a: Absent, b: Drifted)) == "absent"
+    && converge_verdict_label(v: converge_verdict_meet(a: Absent, b: VerdictConverged)) == "absent"
+    && converge_verdict_label(v: converge_verdict_meet(a: Drifted, b: Absent)) == "absent"
+    && converge_verdict_label(v: converge_verdict_meet(a: VerdictConverged, b: Absent)) == "absent"
+    && converge_verdict_label(v: converge_verdict_meet(a: Drifted, b: Drifted)) == "drifted"
+    && converge_verdict_label(v: converge_verdict_meet(a: Drifted, b: VerdictConverged)) == "drifted"
+    && converge_verdict_label(v: converge_verdict_meet(a: VerdictConverged, b: Drifted)) == "drifted"
+    && converge_verdict_label(v: converge_verdict_meet(a: VerdictConverged, b: VerdictConverged)) == "converged"
+}
+
 fn revision_fixture_oid(hex: String) -> GitObjectId {
   match git_sha1_object_id(hex: hex) {
     Present { value: oid } => oid
