@@ -11,6 +11,8 @@ import gunbc.fleet_known_hosts_anchor {
   canonical_known_hosts_fragment,
   canonical_known_hosts_identity,
   known_hosts_endpoint_conflict,
+  FleetSshAttemptIdentity,
+  fleet_known_hosts_anchor_path,
 }
 import std.content_hash { compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
 
@@ -86,4 +88,22 @@ test fn red_control_distinct_endpoints_do_not_conflict() -> Bool {
     Absent => true
     Present { value: _ } => false
   }
+}
+
+// THE ATTEMPT OWNS THE PATH. An earlier revision derived the anchor path from the registry digest
+// alone and argued in-source that identical content made a shared path safe. That argument was
+// wrong: identical content does not establish immutability -- a later writer can modify the path
+// after another attempt has sealed its anchor, so the sealed value proves what was read at
+// construction rather than what ssh reads when the leg runs. Two attempts holding the SAME registry
+// must therefore still receive different paths, which is exactly what this asserts and what the old
+// derivation could not satisfy.
+test fn w_two_attempts_do_not_share_one_anchor_path() -> Bool {
+  fleet_known_hosts_anchor_path(attempt: FleetSshAttemptIdentity { value: "attempt-a" as NonEmptyStr }) != fleet_known_hosts_anchor_path(attempt: FleetSshAttemptIdentity { value: "attempt-b" as NonEmptyStr })
+}
+
+// POSITIVE CONTROL: the digest half still does its work. One attempt asking twice must land on one
+// path -- otherwise the claim above is satisfiable by any per-call unique name, and the filename
+// would stop being a claim about content that the readback checks.
+test fn w_one_attempt_derives_one_stable_path() -> Bool {
+  fleet_known_hosts_anchor_path(attempt: FleetSshAttemptIdentity { value: "attempt-a" as NonEmptyStr }) == fleet_known_hosts_anchor_path(attempt: FleetSshAttemptIdentity { value: "attempt-a" as NonEmptyStr })
 }

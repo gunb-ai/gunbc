@@ -50,18 +50,38 @@ import gunbc.fleet_host_key_enrollment { KnownHostKeyRow, fleet_host_key_enrollm
 // is no path from an empty write, a partial write, a stale file, or another attempt's file to a
 // KnownHostsAnchor.
 //
-// THE PATH IS CONTENT-ADDRESSED, not attempt-numbered, and that choice does more work than an
-// attempt id would. Two concurrent runs holding the SAME registry may share one file -- the bytes
-// are identical by construction, so there is nothing to race over -- while two runs holding
-// DIFFERENT registries cannot collide, because a different registry produces a different digest and
-// therefore a different filename. An attempt-scoped name would have given isolation and nothing
-// else; the digest gives isolation AND makes the filename itself a claim about the content, which
-// the readback then checks. It also lives under the repository's writable working root, never under
-// $HOME, so defect TWO has no surface left.
+// THE PATH IS ATTEMPT-OWNED AND CONTENT-ADDRESSED, in that order, and the earlier revision of this
+// paragraph got it wrong in a way worth recording. It argued that a purely content-addressed path
+// needed no attempt scoping, because two runs holding the same registry write identical bytes and so
+// have nothing to race over. That argument is false: identical content does not establish
+// IMMUTABILITY. A later writer can modify the path after another attempt has already sealed its
+// anchor, a read can observe a partial write unless the realization proves atomic replacement, and
+// the sealed value therefore proves what was read AT CONSTRUCTION -- not what ssh will read when the
+// leg actually runs. Nothing in a shared mutable path carries an ownership boundary.
+//
+// So the attempt owns a directory and the digest names the file within it. The attempt segment gives
+// isolation -- no other attempt writes here -- and the digest keeps the filename a claim about the
+// content that the readback then checks. Both live under the repository writable working root, never
+// under $HOME, so the shared-runner defect has no surface left either.
+//
+// The lifetime is still not bracketed to the SSH operation: nothing deletes the directory when the
+// legs finish, so a stale attempt directory can outlive its attempt. That is a real remaining gap,
+// not a closed one -- it is bounded by the attempt segment (a stale directory can never be READ by a
+// different attempt, only left behind) but it is cleanup this module does not yet perform.
 type KnownHostsAnchor sole_constructor {
   path: NonEmptyStr
   registry_identity: ContentHash
   materialized_content_identity: ContentHash
+  attempt: FleetSshAttemptIdentity
+}
+
+// THE ATTEMPT THAT OWNS THE MATERIALIZATION. A required parameter rather than something this module
+// invents, because an identity a function mints for itself cannot distinguish two concurrent callers
+// -- and the caller is the only party that knows what an attempt IS here (a CI job, a dispatched
+// convergence, one operator invocation). Making it explicit also keeps it out of ambient state,
+// which is the failure the whole anchor exists to close.
+type FleetSshAttemptIdentity {
+  value: NonEmptyStr
 }
 
 // The sole mint, admitted to exactly one production declaration. Sealing matters here for the same
@@ -73,6 +93,7 @@ fn known_hosts_anchor_seal(
   path: NonEmptyStr,
   registry_identity: ContentHash,
   materialized_content_identity: ContentHash,
+  attempt: FleetSshAttemptIdentity,
 ) -> KnownHostsAnchor
   admit_callers: [
     decl_ref(module_path: "gunbc.fleet_known_hosts_anchor", decl_name: "materialize_fleet_known_hosts_anchor"),
@@ -81,6 +102,7 @@ fn known_hosts_anchor_seal(
     path: path,
     registry_identity: registry_identity,
     materialized_content_identity: materialized_content_identity,
+    attempt: attempt,
   }
 
 // The typed outcome that replaces the prose receipt. AlreadyConverged is a genuinely distinct state
@@ -145,10 +167,10 @@ fn fleet_known_hosts_registry_identity() -> ContentHash {
 }
 
 // The filename carries the registry digest, so the path is a claim the readback then verifies.
-fn fleet_known_hosts_anchor_path() -> NonEmptyStr {
+fn fleet_known_hosts_anchor_path(attempt: FleetSshAttemptIdentity) -> NonEmptyStr {
   join([
-    "target/fleet-known-hosts-",
-    serialize_content_hash(hash: fleet_known_hosts_registry_identity()) as String,
+    "target/fleet-ssh-attempt-", attempt.value as String,
+    "/known-hosts-", serialize_content_hash(hash: fleet_known_hosts_registry_identity()) as String,
   ], "") as NonEmptyStr
 }
 
@@ -167,7 +189,7 @@ fn fleet_known_hosts_anchor_path() -> NonEmptyStr {
 // never read as enrolled), writes the fragment, then READS THE FILE BACK and mints only on digest
 // agreement. The readback is the success criterion; the write's exit code is not, because a
 // successful write to the wrong place is exactly the failure mode this replaces.
-func materialize_fleet_known_hosts_anchor() -> KnownHostsMaterializationOutcome
+func materialize_fleet_known_hosts_anchor(attempt: FleetSshAttemptIdentity) -> KnownHostsMaterializationOutcome
   uses net: Network
 {
   if length(fleet_host_key_enrollments) == 0 {
@@ -182,7 +204,7 @@ func materialize_fleet_known_hosts_anchor() -> KnownHostsMaterializationOutcome
     }
     Absent => {
     let fragment = fleet_known_hosts_fragment()
-    let path = fleet_known_hosts_anchor_path()
+    let path = fleet_known_hosts_anchor_path(attempt: attempt)
     let registry_identity = fleet_known_hosts_registry_identity()
     let existing = Filesystem.Read(path: path as String)
     let already = existing.success && existing.content == fragment
@@ -200,12 +222,13 @@ func materialize_fleet_known_hosts_anchor() -> KnownHostsMaterializationOutcome
               path: path,
               registry_identity: registry_identity,
               materialized_content_identity: materialized_identity,
+              attempt: attempt,
             )
             let receipt = join(
               concat(
                 [join([
                   "known-hosts-anchor path=", path as String,
-                  " identity=", serialize_content_hash(hash: registry_identity) as String,
+                  " attempt=", attempt.value as String, " identity=", serialize_content_hash(hash: registry_identity) as String,
                   " rows=", to_string(length(fleet_host_key_enrollments)), "\n",
                 ], "")],
                 map(fleet_host_key_enrollments, k => join([
