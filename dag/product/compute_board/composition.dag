@@ -2,18 +2,31 @@ module product.compute_board.composition
 
 import std.types { String, NonEmptyStr, List }
 import extdeps.external_authority { ExternalAuthority }
+import std.measure { ByteSize, byte_size_count }
 import extdeps.cpu.ampere_altra_package {
   ContactMapPubliclyAvailableNotIngested,
   ContactPopulationIncomplete,
   DuplicateContactDesignator,
-  MissingUpstreamDesignCollateral,
   PackageContactMapAdmitted,
   PackageContactMapStanding,
+  ReferenceBoardCollateralAvailable,
+  ReferenceBoardCollateralStanding,
+  ReferenceBoardCollateralUnderNda,
 }
 import product.compute_board.intent {
   BoardCapability,
+  BootStoragePaths,
   CapabilityRequirement,
   ComputeBoardIntent,
+  ComputeCores,
+  CoolingBoundary,
+  FirmwareInterfaceSurface,
+  ManufactureAndBringUp,
+  MechanicalEnvelope,
+  MemoryCapacity,
+  NetworkPaths,
+  PowerInputBoundary,
+  RemoteManagement,
   capability_eq,
   requirement_capability,
 }
@@ -29,10 +42,121 @@ type ComponentJustification
   = DischargesCapability { capability: BoardCapability }
   | ImposedByComponent { by: NonEmptyStr, requirement: NonEmptyStr, authority: ExternalAuthority }
 
+// WHAT A COMPONENT SUPPLIES, held separately from WHY IT IS HERE. An earlier revision fused
+// them: satisfaction was decided by matching a component's justification tag against a
+// requirement's capability tag, so a one-core part justified as Compute satisfied a 128-core
+// requirement. The contract's own note says a requirement is the capability PLUS the quantity
+// that makes it checkable, and the fold then discarded the quantity — the module contradicted
+// its own stated reason for existing. Justification answers to the earned-element rule;
+// provision answers to the quantity. They are different questions and a component can get one
+// right while getting the other wrong.
+type CapabilityProvision
+  = ProvidesCores { cores: Int }
+  | ProvidesMemoryCapacity { capacity: ByteSize }
+  | ProvidesNetworkPaths { paths: Int }
+  | ProvidesBootStoragePaths { paths: Int }
+  | ProvidesManagement { power_control: Bool, console: Bool, recovery: Bool }
+  | ProvidesPowerBoundary
+  | ProvidesCoolingContract
+  | ProvidesFirmwareInterface { boot_flash: Bool, write_protect: Bool, recovery_path: Bool }
+  | ProvidesManufactureAndBringUp { programming_surface: Bool, test_access: Bool }
+  | ProvidesMechanicalEnvelope
+
 type ComponentInstance {
   designator: NonEmptyStr
   part: NonEmptyStr
   justifications: List<ComponentJustification>
+  provisions: List<CapabilityProvision>
+}
+
+fn provision_cores(p: CapabilityProvision) -> Int {
+  match p {
+    ProvidesCores { cores: c } => c
+    _ => 0
+  }
+}
+
+fn provision_memory_bytes(p: CapabilityProvision) -> Nat {
+  match p {
+    ProvidesMemoryCapacity { capacity: c } => byte_size_count(b: c)
+    _ => 0
+  }
+}
+
+fn provision_network_paths(p: CapabilityProvision) -> Int {
+  match p {
+    ProvidesNetworkPaths { paths: n } => n
+    _ => 0
+  }
+}
+
+fn provision_boot_paths(p: CapabilityProvision) -> Int {
+  match p {
+    ProvidesBootStoragePaths { paths: n } => n
+    _ => 0
+  }
+}
+
+fn sum_over_components(
+  components: List<ComponentInstance>,
+  f: fn(CapabilityProvision) -> Int
+) -> Int {
+  fold(components, init: 0, f: fn(acc, c) {
+    acc + fold(c.provisions, init: 0, f: fn(inner, p) { inner + f(p) })
+  })
+}
+
+fn total_memory_bytes(components: List<ComponentInstance>) -> Nat {
+  fold(components, init: 0, f: fn(acc, c) {
+    acc + fold(c.provisions, init: 0, f: fn(inner, p) { inner + provision_memory_bytes(p: p) })
+  })
+}
+
+fn any_provision(components: List<ComponentInstance>, pred: fn(CapabilityProvision) -> Bool) -> Bool {
+  fold(components, init: false, f: fn(acc, c) {
+    acc || fold(c.provisions, init: false, f: fn(inner, p) { inner || pred(p) })
+  })
+}
+
+// Quantities are compared, not tags. The boolean-shaped requirements demand every declared
+// sub-facility rather than the mere presence of a provision of that kind, so a management
+// device offering power control but no recovery path does not satisfy a contract that asked
+// for recovery.
+fn requirement_met(components: List<ComponentInstance>, r: CapabilityRequirement) -> Bool {
+  match r {
+    ComputeCores { minimum_cores: n } =>
+      sum_over_components(components: components, f: provision_cores) >= n
+    MemoryCapacity { minimum_capacity: cap } =>
+      total_memory_bytes(components: components) >= byte_size_count(b: cap)
+    NetworkPaths { minimum_paths: n } =>
+      sum_over_components(components: components, f: provision_network_paths) >= n
+    BootStoragePaths { minimum_paths: n } =>
+      sum_over_components(components: components, f: provision_boot_paths) >= n
+    RemoteManagement { power_control: pc, console: cons, recovery: rec } =>
+      any_provision(components: components, pred: p => match p {
+        ProvidesManagement { power_control: a, console: b, recovery: c } =>
+          (!pc || a) && (!cons || b) && (!rec || c)
+        _ => false
+      })
+    PowerInputBoundary { boundary: _ } =>
+      any_provision(components: components, pred: p => match p { ProvidesPowerBoundary => true, _ => false })
+    CoolingBoundary { boundary: _ } =>
+      any_provision(components: components, pred: p => match p { ProvidesCoolingContract => true, _ => false })
+    FirmwareInterfaceSurface { boot_flash: bf, write_protect: wp, recovery_path: rp } =>
+      any_provision(components: components, pred: p => match p {
+        ProvidesFirmwareInterface { boot_flash: a, write_protect: b, recovery_path: c } =>
+          (!bf || a) && (!wp || b) && (!rp || c)
+        _ => false
+      })
+    ManufactureAndBringUp { programming_surface: ps, test_access: ta } =>
+      any_provision(components: components, pred: p => match p {
+        ProvidesManufactureAndBringUp { programming_surface: a, test_access: b } =>
+          (!ps || a) && (!ta || b)
+        _ => false
+      })
+    MechanicalEnvelope { envelope: _ } =>
+      any_provision(components: components, pred: p => match p { ProvidesMechanicalEnvelope => true, _ => false })
+  }
 }
 
 fn justification_discharges(j: ComponentJustification, cap: BoardCapability) -> Bool {
@@ -59,8 +183,8 @@ fn unsatisfied_capabilities(
   components: List<ComponentInstance>
 ) -> List<BoardCapability> {
   intent.requirements
+    |> filter(r => !requirement_met(components: components, r: r))
     |> map(r => requirement_capability(r: r))
-    |> filter(cap => !capability_satisfied(components: components, cap: cap))
 }
 
 fn justification_count(c: ComponentInstance) -> Nat {
@@ -80,6 +204,7 @@ fn unearned_components(components: List<ComponentInstance>) -> List<ComponentIns
 // stop ranking for attention.
 type CollateralRefusal
   = PackageContactMapUnavailable { subject: NonEmptyStr }
+  | ReferenceBoardCollateralUnavailable { subject: NonEmptyStr }
   | FootprintAuthorityUnavailable { part: NonEmptyStr }
   | ElectricalModelUnavailable { part: NonEmptyStr }
   | MemoryTopologyNotEstablished { reason: NonEmptyStr }
@@ -131,12 +256,6 @@ fn project_contact_map_standing(
         design: [PublishedAuthorityNotIngested { document: d }],
         manufacturing: [],
       }
-    MissingUpstreamDesignCollateral { subject: s, access_route: _ } =>
-      BoardReadiness {
-        collateral: [PackageContactMapUnavailable { subject: s }],
-        design: [],
-        manufacturing: [],
-      }
     ContactPopulationIncomplete { expected: e, resolved: r } =>
       BoardReadiness {
         collateral: [],
@@ -147,6 +266,21 @@ fn project_contact_map_standing(
       BoardReadiness {
         collateral: [],
         design: [DuplicatePackageContact { designator: d }],
+        manufacturing: [],
+      }
+  }
+}
+
+// Reference-board collateral projects from its OWN type into the collateral family, so the two
+// subjects reach readiness by separate routes and neither can render as the other.
+fn project_reference_board_standing(standing: ReferenceBoardCollateralStanding) -> BoardReadiness {
+  match standing {
+    ReferenceBoardCollateralAvailable =>
+      BoardReadiness { collateral: [], design: [], manufacturing: [] }
+    ReferenceBoardCollateralUnderNda { subject: s, access_route: _ } =>
+      BoardReadiness {
+        collateral: [ReferenceBoardCollateralUnavailable { subject: s }],
+        design: [],
         manufacturing: [],
       }
   }

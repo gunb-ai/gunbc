@@ -19,8 +19,8 @@ import extdeps.cpu.ampere_altra_package {
   DuplicateContactDesignator,
   altra_pin_summary_total,
   altra_reference_board_collateral_standing,
+  ReferenceBoardCollateralUnderNda,
   FunctionUnstated,
-  MissingUpstreamDesignCollateral,
   PackageContact,
   PackageContactMap,
   PackageContactMapAdmitted,
@@ -33,6 +33,8 @@ import extdeps.cpu.ampere_altra_package {
 }
 import product.compute_board.intent {
   Compute,
+  Management,
+  RemoteManagement,
   Memory,
   ComputeBoardIntent,
   ComputeCores,
@@ -44,6 +46,10 @@ import product.compute_board.composition {
   ComponentInstance,
   DischargesCapability,
   ImposedByComponent,
+  ProvidesCores,
+  ProvidesManagement,
+  project_reference_board_standing,
+  requirement_met,
   board_is_ready,
   board_readiness,
   capability_satisfied,
@@ -156,14 +162,10 @@ test fn w_altra_contact_map_is_published_and_lands_in_design_family() -> Bool {
 // have passed under the wrong model too.
 test fn w_reference_board_collateral_remains_a_collateral_refusal() -> Bool {
   match altra_reference_board_collateral_standing() {
-    MissingUpstreamDesignCollateral { subject: _, access_route: _ } => {
-      let readiness = board_readiness(
-        intent: narrow_compute_node_intent,
-        components: [],
-        contact_standing: altra_reference_board_collateral_standing()
-      )
-      list_count(xs: readiness.collateral) == 1
-    }
+    ReferenceBoardCollateralUnderNda { subject: _, access_route: _ } =>
+      list_count(
+        xs: project_reference_board_standing(standing: altra_reference_board_collateral_standing()).collateral
+      ) == 1
     _ => false
   }
 }
@@ -186,6 +188,16 @@ fn cpu_component() -> ComponentInstance {
     designator: "U1",
     part: "processor",
     justifications: [DischargesCapability { capability: Compute }],
+    provisions: [ProvidesCores { cores: 128 }],
+  }
+}
+
+fn undersized_cpu_component() -> ComponentInstance {
+  ComponentInstance {
+    designator: "U1",
+    part: "processor",
+    justifications: [DischargesCapability { capability: Compute }],
+    provisions: [ProvidesCores { cores: 127 }],
   }
 }
 
@@ -200,11 +212,12 @@ fn decoupling_component() -> ComponentInstance {
         authority: witness_authority,
       }
     ],
+    provisions: [],
   }
 }
 
 fn unjustified_component() -> ComponentInstance {
-  ComponentInstance { designator: "J9", part: "expansion header", justifications: [] }
+  ComponentInstance { designator: "J9", part: "expansion header", justifications: [], provisions: [] }
 }
 
 test fn w_discharging_component_satisfies_its_capability() -> Bool {
@@ -268,4 +281,34 @@ test fn w_connectivity_survives_dpmx_and_not_gerber() -> Bool {
     && !carriage_is_in_format(
       c: carriage_of(rows: gerber_semantic_carriage, semantic: NetlistConnectivity)
     )
+}
+
+// THE MINIMAL PAIR THE OLD FOLD COULD NOT SEE. Both components are justified as Compute and
+// both are labelled a processor; they differ only in the quantity they supply. Under the
+// previous tag-matching satisfaction the 127-core part passed a 128-core requirement, because
+// the contract's quantity was read when the requirement was authored and discarded when it was
+// checked. One core is the smallest specimen that crosses the boundary.
+test fn w_cores_requirement_compares_quantity_not_capability_tag() -> Bool {
+  !requirement_met(components: [undersized_cpu_component()], r: ComputeCores { minimum_cores: 128 })
+    && requirement_met(components: [cpu_component()], r: ComputeCores { minimum_cores: 128 })
+}
+
+// The boolean-shaped requirements demand every declared sub-facility, not merely a provision of
+// the right kind: a management device with power control and console but no recovery path must
+// not satisfy a contract that asked for recovery.
+test fn w_management_requirement_demands_every_declared_sub_facility() -> Bool {
+  let partial = ComponentInstance {
+    designator: "U2",
+    part: "management controller",
+    justifications: [DischargesCapability { capability: Management }],
+    provisions: [ProvidesManagement { power_control: true, console: true, recovery: false }],
+  }
+  let complete = ComponentInstance {
+    designator: "U2",
+    part: "management controller",
+    justifications: [DischargesCapability { capability: Management }],
+    provisions: [ProvidesManagement { power_control: true, console: true, recovery: true }],
+  }
+  !requirement_met(components: [partial], r: RemoteManagement { power_control: true, console: true, recovery: true })
+    && requirement_met(components: [complete], r: RemoteManagement { power_control: true, console: true, recovery: true })
 }

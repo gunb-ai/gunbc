@@ -97,7 +97,6 @@ type PackageContactMap {
 type PackageContactMapStanding
   = PackageContactMapAdmitted { resolved: Int }
   | ContactMapPubliclyAvailableNotIngested { document: NonEmptyStr, authority: ExternalAuthority }
-  | MissingUpstreamDesignCollateral { subject: NonEmptyStr, access_route: ExternalAuthority }
   | ContactPopulationIncomplete { expected: Int, resolved: Int }
   | DuplicateContactDesignator { designator: NonEmptyStr }
 
@@ -163,10 +162,18 @@ fn altra_contact_map_standing() -> PackageContactMapStanding {
   }
 }
 
-// What IS behind the NDA, kept as a separate standing because it is a separate subject: the
-// reference BOARD design packages and the firmware sources, none of which are package facts.
-fn altra_reference_board_collateral_standing() -> PackageContactMapStanding {
-  MissingUpstreamDesignCollateral {
+// THE NDA-BOUND SUBJECT GETS ITS OWN TYPE, not a variant of the package standing. An earlier
+// revision returned MissingUpstreamDesignCollateral AS a PackageContactMapStanding, so the
+// absence of a reference BOARD package rendered as a statement about the package contact map —
+// the same fusion this lane corrected at the prose level and then re-committed at the type
+// level one function down. Reference-board collateral is a different subject with a different
+// owner, and now it cannot be mistaken for a package fact because it cannot inhabit that type.
+type ReferenceBoardCollateralStanding
+  = ReferenceBoardCollateralAvailable
+  | ReferenceBoardCollateralUnderNda { subject: NonEmptyStr, access_route: ExternalAuthority }
+
+fn altra_reference_board_collateral_standing() -> ReferenceBoardCollateralStanding {
+  ReferenceBoardCollateralUnderNda {
     subject: "Ampere reference motherboard design packages (Mt. Jade, Mt. Collins, Mt. Bonnell, Mt. Snow) with UEFI, OpenBMC and CPLD source",
     access_route: ampere_customer_reference_boards_authority,
   }
@@ -181,7 +188,7 @@ data ampere_altra_package_model_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: extdeps_external_authority_anchor,
-  further_citations: [ampere_customer_reference_boards_authority]
+  further_citations: [ampere_altra_rev_a1_datasheet_authority, ampere_customer_reference_boards_authority]
 }
 
 data extdeps_model_scope: ExternalModelScope = ampere_altra_package_model_scope
