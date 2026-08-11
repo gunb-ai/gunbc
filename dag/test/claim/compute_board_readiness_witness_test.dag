@@ -37,7 +37,7 @@ import product.compute_board.intent {
   Compute,
   Management,
   RemoteManagement,
-  Memory,
+  MemoryCapability,
   ComputeBoardIntent,
   ComputeCores,
   NetworkPaths,
@@ -55,7 +55,7 @@ import product.compute_board.composition {
   board_readiness,
   capability_satisfied,
   unearned_components,
-  unsatisfied_capabilities,
+  unsatisfied_board_capabilities,
   FabricatorStackupUnconfirmed,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -194,7 +194,7 @@ test fn w_pin_summary_cross_foots_to_declared_package_count() -> Bool {
 // An empty board leaves every contract capability unsatisfied. Ten requirements, ten holes:
 // the count is the contract's, so a requirement added without a component would move it.
 test fn w_empty_board_leaves_every_capability_unsatisfied() -> Bool {
-  list_count(xs: unsatisfied_capabilities(intent: narrow_compute_node_intent, components: [])) == list_count(xs: narrow_compute_node_intent.requirements)
+  list_count(xs: unsatisfied_board_capabilities(intent: narrow_compute_node_intent, components: [])) == list_count(xs: narrow_compute_node_intent.requirements)
 }
 
 fn cpu_component() -> ComponentInstance {
@@ -236,7 +236,7 @@ fn unjustified_component() -> ComponentInstance {
 
 test fn w_discharging_component_satisfies_its_capability() -> Bool {
   capability_satisfied(components: [cpu_component()], cap: Compute)
-    && !capability_satisfied(components: [cpu_component()], cap: Memory)
+    && !capability_satisfied(components: [cpu_component()], cap: MemoryCapability)
 }
 
 // THE SEPARATION THAT MATTERS MOST HERE: a component earned by another component's imposed
