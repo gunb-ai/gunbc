@@ -430,13 +430,6 @@ fn point2_same_position(a: Point2, b: Point2) -> Bool {
   point2_x(p: a) == point2_x(p: b) && point2_y(p: a) == point2_y(p: b)
 }
 
-fn point2_x(p: Point2) -> Int { signed_millimeter_component_count(m: p.x) }
-fn point2_y(p: Point2) -> Int { signed_millimeter_component_count(m: p.y) }
-
-fn point2_same_position(a: Point2, b: Point2) -> Bool {
-  point2_x(p: a) == point2_x(p: b) && point2_y(p: a) == point2_y(p: b)
-}
-
 // An edge's axis is X when the y coordinates agree and y when the x coordinates agree; a diagonal
 // or a zero-length step has neither, and answers `none` rather than a defaulted axis.
 fn loop_edge_axis(a: Point2, b: Point2) -> Axis2? {
