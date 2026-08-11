@@ -404,6 +404,15 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "four-lane-closeout-and-root",
+    primary_work: DeclarationRef { module_path: "gunbc.roadmap_authority", decl_name: "five_minute_ci_gate_program_note", field: WholeDeclaration },
+    additional_works: [
+
+    ],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the four closed lanes' measurements are carried by the systems they measured rather than by this closeout note, and the note deletes with the last of them. Bound to the five-minute-CI-gate program boundary at subject grain because that is the row this document's central measurement bears on: witness evaluation was 97s of a 3,290s floor, so native execution is not the CI-cost lever. Registered when the document was found unreachable from every doc-graph root, having landed in gunbc#8116 without a binding.") },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "for-sugar-over-fold",
     primary_work: DeclarationRef { module_path: "v2.compiler.emit_orchestration", decl_name: "orch_emit_step", field: WholeDeclaration },
     additional_works: [
