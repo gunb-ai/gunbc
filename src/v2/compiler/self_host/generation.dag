@@ -242,6 +242,11 @@ fn source_closure_axis_digest(roster: SourceClosureRoster) -> SourceClosureAxisO
   }
 }
 
+// Two unbuilt artifacts are NOT equivalent. Neither side has an observed artifact,
+// so that case is ⊥-as-ignorance, and answering `true` would report "we could not
+// observe either artifact" as "the artifacts agree" — the empty-observation narrow
+// DESIGN names beside the absorbing fallback. Admission refuses an unmaterialized
+// axis separately and by name.
 fn artifact_identity_agrees(left: ArtifactIdentity, right: ArtifactIdentity) -> Bool {
   match left {
     ArtifactMaterialized { digest: l } =>
@@ -253,11 +258,6 @@ fn artifact_identity_agrees(left: ArtifactIdentity, right: ArtifactIdentity) -> 
     ArtifactNotMaterialized =>
       match right {
         ArtifactMaterialized { digest: _ } => false
-        // Two unbuilt artifacts are NOT equivalent. Neither side has an observed
-        // artifact, so this is ⊥-as-ignorance, and answering `true` would report
-        // "we could not observe either artifact" as "the artifacts agree" — the
-        // empty-observation narrow DESIGN names beside the absorbing fallback.
-        // Admission refuses an unmaterialized axis separately and by name.
         ArtifactNotMaterialized => false
       }
   }

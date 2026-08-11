@@ -1,4 +1,4 @@
-module v2.test.execution.self_host_generation_identity
+module test.claim.self_host_generation_identity_witness
 
 import v2.compiler.self_host.generation {
   ArtifactIdentity,

@@ -159,6 +159,10 @@ fn build_receipt_causes(
   }
 }
 
+// A corpus of zero cases is agreement over nothing, so cases_compared is checked
+// here: admitting it would be the vacuous-green failure, since every claim
+// quantified over an empty population is true.
+//
 // The oracle is joined against the DECLARED seed, not taken on the receipt's word.
 // Without this the receipt's oracle field is decorative: a bundle could name the
 // candidate as its own oracle, compare it against itself, agree trivially, and clear
@@ -183,8 +187,6 @@ fn equivalence_receipt_causes(
   } else {
     list_snoc_item(xs: subject_stale, item: OracleNotDeclaredSeed { receipt: receipt })
   }
-  // A corpus of zero cases is agreement over nothing. Admitting it would be the
-  // vacuous-green failure: every claim quantified over an empty population is true.
   let sized = if r.cases_compared <= 0 {
     list_snoc_item(xs: stale, item: EmptyBehavioralCorpus { receipt: receipt })
   } else {
@@ -262,6 +264,9 @@ fn provenance_receipt_causes(
   }
 }
 
+// An unbuilt artifact is refused by name rather than treated as "nothing to compare,
+// therefore fine" — the same unavailable-is-not-equivalent rule the receipts follow,
+// applied to the generation itself.
 fn artifact_causes(
   receipt: Symbol,
   identity: GenerationIdentity
@@ -269,9 +274,6 @@ fn artifact_causes(
   if generation_artifact_is_materialized(identity: identity) {
     freemonoid_empty()
   } else {
-    // An unbuilt artifact is refused by name rather than treated as "nothing to
-    // compare, therefore fine" — the same unavailable-is-not-equivalent rule the
-    // receipts follow, applied to the generation itself.
     [ArtifactNotMaterialized { receipt: receipt }]
   }
 }
@@ -292,12 +294,12 @@ fn concat_causes(
   )
 }
 
+// Both generations are measured against the SEED oracle: a successor that agreed only
+// with the candidate would prove the two agree with each other while both drifted from
+// the compiler they claim to reproduce.
 fn promotion_refusal_causes(c: SelfHostCandidate) -> List<PromotionRefusalCause> {
   let candidate_identity = c.candidate.identity
   let successor_identity = c.successor.identity
-  // Both generations are measured against the SEED oracle: a successor that agreed
-  // only with the candidate would prove the two agree with each other while both
-  // drifted from the compiler they claim to reproduce.
   let seed_identity = c.candidate.produced_by_seed.identity
   concat_causes(
     parts: [
