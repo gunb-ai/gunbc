@@ -1,0 +1,114 @@
+module extdeps.ssh.client_options
+
+// The OpenSSH CLIENT option vocabulary, modeled once.
+//
+// This is a SEPARATE authority from extdeps.ssh.session deliberately. That module anchors to
+// RFC 4254, the SSH Connection Protocol, which defines the channel requests it declares (Exec,
+// ExecArgv, ExecScript). It does NOT define -o, ssh_config keywords, or any of their value
+// domains -- those are OpenSSH implementation surface, documented in ssh_config(5). session.dag
+// already separates PROTOCOL from IMPLEMENTATION in its own notes; putting these keywords under
+// its RFC anchor would ground them in a document that does not contain them, which is the
+// citation defect DESIGN section 3 names.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man.openbsd.org/ssh_config.5"
+  }
+}
+
+// WHY THIS MODULE EXISTS, measured rather than asserted. Before it, the ssh client option grammar
+// was re-coined as free text at every site that needed one. In extdeps/ssh alone:
+//
+//   session.dag  ExecArgv       "-o" "StrictHostKeyChecking=yes"  "-o" "UserKnownHostsFile={...}"
+//   session.dag  Reachability   "-o" "BatchMode=yes"              "-o" "ConnectTimeout=5"
+//   exec/command.dag            "-o" "StrictHostKeyChecking=no"   "-o" "UserKnownHostsFile=/dev/null"
+//   password_session.dag        six further -o pairs
+//
+// Three separate costs, none of them cosmetic:
+//
+// ONE, the closed value domain was a string. ssh_config(5) gives StrictHostKeyChecking exactly
+// five values (yes | no | ask | accept-new | off). Spelled as text, `yes` and `no` are the same
+// KIND of thing to every tool in this repository -- so a site that disables host-key verification
+// and a site that requires it are indistinguishable without reading prose. Both exist in the
+// corpus today. As a closed coproduct the difference is a variant a lens can match on.
+//
+// TWO, `-o` and `=` were structure built by concatenation. Key=Value is a serialization of a pair,
+// and building it with string joins puts the pair's shape in every caller instead of in one
+// serializer. That is the section 2 deep-decomposition failure exactly: a String leaf hiding
+// named parts that the source already knows.
+//
+// THREE, and the load-bearing one: options inside a `transport` literal are UNWITNESSABLE. The
+// established corpus idiom for invocation structure is a `shape_*_argv` function -- see
+// shape_scp_copy_to_argv, which has no service operation at all and is asserted directly by
+// roadmap_dashboard_instance_apply_witness_test, and git's shape_git_*_argv family. A function can
+// be called by a witness and pinned; a literal buried in a service block cannot be reached by one.
+// That is why the yes/no divergence above went unnoticed rather than being caught: no test could
+// name the thing that disagreed.
+type StrictHostKeyCheckingValue
+  = StrictYes
+  | StrictNo
+  | StrictAsk
+  | StrictAcceptNew
+  | StrictOff
+
+// One variant per keyword, each carrying the value domain THAT keyword actually admits, so a
+// nonsensical pairing has no constructor. ConnectTimeout takes an Int because ssh_config(5)
+// specifies seconds; BatchMode takes a Bool because its domain is yes|no and a Bool is that domain
+// already grounded -- reusing it rather than minting a second two-valued enum (section 2: no net
+// new concepts by re-invention).
+type SshClientOption
+  = StrictHostKeyChecking { value: StrictHostKeyCheckingValue }
+  | UserKnownHostsFile { path: NonEmptyStr }
+  | BatchMode { enabled: Bool }
+  | ConnectTimeout { seconds: Int }
+
+// The ONE place each keyword's wire spelling lives. A rename upstream is a one-line edit here
+// rather than a corpus-wide grep.
+fn ssh_client_option_keyword(option: SshClientOption) -> String {
+  match option {
+    StrictHostKeyChecking { value: _ } => "StrictHostKeyChecking"
+    UserKnownHostsFile { path: _ } => "UserKnownHostsFile"
+    BatchMode { enabled: _ } => "BatchMode"
+    ConnectTimeout { seconds: _ } => "ConnectTimeout"
+  }
+}
+
+fn strict_host_key_checking_wire(value: StrictHostKeyCheckingValue) -> String {
+  match value {
+    StrictYes => "yes"
+    StrictNo => "no"
+    StrictAsk => "ask"
+    StrictAcceptNew => "accept-new"
+    StrictOff => "off"
+  }
+}
+
+fn ssh_client_option_value(option: SshClientOption) -> String {
+  match option {
+    StrictHostKeyChecking { value: v } => strict_host_key_checking_wire(value: v)
+    UserKnownHostsFile { path: p } => p as String
+    BatchMode { enabled: e } => if e { "yes" } else { "no" }
+    ConnectTimeout { seconds: s } => to_string(s)
+  }
+}
+
+// The ONE place "-o" and the "=" pairing exist. Everything upstream of this function speaks in
+// variants; everything downstream receives an argv already shaped.
+fn serialize_ssh_client_option(option: SshClientOption) -> List<String> {
+  ["-o", join([ssh_client_option_keyword(option: option), "=", ssh_client_option_value(option: option)], "")]
+}
+
+fn serialize_ssh_client_options(options: List<SshClientOption>) -> List<String> {
+  fold(options, init: [], f: fn(acc, o) { append(acc, items: serialize_ssh_client_option(option: o)) })
+}
+
+// The verification posture a fleet exec is REQUIRED to carry, named once so callers cannot
+// assemble a weaker one by accident. This is not a default that a caller may override -- an
+// unverified exec is a different operation, not a lenient version of this one -- so it is a
+// function returning the pair rather than a parameter with a recommended value.
+fn ssh_verified_host_options(known_hosts: NonEmptyStr) -> List<SshClientOption> {
+  [
+    StrictHostKeyChecking { value: StrictYes },
+    UserKnownHostsFile { path: known_hosts },
+  ]
+}

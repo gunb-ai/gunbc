@@ -1,5 +1,7 @@
 module extdeps.ssh.session
 
+import extdeps.ssh.client_options { serialize_ssh_client_options, ssh_verified_host_options }
+
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -27,6 +29,52 @@ type SshSessionExecResult {
   stderr: String
 }
 
+// THE HOST-KEY TRUST ANCHOR, modeled as an INPUT to the operation that needs it.
+//
+// Until this carrier existed, ExecArgv's contract was (host, argv) and nothing else: HOW a host
+// gets verified was not an input to the operation doing the verifying. The anchor was instead
+// injected as a SIDE EFFECT on ambient user state -- a workflow module (gunbc.fleet_host_key_
+// enrollment) appending a `Host` block to $HOME/.ssh/config so that a later, unrelated `ssh`
+// invocation would happen to pick it up. That is a layer inversion (extdeps' transport configured
+// from above by a consumer) and it made the real input invisible to the graph.
+//
+// Every defect measured on 2026-08-11 is downstream of that one omission, which is why the fix is
+// here and not at any of the sites that suffered:
+//   - the anchor lived in mutable shared state, so an absolute path baked once by `$(pwd)` into one
+//     runner slot's workspace was silently reused by nine sibling slots that shared /home/ghrunner;
+//   - a marker guard made the block write-once, so neither the path nor the endpoint list could
+//     ever be refreshed, while an unconditional `touch` kept the file's mtime current so it read as
+//     maintained;
+//   - the enrollment's own readback checked the fragment file it had just written rather than the
+//     binding ssh would resolve, so it reported success for six hosts in the same job whose next
+//     step could verify none of them;
+//   - and nothing anywhere REQUIRED an anchor, so a probe whose enrollment had refused outright
+//     still ran, produced sixteen host-key failures, and exited success -- refusals that read as
+//     principal absence to anyone consuming the receipt.
+//
+// With the anchor as a required input none of those states is reachable. There is no ambient
+// configuration to go stale, no second representation for a check to diverge from, and no way to
+// invoke a verified exec without naming the anchor it verified against: an unanchored ssh has no
+// constructor rather than being a thing we hope did not happen (DESIGN 4b -- the class moves from
+// mitigatable to structurally impossible). It also decouples execution from any particular host
+// environment: the modeled probe entries become runnable wherever the key and network reach exist,
+// with no writable $HOME and no GitHub Actions runner in the path.
+//
+// sole_constructor, sealed to the enrollment authority, is what stops this from being cosmetic. A
+// transparent `= String where ...` brand would let any module conjure an anchor out of a path and
+// re-open exactly the ambient-trust hole the carrier exists to close (DESIGN 4b -- a richer type
+// name is not safety until construction enforces the distinction). Adding a minter is an edit to
+// the admit_callers list in THIS module: a conspicuous, counted review event.
+type KnownHostsAnchor sole_constructor {
+  path: NonEmptyStr
+}
+
+fn known_hosts_anchor_seal(path: NonEmptyStr) -> KnownHostsAnchor
+  admit_callers: [
+    decl_ref(module_path: "gunbc.fleet_host_key_enrollment", decl_name: "fleet_host_key_enroll_apply"),
+  ]
+  = KnownHostsAnchor { path: path }
+
 service ssh.Session {
   operation Exec {
     input { host: NonEmptyStr, command: NonEmptyStr }
@@ -46,15 +94,27 @@ service ssh.Session {
   }
 
   operation ExecArgv {
-    input { host: NonEmptyStr, argv: List<String> }
+    input { host: NonEmptyStr, argv: List<String>, options: List<String> }
     output {
       exit_code: Int from "exit_code"
       success: Bool from "exit_success"
       stdout: String from "stdout"
       stderr: String from "stderr"
     }
+    // The option words arrive ALREADY SERIALIZED from extdeps.ssh.client_options, so neither "-o"
+    // nor a Key=Value join appears in this file. That matters because a transport literal cannot
+    // call a function and therefore cannot be reached by a witness: the previous revision of this
+    // line hand-wrote `-o StrictHostKeyChecking=yes`, which is the same unpinnable shape that let
+    // `StrictHostKeyChecking=no` sit elsewhere in the corpus indistinguishable from it. The pairs
+    // are now built and asserted in ssh_client_options_witness_test, and this operation splices a
+    // flat argv it does not interpret.
+    //
+    // The anchor travels on the INVOCATION, not in ambient configuration, and the verification
+    // posture is not a caller parameter: an unverified exec is a different operation, not a lenient
+    // form of this one, so ssh_verified_host_options fixes both halves together and a caller has no
+    // seam to omit one.
     transport shell {
-      argv: ["ssh", "{host}", "--", argv]
+      argv: ["ssh", options, "{host}", "--", argv]
     }
     exit {
       0 => Unit
@@ -122,8 +182,12 @@ fn ssh_session_exec(host: NonEmptyStr, command: NonEmptyStr) -> SshSessionExecRe
   )
 }
 
-fn ssh_session_exec_argv(host: NonEmptyStr, argv: List<String>) -> SshSessionExecResult {
-  let result = ssh.Session.ExecArgv(host: host, argv: argv)
+fn ssh_session_exec_argv(host: NonEmptyStr, argv: List<String>, anchor: KnownHostsAnchor) -> SshSessionExecResult {
+  let result = ssh.Session.ExecArgv(
+    host: host,
+    argv: argv,
+    options: serialize_ssh_client_options(options: ssh_verified_host_options(known_hosts: anchor.path)),
+  )
   ssh_session_exec_result_from_service(
     exit_code: result.exit_code,
     success: result.success,

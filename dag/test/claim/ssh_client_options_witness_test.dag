@@ -1,0 +1,69 @@
+module test.claim.ssh_client_options_witness_test
+
+import std.types { String, Bool, List, NonEmptyStr }
+import extdeps.ssh.client_options {
+  SshClientOption,
+  StrictHostKeyChecking,
+  UserKnownHostsFile,
+  BatchMode,
+  ConnectTimeout,
+  StrictHostKeyCheckingValue,
+  StrictYes,
+  StrictNo,
+  StrictAcceptNew,
+  serialize_ssh_client_option,
+  serialize_ssh_client_options,
+  ssh_verified_host_options,
+}
+
+// Serialization is asserted by EXECUTION against exact argv, not by reading the function. The
+// whole argument for this module is that options inside a transport literal are unreachable by any
+// test; a module that could not itself be pinned would reproduce that defect one layer over.
+
+test fn w_strict_yes_serializes_to_exact_pair() -> Bool {
+  serialize_ssh_client_option(option: StrictHostKeyChecking { value: StrictYes }) == ["-o", "StrictHostKeyChecking=yes"]
+}
+
+test fn w_known_hosts_path_serializes_to_exact_pair() -> Bool {
+  serialize_ssh_client_option(option: UserKnownHostsFile { path: "/home/ghrunner/.ssh/anchor" as NonEmptyStr }) == ["-o", "UserKnownHostsFile=/home/ghrunner/.ssh/anchor"]
+}
+
+// THE DISCRIMINATING PAIR. This is the divergence the corpus carried unnoticed -- one site
+// requiring host-key verification and another disabling it, spelled as indistinguishable strings.
+// As variants they serialize differently AND are matchable, so the difference is now reachable by
+// a consumer rather than only by a human reading prose.
+test fn w_strict_no_is_a_different_value_not_a_different_spelling() -> Bool {
+  serialize_ssh_client_option(option: StrictHostKeyChecking { value: StrictNo }) == ["-o", "StrictHostKeyChecking=no"] && serialize_ssh_client_option(option: StrictHostKeyChecking { value: StrictNo }) != serialize_ssh_client_option(option: StrictHostKeyChecking { value: StrictYes })
+}
+
+// accept-new carries a hyphen, so it would survive a naive same-shape assumption that every value
+// is its variant name lowercased. Pinned because that assumption is exactly how a wire spelling
+// silently drifts from its authority.
+test fn w_accept_new_keeps_its_upstream_hyphenated_spelling() -> Bool {
+  serialize_ssh_client_option(option: StrictHostKeyChecking { value: StrictAcceptNew }) == ["-o", "StrictHostKeyChecking=accept-new"]
+}
+
+test fn w_bool_and_int_domains_serialize_without_a_second_enum() -> Bool {
+  serialize_ssh_client_option(option: BatchMode { enabled: true }) == ["-o", "BatchMode=yes"] && serialize_ssh_client_option(option: ConnectTimeout { seconds: 5 }) == ["-o", "ConnectTimeout=5"]
+}
+
+// The list serializer must FLATTEN, not nest: a transport splices a flat argv, so a List<List>
+// would produce a shell invocation with a list where a word belongs.
+test fn w_options_flatten_into_one_argv_run() -> Bool {
+  serialize_ssh_client_options(options: [
+    StrictHostKeyChecking { value: StrictYes },
+    UserKnownHostsFile { path: "/tmp/anchor" as NonEmptyStr },
+  ]) == ["-o", "StrictHostKeyChecking=yes", "-o", "UserKnownHostsFile=/tmp/anchor"]
+}
+
+// The required posture is a function of the anchor alone, so a caller cannot assemble a verified
+// exec that quietly omits one half of the pair.
+test fn w_verified_posture_carries_both_halves() -> Bool {
+  serialize_ssh_client_options(options: ssh_verified_host_options(known_hosts: "/tmp/a" as NonEmptyStr)) == ["-o", "StrictHostKeyChecking=yes", "-o", "UserKnownHostsFile=/tmp/a"]
+}
+
+// RED CONTROL: asserts a WRONG expectation, so it must be false. If this ever passes, the
+// comparison in every claim above is vacuous and none of them is evidence of anything.
+test fn red_control_wrong_serialization_is_not_accepted() -> Bool {
+  serialize_ssh_client_option(option: StrictHostKeyChecking { value: StrictYes }) == ["-o", "StrictHostKeyChecking=no"]
+}
