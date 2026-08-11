@@ -26,8 +26,23 @@ data spice_projection_note: String = "A SPICE DECK AS A PROJECTION OF A SELECTED
 // absent one is a typed refusal cause, not a default: the difference between 'the vendor
 // publishes a model and we cite it' and 'no model exists' is the difference between a result
 // and a guess.
+// The fidelity an element is modelled AT, which the previous revision left implicit and
+// thereby overclaimed. A SPICE passive written as "C1 n1 0 100n" IS an ideal lumped element:
+// it has no ESR, no ESL, no bias or temperature dependence. Citing a vendor model card and
+// then emitting that line does not deliver the vendor model — it delivers the ideal part while
+// the type says otherwise, which is precisely the substitution this module was written to
+// forbid, performed by the module itself.
+//
+// So fidelity is explicit and the unemittable arm REFUSES. A vendor subcircuit would have to
+// travel as a .SUBCKT or .MODEL binding, this projection emits neither, and until it does a
+// VendorSubcircuit element cannot be projected at all. That is a smaller capability honestly
+// bounded rather than a larger one asserted.
+type ModelFidelity
+  = IdealLumped
+  | VendorSubcircuit
+
 type ElectricalModelStanding
-  = VendorModelCited { model_card: NonEmptyStr, authority: ExternalAuthority }
+  = ElectricalModelCited { model_card: NonEmptyStr, fidelity: ModelFidelity, authority: ExternalAuthority }
   | ElectricalModelAbsent
 
 type PassiveKind
@@ -58,6 +73,7 @@ type BoardSlice {
 
 type SpiceProjectionRefusal
   = ElectricalModelUnavailable { part: NonEmptyStr }
+  | ModelFidelityNotEmittable { part: NonEmptyStr, model_card: NonEmptyStr }
 
 type SpiceProjection
   = SpiceSliceProjected { netlist: SpiceNetlist }
@@ -66,7 +82,38 @@ type SpiceProjection
 fn element_model_absent(e: SliceElement) -> Bool {
   match e.model {
     ElectricalModelAbsent => true
-    VendorModelCited { model_card: _, authority: _ } => false
+    ElectricalModelCited { model_card: _, fidelity: _, authority: _ } => false
+  }
+}
+
+fn element_unemittable_fidelity(e: SliceElement) -> NonEmptyStr? {
+  match e.model {
+    ElectricalModelAbsent => none
+    ElectricalModelCited { model_card: mc, fidelity: f, authority: _ } =>
+      match f {
+        IdealLumped => none
+        VendorSubcircuit => Present { value: mc }
+      }
+  }
+}
+
+fn first_unemittable_element(elements: List<SliceElement>) -> SliceElement? {
+  fold(elements, init: none, f: fn(acc, e) {
+    match acc {
+      Present { value: found } => Present { value: found }
+      Absent =>
+        match element_unemittable_fidelity(e: e) {
+          Present { value: _ } => Present { value: e }
+          Absent => none
+        }
+    }
+  })
+}
+
+fn unemittable_model_card(e: SliceElement) -> NonEmptyStr {
+  match element_unemittable_fidelity(e: e) {
+    Present { value: mc } => mc
+    Absent => "unknown"
   }
 }
 
@@ -148,8 +195,15 @@ fn project_slice_to_spice(slice: BoardSlice) -> SpiceProjection {
         cause: ElectricalModelUnavailable { part: e.part },
       }
     Absent =>
-      SpiceSliceProjected {
-        netlist: SpiceNetlist { title: slice.title, body: slice_statements(slice: slice) },
+      match first_unemittable_element(elements: slice.elements) {
+        Present { value: e } =>
+          SpiceSliceRefused {
+            cause: ModelFidelityNotEmittable { part: e.part, model_card: unemittable_model_card(e: e) },
+          }
+        Absent =>
+          SpiceSliceProjected {
+            netlist: SpiceNetlist { title: slice.title, body: slice_statements(slice: slice) },
+          }
       }
   }
 }

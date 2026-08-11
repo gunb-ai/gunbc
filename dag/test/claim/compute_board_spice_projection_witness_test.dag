@@ -8,13 +8,16 @@ import product.compute_board.spice_projection {
   BoardSlice,
   CapacitiveElement,
   ElectricalModelAbsent,
+  ElectricalModelCited,
+  IdealLumped,
+  ModelFidelityNotEmittable,
+  VendorSubcircuit,
   ElectricalModelUnavailable,
   ResistiveElement,
   SliceElement,
   SliceSource,
   SpiceSliceProjected,
   SpiceSliceRefused,
-  VendorModelCited,
   named_node,
   project_slice_to_spice,
   projected_deck_text,
@@ -27,10 +30,14 @@ fn list_count<T>(xs: List<T>) -> Int {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data witness_model_authority: ExternalAuthority = ExternalAuthority {
+// A SYNTHETIC fixture authority, deliberately unresolvable. An earlier revision cited Ucamco's
+// Gerber page as the electrical-model authority for a passive, which is a real page about an
+// unrelated subject — a fixture citation that reads as grounded and is not. Where a fixture
+// needs an authority-shaped value and no real authority is being claimed, the locator says so.
+data synthetic_fixture_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https,
-    locator: "www.ucamco.com/en/gerber"
+    locator: "example.invalid/synthetic-witness-fixture-not-a-real-model-authority"
   }
 }
 
@@ -46,9 +53,10 @@ fn modelled_resistor() -> SliceElement {
     n_plus: named_node(name: ^n1),
     n_minus: Ground,
     value_lexeme: "10k",
-    model: VendorModelCited {
-      model_card: "vendor-published passive model",
-      authority: witness_model_authority,
+    model: ElectricalModelCited {
+      model_card: "ideal lumped passive at declared fidelity",
+      fidelity: IdealLumped,
+      authority: synthetic_fixture_authority,
     },
   }
 }
@@ -61,9 +69,10 @@ fn modelled_capacitor() -> SliceElement {
     n_plus: named_node(name: ^n1),
     n_minus: Ground,
     value_lexeme: "100n",
-    model: VendorModelCited {
-      model_card: "vendor-published passive model",
-      authority: witness_model_authority,
+    model: ElectricalModelCited {
+      model_card: "ideal lumped passive at declared fidelity",
+      fidelity: IdealLumped,
+      authority: synthetic_fixture_authority,
     },
   }
 }
@@ -77,6 +86,22 @@ fn unmodelled_capacitor() -> SliceElement {
     n_minus: Ground,
     value_lexeme: "100n",
     model: ElectricalModelAbsent,
+  }
+}
+
+fn vendor_subcircuit_capacitor() -> SliceElement {
+  SliceElement {
+    designator: ^c1,
+    part: "bulk decoupling capacitor",
+    kind: CapacitiveElement,
+    n_plus: named_node(name: ^n1),
+    n_minus: Ground,
+    value_lexeme: "100n",
+    model: ElectricalModelCited {
+      model_card: "vendor ESR/ESL subcircuit",
+      fidelity: VendorSubcircuit,
+      authority: synthetic_fixture_authority,
+    },
   }
 }
 
@@ -123,6 +148,7 @@ test fn w_unmodelled_element_refuses_and_emits_nothing() -> Bool {
           let emitted = projected_deck_text(projection: projection)
           p == "bulk decoupling capacitor" && match emitted { Absent => true, _ => false }
         }
+        ModelFidelityNotEmittable { part: _, model_card: _ } => false
       }
     SpiceSliceProjected { netlist: _ } => false
   }
@@ -141,5 +167,43 @@ test fn w_model_standing_alone_decides_the_arm() -> Bool {
         SpiceSliceProjected { netlist: _ } => false
       }
     SpiceSliceRefused { cause: _ } => false
+  }
+}
+
+// THE OVERCLAIM THIS ARM CLOSES. A cited vendor subcircuit cannot be emitted by this
+// projection — it emits no .SUBCKT or .MODEL binding — so it REFUSES rather than emitting an
+// ideal "C1 n1 0 100n" line while the type claims a vendor model stands behind it. That
+// silent downgrade is the same substitution the absent-model wall forbids, and an earlier
+// revision performed it: admission checked only that a model card was PRESENT, and every
+// admitted element emitted as an ideal lumped part regardless.
+test fn w_vendor_subcircuit_refuses_rather_than_emitting_an_ideal_part() -> Bool {
+  match project_slice_to_spice(slice: slice_with(elements: [vendor_subcircuit_capacitor()])) {
+    SpiceSliceRefused { cause: c } =>
+      match c {
+        ModelFidelityNotEmittable { part: p, model_card: mc } =>
+          p == "bulk decoupling capacitor" && mc == "vendor ESR/ESL subcircuit"
+        ElectricalModelUnavailable { part: _ } => false
+      }
+    SpiceSliceProjected { netlist: _ } => false
+  }
+}
+
+// The three-way discrimination, asserted together: absent model, unemittable fidelity, and
+// emittable fidelity must land on three different outcomes. Any two collapsing is the defect.
+test fn w_three_model_standings_land_on_three_outcomes() -> Bool {
+  let absent = project_slice_to_spice(slice: slice_with(elements: [unmodelled_capacitor()]))
+  let subckt = project_slice_to_spice(slice: slice_with(elements: [vendor_subcircuit_capacitor()]))
+  let ideal = project_slice_to_spice(slice: slice_with(elements: [modelled_capacitor()]))
+  match absent {
+    SpiceSliceRefused { cause: ElectricalModelUnavailable { part: _ } } =>
+      match subckt {
+        SpiceSliceRefused { cause: ModelFidelityNotEmittable { part: _, model_card: _ } } =>
+          match ideal {
+            SpiceSliceProjected { netlist: _ } => true
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
   }
 }
