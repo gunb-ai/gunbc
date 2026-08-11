@@ -1,0 +1,112 @@
+module extdeps.ipc.dpmx
+
+import std.types { String, NonEmptyStr, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.ipc2581.com/"
+  }
+}
+
+// VERIFIED LIVE 2026-08-11 by fetching the cited locator: the consortium names itself the
+// "IPC-2581 Consortium" and the format "IPC-DPMX (IPC-2581)", "IPC Digital Product Model
+// Exchange", whose stated purpose is quoted verbatim in the subject note below. The fetched
+// page does NOT state a current revision designation, so no revision is recorded here; a
+// revision is a fact this repository does not yet hold, and inventing "Revision C" from
+// recollection would be exactly the fabricated citation DESIGN §3 rules against.
+data ipc_dpmx_subject_note: String = "IPC-DPMX (IPC-2581), the PCB and assembly manufacturing description exchange format, cited to its own consortium. Purpose, quoted exactly from the fetched page: 'a generic standard for printed circuit board and assembly manufacturing description data and transfer methodology'. THE REVISION IS DELIBERATELY ABSENT: the consortium landing page states no revision designation, and this repository has not read the standard document itself, so the revision — which a manufacturing handoff genuinely depends on — is an unresolved obligation rather than a field filled from memory. WHY THIS IS A SEPARATE SUBJECT FROM GERBER: they are independently governed by different organizations (IPC-2581 Consortium here, Ucamco for Gerber), so they are two upstream authorities under DESIGN §3 external upstream decomposition, never one 'PCB output format' enum. WHAT THIS SUBJECT DOES NOT ESTABLISH: schema validity of a file in this format is not correctness, completeness, or manufacturability of the board it describes — those are separate admissions carried at the product layer, and conflating them is the nearby-question failure a green emitter test invites."
+
+type IpcDpmxFormat
+  = | IpcDpmxFormatTarget
+
+data ipc_dpmx_format: IpcDpmxFormat = IpcDpmxFormatTarget
+
+// The semantics a projection into this format carries, as an explicit roster rather than an
+// assumption. DESIGN §4 DecodeFidelity applied to a manufacturing medium: a target declares
+// what survives the projection, what moves to companion artifacts, and what does not travel
+// at all. This is the fact that decides which artifact set a given fabricator receives.
+type ManufacturingSemantic
+  = LayerImagery
+  | Stackup
+  | NetlistConnectivity
+  | DrillData
+  | ImpedanceRequirement
+  | ComponentPlacement
+  | BillOfMaterials
+  | AssemblyInstruction
+
+type SemanticCarriage
+  = CarriedInFormat
+  | CarriedInCompanionArtifact { artifact: NonEmptyStr }
+  | NotCarried
+
+type FormatSemanticRow {
+  semantic: ManufacturingSemantic
+  carriage: SemanticCarriage
+  authority: ExternalAuthority
+}
+
+// Every row cites the same fetched page, which states the format covers printed circuit board
+// AND assembly manufacturing description data in one generic standard — the property that
+// distinguishes it from an image-only format. Rows are the carriage claim at the grain a
+// factory profile consumes; they are not a claim that any particular fabricator accepts it.
+data ipc_dpmx_semantic_carriage: List<FormatSemanticRow> = [
+  FormatSemanticRow {
+    semantic: LayerImagery,
+    carriage: CarriedInFormat,
+    authority: extdeps_external_authority_anchor,
+  },
+  FormatSemanticRow {
+    semantic: Stackup,
+    carriage: CarriedInFormat,
+    authority: extdeps_external_authority_anchor,
+  },
+  FormatSemanticRow {
+    semantic: NetlistConnectivity,
+    carriage: CarriedInFormat,
+    authority: extdeps_external_authority_anchor,
+  },
+  FormatSemanticRow {
+    semantic: DrillData,
+    carriage: CarriedInFormat,
+    authority: extdeps_external_authority_anchor,
+  },
+  FormatSemanticRow {
+    semantic: ComponentPlacement,
+    carriage: CarriedInFormat,
+    authority: extdeps_external_authority_anchor,
+  },
+  FormatSemanticRow {
+    semantic: BillOfMaterials,
+    carriage: CarriedInFormat,
+    authority: extdeps_external_authority_anchor,
+  },
+  FormatSemanticRow {
+    semantic: AssemblyInstruction,
+    carriage: CarriedInFormat,
+    authority: extdeps_external_authority_anchor,
+  },
+  FormatSemanticRow {
+    semantic: ImpedanceRequirement,
+    carriage: CarriedInFormat,
+    authority: extdeps_external_authority_anchor,
+  },
+]
+
+data ipc_dpmx_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ipc.dpmx",
+      decl_name: "ipc_dpmx_format",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data extdeps_model_scope: ExternalModelScope = ipc_dpmx_model_scope

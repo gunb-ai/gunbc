@@ -11,6 +11,8 @@ import product.placement_supply {
   RackResidence,
   RackResidenceUnobserved,
   PhysicalAsset,
+  PhysicalContainment,
+  HostContainsComponent,
   PhysicalSite,
   HostSpatialFacts,
   WirelessAdapterAbsent,
@@ -24,6 +26,10 @@ import extdeps.chassis.rosewill { rosewill_rsv_r4000u_catalog, rosewill_rsv_z260
 import extdeps.network.tp_link { tp_link_tl_sg1024s_catalog }
 import extdeps.rack.navepoint { navepoint_18u_open_frame_catalog }
 import extdeps.power.eaton_tripp_lite { eaton_tripp_lite_rs_1215_family_catalog }
+import extdeps.cooling.dynatron { dynatron_w1_catalog }
+import extdeps.cpu.ampere { altra_max_m12830_catalog }
+import gunbc.fleet_intent { srv3_baseboard, srv4_baseboard }
+import product.cooling_qualification { InstalledCoolingRealization }
 
 // SPATIAL-0 owned inventory bindings: extdeps rows cite vendor facts; this module binds allocated
 // PhysicalAssetIdentity and HostIdentity instances to catalog declarations and rack residence.
@@ -151,7 +157,62 @@ data fleet_host_spatial_facts: List<HostSpatialFacts> = [
 // row when that PR merges, not as a fourth fork of the carrier.
 data srv1_measured_wireless_note: String = "srv1 fleet controller measured WirelessAdapterAbsent: docker0 enP3p3s0f0 enP3p3s0f1 enP3p5s0 enx62a53617b395 lo tailscale0 veth*, no nmcli wireless interface — so no current fleet host can associate with a DGX OOBE hotspot without a dedicated relay."
 
-data dynatron_w1_installation_note: String = "srv3 and srv4 carry Dynatron W1 coolers on Ampere Altra / LGA4926 per operator inventory; cooler installation is a host-component fact not yet modeled as a separate PhysicalAsset row."
+// srv3/srv4 Dynatron W1 installation, previously carried as a prose note stating it was "not yet
+// modeled as a separate PhysicalAsset row". It is now exactly that: two cooler assets citing the
+// vendor catalog declaration, bound to their hosts through HostContainsComponent — the same
+// containment arm every other host component uses. product.cooling_qualification consumes these
+// rows to reach a catalog verdict, and gunbc.bmc_fan_converge requires that verdict before any
+// host may claim a thermally qualified fan configuration.
+data cooler_srv3: PhysicalAssetIdentity = "cooler-srv3" as PhysicalAssetIdentity
+data cooler_srv4: PhysicalAssetIdentity = "cooler-srv4" as PhysicalAssetIdentity
+
+data srv3_cooler_asset: PhysicalAsset = PhysicalAsset {
+  identity: cooler_srv3,
+  catalog: DeclarationRef {
+    module_path: "extdeps.cooling.dynatron",
+    decl_name: "dynatron_w1_catalog",
+    field: WholeDeclaration,
+  },
+  physical_serial: none,
+  procurement: none,
+}
+
+data srv4_cooler_asset: PhysicalAsset = PhysicalAsset {
+  identity: cooler_srv4,
+  catalog: DeclarationRef {
+    module_path: "extdeps.cooling.dynatron",
+    decl_name: "dynatron_w1_catalog",
+    field: WholeDeclaration,
+  },
+  physical_serial: none,
+  procurement: none,
+}
+
+data installed_cooler_containments: List<PhysicalContainment> = [
+  HostContainsComponent { host: host_srv3, component: cooler_srv3 },
+  HostContainsComponent { host: host_srv4, component: cooler_srv4 },
+]
+
+// srv1/srv2 carry no cooler asset row: their installed cooling is UNOBSERVED — not absent, and
+// not assumed compatible. installed_cooling_verdict_for_host reaches InstalledCoolingUnobserved
+// for them, which admits fan observation and refuses thermal qualification, so the coverage
+// obligation stays loud instead of defaulting to a pass.
+data installed_cooling_realizations: List<InstalledCoolingRealization> = [
+  InstalledCoolingRealization {
+    host: host_srv3,
+    cooler_asset: cooler_srv3,
+    cooler: dynatron_w1_catalog,
+    processor: altra_max_m12830_catalog,
+    baseboard_model: srv3_baseboard.catalog.model,
+  },
+  InstalledCoolingRealization {
+    host: host_srv4,
+    cooler_asset: cooler_srv4,
+    cooler: dynatron_w1_catalog,
+    processor: altra_max_m12830_catalog,
+    baseboard_model: srv4_baseboard.catalog.model,
+  },
+]
 
 data rack_01_catalog_units: RackUnit = navepoint_18u_open_frame_catalog.rack_units
 

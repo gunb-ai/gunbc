@@ -1,0 +1,103 @@
+module extdeps.ucamco.gerber
+
+import std.types { String, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.ipc.dpmx {
+  AssemblyInstruction,
+  BillOfMaterials,
+  CarriedInCompanionArtifact,
+  CarriedInFormat,
+  ComponentPlacement,
+  DrillData,
+  FormatSemanticRow,
+  ImpedanceRequirement,
+  LayerImagery,
+  NetlistConnectivity,
+  NotCarried,
+  Stackup,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.ucamco.com/en/gerber"
+  }
+}
+
+// VERIFIED LIVE 2026-08-11 by fetching the cited locator. Facts taken from the response, none
+// recalled: Ucamco publishes the specification; the format is described there as 'the de facto
+// standard for printed circuit board (PCB) design data transfer'; the newest revision named on
+// the page is Gerber X3, with Gerber X2 (also called 'Gerber version 2') beside it and Standard
+// Gerber declared OBSOLETE as of May 2014; the most recent specification update named in the
+// news section is 'Gerber Layer Format Specification, revision 2024.05'. The page states that
+// attributes carry meta-information about graphics objects and connections, and that the Gerber
+// job file transfers fabrication characteristics such as thickness and finish.
+data gerber_subject_note: String = "THE GERBER FORMAT, cited to Ucamco, its publisher. A CORRECTION THIS ROW EXISTS TO RECORD: the scoping proposal that motivated this module named Gerber X2 as the current revision. It is not — the fetched page names X3 as the newest, X2 beside it, and Standard Gerber obsolete since May 2014, so a compatibility projection that hardcoded 'X2' would have pinned the wrong revision of a live upstream on the strength of recollection. WHY THIS IS A SEPARATE SUBJECT FROM IPC-DPMX: Ucamco and the IPC-2581 Consortium are independently governed, so a single 'PCB output format' enum spanning both would fuse two upstreams into one nickname (DESIGN §3). THE LOAD-BEARING FACT FOR A MANUFACTURING HANDOFF is the carriage roster below, not the revision: layer imagery travels in the layer format, fabrication characteristics travel in a SEPARATE job file, and connectivity/BOM/placement do not travel in the image files at all. That asymmetry is precisely why 'we emitted Gerbers' is not 'we described the board' — the semantics that did not survive are the ones a fabricator then reconstructs by hand or guesses."
+
+type GerberFormat
+  = | GerberFormatTarget
+
+data gerber_format: GerberFormat = GerberFormatTarget
+
+// Carriage rows reuse extdeps.ipc.dpmx's ManufacturingSemantic axis deliberately: the axis is
+// "what a manufacturing projection can carry", one concept, and forking a parallel
+// GerberSemantic enum would duplicate it at the meaning layer (DESIGN §2/§3). The upstream
+// authorities stay separate; only the shared question they both answer is shared.
+data gerber_semantic_carriage: List<FormatSemanticRow> = [
+  FormatSemanticRow {
+    semantic: LayerImagery,
+    carriage: CarriedInFormat,
+    authority: extdeps_external_authority_anchor,
+  },
+  FormatSemanticRow {
+    semantic: DrillData,
+    carriage: CarriedInCompanionArtifact { artifact: "drill file" },
+    authority: extdeps_external_authority_anchor,
+  },
+  FormatSemanticRow {
+    semantic: Stackup,
+    carriage: CarriedInCompanionArtifact { artifact: "Gerber job file" },
+    authority: extdeps_external_authority_anchor,
+  },
+  FormatSemanticRow {
+    semantic: NetlistConnectivity,
+    carriage: NotCarried,
+    authority: extdeps_external_authority_anchor,
+  },
+  FormatSemanticRow {
+    semantic: ImpedanceRequirement,
+    carriage: NotCarried,
+    authority: extdeps_external_authority_anchor,
+  },
+  FormatSemanticRow {
+    semantic: ComponentPlacement,
+    carriage: NotCarried,
+    authority: extdeps_external_authority_anchor,
+  },
+  FormatSemanticRow {
+    semantic: BillOfMaterials,
+    carriage: NotCarried,
+    authority: extdeps_external_authority_anchor,
+  },
+  FormatSemanticRow {
+    semantic: AssemblyInstruction,
+    carriage: NotCarried,
+    authority: extdeps_external_authority_anchor,
+  },
+]
+
+data gerber_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ucamco.gerber",
+      decl_name: "gerber_format",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data extdeps_model_scope: ExternalModelScope = gerber_model_scope

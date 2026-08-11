@@ -172,7 +172,7 @@ jobs:
   cold-corpus:
     runs-on: [self-hosted, linux, arm64]
     needs: [falsifier-build]
-    timeout-minutes: 280
+    timeout-minutes: 285
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -261,6 +261,15 @@ jobs:
           compression-level: 0
         if: always()
         timeout-minutes: 10
+      - name: Upload floor receipts (TSV authority for cost/drift rows)
+        uses: actions/upload-artifact@v4
+        with:
+          name: floor-receipts
+          path: target/floor-*
+          if-no-files-found: warn
+          retention-days: 14
+        if: always()
+        timeout-minutes: 5
       - name: compile-clean whole-tree cold control (scoped-PR admission counterpart)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
