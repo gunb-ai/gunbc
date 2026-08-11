@@ -9612,6 +9612,248 @@ fn write_floor_worker_terminal(outcome: &str, detail: &str) -> Result<(), String
     fs::rename(&tmp, &path).map_err(|e| format!("publish worker terminal {}: {e}", path.display()))
 }
 
+const SCOPED_ADMISSION_ENTRY: &str = "dag/gunbc/scoped_floor_execution.dag";
+
+/// Render the `.dag` verdict into (journal state, detail). A `Refused` arm is an
+/// `Err`: "I could not decide" and "nothing is affected" project onto the same
+/// zero manifest ids, so they must not share a success arm — an empty manifest is
+/// evidence of a skip only when a `SkipAssumedGreen` was actually observed.
+fn scoped_admission_projection(
+    ctx: &InterpContext,
+    verdict: &Value,
+    batch_id: &str,
+) -> Result<(&'static str, String), String> {
+    let reason_of = |fields: &_| -> String {
+        match ctx.field(fields, "reason") {
+            Some(Value::Str(s)) => s.clone(),
+            _ => String::new(),
+        }
+    };
+    match verdict {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "RunWitness") => {
+            Ok(("run", format!("reason={}", reason_of(fields))))
+        }
+        Value::Variant { variant_name, .. } if ctx.sym_eq(*variant_name, "SkipAssumedGreen") => Ok((
+            "skip",
+            "reason=scoped entry dependency closure unaffected by the observed diff".to_string(),
+        )),
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "Refused") => {
+            // Named exhaustively rather than rendered: only `sym_eq` is public, and an
+            // unrecognised cause must be an error, not an unlabelled refusal. A refusal
+            // whose class the operator cannot read sends them round the loop to find it.
+            let cause = match ctx.field(fields, "cause") {
+                Some(Value::Variant {
+                    variant_name: cause_name,
+                    fields: cause_fields,
+                    ..
+                }) => {
+                    let label = [
+                        "DiffObservationRefusal",
+                        "FrontierQueryRefusal",
+                        "SubjectObservationRefusal",
+                        "DependencyObservationRefusal",
+                        "DispositionAuthorityRefusal",
+                    ]
+                    .into_iter()
+                    .find(|name| ctx.sym_eq(*cause_name, name))
+                    .ok_or_else(|| {
+                        format!(
+                            "scoped admission refusal carries an unmodelled WitnessRefusalCause \
+                             for batch {batch_id}"
+                        )
+                    })?;
+                    format!("{label} detail={}", reason_of(cause_fields))
+                }
+                _ => {
+                    return Err(format!(
+                        "scoped admission Refused for batch {batch_id} carries no `cause` field"
+                    ))
+                }
+            };
+            Err(format!(
+                "SCOPED-ADMISSION-REFUSED batch={batch_id} cause={cause} — the scoped batch \
+                 is neither run nor skipped on unobserved evidence"
+            ))
+        }
+        other => Err(format!(
+            "scoped_witness_run_disposition_from_host returned `{}`, expected WitnessRunDisposition",
+            ctx.format_value(other)
+        )),
+    }
+}
+
+/// The cold-lane control, read from `gunbc.scoped_floor_execution`
+/// `scoped_execution_policy_for_event`: on any event other than `pull_request` the
+/// scoped roster executes in full, so node-frontier selection is turned OFF inside
+/// the child. Admitting the batch while leaving selection applied would re-derive
+/// the same prediction one layer down and back-stop nothing — the 31 scoped test
+/// functions would still be gated by the affected-set answer whose control this is.
+///
+/// The failure arms EXECUTE rather than predict, and that direction is the point:
+/// on the one lane whose job is to falsify skips, an unresolvable policy that
+/// skipped would be a silent hole in the control itself.
+fn scoped_backstop_requires_full_execution(walk_source_roots: &[String]) -> bool {
+    let event = std::env::var("GITHUB_EVENT_NAME").unwrap_or_default();
+    let (graph, indices) =
+        match resolve_entry_graph_shared(walk_source_roots, SCOPED_ADMISSION_ENTRY) {
+            Ok(pair) => pair,
+            Err(e) => {
+                eprintln!(
+                    "claim_executor: scoped backstop policy unresolvable ({e}); \
+                 executing the full scoped roster"
+                );
+                return true;
+            }
+        };
+    let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+    match run_in_context_with_args(
+        &ctx,
+        "scoped_execution_policy_for_event",
+        &[(Some("event".to_string()), Value::Str(event))],
+        false,
+    ) {
+        Ok(Value::Variant { variant_name, .. }) => {
+            if ctx.sym_eq(variant_name, "ScopedPolicyPredictsFromDiff") {
+                false
+            } else if ctx.sym_eq(variant_name, "ScopedPolicyRequiresFullExecution") {
+                true
+            } else {
+                eprintln!(
+                    "claim_executor: unmodelled ScopedExecutionPolicy variant; \
+                     executing the full scoped roster"
+                );
+                true
+            }
+        }
+        Ok(other) => {
+            eprintln!(
+                "claim_executor: scoped_execution_policy_for_event returned `{}`; \
+                 executing the full scoped roster",
+                ctx.format_value(&other)
+            );
+            true
+        }
+        Err(msg) => {
+            eprintln!(
+                "claim_executor: scoped_execution_policy_for_event unavailable ({msg}); \
+                 executing the full scoped roster"
+            );
+            true
+        }
+    }
+}
+
+/// Pre-construction admission for scoped witness batches.
+///
+/// A scoped batch materializes a SECOND semantic world (its own `source_roots`,
+/// today dag plus src/v1) inside a child process the coordinator spawns from the
+/// manifest this feeds. Before this gate the manifest was projected
+/// unconditionally, so every pull request paid that world; the batch's declared
+/// `SelectionApplied` could not help, because its entries were undeclared and
+/// therefore fail-closed `ReadsLiveTree`, which can never predict-skip.
+///
+/// The seed observes; `gunbc.scoped_floor_execution` decides. Exactly three
+/// observations cross the boundary — the comparison readout that says which tree
+/// the diff describes, the Wet name-status diff itself, and the declared-versus-
+/// derived disposition standing of the batch's own roster — and the `.dag` fold
+/// returns the ordinary `WitnessRunDisposition`.
+fn scoped_batch_admitted_ids(
+    candidates: &[(String, Vec<String>, Vec<String>)],
+    walk_source_roots: &[String],
+) -> Result<Vec<String>, String> {
+    if candidates.is_empty() {
+        return Ok(Vec::new());
+    }
+    let (subject_matched, subject_mismatch_reason) =
+        match v1_compiler::cli_run::floor_diff_comparison_readout() {
+            Ok(_) => (true, String::new()),
+            Err(msg) => (false, msg),
+        };
+    let (diff_observed, changed_paths, departed_paths, diff_failure_reason) =
+        match v1_compiler::cli_run::floor_git_diff_name_status_range() {
+            Ok((changed, departed)) => {
+                let mut departed: Vec<String> = departed.into_iter().collect();
+                departed.sort();
+                (true, changed, departed, String::new())
+            }
+            Err(msg) => (false, Vec::new(), Vec::new(), msg),
+        };
+    let (graph, indices) = resolve_entry_graph_shared(walk_source_roots, SCOPED_ADMISSION_ENTRY)
+        .map_err(|e| format!("scoped admission resolve ({SCOPED_ADMISSION_ENTRY}): {e}"))?;
+    let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
+    let mut admitted = Vec::new();
+    for (batch_id, pool_roots, entries) in candidates {
+        let conflict =
+            v1_compiler::cli_run::entry_roster_disposition_conflict(entries, pool_roots)?;
+        let args = [
+            (
+                Some("event".to_string()),
+                Value::Str(std::env::var("GITHUB_EVENT_NAME").unwrap_or_default()),
+            ),
+            (
+                Some("subject_matched".to_string()),
+                Value::Bool(subject_matched),
+            ),
+            (
+                Some("subject_mismatch_reason".to_string()),
+                Value::Str(subject_mismatch_reason.clone()),
+            ),
+            (
+                Some("disposition_agrees".to_string()),
+                Value::Bool(conflict.is_none()),
+            ),
+            (
+                Some("disposition_conflict_reason".to_string()),
+                Value::Str(conflict.unwrap_or_default()),
+            ),
+            (
+                Some("diff_observed".to_string()),
+                Value::Bool(diff_observed),
+            ),
+            (
+                Some("diff_failure_reason".to_string()),
+                Value::Str(diff_failure_reason.clone()),
+            ),
+            (
+                Some("changed_paths".to_string()),
+                str_list_value(&changed_paths),
+            ),
+            (
+                Some("departed_paths".to_string()),
+                str_list_value(&departed_paths),
+            ),
+            (Some("entries".to_string()), str_list_value(entries)),
+            (Some("pool_roots".to_string()), str_list_value(pool_roots)),
+        ];
+        let verdict = run_in_context_with_args(
+            &ctx,
+            "scoped_witness_run_disposition_from_host",
+            &args,
+            false,
+        )
+        .map_err(|e| format!("scoped_witness_run_disposition_from_host ({batch_id}): {e}"))?;
+        let (state, detail) = scoped_admission_projection(&ctx, &verdict, batch_id)?;
+        append_floor_phase_journal(
+            "scoped-admission",
+            state,
+            &format!("batch={batch_id} {detail}"),
+        );
+        eprintln!("[scoped-admission] batch={batch_id} disposition={state} {detail}");
+        if state == "run" {
+            admitted.push(batch_id.clone());
+        }
+    }
+    Ok(admitted)
+}
+
 fn write_scoped_witness_batch_manifest(batch_ids: &[String]) -> Result<(), String> {
     let path = Path::new(SCOPED_WITNESS_BATCH_MANIFEST_PATH);
     if let Some(parent) = path.parent() {
@@ -10398,20 +10640,36 @@ fn run() -> Result<ExitCode, ExitCode> {
     let plan_declared_no_finalization = floor_finalization.is_none();
     match floor_worker_role.as_ref() {
         Some(FloorWorkerRole::Ordinary) => {
-            let child_batch_ids: Vec<String> = batches
+            let scoped_candidates: Vec<(String, Vec<String>, Vec<String>)> = batches
                 .iter()
                 .flatten()
                 .filter_map(|runnable| match runnable {
                     Runnable::ScopedWitnessBatch {
                         batch_id,
+                        source_roots,
+                        entries,
                         process_isolation:
                             ScopedProcessIsolation::SequentialChildProcess
                             | ScopedProcessIsolation::FreshJobProcess,
                         ..
-                    } => Some(batch_id.clone()),
+                    } => {
+                        let mut entry_paths: Vec<String> =
+                            entries.iter().map(|row| row.entry.clone()).collect();
+                        entry_paths.sort();
+                        entry_paths.dedup();
+                        Some((batch_id.clone(), source_roots.clone(), entry_paths))
+                    }
                     _ => None,
                 })
                 .collect();
+            let child_batch_ids = match scoped_batch_admitted_ids(&scoped_candidates, &source_roots)
+            {
+                Ok(ids) => ids,
+                Err(msg) => {
+                    eprintln!("claim_executor: scoped admission refusal: {msg}");
+                    return Err(ExitCode::from(1));
+                }
+            };
             if let Err(msg) = write_scoped_witness_batch_manifest(&child_batch_ids) {
                 eprintln!("claim_executor: ordinary floor worker manifest refusal: {msg}");
                 return Err(ExitCode::from(1));
@@ -10450,6 +10708,20 @@ fn run() -> Result<ExitCode, ExitCode> {
                     selected.len()
                 );
                 return Err(ExitCode::from(1));
+            }
+            if scoped_backstop_requires_full_execution(&source_roots) {
+                if let Runnable::ScopedWitnessBatch {
+                    node_frontier_selection,
+                    ..
+                } = &mut selected[0]
+                {
+                    *node_frontier_selection = NodeFrontierSelectionMode::Off;
+                    eprintln!(
+                        "claim_executor: SCOPED-BACKSTOP batch={batch_id} \
+                         node_frontier_selection=Off — the full scoped roster executes as the \
+                         affected-set prediction's control"
+                    );
+                }
             }
             batches = vec![selected];
             on_success_stages.clear();

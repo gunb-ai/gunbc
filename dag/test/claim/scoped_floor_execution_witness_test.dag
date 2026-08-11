@@ -26,9 +26,13 @@ import gunbc.scoped_floor_execution {
   ScopedDispositionContradicted,
   ScopedEntriesAffected,
   ScopedEntriesUnaffected,
+  ScopedExecutionPolicy,
+  ScopedPolicyPredictsFromDiff,
+  ScopedPolicyRequiresFullExecution,
   ScopedSubjectStanding,
   ScopedSubjectMatched,
   ScopedSubjectMismatched,
+  scoped_execution_policy_for_event,
   scoped_witness_run_disposition
 }
 
@@ -48,6 +52,9 @@ data empty_diff: FloorDiffObservation = DiffPathsProduced {
   changed_paths: []
 }
 
+// Every case below that is not ABOUT the policy holds it at
+// ScopedPolicyPredictsFromDiff, because a case that back-stopped would run for
+// a reason unrelated to what it claims to discriminate.
 fn decide(
   subject: ScopedSubjectStanding,
   disposition: ScopedDispositionStanding,
@@ -58,10 +65,34 @@ fn decide(
   scoped_witness_run_disposition(
     subject: subject,
     disposition: disposition,
+    policy: ScopedPolicyPredictsFromDiff,
     diff: diff,
     departed_paths: departed_paths,
     affected: affected
   )
+}
+
+fn decide_under_policy(
+  policy: ScopedExecutionPolicy,
+  disposition: ScopedDispositionStanding,
+  diff: FloorDiffObservation,
+  affected: ScopedAffectedStanding
+) -> WitnessRunDisposition {
+  scoped_witness_run_disposition(
+    subject: ScopedSubjectMatched,
+    disposition: disposition,
+    policy: policy,
+    diff: diff,
+    departed_paths: [],
+    affected: affected
+  )
+}
+
+fn policy_is_full_execution(policy: ScopedExecutionPolicy) -> Bool {
+  match policy {
+    ScopedPolicyRequiresFullExecution { reason: _ } => true
+    ScopedPolicyPredictsFromDiff => false
+  }
 }
 
 fn is_skip(d: WitnessRunDisposition) -> Bool {
@@ -219,6 +250,66 @@ test fn red_subject_mismatch_refuses_before_any_affected_reading() -> Bool {
         FrontierQueryRefusal { reason: _ } => false
         DependencyObservationRefusal { reason: _ } => false
         DispositionAuthorityRefusal { reason: _ } => false
+      }
+    RunWitness { reason: _ } => false
+    SkipAssumedGreen => false
+  }
+}
+
+// The backstop's whole purpose: an event with nothing to run - unrelated diff,
+// unaffected closure, no departures - still executes the roster. Without this
+// the 31 scoped test functions would have no unconditional execution route once
+// the admission above can skip.
+test fn w_non_pull_request_event_executes_despite_an_unaffected_closure() -> Bool {
+  is_run(d: decide_under_policy(
+    policy: scoped_execution_policy_for_event(event: "push"),
+    disposition: ScopedDispositionAgrees,
+    diff: unrelated_diff,
+    affected: ScopedEntriesUnaffected
+  ))
+}
+
+// The backstop must not be reachable from the event the prediction is FOR -
+// otherwise it would fire on every pull request and the change would save
+// nothing. This is the discriminating half of the pair above.
+test fn w_pull_request_event_predicts_and_therefore_skips() -> Bool {
+  is_skip(d: decide_under_policy(
+    policy: scoped_execution_policy_for_event(event: "pull_request"),
+    disposition: ScopedDispositionAgrees,
+    diff: unrelated_diff,
+    affected: ScopedEntriesUnaffected
+  ))
+}
+
+// An event string the harness could not supply is not a pull request, so it
+// executes. A default that predicted would be an untested skip.
+test fn w_unsupplied_event_executes_rather_than_predicting() -> Bool {
+  policy_is_full_execution(policy: scoped_execution_policy_for_event(event: ""))
+}
+
+test fn w_unmodelled_event_executes_rather_than_predicting() -> Bool {
+  policy_is_full_execution(policy: scoped_execution_policy_for_event(event: "workflow_dispatch"))
+}
+
+// RED - the backstop is a policy, not an amnesty. A contradicted disposition is
+// a broken authority on every event, so it must still refuse on the cold lane
+// where the batch would otherwise run anyway. If the policy arm sat ahead of the
+// disposition axis, a stale declaration would be repaired by nobody because main
+// would stay green.
+test fn red_backstop_event_still_refuses_a_contradicted_disposition() -> Bool {
+  match decide_under_policy(
+    policy: scoped_execution_policy_for_event(event: "push"),
+    disposition: ScopedDispositionContradicted { reason: "entry declares SubstrateInputsOnly but derived closure reaches a host-effect sink" },
+    diff: unrelated_diff,
+    affected: ScopedEntriesUnaffected
+  ) {
+    Refused { cause: cause } =>
+      match cause {
+        DispositionAuthorityRefusal { reason: _ } => true
+        DiffObservationRefusal { reason: _ } => false
+        FrontierQueryRefusal { reason: _ } => false
+        SubjectObservationRefusal { reason: _ } => false
+        DependencyObservationRefusal { reason: _ } => false
       }
     RunWitness { reason: _ } => false
     SkipAssumedGreen => false

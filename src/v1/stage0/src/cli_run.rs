@@ -21409,7 +21409,7 @@ fn floor_git_diff_range() -> Result<String, String> {
 /// answers "which ref" for a diagnostic, and a DECIDING consumer that takes it has to invent the
 /// missing head and relation. Inventing them is what shipped the merge-base-on-every-arm fail-open,
 /// so the deciding consumers read this one and a `ComparisonReadoutRefused` propagates.
-pub(crate) fn floor_diff_comparison_readout() -> Result<FreezeBaselineComparison, String> {
+pub fn floor_diff_comparison_readout() -> Result<FreezeBaselineComparison, String> {
     use v1_interpreter::Value;
     let roots = default_source_roots();
     let entry = "src/v2/workflow/floor_diff_observe.dag";
@@ -21543,7 +21543,7 @@ fn string_list_from_value(val: &v1_interpreter::Value, field: &str) -> Result<Ve
     }
 }
 
-fn floor_git_diff_name_status_range() -> Result<(Vec<String>, HashSet<String>), String> {
+pub fn floor_git_diff_name_status_range() -> Result<(Vec<String>, HashSet<String>), String> {
     use v1_interpreter::Value;
     let roots = default_source_roots();
     let entry = "src/v2/workflow/floor_diff_observe.dag";
@@ -22270,6 +22270,38 @@ fn parse_entry_live_tree_disposition(entry: &str, content: &str) -> Result<bool,
     // Undeclared = ReadsLiveTree: a row must DECLARE it does not read the live
     // tree to become selection-eligible (fail-closed).
     Ok(declared.unwrap_or(true))
+}
+
+/// Declared-versus-derived live-tree standing for a roster of entries, at their own
+/// pool roots. `Ok(None)` means every entry declares `SubstrateInputsOnly` AND its
+/// derived effect reach agrees; `Ok(Some(reason))` names the first entry whose
+/// declaration the derived facts contradict.
+///
+/// This deliberately does NOT return `reads_live_tree_effective`'s OR. That OR is
+/// right where the answer feeds a per-row skip — degrade to always-run and nothing
+/// is lost — but a consumer that ADMITS expensive work off a declaration needs the
+/// disagreement itself, because silently upgrading a stale `SubstrateInputsOnly`
+/// row to `ReadsLiveTree` hides a broken authority behind a green answer and the
+/// row is never repaired. The caller routes this into a typed refusal
+/// (`DispositionAuthorityRefusal`), never into a wider run.
+pub fn entry_roster_disposition_conflict(
+    entries: &[String],
+    pool_roots: &[String],
+) -> Result<Option<String>, String> {
+    let facts = build_module_graph_facts_live(pool_roots);
+    for entry in entries {
+        let declared_live = read_entry_live_tree_disposition(entry)?;
+        if declared_live {
+            continue;
+        }
+        if effect_reach_derived_reads_live_tree_for_entry(entry, &facts) {
+            return Ok(Some(format!(
+                "entry {entry} declares SubstrateInputsOnly but its derived effect reach \
+                 finds a path-like data row and a host-effect sink in its closure"
+            )));
+        }
+    }
+    Ok(None)
 }
 
 fn read_entry_live_tree_disposition(entry: &str) -> Result<bool, String> {

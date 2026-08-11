@@ -118,6 +118,32 @@ fn scoped_affected_standing_live(
   }
 }
 
+// THE COLD BACKSTOP, and why it is an axis rather than a caller's choice. Once
+// the admission below can skip, the five entries' 31 test functions have no
+// unconditional execution route left, and an affected-set prediction that is
+// never independently falsified is a claim with no control. A pull request asks
+// "is this change relevant to the scoped world"; every other event asks "does
+// the scoped world still hold", and the second question has no diff to narrow
+// by. The policy is therefore stated positively over the ONE event that
+// predicts, so an event string the harness could not supply - or one nobody has
+// modelled yet - executes the full roster instead of inheriting a skip it was
+// never tested under. The same verdict turns node frontier selection OFF inside
+// the child, because admitting the batch while leaving selection applied would
+// re-derive the same prediction one layer down and back-stop nothing.
+type ScopedExecutionPolicy
+  = ScopedPolicyPredictsFromDiff
+  | ScopedPolicyRequiresFullExecution { reason: String }
+
+fn scoped_execution_policy_for_event(event: String) -> ScopedExecutionPolicy {
+  if event == "pull_request" {
+    ScopedPolicyPredictsFromDiff
+  } else {
+    ScopedPolicyRequiresFullExecution {
+      reason: "event is not pull_request; the scoped roster executes cold as the affected-set prediction's control"
+    }
+  }
+}
+
 // A departed path is a deletion, rename, or copy. Its pre-image is not in the
 // head tree, so a head-only closure cannot decide whether it was a dependency:
 // the file whose absence matters is exactly the file the closure can no longer
@@ -129,16 +155,79 @@ fn scoped_departure_forces_run(departed_paths: List<String>) -> Bool {
   length(xs: departed_paths) > 0
 }
 
-// The decision - a pure fold over already-observed standings. Refusals come
-// first and are exhaustive over the four ignorance axes; only inside a fully
-// observed, non-contradicted world does the positive-evidence ladder run, and
-// its fall-through is the skip. The diff's changed paths are not re-read here
-// because the affected standing already answered the question they exist to ask;
-// an empty diff therefore reaches SkipAssumedGreen through ScopedEntriesUnaffected
-// rather than through a special case, matching floor_witness_run_disposition.
+// HOST TRANSPORT. The seed observes bytes and git; it does not decide. This
+// adapter exists so the host can hand over what it observed without constructing
+// coproduct values across the interpreter boundary, and its flattened Bool-plus-
+// reason parameters are a WIRE SHAPE, not the model: the standings are rebuilt
+// here, immediately, and every arm below reads the coproducts. Keeping the
+// flattening at this one seam is what stops it from spreading into the decision,
+// where a Bool beside a reason string would be the state-space conflation the
+// standings exist to prevent.
+fn scoped_witness_run_disposition_from_host(
+  event: String,
+  subject_matched: Bool,
+  subject_mismatch_reason: String,
+  disposition_agrees: Bool,
+  disposition_conflict_reason: String,
+  diff_observed: Bool,
+  diff_failure_reason: String,
+  changed_paths: List<String>,
+  departed_paths: List<String>,
+  entries: List<String>,
+  pool_roots: List<String>
+) -> WitnessRunDisposition {
+  let subject = if subject_matched {
+    ScopedSubjectMatched
+  } else {
+    ScopedSubjectMismatched { reason: subject_mismatch_reason }
+  }
+  let disposition = if disposition_agrees {
+    ScopedDispositionAgrees
+  } else {
+    ScopedDispositionContradicted { reason: disposition_conflict_reason }
+  }
+  let diff = if diff_observed {
+    DiffPathsProduced { changed_paths: changed_paths }
+  } else {
+    DiffObservationFailClosed { reason: diff_failure_reason }
+  }
+  // The live projection is evaluated even on a backstop event, where the
+  // decision below will not read it. That is deliberate: the alternative is to
+  // hand the fold a fabricated ScopedEntriesAffected the closure never
+  // produced, which is the fabricated-plausible-output failure aimed at the one
+  // input a reader would take for evidence. One corpus scan inside a job that
+  // is about to spend 376 seconds is the honest price.
+  scoped_witness_run_disposition(
+    subject: subject,
+    disposition: disposition,
+    policy: scoped_execution_policy_for_event(event: event),
+    diff: diff,
+    departed_paths: departed_paths,
+    affected: scoped_affected_standing_live(
+      entries: entries,
+      pool_roots: pool_roots,
+      touched_paths: changed_paths
+    )
+  )
+}
+
+// The decision - a pure fold over already-observed standings. The two axes that
+// are facts ABOUT THE OBSERVATIONS THEMSELVES come first: a subject mismatch
+// means the standings describe different trees, and a contradicted disposition
+// means the authority admitting the work is broken - both are defects on every
+// event, so neither is reachable past the policy. The policy arm sits next and
+// runs unconditionally; it is not a failure arm widening to a superset but a
+// declared statement that this event class has no diff to narrow by. Only
+// inside a predicting event do the remaining ignorance axes refuse and the
+// positive-evidence ladder run, with the skip as its fall-through. The diff's
+// changed paths are not re-read below because the affected standing already
+// answered the question they exist to ask; an empty diff therefore reaches
+// SkipAssumedGreen through ScopedEntriesUnaffected rather than through a
+// special case, matching floor_witness_run_disposition.
 fn scoped_witness_run_disposition(
   subject: ScopedSubjectStanding,
   disposition: ScopedDispositionStanding,
+  policy: ScopedExecutionPolicy,
   diff: FloorDiffObservation,
   departed_paths: List<String>,
   affected: ScopedAffectedStanding
@@ -151,20 +240,25 @@ fn scoped_witness_run_disposition(
         ScopedDispositionContradicted { reason: reason } =>
           Refused { cause: DispositionAuthorityRefusal { reason: reason } }
         ScopedDispositionAgrees =>
-          match diff {
-            DiffObservationFailClosed { reason: reason } =>
-              Refused { cause: DiffObservationRefusal { reason: reason } }
-            DiffPathsProduced { changed_paths: _ } =>
-              match affected {
-                ScopedAffectedUndecidable { reason: reason } =>
-                  Refused { cause: DependencyObservationRefusal { reason: reason } }
-                ScopedEntriesAffected =>
-                  RunWitness { reason: "scoped entry dependency closure intersects a changed path" }
-                ScopedEntriesUnaffected =>
-                  if scoped_departure_forces_run(departed_paths: departed_paths) {
-                    RunWitness { reason: "scoped diff reports a departed path; head-only closure cannot bound it" }
-                  } else {
-                    SkipAssumedGreen
+          match policy {
+            ScopedPolicyRequiresFullExecution { reason: reason } =>
+              RunWitness { reason: reason }
+            ScopedPolicyPredictsFromDiff =>
+              match diff {
+                DiffObservationFailClosed { reason: reason } =>
+                  Refused { cause: DiffObservationRefusal { reason: reason } }
+                DiffPathsProduced { changed_paths: _ } =>
+                  match affected {
+                    ScopedAffectedUndecidable { reason: reason } =>
+                      Refused { cause: DependencyObservationRefusal { reason: reason } }
+                    ScopedEntriesAffected =>
+                      RunWitness { reason: "scoped entry dependency closure intersects a changed path" }
+                    ScopedEntriesUnaffected =>
+                      if scoped_departure_forces_run(departed_paths: departed_paths) {
+                        RunWitness { reason: "scoped diff reports a departed path; head-only closure cannot bound it" }
+                      } else {
+                        SkipAssumedGreen
+                      }
                   }
               }
           }
