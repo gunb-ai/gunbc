@@ -265,6 +265,15 @@ fn module_is_emitted(basename: String) -> Bool {
 // cost -- which is precisely why the defect could sit here looking like a witness slightly over
 // budget instead of a fold re-reading the corpus thousands of times.
 //
+// THE HOIST DID NOT DELIVER THAT COST BACK, and this sentence exists because the first review of
+// it read the paragraph above as a measured win. Measured AFTER: 177.6s, against the 173.6s
+// baseline -- no improvement, inside run-to-run noise. The live fact producers dominate and are
+// already memoized host-side, so removing this redundancy moved a term that was never the term.
+// It is kept because re-reading one file once per outbound edge is redundant work regardless of
+// the realized n (DESIGN section 6 again: n is not a time-stable fact), NOT because it made the
+// witness affordable. What made the mechanism witnesses affordable was moving them off the live
+// verdict entirely.
+//
 // Reading absent content as the empty string is not a fallback: a module with no emitted file
 // cannot confirm a reference, and the empty string confirms nothing, so the arm returns exactly
 // what the pairwise guard returned. The guard on the TARGET stays at the call site below.
