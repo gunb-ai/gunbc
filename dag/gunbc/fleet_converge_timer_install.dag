@@ -17,9 +17,12 @@ import gunbc.fleet_converge_timer {
 }
 import gunbc.fleet_converge_cli {
   FleetConvergeApplicability,
+  ConvergeSparkRoute,
+  SparkManagedAccessUnobserved,
+  SparkManagedAccessAbsent,
+  SparkManagedAccessGrounded,
   ConvergeSlice1Route,
   ConvergeKnobFrontier,
-  ConvergeSparkPreEnrollment,
   ConvergeOutsideFleet,
   fleet_converge_applicability,
 }
@@ -51,7 +54,9 @@ fn fleet_timer_install_route(host: String) -> FleetTimerRoute {
         TimerViaSelfInstall { host: host }
       }
     ConvergeKnobFrontier => TimerViaSelfInstall { host: host }
-    ConvergeSparkPreEnrollment => TimerPreEnrollment { host: host }
+    ConvergeSparkRoute { access: SparkManagedAccessUnobserved { host: _, dissolves_on: _ } } => TimerPreEnrollment { host: host }
+    ConvergeSparkRoute { access: SparkManagedAccessAbsent { cause: _ } } => TimerPreEnrollment { host: host }
+    ConvergeSparkRoute { access: SparkManagedAccessGrounded } => TimerViaSelfInstall { host: host }
     ConvergeOutsideFleet => TimerOutsideFleet { host: host }
   }
 }

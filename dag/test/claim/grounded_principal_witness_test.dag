@@ -12,13 +12,13 @@ test fn witness_runner_fiction_not_in_roster() -> Bool {
 
 test fn witness_ghrunner_is_ci_deploy_principal() -> Bool {
   let deploy_name = grounded_posix_principal_name(p: ci_deploy_srv1_access.principal)
-  let roster_name = grounded_posix_principal_name(p: fleet_posix_principal(key: FleetAccountCiRunner))
+  let roster_name = grounded_posix_principal_name(p: fleet_posix_ci_runner_principal())
   deploy_name == "ghrunner" && deploy_name == roster_name
 }
 
 test fn witness_operator_is_manual_deploy_principal() -> Bool {
   let deploy_name = grounded_posix_principal_name(p: ci_deploy_srv1_operator_access.principal)
-  let roster_name = grounded_posix_principal_name(p: fleet_posix_principal(key: FleetAccountOperator))
+  let roster_name = grounded_posix_principal_name(p: fleet_posix_operator_principal())
   deploy_name == "briansrls" && deploy_name == roster_name
 }
 
@@ -33,14 +33,14 @@ test fn witness_briansrls_fork_dissolved() -> Bool {
 }
 
 test fn witness_declared_probe_names_principal() -> Bool {
-  posix_declared_probe_names_principal(p: fleet_posix_principal(key: FleetAccountCiRunner))
-    && posix_declared_probe_names_principal(p: fleet_posix_principal(key: FleetAccountOperator))
-    && posix_declared_probe_names_principal(p: fleet_posix_principal(key: FleetAccountRoot))
-    && posix_declared_probe_names_principal(p: fleet_posix_principal(key: FleetAccountSrv3Host))
+  posix_declared_probe_names_principal(p: fleet_posix_ci_runner_principal())
+    && posix_declared_probe_names_principal(p: fleet_posix_operator_principal())
+    && posix_declared_probe_names_principal(p: fleet_posix_root_principal())
+    && posix_declared_probe_names_principal(p: fleet_posix_srv3_host_principal())
 }
 
 test fn witness_declared_probe_mismatch_red() -> Bool {
-  let p = fleet_posix_principal(key: FleetAccountCiRunner)
+  let p = fleet_posix_ci_runner_principal()
   let poisoned = GroundedPosixPrincipal {
     posix: p.posix,
     sudo_grants: p.sudo_grants,
@@ -54,7 +54,7 @@ test fn witness_declared_probe_mismatch_red() -> Bool {
 }
 
 test fn witness_ci_runner_sudo_grants_derive_privileged_commands() -> Bool {
-  let principal = fleet_posix_principal(key: FleetAccountCiRunner)
+  let principal = fleet_posix_ci_runner_principal()
   let grounded = grounded_principal_privileged_commands(p: principal)
   let composed = srv1_live_deploy_privileged_commands()
   length(grounded) == 6
@@ -201,7 +201,7 @@ test fn witness_two_phase_principal_derives_job_user() -> Bool {
 
 test fn witness_srv3_host_roster_row_exists() -> Bool {
   fleet_posix_account_exists(name: "ubuntu" as NonEmptyStr)
-    && grounded_posix_principal_name(p: fleet_posix_principal(key: FleetAccountSrv3Host)) == "ubuntu"
+    && grounded_posix_principal_name(p: fleet_posix_srv3_host_principal()) == "ubuntu"
 }
 
 test fn witness_deploy_sudo_grants_refuse_generic_movers() -> Bool {

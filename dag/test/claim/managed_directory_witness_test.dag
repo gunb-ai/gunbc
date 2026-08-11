@@ -24,15 +24,21 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data managed_directory_witness_note: String = "The derivation is witnessed on SYNTHETIC principals rather than on the fleet roster, so these stay true when srv1's service account changes — which it is scheduled to, when the dashboard runtime stops being the operator's personal account. What is under test is the RULE (dependents plus uid/gid comparison determine the mode), not srv1's current answer; the srv1 answer is witnessed separately in test.claim.live_deploy.emit against the emitted script. The three class witnesses are the load-bearing ones: they prove the mode WIDENS when a dependent is genuinely added and only then, which is the property that makes deriving better than choosing. The octal witnesses cover the serializer independently, including the special-bits digit that no caller sets today — an unset digit rendered by computation rather than by assumption is the difference between 0750 and 2750 the day setgid is needed."
 
 fn owner_user() -> PosixUser {
-  PosixUser { name: "svc", uid: 4000, gid: 4000 }
+  PosixUser { name: "svc", uid: 4000, gid: 4000,
+  shell: LoginShellUnobserved,
+}
 }
 
 fn group_mate_user() -> PosixUser {
-  PosixUser { name: "peer", uid: 4001, gid: 4000 }
+  PosixUser { name: "peer", uid: 4001, gid: 4000,
+  shell: LoginShellUnobserved,
+}
 }
 
 fn stranger_user() -> PosixUser {
-  PosixUser { name: "outsider", uid: 4002, gid: 4002 }
+  PosixUser { name: "outsider", uid: 4002, gid: 4002,
+  shell: LoginShellUnobserved,
+}
 }
 
 fn dir_with(dependents: List<DirectoryDependent>) -> ManagedDirectory {

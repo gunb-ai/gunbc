@@ -249,108 +249,27 @@ data c_compilation_unit_leaf_disposition: LegacyTestBehaviorDisposition = Covere
 
 data dag_comment_wall_family_closed_loop_note: String = "THE FIRST FAMILY CARRIED THROUGH THE WHOLE LOOP — classified, then deleted — and the receipt for how nearly it was deleted for the wrong reason and then held for the wrong reason. Subject: after the comment-ban wall, a solidus pair or a slash-star outside a string literal must refuse, a string literal containing a solidus pair must still be accepted, and comment-free source must still compile. Classification authored four CoveredByWitness rows over src/v1/tests/src/dag_comment_wall_test.rs (gunbc#7687); deletion removed that module and those rows together (gunbc#7690), because rows and behaviors depart together.\n\nWHAT MADE DELETION SAFE, measured rather than assumed. The deleted Rust module had NO CI CONSUMER: .github/workflows/ci.yml contains zero occurrences of cargo test and zero of nextest, and no workflow runs the Rust suite at all — it was removed from CI on 2026-07-11 (gunbc.commit_workflow commit_gate_rust_suite_removed_disposition) and runs locally only. The four .dag probes that replace it DO execute and pass, on the affected-set falsifier cold cadence: run 30766839943, 6382 witnesses, all four green. So the deletion INCREASED executed coverage; it removed a test nothing runs and kept probes a scheduled lane runs.\n\nTHE CORRECTION THIS NOTE EXISTS TO CARRY, because an earlier revision of it asserted the opposite twice. It first said the loop had closed, written against a local claim_batch run — and claim_batch is not the executor that gates a merge. It was then rewritten to say deletion was HELD because the probes never execute in CI. That second claim was FALSE and is retracted rather than softened: the probes are discovered (discovery walks source roots; witness_discovery_scan_dirs does not scope witness discovery), they execute on the cold cadence, and they pass. Three proposed mechanisms for their absence from the per-PR run — discovery omission, exclusion, deferral — were each refuted, the last two by reading the consumer rather than the roster name.\n\nTHE RESIDUAL, open and tracked elsewhere: the probes did NOT execute on the per-PR gating run for the push that added them, while their same-commit sibling did. That is an affected-set SELECTION question, not a discovery one, and it does not argue for retaining a test that runs nowhere.\n\nTHE RULE THAT SURVIVES ALL OF IT: a CoveredByWitness row claims a named witness goes red for the same reason the deleted test existed, so the row is only as good as the witness's executed consumer — and which executor ran it is part of the claim, not a detail. Co-greenness on a developer machine is not coverage.\n\nTHE NUMBER A READER WILL GET WRONG: deletion does NOT move the unclassified frontier. Discovered behaviors and their dispositions depart together, so the difference is unchanged and only the denominator shrinks. The frontier moves on CLASSIFICATION alone; deletion collects debt classification already discharged. A flat frontier across a deletion wave is the mechanism working, not a stalled lane."
 
-// THE v1-EMITTER OPTIONAL-RENDERING FAMILY, family two. Subject: how the Route-A Rust emitter treats a DECLARED optional — the signature it renders for an optional return, and the call-site construction it emits when an optional flows into a non-optional parameter. The two legacy modules are one family because they are two halves of one repair: making the signature render Option<..> faithfully is what EXPOSED the optional-into-required mismatch at call sites, and the fail-closed unwrap is what closes it. Splitting them would leave each half's control arguing about a fact the other half owns.\n\nWHY THIS FAMILY WAS MIGRATABLE WHERE THE TYPESCRIPT ONE WAS NOT: the assertions are about EMITTED TEXT, and compile_dag_rust_emit_check already carries emitted-substring inclusion and exclusion through the production compile path, so no host process and no new capability was needed. Where the Rust modules had to slice the emitted text to a single function before asserting a bare `Option<` — because the runtime's own types mention Option and a whole-file scan would pass on them — the migrated witnesses name the WHOLE expected signature instead, which needs no scoping and pins parameter spelling and carrier rendering as well.
-data optional_rendering_family: LegacyTestBehaviorFamily = LegacyTestBehaviorFamily {
-  name: "v1-emitter-optional-rendering" as NonEmptyStr,
-  source_files: [
-    "src/v1/tests/src/optional_carrier_signature_test.rs" as FilePath,
-    "src/v1/tests/src/optional_consumer_fail_closed_test.rs" as FilePath,
-  ],
-}
-
-data optional_signature_witness_entry: FilePath = "dag/test/claim/optional_carrier_signature_test.dag" as FilePath
-data optional_consumer_witness_entry: FilePath = "dag/test/claim/optional_consumer_fail_closed_test.dag" as FilePath
-
-data optional_string_signature_disposition: LegacyTestBehaviorDisposition = CoveredByWitness {
-  behavior: LegacyTestBehavior {
-    source_file: "src/v1/tests/src/optional_carrier_signature_test.rs" as FilePath,
-    test_fn: "optional_string_return_renders_option_signature" as NonEmptyStr,
-  },
-  witness: TestBehaviorWitness {
-    entry: optional_signature_witness_entry,
-    test_fn: "optional_string_return_renders_option_signature" as NonEmptyStr,
-  },
-  distinguishing_failure: "The regression this behavior exists to catch is the text-carrier early return short-circuiting the Optional template, which emitted a bare String while the body already produced Some/None. Executed perturbation: changing the fixture return from String? to String — the exact cardinality fact the wrap derives from — makes the emitted signature stop being Option<String> and the witness returns false. It asserts the WHOLE signature rather than a bare Option< token, so it also reds on a change that kept the wrap while altering parameter spelling or carrier rendering, which the sliced substring check in the Rust module could not see." as NonEmptyStr,
-}
-
-data non_optional_string_signature_disposition: LegacyTestBehaviorDisposition = CoveredByWitness {
-  behavior: LegacyTestBehavior {
-    source_file: "src/v1/tests/src/optional_carrier_signature_test.rs" as FilePath,
-    test_fn: "non_optional_string_return_stays_bare" as NonEmptyStr,
-  },
-  witness: TestBehaviorWitness {
-    entry: optional_signature_witness_entry,
-    test_fn: "non_optional_string_return_stays_bare" as NonEmptyStr,
-  },
-  distinguishing_failure: "This is the control proving the wrap is cardinality-DERIVED and not blanket-on-String: a repair that wrapped every text carrier would fix its sibling witness and break this one. Executed perturbation: giving the fixture an optional return instead makes the emitted signature wrapped and the exclusion fires, so the witness returns false. The exclusion names the specific wrapped signature rather than the token Option<, because an unscoped exclusion would red on unrelated runtime code — a guard firing for the wrong reason is not coverage." as NonEmptyStr,
-}
-
-data optional_shared_type_signature_disposition: LegacyTestBehaviorDisposition = CoveredByWitness {
-  behavior: LegacyTestBehavior {
-    source_file: "src/v1/tests/src/optional_carrier_signature_test.rs" as FilePath,
-    test_fn: "optional_shared_type_return_renders_option_rc_signature" as NonEmptyStr,
-  },
-  witness: TestBehaviorWitness {
-    entry: optional_signature_witness_entry,
-    test_fn: "optional_shared_type_return_renders_option_rc_signature" as NonEmptyStr,
-  },
-  distinguishing_failure: "A shared (recursive) type is a separate rendering path from the text carrier — it composes the Optional wrap with the Rc wrap — so it carries its own witness rather than sharing one. The witness names the composed signature exactly, Option<Rc<Node>>, so losing EITHER wrap reds it: emitting Rc<Node> loses the optional, emitting Option<Node> loses the sharing, and both are false where a check for the substring Option< alone would accept the second." as NonEmptyStr,
-}
-
-data non_optional_shared_type_signature_disposition: LegacyTestBehaviorDisposition = CoveredByWitness {
-  behavior: LegacyTestBehavior {
-    source_file: "src/v1/tests/src/optional_carrier_signature_test.rs" as FilePath,
-    test_fn: "non_optional_shared_type_return_stays_bare_rc" as NonEmptyStr,
-  },
-  witness: TestBehaviorWitness {
-    entry: optional_signature_witness_entry,
-    test_fn: "non_optional_shared_type_return_stays_bare_rc" as NonEmptyStr,
-  },
-  distinguishing_failure: "The shared-type control: the emitted signature must keep Rc while refusing Option, which separates the two wraps that the positive witness composes. It reds if a blanket optional wrap is applied to shared types, and — because it requires Rc<Node> positively rather than merely excluding Option — it also reds if the sharing wrap is dropped, a failure an exclusion-only control would pass." as NonEmptyStr,
-}
-
-data required_param_optional_arg_disposition: LegacyTestBehaviorDisposition = CoveredByWitness {
-  behavior: LegacyTestBehavior {
-    source_file: "src/v1/tests/src/optional_consumer_fail_closed_test.rs" as FilePath,
-    test_fn: "required_param_optional_arg_emits_located_fail_closed_unwrap" as NonEmptyStr,
-  },
-  witness: TestBehaviorWitness {
-    entry: optional_consumer_witness_entry,
-    test_fn: "required_param_optional_arg_emits_located_fail_closed_unwrap" as NonEmptyStr,
-  },
-  distinguishing_failure: "Executed perturbation: feeding the same required parameter a non-optional argument removes the located expect from the emitted call site and the witness returns false, so the assertion is attributable to the optional-into-required shape rather than to the fixture existing. The witness additionally EXCLUDES unwrap_or_default and unwrap_or_else, which is the load-bearing half: the DESIGN 5 fact is not that some unwrap is emitted but that the fabricating shape never is, and an inclusion-only witness would stay green if a fabricating fallback were added beside the expect." as NonEmptyStr,
-}
-
-data required_param_nonoptional_arg_disposition: LegacyTestBehaviorDisposition = CoveredByWitness {
-  behavior: LegacyTestBehavior {
-    source_file: "src/v1/tests/src/optional_consumer_fail_closed_test.rs" as FilePath,
-    test_fn: "required_param_nonoptional_arg_stays_bare" as NonEmptyStr,
-  },
-  witness: TestBehaviorWitness {
-    entry: optional_consumer_witness_entry,
-    test_fn: "required_param_nonoptional_arg_stays_bare" as NonEmptyStr,
-  },
-  distinguishing_failure: "The control that makes the unwrap type-derived rather than blanket: an implementation that unwrapped every argument passes its sibling witness and fails this one. The exclusion is whole-file rather than scoped to the emitted drive function, which the Rust module needed — verified by execution that this fixture emits no fail-closed expect anywhere, so the unscoped exclusion cannot be satisfied by absence in one function while the string appears in another." as NonEmptyStr,
-}
-
-data empty_optional_unwrap_disposition: LegacyTestBehaviorDisposition = DeleteLowValueBehavior {
-  behavior: LegacyTestBehavior {
-    source_file: "src/v1/tests/src/optional_consumer_fail_closed_test.rs" as FilePath,
-    test_fn: "empty_optional_unwrap_panics_not_fabricates" as NonEmptyStr,
-  },
-  reason: "NO gunbc CODE IS IN THIS TEST'S LOOP. It builds an empty Vec in Rust, calls Option::expect on the resulting None inside catch_unwind and asserts a panic, then calls unwrap_or_default and asserts it yields 0. Both are guarantees of the Rust standard library, true independently of anything this repository emits, and neither invokes the compiler, the emitter, or any fixture source. It is a demonstration of why the emitter's choice matters, written as a test — valuable as documentation, worth nothing as an oracle, because no change to gunbc can make it fail. The fact it is really about — that the emitter chooses the aborting shape and never the fabricating one — is asserted where that choice is actually made, by the migrated call-site witness's exclusion of unwrap_or_default and unwrap_or_else. Deleted for having no gunbc-observable failure mode, not to reduce a count." as NonEmptyStr,
-}
-
+// FAMILY TWO DEPARTED HERE, and this records why its rows left with its behaviors rather
+// than outliving them. The v1-emitter optional-rendering family covered two halves of one
+// repair: rendering an optional return as Option<..> is what EXPOSED the optional-into-required
+// mismatch at call sites, and the fail-closed unwrap is what closes it. Six behaviors migrated
+// 1:1 to floor witnesses of the same function names; a seventh asserted only that Option::expect
+// panics, which no change to this repository can falsify, so it was classified low-value and
+// dropped rather than migrated.
+//
+// The family ROW had to depart in the same motion, and that is a property of the mechanism, not
+// a preference: legacy_test_behavior_family_complete requires count(discovered) > 0, so a family
+// whose source files no longer exist reports incomplete rather than vacuously complete. Keeping
+// the row would have redded a live consumer for a reason unrelated to any defect; relaxing that
+// count would have made an emptied family indistinguishable from a classified one. Deletion is
+// the only arm that keeps the distinction real.
+//
+// The number a reader will get wrong: a deletion does NOT move the unclassified frontier.
+// Behaviors and dispositions depart together, so the difference is unchanged and only the
+// denominator shrinks. The frontier moves on classification alone.
 fn legacy_test_behavior_dispositions() -> List<LegacyTestBehaviorDisposition> {
   [
     c_compilation_unit_leaf_disposition,
-    optional_string_signature_disposition,
-    non_optional_string_signature_disposition,
-    optional_shared_type_signature_disposition,
-    non_optional_shared_type_signature_disposition,
-    required_param_optional_arg_disposition,
-    required_param_nonoptional_arg_disposition,
-    empty_optional_unwrap_disposition,
   ]
 }
 
@@ -394,16 +313,6 @@ fn legacy_test_behavior_declared_slice_holds() -> Bool {
       discovered_witnesses: discovered_witnesses,
       dispositions: legacy_test_behavior_dispositions(),
     )) == 0
-}
-
-fn optional_rendering_family_complete_live() -> Bool {
-  legacy_test_behavior_family_complete(
-    discovery_holds: test_migration_behavior_discovery_holds(),
-    family: optional_rendering_family,
-    discovered_legacy: legacy_test_behavior_ids_live(),
-    discovered_witnesses: test_behavior_witness_ids_live(),
-    dispositions: legacy_test_behavior_dispositions(),
-  )
 }
 
 fn legacy_test_behavior_closing_contract_holds() -> Bool {
