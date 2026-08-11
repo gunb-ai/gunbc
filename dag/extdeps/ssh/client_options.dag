@@ -141,3 +141,29 @@ fn ssh_verified_host_options(known_hosts: NonEmptyStr) -> List<SshClientOption> 
     UserKnownHostsFile { path: known_hosts },
   ]
 }
+
+// ── The invocation shaper ─────────────────────────────────────────────────────────────────────
+
+// THE ONE PLACE "ssh" AND "--" EXIST. This is a function rather than a transport literal for the
+// reason the whole module exists: a literal inside a `service` block cannot be called by a witness,
+// so its argv order, its option placement and its separator are unassertable. shape_scp_copy_to_argv
+// has no service operation at all for exactly this reason, and git's shape_git_*_argv family is the
+// same idiom.
+//
+// Option words precede the target because OpenSSH takes the FIRST specified value for most
+// directives -- so an option appended after the target, or after a caller-supplied word, would be
+// silently outranked by anything earlier. Order here is load-bearing, which is why it is asserted by
+// execution rather than described.
+fn shape_openssh_exec_portable_words_argv(
+  target: NonEmptyStr,
+  options: List<SshClientOption>,
+  words: List<String>,
+) -> List<String> {
+  concat(
+    concat(
+      concat(["ssh"], serialize_ssh_client_options(options: options)),
+      [target as String, "--"],
+    ),
+    words,
+  )
+}

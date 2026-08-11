@@ -296,6 +296,7 @@ type SparkServingRealizationSelection
     }
   | RealizationChoiceRequired {
       first: SparkServingRealization
+      second: SparkServingRealization
       more: List<SparkServingRealization>
       cause: NonEmptyStr
     }
@@ -370,10 +371,18 @@ fn select_spark_serving_realization(
       match policy.privilege {
         LeastRequiredEffects => RealizationSelected { realization: best }
         PreferSystemIntegration =>
-          RealizationChoiceRequired {
-            first: best,
-            more: [],
-            cause: "PreferSystemIntegration does not order equally capable realizations by a modeled fact; the tie is a genuine choice rather than a derivation" as NonEmptyStr,
+          match list_head_of(xs: admitted) {
+            Absent => RealizationSelected { realization: best }
+            Present { value: head } =>
+              match list_head_of(xs: list_tail_of(xs: admitted)) {
+                Absent => RealizationSelected { realization: head }
+                Present { value: second } => RealizationChoiceRequired {
+                  first: head,
+                  second: second,
+                  more: list_tail_of(xs: list_tail_of(xs: admitted)),
+                  cause: "PreferSystemIntegration does not order equally capable realizations by a modeled fact; the tie is a genuine choice rather than a derivation" as NonEmptyStr,
+                }
+              }
           }
       }
   }

@@ -97,7 +97,7 @@ fn selects_user_unit(capabilities: SparkHostCapabilityObservation) -> Bool {
         RootlessContainerRealization => false
       }
     NoRealizationAdmitted { first: _, more: _ } => false
-    RealizationChoiceRequired { first: _, more: _, cause: _ } => false
+    RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => false
   }
 }
 
@@ -132,7 +132,7 @@ test fn w_user_unit_refused_when_it_cannot_satisfy_the_lifecycle() -> Bool {
   ) {
     NoRealizationAdmitted { first: _, more: _ } => true
     RealizationSelected { realization: _ } => false
-    RealizationChoiceRequired { first: _, more: _, cause: _ } => false
+    RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => false
   }
 }
 
@@ -158,7 +158,7 @@ test fn w_unobserved_capability_refuses_rather_than_admitting() -> Bool {
   ) {
     NoRealizationAdmitted { first: _, more: _ } => true
     RealizationSelected { realization: _ } => false
-    RealizationChoiceRequired { first: _, more: _, cause: _ } => false
+    RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => false
   }
 }
 
@@ -189,7 +189,7 @@ test fn w_system_unit_selected_when_it_is_the_only_admitted_mechanism() -> Bool 
         RootlessContainerRealization => false
       }
     NoRealizationAdmitted { first: _, more: _ } => false
-    RealizationChoiceRequired { first: _, more: _, cause: _ } => false
+    RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => false
   }
 }
 
@@ -216,7 +216,7 @@ test fn w_no_managed_executor_refuses_under_managed_authority() -> Bool {
   ) {
     NoRealizationAdmitted { first: _, more: _ } => true
     RealizationSelected { realization: _ } => false
-    RealizationChoiceRequired { first: _, more: _, cause: _ } => false
+    RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => false
   }
 }
 
@@ -236,6 +236,6 @@ test fn red_control_privilege_does_not_select_the_architecture() -> Bool {
         RootlessContainerRealization => true
       }
     NoRealizationAdmitted { first: _, more: _ } => false
-    RealizationChoiceRequired { first: _, more: _, cause: _ } => false
+    RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => false
   }
 }

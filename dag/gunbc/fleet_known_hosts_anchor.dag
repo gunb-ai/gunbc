@@ -1,0 +1,231 @@
+module gunbc.fleet_known_hosts_anchor
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.algebra { trim }
+import std.resources { Network }
+import std.content_hash {
+  ContentHash,
+  content_hash_of_value,
+  serialize_content_hash,
+  compare_content_hash,
+  ContentHashComparison,
+  ContentHashEqual,
+  ContentHashDifferent,
+  ContentHashCrossFamilyIncomparable,
+}
+import std.decl_ref { decl_ref }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.fleet_host_key_enrollment { fleet_host_key_enrollments, known_hosts_line, host_key_provenance_label }
+
+// THE TRUST ANCHOR AN SSH INVOCATION IS VERIFIED AGAINST, carried as a value rather than left as
+// ambient host state.
+//
+// WHAT THIS REPLACES, and why the replacement is a different construction rather than a repair of
+// the old one. fleet_host_key_enroll_apply materialized a staged fragment, then appended a `Host`
+// block to $HOME/.ssh/config naming it, and read back with `ssh-keygen -F` against THE STAGED
+// FRAGMENT. Three independent defects, all of them the same shape -- a check standing at a
+// different place from the binding it claims to establish:
+//
+//   ONE, the readback interrogated the fragment the writer had just written, not the file ssh would
+//   actually consult. The two are related only by a path string appearing in two places, and on the
+//   live fleet they DID diverge: the config named a run-specific absolute path baked from $(pwd) of
+//   whichever runner slot wrote it first, while nine other slots sharing that same $HOME resolved it
+//   to a file that did not exist for them. Every readback reported found; every probe ran unverified.
+//
+//   TWO, $HOME/.ssh is SHARED MUTABLE STATE on a self-hosted runner -- ten slots, one ghrunner
+//   account -- so the artifact one attempt writes is read by an unrelated attempt. A marker guard
+//   (`grep -q gunbc-fleet-pin`) made it worse rather than safer: it froze the FIRST writer's content
+//   permanently while every later run reported success without changing anything.
+//
+//   THREE, the outcome was PROSE. fleet_host_key_enroll_apply returned a String and its caller
+//   decided by string_contains(receipt, "outcome=refused"), so a refusal was a substring -- a
+//   spelling change silently turns a refusal into a success, and nothing structurally prevents an
+//   SSH leg from running after one.
+//
+// THE ANCHOR IS CONTENT-BOUND. Both identities are computed, one from the registry rows and one
+// from bytes READ BACK off the filesystem, and the record cannot be constructed unless they agree.
+// So "the file ssh will consult contains exactly the enrolled registry" is not a property some
+// witness asserts about this module -- it is the precondition of the value existing at all. There
+// is no path from an empty write, a partial write, a stale file, or another attempt's file to a
+// KnownHostsAnchor.
+//
+// THE PATH IS CONTENT-ADDRESSED, not attempt-numbered, and that choice does more work than an
+// attempt id would. Two concurrent runs holding the SAME registry may share one file -- the bytes
+// are identical by construction, so there is nothing to race over -- while two runs holding
+// DIFFERENT registries cannot collide, because a different registry produces a different digest and
+// therefore a different filename. An attempt-scoped name would have given isolation and nothing
+// else; the digest gives isolation AND makes the filename itself a claim about the content, which
+// the readback then checks. It also lives under the repository's writable working root, never under
+// $HOME, so defect TWO has no surface left.
+type KnownHostsAnchor sole_constructor {
+  path: NonEmptyStr
+  registry_identity: ContentHash
+  materialized_content_identity: ContentHash
+}
+
+// The sole mint, admitted to exactly one production declaration. Sealing matters here for the same
+// reason it matters on TransportScript: without it, any caller could author a KnownHostsAnchor
+// naming any path with any two identities it chose, and the content binding above would be a
+// convention rather than a wall. A record literal in another module is exactly the forgery the
+// content check exists to prevent, one layer up.
+fn known_hosts_anchor_seal(
+  path: NonEmptyStr,
+  registry_identity: ContentHash,
+  materialized_content_identity: ContentHash,
+) -> KnownHostsAnchor
+  admit_callers: [
+    decl_ref(module_path: "gunbc.fleet_known_hosts_anchor", decl_name: "materialize_fleet_known_hosts_anchor"),
+  ]
+  = KnownHostsAnchor {
+    path: path,
+    registry_identity: registry_identity,
+    materialized_content_identity: materialized_content_identity,
+  }
+
+// The typed outcome that replaces the prose receipt. AlreadyConverged is a genuinely distinct state
+// from Ready and is kept separate rather than collapsed: it is what a repeated run on a warm working
+// root reports, and fusing it into Ready would make "we wrote the file" and "the file was already
+// exactly right" indistinguishable -- which is precisely the distinction the marker-guard defect
+// destroyed. Both carry an anchor, because in both cases the content binding was established by a
+// readback; only the write differs.
+//
+// KnownHostsRefused is head-plus-tail, so an empty refusal has no constructor: a refusal that names
+// no cause cannot be built, which is the shape the corpus uses wherever a diagnostic must be
+// non-empty by construction.
+type KnownHostsMaterializationOutcome
+  = KnownHostsReady { anchor: KnownHostsAnchor, receipt: String }
+  | KnownHostsAlreadyConverged { anchor: KnownHostsAnchor, receipt: String }
+  | KnownHostsRefused { first: String, more: List<String> }
+
+// The registry rendered to OpenSSH known_hosts wire form. One line per enrolled row, in registry
+// order, so the digest below is a function of the registry alone.
+fn fleet_known_hosts_fragment() -> String {
+  join(map(fleet_host_key_enrollments, k => concat(known_hosts_line(k: k), "\n")), "")
+}
+
+fn fleet_known_hosts_registry_identity() -> ContentHash {
+  content_hash_of_value(value: fleet_known_hosts_fragment() as NonEmptyStr)
+}
+
+// The filename carries the registry digest, so the path is a claim the readback then verifies.
+fn fleet_known_hosts_anchor_path() -> NonEmptyStr {
+  join([
+    "target/fleet-known-hosts-",
+    serialize_content_hash(hash: fleet_known_hosts_registry_identity()) as String,
+  ], "") as NonEmptyStr
+}
+
+// THREE THINGS THE BODY DOES THAT ARE NOT OBVIOUS FROM ITS SHAPE, stated here because DESIGN 4c
+// admits annotations only at module-item grain. The existing file is READ BEFORE the write, so a
+// file already carrying exactly these bytes is reported as already-converged rather than rewritten
+// -- a repeated run stays legible instead of silently idempotent, which is the distinction the
+// marker guard destroyed. The readback is then a SECOND read even on that already-converged path,
+// so the identity landing in the anchor is always computed from bytes observed after the decision to
+// keep them, never from the value the writer held in hand. And the cross-family arm is unreachable
+// while both sides are minted by content_hash_of_value, yet is stated as a refusal rather than
+// folded into the equal arm regardless: a cross-family answer means the comparison did not happen,
+// and "we could not compare" must never render as "they matched".
+
+// THE MATERIALIZATION. Refuses before any write when the registry is empty (enrolling nothing must
+// never read as enrolled), writes the fragment, then READS THE FILE BACK and mints only on digest
+// agreement. The readback is the success criterion; the write's exit code is not, because a
+// successful write to the wrong place is exactly the failure mode this replaces.
+func materialize_fleet_known_hosts_anchor() -> KnownHostsMaterializationOutcome
+  uses net: Network
+{
+  if length(fleet_host_key_enrollments) == 0 {
+    KnownHostsRefused {
+      first: "known-hosts materialization refused: the enrollment registry is empty, so there is no host key to anchor to and every fleet SSH leg would be unverified",
+      more: [],
+    }
+  } else {
+    let fragment = fleet_known_hosts_fragment()
+    let path = fleet_known_hosts_anchor_path()
+    let registry_identity = fleet_known_hosts_registry_identity()
+    let existing = Filesystem.Read(path: path as String)
+    let already = existing.success && existing.content == fragment
+    let written = if already { true } else {
+      let w = Filesystem.Write(path: path as String, content: fragment)
+      w.success
+    }
+    if written {
+      let back = Filesystem.Read(path: path as String)
+      if back.success {
+        let materialized_identity = content_hash_of_value(value: back.content as NonEmptyStr)
+        match compare_content_hash(left: registry_identity, right: materialized_identity) {
+          ContentHashEqual => {
+            let anchor = known_hosts_anchor_seal(
+              path: path,
+              registry_identity: registry_identity,
+              materialized_content_identity: materialized_identity,
+            )
+            let receipt = join(
+              concat(
+                [join([
+                  "known-hosts-anchor path=", path as String,
+                  " identity=", serialize_content_hash(hash: registry_identity) as String,
+                  " rows=", to_string(length(fleet_host_key_enrollments)), "\n",
+                ], "")],
+                map(fleet_host_key_enrollments, k => join([
+                  "  enrolled host=", k.host as String, " endpoint=", k.endpoint,
+                  " provenance=", host_key_provenance_label(p: k.provenance), "\n",
+                ], "")),
+              ),
+              "",
+            )
+            if already {
+              KnownHostsAlreadyConverged { anchor: anchor, receipt: receipt }
+            } else {
+              KnownHostsReady { anchor: anchor, receipt: receipt }
+            }
+          }
+          ContentHashDifferent => KnownHostsRefused {
+            first: join([
+              "known-hosts materialization refused: the bytes read back from ", path as String,
+              " do not hash-equal the enrollment registry (registry ",
+              serialize_content_hash(hash: registry_identity) as String,
+              ", materialized ", serialize_content_hash(hash: materialized_identity) as String,
+              ") -- the file ssh would consult is not the registry, which is the exact divergence the",
+              " staged-fragment readback could not see",
+            ], ""),
+            more: [],
+          }
+          ContentHashCrossFamilyIncomparable => KnownHostsRefused {
+            first: "known-hosts materialization refused: registry and materialized identities are in different hash families and are therefore incomparable, so agreement was not established",
+            more: [],
+          }
+        }
+      } else {
+        KnownHostsRefused {
+          first: join(["known-hosts materialization refused: readback of ", path as String, " failed -- ", trim(s: back.error)], ""),
+          more: [],
+        }
+      }
+    } else {
+      KnownHostsRefused {
+        first: join(["known-hosts materialization refused: could not write the anchor at ", path as String], ""),
+        more: [],
+      }
+    }
+  }
+}
+
+// The one projection consumers need: the anchor path, reachable ONLY from an outcome that carries an
+// anchor. There is no accessor that produces a path from a refusal, so a caller cannot obtain
+// something to hand ssh without having passed the content binding.
+fn known_hosts_anchor_of(outcome: KnownHostsMaterializationOutcome) -> KnownHostsAnchor? {
+  match outcome {
+    KnownHostsReady { anchor: a, receipt: _ } => Present { value: a }
+    KnownHostsAlreadyConverged { anchor: a, receipt: _ } => Present { value: a }
+    KnownHostsRefused { first: _, more: _ } => none
+  }
+}
+
+fn known_hosts_materialization_receipt(outcome: KnownHostsMaterializationOutcome) -> String {
+  match outcome {
+    KnownHostsReady { anchor: _, receipt: r } => r
+    KnownHostsAlreadyConverged { anchor: _, receipt: r } => concat("already-converged ", r)
+    KnownHostsRefused { first: f, more: m } =>
+      join(concat([concat("refused ", f)], map(m, x => concat("\nrefused ", x))), "")
+  }
+}
