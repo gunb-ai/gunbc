@@ -17,6 +17,7 @@ import gunbc.ci_workflow {
   ci_selection_control_step,
   ci_release_bins_pack_step, ci_release_bins_upload_step,
   ci_release_bins_download_step, ci_release_bins_unpack_verify_step,
+  ci_floor_receipts_upload_step,
   gunbc_ci_release_build_step_timeout_minutes, gunbc_ci_aux_step_timeout_minutes, gunbc_ci_prelude_allowance_minutes,
   gunbc_ci_selection_control_step_timeout_minutes,
   gunbc_ci_artifact_transfer_step_timeout_minutes
@@ -209,7 +210,7 @@ fn gunbc_falsifier_selection_control_job_backstop_timeout_minutes() -> Int {
 }
 
 fn gunbc_falsifier_cold_corpus_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_falsifier_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_falsifier_compile_clean_cold_control_timeout_minutes + gunbc_falsifier_native_cache_cold_control_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+  gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_falsifier_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_falsifier_compile_clean_cold_control_timeout_minutes + gunbc_falsifier_native_cache_cold_control_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
 }
 
 fn gunbc_falsifier_aggregate_verdict_job_backstop_timeout_minutes() -> Int {
@@ -512,7 +513,7 @@ fn falsifier_cold_corpus_job() -> Job {
     id: "cold-corpus",
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
-    steps: concat(ci_floor_job_prelude_steps(), [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_floor_peak_pre_step(), falsifier_step(), floor_component_receipt_upload_step(), floor_phase_journal_upload_step(), compile_clean_cold_control_step(), native_cache_cold_control_step(), ci_floor_peak_post_step()]),
+    steps: concat(ci_floor_job_prelude_steps(), [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_floor_peak_pre_step(), falsifier_step(), floor_component_receipt_upload_step(), floor_phase_journal_upload_step(), ci_floor_receipts_upload_step(), compile_clean_cold_control_step(), native_cache_cold_control_step(), ci_floor_peak_post_step()]),
     needs: ["falsifier-build"],
     env: none,
     outputs: none,
