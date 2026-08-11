@@ -135,6 +135,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/git/publication_transport.dag",
   "dag/extdeps/gnu/libc.dag",
   "dag/extdeps/rust/target_triple.dag",
+  "dag/extdeps/units/iso_80000_3.dag",
   "dag/extdeps/github/issues.dag",
   "dag/extdeps/github/workflow_run_event.dag",
   "dag/extdeps/languages/bash/subject.dag",
