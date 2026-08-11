@@ -153,14 +153,6 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     dissolution: unbound_dissolution(description: "the S2 behavioral-closure lane greens it locally, then this row deletes")
   ),
   known_red_probe(
-    entry: "src/v2/test/claim/manual/english_emit_add_test.dag",
-    f: "english_emit_add_prose_holds",
-    kind: CorpusWitnessKind,
-    budget: FastLaneEvalBudget,
-    reason: "the english emit prose projection, same S2 emit-family root as its round-trip sibling. Owner: the S2 behavioral-closure lane.",
-    dissolution: unbound_dissolution(description: "the S2 behavioral-closure lane greens it locally, then this row deletes")
-  ),
-  known_red_probe(
     entry: "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag",
     f: "compiler_closure_scoped_ingest_module_count_ok_holds",
     kind: CorpusWitnessKind,
