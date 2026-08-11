@@ -1544,6 +1544,132 @@ fn reference_derived_dependency_projection(
   }
 }
 
+data reference_dependency_admission_note: String = "THE DEPENDENCY-INDUCING QUESTION IS BROADER THAN CLAUSE (e), and this authority composes the two rather than widening either.
+
+Clause (e) is one clause of one contract, and its verdict is deliberately left alone: TypeOccurrence is still OccurrenceCategoryClauseEDependencyNotInducing, because reclassifying it there to reuse the filter would make the clause say something its own contract does not, and every consumer of that clause would silently inherit the change. What is true instead is that a type reference induces a file dependency by a DIFFERENT route -- N2's typed entry, whose category guard is part of its contract -- so the admission surface has one arm per route and an excluded arm that carries the category it excluded.
+
+Composition, not a second table: this reads the clause-(e) verdict first and only inspects the category inside its NotInducing arm. A parallel match over the seven categories would be a second classification of the same coproduct, so clause (e) remains the authority for its own question and this authority answers only what it adds.
+
+WHY THE PRODUCTION PROJECTION DOES NOT YET USE IT, stated because a surface with no consumer is exactly what this repository calls coverage by illusion. Admitting type references makes a parser-produced annotation such as `Int` enter the population, and its declaration is not in an assembled closure that was never given std.types -- so the population refuses, WHOLE, by the totality law. That refusal is correct and is the point: it is the demand the loader has to satisfy, named at the exact occurrence, and it is the loader work list rather than a skip. Silently dropping an unbindable type reference to keep the projection green would be the empty-observation narrow -- rendering `could not see the provider` as `nothing is depended on` -- which is strictly worse than the widen DESIGN section 5 already forbids.
+
+So this lands as the joined walk plus its witnesses, and the production switch at reference_derived_dependency_projection_for_assembled_closure happens when the loader can supply the providers the demand names. DISSOLVE-ON: that switch, at which point reference_derived_dependency_binding_references has no caller and deletes."
+
+type ReferenceDependencyAdmission
+  = ReferenceDependencyAdmittedClauseE
+  | ReferenceDependencyAdmittedTypeReference
+  | ReferenceDependencyExcluded { category: OccurrenceCategory }
+
+fn reference_dependency_admission_for_category(
+  category: OccurrenceCategory
+) -> ReferenceDependencyAdmission {
+  match occurrence_category_clause_e_dependency_inducing_verdict(category: category) {
+    OccurrenceCategoryClauseEDependencyInducing => ReferenceDependencyAdmittedClauseE
+    OccurrenceCategoryClauseEDependencyNotInducing { category: excluded } =>
+      match excluded {
+        TypeOccurrence => ReferenceDependencyAdmittedTypeReference
+        FieldOccurrence => ReferenceDependencyExcluded { category: excluded }
+        MethodOccurrence => ReferenceDependencyExcluded { category: excluded }
+        LexicalValueOccurrence => ReferenceDependencyExcluded { category: excluded }
+        CallableOccurrence => ReferenceDependencyExcluded { category: excluded }
+        ConstructorOccurrence => ReferenceDependencyExcluded { category: excluded }
+        NamespaceSegmentOccurrence => ReferenceDependencyExcluded { category: excluded }
+      }
+  }
+}
+
+data resolve_type_reference_via_structural_candidates_note: String = "The N2 typed entry with the index SUPPLIED instead of rebuilt. resolve_type_reference_containment_binding takes inputs and builds a candidate index per call, which is correct for a single-reference API and is a cost-shape defect inside a walk: one index per reference over a whole transport is quadratic in the transport, and DESIGN section 6 fixes a proven cost shape regardless of the realized n. The category guard is the SAME contract -- a non-TypeOccurrence reference refuses with ReferenceBindingProjectionWrongCategory before any candidate is enumerated -- so this is the same decision on a shared index, not a second one."
+
+fn resolve_type_reference_via_structural_candidates(
+  transport: OccurrenceTransport,
+  index: OccurrenceCandidateIndex,
+  reference: ReferenceOccurrence
+) -> ReferenceBindingProjection {
+  match reference.category {
+    TypeOccurrence =>
+      resolve_reference_via_structural_candidates(
+        transport: transport,
+        index: index,
+        reference: reference,
+      )
+    _ =>
+      ReferenceBindingProjectionWrongCategory {
+        occurrence: reference.occurrence,
+        observed: reference.category,
+      }
+  }
+}
+
+type JoinedDependencyBindingBuild {
+  projections_reversed: List<ReferenceBindingProjection>
+}
+
+data joined_dependency_binding_walk_note: String = "ONE POPULATION, TWO ADMISSION ROUTES. Clause-(e) references and type references reach the SAME BoundReferencePopulation through the same fold over the same candidate index: the projections are concatenated in transport order and bound_reference_population_from_projections is applied once. That is what makes this a join rather than two closures -- a second population would need its own totality law, its own refusal ordering and its own file projection, and the two could then disagree about one file.
+
+The index is built ONCE for the whole walk. Excluded categories contribute nothing and are not errors: a field or method reference is not a dependency-inducing position, which is a fact about the position and not a failure to bind."
+
+fn joined_dependency_binding_walk(
+  transport: OccurrenceTransport,
+  inputs: OccurrenceBindingCandidateInputs
+) -> StructuralBindingWalk {
+  match occurrence_candidate_index_build(transport: transport, inputs: inputs) {
+    OccurrenceCandidateIndexTransportRefused { refusal: refusal } =>
+      StructuralBindingWalkRefused {
+        refusal: StructuralBindingTransportRefusal { refusal: refusal },
+      }
+    OccurrenceCandidateIndexModulePathRefused { refusal: refusal } =>
+      StructuralBindingWalkRefused {
+        refusal: StructuralBindingModulePathRefusal { refusal: refusal },
+      }
+    OccurrenceCandidateIndexExposureRefused { refusal: refusal } =>
+      StructuralBindingWalkRefused {
+        refusal: StructuralBindingExposureRefusal { refusal: refusal },
+      }
+    OccurrenceCandidateIndexAuthoredOrderRefused { refusal: refusal } =>
+      StructuralBindingWalkRefused {
+        refusal: StructuralBindingAuthoredOrderRefusal { refusal: refusal },
+      }
+    OccurrenceCandidateIndexDeclarationBucketRefused { occurrence: occurrence } =>
+      StructuralBindingWalkRefused {
+        refusal: StructuralBindingDeclarationBucketRefusal { occurrence: occurrence },
+      }
+    OccurrenceCandidateIndexReady { index: index } =>
+      StructuralBindingWalkReady {
+        population: bound_reference_population_from_projections(
+          projections: reverse(fold(
+            transport.references,
+            init: JoinedDependencyBindingBuild { projections_reversed: [] },
+            f: (acc, reference) =>
+              match reference_dependency_admission_for_category(category: reference.category) {
+                ReferenceDependencyAdmittedClauseE =>
+                  JoinedDependencyBindingBuild {
+                    projections_reversed: concat(
+                      [resolve_reference_via_structural_candidates(
+                        transport: transport,
+                        index: index,
+                        reference: reference,
+                      )],
+                      acc.projections_reversed,
+                    ),
+                  }
+                ReferenceDependencyAdmittedTypeReference =>
+                  JoinedDependencyBindingBuild {
+                    projections_reversed: concat(
+                      [resolve_type_reference_via_structural_candidates(
+                        transport: transport,
+                        index: index,
+                        reference: reference,
+                      )],
+                      acc.projections_reversed,
+                    ),
+                  }
+                ReferenceDependencyExcluded { category: _ } => acc
+              },
+          ).projections_reversed),
+        ),
+      }
+  }
+}
+
 data reference_derived_dependency_binding_reference_filter_note: String = "Clause-(e) structural walks bind only reference categories that occurrence_category_clause_e_dependency_inducing_verdict classifies as OccurrenceCategoryClauseEDependencyInducing. TypeOccurrence references are N2's resolve_type_reference_containment_binding lane — parser-produced return-type annotations must not refuse the whole population when Int is not module-declared. Parser witnesses that need per-name resolution already avoid whole-transport walks for this reason; production assembled-closure projection applies the same boundary here."
 
 fn reference_derived_dependency_binding_references(

@@ -4,6 +4,9 @@ import std.types { Bool, String, List, Int, NonEmptyStr, FilePath }
 import std.occurrence_identity {
   OccurrenceId, OccurrenceIndexEntry, OccurrenceTransport,
   ReferenceOccurrence, DeclarationOccurrence,
+  OccurrenceCategory, TypeOccurrence, CallableOccurrence, FieldOccurrence,
+  MethodOccurrence, LexicalValueOccurrence, ConstructorOccurrence,
+  NamespaceSegmentOccurrence,
 }
 import std.occurrence_binding_candidates {
   OccurrenceBindingCandidateInputs,
@@ -50,6 +53,15 @@ import std.occurrence_binding_candidates {
   CrossFileProviderExportedExposure,
   ReferenceBindingProjectionBound,
   resolve_reference_binding_via_structural_candidates,
+  ReferenceDependencyAdmission,
+  ReferenceDependencyAdmittedClauseE,
+  ReferenceDependencyAdmittedTypeReference,
+  ReferenceDependencyExcluded,
+  reference_dependency_admission_for_category,
+  joined_dependency_binding_walk,
+  occurrence_category_clause_e_dependency_inducing_verdict,
+  OccurrenceCategoryClauseEDependencyInducing,
+  OccurrenceCategoryClauseEDependencyNotInducing,
 }
 import std.occurrence_binding {
   AmbiguousBindingCandidates,
@@ -143,6 +155,7 @@ fn idb_candidates() -> List<IdbCandidate> {
     IdbCandidate { file: idb_partial_consumer_source_path, source: idb_partial_consumer_source() },
     IdbCandidate { file: idb_same_file_source_path, source: idb_same_file_source() },
     IdbCandidate { file: idb_conflicting_source_path, source: idb_conflicting_source() },
+    IdbCandidate { file: idb_type_consumer_source_path(), source: idb_type_consumer_source() },
   ]
 }
 
@@ -767,6 +780,299 @@ test fn witness_missing_provider_module_storage_row_refuses_file_projection() ->
             } => true
             _ => false
           }
+      }
+  }
+}
+
+data idb_join_note: String = "ITEM 4 -- THE TYPE-BINDING JOIN, and why it is a join rather than a filter flip.
+
+Clause (e) excludes TypeOccurrence for a stated reason: a parser-produced annotation such as `Int` would enter the population and refuse it whole, because std.types was never given to the closure. The wrong repairs are both available and both forbidden. Reclassifying TypeOccurrence as clause-(e)-inducing would make that clause say something its contract does not and would change every consumer of it silently. Dropping an unbindable type reference to keep the projection green would render `could not see the provider` as `nothing is depended on` -- the empty-observation narrow, worse than the widen DESIGN section 5 forbids, because a widen is merely expensive and a narrow is silently uncovered.
+
+So the admission surface has one arm per route and the walk folds both into ONE population through one shared candidate index. The controls below assert the three facts that distinguish a join from either wrong repair: both routes reach the same population, clause (e) itself is unchanged, and an unbindable type reference refuses by NAME."
+
+fn idb_type_consumer_source_path() -> String {
+  "dag/test/fixture/import_deletion_bridge/type_join_consumer.dag"
+}
+
+fn idb_type_consumer_source() -> String {
+  "module test.fixture.import_deletion_bridge.type_join_consumer\n" +
+    "\n" +
+    "fn reads_disposition(d: LiveTreeDisposition) -> LiveTreeDisposition {\n" +
+    "  d\n" +
+    "}\n"
+}
+
+fn idb_joined_walk_for(consumer_path: String, provider_paths: List<String>) -> StructuralBindingWalk? {
+  match first(idb_closure_row_for(path: consumer_path, grounding: ModuleLocalMemberExposure)) {
+    Absent => none
+    Present { value: consumer_row } =>
+      match assemble_cross_file_binding_closure(
+        consumer: consumer_row,
+        providers: fold(provider_paths, init: idb_no_closure_rows(), f: (acc, path) =>
+          concat(acc, idb_closure_row_for(
+            path: path, grounding: CrossFileProviderExportedExposure,
+          ))),
+      ) {
+        AssembledCrossFileBindingClosureRefused { refusal: _ } => none
+        AssembledCrossFileBindingClosureReady {
+          transport: t, inputs: i, module_files: _, consumer_file: _,
+        } => Present { value: joined_dependency_binding_walk(transport: t, inputs: i) }
+      }
+  }
+}
+
+// CLAUSE (e) IS UNCHANGED. Stated as its own row because the whole point of adding an admission
+// authority instead of editing the filter is that this stays true; a later commit that "simplified"
+// the join by reclassifying the category would pass every other row here and fail this one.
+test fn witness_clause_e_still_excludes_type_references() -> Bool {
+  match occurrence_category_clause_e_dependency_inducing_verdict(category: TypeOccurrence) {
+    OccurrenceCategoryClauseEDependencyNotInducing { category: _ } => true
+    OccurrenceCategoryClauseEDependencyInducing => false
+  }
+}
+
+// THE ADMISSION TABLE, total over the closed coproduct. Asserting only the type arm would let a
+// change that admitted fields or methods pass -- and a field reference admitted as dependency-inducing
+// would make every record access look like a file dependency.
+test fn witness_admission_routes_each_category_exactly_once() -> Bool {
+  idb_admits_clause_e(category: CallableOccurrence)
+    && idb_admits_clause_e(category: ConstructorOccurrence)
+    && idb_admits_clause_e(category: NamespaceSegmentOccurrence)
+    && idb_admits_clause_e(category: LexicalValueOccurrence)
+    && idb_admits_type(category: TypeOccurrence)
+    && idb_excludes(category: FieldOccurrence)
+    && idb_excludes(category: MethodOccurrence)
+}
+
+fn idb_admits_clause_e(category: OccurrenceCategory) -> Bool {
+  match reference_dependency_admission_for_category(category: category) {
+    ReferenceDependencyAdmittedClauseE => true
+    ReferenceDependencyAdmittedTypeReference => false
+    ReferenceDependencyExcluded { category: _ } => false
+  }
+}
+
+fn idb_admits_type(category: OccurrenceCategory) -> Bool {
+  match reference_dependency_admission_for_category(category: category) {
+    ReferenceDependencyAdmittedTypeReference => true
+    ReferenceDependencyAdmittedClauseE => false
+    ReferenceDependencyExcluded { category: _ } => false
+  }
+}
+
+fn idb_excludes(category: OccurrenceCategory) -> Bool {
+  match reference_dependency_admission_for_category(category: category) {
+    ReferenceDependencyExcluded { category: observed } => observed == category
+    ReferenceDependencyAdmittedClauseE => false
+    ReferenceDependencyAdmittedTypeReference => false
+  }
+}
+
+// THE PAIRED DISCRIMINATOR, and the reason it is measured at the EDGE and not at the population.
+//
+// The type-only consumer -- `fn reads_disposition(d: LiveTreeDisposition) -> LiveTreeDisposition` --
+// carries three references: two type annotations naming the cross-file subject, and one clause-(e)
+// mention of its own parameter. So "clause (e) selects nothing here" is FALSE, and an earlier draft of
+// this row asserted exactly that. What is true is the fact that matters: the one reference clause (e)
+// admits is same-file, so the clause-(e) selection produces a Ready projection with ZERO file
+// dependencies. That is the narrow in its purest form -- a successful answer of "this file depends on
+// nothing" for a file whose signature names another file's type.
+//
+// The two rows are stated together because either alone is satisfiable by the wrong implementation:
+// the zero row alone is satisfied by a projector that produces nothing at all, and the one-edge row
+// alone is satisfied by a projector that always emits an edge to any supplied provider.
+test fn witness_clause_e_alone_derives_no_edge_for_a_type_only_consumer() -> Bool {
+  match idb_clause_e_edges_for(
+    consumer_path: idb_type_consumer_source_path(),
+    provider_path: idb_live_tree_source_path,
+  ) {
+    Absent => false
+    Present { value: edges } => length(edges) == 0
+  }
+}
+
+test fn witness_joined_walk_derives_the_type_reference_edge() -> Bool {
+  match idb_joined_edges_for(
+    consumer_path: idb_type_consumer_source_path(),
+    provider_path: idb_live_tree_source_path,
+  ) {
+    Absent => false
+    Present { value: edges } =>
+      length(edges) == 1
+        && fold(edges, init: false, f: (found, edge) =>
+          found || ((edge.provider_file as String) == idb_live_tree_source_path))
+  }
+}
+
+fn idb_clause_e_edges_for(
+  consumer_path: String,
+  provider_path: String
+) -> List<DirectFileDependency>? {
+  match first(idb_closure_row_for(path: consumer_path, grounding: ModuleLocalMemberExposure)) {
+    Absent => none
+    Present { value: consumer_row } =>
+      match assemble_cross_file_binding_closure(
+        consumer: consumer_row,
+        providers: idb_closure_row_for(
+          path: provider_path, grounding: CrossFileProviderExportedExposure,
+        ),
+      ) {
+        AssembledCrossFileBindingClosureRefused { refusal: _ } => none
+        AssembledCrossFileBindingClosureReady {
+          transport: t, inputs: i, module_files: rows, consumer_file: _,
+        } =>
+          match module_path_file_index_from_rows(rows: rows) {
+            ModulePathFileIndexRefused { refusal: _ } => none
+            ModulePathFileIndexReady { entries: module_files } =>
+              match structural_binding_walk_selected_references(
+                transport: t, inputs: i,
+                references: idb_clause_e_refs_for(path: consumer_path),
+              ) {
+                StructuralBindingWalkRefused { refusal: _ } => none
+                StructuralBindingWalkReady { population: population } =>
+                  match reference_derived_dependency_projection(
+                    population: population, module_files: module_files,
+                  ) {
+                    ReferenceDerivedDependencyProjectionReady {
+                      binding_provenance: _, file_dependencies: edges, bound_population: _,
+                    } => Present { value: edges }
+                    _ => none
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn idb_joined_edges_for(consumer_path: String, provider_path: String) -> List<DirectFileDependency>? {
+  match first(idb_closure_row_for(path: consumer_path, grounding: ModuleLocalMemberExposure)) {
+    Absent => none
+    Present { value: consumer_row } =>
+      match assemble_cross_file_binding_closure(
+        consumer: consumer_row,
+        providers: idb_closure_row_for(
+          path: provider_path, grounding: CrossFileProviderExportedExposure,
+        ),
+      ) {
+        AssembledCrossFileBindingClosureRefused { refusal: _ } => none
+        AssembledCrossFileBindingClosureReady {
+          transport: t, inputs: i, module_files: rows, consumer_file: _,
+        } =>
+          match module_path_file_index_from_rows(rows: rows) {
+            ModulePathFileIndexRefused { refusal: _ } => none
+            ModulePathFileIndexReady { entries: module_files } =>
+              match joined_dependency_binding_walk(transport: t, inputs: i) {
+                StructuralBindingWalkRefused { refusal: _ } => none
+                StructuralBindingWalkReady { population: population } =>
+                  match reference_derived_dependency_projection(
+                    population: population, module_files: module_files,
+                  ) {
+                    ReferenceDerivedDependencyProjectionReady {
+                      binding_provenance: _, file_dependencies: edges, bound_population: _,
+                    } => Present { value: edges }
+                    _ => none
+                  }
+              }
+          }
+      }
+  }
+}
+
+// ONE POPULATION, NOT TWO, at an exact count. Three references are admitted for this consumer -- two
+// through the type route and one through clause (e) -- and all three must appear as providers in a
+// SINGLE population. Two populations would each need their own totality law and could disagree about
+// one file, which is the fork this join exists to prevent. The count is exact rather than a lower
+// bound: a join that dropped one route would still satisfy any >= assertion.
+test fn witness_both_routes_reach_one_population() -> Bool {
+  match idb_joined_walk_for(
+    consumer_path: idb_consumer_source_path,
+    provider_paths: [idb_live_tree_source_path],
+  ) {
+    Absent => false
+    Present { value: walk } =>
+      match walk {
+        StructuralBindingWalkRefused { refusal: _ } => false
+        StructuralBindingWalkReady { population: population } =>
+          match population {
+            AllReferencesBound { providers: providers } =>
+              length(providers) == 3
+                && length(idb_clause_e_refs_for(path: idb_consumer_source_path)) == 1
+            ReferencePopulationRefused { first_failure: _, more_failures: _ } => false
+          }
+      }
+  }
+}
+
+data idb_demand_note: String = "THE DEMAND, which is the whole reason the production switch waits. A type reference whose provider was never supplied must refuse and must NAME the occurrence it could not bind -- that named occurrence IS the loader's work list. A skip would leave the projection green and the closure short, with the deficit's frequency zeroed by construction so it never ranks for fixing."
+
+test fn witness_unsupplied_type_reference_refuses_by_name() -> Bool {
+  match idb_joined_walk_for(
+    consumer_path: idb_type_consumer_source_path(),
+    provider_paths: idb_no_strings(),
+  ) {
+    Absent => false
+    Present { value: walk } =>
+      match walk {
+        StructuralBindingWalkRefused { refusal: _ } => false
+        StructuralBindingWalkReady { population: population } =>
+          match population {
+            AllReferencesBound { providers: _ } => false
+            ReferencePopulationRefused { first_failure: failure, more_failures: _ } =>
+              match failure {
+                ReferenceBindingProjectionUnbound { occurrence: occurrence } =>
+                  idb_named_occurrence_is(
+                    consumer_path: idb_type_consumer_source_path(),
+                    occurrence: occurrence,
+                    name: idb_subject_name,
+                  )
+                _ => false
+              }
+          }
+      }
+  }
+}
+
+fn idb_no_strings() -> List<String> { [] }
+
+fn idb_named_occurrence_is(consumer_path: String, occurrence: OccurrenceId, name: String) -> Bool {
+  match idb_parsed_row(path: consumer_path) {
+    Absent => false
+    Present { value: row } =>
+      match row {
+        ParsedOccurrenceBindingSourceRefused => false
+        ParsedOccurrenceBindingSourceReady { transport: t, module_path: _ } =>
+          match idb_index_entry_for_occurrence(transport: t, occurrence: occurrence) {
+            Absent => false
+            Present { value: entry } => entry.projection.authored_name == name
+          }
+      }
+  }
+}
+
+fn idb_clause_e_refs_for(path: String) -> List<ReferenceOccurrence> {
+  match idb_parsed_row(path: path) {
+    Absent => idb_no_references()
+    Present { value: row } =>
+      match row {
+        ParsedOccurrenceBindingSourceRefused => idb_no_references()
+        ParsedOccurrenceBindingSourceReady { transport: t, module_path: _ } =>
+          fold(t.references, init: idb_no_references(), f: (acc, r) =>
+            match reference_dependency_admission_for_category(category: r.category) {
+              ReferenceDependencyAdmittedClauseE => concat(acc, [r])
+              ReferenceDependencyAdmittedTypeReference => acc
+              ReferenceDependencyExcluded { category: _ } => acc
+            })
+      }
+  }
+}
+
+fn idb_all_refs_for(path: String) -> List<ReferenceOccurrence> {
+  match idb_parsed_row(path: path) {
+    Absent => idb_no_references()
+    Present { value: row } =>
+      match row {
+        ParsedOccurrenceBindingSourceRefused => idb_no_references()
+        ParsedOccurrenceBindingSourceReady { transport: t, module_path: _ } => t.references
       }
   }
 }

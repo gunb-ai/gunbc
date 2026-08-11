@@ -21,6 +21,7 @@ use self::ModulePathFileIndexRefusal::*;
 use self::OccurrenceCandidateIndexBuild::*;
 use self::OccurrenceModulePathIndexRefusal::*;
 use self::ReferenceBindingProjection::*;
+use self::ReferenceDependencyAdmission::*;
 use self::ReferenceDerivedClauseEProduction::*;
 use self::ReferenceDerivedClauseEProductionRefusal::*;
 use self::ReferenceDerivedDependencyProjection::*;
@@ -2074,6 +2075,156 @@ pub fn reference_derived_dependency_projection(
     CrossFileBindingProvenancePopulation::CrossFileBindingPopulationRefused { first_failure, more_failures, .. } => Rc::new(ReferenceDerivedDependencyProjection::ReferenceDerivedDependencyProjectionFileRefused {
     first_failure: first_failure.clone(),
     more_failures: more_failures.clone(),
+}),
+}
+}
+
+pub fn reference_dependency_admission_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "THE DEPENDENCY-INDUCING QUESTION IS BROADER THAN CLAUSE (e), and this authority composes the two rather than widening either.\n\nClause (e) is one clause of one contract, and its verdict is deliberately left alone: TypeOccurrence is still OccurrenceCategoryClauseEDependencyNotInducing, because reclassifying it there to reuse the filter would make the clause say something its own contract does not, and every consumer of that clause would silently inherit the change. What is true instead is that a type reference induces a file dependency by a DIFFERENT route -- N2's typed entry, whose category guard is part of its contract -- so the admission surface has one arm per route and an excluded arm that carries the category it excluded.\n\nComposition, not a second table: this reads the clause-(e) verdict first and only inspects the category inside its NotInducing arm. A parallel match over the seven categories would be a second classification of the same coproduct, so clause (e) remains the authority for its own question and this authority answers only what it adds.\n\nWHY THE PRODUCTION PROJECTION DOES NOT YET USE IT, stated because a surface with no consumer is exactly what this repository calls coverage by illusion. Admitting type references makes a parser-produced annotation such as `Int` enter the population, and its declaration is not in an assembled closure that was never given std.types -- so the population refuses, WHOLE, by the totality law. That refusal is correct and is the point: it is the demand the loader has to satisfy, named at the exact occurrence, and it is the loader work list rather than a skip. Silently dropping an unbindable type reference to keep the projection green would be the empty-observation narrow -- rendering `could not see the provider` as `nothing is depended on` -- which is strictly worse than the widen DESIGN section 5 already forbids.\n\nSo this lands as the joined walk plus its witnesses, and the production switch at reference_derived_dependency_projection_for_assembled_closure happens when the loader can supply the providers the demand names. DISSOLVE-ON: that switch, at which point reference_derived_dependency_binding_references has no caller and deletes.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum ReferenceDependencyAdmission {
+    ReferenceDependencyAdmittedClauseE,
+    ReferenceDependencyAdmittedTypeReference,
+    ReferenceDependencyExcluded { category: OccurrenceCategory },
+}
+impl ReferenceDependencyAdmission {
+    pub fn category(&self) -> OccurrenceCategory {
+        match self {
+            ReferenceDependencyAdmission::ReferenceDependencyAdmittedClauseE => {
+                panic!("no category on unit variant")
+            }
+            ReferenceDependencyAdmission::ReferenceDependencyAdmittedTypeReference => {
+                panic!("no category on unit variant")
+            }
+            ReferenceDependencyAdmission::ReferenceDependencyExcluded {
+                category: __val, ..
+            } => __val.clone(),
+        }
+    }
+}
+
+pub fn reference_dependency_admission_for_category(
+    category: OccurrenceCategory,
+) -> Rc<ReferenceDependencyAdmission> {
+    match (*occurrence_category_clause_e_dependency_inducing_verdict(category.clone())).clone() {
+    OccurrenceCategoryClauseEDependencyInducingVerdict::OccurrenceCategoryClauseEDependencyInducing => Rc::new(ReferenceDependencyAdmission::ReferenceDependencyAdmittedClauseE),
+    OccurrenceCategoryClauseEDependencyInducingVerdict::OccurrenceCategoryClauseEDependencyNotInducing { category: excluded, .. } => match excluded.clone() {
+    OccurrenceCategory::TypeOccurrence => Rc::new(ReferenceDependencyAdmission::ReferenceDependencyAdmittedTypeReference),
+    OccurrenceCategory::FieldOccurrence => Rc::new(ReferenceDependencyAdmission::ReferenceDependencyExcluded {
+    category: excluded.clone(),
+}),
+    OccurrenceCategory::MethodOccurrence => Rc::new(ReferenceDependencyAdmission::ReferenceDependencyExcluded {
+    category: excluded.clone(),
+}),
+    OccurrenceCategory::LexicalValueOccurrence => Rc::new(ReferenceDependencyAdmission::ReferenceDependencyExcluded {
+    category: excluded.clone(),
+}),
+    OccurrenceCategory::CallableOccurrence => Rc::new(ReferenceDependencyAdmission::ReferenceDependencyExcluded {
+    category: excluded.clone(),
+}),
+    OccurrenceCategory::ConstructorOccurrence => Rc::new(ReferenceDependencyAdmission::ReferenceDependencyExcluded {
+    category: excluded.clone(),
+}),
+    OccurrenceCategory::NamespaceSegmentOccurrence => Rc::new(ReferenceDependencyAdmission::ReferenceDependencyExcluded {
+    category: excluded.clone(),
+}),
+},
+}
+}
+
+pub fn resolve_type_reference_via_structural_candidates_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "The N2 typed entry with the index SUPPLIED instead of rebuilt. resolve_type_reference_containment_binding takes inputs and builds a candidate index per call, which is correct for a single-reference API and is a cost-shape defect inside a walk: one index per reference over a whole transport is quadratic in the transport, and DESIGN section 6 fixes a proven cost shape regardless of the realized n. The category guard is the SAME contract -- a non-TypeOccurrence reference refuses with ReferenceBindingProjectionWrongCategory before any candidate is enumerated -- so this is the same decision on a shared index, not a second one.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn resolve_type_reference_via_structural_candidates(
+    transport: Rc<OccurrenceTransport>,
+    index: Rc<OccurrenceCandidateIndex>,
+    reference: Rc<ReferenceOccurrence>,
+) -> Rc<ReferenceBindingProjection> {
+    match reference.category.clone() {
+        OccurrenceCategory::TypeOccurrence => resolve_reference_via_structural_candidates(
+            transport.clone(),
+            index.clone(),
+            reference.clone(),
+        ),
+        _ => Rc::new(
+            ReferenceBindingProjection::ReferenceBindingProjectionWrongCategory {
+                occurrence: reference.occurrence.clone(),
+                observed: reference.category.clone(),
+            },
+        ),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct JoinedDependencyBindingBuild {
+    pub projections_reversed: Rc<Vec<Rc<ReferenceBindingProjection>>>,
+}
+
+pub fn joined_dependency_binding_walk_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "ONE POPULATION, TWO ADMISSION ROUTES. Clause-(e) references and type references reach the SAME BoundReferencePopulation through the same fold over the same candidate index: the projections are concatenated in transport order and bound_reference_population_from_projections is applied once. That is what makes this a join rather than two closures -- a second population would need its own totality law, its own refusal ordering and its own file projection, and the two could then disagree about one file.\n\nThe index is built ONCE for the whole walk. Excluded categories contribute nothing and are not errors: a field or method reference is not a dependency-inducing position, which is a fact about the position and not a failure to bind.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn joined_dependency_binding_walk(
+    transport: Rc<OccurrenceTransport>,
+    inputs: Rc<OccurrenceBindingCandidateInputs>,
+) -> Rc<StructuralBindingWalk> {
+    match (*occurrence_candidate_index_build(transport.clone(), inputs.clone())).clone() {
+    OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexTransportRefused { refusal: refusal, .. } => Rc::new(StructuralBindingWalk::StructuralBindingWalkRefused {
+    refusal: Rc::new(StructuralBindingIndexRefusal::StructuralBindingTransportRefusal {
+    refusal: refusal.clone(),
+}),
+}),
+    OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexModulePathRefused { refusal: refusal, .. } => Rc::new(StructuralBindingWalk::StructuralBindingWalkRefused {
+    refusal: Rc::new(StructuralBindingIndexRefusal::StructuralBindingModulePathRefusal {
+    refusal: refusal.clone(),
+}),
+}),
+    OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexExposureRefused { refusal: refusal, .. } => Rc::new(StructuralBindingWalk::StructuralBindingWalkRefused {
+    refusal: Rc::new(StructuralBindingIndexRefusal::StructuralBindingExposureRefusal {
+    refusal: refusal.clone(),
+}),
+}),
+    OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexAuthoredOrderRefused { refusal: refusal, .. } => Rc::new(StructuralBindingWalk::StructuralBindingWalkRefused {
+    refusal: Rc::new(StructuralBindingIndexRefusal::StructuralBindingAuthoredOrderRefusal {
+    refusal: refusal.clone(),
+}),
+}),
+    OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexDeclarationBucketRefused { occurrence: occurrence, .. } => Rc::new(StructuralBindingWalk::StructuralBindingWalkRefused {
+    refusal: Rc::new(StructuralBindingIndexRefusal::StructuralBindingDeclarationBucketRefusal {
+    occurrence: occurrence.clone(),
+}),
+}),
+    OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexReady { index: index, .. } => Rc::new(StructuralBindingWalk::StructuralBindingWalkReady {
+    population: bound_reference_population_from_projections(v1_rt::reverse(transport.references.clone().iter().cloned().fold(Rc::new(JoinedDependencyBindingBuild {
+    projections_reversed: Rc::new(vec![]),
+}), |acc: Rc<JoinedDependencyBindingBuild>, reference: Rc<ReferenceOccurrence>| match (*reference_dependency_admission_for_category(reference.category.clone())).clone() {
+    ReferenceDependencyAdmission::ReferenceDependencyAdmittedClauseE => Rc::new(JoinedDependencyBindingBuild {
+    projections_reversed: v1_rt::concat(Rc::new(vec![resolve_reference_via_structural_candidates(transport.clone(), index.clone(), reference.clone())]), acc.projections_reversed.clone()),
+}),
+    ReferenceDependencyAdmission::ReferenceDependencyAdmittedTypeReference => Rc::new(JoinedDependencyBindingBuild {
+    projections_reversed: v1_rt::concat(Rc::new(vec![resolve_type_reference_via_structural_candidates(transport.clone(), index.clone(), reference.clone())]), acc.projections_reversed.clone()),
+}),
+    ReferenceDependencyAdmission::ReferenceDependencyExcluded { category: _, .. } => acc.clone(),
+}).projections_reversed.clone())),
 }),
 }
 }

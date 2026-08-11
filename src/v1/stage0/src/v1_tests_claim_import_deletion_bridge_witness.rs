@@ -25,6 +25,10 @@ use crate::std_occurrence_binding_candidates::ReferenceBindingProjection::{
     ReferenceBindingProjectionAmbiguous, ReferenceBindingProjectionBound,
     ReferenceBindingProjectionUnbound,
 };
+use crate::std_occurrence_binding_candidates::ReferenceDependencyAdmission::{
+    ReferenceDependencyAdmittedClauseE, ReferenceDependencyAdmittedTypeReference,
+    ReferenceDependencyExcluded,
+};
 use crate::std_occurrence_binding_candidates::ReferenceDerivedDependencyProjection::{
     ReferenceDerivedDependencyProjectionBindingRefused,
     ReferenceDerivedDependencyProjectionFileRefused, ReferenceDerivedDependencyProjectionReady,
@@ -35,8 +39,10 @@ use crate::std_occurrence_binding_candidates::StructuralBindingWalk::{
 };
 pub use crate::std_occurrence_binding_candidates::{
     assemble_cross_file_binding_closure, cross_file_binding_provenance_from_bound_population,
-    direct_file_dependencies_from_provenances, module_path_file_index_from_rows,
-    reference_derived_dependency_projection, resolve_reference_binding_via_structural_candidates,
+    direct_file_dependencies_from_provenances, joined_dependency_binding_walk,
+    module_path_file_index_from_rows, occurrence_category_clause_e_dependency_inducing_verdict,
+    reference_dependency_admission_for_category, reference_derived_dependency_projection,
+    resolve_reference_binding_via_structural_candidates,
     structural_binding_walk_selected_references,
 };
 pub use crate::std_occurrence_binding_candidates::{
@@ -44,12 +50,20 @@ pub use crate::std_occurrence_binding_candidates::{
     BoundReferencePopulation, BoundReferenceProvider, CrossFileBindingClosureRow,
     CrossFileBindingProvenance, CrossFileBindingProvenancePopulation, DeclarationExposureGrounding,
     DirectFileDependency, ModulePathFileIndex, ModulePathFileIndexRefusal, ModulePathFileRow,
-    OccurrenceBindingCandidateInputs, ReferenceBindingProjection,
+    OccurrenceBindingCandidateInputs, ReferenceBindingProjection, ReferenceDependencyAdmission,
     ReferenceDerivedDependencyProjection, StructuralBindingIndexRefusal, StructuralBindingWalk,
 };
+use crate::std_occurrence_identity::OccurrenceCategory::{
+    CallableOccurrence, ConstructorOccurrence, FieldOccurrence, LexicalValueOccurrence,
+    MethodOccurrence, NamespaceSegmentOccurrence, TypeOccurrence,
+};
+pub use crate::std_occurrence_identity::OccurrenceCategoryClauseEDependencyInducingVerdict;
+use crate::std_occurrence_identity::OccurrenceCategoryClauseEDependencyInducingVerdict::{
+    OccurrenceCategoryClauseEDependencyInducing, OccurrenceCategoryClauseEDependencyNotInducing,
+};
 pub use crate::std_occurrence_identity::{
-    DeclarationOccurrence, OccurrenceId, OccurrenceIndexEntry, OccurrenceTransport,
-    ReferenceOccurrence,
+    DeclarationOccurrence, OccurrenceCategory, OccurrenceId, OccurrenceIndexEntry,
+    OccurrenceTransport, ReferenceOccurrence,
 };
 use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, FilePath, List, NonEmptyStr};
@@ -204,6 +218,10 @@ pub fn idb_candidates() -> Rc<Vec<Rc<IdbCandidate>>> {
         Rc::new(IdbCandidate {
             file: idb_conflicting_source_path(),
             source: idb_conflicting_source(),
+        }),
+        Rc::new(IdbCandidate {
+            file: idb_type_consumer_source_path(),
+            source: idb_type_consumer_source(),
         }),
     ])
 }
@@ -1208,4 +1226,310 @@ pub fn witness_missing_provider_module_storage_row_refuses_file_projection() -> 
 },
 },
 }
+}
+
+pub fn idb_join_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "ITEM 4 -- THE TYPE-BINDING JOIN, and why it is a join rather than a filter flip.\n\nClause (e) excludes TypeOccurrence for a stated reason: a parser-produced annotation such as `Int` would enter the population and refuse it whole, because std.types was never given to the closure. The wrong repairs are both available and both forbidden. Reclassifying TypeOccurrence as clause-(e)-inducing would make that clause say something its contract does not and would change every consumer of it silently. Dropping an unbindable type reference to keep the projection green would render `could not see the provider` as `nothing is depended on` -- the empty-observation narrow, worse than the widen DESIGN section 5 forbids, because a widen is merely expensive and a narrow is silently uncovered.\n\nSo the admission surface has one arm per route and the walk folds both into ONE population through one shared candidate index. The controls below assert the three facts that distinguish a join from either wrong repair: both routes reach the same population, clause (e) itself is unchanged, and an unbindable type reference refuses by NAME.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn idb_type_consumer_source_path() -> String {
+    "dag/test/fixture/import_deletion_bridge/type_join_consumer.dag".to_string()
+}
+
+pub fn idb_type_consumer_source() -> String {
+    (((("module test.fixture.import_deletion_bridge.type_join_consumer\n".to_string()
+        + &"\n".to_string())
+        + &"fn reads_disposition(d: LiveTreeDisposition) -> LiveTreeDisposition {\n".to_string())
+        + &"  d\n".to_string())
+        + &"}\n".to_string())
+}
+
+pub fn idb_joined_walk_for(
+    consumer_path: String,
+    provider_paths: Rc<Vec<String>>,
+) -> Option<Rc<StructuralBindingWalk>> {
+    match idb_closure_row_for(
+        consumer_path.clone(),
+        DeclarationExposureGrounding::ModuleLocalMemberExposure,
+    )
+    .first()
+    .cloned()
+    {
+        None => None,
+        Some(consumer_row) => match (*assemble_cross_file_binding_closure(
+            consumer_row.clone(),
+            provider_paths.clone().iter().cloned().fold(
+                idb_no_closure_rows(),
+                |acc: Rc<Vec<Rc<CrossFileBindingClosureRow>>>, path: String| {
+                    v1_rt::concat(
+                        acc,
+                        idb_closure_row_for(
+                            path.clone(),
+                            DeclarationExposureGrounding::CrossFileProviderExportedExposure,
+                        ),
+                    )
+                },
+            ),
+        ))
+        .clone()
+        {
+            AssembledCrossFileBindingClosure::AssembledCrossFileBindingClosureRefused {
+                refusal: _,
+                ..
+            } => None,
+            AssembledCrossFileBindingClosure::AssembledCrossFileBindingClosureReady {
+                transport: t,
+                inputs: i,
+                ..
+            } => Some(joined_dependency_binding_walk(t.clone(), i.clone())),
+        },
+    }
+}
+
+pub fn witness_clause_e_still_excludes_type_references() -> bool {
+    match (*occurrence_category_clause_e_dependency_inducing_verdict(OccurrenceCategory::TypeOccurrence)).clone() {
+    OccurrenceCategoryClauseEDependencyInducingVerdict::OccurrenceCategoryClauseEDependencyNotInducing { category: _, .. } => true,
+    OccurrenceCategoryClauseEDependencyInducingVerdict::OccurrenceCategoryClauseEDependencyInducing => false,
+}
+}
+
+pub fn witness_admission_routes_each_category_exactly_once() -> bool {
+    ((((((idb_admits_clause_e(OccurrenceCategory::CallableOccurrence)
+        && idb_admits_clause_e(OccurrenceCategory::ConstructorOccurrence))
+        && idb_admits_clause_e(OccurrenceCategory::NamespaceSegmentOccurrence))
+        && idb_admits_clause_e(OccurrenceCategory::LexicalValueOccurrence))
+        && idb_admits_type(OccurrenceCategory::TypeOccurrence))
+        && idb_excludes(OccurrenceCategory::FieldOccurrence))
+        && idb_excludes(OccurrenceCategory::MethodOccurrence))
+}
+
+pub fn idb_admits_clause_e(category: OccurrenceCategory) -> bool {
+    match (*reference_dependency_admission_for_category(category.clone())).clone() {
+        ReferenceDependencyAdmission::ReferenceDependencyAdmittedClauseE => true,
+        ReferenceDependencyAdmission::ReferenceDependencyAdmittedTypeReference => false,
+        ReferenceDependencyAdmission::ReferenceDependencyExcluded { category: _, .. } => false,
+    }
+}
+
+pub fn idb_admits_type(category: OccurrenceCategory) -> bool {
+    match (*reference_dependency_admission_for_category(category.clone())).clone() {
+        ReferenceDependencyAdmission::ReferenceDependencyAdmittedTypeReference => true,
+        ReferenceDependencyAdmission::ReferenceDependencyAdmittedClauseE => false,
+        ReferenceDependencyAdmission::ReferenceDependencyExcluded { category: _, .. } => false,
+    }
+}
+
+pub fn idb_excludes(category: OccurrenceCategory) -> bool {
+    match (*reference_dependency_admission_for_category(category.clone())).clone() {
+        ReferenceDependencyAdmission::ReferenceDependencyExcluded {
+            category: observed, ..
+        } => (observed.clone() == category.clone()),
+        ReferenceDependencyAdmission::ReferenceDependencyAdmittedClauseE => false,
+        ReferenceDependencyAdmission::ReferenceDependencyAdmittedTypeReference => false,
+    }
+}
+
+pub fn witness_clause_e_alone_derives_no_edge_for_a_type_only_consumer() -> bool {
+    match idb_clause_e_edges_for(idb_type_consumer_source_path(), idb_live_tree_source_path()) {
+        None => false,
+        Some(edges) => ((edges.clone().len() as i64) == 0),
+    }
+}
+
+pub fn witness_joined_walk_derives_the_type_reference_edge() -> bool {
+    match idb_joined_edges_for(idb_type_consumer_source_path(), idb_live_tree_source_path()) {
+        None => false,
+        Some(edges) => {
+            (((edges.clone().len() as i64) == 1)
+                && edges.clone().iter().cloned().fold(
+                    false,
+                    |found: bool, edge: Rc<DirectFileDependency>| {
+                        (found || (edge.provider_file.clone() == idb_live_tree_source_path()))
+                    },
+                ))
+        }
+    }
+}
+
+pub fn idb_clause_e_edges_for(
+    consumer_path: String,
+    provider_path: String,
+) -> Option<Rc<Vec<Rc<DirectFileDependency>>>> {
+    match idb_closure_row_for(consumer_path.clone(), DeclarationExposureGrounding::ModuleLocalMemberExposure).first().cloned() {
+    None => None,
+    Some(consumer_row) => match (*assemble_cross_file_binding_closure(consumer_row.clone(), idb_closure_row_for(provider_path.clone(), DeclarationExposureGrounding::CrossFileProviderExportedExposure))).clone() {
+    AssembledCrossFileBindingClosure::AssembledCrossFileBindingClosureRefused { refusal: _, .. } => None,
+    AssembledCrossFileBindingClosure::AssembledCrossFileBindingClosureReady { transport: t, inputs: i, module_files: rows, .. } => match (*module_path_file_index_from_rows(rows.clone())).clone() {
+    ModulePathFileIndex::ModulePathFileIndexRefused { refusal: _, .. } => None,
+    ModulePathFileIndex::ModulePathFileIndexReady { entries: module_files, .. } => match (*structural_binding_walk_selected_references(t.clone(), i.clone(), idb_clause_e_refs_for(consumer_path.clone()))).clone() {
+    StructuralBindingWalk::StructuralBindingWalkRefused { refusal: _, .. } => None,
+    StructuralBindingWalk::StructuralBindingWalkReady { population: population, .. } => match (*reference_derived_dependency_projection(population.clone(), module_files.clone())).clone() {
+    ReferenceDerivedDependencyProjection::ReferenceDerivedDependencyProjectionReady { file_dependencies: edges, .. } => Some(edges.clone()),
+    _ => None,
+},
+},
+},
+},
+}
+}
+
+pub fn idb_joined_edges_for(
+    consumer_path: String,
+    provider_path: String,
+) -> Option<Rc<Vec<Rc<DirectFileDependency>>>> {
+    match idb_closure_row_for(consumer_path.clone(), DeclarationExposureGrounding::ModuleLocalMemberExposure).first().cloned() {
+    None => None,
+    Some(consumer_row) => match (*assemble_cross_file_binding_closure(consumer_row.clone(), idb_closure_row_for(provider_path.clone(), DeclarationExposureGrounding::CrossFileProviderExportedExposure))).clone() {
+    AssembledCrossFileBindingClosure::AssembledCrossFileBindingClosureRefused { refusal: _, .. } => None,
+    AssembledCrossFileBindingClosure::AssembledCrossFileBindingClosureReady { transport: t, inputs: i, module_files: rows, .. } => match (*module_path_file_index_from_rows(rows.clone())).clone() {
+    ModulePathFileIndex::ModulePathFileIndexRefused { refusal: _, .. } => None,
+    ModulePathFileIndex::ModulePathFileIndexReady { entries: module_files, .. } => match (*joined_dependency_binding_walk(t.clone(), i.clone())).clone() {
+    StructuralBindingWalk::StructuralBindingWalkRefused { refusal: _, .. } => None,
+    StructuralBindingWalk::StructuralBindingWalkReady { population: population, .. } => match (*reference_derived_dependency_projection(population.clone(), module_files.clone())).clone() {
+    ReferenceDerivedDependencyProjection::ReferenceDerivedDependencyProjectionReady { file_dependencies: edges, .. } => Some(edges.clone()),
+    _ => None,
+},
+},
+},
+},
+}
+}
+
+pub fn witness_both_routes_reach_one_population() -> bool {
+    match idb_joined_walk_for(
+        idb_consumer_source_path(),
+        Rc::new(vec![idb_live_tree_source_path()]),
+    ) {
+        None => false,
+        Some(walk) => match (*walk.clone()).clone() {
+            StructuralBindingWalk::StructuralBindingWalkRefused { refusal: _, .. } => false,
+            StructuralBindingWalk::StructuralBindingWalkReady {
+                population: population,
+                ..
+            } => match (*population.clone()).clone() {
+                BoundReferencePopulation::AllReferencesBound {
+                    providers: providers,
+                    ..
+                } => {
+                    (((providers.clone().len() as i64) == 3)
+                        && ((idb_clause_e_refs_for(idb_consumer_source_path()).len() as i64) == 1))
+                }
+                BoundReferencePopulation::ReferencePopulationRefused { .. } => false,
+            },
+        },
+    }
+}
+
+pub fn idb_demand_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "THE DEMAND, which is the whole reason the production switch waits. A type reference whose provider was never supplied must refuse and must NAME the occurrence it could not bind -- that named occurrence IS the loader's work list. A skip would leave the projection green and the closure short, with the deficit's frequency zeroed by construction so it never ranks for fixing.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn witness_unsupplied_type_reference_refuses_by_name() -> bool {
+    match idb_joined_walk_for(idb_type_consumer_source_path(), idb_no_strings()) {
+        None => false,
+        Some(walk) => match (*walk.clone()).clone() {
+            StructuralBindingWalk::StructuralBindingWalkRefused { refusal: _, .. } => false,
+            StructuralBindingWalk::StructuralBindingWalkReady {
+                population: population,
+                ..
+            } => match (*population.clone()).clone() {
+                BoundReferencePopulation::AllReferencesBound { providers: _, .. } => false,
+                BoundReferencePopulation::ReferencePopulationRefused {
+                    first_failure: failure,
+                    ..
+                } => match (*failure.clone()).clone() {
+                    ReferenceBindingProjection::ReferenceBindingProjectionUnbound {
+                        occurrence: occurrence,
+                        ..
+                    } => idb_named_occurrence_is(
+                        idb_type_consumer_source_path(),
+                        occurrence.clone(),
+                        idb_subject_name(),
+                    ),
+                    _ => false,
+                },
+            },
+        },
+    }
+}
+
+pub fn idb_no_strings() -> Rc<Vec<String>> {
+    Rc::new(vec![])
+}
+
+pub fn idb_named_occurrence_is(
+    consumer_path: String,
+    occurrence: OccurrenceId,
+    name: String,
+) -> bool {
+    match idb_parsed_row(consumer_path.clone()) {
+        None => false,
+        Some(row) => match (*row.clone()).clone() {
+            ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceRefused => false,
+            ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceReady {
+                transport: t,
+                ..
+            } => match idb_index_entry_for_occurrence(t.clone(), occurrence.clone()) {
+                None => false,
+                Some(entry) => (entry.projection.clone().authored_name.clone() == name.clone()),
+            },
+        },
+    }
+}
+
+pub fn idb_clause_e_refs_for(path: String) -> Rc<Vec<Rc<ReferenceOccurrence>>> {
+    match idb_parsed_row(path.clone()) {
+        None => idb_no_references(),
+        Some(row) => match (*row.clone()).clone() {
+            ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceRefused => {
+                idb_no_references()
+            }
+            ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceReady {
+                transport: t,
+                ..
+            } => t.references.clone().iter().cloned().fold(
+                idb_no_references(),
+                |acc: Rc<Vec<Rc<ReferenceOccurrence>>>, r: Rc<ReferenceOccurrence>| {
+                    match (*reference_dependency_admission_for_category(r.category.clone())).clone()
+                    {
+                        ReferenceDependencyAdmission::ReferenceDependencyAdmittedClauseE => {
+                            v1_rt::concat(acc.clone(), Rc::new(vec![r.clone()]))
+                        }
+                        ReferenceDependencyAdmission::ReferenceDependencyAdmittedTypeReference => {
+                            acc.clone()
+                        }
+                        ReferenceDependencyAdmission::ReferenceDependencyExcluded {
+                            category: _,
+                            ..
+                        } => acc.clone(),
+                    }
+                },
+            ),
+        },
+    }
+}
+
+pub fn idb_all_refs_for(path: String) -> Rc<Vec<Rc<ReferenceOccurrence>>> {
+    match idb_parsed_row(path.clone()) {
+        None => idb_no_references(),
+        Some(row) => match (*row.clone()).clone() {
+            ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceRefused => {
+                idb_no_references()
+            }
+            ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceReady {
+                transport: t,
+                ..
+            } => t.references.clone(),
+        },
+    }
 }
