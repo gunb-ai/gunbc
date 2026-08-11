@@ -634,7 +634,11 @@ fn band_key_for_label(label: String) -> String {
 }
 
 test fn witness_band_fold_pins_operator_vocabulary() -> Bool {
-  belt_dispatch_label_band_rows().length() == 8
+  belt_dispatch_label_band_rows().length() == 12
+    && band_key_for_label(label: "stale_session") == "loud"
+    && band_key_for_label(label: "session_liveness_unobserved") == "loud"
+    && band_key_for_label(label: "deployed_revision_drifted") == "loud"
+    && band_key_for_label(label: "deployed_revision_unobserved") == "loud"
     && band_key_for_label(label: "spawned") == "ok"
     && band_key_for_label(label: "already_live") == "ok"
     && band_key_for_label(label: "disabled") == "fail"
