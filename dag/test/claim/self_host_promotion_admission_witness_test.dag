@@ -627,3 +627,109 @@ test fn unmaterialized_candidate_artifact_is_refused_at_promotion() -> Bool {
   !promotion_is_admitted(o: o)
     && promotion_refusal_carries(o: o, cause: ^refusal_artifact_not_materialized)
 }
+
+// DISCRIMINATING RED: chain splicing. Candidate A is bundled with a successor whose
+// own produced_by_candidate names a DIFFERENT candidate B. Every receipt joins
+// internally, so without an explicit chain check both halves look valid and the
+// successor inherits admission from a candidate that never produced it.
+test fn spliced_candidate_and_successor_chains_are_refused() -> Bool {
+  let other_candidate = CandidateGeneration {
+    identity: pa_identity(
+      closure_label: "OTHER-candidate-closure",
+      artifact_hex: pa_seed_artifact_hex
+    ),
+    produced_by_seed: pa_seed()
+  }
+  let spliced_successor = SuccessorGeneration {
+    identity: pa_successor_identity(),
+    produced_by_candidate: other_candidate
+  }
+  let o = admit_promotion(
+    c: SelfHostCandidate {
+      candidate: pa_candidate(),
+      successor: spliced_successor,
+      candidate_build: pa_build(
+        subject: pa_candidate_identity(),
+        outcome: Observed { value: BuildGreen }
+      ),
+      successor_build: pa_build(
+        subject: pa_successor_identity(),
+        outcome: Observed { value: BuildGreen }
+      ),
+      candidate_equivalence: pa_equivalence(
+        subject: pa_candidate_identity(),
+        cases: 12,
+        outcome: Observed { value: BehaviorAgrees }
+      ),
+      successor_equivalence: pa_equivalence(
+        subject: pa_successor_identity(),
+        cases: 12,
+        outcome: Observed { value: BehaviorAgrees }
+      ),
+      discriminating_fault: pa_fault(
+        subject: pa_candidate_identity(),
+        outcome: Observed { value: FaultCaught }
+      ),
+      candidate_provenance: pa_provenance(
+        subject: pa_candidate_identity(),
+        producer: pa_seed_identity()
+      ),
+      successor_provenance: pa_provenance(
+        subject: pa_successor_identity(),
+        producer: other_candidate.identity
+      )
+    }
+  )
+  !promotion_is_admitted(o: o)
+    && promotion_refusal_carries(
+      o: o,
+      cause: ^refusal_successor_not_produced_by_candidate
+    )
+}
+
+// DISCRIMINATING RED: the planted fault was proven discriminating over a DIFFERENT
+// corpus than the one equivalence was measured on, so the fault receipt vouches for
+// teeth the equivalence run never had.
+test fn fault_proven_on_a_different_corpus_is_refused() -> Bool {
+  let o = admit_promotion(
+    c: pa_bundle(
+      candidate_build: pa_build(
+        subject: pa_candidate_identity(),
+        outcome: Observed { value: BuildGreen }
+      ),
+      successor_build: pa_build(
+        subject: pa_successor_identity(),
+        outcome: Observed { value: BuildGreen }
+      ),
+      candidate_equivalence: pa_equivalence(
+        subject: pa_candidate_identity(),
+        cases: 12,
+        outcome: Observed { value: BehaviorAgrees }
+      ),
+      successor_equivalence: pa_equivalence(
+        subject: pa_successor_identity(),
+        cases: 12,
+        outcome: Observed { value: BehaviorAgrees }
+      ),
+      discriminating_fault: DiscriminatingFaultReceipt {
+        subject: pa_candidate_identity(),
+        corpus: "SOME-OTHER-corpus",
+        planted_fault: "classical_not called on mismatched input",
+        outcome: Observed { value: FaultCaught }
+      },
+      candidate_provenance: pa_provenance(
+        subject: pa_candidate_identity(),
+        producer: pa_seed_identity()
+      ),
+      successor_provenance: pa_provenance(
+        subject: pa_successor_identity(),
+        producer: pa_candidate_identity()
+      )
+    )
+  )
+  !promotion_is_admitted(o: o)
+    && promotion_refusal_carries(
+      o: o,
+      cause: ^refusal_corpus_mismatch_across_receipts
+    )
+}

@@ -114,6 +114,8 @@ type PromotionRefusalCause
   | ProvenanceNotDeclaredProducer { receipt: Symbol }
   | ArtifactNotMaterialized { receipt: Symbol }
   | OracleNotDeclaredSeed { receipt: Symbol }
+  | SuccessorNotProducedByCandidate
+  | CorpusMismatchAcrossReceipts { receipt: Symbol }
 
 type PromotionOutcome
   = Promoted { successor: SuccessorGeneration, cases_compared: Int }
@@ -302,8 +304,35 @@ fn promotion_refusal_causes(c: SelfHostCandidate) -> List<PromotionRefusalCause>
   let candidate_identity = c.candidate.identity
   let successor_identity = c.successor.identity
   let seed_identity = c.candidate.produced_by_seed.identity
+  // The successor carries its OWN produced_by_candidate, so bundling candidate A with
+  // a successor that says it was produced by candidate B is otherwise constructible:
+  // each half's receipts join internally and nothing proves the two halves are one
+  // chain. Splicing two valid chains would let a successor inherit admission from a
+  // candidate that never produced it.
+  let chain_causes = if length(
+    xs: generation_identity_mismatched_axes(
+      left: candidate_identity,
+      right: c.successor.produced_by_candidate.identity
+    )
+  ) == 0 {
+    freemonoid_empty()
+  } else {
+    [SuccessorNotProducedByCandidate]
+  }
+  // The three behavioral receipts each name a corpus. Unjoined, equivalence can be
+  // measured over one corpus while the planted fault was proven discriminating over a
+  // different one — so the fault receipt would vouch for teeth the equivalence run
+  // never had.
+  let corpus_causes = if c.candidate_equivalence.corpus == c.discriminating_fault.corpus
+    && c.successor_equivalence.corpus == c.discriminating_fault.corpus {
+    freemonoid_empty()
+  } else {
+    [CorpusMismatchAcrossReceipts { receipt: ^receipt_discriminating_fault }]
+  }
   concat_causes(
     parts: [
+      chain_causes,
+      corpus_causes,
       artifact_causes(receipt: ^subject_candidate, identity: candidate_identity),
       artifact_causes(receipt: ^subject_successor, identity: successor_identity),
       build_receipt_causes(
@@ -399,5 +428,7 @@ fn promotion_refusal_cause_symbol(c: PromotionRefusalCause) -> Symbol {
       ^refusal_provenance_not_declared_producer
     ArtifactNotMaterialized { receipt: _ } => ^refusal_artifact_not_materialized
     OracleNotDeclaredSeed { receipt: _ } => ^refusal_oracle_not_declared_seed
+    SuccessorNotProducedByCandidate => ^refusal_successor_not_produced_by_candidate
+    CorpusMismatchAcrossReceipts { receipt: _ } => ^refusal_corpus_mismatch_across_receipts
   }
 }
