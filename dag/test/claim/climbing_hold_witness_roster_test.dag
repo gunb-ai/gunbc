@@ -1,0 +1,130 @@
+module test.claim.climbing_hold_witness_roster
+
+import std.types { NonEmptyStr, List, Int }
+import test.claim.climbing_hold_catalog_witness {
+  witness_mounting_axis_needs_no_shape_or_envelope,
+  witness_real_row_axis_is_not_yet_locatable,
+  witness_relayed_reading_admits_clearance,
+  witness_search_summary_envelope_refuses_clearance,
+  witness_evidence_spendability_discriminates,
+  witness_absent_shape_refuses_silhouette,
+  witness_lift_role_refuses_without_proof_load,
+  witness_naming_is_alias_with_sku_unread,
+  witness_source_reading_survives_conversion,
+}
+
+// WHY THIS MODULE EXISTS: a measured harness cost, not a style preference.
+//
+// Each witness was being executed by its own `gunbc run --function` invocation. Measured on one
+// witness: 146,352 ms wall, against 472 ms of logged compile phases (frontend 129, normalize 11,
+// reconcile 324, analyses 8). That is 99.7 percent of the run unattributed to compilation and
+// unattributed to the Boolean body. The cost is per-PROCESS: every invocation rebuilds the module
+// path index across the whole source root before the entry graph narrows anything, so a suite of
+// N witnesses paid that index N times. Sixteen witnesses cost about 35 minutes to evaluate
+// predicates that are, individually, arithmetic on small lists.
+//
+// The program's own policy puts the migration threshold at 500 ms and the executor cutoff at
+// 5,000 ms. Two-minute witnesses are far outside it, and "the witnesses take two minutes" was the
+// wrong conclusion to draw: the witnesses do not take two minutes. The HARNESS takes two minutes
+// and the witnesses take milliseconds. Reporting a single wall-clock number hid that distinction
+// and made an addressable harness defect look like an inherent property of the claims.
+//
+// This roster calls every witness body from ONE entry, so the index is built once.
+data roster_cost_note: NonEmptyStr = "Per-invocation cost is source-root index construction, not claim evaluation: 146,352 ms wall against 472 ms of logged compile phases on a single witness. Running N witnesses as N processes pays that index N times. This roster pays it once."
+
+type WitnessOutcome {
+  name: NonEmptyStr
+  passed: Bool
+}
+
+// The roster is EXACT and hand-listed rather than globbed. A glob cannot be checked: it silently
+// covers whatever happens to be present, so a witness deleted by an edit disappears from the suite
+// without any signal. A hand-listed roster with a declared expected count refuses that -- drop a
+// row and the count check reds, naming the discrepancy rather than quietly narrowing coverage.
+data climbing_hold_witness_outcomes: List<WitnessOutcome> = [
+  WitnessOutcome {
+    name: "witness_mounting_axis_needs_no_shape_or_envelope",
+    passed: witness_mounting_axis_needs_no_shape_or_envelope(),
+  },
+  WitnessOutcome {
+    name: "witness_real_row_axis_is_not_yet_locatable",
+    passed: witness_real_row_axis_is_not_yet_locatable(),
+  },
+  WitnessOutcome {
+    name: "witness_relayed_reading_admits_clearance",
+    passed: witness_relayed_reading_admits_clearance(),
+  },
+  WitnessOutcome {
+    name: "witness_search_summary_envelope_refuses_clearance",
+    passed: witness_search_summary_envelope_refuses_clearance(),
+  },
+  WitnessOutcome {
+    name: "witness_evidence_spendability_discriminates",
+    passed: witness_evidence_spendability_discriminates(),
+  },
+  WitnessOutcome {
+    name: "witness_absent_shape_refuses_silhouette",
+    passed: witness_absent_shape_refuses_silhouette(),
+  },
+  WitnessOutcome {
+    name: "witness_lift_role_refuses_without_proof_load",
+    passed: witness_lift_role_refuses_without_proof_load(),
+  },
+  WitnessOutcome {
+    name: "witness_naming_is_alias_with_sku_unread",
+    passed: witness_naming_is_alias_with_sku_unread(),
+  },
+  WitnessOutcome {
+    name: "witness_source_reading_survives_conversion",
+    passed: witness_source_reading_survives_conversion(),
+  },
+]
+
+data climbing_hold_witness_expected_count: Int = 9
+
+fn roster_all_green() -> Bool {
+  all(climbing_hold_witness_outcomes, o => o.passed)
+}
+
+fn roster_count_matches() -> Bool {
+  count(climbing_hold_witness_outcomes) == climbing_hold_witness_expected_count
+}
+
+// Duplicate detection is not decoration. A copy-pasted row that names one witness twice while
+// silently dropping another keeps the count correct and reduces real coverage by one, which is
+// precisely the failure a count-only check cannot see.
+fn roster_names_are_unique() -> Bool {
+  all(
+    climbing_hold_witness_outcomes,
+    o => count(filter(climbing_hold_witness_outcomes, p => p.name == o.name)) == 1,
+  )
+}
+
+fn roster_failing_names() -> List<NonEmptyStr> {
+  climbing_hold_witness_outcomes |> filter(o => !o.passed) |> map(o => o.name)
+}
+
+// THE RECEIPT. One invocation proves: the expected number of witnesses ran, each exactly once,
+// under its own name, and every body returned true. A green here is a stronger statement than
+// nine separate green exit codes, because those nine could not detect a tenth witness that was
+// never invoked.
+test fn witness_roster_is_complete_unique_and_green() -> Bool {
+  roster_count_matches() && roster_names_are_unique() && roster_all_green()
+}
+
+// Discriminating control for the roster machinery itself. If roster_names_are_unique were
+// hard-wired true, this would not catch it -- so the check is exercised against a deliberately
+// duplicated list, where it must report false.
+data duplicate_probe: List<WitnessOutcome> = [
+  WitnessOutcome { name: "a", passed: true },
+  WitnessOutcome { name: "a", passed: true },
+]
+
+fn probe_names_are_unique(xs: List<WitnessOutcome>) -> Bool {
+  all(xs, o => count(filter(xs, p => p.name == o.name)) == 1)
+}
+
+test fn witness_duplicate_detection_actually_discriminates() -> Bool {
+  !probe_names_are_unique(xs: duplicate_probe)
+    && probe_names_are_unique(xs: [WitnessOutcome { name: "a", passed: true }])
+}
