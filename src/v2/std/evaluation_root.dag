@@ -1,0 +1,126 @@
+module v2.std.evaluation_root
+
+import std.types { String, Bool, List }
+import v2.std.node { Node, Symbol }
+import v2.std.node_query { find_named_child }
+import v2.std.fn_index { FnArrowDecl, FnArrowParam }
+
+// THE SUBJECT OF READ-FOOTPRINT ANALYSIS IS A COMPUTATION, NOT A FUNCTION.
+//
+// The live-read classifier's question is "what must be evaluated to produce this declaration's
+// value, and what does that evaluation read". Nothing in that question is about functions. But its
+// root carrier is FnArrowDecl, its binder parameter is named `fn_name`, and the floor roster's
+// identity field is named `function` -- so `function` is welded into a type answering a question
+// orthogonal to it.
+//
+// The cost of that weld is visible: `test data name: Bool = <expr>` is an enrolled witness form
+// (the `test` marker was added to the grammar before BOTH `fn` and `data`, and the hygiene
+// authority carries test_fns and test_data as separate populations), and it arrives at a
+// function-only lookup as ZERO MATCHES -- byte-identical to a name that does not exist. Two states
+// with different remedies, one outcome.
+//
+// This module is the projection that dissolves the weld: one shape both declaration forms produce,
+// so a consumer asks for the computation it needs instead of learning declaration syntax. It is
+// deliberately NOT wired into the classifier here -- #8055 and #8110 were both reverted for
+// re-landing that consumer ahead of its root support, and the abstraction has to exist and be
+// witnessed before anything load-bearing consumes it.
+type EvaluationRootForm
+  = FnBodyRoot
+  | DataInitializerRoot
+
+// The binders are what the expression may reference beyond its own closure. A function's are its
+// declared parameters; a data initializer has none, which is a FACT about the form rather than a
+// missing field -- an initializer with binders has no constructor.
+type EvaluationRoot {
+  subject: String
+  expression: Node
+  binders: List<FnArrowParam>
+  form: EvaluationRootForm
+}
+
+// PROJECTION FAILURE IS ITS OWN STATE, and this is the entire safety point of the module.
+//
+// The catastrophic path this exists to make unwritable:
+//
+//   declaration form not representable -> no root -> empty walk -> no carrier found
+//     -> LocalRead -> licenses a SKIP
+//
+// That is the empty-observation narrow (DESIGN section 5) in the under-selection direction, which
+// is worse than over-selection because it presents as a faster green floor rather than a failure.
+// `EvaluationRootUnavailable` therefore names an EXISTING declaration whose expression could not be
+// projected, and is deliberately distinct from any "no such declaration" answer a binder produces.
+// A consumer that cannot tell those apart cannot choose a remedy: one is fixed by repairing a
+// reference, the other by teaching this projection a form.
+type EvaluationRootProjection
+  = EvaluationRootProjected { root: EvaluationRoot }
+  | EvaluationRootUnavailable { subject: String, form: EvaluationRootForm, cause: String }
+
+// A function's body IS its expression -- FnArrowDecl.output already carries the Node, so this arm
+// is total and needs no lookup. Its params are the binders, carried rather than discarded, because
+// a parameter-derived path is precisely the read the classifier must not treat as absent.
+fn evaluation_root_of_fn(decl: FnArrowDecl) -> EvaluationRootProjection {
+  EvaluationRootProjected {
+    root: EvaluationRoot {
+      subject: decl.qualified_name,
+      expression: decl.output,
+      binders: decl.params,
+      form: FnBodyRoot,
+    }
+  }
+}
+
+data no_binders: List<FnArrowParam> = []
+
+// A data declaration's expression is its initializer, reached through the same named child the
+// surface grammar already emits and mandatory_tag already consumes (^dag_surface_data_decl_expr) --
+// so this is a projection over existing structure, not a new parser.
+//
+// It takes the SURFACE NODE rather than a DataInitDecl deliberately: that carrier holds
+// `literal_fp: String`, a fingerprint of a literal, which cannot represent an arbitrary initializer
+// expression and cannot be walked. Projecting from the fingerprint would produce a root whose walk
+// finds nothing -- the empty-observation narrow wearing a successful-looking value.
+//
+// The Rejected arm REFUSES rather than yielding an empty expression. A data declaration with no
+// projectable initializer is a state we cannot analyse, and saying so is the whole difference
+// between a counted gap and a silent skip.
+fn evaluation_root_of_data(subject: String, decl_node: Node) -> EvaluationRootProjection {
+  match find_named_child(root: decl_node, name: ^dag_surface_data_decl_expr) {
+    Accepted { value: expr, diagnostics: _ } =>
+      EvaluationRootProjected {
+        root: EvaluationRoot {
+          subject: subject,
+          expression: expr,
+          binders: no_binders,
+          form: DataInitializerRoot,
+        }
+      }
+    Rejected { diagnostics: _ } =>
+      EvaluationRootUnavailable {
+        subject: subject,
+        form: DataInitializerRoot,
+        cause: "data declaration carries no ^dag_surface_data_decl_expr child; its initializer expression is not projectable from this node",
+      }
+  }
+}
+
+// Total over the projection so a new arm cannot silently become analysable.
+fn evaluation_root_is_projected(p: EvaluationRootProjection) -> Bool {
+  match p {
+    EvaluationRootProjected { root: _ } => true
+    EvaluationRootUnavailable { subject: _, form: _, cause: _ } => false
+  }
+}
+
+fn evaluation_root_subject(p: EvaluationRootProjection) -> String {
+  match p {
+    EvaluationRootProjected { root: r } => r.subject
+    EvaluationRootUnavailable { subject: s, form: _, cause: _ } => s
+  }
+}
+
+fn evaluation_root_form_label(f: EvaluationRootForm) -> String {
+  match f {
+    FnBodyRoot => "fn-body"
+    DataInitializerRoot => "data-initializer"
+  }
+}

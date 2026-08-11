@@ -1,0 +1,125 @@
+module v2.test.claim.evaluation_root_witness
+
+import std.types { String, Bool, List }
+import v2.std.node { Node, Symbol, NodeKind, ComputationNode, Edge, EdgeLabel, Named, node_synthetic }
+import v2.std.node { Behavior, Value }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.fn_index { FnArrowDecl, FnArrowParam }
+import v2.std.evaluation_root {
+  EvaluationRoot,
+  EvaluationRootForm,
+  FnBodyRoot,
+  DataInitializerRoot,
+  EvaluationRootProjection,
+  EvaluationRootProjected,
+  EvaluationRootUnavailable,
+  evaluation_root_of_fn,
+  evaluation_root_is_projected,
+  evaluation_root_subject,
+  evaluation_root_form_label,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data no_params: List<FnArrowParam> = []
+
+data no_children: List<Edge> = []
+
+// STRUCTURALLY DISTINCTIVE ON PURPOSE. The first version of this fixture was an EMPTY synthetic
+// node -- structurally identical to what a hollow projection returns -- so the mutation that makes
+// evaluation_root_of_fn discard decl.output and return a fresh empty node left control 1 GREEN.
+// The assertion was right and the specimen made it vacuous: "carries the body" and "carries a fresh
+// empty node" were the same value. A body with a child edge distinguishes them.
+fn empty_node() -> Node {
+  node_synthetic(kind: ComputationNode { behavior: Value }, children: no_children)
+}
+
+fn specimen_expression() -> Node {
+  node_synthetic(
+    kind: ComputationNode { behavior: Value },
+    children: [Edge { label: Named { name: ^specimen_body_marker }, target: empty_node() }]
+  )
+}
+
+fn fn_specimen() -> FnArrowDecl {
+  FnArrowDecl {
+    qualified_name: "v2.test.fixture.evaluation_root.reads_a_file",
+    name: "reads_a_file",
+    output: specimen_expression(),
+    params: no_params,
+  }
+}
+
+fn projected_fn() -> EvaluationRootProjection {
+  evaluation_root_of_fn(decl: fn_specimen())
+}
+
+fn unavailable_specimen() -> EvaluationRootProjection {
+  EvaluationRootUnavailable {
+    subject: "v2.test.fixture.evaluation_root.unprojectable",
+    form: DataInitializerRoot,
+    cause: "data declaration carries no projectable initializer",
+  }
+}
+
+// CONTROL 1: a function projects, and the projection carries the BODY as its expression rather
+// than a re-derived or defaulted one. Without asserting the expression identity, this passes
+// against a projection that returns a fresh empty Node -- which is exactly the shape that walks to
+// no carriers and answers LocalRead.
+test fn fn_declaration_projects_its_body_as_the_expression() -> Bool {
+  match projected_fn() {
+    EvaluationRootProjected { root: r } =>
+      r.expression == specimen_expression()
+        && r.subject == "v2.test.fixture.evaluation_root.reads_a_file"
+    EvaluationRootUnavailable { subject: _, form: _, cause: _ } => false
+  }
+}
+
+// CONTROL 2: the form is carried, not inferred. A consumer that needs to know how to evaluate the
+// root (invoke vs evaluate) reads this rather than re-deriving it from syntax, which is the
+// re-derivation that put `function` into carriers answering a non-function question.
+test fn projection_carries_its_source_form() -> Bool {
+  match projected_fn() {
+    EvaluationRootProjected { root: r } => evaluation_root_form_label(f: r.form) == "fn-body"
+    EvaluationRootUnavailable { subject: _, form: _, cause: _ } => false
+  }
+  && evaluation_root_form_label(f: DataInitializerRoot) == "data-initializer"
+  && evaluation_root_form_label(f: FnBodyRoot) != evaluation_root_form_label(f: DataInitializerRoot)
+}
+
+// CONTROL 3: THE LOAD-BEARING ONE. An unprojectable root is NOT projected -- it must never present
+// as a successful projection carrying an empty expression, because that is the path
+// (no root -> empty walk -> no carrier -> LocalRead -> skip) this whole split exists to close.
+test fn unavailable_projection_is_not_projected() -> Bool {
+  evaluation_root_is_projected(p: projected_fn())
+    && !evaluation_root_is_projected(p: unavailable_specimen())
+}
+
+// CONTROL 4: an unprojectable root STILL NAMES ITS SUBJECT. This is the state-split that the
+// current chain lacks: a function-only lookup answers zero-matches for a data declaration, which is
+// byte-identical to a name that does not exist. Here "exists but I cannot project it" carries the
+// declaration it is about, so a consumer can count it, name it, and tell it apart from absence --
+// three things a bare zero-match cannot support.
+test fn unavailable_projection_still_identifies_its_declaration() -> Bool {
+  evaluation_root_subject(p: unavailable_specimen()) == "v2.test.fixture.evaluation_root.unprojectable"
+    && evaluation_root_subject(p: unavailable_specimen()) != evaluation_root_subject(p: projected_fn())
+}
+
+// CONTROL 5: the binder axis is real and differs by form. A function's parameters are carried
+// (a parameter-derived read is the ParamRef case the classifier must not treat as absent); a data
+// initializer has none. Asserting both directions keeps `binders` from being a field nobody fills.
+test fn binders_are_carried_and_empty_for_data_initializers() -> Bool {
+  match projected_fn() {
+    EvaluationRootProjected { root: r } => r.binders.length() == 0
+    EvaluationRootUnavailable { subject: _, form: _, cause: _ } => false
+  }
+  && match evaluation_root_of_fn(decl: FnArrowDecl {
+       qualified_name: "v2.test.fixture.evaluation_root.takes_a_path",
+       name: "takes_a_path",
+       output: specimen_expression(),
+       params: [FnArrowParam { name: ^path, node: specimen_expression() }],
+     }) {
+    EvaluationRootProjected { root: r2 } => r2.binders.length() == 1
+    EvaluationRootUnavailable { subject: _, form: _, cause: _ } => false
+  }
+}
