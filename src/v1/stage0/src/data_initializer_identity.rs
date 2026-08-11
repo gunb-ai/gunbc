@@ -222,10 +222,7 @@ fn decl_logical_qualified_name(module_name: &str, name: &str) -> String {
     }
 }
 
-// `Hash` so the locator can key a per-declaration cache. It is derived alongside the existing
-// `Eq` rather than hand-written, so the hash and the equality can never disagree about which
-// fields decide identity.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedDeclarationLocator {
     pub qualified_name: String,
     pub name: String,
