@@ -151,7 +151,7 @@ fn ci_deploy_srv1_access_or_refusal() -> DeployAccessOrRefusal {
 
 // srv1 CI deploy access is roster-closed: witness_srv1_job_principal_resolves_from_runner proves fleet_deploy_job_principal(srv1_ci_deploy_runner_principal) == fleet_posix_principal(FleetAccountCiRunner). Authority is the roster row — never Optional-erase into a fabricated principal.
 fn ci_deploy_srv1_local_access() -> DeployAccess {
-  let principal = fleet_posix_principal(key: FleetAccountCiRunner)
+  let principal = fleet_posix_ci_runner_principal()
   DeployAccess {
     principal: principal,
     host: srv1_host,
@@ -163,7 +163,7 @@ fn ci_deploy_srv1_local_access() -> DeployAccess {
 data ci_deploy_srv1_access: DeployAccess = ci_deploy_srv1_local_access()
 
 fn ci_deploy_srv1_operator_ssh_access() -> DeployAccess {
-  let principal = fleet_posix_principal(key: FleetAccountOperator)
+  let principal = fleet_posix_operator_principal()
   DeployAccess {
     principal: principal,
     host: srv1_host,
@@ -347,6 +347,6 @@ fn deploy_access_preflight_pass_message(access: DeployAccess) -> String {
 
 fn srv1_live_deploy_privileged_commands() -> List<PrivilegedCommand> {
   grounded_principal_privileged_commands(
-    p: fleet_posix_principal(key: FleetAccountCiRunner)
+    p: fleet_posix_ci_runner_principal()
   )
 }

@@ -40,10 +40,17 @@ data gunbc_converge_cli_stage0_receiver_disposition: Disposition = Terminal {
   reason: "stage0's `gunbc converge --host <h>` argv dispatch (src/v1/stage0/src/cli_run.rs::handle_converge) is the CLI transport handler for this .dag interface (DESIGN §3 transport-is-a-handler): argv parse -> resolve_entry_graph_shared -> run_in_context_with_args(converge_cli_output) -> stdout/exit-code projection, nothing else. All interpretation, the byte-locked receipt grammar, and typed refusal causes are modeled here (gunbc.fleet_converge_cli) and in gunbc.host_converge/gunbc.fleet_converge_apply; the Rust side carries no converge logic and is not scaffold pending dissolution."
 }
 
+// SparkManagedAccessUnmeasured is the refusal for a Spark whose managed access nobody has looked
+// at. It is distinct from SparkPreEnrollment, whose message says "no converge route exists until
+// enrollment" -- srv5 and srv6 ARE enrolled (host_assimilation_program carries them with
+// InferenceServingParticipation), so reporting them as pre-enrollment states something false about
+// the fleet and points the remedy at the wrong thing. What is missing is a measurement, not an
+// enrollment.
 type ConvergeCliRefusalCause
   = PolicyUnsound { reason: String }
   | UnknownHost { host: String }
   | SparkPreEnrollment { host: String }
+  | SparkManagedAccessUnmeasured { host: String, dissolves_on: String }
   | ComputeInventoryAbsent { host: String }
   | KnobFrontier { reason: String }
 
@@ -60,6 +67,7 @@ fn converge_cli_refusal_message(cause: ConvergeCliRefusalCause) -> String {
     PolicyUnsound { reason: why } => concat("gunbc converge: fleet policy unsound — ", why)
     UnknownHost { host: h } => converge_cli_unknown_host_reason(host: h)
     SparkPreEnrollment { host: h } => concat(concat("gunbc converge: ", h), " is a Spark pre-enrollment host — no runner slots or host layout exist yet (SPARK-SERVE-0 owns the repair); reach is probed at its modeled endpoint, and no converge route exists until enrollment")
+    SparkManagedAccessUnmeasured { host: h, dissolves_on: trigger } => concat(concat(concat("gunbc converge: ", h), " is enrolled, but its managed automation principal has never been observed — refusing rather than assuming absent. Discharged by: "), trigger)
     ComputeInventoryAbsent { host: h } => converge_cli_compute_inventory_absent_reason(host: h)
     KnobFrontier { reason: why } => why
   }
@@ -137,11 +145,47 @@ fn converge_cli_routes_to_slice1(host: String) -> Bool {
 // PRE-ENROLLMENT (no runner slots, no host layout yet — SPARK-SERVE-0 owns the repair;
 // their reach is probed at the modeled endpoint, gunbc.fleet_reach_endpoint) — a state
 // DISTINCT from UnknownHost, which now means only an identity outside the fleet.
+// SPARK-SERVE-0: the Sparks now have a ROUTE, and the route carries its own access standing.
+// ConvergeSparkPreEnrollment was nullary, so "CONVERGE does not know about this host" and "CONVERGE
+// knows about it and cannot act yet" were the same state -- and a state that cannot say what
+// unblocks it cannot be discharged, only replaced. ConvergeSparkRoute names the blocker instead:
+// today every Spark is SparkManagedAccessAbsent because the measured principal population admits
+// only the human bootstrap account, and the grounded arm becomes reachable the moment a managed
+// automation principal exists, with no widening edit to this coproduct.
+// UNOBSERVED IS NOT ABSENT, and fusing them is what let this seam lie. The two-arm version had no
+// state for "nobody has looked", so the only way to be total was to answer Absent -- and Absent
+// asserts a measurement. A host we have never contacted and a host we contacted and found bare are
+// different states with different remedies: the first is discharged by running a probe, the second
+// by provisioning a principal.
+type SparkManagedAccessStanding
+  = SparkManagedAccessUnobserved { host: String, dissolves_on: String }
+  | SparkManagedAccessAbsent { cause: String }
+  | SparkManagedAccessGrounded
+
 type FleetConvergeApplicability
   = ConvergeSlice1Route
   | ConvergeKnobFrontier
-  | ConvergeSparkPreEnrollment
+  | ConvergeSparkRoute { access: SparkManagedAccessStanding }
   | ConvergeOutsideFleet
+
+// MEASURED, not assumed: a read-only probe of srv5 and srv6 found briansrls the only admitted
+// principal and every managed-sounding candidate refused. The cause travels with the standing so a
+// reader is not left to infer which of several remedies applies.
+// THIS FUNCTION DOES NOT OBSERVE, AND NOW SAYS SO. It previously returned SparkManagedAccessAbsent
+// with a cause ending "(measured, read-only probe)" -- a constant that ignored its host argument,
+// executed nothing, and would keep reporting a measurement after the host changed. The measurement
+// it referred to was performed by the hand-authored spark-canary-probe.yml, which has been deleted;
+// a claim whose producer no longer exists is not evidence, and prose asserting a guarantee the
+// mechanism does not implement is the exact class this repo keeps catching.
+//
+// It returns Unobserved rather than Absent because the model cannot cite a receipt for either
+// answer. Absent would be the same lie one arm over.
+fn spark_managed_access_standing(host: String) -> SparkManagedAccessStanding {
+  SparkManagedAccessUnobserved {
+    host: host,
+    dissolves_on: "gunbc.fleet_multi_principal_probe fleet_multi_principal_probe_wet runs with srv5/srv6 in multi_principal_probe_hosts and its typed receipt grounds this standing",
+  }
+}
 
 fn fleet_converge_applicability(host: String) -> FleetConvergeApplicability {
   if converge_cli_routes_to_slice1(host: host) {
@@ -151,7 +195,7 @@ fn fleet_converge_applicability(host: String) -> FleetConvergeApplicability {
       ConvergeKnobFrontier
     } else {
       if host == (operator_host_srv5 as String) || host == (operator_host_srv6 as String) {
-        ConvergeSparkPreEnrollment
+        ConvergeSparkRoute { access: spark_managed_access_standing(host: host) }
       } else {
         ConvergeOutsideFleet
       }
@@ -548,13 +592,33 @@ fn converge_cli_run(host: String) -> ConvergeCliReceipt {
     ConvergePolicyDerived { hosts: hosts } =>
       match fleet_converge_applicability(host: host) {
         ConvergeSlice1Route => converge_cli_slice1_receipt(host: host)
-        ConvergeSparkPreEnrollment =>
+        ConvergeSparkRoute { access: SparkManagedAccessUnobserved { host: h, dissolves_on: trigger } } =>
+          ConvergeCliReceipt {
+            host: host,
+            applied: 0,
+            drifted: 0,
+            verdict: Absent,
+            reason: Present { value: SparkManagedAccessUnmeasured { host: h, dissolves_on: trigger } },
+          }
+        ConvergeSparkRoute { access: SparkManagedAccessAbsent { cause: _ } } =>
           ConvergeCliReceipt {
             host: host,
             applied: 0,
             drifted: 0,
             verdict: Absent,
             reason: Present { value: SparkPreEnrollment { host: host } },
+          }
+        ConvergeSparkRoute { access: SparkManagedAccessGrounded } =>
+          match host_converge_for_identity(hosts: hosts, identity: host as HostIdentity) {
+            Present { value: hc } => converge_cli_receipt_for_host(host_converge: hc)
+            Absent =>
+              ConvergeCliReceipt {
+                host: host,
+                applied: 0,
+                drifted: 0,
+                verdict: Absent,
+                reason: Present { value: SparkPreEnrollment { host: host } },
+              }
           }
         _ =>
           match host_converge_for_identity(hosts: hosts, identity: host as HostIdentity) {

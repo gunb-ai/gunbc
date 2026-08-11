@@ -1,0 +1,86 @@
+module gunbc.auth.github_gcp_federation
+
+import std.types { String, NonEmptyStr, Map }
+import gunbc.repository { gunbc_repository }
+import extdeps.cloud.gcp.gcp {
+  ServiceAccountEmail, GcpProjectId, WifPool, WifProvider,
+  wif_provider_resource, wif_principal_set_for_repo
+}
+
+// The repository-level GitHub-to-GCP workload identity federation, as one authority consumed by
+// every domain that federates, rather than a set of facts each domain carries its own copy of.
+//
+// These rows previously lived in gunbc.assimilate.bmc_token_federation under bmc_ names. Nothing
+// about a pool for gunb-ai/gunbc, an OIDC issuer URI, or the fleet secrets project is a BMC fact:
+// they describe the repository's relationship to one GCP project, and BMC was simply the first
+// domain to need them. The tell was visible in the names -- bmc_secrets_project_id held
+// gunbai-secrets, the FLEET secrets project, so a second domain reading it had to either import a
+// BMC symbol for a non-BMC fact or copy the literal. The second option is what makes a fork, and
+// the Spark lane was about to take it.
+
+data federation_authority_note: String = "One federation, many consuming domains. A domain that federates supplies only what is genuinely its own -- its service account, its secret population, its role set -- and reads the pool, provider, issuer, attribute mapping, project and principal-set construction from here. The prior arrangement forced a second domain to choose between importing a bmc_ symbol for a repository-level fact and copying the literal; copying is how the second authority gets minted, and the copy is invisible afterwards because both sides read correct."
+
+// ── The GCP project the fleet's secrets live in ───────────────────────────────────────────
+data fleet_secrets_project_id: GcpProjectId = "gunbai-secrets"
+
+data fleet_secrets_project_number: String = "582015116396"
+
+// ── The workload identity pool and provider for this repository ───────────────────────────
+data github_wif_pool_id: NonEmptyStr = "github-actions"
+
+data github_wif_pool_display_name: NonEmptyStr = "GitHub Actions OIDC"
+
+data github_wif_provider_id: NonEmptyStr = "github-oidc"
+
+data github_wif_issuer_uri: NonEmptyStr = "https://token.actions.githubusercontent.com"
+
+data github_wif_attribute_mapping: Map<String, String> = {
+  "google.subject": "assertion.sub",
+  "attribute.repository": "assertion.repository",
+  "attribute.ref": "assertion.ref"
+}
+
+// The federated repository is DERIVED from the repository authority rather than spelled here, so
+// this module cannot disagree with it.
+data federated_github_repo: String = gunbc_repository.full_name
+
+data github_wif_pool: WifPool = WifPool {
+  name: github_wif_pool_id
+  project: fleet_secrets_project_id as String
+  display_name: Present { value: github_wif_pool_display_name }
+  disabled: false
+}
+
+data github_wif_provider: WifProvider = WifProvider {
+  name: github_wif_provider_id
+  pool: github_wif_pool_id
+  issuer_uri: github_wif_issuer_uri
+  attribute_mapping: Present { value: github_wif_attribute_mapping }
+}
+
+fn github_wif_provider_resource() -> String {
+  wif_provider_resource(project_number: fleet_secrets_project_number, provider: github_wif_provider)
+}
+
+fn github_wif_principal_set() -> String {
+  wif_principal_set_for_repo(
+    project_number: fleet_secrets_project_number,
+    pool_id: github_wif_pool.name,
+    repository: federated_github_repo
+  )
+}
+
+// The attribute condition confines the federation to this repository. It is derived from the same
+// repository authority the principal set uses, so the two cannot drift apart into a pool that
+// admits a repository the principal set does not name.
+fn github_wif_attribute_condition() -> String {
+  concat("assertion.repository == '", concat(federated_github_repo, "'"))
+}
+
+// A federating domain supplies its own service account; the federation does not enumerate them.
+// This is the shape that lets a new domain federate without editing anything here, and it is why
+// the Spark population must not reach for the BMC assimilator: a domain's principal is its own
+// fact, and borrowing one makes the lender's domain the authority for the borrower's work.
+fn federated_service_account_member(email: ServiceAccountEmail) -> String {
+  concat("serviceAccount:", email as String)
+}
