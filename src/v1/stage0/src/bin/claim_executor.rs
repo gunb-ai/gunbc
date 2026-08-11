@@ -10289,6 +10289,12 @@ fn run() -> Result<ExitCode, ExitCode> {
     v1_compiler::cli_run::install_group_syntax(&source_roots);
     phase_mark("output-policy + group-syntax install");
 
+    // The regen plan is a closed, two-node roster: it has no DiscoveryBatch and its
+    // entry/function identities are declared directly by ci_floor_plan.dag. Running the
+    // global witness census here would rediscover unrelated corpus work before executing
+    // those two fixed gates (several minutes on the CI corpus). Other plans retain the
+    // fail-closed census below; regen's exact roster is its admission boundary.
+    let skip_global_witness_census = plan_function == "gunbc_ci_regen_floor_plan";
     // Under the opt-in inversion the plan's DiscoveryBatches carry explicit entries
     // only (or are absent entirely on an empty roster), and the explicit-only path
     // skips the tree-walk naming hygiene (`test fn` outside `*_test.dag`, `__`
@@ -10296,7 +10302,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     // when not enrolled (an unnameable witness could never be opted in), so the plan
     // path always runs the fail-closed walk once up front — before the (expensive)
     // plan evaluation, so a naming violation is the cheapest possible failure.
-    {
+    if !skip_global_witness_census {
         let excludes = v1_compiler::cli_run::witness_exclusion_substrings();
         let walk_attempt_id = match floor_walk_attempt_id() {
             Ok(id) => id,
@@ -10328,8 +10334,14 @@ fn run() -> Result<ExitCode, ExitCode> {
             eprintln!("claim_executor: witness naming hygiene (pre-plan walk): {msg}");
             return Err(ExitCode::from(1));
         }
+    } else {
+        eprintln!("claim_executor: naming-hygiene walk skipped for closed regen roster");
     }
-    phase_mark("naming-hygiene walk");
+    phase_mark(if skip_global_witness_census {
+        "naming-hygiene walk skipped (closed regen roster)"
+    } else {
+        "naming-hygiene walk"
+    });
 
     if perturb_check {
         return run_perturb_check(&source_roots, &plan_entry, &plan_function);
