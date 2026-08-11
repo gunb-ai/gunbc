@@ -1,0 +1,296 @@
+module std.euclidean_geometry
+
+import std.types { Bool, NonEmptyStr }
+import std.integer { Int }
+import std.nat { Nat }
+import std.measure {
+  Millimeter,
+  SignedSquareMillimeter,
+  signed_square_millimeter,
+  SquareMillimeter,
+  millimeter,
+  square_millimeter,
+  square_millimeter_count,
+  signed_millimeter_component_count,
+}
+import std.checked_arithmetic {
+  CheckedInt,
+  CheckedIntReady,
+  CheckedIntOverflow,
+  CheckedNat,
+  CheckedNatReady,
+  CheckedNatOverflow,
+  IntegerOverflow,
+  checked_int_multiply,
+  checked_int_magnitude,
+  checked_add_results,
+  checked_subtract_results,
+}
+import std.affine_space {
+  Vector3,
+  Point3,
+  displacement_between3,
+  SpatialArithmeticResult,
+  SpatialArithmeticReady,
+  SpatialArithmeticRefused,
+}
+
+// SPATIAL-2, metric half. This is where integer millimetres stop being sufficient, so it is where
+// the numeric policy has to become structural.
+//
+// The split that makes the slice honest: the SQUARED magnitude of an integer vector is always an
+// exact integer, while the magnitude itself is a square root and generally irrational. So
+// norm_squared is TOTAL and exact, and norm is PARTIAL - and its refusal carries the exact squared
+// value, so a consumer holding an approximate realization can finish the computation without
+// re-deriving anything. A refusal that discarded the squared magnitude would force the caller to
+// recompute what this module already knew exactly.
+//
+// What is deliberately NOT here: a norm that floors, a normalize that divides, and any trigonometry.
+// Rotating (1000, 0) by 30 degrees gives (866.025..., 500). A total integer answer would be an
+// invented precision at the very bottom of the spatial stack, where every later claim inherits it.
+
+// THE UNRESOLVED ARM NAMES THE KERNEL, NOT THE MATHEMATICS, and it took two corrections to get
+// there. It was first LengthRequiresApproximateRealization, false for (3,4,0) whose magnitude is
+// exactly 5. Renaming it to LengthExactRootNotRecognised fixed that population and broke the
+// mirror one: for (1,1,0) there IS no exact integer root to fail to recognise, so the arm then
+// overclaimed in the other direction. Both spellings asserted something about the ROOT. This one
+// asserts only what is true across the whole arm: this exact kernel did not resolve the magnitude.
+// Which of the two reasons applies is a fact about the vector, and a later kernel with an integer
+// square root splits them.
+type ExactLength
+  = LengthExact { value: Millimeter }
+  | LengthRootUnresolvedInExactKernel {
+      squared: SquareMillimeter
+      reason: NonEmptyStr
+    }
+
+// Dot product of two DISPLACEMENTS is an AREA with a meaningful sign - millimetre times millimetre
+// is millimetre squared. Returning a bare Int erased that dimension at the first operation, and an
+// erased dimension is how a plausible-looking wrong quantity travels. Sign is retained because a
+// negative dot product means the displacements point away from each other.
+fn dot3<F>(a: Vector3<F>, b: Vector3<F>) -> SpatialArithmeticResult<SignedSquareMillimeter> {
+  let px = checked_int_multiply(a: signed_millimeter_component_count(m: a.x), b: signed_millimeter_component_count(m: b.x))
+  let py = checked_int_multiply(a: signed_millimeter_component_count(m: a.y), b: signed_millimeter_component_count(m: b.y))
+  let pz = checked_int_multiply(a: signed_millimeter_component_count(m: a.z), b: signed_millimeter_component_count(m: b.z))
+  match checked_add_results(a: checked_add_results(a: px, b: py), b: pz) {
+    CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
+    CheckedIntReady { value: total } =>
+      SpatialArithmeticReady { value: signed_square_millimeter(count: total) }
+  }
+}
+
+// An AREA vector, NOT a displacement vector. Its components are millimetre squared, and an earlier
+// revision returned Vector3<F> - whose components are millimetre displacements - so the numbers
+// were areas wearing a length type. That made translate_point3(point, by: cross3(a, b)) writable:
+// a cross-product area consumed as a physical translation. A separate carrier makes it unwritable
+// rather than merely wrong, and it is deliberately NOT an alias of Vector3: sharing three numeric
+// components is not sharing a dimension.
+type AreaVector3<F> {
+  x: SignedSquareMillimeter
+  y: SignedSquareMillimeter
+  z: SignedSquareMillimeter
+}
+
+fn cross3<F>(a: Vector3<F>, b: Vector3<F>) -> SpatialArithmeticResult<AreaVector3<F>> {
+  let ax = signed_millimeter_component_count(m: a.x)
+  let ay = signed_millimeter_component_count(m: a.y)
+  let az = signed_millimeter_component_count(m: a.z)
+  let bx = signed_millimeter_component_count(m: b.x)
+  let by = signed_millimeter_component_count(m: b.y)
+  let bz = signed_millimeter_component_count(m: b.z)
+  let cx = checked_subtract_results(a: checked_int_multiply(a: ay, b: bz), b: checked_int_multiply(a: az, b: by))
+  let cy = checked_subtract_results(a: checked_int_multiply(a: az, b: bx), b: checked_int_multiply(a: ax, b: bz))
+  let cz = checked_subtract_results(a: checked_int_multiply(a: ax, b: by), b: checked_int_multiply(a: ay, b: bx))
+  area_vector3_from_checked(x: cx, y: cy, z: cz)
+}
+
+// The same first-crossing-wins fold std.affine_space applies to displacement components, over the
+// area carrier. It is not shared with that one: these components are millimetre SQUARED, and the
+// whole reason AreaVector3 is a separate type from Vector3 is that three numbers of a different
+// dimension are a different thing (this module's own cross3 comment, one dimension up).
+fn area_vector3_from_checked<F>(x: CheckedInt, y: CheckedInt, z: CheckedInt) -> SpatialArithmeticResult<AreaVector3<F>> {
+  match x {
+    CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
+    CheckedIntReady { value: xv } =>
+      match y {
+        CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
+        CheckedIntReady { value: yv } =>
+          match z {
+            CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
+            CheckedIntReady { value: zv } =>
+              SpatialArithmeticReady { value: AreaVector3 {
+                x: signed_square_millimeter(count: xv),
+                y: signed_square_millimeter(count: yv),
+                z: signed_square_millimeter(count: zv),
+              } }
+          }
+      }
+  }
+}
+
+// EXACT IN THE MATHEMATICS, BOUNDED IN THE REALIZATION. The squared magnitude of an integer vector
+// is an integer, with no root and no rounding - that part was always true, and it is why every
+// consumer that only needs to COMPARE magnitudes should use this and never touch norm. What the
+// earlier revision added to it was the word TOTAL, on a function whose three squares and two sums
+// run on i64: the squared magnitude of a vector a few million millimetres long crosses the bound,
+// and the answer was whatever the realization did about it.
+//
+// Nonnegativity is still by construction - a sum of squares - which is why the crossing into the
+// Nat-backed area carrier is a magnitude read rather than a clamp.
+fn norm_squared3<F>(v: Vector3<F>) -> SpatialArithmeticResult<SquareMillimeter> {
+  let x = signed_millimeter_component_count(m: v.x)
+  let y = signed_millimeter_component_count(m: v.y)
+  let z = signed_millimeter_component_count(m: v.z)
+  let sx = checked_int_multiply(a: x, b: x)
+  let sy = checked_int_multiply(a: y, b: y)
+  let sz = checked_int_multiply(a: z, b: z)
+  match checked_add_results(a: checked_add_results(a: sx, b: sy), b: sz) {
+    CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
+    CheckedIntReady { value: total } =>
+      match checked_int_magnitude(a: total) {
+        CheckedNatOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
+        CheckedNatReady { value: n } => SpatialArithmeticReady { value: square_millimeter(count: n) }
+      }
+  }
+}
+
+// PARTIAL, deliberately. Exact when the displacement lies along a single axis, where the magnitude
+// is that component's absolute value and no root is taken. Widening the exact set is a later
+// increment; answering approximately is not.
+// TWO INDEPENDENT REASONS THIS CANNOT ANSWER A LENGTH, kept apart because their remedies differ.
+// The outer SpatialArithmeticResult is the finite machine: the squared magnitude the unresolved arm
+// carries can itself cross the bound. The inner ExactLength is the kernel: even with unbounded
+// integers, a diagonal has no magnitude this axis kernel resolves. Collapsing them would tell a
+// caller holding a rational realization to go get a bigger integer, or the reverse.
+fn norm3<F>(v: Vector3<F>) -> SpatialArithmeticResult<ExactLength> {
+  let x = signed_millimeter_component_count(m: v.x)
+  let y = signed_millimeter_component_count(m: v.y)
+  let z = signed_millimeter_component_count(m: v.z)
+  let nonzero_axes = axis_count(value: x) + axis_count(value: y) + axis_count(value: z)
+  if nonzero_axes <= 1 {
+    match checked_int_magnitude(a: x + y + z) {
+      CheckedNatOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
+      CheckedNatReady { value: n } =>
+        SpatialArithmeticReady { value: LengthExact { value: millimeter(count: n) } }
+    }
+  } else {
+    match norm_squared3(v: v) {
+      SpatialArithmeticRefused { cause: c } => SpatialArithmeticRefused { cause: c }
+      SpatialArithmeticReady { value: sq } =>
+        SpatialArithmeticReady { value: LengthRootUnresolvedInExactKernel {
+          squared: sq,
+          reason: "this exact kernel resolves a magnitude only for an axis-aligned displacement; the root may itself be exact ((3,4,0) has magnitude 5, which an integer square root would find) or irrational ((1,1,0) has none), and this arm distinguishes neither",
+        } }
+    }
+  }
+}
+
+fn axis_count(value: Int) -> Nat {
+  if value == 0 { 0 } else { 1 }
+}
+
+// Distance is the norm of the displacement, and inherits both partialities exactly. It is NOT a
+// separate approximation: one operation, asked of the vector between two points - and the point
+// subtraction is itself bounded, which is the third place this composite can refuse.
+fn distance3<F>(from: Point3<F>, to: Point3<F>) -> SpatialArithmeticResult<ExactLength> {
+  match displacement_between3(from: from, to: to) {
+    SpatialArithmeticRefused { cause: c } => SpatialArithmeticRefused { cause: c }
+    SpatialArithmeticReady { value: d } => norm3(v: d)
+  }
+}
+
+// Squared distance takes no root, and is what a comparison should use.
+fn distance_squared3<F>(from: Point3<F>, to: Point3<F>) -> SpatialArithmeticResult<SquareMillimeter> {
+  match displacement_between3(from: from, to: to) {
+    SpatialArithmeticRefused { cause: c } => SpatialArithmeticRefused { cause: c }
+    SpatialArithmeticReady { value: d } => norm_squared3(v: d)
+  }
+}
+
+// Comparing magnitudes needs no square root: the ordering of squares agrees with the ordering of
+// nonnegative magnitudes. This is the operation most callers of "distance" actually want, and it
+// stays exact wherever both squared distances are representable - a comparison whose operands
+// cannot be computed has no answer, and returning false would be a verdict rather than a refusal.
+fn closer_than3<F>(a_from: Point3<F>, a_to: Point3<F>, b_from: Point3<F>, b_to: Point3<F>) -> SpatialArithmeticResult<Bool> {
+  match distance_squared3(from: a_from, to: a_to) {
+    SpatialArithmeticRefused { cause: c } => SpatialArithmeticRefused { cause: c }
+    SpatialArithmeticReady { value: a2 } =>
+      match distance_squared3(from: b_from, to: b_to) {
+        SpatialArithmeticRefused { cause: c } => SpatialArithmeticRefused { cause: c }
+        SpatialArithmeticReady { value: b2 } =>
+          SpatialArithmeticReady {
+            value: square_millimeter_count(m: a2) < square_millimeter_count(m: b2)
+          }
+      }
+  }
+}
+
+// A DIRECTION IS DIMENSIONLESS. An earlier revision returned Vector3<F> with components of -1, 0
+// or 1 MILLIMETRES, which is not a direction at all - it is a one-millimetre displacement, and it
+// made translate_point3(point, by: normalized.direction) writable, moving the point by 1 mm. For
+// the exact integer-only slice the honest carrier is the axis enum: it names the six directions
+// integer arithmetic can represent exactly and carries no magnitude to be mistaken for one. A
+// general normalized direction needs division and arrives with the approximate realization.
+type AxisDirection3<F>
+  = PositiveX
+  | NegativeX
+  | PositiveY
+  | NegativeY
+  | PositiveZ
+  | NegativeZ
+
+type Direction3Result<F>
+  = DirectionExact { direction: AxisDirection3<F> }
+  | DirectionZeroVectorHasNone
+  | DirectionUnresolvedInAxisKernel {
+      squared_magnitude: SquareMillimeter
+      reason: NonEmptyStr
+    }
+
+// Normalization refuses the zero vector because zero has magnitude but no direction - that is a
+// genuine mathematical absence, not a kernel limitation, and it is a DIFFERENT arm from the
+// unresolved one. Collapsing the two would conflate "this has no direction" with "this kernel did
+// not resolve the direction", which have different remedies.
+//
+// A unit direction is representable in this axis kernel only when the displacement is axis-aligned.
+// The unresolved arm does NOT say approximation is the remedy: (3,4,0) has the exact rational
+// direction (3/5, 4/5, 0), so a rational realization resolves it with no error bound at all.
+//
+// THE AXIS CASE ANALYSIS IS INLINE ON PURPOSE, and that is the whole reason the helper is gone. It
+// was a callable axis_direction_of(x, y, z) whose precondition - exactly one component nonzero -
+// lived only in a comment above it, so axis_direction_of(0, 0, 0) answered PositiveZ and
+// axis_direction_of(1, 1, 0) answered PositiveX. Both are fabricated answers reachable by any
+// caller, safe today only because the single call site happened to be guarded. Inlined, the guard
+// is the enclosing branch and the case analysis cannot be reached without it.
+fn normalize3<F>(v: Vector3<F>) -> SpatialArithmeticResult<Direction3Result<F>> {
+  let x = signed_millimeter_component_count(m: v.x)
+  let y = signed_millimeter_component_count(m: v.y)
+  let z = signed_millimeter_component_count(m: v.z)
+  let nonzero_axes = axis_count(value: x) + axis_count(value: y) + axis_count(value: z)
+  if nonzero_axes == 0 {
+    SpatialArithmeticReady { value: DirectionZeroVectorHasNone }
+  } else {
+    if nonzero_axes == 1 {
+      SpatialArithmeticReady { value: DirectionExact {
+        direction: if x != 0 {
+          if x < 0 { NegativeX } else { PositiveX }
+        } else {
+          if y != 0 {
+            if y < 0 { NegativeY } else { PositiveY }
+          } else {
+            if z < 0 { NegativeZ } else { PositiveZ }
+          }
+        },
+      } }
+    } else {
+      match norm_squared3(v: v) {
+        SpatialArithmeticRefused { cause: c } => SpatialArithmeticRefused { cause: c }
+        SpatialArithmeticReady { value: sq } =>
+          SpatialArithmeticReady { value: DirectionUnresolvedInAxisKernel {
+            squared_magnitude: sq,
+            reason: "this axis kernel resolves a unit direction only for an axis-aligned displacement; the direction may still be exactly representable ((3,4,0) is exactly (3/5,4/5,0)) and a richer realization - rational, algebraic, or error-bounded approximate - resolves it",
+          } }
+      }
+    }
+  }
+}

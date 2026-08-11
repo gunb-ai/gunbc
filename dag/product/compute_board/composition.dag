@@ -1,0 +1,382 @@
+module product.compute_board.composition
+
+import std.types { String, NonEmptyStr, List }
+import std.nat { Nat }
+import extdeps.external_authority { ExternalAuthority }
+import std.measure { ByteSize, HardwareThreadCount, byte_size_count, hardware_thread_count, hardware_thread_count_value }
+import extdeps.cpu.ampere_altra_package {
+  ContactMapPubliclyAvailableNotIngested,
+  ContactPopulationIncomplete,
+  DuplicateContactDesignator,
+  PackageContactMapAdmitted,
+  PackageContactMapStanding,
+  ReferenceBoardCollateralAvailable,
+  ReferenceBoardCollateralStanding,
+  ReferenceBoardCollateralUnderNda,
+}
+import product.compute_board.intent {
+  BoardCapability,
+  BootStoragePaths,
+  CapabilityRequirement,
+  ComputeBoardIntent,
+  ComputeCores,
+  CoolingBoundary,
+  FirmwareInterfaceSurface,
+  ManufactureAndBringUp,
+  MechanicalEnvelope,
+  MemoryCapacity,
+  NetworkPaths,
+  PowerInputBoundary,
+  RemoteManagement,
+  capability_eq,
+  requirement_capability,
+}
+
+data composition_note: String = "THE EARNED-ELEMENT FOLD: given a contract and a set of selected components, which required capabilities are unsatisfied, and which components are unearned. THE ASYMMETRY IS THE POINT AND IT IS EASY TO GET WRONG: an unsatisfied capability is a hole in the design, and an unearned component is a part nobody can justify — they are not two readings of one number, and a board that satisfies every capability can still carry parts that discharge nothing. A COMPONENT MAY DISCHARGE MORE THAN ONE OBLIGATION, and may also be earned by another component's imposed constraint rather than by a contract capability directly: a decoupling network is required by the device it serves, not by 'serve web workloads'. That second route is modelled as ImposedByComponent so the derivation stays a real chain back to the contract, rather than becoming an escape hatch that launders any part as necessary."
+
+// Why a component is in the design. There are exactly two legitimate answers and no third:
+// the contract asked for the capability, or a component we already selected requires it. A
+// component with an empty justification list is unearned by construction of this type — there
+// is no 'general good practice' arm, because that is the arm through which an unjustified part
+// enters and then never leaves.
+type ComponentJustification
+  = DischargesCapability { capability: BoardCapability }
+  | ImposedByComponent { by: NonEmptyStr, requirement: NonEmptyStr, authority: ExternalAuthority }
+
+// Core counts ride std.measure's HardwareThreadCount on BOTH sides of the comparison, because
+// a core count is a hardware thread count and that carrier already exists — extdeps.cpu.types
+// CpuModelCatalogRow.threads is typed with it. An earlier revision typed the requirement as a
+// bare Nat and the provision as a bare Int, which was the parallel representation §3 forbids
+// AND admitted a negative core count that then summed against a Nat minimum. Paths are Nat for
+// the same reason on the smaller scale: there is no negative number of network paths.
+//
+// WHAT A COMPONENT SUPPLIES, held separately from WHY IT IS HERE. An earlier revision fused
+// them: satisfaction was decided by matching a component's justification tag against a
+// requirement's capability tag, so a one-core part justified as Compute satisfied a 128-core
+// requirement. The contract's own note says a requirement is the capability PLUS the quantity
+// that makes it checkable, and the fold then discarded the quantity — the module contradicted
+// its own stated reason for existing. Justification answers to the earned-element rule;
+// provision answers to the quantity. They are different questions and a component can get one
+// right while getting the other wrong.
+type CapabilityProvision
+  = ProvidesCores { cores: HardwareThreadCount }
+  | ProvidesMemoryCapacity { capacity: ByteSize }
+  | ProvidesNetworkPaths { paths: Nat }
+  | ProvidesBootStoragePaths { paths: Nat }
+  | ProvidesManagement { power_control: Bool, console: Bool, recovery: Bool }
+  | ProvidesPowerBoundary
+  | ProvidesCoolingContract
+  | ProvidesFirmwareInterface { boot_flash: Bool, write_protect: Bool, recovery_path: Bool }
+  | ProvidesManufactureAndBringUp { programming_surface: Bool, test_access: Bool }
+  | ProvidesMechanicalEnvelope
+
+type ComponentInstance {
+  designator: NonEmptyStr
+  part: NonEmptyStr
+  justifications: List<ComponentJustification>
+  provisions: List<CapabilityProvision>
+}
+
+// THE WILDCARD ARMS ARE GONE, and that is not tidiness. `_ => 0` on a closed coproduct means a
+// provision variant added later contributes zero to every quantity silently — the board would
+// simply under-count and still report a verdict. Exhausting the variants makes the addition a
+// typecheck failure at every projection that has to decide what the new provision contributes.
+
+fn provision_cores(p: CapabilityProvision) -> Nat {
+  match p {
+    ProvidesCores { cores: c } => hardware_thread_count_value(t: c)
+    ProvidesMemoryCapacity { capacity: _ } => 0
+    ProvidesNetworkPaths { paths: _ } => 0
+    ProvidesBootStoragePaths { paths: _ } => 0
+    ProvidesManagement { power_control: _, console: _, recovery: _ } => 0
+    ProvidesPowerBoundary => 0
+    ProvidesCoolingContract => 0
+    ProvidesFirmwareInterface { boot_flash: _, write_protect: _, recovery_path: _ } => 0
+    ProvidesManufactureAndBringUp { programming_surface: _, test_access: _ } => 0
+    ProvidesMechanicalEnvelope => 0
+  }
+}
+
+fn provision_memory_bytes(p: CapabilityProvision) -> Nat {
+  match p {
+    ProvidesMemoryCapacity { capacity: c } => byte_size_count(b: c)
+    ProvidesCores { cores: _ } => 0
+    ProvidesNetworkPaths { paths: _ } => 0
+    ProvidesBootStoragePaths { paths: _ } => 0
+    ProvidesManagement { power_control: _, console: _, recovery: _ } => 0
+    ProvidesPowerBoundary => 0
+    ProvidesCoolingContract => 0
+    ProvidesFirmwareInterface { boot_flash: _, write_protect: _, recovery_path: _ } => 0
+    ProvidesManufactureAndBringUp { programming_surface: _, test_access: _ } => 0
+    ProvidesMechanicalEnvelope => 0
+  }
+}
+
+fn provision_network_paths(p: CapabilityProvision) -> Nat {
+  match p {
+    ProvidesNetworkPaths { paths: n } => n
+    ProvidesCores { cores: _ } => 0
+    ProvidesMemoryCapacity { capacity: _ } => 0
+    ProvidesBootStoragePaths { paths: _ } => 0
+    ProvidesManagement { power_control: _, console: _, recovery: _ } => 0
+    ProvidesPowerBoundary => 0
+    ProvidesCoolingContract => 0
+    ProvidesFirmwareInterface { boot_flash: _, write_protect: _, recovery_path: _ } => 0
+    ProvidesManufactureAndBringUp { programming_surface: _, test_access: _ } => 0
+    ProvidesMechanicalEnvelope => 0
+  }
+}
+
+fn provision_boot_paths(p: CapabilityProvision) -> Nat {
+  match p {
+    ProvidesBootStoragePaths { paths: n } => n
+    ProvidesCores { cores: _ } => 0
+    ProvidesMemoryCapacity { capacity: _ } => 0
+    ProvidesNetworkPaths { paths: _ } => 0
+    ProvidesManagement { power_control: _, console: _, recovery: _ } => 0
+    ProvidesPowerBoundary => 0
+    ProvidesCoolingContract => 0
+    ProvidesFirmwareInterface { boot_flash: _, write_protect: _, recovery_path: _ } => 0
+    ProvidesManufactureAndBringUp { programming_surface: _, test_access: _ } => 0
+    ProvidesMechanicalEnvelope => 0
+  }
+}
+
+fn sum_over_components(
+  components: List<ComponentInstance>,
+  f: fn(CapabilityProvision) -> Nat
+) -> Nat {
+  fold(components, init: 0, f: fn(acc, c) {
+    acc + fold(c.provisions, init: 0, f: fn(inner, p) { inner + f(p) })
+  })
+}
+
+fn total_memory_bytes(components: List<ComponentInstance>) -> Nat {
+  fold(components, init: 0, f: fn(acc, c) {
+    acc + fold(c.provisions, init: 0, f: fn(inner, p) { inner + provision_memory_bytes(p: p) })
+  })
+}
+
+fn any_provision(components: List<ComponentInstance>, pred: fn(CapabilityProvision) -> Bool) -> Bool {
+  fold(components, init: false, f: fn(acc, c) {
+    acc || fold(c.provisions, init: false, f: fn(inner, p) { inner || pred(p) })
+  })
+}
+
+// Quantities are compared, not tags. The boolean-shaped requirements demand every declared
+// sub-facility rather than the mere presence of a provision of that kind, so a management
+// device offering power control but no recovery path does not satisfy a contract that asked
+// for recovery.
+fn requirement_met(components: List<ComponentInstance>, r: CapabilityRequirement) -> Bool {
+  match r {
+    ComputeCores { minimum_cores: n } =>
+      sum_over_components(components: components, f: provision_cores) >= hardware_thread_count_value(t: n)
+    MemoryCapacity { minimum_capacity: cap } =>
+      total_memory_bytes(components: components) >= byte_size_count(b: cap)
+    NetworkPaths { minimum_paths: n } =>
+      sum_over_components(components: components, f: provision_network_paths) >= n
+    BootStoragePaths { minimum_paths: n } =>
+      sum_over_components(components: components, f: provision_boot_paths) >= n
+    RemoteManagement { power_control: pc, console: cons, recovery: rec } =>
+      any_provision(components: components, pred: p => match p {
+        ProvidesManagement { power_control: a, console: b, recovery: c } =>
+          (!pc || a) && (!cons || b) && (!rec || c)
+        _ => false
+      })
+    PowerInputBoundary { boundary: _ } =>
+      any_provision(components: components, pred: p => match p { ProvidesPowerBoundary => true, _ => false })
+    CoolingBoundary { boundary: _ } =>
+      any_provision(components: components, pred: p => match p { ProvidesCoolingContract => true, _ => false })
+    FirmwareInterfaceSurface { boot_flash: bf, write_protect: wp, recovery_path: rp } =>
+      any_provision(components: components, pred: p => match p {
+        ProvidesFirmwareInterface { boot_flash: a, write_protect: b, recovery_path: c } =>
+          (!bf || a) && (!wp || b) && (!rp || c)
+        _ => false
+      })
+    ManufactureAndBringUp { programming_surface: ps, test_access: ta } =>
+      any_provision(components: components, pred: p => match p {
+        ProvidesManufactureAndBringUp { programming_surface: a, test_access: b } =>
+          (!ps || a) && (!ta || b)
+        _ => false
+      })
+    MechanicalEnvelope { envelope: _ } =>
+      any_provision(components: components, pred: p => match p { ProvidesMechanicalEnvelope => true, _ => false })
+  }
+}
+
+fn justification_discharges(j: ComponentJustification, cap: BoardCapability) -> Bool {
+  match j {
+    DischargesCapability { capability: c } => capability_eq(a: c, b: cap)
+    ImposedByComponent { by: _, requirement: _, authority: _ } => false
+  }
+}
+
+fn component_discharges(c: ComponentInstance, cap: BoardCapability) -> Bool {
+  fold(c.justifications, init: false, f: fn(acc, j) {
+    acc || justification_discharges(j: j, cap: cap)
+  })
+}
+
+fn capability_satisfied(components: List<ComponentInstance>, cap: BoardCapability) -> Bool {
+  fold(components, init: false, f: fn(acc, c) {
+    acc || component_discharges(c: c, cap: cap)
+  })
+}
+
+fn unsatisfied_board_capabilities(
+  intent: ComputeBoardIntent,
+  components: List<ComponentInstance>
+) -> List<BoardCapability> {
+  intent.requirements
+    |> filter(r => !requirement_met(components: components, r: r))
+    |> map(r => requirement_capability(r: r))
+}
+
+fn justification_count(c: ComponentInstance) -> Nat {
+  fold(c.justifications, init: 0, f: (acc, _) => acc + 1)
+}
+
+fn unearned_components(components: List<ComponentInstance>) -> List<ComponentInstance> {
+  components |> filter(c => justification_count(c: c) == 0)
+}
+
+// THE THREE REFUSAL FAMILIES ARE SEPARATE TYPES, NOT VARIANTS OF ONE ENUM, because their
+// owners and lifetimes differ. Upstream collateral absence is a business prerequisite someone
+// outside engineering must clear; design incompleteness is our own unfinished work; a
+// manufacturing mismatch is a fact about the factory we selected. Fusing them sends all three
+// to one reader and makes 'blocked on Ampere under NDA' indistinguishable from 'we have not
+// routed DDR yet' — which is precisely the state-space conflation that lets the blocking one
+// stop ranking for attention.
+type CollateralRefusal
+  = PackageContactMapUnavailable { subject: NonEmptyStr }
+  | ReferenceBoardCollateralUnavailable { subject: NonEmptyStr }
+  | FootprintAuthorityUnavailable { part: NonEmptyStr }
+  | ElectricalModelUnavailable { part: NonEmptyStr }
+  | MemoryTopologyNotEstablished { reason: NonEmptyStr }
+
+type DesignIncompleteRefusal
+  = PublishedAuthorityNotIngested { document: NonEmptyStr }
+  | RequiredCapabilityUnsatisfied { capability: BoardCapability }
+  | UnearnedComponentPresent { designator: NonEmptyStr }
+  | PackageContactPopulationIncomplete { expected: Int, resolved: Int }
+  | DuplicatePackageContact { designator: NonEmptyStr }
+
+type ManufacturingRefusal
+  = FabricatorStackupUnconfirmed { fabricator: NonEmptyStr }
+  | ManufacturingCapabilityMismatch { feature: NonEmptyStr }
+
+// Readiness is a PRODUCT of the three families, never a single verdict flag. A board can be
+// simultaneously blocked upstream and incomplete downstream, and a reader that receives one
+// Bool cannot tell which action to take. Empty in all three is the only ready state, and it is
+// derived rather than asserted — there is no field anyone can set to 'ready'.
+type BoardReadiness {
+  collateral: List<CollateralRefusal>
+  design: List<DesignIncompleteRefusal>
+  manufacturing: List<ManufacturingRefusal>
+}
+
+fn refusal_list_empty<T>(xs: List<T>) -> Bool {
+  fold(xs, init: true, f: (acc, _) => false)
+}
+
+fn board_is_ready(r: BoardReadiness) -> Bool {
+  refusal_list_empty(xs: r.collateral)
+    && refusal_list_empty(xs: r.design)
+    && refusal_list_empty(xs: r.manufacturing)
+}
+
+// The package-map standing is projected into the refusal families rather than re-decided here,
+// so the contact-map authority stays single. Note where each arm lands: absent collateral is a
+// COLLATERAL refusal, while an incomplete or duplicated population is a DESIGN refusal — the
+// same reading the family split exists to preserve.
+fn project_contact_map_standing(
+  standing: PackageContactMapStanding
+) -> BoardReadiness {
+  match standing {
+    PackageContactMapAdmitted { resolved: _ } =>
+      BoardReadiness { collateral: [], design: [], manufacturing: [] }
+    ContactMapPubliclyAvailableNotIngested { document: d, authority: _ } =>
+      BoardReadiness {
+        collateral: [],
+        design: [PublishedAuthorityNotIngested { document: d }],
+        manufacturing: [],
+      }
+    ContactPopulationIncomplete { expected: e, resolved: r } =>
+      BoardReadiness {
+        collateral: [],
+        design: [PackageContactPopulationIncomplete { expected: e, resolved: r }],
+        manufacturing: [],
+      }
+    DuplicateContactDesignator { designator: d } =>
+      BoardReadiness {
+        collateral: [],
+        design: [DuplicatePackageContact { designator: d }],
+        manufacturing: [],
+      }
+  }
+}
+
+// Reference-board collateral projects from its OWN type into the collateral family, so the two
+// subjects reach readiness by separate routes and neither can render as the other.
+fn project_reference_board_standing(standing: ReferenceBoardCollateralStanding) -> BoardReadiness {
+  match standing {
+    ReferenceBoardCollateralAvailable =>
+      BoardReadiness { collateral: [], design: [], manufacturing: [] }
+    ReferenceBoardCollateralUnderNda { subject: s, access_route: _ } =>
+      BoardReadiness {
+        collateral: [ReferenceBoardCollateralUnavailable { subject: s }],
+        design: [],
+        manufacturing: [],
+      }
+  }
+}
+
+fn merge_readiness(a: BoardReadiness, b: BoardReadiness) -> BoardReadiness {
+  BoardReadiness {
+    collateral: append(a.collateral, items: b.collateral),
+    design: append(a.design, items: b.design),
+    manufacturing: append(a.manufacturing, items: b.manufacturing),
+  }
+}
+
+fn composition_readiness(
+  intent: ComputeBoardIntent,
+  components: List<ComponentInstance>
+) -> BoardReadiness {
+  BoardReadiness {
+    collateral: [],
+    design: append(
+      unsatisfied_board_capabilities(intent: intent, components: components)
+        |> map(cap => RequiredCapabilityUnsatisfied { capability: cap }),
+      items: unearned_components(components: components)
+        |> map(c => UnearnedComponentPresent { designator: c.designator })
+    ),
+    manufacturing: [],
+  }
+}
+
+// The whole-board fold, and it must take EVERY standing that can block an order. An earlier
+// revision composed only the composition and package-contact halves while
+// project_reference_board_standing sat beside it unreached, so the Ampere NDA blocker rendered
+// as READY through the one surface this module documents as the answer. The refusal existed,
+// was correctly typed, landed in the correct family, and was invisible to the only consumer
+// that matters — which is worse than never having modelled it, because the type system then
+// reports coverage that the fold does not deliver.
+//
+// The witness that was supposed to catch this called project_reference_board_standing directly
+// and passed, proving the projection rather than its reachability. A claim about a fold must be
+// asserted THROUGH the fold; anything else tests a function that the product may not call.
+fn board_readiness(
+  intent: ComputeBoardIntent,
+  components: List<ComponentInstance>,
+  contact_standing: PackageContactMapStanding,
+  reference_board_standing: ReferenceBoardCollateralStanding
+) -> BoardReadiness {
+  merge_readiness(
+    a: merge_readiness(
+      a: composition_readiness(intent: intent, components: components),
+      b: project_contact_map_standing(standing: contact_standing)
+    ),
+    b: project_reference_board_standing(standing: reference_board_standing)
+  )
+}

@@ -1,0 +1,238 @@
+module product.compute_board.spice_projection
+
+import std.types { String, NonEmptyStr, List }
+import std.nat { Nat }
+import std.measure { measure_count }
+import product.compute_board.analog {
+  AnalogCircuitIntent,
+  CapacitanceNanofarads,
+  ComponentInstanceIdentity,
+  ComponentModelBinding,
+  ElectricalComponentInstance,
+  ElectricalTerminalRef,
+  component_terminals,
+  ElectricalModelAbsent,
+  ElectricalModelCited,
+  ElectricalModelStanding,
+  IdealLumped,
+  IndependentVoltageSource,
+  VendorSubcircuit,
+  NetIdentity,
+  PassiveCapacitor,
+  PassiveResistor,
+  PotentialSourceVolts,
+  ResistanceKilohms,
+  net_membership_count,
+  net_of_terminal,
+  terminal_ref,
+}
+import product.compute_board.article {
+  BoardArticleIdentity,
+  BoardPowerInterfaceArticle,
+}
+
+data spice_projection_note: String = "SPICE AS A PROJECTION OF A LANGUAGE-NEUTRAL ANALOG INTENT. Every piece of SPICE spelling for this article lives in this module and nowhere upstream: the element letter, the node names, the reference node '0', and the magnitude SUFFIXES. That last one is the correction that mattered — an earlier revision carried value_lexeme: '10k' in the model, which is a SPICE spelling of a resistance, so the supposed authority was holding target syntax. The magnitude is now a typed measure and 'k' is derived here from the variant's declared scale. THE PRIOR SHAPE WAS WORSE THAN A STRAY STRING: the board article held a BoardSlice imported FROM this module, so the article depended on one of its own targets and 'the article feeds every interface' was true only because that interface had already decided what the article looked like. WHAT THIS MODULE REFUSES BEFORE EMITTING A BYTE: an element with no model binding at all, an element whose vendor model this profile cannot render, and a TERMINAL ON NO NET. That last refusal is not pedantry — a floating terminal and a grounded one are different circuits, and defaulting the first to the second emits a deck that simulates cleanly and describes a different board."
+
+type SpiceProjectionRefusal
+  = ElectricalModelUnavailable { part: NonEmptyStr }
+  | ModelFidelityNotEmittable { part: NonEmptyStr, model_card: NonEmptyStr }
+  | ComponentModelBindingMissing { part: NonEmptyStr }
+  | TerminalOnNoNet { part: NonEmptyStr }
+  | TerminalOnMultipleNets { part: NonEmptyStr }
+  | DuplicateModelBinding { component: NonEmptyStr }
+
+// The receipt carries the article identity, so an emission is traceable to the root that
+// produced it. Without this, two unrelated articles with equal extracted fields produce
+// indistinguishable output and 'one article feeds both projections' is a convention in a
+// witness rather than a property of the types.
+type SpiceEmissionReceipt {
+  source_article: BoardArticleIdentity
+  source: String
+}
+
+type SpiceProjection
+  = SpiceSliceProjected { receipt: SpiceEmissionReceipt }
+  | SpiceSliceRefused { cause: SpiceProjectionRefusal }
+
+fn element_letter(c: ElectricalComponentInstance) -> String {
+  match c.role {
+    PassiveResistor => "R"
+    PassiveCapacitor => "C"
+    IndependentVoltageSource => "V"
+  }
+}
+
+fn value_spelling(c: ElectricalComponentInstance) -> String {
+  match c.value {
+    ResistanceKilohms { magnitude: m } => concat(to_string(measure_count(m)), "k")
+    CapacitanceNanofarads { magnitude: m } => concat(to_string(measure_count(m)), "n")
+    PotentialSourceVolts { magnitude: m } => to_string(measure_count(m))
+  }
+}
+
+fn binding_for(bindings: List<ComponentModelBinding>, c: ElectricalComponentInstance) -> ElectricalModelStanding? {
+  fold(bindings, init: none, f: fn(acc, b) {
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent =>
+        if (b.component as String) == (c.identity as String) { Present { value: b.standing } } else { none }
+    }
+  })
+}
+
+// HOW MANY bindings claim this component. binding_for answers with the FIRST match, so two rows
+// disagreeing about one component's model resolved silently by list order — an ideal-lumped row
+// and a vendor-subcircuit row for the same part emit or refuse depending on which was authored
+// first, which is a verdict decided by an editing accident. Ambiguity is not a model standing
+// and is refused rather than resolved.
+fn binding_count(bindings: List<ComponentModelBinding>, c: ElectricalComponentInstance) -> Nat {
+  fold(bindings, init: 0, f: fn(acc, b) {
+    if (b.component as String) == (c.identity as String) { acc + 1 } else { acc }
+  })
+}
+
+fn standing_refusal(c: ElectricalComponentInstance, s: ElectricalModelStanding) -> SpiceProjectionRefusal? {
+  match s {
+    ElectricalModelAbsent => Present { value: ElectricalModelUnavailable { part: c.part } }
+    ElectricalModelCited { model_card: mc, fidelity: f } =>
+      match f {
+        IdealLumped => none
+        VendorSubcircuit => Present { value: ModelFidelityNotEmittable { part: c.part, model_card: mc } }
+      }
+  }
+}
+
+// A terminal sits in exactly one of three states and they have DIFFERENT remedies: on no net
+// (floating), on one net (netted), or on several (shorted between them). The earlier check was a
+// Bool over "did net_of_terminal answer", which collapsed the third into the second — so a
+// terminal shorting two nets emitted a deck naming whichever net was authored first, and the
+// deck simulated cleanly while describing a board that is not the one modelled. That is the
+// exact failure this module's note claims to prevent for the floating case, left open for the
+// shorted one.
+fn terminal_netting_refusal(
+  intent: AnalogCircuitIntent,
+  c: ElectricalComponentInstance,
+  t: ElectricalTerminalRef
+) -> SpiceProjectionRefusal? {
+  let n = net_membership_count(intent: intent, t: t)
+  if n == 0 {
+    Present { value: TerminalOnNoNet { part: c.part } }
+  } else {
+    if n == 1 { none } else { Present { value: TerminalOnMultipleNets { part: c.part } } }
+  }
+}
+
+fn terminals_netting_refusal(
+  intent: AnalogCircuitIntent,
+  c: ElectricalComponentInstance
+) -> SpiceProjectionRefusal? {
+  fold(component_terminals(c: c), init: none, f: fn(acc, t) {
+    match acc {
+      Present { value: r } => Present { value: r }
+      Absent => terminal_netting_refusal(intent: intent, c: c, t: t)
+    }
+  })
+}
+
+fn component_refusal(
+  intent: AnalogCircuitIntent,
+  bindings: List<ComponentModelBinding>,
+  c: ElectricalComponentInstance
+) -> SpiceProjectionRefusal? {
+  if binding_count(bindings: bindings, c: c) > 1 {
+    Present { value: DuplicateModelBinding { component: c.identity as NonEmptyStr } }
+  } else {
+    match binding_for(bindings: bindings, c: c) {
+      Absent => Present { value: ComponentModelBindingMissing { part: c.part } }
+      Present { value: s } =>
+        match standing_refusal(c: c, s: s) {
+          Present { value: r } => Present { value: r }
+          Absent => terminals_netting_refusal(intent: intent, c: c)
+        }
+    }
+  }
+}
+
+fn first_refusal(
+  intent: AnalogCircuitIntent,
+  bindings: List<ComponentModelBinding>
+) -> SpiceProjectionRefusal? {
+  fold(intent.components, init: none, f: fn(acc, c) {
+    match acc {
+      Present { value: r } => Present { value: r }
+      Absent => component_refusal(intent: intent, bindings: bindings, c: c)
+    }
+  })
+}
+
+// The reference net renders as SPICE node 0, and WHICH net is the reference is supplied by the
+// caller rather than inferred from a name. No net acquires reference status by being spelled
+// "gnd", which is the same discipline the bonding decomposition applies one layer up.
+fn node_spelling(
+  intent: AnalogCircuitIntent,
+  reference: NetIdentity,
+  c: ElectricalComponentInstance,
+  positive: Bool
+) -> String {
+  let t = if positive {
+    terminal_ref(component: c.identity, terminal: c.positive_terminal)
+  } else {
+    terminal_ref(component: c.identity, terminal: c.negative_terminal)
+  }
+  match net_of_terminal(intent: intent, t: t) {
+    Present { value: n } => if (n as String) == (reference as String) { "0" } else { n as String }
+    Absent => "0"
+  }
+}
+
+fn component_line(intent: AnalogCircuitIntent, reference: NetIdentity, c: ElectricalComponentInstance) -> String {
+  concat(
+    concat(concat(element_letter(c: c), c.identity as String), " "),
+    concat(
+      concat(node_spelling(intent: intent, reference: reference, c: c, positive: true), " "),
+      concat(
+        concat(node_spelling(intent: intent, reference: reference, c: c, positive: false), " "),
+        value_spelling(c: c)
+      )
+    )
+  )
+}
+
+fn body_text(intent: AnalogCircuitIntent, reference: NetIdentity) -> String {
+  fold(intent.components, init: "", f: fn(acc, c) {
+    let line = component_line(intent: intent, reference: reference, c: c)
+    if acc == "" { line } else { concat(concat(acc, "\n"), line) }
+  })
+}
+
+fn project_analog_to_spice(
+  article_identity: BoardArticleIdentity,
+  intent: AnalogCircuitIntent,
+  bindings: List<ComponentModelBinding>,
+  reference: NetIdentity
+) -> SpiceProjection {
+  match first_refusal(intent: intent, bindings: bindings) {
+    Present { value: r } => SpiceSliceRefused { cause: r }
+    Absent =>
+      SpiceSliceProjected {
+        receipt: SpiceEmissionReceipt {
+          source_article: article_identity,
+          source: concat(concat(intent.title as String, "\n"), body_text(intent: intent, reference: reference)),
+        },
+      }
+  }
+}
+
+// THE PRODUCTION ENTRY POINT, and the reason it takes the whole article rather than its parts.
+// Every caller of project_analog_to_spice supplies the identity and the circuit SEPARATELY, so
+// one article's identity paired with another article's circuit was perfectly constructible and
+// the resulting receipt would name a board it does not describe. Taking the article closes that
+// by construction: there is one value, and both facts are read out of it here.
+fn project_article_to_spice(article: BoardPowerInterfaceArticle) -> SpiceProjection {
+  project_analog_to_spice(
+    article_identity: article.identity,
+    intent: article.analog,
+    bindings: article.model_bindings,
+    reference: article.reference_net
+  )
+}

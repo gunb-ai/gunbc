@@ -1,0 +1,353 @@
+module test.claim.compute_board_spice_projection_witness
+
+import std.types { String, NonEmptyStr, List }
+import std.measure { Measure }
+import product.compute_board.analog {
+  AnalogCircuitIntent,
+  CapacitanceNanofarads,
+  ComponentInstanceIdentity,
+  ComponentModelBinding,
+  ElectricalComponentInstance,
+  ElectricalModelAbsent,
+  ElectricalModelCited,
+  ElectricalNet,
+  IdealLumped,
+  IndependentVoltageSource,
+  NetIdentity,
+  PassiveCapacitor,
+  PassiveResistor,
+  PotentialSourceVolts,
+  ResistanceKilohms,
+  TerminalIdentity,
+  VendorSubcircuit,
+  terminal_ref,
+}
+import product.compute_board.spice_projection {
+  ComponentModelBindingMissing,
+  ElectricalModelUnavailable,
+  ModelFidelityNotEmittable,
+  SpiceProjection,
+  SpiceSliceProjected,
+  SpiceSliceRefused,
+  TerminalOnNoNet,
+  TerminalOnMultipleNets,
+  DuplicateModelBinding,
+  project_analog_to_spice,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SYNTHETIC FIXTURES, sized to the boundaries they cross and no larger. Nothing here is a
+// realistic-looking circuit chosen for verisimilitude: each fixture is the smallest one that
+// crosses exactly one modelled boundary, per the witness-cost rule.
+data fixture_identity: NonEmptyStr = "synthetic fixture rev 0"
+
+data rail_net: NetIdentity = "rail" as NetIdentity
+
+data return_net: NetIdentity = "rtn" as NetIdentity
+
+data sense_resistor: ElectricalComponentInstance = ElectricalComponentInstance {
+  identity: "sense" as ComponentInstanceIdentity,
+  part: "series sense resistor",
+  role: PassiveResistor,
+  positive_terminal: "1" as TerminalIdentity,
+  negative_terminal: "2" as TerminalIdentity,
+  value: ResistanceKilohms { magnitude: Measure { count: 10 } },
+}
+
+data decoupling_capacitor: ElectricalComponentInstance = ElectricalComponentInstance {
+  identity: "decap" as ComponentInstanceIdentity,
+  part: "bulk decoupling capacitor",
+  role: PassiveCapacitor,
+  positive_terminal: "1" as TerminalIdentity,
+  negative_terminal: "2" as TerminalIdentity,
+  value: CapacitanceNanofarads { magnitude: Measure { count: 100 } },
+}
+
+data rail_supply: ElectricalComponentInstance = ElectricalComponentInstance {
+  identity: "rail_src" as ComponentInstanceIdentity,
+  part: "standby rail source",
+  role: IndependentVoltageSource,
+  positive_terminal: "1" as TerminalIdentity,
+  negative_terminal: "2" as TerminalIdentity,
+  value: PotentialSourceVolts { magnitude: Measure { count: 12 } },
+}
+
+fn nets_for(components: List<ElectricalComponentInstance>) -> List<ElectricalNet> {
+  [
+    ElectricalNet {
+      identity: rail_net,
+      members: fold(components, init: [], f: fn(acc, c) {
+        append(acc, items: [terminal_ref(component: c.identity, terminal: c.positive_terminal)])
+      }),
+    },
+    ElectricalNet {
+      identity: return_net,
+      members: fold(components, init: [], f: fn(acc, c) {
+        append(acc, items: [terminal_ref(component: c.identity, terminal: c.negative_terminal)])
+      }),
+    },
+  ]
+}
+
+fn circuit_with(components: List<ElectricalComponentInstance>) -> AnalogCircuitIntent {
+  AnalogCircuitIntent {
+    title: "standby rail slice",
+    components: components,
+    nets: nets_for(components: components),
+  }
+}
+
+fn ideal_binding(c: ElectricalComponentInstance) -> ComponentModelBinding {
+  ComponentModelBinding {
+    component: c.identity,
+    standing: ElectricalModelCited { model_card: "ideal lumped passive at declared fidelity", fidelity: IdealLumped },
+  }
+}
+
+fn absent_binding(c: ElectricalComponentInstance) -> ComponentModelBinding {
+  ComponentModelBinding { component: c.identity, standing: ElectricalModelAbsent }
+}
+
+fn subcircuit_binding(c: ElectricalComponentInstance) -> ComponentModelBinding {
+  ComponentModelBinding {
+    component: c.identity,
+    standing: ElectricalModelCited { model_card: "vendor ESR/ESL subcircuit", fidelity: VendorSubcircuit },
+  }
+}
+
+fn project(
+  components: List<ElectricalComponentInstance>,
+  bindings: List<ComponentModelBinding>
+) -> SpiceProjection {
+  project_analog_to_spice(
+    article_identity: fixture_identity,
+    intent: circuit_with(components: components),
+    bindings: bindings,
+    reference: return_net
+  )
+}
+
+// POSITIVE CONTROL ON EMITTED BYTES, as full equality. A contains-check passes on a deck with an
+// extra element, a missing element, a reordered netlist or a wrong reference node — four
+// different circuits — so the whole deck is pinned as one contiguous string. The reference net
+// renders as node 0 because the CALLER named it, not because it is spelled "rtn".
+//
+// The three-attempt diagnosis behind this emission is kept because each wrong answer was more
+// confident than the last. (1) "spice_emit returns an unwrapped Optional." (2) "a native list
+// was passed where the module folds a Cons/Empty free monoid" — a real bug, fixed, not the
+// cause. (3) "the seam is cross-module." Also wrong. The actual cause was two lines:
+// spice_text_concat was defined as list_append, the FREE MONOID append, applied to String.
+test fn w_modelled_circuit_emits_expected_deck_bytes() -> Bool {
+  match project(
+    components: [rail_supply, sense_resistor, decoupling_capacitor],
+    bindings: [ideal_binding(c: rail_supply), ideal_binding(c: sense_resistor), ideal_binding(c: decoupling_capacitor)]
+  ) {
+    SpiceSliceProjected { receipt: r } =>
+      r.source == "standby rail slice\nVrail_src rail 0 12\nRsense rail 0 10k\nCdecap rail 0 100n"
+        && (r.source_article as String) == "synthetic fixture rev 0"
+    SpiceSliceRefused { cause: _ } => false
+  }
+}
+
+// PERTURB EXACTLY ONE TYPED VALUE and the deck must change. This is what makes the byte equality
+// above an oracle rather than a pinned constant: the emission is a function of the model.
+data perturbed_resistor: ElectricalComponentInstance = ElectricalComponentInstance {
+  identity: "sense" as ComponentInstanceIdentity,
+  part: "series sense resistor",
+  role: PassiveResistor,
+  positive_terminal: "1" as TerminalIdentity,
+  negative_terminal: "2" as TerminalIdentity,
+  value: ResistanceKilohms { magnitude: Measure { count: 47 } },
+}
+
+test fn w_one_perturbed_value_changes_the_deck() -> Bool {
+  match project(components: [perturbed_resistor], bindings: [ideal_binding(c: perturbed_resistor)]) {
+    SpiceSliceProjected { receipt: r } =>
+      r.source == "standby rail slice\nRsense rail 0 47k"
+        && r.source != "standby rail slice\nRsense rail 0 10k"
+    SpiceSliceRefused { cause: _ } => false
+  }
+}
+
+// THE WALL. One element loses its model and the whole projection refuses, naming the part. The
+// forbidden behaviour is not a missing error message — it is a deck that still emits, with an
+// ideal part quietly standing in for the one we could not model.
+test fn w_unmodelled_element_refuses_and_emits_nothing() -> Bool {
+  match project(
+    components: [sense_resistor, decoupling_capacitor],
+    bindings: [ideal_binding(c: sense_resistor), absent_binding(c: decoupling_capacitor)]
+  ) {
+    SpiceSliceRefused { cause: c } =>
+      match c {
+        ElectricalModelUnavailable { part: p } => (p as String) == "bulk decoupling capacitor"
+        ModelFidelityNotEmittable { part: _, model_card: _ } => false
+        ComponentModelBindingMissing { part: _ } => false
+        TerminalOnNoNet { part: _ } => false
+        TerminalOnMultipleNets { part: _ } => false
+        DuplicateModelBinding { component: _ } => false
+      }
+    SpiceSliceProjected { receipt: _ } => false
+  }
+}
+
+// The discriminating pair: the SAME circuit differing only in model standing lands on opposite
+// arms. Without this, the refusal above is satisfied by a projection that refuses everything.
+test fn w_model_standing_alone_decides_the_arm() -> Bool {
+  match project(components: [decoupling_capacitor], bindings: [ideal_binding(c: decoupling_capacitor)]) {
+    SpiceSliceProjected { receipt: _ } =>
+      match project(components: [decoupling_capacitor], bindings: [absent_binding(c: decoupling_capacitor)]) {
+        SpiceSliceRefused { cause: _ } => true
+        SpiceSliceProjected { receipt: _ } => false
+      }
+    SpiceSliceRefused { cause: _ } => false
+  }
+}
+
+// A cited VENDOR SUBCIRCUIT cannot be emitted by this profile — it emits no .SUBCKT or .MODEL
+// binding — so it refuses rather than emitting an ideal line while the type claims a vendor
+// model stands behind it. That silent downgrade is the same substitution the absent-model wall
+// forbids, and an earlier revision performed it: admission checked only that a model card was
+// PRESENT, and every admitted element emitted as an ideal lumped part regardless.
+test fn w_vendor_subcircuit_refuses_rather_than_emitting_an_ideal_part() -> Bool {
+  match project(components: [decoupling_capacitor], bindings: [subcircuit_binding(c: decoupling_capacitor)]) {
+    SpiceSliceRefused { cause: c } =>
+      match c {
+        ModelFidelityNotEmittable { part: p, model_card: mc } =>
+          (p as String) == "bulk decoupling capacitor" && (mc as String) == "vendor ESR/ESL subcircuit"
+        ElectricalModelUnavailable { part: _ } => false
+        ComponentModelBindingMissing { part: _ } => false
+        TerminalOnNoNet { part: _ } => false
+        TerminalOnMultipleNets { part: _ } => false
+        DuplicateModelBinding { component: _ } => false
+      }
+    SpiceSliceProjected { receipt: _ } => false
+  }
+}
+
+// NO BINDING AT ALL is its own arm, distinct from a binding that says the model is absent. The
+// first means nobody asked; the second means someone looked and there is none. Collapsing them
+// would make an omitted row read as a recorded negative result.
+test fn w_missing_binding_is_not_an_absent_model() -> Bool {
+  match project(components: [decoupling_capacitor], bindings: []) {
+    SpiceSliceRefused { cause: c } =>
+      match c {
+        ComponentModelBindingMissing { part: p } => (p as String) == "bulk decoupling capacitor"
+        ElectricalModelUnavailable { part: _ } => false
+        ModelFidelityNotEmittable { part: _, model_card: _ } => false
+        TerminalOnNoNet { part: _ } => false
+        TerminalOnMultipleNets { part: _ } => false
+        DuplicateModelBinding { component: _ } => false
+      }
+    SpiceSliceProjected { receipt: _ } => false
+  }
+}
+
+// A FLOATING TERMINAL AND A GROUNDED ONE ARE DIFFERENT CIRCUITS. The fixture nets only the
+// positive terminals, so the negative terminals sit on no net; the projection refuses rather
+// than defaulting them to the reference node and emitting a deck that simulates cleanly and
+// describes a different board.
+data floating_circuit: AnalogCircuitIntent = AnalogCircuitIntent {
+  title: "standby rail slice",
+  components: [sense_resistor],
+  nets: [
+    ElectricalNet {
+      identity: rail_net,
+      members: [terminal_ref(component: sense_resistor.identity, terminal: sense_resistor.positive_terminal)],
+    },
+  ],
+}
+
+test fn w_terminal_on_no_net_refuses_rather_than_defaulting_to_reference() -> Bool {
+  match project_analog_to_spice(
+    article_identity: fixture_identity,
+    intent: floating_circuit,
+    bindings: [ideal_binding(c: sense_resistor)],
+    reference: return_net
+  ) {
+    SpiceSliceRefused { cause: c } =>
+      match c {
+        TerminalOnNoNet { part: p } => (p as String) == "series sense resistor"
+        ElectricalModelUnavailable { part: _ } => false
+        ModelFidelityNotEmittable { part: _, model_card: _ } => false
+        ComponentModelBindingMissing { part: _ } => false
+        TerminalOnMultipleNets { part: _ } => false
+        DuplicateModelBinding { component: _ } => false
+      }
+    SpiceSliceProjected { receipt: _ } => false
+  }
+}
+
+// AMBIGUITY IS NOT A MODEL STANDING. Two bindings for one component were resolved by list order:
+// binding_for takes the first match, so an ideal row and a vendor-subcircuit row for the same
+// part emitted or refused depending on which was authored first. Both orders are asserted,
+// because a check that only tried one would pass on a lookup that still silently prefers a
+// position — the wall has to hold regardless of which row an editor happened to type first.
+test fn w_duplicate_model_binding_refuses_in_either_order() -> Bool {
+  match project(
+    components: [sense_resistor],
+    bindings: [ideal_binding(c: sense_resistor), subcircuit_binding(c: sense_resistor)]
+  ) {
+    SpiceSliceRefused { cause: c } =>
+      match c {
+        DuplicateModelBinding { component: id } =>
+          (id as String) == "sense"
+            && match project(
+              components: [sense_resistor],
+              bindings: [subcircuit_binding(c: sense_resistor), ideal_binding(c: sense_resistor)]
+            ) {
+              SpiceSliceRefused { cause: c2 } =>
+                match c2 { DuplicateModelBinding { component: _ } => true, _ => false }
+              SpiceSliceProjected { receipt: _ } => false
+            }
+        _ => false
+      }
+    SpiceSliceProjected { receipt: _ } => false
+  }
+}
+
+// A TERMINAL ON TWO NETS IS A SHORT, and it is a different circuit from the one this deck would
+// otherwise describe. The earlier check asked only whether net_of_terminal answered, so this
+// case took the first net and emitted a clean-simulating deck for a board that is not the
+// modelled one — the exact failure the module's note claims to prevent for floating terminals,
+// left open for shorted ones. The positive control below shares every fixture except the extra
+// net, so the refusal is attributable to the short and nothing else.
+fn shorted_circuit() -> AnalogCircuitIntent {
+  AnalogCircuitIntent {
+    title: "standby rail slice",
+    components: [sense_resistor],
+    nets: append(nets_for(components: [sense_resistor]), items: [
+      ElectricalNet {
+        identity: "shorting_net" as NetIdentity,
+        members: [terminal_ref(component: sense_resistor.identity, terminal: sense_resistor.positive_terminal)],
+      },
+    ]),
+  }
+}
+
+test fn w_terminal_on_two_nets_refuses_as_a_short() -> Bool {
+  match project_analog_to_spice(
+    article_identity: fixture_identity,
+    intent: shorted_circuit(),
+    bindings: [ideal_binding(c: sense_resistor)],
+    reference: return_net
+  ) {
+    SpiceSliceRefused { cause: c } =>
+      match c {
+        TerminalOnMultipleNets { part: p } => (p as String) == "series sense resistor"
+        _ => false
+      }
+    SpiceSliceProjected { receipt: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL the short refusal needs. Same component, same binding, same reference —
+// only the extra net removed. Without this, a refusal arm that fired on every one-resistor
+// circuit would satisfy the test above and prove nothing about shorts.
+test fn w_same_circuit_without_the_extra_net_emits() -> Bool {
+  match project(components: [sense_resistor], bindings: [ideal_binding(c: sense_resistor)]) {
+    SpiceSliceProjected { receipt: r } => r.source == "standby rail slice\nRsense rail 0 10k"
+    SpiceSliceRefused { cause: _ } => false
+  }
+}
