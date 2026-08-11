@@ -46,8 +46,6 @@ import std.euclidean_geometry {
 // parallel to a global axis - a rotated rectilinear loop - that is a genuinely different concept and
 // earns its own carrier then, most likely as a loop plus an OrthogonalRotation3 rather than as a
 // second segment type.
-data orthogonal_segment_not_minted_note: String = "OrthogonalSegment2 and OrthogonalSurface3 are deliberately absent: in 2D an axis-aligned segment and an orthogonal segment denote the same set, as do an axis-aligned rectangle and an orthogonal surface in an axis-perpendicular plane. Minting both spellings would fork one concept across two authorities. A rotated rectilinear loop, if a consumer needs one, is an OrthogonalLoop2 plus an OrthogonalRotation3, not a second segment carrier."
-
 type Axis2
   = Axis2X
   | Axis2Y
@@ -67,11 +65,9 @@ type OrthogonalRefusal
   | ExtentNotPositive { axis: Axis3 }
   | OrthogonalFrameMismatch { expected: CoordinateFrameIdentity, observed: CoordinateFrameIdentity }
   | LoopTooFewVertices { supplied: Int }
-  | LoopNotClosed
   | LoopEdgeNotAxisAligned
   | LoopEdgesNotPerpendicular
   | LoopSelfIntersects
-  | SurfaceNotInPlane { plane_axis: Axis3 }
   | RotationAxesParallel
   | BoundingBoxHasNoPoints
 
@@ -411,6 +407,12 @@ fn bounding_box3_max(b: BoundingBox3) -> Point3 { b.max }
 // something true by construction.
 //
 // FOUR WALLS, and each refuses distinctly because each sends a caller somewhere different:
+// CLOSURE IS NOT A REFUSAL ARM because it is not a reachable state: the last vertex connects to the
+// first by construction, so there is no unclosed loop for a mint to reject. A LoopNotClosed variant
+// was declared here and never emitted, and an unreachable refusal is rung inflation on the sum -
+// a consumer reads it as a live failure mode and writes a handler for a state nothing produces.
+// The same held for a SurfaceNotInPlane arm: a surface is a Plane3 plus a 2D rectangle, so
+// non-coplanarity has no representation either. Both deleted (cursor review 51202).
 //   - at least four vertices, since three axis-aligned edges cannot close
 //   - one frame across every vertex
 //   - every edge axis-aligned (consecutive vertices differ on exactly one axis)
@@ -428,11 +430,15 @@ fn point2_same_position(a: Point2, b: Point2) -> Bool {
   point2_x(p: a) == point2_x(p: b) && point2_y(p: a) == point2_y(p: b)
 }
 
-fn loop_vertex_at(vs: List<Point2>, i: Int) -> Point2? {
-  vs |> skip(i) |> first
+fn point2_x(p: Point2) -> Int { signed_millimeter_component_count(m: p.x) }
+fn point2_y(p: Point2) -> Int { signed_millimeter_component_count(m: p.y) }
+
+fn point2_same_position(a: Point2, b: Point2) -> Bool {
+  point2_x(p: a) == point2_x(p: b) && point2_y(p: a) == point2_y(p: b)
 }
 
-// Edge i runs from vertex i to vertex (i+1) mod n. Its axis is X when the y coordinates agree.
+// An edge's axis is X when the y coordinates agree and y when the x coordinates agree; a diagonal
+// or a zero-length step has neither, and answers `none` rather than a defaulted axis.
 fn loop_edge_axis(a: Point2, b: Point2) -> Axis2? {
   let dx = point2_x(p: b) - point2_x(p: a)
   let dy = point2_y(p: b) - point2_y(p: a)
@@ -455,8 +461,7 @@ fn axis2_eq(a: Axis2, b: Axis2) -> Bool {
 // TWO AXIS-ALIGNED SEGMENTS INTERSECT IFF THEY OVERLAP ON BOTH AXES, which is the whole reason this
 // band restricts itself to axis-aligned geometry: the general segment-intersection predicate needs
 // cross products and a degeneracy analysis, and this one is four integer comparisons. Endpoints
-// count as intersection here (closed ranges) because two non-adjacent edges of a simple loop must
-// not even touch.
+// count (closed ranges) because two non-adjacent edges of a simple loop must not even touch.
 fn ranges_overlap(a_lo: Int, a_hi: Int, b_lo: Int, b_hi: Int) -> Bool {
   min_int(a: a_lo, b: a_hi) <= max_int(a: b_lo, b: b_hi)
     && min_int(a: b_lo, b: b_hi) <= max_int(a: a_lo, b: a_hi)
@@ -467,48 +472,11 @@ fn segments_touch(a1: Point2, a2: Point2, b1: Point2, b2: Point2) -> Bool {
     && ranges_overlap(a_lo: point2_y(p: a1), a_hi: point2_y(p: a2), b_lo: point2_y(p: b1), b_hi: point2_y(p: b2))
 }
 
-// THE LOOP MINT. Each wall is checked in an order chosen so the refusal a caller receives is the
-// most specific one true of their input: too few vertices before frames, frames before geometry,
-// edge alignment before perpendicularity (a diagonal edge has no axis to be perpendicular about),
-// and self-intersection last because it is the only check that is not local to one edge.
-// AXIS QUERIES ARE COMPUTED PER EDGE FROM THE VERTICES rather than materialised as a
-// List<Axis2?>. The list form forced a nested optional at every read - the `first` of a list of
-// optionals - and the seed resolves the inner pattern against Axis2 rather than against Optional,
-// so the nesting was not merely awkward, it did not typecheck. One level of optional per lookup.
-fn loop_edge_axis_at(vertices: List<Point2>, i: Int, n: Int) -> Axis2? {
-  match loop_vertex_at(vs: vertices, i: i) {
-    Absent => none
-    Present { value: a } =>
-      match loop_vertex_at(vs: vertices, i: (i + 1) % n) {
-        Absent => none
-        Present { value: b } => loop_edge_axis(a: a, b: b)
-      }
-  }
-}
-
-fn edge_axis_is(vertices: List<Point2>, i: Int, n: Int, wanted: Axis2) -> Bool {
-  match loop_edge_axis_at(vertices: vertices, i: i, n: n) {
-    Absent => false
-    Present { value: got } => axis2_eq(a: got, b: wanted)
-  }
-}
-
-fn any_edge_unaligned(vertices: List<Point2>, n: Int) -> Bool {
-  fold(vertices |> enumerate, init: false, f: (acc, pair) =>
-    acc || loop_edge_axis_at(vertices: vertices, i: pair.first, n: n) == none)
-}
-
-fn any_adjacent_edges_parallel(vertices: List<Point2>, n: Int) -> Bool {
-  fold(vertices |> enumerate, init: false, f: (acc, pair) =>
-    if acc {
-      true
-    } else {
-      match loop_edge_axis_at(vertices: vertices, i: pair.first, n: n) {
-        Absent => true
-        Present { value: this_axis } =>
-          edge_axis_is(vertices: vertices, i: (pair.first + 1) % n, n: n, wanted: this_axis)
-      }
-    })
+// Adjacency is MODULAR: edge i neighbours i-1 and i+1, and edge 0 neighbours edge n-1 across the
+// implicit closure - exactly the pair a non-modular comparison forgets, admitting a loop whose
+// closing edge lies along its first.
+fn edges_are_adjacent(i: Int, j: Int, n: Int) -> Bool {
+  i == j || ((i + 1) % n) == j || ((j + 1) % n) == i
 }
 
 fn any_repeated_vertex(vertices: List<Point2>) -> Bool {
@@ -521,33 +489,101 @@ fn any_repeated_vertex(vertices: List<Point2>) -> Bool {
     })
 }
 
-// NON-ADJACENT EDGES MUST NOT TOUCH. Adjacency is modular: edge i is adjacent to i-1 and i+1, and
-// edge 0 is adjacent to edge n-1 across the implicit closure - which is exactly the pair a
-// non-modular comparison forgets, admitting a loop whose closing edge lies along its first.
-fn edges_are_adjacent(i: Int, j: Int, n: Int) -> Bool {
-  i == j || ((i + 1) % n) == j || ((j + 1) % n) == i
-}
-
-fn any_nonadjacent_edges_touch(vertices: List<Point2>, n: Int) -> Bool {
-  fold(vertices |> enumerate, init: false, f: (acc, a_pair) =>
+fn any_nonadjacent_edges_touch(edges: List<LoopEdge>, n: Int) -> Bool {
+  fold(edges |> enumerate, init: false, f: (acc, a_pair) =>
     if acc {
       true
     } else {
-      fold(vertices |> enumerate, init: false, f: (inner, b_pair) =>
+      fold(edges |> enumerate, init: false, f: (inner, b_pair) =>
         if inner || edges_are_adjacent(i: a_pair.first, j: b_pair.first, n: n) || b_pair.first < a_pair.first {
           inner
         } else {
-          match loop_vertex_at(vs: vertices, i: (a_pair.first + 1) % n) {
-            Absent => inner
-            Present { value: a2 } =>
-              match loop_vertex_at(vs: vertices, i: (b_pair.first + 1) % n) {
-                Absent => inner
-                Present { value: b2 } =>
-                  segments_touch(a1: a_pair.second, a2: a2, b1: b_pair.second, b2: b2)
-              }
-          }
+          segments_touch(
+            a1: a_pair.second.start, a2: a_pair.second.end,
+            b1: b_pair.second.start, b2: b_pair.second.end)
         })
     })
+}
+
+// EDGES ARE MATERIALISED ONCE, and this is a cost-shape fix rather than a tidy-up (DESIGN 6, bare
+// minimum cost - a proven quadratic fold is always fixed, and "n is small for a room" is not a
+// time-stable fact because reuse changes n). The first cut read vertex i through
+// `vertices |> skip(i) |> first`, which is linear in i, inside a fold over all vertices - quadratic
+// for each linear pass - and inside a NESTED fold for the pairwise edge test, which made that test
+// cubic rather than the quadratic it looks like. The pairwise comparison is inherently quadratic;
+// the indexing was not, and that is the part that was a defect.
+//
+// The accumulator carries the previous vertex so the pass is linear, and it conses rather than
+// appending because `concat(list, [x])` is itself quadratic - the closing edge is added after the
+// single reverse.
+type LoopEdge {
+  start: Point2
+  end: Point2
+}
+
+type LoopEdgeAccum {
+  edges: List<LoopEdge>
+  prev: Point2?
+}
+
+fn loop_edges(vertices: List<Point2>) -> List<LoopEdge> {
+  match vertices |> first {
+    Absent => []
+    Present { value: head } =>
+      let acc = fold(vertices, init: LoopEdgeAccum { edges: [], prev: none }, f: (a, v) =>
+        match a.prev {
+          Absent => LoopEdgeAccum { edges: a.edges, prev: Present { value: v } }
+          Present { value: p } =>
+            LoopEdgeAccum { edges: concat([LoopEdge { start: p, end: v }], a.edges), prev: Present { value: v } }
+        })
+      match acc.prev {
+        Absent => reverse(acc.edges)
+        Present { value: last } => reverse(concat([LoopEdge { start: last, end: head }], acc.edges))
+      }
+  }
+}
+
+fn loop_edge_axis_of(e: LoopEdge) -> Axis2? {
+  loop_edge_axis(a: e.start, b: e.end)
+}
+
+fn any_edge_unaligned(edges: List<LoopEdge>) -> Bool {
+  fold(edges, init: false, f: (acc, e) => acc || loop_edge_axis_of(e: e) == none)
+}
+
+// PERPENDICULARITY IS READ OFF CONSECUTIVE EDGES IN ONE PASS, closing edge included: the fold
+// carries the previous edge's axis and the first edge's axis, and compares the last against the
+// first at the end. A non-modular pass would forget exactly the closing pair.
+type AxisPassAccum {
+  parallel_found: Bool
+  first_axis: Axis2?
+  prev_axis: Axis2?
+}
+
+fn axis2_opt_parallel(a: Axis2?, b: Axis2?) -> Bool {
+  match a {
+    Absent => true
+    Present { value: av } =>
+      match b {
+        Absent => true
+        Present { value: bv } => axis2_eq(a: av, b: bv)
+      }
+  }
+}
+
+fn any_adjacent_edges_parallel(edges: List<LoopEdge>) -> Bool {
+  let acc = fold(edges, init: AxisPassAccum { parallel_found: false, first_axis: none, prev_axis: none }, f: (a, e) =>
+    let this_axis = loop_edge_axis_of(e: e)
+    match a.prev_axis {
+      Absent => AxisPassAccum { parallel_found: a.parallel_found, first_axis: this_axis, prev_axis: this_axis }
+      Present { value: _ } =>
+        AxisPassAccum {
+          parallel_found: a.parallel_found || axis2_opt_parallel(a: a.prev_axis, b: this_axis),
+          first_axis: a.first_axis,
+          prev_axis: this_axis,
+        }
+    })
+  acc.parallel_found || axis2_opt_parallel(a: acc.prev_axis, b: acc.first_axis)
 }
 
 fn orthogonal_loop2(vertices: List<Point2>) -> OrthogonalConstruction<OrthogonalLoop2> {
@@ -567,13 +603,14 @@ fn orthogonal_loop2(vertices: List<Point2>) -> OrthogonalConstruction<Orthogonal
           Present { value: other } =>
             OrthogonalRefused { cause: OrthogonalFrameMismatch { expected: head.frame, observed: other } }
           Absent =>
-            if any_edge_unaligned(vertices: vertices, n: n) {
+            let edges = loop_edges(vertices: vertices)
+            if any_edge_unaligned(edges: edges) {
               OrthogonalRefused { cause: LoopEdgeNotAxisAligned }
-            } else if any_adjacent_edges_parallel(vertices: vertices, n: n) {
+            } else if any_adjacent_edges_parallel(edges: edges) {
               OrthogonalRefused { cause: LoopEdgesNotPerpendicular }
             } else if any_repeated_vertex(vertices: vertices) {
               OrthogonalRefused { cause: LoopSelfIntersects }
-            } else if any_nonadjacent_edges_touch(vertices: vertices, n: n) {
+            } else if any_nonadjacent_edges_touch(edges: edges, n: n) {
               OrthogonalRefused { cause: LoopSelfIntersects }
             } else {
               OrthogonalReady { value: OrthogonalLoop2 { frame: head.frame, vertices: vertices } }
@@ -610,14 +647,6 @@ fn axis_aligned_surface3(plane: Plane3, extent: AxisAlignedRectangle2) -> Orthog
 fn surface3_plane(s: AxisAlignedSurface3) -> Plane3 { s.plane }
 fn surface3_extent(s: AxisAlignedSurface3) -> AxisAlignedRectangle2 { s.extent }
 fn surface3_frame(s: AxisAlignedSurface3) -> CoordinateFrameIdentity { s.plane.frame }
-
-fn in_plane_axes(normal: Axis3) -> Axis3 {
-  match normal {
-    Axis3X => Axis3Y
-    Axis3Y => Axis3X
-    Axis3Z => Axis3X
-  }
-}
 
 // A PRISM IS A RECTILINEAR FOOTPRINT EXTRUDED BETWEEN TWO PARALLEL PLANES, which is what a room, a
 // slab and a wall all are. It is held as the loop plus the extrusion axis and two offsets rather
