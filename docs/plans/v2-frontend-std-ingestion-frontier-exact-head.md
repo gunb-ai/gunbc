@@ -128,6 +128,41 @@ Its `\x00` and `\x0d` sequences sit inside **string literals**, not comments, so
 `\xNN` escape hypothesis for this member stands independently of the annotation-channel work. That
 hypothesis is corroborated by source content and is **not yet executed** as a direct minimal pair.
 
+## What the same change then repaired
+
+The rows above are the observation taken **before** any repair in this change. Two repairs then
+landed against them, and both are recorded here so the table is not read as still describing the
+tree after them.
+
+**The `//` annotation channel is now wired.** `dag_lex_rules` registers an `AnnotationRule` for
+`//` over the generic lexer's existing `LineCommentTextChar` machinery, placed after the
+string-literal rule so string content keeps winning. Executed at `LexArtifact` grain rather than on
+`Accepted`, because an `Accepted`-only control cannot distinguish a recognised comment from an
+accidentally-lexable one: a plain comment, an em-dash payload, and a backtick-plus-`@` payload each
+capture **exactly one** annotation; no `dag_token_slash` reaches the semantic stream in either the
+plain or the em-dash case; and the URL inside a string literal captures **zero** annotations.
+
+`dag/std/algebra.dag` was **not** re-confirmed after this repair — the probe again exceeded its
+budget, now doing strictly more work than before because it no longer stops at lex. Its post-repair
+stage is therefore unmeasured, and the lex wall is claimed closed on the minimal pairs, not on that
+member.
+
+**Genuine body-lowering rejections now propagate.** `body_lower_finish_for_normalize` previously
+matched every `Rejected` from `body_lower_after_children` and returned wrapper-retention instead,
+binding the diagnostics to `_`. The legitimate not-applicable case was already explicit — the final
+arm of `body_lower_production_emitted` — so retention had two sources, one produced and one inferred
+from failure. The outer catch is deleted; retention now has exactly one producer.
+`well_formed` is unchanged.
+
+Measured effect, discriminating rather than blanket: `src/v2/std/logic.dag` moved
+`NORM_RETAINED` → `NORM_OTHER` (its real refusal now surfaces as itself), while
+`src/v2/std/optional.dag` and `src/v2/std/diagnostic.dag` stayed `NORM_RETAINED`, their retention
+being genuine.
+
+**Not repaired here:** the promotion boundary. `NormalizedTree` is still `= Node` and `resolve`
+still consumes that alias, so *retained cannot reach resolve* remains true only by propagation,
+not by construction.
+
 ### `src/v2/std/algebra.dag` remains uncaptured
 
 The historical receipt ran its per-module reason probe over 10 of the 11 rejecting members, and
