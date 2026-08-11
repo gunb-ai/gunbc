@@ -24,6 +24,22 @@ import gunbc.fleet_known_hosts_anchor {
 import extdeps.ssh.session { ssh_session_exec_portable_words }
 import gunbc.fleet_ssh_access { fleet_automation_ssh_key }
 import std.content_hash { serialize_content_hash }
+import gunbc.spark_managed_access_bootstrap {
+  PrincipalReachObservation,
+  SparkManagedAccessStanding,
+  ManagedAccessGrounded,
+  ManagedAccessBootstrapRequired,
+  ManagedAccessUnobserved,
+  derive_spark_managed_access_standing,
+  derive_spark_bootstrap_plan,
+  authorize_spark_bootstrap,
+  SparkBootstrapAuthorization,
+  BootstrapProceedsUnprivileged,
+  OperatorBootstrapCredentialRequired,
+  spark_bootstrap_effect_label,
+  spark_bootstrap_plan_effects,
+}
+import product.placement_supply { HostIdentity }
 
 // READ-ONLY measurement (parent msg_e767a783): before anyone grants new access, measure
 // whether the fleet key is already enrolled for SOME pre-existing account on srv3/srv4.
@@ -157,5 +173,118 @@ func fleet_multi_principal_probe_wet(attempt_raw: String, identity_file: String)
     ExitSuccess
   } else {
     exit_failure(reason: join(["multi-principal probe receipt write failed: ", w.error], ""))
+  }
+}
+
+
+// ── The derived standing, from the same legs the receipt above reports ──────────────────────────
+
+// One typed observation per (host, principal), which is the grain the account model already uses.
+// The credential identity rides every row, so a reader can tell WHICH key produced the result rather
+// than inferring it from the run that happened to be executing.
+fn principal_observation(
+  context: FleetSshExecutionContext,
+  credential_identity: ContentHash,
+  host: String,
+  principal: String,
+) -> PrincipalReachObservation {
+  let reach = probe_leg(context: context, host: host, principal: principal, raw_words: ["hostname"])
+  let sudo = probe_leg(context: context, host: host, principal: principal, raw_words: ["sudo", "-n", "-l"])
+  PrincipalReachObservation {
+    host: host as HostIdentity,
+    principal_login_name: principal as NonEmptyStr,
+    credential_identity: credential_identity,
+    authenticated: match reach { Present { value: r } => r.success Absent => false },
+    passwordless_privilege: match sudo { Present { value: r } => r.success Absent => false },
+  }
+}
+
+fn spark_standing_line(standing: SparkManagedAccessStanding) -> String {
+  match standing {
+    ManagedAccessGrounded { occurrence: o } =>
+      join(["standing host=", o.host as String, " managed-access=GROUNDED\n"], "")
+    ManagedAccessBootstrapRequired { host: h, missing: _, bootstrap_transport: _ } =>
+      join(["standing host=", h as String, " managed-access=BOOTSTRAP-REQUIRED (human bootstrap observed, managed executor absent)\n"], "")
+    ManagedAccessUnobserved { host: h } =>
+      join(["standing host=", h as String, " managed-access=UNOBSERVED (no reachable principal, so no transport to bootstrap through)\n"], "")
+  }
+}
+
+// The authorization is DERIVED and printed, never asked. What reaches the operator is the exact
+// effect population requiring privilege -- not the question "does this need root", which nobody can
+// evaluate without the list.
+fn spark_authorization_lines(standing: SparkManagedAccessStanding, credential_identity: ContentHash) -> String {
+  match derive_spark_bootstrap_plan(standing: standing, fleet_public_material_identity: credential_identity) {
+    Absent => ""
+    Present { value: plan } => {
+      let effects = join(map(spark_bootstrap_plan_effects(plan: plan), e =>
+        join(["  effect ", spark_bootstrap_effect_label(effect: e), "\n"], "")), "")
+      match authorize_spark_bootstrap(plan: plan) {
+        BootstrapProceedsUnprivileged { plan: _ } =>
+          join(["authorization host=", plan.host as String, " UNPRIVILEGED\n", effects], "")
+        OperatorBootstrapCredentialRequired { host: h, first_privileged: f, more_privileged: m, secret_purpose: p } =>
+          join([
+            "authorization host=", h as String, " OPERATOR-CREDENTIAL-REQUIRED privileged_effects=",
+            to_string(1 + length(m)), "\n  purpose ", p as String, "\n", effects,
+            "  first-privileged ", spark_bootstrap_effect_label(effect: f), "\n",
+          ], "")
+      }
+    }
+  }
+}
+
+data spark_standing_receipt_path: String = "target/spark-managed-access-standing-receipt.txt"
+
+// The Spark hosts only: this derivation is about the serving fleet, and running it over srv1..srv4
+// would produce bootstrap plans for hosts whose managed access is a different lane's question.
+data spark_standing_hosts: List<String> = ["srv5", "srv6"]
+
+func spark_managed_access_standing_wet(attempt_raw: String, identity_file: String) -> ProcessExit {
+  let now = clock_now_probed_at()
+  let credential = fleet_ssh_credential_binding_of_public_material(
+    identity_file: identity_file as NonEmptyStr,
+    public_material: fleet_automation_ssh_key.material as NonEmptyStr,
+  )
+  let body = match probe_attempt_identity(raw: attempt_raw) {
+    Absent => "spark managed-access standing REFUSED: attempt identity is not a safe path segment\n"
+    Present { value: attempt } => {
+      let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
+      match fleet_ssh_execution_context_of(outcome: materialization, credential: credential) {
+        Absent => join([
+          "spark managed-access standing REFUSED before any ssh leg: ",
+          known_hosts_materialization_receipt(outcome: materialization), "\n",
+        ], "")
+        Present { value: context } => {
+          let observations = flat_map(spark_standing_hosts, h =>
+            map(multi_principal_probe_principals, p =>
+              principal_observation(
+                context: context,
+                credential_identity: credential.credential_identity,
+                host: h,
+                principal: p,
+              )))
+          join([
+            join(["spark managed-access standing probed_at=", now as String,
+                  " credential_identity=", serialize_content_hash(hash: credential.credential_identity) as String, "\n"], ""),
+            join(map(observations, o => join([
+              "observed host=", o.host as String, " principal=", o.principal_login_name as String,
+              " authenticated=", if o.authenticated { "true" } else { "false" },
+              " passwordless_privilege=", if o.passwordless_privilege { "true" } else { "false" }, "\n",
+            ], "")), ""),
+            join(map(spark_standing_hosts, h => {
+              let standing = derive_spark_managed_access_standing(host: h as HostIdentity, observations: observations)
+              join([
+                spark_standing_line(standing: standing),
+                spark_authorization_lines(standing: standing, credential_identity: credential.credential_identity),
+              ], "")
+            }), ""),
+          ], "")
+        }
+      }
+    }
+  }
+  let w = Filesystem.Write(path: spark_standing_receipt_path, content: body)
+  if w.success { ExitSuccess } else {
+    exit_failure(reason: join(["spark standing receipt write failed: ", w.error], ""))
   }
 }
