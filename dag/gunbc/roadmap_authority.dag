@@ -2402,7 +2402,6 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "observation-raw-print-retirement", parent: "observation-collapse-watchdog-restatement"),
 
     edge(child: "warm-merge-admission", parent: "five-minute-ci-gate"),
-    edge(child: "five-minute-ci-gate", parent: "native-selected-witness-bundle"),
     edge(child: "v2-lens-suite-execution", parent: "native-selected-witness-bundle"),
     edge(child: "module-grain-materialization", parent: "five-minute-ci-gate"),
     edge(child: "pre-index-materialization-lookup", parent: "five-minute-ci-gate"),
