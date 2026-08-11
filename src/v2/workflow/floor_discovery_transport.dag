@@ -150,7 +150,7 @@ fn floor_discovery_transport_observe(
     }
     TransportNeedsPublication { request: request } => match observation {
       SnapshotPublished { receipt: receipt } => {
-        if receipt.request_identity_digest == floor_discovery_request_identity(request: request) {
+        if receipt.artifact.request_identity_digest == floor_discovery_request_identity(request: request) {
           TransportReady
         } else {
           TransportRefused {
