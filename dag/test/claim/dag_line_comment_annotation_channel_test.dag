@@ -1,0 +1,84 @@
+module gunbc.test.claim.dag_line_comment_annotation_channel_test
+
+import v2.std.text { String }
+import v2.std.logic { Bool }
+import v2.std.algebra { fold_list, length }
+import v2.std.collection { List }
+import v2.std.compilers.lexing {
+  LexArtifact,
+  UnboundSourceAnnotation,
+  lex_artifact_annotations,
+  lex_artifact_semantic_tokens,
+  symbol_lexeme,
+  token_stream_all
+}
+import v2.compiler.tokenize { lex_walk_artifact }
+import v2.extdeps.languages.dag { dag_lex_rules }
+
+data dag_line_comment_annotation_channel_note: String = "THE PRODUCTION '//' CHANNEL, asserted against the LexArtifact rather than against Accepted. Before this rule was registered, dag_lex_rules carried NO annotation rule at all, so a '//' line was not lexed as a comment: it tokenized as two dag_token_slash tokens followed by whatever its payload happened to lex as. A comment therefore 'lexed' BY ACCIDENT, exactly when every character in its payload had a semantic rule, and refused at the first character that did not — measured: '-' passed while the em-dash, the backtick and '@' each refused, and the em-dash passed inside a string literal where it is string content.\n\nThat is why an Accepted-only control is a FALSE CONTROL for this capability: 'module m // a b' lexing proves that slash-slash-ident-ident is lexable, not that a comment was recognised. Every claim below therefore reads the artifact — the annotation the channel captured, and the semantic stream it must NOT have polluted. The payload controls use characters with no semantic lex rule precisely because under the accidental route they were the refusing cases; under a real channel the payload is opaque and they are ordinary text."
+
+fn artifact_of(source: String) -> LexArtifact? {
+  match lex_walk_artifact(source: source, file: ^annotation_probe, rules: dag_lex_rules()) {
+    v2.std.diagnostic.Accepted { value: a, diagnostics: _ } => Present { value: a }
+    v2.std.diagnostic.Rejected { diagnostics: _ } => Absent
+  }
+}
+
+fn annotation_count(source: String) -> Int {
+  match artifact_of(source: source) {
+    Present { value: a } => length(xs: lex_artifact_annotations(artifact: a))
+    Absent => 0 - 1
+  }
+}
+
+fn no_lexemes() -> List<String> {
+  []
+}
+
+fn token_lexemes(source: String) -> List<String> {
+  match artifact_of(source: source) {
+    Present { value: a } =>
+      fold_list(
+        xs: token_stream_all(stream: lex_artifact_semantic_tokens(artifact: a)),
+        empty: no_lexemes(),
+        cons: fn(acc, t) { concat(acc, [symbol_lexeme(sym: t.class)]) }
+      )
+    Absent => no_lexemes()
+  }
+}
+
+fn lexemes_contain(xs: List<String>, s: String) -> Bool {
+  fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || (x == s) })
+}
+
+data plain_comment_source: String = "module annotation_probe\n\n// a b\n"
+
+data emdash_comment_source: String = "module annotation_probe\n\n// a — b\n"
+
+data backtick_at_comment_source: String = "module annotation_probe\n\n// a `s` @ b\n"
+
+data url_in_string_source: String = "module annotation_probe\n\ndata d: String = \"http://x.com/a\"\n"
+
+test fn plain_comment_captures_exactly_one_annotation() -> Bool {
+  annotation_count(source: plain_comment_source) == 1
+}
+
+test fn emdash_payload_captures_exactly_one_annotation() -> Bool {
+  annotation_count(source: emdash_comment_source) == 1
+}
+
+test fn backtick_and_at_payload_capture_exactly_one_annotation() -> Bool {
+  annotation_count(source: backtick_at_comment_source) == 1
+}
+
+test fn comment_leaks_no_slash_token_into_semantic_stream() -> Bool {
+  lexemes_contain(xs: token_lexemes(source: plain_comment_source), s: "dag_token_slash") == false
+}
+
+test fn emdash_comment_leaks_no_slash_token_into_semantic_stream() -> Bool {
+  lexemes_contain(xs: token_lexemes(source: emdash_comment_source), s: "dag_token_slash") == false
+}
+
+test fn string_content_is_not_captured_as_an_annotation_RED() -> Bool {
+  annotation_count(source: url_in_string_source) == 0
+}

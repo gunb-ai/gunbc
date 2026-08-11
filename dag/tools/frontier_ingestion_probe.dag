@@ -85,3 +85,5 @@ fn m_diagnostic() -> String { classify_member(path: "src/v2/std/diagnostic.dag")
 fn m_occurrence() -> String { classify_member(path: "dag/std/occurrence_identity.dag") }
 fn m_live_tree() -> String { classify_member(path: "src/v2/std/live_tree.dag") }
 fn m_error_primitives() -> String { classify_member(path: "dag/std/error_primitives.dag") }
+
+fn probe_scratch() -> String { classify_member(path: "dag/test/claim/lexprobe_scratch.txt") }
