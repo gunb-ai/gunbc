@@ -141,6 +141,7 @@ data generated_stage0_files: List<String> = [
   "v1_tests_claim_v1_annotation_round_trip_test.rs",
   "v1_tests_claim_v1_annotation_target_emission_test.rs",
   "v1_tests_claim_v1_complexity_eviction_hazard_test.rs",
+  "v2_std_live_tree.rs",
   "wt_a.rs",
   "wt_b.rs",
   "wt_common.rs"
@@ -283,6 +284,7 @@ data generated_stage0_paths: List<String> = [
   "src/v1/stage0/src/v1_tests_claim_v1_annotation_round_trip_test.rs",
   "src/v1/stage0/src/v1_tests_claim_v1_annotation_target_emission_test.rs",
   "src/v1/stage0/src/v1_tests_claim_v1_complexity_eviction_hazard_test.rs",
+  "src/v1/stage0/src/v2_std_live_tree.rs",
   "src/v1/stage0/src/wt_a.rs",
   "src/v1/stage0/src/wt_b.rs",
   "src/v1/stage0/src/wt_common.rs"
