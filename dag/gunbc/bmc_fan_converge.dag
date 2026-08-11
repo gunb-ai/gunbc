@@ -140,6 +140,7 @@ import product.cooling_qualification {
   CoolingCatalogCompatible,
   CoolingCatalogRefused,
   InstalledCoolingUnobserved,
+  InstalledCoolingAmbiguous,
   cooling_catalog_refusal_reason,
   installed_cooling_verdict_for_host,
 }
@@ -1691,6 +1692,15 @@ func bmc_fan_run(
               exit_failure(
                 reason: bmc_fan_cooling_refusal_reason(
                   verdict: InstalledCoolingUnobserved { host: host },
+                ),
+              )
+            InstalledCoolingAmbiguous { host: host, candidate_count: candidate_count } =>
+              exit_failure(
+                reason: bmc_fan_cooling_refusal_reason(
+                  verdict: InstalledCoolingAmbiguous {
+                    host: host,
+                    candidate_count: candidate_count,
+                  },
                 ),
               )
           }

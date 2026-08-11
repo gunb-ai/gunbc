@@ -1,6 +1,6 @@
 module product.cooling_qualification
 
-import std.types { Bool, List, String }
+import std.types { Bool, List, String, Int }
 import std.measure { Watt, measure_le }
 import product.placement_supply { HostIdentity, PhysicalAssetIdentity }
 import extdeps.cooling.types { CpuCoolerCatalogRow }
@@ -57,6 +57,10 @@ type CoolingCatalogVerdict
     }
   | InstalledCoolingUnobserved {
       host: HostIdentity
+    }
+  | InstalledCoolingAmbiguous {
+      host: HostIdentity
+      candidate_count: Int
     }
 
 fn cooler_supports_baseboard(
@@ -149,25 +153,37 @@ fn cooling_catalog_verdict(
 // Absence of an installed-cooling row is NOT compatibility. A host with no modeled cooler
 // reaches InstalledCoolingUnobserved, which admits observation and refuses qualification — the
 // coverage obligation stays downstream and loud rather than defaulting to a pass.
+// COUNTS FIRST, then decides. The previous implementation walked the list and returned on the
+// FIRST row whose host matched, so two cooler rows accidentally bound to one host were resolved
+// by list order: whichever was written first won, silently, and the second cooler sat in the
+// inventory with no effect on any verdict. That is not a compatibility answer, it is an artifact
+// of authoring order, and it presented as a clean Compatible.
+//
+// This makes visible a relation the inventory previously only assumed: a host has AT MOST ONE
+// installed heat-pickup realization. Zero is Unobserved and refuses qualification; exactly one is
+// decided on its merits; more than one is a modelling error that must REFUSE rather than pick.
+// A host cannot carry two coolers on one socket, so two rows mean the inventory is wrong, and a
+// wrong inventory must never yield a thermal admission.
+fn installed_cooling_matches_for_host(
+  host: HostIdentity,
+  realizations: List<InstalledCoolingRealization>,
+) -> List<InstalledCoolingRealization> {
+  filter(realizations, r => r.host == host)
+}
+
 fn installed_cooling_verdict_for_host(
   host: HostIdentity,
   realizations: List<InstalledCoolingRealization>,
 ) -> CoolingCatalogVerdict {
-  if realizations.length() == 0 {
+  let matches = installed_cooling_matches_for_host(host: host, realizations: realizations)
+  if count(matches) == 0 {
     InstalledCoolingUnobserved { host: host }
+  } else if count(matches) > 1 {
+    InstalledCoolingAmbiguous { host: host, candidate_count: count(matches) }
   } else {
-    match realizations.first() {
+    match matches.first() {
       Absent => InstalledCoolingUnobserved { host: host }
-      Present { value: realization } => {
-        if realization.host == host {
-          cooling_catalog_verdict(realization: realization)
-        } else {
-          installed_cooling_verdict_for_host(
-            host: host,
-            realizations: realizations.skip(n: 1),
-          )
-        }
-      }
+      Present { value: realization } => cooling_catalog_verdict(realization: realization)
     }
   }
 }
@@ -179,6 +195,7 @@ fn cooling_catalog_verdict_admits_qualification(
     CoolingCatalogCompatible { host: _, cooler_asset: _ } => true
     CoolingCatalogRefused { host: _, cause: _ } => false
     InstalledCoolingUnobserved { host: _ } => false
+    InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
   }
 }
 
@@ -186,6 +203,8 @@ fn cooling_catalog_refusal_reason(verdict: CoolingCatalogVerdict) -> String {
   match verdict {
     CoolingCatalogCompatible { host: _, cooler_asset: _ } =>
       "installed cooling is catalog-compatible"
+    InstalledCoolingAmbiguous { host: _, candidate_count: _ } =>
+      "more than one installed cooling realization is modeled for this host: a host carries at most one heat-pickup realization, so this is an inventory error and must refuse rather than resolve by list order"
     InstalledCoolingUnobserved { host: _ } =>
       "no installed cooling realization is modeled for this host: thermal qualification cannot be claimed until the cooler is an exact PhysicalAsset with host containment"
     CoolingCatalogRefused { host: _, cause: cause } =>

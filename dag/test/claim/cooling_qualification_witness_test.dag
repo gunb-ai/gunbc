@@ -1,6 +1,6 @@
 module test.claim.cooling_qualification_witness
 
-import std.types { Bool }
+import std.types { Bool, List, String }
 import std.measure { watt }
 import extdeps.cooling.dynatron { dynatron_w1_catalog }
 import extdeps.cooling.types { CpuCoolerCatalogRow }
@@ -21,6 +21,9 @@ import product.cooling_qualification {
   BaseboardNotInCoolerSupportedPopulation,
   InstalledCoolingRealization,
   InstalledCoolingUnobserved,
+  InstalledCoolingAmbiguous,
+  CoolingCatalogVerdict,
+  installed_cooling_verdict_for_host,
   cooling_catalog_verdict,
   cooling_catalog_verdict_admits_qualification,
   installed_cooling_verdict_for_host,
@@ -44,6 +47,7 @@ test fn installed_srv3_cooling_is_catalog_compatible() -> Bool {
     CoolingCatalogCompatible { host: _, cooler_asset: _ } => true
     CoolingCatalogRefused { host: _, cause: _ } => false
     InstalledCoolingUnobserved { host: _ } => false
+    InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
   }
 }
 
@@ -82,6 +86,7 @@ test fn cooler_socket_mismatch_is_a_discriminating_refusal() -> Bool {
       }
     CoolingCatalogCompatible { host: _, cooler_asset: _ } => false
     InstalledCoolingUnobserved { host: _ } => false
+    InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
   }
 }
 
@@ -121,6 +126,7 @@ test fn baseboard_absent_from_supported_population_is_refused() -> Bool {
       }
     CoolingCatalogCompatible { host: _, cooler_asset: _ } => false
     InstalledCoolingUnobserved { host: _ } => false
+    InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
   }
 }
 
@@ -159,6 +165,7 @@ test fn design_power_one_watt_below_tdp_is_refused() -> Bool {
       }
     CoolingCatalogCompatible { host: _, cooler_asset: _ } => false
     InstalledCoolingUnobserved { host: _ } => false
+    InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
   }
 }
 
@@ -195,6 +202,7 @@ test fn host_without_modeled_cooler_is_unobserved_not_compatible() -> Bool {
     realizations: installed_cooling_realizations,
   ) {
     InstalledCoolingUnobserved { host: _ } => true
+    InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
     CoolingCatalogCompatible { host: _, cooler_asset: _ } => false
     CoolingCatalogRefused { host: _, cause: _ } => false
   }
@@ -237,5 +245,54 @@ test fn catalog_verdict_cannot_stand_in_for_runtime_thermal_evidence() -> Bool {
       host == host_srv3 && asset == cooler_srv3
     CoolingCatalogRefused { host: _, cause: _ } => false
     InstalledCoolingUnobserved { host: _ } => false
+    InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
   }
+}
+
+data ambiguity_witness_note: String = "installed_cooling_verdict_for_host previously returned on the FIRST row whose host matched, so two cooler rows bound to one host were resolved by authoring order: one won silently and the other sat in the inventory affecting nothing. It presented as a clean Compatible. A host carries at most one heat-pickup realization, so two rows are an inventory error and must refuse rather than resolve. The control below is ORDER-INDEPENDENT on purpose - it asserts the same refusal with the duplicate pair in both orders, because a witness using a single ordering would pass just as well against the first-match-wins implementation it exists to refuse."
+
+data duplicate_cooling_ab: List<InstalledCoolingRealization> = [
+  srv3_installed_cooling,
+  InstalledCoolingRealization {
+    host: host_srv3,
+    cooler_asset: cooler_srv3,
+    cooler: dynatron_w1_catalog,
+    processor: altra_max_m12830_catalog,
+    baseboard_model: AsrockRackAltrad8ud1l2t,
+  },
+]
+
+data duplicate_cooling_ba: List<InstalledCoolingRealization> = [
+  InstalledCoolingRealization {
+    host: host_srv3,
+    cooler_asset: cooler_srv3,
+    cooler: dynatron_w1_catalog,
+    processor: altra_max_m12830_catalog,
+    baseboard_model: AsrockRackAltrad8ud1l2t,
+  },
+  srv3_installed_cooling,
+]
+
+fn verdict_is_ambiguous(v: CoolingCatalogVerdict) -> Bool {
+  match v {
+    InstalledCoolingAmbiguous { host: _, candidate_count: n } => n == 2
+    CoolingCatalogCompatible { host: _, cooler_asset: _ } => false
+    CoolingCatalogRefused { host: _, cause: _ } => false
+    InstalledCoolingUnobserved { host: _ } => false
+    InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
+  }
+}
+
+test fn witness_duplicate_installed_cooling_refuses_in_both_orders() -> Bool {
+  verdict_is_ambiguous(v: installed_cooling_verdict_for_host(host: host_srv3, realizations: duplicate_cooling_ab))
+    && verdict_is_ambiguous(v: installed_cooling_verdict_for_host(host: host_srv3, realizations: duplicate_cooling_ba))
+    && !cooling_catalog_verdict_admits_qualification(
+         verdict: installed_cooling_verdict_for_host(host: host_srv3, realizations: duplicate_cooling_ab))
+}
+
+test fn witness_single_row_still_resolves_after_ambiguity_gate() -> Bool {
+  cooling_catalog_verdict_admits_qualification(
+    verdict: installed_cooling_verdict_for_host(host: host_srv3, realizations: installed_cooling_realizations))
+    && !cooling_catalog_verdict_admits_qualification(
+         verdict: installed_cooling_verdict_for_host(host: host_srv1, realizations: installed_cooling_realizations))
 }
