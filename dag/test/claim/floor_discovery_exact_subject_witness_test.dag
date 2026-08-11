@@ -36,6 +36,8 @@ import v2.workflow.floor_discovery_transport {
   TrackedWorktreeObserved,
   UntrackedWorktreeObserved,
   SnapshotPublished,
+  FloorDiscoverySnapshotArtifact,
+  FloorDiscoverySnapshotWriteReceipt,
   floor_discovery_transport_initialize,
   floor_discovery_transport_observe,
 }
@@ -234,7 +236,7 @@ test fn transport_preserves_exact_subject_and_refuses_dirty_worktree() -> Bool {
   )
   match floor_discovery_transport_observe(
     state: after_tree,
-    observation: TrackedWorktreeObserved { matches_commit: false },
+    observation: TrackedWorktreeObserved { modified_paths: ["src/v1/stage0/src/cli_run/floor_discovery_snapshot.rs"] },
   ) {
     TransportRefused { cause: _ } => true
     _ => false
@@ -254,13 +256,24 @@ test fn transport_requires_clean_worktree_before_publication() -> Bool {
   )
   let s3 = floor_discovery_transport_observe(
     state: s2,
-    observation: TrackedWorktreeObserved { matches_commit: true },
+    observation: TrackedWorktreeObserved { modified_paths: [] },
   )
   let s4 = floor_discovery_transport_observe(
     state: s3,
     observation: UntrackedWorktreeObserved { paths: [] },
   )
-  let s5 = floor_discovery_transport_observe(state: s4, observation: SnapshotPublished)
+  let s5 = floor_discovery_transport_observe(
+    state: s4,
+    observation: SnapshotPublished {
+      receipt: FloorDiscoverySnapshotWriteReceipt {
+        artifact: FloorDiscoverySnapshotArtifact {
+          request_identity_digest: floor_discovery_request_identity(request: request),
+          payload_digest: floor_discovery_request_identity(request: request),
+        },
+        walk_attempt_id: "attempt-test",
+      },
+    },
+  )
   match s5 {
     TransportReady => true
     _ => false

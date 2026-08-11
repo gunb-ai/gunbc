@@ -1,12 +1,14 @@
 module v2.workflow.floor_discovery_transport
 
-import std.types { Bool, List, String }
+import std.types { List, String }
+import std.content_hash { Fnv1a64Structural }
 import extdeps.git.object_store { git_object_id_eq }
 import v2.workflow.floor_discovery {
   FloorDiscoveryCommitId,
   FloorDiscoveryTreeId,
   FloorDiscoveryRequest,
-  FloorDiscoverySubjectBinding,
+  FloorDiscoverySubjectMismatch,
+  floor_discovery_request_identity,
 }
 import v2.std.optional { Absent, Present }
 
@@ -19,12 +21,24 @@ type FloorDiscoveryTransportAction
   | ObserveUntrackedWorktree { tree: FloorDiscoveryTreeId }
   | PublishVerifiedSnapshot { request: FloorDiscoveryRequest }
 
+type FloorDiscoverySnapshotArtifact {
+  request_identity_digest: Fnv1a64Structural
+  payload_digest: Fnv1a64Structural
+}
+
+type FloorDiscoverySnapshotWriteReceipt {
+  artifact: FloorDiscoverySnapshotArtifact
+  walk_attempt_id: String
+}
+
 type FloorDiscoveryTransportObservation
   = CommitObserved { commit: FloorDiscoveryCommitId }
   | TreeObserved { tree: FloorDiscoveryTreeId }
-  | TrackedWorktreeObserved { matches_commit: Bool }
+  | TrackedWorktreeObserved { modified_paths: List<String> }
   | UntrackedWorktreeObserved { paths: List<String> }
-  | SnapshotPublished
+  | SnapshotPublished {
+      receipt: FloorDiscoverySnapshotWriteReceipt
+    }
   | TransportObservationRefused { cause: String }
 
 type FloorDiscoveryTransportRefusal
@@ -32,7 +46,7 @@ type FloorDiscoveryTransportRefusal
   | TransportTreeMismatch { expected: FloorDiscoveryTreeId, observed: FloorDiscoveryTreeId }
   | TransportTrackedWorktreeDirty
   | TransportUntrackedWorktree { path: String }
-  | TransportSubjectRefused { cause: FloorDiscoverySubjectBinding }
+  | TransportSubjectRefused { cause: FloorDiscoverySubjectMismatch }
   | TransportObservationRefusalCause { cause: String }
 
 type FloorDiscoveryTransportState
@@ -112,10 +126,10 @@ fn floor_discovery_transport_observe(
       }
     }
     TransportNeedsTrackedWorktree { request: request } => match observation {
-      TrackedWorktreeObserved { matches_commit: true } =>
-        TransportNeedsUntrackedWorktree { request: request }
-      TrackedWorktreeObserved { matches_commit: false } =>
-        TransportRefused { cause: TransportTrackedWorktreeDirty }
+      TrackedWorktreeObserved { modified_paths: paths } => match paths.first() {
+        Present { value: _ } => TransportRefused { cause: TransportTrackedWorktreeDirty }
+        Absent => TransportNeedsUntrackedWorktree { request: request }
+      }
       TransportObservationRefused { cause: cause } =>
         TransportRefused { cause: TransportObservationRefusalCause { cause: cause } }
       _ => TransportRefused {
@@ -135,7 +149,17 @@ fn floor_discovery_transport_observe(
       }
     }
     TransportNeedsPublication { request: request } => match observation {
-      SnapshotPublished => TransportReady
+      SnapshotPublished { receipt: receipt } => {
+        if receipt.request_identity_digest == floor_discovery_request_identity(request: request) {
+          TransportReady
+        } else {
+          TransportRefused {
+            cause: TransportObservationRefusalCause {
+              cause: "published snapshot request identity does not match transport request"
+            }
+          }
+        }
+      }
       TransportObservationRefused { cause: cause } =>
         TransportRefused { cause: TransportObservationRefusalCause { cause: cause } }
       _ => TransportRefused {
