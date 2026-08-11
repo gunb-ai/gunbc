@@ -279,6 +279,32 @@ data gunbc_ci_legacy_host_fixed_overhead_disposition: Disposition = Scaffold {
   }
 }
 
+type HostUsableRam
+  = HostUsableRamMeasured { bytes: ByteSize, provenance: NonEmptyStr }
+  | HostUsableRamFleetSubstitution { bytes: ByteSize, reason: NonEmptyStr }
+  | HostUsableRamUnmeasured
+
+data gunbc_ci_host_usable_ram_kind_note: String = "OS-USABLE RAM IS A PER-HOST FACT AND WAS STORED AS A FLEET CONSTANT, which is the same grain defect gunbc_ci_host_fixed_overhead_kind_note repaired for overhead — so this carrier is deliberately that carrier's shape rather than a new invention. gunbc.ci_runner_placement host_usable_ram_note already declared the defect and named the trigger: it called gunbc_ci_host.memory a fleet-level stand-in for all four hosts, safe only in the conservative direction, and said it 'would stop being safe the moment a host with different RAM enrolls'.\n\nTHAT MOMENT ARRIVED. A DIMM replacement raised memory on part of the fleet (operator, 2026-08-11), so the four hosts no longer have one usable-RAM figure between them and no single number can describe them without being wrong about someone. The conservation wall folds over fleet_intent_offers — per-host identities, per-host overhead, per-host session slice — and then read RAM from gunbc.ci_fleet gunbc_ci_host, a synthetic 'gunbc-ci-fleet' host that is not a member of that fold at all.\n\nTHREE ARMS BECAUSE THERE ARE THREE FACTS. MEASURED means a read of THIS host produced the number and the row names the read. FLEET SUBSTITUTION means no such read exists and another host's figure is standing in on a same-board-same-population argument — honest, load-bearing, and never to be reported as measured, because the whole hazard is that a substitution silently survives the population changing underneath it. UNMEASURED is the fail-closed floor for a host nobody classified.\n\nWHY ALL FOUR ARE SUBSTITUTION TODAY AND NONE IS MEASURED: no quiescent /proc/meminfo read exists for any host in this fleet. The closest receipt is gunbc_ci_srv3_memavailable_high_water, whose host_total is MemTotal-shaped and was observed on srv3 — but it is dated 2026-07-16, which is BEFORE the DIMM replacement, so promoting it to this host's measurement would carry a superseded figure under the one arm that claims currency. It is retained as the substitution's citation, which is what it can honestly support.\n\nDirection of safety: every substitution row understates a host that gained memory, so the wall refuses widths it could carry rather than admitting widths it cannot. Capacity is invisible, never overcommitted. Dissolve-on, per host independently: a quiescent MemTotal read promotes that host's row to MEASURED and the others are unaffected — which is the entire point of the grain."
+
+data gunbc_ci_fleet_substitution_usable_ram: HostUsableRam = HostUsableRamFleetSubstitution {
+  bytes: byte_size(134217728000),
+  reason: "125 GiB, the MemTotal-shaped figure carried fleet-wide before this carrier existed (gunbc.ci_fleet gunbc_ci_host.memory, corroborated by gunbc_ci_srv3_memavailable_high_water.host_total observed on srv3 2026-07-16). It is a SUBSTITUTION and not this host's measurement: no quiescent /proc/meminfo read exists for any host in this fleet, and the one dated receipt predates the 2026-08-11 DIMM replacement. Carried unchanged for all four hosts so that introducing the per-host grain moves no number and changes no derived width — the capability lands first, the observations replace it one host at a time.",
+}
+
+fn gunbc_ci_host_usable_ram_for(host: HostIdentity) -> HostUsableRam {
+  if (host as String) == (operator_host_srv1 as String) {
+    gunbc_ci_fleet_substitution_usable_ram
+  } else if (host as String) == (operator_host_srv2 as String) {
+    gunbc_ci_fleet_substitution_usable_ram
+  } else if (host as String) == (operator_host_srv3 as String) {
+    gunbc_ci_fleet_substitution_usable_ram
+  } else if (host as String) == (operator_host_srv4 as String) {
+    gunbc_ci_fleet_substitution_usable_ram
+  } else {
+    HostUsableRamUnmeasured
+  }
+}
+
 data gunbc_ci_concurrent_runs_conservative_high_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
