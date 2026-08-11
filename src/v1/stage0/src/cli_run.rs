@@ -23521,6 +23521,14 @@ pub fn run_discovery_corpus_with_options(
     width_policy: DiscoveryWidthPolicy,
     options: DiscoveryCorpusOptions,
 ) -> Result<DiscoverySummary, String> {
+    if std::env::var(FLOOR_DISCOVERY_CONSUMER_ENV).as_deref() == Ok("coordinated_consumer")
+        && !floor_discovery_snapshot::coordinated_snapshot_verified()
+    {
+        return Err(
+            "coordinated discovery refused: verified floor snapshot is not installed; cold reconstruction is disabled"
+                .to_string(),
+        );
+    }
     let pump_started = std::time::Instant::now();
     let selection = options.node_frontier_selection;
     let out = run_discovery_corpus_with_options_inner(
