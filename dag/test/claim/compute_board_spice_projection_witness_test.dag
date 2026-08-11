@@ -1,0 +1,146 @@
+module test.claim.compute_board_spice_projection_witness
+
+import std.types { String, List }
+import std.nat { Nat }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import v2.extdeps.formats.spice { Ground }
+import product.compute_board.spice_projection {
+  BoardSlice,
+  CapacitiveElement,
+  ElectricalModelAbsent,
+  ElectricalModelUnavailable,
+  ResistiveElement,
+  SliceElement,
+  SliceSource,
+  SpiceSliceProjected,
+  SpiceSliceRefused,
+  VendorModelCited,
+  named_node,
+  project_slice_to_spice,
+  projected_deck_text,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+fn list_count<T>(xs: List<T>) -> Nat {
+  fold(xs, init: 0, f: (acc, _) => acc + 1)
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data witness_model_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.ucamco.com/en/gerber"
+  }
+}
+
+// Symbols are restricted to the spelling table v2.extdeps.formats.spice actually carries
+// (r1 / c1 / v1 / n1). That is a real bound on the emitter, so the fixture is sized to what
+// can be emitted rather than to what would look realistic — a larger deck would exercise no
+// further behaviour and would only be prettier.
+fn modelled_resistor() -> SliceElement {
+  SliceElement {
+    designator: ^r1,
+    part: "series sense resistor",
+    kind: ResistiveElement,
+    n_plus: named_node(name: ^n1),
+    n_minus: Ground,
+    value_lexeme: "10k",
+    model: VendorModelCited {
+      model_card: "vendor-published passive model",
+      authority: witness_model_authority,
+    },
+  }
+}
+
+fn modelled_capacitor() -> SliceElement {
+  SliceElement {
+    designator: ^c1,
+    part: "bulk decoupling capacitor",
+    kind: CapacitiveElement,
+    n_plus: named_node(name: ^n1),
+    n_minus: Ground,
+    value_lexeme: "100n",
+    model: VendorModelCited {
+      model_card: "vendor-published passive model",
+      authority: witness_model_authority,
+    },
+  }
+}
+
+fn unmodelled_capacitor() -> SliceElement {
+  SliceElement {
+    designator: ^c1,
+    part: "bulk decoupling capacitor",
+    kind: CapacitiveElement,
+    n_plus: named_node(name: ^n1),
+    n_minus: Ground,
+    value_lexeme: "100n",
+    model: ElectricalModelAbsent,
+  }
+}
+
+fn rail_source() -> SliceSource {
+  SliceSource { designator: ^v1, node: named_node(name: ^n1), value_lexeme: "12" }
+}
+
+fn slice_with(elements: List<SliceElement>) -> BoardSlice {
+  BoardSlice { title: "standby rail slice", source: rail_source(), elements: elements }
+}
+
+// POSITIVE CONTROL, ON THE PROJECTED NETLIST STRUCTURE. It asserts the deck actually built —
+// one source statement plus one statement per element — rather than that the projected arm was
+// reached, because reaching an arm proves the match and nothing about its content.
+//
+// WHY THIS DOES NOT ASSERT EMITTED BYTES, stated rather than quietly scoped: a byte-level
+// control was written first and could not run, because v2.extdeps.formats.spice's spice_emit
+// returns an unwrapped Optional variant where its signature declares String. It reproduces on
+// that module's own constructors with no code from this lane involved — a fifteen-line deck of
+// one resistor emits a value that string_contains rejects as a Variant, on both the empty-title
+// and non-empty-title paths, and an `as String` cast does not change it. That is a defect in
+// the emitter, not in this projection, and repairing another module's emit path inside this
+// change would bury it. The byte-exact receipt is therefore OWED, not delivered: this lane
+// claims a structurally correct deck and a proven refusal wall, and claims nothing about the
+// text SPICE would receive.
+test fn w_modelled_slice_projects_expected_statement_count() -> Bool {
+  match project_slice_to_spice(slice: slice_with(elements: [modelled_resistor(), modelled_capacitor()])) {
+    SpiceSliceProjected { netlist: n } => list_count(xs: n.body) == 3
+    SpiceSliceRefused { cause: _ } => false
+  }
+}
+
+// THE WALL. One element loses its model and the whole slice refuses, naming the part. The
+// forbidden behaviour is not an error message — it is a deck that still emits, with an ideal
+// part quietly standing in for the one we could not model.
+test fn w_unmodelled_element_refuses_and_emits_nothing() -> Bool {
+  let projection = project_slice_to_spice(
+    slice: slice_with(elements: [modelled_resistor(), unmodelled_capacitor()])
+  )
+  match projection {
+    SpiceSliceRefused { cause: c } =>
+      match c {
+        ElectricalModelUnavailable { part: p } => {
+          let emitted = projected_deck_text(projection: projection)
+          p == "bulk decoupling capacitor" && match emitted { Absent => true, _ => false }
+        }
+      }
+    SpiceSliceProjected { netlist: _ } => false
+  }
+}
+
+// The discriminating pair: the SAME slice differing only in model standing must land on
+// opposite arms. Without this, the refusal claim above is satisfied by a projection that
+// refuses everything.
+test fn w_model_standing_alone_decides_the_arm() -> Bool {
+  let modelled = project_slice_to_spice(slice: slice_with(elements: [modelled_capacitor()]))
+  let unmodelled = project_slice_to_spice(slice: slice_with(elements: [unmodelled_capacitor()]))
+  match modelled {
+    SpiceSliceProjected { netlist: _ } =>
+      match unmodelled {
+        SpiceSliceRefused { cause: _ } => true
+        SpiceSliceProjected { netlist: _ } => false
+      }
+    SpiceSliceRefused { cause: _ } => false
+  }
+}

@@ -1,0 +1,144 @@
+module product.compute_board.spice_projection
+
+import std.types { String, NonEmptyStr, List }
+import extdeps.external_authority { ExternalAuthority }
+import v2.std.node { Symbol }
+import v2.extdeps.formats.spice {
+  Capacitor,
+  Component,
+  DeckComponent,
+  DeckStatement,
+  Ground,
+  Named,
+  NamedNode,
+  NodeRef,
+  Resistor,
+  SpiceNetlist,
+  SpiceValue,
+  VoltageSource,
+  spice_emit,
+}
+
+data spice_projection_note: String = "A SPICE DECK AS A PROJECTION OF A SELECTED BOARD SLICE, NOT AS THE BOARD. SPICE is appropriate for regulator and power-tree behaviour, startup and sequencing slices, supervisory circuits, termination networks, and power-integrity experiments where models exist; it is NOT the manufacturing netlist and not a simulation of a whole motherboard. THE WALL THIS MODULE EXISTS FOR: a simulation carries model provenance, so an element whose vendor model this repository does not hold REFUSES the projection instead of receiving a generic ideal part. That substitution is the tempting move and it is the worst available one — an ideal capacitor in place of a real one produces a plausible waveform, so the deficit disappears into a result that looks like evidence. A NOTE ON THE EMITTER THIS FEEDS: v2.extdeps.formats.spice's spice_emit answers the empty string when its body fold yields Absent, which is an absorbing arm in that module rather than a refusal. This projection therefore refuses BEFORE emission and never depends on the emitter's failure behaviour to report a problem; the emitter's own arm is a separate finding on a separate module and is not repaired here."
+
+// Whether an element may enter a simulation at all. There are exactly two states and the
+// absent one is a typed refusal cause, not a default: the difference between 'the vendor
+// publishes a model and we cite it' and 'no model exists' is the difference between a result
+// and a guess.
+type ElectricalModelStanding
+  = VendorModelCited { model_card: NonEmptyStr, authority: ExternalAuthority }
+  | ElectricalModelAbsent
+
+type PassiveKind
+  = ResistiveElement
+  | CapacitiveElement
+
+type SliceElement {
+  designator: Symbol
+  part: NonEmptyStr
+  kind: PassiveKind
+  n_plus: NodeRef
+  n_minus: NodeRef
+  value_lexeme: String
+  model: ElectricalModelStanding
+}
+
+type SliceSource {
+  designator: Symbol
+  node: NodeRef
+  value_lexeme: String
+}
+
+type BoardSlice {
+  title: String
+  source: SliceSource
+  elements: List<SliceElement>
+}
+
+type SpiceProjectionRefusal
+  = ElectricalModelUnavailable { part: NonEmptyStr }
+
+type SpiceProjection
+  = SpiceSliceProjected { netlist: SpiceNetlist }
+  | SpiceSliceRefused { cause: SpiceProjectionRefusal }
+
+fn element_model_absent(e: SliceElement) -> Bool {
+  match e.model {
+    ElectricalModelAbsent => true
+    VendorModelCited { model_card: _, authority: _ } => false
+  }
+}
+
+fn first_unmodelled_element(elements: List<SliceElement>) -> SliceElement? {
+  fold(elements, init: none, f: fn(acc, e) {
+    match acc {
+      Present { value: found } => Present { value: found }
+      Absent => if element_model_absent(e: e) { Present { value: e } } else { none }
+    }
+  })
+}
+
+fn element_component(e: SliceElement) -> Component {
+  match e.kind {
+    ResistiveElement =>
+      Resistor {
+        name: e.designator,
+        n_plus: e.n_plus,
+        n_minus: e.n_minus,
+        value: SpiceValue { lexeme: e.value_lexeme },
+      }
+    CapacitiveElement =>
+      Capacitor {
+        name: e.designator,
+        n_plus: e.n_plus,
+        n_minus: e.n_minus,
+        value: SpiceValue { lexeme: e.value_lexeme },
+      }
+  }
+}
+
+fn source_component(s: SliceSource) -> Component {
+  VoltageSource {
+    name: s.designator,
+    n_plus: s.node,
+    n_minus: Ground,
+    value: SpiceValue { lexeme: s.value_lexeme },
+  }
+}
+
+fn slice_statements(slice: BoardSlice) -> List<DeckStatement> {
+  append(
+    [DeckComponent { component: source_component(s: slice.source) }],
+    items: slice.elements |> map(e => DeckComponent { component: element_component(e: e) })
+  )
+}
+
+// The projection. The refusal arm fires on the FIRST unmodelled element and names it by PART,
+// not by designator: the actionable fact is which device has no published model, and the same
+// part sitting at four designators is one procurement question, not four. That the substrate
+// offers no general Symbol-to-String projection (v2.extdeps.formats.spice carries a small
+// hand-written spelling table instead) is a real limitation of the emitter this feeds, and it
+// is why the part label is carried rather than derived from the designator.
+fn project_slice_to_spice(slice: BoardSlice) -> SpiceProjection {
+  match first_unmodelled_element(elements: slice.elements) {
+    Present { value: e } =>
+      SpiceSliceRefused {
+        cause: ElectricalModelUnavailable { part: e.part },
+      }
+    Absent =>
+      SpiceSliceProjected {
+        netlist: SpiceNetlist { title: slice.title, body: slice_statements(slice: slice) },
+      }
+  }
+}
+
+fn projected_deck_text(projection: SpiceProjection) -> String? {
+  match projection {
+    SpiceSliceProjected { netlist: n } => Present { value: spice_emit(netlist: n) }
+    SpiceSliceRefused { cause: _ } => none
+  }
+}
+
+fn named_node(name: Symbol) -> NodeRef {
+  Named { node: NamedNode { name: name } }
+}

@@ -1,0 +1,184 @@
+module product.compute_board.composition
+
+import std.types { String, NonEmptyStr, List }
+import std.nat { Nat }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.cpu.ampere_altra_package {
+  ContactPopulationIncomplete,
+  DuplicateContactDesignator,
+  MissingUpstreamDesignCollateral,
+  PackageContactMapAdmitted,
+  PackageContactMapStanding,
+}
+import product.compute_board.intent {
+  BoardCapability,
+  CapabilityRequirement,
+  ComputeBoardIntent,
+  capability_eq,
+  requirement_capability,
+}
+
+data composition_note: String = "THE EARNED-ELEMENT FOLD: given a contract and a set of selected components, which required capabilities are unsatisfied, and which components are unearned. THE ASYMMETRY IS THE POINT AND IT IS EASY TO GET WRONG: an unsatisfied capability is a hole in the design, and an unearned component is a part nobody can justify — they are not two readings of one number, and a board that satisfies every capability can still carry parts that discharge nothing. A COMPONENT MAY DISCHARGE MORE THAN ONE OBLIGATION, and may also be earned by another component's imposed constraint rather than by a contract capability directly: a decoupling network is required by the device it serves, not by 'serve web workloads'. That second route is modelled as ImposedByComponent so the derivation stays a real chain back to the contract, rather than becoming an escape hatch that launders any part as necessary."
+
+// Why a component is in the design. There are exactly two legitimate answers and no third:
+// the contract asked for the capability, or a component we already selected requires it. A
+// component with an empty justification list is unearned by construction of this type — there
+// is no 'general good practice' arm, because that is the arm through which an unjustified part
+// enters and then never leaves.
+type ComponentJustification
+  = DischargesCapability { capability: BoardCapability }
+  | ImposedByComponent { by: NonEmptyStr, requirement: NonEmptyStr, authority: ExternalAuthority }
+
+type ComponentInstance {
+  designator: NonEmptyStr
+  part: NonEmptyStr
+  justifications: List<ComponentJustification>
+}
+
+fn justification_discharges(j: ComponentJustification, cap: BoardCapability) -> Bool {
+  match j {
+    DischargesCapability { capability: c } => capability_eq(a: c, b: cap)
+    ImposedByComponent { by: _, requirement: _, authority: _ } => false
+  }
+}
+
+fn component_discharges(c: ComponentInstance, cap: BoardCapability) -> Bool {
+  fold(c.justifications, init: false, f: fn(acc, j) {
+    acc || justification_discharges(j: j, cap: cap)
+  })
+}
+
+fn capability_satisfied(components: List<ComponentInstance>, cap: BoardCapability) -> Bool {
+  fold(components, init: false, f: fn(acc, c) {
+    acc || component_discharges(c: c, cap: cap)
+  })
+}
+
+fn unsatisfied_capabilities(
+  intent: ComputeBoardIntent,
+  components: List<ComponentInstance>
+) -> List<BoardCapability> {
+  intent.requirements
+    |> map(r => requirement_capability(r: r))
+    |> filter(cap => !capability_satisfied(components: components, cap: cap))
+}
+
+fn justification_count(c: ComponentInstance) -> Nat {
+  fold(c.justifications, init: 0, f: (acc, _) => acc + 1)
+}
+
+fn unearned_components(components: List<ComponentInstance>) -> List<ComponentInstance> {
+  components |> filter(c => justification_count(c: c) == 0)
+}
+
+// THE THREE REFUSAL FAMILIES ARE SEPARATE TYPES, NOT VARIANTS OF ONE ENUM, because their
+// owners and lifetimes differ. Upstream collateral absence is a business prerequisite someone
+// outside engineering must clear; design incompleteness is our own unfinished work; a
+// manufacturing mismatch is a fact about the factory we selected. Fusing them sends all three
+// to one reader and makes 'blocked on Ampere under NDA' indistinguishable from 'we have not
+// routed DDR yet' — which is precisely the state-space conflation that lets the blocking one
+// stop ranking for attention.
+type CollateralRefusal
+  = PackageContactMapUnavailable { subject: NonEmptyStr }
+  | FootprintAuthorityUnavailable { part: NonEmptyStr }
+  | ElectricalModelUnavailable { part: NonEmptyStr }
+  | MemoryTopologyNotEstablished { reason: NonEmptyStr }
+
+type DesignIncompleteRefusal
+  = RequiredCapabilityUnsatisfied { capability: BoardCapability }
+  | UnearnedComponentPresent { designator: NonEmptyStr }
+  | PackageContactPopulationIncomplete { expected: Nat, resolved: Nat }
+  | DuplicatePackageContact { designator: NonEmptyStr }
+
+type ManufacturingRefusal
+  = FabricatorStackupUnconfirmed { fabricator: NonEmptyStr }
+  | ManufacturingCapabilityMismatch { feature: NonEmptyStr }
+
+// Readiness is a PRODUCT of the three families, never a single verdict flag. A board can be
+// simultaneously blocked upstream and incomplete downstream, and a reader that receives one
+// Bool cannot tell which action to take. Empty in all three is the only ready state, and it is
+// derived rather than asserted — there is no field anyone can set to 'ready'.
+type BoardReadiness {
+  collateral: List<CollateralRefusal>
+  design: List<DesignIncompleteRefusal>
+  manufacturing: List<ManufacturingRefusal>
+}
+
+fn refusal_list_empty<T>(xs: List<T>) -> Bool {
+  fold(xs, init: true, f: (acc, _) => false)
+}
+
+fn board_is_ready(r: BoardReadiness) -> Bool {
+  refusal_list_empty(xs: r.collateral)
+    && refusal_list_empty(xs: r.design)
+    && refusal_list_empty(xs: r.manufacturing)
+}
+
+// The package-map standing is projected into the refusal families rather than re-decided here,
+// so the contact-map authority stays single. Note where each arm lands: absent collateral is a
+// COLLATERAL refusal, while an incomplete or duplicated population is a DESIGN refusal — the
+// same reading the family split exists to preserve.
+fn project_contact_map_standing(
+  standing: PackageContactMapStanding
+) -> BoardReadiness {
+  match standing {
+    PackageContactMapAdmitted { resolved: _ } =>
+      BoardReadiness { collateral: [], design: [], manufacturing: [] }
+    MissingUpstreamDesignCollateral { subject: s, access_route: _ } =>
+      BoardReadiness {
+        collateral: [PackageContactMapUnavailable { subject: s }],
+        design: [],
+        manufacturing: [],
+      }
+    ContactPopulationIncomplete { expected: e, resolved: r } =>
+      BoardReadiness {
+        collateral: [],
+        design: [PackageContactPopulationIncomplete { expected: e, resolved: r }],
+        manufacturing: [],
+      }
+    DuplicateContactDesignator { designator: d } =>
+      BoardReadiness {
+        collateral: [],
+        design: [DuplicatePackageContact { designator: d }],
+        manufacturing: [],
+      }
+  }
+}
+
+fn merge_readiness(a: BoardReadiness, b: BoardReadiness) -> BoardReadiness {
+  BoardReadiness {
+    collateral: append(a.collateral, items: b.collateral),
+    design: append(a.design, items: b.design),
+    manufacturing: append(a.manufacturing, items: b.manufacturing),
+  }
+}
+
+fn composition_readiness(
+  intent: ComputeBoardIntent,
+  components: List<ComponentInstance>
+) -> BoardReadiness {
+  BoardReadiness {
+    collateral: [],
+    design: append(
+      unsatisfied_capabilities(intent: intent, components: components)
+        |> map(cap => RequiredCapabilityUnsatisfied { capability: cap }),
+      items: unearned_components(components: components)
+        |> map(c => UnearnedComponentPresent { designator: c.designator })
+    ),
+    manufacturing: [],
+  }
+}
+
+// The whole-board fold. Every consumer asking 'may this be ordered' reads THIS, so a new
+// refusal source is added by widening one of the three families and merging here — never by a
+// second parallel readiness answer somewhere else.
+fn board_readiness(
+  intent: ComputeBoardIntent,
+  components: List<ComponentInstance>,
+  contact_standing: PackageContactMapStanding
+) -> BoardReadiness {
+  merge_readiness(
+    a: composition_readiness(intent: intent, components: components),
+    b: project_contact_map_standing(standing: contact_standing)
+  )
+}

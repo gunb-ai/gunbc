@@ -1,0 +1,241 @@
+module test.claim.compute_board_readiness_witness
+
+import std.types { NonEmptyStr, List }
+import std.nat { Nat }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.ipc.dpmx {
+  CarriedInFormat,
+  FormatSemanticRow,
+  ManufacturingSemantic,
+  NetlistConnectivity,
+  NotCarried,
+  SemanticCarriage,
+  ipc_dpmx_semantic_carriage,
+}
+import extdeps.ucamco.gerber { gerber_semantic_carriage }
+import extdeps.cpu.ampere_altra_package {
+  AltraFcLga4926,
+  ContactPopulationIncomplete,
+  DuplicateContactDesignator,
+  FunctionUnstated,
+  MissingUpstreamDesignCollateral,
+  PackageContact,
+  PackageContactMap,
+  PackageContactMapAdmitted,
+  PackageContactMapStanding,
+  PowerSupplyContact,
+  admit_package_contact_map,
+  altra_fclga_4926_contact_map_standing,
+  altra_fclga_4926_declared_contact_count,
+}
+import product.compute_board.intent {
+  Compute,
+  Memory,
+  ComputeBoardIntent,
+  ComputeCores,
+  NetworkPaths,
+  narrow_compute_node_intent,
+}
+import product.compute_board.composition {
+  BoardReadiness,
+  ComponentInstance,
+  DischargesCapability,
+  ImposedByComponent,
+  board_is_ready,
+  board_readiness,
+  capability_satisfied,
+  unearned_components,
+  unsatisfied_capabilities,
+  FabricatorStackupUnconfirmed,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data witness_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "amperecomputing.com/briefs/ampere-altra-family-product-brief"
+  }
+}
+
+fn list_is_empty<T>(xs: List<T>) -> Bool {
+  fold(xs, init: true, f: (acc, _) => false)
+}
+
+fn list_count<T>(xs: List<T>) -> Nat {
+  fold(xs, init: 0, f: (acc, _) => acc + 1)
+}
+
+fn contact(designator: NonEmptyStr) -> PackageContact {
+  PackageContact { designator: designator, function: FunctionUnstated }
+}
+
+// A THREE-CONTACT FIXTURE, DELIBERATELY. The subject under proof is the count-and-identity
+// JOIN, and the smallest specimen that crosses the boundary is the requirement plus one. A
+// 4926-row fixture would prove nothing further and would be a cost-shape defect wearing a
+// test's name.
+fn three_contact_map() -> PackageContactMap {
+  PackageContactMap {
+    family: AltraFcLga4926,
+    contacts: [contact(designator: "A1"), contact(designator: "A2"), contact(designator: "A3")],
+    authority: witness_authority,
+  }
+}
+
+fn duplicated_contact_map() -> PackageContactMap {
+  PackageContactMap {
+    family: AltraFcLga4926,
+    contacts: [contact(designator: "A1"), contact(designator: "A2"), contact(designator: "A1")],
+    authority: witness_authority,
+  }
+}
+
+fn standing_is_admitted(s: PackageContactMapStanding) -> Bool {
+  match s {
+    PackageContactMapAdmitted { resolved: _ } => true
+    _ => false
+  }
+}
+
+// POSITIVE CONTROL. Without this, every refusal claim below is satisfied by a function that
+// refuses unconditionally, which would establish nothing at all.
+test fn w_exact_population_admits() -> Bool {
+  standing_is_admitted(s: admit_package_contact_map(map: three_contact_map(), expected: 3))
+}
+
+// THE DISCRIMINATING RED FOR THE COMPLETENESS JOIN: the same map that admits at 3 must refuse
+// against the real declared package population, and the refusal must carry both numbers so the
+// reader learns the size of the gap rather than only that one exists.
+test fn w_stub_population_refuses_against_declared_package_count() -> Bool {
+  match admit_package_contact_map(
+    map: three_contact_map(),
+    expected: altra_fclga_4926_declared_contact_count
+  ) {
+    ContactPopulationIncomplete { expected: e, resolved: r } => e == 4926 && r == 3
+    _ => false
+  }
+}
+
+// Adding, deleting or duplicating a contact must make the design refuse. Duplication is the
+// arm that a pure count check cannot catch: this map has exactly three entries and would pass
+// a count-only join while naming only two distinct lands.
+test fn w_duplicate_designator_refuses_at_correct_count() -> Bool {
+  match admit_package_contact_map(map: duplicated_contact_map(), expected: 3) {
+    DuplicateContactDesignator { designator: d } => d == "A1"
+    _ => false
+  }
+}
+
+// GAP-0's live claim: the Altra path refuses TODAY, on the acceptance path, for absent design
+// collateral — and it lands in the COLLATERAL family, not the design family, because the
+// remedy is a business prerequisite rather than engineering work.
+test fn w_altra_standing_refuses_as_collateral_not_design() -> Bool {
+  match altra_fclga_4926_contact_map_standing() {
+    MissingUpstreamDesignCollateral { subject: _, access_route: _ } => {
+      let readiness = board_readiness(
+        intent: narrow_compute_node_intent,
+        components: [],
+        contact_standing: altra_fclga_4926_contact_map_standing()
+      )
+      list_count(xs: readiness.collateral) == 1 && !board_is_ready(r: readiness)
+    }
+    _ => false
+  }
+}
+
+// An empty board leaves every contract capability unsatisfied. Ten requirements, ten holes:
+// the count is the contract's, so a requirement added without a component would move it.
+test fn w_empty_board_leaves_every_capability_unsatisfied() -> Bool {
+  list_count(xs: unsatisfied_capabilities(intent: narrow_compute_node_intent, components: [])) == list_count(xs: narrow_compute_node_intent.requirements)
+}
+
+fn cpu_component() -> ComponentInstance {
+  ComponentInstance {
+    designator: "U1",
+    part: "processor",
+    justifications: [DischargesCapability { capability: Compute }],
+  }
+}
+
+fn decoupling_component() -> ComponentInstance {
+  ComponentInstance {
+    designator: "C1",
+    part: "decoupling network",
+    justifications: [
+      ImposedByComponent {
+        by: "U1",
+        requirement: "supply decoupling required by the processor's power delivery specification",
+        authority: witness_authority,
+      }
+    ],
+  }
+}
+
+fn unjustified_component() -> ComponentInstance {
+  ComponentInstance { designator: "J9", part: "expansion header", justifications: [] }
+}
+
+test fn w_discharging_component_satisfies_its_capability() -> Bool {
+  capability_satisfied(components: [cpu_component()], cap: Compute)
+    && !capability_satisfied(components: [cpu_component()], cap: Memory)
+}
+
+// THE SEPARATION THAT MATTERS MOST HERE: a component earned by another component's imposed
+// requirement is legitimately in the design, yet it satisfies NO contract capability. If these
+// two facts were one field, a board could appear to satisfy its contract entirely through
+// support parts that discharge nothing the workload asked for.
+test fn w_imposed_component_is_earned_but_discharges_no_capability() -> Bool {
+  list_is_empty(xs: unearned_components(components: [decoupling_component()]))
+    && !capability_satisfied(components: [decoupling_component()], cap: Compute)
+}
+
+test fn w_unjustified_component_is_unearned() -> Bool {
+  let unearned = unearned_components(components: [cpu_component(), unjustified_component()])
+  list_count(xs: unearned) == 1 && fold(unearned, init: false, f: fn(acc, c) { acc || c.designator == "J9" })
+}
+
+// RED CONTROL FOR THE READINESS FOLD: a board clean on both other axes must still refuse when
+// only the manufacturing family is non-empty. Written because a fold that consulted just the
+// design list would pass every other claim in this file.
+test fn w_manufacturing_refusal_alone_blocks_readiness() -> Bool {
+  !board_is_ready(r: BoardReadiness {
+    collateral: [],
+    design: [],
+    manufacturing: [FabricatorStackupUnconfirmed { fabricator: "unselected" }],
+  })
+    && board_is_ready(r: BoardReadiness { collateral: [], design: [], manufacturing: [] })
+}
+
+fn carriage_of(rows: List<FormatSemanticRow>, semantic: ManufacturingSemantic) -> SemanticCarriage {
+  fold(rows, init: NotCarried, f: fn(acc, row) {
+    match row.semantic {
+      NetlistConnectivity => match semantic {
+        NetlistConnectivity => row.carriage
+        _ => acc
+      }
+      _ => acc
+    }
+  })
+}
+
+fn carriage_is_in_format(c: SemanticCarriage) -> Bool {
+  match c {
+    CarriedInFormat => true
+    _ => false
+  }
+}
+
+// THE FACT THAT DECIDES WHICH ARTIFACT SET A FACTORY RECEIVES, proven by execution over the
+// two upstream carriage rosters rather than asserted in prose: connectivity survives the
+// IPC-DPMX projection and does NOT survive the Gerber layer projection. This is why 'the
+// emitter is green' can never mean 'the manufacturer has been told what the board is'.
+test fn w_connectivity_survives_dpmx_and_not_gerber() -> Bool {
+  carriage_is_in_format(
+    c: carriage_of(rows: ipc_dpmx_semantic_carriage, semantic: NetlistConnectivity)
+  )
+    && !carriage_is_in_format(
+      c: carriage_of(rows: gerber_semantic_carriage, semantic: NetlistConnectivity)
+    )
+}

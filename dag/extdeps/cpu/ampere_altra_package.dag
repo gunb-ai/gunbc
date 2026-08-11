@@ -1,0 +1,152 @@
+module extdeps.cpu.ampere_altra_package
+
+import std.types { String, NonEmptyStr, List }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "amperecomputing.com/briefs/ampere-altra-family-product-brief"
+  }
+}
+
+data ampere_customer_reference_boards_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "amperecomputing.com/home/customer-reference-boards"
+  }
+}
+
+// VERIFIED LIVE 2026-08-11 by fetching the product-brief locator. Quoted exactly from the
+// response: "4926-Pin FCLGA"; "8 Channels 72-bit DDR4-3200 with ECC"; "Up to 16 DIMMs (2DPC)
+// and 4 TB total memory"; "128 Lanes PCIe Gen4 (optional 64 lane CCIX for multi-socket
+// support)". The 4926 figure agrees with the contact_count already carried on
+// extdeps.cpu.ampere's CpuSocket rows, which is a consistency check across two independent
+// reads of the same upstream, not a second authority for one fact.
+data ampere_altra_package_note: String = "THE ALTRA-FAMILY PACKAGE, AT THE GRAIN PUBLIC MATERIAL SUPPORTS — AND THE EXPLICIT BOUNDARY WHERE IT STOPS. The public brief establishes the MAGNITUDE of the board problem: a 4926-contact FCLGA package, eight 72-bit DDR4-3200 ECC channels, up to sixteen DIMMs at two per channel, and 128 PCIe Gen4 lanes. It does not establish anything a board can be designed from. The per-contact identity map, the power sequencing requirements, the admitted memory topologies, the escape rules, and the mandatory support circuitry are NOT public: Ampere states its motherboard design packages, UEFI source, OpenBMC source, and CPLD source are available through Customer Connect to customers, partners, and distributors under NDA. So the honest standing of this package is 'magnitude known, design collateral absent', and that is modelled as a typed refusal rather than as an empty contact list. THE REASON THIS MATTERS MORE THAN IT LOOKS: an empty List<PackageContact> and an unobtainable contact map are different states with different remedies — the first says we have not done the work, the second says the work cannot begin until a business prerequisite clears — and collapsing them into 'zero contacts' is the empty-observation narrow DESIGN names, where an observation that could not express what it saw renders as a verdict about the world. A SECOND BOUNDARY, NOT YET RESOLVED ANYWHERE IN THIS REPOSITORY: this repository is public. NDA-obtained contact maps cannot land in it, and the publication-capability thread that would have decided where they may live records that the Stage-0 placement gate was DELETED with no replacement ontology selected. So even after Customer Connect access, the ingestion has no admitted home. That is a live blocker on the Altra path, stated here beside the refusal it causes rather than discovered later by someone who assumed an NDA was the only prerequisite."
+
+type AltraPackageFamily
+  = | AltraFcLga4926
+
+data altra_fclga_4926: AltraPackageFamily = AltraFcLga4926
+
+data altra_fclga_4926_declared_contact_count: Nat = 4926
+
+data altra_ddr4_channel_count: Nat = 8
+
+data altra_max_dimms_per_socket: Nat = 16
+
+data altra_pcie_gen4_lane_count: Nat = 128
+
+// A single land on the package, identified by the designator its vendor authority assigns.
+// The electrical function is deliberately NOT a Bool-ish "is power" axis: signal reference,
+// power return, chassis bond and protective earth are distinct roles that a board must not
+// fuse, and a contact whose function the authority does not state is FunctionUnstated rather
+// than defaulted to anything.
+type ContactElectricalFunction
+  = PowerSupplyContact
+  | PowerReturnContact
+  | SignalReferenceContact
+  | SingleEndedSignalContact
+  | DifferentialPairMemberContact { pair: NonEmptyStr }
+  | NoConnectContact
+  | ReservedContact
+  | FunctionUnstated
+
+type PackageContact {
+  designator: NonEmptyStr
+  function: ContactElectricalFunction
+}
+
+type PackageContactMap {
+  family: AltraPackageFamily
+  contacts: List<PackageContact>
+  authority: ExternalAuthority
+}
+
+// The three refusal causes are kept apart because their OWNERS differ. Collateral absence is a
+// business prerequisite (someone must obtain access and resolve where the bytes may live); an
+// incomplete population is our own unfinished ingestion; a duplicate designator is a defect in
+// the map we were given or in how we read it. A single "map not ready" cause would route all
+// three to the same reader and make the Altra blocker indistinguishable from a typo.
+type PackageContactMapStanding
+  = PackageContactMapAdmitted { resolved: Nat }
+  | MissingUpstreamDesignCollateral { subject: NonEmptyStr, access_route: ExternalAuthority }
+  | ContactPopulationIncomplete { expected: Nat, resolved: Nat }
+  | DuplicateContactDesignator { designator: NonEmptyStr }
+
+fn contact_designators(map: PackageContactMap) -> List<NonEmptyStr> {
+  map.contacts |> map(c => c.designator)
+}
+
+fn contact_count(map: PackageContactMap) -> Nat {
+  fold(map.contacts, init: 0, f: (acc, _) => acc + 1)
+}
+
+fn designator_occurrence_count(designators: List<NonEmptyStr>, needle: NonEmptyStr) -> Nat {
+  fold(designators, init: 0, f: fn(acc, d) { if d == needle { acc + 1 } else { acc } })
+}
+
+fn first_duplicate_designator(designators: List<NonEmptyStr>) -> NonEmptyStr? {
+  fold(designators, init: none, f: fn(acc, d) {
+    match acc {
+      Present { value: found } => Present { value: found }
+      Absent =>
+        if designator_occurrence_count(designators: designators, needle: d) > 1 {
+          Present { value: d }
+        } else {
+          none
+        }
+    }
+  })
+}
+
+// The admission is a COUNT-AND-IDENTITY JOIN against the declared package population, not a
+// presence check on a field. That distinction is the whole point: a stub map naming itself
+// "the Altra contact map" cannot pass, because 4926 unique designators is a quantity no
+// placeholder carries. HONESTY ABOUT THE RUNG THIS REACHES (DESIGN §4b rung honesty): the
+// completeness and uniqueness halves are mechanically preventable — they refuse by execution
+// on the acceptance path. The PROVENANCE half is not: a caller who genuinely had 4926 unique
+// invented designators would admit, because nothing here can distinguish an authored list
+// from a vendor-supplied one. Closing that requires the observation to be independent of the
+// party asserting it, which is the same unforgeable-construction frontier DESIGN names, and
+// it is stated rather than papered over.
+fn admit_package_contact_map(map: PackageContactMap, expected: Nat) -> PackageContactMapStanding {
+  match first_duplicate_designator(designators: contact_designators(map: map)) {
+    Present { value: dup } => DuplicateContactDesignator { designator: dup }
+    Absent => {
+      let resolved = contact_count(map: map)
+      if resolved == expected {
+        PackageContactMapAdmitted { resolved: resolved }
+      } else {
+        ContactPopulationIncomplete { expected: expected, resolved: resolved }
+      }
+    }
+  }
+}
+
+// The live standing of the Altra package in THIS repository, today. It refuses, and the
+// refusal names the access route so the next action is addressable rather than implied.
+fn altra_fclga_4926_contact_map_standing() -> PackageContactMapStanding {
+  MissingUpstreamDesignCollateral {
+    subject: "Ampere Altra family FCLGA-4926 package contact map, power sequencing, and admitted memory topologies",
+    access_route: ampere_customer_reference_boards_authority,
+  }
+}
+
+data ampere_altra_package_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.cpu.ampere_altra_package",
+      decl_name: "altra_fclga_4926",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [ampere_customer_reference_boards_authority]
+}
+
+data extdeps_model_scope: ExternalModelScope = ampere_altra_package_model_scope
