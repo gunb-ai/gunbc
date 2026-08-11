@@ -104,9 +104,8 @@ test fn duplicate_detector_admits_one_spelling_at_two_distinct_sites() -> Bool {
   count(duplicate_row_keys(rows: planted)) == 0
 }
 
-test fn free_call_shadowing_is_exactly_the_two_inert_lens_bridges() -> Bool {
-  let s = shadowed_spellings(rows: v1_interpreter_primitive_arms() |> filter(r => r.form == FreeCall))
-  count(s) == 2 && (s |> any(x => x == "inert_lens_unreached_module_count")) && (s |> any(x => x == "inert_lens_top_level_module_count"))
+test fn free_call_carries_no_shadowed_spelling() -> Bool {
+  form_has_no_shadowed_spelling(rows: v1_interpreter_primitive_arms() |> filter(r => r.form == FreeCall))
 }
 
 test fn method_call_shadowing_is_exactly_the_known_lookup_case() -> Bool {
