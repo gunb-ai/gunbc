@@ -231,22 +231,6 @@ fn legacy_test_behavior_disposition_graph_holds(
     )) == 0
 }
 
-data c_compilation_unit_leaf_behavior: LegacyTestBehavior = LegacyTestBehavior {
-  source_file: "src/v1/tests/src/c_compilation_unit_witness_test.rs" as FilePath,
-  test_fn: "c_compilation_unit_leaf_witness_green_by_execution" as NonEmptyStr,
-}
-
-data c_compilation_unit_leaf_witness: TestBehaviorWitness = TestBehaviorWitness {
-  entry: "src/v2/test/claim/c_compilation_unit_witness_test.dag" as FilePath,
-  test_fn: "witness_r3_header_source_object_paths" as NonEmptyStr,
-}
-
-data c_compilation_unit_leaf_disposition: LegacyTestBehaviorDisposition = CoveredByWitness {
-  behavior: c_compilation_unit_leaf_behavior,
-  witness: c_compilation_unit_leaf_witness,
-  distinguishing_failure: "The legacy Rust test is only a wrapper that resolves this exact .dag entry and requires witness_r3_header_source_object_paths to pass. That witness checks the R3 header/source/object path split; collapsing a path arm or changing the unit spelling makes the .dag witness return false, so deleting the wrapper removes no independent oracle." as NonEmptyStr,
-}
-
 data dag_comment_wall_family_closed_loop_note: String = "THE FIRST FAMILY CARRIED THROUGH THE WHOLE LOOP — classified, then deleted — and the receipt for how nearly it was deleted for the wrong reason and then held for the wrong reason. Subject: after the comment-ban wall, a solidus pair or a slash-star outside a string literal must refuse, a string literal containing a solidus pair must still be accepted, and comment-free source must still compile. Classification authored four CoveredByWitness rows over src/v1/tests/src/dag_comment_wall_test.rs (gunbc#7687); deletion removed that module and those rows together (gunbc#7690), because rows and behaviors depart together.\n\nWHAT MADE DELETION SAFE, measured rather than assumed. The deleted Rust module had NO CI CONSUMER: .github/workflows/ci.yml contains zero occurrences of cargo test and zero of nextest, and no workflow runs the Rust suite at all — it was removed from CI on 2026-07-11 (gunbc.commit_workflow commit_gate_rust_suite_removed_disposition) and runs locally only. The four .dag probes that replace it DO execute and pass, on the affected-set falsifier cold cadence: run 30766839943, 6382 witnesses, all four green. So the deletion INCREASED executed coverage; it removed a test nothing runs and kept probes a scheduled lane runs.\n\nTHE CORRECTION THIS NOTE EXISTS TO CARRY, because an earlier revision of it asserted the opposite twice. It first said the loop had closed, written against a local claim_batch run — and claim_batch is not the executor that gates a merge. It was then rewritten to say deletion was HELD because the probes never execute in CI. That second claim was FALSE and is retracted rather than softened: the probes are discovered (discovery walks source roots; witness_discovery_scan_dirs does not scope witness discovery), they execute on the cold cadence, and they pass. Three proposed mechanisms for their absence from the per-PR run — discovery omission, exclusion, deferral — were each refuted, the last two by reading the consumer rather than the roster name.\n\nTHE RESIDUAL, open and tracked elsewhere: the probes did NOT execute on the per-PR gating run for the push that added them, while their same-commit sibling did. That is an affected-set SELECTION question, not a discovery one, and it does not argue for retaining a test that runs nowhere.\n\nTHE RULE THAT SURVIVES ALL OF IT: a CoveredByWitness row claims a named witness goes red for the same reason the deleted test existed, so the row is only as good as the witness's executed consumer — and which executor ran it is part of the claim, not a detail. Co-greenness on a developer machine is not coverage.\n\nTHE NUMBER A READER WILL GET WRONG: deletion does NOT move the unclassified frontier. Discovered behaviors and their dispositions depart together, so the difference is unchanged and only the denominator shrinks. The frontier moves on CLASSIFICATION alone; deletion collects debt classification already discharged. A flat frontier across a deletion wave is the mechanism working, not a stalled lane."
 
 // FAMILY TWO DEPARTED HERE, and this records why its rows left with its behaviors rather
@@ -269,7 +253,6 @@ data dag_comment_wall_family_closed_loop_note: String = "THE FIRST FAMILY CARRIE
 // denominator shrinks. The frontier moves on classification alone.
 fn legacy_test_behavior_dispositions() -> List<LegacyTestBehaviorDisposition> {
   [
-    c_compilation_unit_leaf_disposition,
   ]
 }
 
@@ -296,12 +279,8 @@ fn legacy_test_behavior_declared_slice_holds() -> Bool {
   let discovered_legacy = legacy_test_behavior_ids_live()
   let discovered_witnesses = test_behavior_witness_ids_live()
   test_migration_behavior_discovery_holds()
-    && discovered_legacy |> any(id => id == legacy_test_behavior_id(
-      behavior: c_compilation_unit_leaf_behavior,
-    ))
-    && discovered_witnesses |> any(id => id == test_behavior_witness_id(
-      witness: c_compilation_unit_leaf_witness,
-    ))
+    && count(discovered_legacy) > 0
+    && count(discovered_witnesses) > 0
     && count(legacy_test_behavior_stale_dispositions(
       discovered_legacy: discovered_legacy,
       dispositions: legacy_test_behavior_dispositions(),

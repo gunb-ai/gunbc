@@ -5,63 +5,98 @@ import std.disposition { SingleAuthority }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
-
-// Class-5 carve-out: baselines are point-in-time RATCHET CEILINGS over live host tree scans (test_migration_debt_* builtins), not counts beside a committed roster. Deriving baseline from the same live scan would tautologize live_count <= baseline.
-// 82 -> 83 (2026-08-09): #8062 landed class_b_trim_specimen_test.rs, the Class B trim
-// pool-coincidence discriminating suite — a deliberate hand-Rust admission because the specimen
-// must observe v1 infer_env binding directly. Dissolution: migrates to the v2 witness route when
-// CI2 (#8043) covers compiler-subject tests; the ceiling may then ratchet back down.
-data test_migration_debt_module_count_baseline: Int = 83
-data test_migration_debt_total_loc_baseline: Int = 28247
-data test_migration_debt_total_test_fns_baseline: Int = 891
-
-fn test_migration_debt_ratchet_holds(live_count: Int, baseline: Int) -> Bool {
-  live_count <= baseline
+import test.retirement.model {
+  RetainedLegacyRustTestModule,
+  retained_legacy_rust_test_modules,
+  retained_module_source_file,
 }
 
-fn test_migration_debt_live_module_count() -> Int {
-  test_migration_debt_module_count()
+// THE RETENTION WALL, replacing the migration-debt ratchets and the delete guard.
+//
+// What was here before measured a SHRINKING DEBT: three point-in-time ceilings
+// (module count, LOC, test count) plus a guard refusing any deletion whose stem
+// was not covered by a witness. That shape assumed the population would be
+// drained one family at a time, and it priced every departure. It is retired
+// with the population it was measuring.
+//
+// The wall is now exact equality in BOTH directions between the discovered Rust
+// test modules and the declared retained rows. There is no ceiling to ratchet
+// and no per-deletion authorization, because deletion is represented by the file
+// being absent. Adding an undeclared Rust test module reds; deleting a declared
+// one reds as a stale row.
+//
+// Both populations are LIVE host observations, so neither side is a count copied
+// from the tree — the equality is an identity join, not a numeric comparison.
+fn retained_declared_source_files() -> List<String> {
+  retained_legacy_rust_test_modules() |> map(m => retained_module_source_file(m: m))
 }
 
-fn test_migration_debt_live_total_loc() -> Int {
-  test_migration_debt_total_loc()
-}
-
-fn test_migration_debt_live_total_test_fns() -> Int {
-  test_migration_debt_total_test_fns()
-}
-
-fn test_migration_debt_live_module_names() -> List<String> {
+fn discovered_rust_test_modules() -> List<String> {
   test_migration_debt_module_names()
 }
 
-fn test_migration_debt_known_covered_module_is_recognized_as_covered() -> Bool {
-  test_migration_debt_known_covered_module_is_not_debt()
+fn discovered_legacy_behavior_ids() -> List<String> {
+  test_migration_legacy_behavior_ids()
 }
 
-fn test_migration_debt_module_count_ratchet_holds() -> Bool {
-  test_migration_debt_ratchet_holds(
-    live_count: test_migration_debt_live_module_count(),
-    baseline: test_migration_debt_module_count_baseline
-  )
+fn list_contains_name(xs: List<String>, needle: String) -> Bool {
+  xs |> any(x => x == needle)
 }
 
-fn test_migration_debt_total_loc_ratchet_holds() -> Bool {
-  test_migration_debt_ratchet_holds(
-    live_count: test_migration_debt_live_total_loc(),
-    baseline: test_migration_debt_total_loc_baseline
-  )
+fn count_occurrences(xs: List<String>, needle: String) -> Int {
+  xs |> filter(x => x == needle) |> count
 }
 
-fn test_migration_debt_total_test_fns_ratchet_holds() -> Bool {
-  test_migration_debt_ratchet_holds(
-    live_count: test_migration_debt_live_total_test_fns(),
-    baseline: test_migration_debt_total_test_fns_baseline
-  )
+fn names_are_duplicate_free(xs: List<String>) -> Bool {
+  xs |> all(x => count_occurrences(xs: xs, needle: x) == 1)
 }
 
-fn test_migration_delete_guard_holds_live() -> Bool {
-  test_migration_delete_guard_holds()
+// Every declared retained row names a module that is actually present.
+fn every_retained_row_resolves() -> Bool {
+  retained_declared_source_files()
+    |> all(f => list_contains_name(xs: discovered_rust_test_modules(), needle: f))
+}
+
+// Every discovered module is declared. This is the half that makes a NEW
+// undeclared Rust test file red by construction.
+fn every_discovered_module_is_retained() -> Bool {
+  discovered_rust_test_modules()
+    |> all(f => list_contains_name(xs: retained_declared_source_files(), needle: f))
+}
+
+// Every retained module contributes at least one discovered #[test] identity,
+// so a retained row cannot point at a module that has no executable content.
+// Identities are `source_file::test_fn`.
+fn retained_module_has_a_discovered_test(source_file: String) -> Bool {
+  discovered_legacy_behavior_ids()
+    |> any(id => string_starts_with(s: id, prefix: concat(source_file, "::")))
+}
+
+fn every_retained_module_has_a_test() -> Bool {
+  retained_declared_source_files()
+    |> all(f => retained_module_has_a_discovered_test(source_file: f))
+}
+
+// An empty discovered population must not pass accidentally while rows remain,
+// and an empty roster must not pass while modules remain. Both sides nonzero is
+// the fail-closed floor under the equality above.
+fn retention_populations_are_nonempty() -> Bool {
+  count(retained_declared_source_files()) > 0
+    && count(discovered_rust_test_modules()) > 0
+    && count(discovered_legacy_behavior_ids()) > 0
+}
+
+fn retained_rust_kernel_wall_holds() -> Bool {
+  retention_populations_are_nonempty()
+    && names_are_duplicate_free(xs: retained_declared_source_files())
+    && names_are_duplicate_free(xs: discovered_rust_test_modules())
+    && every_retained_row_resolves()
+    && every_discovered_module_is_retained()
+    && every_retained_module_has_a_test()
+}
+
+fn retained_rust_kernel_wall_holds_live() -> Bool {
+  retained_rust_kernel_wall_holds()
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
