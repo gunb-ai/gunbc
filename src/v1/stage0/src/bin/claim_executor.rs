@@ -449,7 +449,6 @@ fn write_compile_clean_cost_drift_receipt_at(
     base: &std::path::Path,
     basis_path: &std::path::Path,
     source_roots: &[String],
-    emit_full_tsv_log: bool,
 ) -> bool {
     let Some((wall_ms, _units, module_rows, subject)) =
         v1_compiler::cli_run::floor_compile_clean_cost_snapshot()
@@ -526,14 +525,6 @@ fn write_compile_clean_cost_drift_receipt_at(
                     b.eval_ms_basis, b.run_ref
                 ));
             }
-        }
-    }
-    // Falsifier cadence only — the per-PR floor keeps the `[receipt]` summary below, which
-    // already carries these same three counts, plus the TSV path. The pre-dump line that
-    // used to restate those counts here is gone: it duplicated the summary verbatim.
-    if emit_full_tsv_log {
-        for line in body.lines() {
-            eprintln!("[compile-clean-cost-drift] {line}");
         }
     }
     let path = base.join("floor-compile-clean-cost-drift-receipt.tsv");
@@ -5819,12 +5810,8 @@ fn write_batch_wall_receipt_at(base: &std::path::Path, batch_records: &[BatchRec
     true
 }
 
-fn write_gate_warm_cost_receipt(batch_records: &[BatchRecord], emit_full_tsv_log: bool) -> bool {
-    write_gate_warm_cost_receipt_at(
-        std::path::Path::new("target"),
-        batch_records,
-        emit_full_tsv_log,
-    )
+fn write_gate_warm_cost_receipt(batch_records: &[BatchRecord]) -> bool {
+    write_gate_warm_cost_receipt_at(std::path::Path::new("target"), batch_records)
 }
 
 /// Per-gate warm-cost TSV (D2 placement probe, ci-two-tier-placement-redesign §9.1): one row per
@@ -5839,11 +5826,7 @@ fn write_gate_warm_cost_receipt(batch_records: &[BatchRecord], emit_full_tsv_log
 /// probe reads a WARM run's rows; run cold-then-warm on >=2 hosts and the roster records value +
 /// host basis. Fail-closed on a write error (shares target/ with the gated receipts, so a write
 /// failure here is the same disk fault that fails them); never a verdict term.
-fn write_gate_warm_cost_receipt_at(
-    base: &std::path::Path,
-    batch_records: &[BatchRecord],
-    emit_full_tsv_log: bool,
-) -> bool {
+fn write_gate_warm_cost_receipt_at(base: &std::path::Path, batch_records: &[BatchRecord]) -> bool {
     let mut body =
         String::from("gate\tbatch\teval_ms\tresolve_ms\twarm_ms\twitnesses\ts_per_witness_us\n");
     for rec in batch_records {
@@ -5868,14 +5851,6 @@ fn write_gate_warm_cost_receipt_at(
                     result.function
                 ));
             }
-        }
-    }
-    // The falsifier cadence mirrors the TSV into the log (prefixed, grep-collectable) so the
-    // placement probe can lift it from get_job_logs without an artifact-upload step. Per-PR
-    // runs keep only the summary below; the complete file remains available on every cadence.
-    if emit_full_tsv_log {
-        for line in body.lines() {
-            eprintln!("[gate-warm-cost] {line}");
         }
     }
     let path = base.join("floor-gate-warm-cost-receipt.tsv");
@@ -5934,12 +5909,8 @@ fn write_gate_warm_cost_receipt_at(
 ///    that never ran has no cost to report and now says so. The cell is deliberately
 ///    non-numeric so a consumer reaching for a number fails loudly rather than counting an
 ///    unexecuted row as a fast one.
-fn write_witness_row_cost_receipt(batch_records: &[BatchRecord], emit_full_tsv_log: bool) -> bool {
-    write_witness_row_cost_receipt_at(
-        std::path::Path::new("target"),
-        batch_records,
-        emit_full_tsv_log,
-    )
+fn write_witness_row_cost_receipt(batch_records: &[BatchRecord]) -> bool {
+    write_witness_row_cost_receipt_at(std::path::Path::new("target"), batch_records)
 }
 
 /// Rendering for a timing cell whose measurement does not exist. Deliberately NOT a number,
@@ -5988,7 +5959,6 @@ fn drift_row_disposition(outcome_variant: &str, has_basis: bool) -> DriftRowDisp
 fn write_witness_row_cost_receipt_at(
     base: &std::path::Path,
     batch_records: &[BatchRecord],
-    emit_full_tsv_log: bool,
 ) -> bool {
     let mut body = String::from(
         "batch\tentry\tfunction\teval_wall_ms\teval_cpu_ms\tresolve_ms\twarm_ms\toutcome\tdetail\n",
@@ -6037,14 +6007,6 @@ fn write_witness_row_cost_receipt_at(
                 ));
                 row_count += 1;
             }
-        }
-    }
-    // Task #20's falsifier reproduction protocol consumes these grep-collectable lines. The
-    // per-PR floor keeps the identical TSV file plus the summary below without duplicating the
-    // full body on stderr.
-    if emit_full_tsv_log {
-        for line in body.lines() {
-            eprintln!("[witness-row-cost] {line}");
         }
     }
     let path = base.join("floor-witness-row-cost-receipt.tsv");
@@ -6474,7 +6436,6 @@ fn write_witness_row_cost_migration_disclosure_receipt_at(
     base: &std::path::Path,
     batch_records: &[BatchRecord],
     source_roots: &[String],
-    emit_full_tsv_log: bool,
 ) -> bool {
     let entry = "dag/gunbc/witness_row_cost.dag";
     let (graph, indices) = match resolve_entry_graph(source_roots, entry) {
@@ -6543,15 +6504,6 @@ fn write_witness_row_cost_migration_disclosure_receipt_at(
     }
     worst.sort_by(|a, b| b.0.cmp(&a.0));
     worst.truncate(5);
-    // Same posture as the gate warm-cost and witness row-cost receipts: the falsifier
-    // cadence mirrors the full TSV into the log so the placement probe can lift it from
-    // get_job_logs without an artifact-upload step. Per-PR runs keep only the `worst:`
-    // rows and the `[receipt]` summary below; the complete file lands either way.
-    if emit_full_tsv_log {
-        for line in body.lines() {
-            eprintln!("[witness-row-cost-migration-disclosure] {line}");
-        }
-    }
     for (ms, entry, function) in &worst {
         eprintln!(
             "[witness-row-cost-migration-disclosure] worst: {entry}::{function} observed={ms}ms threshold={threshold_ms}ms"
@@ -8670,12 +8622,12 @@ fn run_walk(
         !emit_ordinary_floor_receipts || write_batch_wall_receipt(&batch_records);
     trace_floor_phase("batch-wall-receipt", "completed", "");
     trace_floor_phase("gate-warm-cost-receipt", "started", "");
-    let gate_warm_cost_receipt_ok = !emit_ordinary_floor_receipts
-        || write_gate_warm_cost_receipt(&batch_records, falsifier_cadence);
+    let gate_warm_cost_receipt_ok =
+        !emit_ordinary_floor_receipts || write_gate_warm_cost_receipt(&batch_records);
     trace_floor_phase("gate-warm-cost-receipt", "completed", "");
     trace_floor_phase("witness-row-cost-receipt", "started", "");
-    let witness_row_cost_receipt_ok = !emit_ordinary_floor_receipts
-        || write_witness_row_cost_receipt(&batch_records, falsifier_cadence);
+    let witness_row_cost_receipt_ok =
+        !emit_ordinary_floor_receipts || write_witness_row_cost_receipt(&batch_records);
     trace_floor_phase("witness-row-cost-receipt", "completed", "");
     trace_floor_phase("wet-witness-row-outcome-receipt", "started", "");
     let wet_witness_row_outcome_receipt_ok = !emit_ordinary_floor_receipts
@@ -8705,7 +8657,6 @@ fn run_walk(
             std::path::Path::new("target"),
             &batch_records,
             source_roots,
-            falsifier_cadence,
         );
     trace_floor_phase(
         "witness-row-cost-migration-disclosure-receipt",
@@ -10945,7 +10896,6 @@ fn run() -> Result<ExitCode, ExitCode> {
         std::path::Path::new("target"),
         std::path::Path::new("dag/gunbc/compile_clean_cost_basis.tsv"),
         &source_roots,
-        plan_function == "gunbc_falsifier_plan",
     );
     v1_compiler::v1_interpreter::group_end();
     let mut terminal_failure_details = outcome.failure_details.clone();
