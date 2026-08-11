@@ -103,6 +103,7 @@ import gunbc.roadmap_belt_actuate {
   BeltDispatchResult, DispatchSpawned, DispatchAlreadyLive, DispatchDisabled, DispatchNodeNotFound,
   DispatchNodeAlreadyDone, DispatchObserveRefused, DispatchAuthorityRefused, DispatchSpawnFailed,
   DispatchStaleSession, DispatchSessionLivenessUnobserved,
+  DispatchRevisionDrifted, DispatchRevisionUnobserved,
   belt_dispatch_result_ok,
   belt_dispatch_status_label,
   belt_dispatch_result_json_value,
@@ -672,6 +673,10 @@ fn d4_wire_contract_labels() -> List<String> {
     "observe_refused",
     "authority_refused",
     "spawn_failed",
+    "stale_session",
+    "session_liveness_unobserved",
+    "deployed_revision_drifted",
+    "deployed_revision_unobserved",
   ]
 }
 
@@ -1724,4 +1729,48 @@ test fn an_unsettled_receipt_is_re_observed_rather_than_halting_the_row() -> Boo
     ),
   )
   settled == "already-recorded" && unsettled == "proceed" && settled != unsettled
+}
+
+// ---------------------------------------------------------------------------
+// PRESS-0 step 1 — the deployed-revision gate, at the grain it is actually proven.
+//
+// SCOPE, STATED FIRST because the honest rung is the point: these witness the
+// PROJECTION of the two new arms, not the live gate. `fleet_revision_standing`
+// reads a real git tree, so whether the gate FIRES on a drifted srv1 is a wet
+// fact and is owed a wet receipt — it is not established here and must not be
+// read as established. What IS established by execution: neither arm can reach
+// the ok band, both carry a loud band, the drifted receipt names BOTH revisions,
+// and the unobserved receipt names its cause.
+//
+// The `desired`/`local` assertion is the discriminating one. A refusal that
+// dropped one side would still refuse, still label correctly, still be loud —
+// and would be useless to the operator who has to decide whether to catch the
+// host up or roll it back. The membership-diff `from` ruling is exactly this:
+// a receipt must name what it observed, not merely that it disagreed.
+data revision_gate_witness_scope_note: String = "Projection-grain only; the live gate is owed a wet srv1 receipt."
+
+test fn witness_revision_refusals_are_never_ok() -> Bool {
+  !belt_dispatch_result_ok(r: DispatchRevisionDrifted { node_id: "a", desired: "aaa", local: "bbb" })
+    && !belt_dispatch_result_ok(r: DispatchRevisionUnobserved { node_id: "a", cause: "no git" })
+}
+
+test fn witness_revision_refusal_labels_pin_wire_contract() -> Bool {
+  belt_dispatch_status_label(r: DispatchRevisionDrifted { node_id: "a", desired: "aaa", local: "bbb" }) == "deployed_revision_drifted"
+    && belt_dispatch_status_label(r: DispatchRevisionUnobserved { node_id: "a", cause: "no git" }) == "deployed_revision_unobserved"
+    && status_label_glued_to_ok(r: DispatchRevisionDrifted { node_id: "a", desired: "aaa", local: "bbb" })
+    && status_label_glued_to_ok(r: DispatchRevisionUnobserved { node_id: "a", cause: "no git" })
+}
+
+test fn witness_drift_receipt_names_both_revisions() -> Bool {
+  let wire = serialize_json(v: belt_dispatch_result_json_value(
+    r: DispatchRevisionDrifted { node_id: "a", desired: "deadbeef", local: "cafebabe" }))
+  string_contains(s: wire, pattern: "\"desired\": \"deadbeef\"")
+    && string_contains(s: wire, pattern: "\"local\": \"cafebabe\"")
+}
+
+test fn witness_unobserved_receipt_names_its_cause() -> Bool {
+  string_contains(
+    s: serialize_json(v: belt_dispatch_result_json_value(
+      r: DispatchRevisionUnobserved { node_id: "a", cause: "HEAD undecodable" })),
+    pattern: "\"cause\": \"HEAD undecodable\"")
 }
