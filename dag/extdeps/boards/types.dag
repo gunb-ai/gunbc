@@ -15,7 +15,14 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-type BaseboardModel = | AsrockRackAltrad8ud1l2t
+// GigabyteMp72Hb0 is a CANDIDATE reference board with no fleet instance: no PhysicalAsset cites it
+// and no host resolves to it. It exists so the private machine-tile carrier can compare a
+// dual-socket profile against a vendor-grounded row rather than against prose. An arm with no
+// instantiation carries a dissolution trigger: if no asset cites it once the procurement gate
+// closes either way, delete the arm.
+type BaseboardModel
+  = AsrockRackAltrad8ud1l2t
+  | GigabyteMp72Hb0
 
 type BaseboardCatalogRow {
   model: BaseboardModel

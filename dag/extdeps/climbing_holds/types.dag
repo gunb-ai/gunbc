@@ -1,0 +1,342 @@
+module extdeps.climbing_holds.types
+
+import std.types { NonEmptyStr, List }
+import std.nat { Nat }
+import std.measure { Millimeter }
+import std.content_hash { ContentHash }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Climbing_hold"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.climbing_holds.types",
+      decl_name: "ClimbingHoldCatalogRow",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// A climbing hold is a bolt-on or screw-on gripping part. This module owns what a hold IS as a
+// purchasable object: its identity, its material, the interface by which it attaches to a panel,
+// the profile a hand meets, and the standing of every one of those readings. It owns nothing
+// about why a hold is being used or where it sits on any particular panel — that is a consumer's
+// business, and a consumer supplies only role, pose, and relationship.
+//
+// The reason this module exists is a retraction. A design carrier concluded that a bolted hold
+// "has no natural datum" and removed it in favour of a shape that could be drawn. That inference
+// is false: a bolt-on hold supplies its own local frame — the bolt axis pierces the mounting face
+// at a point, the face gives an outward normal, and the anti-rotation fixing breaks the remaining
+// rotational freedom. What was missing was never a datum on the part. It was this module.
+
+// Material arms follow the families named by the general reference rather than a guess at what any
+// one vendor pours. The polyurethane/polyester split is not cosmetic and is the reason this is a
+// coproduct instead of a string: the two fail differently, and both failure modes are aimed
+// squarely at a hold used as a lifting handle.
+//
+// Polyurethane: if the mix is too soft, the hold splits when tightened or THE BOLT PULLS THROUGH.
+// Polyester: not flexible, and cracks if tightened against a face that is not completely flat.
+//
+// Both are consequences of TIGHTENING, which happens once per hold on a climbing wall and happens
+// again at every service visit on a part that gets removed and refitted. A wall hold that fails
+// drops a climber onto a mat under a belay; a carrying handle that fails drops a powered assembly.
+// Same part, different consequence, which is why vendor standing does not transfer.
+type HoldMaterial
+  = PolyurethaneResin
+  | PolyesterResin
+  | Fiberglass
+  | MachinedRockComposite
+  | Plywood
+  | Hardwood
+  | HoldMaterialUnread { obligation: NonEmptyStr }
+
+data hold_material_failure_mode_note: NonEmptyStr = "Polyurethane that is too soft splits when tightened or lets the bolt pull through; polyester is inflexible and cracks when tightened against a face that is not flat. Both are tightening failures, so a hold that is removed and refitted at each service visit accumulates exposure a wall hold never sees."
+
+// Thread designations are carried as the vendor writes them rather than decomposed into a
+// diameter and a pitch. A hold's bolt is selected from a fastener catalog by exact designation,
+// and inventing a metric equivalent for an imperial thread is how a part that cannot be bought
+// enters a drawing.
+type FastenerThread
+  = ImperialUncThread { designation: NonEmptyStr }
+  | MetricCoarseThread { designation: NonEmptyStr }
+  | FastenerThreadUnread { obligation: NonEmptyStr }
+
+// The mounting face is the flat the hold seats against. Every dimension in the local frame is
+// measured from it, so it is named as a distinct concept rather than assumed to be "the back".
+type HoldMountingFace
+  = SingleFlatMountingFace
+  | ContouredMountingFace { obligation: NonEmptyStr }
+  | HoldMountingFaceUnread { obligation: NonEmptyStr }
+
+// The part's own coordinate frame, and the whole point of this module.
+//
+// origin  — where the primary bolt axis pierces the mounting face
+// +z      — the mounting-face outward normal, i.e. away from the panel and toward the climber
+// +x      — from the origin toward the primary anti-rotation fixing, projected onto the face
+// +y      — completes a right-handed frame
+//
+// A consumer that knows where this frame sits on a panel knows where to drill, because the
+// drill point IS the origin projected through the panel. Nothing about the hold's sculpted
+// outline is needed to place a fastener, which is exactly why an unknown silhouette never
+// justified deleting the part.
+type ClimbingHoldFrame {
+  origin_note: NonEmptyStr
+  z_axis_note: NonEmptyStr
+  x_axis_note: NonEmptyStr
+  handedness_note: NonEmptyStr
+}
+
+type HoldFixationInterface {
+  primary_bolt_thread: FastenerThread
+  primary_bolt_count: Nat
+  anti_rotation_fixing_count: Nat
+  anti_rotation_fixing_note: NonEmptyStr
+  mounting_face: HoldMountingFace
+  frame: ClimbingHoldFrame
+}
+
+// How a dimensional reading was obtained. This coproduct is the load-bearing part of the module
+// and it exists because of a specific failure: a board's power-header inventory was asserted from
+// memory, carried as debt marked "pending verification", and then had a witness built on it before
+// the verification happened. The witness was green and it asserted a falsehood. A reading that
+// cannot say where it came from must not be spendable, so every dimensional record here carries
+// its provenance beside it rather than in a comment.
+type DimensionEvidence
+  = VendorPageRead { authority: ExternalAuthority, read_on: NonEmptyStr }
+  | VendorDrawingRead { authority: ExternalAuthority, read_on: NonEmptyStr }
+  | OperatorRelayedDocument { authority: ExternalAuthority, relay_note: NonEmptyStr }
+  | SearchSummaryOnly { obligation: NonEmptyStr }
+  | SampleMeasured { receipt: NonEmptyStr }
+  | DimensionUnread { obligation: NonEmptyStr }
+
+// OperatorRelayedDocument exists because this environment cannot reach the open web: every
+// outbound fetch to a vendor or reference host is refused by egress policy, and only search
+// summaries and a small allowlist get through. When the operator pastes a document's text, that
+// IS a reading of the document — the full body, not a third party's precis — and it would be
+// false modesty to file it beside a search snippet. It is kept as its own arm rather than folded
+// into VendorPageRead because the relay is a real link in the chain: a later reader must be able
+// to see that this text arrived through a person, and re-fetch it first if the claim ever matters
+// enough to turn on.
+data operator_relay_note: NonEmptyStr = "Vendor and reference hosts are unreachable from this environment; outbound fetches are refused by egress policy. Documents supplied by the operator are recorded as relayed readings — stronger than a search summary because the full text was present, and distinct from a first-party fetch because the chain includes a person."
+
+// Mounting convention, from the general reference: holds are bolted through to existing t-nuts
+// with hex-head bolts, or screwed on with several small screws; concrete anchors appear only in
+// extreme cases. This grounds the shape of HoldFixationInterface — a primary bolt into a t-nut
+// plus separate anti-rotation fixings — as the ordinary arrangement rather than an invention.
+//
+// What the reference conspicuously does NOT give is a thread designation. A general encyclopaedia
+// article describing the whole practice never states the bolt size, which is a useful negative
+// result: it means no row in this tree can obtain a thread by consulting general knowledge, and
+// any thread appearing here must have come from a vendor document or a measured sample.
+data hold_mounting_convention_note: NonEmptyStr = "Bolt-on holds pass a hex-head bolt into a t-nut already set in the panel; screw-on holds use several small screws. The general reference states the convention and states NO thread designation, so a thread may only enter this tree from a vendor document or a measurement."
+
+// The source reading, preserved EXACTLY as the vendor states it. Vendors give hold sizes in
+// fractional inches; this tree's Millimeter is integer-valued, so every imperial nominal that
+// enters it is rounded. An earlier version of this module stored only the rounded result, which
+// silently destroyed the reading: 6-1/2 in became 166 mm and the 1/2 was gone, so no later reader
+// could tell a measured 166 from a rounded 165.1, and no one could re-check the conversion against
+// what the vendor actually said. A source value and a derived value are different facts and are
+// stored separately.
+type SourceLengthUnit = Inch | MillimetreExact
+
+type SourceNativeLength {
+  numerator: Nat
+  denominator: Nat
+  unit: SourceLengthUnit
+}
+
+type CatalogLengthReading {
+  value: SourceNativeLength
+  evidence: DimensionEvidence
+}
+
+// The DERIVED clearance box, and only that. It is named for what it may be used for, because the
+// previous name — HoldNominalEnvelope — invited exactly the misuse the rounding forbids: a reader
+// sees "nominal envelope" and dimensions from it. Rounding UP is conservative for reserving space
+// and wrong in both directions for a datum, so this type may reserve and may never dimension.
+type ClearanceEnvelopeDerivation
+  = RoundedUpFromSourceReading { source_note: NonEmptyStr }
+  | MeasuredWithMargin { receipt: NonEmptyStr }
+
+type ConservativeClearanceEnvelope {
+  width_mm: Millimeter
+  height_mm: Millimeter
+  projection_mm: Millimeter
+  derivation: ClearanceEnvelopeDerivation
+  evidence: DimensionEvidence
+}
+
+// The taxonomy as the general reference gives it. Jug is the only arm that matters for carrying,
+// and for a reason the reference states plainly: a jug is sized so both hands fit on it and is
+// defined as much by POSITIVITY - how far it is incut - as by size. Every other arm here describes
+// a hold that is hard to hold on purpose, which is the opposite of what a lifting handle wants.
+type HoldGraspKind
+  = Jug
+  | MiniJug
+  | Crimp
+  | Sloper
+  | Pinch
+  | Pocket
+  | Edge
+  | Volume
+  | NoTex
+  | HoldGraspKindUnread { obligation: NonEmptyStr }
+
+type HoldGraspProfile {
+  kind: HoldGraspKind
+  usable_internal_width: CatalogLengthReading
+  lip_thickness: CatalogLengthReading
+  incut_note: NonEmptyStr
+}
+
+// usable_internal_width replaces an earlier lip_width_mm, and the rename is a correction rather
+// than tidying. The earlier field recorded "5 in wide lip" from a search summary; the vendor page
+// distinguishes the LIP from the usable internal width, which is the smaller of the two and the
+// one a hand actually occupies. Storing the larger number under a name a reader takes for grip
+// room overstates the hold in the direction that matters for a two-handed carry.
+
+// Exact shape is stored as a content-addressed artifact and never as hand-authored vertices. A
+// mesh transcribed into this language would be thousands of unreviewable numbers whose agreement
+// with the physical part no one could check, and its presence would imply a fidelity that a
+// transcription cannot have. The hash names the artifact; this module owns only its identity,
+// units, frame, and standing.
+type ShapeArtifactFormat = StepAp214 | Stl | Obj | Gltf
+
+type HoldShapeEvidence
+  = ShapeArtifactHeld {
+      format: ShapeArtifactFormat
+      artifact_hash: ContentHash
+      units_note: NonEmptyStr
+      frame_alignment_note: NonEmptyStr
+    }
+  | ShapeArtifactAbsent { obligation: NonEmptyStr }
+
+// Product naming and orderable identity are TWO facts, and conflating them was a real error in the
+// first version of this module. That version recorded two observed name spellings as SkuAmbiguous
+// — asserting a genuine catalog fork between two orderable products. The names are the vendor's own
+// page title and a reversed-word-order restatement in its description: one product with a
+// marketing alias, not two SKUs. SkuAmbiguous is a strong claim about the vendor's catalog and it
+// was made from a wording difference.
+//
+// The separation below states only what is observed: a canonical page title, whatever aliases the
+// same page uses for itself, and a manufacturer SKU that stays unread until an actual order code
+// appears. SkuAmbiguous is not reintroduced, because "two names" is not evidence of "two products";
+// only two order codes are.
+type ProductSkuStanding
+  = ProductSkuObserved { value: NonEmptyStr, authority: ExternalAuthority }
+  | ProductSkuUnread { obligation: NonEmptyStr }
+
+type ProductNameStanding {
+  canonical_page_title: NonEmptyStr
+  marketing_aliases: List<NonEmptyStr>
+  manufacturer_sku: ProductSkuStanding
+}
+
+type ClimbingHoldCatalogRow {
+  naming: ProductNameStanding
+  material: HoldMaterial
+  fixation: HoldFixationInterface
+  source_width: CatalogLengthReading
+  source_height: CatalogLengthReading
+  source_projection: CatalogLengthReading
+  clearance_envelope: ConservativeClearanceEnvelope
+  grasp: HoldGraspProfile
+  shape: HoldShapeEvidence
+}
+
+// Whether a hold may be DRAWN, which is a strictly weaker question than whether it may be USED.
+// Only a held shape artifact admits a silhouette. Everything else refuses, because a square
+// placeholder standing in for a sculpted jug is not a rough version of the part — it is a
+// different object, and once drawn to scale beside real components no reader can tell a
+// placeholder from a decision.
+fn hold_may_render_silhouette(row: ClimbingHoldCatalogRow) -> Bool {
+  match row.shape {
+    ShapeArtifactHeld { format: _, artifact_hash: _, units_note: _, frame_alignment_note: _ } => true
+    ShapeArtifactAbsent { obligation: _ } => false
+  }
+}
+
+// NARROWED, and the old name was an overclaim. This previously read hold_fixation_is_placeable,
+// which says the hold can be PLACED — and a thread plus a flat face establishes nothing of the
+// kind. Real placement on a panel also needs the anti-rotation location, bolt length, T-nut and
+// backing geometry, panel thickness, rear hardware clearance, edge distance, interference with
+// board, cable and cleat, grasp clearance, and the actual envelope. What a thread and a flat face
+// DO establish is narrower and still worth having: the primary bolt axis can be located, so the
+// drill point is known.
+//
+// The distinction matters because the broad name would have re-run the original error in the
+// opposite direction. The retracted reasoning deleted the hold by treating "cannot be drawn" as
+// "cannot be placed". A function called placeable that ignores collision and clearance would have
+// let the hold be treated as fully sited while its shape was still unknown — the same conflation,
+// now flattering instead of damning. Shape is unnecessary for naming the axis and NECESSARY for
+// collision, grasp clearance and silhouette.
+fn hold_mounting_axis_is_locatable(row: ClimbingHoldCatalogRow) -> Bool {
+  let thread_known = match row.fixation.primary_bolt_thread {
+    ImperialUncThread { designation: _ } => true
+    MetricCoarseThread { designation: _ } => true
+    FastenerThreadUnread { obligation: _ } => false
+  }
+  let face_known = match row.fixation.mounting_face {
+    SingleFlatMountingFace => true
+    ContouredMountingFace { obligation: _ } => false
+    HoldMountingFaceUnread { obligation: _ } => false
+  }
+  thread_known && face_known && row.fixation.primary_bolt_count > 0
+}
+
+// A dimensional reading is SPENDABLE only when it came from a vendor document or a measurement.
+// A search-engine summary is a report of a page, not the page; it is retained because it is a
+// real lead worth checking, and refused because it is not a reading.
+fn dimension_evidence_is_spendable(evidence: DimensionEvidence) -> Bool {
+  match evidence {
+    VendorPageRead { authority: _, read_on: _ } => true
+    VendorDrawingRead { authority: _, read_on: _ } => true
+    OperatorRelayedDocument { authority: _, relay_note: _ } => true
+    SampleMeasured { receipt: _ } => true
+    SearchSummaryOnly { obligation: _ } => false
+    DimensionUnread { obligation: _ } => false
+  }
+}
+
+// RENAMED, because the old name was a lie with consequences. This was called
+// hold_clearance_is_admissible and was consumed by the lift gate as though it proved the hold
+// physically clears something. It does not and never did: it asks only whether the catalog
+// envelope's SOURCE READING is spendable. A hold placed straight through a motherboard passes it,
+// because the question is about provenance and the answer has no position in it.
+//
+// That is exactly what happened. Two holds were placed on the tile face at authored coordinates;
+// one landed on the CPU cooler and the other on the power supply; this function returned true
+// throughout, and the page presented the result as the selected design. Clearance is a property of
+// a PLACED body against other placed bodies, and a catalog row has no placement to answer with.
+fn hold_catalog_clearance_envelope_is_spendable(row: ClimbingHoldCatalogRow) -> Bool {
+  dimension_evidence_is_spendable(evidence: row.clearance_envelope.evidence)
+}
+
+// The lift role is the strictest of the three and depends on BOTH a complete mounting stack and a
+// proof-load receipt against the exact assembly. Neither exists, and catalog data can never supply
+// the second: a vendor's climbing-wall standing is evidence about a different load path.
+// The lift gate no longer consumes the catalog-envelope check. It was taking a provenance answer
+// as a clearance answer, which is the mechanism by which a hold intersecting a cooler reached a
+// page as a selected design. Placement clearance is now an explicit INPUT that only a resolved
+// scene can supply, so this gate can never again be satisfied by catalog paperwork.
+fn hold_lift_role_is_admissible(
+  row: ClimbingHoldCatalogRow,
+  scene_placement_clearance_resolved: Bool,
+  proof_load_receipt_held: Bool,
+) -> Bool {
+  hold_mounting_axis_is_locatable(row: row)
+    && scene_placement_clearance_resolved
+    && proof_load_receipt_held
+}
+
+data climbing_hold_scope_note: NonEmptyStr = "This module models holds as purchasable parts. It says nothing about whether a hold is fit for any particular load, and a vendor's climbing-wall standing does not transfer to another use: loading direction, cycle count, panel stock, edge distance and failure consequence all differ. A consumer carrying a hold outside climbing owes its own qualification receipt."
