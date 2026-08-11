@@ -62,8 +62,13 @@ test fn w_verified_posture_carries_both_halves() -> Bool {
   serialize_ssh_client_options(options: ssh_verified_host_options(known_hosts: "/tmp/a" as NonEmptyStr)) == ["-o", "StrictHostKeyChecking=yes", "-o", "UserKnownHostsFile=/tmp/a"]
 }
 
-// RED CONTROL: asserts a WRONG expectation, so it must be false. If this ever passes, the
-// comparison in every claim above is vacuous and none of them is evidence of anything.
-test fn red_control_wrong_serialization_is_not_accepted() -> Bool {
-  serialize_ssh_client_option(option: StrictHostKeyChecking { value: StrictYes }) == ["-o", "StrictHostKeyChecking=no"]
+// RED CONTROL. An earlier revision of this declaration asserted the WRONG argv directly and
+// therefore returned false -- an enrolled `test fn` that FAILS, presented in the PR body as
+// evidence of rigor. Every red_control in this corpus asserts something TRUE: it names the wrong
+// outcome and asserts the mechanism does not produce it (see heal_author_commit_witness_test
+// red_control_gitignore_is_not_author_commit_required). Stated as a rejection, this passes when
+// serialization is correct and fails the moment `yes` and `no` collapse to the same argv, which is
+// the property the other claims depend on for their comparisons to mean anything.
+test fn red_control_wrong_serialization_is_rejected() -> Bool {
+  serialize_ssh_client_option(option: StrictHostKeyChecking { value: StrictYes }) != ["-o", "StrictHostKeyChecking=no"]
 }

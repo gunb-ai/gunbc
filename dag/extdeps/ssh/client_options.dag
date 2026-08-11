@@ -1,5 +1,10 @@
 module extdeps.ssh.client_options
 
+import std.types { NonEmptyStr, String, Bool, List, Int }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
 // The OpenSSH CLIENT option vocabulary, modeled once.
 //
 // This is a SEPARATE authority from extdeps.ssh.session deliberately. That module anchors to
@@ -16,13 +21,34 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+// THE SUBJECT IS THE CLIENT OPTION VOCABULARY ITSELF -- SshClientOption: the keyword/value pairs
+// ssh(1) accepts via -o, whose domains ssh_config(5) enumerates. It is NOT the connection protocol
+// (extdeps.ssh.session, RFC 4254) and NOT any particular verification policy: which options a given
+// invocation carries is a caller's fact, while WHICH OPTIONS EXIST and how each serializes is this
+// upstream's.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ssh.client_options",
+      decl_name: "SshClientOption",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
 // WHY THIS MODULE EXISTS, measured rather than asserted. Before it, the ssh client option grammar
 // was re-coined as free text at every site that needed one. In extdeps/ssh alone:
 //
-//   session.dag  ExecArgv       "-o" "StrictHostKeyChecking=yes"  "-o" "UserKnownHostsFile={...}"
-//   session.dag  Reachability   "-o" "BatchMode=yes"              "-o" "ConnectTimeout=5"
-//   exec/command.dag            "-o" "StrictHostKeyChecking=no"   "-o" "UserKnownHostsFile=/dev/null"
-//   password_session.dag        six further -o pairs
+// counted by INVOCATION IDENTITY (files that actually run ssh/scp), not by token -- an earlier
+// revision of this note said "56 raw -o strings corpus-wide", which counted curl -o, xorriso -o and
+// http/tmux options and was therefore not an OpenSSH population at all:
+//
+//   openbmc_password_ssh_transport.dag   40 pairs   <- the bulk of the migration, unmentioned before
+//   password_session.dag                  6 pairs
+//   exec/command.dag                      2 pairs   (StrictHostKeyChecking=no + UserKnownHostsFile=/dev/null)
+//   session.dag                           1 pair    (Reachability: BatchMode + ConnectTimeout)
 //
 // Three separate costs, none of them cosmetic:
 //
@@ -98,8 +124,11 @@ fn serialize_ssh_client_option(option: SshClientOption) -> List<String> {
   ["-o", join([ssh_client_option_keyword(option: option), "=", ssh_client_option_value(option: option)], "")]
 }
 
+// flat_map, not a fold that appends onto a growing accumulator: the fold form copies the
+// accumulator at every step, which is the copied-accumulator cost shape DESIGN section 6 says is
+// fixed on sight regardless of the realized n ("n is small here" is not a time-stable fact).
 fn serialize_ssh_client_options(options: List<SshClientOption>) -> List<String> {
-  fold(options, init: [], f: fn(acc, o) { append(acc, items: serialize_ssh_client_option(option: o)) })
+  flat_map(options, o => serialize_ssh_client_option(option: o))
 }
 
 // The verification posture a fleet exec is REQUIRED to carry, named once so callers cannot
