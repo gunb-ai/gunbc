@@ -41,12 +41,19 @@ data resolved_graph_cache_hand_rust_deferred_consumer_scaffold_module: String = 
 
 data resolved_graph_cache_hand_rust_deferred_consumer_witness_entry: String = "dag/test/claim/materialization_provider_consumer_hand_rust_witness_test.dag"
 
-data resolved_graph_cache_hand_rust_test_discriminator_toctou: String = "verified_lookup_refuses_artifact_replaced_after_probe"
-
-data resolved_graph_cache_hand_rust_test_discriminator_migration_race: String = "v3_write_refuses_when_verified_artifact_already_present"
-
-data resolved_graph_cache_hand_rust_test_discriminator_legacy_migrate: String = "legacy_v1_cold_rebuild_migrates_to_v3_on_fresh_index"
-
-data resolved_graph_cache_hand_rust_test_discriminator_cold_oracle: String = "cross_process_cache_matches_cold_oracle_corpus"
-
+// DISCRIMINATOR ROWS DELETED 2026-08-11 (gunbc#8146, review 51152). Four rows
+// named discriminating tests — verified_lookup_refuses_artifact_replaced_after_probe,
+// v3_write_refuses_when_verified_artifact_already_present,
+// legacy_v1_cold_rebuild_migrates_to_v3_on_fresh_index,
+// cross_process_cache_matches_cold_oracle_corpus — all of which lived in
+// resolve_cross_process_cache_test.rs, deleted by this PR. Their witness only
+// substring-matched the constants against themselves, so it proved the strings
+// were spelled a certain way and nothing about any test existing or running: a
+// false executing receipt (DESIGN §5).
+//
+// They are DELETED rather than re-pointed because there is nothing to point at
+// — a corpus search finds those names only in these strings. Naming a test that
+// does not exist is worse than naming none. The discriminating evidence for this
+// scaffold is now exactly the census below, which joins each path to a readable
+// file, plus the retained materialization_provider_resolved_graph_consumer_test.
 data resolved_graph_cache_hand_rust_receipt_witness_entry: String = "dag/test/claim/resolved_graph_cache_hand_rust_witness_test.dag"
