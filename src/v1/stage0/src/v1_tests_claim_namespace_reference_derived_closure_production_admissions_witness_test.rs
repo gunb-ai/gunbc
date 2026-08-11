@@ -18,6 +18,17 @@ use crate::std_reference_binding_observation::ReferenceBindingObservation::{Dist
 pub use crate::v1_gunbc_namespace_reference_derived_closure_production_observations::{namespace_structural_binding_observations_a_through_d};
 pub use crate::std_types::{Bool, List};
 use crate::std_types::Bool::*;
+pub use crate::v2_std_live_tree::{LiveTreeDisposition};
+use crate::v2_std_live_tree::LiveTreeDisposition::{SubstrateInputsOnly};
+
+pub fn live_tree_disposition() -> LiveTreeDisposition {
+    thread_local! {
+        static CACHED: LiveTreeDisposition = {
+            LiveTreeDisposition::SubstrateInputsOnly
+        };
+    }
+    CACHED.with(|c: &LiveTreeDisposition| c.clone())
+}
 
 pub fn namespace_reference_derived_closure_production_admissions_witness_note() -> String {
     thread_local! {

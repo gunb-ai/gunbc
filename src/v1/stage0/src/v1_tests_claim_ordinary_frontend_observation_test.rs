@@ -6,10 +6,21 @@ pub use crate::v1_compiler_frontend_observation::observe_ordinary_frontend;
 pub use crate::v1_compiler_frontend_observation::OrdinaryFrontendObservation;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
+pub use crate::v2_std_live_tree::LiveTreeDisposition;
+use crate::v2_std_live_tree::LiveTreeDisposition::SubstrateInputsOnly;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
+
+pub fn live_tree_disposition() -> LiveTreeDisposition {
+    thread_local! {
+        static CACHED: LiveTreeDisposition = {
+            LiveTreeDisposition::SubstrateInputsOnly
+        };
+    }
+    CACHED.with(|c: &LiveTreeDisposition| c.clone())
+}
 
 pub fn probe_keyed_literal() -> Rc<HashMap<String, bool>> {
     thread_local! {

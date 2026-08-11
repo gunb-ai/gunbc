@@ -11,10 +11,21 @@ pub use crate::v1_compiler_complexity::{
 pub use crate::v1_compiler_complexity::{Certainty, ComplexitySummary, CostExpr, CostInternTable};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
+pub use crate::v2_std_live_tree::LiveTreeDisposition;
+use crate::v2_std_live_tree::LiveTreeDisposition::SubstrateInputsOnly;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
+
+pub fn live_tree_disposition() -> LiveTreeDisposition {
+    thread_local! {
+        static CACHED: LiveTreeDisposition = {
+            LiveTreeDisposition::SubstrateInputsOnly
+        };
+    }
+    CACHED.with(|c: &LiveTreeDisposition| c.clone())
+}
 
 pub fn eviction_hazard_home_note() -> String {
     thread_local! {

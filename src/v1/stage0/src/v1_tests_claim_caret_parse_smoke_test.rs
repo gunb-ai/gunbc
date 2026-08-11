@@ -16,10 +16,21 @@ pub use crate::v1_std_core::{
     diagnostic_to_message, empty_intern_table, expr_call_func_at, is_error_diagnostic,
 };
 pub use crate::v1_std_core::{ErrorNode, NewlineIndex, Node, TokenShape};
+pub use crate::v2_std_live_tree::LiveTreeDisposition;
+use crate::v2_std_live_tree::LiveTreeDisposition::SubstrateInputsOnly;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
+
+pub fn live_tree_disposition() -> LiveTreeDisposition {
+    thread_local! {
+        static CACHED: LiveTreeDisposition = {
+            LiveTreeDisposition::SubstrateInputsOnly
+        };
+    }
+    CACHED.with(|c: &LiveTreeDisposition| c.clone())
+}
 
 pub fn caret_parse_smoke_parser_transport_enrollment() -> String {
     thread_local! {
