@@ -52,6 +52,16 @@ fn finish(id: Symbol) -> v2.std.diagnostic.Outcome<Node> {
   )
 }
 
+// The outcome ARM is rendered, never collapsed to an empty list: a claim that only asks
+// "does this reason list lack the retention reason" is satisfied by the wrong arm returning
+// nothing at all, which is the same vacuity the annotation witness had to close.
+fn rendered_arm(id: Symbol) -> String {
+  match finish(id: id) {
+    v2.std.diagnostic.Rejected { diagnostics: _ } => "REJECTED"
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+  }
+}
+
 fn rejected_reasons(id: Symbol) -> List<Symbol> {
   match finish(id: id) {
     v2.std.diagnostic.Rejected { diagnostics: d } => all_reasons(d: d)
@@ -77,11 +87,19 @@ test fn genuine_rejection_leaves_the_seam_rejected() -> Bool {
   )
 }
 
+test fn genuine_rejection_lands_on_the_rejected_arm() -> Bool {
+  rendered_arm(id: ^dag_surface_expr) == "REJECTED"
+}
+
 test fn genuine_rejection_is_not_relabelled_as_retention_RED() -> Bool {
   reasons_contain(
     reasons: accepted_reasons(id: ^dag_surface_expr),
     sym: ^body_lowering_reason_wrapper_retained_emitted
   ) == false
+}
+
+test fn unregistered_producer_lands_on_the_accepted_arm() -> Bool {
+  rendered_arm(id: ^probe_unregistered_surface_form) == "ACCEPTED"
 }
 
 test fn unregistered_producer_still_retains() -> Bool {

@@ -166,6 +166,13 @@ Measured effect, discriminating rather than blanket: `src/v2/std/logic.dag` move
 `src/v2/std/optional.dag` and `src/v2/std/diagnostic.dag` stayed `NORM_RETAINED`, their retention
 being genuine.
 
+**So the retention population is 4 at observation and 3 after the repair**, and the two numbers
+mean different things. `logic.dag` leaving retention is the repair working, NOT the member
+closing: it still does not ingest, and its refusal is now simply reported as the refusal it always
+was. The live retention population to close by producer coverage is `optional`, `diagnostic` and
+`occurrence_identity`; `logic.dag` moves to the population whose refusal cause is now legible and
+unclassified by this receipt.
+
 **Not repaired here:** the promotion boundary. `NormalizedTree` is still `= Node` and `resolve`
 still consumes that alias, so *retained cannot reach resolve* remains true only by propagation,
 not by construction.
