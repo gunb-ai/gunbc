@@ -1,0 +1,319 @@
+module v2.compiler.self_host.generation
+
+import v2.std.algebra { fold_list, for_all, freemonoid_empty, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  Unavailable,
+  port_locus
+}
+import v2.std.node { combine_hash, Hash, Symbol, symbol_identity_digest }
+import v2.std.text { String, string_is_empty }
+
+// Generation identity is SIX independent axes, never one scalar. A single opaque
+// compiler_identity digest can report THAT a generation went stale and cannot report
+// WHICH fact moved, so every per-axis invalidation control collapses into one
+// indistinguishable refusal — the state-space conflation DESIGN §5 forbids, and an
+// absorbing fallback wearing a diagnostic. No composite digest is stored anywhere in
+// this module: a composite is always a projection derived on demand, so an identity
+// that disagrees with its own axes is unrepresentable rather than lens-caught.
+type GenerationAxis
+  = ProducerCompilerAxis
+  | SourceClosureAxis
+  | TargetModelAxis
+  | ToolchainAxis
+  | BuildConfigurationAxis
+  | MaterializedArtifactAxis
+
+// The artifact axis is first-class in the identity rather than a downstream field,
+// because a generation whose artifact was never built is a DIFFERENT state from one
+// whose artifact differs — and admission must refuse the former by naming it, never
+// treat unbuilt as equivalent.
+type ArtifactIdentity
+  = ArtifactMaterialized { digest: Hash }
+  | ArtifactNotMaterialized
+
+type GenerationIdentity {
+  producer_compiler: Hash
+  source_closure: Hash
+  target_model: Hash
+  toolchain: Hash
+  build_configuration: Hash
+  materialized_artifact: ArtifactIdentity
+}
+
+// Three generations, three distinct TYPES. A candidate cannot be constructed without
+// naming the seed that produced it, and a successor cannot be constructed without
+// naming the candidate that produced it, so "seed-generated candidate" and
+// "candidate-generated successor" are distinct facts by construction rather than by
+// a producer label some caller could author either way.
+type SeedGeneration {
+  identity: GenerationIdentity
+}
+
+type CandidateGeneration {
+  identity: GenerationIdentity
+  produced_by_seed: SeedGeneration
+}
+
+type SuccessorGeneration {
+  identity: GenerationIdentity
+  produced_by_candidate: CandidateGeneration
+}
+
+type SourceClosureMember {
+  identity: String
+  content: Hash
+}
+
+type SourceClosureRoster {
+  members: List<SourceClosureMember>
+}
+
+// A source closure is a SET, so a digest folded over host traversal order is a
+// false-refusal source: the same closure enumerated in a different order would
+// report as a different generation. The roster is therefore required to arrive in
+// canonical ascending member-identity order and REFUSES otherwise, rather than being
+// silently re-sorted. Refusing is the stronger arm on three counts: it is linear
+// where an in-carrier sort would be quadratic (DESIGN §6 bare-minimum cost — a
+// cost-shape defect is fixed regardless of realized n); a silent re-sort would also
+// launder a producer emitting DUPLICATE members, which strict ascent catches here;
+// and normalizing someone else's disorder hides that their enumeration is
+// order-unstable, which is exactly the deficit the refusal makes countable.
+type RosterOrderVerdict
+  = RosterCanonicallyOrdered
+  | RosterNotAscending { at_member: String }
+  | RosterDuplicateMember { at_member: String }
+  | RosterMemberIdentityEmpty
+
+type RosterScanAcc {
+  verdict: RosterOrderVerdict
+  previous: String
+  started: Bool
+}
+
+fn roster_scan_step(acc: RosterScanAcc, member: SourceClosureMember) -> RosterScanAcc {
+  match acc.verdict {
+    RosterCanonicallyOrdered =>
+      if string_is_empty(s: member.identity) {
+        RosterScanAcc {
+          verdict: RosterMemberIdentityEmpty,
+          previous: member.identity,
+          started: true
+        }
+      } else if !acc.started {
+        RosterScanAcc {
+          verdict: RosterCanonicallyOrdered,
+          previous: member.identity,
+          started: true
+        }
+      } else if acc.previous == member.identity {
+        RosterScanAcc {
+          verdict: RosterDuplicateMember { at_member: member.identity },
+          previous: member.identity,
+          started: true
+        }
+      } else if member.identity <= acc.previous {
+        RosterScanAcc {
+          verdict: RosterNotAscending { at_member: member.identity },
+          previous: member.identity,
+          started: true
+        }
+      } else {
+        RosterScanAcc {
+          verdict: RosterCanonicallyOrdered,
+          previous: member.identity,
+          started: true
+        }
+      }
+    RosterNotAscending { at_member: m } =>
+      RosterScanAcc {
+        verdict: RosterNotAscending { at_member: m },
+        previous: acc.previous,
+        started: acc.started
+      }
+    RosterDuplicateMember { at_member: m } =>
+      RosterScanAcc {
+        verdict: RosterDuplicateMember { at_member: m },
+        previous: acc.previous,
+        started: acc.started
+      }
+    RosterMemberIdentityEmpty =>
+      RosterScanAcc {
+        verdict: RosterMemberIdentityEmpty,
+        previous: acc.previous,
+        started: acc.started
+      }
+  }
+}
+
+fn roster_order_verdict(roster: SourceClosureRoster) -> RosterOrderVerdict {
+  fold_list(
+    xs: roster.members,
+    empty: RosterScanAcc {
+      verdict: RosterCanonicallyOrdered,
+      previous: "",
+      started: false
+    },
+    cons: fn(acc, member) { roster_scan_step(acc: acc, member: member) }
+  ).verdict
+}
+
+fn roster_is_canonically_ordered(roster: SourceClosureRoster) -> Bool {
+  match roster_order_verdict(roster: roster) {
+    RosterCanonicallyOrdered => true
+    RosterNotAscending { at_member: _ } => false
+    RosterDuplicateMember { at_member: _ } => false
+    RosterMemberIdentityEmpty => false
+  }
+}
+
+fn member_identity_digest(identity: String) -> Hash {
+  symbol_identity_digest(sym: identity)
+}
+
+fn source_closure_member_digest(member: SourceClosureMember) -> Hash {
+  combine_hash(
+    a: member_identity_digest(identity: member.identity),
+    b: member.content
+  )
+}
+
+// Only reachable for a roster whose order verdict is canonical; the caller-facing
+// surface is source_closure_axis_digest, which refuses first.
+fn source_closure_roster_fold(roster: SourceClosureRoster) -> Hash {
+  fold_list(
+    xs: roster.members,
+    empty: symbol_identity_digest(sym: ^source_closure_roster_empty),
+    cons: fn(acc, member) {
+      combine_hash(a: acc, b: source_closure_member_digest(member: member))
+    }
+  )
+}
+
+type SourceClosureAxisOutcome
+  = SourceClosureAxisDigest { digest: Hash }
+  | SourceClosureAxisRefused { verdict: RosterOrderVerdict }
+
+fn source_closure_axis_digest(roster: SourceClosureRoster) -> SourceClosureAxisOutcome {
+  match roster_order_verdict(roster: roster) {
+    RosterCanonicallyOrdered =>
+      SourceClosureAxisDigest { digest: source_closure_roster_fold(roster: roster) }
+    RosterNotAscending { at_member: m } =>
+      SourceClosureAxisRefused { verdict: RosterNotAscending { at_member: m } }
+    RosterDuplicateMember { at_member: m } =>
+      SourceClosureAxisRefused { verdict: RosterDuplicateMember { at_member: m } }
+    RosterMemberIdentityEmpty =>
+      SourceClosureAxisRefused { verdict: RosterMemberIdentityEmpty }
+  }
+}
+
+fn artifact_identity_agrees(left: ArtifactIdentity, right: ArtifactIdentity) -> Bool {
+  match left {
+    ArtifactMaterialized { digest: l } =>
+      match right {
+        ArtifactMaterialized { digest: r } => l == r
+        ArtifactNotMaterialized => false
+      }
+    ArtifactNotMaterialized =>
+      match right {
+        ArtifactMaterialized { digest: _ } => false
+        // Two unbuilt artifacts are NOT equivalent. Neither side has an observed
+        // artifact, so this is ⊥-as-ignorance, and answering `true` would report
+        // "we could not observe either artifact" as "the artifacts agree" — the
+        // empty-observation narrow DESIGN names beside the absorbing fallback.
+        // Admission refuses an unmaterialized axis separately and by name.
+        ArtifactNotMaterialized => false
+      }
+  }
+}
+
+fn generation_axis_agrees(
+  left: GenerationIdentity,
+  right: GenerationIdentity,
+  axis: GenerationAxis
+) -> Bool {
+  match axis {
+    ProducerCompilerAxis => left.producer_compiler == right.producer_compiler
+    SourceClosureAxis => left.source_closure == right.source_closure
+    TargetModelAxis => left.target_model == right.target_model
+    ToolchainAxis => left.toolchain == right.toolchain
+    BuildConfigurationAxis => left.build_configuration == right.build_configuration
+    MaterializedArtifactAxis =>
+      artifact_identity_agrees(
+        left: left.materialized_artifact,
+        right: right.materialized_artifact
+      )
+  }
+}
+
+data generation_axes: List<GenerationAxis> = [
+  ProducerCompilerAxis,
+  SourceClosureAxis,
+  TargetModelAxis,
+  ToolchainAxis,
+  BuildConfigurationAxis,
+  MaterializedArtifactAxis
+]
+
+// Returns the axes that MOVED, so a stale refusal names its own axis rather than
+// reporting an undifferentiated mismatch. This list is what makes SH-C's per-axis
+// invalidation control discriminating: one planted perturbation per axis must
+// produce exactly one named axis here, and any two axes that cannot be told apart
+// are a defect in this carrier.
+fn generation_identity_mismatched_axes(
+  left: GenerationIdentity,
+  right: GenerationIdentity
+) -> List<GenerationAxis> {
+  fold_list(
+    xs: generation_axes,
+    empty: freemonoid_empty(),
+    cons: fn(acc, axis) {
+      if generation_axis_agrees(left: left, right: right, axis: axis) {
+        acc
+      } else {
+        list_snoc_item(xs: acc, item: axis)
+      }
+    }
+  )
+}
+
+fn generation_axis_symbol(axis: GenerationAxis) -> Symbol {
+  match axis {
+    ProducerCompilerAxis => ^generation_axis_producer_compiler
+    SourceClosureAxis => ^generation_axis_source_closure
+    TargetModelAxis => ^generation_axis_target_model
+    ToolchainAxis => ^generation_axis_toolchain
+    BuildConfigurationAxis => ^generation_axis_build_configuration
+    MaterializedArtifactAxis => ^generation_axis_materialized_artifact
+  }
+}
+
+fn generation_axis_stale_diagnostic(axis: GenerationAxis) -> Diagnostic {
+  Diagnostic {
+    reason: generation_axis_symbol(axis: axis),
+    at: port_locus(port: ^generation_identity_axis_port),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn generation_identity_agrees(
+  left: GenerationIdentity,
+  right: GenerationIdentity
+) -> Bool {
+  for_all(
+    xs: generation_axes,
+    predicate: fn(axis) {
+      generation_axis_agrees(left: left, right: right, axis: axis)
+    }
+  )
+}
+
+fn generation_artifact_is_materialized(identity: GenerationIdentity) -> Bool {
+  match identity.materialized_artifact {
+    ArtifactMaterialized { digest: _ } => true
+    ArtifactNotMaterialized => false
+  }
+}
