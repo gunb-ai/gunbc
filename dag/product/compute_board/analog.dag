@@ -1,0 +1,130 @@
+module product.compute_board.analog
+
+import std.types { String, NonEmptyStr, List }
+import std.nat { Nat }
+import std.measure { Measure, Resistance, Capacitance, Volt, Kilo, Nano }
+
+data analog_note: String = "THE ANALOG CIRCUIT INTENT, LANGUAGE-NEUTRAL. This replaces a BoardSlice that the board article used to hold directly — a type imported from the SPICE projection, carrying SPICE NodeRefs, substrate Symbols and value_lexeme strings. The dependency ran article to projection, which is backwards: the supposed authority was shaped by one of its targets, so 'the article feeds every interface' was true only in the sense that one interface had already decided what the article looked like. WHAT CHANGED, CONCRETELY: component values are typed magnitudes on std.measure's existing Resistance, Capacitance and ElectricPotentialDifference quantities — which were already in the corpus, so this needed no new authority and was never blocked on one. '10k' and '100n' are gone from the model; the SPICE projection now derives those spellings, including the scale suffix, because a suffix is target syntax and belongs where the target lives. TERMINALS AND NETS ARE IDENTITIES, not strings: a net references terminals by component and terminal identity, so 'is this terminal on that net' is a decidable join rather than a spelling coincidence between two prose fields."
+
+type ComponentInstanceIdentity = NonEmptyStr where brand("ComponentInstanceIdentity")
+
+type TerminalIdentity = NonEmptyStr where brand("TerminalIdentity")
+
+type NetIdentity = NonEmptyStr where brand("NetIdentity")
+
+type ElectricalTerminalRef {
+  component: ComponentInstanceIdentity
+  terminal: TerminalIdentity
+}
+
+// The value a passive or source carries, as a magnitude in a declared scale. Scale is part of
+// the type rather than a separate field because a bare count with the scale alongside can drift
+// — and the SPICE suffix is then derived from the variant, never stored.
+//
+// These are NONNEGATIVE deliberately. Measure permits an Int carrier, but a resistance or
+// capacitance RATING has no negative value; signed quantities belong to potential relative to a
+// reference and current relative to a chosen direction, which are different concepts and not
+// modelled here.
+type AnalogComponentValue
+  = ResistanceKilohms { magnitude: Measure<Resistance, Kilo, Nat> }
+  | CapacitanceNanofarads { magnitude: Measure<Capacitance, Nano, Nat> }
+  | PotentialSourceVolts { magnitude: Volt }
+
+type AnalogComponentRole
+  = PassiveResistor
+  | PassiveCapacitor
+  | IndependentVoltageSource
+
+type ElectricalComponentInstance {
+  identity: ComponentInstanceIdentity
+  part: NonEmptyStr
+  role: AnalogComponentRole
+  positive_terminal: TerminalIdentity
+  negative_terminal: TerminalIdentity
+  value: AnalogComponentValue
+}
+
+type ElectricalNet {
+  identity: NetIdentity
+  members: List<ElectricalTerminalRef>
+}
+
+type AnalogCircuitIntent {
+  title: NonEmptyStr
+  components: List<ElectricalComponentInstance>
+  nets: List<ElectricalNet>
+}
+
+// WHICH MODEL CHARACTERIZES A PART, AND AT WHAT FIDELITY, IS NOT SPICE SYNTAX. These three
+// carriers lived in the SPICE projection, which made the board article import a type from one of
+// its own emission targets to declare a field — the same inversion this module was extracted to
+// remove, surviving in the half nobody looked at. Nothing here names a deck, an element letter
+// or a card format: a fidelity is a claim about how faithfully a model represents the part, and
+// an IBIS or Verilog-AMS projection needs exactly the same fact. What stays in the projection is
+// the profile question — which fidelities THAT target can render — which is a different fact.
+type ModelFidelity
+  = IdealLumped
+  | VendorSubcircuit
+
+type ElectricalModelStanding
+  = ElectricalModelCited { model_card: NonEmptyStr, fidelity: ModelFidelity }
+  | ElectricalModelAbsent
+
+// The model standing is carried BESIDE the circuit rather than inside it, because whether this
+// repository holds a simulation model for a part is a fact about our evidence, not a fact about
+// the board. The board is the same board either way.
+type ComponentModelBinding {
+  component: ComponentInstanceIdentity
+  standing: ElectricalModelStanding
+}
+
+fn terminal_ref(component: ComponentInstanceIdentity, terminal: TerminalIdentity) -> ElectricalTerminalRef {
+  ElectricalTerminalRef { component: component, terminal: terminal }
+}
+
+fn terminal_ref_equal(a: ElectricalTerminalRef, b: ElectricalTerminalRef) -> Bool {
+  (a.component as String) == (b.component as String) && (a.terminal as String) == (b.terminal as String)
+}
+
+fn net_contains_terminal(net: ElectricalNet, t: ElectricalTerminalRef) -> Bool {
+  fold(net.members, init: false, f: fn(acc, m) { acc || terminal_ref_equal(a: m, b: t) })
+}
+
+// Which net a terminal belongs to. Absent means the terminal is on no net, which is a real and
+// distinct state from 'on the reference net' — a floating terminal and a grounded one are not
+// the same circuit, and a projection that defaulted one to the other would emit a deck that
+// simulates cleanly and describes a different board.
+fn net_of_terminal(intent: AnalogCircuitIntent, t: ElectricalTerminalRef) -> NetIdentity? {
+  fold(intent.nets, init: none, f: fn(acc, net) {
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent => if net_contains_terminal(net: net, t: t) { Present { value: net.identity } } else { none }
+    }
+  })
+}
+
+fn component_terminals(c: ElectricalComponentInstance) -> List<ElectricalTerminalRef> {
+  [
+    terminal_ref(component: c.identity, terminal: c.positive_terminal),
+    terminal_ref(component: c.identity, terminal: c.negative_terminal),
+  ]
+}
+
+fn first_unnetted_terminal(intent: AnalogCircuitIntent) -> ElectricalTerminalRef? {
+  fold(intent.components, init: none, f: fn(acc, c) {
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent =>
+        fold(component_terminals(c: c), init: none, f: fn(inner, t) {
+          match inner {
+            Present { value: v } => Present { value: v }
+            Absent =>
+              match net_of_terminal(intent: intent, t: t) {
+                Present { value: _ } => none
+                Absent => Present { value: t }
+              }
+          }
+        })
+    }
+  })
+}
