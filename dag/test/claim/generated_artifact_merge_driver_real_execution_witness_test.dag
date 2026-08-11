@@ -1,6 +1,7 @@
 module test.claim.generated_artifact_merge_driver_real_execution
 
 import std.logic { Bool }
+import gunbc.output_policy { OutcomeIsData }
 import std.types { String, FilePath, GitRef }
 import extdeps.git
 import extdeps.shell
@@ -84,7 +85,7 @@ fn observe_witness_merge(repo: FilePath, ours_touches_artifact: Bool) -> MergeDi
   }
   let ours_staged = git.Core.AddAllInRepo(repo: repo).exit_code
   let ours_committed = git.Core.CommitInRepo(repo: repo, message: "ours").exit_code
-  let merged = git.Core.MergeNoEditInRepo(repo: repo, branch: "theirs")
+  let merged = git.Core.MergeNoEditInRepo(repo: repo, branch: "theirs", expect: OutcomeIsData)
   let unmerged = git.Core.LsFilesUnmergedInRepo(repo: repo, path: witness_generated_path)
   let after = Filesystem.Read(path: witness_repo_file(repo: repo, name: witness_generated_path))
   MergeDivergenceObservation {
