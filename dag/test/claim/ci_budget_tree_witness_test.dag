@@ -1,5 +1,7 @@
 module test.claim.ci_budget_tree_witness
 
+import gunbc.ci_runner_placement { resolve_session_slice }
+
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 fn fitting_slice() -> Int {
@@ -125,4 +127,3 @@ test fn witness_managed_hosts_share_one_overhead_and_legacy_hosts_share_another(
   let managed4 = byte_size_count(b: host_overhead_bytes(offer: srv4_offer))
   legacy1 == legacy2 && managed3 == managed4 && legacy1 > managed3
 }
-
