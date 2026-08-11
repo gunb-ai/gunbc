@@ -2,7 +2,7 @@ module product.compute_board.intent
 
 import std.types { String, NonEmptyStr, List }
 import std.nat { Nat }
-import std.measure { ByteSize, byte_size }
+import std.measure { ByteSize, HardwareThreadCount, byte_size, hardware_thread_count }
 
 data compute_board_intent_note: String = "THE MACHINE CONTRACT, WHICH IS WHERE A BOARD DESIGN STARTS INSTEAD OF A FEATURE CHECKLIST. Every element of a resolved board must trace to a capability required here or to a constraint some selected component imposes; an element that traces to neither is unearned and must not be in the design. THE TWO STRUCTURAL CHECKS THIS BUYS, and the reason the contract is modelled rather than written in prose: removing an element must identify the obligation that becomes unsatisfied, and an element whose removal breaks no obligation is detectable rather than debatable. WHAT THIS TYPE DELIBERATELY DOES NOT DECIDE: it names capabilities, never realizations. 'Needs one boot-storage path' is a requirement; 'has an M.2 connector' is a choice made downstream against authorities, and fusing the two here would smuggle a component selection into the contract that is supposed to justify it. FEATURE-MINIMAL IS NOT COST-MINIMAL, so this contract carries no instruction to minimize part count: deleting a small support device can force more layers, harder routing, more firmware, or a worse process, and the quantity that actually matters is total realized cost. Nothing here optimizes anything; it only fixes what must be true."
 
@@ -27,7 +27,7 @@ type BoardCapability
 // A requirement is the capability PLUS the quantity that makes it checkable. An unquantified
 // requirement cannot refuse anything, which is how a contract decays into a wish list.
 type CapabilityRequirement
-  = ComputeCores { minimum_cores: Nat }
+  = ComputeCores { minimum_cores: HardwareThreadCount }
   | MemoryCapacity { minimum_capacity: ByteSize }
   | NetworkPaths { minimum_paths: Nat }
   | BootStoragePaths { minimum_paths: Nat }
@@ -78,7 +78,7 @@ type ComputeBoardIntent {
 data narrow_compute_node_intent: ComputeBoardIntent = ComputeBoardIntent {
   workload: "serve web workloads on a headless rack-resident compute node",
   requirements: [
-    ComputeCores { minimum_cores: 128 },
+    ComputeCores { minimum_cores: hardware_thread_count(128) },
     MemoryCapacity { minimum_capacity: byte_size(274877906944) },
     NetworkPaths { minimum_paths: 1 },
     BootStoragePaths { minimum_paths: 1 },

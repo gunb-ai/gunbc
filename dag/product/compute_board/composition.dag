@@ -1,8 +1,9 @@
 module product.compute_board.composition
 
 import std.types { String, NonEmptyStr, List }
+import std.nat { Nat }
 import extdeps.external_authority { ExternalAuthority }
-import std.measure { ByteSize, byte_size_count }
+import std.measure { ByteSize, HardwareThreadCount, byte_size_count, hardware_thread_count, hardware_thread_count_value }
 import extdeps.cpu.ampere_altra_package {
   ContactMapPubliclyAvailableNotIngested,
   ContactPopulationIncomplete,
@@ -42,6 +43,13 @@ type ComponentJustification
   = DischargesCapability { capability: BoardCapability }
   | ImposedByComponent { by: NonEmptyStr, requirement: NonEmptyStr, authority: ExternalAuthority }
 
+// Core counts ride std.measure's HardwareThreadCount on BOTH sides of the comparison, because
+// a core count is a hardware thread count and that carrier already exists — extdeps.cpu.types
+// CpuModelCatalogRow.threads is typed with it. An earlier revision typed the requirement as a
+// bare Nat and the provision as a bare Int, which was the parallel representation §3 forbids
+// AND admitted a negative core count that then summed against a Nat minimum. Paths are Nat for
+// the same reason on the smaller scale: there is no negative number of network paths.
+//
 // WHAT A COMPONENT SUPPLIES, held separately from WHY IT IS HERE. An earlier revision fused
 // them: satisfaction was decided by matching a component's justification tag against a
 // requirement's capability tag, so a one-core part justified as Compute satisfied a 128-core
@@ -51,10 +59,10 @@ type ComponentJustification
 // provision answers to the quantity. They are different questions and a component can get one
 // right while getting the other wrong.
 type CapabilityProvision
-  = ProvidesCores { cores: Int }
+  = ProvidesCores { cores: HardwareThreadCount }
   | ProvidesMemoryCapacity { capacity: ByteSize }
-  | ProvidesNetworkPaths { paths: Int }
-  | ProvidesBootStoragePaths { paths: Int }
+  | ProvidesNetworkPaths { paths: Nat }
+  | ProvidesBootStoragePaths { paths: Nat }
   | ProvidesManagement { power_control: Bool, console: Bool, recovery: Bool }
   | ProvidesPowerBoundary
   | ProvidesCoolingContract
@@ -69,9 +77,9 @@ type ComponentInstance {
   provisions: List<CapabilityProvision>
 }
 
-fn provision_cores(p: CapabilityProvision) -> Int {
+fn provision_cores(p: CapabilityProvision) -> Nat {
   match p {
-    ProvidesCores { cores: c } => c
+    ProvidesCores { cores: c } => hardware_thread_count_value(t: c)
     _ => 0
   }
 }
@@ -83,14 +91,14 @@ fn provision_memory_bytes(p: CapabilityProvision) -> Nat {
   }
 }
 
-fn provision_network_paths(p: CapabilityProvision) -> Int {
+fn provision_network_paths(p: CapabilityProvision) -> Nat {
   match p {
     ProvidesNetworkPaths { paths: n } => n
     _ => 0
   }
 }
 
-fn provision_boot_paths(p: CapabilityProvision) -> Int {
+fn provision_boot_paths(p: CapabilityProvision) -> Nat {
   match p {
     ProvidesBootStoragePaths { paths: n } => n
     _ => 0
@@ -99,8 +107,8 @@ fn provision_boot_paths(p: CapabilityProvision) -> Int {
 
 fn sum_over_components(
   components: List<ComponentInstance>,
-  f: fn(CapabilityProvision) -> Int
-) -> Int {
+  f: fn(CapabilityProvision) -> Nat
+) -> Nat {
   fold(components, init: 0, f: fn(acc, c) {
     acc + fold(c.provisions, init: 0, f: fn(inner, p) { inner + f(p) })
   })
@@ -125,7 +133,7 @@ fn any_provision(components: List<ComponentInstance>, pred: fn(CapabilityProvisi
 fn requirement_met(components: List<ComponentInstance>, r: CapabilityRequirement) -> Bool {
   match r {
     ComputeCores { minimum_cores: n } =>
-      sum_over_components(components: components, f: provision_cores) >= n
+      sum_over_components(components: components, f: provision_cores) >= hardware_thread_count_value(t: n)
     MemoryCapacity { minimum_capacity: cap } =>
       total_memory_bytes(components: components) >= byte_size_count(b: cap)
     NetworkPaths { minimum_paths: n } =>
