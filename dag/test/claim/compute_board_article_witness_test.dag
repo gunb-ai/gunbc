@@ -1,0 +1,206 @@
+module test.claim.compute_board_article_witness
+
+import std.types { String, NonEmptyStr, List }
+import product.compute_board.digital_control {
+  DigitalControlIntent,
+  SignalName,
+  board_power_interlock_intent,
+}
+import product.compute_board.spice_projection {
+  BoardSlice,
+  CapacitiveElement,
+  ElectricalModelCited,
+  IdealLumped,
+  ResistiveElement,
+  SliceElement,
+  SliceSource,
+  SpiceSliceProjected,
+  SpiceSliceRefused,
+  named_node,
+  project_slice_to_spice,
+}
+import product.compute_board.article {
+  BoardArticleIdentity,
+  BoardPowerInterfaceArticle,
+  ChassisBond,
+  ElectricalBond,
+  PowerReturnConnection,
+  ProtectiveEarthBond,
+  PhysicalRealizationPending,
+  ManufacturingProfileUnselected,
+  SignalReferenceConnection,
+  ShieldTermination,
+  ProductionSigningUnavailable,
+  WriteProtectionUnmodelled,
+  article_analog_slice,
+  article_digital_control,
+  article_is_manufacturable,
+  article_is_physically_realizable,
+  board_power_interlock_bonds,
+  board_power_interlock_firmware_contract,
+  board_power_interlock_manufacturing,
+  board_power_interlock_physical,
+}
+import product.compute_board.verilog_projection {
+  VerilogModuleEmitted,
+  VerilogProjectionRefused,
+  project_intent_to_verilog,
+}
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import v2.extdeps.formats.spice { Ground, spice_emit }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data synthetic_fixture_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "example.invalid/synthetic-witness-fixture-not-a-real-model-authority"
+  }
+}
+
+fn conditioning_resistor() -> SliceElement {
+  SliceElement {
+    designator: ^r1,
+    part: "power-good conditioning resistor",
+    kind: ResistiveElement,
+    n_plus: named_node(name: ^n1),
+    n_minus: Ground,
+    value_lexeme: "10k",
+    model: ElectricalModelCited {
+      model_card: "ideal lumped passive at declared fidelity",
+      fidelity: IdealLumped,
+      authority: synthetic_fixture_authority,
+    },
+  }
+}
+
+fn conditioning_capacitor() -> SliceElement {
+  SliceElement {
+    designator: ^c1,
+    part: "power-good conditioning capacitor",
+    kind: CapacitiveElement,
+    n_plus: named_node(name: ^n1),
+    n_minus: Ground,
+    value_lexeme: "100n",
+    model: ElectricalModelCited {
+      model_card: "ideal lumped passive at declared fidelity",
+      fidelity: IdealLumped,
+      authority: synthetic_fixture_authority,
+    },
+  }
+}
+
+// THE ONE ARTICLE. Both projections below read their input from THIS value and nowhere else,
+// which is the property the shared-root design exists to buy: a projection cannot hold a
+// private copy of the board, because it is handed a field of the article rather than a fixture
+// of its own.
+data power_interlock_article: BoardPowerInterfaceArticle = BoardPowerInterfaceArticle {
+  identity: BoardArticleIdentity { name: "board power interlock", revision: "0" },
+  analog_slice: BoardSlice {
+    title: "power-good conditioning network",
+    source: SliceSource { designator: ^v1, node: named_node(name: ^n1), value_lexeme: "12" },
+    elements: [conditioning_resistor(), conditioning_capacitor()],
+  },
+  digital_control: board_power_interlock_intent,
+  bonds: board_power_interlock_bonds,
+  platform_firmware: board_power_interlock_firmware_contract,
+  physical: board_power_interlock_physical,
+  manufacturing: board_power_interlock_manufacturing,
+}
+
+// MERGE-BAR ITEM 1, asserted rather than asserted-about: SPICE bytes and Verilog bytes are both
+// derived from fields of the same article value in one claim. If either projection were fed a
+// private fixture, this witness would still compile — so it pins the bytes, which only agree
+// because both sides read the same root.
+test fn w_one_article_feeds_both_emissions() -> Bool {
+  match project_slice_to_spice(slice: article_analog_slice(a: power_interlock_article)) {
+    SpiceSliceProjected { netlist: n } =>
+      match project_intent_to_verilog(intent: article_digital_control(a: power_interlock_article)) {
+        VerilogModuleEmitted { source: v } => {
+          let deck = spice_emit(netlist: n)
+          string_contains(s: deck, pattern: "power-good conditioning network")
+            && string_contains(s: deck, pattern: "R1 n1 0 10k")
+            && string_contains(s: deck, pattern: "C1 n1 0 100n")
+            && string_contains(s: v, pattern: "module board_power_interlock")
+            && string_contains(s: v, pattern: "assign power_permit = (conditioned_good & ~fault);")
+        }
+        VerilogProjectionRefused { cause: _ } => false
+      }
+    SpiceSliceRefused { cause: _ } => false
+  }
+}
+
+fn bond_is_chassis(b: ElectricalBond) -> Bool {
+  match b {
+    ChassisBond { board_feature: _, chassis_feature: _ } => true
+    _ => false
+  }
+}
+
+fn bond_is_power_return(b: ElectricalBond) -> Bool {
+  match b {
+    PowerReturnConnection { domain: _, terminal: _ } => true
+    _ => false
+  }
+}
+
+fn bond_is_signal_reference(b: ElectricalBond) -> Bool {
+  match b {
+    SignalReferenceConnection { signal_class: _, terminal: _ } => true
+    _ => false
+  }
+}
+
+fn count_bonds(bonds: List<ElectricalBond>, pred: fn(ElectricalBond) -> Bool) -> Int {
+  fold(bonds, init: 0, f: fn(acc, b) { if pred(b) { acc + 1 } else { acc } })
+}
+
+// MERGE-BAR ITEM 4. The article's bonds are three DIFFERENT relations, and the discriminating
+// claim is that a power return and a signal reference sharing the same physical terminal remain
+// distinguishable — which is exactly what a single `Ground` value destroys. A chassis bond is
+// counted separately again, because a mounting hole bonds to chassis only when a declared
+// relation says so; mechanical support is not electrical bonding.
+test fn w_electrical_references_are_not_one_ground() -> Bool {
+  let bonds = power_interlock_article.bonds
+  count_bonds(bonds: bonds, pred: b => bond_is_power_return(b: b)) == 1
+    && count_bonds(bonds: bonds, pred: b => bond_is_signal_reference(b: b)) == 1
+    && count_bonds(bonds: bonds, pred: b => bond_is_chassis(b: b)) == 1
+    && count_bonds(bonds: bonds, pred: b => bond_is_power_return(b: b)) + count_bonds(bonds: bonds, pred: b => bond_is_signal_reference(b: b)) == 2
+}
+
+// MERGE-BAR ITEM 5. The firmware contract is typed, and the two claims that matter are about
+// what it does NOT say: signing is unavailable rather than absent-and-therefore-assumed, and
+// write protection is declared unmodelled rather than defaulted to protected. A contract that
+// stayed silent on either would read as safe.
+test fn w_firmware_contract_states_its_unknowns_rather_than_defaulting() -> Bool {
+  match power_interlock_article.platform_firmware.trust {
+    ProductionSigningUnavailable { reason: r } =>
+      match power_interlock_article.platform_firmware.write_protection {
+        WriteProtectionUnmodelled { reason: w } =>
+          string_contains(s: r as String, pattern: "no production signing authority")
+            && string_contains(s: w as String, pattern: "declared unmodelled")
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// MERGE-BAR ITEM 6. Both boundaries EXIST and both refuse, each naming what it waits on. The
+// physical cause names the std.measure carrier explicitly, so the blocker is addressable rather
+// than folklore; an absent interface would have read as "not needed".
+test fn w_physical_and_manufacturing_boundaries_refuse_with_named_causes() -> Bool {
+  !article_is_physically_realizable(a: power_interlock_article)
+    && !article_is_manufacturable(a: power_interlock_article)
+    && match power_interlock_article.physical {
+      PhysicalRealizationPending { cause: c } =>
+        string_contains(s: c as String, pattern: "unsigned integer millimetres")
+      _ => false
+    }
+    && match power_interlock_article.manufacturing {
+      ManufacturingProfileUnselected { pending: p } =>
+        string_contains(s: p as String, pattern: "no fabricator selected")
+      _ => false
+    }
+}
