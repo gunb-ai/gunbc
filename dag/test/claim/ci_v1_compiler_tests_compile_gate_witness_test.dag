@@ -3,14 +3,8 @@ module test.claim.ci_v1_compiler_tests_compile_gate_witness
 import v2.workflow.ci_v1_compiler_tests_compile_gate_emit {
   ci_v1_compiler_tests_compile_gate_script,
   ci_v1_compiler_tests_compile_gate_shell_emit_scaffold,
-  ci_interpreter_parity_controls_command,
-  ci_interpreter_parity_controls_shell_emit_scaffold,
 }
-import gunbc.ci_workflow {
-  ci_v1_compiler_tests_compile_gate_run_script,
-  ci_interpreter_parity_controls_run_script,
-  ci_build_job
-}
+import gunbc.ci_workflow { ci_v1_compiler_tests_compile_gate_run_script, ci_build_job }
 import gunbc.ci_spec { ci_release_features }
 import gunbc.ci_build_job_v1_compiler_unit_receipt {
   one_profile_ordering_status,
@@ -115,31 +109,4 @@ test fn red_wall_benefit_must_not_claim_measured() -> Bool {
 test fn red_fleet_status_must_not_claim_delivered_without_run() -> Bool {
   !(fleet_build_job_log_evidence_status == "delivered"
     && fleet_build_job_log_evidence_run == "")
-}
-
-data interpreter_parity_execution_step_note: String = "THE COMPILE GATE AND THE EXECUTION STEP ARE DIFFERENT CLAIMS AND ARE ASSERTED SEPARATELY. --no-run proves the controls COMPILE; only this second step proves any of them RAN. The two claims below are the pair that keeps them distinct: the first pins the filters and the serialization, the second is the RED half - it fails if the execution step ever acquires --no-run, which is exactly the edit that would silently turn an executed control back into a compiled one."
-
-test fn interpreter_parity_controls_step_executes_the_named_modules() -> Bool {
-  let script = ci_interpreter_parity_controls_command()
-  string_contains(s: script, pattern: "'-p'")
-    && string_contains(s: script, pattern: "'v1-compiler'")
-    && string_contains(s: script, pattern: "'--lib'")
-    && string_contains(s: script, pattern: "'value_hash_materialization'")
-    && string_contains(s: script, pattern: "'grouping_primitive'")
-    && string_contains(s: script, pattern: "'--test-threads=1'")
-}
-
-test fn red_control_interpreter_parity_step_never_becomes_a_compile_only_gate() -> Bool {
-  !string_contains(s: ci_interpreter_parity_controls_command(), pattern: "'--no-run'")
-}
-
-test fn w_interpreter_parity_carrier_is_scaffold() -> Bool {
-  match ci_interpreter_parity_controls_shell_emit_scaffold {
-    Scaffold { dissolves_to: _, bind: _ } => true
-    _ => false
-  }
-}
-
-test fn w_interpreter_parity_run_script_carries_its_dissolution_trigger() -> Bool {
-  string_contains(s: ci_interpreter_parity_controls_run_script(), pattern: "dissolve-on: ci_interpreter_parity_controls_run_script")
 }

@@ -334,54 +334,8 @@ fn value_hash(v: &Value) -> u64 {
     use std::collections::hash_map::DefaultHasher;
     let mut h = DefaultHasher::new();
 
-    // THE TWO SHAPES THAT NEED NO MATERIALIZATION ARE HANDLED WITHOUT IT.
-    //
-    // `free_monoid_to_vec` CLONES: for a `Value::List` it clones every element, and for a
-    // `Value::Str` it allocates one `Value::Int` per character. Hashing then walks the clone and
-    // throws it away. Measured on the live-read producer with forensics on: 73315126 calls
-    // materializing 3251118183 items, all from this one site, dominating a 221-second phase.
-    //
-    // These two arms produce the IDENTICAL hash by construction -- same 0xF0 tag, same length,
-    // same per-element `value_hash` in the same order -- because that is exactly what the walk
-    // over the materialized vector did. A `Cons` chain still materializes, because walking it
-    // requires resolving the monoid symbols and there is no borrowed view of it.
-    //
-    // MEASURED A/B, both arms unprofiled, same binary shape, same exact classification subject
-    // (`manifest_classifies_a_carrier_reaching_decl_apart_from_a_pure_one`, requests=2 rows=2,
-    // 3453 fact modules / 62844 decls, 587-module lens closure) -- so the difference is this
-    // function and nothing else:
-    //
-    //   arm        classification_production   live-read wall   live-read cpu   process RSS
-    //   control    218738 ms                   313266 ms        312468 ms       7195 MiB
-    //   candidate  182038 ms                   274597 ms        273853 ms       7183 MiB
-    //
-    // Streaming is 36.7 s (16.8%) cheaper on the classified term and 38.7 s on the whole read,
-    // at identical resident cost and identical rows. The fixed prelude reproduced across arms
-    // (fact bundle 17.4 / 17.7 s, source load 36.7 / 35.7 s, resolve+typecheck 40.4 / 39.0 s),
-    // which is what makes the two runs comparable rather than two samples of host noise.
-    //
-    // The earlier 216 -> 167 s reading taken from single runs OVERSTATED this: run-to-run
-    // variance on this host is tens of seconds, and only the paired arms above are quotable.
-    // `classification_production` remains far above the fixed lens resolve/typecheck term, so
-    // this repair did not move the dominant cost -- it removed one measured term of it.
     match v {
-        Value::Str(s) => {
-            0xF0u8.hash(&mut h);
-            s.chars().count().hash(&mut h);
-            for c in s.chars() {
-                value_hash(&char_value(c)).hash(&mut h);
-            }
-            return h.finish();
-        }
-        Value::List(items) => {
-            0xF0u8.hash(&mut h);
-            items.len().hash(&mut h);
-            for item in items.iter() {
-                value_hash(item).hash(&mut h);
-            }
-            return h.finish();
-        }
-        Value::Variant { .. } => {
+        Value::List(_) | Value::Str(_) | Value::Variant { .. } => {
             if let Some(items) = free_monoid_to_vec(v) {
                 0xF0u8.hash(&mut h);
                 items.len().hash(&mut h);
@@ -2183,16 +2137,6 @@ pub fn eval_data_item_value(ctx: &InterpContext, item_name: &str) -> InterpResul
     Ok(Some(eval_expr(body, &Env::empty(), ctx)?))
 }
 
-/// The red zone both `maybe_grow` guards use, named once rather than repeated as a literal.
-///
-/// A forensics probe counted 1089374 of these guards on the live-read producer and found ZERO
-/// below the red zone, so segment growth is not a cost on that workload. The probe is DELETED
-/// rather than retained: it was an investigation instrument, and leaving a call plus a branch on
-/// every dag-fn call and every closure application would be permanent residue charged to the very
-/// hot path it was built to measure. The same applies to the node-evaluation counter that priced
-/// one eval at ~39 microseconds; both receipts live in the commit that took them.
-const STACK_RED_ZONE: usize = 256 * 1024;
-
 thread_local! {
     static CALL_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
 }
@@ -2241,7 +2185,7 @@ fn call_function_guarded(
     }
     // Grow the host stack in slices so DEEP-but-bounded chains below the limit
     // never abort the process between guard checks.
-    stacker::maybe_grow(STACK_RED_ZONE, 8 * 1024 * 1024, || {
+    stacker::maybe_grow(256 * 1024, 8 * 1024 * 1024, || {
         call_function_dispatch(ctx, fn_node, args, env)
     })
 }
@@ -2275,7 +2219,7 @@ fn call_function_inner(
     args: &[(Option<String>, Value)],
     env: &Rc<Env>,
 ) -> InterpResult<Value> {
-    if let Some(result) = try_v2_std_collection_map_primitive_grounding(ctx, fn_node, args, env) {
+    if let Some(result) = try_v2_std_collection_map_primitive_grounding(ctx, fn_node, args) {
         return result;
     }
 
@@ -3866,10 +3810,6 @@ macro_rules! v1_bridge_family_arms {
                 lookup_eval_call_bridge_std_fn_index eval_call_bridge__v2_std_fn_index_arm {
                 arm "v4_bridge.fn_arrow_decl_facts_live" { "fn_arrow_decl_facts_live" } =>
                     crate::coproduct_reflection::eval_fn_arrow_decl_facts_live($ctx, &$args),
-                arm "v4_bridge.fn_arrow_decl_facts_index_live" { "fn_arrow_decl_facts_index_live" } =>
-                    crate::cli_run::eval_fn_arrow_decl_facts_index_live($ctx)
-                        .map(list_value)
-                        .map_err(|msg| InterpError::TypeError { msg }),
                 arm "v4_bridge.fn_arrow_decl_substrate_is_whole_tree" { "fn_arrow_decl_substrate_is_whole_tree" } =>
                     crate::coproduct_reflection::eval_fn_arrow_decl_substrate_is_whole_tree($ctx, &$args),
             }
@@ -3939,33 +3879,27 @@ fn is_v4_bridge_family(ctx: &InterpContext, func_name: &str, names: &[&str], mod
 /// `v1_interpreter_authored_roster_arms()`; generated lookup routes spellings
 /// before this macro matches on the generated enum variant.
 macro_rules! v1_map_grounding_arms {
-    ($cb:ident, $fname:ident, $args:ident, $env:ident, $ctx:ident) => {
+    ($cb:ident, $fname:ident) => {
         $cb! {
-            $fname, $args, $env, $ctx;
-            arm "map_grounding.empty_map" { "empty_map_primitive_delegate" | "empty_map" } =>
-                map_grounding_via_builtin("empty_map", $args, $ctx),
-            arm "map_grounding.map_insert" { "map_insert" } =>
-                map_grounding_via_builtin("map_insert", $args, $ctx),
-            arm "map_grounding.group_by" { "group_by_primitive_delegate" } =>
-                Some(eval_group_by_native($args, $env, $ctx)),
-            arm "map_grounding.index_by" { "index_by_primitive_delegate" } =>
-                Some(eval_index_by_native($args, $env, $ctx)),
+            $fname;
+            arm "map_grounding.empty_map" { "empty_map_primitive_delegate" | "empty_map" } => "empty_map",
+            arm "map_grounding.map_insert" { "map_insert" } => "map_insert",
         }
     };
 }
 
 /// Expansion 1: the name list the guard predicate tests.
 macro_rules! v1_map_grounding_names {
-    ($f:ident, $a:ident, $e:ident, $c:ident; $(arm $id:tt { $($lit:literal)|+ } => $body:expr ,)*) => {
+    ($f:ident; $(arm $id:tt { $($lit:literal)|+ } => $body:expr ,)*) => {
         const STD_COLLECTION_MAP_GROUNDED_FNS: &[&str] = &[$($($lit),+),*];
     };
 }
 
-v1_map_grounding_arms!(v1_map_grounding_names, name, args, env, ctx);
+v1_map_grounding_arms!(v1_map_grounding_names, name);
 
 /// Expansion 2: the spelling -> builtin mapping (R1: roster-generated lookup).
 macro_rules! v1_map_grounding_dispatch {
-    ($f:ident, $args:ident, $env:ident, $ctx:ident; $(arm $id:tt { $($lit:literal)|+ } => $body:expr ,)*) => {
+    ($f:ident; $(arm $id:tt { $($lit:literal)|+ } => $body:expr ,)*) => {
         match $crate::v1_interpreter_dispatch_generated::lookup_try_v2_std_collection_map_primitive_grounding($f) {
             Some(arm) => match arm {
                 $( try_v2_std_collection_map_primitive_grounding_arm!($id) => $body , )*
@@ -4014,129 +3948,27 @@ fn is_v2_std_collection_map_grounded_fn(ctx: &InterpContext, fn_node: &Rc<Node>)
         .is_some_and(|info| info.module_name == V2_STD_COLLECTION_MODULE)
 }
 
-/// The builtin-backed grounding arms. `Ok(None)` from `eval_builtin` means the
-/// native primitive is absent from the host, which for a delegate whose only
-/// body is its own name is an unbounded self-call, not a fallback: refuse.
-fn map_grounding_via_builtin(
-    builtin_name: &str,
-    args: &[(Option<String>, Value)],
-    ctx: &InterpContext,
-) -> Option<InterpResult<Value>> {
-    match eval_builtin(builtin_name, args, ctx) {
-        Ok(Some(v)) => Some(Ok(v)),
-        Ok(None) if builtin_name == "empty_map" => Some(Err(InterpError::TypeError {
-            msg: format!(
-                "{V2_STD_COLLECTION_MODULE}.{builtin_name}: native HAMT primitive missing from eval_builtin (host misconfiguration)"
-            ),
-        })),
-        Ok(None) => None,
-        Err(e) => Some(Err(e)),
-    }
-}
-
-/// Positional (list, key_fn) for the two closure-taking grounding delegates.
-fn grouping_delegate_args<'a>(
-    who: &str,
-    args: &'a [(Option<String>, Value)],
-) -> InterpResult<(Rc<RrbVector<Value>>, &'a Value)> {
-    match args {
-        [(_, xs), (_, key_fn)] => Ok((expect_list(xs, who)?, key_fn)),
-        _ => Err(InterpError::TypeError {
-            msg: format!("{who} requires (xs, key_fn) arguments"),
-        }),
-    }
-}
-
-/// The key-validity arm, kept pure so it is executable on its own: a produced
-/// key that cannot address a map (closure, fn, NaN) REFUSES rather than being
-/// dropped, coerced, or bucketed under a fabricated stand-in.
-fn canon_group_key(who: &str, key: Value) -> InterpResult<CanonKey> {
-    CanonKey::new(key).ok_or_else(|| InterpError::TypeError {
-        msg: format!("{who} key is not a valid map key (closure/fn/NaN)"),
-    })
-}
-
-fn grouping_key(
-    who: &str,
-    key_fn: &Value,
-    item: &Value,
-    env: &Rc<Env>,
-    ctx: &InterpContext,
-) -> InterpResult<CanonKey> {
-    canon_group_key(who, apply_closure(key_fn, &[item.clone()], env, ctx)?)
-}
-
-/// Multiplicity-preserving grouping: every item reaches its key's bucket, and a
-/// bucket's items stay in input order. This is what `index_by` cannot express —
-/// `index_by` keeps the last item per key.
-fn group_by_items(
-    items: &RrbVector<Value>,
-    key_fn: &Value,
-    env: &Rc<Env>,
-    ctx: &InterpContext,
-) -> InterpResult<Value> {
-    let mut m: HamtMap<CanonKey, RrbVector<Value>> = HamtMap::new();
-    for item in items.iter() {
-        let ck = grouping_key("group_by", key_fn, item, env, ctx)?;
-        match m.get_mut(&ck) {
-            Some(bucket) => bucket.push_back(item.clone()),
-            None => {
-                let mut bucket = RrbVector::new();
-                bucket.push_back(item.clone());
-                m.insert(ck, bucket);
-            }
-        }
-    }
-    Ok(map_value(
-        m.into_iter()
-            .map(|(k, bucket)| (k, list_value(bucket)))
-            .collect::<HamtMap<CanonKey, Value>>(),
-    ))
-}
-
-fn index_by_items(
-    items: &RrbVector<Value>,
-    key_fn: &Value,
-    env: &Rc<Env>,
-    ctx: &InterpContext,
-) -> InterpResult<Value> {
-    let mut m: HamtMap<CanonKey, Value> = HamtMap::new();
-    for item in items.iter() {
-        let ck = grouping_key("index_by", key_fn, item, env, ctx)?;
-        m.insert(ck, item.clone());
-    }
-    Ok(map_value(m))
-}
-
-fn eval_group_by_native(
-    args: &[(Option<String>, Value)],
-    env: &Rc<Env>,
-    ctx: &InterpContext,
-) -> InterpResult<Value> {
-    let (items, key_fn) = grouping_delegate_args("group_by", args)?;
-    group_by_items(&items, key_fn, env, ctx)
-}
-
-fn eval_index_by_native(
-    args: &[(Option<String>, Value)],
-    env: &Rc<Env>,
-    ctx: &InterpContext,
-) -> InterpResult<Value> {
-    let (items, key_fn) = grouping_delegate_args("index_by", args)?;
-    index_by_items(&items, key_fn, env, ctx)
-}
-
 fn try_v2_std_collection_map_primitive_grounding(
     ctx: &InterpContext,
     fn_node: &Rc<Node>,
     args: &[(Option<String>, Value)],
-    env: &Rc<Env>,
 ) -> Option<InterpResult<Value>> {
     if !is_v2_std_collection_map_grounded_fn(ctx, fn_node) {
         return None;
     }
     let grounded_name = fn_node.name.as_str();
-    v1_map_grounding_arms!(v1_map_grounding_dispatch, grounded_name, args, env, ctx)
+    let builtin_name = v1_map_grounding_arms!(v1_map_grounding_dispatch, grounded_name);
+    match eval_builtin(builtin_name, args, ctx) {
+        Ok(Some(v)) => Some(Ok(v)),
+        Ok(None) if builtin_name == "empty_map" => Some(Err(InterpError::TypeError {
+            msg: format!(
+                "{V2_STD_COLLECTION_MODULE}.{}: native HAMT primitive missing from eval_builtin (host misconfiguration)",
+                fn_node.name
+            ),
+        })),
+        Ok(None) => None,
+        Err(e) => Some(Err(e)),
+    }
 }
 
 /// Handler bodies for native fold intercepts (run before free-call dispatch).
@@ -6414,7 +6246,17 @@ macro_rules! v1_algebra_method_arms {
                 $args,
                 $env,
                 $ctx,
-                index_by_items,
+                |items, f, $env, $ctx| {
+                    let mut m = HamtMap::new();
+                    for item in items.iter() {
+                        let key = apply_closure(f, &[item.clone()], $env, $ctx)?;
+                        let ck = CanonKey::new(key).ok_or_else(|| InterpError::TypeError {
+                            msg: "index_by key is not a valid map key (closure/fn/NaN)".to_string(),
+                        })?;
+                        m.insert(ck, item.clone());
+                    }
+                    Ok(map_value(m))
+                },
             ),
 
         }
@@ -12611,7 +12453,7 @@ fn apply_closure(
             ),
         });
     }
-    let result = stacker::maybe_grow(STACK_RED_ZONE, 8 * 1024 * 1024, || {
+    let result = stacker::maybe_grow(256 * 1024, 8 * 1024 * 1024, || {
         apply_closure_inner(closure, args, env, ctx)
     });
     CALL_DEPTH.with(|d| d.set(d.get() - 1));
@@ -15009,255 +14851,5 @@ mod process_termination_tests {
             process_termination_label(&ExitStatus::from_raw(101 << 8)),
             "exit 101"
         );
-    }
-}
-
-#[cfg(test)]
-mod grouping_primitive_tests {
-    use super::*;
-
-    /// The refusal arm of the grouping delegates, executed. A NaN key cannot
-    /// address a HAMT, and the only honest answer is a typed refusal — dropping
-    /// the item or bucketing it under a stand-in would lose a member silently.
-    #[test]
-    fn an_unaddressable_key_refuses_rather_than_being_bucketed() {
-        assert!(canon_group_key("group_by", Value::Float(f64::NAN)).is_err());
-        assert!(canon_group_key("index_by", Value::Float(f64::NAN)).is_err());
-        assert!(canon_group_key("group_by", Value::Str("a".to_string())).is_ok());
-    }
-
-    /// The delegates' bodies are their own names, so an unbound delegate is an
-    /// unbounded self-call that the interpreter refuses at the call-depth wall —
-    /// it never answers. This asserts the binding exists, which is what makes the
-    /// public wrappers reachable at all.
-    #[test]
-    fn both_grouping_delegates_are_bound_at_the_collection_grounding_seam() {
-        use crate::v1_interpreter_dispatch_generated::lookup_try_v2_std_collection_map_primitive_grounding as lookup;
-        assert!(lookup("group_by_primitive_delegate").is_some());
-        assert!(lookup("index_by_primitive_delegate").is_some());
-        assert!(STD_COLLECTION_MAP_GROUNDED_FNS.contains(&"group_by_primitive_delegate"));
-        assert!(STD_COLLECTION_MAP_GROUNDED_FNS.contains(&"index_by_primitive_delegate"));
-    }
-}
-
-#[cfg(test)]
-mod value_hash_materialization_tests {
-    use super::*;
-    use std::collections::hash_map::DefaultHasher;
-
-    // THE ORACLE IS A COMPLETE COPY OF THE REPLACED IMPLEMENTATION, RECURSIVE ALL THE WAY DOWN.
-    //
-    // An earlier cut of this control recursed through the PRODUCTION `value_hash`, so it
-    // independently checked only the outermost string/list layer: a drift that appeared solely
-    // inside a nested list would have been shared by both sides and stayed green. Since
-    // `value_hash` decides HAMT key identity, that drift changes grouping, lookup and cache
-    // behaviour with no type error anywhere -- exactly the class this control exists to catch.
-    // So nothing below calls production code: `reference_materializing_hash` and
-    // `reference_hash_fields_commutative` are mutually recursive and closed over themselves.
-    fn reference_materializing_hash(v: &Value) -> u64 {
-        let mut h = DefaultHasher::new();
-
-        match v {
-            Value::List(_) | Value::Str(_) | Value::Variant { .. } => {
-                if let Some(items) = free_monoid_to_vec(v) {
-                    0xF0u8.hash(&mut h);
-                    items.len().hash(&mut h);
-                    for item in &items {
-                        reference_materializing_hash(item).hash(&mut h);
-                    }
-                    return h.finish();
-                }
-            }
-            _ => {}
-        }
-
-        match v {
-            Value::Null => 0u8.hash(&mut h),
-            Value::Unit => 1u8.hash(&mut h),
-            Value::Bool(b) => {
-                2u8.hash(&mut h);
-                b.hash(&mut h);
-            }
-            Value::Int(n) => {
-                3u8.hash(&mut h);
-                n.hash(&mut h);
-            }
-            Value::Float(f) => {
-                4u8.hash(&mut h);
-                let bits = if *f == 0.0 { 0u64 } else { f.to_bits() };
-                bits.hash(&mut h);
-            }
-            Value::Set(members) => {
-                5u8.hash(&mut h);
-                members.len().hash(&mut h);
-                for m in members.iter() {
-                    m.hash(&mut h);
-                }
-            }
-            Value::Record { fields, .. } => {
-                6u8.hash(&mut h);
-                reference_hash_fields_commutative(fields).hash(&mut h);
-            }
-            Value::Variant {
-                variant_name,
-                fields,
-                ..
-            } => {
-                7u8.hash(&mut h);
-                variant_name.hash(&mut h);
-                reference_hash_fields_commutative(fields).hash(&mut h);
-            }
-            Value::Map(m) => {
-                8u8.hash(&mut h);
-                let mut acc: u64 = 0;
-                for (k, val) in m.iter() {
-                    let mut eh = DefaultHasher::new();
-                    reference_materializing_hash(&k.key).hash(&mut eh);
-                    reference_materializing_hash(val).hash(&mut eh);
-                    acc = acc.wrapping_add(eh.finish());
-                }
-                acc.hash(&mut h);
-            }
-            Value::Closure { .. } => 9u8.hash(&mut h),
-            Value::Fn { .. } => 10u8.hash(&mut h),
-            Value::List(_) | Value::Str(_) => unreachable!("FreeMonoid handled above"),
-        }
-        h.finish()
-    }
-
-    fn reference_hash_fields_commutative(fields: &[(Symbol, Value)]) -> u64 {
-        let mut acc: u64 = 0;
-        for (sym, val) in fields.iter() {
-            let mut fh = DefaultHasher::new();
-            sym.0.hash(&mut fh);
-            reference_materializing_hash(val).hash(&mut fh);
-            acc = acc.wrapping_add(fh.finish());
-        }
-        acc
-    }
-
-    fn list_of(items: Vec<Value>) -> Value {
-        Value::List(Rc::new(items.into_iter().collect::<RrbVector<Value>>()))
-    }
-
-    fn sym_of(name: &str) -> Symbol {
-        Symbol(name.chars().map(|c| c as u32).sum::<u32>())
-    }
-
-    fn specimens() -> Vec<Value> {
-        let nested_list = list_of(vec![
-            Value::Int(1),
-            list_of(vec![Value::Str("inner".to_string()), Value::Int(-9)]),
-        ]);
-        let mut fields = vec![
-            (sym_of("alpha"), nested_list.clone()),
-            (sym_of("beta"), Value::Str("beta value".to_string())),
-        ];
-        fields.sort_by_key(|(s, _)| s.0);
-        let mut map = HamtMap::new();
-        map.insert(
-            CanonKey::new(Value::Str("k1".to_string())).expect("string key"),
-            list_of(vec![Value::Str("v1".to_string())]),
-        );
-        map.insert(
-            CanonKey::new(Value::Int(7)).expect("int key"),
-            Value::Str("v2".to_string()),
-        );
-        vec![
-            Value::Null,
-            Value::Unit,
-            Value::Bool(true),
-            Value::Bool(false),
-            Value::Int(0),
-            Value::Int(-1),
-            Value::Int(i64::MAX),
-            Value::Int(i64::MIN),
-            Value::Float(0.0),
-            Value::Float(-0.0),
-            Value::Float(3.5),
-            Value::Str(String::new()),
-            Value::Str("a".to_string()),
-            Value::Str("src/v2/lens/module_graph.dag".to_string()),
-            Value::Str("nai\u{308}ve \u{1F600} \u{4E2D}\u{6587}".to_string()),
-            list_of(vec![]),
-            list_of(vec![Value::Int(1), Value::Int(2), Value::Int(3)]),
-            list_of(vec![
-                Value::Str("one".to_string()),
-                Value::Str("two".to_string()),
-            ]),
-            nested_list,
-            Value::Record {
-                type_name: sym_of("Row"),
-                fields: Rc::new(fields.clone()),
-            },
-            Value::Variant {
-                type_name: sym_of("Shape"),
-                variant_name: sym_of("Boxed"),
-                fields: Rc::new(fields),
-            },
-            Value::Variant {
-                type_name: sym_of("Shape"),
-                variant_name: sym_of("Bare"),
-                fields: Rc::new(vec![]),
-            },
-            Value::Set(Rc::new(
-                vec!["x".to_string(), "y".to_string()]
-                    .into_iter()
-                    .collect::<OrdSet<String>>(),
-            )),
-            map_value(map),
-        ]
-    }
-
-    #[test]
-    fn skipping_materialization_preserves_the_hash_on_every_specimen() {
-        for v in specimens() {
-            assert_eq!(
-                value_hash(&v),
-                reference_materializing_hash(&v),
-                "hash changed for {v:?}"
-            );
-        }
-    }
-
-    /// The discriminating half: a constant, or a hash that ignored order or nesting, would pass
-    /// the parity claim above and fail here.
-    #[test]
-    fn distinct_subjects_still_hash_apart() {
-        let pairs = vec![
-            (Value::Str("a".to_string()), Value::Str("b".to_string())),
-            (Value::Str("ab".to_string()), Value::Str("ba".to_string())),
-            (
-                list_of(vec![Value::Int(1), Value::Int(2)]),
-                list_of(vec![Value::Int(2), Value::Int(1)]),
-            ),
-            (
-                list_of(vec![Value::Int(1), list_of(vec![Value::Int(2)])]),
-                list_of(vec![Value::Int(1), Value::Int(2)]),
-            ),
-            (
-                list_of(vec![Value::Str("ab".to_string())]),
-                list_of(vec![
-                    Value::Str("a".to_string()),
-                    Value::Str("b".to_string()),
-                ]),
-            ),
-        ];
-        for (a, b) in pairs {
-            assert_ne!(value_hash(&a), value_hash(&b), "{a:?} vs {b:?}");
-            assert_ne!(
-                reference_materializing_hash(&a),
-                reference_materializing_hash(&b),
-                "oracle failed to separate {a:?} vs {b:?}"
-            );
-        }
-    }
-
-    /// A value the key carrier REFUSES is refused identically either way: `CanonKey::new`
-    /// rejects it before any hash is taken, so parity here is about the refusal, not the digest.
-    #[test]
-    fn unhashable_keys_are_refused_rather_than_hashed() {
-        assert!(CanonKey::new(Value::Float(f64::NAN)).is_none());
-        assert!(CanonKey::new(Value::Str("ok".to_string())).is_some());
     }
 }
