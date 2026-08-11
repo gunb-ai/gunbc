@@ -15,7 +15,6 @@ import gunbc.stage0_partition_closure {
   PartitionAuthorityId,
   PartitionCrateRoster,
   PartitionModuleEdgeList,
-  partition_closure_verdict,
   partition_closure_verdict_over,
   reachable_basenames_in,
   list_contains_string,
@@ -30,17 +29,15 @@ data witness_subject_note: String = "SUBJECT: adding one module must be ONE acti
 // Positive controls
 // ---------------------------------------------------------------------------
 
-// The live corpus must HOLD. This is the control that would have caught the three invariant
-// candidates that were tried and discarded during design: roster-completeness (75 emit-plan
-// modules are legitimately unassigned), roster-mates-only (`use crate::NonEmptyVec` names a
-// type, not a module), and own-pub-mod-only (crates reach each other by glob reexport). Each
-// of those would refuse rows that are correct, and each would red exactly here.
-test fn w_live_corpus_partition_closure_holds() -> Bool {
-  match partition_closure_verdict() {
-    PartitionClosureHolds { extent: _ } => true
-    PartitionClosureRefused { extent: _, defects: _ } => false
-  }
-}
+// THE LIVE CENSUS MOVED OUT, and this pointer is here so the pairing stays findable. The row
+// that asks whether the LIVE roster holds against the LIVE corpus is
+// test.claim.stage0_partition_closure_live_census_test w_live_corpus_partition_closure_holds.
+// It costs about 175s of thread CPU because its subject is the corpus breadth, so it runs on
+// the falsifier substrate long lane; it is in its own FILE because that lane admits by file
+// pattern, and leaving it here would drag these fixtures off per-PR discovery with it.
+//
+// The two halves are a pair and neither is sufficient alone: a mechanism that never refuses
+// fails the REDs below, and one that always refuses fails the census over there.
 
 // Transitive reexport visibility: v1-stage0-std-surface reexports v1-stage0-std-core, so a
 // std-core module is reachable from std-surface. Membership alone is not reachability.
