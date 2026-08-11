@@ -15,6 +15,7 @@ import std.content_hash {
 }
 import std.decl_ref { decl_ref }
 import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.ssh.client_options { SshClientOption, openssh_exclusive_known_hosts_trust_options }
 import gunbc.fleet_host_key_enrollment { fleet_host_key_enrollments, known_hosts_line, host_key_provenance_label }
 
 // THE TRUST ANCHOR AN SSH INVOCATION IS VERIFIED AGAINST, carried as a value rather than left as
@@ -228,4 +229,44 @@ fn known_hosts_materialization_receipt(outcome: KnownHostsMaterializationOutcome
     KnownHostsRefused { first: f, more: m } =>
       join(concat([concat("refused ", f)], map(m, x => concat("\nrefused ", x))), "")
   }
+}
+
+// THE WALL. openssh_exclusive_known_hosts_trust_options is a builder returning a List, and a List is
+// not a wall: a caller may prepend its own option, and OpenSSH takes the FIRST obtained value for
+// each keyword, so an earlier StrictHostKeyChecking=no silently outranks everything the builder
+// produced. The failure would be invisible at the call site -- the correct options are all still
+// there, just outranked.
+//
+// FleetOpenSshTrustPolicy closes that by being the thing consumers accept. It is sealed, so no
+// module can author one; its sole mint takes a KnownHostsAnchor, which is itself sealed and
+// obtainable only from a materialization whose readback hash-equalled the registry; and the options
+// are DERIVED from it rather than carried, so there is no field for a caller to widen and no
+// position for a caller to prepend into. The chain is unbroken: options exist only because a policy
+// exists, a policy exists only because an anchor exists, and an anchor exists only because bytes on
+// disk were observed to be the enrolled registry.
+type FleetOpenSshTrustPolicy sole_constructor {
+  anchor: KnownHostsAnchor
+}
+
+fn fleet_openssh_trust_policy_seal(anchor: KnownHostsAnchor) -> FleetOpenSshTrustPolicy
+  admit_callers: [
+    decl_ref(module_path: "gunbc.fleet_known_hosts_anchor", decl_name: "fleet_openssh_trust_policy_of"),
+  ]
+  = FleetOpenSshTrustPolicy { anchor: anchor }
+
+// The only route from an outcome to a policy. A refusal yields Absent, so a caller holding a refused
+// materialization has nothing to hand an SSH leg -- which is what makes "on refusal, zero SSH legs
+// execute" a property of the type rather than a discipline the caller is trusted to observe.
+fn fleet_openssh_trust_policy_of(outcome: KnownHostsMaterializationOutcome) -> FleetOpenSshTrustPolicy? {
+  match known_hosts_anchor_of(outcome: outcome) {
+    Present { value: a } => Present { value: fleet_openssh_trust_policy_seal(anchor: a) }
+    Absent => none
+  }
+}
+
+// Derived, never stored. The anchor path is read off the sealed policy, so the options a leg carries
+// and the file whose content was verified are the same fact rather than two facts a path string
+// relates.
+fn fleet_openssh_trust_options(policy: FleetOpenSshTrustPolicy) -> List<SshClientOption> {
+  openssh_exclusive_known_hosts_trust_options(known_hosts: policy.anchor.path)
 }

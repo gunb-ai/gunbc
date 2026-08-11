@@ -13,7 +13,7 @@ import extdeps.ssh.client_options {
   StrictAcceptNew,
   serialize_ssh_client_option,
   serialize_ssh_client_options,
-  ssh_verified_host_options,
+  openssh_exclusive_known_hosts_trust_options,
 }
 
 // Serialization is asserted by EXECUTION against exact argv, not by reading the function. The
@@ -56,10 +56,22 @@ test fn w_options_flatten_into_one_argv_run() -> Bool {
   ]) == ["-o", "StrictHostKeyChecking=yes", "-o", "UserKnownHostsFile=/tmp/anchor"]
 }
 
-// The required posture is a function of the anchor alone, so a caller cannot assemble a verified
-// exec that quietly omits one half of the pair.
-test fn w_verified_posture_carries_both_halves() -> Bool {
-  serialize_ssh_client_options(options: ssh_verified_host_options(known_hosts: "/tmp/a" as NonEmptyStr)) == ["-o", "StrictHostKeyChecking=yes", "-o", "UserKnownHostsFile=/tmp/a"]
+// THE EXCLUSIVITY CLAIM, and the reason it is worth pinning as exact argv rather than as a count.
+// OpenSSH has FIVE independent routes to accepting a host key, and an earlier revision of this
+// builder set two of them -- which pins the file ssh reads without excluding the system-wide
+// known_hosts beside it, a KnownHostsCommand, an SSHFP record, or the server ADDING keys mid-session
+// via UpdateHostKeys. On hosts we did not build, any of those can be preconfigured, so the two-option
+// form was anchored to the registry plus whatever the machine already believed. This asserts all six
+// words in order, so removing any disabler reds here rather than silently widening what is trusted.
+test fn w_trust_posture_excludes_every_other_host_key_source() -> Bool {
+  serialize_ssh_client_options(options: openssh_exclusive_known_hosts_trust_options(known_hosts: "/tmp/a" as NonEmptyStr)) == [
+    "-o", "StrictHostKeyChecking=yes",
+    "-o", "UserKnownHostsFile=/tmp/a",
+    "-o", "GlobalKnownHostsFile=/dev/null",
+    "-o", "KnownHostsCommand=none",
+    "-o", "VerifyHostKeyDNS=no",
+    "-o", "UpdateHostKeys=no",
+  ]
 }
 
 // RED CONTROL. An earlier revision of this declaration asserted the WRONG argv directly and

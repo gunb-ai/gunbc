@@ -77,6 +77,32 @@ type StrictHostKeyCheckingValue
   | StrictAcceptNew
   | StrictOff
 
+// THE OTHER FOUR SOURCES OF HOST-KEY TRUST, modeled because a policy that names only
+// UserKnownHostsFile does not exclude them. ssh_config(5) gives an OpenSSH client five independent
+// ways to decide a host key is acceptable, and setting one says nothing about the other four:
+// GlobalKnownHostsFile is a system-wide file (/etc/ssh/ssh_known_hosts by default) consulted
+// ALONGSIDE the user file; KnownHostsCommand names a program whose stdout is treated as known_hosts
+// lines; VerifyHostKeyDNS accepts a key on the strength of an SSHFP DNS record; and UpdateHostKeys
+// lets the SERVER add keys to the client's known_hosts mid-session. On a host we did not build --
+// which is every host in this fleet, all six enrolled ScannedFirstContact -- any of the four can be
+// preconfigured, and a trust policy that leaves them at their defaults is anchored to the registry
+// plus whatever else the machine already believed. They are modeled here so a policy can set them
+// to their disabling values EXPLICITLY, which is the difference between "we pinned the user file"
+// and "the registry is the only thing ssh will accept".
+//
+// VerifyHostKeyDNS is three-valued upstream rather than a Bool: `ask` is a real third state, not a
+// spelling of yes or no, and collapsing it would be the state-space conflation the corpus names.
+type VerifyHostKeyDnsValue
+  = VerifyHostKeyDnsYes
+  | VerifyHostKeyDnsNo
+  | VerifyHostKeyDnsAsk
+
+// UpdateHostKeys likewise: `ask` prompts, and under BatchMode a prompt is a hang, not a default.
+type UpdateHostKeysValue
+  = UpdateHostKeysYes
+  | UpdateHostKeysNo
+  | UpdateHostKeysAsk
+
 // One variant per keyword, each carrying the value domain THAT keyword actually admits, so a
 // nonsensical pairing has no constructor. ConnectTimeout takes an Int because ssh_config(5)
 // specifies seconds; BatchMode takes a Bool because its domain is yes|no and a Bool is that domain
@@ -85,6 +111,10 @@ type StrictHostKeyCheckingValue
 type SshClientOption
   = StrictHostKeyChecking { value: StrictHostKeyCheckingValue }
   | UserKnownHostsFile { path: NonEmptyStr }
+  | GlobalKnownHostsFile { path: NonEmptyStr }
+  | KnownHostsCommand { command: NonEmptyStr }
+  | VerifyHostKeyDNS { value: VerifyHostKeyDnsValue }
+  | UpdateHostKeys { value: UpdateHostKeysValue }
   | BatchMode { enabled: Bool }
   | ConnectTimeout { seconds: Int }
 
@@ -94,6 +124,10 @@ fn ssh_client_option_keyword(option: SshClientOption) -> String {
   match option {
     StrictHostKeyChecking { value: _ } => "StrictHostKeyChecking"
     UserKnownHostsFile { path: _ } => "UserKnownHostsFile"
+    GlobalKnownHostsFile { path: _ } => "GlobalKnownHostsFile"
+    KnownHostsCommand { command: _ } => "KnownHostsCommand"
+    VerifyHostKeyDNS { value: _ } => "VerifyHostKeyDNS"
+    UpdateHostKeys { value: _ } => "UpdateHostKeys"
     BatchMode { enabled: _ } => "BatchMode"
     ConnectTimeout { seconds: _ } => "ConnectTimeout"
   }
@@ -109,10 +143,30 @@ fn strict_host_key_checking_wire(value: StrictHostKeyCheckingValue) -> String {
   }
 }
 
+fn verify_host_key_dns_wire(value: VerifyHostKeyDnsValue) -> String {
+  match value {
+    VerifyHostKeyDnsYes => "yes"
+    VerifyHostKeyDnsNo => "no"
+    VerifyHostKeyDnsAsk => "ask"
+  }
+}
+
+fn update_host_keys_wire(value: UpdateHostKeysValue) -> String {
+  match value {
+    UpdateHostKeysYes => "yes"
+    UpdateHostKeysNo => "no"
+    UpdateHostKeysAsk => "ask"
+  }
+}
+
 fn ssh_client_option_value(option: SshClientOption) -> String {
   match option {
     StrictHostKeyChecking { value: v } => strict_host_key_checking_wire(value: v)
     UserKnownHostsFile { path: p } => p as String
+    GlobalKnownHostsFile { path: p } => p as String
+    KnownHostsCommand { command: c } => c as String
+    VerifyHostKeyDNS { value: v } => verify_host_key_dns_wire(value: v)
+    UpdateHostKeys { value: v } => update_host_keys_wire(value: v)
     BatchMode { enabled: e } => if e { "yes" } else { "no" }
     ConnectTimeout { seconds: s } => to_string(s)
   }
@@ -131,14 +185,28 @@ fn serialize_ssh_client_options(options: List<SshClientOption>) -> List<String> 
   flat_map(options, o => serialize_ssh_client_option(option: o))
 }
 
-// The verification posture a fleet exec is REQUIRED to carry, named once so callers cannot
-// assemble a weaker one by accident. This is not a default that a caller may override -- an
-// unverified exec is a different operation, not a lenient version of this one -- so it is a
-// function returning the pair rather than a parameter with a recommended value.
-fn ssh_verified_host_options(known_hosts: NonEmptyStr) -> List<SshClientOption> {
+// THE COMPLETE EXCLUSIVE POSTURE: every one of OpenSSH's five host-key trust sources set, four of
+// them to their disabling values, so the named anchor is the ONLY thing that can make a host key
+// acceptable. An earlier revision of this function returned just the StrictHostKeyChecking and
+// UserKnownHostsFile pair, which pins the file ssh reads without excluding the four other routes
+// beside it -- so a host carrying a preconfigured /etc/ssh/ssh_known_hosts, a KnownHostsCommand, or
+// an SSHFP record would still have verified against something outside the registry, and
+// UpdateHostKeys would have let the far end ADD keys to what we trust mid-session.
+//
+// This function is still only a builder, not the wall: a caller may prepend its own option and
+// OpenSSH takes the FIRST obtained value for each keyword, so an earlier StrictHostKeyChecking=no
+// silently outranks everything here. The wall is gunbc.fleet_known_hosts_anchor
+// FleetOpenSshTrustPolicy, which is sealed, is constructible only from a successful materialization,
+// and is what consumers accept. This builder exists separately because it is PURE and therefore
+// directly assertable by a witness, while the sealed policy requires an executed materialization.
+fn openssh_exclusive_known_hosts_trust_options(known_hosts: NonEmptyStr) -> List<SshClientOption> {
   [
     StrictHostKeyChecking { value: StrictYes },
     UserKnownHostsFile { path: known_hosts },
+    GlobalKnownHostsFile { path: "/dev/null" as NonEmptyStr },
+    KnownHostsCommand { command: "none" as NonEmptyStr },
+    VerifyHostKeyDNS { value: VerifyHostKeyDnsNo },
+    UpdateHostKeys { value: UpdateHostKeysNo },
   ]
 }
 
