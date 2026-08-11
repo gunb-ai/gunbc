@@ -10022,8 +10022,9 @@ fn maybe_run_floor_coordinator(args: &[String]) -> Option<ExitCode> {
             )));
         }
     };
-    let digest = request_identity_digest(&pre_plan_request);
-    if let Err(msg) = verify_floor_discovery_terminal_for_coordinator(&walk_attempt_id, &digest) {
+    if let Err(msg) =
+        verify_floor_discovery_terminal_for_coordinator(&walk_attempt_id, &pre_plan_request)
+    {
         return Some(coordinator_terminal_refusal(&format!(
             "floor coordinator snapshot terminal refusal: {msg}"
         )));
