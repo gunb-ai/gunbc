@@ -16,8 +16,8 @@ use v1_compiler::cli_run::{
     floor_discovery_consumer_role_from_env, heartbeat_feed_enter_batch,
     heartbeat_feed_entry_completed, heartbeat_feed_snapshot, install_floor_compile_clean_receipt,
     make_eval_context, project_witness_cost_receipt, record_resolution_divergence_phase,
-    render_selection_degradation_receipt_body, request_identity_digest,
-    reset_resolution_divergence_phase_receipt, resolution_divergence_parent_plan_capture_begin,
+    render_selection_degradation_receipt_body, reset_resolution_divergence_phase_receipt,
+    resolution_divergence_parent_plan_capture_begin,
     resolution_divergence_parent_plan_capture_finish, resolve_entry_graph,
     resolve_entry_graph_shared, run_claim, run_discovery_corpus_with_options, run_value, set_phase,
     top_n_slowest_witnesses, verify_floor_discovery_terminal_for_coordinator, BudgetKind,
@@ -10022,8 +10022,9 @@ fn maybe_run_floor_coordinator(args: &[String]) -> Option<ExitCode> {
             )));
         }
     };
-    let digest = request_identity_digest(&pre_plan_request);
-    if let Err(msg) = verify_floor_discovery_terminal_for_coordinator(&walk_attempt_id, &digest) {
+    if let Err(msg) =
+        verify_floor_discovery_terminal_for_coordinator(&walk_attempt_id, &pre_plan_request)
+    {
         return Some(coordinator_terminal_refusal(&format!(
             "floor coordinator snapshot terminal refusal: {msg}"
         )));
