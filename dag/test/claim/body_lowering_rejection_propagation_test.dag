@@ -62,13 +62,6 @@ fn rendered_arm(id: Symbol) -> String {
   }
 }
 
-fn rejected_reasons(id: Symbol) -> List<Symbol> {
-  match finish(id: id) {
-    v2.std.diagnostic.Rejected { diagnostics: d } => all_reasons(d: d)
-    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => []
-  }
-}
-
 fn accepted_reasons(id: Symbol) -> List<Symbol> {
   match finish(id: id) {
     v2.std.diagnostic.Accepted { value: _, diagnostics: d } =>
