@@ -1,0 +1,44 @@
+module extdeps.memory.samsung
+
+import std.measure { ByteSize, byte_size, bit_width }
+import extdeps.memory.types { DramModuleCatalogRow, DimmBuffering, dram_generation_ddr4 }
+import extdeps.vendor.samsung { samsung }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/DDR4_SDRAM"
+  }
+}
+
+data lrdimm_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Registered_memory"
+  }
+}
+
+data stick_capacity_bytes: ByteSize = byte_size(34359738368)
+
+// Part-number decode, each axis landing on the field that already models it rather
+// than on a fresh enum: M386 is the Samsung LRDIMM module family (M393 registered,
+// M378 unbuffered), so buffering is LoadReduced; A4G40 is a 4 Gbit x4 die, so
+// chip_width is the existing BitWidth 4; DM0 carries the 4-rank organization, so
+// rank_count is the cardinal 4; CPB is the DDR4-2133 (PC4-2133P) speed bin, so
+// data_rate_mts is 2133. Capacity is then not an independent fact — 16 data chips
+// per rank at 4 Gbit each, four ranks, is exactly the 32 GiB the label states, and
+// dram_module_required_die_density recomputes that 4 Gbit die from the row.
+data m386a4g40dm0_cpb_catalog: DramModuleCatalogRow = DramModuleCatalogRow {
+  part_number: "M386A4G40DM0-CPB",
+  manufacturer: samsung,
+  generation: dram_generation_ddr4,
+  capacity_bytes: stick_capacity_bytes,
+  data_rate_mts: 2133,
+  ecc: true,
+  buffering: LoadReduced,
+  chip_width: bit_width(4),
+
+  rank_count: 4,
+}
