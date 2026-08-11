@@ -673,11 +673,26 @@ type ModuleStorageBinding {
 
 type ModuleStorageIndex = FreeMonoid<ModuleStorageBinding>
 
-data module_path_file_row_projection_note: String = "THE SCAFFOLD PROJECTION, FINALLY PROJECTING. module_path_file_row_note declares this authority -- ModuleStorageBinding / ModuleStorageIndex -- as the single home for the path-to-module binding, and calls ModulePathFileRow a scaffold projection OF it. Until now nothing performed that projection: every ModulePathFileRow in the tree is a hand-authored literal in a witness, which is the parallel-representation state the note said it was avoiding. This is the missing function, and it lives HERE rather than in std because the binding is this module's fact.
-
-TWO ARMS, because a module does not always have a file. ParsedFromSource carries an Artifact whose file_path IS the storage realization, so the row is derivable. ProducedByBehavior means a module the compiler produced -- there is no file, and there is no honest path to invent for it. Fabricating one (the module name reshaped into a path, an empty string, the producer's own file) is exactly the fabricated plausible output DESIGN section 5 forbids, and it would be undetectable downstream because a path-shaped string is indistinguishable from a real path. So the projection REFUSES and names the module and its producer.
-
-WHY THE INDEX PROJECTION REFUSES WHOLE. One unprojectable binding means the derived row set is not the index, and a consumer that received the survivors would believe it held the whole storage picture -- the empty-observation narrow at set grain. Callers that legitimately want only the file-backed subset must say so by filtering the index before projecting, which is a statement about intent rather than a silent loss."
+// THE SCAFFOLD PROJECTION, FINALLY PROJECTING. module_path_file_row_note declares this authority --
+// ModuleStorageBinding / ModuleStorageIndex -- as the single home for the path-to-module binding, and
+// calls ModulePathFileRow a scaffold projection OF it. Until now nothing performed that projection:
+// every ModulePathFileRow in the tree was a hand-authored literal in a witness, which is the
+// parallel-representation state the note said it was avoiding. This is the missing function, and it
+// lives HERE rather than in std because the binding is this module's fact.
+//
+// TWO ARMS, because a module does not always have a file. ParsedFromSource carries an Artifact whose
+// file_path IS the storage realization, so the row is derivable. ProducedByBehavior means a module the
+// compiler produced -- there is no file, and there is no honest path to invent for it. Fabricating one
+// (the module name reshaped into a path, an empty string, the producer's own file) is exactly the
+// fabricated plausible output DESIGN section 5 forbids, and it would be undetectable downstream
+// because a path-shaped string is indistinguishable from a real path. So the projection REFUSES and
+// names the module and its producer.
+//
+// WHY THE INDEX PROJECTION REFUSES WHOLE. One unprojectable binding means the derived row set is not
+// the index, and a consumer that received the survivors would believe it held the whole storage
+// picture -- the empty-observation narrow at set grain. Callers that legitimately want only the
+// file-backed subset must say so by filtering the index before projecting, which is a statement about
+// intent rather than a silent loss.
 
 type ModulePathFileRowProjection
   = ModulePathFileRowProjected { row: ModulePathFileRow }

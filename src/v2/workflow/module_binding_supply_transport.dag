@@ -30,6 +30,12 @@ data mbs_entry: String = "src/v2/test/claim/long/module_binding_host_consistency
 
 data mbs_layout_entry: String = "src/v2/test/claim/self_host/crate_layout_witness_test.dag"
 
+data mbs_row_supply_entry: String = "src/v2/test/claim/module_storage_row_supply_test.dag"
+
+data mbs_row_supply_note: String = "The ModulePathFileRow projection runs HERE for the same reason the crate-layout witnesses do: it consumes the derived binding index, and the real index exists only inside this overlay. Unlike the oracle claims it does NOT re-parse anything -- the manifest is already data and the projection is a fold over it -- so it is an ordinary claim rather than a long-lane one. It is the import-deletion lane's provider-row supply: the rows it projects are what replaces that lane's hand-selected provider path.
+
+SCOPE, measured: these rows observe the src/v2 root ONLY, because mbs_source_root is src/v2 and the producer cannot emit the dag/ root at all -- dag/std/import.dag and dag/extdeps/languages/go/module.dag make it write `id: ^import` and `file: ^module`, and the manifest then fails to parse. Adding dag/ here would red every claim in this gate, so the limit is recorded on the consuming witness rather than worked around."
+
 data mbs_layout_claims_note: String = "The crate-layout witnesses run HERE, in the same overlay, because task 3 made them projections off the derived binding index instead of readers of a 27-row hand table. They need the real index, and the real index exists only inside this overlay — so this transport is their executing consumer.
 
 They were removed from compiler_frontier_census_holds in the same change (frontier_census_layout_relocation_note): the census is a pure zero-arity fast-lane gate that cannot obtain a host index, and the layer DAG forbids a compiler module importing v2.test.* to reach one. Enrolling them here is the other half of that removal, not a follow-on — a removal without this enrollment would leave a window where nothing checks crate layout at all.
@@ -70,7 +76,12 @@ func run_module_binding_supply_gate_ready(root: String) -> Bool {
             ClaimRun { entry: mbs_entry, function: "module_binding_host_agrees_with_parse_oracle" },
             ClaimRun { entry: mbs_layout_entry, function: "projection_refuses_on_absent_index" },
             ClaimRun { entry: mbs_layout_entry, function: "transition_parity_host_index_agrees_with_hand_rows" },
-            ClaimRun { entry: mbs_layout_entry, function: "crate_layout_witnesses" }
+            ClaimRun { entry: mbs_layout_entry, function: "crate_layout_witnesses" },
+            ClaimRun { entry: mbs_row_supply_entry, function: "msrs_real_tree_rows_project" },
+            ClaimRun { entry: mbs_row_supply_entry, function: "msrs_every_manifest_binding_projects_to_a_row" },
+            ClaimRun { entry: mbs_row_supply_entry, function: "msrs_a_known_module_resolves_to_its_real_file" },
+            ClaimRun { entry: mbs_row_supply_entry, function: "msrs_an_absent_module_is_not_projected" },
+            ClaimRun { entry: mbs_row_supply_entry, function: "msrs_a_real_module_is_not_bound_to_the_wrong_file" }
           ]
         )
       } else {

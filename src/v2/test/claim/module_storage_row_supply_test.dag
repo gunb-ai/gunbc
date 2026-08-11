@@ -1,0 +1,137 @@
+module v2.test.claim.module_storage_row_supply
+
+import std.occurrence_binding_candidates { ModulePathFileRow }
+import v2.compiler.source_authority {
+  ModulePathFileRowsFromIndex,
+  ModulePathFileRowsFromIndexReady,
+  ModulePathFileRowsFromIndexRefused,
+  ModulePathFileRowProjection,
+  ModulePathFileRowProjected,
+  ModulePathFileRowNoStorageRealization,
+  module_path_file_rows_from_storage_index,
+}
+import v2.test.workflow.host_module_binding_manifest {
+  host_module_binding_count,
+  host_module_bindings,
+}
+import v2.std.algebra { length }
+import v2.std.collection { Absent, Present }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data msrs_note: String = "PROVIDER ROWS FROM THE REAL TREE, not from a hand-selected path. This is the second half of the import-deletion lane's provider discovery, and the point of it is what it does NOT add: no filesystem walker, no name scanner, no module-to-file map and no second dependency producer. The whole-tree PARSED module-to-path rows already exist -- discover_source_root_ingest --emit-module-binding-manifest emits them via v1_compiler_parse, carrying no source text and therefore uncapped -- and module_binding_supply_transport already overlays them as a MODULE in an ephemeral source root. So the rows arrive as data through an existing carrier, and this witness projects them through the authority.
+
+Arriving as a module rather than through a filesystem read is what makes this reachable at all. A witness that read the tree with filesystem_read would drag the Filesystem service into its emission closure; under src/v1 that produces an unregisterable dry_run.rs, which is the placement contradiction the sibling import_deletion_bridge witness records. Overlaid data has no such cost."
+
+data msrs_vacuity_note: String = "THE TWO VACUOUS GREENS, both closed, because this witness is only meaningful when the overlay is present. Run without the transport, host_module_bindings is the committed Empty stub and host_module_binding_count is 0 -- and an empty index projects to an empty row set that is legitimately Ready. Every claim below would then pass while observing nothing. So each row requires the manifest to be POPULATED and the projected set to be NON-EMPTY before it asserts anything, exactly as the sibling consistency witness requires a non-empty oracle. Neither arm widens: both refuse."
+
+fn msrs_projected_rows() -> List<ModulePathFileRow>? {
+  match host_module_binding_count > 0 {
+    false => none
+    true =>
+      match module_path_file_rows_from_storage_index(index: host_module_bindings) {
+        ModulePathFileRowsFromIndexRefused { first_failure: _, more_failures: _ } => none
+        ModulePathFileRowsFromIndexReady { rows: rows } =>
+          match length(rows) > 0 {
+            true => Present { value: rows }
+            false => none
+          }
+      }
+  }
+}
+
+// THE POSITIVE CONTROL, and the vacuity guard for every row below it. Without this, an absent overlay
+// would make the others pass by observing nothing.
+test fn msrs_real_tree_rows_project() -> Bool {
+  match msrs_projected_rows() {
+    Absent => false
+    Present { value: rows } => length(rows) > 0
+  }
+}
+
+// EVERY row the manifest carries projects. Stated as a count identity rather than "some rows
+// appeared": the projection refuses the whole index on any binding it cannot realize, so a Ready
+// answer over the real tree is the claim that the entire live corpus is file-backed -- and if it ever
+// is not, this row is where that shows up, as a refusal rather than as a shorter list.
+test fn msrs_every_manifest_binding_projects_to_a_row() -> Bool {
+  match msrs_projected_rows() {
+    Absent => false
+    Present { value: rows } => length(rows) == host_module_binding_count
+  }
+}
+
+// A KNOWN REAL MODULE resolves to its KNOWN REAL PATH. This is the row that makes the population an
+// observation of this repository rather than a shape check: the pair is authored here and must be
+// found in rows derived from the live tree, so a projection that produced well-formed rows about the
+// wrong files fails it. The subject is deliberately the same module the import-deletion bridge
+// witness supplies by hand -- that hand-selected path is what this replaces.
+test fn msrs_a_known_module_resolves_to_its_real_file() -> Bool {
+  msrs_pair_present(
+    module_path: "v2.std.live_tree",
+    file_path: "src/v2/std/live_tree.dag",
+  )
+}
+
+// THE dag/ ROOT IS NOT COVERED, and the cause is a producer defect rather than a decision.
+//
+// A second known pair in the dag/ root was authored here and REMOVED after measurement, because the
+// manifest cannot carry that root at all. discover_source_root_ingest renders the artifact id and the
+// textual locus file as a BARE symbol taken from the file stem, and dag/ contains dag/std/import.dag
+// and dag/extdeps/languages/go/module.dag -- so the emitted manifest contains `id: ^import` and
+// `file: ^module`, which are keywords, and the whole manifest fails to parse. Measured by emitting
+// with --source-root src/v2 --source-root dag: 3517 rows written, then
+// `for_each_parsed_module_binding: parse error ... expected identifier or ( after ^, found keyword`.
+//
+// So this witness observes the src/v2 root only, and that limit is stated rather than left to be
+// inferred from which pairs happen to be asserted. It matters to the import-deletion lane
+// specifically: providers live in dag/ as well as src/v2, so reference-derived dependency closure
+// over the real corpus cannot be completed while the producer cannot describe half of it. The gap is
+// named here rather than papered over by asserting only src/v2 pairs and calling the population
+// whole-tree.
+//
+// DISSOLVE-ON: the manifest producer stops deriving a symbol from the file stem -- the file path is
+// already carried as a String in the same row, so the symbol is a second, weaker naming of a fact the
+// row already has -- or it quotes keyword stems. Then the dag-root pair is asserted here and this
+// note deletes.
+
+// THE NEGATIVE CONTROL. A module that does not exist must not appear, and the pair check must be
+// capable of answering no -- otherwise the two rows above prove only that the fold visited something.
+test fn msrs_an_absent_module_is_not_projected() -> Bool {
+  match msrs_projected_rows() {
+    Absent => false
+    Present { value: _ } =>
+      !msrs_pair_present(
+        module_path: "v2.std.module_that_does_not_exist",
+        file_path: "src/v2/std/module_that_does_not_exist.dag",
+      )
+  }
+}
+
+// A REAL MODULE PAIRED WITH THE WRONG FILE must not be present either. Distinct from the row above:
+// that one asks whether an unknown NAME leaks in, this one asks whether a known name is bound to a
+// path it does not have -- which is the failure a projection that reshaped module names into paths
+// would produce, and it would pass the absent-module row.
+test fn msrs_a_real_module_is_not_bound_to_the_wrong_file() -> Bool {
+  match msrs_projected_rows() {
+    Absent => false
+    Present { value: _ } =>
+      !msrs_pair_present(
+        module_path: "v2.std.live_tree",
+        file_path: "src/v2/std/live_tree_elsewhere.dag",
+      )
+  }
+}
+
+fn msrs_pair_present(module_path: String, file_path: String) -> Bool {
+  match msrs_projected_rows() {
+    Absent => false
+    Present { value: rows } =>
+      fold(rows, init: false, f: (found, row) =>
+        found
+          || ((row.module_path as String) == module_path
+            && (row.file_path as String) == file_path))
+  }
+}
