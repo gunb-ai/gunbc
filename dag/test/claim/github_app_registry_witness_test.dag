@@ -1,5 +1,7 @@
 module test.claim.github_app_registry
 
+import product.compute_board.composition { unsatisfied_capabilities }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data control_plane_probe_ref: DeclarationRef = DeclarationRef {
