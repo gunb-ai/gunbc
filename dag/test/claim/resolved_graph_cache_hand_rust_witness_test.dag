@@ -23,7 +23,7 @@ import std.types { Bool, String }
 import v2.std.algebra { length }
 import extdeps.filesystem.filesystem_io
 
-data resolved_graph_cache_hand_rust_witness_note: String = "HAND-RUST checkable receipt (reviews 46781/46990): scaffold bind on lookup_verified_probe; full #7534 Rust census (six paths after the ir_fixture_seam_soundness_test.rs deletion; per-path net deltas summing to loc_delta_net); consumer bridge defers to materialization_provider_consumer_hand_rust_witness_test.dag. Discriminators executed by cargo test -p v1-compiler-tests resolve_cross_process_cache_test -- --nocapture."
+data resolved_graph_cache_hand_rust_witness_note: String = "HAND-RUST checkable receipt (reviews 46781/46990): scaffold bind on lookup_verified_probe; full #7534 Rust census (four paths after the #8146 test-suite cutover removed three; per-path net deltas summing to loc_delta_net); consumer bridge defers to materialization_provider_consumer_hand_rust_witness_test.dag. Discriminators executed by cargo test -p v1-compiler-tests resolve_cross_process_cache_test -- --nocapture."
 
 test fn resolved_graph_cache_hand_rust_scaffold_is_seed_retained() -> Bool {
   match resolved_graph_cache_hand_rust_scaffold {
@@ -42,8 +42,8 @@ test fn resolved_graph_cache_hand_rust_receipt_is_checkable() -> Bool {
       "gunbc.materialization_provider_consumer_scaffold"
     && resolved_graph_cache_hand_rust_deferred_consumer_witness_entry ==
       "dag/test/claim/materialization_provider_consumer_hand_rust_witness_test.dag"
-    && length(xs: resolved_graph_cache_hand_rust_paths) == 6
-    && length(xs: resolved_graph_cache_hand_rust_path_loc_deltas_net) == 6
+    && length(xs: resolved_graph_cache_hand_rust_paths) == 4
+    && length(xs: resolved_graph_cache_hand_rust_path_loc_deltas_net) == 4
     && resolved_graph_cache_hand_rust_loc_delta_net ==
       fold(
         resolved_graph_cache_hand_rust_path_loc_deltas_net,

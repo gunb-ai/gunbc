@@ -67,10 +67,24 @@ fn every_discovered_module_is_retained() -> Bool {
 
 // Every retained module contributes at least one discovered #[test] identity,
 // so a retained row cannot point at a module that has no executable content.
-// Identities are `source_file::test_fn`.
+//
+// Identities are the FULL path plus `::` plus the test fn, verified by
+// execution: "src/v1/tests/src/class_b_trim_specimen_test.rs::trim_free_call_..."
+//
+// The needle is anchored on the full directory prefix, not the bare file name
+// (review 51141). Matching on `concat(source_file, "::")` alone is a substring
+// test, so a future `foo_test.rs` would be satisfied by an existing
+// `sub_foo_test.rs`'s identities — the row would bind to the wrong module and
+// still read green. Including the leading `src/v1/tests/src/` puts a `/` before
+// the name, which no other file name can span, so the collision class is closed
+// rather than merely absent from today's roster.
+fn retained_module_identity_prefix(source_file: String) -> String {
+  concat(retained_module_path(source_file: source_file), "::")
+}
+
 fn retained_module_has_a_discovered_test(source_file: String) -> Bool {
   discovered_legacy_behavior_ids()
-    |> any(id => string_contains(s: id, needle: concat(source_file, "::")))
+    |> any(id => string_contains(s: id, needle: retained_module_identity_prefix(source_file: source_file)))
 }
 
 fn every_retained_module_has_a_test() -> Bool {
@@ -87,7 +101,26 @@ fn retention_populations_are_nonempty() -> Bool {
     && count(discovered_legacy_behavior_ids()) > 0
 }
 
-// THE EXECUTION WALL.
+// THE EXECUTION CHECK — MECHANICALLY PREVENTIVE, NOT A CONSTRUCTION WALL.
+//
+// RUNG, STATED HONESTLY (DESIGN §4b(1), review 51141): the two clauses below are
+// TEXT SCANS over file content, so they sit at "mechanically preventable" — the
+// invalid state stays writable and safety depends on this lens executing and
+// staying enrolled. An earlier revision of this comment called it a wall, which
+// overstated the rung; the name is corrected here rather than left to read
+// stronger than the mechanism.
+//
+// The false-NEGATIVE class is what matters and is named rather than implied: a
+// skip route the scan cannot see — a `#[cfg(...)]` that excludes a module, a
+// test whose body returns early, a harness configured outside this manifest —
+// passes. The false-POSITIVE class (an `#[ignore]` inside a comment or a string
+// literal) causes a REFUSAL, which is the conservative direction and is left
+// deliberately unfixed.
+//
+// Dissolve-on: an executed-identity receipt that reads libtest's own `--format
+// json` output and joins it to the declared roster, refusing on omission,
+// duplicate, or unexpected identity. That is the construction that makes the
+// class unwritable; this is the check that holds the line until it lands.
 //
 // The identity join above proves `declared == discovered` over the SOURCE TREE.
 // It says nothing about what the CI run actually ran, and that gap is exactly
@@ -95,10 +128,8 @@ fn retention_populations_are_nonempty() -> Bool {
 // `#[ignore]` and remain discovered, compiled, not executed, and green —
 // recreating compile-only coverage one rung down.
 //
-// The honest construction here is narrower than an executed-identity receipt
-// (which needs libtest's own output, and whose home is claim_executor). What is
-// provable from the substrate is that the ONE required command executes the
-// WHOLE discovered population unfiltered:
+// What is checkable from the substrate is that the ONE required command
+// executes the WHOLE discovered population unfiltered:
 //
 //   1. the emitted gate command carries no name filter and no --no-run,
 //   2. no retained module contains #[ignore] or #[should_panic] on any test,
@@ -106,8 +137,8 @@ fn retention_populations_are_nonempty() -> Bool {
 //      no [[test]] target), so there is no custom filtering route.
 //
 // Under those three, "every discovered test is executed" follows from libtest's
-// default behavior rather than from a count anyone transcribed. The claim is
-// deliberately stated at that strength and no higher.
+// default behavior rather than from a count anyone transcribed — at the rung
+// declared above, and no higher.
 data retained_kernel_manifest_path: String = "src/v1/tests/Cargo.toml"
 
 fn retained_module_path(source_file: String) -> String {
@@ -162,7 +193,7 @@ fn retained_kernel_uses_default_harness() -> Bool {
   )
 }
 
-fn retained_kernel_execution_wall_holds() -> Bool {
+fn retained_kernel_execution_check_holds() -> Bool {
   no_retained_module_is_skipped()
     && retained_kernel_uses_default_harness()
 }
@@ -174,7 +205,7 @@ fn retained_rust_kernel_wall_holds() -> Bool {
     && every_retained_row_resolves()
     && every_discovered_module_is_retained()
     && every_retained_module_has_a_test()
-    && retained_kernel_execution_wall_holds()
+    && retained_kernel_execution_check_holds()
 }
 
 fn retained_rust_kernel_wall_holds_live() -> Bool {

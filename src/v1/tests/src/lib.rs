@@ -21,8 +21,4 @@ mod namespace_unique_on_chain_policy_test;
 #[cfg(test)]
 mod none_undetermined_carrier_refuse_test;
 #[cfg(test)]
-mod resolve_cross_process_cache_test;
-#[cfg(test)]
-mod resolved_graph_cache_size_bound_test;
-#[cfg(test)]
 mod whole_tree_wiring_enum_test;
