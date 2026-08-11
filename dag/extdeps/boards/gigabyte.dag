@@ -1,0 +1,159 @@
+module extdeps.boards.gigabyte
+
+import std.types { NonEmptyStr, List }
+import std.nat { Nat }
+import extdeps.boards.types { BaseboardCatalogRow }
+import extdeps.vendor.gigabyte { gigabyte }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.gigabyte.com/Enterprise/Server-Motherboard/MP72-HB0-rev-30"
+  }
+}
+
+data gigabyte_mp72_hb0_reseller_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.shi.com/product/46338341/AMPERE-MOTHERBOARD"
+  }
+}
+
+data gigabyte_mp72_hb0_marketplace_listing_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.alibaba.com/product-detail/For-Gigabyte-MP72-HB0-Ampere-Altra_1600826005324.html"
+  }
+}
+
+data gigabyte_mp72_hb0_catalog: BaseboardCatalogRow = BaseboardCatalogRow {
+  model: GigabyteMp72Hb0,
+  model_label: "Gigabyte MP72-HB0 (rev. 3.0)",
+  vendor: gigabyte,
+  bmc_firmware: OpenBmc,
+}
+
+// bmc_firmware is the WEAKEST field in the row above. OpenBmc is asserted from family convention
+// for an Ampere Altra server baseboard and is NOT read from a vendor manual; the ASRock row earned
+// its OpenBmc through authenticated live probes against srv3 and srv4, and this row has no such
+// receipt. Treat it as a placeholder that a first boot replaces, not as a catalog fact.
+data gigabyte_mp72_hb0_bmc_firmware_standing_note: NonEmptyStr = "BMC firmware family is convention-asserted, not observed. No MP72-HB0 has been powered by this operator."
+
+// Vendor-page facts, independently verified 2026-08-11 against the Gigabyte product page and
+// reseller listings rather than accepted from a routed review that asserted them. Every field here
+// is a READING, never a measurement: no MP72-HB0 has been held, powered, or measured by this
+// operator, and none is cited by any PhysicalAsset.
+type BaseboardPhysicalProfile {
+  model_label: NonEmptyStr
+  socket_count: Nat
+  max_tdp_per_socket_w: Nat
+  form_factor_label: NonEmptyStr
+  width_mm: Nat
+  depth_mm: Nat
+  dimm_slots: Nat
+  max_data_rate_mt_s: Nat
+  atx_24pin_count: Nat
+  eps_8pin_count: Nat
+  onboard_10gbe_ports: Nat
+  dedicated_management_ports: Nat
+  pcie_slots: Nat
+}
+
+data gigabyte_mp72_hb0_physical_profile: BaseboardPhysicalProfile = BaseboardPhysicalProfile {
+  model_label: "Gigabyte MP72-HB0 (rev. 3.0)",
+  socket_count: 2,
+  max_tdp_per_socket_w: 250,
+  form_factor_label: "E-ATX",
+  width_mm: 305,
+  depth_mm: 330,
+  dimm_slots: 16,
+  max_data_rate_mt_s: 3200,
+  atx_24pin_count: 1,
+  eps_8pin_count: 2,
+  onboard_10gbe_ports: 2,
+  dedicated_management_ports: 1,
+  pcie_slots: 4,
+}
+
+data asrock_altrad8ud_1l2t_physical_profile: BaseboardPhysicalProfile = BaseboardPhysicalProfile {
+  model_label: "ASRock Rack ALTRAD8UD-1L2T",
+  socket_count: 1,
+  max_tdp_per_socket_w: 250,
+  form_factor_label: "deep micro-ATX",
+  width_mm: 244,
+  depth_mm: 267,
+  dimm_slots: 8,
+  max_data_rate_mt_s: 3200,
+  atx_24pin_count: 1,
+  eps_8pin_count: 2,
+  onboard_10gbe_ports: 2,
+  dedicated_management_ports: 1,
+  pcie_slots: 3,
+}
+
+// The ASRock profile above is authored in THIS module rather than beside the ASRock catalog row on
+// purpose and against the usual placement rule: it exists only so the two boards can be compared by
+// the same shape in one place. If a second consumer ever needs it, move it to
+// extdeps.boards.asrock_rack and leave a reference — do not copy it.
+data asrock_profile_placement_note: NonEmptyStr = "Co-located for comparison only; migrate to extdeps.boards.asrock_rack on second consumer."
+
+type BoardProcurementStanding
+  = CatalogReadOnly
+  | ListingObserved
+  | UnitReceiptHeld
+
+// The marketplace listing reached ListingObserved and no further on 2026-08-11. What the listing
+// photograph DOES establish, read directly from the image: the silkscreen carries "GIGABYTE
+// MP72-HB0 DDR4" beside the regulatory marks, and the board shows two LGA4926 sockets with white
+// retention frames, sixteen DIMM slots in four banks, a 24-pin connector at the upper left, two
+// 8-pin connectors along the top edge, four PCIe slots, two SlimSAS ports, one M.2 socket, and a
+// rear I/O panel carrying VGA, USB, two RJ45 ports and a management port. Those are consistent with
+// the vendor profile above on every countable field.
+//
+// CORRECTION, recorded because it was routed to this operator as a purchase refusal: a review
+// asserted that this listing's photograph shows a proprietary "MT JADE SYSTEM BOARD" silkscreen and
+// therefore depicts different inventory. Read directly, the image does not support that — the
+// silkscreen says MP72-HB0. The refusal as stated does not hold.
+//
+// The real caveat is duller and still binding: the image is a watermarked reseller stock photograph.
+// It establishes what the listing DEPICTS, never what any particular unit IS, so it cannot advance
+// standing past ListingObserved. Price, condition, revision, firmware, included items, and landed
+// duty remain unread, and no board may enter a fleet carrier from a stock photograph.
+data gigabyte_mp72_hb0_procurement_standing: BoardProcurementStanding = ListingObserved
+
+data gigabyte_mp72_hb0_purchase_gate: List<NonEmptyStr> = [
+  "timestamped photographs of the exact shipped unit, front and back, not vendor or reseller stock imagery",
+  "close photograph of the model and revision label with an ordering number matching the vendor scheme",
+  "both socket pin fields photographed with protective covers removed and then replaced",
+  "a BMC or BIOS screen showing both processors and every populated DIMM position detected",
+  "exact included-items list: I/O shield, socket covers, processors, memory, coolers, cables",
+  "BIOS, BMC and CPLD versions as shipped",
+  "serial number and country of origin",
+  "DOA, return and warranty terms in writing",
+  "declared customs description and a broker-confirmed tariff classification before payment",
+]
+
+// Landed cost is UNMODELLED and deliberately so. A routed review offered a 25 percent duty reserve
+// drawn from a comparable classification, not from this part's confirmed code, and quoted domestic
+// prices near USD 1445 that this session has not verified. Authoring either as a number here would
+// launder a hypothesis into the catalog. The gate row above says what must be read first.
+data gigabyte_mp72_hb0_landed_cost_standing_note: NonEmptyStr = "Landed cost unmodelled: no confirmed tariff classification, no verified quote, no freight or brokerage figure."
+
+fn board_profile_power_headers_match(a: BaseboardPhysicalProfile, b: BaseboardPhysicalProfile) -> Bool {
+  a.atx_24pin_count == b.atx_24pin_count && a.eps_8pin_count == b.eps_8pin_count
+}
+
+fn board_profile_area_mm2(p: BaseboardPhysicalProfile) -> Nat {
+  p.width_mm * p.depth_mm
+}
+
+fn board_profile_sockets_per_area_permille(p: BaseboardPhysicalProfile) -> Nat {
+  p.socket_count * 1000000 / board_profile_area_mm2(p: p)
+}
+
+fn board_profile_max_socket_power_w(p: BaseboardPhysicalProfile) -> Nat {
+  p.socket_count * p.max_tdp_per_socket_w
+}

@@ -1,0 +1,241 @@
+module test.claim.cooling_qualification_witness
+
+import std.types { Bool }
+import std.measure { watt }
+import extdeps.cooling.dynatron { dynatron_w1_catalog }
+import extdeps.cooling.types { CpuCoolerCatalogRow }
+import extdeps.cpu.ampere { altra_max_m12830_catalog }
+import extdeps.cpu.types { CpuSocket, LandGridArray }
+import extdeps.boards.types { AsrockRackAltrad8ud1l2t }
+import gunbc.fleet_physical_inventory {
+  cooler_srv3,
+  host_srv1,
+  host_srv3,
+  installed_cooling_realizations,
+}
+import product.cooling_qualification {
+  CoolingCatalogCompatible,
+  CoolingCatalogRefused,
+  CoolerDesignPowerBelowProcessorTdp,
+  CoolerSocketDoesNotMatchProcessorSocket,
+  BaseboardNotInCoolerSupportedPopulation,
+  InstalledCoolingRealization,
+  InstalledCoolingUnobserved,
+  cooling_catalog_verdict,
+  cooling_catalog_verdict_admits_qualification,
+  installed_cooling_verdict_for_host,
+}
+
+// The live srv3 realization, rebuilt here from the same cited catalog rows the fleet binds, so
+// each mutation below perturbs exactly one field and leaves the rest at their real values.
+data srv3_installed_cooling: InstalledCoolingRealization = InstalledCoolingRealization {
+  host: host_srv3,
+  cooler_asset: cooler_srv3,
+  cooler: dynatron_w1_catalog,
+  processor: altra_max_m12830_catalog,
+  baseboard_model: AsrockRackAltrad8ud1l2t,
+}
+
+// GREEN: the fleet's actual srv3 pairing is catalog-compatible. W1 socket LGA4926 matches the
+// M128-30 socket, the W1's supported-board population contains the ALTRAD8UD, and the W1's
+// 250 W design power covers the M128-30's 183 W TDP.
+test fn installed_srv3_cooling_is_catalog_compatible() -> Bool {
+  match cooling_catalog_verdict(realization: srv3_installed_cooling) {
+    CoolingCatalogCompatible { host: _, cooler_asset: _ } => true
+    CoolingCatalogRefused { host: _, cause: _ } => false
+    InstalledCoolingUnobserved { host: _ } => false
+  }
+}
+
+// Control 2: changing the cooler socket refuses. A cooler whose contact count differs is a
+// different socket even where the package family agrees.
+test fn cooler_socket_mismatch_is_a_discriminating_refusal() -> Bool {
+  let wrong_socket_cooler: CpuCoolerCatalogRow = CpuCoolerCatalogRow {
+    model: dynatron_w1_catalog.model,
+    manufacturer: dynatron_w1_catalog.manufacturer,
+    socket: CpuSocket { package: LandGridArray, contact_count: 4189 },
+    active_passive_switchable: dynatron_w1_catalog.active_passive_switchable,
+    minimum_rack_units: dynatron_w1_catalog.minimum_rack_units,
+    max_design_power: dynatron_w1_catalog.max_design_power,
+    supported_motherboards: dynatron_w1_catalog.supported_motherboards,
+  }
+  match cooling_catalog_verdict(
+    realization: InstalledCoolingRealization {
+      host: srv3_installed_cooling.host,
+      cooler_asset: srv3_installed_cooling.cooler_asset,
+      cooler: wrong_socket_cooler,
+      processor: srv3_installed_cooling.processor,
+      baseboard_model: srv3_installed_cooling.baseboard_model,
+    },
+  ) {
+    CoolingCatalogRefused { host: _, cause: cause } =>
+      match cause {
+        CoolerSocketDoesNotMatchProcessorSocket {
+          cooler_socket: _,
+          processor_socket: _,
+        } => true
+        BaseboardNotInCoolerSupportedPopulation { baseboard_model: _ } => false
+        CoolerDesignPowerBelowProcessorTdp {
+          cooler_max_design_power: _,
+          processor_tdp: _,
+        } => false
+      }
+    CoolingCatalogCompatible { host: _, cooler_asset: _ } => false
+    InstalledCoolingUnobserved { host: _ } => false
+  }
+}
+
+// Control 3: emptying the supported-board population refuses. This is the control that would
+// have passed vacuously while supported_motherboards was a bare string list compared against a
+// differently-spelled label — grounding it on BaseboardModel is what makes the check real.
+test fn baseboard_absent_from_supported_population_is_refused() -> Bool {
+  let unsupported_cooler: CpuCoolerCatalogRow = CpuCoolerCatalogRow {
+    model: dynatron_w1_catalog.model,
+    manufacturer: dynatron_w1_catalog.manufacturer,
+    socket: dynatron_w1_catalog.socket,
+    active_passive_switchable: dynatron_w1_catalog.active_passive_switchable,
+    minimum_rack_units: dynatron_w1_catalog.minimum_rack_units,
+    max_design_power: dynatron_w1_catalog.max_design_power,
+    supported_motherboards: [],
+  }
+  match cooling_catalog_verdict(
+    realization: InstalledCoolingRealization {
+      host: srv3_installed_cooling.host,
+      cooler_asset: srv3_installed_cooling.cooler_asset,
+      cooler: unsupported_cooler,
+      processor: srv3_installed_cooling.processor,
+      baseboard_model: srv3_installed_cooling.baseboard_model,
+    },
+  ) {
+    CoolingCatalogRefused { host: _, cause: cause } =>
+      match cause {
+        BaseboardNotInCoolerSupportedPopulation { baseboard_model: _ } => true
+        CoolerSocketDoesNotMatchProcessorSocket {
+          cooler_socket: _,
+          processor_socket: _,
+        } => false
+        CoolerDesignPowerBelowProcessorTdp {
+          cooler_max_design_power: _,
+          processor_tdp: _,
+        } => false
+      }
+    CoolingCatalogCompatible { host: _, cooler_asset: _ } => false
+    InstalledCoolingUnobserved { host: _ } => false
+  }
+}
+
+// Control 4: lowering design power below the processor TDP refuses. 182 W sits one watt under
+// the M128-30's cited 183 W, so this also proves the comparison is not a coarse bucket.
+test fn design_power_one_watt_below_tdp_is_refused() -> Bool {
+  let underrated_cooler: CpuCoolerCatalogRow = CpuCoolerCatalogRow {
+    model: dynatron_w1_catalog.model,
+    manufacturer: dynatron_w1_catalog.manufacturer,
+    socket: dynatron_w1_catalog.socket,
+    active_passive_switchable: dynatron_w1_catalog.active_passive_switchable,
+    minimum_rack_units: dynatron_w1_catalog.minimum_rack_units,
+    max_design_power: watt(182),
+    supported_motherboards: dynatron_w1_catalog.supported_motherboards,
+  }
+  match cooling_catalog_verdict(
+    realization: InstalledCoolingRealization {
+      host: srv3_installed_cooling.host,
+      cooler_asset: srv3_installed_cooling.cooler_asset,
+      cooler: underrated_cooler,
+      processor: srv3_installed_cooling.processor,
+      baseboard_model: srv3_installed_cooling.baseboard_model,
+    },
+  ) {
+    CoolingCatalogRefused { host: _, cause: cause } =>
+      match cause {
+        CoolerDesignPowerBelowProcessorTdp {
+          cooler_max_design_power: _,
+          processor_tdp: _,
+        } => true
+        CoolerSocketDoesNotMatchProcessorSocket {
+          cooler_socket: _,
+          processor_socket: _,
+        } => false
+        BaseboardNotInCoolerSupportedPopulation { baseboard_model: _ } => false
+      }
+    CoolingCatalogCompatible { host: _, cooler_asset: _ } => false
+    InstalledCoolingUnobserved { host: _ } => false
+  }
+}
+
+// Boundary: design power exactly equal to TDP is admitted, so the comparison is >= and not >.
+test fn design_power_exactly_equal_to_tdp_is_admitted() -> Bool {
+  let exact_cooler: CpuCoolerCatalogRow = CpuCoolerCatalogRow {
+    model: dynatron_w1_catalog.model,
+    manufacturer: dynatron_w1_catalog.manufacturer,
+    socket: dynatron_w1_catalog.socket,
+    active_passive_switchable: dynatron_w1_catalog.active_passive_switchable,
+    minimum_rack_units: dynatron_w1_catalog.minimum_rack_units,
+    max_design_power: watt(183),
+    supported_motherboards: dynatron_w1_catalog.supported_motherboards,
+  }
+  cooling_catalog_verdict_admits_qualification(
+    verdict: cooling_catalog_verdict(
+      realization: InstalledCoolingRealization {
+        host: srv3_installed_cooling.host,
+        cooler_asset: srv3_installed_cooling.cooler_asset,
+        cooler: exact_cooler,
+        processor: srv3_installed_cooling.processor,
+        baseboard_model: srv3_installed_cooling.baseboard_model,
+      },
+    ),
+  )
+}
+
+// Control 1: removing the installed cooler makes qualification incomplete rather than passing.
+// srv1 carries no cooler row in the live fleet inventory, so this reads the real population and
+// proves absence resolves to Unobserved — not to a silent compatibility.
+test fn host_without_modeled_cooler_is_unobserved_not_compatible() -> Bool {
+  match installed_cooling_verdict_for_host(
+    host: host_srv1,
+    realizations: installed_cooling_realizations,
+  ) {
+    InstalledCoolingUnobserved { host: _ } => true
+    CoolingCatalogCompatible { host: _, cooler_asset: _ } => false
+    CoolingCatalogRefused { host: _, cause: _ } => false
+  }
+}
+
+// And the same absence must refuse qualification, since InstalledCoolingUnobserved is the arm a
+// gate would be tempted to treat as "nothing wrong here".
+test fn unobserved_installed_cooling_does_not_admit_qualification() -> Bool {
+  !cooling_catalog_verdict_admits_qualification(
+    verdict: installed_cooling_verdict_for_host(
+      host: host_srv1,
+      realizations: installed_cooling_realizations,
+    ),
+  )
+}
+
+// The live srv3 row resolves through the real fleet population, not just the locally rebuilt
+// specimen — so the production path and this witness read the same facts.
+test fn live_fleet_population_resolves_srv3_to_compatible() -> Bool {
+  cooling_catalog_verdict_admits_qualification(
+    verdict: installed_cooling_verdict_for_host(
+      host: host_srv3,
+      realizations: installed_cooling_realizations,
+    ),
+  )
+}
+
+// Control 5: catalog compatibility alone cannot produce runtime thermal acceptance. This is a
+// structural claim, not a behavioural one — the verdict coproduct carries no temperature, tach,
+// duty, or monitoring-window field, so no consumer can read a runtime outcome out of it. If a
+// later edit adds such a field, this witness is where the substitution becomes visible.
+data cooling_catalog_carries_no_runtime_evidence_note: Bool = true
+
+// CoolingCatalogCompatible's entire payload is host + cooler asset identity. Reading it back
+// from those two fields alone demonstrates there is nothing else in the verdict to mistake for
+// a measurement.
+test fn catalog_verdict_cannot_stand_in_for_runtime_thermal_evidence() -> Bool {
+  match cooling_catalog_verdict(realization: srv3_installed_cooling) {
+    CoolingCatalogCompatible { host: host, cooler_asset: asset } =>
+      host == host_srv3 && asset == cooler_srv3
+    CoolingCatalogRefused { host: _, cause: _ } => false
+    InstalledCoolingUnobserved { host: _ } => false
+  }
+}

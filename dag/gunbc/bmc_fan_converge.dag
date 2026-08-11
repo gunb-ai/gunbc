@@ -134,6 +134,15 @@ import gunbc.fleet_intent {
   srv4_host,
 }
 import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
+import gunbc.fleet_physical_inventory { installed_cooling_realizations }
+import product.cooling_qualification {
+  CoolingCatalogVerdict,
+  CoolingCatalogCompatible,
+  CoolingCatalogRefused,
+  InstalledCoolingUnobserved,
+  cooling_catalog_refusal_reason,
+  installed_cooling_verdict_for_host,
+}
 import std.bmc { BmcFirmwareFamily, OpenBmc }
 import std.content_hash {
   ContentHash,
@@ -201,6 +210,28 @@ fn bmc_fan_exact_target_admission_matches(
   admission_target: HostIdentity,
 ) -> Bool {
   target == admission_target
+}
+
+// The installed-cooling verdict for a converge target, resolved from the fleet inventory's
+// installed_cooling_realizations by host identity. A host with no modeled cooler resolves to
+// InstalledCoolingUnobserved — absence is never read as compatibility.
+fn bmc_fan_installed_cooling_verdict(
+  target: BmcFanConvergeTarget,
+) -> CoolingCatalogVerdict {
+  installed_cooling_verdict_for_host(
+    host: target.host.identity,
+    realizations: installed_cooling_realizations,
+  )
+}
+
+fn bmc_fan_cooling_refusal_reason(verdict: CoolingCatalogVerdict) -> String {
+  join(
+    [
+      "BMC fan convergence refused: ",
+      cooling_catalog_refusal_reason(verdict: verdict),
+    ],
+    "",
+  )
 }
 
 type BmcFanTypedObservationPlan {
@@ -1603,6 +1634,17 @@ fn bmc_fan_converge_with_credential(
   }
 }
 
+// Action dispatch, and the one asymmetry worth stating: BmcFanObserveOnly is UNGATED — reading
+// fan and temperature state must stay available whatever the catalog standing is. Converging a
+// fan policy is different: it is the CLAIM that this host's cooling configuration is qualified
+// to hold the installed processor under that curve, so it requires an installed heat-pickup
+// realization at least catalog-admissible for the installed socket, board, and TDP. A curve
+// converged onto a host whose cooler is unmodeled, socket-mismatched, or under-rated is a
+// fabricated thermal assurance. That catalog verdict is a PREFLIGHT and never a substitute for
+// the live thermal/tach readback bmc_fan_converge_with_credential still performs — both must
+// hold and this gate supplies only the first. BmcFanRollbackPrevious is deliberately NOT gated:
+// restoring a previously admitted configuration is a recovery path, and a catalog gap must never
+// strand a host on a policy it cannot roll back off.
 func bmc_fan_run(
   target: BmcFanConvergeTarget,
   action: BmcFanRequestedAction,
@@ -1633,10 +1675,25 @@ func bmc_fan_run(
             credential: credential,
           )
         BmcFanConvergeRequested =>
-          bmc_fan_converge_with_credential(
-            target: target,
-            credential: credential,
-          )
+          match bmc_fan_installed_cooling_verdict(target: target) {
+            CoolingCatalogCompatible { host: _, cooler_asset: _ } =>
+              bmc_fan_converge_with_credential(
+                target: target,
+                credential: credential,
+              )
+            CoolingCatalogRefused { host: host, cause: cause } =>
+              exit_failure(
+                reason: bmc_fan_cooling_refusal_reason(
+                  verdict: CoolingCatalogRefused { host: host, cause: cause },
+                ),
+              )
+            InstalledCoolingUnobserved { host: host } =>
+              exit_failure(
+                reason: bmc_fan_cooling_refusal_reason(
+                  verdict: InstalledCoolingUnobserved { host: host },
+                ),
+              )
+          }
         BmcFanRollbackPrevious =>
           bmc_fan_rollback_previous_with_credential(
             target: target,

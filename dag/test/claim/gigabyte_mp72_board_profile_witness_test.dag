@@ -1,0 +1,47 @@
+module test.claim.gigabyte_mp72_board_profile_witness
+
+import std.nat { Nat }
+import extdeps.boards.gigabyte {
+  BaseboardPhysicalProfile, BoardProcurementStanding,
+  gigabyte_mp72_hb0_catalog, gigabyte_mp72_hb0_physical_profile,
+  asrock_altrad8ud_1l2t_physical_profile,
+  gigabyte_mp72_hb0_procurement_standing, gigabyte_mp72_hb0_purchase_gate,
+  board_profile_power_headers_match, board_profile_area_mm2,
+  board_profile_max_socket_power_w,
+}
+
+data mp72_witness_note: String = "Three witnesses over a CANDIDATE board row that no fleet asset cites. They exist to keep a reading honest, not to admit hardware: the profile must agree with the vendor page on the fields the physical design actually consumes, the procurement standing must not silently advance past what a stock photograph can establish, and the architectural claim that motivated the candidate must be the true claim rather than the flattering one."
+
+data header_witness_note: String = "The single fact that makes the dual-socket board a drop-in for the existing tile power design: its power-header inventory is IDENTICAL to the single-socket board already modelled - one 24-pin and two 8-pin EPS. So the cable population changes count, not kind, and no new connector class enters the design. If a future revision of either row breaks that, the tile's internal harness stops being reusable and this reds first."
+
+test fn witness_power_header_inventory_is_unchanged_across_boards() -> Bool {
+  board_profile_power_headers_match(
+    a: gigabyte_mp72_hb0_physical_profile,
+    b: asrock_altrad8ud_1l2t_physical_profile,
+  )
+    && gigabyte_mp72_hb0_physical_profile.atx_24pin_count == 1
+    && gigabyte_mp72_hb0_physical_profile.eps_8pin_count == 2
+}
+
+data standing_witness_note: String = "A stock photograph cannot advance procurement standing. This holds the row at ListingObserved and requires the gate to be non-empty, so a later edit cannot quietly promote the board to UnitReceiptHeld without the receipts that word implies."
+
+test fn witness_candidate_board_standing_is_listing_only() -> Bool {
+  match gigabyte_mp72_hb0_procurement_standing {
+    CatalogReadOnly => false,
+    ListingObserved => true,
+    UnitReceiptHeld => false,
+  }
+    && count(gigabyte_mp72_hb0_purchase_gate) >= 8
+}
+
+data density_witness_note: String = "The architectural claim, stated as the TRUE one rather than the flattering one. Two dual-socket boards carry the same socket count as four single-socket boards in materially less area, and the E-ATX board doubles the power a single carrier must deliver. Both are checked, because the seductive framing - half as many tiles is automatically better - hides that each tile becomes a heavier, hotter, larger failure domain. Area falls by roughly 23 percent for equal sockets; it does not halve."
+
+test fn witness_dual_socket_density_claim_is_the_true_one() -> Bool {
+  let dual_area = board_profile_area_mm2(p: gigabyte_mp72_hb0_physical_profile) * 3
+  let single_area = board_profile_area_mm2(p: asrock_altrad8ud_1l2t_physical_profile) * 6
+  let dual_power = board_profile_max_socket_power_w(p: gigabyte_mp72_hb0_physical_profile)
+  let single_power = board_profile_max_socket_power_w(p: asrock_altrad8ud_1l2t_physical_profile)
+  single_area > dual_area
+    && dual_area * 100 > single_area * 70
+    && dual_power == single_power * 2
+}
