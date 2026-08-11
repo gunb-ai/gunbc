@@ -160,7 +160,6 @@ type ProducedDeclSupport
     }
 
 type TargetModel {
-  produced_decl_support: ProducedDeclUnwired,
   bundle: Node
   lex: LexRules
   binding_spellings: Map<Symbol, String>
