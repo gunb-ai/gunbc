@@ -1,8 +1,10 @@
 module v2.test.execution.self_host_promotion_admission
 
 import v2.compiler.self_host.generation {
+  ArtifactIdentity,
   ArtifactMaterialized,
   ArtifactNotMaterialized,
+  observed_artifact_digest,
   CandidateGeneration,
   GenerationIdentity,
   SeedGeneration,
@@ -32,26 +34,40 @@ import v2.compiler.self_host.promotion_admission {
 }
 import v2.std.logic { Bool }
 import v2.std.node { Hash, symbol_identity_digest }
+import v2.std.optional { Absent, Present }
+import std.content_hash { sha512_hex_digest }
+
+fn pa_artifact(hex: String) -> ArtifactIdentity {
+  match sha512_hex_digest(hex: hex) {
+    Present { value: d } =>
+      ArtifactMaterialized { digest: observed_artifact_digest(observed: d) }
+    Absent => ArtifactNotMaterialized
+  }
+}
+
+data pa_seed_artifact_hex: String = "36356c8cc805d9d4a762991f9059d3687ef70fd1786b2d90f2806fcad0f9ce916d80cd3220ebf6f13d19df404740ca849cda38a6632cd0c2f92689e3bec80505"
+
+data pa_candidate_artifact_hex: String = "8913ea1d5983297e05f1c0ca75a7f85d551f308ee3cc4f6123ff74980198feb88c08a0167fd6a74b4994b8d9febcec5f8cb7c2132368349b5e9dc1bd86ce8458"
+
+data pa_successor_artifact_hex: String = "cf931ac453463355533c6e57f0bc87105ef261954875975dfcf463e4fcbf9af0f94c76a2bd7f538e84f3264cfaa5291f3b63f34ffd2f6f09214c329d5688c895"
 
 fn pa_digest(label: String) -> Hash {
   symbol_identity_digest(sym: label)
 }
 
-fn pa_identity(closure_label: String, artifact_label: String) -> GenerationIdentity {
+fn pa_identity(closure_label: String, artifact_hex: String) -> GenerationIdentity {
   GenerationIdentity {
     producer_compiler: pa_digest(label: "producer-compiler"),
     source_closure: pa_digest(label: closure_label),
     target_model: pa_digest(label: "target-model-rust"),
     toolchain: pa_digest(label: "toolchain-pinned"),
     build_configuration: pa_digest(label: "build-config-release"),
-    materialized_artifact: ArtifactMaterialized {
-      digest: pa_digest(label: artifact_label)
-    }
+    materialized_artifact: pa_artifact(hex: artifact_hex)
   }
 }
 
 fn pa_seed_identity() -> GenerationIdentity {
-  pa_identity(closure_label: "seed-closure", artifact_label: "seed-artifact")
+  pa_identity(closure_label: "seed-closure", artifact_hex: pa_seed_artifact_hex)
 }
 
 // The candidate's source closure DELIBERATELY differs from the seed's. That is the
@@ -59,14 +75,14 @@ fn pa_seed_identity() -> GenerationIdentity {
 fn pa_candidate_identity() -> GenerationIdentity {
   pa_identity(
     closure_label: "candidate-closure-DIFFERENT-FROM-SEED",
-    artifact_label: "candidate-artifact"
+    artifact_hex: pa_candidate_artifact_hex
   )
 }
 
 fn pa_successor_identity() -> GenerationIdentity {
   pa_identity(
     closure_label: "successor-closure",
-    artifact_label: "successor-artifact"
+    artifact_hex: pa_successor_artifact_hex
   )
 }
 
@@ -505,4 +521,109 @@ test fn candidate_cannot_authorize_its_own_provenance() -> Bool {
       o: o,
       cause: ^refusal_provenance_not_declared_producer
     )
+}
+
+// DISCRIMINATING RED for the oracle join (review 51140). A receipt naming the
+// CANDIDATE as its own oracle is refused. Without the join this bundle is admitted:
+// subject matches, behavior "agrees", and the comparison was against itself.
+test fn candidate_as_its_own_oracle_is_refused() -> Bool {
+  let self_oracle = BehavioralEquivalenceReceipt {
+    subject: pa_candidate_identity(),
+    oracle: pa_candidate_identity(),
+    corpus: "std-logic-classical-truth-table",
+    cases_compared: 12,
+    outcome: Observed { value: BehaviorAgrees }
+  }
+  let o = admit_promotion(
+    c: pa_bundle(
+      candidate_build: pa_build(
+        subject: pa_candidate_identity(),
+        outcome: Observed { value: BuildGreen }
+      ),
+      successor_build: pa_build(
+        subject: pa_successor_identity(),
+        outcome: Observed { value: BuildGreen }
+      ),
+      candidate_equivalence: self_oracle,
+      successor_equivalence: pa_equivalence(
+        subject: pa_successor_identity(),
+        cases: 12,
+        outcome: Observed { value: BehaviorAgrees }
+      ),
+      discriminating_fault: pa_fault(
+        subject: pa_candidate_identity(),
+        outcome: Observed { value: FaultCaught }
+      ),
+      candidate_provenance: pa_provenance(
+        subject: pa_candidate_identity(),
+        producer: pa_seed_identity()
+      ),
+      successor_provenance: pa_provenance(
+        subject: pa_successor_identity(),
+        producer: pa_candidate_identity()
+      )
+    )
+  )
+  !promotion_is_admitted(o: o)
+    && promotion_refusal_carries(o: o, cause: ^refusal_oracle_not_declared_seed)
+}
+
+// DISCRIMINATING RED for the unmaterialized-artifact arm at the PROMOTION seam
+// (review 51140). The generation-level witness proves two unbuilt artifacts do not
+// AGREE; this proves admission refuses an unbuilt candidate by name, which is the
+// arm that matters when SH-C's artifact axis is not yet fillable.
+test fn unmaterialized_candidate_artifact_is_refused_at_promotion() -> Bool {
+  let unbuilt_identity = GenerationIdentity {
+    producer_compiler: pa_candidate_identity().producer_compiler,
+    source_closure: pa_candidate_identity().source_closure,
+    target_model: pa_candidate_identity().target_model,
+    toolchain: pa_candidate_identity().toolchain,
+    build_configuration: pa_candidate_identity().build_configuration,
+    materialized_artifact: ArtifactNotMaterialized
+  }
+  let unbuilt_candidate = CandidateGeneration {
+    identity: unbuilt_identity,
+    produced_by_seed: pa_seed()
+  }
+  let o = admit_promotion(
+    c: SelfHostCandidate {
+      candidate: unbuilt_candidate,
+      successor: SuccessorGeneration {
+        identity: pa_successor_identity(),
+        produced_by_candidate: unbuilt_candidate
+      },
+      candidate_build: pa_build(
+        subject: unbuilt_identity,
+        outcome: Observed { value: BuildGreen }
+      ),
+      successor_build: pa_build(
+        subject: pa_successor_identity(),
+        outcome: Observed { value: BuildGreen }
+      ),
+      candidate_equivalence: pa_equivalence(
+        subject: unbuilt_identity,
+        cases: 12,
+        outcome: Observed { value: BehaviorAgrees }
+      ),
+      successor_equivalence: pa_equivalence(
+        subject: pa_successor_identity(),
+        cases: 12,
+        outcome: Observed { value: BehaviorAgrees }
+      ),
+      discriminating_fault: pa_fault(
+        subject: unbuilt_identity,
+        outcome: Observed { value: FaultCaught }
+      ),
+      candidate_provenance: pa_provenance(
+        subject: unbuilt_identity,
+        producer: pa_seed_identity()
+      ),
+      successor_provenance: pa_provenance(
+        subject: pa_successor_identity(),
+        producer: unbuilt_identity
+      )
+    }
+  )
+  !promotion_is_admitted(o: o)
+    && promotion_refusal_carries(o: o, cause: ^refusal_artifact_not_materialized)
 }

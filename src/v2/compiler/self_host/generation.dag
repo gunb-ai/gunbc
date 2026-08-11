@@ -11,6 +11,7 @@ import v2.std.diagnostic {
 }
 import v2.std.node { combine_hash, Hash, Symbol, symbol_identity_digest }
 import v2.std.text { String, string_is_empty }
+import std.content_hash { Sha512Digest, content_hash_eq_sha512 }
 
 // Generation identity is SIX independent axes, never one scalar. A single opaque
 // compiler_identity digest can report THAT a generation went stale and cannot report
@@ -31,8 +32,39 @@ type GenerationAxis
 // because a generation whose artifact was never built is a DIFFERENT state from one
 // whose artifact differs — and admission must refuse the former by naming it, never
 // treat unbuilt as equivalent.
+//
+// The digest carrier is sole_constructor, so the artifact axis cannot be FORGED.
+// An earlier revision typed it as Hash — that is v2.std.node's Fnv1a64Structural,
+// which symbol_identity_digest mints from arbitrary text, so
+// ArtifactMaterialized { digest: symbol_identity_digest(sym: ^anything) } typechecked
+// and required no build, no file and no observation. The one axis whose entire
+// purpose is to be filled from built bytes had no construction link to bytes. That is
+// the donor's authored compile_skipped Bool wearing a different field name: an
+// asserted fingerprint standing where an observation was owed. Because admission
+// JOINS on this axis, a forged digest does not merely mislabel one generation — it
+// makes every downstream stale-axis check agree when it should refuse.
+//
+// The mint takes an already-validated Sha512Digest rather than any particular
+// observation record, deliberately. Binding it to one tool's observation coproduct
+// would fuse the transport into the interface (DESIGN §3): the observer is a
+// realization handler, one of N. Any observer that produces a Sha512Digest can mint —
+// the sha512sum file path yields exactly that on its observed arm — and none can
+// shortcut the validation, because Sha512Digest itself is reachable only through the
+// length-and-lowercase-hex checked mints. It is also the cited cryptographic family
+// the real transport already produces, so nothing has to be re-fingerprinted through
+// fnv1a64, which would degrade a cryptographic digest to a 64-bit structural one and
+// relabel arbitrary text as a digest — the exact move content_hash's constructor note
+// forbids.
+type ObservedArtifactDigest sole_constructor {
+  observed: Sha512Digest
+}
+
+fn observed_artifact_digest(observed: Sha512Digest) -> ObservedArtifactDigest {
+  ObservedArtifactDigest { observed: observed }
+}
+
 type ArtifactIdentity
-  = ArtifactMaterialized { digest: Hash }
+  = ArtifactMaterialized { digest: ObservedArtifactDigest }
   | ArtifactNotMaterialized
 
 type GenerationIdentity {
@@ -214,7 +246,8 @@ fn artifact_identity_agrees(left: ArtifactIdentity, right: ArtifactIdentity) -> 
   match left {
     ArtifactMaterialized { digest: l } =>
       match right {
-        ArtifactMaterialized { digest: r } => l == r
+        ArtifactMaterialized { digest: r } =>
+          content_hash_eq_sha512(left: l.observed, right: r.observed)
         ArtifactNotMaterialized => false
       }
     ArtifactNotMaterialized =>

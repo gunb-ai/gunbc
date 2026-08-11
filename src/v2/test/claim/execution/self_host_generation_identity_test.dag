@@ -1,8 +1,10 @@
 module v2.test.execution.self_host_generation_identity
 
 import v2.compiler.self_host.generation {
+  ArtifactIdentity,
   ArtifactMaterialized,
   ArtifactNotMaterialized,
+  observed_artifact_digest,
   BuildConfigurationAxis,
   GenerationAxis,
   GenerationIdentity,
@@ -32,6 +34,24 @@ import v2.std.algebra { fold_list, for_all, length }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.node { Hash, symbol_identity_digest }
+import v2.std.optional { Absent, Present }
+import std.content_hash { sha512_hex_digest }
+
+data gi_artifact_baseline_hex: String = "8f31919534d1585a005d999df89eea61ae2aee36ed7f943b768f251bc38c7cbdd927d3dd88c1a1b9322552ee85bf2f866acfc2e9e9d718a6b4195e86b0943316"
+
+data gi_artifact_moved_hex: String = "f316fd8378b70362bcac957857fd6dd68292084d75a44bcdaaac7a113384ad78e6412513a229f7fdb0204a113fa17cb876304eb478d9099296a49ad209954edd"
+
+// An artifact identity is reachable ONLY through the validating mint. An unparseable
+// digest yields ArtifactNotMaterialized rather than a fabricated one, which admission
+// then refuses by name — the honest arm, and strictly better than a green axis
+// derived from bytes nobody observed.
+fn gi_artifact(hex: String) -> ArtifactIdentity {
+  match sha512_hex_digest(hex: hex) {
+    Present { value: d } =>
+      ArtifactMaterialized { digest: observed_artifact_digest(observed: d) }
+    Absent => ArtifactNotMaterialized
+  }
+}
 
 fn gi_digest(label: String) -> Hash {
   symbol_identity_digest(sym: label)
@@ -44,9 +64,7 @@ fn gi_baseline() -> GenerationIdentity {
     target_model: gi_digest(label: "target-model-baseline"),
     toolchain: gi_digest(label: "toolchain-baseline"),
     build_configuration: gi_digest(label: "build-configuration-baseline"),
-    materialized_artifact: ArtifactMaterialized {
-      digest: gi_digest(label: "artifact-baseline")
-    }
+    materialized_artifact: gi_artifact(hex: gi_artifact_baseline_hex)
   }
 }
 
@@ -109,9 +127,7 @@ fn gi_perturbed(axis: GenerationAxis) -> GenerationIdentity {
         target_model: base.target_model,
         toolchain: base.toolchain,
         build_configuration: base.build_configuration,
-        materialized_artifact: ArtifactMaterialized {
-          digest: gi_digest(label: "artifact-MOVED")
-        }
+        materialized_artifact: gi_artifact(hex: gi_artifact_moved_hex)
       }
   }
 }
@@ -341,4 +357,24 @@ test fn axis_symbols_are_pairwise_distinct() -> Bool {
         ) == 1
       }
     )
+}
+
+// FORGERY CONTROL. Text that is not a valid SHA-512 digest cannot become a
+// materialized artifact. Before ObservedArtifactDigest was sole_constructor over a
+// validated digest, the axis was typed as the structural Hash that
+// symbol_identity_digest mints from ANY symbol, so an artifact identity could be
+// authored with no build, no file and no observation behind it.
+test fn unobserved_text_cannot_become_a_materialized_artifact() -> Bool {
+  match gi_artifact(hex: "not-a-digest") {
+    ArtifactMaterialized { digest: _ } => false
+    ArtifactNotMaterialized => true
+  }
+    && match gi_artifact(hex: "") {
+      ArtifactMaterialized { digest: _ } => false
+      ArtifactNotMaterialized => true
+    }
+    && match gi_artifact(hex: gi_artifact_baseline_hex) {
+      ArtifactMaterialized { digest: _ } => true
+      ArtifactNotMaterialized => false
+    }
 }

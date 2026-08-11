@@ -112,6 +112,7 @@ type PromotionRefusalCause
   | EmptyBehavioralCorpus { receipt: Symbol }
   | ProvenanceNotDeclaredProducer { receipt: Symbol }
   | ArtifactNotMaterialized { receipt: Symbol }
+  | OracleNotDeclaredSeed { receipt: Symbol }
 
 type PromotionOutcome
   = Promoted { successor: SuccessorGeneration, cases_compared: Int }
@@ -158,12 +159,30 @@ fn build_receipt_causes(
   }
 }
 
+// The oracle is joined against the DECLARED seed, not taken on the receipt's word.
+// Without this the receipt's oracle field is decorative: a bundle could name the
+// candidate as its own oracle, compare it against itself, agree trivially, and clear
+// admission — the self-authorization hole wearing a different field name. The seed
+// comes from the generation chain, which construction already fixed, so the receipt
+// cannot choose what it was measured against.
 fn equivalence_receipt_causes(
   receipt: Symbol,
   r: BehavioralEquivalenceReceipt,
-  expected: GenerationIdentity
+  expected: GenerationIdentity,
+  expected_oracle: GenerationIdentity
 ) -> List<PromotionRefusalCause> {
-  let stale = stale_causes_for(receipt: receipt, subject: r.subject, expected: expected)
+  let subject_stale = stale_causes_for(
+    receipt: receipt,
+    subject: r.subject,
+    expected: expected
+  )
+  let stale = if length(
+    xs: generation_identity_mismatched_axes(left: expected_oracle, right: r.oracle)
+  ) == 0 {
+    subject_stale
+  } else {
+    list_snoc_item(xs: subject_stale, item: OracleNotDeclaredSeed { receipt: receipt })
+  }
   // A corpus of zero cases is agreement over nothing. Admitting it would be the
   // vacuous-green failure: every claim quantified over an empty population is true.
   let sized = if r.cases_compared <= 0 {
@@ -276,6 +295,10 @@ fn concat_causes(
 fn promotion_refusal_causes(c: SelfHostCandidate) -> List<PromotionRefusalCause> {
   let candidate_identity = c.candidate.identity
   let successor_identity = c.successor.identity
+  // Both generations are measured against the SEED oracle: a successor that agreed
+  // only with the candidate would prove the two agree with each other while both
+  // drifted from the compiler they claim to reproduce.
+  let seed_identity = c.candidate.produced_by_seed.identity
   concat_causes(
     parts: [
       artifact_causes(receipt: ^subject_candidate, identity: candidate_identity),
@@ -293,12 +316,14 @@ fn promotion_refusal_causes(c: SelfHostCandidate) -> List<PromotionRefusalCause>
       equivalence_receipt_causes(
         receipt: ^receipt_candidate_equivalence,
         r: c.candidate_equivalence,
-        expected: candidate_identity
+        expected: candidate_identity,
+        expected_oracle: seed_identity
       ),
       equivalence_receipt_causes(
         receipt: ^receipt_successor_equivalence,
         r: c.successor_equivalence,
-        expected: successor_identity
+        expected: successor_identity,
+        expected_oracle: seed_identity
       ),
       fault_receipt_causes(r: c.discriminating_fault, expected: candidate_identity),
       provenance_receipt_causes(
@@ -370,5 +395,6 @@ fn promotion_refusal_cause_symbol(c: PromotionRefusalCause) -> Symbol {
     ProvenanceNotDeclaredProducer { receipt: _ } =>
       ^refusal_provenance_not_declared_producer
     ArtifactNotMaterialized { receipt: _ } => ^refusal_artifact_not_materialized
+    OracleNotDeclaredSeed { receipt: _ } => ^refusal_oracle_not_declared_seed
   }
 }
