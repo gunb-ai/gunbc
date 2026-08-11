@@ -7,6 +7,13 @@ import std.nat { Nat }
 import std.types { Int, Bool, String, NonEmptyStr }
 import extdeps.units.iec_80000_13 { iec_kibi_factor, octet_bit_count }
 import extdeps.units.iso8601 { iso8601_seconds_per_minute, iso8601_minutes_per_hour }
+import extdeps.units.iso_80000_3 {
+  square_millimetres_per_square_metre,
+  cubic_millimetres_per_cubic_metre,
+  arcseconds_per_turn,
+  degrees_per_turn,
+  arcseconds_per_degree_derived,
+}
 import extdeps.units.dimensionless {
   parts_per_ten_thousand_unity_count,
   percent_unity_hundred_count,
@@ -41,6 +48,10 @@ type Quantity =
   | ElectricCharge
   | MagneticFlux
 
+  | Area
+  | Volume
+  | PlaneAngle
+
   | Dimensionless
 
 type Scale =
@@ -53,6 +64,10 @@ type Scale =
   | One
   | Sixty
   | RackUnitHeight
+
+  | ArcsecondAngle
+  | DegreeAngle
+  | TurnAngle
   | Kilo
   | Mega
   | Giga
@@ -74,6 +89,9 @@ fn scale_exponent(s: Scale) -> Int? {
     Micro =>  Present { value:  -6 }
     Milli =>  Present { value:  -3 }
     One   =>  Present { value:   0 }
+    ArcsecondAngle => none
+    DegreeAngle    => none
+    TurnAngle      => none
     Sixty =>  none
     RackUnitHeight => none
     Kilo  =>  Present { value:   3 }
@@ -113,6 +131,9 @@ fn milliseconds_per_second() -> Nat {
 fn time_scale_factor_seconds(s: Scale) -> Nat? {
   match s {
     One => Present { value: 1 }
+    ArcsecondAngle => none
+    DegreeAngle => none
+    TurnAngle => none
     Sixty => Present { value: seconds_per_minute() }
     RackUnitHeight => none
     Atto  => none
@@ -147,6 +168,9 @@ fn memory_scale_factor_bytes(s: Scale) -> Nat? {
     Nano  => none
     Micro => none
     Milli => none
+    ArcsecondAngle => none
+    DegreeAngle => none
+    TurnAngle => none
     Sixty => none
     RackUnitHeight => none
     Kilo  => none
@@ -247,6 +271,145 @@ type Volt = Measure<ElectricPotentialDifference, One, Nat>
 type Ampere = Measure<ElectricCurrent, One, Nat>
 
 type Millimeter = Measure<Length, Milli, Nat>
+
+// THE SIGNED SPATIAL COMPONENT, and there is exactly ONE of it. Millimeter above stays Nat-backed
+// and is NOT widened: a wall of length -3 m must remain unwritable. What was missing is not a
+// negative length but the affine layer that explains what a signed spatial number MEANS. The
+// quantity stays Length because this measures extent along an axis; only the carrier differs, and
+// Nat-backed and Int-backed measures do not unify, so a magnitude cannot be passed where a
+// component is required or the reverse.
+//
+// AN EARLIER REVISION DECLARED TWO: MillimeterCoordinate and MillimeterDisplacementComponent, both
+// spelled Measure<Length, Milli, Int>. They were the SAME structural type, so the names implied a
+// distinction the typechecker did not carry - in work whose entire subject is that distinction. The
+// scalar really is one thing: a signed millimetre component. What separates a location from a
+// displacement is the AGGREGATE that holds three of them and the operations over it - Point3<F> and
+// Vector3<F> in std.affine_space, where Point + Point has no operation at all. Branding the
+// individual x, y and z would add conversion surface at every field access and buy no wall that the
+// outer types do not already carry.
+type SignedMillimeterComponent = Measure<Length, Milli, Int>
+
+// AREA AND VOLUME carry the scale their ratio to the base unit actually has. An earlier revision
+// wrote Measure<Area, Milli, Nat> and warned in a comment not to read Milli linearly - but Scale is
+// not documentation, it is a fold: scale_exponent answers Milli => -3, so the carrier asserted that
+// a square millimetre is 10^-3 of a square metre. It is 10^-6, and a comment cannot correct a fold.
+//
+// THE FIX IS THE EXISTING SCALE, NOT A NEW ONE. A revision after that minted MilliSquared => -6 and
+// MilliCubed => -9, which are Micro and Nano under second names - one decimal factor spelled twice,
+// the section 3 nickname, and every fold over Scale then had to grow two arms answering what an
+// existing arm already answered. Scale is the decimal factor; the ALIAS is what names the unit, and
+// SquareMillimeter says which unit this is. No generic linear scale conversion may be applied to
+// either carrier regardless: the ratios are squared and cubed, which is why the conversions below
+// DERIVE from extdeps.units.iso_80000_3 through a real import edge rather than a prose pointer - a
+// citation that names an authority the module does not depend on is a floating island, and would
+// let the factor here and the factor there drift with nothing to notice.
+type SquareMillimeter = Measure<Area, Micro, Nat>
+
+type CubicMillimeter = Measure<Volume, Nano, Nat>
+
+// The SOURCE units of the conversions below. They exist so a conversion cannot be handed "three of
+// something": square_metres_to_square_millimetres(count: 3) accepted a bare Nat and so re-created,
+// at the conversion boundary, exactly the dimensional erasure this slice exists to close.
+type SquareMeter = Measure<Area, One, Nat>
+
+type CubicMeter = Measure<Volume, One, Nat>
+
+// PLANE ANGLE units are non-decimal, like Sixty and RackUnitHeight already are: an arcsecond is
+// 1/1296000 of a turn, which is not a power of ten, so scale_decimal_exponent answers `none` rather
+// than pretending. An earlier revision typed Arcsecond as scale One, asserting it was the coherent
+// base unit - it is not; the radian is.
+// THE TURN IS THIS SUBSTRATE'S EXACT CANONICAL ANGLE UNIT, and that is a numeric-policy decision
+// made HERE rather than a fact read off ISO 80000-3. It lived in extdeps.units.iso_80000_3 while
+// being a choice about which carrier gunbc computes in, which is the layer inversion section 3
+// names: extdeps states that the radian is the coherent unit and that degree, arcminute and
+// arcsecond are exact rational subdivisions of the turn; picking the turn BECAUSE those
+// subdivisions are rational, and therefore exact in integer arithmetic, is ours.
+//
+// The consequence is the one that matters: 1 turn = 2*pi rad is irrational, so no exact integer
+// conversion to radian exists and NONE IS OFFERED. A total degree-to-radian function over integers
+// would silently floor - inventing precision at the unit boundary, before any geometry ran. Radian
+// conversion waits on the approximate-numeric realization and its declared error bound.
+//
+// Angle magnitude and signed angular displacement are separate types for the same reason length
+// magnitude and the signed component are.
+type Arcsecond = Measure<PlaneAngle, ArcsecondAngle, Nat>
+
+type ArcsecondDisplacement = Measure<PlaneAngle, ArcsecondAngle, Int>
+
+type Degree = Measure<PlaneAngle, DegreeAngle, Nat>
+
+// A full turn as a first-class carrier, so the exact canonical unit is representable rather than
+// only describable in prose.
+type Turn = Measure<PlaneAngle, TurnAngle, Nat>
+
+// Signed area: the dot product of two displacement vectors is an AREA with a meaningful sign, not
+// an untyped integer. Without this carrier a dot product returns a bare Int and its dimension is
+// erased at the first operation.
+type SignedSquareMillimeter = Measure<Area, Micro, Int>
+
+fn signed_millimeter_component(count: Int) -> SignedMillimeterComponent {
+  Measure { count: count }
+}
+
+fn signed_millimeter_component_count(m: SignedMillimeterComponent) -> Int {
+  measure_count(m)
+}
+
+fn square_meter(count: Nat) -> SquareMeter {
+  Measure { count: count }
+}
+
+fn square_meter_count(m: SquareMeter) -> Nat {
+  measure_count(m)
+}
+
+fn cubic_meter(count: Nat) -> CubicMeter {
+  Measure { count: count }
+}
+
+fn cubic_meter_count(m: CubicMeter) -> Nat {
+  measure_count(m)
+}
+
+fn degree(count: Nat) -> Degree {
+  Measure { count: count }
+}
+
+fn degree_count(d: Degree) -> Nat {
+  measure_count(d)
+}
+
+fn square_millimeter(count: Nat) -> SquareMillimeter {
+  Measure { count: count }
+}
+
+fn square_millimeter_count(m: SquareMillimeter) -> Nat {
+  measure_count(m)
+}
+
+fn cubic_millimeter(count: Nat) -> CubicMillimeter {
+  Measure { count: count }
+}
+
+fn cubic_millimeter_count(m: CubicMillimeter) -> Nat {
+  measure_count(m)
+}
+
+fn arcsecond(count: Nat) -> Arcsecond {
+  Measure { count: count }
+}
+
+fn arcsecond_count(a: Arcsecond) -> Nat {
+  measure_count(a)
+}
+
+fn arcsecond_displacement(count: Int) -> ArcsecondDisplacement {
+  Measure { count: count }
+}
+
+fn arcsecond_displacement_count(a: ArcsecondDisplacement) -> Int {
+  measure_count(a)
+}
 
 // EIA-310 rack unit: 1U = 1.75 in = 44.45 mm EXACTLY, which is 44450 micrometres — an
 // integer, so the quantum is exact in the Nat carrier and needs no rounding. RackUnitHeight
@@ -729,6 +892,56 @@ fn clock_basis_label(b: ClockBasis) -> NonEmptyStr {
     CpuClock => "thread-CPU" as NonEmptyStr
     WallClock => "wall" as NonEmptyStr
   }
+}
+
+// Derived from the cited ISO 80000-3 factors, not from the linear Scale fold. These exist so the
+// squared/cubed relation has a modeled consumer: without them the carriers above would name an
+// authority nothing reaches.
+//
+// BOTH SIDES OF THE CONVERSION ARE TYPED. An earlier revision took a bare Nat, so the one boundary
+// where a unit is being CHANGED - the single place a wrong unit is most likely to enter - was the
+// one place the substrate accepted an undimensioned number.
+fn square_metres_to_square_millimetres(area: SquareMeter) -> SquareMillimeter {
+  square_millimeter(count: square_meter_count(m: area) * square_millimetres_per_square_metre())
+}
+
+fn cubic_metres_to_cubic_millimetres(volume: CubicMeter) -> CubicMillimeter {
+  cubic_millimeter(count: cubic_meter_count(m: volume) * cubic_millimetres_per_cubic_metre())
+}
+
+// One full turn in arcseconds, derived from the cited subdivision chain rather than restated.
+fn full_turn_arcseconds() -> Arcsecond {
+  arcsecond(count: arcseconds_per_turn())
+}
+
+fn degrees_to_arcseconds(degrees: Degree) -> Arcsecond {
+  arcsecond(count: degree_count(d: degrees) * arcseconds_per_degree_derived())
+}
+
+fn turns_to_arcseconds(turns: Turn) -> Arcsecond {
+  arcsecond(count: turn_count(t: turns) * arcseconds_per_turn())
+}
+
+// A quarter turn is exact in arcseconds because the subdivision is rational - the same reason the
+// turn is the canonical unit and radian conversion is absent.
+fn quarter_turn_arcseconds() -> Arcsecond {
+  arcsecond(count: arcseconds_per_turn() / 4)
+}
+
+fn turn(count: Nat) -> Turn {
+  Measure { count: count }
+}
+
+fn turn_count(t: Turn) -> Nat {
+  measure_count(t)
+}
+
+fn signed_square_millimeter(count: Int) -> SignedSquareMillimeter {
+  Measure { count: count }
+}
+
+fn signed_square_millimeter_count(m: SignedSquareMillimeter) -> Int {
+  measure_count(m)
 }
 
 data amortization_months_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: ground as calendar-month Duration sibling to billing_month_as_hour_count (one month-count authority for billing amortization + hourly divisor), or fold into extdeps.forex/pricing month facts when a second consumer appears — do not mint a third month wrapper.")
