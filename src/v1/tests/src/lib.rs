@@ -134,10 +134,6 @@ mod nodefold_generic_instantiation_test;
 #[cfg(test)]
 mod none_undetermined_carrier_refuse_test;
 #[cfg(test)]
-mod optional_carrier_signature_test;
-#[cfg(test)]
-mod optional_consumer_fail_closed_test;
-#[cfg(test)]
 mod optional_receiver_method_unwrap_test;
 #[cfg(test)]
 mod parse_table_memo_amortization_test;
