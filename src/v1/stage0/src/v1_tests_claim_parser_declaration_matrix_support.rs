@@ -8,7 +8,7 @@ use crate::std_occurrence_identity::OccurrenceCategory::{
 };
 pub use crate::std_occurrence_identity::{
     DeclarationOccurrence, OccurrenceCategory, OccurrenceId, OccurrenceIndexEntry,
-    OccurrenceTransport,
+    OccurrenceTransport, ReferenceOccurrence,
 };
 use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, List, NonEmptyStr};
@@ -34,7 +34,7 @@ pub fn pdc_support_authority_note() -> String {
 }
 
 pub fn pdc_matrix_source() -> String {
-    (((((((((((((((((((((((("module app.pdc_matrix\n".to_string()
+    (((((((((((((((((((((((((("module app.pdc_matrix\n".to_string()
         + &"\n".to_string())
         + &"type PdcProduct {\n".to_string())
         + &"  pdc_product_field: Int\n".to_string())
@@ -60,6 +60,8 @@ pub fn pdc_matrix_source() -> String {
         + &"    }\n".to_string())
         + &"  }\n".to_string())
         + &"}\n".to_string())
+        + &"\n".to_string())
+        + &"type PdcAlias = PdcProduct\n".to_string())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -282,6 +284,112 @@ pub fn pdc_declares_exactly(
         == expected.clone())
 }
 
+pub fn pdc_reference_rows_for_name(
+    transport: Rc<OccurrenceTransport>,
+    name: String,
+) -> Rc<Vec<String>> {
+    transport.references.clone().iter().cloned().fold(
+        Rc::new(vec![]),
+        |acc: Rc<Vec<String>>, reference: Rc<ReferenceOccurrence>| {
+            match pdc_index_entry_for_occurrence(
+                transport.clone(),
+                reference.occurrence.clone().value.clone(),
+            ) {
+                None => acc.clone(),
+                Some(entry) => {
+                    match (entry.projection.clone().authored_name.clone() == name.clone()) {
+                        true => v1_rt::concat(
+                            acc.clone(),
+                            Rc::new(vec![
+                                ((((((((entry.projection.clone().authored_name.clone()
+                                    + &"#".to_string())
+                                    + &pdc_category_tag(reference.category.clone()))
+                                    + &"#span:".to_string())
+                                    + &(entry
+                                        .projection
+                                        .clone()
+                                        .diagnostic_span
+                                        .clone()
+                                        .start
+                                        .clone())
+                                    .to_string())
+                                    + &"-".to_string())
+                                    + &(entry
+                                        .projection
+                                        .clone()
+                                        .diagnostic_span
+                                        .clone()
+                                        .end
+                                        .clone())
+                                    .to_string())
+                                    + &"#path:".to_string())
+                                    + &pdc_reference_chain(transport.clone(), reference.clone())),
+                            ]),
+                        ),
+                        false => acc.clone(),
+                    }
+                }
+            }
+        },
+    )
+}
+
+pub fn pdc_reference_chain(
+    transport: Rc<OccurrenceTransport>,
+    reference: Rc<ReferenceOccurrence>,
+) -> String {
+    reference
+        .containment
+        .clone()
+        .ancestors
+        .clone()
+        .iter()
+        .cloned()
+        .fold("".to_string(), |chain: String, ancestor: OccurrenceId| {
+            ((chain + &">".to_string())
+                + &pdc_named_or_anon(transport.clone(), ancestor.value.clone()))
+        })
+}
+
+pub fn pdc_index_entry_for_occurrence(
+    transport: Rc<OccurrenceTransport>,
+    occurrence_value: i64,
+) -> Option<Rc<OccurrenceIndexEntry>> {
+    transport
+        .index
+        .clone()
+        .entries
+        .clone()
+        .iter()
+        .cloned()
+        .fold(
+            None,
+            |found: _, entry: Rc<OccurrenceIndexEntry>| match found.clone() {
+                Some(_) => found.clone(),
+                None => match (entry.projection.clone().occurrence.clone().value.clone()
+                    == occurrence_value.clone())
+                {
+                    true => Some(entry.clone()),
+                    false => None,
+                },
+            },
+        )
+}
+
+pub fn pdc_reference_population(transport: Rc<OccurrenceTransport>, name: String) -> String {
+    pdc_render_tags(pdc_reference_rows_for_name(transport.clone(), name.clone()))
+}
+
+pub fn pdc_reference_row(name: String, expected: String) -> bool {
+    match (*pdc_parse_matrix()).clone() {
+        PdcTransport::PdcTransportRefused => false,
+        PdcTransport::PdcTransportReady {
+            transport: transport,
+            ..
+        } => (pdc_reference_population(transport.clone(), name.clone()) == expected.clone()),
+    }
+}
+
 pub fn pdc_declares_nothing(transport: Rc<OccurrenceTransport>, name: String) -> bool {
     ((pdc_declared_tags_for_name(transport.clone(), name.clone()).len() as i64) == 0)
 }
@@ -377,5 +485,18 @@ pub fn pdc_non_type_category_count(tag: String) -> i64 {
             transport: transport,
             ..
         } => pdc_declared_category_count(transport.clone(), tag.clone()),
+    }
+}
+
+pub fn pdc_declaration_count_row(name: String, expected: i64) -> bool {
+    match (*pdc_parse_matrix()).clone() {
+        PdcTransport::PdcTransportRefused => false,
+        PdcTransport::PdcTransportReady {
+            transport: transport,
+            ..
+        } => {
+            ((pdc_declared_tags_for_name(transport.clone(), name.clone()).len() as i64)
+                == expected.clone())
+        }
     }
 }

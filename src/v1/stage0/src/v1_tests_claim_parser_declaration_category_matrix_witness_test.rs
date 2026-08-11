@@ -12,8 +12,8 @@ use crate::v1_tests_claim_parser_declaration_matrix_support::PdcTransport::{
 };
 pub use crate::v1_tests_claim_parser_declaration_matrix_support::{
     pdc_declares_nothing, pdc_identity_row, pdc_index_entry_for_declaration,
-    pdc_matrix_category_count, pdc_non_type_category_count, pdc_parse_matrix, pdc_row,
-    pdc_zero_row,
+    pdc_matrix_category_count, pdc_non_type_category_count, pdc_parse_matrix, pdc_reference_row,
+    pdc_row, pdc_zero_row,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -192,8 +192,16 @@ pub fn witness_a_declaration_exists_at_the_coproduct_field_site() -> bool {
     }
 }
 
-pub fn witness_matrix_declares_exactly_its_two_named_types() -> bool {
-    (pdc_matrix_category_count("TypeOccurrence".to_string()) == 2)
+pub fn witness_matrix_declares_exactly_its_three_named_types() -> bool {
+    (pdc_matrix_category_count("TypeOccurrence".to_string()) == 3)
+}
+
+pub fn witness_type_alias_declaration_is_declared() -> bool {
+    pdc_row("PdcAlias".to_string(), "|TypeOccurrence".to_string())
+}
+
+pub fn witness_pattern_field_position_is_a_field_reference() -> bool {
+    pdc_reference_row("pdc_payload_field".to_string(), "|pdc_payload_field#FieldOccurrence#span:394-411#path:>app.pdc_matrix>pdc_matcher><anon>><anon>".to_string())
 }
 
 pub fn witness_no_non_type_item_form_becomes_a_type_declaration() -> bool {

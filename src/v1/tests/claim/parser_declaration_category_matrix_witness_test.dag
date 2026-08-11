@@ -10,6 +10,8 @@ import v1.tests.claim.parser_declaration_matrix_support {
   pdc_declares_nothing,
   pdc_index_entry_for_declaration,
   pdc_matrix_category_count,
+  pdc_reference_row,
+  pdc_reference_row,
   pdc_non_type_category_count,
   PdcTransportReady,
   PdcTransportRefused,
@@ -178,8 +180,30 @@ test fn witness_a_declaration_exists_at_the_coproduct_field_site() -> Bool {
 // stops minting fails the first. Neither can pass by the counter being vacuously zero.
 // ---------------------------------------------------------------------------------------------
 
-test fn witness_matrix_declares_exactly_its_two_named_types() -> Bool {
-  pdc_matrix_category_count(tag: "TypeOccurrence") == 2
+// THREE, not two: the fixture authors a product, a coproduct and an ALIAS. The alias is the third
+// shape and the one a connective-keyed rule misses -- `type PdcAlias = PdcProduct` carries
+// NoConnective with an `inferred` right-hand side, so a rule keyed on the connective alone mints
+// nothing for it while still passing both rows above. Asserting the count without it would leave that
+// hole undetectable from this file.
+test fn witness_matrix_declares_exactly_its_three_named_types() -> Bool {
+  pdc_matrix_category_count(tag: "TypeOccurrence") == 3
+}
+
+test fn witness_type_alias_declaration_is_declared() -> Bool {
+  pdc_row(name: "PdcAlias", expected: "|TypeOccurrence")
+}
+
+// THE POSITIVE HALF of the pattern-field pair. Its sibling asserts that no DECLARATION sits at 394;
+// on its own that is satisfied equally by a correct reference and by nothing being minted there at
+// all, which would leave the field position unresolvable and silently drop the edge it induces. This
+// asserts the occurrence that must exist: a FieldOccurrence REFERENCE at 394-411, carrying an
+// identity distinct from the declaration at 109 that its sibling row pins, and a containment chain
+// that locates it inside the matching function rather than inside the type.
+test fn witness_pattern_field_position_is_a_field_reference() -> Bool {
+  pdc_reference_row(
+    name: "pdc_payload_field",
+    expected: "|pdc_payload_field#FieldOccurrence#span:394-411#path:>app.pdc_matrix>pdc_matcher><anon>><anon>",
+  )
 }
 
 test fn witness_no_non_type_item_form_becomes_a_type_declaration() -> Bool {

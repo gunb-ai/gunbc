@@ -5,6 +5,7 @@ import std.types { Bool, String, List, Int, NonEmptyStr }
 import std.occurrence_identity {
   OccurrenceId,
   OccurrenceTransport,
+  ReferenceOccurrence,
   OccurrenceIndexEntry,
   DeclarationOccurrence,
   OccurrenceCategory,
@@ -60,7 +61,9 @@ fn pdc_matrix_source() -> String {
     "      pdc_pattern_binder\n" +
     "    }\n" +
     "  }\n" +
-    "}\n"
+    "}\n" +
+    "\n" +
+    "type PdcAlias = PdcProduct\n"
 }
 
 type PdcTransport
@@ -253,6 +256,77 @@ fn pdc_declares_exactly(
   pdc_render_tags(tags: pdc_declared_tags_for_name(transport: transport, name: name)) == expected
 }
 
+// THE REFERENCES SIDE of the same instrument. A declaration population alone cannot state that an
+// occurrence is a USE: "no declaration carries this name at span 394" is satisfied both by a correct
+// reference and by nothing at all being minted there. Rendering references at full identity is what
+// makes the positive half of that pair assertable.
+fn pdc_reference_rows_for_name(
+  transport: OccurrenceTransport,
+  name: String
+) -> List<String> {
+  fold(
+    transport.references,
+    init: [],
+    f: (acc, reference) =>
+      match pdc_index_entry_for_occurrence(transport: transport, occurrence_value: reference.occurrence.value) {
+        Absent => acc
+        Present { value: entry } =>
+          match entry.projection.authored_name == name {
+            true =>
+              concat(acc, [entry.projection.authored_name +
+                "#" + pdc_category_tag(category: reference.category) +
+                "#span:" + to_string(entry.projection.diagnostic_span.start) +
+                "-" + to_string(entry.projection.diagnostic_span.end) +
+                "#path:" + pdc_reference_chain(transport: transport, reference: reference)])
+            false => acc
+          }
+      },
+  )
+}
+
+fn pdc_reference_chain(
+  transport: OccurrenceTransport,
+  reference: ReferenceOccurrence
+) -> String {
+  fold(
+    reference.containment.ancestors,
+    init: "",
+    f: (chain, ancestor) =>
+      chain + ">" + pdc_named_or_anon(transport: transport, occurrence_value: ancestor.value),
+  )
+}
+
+fn pdc_index_entry_for_occurrence(
+  transport: OccurrenceTransport,
+  occurrence_value: Int
+) -> OccurrenceIndexEntry? {
+  fold(
+    transport.index.entries,
+    init: none,
+    f: (found, entry) =>
+      match found {
+        Present { value: _ } => found
+        Absent =>
+          match entry.projection.occurrence.value == occurrence_value {
+            true => Present { value: entry }
+            false => Absent
+          }
+      },
+  )
+}
+
+fn pdc_reference_population(transport: OccurrenceTransport, name: String) -> String {
+  pdc_render_tags(tags: pdc_reference_rows_for_name(transport: transport, name: name))
+}
+
+fn pdc_reference_row(name: String, expected: String) -> Bool {
+  match pdc_parse_matrix() {
+    PdcTransportRefused => false
+    PdcTransportReady { transport: transport } =>
+      pdc_reference_population(transport: transport, name: name) == expected
+  }
+}
+
 fn pdc_declares_nothing(transport: OccurrenceTransport, name: String) -> Bool {
   length(pdc_declared_tags_for_name(transport: transport, name: name)) == 0
 }
@@ -364,5 +438,16 @@ fn pdc_non_type_category_count(tag: String) -> Int {
     PdcTransportRefused => 0 - 1
     PdcTransportReady { transport: transport } =>
       pdc_declared_category_count(transport: transport, tag: tag)
+  }
+}
+
+// Population SIZE for one authored name. Separate from pdc_row because a requirement may be certain
+// about multiplicity while the category it should carry is still an open modelling question; keying
+// such a row on a category would decide that question inside the assertion.
+fn pdc_declaration_count_row(name: String, expected: Int) -> Bool {
+  match pdc_parse_matrix() {
+    PdcTransportRefused => false
+    PdcTransportReady { transport: transport } =>
+      length(pdc_declared_tags_for_name(transport: transport, name: name)) == expected
   }
 }

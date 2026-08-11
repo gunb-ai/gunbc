@@ -1,0 +1,22 @@
+module v1.tests.claim.parser_module_value_declaration_expected_red_test
+
+import std.types { Bool }
+import v1.tests.claim.parser_declaration_matrix_support {
+  pdc_declaration_count_row,
+}
+
+data pmv_requirement_note: String = "THE SECOND PARSER DECLARATION HOLE, stated as a requirement rather than described as behaviour.
+
+A module-scope value declaration binds a name in its module. `data pdc_annotated_datum: Int = 7` is such a form, and a sibling module reaching it writes the bare name -- which is exactly the reference the import-deletion closure must bind. Today the parser mints NO declaration for it: measured, `pdc_annotated_datum` yields an empty declaration population while the callable and type forms in the same fixture yield theirs. So a cross-file value reference cannot bind, and the reference-derived closure is short by every module-value edge in the corpus.
+
+WHY THIS ROW IS RED RATHER THAN A ZERO ROW IN THE ENROLLED FILE. A zero row asserting the empty population would be green today and would enshrine the defect as the contract -- the exact shape DESIGN section 5 names when it rules that a test asserting a degradation's own string makes the degradation the specification. The requirement is that exactly one declaration exists, so that is what this row says, and it is expected to fail until the parser mints it.
+
+WHY THE ROW ASSERTS A POPULATION SIZE AND NOT A CATEGORY. Which OccurrenceCategory a module-scope value binds is a genuinely open modelling question: LexicalValueOccurrence is the lexical-binder category, CallableOccurrence names callables, and neither obviously owns a module member that is a value. Asserting a category here would decide that question inside a red row instead of in the carrier that owns it, so this row asserts only the fact no reading disputes -- the population is exactly one, not zero -- and the category lands with the repair.
+
+CAUSE, located: parsed_occurrence_role_for_node classifies a bodied node by the ABSENCE of a type annotation, so an annotated module datum falls outside every minting arm. It is a distinct defect from the type/constructor/field holes that role-directed minting in stamp_parsed_node_children closed, and it is not repaired by that change.
+
+DISSOLVE-ON: the parser mints the module-value declaration and the category decision lands; then this row moves into the enrolled matrix witness beside the forms that already hold, exactly as the eight commit-C rows did, rather than being deleted with the machinery (DESIGN section 4b(4))."
+
+test fn witness_module_scope_value_declaration_binds_its_name() -> Bool {
+  pdc_declaration_count_row(name: "pdc_annotated_datum", expected: 1)
+}
