@@ -185,6 +185,14 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     dissolution: unbound_dissolution(description: "the frontier reaches zero — this row MUST delete in the same change that lands the last migration, promoting the witness to ordinary DiscoverySelection as a standing regression ratchet")
   ),
   known_red_probe(
+    entry: "dag/test/claim/g2_data_reference_under_selection_witness_test.dag",
+    f: "specimen_classifies_as_runtime_read",
+    kind: CorpusWitnessKind,
+    budget: SubstrateLongLaneEvalBudget,
+    reason: "G2 under-selection through data declarations (adhoc-8026d859-7e4): scaffold_disposition_census_fixture_pool_is_nonempty reaches decl_facts only via a data initializer, and live_read_selection_manifest_live classifies it LocalRead on 341d3203bc2 (discriminating LocalRead-vs-Refused receipt, not Refused). LocalRead licenses a skip — under-selection. Owner: live-read / G2 computation-reachability lane ahead of #8130 data-root admission.",
+    dissolution: unbound_dissolution(description: "G2 computation reachability follows data initializers as well as function bodies, this witness greens, and this row deletes — promoting the unchanged witness to ordinary DiscoverySelection as the permanent under-selection regression control")
+  ),
+  known_red_probe(
     entry: "dag/test/claim/source_integration_proof_kernel_acceptance_test.dag",
     f: "witness_p1_proof_kernel_acceptance_contract_holds",
     kind: CorpusWitnessKind,
