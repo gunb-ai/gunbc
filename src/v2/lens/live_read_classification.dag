@@ -580,6 +580,12 @@ type LiveReadSelectionManifestRow {
   projection: LiveReadSelectionProjection
 }
 
+type LiveReadManifestPreparation {
+  adjacency: Map<String, List<String>>
+  nodes: List<ModuleDeclarationFact>
+  declarations: G2DeclIndex
+}
+
 data empty_manifest_rows: List<LiveReadSelectionManifestRow> = []
 
 fn live_read_manifest_row_key(entry_path: String, fn_name: String) -> String {
@@ -593,7 +599,11 @@ fn live_read_selection_manifest_over(
   nodes: List<ModuleDeclarationFact>,
   decls: List<FnArrowDecl>
 ) -> List<LiveReadSelectionManifestRow> {
-  let index = g2_decl_index(decls: decls)
+  let prepared = LiveReadManifestPreparation {
+    adjacency: build_dependency_adjacency(edges: edges, nodes: nodes),
+    nodes: nodes,
+    declarations: g2_decl_index(decls: decls)
+  }
   list_reverse(xs: fold_list(xs: requests, empty: empty_manifest_rows, cons: fn(acc, req) {
     Cons {
       head: LiveReadSelectionManifestRow {
@@ -602,15 +612,15 @@ fn live_read_selection_manifest_over(
           entry_path: req.entry_path,
           fn_name: req.fn_name,
           subject: subject,
-          edges: edges,
-          nodes: nodes,
-          index: index
+          prepared: prepared
         )
       },
       tail: acc
     }
   }))
 }
+
+data manifest_dependency_adjacency_hoist_law: String = "ONE DEPENDENCY ADJACENCY PER MANIFEST, NEVER ONE PER DECLARATION. The edge and module-declaration populations are request-invariant. Before this hoist, live_read_classification_g2_from_edges called dependency_closure for every bound declaration, and dependency_closure rebuilt module-to-path and importer adjacency maps before each BFS. The 2026-08-10 floor put that reconstruction on a 4,580-request path; classification_production consumed about 2,697 seconds and the ordinary floor crossed its 3,300,000 ms budget by 237 ms before emitting a completion receipt. The declaration remains the classification grain: each request still binds its exact path/function root and performs its own call-reachability walk. Only the graph preparation shared by every seed is constructed once, outside the request fold. CONSTRUCTION WALL: the per-request projection receives LiveReadManifestPreparation, which carries adjacency, module facts, and declaration index but no dependency edges from which a cold adjacency could be reconstructed. Restoring dependency_closure therefore requires widening that modeled boundary, not slipping a fallback into the host. The planted two-declaration control proves the prepared graph still distinguishes a carrier-reaching declaration from its pure sibling, preserves request order, and returns the same closure as the single-query convenience wrapper."
 
 
 data manifest_accumulator_shape_law: String = "THE MANIFEST FOLD PREPENDS AND REVERSES ONCE; IT MAY NOT SNOC. list_snoc_item is list_append(left: xs, right: singleton), so it TRAVERSES THE ACCUMULATED PREFIX on every row: in a left fold that is quadratic in request count. The measured consequence is what makes this a law rather than a preference. A one-request probe cannot observe the quadratic term at all - it reported 101s and was read as a fixed per-invocation cost - while the ordinary floor builds from a roster of thousands, and the completion receipt is emitted only AFTER the fold and decode. So the failure presents as ZERO completion receipts and almost no executed discovery rows (6 rows against main's 4728 in the same window), which reads like a route never entered rather than an accumulator that cannot finish. The cost shape is therefore fixed regardless of the realized n, per DESIGN section 6 bare-minimum-cost: n is not a time-stable fact, and this n is already thousands. ENFORCED STRUCTURALLY, not by a timing threshold: live_read_selection_manifest_over has no call reachability to list_snoc_item, which is decidable from the Node tree and does not depend on a host being fast enough for a threshold to discriminate. The scale control is the second half, and the mutation that reds it is restoring the snoc form."
@@ -658,19 +668,18 @@ fn modules_of_closure_paths(
   })
 }
 
-fn live_read_classification_g2_from_edges(
+fn live_read_classification_g2_from_adjacency(
   entry_path: String,
   entry_module: String,
   fn_name: String,
-  edges: List<ModuleDependencyEdge>,
+  adjacency: Map<String, List<String>>,
   nodes: List<ModuleDeclarationFact>,
   index: G2DeclIndex
 ) -> LiveReadClassification {
   let closure_modules = modules_of_closure_paths(
-    closure_paths: dependency_closure(
+    closure_paths: dependency_closure_from_adjacency(
       entry_path: entry_path,
-      edges: edges,
-      nodes: nodes
+      adjacency: adjacency
     ),
     nodes: nodes
   )
@@ -748,11 +757,14 @@ fn live_read_selection_projection_live(
   entry_path: String,
   fn_name: String,
   subject: G2FactSubject,
-  edges: List<ModuleDependencyEdge>,
-  nodes: List<ModuleDeclarationFact>,
-  index: G2DeclIndex
+  prepared: LiveReadManifestPreparation
 ) -> LiveReadSelectionProjection {
-  match bind_g2_root(entry_path: entry_path, fn_name: fn_name, nodes: nodes, index: index) {
+  match bind_g2_root(
+    entry_path: entry_path,
+    fn_name: fn_name,
+    nodes: prepared.nodes,
+    index: prepared.declarations
+  ) {
     G2RootUnbound { cause: cause } =>
       LiveReadSelectionRefused {
         cause: concat("G2 root is not exactly bound, so no classification was run: ", cause)
@@ -760,13 +772,13 @@ fn live_read_selection_projection_live(
     G2RootBound { entry_path: bound_path, entry_module: bound_module, decl: _ } =>
       live_read_selection_projection_for_subject(
         subject: subject,
-        classification: live_read_classification_g2_from_edges(
+        classification: live_read_classification_g2_from_adjacency(
           entry_path: bound_path,
           entry_module: bound_module,
           fn_name: fn_name,
-          edges: edges,
-          nodes: nodes,
-          index: index
+          adjacency: prepared.adjacency,
+          nodes: prepared.nodes,
+          index: prepared.declarations
         )
       )
   }

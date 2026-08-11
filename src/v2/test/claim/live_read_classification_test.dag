@@ -15,16 +15,26 @@ import v2.lens.live_read_classification {
   runtime_read_touched_by_path_g1,
   runtime_read_touched_by_path_g2,
   g2_implies_reads_live_tree,
+  LiveReadSelectionRequest,
   live_read_selection_projection_from_facts,
+  live_read_selection_manifest_over,
   decls_in_modules,
   decls_matching_callee,
   g2_decl_index
 }
 import v2.lens.witness_cost_locality { ModuleImportFact }
+import v2.lens.module_graph {
+  ModuleDeclarationFact,
+  ModuleDependencyEdge,
+  build_dependency_adjacency,
+  dependency_closure,
+  dependency_closure_from_adjacency
+}
 import v2.std.live_read {
   LiveReadSelectionProjection,
   LiveReadSelectionClassified,
   LiveReadSelectionRefused,
+  WholeTreeFactSubject,
   LiveReadClassification,
   LiveReadCarrierHome,
   FilesystemReadCarrier,
@@ -470,6 +480,72 @@ test fn every_planted_homonym_survives_the_grouped_lookup() -> Bool {
   contains(xs: grouped_matches(callee: "lookup_row"), item: "a.lookup_row", eq: string_eq_local)
     && contains(xs: grouped_matches(callee: "lookup_row"), item: "b.lookup_row", eq: string_eq_local)
     && contains(xs: grouped_matches(callee: "lookup_row"), item: "b.child.lookup_row", eq: string_eq_local)
+}
+
+data adjacency_hoist_fixture_nodes: List<ModuleDeclarationFact> = [
+  ModuleDeclarationFact { module: "synthetic.adjacency.entry", path: "synthetic/entry.dag" },
+  ModuleDeclarationFact { module: "synthetic.adjacency.carrier", path: "synthetic/carrier.dag" }
+]
+
+data adjacency_hoist_fixture_edges: List<ModuleDependencyEdge> = [
+  ModuleDependencyEdge {
+    path: "synthetic/entry.dag",
+    target_module: "synthetic.adjacency.carrier",
+    target_declared: true
+  }
+]
+
+data adjacency_hoist_fixture_decls: List<FnArrowDecl> = [
+  FnArrowDecl {
+    qualified_name: "synthetic.adjacency.entry.reads",
+    name: "reads",
+    output: selection_body_node(callee: "carrier_fn"),
+    params: []
+  },
+  FnArrowDecl {
+    qualified_name: "synthetic.adjacency.entry.pure",
+    name: "pure",
+    output: selection_body_node(callee: "string_concat"),
+    params: []
+  },
+  FnArrowDecl {
+    qualified_name: "synthetic.adjacency.carrier.carrier_fn",
+    name: "carrier_fn",
+    output: selection_body_node(callee: "filesystem_read"),
+    params: []
+  }
+]
+
+test fn adjacency_hoist_preserves_declaration_grain_and_manifest_order() -> Bool {
+  let adjacency = build_dependency_adjacency(
+    edges: adjacency_hoist_fixture_edges,
+    nodes: adjacency_hoist_fixture_nodes
+  )
+  let rows = live_read_selection_manifest_over(
+    requests: [
+      LiveReadSelectionRequest { entry_path: "synthetic/entry.dag", fn_name: "reads" },
+      LiveReadSelectionRequest { entry_path: "synthetic/entry.dag", fn_name: "pure" }
+    ],
+    subject: WholeTreeFactSubject,
+    edges: adjacency_hoist_fixture_edges,
+    nodes: adjacency_hoist_fixture_nodes,
+    decls: adjacency_hoist_fixture_decls
+  )
+  dependency_closure(
+    entry_path: "synthetic/entry.dag",
+    edges: adjacency_hoist_fixture_edges,
+    nodes: adjacency_hoist_fixture_nodes
+  ) == dependency_closure_from_adjacency(
+    entry_path: "synthetic/entry.dag",
+    adjacency: adjacency
+  )
+    && list_map(xs: rows, f: fn(r) { r.key }) == [
+    "synthetic/entry.dag::reads",
+    "synthetic/entry.dag::pure"
+  ]
+    && list_map(xs: rows, f: fn(r) {
+      projection_classification_has_runtime_read(p: r.projection)
+    }) == [true, false]
 }
 
 fn string_eq_local(a: String, b: String) -> Bool {
