@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.measure { millimeter }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.climbing_holds.types {
-  ClimbingHoldCatalogRow, ClimbingHoldFrame, ProductNameStanding, ProductSkuUnread,
+  ClimbingHoldCatalogRow, HoldLocalFrameStanding, HoldLocalFrameIncomplete, ProductNameStanding, ProductSkuUnread,
   HoldFixationInterface, ConservativeClearanceEnvelope, HoldGraspProfile,
   CatalogLengthReading, SourceNativeLength, Inch, RoundedUpFromSourceReading,
   HoldMaterialUnread, FastenerThreadUnread, HoldMountingFaceUnread,
@@ -120,11 +120,17 @@ data atomik_clearance_envelope: ConservativeClearanceEnvelope = ConservativeClea
 
 // The frame, and still the only part of this row that is not a reading. It is a definition, so it
 // needs no vendor confirmation and holds while the sculpt is unknown.
-data atomik_bolt_on_frame: ClimbingHoldFrame = ClimbingHoldFrame {
-  origin_note: "Origin is the point where the primary bolt axis pierces the mounting face.",
-  z_axis_note: "+z is the mounting-face outward normal: away from the panel, toward the climber.",
-  x_axis_note: "+x runs from the origin toward the anti-rotation fixing, projected onto the mounting face.",
-  handedness_note: "+y completes a right-handed frame.",
+// The frame standing is INCOMPLETE, and saying so is the correction. The previous version of this
+// declaration was four sentences describing where the origin and axes would be, which read as a
+// defined frame while defining nothing. Nothing here has been measured: the bolt axis position on
+// this SKU's mounting face is unread, and the anti-rotation fixing's direction relative to it is
+// unread. Both are cheap to obtain from a sample and neither may be invented.
+data atomik_bolt_on_frame: HoldLocalFrameStanding = HoldLocalFrameIncomplete {
+  obligations: [
+    "Measure the primary bolt axis position on the mounting face of a sample, or read it from vendor CAD.",
+    "Measure the anti-rotation fixing direction relative to the bolt axis; it defines +x and is currently unread.",
+    "Confirm the mounting face is a single flat before treating its normal as +z.",
+  ],
 }
 
 // The thread stays UNREAD. Atomik publishes 3/8-16 T-nuts, and 3/8-16 is the ordinary bolt-on
@@ -144,7 +150,7 @@ data atomik_xl_arrow_down_climb_jug_fixation: HoldFixationInterface = HoldFixati
   mounting_face: HoldMountingFaceUnread {
     obligation: "Confirm the mounting face is a single flat. A contoured back changes both the seating and the bolt's effective grip length, and polyester cracks when tightened against a face that is not flat.",
   },
-  frame: atomik_bolt_on_frame,
+  local_frame: atomik_bolt_on_frame,
 }
 
 // Grasp, with the correction that matters most for a two-handed carry: the page gives a 4-1/2 in

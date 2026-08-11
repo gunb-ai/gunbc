@@ -3,6 +3,7 @@ module extdeps.climbing_holds.types
 import std.types { NonEmptyStr, List }
 import std.nat { Nat }
 import std.measure { Millimeter }
+import std.affine_space { Point3, Vector3 }
 import std.content_hash { ContentHash }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -78,23 +79,41 @@ type HoldMountingFace
   | ContouredMountingFace { obligation: NonEmptyStr }
   | HoldMountingFaceUnread { obligation: NonEmptyStr }
 
-// The part's own coordinate frame, and the whole point of this module.
+// THE PART'S FRAME, now a real one. SPATIAL-2 merged (#8091) and supplies Point3, Vector3, frames
+// and checked arithmetic, so the previous version of this type -- four explanatory STRINGS named
+// origin_note, z_axis_note, x_axis_note and handedness_note -- has no excuse left. It was a frame
+// convention written in English: unreadable by any consumer, uncheckable by the compiler, and
+// incapable of placing anything. A type called ClimbingHoldFrame that cannot locate a point was
+// exactly the sort of name-versus-content gap this branch has been correcting all along.
 //
-// origin  — where the primary bolt axis pierces the mounting face
-// +z      — the mounting-face outward normal, i.e. away from the panel and toward the climber
-// +x      — from the origin toward the primary anti-rotation fixing, projected onto the face
-// +y      — completes a right-handed frame
+// ClimbingHoldFrame is now a frame IDENTITY in SPATIAL-2's sense. Geometry expressed in it is
+// typed, and a value in this frame cannot silently be used as a tile-frame value.
 //
-// A consumer that knows where this frame sits on a panel knows where to drill, because the
-// drill point IS the origin projected through the panel. Nothing about the hold's sculpted
-// outline is needed to place a fastener, which is exactly why an unknown silhouette never
-// justified deleting the part.
-type ClimbingHoldFrame {
-  origin_note: NonEmptyStr
-  z_axis_note: NonEmptyStr
-  x_axis_note: NonEmptyStr
-  handedness_note: NonEmptyStr
-}
+// origin  - where the primary bolt axis pierces the mounting face
+// +z      - the mounting-face outward normal, away from the panel and toward the climber
+// +x      - from the origin toward the primary anti-rotation fixing, projected onto the face
+// +y      - completes a right-handed frame, which is the only handedness SPATIAL-2 admits
+type ClimbingHoldFrame
+
+// GEOMETRY, separated from hardware. The old hold_mounting_axis_is_locatable required a known
+// THREAD before it would admit that an axis could be located, which conflates two independent
+// facts: a thread designation does not locate an axis, and an axis is locatable the moment the
+// mounting face and bolt position are known even if nobody has read what thread it takes. The
+// conflation had a direction that mattered -- it made geometry wait on a purchasing fact.
+type HoldLocalFrameStanding
+  = HoldLocalFrameReady {
+      bolt_axis_origin: Point3<ClimbingHoldFrame>
+      outward_normal: Vector3<ClimbingHoldFrame>
+      anti_rotation_direction: Vector3<ClimbingHoldFrame>
+      evidence: NonEmptyStr
+    }
+  | HoldLocalFrameIncomplete { obligations: List<NonEmptyStr> }
+
+// HARDWARE COMPATIBILITY, which is where a thread designation actually belongs. This answers
+// whether a fastener can be bought and torqued, not where anything sits.
+type HoldHardwareCompatibilityStanding
+  = HoldHardwareCompatible { designation: NonEmptyStr, evidence: NonEmptyStr }
+  | HoldHardwareIncomplete { obligations: List<NonEmptyStr> }
 
 type HoldFixationInterface {
   primary_bolt_thread: FastenerThread
@@ -102,7 +121,7 @@ type HoldFixationInterface {
   anti_rotation_fixing_count: Nat
   anti_rotation_fixing_note: NonEmptyStr
   mounting_face: HoldMountingFace
-  frame: ClimbingHoldFrame
+  local_frame: HoldLocalFrameStanding
 }
 
 // How a dimensional reading was obtained. This coproduct is the load-bearing part of the module
@@ -266,21 +285,19 @@ fn hold_may_render_silhouette(row: ClimbingHoldCatalogRow) -> Bool {
   }
 }
 
-// NARROWED, and the old name was an overclaim. This previously read hold_fixation_is_placeable,
-// which says the hold can be PLACED — and a thread plus a flat face establishes nothing of the
-// kind. Real placement on a panel also needs the anti-rotation location, bolt length, T-nut and
-// backing geometry, panel thickness, rear hardware clearance, edge distance, interference with
-// board, cable and cleat, grasp clearance, and the actual envelope. What a thread and a flat face
-// DO establish is narrower and still worth having: the primary bolt axis can be located, so the
-// drill point is known.
-//
-// The distinction matters because the broad name would have re-run the original error in the
-// opposite direction. The retracted reasoning deleted the hold by treating "cannot be drawn" as
-// "cannot be placed". A function called placeable that ignores collision and clearance would have
-// let the hold be treated as fully sited while its shape was still unknown — the same conflation,
-// now flattering instead of damning. Shape is unnecessary for naming the axis and NECESSARY for
-// collision, grasp clearance and silhouette.
-fn hold_mounting_axis_is_locatable(row: ClimbingHoldCatalogRow) -> Bool {
+// GEOMETRY ONLY. Whether the primary bolt axis can be located, which depends on the local frame
+// and nothing else. The previous hold_mounting_axis_is_locatable also required a known THREAD, so
+// geometry waited on a purchasing fact -- a hold whose axis was perfectly well defined reported
+// unlocatable because nobody had read what bolt it takes.
+fn hold_local_frame_is_ready(row: ClimbingHoldCatalogRow) -> Bool {
+  match row.fixation.local_frame {
+    HoldLocalFrameReady { bolt_axis_origin: _, outward_normal: _, anti_rotation_direction: _, evidence: _ } => true
+    HoldLocalFrameIncomplete { obligations: _ } => false
+  }
+}
+
+// HARDWARE ONLY. Whether a fastener can be selected and torqued. Says nothing about position.
+fn hold_hardware_is_compatible(row: ClimbingHoldCatalogRow) -> Bool {
   let thread_known = match row.fixation.primary_bolt_thread {
     ImperialUncThread { designation: _ } => true
     MetricCoarseThread { designation: _ } => true
@@ -294,9 +311,15 @@ fn hold_mounting_axis_is_locatable(row: ClimbingHoldCatalogRow) -> Bool {
   thread_known && face_known && row.fixation.primary_bolt_count > 0
 }
 
-// A dimensional reading is SPENDABLE only when it came from a vendor document or a measurement.
-// A search-engine summary is a report of a page, not the page; it is retained because it is a
-// real lead worth checking, and refused because it is not a reading.
+// A dimensional reading is SPENDABLE only when it came from a vendor document, an operator-relayed
+// document, or a measurement. A search-engine summary is a report of a page, not the page; it is
+// retained because it is a real lead worth checking and refused because it is not a reading.
+//
+// RESTORED: this definition was deleted by a careless block replacement while the surrounding
+// predicates were being renamed, leaving its call site at hold_catalog_clearance_envelope_is_spendable
+// referring to a function that no longer existed. The public tree kept compiling because nothing
+// in it exercised that path; the PRIVATE machine-tile carrier is what found it, which is the
+// argument for the consumer living close to the authority.
 fn dimension_evidence_is_spendable(evidence: DimensionEvidence) -> Bool {
   match evidence {
     VendorPageRead { authority: _, read_on: _ } => true
@@ -329,13 +352,41 @@ fn hold_catalog_clearance_envelope_is_spendable(row: ClimbingHoldCatalogRow) -> 
 // as a clearance answer, which is the mechanism by which a hold intersecting a cooler reached a
 // page as a selected design. Placement clearance is now an explicit INPUT that only a resolved
 // scene can supply, so this gate can never again be satisfied by catalog paperwork.
+// PLACEMENT CLEARANCE is a typed standing, never a bare Bool. A caller could write
+// scene_placement_clearance_resolved: true without naming which scene resolved, which placement
+// was evaluated, which bodies it was checked against, or whether a later layout edit invalidated
+// it -- a Boolean that says "clear" carries no way to be wrong. The resolved arm therefore has to
+// name a scene and a receipt, so a stale clearance is a visibly stale receipt rather than an
+// unfalsifiable true.
+//
+// This is a SEAM awaiting SPATIAL-3A, which owns bodies and their relations. When it lands, the
+// receipt type comes from there and this arm's fields are replaced rather than reinterpreted.
+type HoldPlacementStanding
+  = HoldPlacementResolved {
+      scene_id: NonEmptyStr
+      placement_id: NonEmptyStr
+      checked_relations: List<NonEmptyStr>
+      receipt: NonEmptyStr
+    }
+  | HoldPlacementUnresolved { obligations: List<NonEmptyStr> }
+  | HoldPlacementRefused { conflicts: List<NonEmptyStr> }
+
+fn hold_placement_is_resolved(standing: HoldPlacementStanding) -> Bool {
+  match standing {
+    HoldPlacementResolved { scene_id: _, placement_id: _, checked_relations: rels, receipt: _ } => count(rels) > 0
+    HoldPlacementUnresolved { obligations: _ } => false
+    HoldPlacementRefused { conflicts: _ } => false
+  }
+}
+
 fn hold_lift_role_is_admissible(
   row: ClimbingHoldCatalogRow,
-  scene_placement_clearance_resolved: Bool,
+  placement: HoldPlacementStanding,
   proof_load_receipt_held: Bool,
 ) -> Bool {
-  hold_mounting_axis_is_locatable(row: row)
-    && scene_placement_clearance_resolved
+  hold_local_frame_is_ready(row: row)
+    && hold_hardware_is_compatible(row: row)
+    && hold_placement_is_resolved(standing: placement)
     && proof_load_receipt_held
 }
 
