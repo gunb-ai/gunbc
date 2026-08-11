@@ -165,6 +165,13 @@ fn scoped_departure_forces_run(departed_paths: List<String>) -> Bool {
 // flattening at this one seam is what stops it from spreading into the decision,
 // where a Bool beside a reason string would be the state-space conflation the
 // standings exist to prevent.
+//
+// The live projection is evaluated even on a backstop event, where the decision
+// will not read it. That is deliberate: the alternative is to hand the fold a
+// fabricated ScopedEntriesAffected the closure never produced, which is the
+// fabricated-plausible-output failure aimed at the one input a reader would take
+// for evidence. One corpus scan inside a job that is about to spend 376 seconds
+// is the honest price.
 fn scoped_witness_run_disposition_from_host(
   event: String,
   subject_matched: Bool,
@@ -193,12 +200,6 @@ fn scoped_witness_run_disposition_from_host(
   } else {
     DiffObservationFailClosed { reason: diff_failure_reason }
   }
-  // The live projection is evaluated even on a backstop event, where the
-  // decision below will not read it. That is deliberate: the alternative is to
-  // hand the fold a fabricated ScopedEntriesAffected the closure never
-  // produced, which is the fabricated-plausible-output failure aimed at the one
-  // input a reader would take for evidence. One corpus scan inside a job that
-  // is about to spend 376 seconds is the honest price.
   scoped_witness_run_disposition(
     subject: subject,
     disposition: disposition,
