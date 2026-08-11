@@ -47,6 +47,25 @@ fn token_lexemes(source: String) -> List<String> {
   }
 }
 
+// A refusal renders as REFUSED and never as an empty stream: a fabricated empty would make
+// every stream-equality claim vacuously true on a lex failure, which is the exact shape that
+// let the pre-repair ASCII controls pass by accident.
+fn streams_equal(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn rendered_token_stream(source: String) -> String {
+  match artifact_of(source: source) {
+    Absent => "REFUSED"
+    Present { value: a } =>
+      fold_list(
+        xs: token_stream_all(stream: lex_artifact_semantic_tokens(artifact: a)),
+        empty: "",
+        cons: fn(acc, t) { "{acc}|{symbol_lexeme(sym: t.class)}:{t.lexeme}" }
+      )
+  }
+}
+
 fn lexemes_contain(xs: List<String>, s: String) -> Bool {
   fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || (x == s) })
 }
@@ -84,12 +103,33 @@ test fn backtick_and_at_payload_capture_exactly_one_annotation() -> Bool {
   annotation_count(source: backtick_at_comment_source) == 1
 }
 
-test fn comment_leaks_no_slash_token_into_semantic_stream() -> Bool {
-  lexemes_contain(xs: token_lexemes(source: plain_comment_source), s: "dag_token_slash") == false
+data comment_free_source: String = "module annotation_probe\n\n"
+
+data changed_program_token_source: String = "module other_probe\n\n"
+
+// Exact ordered (class, lexeme) equality, not an absence check for one token class: a defect
+// that captured an annotation while ALSO leaking payload words or punctuation into the semantic
+// stream would satisfy a dag_token_slash-absence assertion and fail this one.
+test fn comment_erases_completely_from_the_semantic_stream() -> Bool {
+  streams_equal(a: rendered_token_stream(source: plain_comment_source), b: rendered_token_stream(source: comment_free_source))
 }
 
-test fn emdash_comment_leaks_no_slash_token_into_semantic_stream() -> Bool {
-  lexemes_contain(xs: token_lexemes(source: emdash_comment_source), s: "dag_token_slash") == false
+test fn emdash_comment_erases_completely_from_the_semantic_stream() -> Bool {
+  streams_equal(a: rendered_token_stream(source: emdash_comment_source), b: rendered_token_stream(source: comment_free_source))
+}
+
+test fn backtick_at_comment_erases_completely_from_the_semantic_stream() -> Bool {
+  streams_equal(a: rendered_token_stream(source: backtick_at_comment_source), b: rendered_token_stream(source: comment_free_source))
+}
+
+// The discriminator: a constant renderer, or an equality that holds for unrelated reasons,
+// cannot satisfy both this and the three claims above.
+test fn changed_program_token_changes_the_stream_RED() -> Bool {
+  streams_equal(a: rendered_token_stream(source: comment_free_source), b: rendered_token_stream(source: changed_program_token_source)) == false
+}
+
+test fn a_refusal_renders_as_refusal_not_an_empty_stream_RED() -> Bool {
+  streams_equal(a: rendered_token_stream(source: "module annotation_probe\n\ndata d: String = \"unterminated\n"), b: "REFUSED")
 }
 
 test fn string_content_is_not_captured_as_an_annotation_RED() -> Bool {

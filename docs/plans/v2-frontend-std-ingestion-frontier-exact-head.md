@@ -1,11 +1,11 @@
-# The v2 frontend's std-ingestion frontier — exact-head re-observation
+# The v2 frontend's std-ingestion frontier — PARTIAL exact-head re-observation (10 of 15 measured)
 
 **Status: measurement receipt, not a plan.** Produced 2026-08-11 at main `c03be069687`, with the
 canonical v2 frontend fns driven from an ordinary `.dag` witness rather than a scratch host bin.
 
 This does **not** replace [`v2-frontend-std-ingestion-frontier.md`](v2-frontend-std-ingestion-frontier.md).
 That document is the historical receipt, revision-scoped to worktree HEAD `e588031201`, and it stays
-unchanged as history. This one re-observes the same 15-member subject at an exact current head,
+unchanged as history. This one re-observes 10 of the same 15 members at an exact current head,
 because the scheduling conclusion drawn from the historical receipt — *five bounded normalize
 repairs, then three syntax gaps* — no longer describes the tree.
 
@@ -14,8 +14,8 @@ repairs, then three syntax gaps* — no longer describes the tree.
 The same canonical route as the historical receipt — `v2.compiler.tokenize` `lex_walk_artifact`
 (rules `dag_lex_rules`) → `v2.compiler.parse` `parse_module` (grammar `dag_grammar`) →
 `v2.compiler.normalize` `normalize` — driven per member through
-`gunbc.test.claim.normalize_retention_contract_probe_test` `classify_member`, which reads the
-member with `filesystem_read` and walks the pipeline **once** per member.
+`gunbc.tools.frontier_ingestion_probe` `classify_member`, which reads the member with
+`filesystem_read` and walks the pipeline **once** per member.
 
 Two measurement disciplines are load-bearing and both were violated by earlier drafts of this
 work before being corrected:
@@ -29,7 +29,7 @@ can never read as an accepted one.
 **Rejection reasons are read by containment, never by head.** `rejected_with_pending` PREPENDS the
 pending accepted-carrier diagnostics to a later rejection, so the head of the list is routinely a
 wrapper-retention carrier while the actual refusal sits further down. Every reason read here is
-`reasons_contain` over the deduplicated whole list.
+`reasons_contain` over the whole reason list. (The instrument collects head plus tail and does not deduplicate; an earlier draft of this sentence claimed a deduplication step that the code does not perform.)
 
 ## The rows
 
@@ -58,6 +58,13 @@ state and is never filled in from the historical receipt.
 complete inside its budget, not because the member was found to be well-formed. A budget
 interruption is an interruption plus a lower bound on cost — it is never a verdict about the
 subject, and it may not be discharged by copying a value measured on a different tree.
+
+**This receipt is PARTIAL and may not carry a scheduling conclusion on its unmeasured rows.**
+Ten members produced an executed result; one is `NOT RE-OBSERVED` on a budget interruption; four
+were never run to completion. The four `pending` rows and the `NOT RE-OBSERVED` row are **not**
+evidence of any stage, and no claim below rests on them. Completing the batch is owed: the
+interpreted instrument exceeds its budget on the larger members, so a batched or realized
+instrument is the precondition for a genuinely complete 15/15 table.
 
 ## The population, restated
 
