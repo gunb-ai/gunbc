@@ -300,8 +300,39 @@ fn cargo_message_lines(stdout: String) -> List<String> {
   split(s: body, delimiter: cargo_message_line_separator)
 }
 
+// Turns the one hit that survived the count guard into a selection. Split out so
+// the fold below can seed with the answer that is CORRECT for an empty hit list
+// rather than with a hit-shaped sentinel.
+fn cargo_selection_from_hit(
+  hit: CargoArtifactHit,
+  target_name: String
+) -> CargoArtifactSelection {
+  match hit {
+    CargoArtifactHitWithoutExecutable =>
+      CargoArtifactWithoutExecutable { target_name: target_name }
+    CargoArtifactHitExecutable { path: path } =>
+      if path.length() == 0 {
+        CargoArtifactExecutablePathEmpty { target_name: target_name }
+      } else {
+        CargoArtifactSelected { executable: path as FilePath }
+      }
+  }
+}
+
 // An empty stream carries no artifact message, which is CargoArtifactAbsent rather
 // than a parse refusal: nothing was malformed, cargo simply reported nothing.
+//
+// The single-hit extraction seeds its fold with CargoArtifactAbsent — the TRUE
+// answer for an empty hit list — rather than with a CargoArtifactHit sentinel. An
+// earlier revision seeded it with CargoArtifactHitWithoutExecutable, which review
+// called awkward-but-not-a-defect; it is worse than awkward, because that sentinel
+// is domain-meaningful. It sits in a position reachable only if the surrounding
+// count guard ever moved, and at that moment an empty hit list would answer "this
+// target produced no executable" instead of "cargo never reported this target" —
+// a fabricated verdict standing where an absence is owed, the same class every
+// refusal in this module exists to prevent. Seeded with the honest empty-list
+// answer, the init needs no guard to be correct and the separate zero-count branch
+// disappears into it.
 fn cargo_select_artifact_executable(
   stdout: String,
   target_name: String
@@ -322,21 +353,17 @@ fn cargo_select_artifact_executable(
       CargoScanRefused { selection: s } => s
       CargoScanning { hits: hits, line_number: _ } => {
         let n = count(hits)
-        if n == 0 {
-          CargoArtifactAbsent { target_name: target_name }
-        } else if n > 1 {
+        if n > 1 {
           CargoArtifactAmbiguous { target_name: target_name, count: n }
         } else {
-          match fold(hits, init: CargoArtifactHitWithoutExecutable, f: (acc, h) => h) {
-            CargoArtifactHitWithoutExecutable =>
-              CargoArtifactWithoutExecutable { target_name: target_name }
-            CargoArtifactHitExecutable { path: path } =>
-              if path.length() == 0 {
-                CargoArtifactExecutablePathEmpty { target_name: target_name }
-              } else {
-                CargoArtifactSelected { executable: path as FilePath }
-              }
-          }
+          fold(
+            hits,
+            init: CargoArtifactAbsent { target_name: target_name },
+            f: (acc, hit) => cargo_selection_from_hit(
+              hit: hit,
+              target_name: target_name
+            )
+          )
         }
       }
     }
