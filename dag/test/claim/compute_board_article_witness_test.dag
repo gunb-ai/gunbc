@@ -7,6 +7,7 @@ import product.compute_board.spice_projection {
   SpiceSliceProjected,
   SpiceSliceRefused,
   project_analog_to_spice,
+  project_article_to_spice,
 }
 import product.compute_board.article {
   BoardPowerInterfaceArticle,
@@ -25,7 +26,7 @@ import product.compute_board.article {
   WriteProtectionUnmodelled,
   article_analog,
   article_digital_control,
-  article_identity_label,
+  article_identity_eq,
   article_manufacturing_profile_selected,
   article_physical_interface_admitted,
   power_interlock_article,
@@ -35,6 +36,7 @@ import product.compute_board.verilog_projection {
   VerilogModuleEmitted,
   VerilogProjectionRefused,
   project_intent_to_verilog,
+  project_article_to_verilog,
   power_interlock_verilog_bindings,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -54,23 +56,18 @@ data expected_verilog_source: String = "module board_power_interlock (\n  input 
 // fixtures: without it, two unrelated articles with equal extracted fields emit indistinguishable
 // output and this witness would still be green.
 test fn w_one_article_feeds_both_emissions() -> Bool {
-  match project_analog_to_spice(
-    article_identity: article_identity_label(a: power_interlock_article),
-    intent: article_analog(a: power_interlock_article),
-    bindings: power_good_model_bindings,
-    reference: power_interlock_article.reference_net
-  ) {
+  match project_article_to_spice(article: power_interlock_article) {
     SpiceSliceProjected { receipt: sr } =>
-      match project_intent_to_verilog(
-        article_identity: article_identity_label(a: power_interlock_article),
-        intent: article_digital_control(a: power_interlock_article),
+      match project_article_to_verilog(
+        article: power_interlock_article,
         bindings: power_interlock_verilog_bindings
       ) {
         VerilogModuleEmitted { receipt: vr } =>
           sr.source == expected_spice_deck
             && vr.source == expected_verilog_source
-            && (sr.source_article as String) == (vr.source_article as String)
-            && (sr.source_article as String) == "board power interlock rev 0"
+            && article_identity_eq(a: sr.source_article, b: vr.source_article)
+            && (sr.source_article.name as String) == "board power interlock"
+            && (sr.source_article.revision as String) == "0"
         VerilogProjectionRefused { cause: _ } => false
       }
     SpiceSliceRefused { cause: _ } => false
@@ -89,7 +86,7 @@ data perturbed_bindings: List<ComponentModelBinding> = [
 
 test fn w_spice_refuses_when_one_binding_is_perturbed() -> Bool {
   match project_analog_to_spice(
-    article_identity: article_identity_label(a: power_interlock_article),
+    article_identity: power_interlock_article.identity,
     intent: article_analog(a: power_interlock_article),
     bindings: perturbed_bindings,
     reference: power_interlock_article.reference_net
@@ -103,9 +100,8 @@ test fn w_spice_refuses_when_one_binding_is_perturbed() -> Bool {
 // spelled by falling back to its logical name, which is the arm that would make a missing
 // binding unobservable.
 test fn w_verilog_refuses_unbound_signal() -> Bool {
-  match project_intent_to_verilog(
-    article_identity: article_identity_label(a: power_interlock_article),
-    intent: article_digital_control(a: power_interlock_article),
+  match project_article_to_verilog(
+    article: power_interlock_article,
     bindings: []
   ) {
     VerilogModuleEmitted { receipt: _ } => false

@@ -1,6 +1,6 @@
 module extdeps.cpu.ampere_altra_package
 
-import std.types { String, NonEmptyStr, List }
+import std.types { String, NonEmptyStr, List, Map }
 import extdeps.cpu.types { CpuSocket }
 import extdeps.cpu.ampere { altra_max_m12830_catalog, ampere_altra_rev_a1_datasheet_authority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -108,20 +108,38 @@ fn contact_count(map: PackageContactMap) -> Int {
   fold(map.contacts, init: 0, f: (acc, _) => acc + 1)
 }
 
-fn designator_occurrence_count(designators: List<NonEmptyStr>, needle: NonEmptyStr) -> Int {
-  fold(designators, init: 0, f: fn(acc, d) { if d == needle { acc + 1 } else { acc } })
+// TWO LINEAR PASSES, NOT A QUADRATIC ONE. An earlier revision re-counted the whole designator
+// list once per element, which is 4926 x 4926 comparisons at the real package population — and
+// DESIGN §6's bare-minimum-cost rule is explicit that a proven quadratic fold is fixed whatever
+// the realized n, because "n is small here" is not a time-stable fact and this list is sized by
+// a vendor's package, not by us.
+//
+// The maps carry membership ONLY and are never iterated, which is the pattern DESIGN's
+// determinism thread sanctions: traversal order of a Map is host-unspecified, so the ORDER this
+// answer depends on comes from the designator list itself in the second pass. That is what
+// preserves the exact prior semantics — the first designator in SOURCE order whose value occurs
+// more than once, not the position where a repeat happens to be noticed.
+type DesignatorScan {
+  seen: Map<NonEmptyStr, Bool>
+  duplicated: Map<NonEmptyStr, Bool>
+}
+
+fn scan_designators(designators: List<NonEmptyStr>) -> DesignatorScan {
+  fold(designators, init: DesignatorScan { seen: empty_map(), duplicated: empty_map() }, f: fn(acc, d) {
+    if map_contains_key(acc.seen, d) {
+      DesignatorScan { seen: acc.seen, duplicated: map_insert(acc.duplicated, d, true) }
+    } else {
+      DesignatorScan { seen: map_insert(acc.seen, d, true), duplicated: acc.duplicated }
+    }
+  })
 }
 
 fn first_duplicate_designator(designators: List<NonEmptyStr>) -> NonEmptyStr? {
+  let scan = scan_designators(designators: designators)
   fold(designators, init: none, f: fn(acc, d) {
     match acc {
       Present { value: found } => Present { value: found }
-      Absent =>
-        if designator_occurrence_count(designators: designators, needle: d) > 1 {
-          Present { value: d }
-        } else {
-          none
-        }
+      Absent => if map_contains_key(scan.duplicated, d) { Present { value: d } } else { none }
     }
   })
 }

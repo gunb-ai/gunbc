@@ -228,11 +228,14 @@ fn article_analog(a: BoardPowerInterfaceArticle) -> AnalogCircuitIntent {
   a.analog
 }
 
-// The label a receipt carries. It joins name AND revision, because a receipt naming only the
-// name cannot distinguish two revisions of the same board — which is precisely the case where a
-// stale emission is most likely and least visible.
-fn article_identity_label(a: BoardPowerInterfaceArticle) -> NonEmptyStr {
-  concat(concat(a.identity.name as String, " rev "), a.identity.revision as String) as NonEmptyStr
+// Two receipts name the same article exactly when BOTH fields agree. Revision is part of the
+// comparison rather than a detail beside it: two revisions of one board share a name, and that
+// is precisely the case where a stale emission is most likely and least visible. An earlier
+// revision flattened the identity into a single "name rev N" label before handing it to a
+// projection, which made the join a string comparison over a spelling this module happened to
+// choose — and let a caller pass any string at all where the source article belonged.
+fn article_identity_eq(a: BoardArticleIdentity, b: BoardArticleIdentity) -> Bool {
+  (a.name as String) == (b.name as String) && (a.revision as String) == (b.revision as String)
 }
 
 // RUNG-HONEST NAMES. An earlier revision called these article_is_physically_realizable and

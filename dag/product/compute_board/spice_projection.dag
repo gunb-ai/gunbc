@@ -23,6 +23,10 @@ import product.compute_board.analog {
   net_of_terminal,
   terminal_ref,
 }
+import product.compute_board.article {
+  BoardArticleIdentity,
+  BoardPowerInterfaceArticle,
+}
 
 data spice_projection_note: String = "SPICE AS A PROJECTION OF A LANGUAGE-NEUTRAL ANALOG INTENT. Every piece of SPICE spelling for this article lives in this module and nowhere upstream: the element letter, the node names, the reference node '0', and the magnitude SUFFIXES. That last one is the correction that mattered — an earlier revision carried value_lexeme: '10k' in the model, which is a SPICE spelling of a resistance, so the supposed authority was holding target syntax. The magnitude is now a typed measure and 'k' is derived here from the variant's declared scale. THE PRIOR SHAPE WAS WORSE THAN A STRAY STRING: the board article held a BoardSlice imported FROM this module, so the article depended on one of its own targets and 'the article feeds every interface' was true only because that interface had already decided what the article looked like. WHAT THIS MODULE REFUSES BEFORE EMITTING A BYTE: an element with no model binding at all, an element whose vendor model this profile cannot render, and a TERMINAL ON NO NET. That last refusal is not pedantry — a floating terminal and a grounded one are different circuits, and defaulting the first to the second emits a deck that simulates cleanly and describes a different board."
 
@@ -37,7 +41,7 @@ type SpiceProjectionRefusal
 // indistinguishable output and 'one article feeds both projections' is a convention in a
 // witness rather than a property of the types.
 type SpiceEmissionReceipt {
-  source_article: NonEmptyStr
+  source_article: BoardArticleIdentity
   source: String
 }
 
@@ -166,7 +170,7 @@ fn body_text(intent: AnalogCircuitIntent, reference: NetIdentity) -> String {
 }
 
 fn project_analog_to_spice(
-  article_identity: NonEmptyStr,
+  article_identity: BoardArticleIdentity,
   intent: AnalogCircuitIntent,
   bindings: List<ComponentModelBinding>,
   reference: NetIdentity
@@ -181,4 +185,18 @@ fn project_analog_to_spice(
         },
       }
   }
+}
+
+// THE PRODUCTION ENTRY POINT, and the reason it takes the whole article rather than its parts.
+// Every caller of project_analog_to_spice supplies the identity and the circuit SEPARATELY, so
+// one article's identity paired with another article's circuit was perfectly constructible and
+// the resulting receipt would name a board it does not describe. Taking the article closes that
+// by construction: there is one value, and both facts are read out of it here.
+fn project_article_to_spice(article: BoardPowerInterfaceArticle) -> SpiceProjection {
+  project_analog_to_spice(
+    article_identity: article.identity,
+    intent: article.analog,
+    bindings: article.model_bindings,
+    reference: article.reference_net
+  )
 }

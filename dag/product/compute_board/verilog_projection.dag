@@ -22,6 +22,10 @@ import product.compute_board.digital_control {
   intent_declares_signal,
   signal_direction_is_output,
 }
+import product.compute_board.article {
+  BoardArticleIdentity,
+  BoardPowerInterfaceArticle,
+}
 
 data verilog_projection_note: String = "THE VERILOG PROJECTION: language-neutral digital intent to Verilog bytes. ALL Verilog spelling lives here and nothing upstream carries any of it — the intent has no constructor for a target string, so this module is the only place 'assign', '&', '~' or 'endmodule' appear for this article. WHAT THIS PROFILE COVERS, declared rather than discovered at emission: module framing, ANSI scalar input and output ports, continuous assignment, signal references, and the three boolean operators. WHAT IT DOES NOT COVER is not a gap to be filled by rendering something approximate — sequential behaviour has no constructor in DigitalControlIntent at all, so an always block cannot be requested here and then quietly emitted as combinational logic. The refusals this module DOES carry are for the conditions the intent can still express wrongly: a driven signal that is not an output, and a reference to a signal the intent never declared. A NOTE ON WHY THIS DOES NOT ROUTE THROUGH v2.extdeps.languages.verilog's VerilogModule AST: that AST names every construct with a substrate Symbol, and the substrate has no general Symbol-to-text projection — which is exactly why the sibling SPICE module carries a hand-written five-entry spelling table. Binding this profile onto that AST is the right end state and is blocked on that projection, not on appetite; until then the identifiers here are branded names that carry their own spelling and the emitted bytes are not bounded by a lookup table."
 
@@ -51,7 +55,7 @@ type VerilogProjectionRefusal
 // The receipt carries the article identity so an emission is traceable to the root that produced
 // it, rather than being an anonymous string two different articles could both have produced.
 type VerilogEmissionReceipt {
-  source_article: NonEmptyStr
+  source_article: BoardArticleIdentity
   source: String
 }
 
@@ -241,7 +245,7 @@ fn first_admission_refusal(
 // honour, checked before a byte is rendered — never after, and never by emitting something
 // approximate and noting the problem beside it.
 fn project_intent_to_verilog(
-  article_identity: NonEmptyStr,
+  article_identity: BoardArticleIdentity,
   intent: DigitalControlIntent,
   bindings: List<VerilogBinding>
 ) -> VerilogProjection {
@@ -277,3 +281,18 @@ data power_interlock_verilog_bindings: List<VerilogBinding> = [
   VerilogBinding { signal: power_permit_signal, spelling: "power_permit" },
   VerilogBinding { signal: reset_release_signal, spelling: "reset_release" },
 ]
+
+// The production entry point, for the same reason the SPICE side has one: identity and intent
+// arrive as ONE value, so a receipt cannot name an article whose control logic it did not
+// render. The binding table stays a parameter because a spelling table is a fact about a target,
+// not about the board — a second Verilog-speaking consumer may legitimately spell it otherwise.
+fn project_article_to_verilog(
+  article: BoardPowerInterfaceArticle,
+  bindings: List<VerilogBinding>
+) -> VerilogProjection {
+  project_intent_to_verilog(
+    article_identity: article.identity,
+    intent: article.digital_control,
+    bindings: bindings
+  )
+}
