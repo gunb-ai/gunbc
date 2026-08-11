@@ -243,6 +243,51 @@ data fleet_host_key_enroll_receipt_path: String = "target/fleet-host-key-enroll-
 // its OWN temp HOME. The registry is therefore materialized into the CURRENT process's
 // HOME by fleet_host_key_enroll_apply, which the probe entry calls FIRST — enrollment
 // rides with every probe run instead of pretending to persist.
+//
+// SECOND MEASURED CORRECTION (2026-08-11, live read-only inspection of srv1): on the
+// SELF-HOSTED runners this fleet actually uses, HOME is NOT per-job — it is /home/ghrunner,
+// ONE durable home shared by all ten runner slots (srv1-01 .. srv1-10). Combined with the
+// marker guard the previous form used, that made the pin ossify:
+//
+//   $ sudo cat /home/ghrunner/.ssh/config
+//   # gunbc-fleet-pin
+//   Host srv1 srv2 srv3 srv4 192.168.1.222 192.168.1.223
+//     StrictHostKeyChecking yes
+//     UserKnownHostsFile /opt/actions-runner/srv1-04/_work/gunbc/gunbc/target/fleet-known-hosts-fragment
+//
+// `$(pwd)` was expanded ONCE, at first write, into slot srv1-04's workspace, and
+// `if ! grep -q gunbc-fleet-pin` then skipped every subsequent rewrite forever. Fragment
+// presence by slot at inspection time: srv1-04 PRESENT, all nine others ABSENT. So a fleet
+// job was reachable only if it happened to land in the one slot the path was baked from;
+// from any other slot ssh read a nonexistent known_hosts under StrictHostKeyChecking=yes and
+// refused every host. That is reach by pool coincidence, not by construction, and it is why
+// runs after the pin landed refused EVERY leg of EVERY host on every fleet-SSH entry while
+// the pre-pin run 31346260819 had returned real principal-level answers.
+//
+// It also hid itself twice over: `touch "$CFG"` runs unconditionally, so the config's mtime
+// refreshed on every run while its content stayed frozen (the file looks maintained), and the
+// readback below interrogated the freshly-written staged fragment rather than the file ssh
+// would actually consult, so it reported found-in-pinned-fragment for all six hosts in the
+// very same job whose next step could not verify one of them.
+//
+// THE FIX, and why it is shaped this way. Two independent defects, both closed here:
+//   (1) the anchor now lives at $HOME/.ssh/gunbc-fleet-known-hosts, BESIDE the config that
+//       names it, instead of inside a per-workspace target/ dir. A per-workspace path in a
+//       per-user config was the whole bug; a stable path cannot be stale for a sibling slot.
+//   (2) the marker guard is GONE. The block is deleted and rewritten every run, so both the
+//       path and the endpoint list are DERIVED from current state rather than frozen at first
+//       write. The old guard also meant a registry change (adding srv5/srv6) could not
+//       propagate into an existing config at all.
+// The sed range deletes the legacy 4-line inline block, which migrates existing runners in
+// place on their next run; no manual cleanup is required on any host.
+//
+// AN INCLUDE-FILE FORM WAS BUILT, TESTED, AND REJECTED, recorded because it looks cleaner and
+// is not: ssh SILENTLY IGNORES an Include whose target is missing, so a pin file that failed
+// to write degrades to StrictHostKeyChecking=ask against the ambient default known_hosts —
+// fail-OPEN to unaudited trust, strictly worse than the loud refusal this form gives. Keeping
+// the block inline in ~/.ssh/config preserves the fail-closed property: verified by execution
+// that with the anchor deleted, resolution still reports stricthostkeychecking=true and the
+// pinned path, so ssh refuses rather than falling back.
 func fleet_host_key_enroll_apply() -> String
   uses net: Network
 {
@@ -255,12 +300,14 @@ func fleet_host_key_enroll_apply() -> String
     let w = Filesystem.Write(path: staged, content: fragment)
     if w.success {
       let pin_cmd = join([
-        "set -e; mkdir -p \"$HOME/.ssh\"; CFG=\"$HOME/.ssh/config\"; touch \"$CFG\"; ",
-        "if ! grep -q gunbc-fleet-pin \"$CFG\"; then ",
+        "set -e; mkdir -p \"$HOME/.ssh\"; CFG=\"$HOME/.ssh/config\"; ",
+        "ANCHOR=\"$HOME/.ssh/gunbc-fleet-known-hosts\"; touch \"$CFG\"; ",
+        "cp \"$(pwd)/target/fleet-known-hosts-fragment\" \"$ANCHOR\"; chmod 600 \"$ANCHOR\"; ",
+        "sed -i '/^# gunbc-fleet-pin$/,+3d' \"$CFG\"; ",
         "( echo '# gunbc-fleet-pin'; echo 'Host ", endpoints, "'; ",
         "echo '  StrictHostKeyChecking yes'; ",
-        "echo \"  UserKnownHostsFile $(pwd)/target/fleet-known-hosts-fragment\" ) >> \"$CFG\"; ",
-        "fi; chmod 600 \"$CFG\"",
+        "echo \"  UserKnownHostsFile $ANCHOR\" ) >> \"$CFG\"; ",
+        "chmod 600 \"$CFG\"",
       ], "")
       let applied = run_shell_commands(
         commands: [ ArgvCommand { argv: ["sh", "-c", pin_cmd] } ],

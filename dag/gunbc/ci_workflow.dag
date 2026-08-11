@@ -736,7 +736,7 @@ fn ci_srv1_tasks_observation_step() -> Step {
 // runs FROM inside the fleet, over the typed SSH probe seam where outcome is data).
 fn ci_multi_principal_probe_step() -> Step {
   RunStep {
-    name: Present { value: "Read-only multi-principal fleet-key probe on srv3/srv4 (fleet_multi_principal_probe_wet; hostname + sudo -n -l; no writes)" },
+    name: Present { value: "Read-only multi-principal fleet-key probe on srv3-srv6 (fleet_multi_principal_probe_wet; materializes the enrolled-only known_hosts anchor on THIS runner, then hostname + sudo -n -l; no writes to the probed hosts)" },
     id: none,
     run: gunbc_ci_multi_principal_probe_invoke(),
     shell: none,

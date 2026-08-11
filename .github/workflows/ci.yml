@@ -704,7 +704,7 @@ jobs:
           cat "$ROOT/target/fleet-reach-probe-receipt.txt"
         if: github.event_name == 'workflow_dispatch'
         timeout-minutes: 5
-      - name: Read-only multi-principal fleet-key probe on srv3/srv4 (fleet_multi_principal_probe_wet; hostname + sudo -n -l; no writes)
+      - name: Read-only multi-principal fleet-key probe on srv3-srv6 (fleet_multi_principal_probe_wet; materializes the enrolled-only known_hosts anchor on THIS runner, then hostname + sudo -n -l; no writes to the probed hosts)
         run: |
           # 🟡 dissolve-on: gunbc_ci_multi_principal_probe_invoke — concat-built foreign-executor (GitHub Actions run:) shell invoking gunbc run on gunbc.fleet_multi_principal_probe fleet_multi_principal_probe_wet plus a cat of the typed receipt; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the step to orchestration emit over the typed gunbc.WitnessBin.Run route
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)

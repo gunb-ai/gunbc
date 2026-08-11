@@ -6,6 +6,7 @@ import std.algebra { trim }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.typed_argv_exec { typed_argv_probe_over_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
+import gunbc.fleet_host_key_enrollment { fleet_host_key_enroll_apply }
 import gunbc.clock_read { clock_now_probed_at }
 
 // READ-ONLY measurement (parent msg_e767a783): before anyone grants new access, measure
@@ -76,9 +77,43 @@ fn multi_principal_host_block(host: String) -> String {
     "")
 }
 
+// Enrollment rides with the run, SAME path as probe_fleet_reach_wet and
+// collect_fleet_convergence_wet (review 50900). This was the one fleet-SSH entry that did
+// not call it, so this restores an invariant its two siblings already hold.
+//
+// THIS DOES NOT, ON ITS OWN, RESTORE PROBE REACH, and the comment says so because measuring
+// it is what refuted the first reading of this defect. probe_fleet_reach_wet DOES call
+// fleet_host_key_enroll_apply and, in run 31458845499, failed identically -- every host
+// unreachable behind "No ED25519 host key is known ... Host key verification failed". So the
+// missing call and the pin's own breakage are TWO defects, and only the first is fixed here.
+//
+// The pin regression itself is measured, not inferred: run 31346260819 (PRE-pin) produced
+// real principal-level answers -- srv3/ubuntu accepted and executed hostname, srv4/briansrls
+// accepted, ghrunner "This account is currently not available", root permission-denied --
+// while run 31458845499 (POST-pin) refused EVERY leg of EVERY host on every entry. Nothing
+// about the fleet changed between them; fleet_host_key_enroll_apply's
+// StrictHostKeyChecking-yes pin landed 2026-08-10. Root cause is open at the pin, not here.
+//
+// WHY IT STAYED INVISIBLE, which is the part worth keeping: the enroll readback is
+// `ssh-keygen -F <endpoint> -f <staged fragment>`, which interrogates the FRAGMENT FILE and
+// not the binding ssh actually resolves, so it reports readback=found-in-pinned-fragment for
+// all six hosts in the very same job whose next step cannot verify one of them. A success
+// criterion that cannot express the failure mode is not evidence of the guarantee (DESIGN
+// §5), and here it concealed a total loss of probe reach across the whole fleet.
+//
+// The receipt carries enroll_lines FIRST so a reader sees the anchor this run actually used
+// rather than inferring it. With or without this call the probe exits 0 and writes a
+// well-formed receipt -- every leg simply reads `refused` -- which is the dangerous shape:
+// a host-key configuration failure wearing the costume of a principal-absence measurement.
+// Grounding gunbc.fleet_converge_cli spark_managed_access_standing on such a receipt would
+// re-introduce the exact fabricated SparkManagedAccessAbsent that #8073 removed, one layer
+// further down where the cause string looks measured. Until the pin is repaired, a refused
+// leg in this receipt is evidence about ssh configuration and about nothing else.
 func fleet_multi_principal_probe_wet() -> ProcessExit {
+  let enroll_lines = fleet_host_key_enroll_apply()
   let now = clock_now_probed_at()
   let body = join([
+    enroll_lines,
     join(["multi-principal fleet-key probe probed_at=", now as String, " (read-only: hostname + sudo -n -l)\n"], ""),
     join(map(multi_principal_probe_hosts, h => multi_principal_host_block(host: h)), ""),
   ], "")
