@@ -1,0 +1,40 @@
+module v2.test.emit.produced_decl_target_refusal
+
+import v2.test.complexity_gate.table_fixture_add_subject_producer { table_fixture_add_decl_node }
+import v2.compiler.emit_produced { emit_produced_decl }
+import v2.extdeps.languages.cpp { cpp_target_model }
+import v2.extdeps.languages.rust { rust_target_model }
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data produced_decl_target_refusal_enrollment_note: String = "Enrolled via witness_discovery_scan_dirs (src/v2/test/claim/emit/) — the executing fail-closed receipt for produced_decl_target_unwired, the sibling of semantic_decl_target_refusal. Both arms are asserted deliberately: a refusal-only witness cannot distinguish an unwired TARGET from a malformed DECL, so the same declaration is required to emit against the wired Rust target and to refuse against an unwired one."
+
+fn pdtr_emits_against(target: TargetModel) -> Bool {
+  match table_fixture_add_decl_node(fn_name: ^rust_binding_fn_add) {
+    Accepted { value: decl, diagnostics: _ } =>
+      match emit_produced_decl(decl: decl, target: target) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// Positive control: the SAME declaration emits against the wired target, so a
+// refusal below is attributable to the target's missing produced-decl bundle.
+fn pdtr_wired_target_emits() -> Bool {
+  pdtr_emits_against(target: rust_target_model())
+}
+
+fn pdtr_unwired_target_refuses() -> Bool {
+  !pdtr_emits_against(target: cpp_target_model())
+}
+
+test fn produced_decl_unwired_target_refuses() -> Bool {
+  pdtr_wired_target_emits() && pdtr_unwired_target_refuses()
+}
