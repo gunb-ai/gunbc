@@ -8044,6 +8044,47 @@ fn arm_population_budget_watchdog(
             if watchdog_armed.load(std::sync::atomic::Ordering::Acquire) {
                 let elapsed_ms = started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64;
                 let locus = progress.snapshot();
+                let label = population.to_ascii_uppercase().replace('_', "-");
+
+                // THE REFUSAL IS ANNOUNCED BEFORE ANY WORK THAT CAN BLOCK OR FAIL, because the
+                // incident this ordering fixes is a budget exhaustion that killed the floor and
+                // said NOTHING. Run 31474198106 (PR #8132) ran the floor step for exactly 55m01s
+                // against gunbc_ci_ordinary_floor_budget_minutes = 55, exited 1, and emitted no
+                // OVER-BUDGET line anywhere in the attempt log — so the failure was
+                // indistinguishable from an unexplained death, and readers reached for whatever
+                // number was nearby (a cgroup peak RSS reading, in that case) and diagnosed a
+                // memory kill that never happened. A fail-closed wall whose diagnostic is missing
+                // is strictly worse than a loud one: the refusal is correct, the silence teaches
+                // everyone the wrong cause.
+                //
+                // TWO CANDIDATE LOSS MECHANISMS, and this ordering closes both without needing to
+                // decide between them. The receipt write ran FIRST and its path was interpolated
+                // into the message, so a slow or stalled write under a loaded runner delayed the
+                // only announcement past process death. And the message then took an explicit
+                // stderr lock guard held across the write — a lock the main thread holds while it
+                // streams its own receipt phases, which is exactly what the floor is doing in the
+                // window this fired in. A watchdog thread must never wait on a resource the thread
+                // it is policing can hold.
+                //
+                // The annotation goes to stdout as `::error::` so the cause reaches the run summary
+                // rather than only line ~7000 of a step log; the detail line stays on stderr for
+                // the terminal receipt. eprintln!/println! take the lock per call rather than
+                // holding a guard across several operations, and the receipt write moves after
+                // both, where a failure to write it can no longer suppress the diagnosis.
+                println!(
+                    "::error::claim_executor: {label}-OVER-BUDGET — plan_site={site} population_index={} active_unit={} elapsed_ms={elapsed_ms} budget_ms={budget_ms}; executor refusing inside the population boundary",
+                    locus.population_index,
+                    locus.active_unit,
+                );
+                eprintln!(
+                    "claim_executor: {label}-OVER-BUDGET — plan_site={site} population_index={} active_unit={} elapsed_ms={elapsed_ms} budget_ms={budget_ms}; executor refusing inside the population boundary",
+                    locus.population_index,
+                    locus.active_unit,
+                );
+                use std::io::Write as _;
+                let _ = std::io::stdout().flush();
+                let _ = std::io::stderr().flush();
+
                 let receipt = PopulationBudgetRefusal {
                     population,
                     plan_site: &site,
@@ -8055,20 +8096,8 @@ fn arm_population_budget_watchdog(
                 let receipt_path = write_population_budget_refusal_at(Path::new("target"), &receipt)
                     .map(|path| path.display().to_string())
                     .unwrap_or_else(|error| format!("UNWRITABLE ({error})"));
-                use std::io::Write as _;
-                let mut stderr = std::io::stderr().lock();
-                let _ = writeln!(
-                    stderr,
-                    "claim_executor: {}-OVER-BUDGET — plan_site={} population_index={} active_unit={} elapsed_ms={} budget_ms={} receipt={}; executor refusing inside the population boundary",
-                    population.to_ascii_uppercase().replace('_', "-"),
-                    site,
-                    locus.population_index,
-                    locus.active_unit,
-                    elapsed_ms,
-                    budget_ms,
-                    receipt_path,
-                );
-                let _ = stderr.flush();
+                eprintln!("claim_executor: {label}-OVER-BUDGET receipt={receipt_path}");
+                let _ = std::io::stderr().flush();
                 std::process::exit(1);
             }
         });
