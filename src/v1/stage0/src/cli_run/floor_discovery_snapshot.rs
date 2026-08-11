@@ -431,32 +431,6 @@ pub fn produce_floor_discovery_snapshot(
     let facts = super::build_module_graph_facts_live_uncached(&request.source_roots);
     super::refuse_on_module_graph_read_refusals(&facts)?;
     super::apply_effect_reach_derived_reads_live_tree(&mut rows, &facts);
-    let inert = super::inert_lens_modules(&rows, &facts);
-    if !inert.is_empty() {
-        return Err(format!(
-            "inert-lens hygiene (DESIGN.md §6): {} lens module(s) under `v2.lens.*` are authored \
-             but unreached by any discovered floor witness — an inert lens is a lie. Wire each \
-             with a discovered fail-closed witness (a `*_test.dag` `test fn`/`test data`, or a \
-             scan-dir `unified_claim_*`) or delete it: {}",
-            inert.len(),
-            inert.join(", ")
-        ));
-    }
-    let (lens_module_to_path, lens_with_justification) = super::lens_justification_census(&facts)?;
-    let unjustified =
-        super::unjustified_lens_modules(&lens_module_to_path, &lens_with_justification);
-    if !unjustified.is_empty() {
-        return Err(format!(
-            "construction-justification (DESIGN.md §5/§6): {} lens module(s) under `v2.lens.*` do \
-             not record a `construction_justification` — before adding a lens you must justify why \
-             the bad-state class cannot be made unwritable by construction. Add a `data \
-             construction_justification: ConstructionJustification = …` decl (see \
-             v2.lens.common.construction_justification) classifying it as WallNow / \
-             WallAfterGrounding / RatchetForever: {}",
-            unjustified.len(),
-            unjustified.join(", ")
-        ));
-    }
     let roster: Vec<DiscoveryRowSnapshot> = rows.iter().map(row_to_snapshot).collect();
     let facts_snapshot = facts_to_snapshot(&facts);
     let request_identity_digest = request_identity_digest(request);

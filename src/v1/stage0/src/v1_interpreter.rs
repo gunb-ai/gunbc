@@ -3823,13 +3823,6 @@ macro_rules! v1_bridge_family_arms {
                 arm "v4_bridge.data_init_decl_facts_live" { "data_init_decl_facts_live" } =>
                     crate::coproduct_reflection::eval_data_init_decl_facts_live($ctx, &$args),
             }
-            family INERT_LENS_BRIDGE_FNS "v2.lens.inert_lens"
-                lookup_eval_call_bridge_lens_inert_lens eval_call_bridge__v2_lens_inert_lens_arm {
-                arm "v4_bridge.inert_lens_unreached_module_count" { "inert_lens_unreached_module_count" } =>
-                    Ok(Value::Int(crate::cli_run::inert_lens_unreached_module_count())),
-                arm "v4_bridge.inert_lens_top_level_module_count" { "inert_lens_top_level_module_count" } =>
-                    Ok(Value::Int(crate::cli_run::inert_lens_top_level_module_count())),
-            }
         }
     };
 }
@@ -12278,13 +12271,6 @@ macro_rules! v1_builtin_arms {
             },
             arm "free_call.inert_carrier_declared_count" { "inert_carrier_declared_count" } => Ok(Some(Value::Int(
                 crate::cli_run::inert_carrier_declared_count_live(),
-            ))),
-
-            arm "free_call.inert_lens_unreached_module_count" { "inert_lens_unreached_module_count" } => Ok(Some(Value::Int(
-                crate::cli_run::inert_lens_unreached_module_count(),
-            ))),
-            arm "free_call.inert_lens_top_level_module_count" { "inert_lens_top_level_module_count" } => Ok(Some(Value::Int(
-                crate::cli_run::inert_lens_top_level_module_count(),
             ))),
 
             arm "free_call.non_fold_residue_count" { "non_fold_residue_count" } => Ok(Some(Value::Int(crate::cli_run::non_fold_residue_count()))),
