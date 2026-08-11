@@ -24,10 +24,6 @@ import product.compute_board.spice_projection {
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
-fn list_count<T>(xs: List<T>) -> Int {
-  fold(xs, init: 0, f: (acc, _) => acc + 1)
-}
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // A SYNTHETIC fixture authority, deliberately unresolvable. An earlier revision cited Ucamco's
