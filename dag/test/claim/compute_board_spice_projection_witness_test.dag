@@ -3,7 +3,7 @@ module test.claim.compute_board_spice_projection_witness
 import std.types { String, List }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import v2.extdeps.formats.spice { Ground }
+import v2.extdeps.formats.spice { Ground, spice_emit }
 import product.compute_board.spice_projection {
   BoardSlice,
   CapacitiveElement,
@@ -113,23 +113,38 @@ fn slice_with(elements: List<SliceElement>) -> BoardSlice {
   BoardSlice { title: "standby rail slice", source: rail_source(), elements: elements }
 }
 
-// POSITIVE CONTROL ON THE PROJECTED NETLIST STRUCTURE — one source statement plus one per
-// element. It asserts the deck was built, not merely that the projected arm was reached.
+// POSITIVE CONTROL ON EMITTED BYTES — merge-bar item 7, delivered rather than owed.
 //
-// WHY NOT ON EMITTED BYTES, stated precisely because an earlier revision of this file got the
-// diagnosis wrong TWICE. The first attempt blamed spice_emit outright. The second blamed this
-// lane for passing a native list literal where the module wants its Cons/Empty free monoid —
-// which was a real bug here and is fixed — and then claimed the byte receipt was therefore
-// available. It is not. What execution actually shows: v2.extdeps.formats.spice's OWN golden
-// fixture, spice_rc_tran_deck, emits correctly through spice_emit_ngspice inside its own test
-// (both its witnesses pass, untouched), and that SAME fixture returns a value string_contains
-// rejects as a Variant when spice_emit is called on it FROM THIS MODULE. Same input, same
-// function, different calling module, different result. So the boundary is cross-module, not
-// the deck and not the emitter's logic — which is a materially different and more serious
-// finding than either earlier description, and it is not repaired here.
-test fn w_modelled_slice_projects_expected_statement_count() -> Bool {
+// The three-attempt diagnosis behind this is kept because each wrong answer was more confident
+// than the last. (1) "spice_emit returns an unwrapped Optional." (2) "no, this lane passed a
+// native list where the module folds a Cons/Empty free monoid" — a real bug here, fixed, but
+// not the cause. (3) "the seam is cross-module: the module's own fixture works inside it and
+// fails from outside." Also wrong. The actual cause is two lines long: spice_text_concat was
+// defined as list_append, the FREE MONOID append, applied to String. String is not a free
+// monoid in the realization, so every concatenated result came back a Cons/Empty structure.
+// The builtin concat was always available. Fixed at the root in v2.extdeps.formats.spice, and
+// that module's own ngspice goldens still pass, so the repair is behaviour-preserving where it
+// already worked and behaviour-restoring where it did not.
+test fn w_modelled_slice_emits_expected_deck_bytes() -> Bool {
   match project_slice_to_spice(slice: slice_with(elements: [modelled_resistor(), modelled_capacitor()])) {
-    SpiceSliceProjected { netlist: n } => list_count(xs: n.body) == 3
+    SpiceSliceProjected { netlist: n } => {
+      let text = spice_emit(netlist: n)
+      string_contains(s: text, pattern: "standby rail slice")
+        && string_contains(s: text, pattern: "V1 n1 0 12")
+        && string_contains(s: text, pattern: "R1 n1 0 10k")
+        && string_contains(s: text, pattern: "C1 n1 0 100n")
+    }
+    SpiceSliceRefused { cause: _ } => false
+  }
+}
+
+// Ordering is a property of the deck, not an accident of the fold: the source line precedes the
+// element lines. A contains-only assertion cannot see this, which is why it is asserted as one
+// contiguous byte run.
+test fn w_emitted_deck_orders_source_before_elements() -> Bool {
+  match project_slice_to_spice(slice: slice_with(elements: [modelled_resistor(), modelled_capacitor()])) {
+    SpiceSliceProjected { netlist: n } =>
+      string_contains(s: spice_emit(netlist: n), pattern: "V1 n1 0 12\nR1 n1 0 10k\nC1 n1 0 100n")
     SpiceSliceRefused { cause: _ } => false
   }
 }
