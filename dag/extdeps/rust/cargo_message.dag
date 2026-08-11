@@ -106,17 +106,6 @@ fn cargo_message_string_value(v: JsonValue) -> String? {
   }
 }
 
-fn cargo_message_is_null(v: JsonValue) -> Bool {
-  match v {
-    JsonNull => true
-    JsonString { value: _ } => false
-    JsonBool { value: _ } => false
-    JsonNumber { lexeme: _ } => false
-    JsonArray { elements: _ } => false
-    JsonObject { members: _ } => false
-  }
-}
-
 // Reads the target name a message declares. Separated from the artifact read below
 // because "this line has no target member" and "this line's target has no name" are
 // distinct drifts in cargo's shape, and a consumer chasing one should not have to
@@ -176,6 +165,17 @@ fn cargo_message_target_name(doc: JsonValue, line_number: Int) -> CargoTargetNam
 // both say this target produced no executable, and the consumer's remedy for the
 // two is identical, so splitting them would be a distinction with no different
 // action behind it.
+//
+// The executable read names every JsonValue variant instead of asking a local
+// is-it-null predicate first. An earlier revision minted cargo_message_is_null
+// here — a Bool over a closed coproduct answering true for one variant — which is
+// a second authority on a JsonValue fact that belongs to the JSON module, and the
+// review that caught it was right. Inlining beats moving it there: the predicate
+// had exactly one caller, and json.parse's own json_exhaustive_match_note argues
+// that naming every variant is the point rather than a style choice, because a
+// seventh JsonValue variant must BREAK every reader and force a decision at each.
+// Under the predicate, a new variant would have silently answered "not null" and
+// then "not a string"; here it fails to compile until someone decides.
 fn cargo_message_artifact_hit(
   doc: JsonValue,
   line_number: Int,
@@ -196,20 +196,33 @@ fn cargo_message_artifact_hit(
     JsonMemberAbsent =>
       CargoScanning { hits: [CargoArtifactHitWithoutExecutable], line_number: line_number }
     JsonMemberFound { value: exe } =>
-      if cargo_message_is_null(v: exe) {
-        CargoScanning { hits: [CargoArtifactHitWithoutExecutable], line_number: line_number }
-      } else {
-        match cargo_message_string_value(v: exe) {
-          Absent =>
-            CargoScanRefused {
-              selection: CargoArtifactExecutableNotAString { target_name: target_name }
-            }
-          Present { value: path } =>
-            CargoScanning {
-              hits: [CargoArtifactHitExecutable { path: path }],
-              line_number: line_number
-            }
-        }
+      match exe {
+        JsonNull =>
+          CargoScanning {
+            hits: [CargoArtifactHitWithoutExecutable],
+            line_number: line_number
+          }
+        JsonString { value: path } =>
+          CargoScanning {
+            hits: [CargoArtifactHitExecutable { path: path }],
+            line_number: line_number
+          }
+        JsonBool { value: _ } =>
+          CargoScanRefused {
+            selection: CargoArtifactExecutableNotAString { target_name: target_name }
+          }
+        JsonNumber { lexeme: _ } =>
+          CargoScanRefused {
+            selection: CargoArtifactExecutableNotAString { target_name: target_name }
+          }
+        JsonArray { elements: _ } =>
+          CargoScanRefused {
+            selection: CargoArtifactExecutableNotAString { target_name: target_name }
+          }
+        JsonObject { members: _ } =>
+          CargoScanRefused {
+            selection: CargoArtifactExecutableNotAString { target_name: target_name }
+          }
       }
   }
 }
