@@ -10288,47 +10288,22 @@ fn run() -> Result<ExitCode, ExitCode> {
     v1_compiler::cli_run::install_group_syntax(&source_roots);
     phase_mark("output-policy + group-syntax install");
 
-    // Under the opt-in inversion the plan's DiscoveryBatches carry explicit entries
-    // only (or are absent entirely on an empty roster), and the explicit-only path
-    // skips the tree-walk naming hygiene (`test fn` outside `*_test.dag`, `__`
-    // basenames) that glob discovery used to run. A witness must stay NAMEABLE even
-    // when not enrolled (an unnameable witness could never be opted in), so the plan
-    // path always runs the fail-closed walk once up front — before the (expensive)
-    // plan evaluation, so a naming violation is the cheapest possible failure.
-    {
-        let excludes = v1_compiler::cli_run::witness_exclusion_substrings();
-        let walk_attempt_id = match floor_walk_attempt_id() {
-            Ok(id) => id,
-            Err(msg) => {
-                eprintln!("claim_executor: witness naming hygiene walk-attempt refusal: {msg}");
-                return Err(ExitCode::from(1));
-            }
-        };
-        if std::env::var("GUNBC_FLOOR_WALK_ATTEMPT_ID")
-            .map(|v| v.trim().is_empty())
-            .unwrap_or(true)
-        {
-            std::env::set_var("GUNBC_FLOOR_WALK_ATTEMPT_ID", &walk_attempt_id);
-        }
-        let discovery_consumer = match floor_worker_role.as_ref() {
-            Some(FloorWorkerRole::Scoped { .. }) => floor_discovery_consumer_role_from_env(),
-            Some(FloorWorkerRole::Ordinary) | None => FloorDiscoveryConsumerRole::Producer,
-        };
-        if let Err(msg) = discover_floor_witness_roster_with_snapshot(
-            &source_roots,
-            &[],
-            &excludes,
-            &[],
-            &walk_attempt_id,
-            discovery_consumer,
-            "Hermetic",
-            &source_roots,
-        ) {
-            eprintln!("claim_executor: witness naming hygiene (pre-plan walk): {msg}");
+    // The walk-attempt id is a tracing coordinate every later phase stamps, so it is
+    // minted unconditionally here. The corpus WALK it used to gate is not: see the
+    // demand-directed hygiene walk after the plan's batches settle.
+    let floor_walk_attempt_id_value = match floor_walk_attempt_id() {
+        Ok(id) => id,
+        Err(msg) => {
+            eprintln!("claim_executor: witness naming hygiene walk-attempt refusal: {msg}");
             return Err(ExitCode::from(1));
         }
+    };
+    if std::env::var("GUNBC_FLOOR_WALK_ATTEMPT_ID")
+        .map(|v| v.trim().is_empty())
+        .unwrap_or(true)
+    {
+        std::env::set_var("GUNBC_FLOOR_WALK_ATTEMPT_ID", &floor_walk_attempt_id_value);
     }
-    phase_mark("naming-hygiene walk");
 
     if perturb_check {
         return run_perturb_check(&source_roots, &plan_entry, &plan_function);
@@ -10495,6 +10470,40 @@ fn run() -> Result<ExitCode, ExitCode> {
             Runnable::DiscoveryBatch { .. } | Runnable::ScopedWitnessBatch { .. }
         )
     });
+    // Witness naming hygiene (`test fn` outside `*_test.dag`, `__` basenames) is a
+    // property of the witness ROSTER, so it is paid by the plans that have one. It ran
+    // unconditionally before plan evaluation until this change, on the stated ground
+    // that a naming violation should be "the cheapest possible failure"; measured, the
+    // walk is the most expensive phase in the process (5.9 min of a 56.5-min floor,
+    // ~6 min of a ~15-min regen), because the roster producer it calls builds
+    // module-graph facts, a second strict reference-resolution pass, inert-lens
+    // reachability and the construction-justification census. A two-node regen plan
+    // paid all of it to discover a roster it never reads. The roster is memoized by
+    // request digest (IN_PROCESS_ROSTER_BY_REQUEST), so plans that DO schedule
+    // discovery pay exactly what they paid before — the corpus batch hits the memo
+    // this call fills. Plans that do not schedule discovery now pay nothing, and
+    // cannot: they have no roster to be unhygienic about.
+    if schedules_discovery {
+        let excludes = v1_compiler::cli_run::witness_exclusion_substrings();
+        let discovery_consumer = match floor_worker_role.as_ref() {
+            Some(FloorWorkerRole::Scoped { .. }) => floor_discovery_consumer_role_from_env(),
+            Some(FloorWorkerRole::Ordinary) | None => FloorDiscoveryConsumerRole::Producer,
+        };
+        if let Err(msg) = discover_floor_witness_roster_with_snapshot(
+            &source_roots,
+            &[],
+            &excludes,
+            &[],
+            &floor_walk_attempt_id_value,
+            discovery_consumer,
+            "Hermetic",
+            &source_roots,
+        ) {
+            eprintln!("claim_executor: witness naming hygiene (roster walk): {msg}");
+            return Err(ExitCode::from(1));
+        }
+    }
+    phase_mark("naming-hygiene walk");
     let fast_lane_eval_budget_ms: Option<u64> = if schedules_discovery {
         match run_value(&plan_ctx, "gunbc_ci_fast_lane_eval_budget_ms") {
             Ok(Value::Int(n)) if n > 0 => Some(n as u64),
