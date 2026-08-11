@@ -4509,7 +4509,7 @@ fn belt_session_liveness_from_process(
         session_name: session_name,
         detail: join([
           "retained pane: process exited with status ",
-          int_to_string(n: exit_code),
+          to_string(exit_code),
           "; last command ",
           last_command,
         ], ""),
@@ -4531,7 +4531,8 @@ fn belt_node_session_liveness(
   live: List<DispatchLiveSession>,
   node_id: String,
 ) -> BeltSessionLiveness {
-  match (live |> filter(s => s.node_id == node_id)).first() {
+  let matched = live |> filter(s => s.node_id == node_id)
+  match matched.first() {
     Present { value: s } =>
       belt_session_liveness_from_process(
         session_name: s.session_name,
