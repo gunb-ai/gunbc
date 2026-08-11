@@ -44,6 +44,10 @@ data nfr_reason_mint_era: String = "match over a closed-coproduct param carrying
 
 data nfr_dissolve_wildcard_total: DissolutionCondition = unbound_dissolution(description: "the site's wildcard arm migrates to a total match — or the fn is declared kernel-permanent in cla_is_kernel_permanent_fn, which forces this row's deletion (DESIGN §6 exclusivity, per non_fold_residue_stale_row_ruling_note) — and the row deletes")
 
+data nfr_reason_floor_discovery_transport: String = "typed transport-state projection: the observation coproduct's non-applicable variants share one located refusal arm at each phase; enumerating them would duplicate the same wrong-phase refusal rather than add semantic coverage. Declared with the transport boundary so the ratchet remains armed."
+
+data nfr_dissolve_floor_discovery_transport: DissolutionCondition = unbound_dissolution(description: "generated transport realization derives wrong-phase refusal from the observation-state partition and the shared arms become named total cases; the row deletes with the hand-Rust transport scaffold")
+
 data nfr_reason_ci_floor_gate_membership: String = "gate-identity membership fold (match on the Gate param with an off-variant wildcard arm continuing the fold) landed with the CI fail-fast cheap-gate early batch (#7088); surfaced by the re-home PR's whole-corpus receipt after per-PR affected-set selection predict-skipped the corpus-read nfr witness at landing time (the masking class); declared so the ratchet re-arms"
 
 data nfr_dissolve_gate_membership: DissolutionCondition = unbound_dissolution(description: "derived equality on Gate from inhabitance lands (dag/std/algebra, DESIGN §3/§4): the nested per-variant match is a hand-rolled sg-equals-g test, so the membership fold collapses to found or sg == g, the nested matches delete, and the row deletes with them")
@@ -932,6 +936,11 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "dag/gunbc/live_deploy/readiness.dag::healthz_release_identity_refusal" },
     reason: nfr_reason_release_identity_absent_split,
     dissolution: nfr_dissolve_release_identity_absent_split,
+  },
+  FrontierRow {
+    subject: PathSubject { path: "src/v2/workflow/floor_discovery_transport.dag::floor_discovery_transport_observe" },
+    reason: nfr_reason_floor_discovery_transport,
+    dissolution: nfr_dissolve_floor_discovery_transport,
   },
 ]
 
