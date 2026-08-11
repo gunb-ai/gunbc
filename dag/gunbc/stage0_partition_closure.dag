@@ -164,16 +164,14 @@ type DedupAcc {
 
 // file path -> declaring module identity, from the same declaration authority the edge
 // producer uses, so the join cannot disagree with the edges it is joining.
-fn path_to_module_index() -> Map<String, String> {
-  module_declaration_facts_live(pool_roots: partition_closure_pool_roots)
-    |> fold(init: empty_map(), f: fn(m, fact) { map_insert(m, fact.path, fact.module) })
+fn path_to_module_index_from(decls: List<ModuleDeclarationFact>) -> Map<String, String> {
+  decls |> fold(init: empty_map(), f: fn(m, fact) { map_insert(m, fact.path, fact.module) })
 }
 
 // emitted basename -> declaring module identity. The basename is PROJECTED through the
 // emit-plan authority, never respelled here.
-fn basename_to_module_index() -> Map<String, String> {
-  module_declaration_facts_live(pool_roots: partition_closure_pool_roots)
-    |> fold(init: empty_map(), f: fn(m, fact) {
+fn basename_to_module_index_from(decls: List<ModuleDeclarationFact>) -> Map<String, String> {
+  decls |> fold(init: empty_map(), f: fn(m, fact) {
       map_insert(m, stage0_module_emit_basename(module_path: fact.module), fact.module)
     })
 }
@@ -191,13 +189,11 @@ type ModuleTargetsAcc {
 
 // declaring module -> the modules it references, keyed by module identity rather than by file
 // path, because module identity is this gate's subject.
-fn module_target_index() -> Map<String, List<String>> {
-  let paths = path_to_module_index()
-  dependency_resolution_facts_live(
-    pool_roots: partition_closure_pool_roots,
-    importer_roots: partition_closure_pool_roots,
-    exclude_substrings: partition_closure_exclude_substrings
-  )
+fn module_target_index_from(
+  edges: List<ModuleDependencyEdge>,
+  paths: Map<String, String>
+) -> Map<String, List<String>> {
+  edges
     |> fold(init: empty_map(), f: fn(idx, edge) {
       match lookup_string(m: paths, key: edge.path) {
         Present { value: importer } =>
@@ -259,12 +255,32 @@ fn module_is_emitted(basename: String) -> Bool {
   list_contains_string(xs: generated_stage0_files, needle: concat(basename, ".rs"))
 }
 
-fn emitted_reference_confirms(importer_basename: String, target_basename: String) -> Bool {
-  if !module_is_emitted(basename: importer_basename) || !module_is_emitted(basename: target_basename) {
+// THE IMPORTER'S SOURCE IS READ ONCE PER IMPORTER, NOT ONCE PER TARGET, and that is a
+// correctness-of-cost fix rather than a tuning knob (DESIGN section 6, bare minimum cost).
+// The read depends only on the importer, while the confirmation question is asked for every
+// target that importer references -- so the pairwise form re-read one emitted seed file, some
+// of them megabytes, once per edge out of it. Measured before the hoist: the two live-corpus
+// witnesses cost 173.6s and 180.5s of thread CPU. CI never reported those numbers, because the
+// 5s fast-lane budget INTERRUPTS at 5040ms and an interrupt is a lower bound on cost, never the
+// cost -- which is precisely why the defect could sit here looking like a witness slightly over
+// budget instead of a fold re-reading the corpus thousands of times.
+//
+// Reading absent content as the empty string is not a fallback: a module with no emitted file
+// cannot confirm a reference, and the empty string confirms nothing, so the arm returns exactly
+// what the pairwise guard returned. The guard on the TARGET stays at the call site below.
+fn emitted_importer_source(importer_basename: String) -> String {
+  if module_is_emitted(basename: importer_basename) {
+    filesystem_read(path: emitted_module_path(basename: importer_basename)).content
+  } else {
+    ""
+  }
+}
+
+fn emitted_reference_confirms_in(importer_source: String, target_basename: String) -> Bool {
+  if !module_is_emitted(basename: target_basename) {
     false
   } else {
-    let importer = filesystem_read(path: emitted_module_path(basename: importer_basename))
-    string_contains(s: importer.content, pattern: concat("use crate::", target_basename))
+    string_contains(s: importer_source, pattern: concat("use crate::", target_basename))
   }
 }
 
@@ -279,12 +295,13 @@ fn defects_for_crate(
     |> fold(init: [], f: fn(acc, own_basename) {
       match lookup_string(m: basenames, key: own_basename) {
         Absent => acc
-        Present { value: importer_module } =>
+        Present { value: importer_module } => {
+          let importer_source = emitted_importer_source(importer_basename: own_basename)
           concat(acc, targets_of_module(idx: targets, module: importer_module)
             |> fold(init: [], f: fn(inner, target_module) {
               let tb = stage0_module_emit_basename(module_path: target_module)
               if list_contains_string(xs: reachable, needle: tb)
-                || !emitted_reference_confirms(importer_basename: own_basename, target_basename: tb) {
+                || !emitted_reference_confirms_in(importer_source: importer_source, target_basename: tb) {
                 inner
               } else {
                 let authority = authority_for_unreachable_target(rows: rows, target_basename: tb)
@@ -299,6 +316,7 @@ fn defects_for_crate(
                 }])
               }
             }))
+        }
       }
     })
 }
@@ -307,12 +325,44 @@ fn partition_closure_verdict() -> PartitionClosureVerdict {
   partition_closure_verdict_for_rows(rows: generated_partition_crate_rows)
 }
 
-// Parameterised on the roster so a witness can reproduce the incident shape - a module
-// addition whose roster row is missing - against LIVE tree facts, rather than asserting the
-// mechanism over invented edges that could be authored to pass.
+// The LIVE entry point: derives each fact population once and hands them to the pure core.
+//
+// CORRECTED 2026-08-11. This comment previously said the parameterised form existed so a
+// witness could reproduce the incident shape against LIVE tree facts rather than over invented
+// edges. That was the intent and it is no longer what happens: the live derivation costs about
+// 175 seconds of thread CPU, so the three REDs that called it could never execute inside the 5s
+// fast-lane budget, and they never once did - #8111 merged on a cancelled check. They now run
+// on a fixture over partition_closure_verdict_over, keeping REAL emitted modules as importer
+// and targets so the confirmation step still reads a real file. The live tie is
+// w_live_corpus_partition_closure_holds alone. Leaving the old sentence would be a note
+// describing a property the tree stopped having.
 fn partition_closure_verdict_for_rows(rows: List<GeneratedPartitionCrateRow>) -> PartitionClosureVerdict {
-  let targets = module_target_index()
-  let basenames = basename_to_module_index()
+  let decls = module_declaration_facts_live(pool_roots: partition_closure_pool_roots)
+  let edges = dependency_resolution_facts_live(
+    pool_roots: partition_closure_pool_roots,
+    importer_roots: partition_closure_pool_roots,
+    exclude_substrings: partition_closure_exclude_substrings
+  )
+  partition_closure_verdict_over(
+    rows: rows,
+    targets: module_target_index_from(edges: edges, paths: path_to_module_index_from(decls: decls)),
+    basenames: basename_to_module_index_from(decls: decls),
+    edges_considered: edges |> fold(init: 0, f: fn(a, e) { a + 1 })
+  )
+}
+
+// THE PURE CORE. Every live read is the caller's, so the mechanism -- which crate may reference
+// which module, which hand authority is short a row, and what the verdict's extent says -- is
+// decidable over supplied facts. That is what lets the mechanism witnesses run as fixtures
+// costing nothing instead of re-deriving the corpus once per assertion, per the 2026-08-04
+// witness-cost ruling: small discriminating mechanism fixtures, plus the irreducible live
+// census kept as its own row.
+fn partition_closure_verdict_over(
+  rows: List<GeneratedPartitionCrateRow>,
+  targets: Map<String, List<String>>,
+  basenames: Map<String, String>,
+  edges_considered: Int
+) -> PartitionClosureVerdict {
   let defects = rows
     |> fold(init: [], f: fn(acc, row) {
       concat(acc, defects_for_crate(rows: rows, row: row, targets: targets, basenames: basenames))
@@ -320,11 +370,7 @@ fn partition_closure_verdict_for_rows(rows: List<GeneratedPartitionCrateRow>) ->
   let extent = PartitionClosureExtent {
     crates_considered: rows |> fold(init: 0, f: fn(a, r) { a + 1 }),
     modules_considered: dedup_strings(xs: emitted_basenames_in(rows: rows)) |> fold(init: 0, f: fn(a, m) { a + 1 }),
-    edges_considered: dependency_resolution_facts_live(
-      pool_roots: partition_closure_pool_roots,
-      importer_roots: partition_closure_pool_roots,
-      exclude_substrings: partition_closure_exclude_substrings
-    ) |> fold(init: 0, f: fn(a, e) { a + 1 }),
+    edges_considered: edges_considered,
   }
   if (defects |> fold(init: 0, f: fn(a, d) { a + 1 })) == 0 {
     PartitionClosureHolds { extent: extent }
