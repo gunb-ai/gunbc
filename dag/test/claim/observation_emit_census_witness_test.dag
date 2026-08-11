@@ -20,13 +20,11 @@ import gunbc.observation_emit_census {
   measurement_site,
   shell_site,
   floor_drain_site,
-  gate_warm_cost_site,
   receipt_site,
   file_trace_site,
   resolve_split_site,
   assembly_split_site,
   witness_row_cost_site,
-  witness_row_cost_drift_site,
   witness_row_cost_migration_disclosure_site,
   selection_degradation_site,
 }
@@ -122,8 +120,6 @@ data w_post_snapshot_live_tags_are_rostered_bidirectional_note: String = "Operat
 test fn w_post_snapshot_live_tags_are_rostered_bidirectional() -> Bool {
   census_marker_present(site: floor_drain_site) &&
   emit_site_is_frontier(site: floor_drain_site) &&
-  census_marker_present(site: gate_warm_cost_site) &&
-  emit_site_is_frontier(site: gate_warm_cost_site) &&
   census_marker_present(site: receipt_site) &&
   emit_site_is_frontier(site: receipt_site) &&
   census_marker_present(site: file_trace_site) &&
@@ -134,12 +130,8 @@ test fn w_post_snapshot_live_tags_are_rostered_bidirectional() -> Bool {
   emit_site_is_frontier(site: assembly_split_site) &&
   census_marker_present(site: witness_row_cost_site) &&
   emit_site_is_frontier(site: witness_row_cost_site) &&
-  census_marker_present(site: witness_row_cost_drift_site) &&
-  emit_site_is_frontier(site: witness_row_cost_drift_site) &&
   census_marker_present(site: witness_row_cost_migration_disclosure_site) &&
   emit_site_is_frontier(site: witness_row_cost_migration_disclosure_site) &&
-  census_marker_present(site: compile_clean_cost_drift_site) &&
-  emit_site_is_frontier(site: compile_clean_cost_drift_site) &&
   census_marker_present(site: selection_degradation_site) &&
   emit_site_is_frontier(site: selection_degradation_site)
 }

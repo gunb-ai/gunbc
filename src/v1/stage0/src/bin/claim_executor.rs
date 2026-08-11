@@ -6366,12 +6366,6 @@ fn write_witness_row_cost_drift_receipt_at(
             }
         }
     }
-    eprintln!(
-        "[witness-row-cost-drift] basis_absent={basis_absent_count} observation_absent={observation_absent_count} clock_mismatch={clock_mismatch_count} drift_exceeded={drift_count}"
-    );
-    for line in body.lines() {
-        eprintln!("[witness-row-cost-drift] {line}");
-    }
     let path = base.join("floor-witness-row-cost-drift-receipt.tsv");
     if let Err(e) = std::fs::create_dir_all(base).and_then(|_| std::fs::write(&path, &body)) {
         eprintln!(
