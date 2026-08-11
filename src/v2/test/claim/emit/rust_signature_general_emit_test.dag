@@ -3,8 +3,11 @@ module v2.test.emit.rust_signature_general_emit
 import v2.test.complexity_gate.table_fixture_add_subject_producer { table_fixture_add_decl_node }
 import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source }
 import v2.extdeps.languages.rust {
-  rust_target_model_staging,
-  rust_signature_with_open_from_decl
+  rust_produced_decl_signature_projection,
+  rust_target_model_staging
+}
+import v2.std.compilers.produced_decl_emission {
+  target_produced_signature_with_open_from_decl
 }
 import v2.std.compilers.target_model { TargetModel }
 import extdeps.communication.medium { Medium }
@@ -28,7 +31,10 @@ fn rust_signature_add_text() -> Outcome<String> {
     o: rust_signature_add_decl(),
     f: fn(decl) {
       bind_outcome(
-        o: rust_signature_with_open_from_decl(decl: decl),
+        o: target_produced_signature_with_open_from_decl(
+          projection: rust_produced_decl_signature_projection(),
+          decl: decl
+        ),
         f: fn(toks) {
           bind_outcome(
             o: serialize_concrete_syntax_tokens_to_source(

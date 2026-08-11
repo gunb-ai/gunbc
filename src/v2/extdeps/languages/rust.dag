@@ -248,6 +248,11 @@ import v2.std.compilers.target_model {
   TargetTypeExprInstantiation,
   TargetTypeExprVariantSlot
 }
+import v2.std.compilers.produced_decl_emission {
+  TargetProducedDeclEmission,
+  TargetProducedDeclSignatureProjection,
+  produced_decl_emission_bundle_node
+}
 import v2.std.compilers.semantic_decl_emission {
   TargetSemanticDeclCoproductDecorationRule,
   TargetSemanticDeclCoproductEnumSurface,
@@ -1309,6 +1314,30 @@ fn rust_add_block_close() -> List<ConcreteSyntaxToken> {
   ]
 }
 
+fn rust_produced_decl_signature_projection() -> TargetProducedDeclSignatureProjection {
+  TargetProducedDeclSignatureProjection {
+    fn_token: ^rust_token_kw_fn,
+    name_ident_token: ^rust_token_ident,
+    params_open: ^rust_token_lparen,
+    param_label_separator: ^rust_token_colon,
+    param_separator: ^rust_token_comma,
+    params_close: ^rust_token_rparen,
+    return_arrow: ^rust_token_arrow,
+    block_open: ^rust_token_lbrace
+  }
+}
+
+fn rust_produced_decl_emission() -> TargetProducedDeclEmission {
+  TargetProducedDeclEmission {
+    identity: ^rust_produced_decl_emission_identity,
+    signature: rust_produced_decl_signature_projection(),
+    block_close_token: ^rust_token_rbrace,
+    scaffold_relation_rule_name: ^rust_relation_rule_fn_add,
+    scaffold_base_row: rust_fn_add_scaffold_relation_row_node(),
+    block_evaluation_mode: ValueProducing
+  }
+}
+
 fn rust_signature_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
   Diagnostic {
     reason: reason,
@@ -2064,6 +2093,12 @@ fn rust_target_model_core_edges_full(operator_catalog: Node, rules: Node) -> Lis
     rust_named_edge(
       name: ^target_model_edge_semantic_decl_emission,
       target: rust_semantic_decl_emission_bundle_node()
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_produced_decl_emission,
+      target: produced_decl_emission_bundle_node(
+        emission: rust_produced_decl_emission()
+      )
     ),
     rust_named_edge(
       name: ^target_model_edge_operator_realizations,

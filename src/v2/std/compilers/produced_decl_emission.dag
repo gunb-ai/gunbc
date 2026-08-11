@@ -1,0 +1,596 @@
+module v2.std.compilers.produced_decl_emission
+
+import v2.std.compilers.target_model {
+  BlockEvaluationMode,
+  BoundToken,
+  ConcreteSyntaxToken,
+  FixedToken,
+  TargetBodiedArrowStatementScaffold,
+  TargetModel,
+  block_evaluation_mode_to_node,
+  decode_block_evaluation_mode,
+  derive_bodied_arrow_scaffold,
+  grammar_relation_row_attach_bodied_scaffold,
+  projection_bundle_child,
+  projection_bundle_symbol_field,
+  target_model_named_edge,
+  target_model_type_atom_node,
+  target_model_type_conj_node
+}
+import v2.std.node_query { node_positional_child_targets }
+import v2.std.collection { Absent, List, Present, list_at_optional }
+import v2.std.algebra { list_append, list_map }
+import std.algebra { Cons, Empty }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.node { Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode }
+
+// The produced-declaration counterpart to v2.std.compilers.semantic_decl_emission.
+// A produced function's signature has ONE shape across targets -- head, parameter
+// list, return arrow, return type, block open -- and the language supplies only the
+// token classes that spell it. Encoding the spelling as rows is what lets a target
+// register produced-declaration support without the compiler importing it.
+type TargetProducedDeclSignatureProjection {
+  fn_token: Symbol
+  name_ident_token: Symbol
+  params_open: Symbol
+  param_label_separator: Symbol
+  param_separator: Symbol
+  params_close: Symbol
+  return_arrow: Symbol
+  block_open: Symbol
+}
+
+// scaffold_base_row is the BARE grammar relation row, carrying no bodied scaffold of
+// its own. The target's ordinary translation rules already hold a row with a fixed
+// scaffold attached; re-attaching to that one would append a second bodied-scaffold
+// edge and the first -- the fixed one -- would win every lookup, emitting one
+// declaration's signature for every declaration. The per-decl path therefore builds
+// its rules from the bare row instead of editing the fixed one.
+type TargetProducedDeclEmission {
+  identity: Symbol
+  signature: TargetProducedDeclSignatureProjection
+  block_close_token: Symbol
+  scaffold_relation_rule_name: Symbol
+  scaffold_base_row: Node
+  block_evaluation_mode: BlockEvaluationMode
+}
+
+fn produced_decl_emission_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn produced_decl_target_unwired_diagnostic(bundle: Node) -> Diagnostic {
+  produced_decl_emission_diagnostic(reason: ^produced_decl_target_unwired, node: bundle)
+}
+
+fn produced_decl_signature_projection_bundle_node(
+  projection: TargetProducedDeclSignatureProjection
+) -> Node {
+  target_model_type_conj_node(
+    children: [
+      target_model_named_edge(
+        name: ^produced_decl_signature_field_fn_token,
+        target: target_model_type_atom_node(identity: projection.fn_token)
+      ),
+      target_model_named_edge(
+        name: ^produced_decl_signature_field_name_ident_token,
+        target: target_model_type_atom_node(identity: projection.name_ident_token)
+      ),
+      target_model_named_edge(
+        name: ^produced_decl_signature_field_params_open,
+        target: target_model_type_atom_node(identity: projection.params_open)
+      ),
+      target_model_named_edge(
+        name: ^produced_decl_signature_field_param_label_separator,
+        target: target_model_type_atom_node(identity: projection.param_label_separator)
+      ),
+      target_model_named_edge(
+        name: ^produced_decl_signature_field_param_separator,
+        target: target_model_type_atom_node(identity: projection.param_separator)
+      ),
+      target_model_named_edge(
+        name: ^produced_decl_signature_field_params_close,
+        target: target_model_type_atom_node(identity: projection.params_close)
+      ),
+      target_model_named_edge(
+        name: ^produced_decl_signature_field_return_arrow,
+        target: target_model_type_atom_node(identity: projection.return_arrow)
+      ),
+      target_model_named_edge(
+        name: ^produced_decl_signature_field_block_open,
+        target: target_model_type_atom_node(identity: projection.block_open)
+      )
+    ]
+  )
+}
+
+fn produced_decl_emission_bundle_node(emission: TargetProducedDeclEmission) -> Node {
+  target_model_type_conj_node(
+    children: [
+      target_model_named_edge(
+        name: ^produced_decl_emission_field_identity,
+        target: target_model_type_atom_node(identity: emission.identity)
+      ),
+      target_model_named_edge(
+        name: ^produced_decl_emission_field_signature,
+        target: produced_decl_signature_projection_bundle_node(projection: emission.signature)
+      ),
+      target_model_named_edge(
+        name: ^produced_decl_emission_field_block_close_token,
+        target: target_model_type_atom_node(identity: emission.block_close_token)
+      ),
+      target_model_named_edge(
+        name: ^produced_decl_emission_field_scaffold_relation_rule_name,
+        target: target_model_type_atom_node(identity: emission.scaffold_relation_rule_name)
+      ),
+      target_model_named_edge(
+        name: ^produced_decl_emission_field_scaffold_base_row,
+        target: emission.scaffold_base_row
+      ),
+      target_model_named_edge(
+        name: ^produced_decl_emission_field_block_evaluation_mode,
+        target: block_evaluation_mode_to_node(mode: emission.block_evaluation_mode)
+      )
+    ]
+  )
+}
+
+fn decode_produced_decl_signature_projection_bundle(
+  bundle: Node
+) -> Outcome<TargetProducedDeclSignatureProjection> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(
+      bundle: bundle,
+      field: ^produced_decl_signature_field_fn_token
+    ),
+    f: fn(fn_token) {
+      bind_outcome(
+        o: projection_bundle_symbol_field(
+          bundle: bundle,
+          field: ^produced_decl_signature_field_name_ident_token
+        ),
+        f: fn(name_ident_token) {
+          bind_outcome(
+            o: projection_bundle_symbol_field(
+              bundle: bundle,
+              field: ^produced_decl_signature_field_params_open
+            ),
+            f: fn(params_open) {
+              bind_outcome(
+                o: projection_bundle_symbol_field(
+                  bundle: bundle,
+                  field: ^produced_decl_signature_field_param_label_separator
+                ),
+                f: fn(param_label_separator) {
+                  bind_outcome(
+                    o: projection_bundle_symbol_field(
+                      bundle: bundle,
+                      field: ^produced_decl_signature_field_param_separator
+                    ),
+                    f: fn(param_separator) {
+                      bind_outcome(
+                        o: projection_bundle_symbol_field(
+                          bundle: bundle,
+                          field: ^produced_decl_signature_field_params_close
+                        ),
+                        f: fn(params_close) {
+                          bind_outcome(
+                            o: projection_bundle_symbol_field(
+                              bundle: bundle,
+                              field: ^produced_decl_signature_field_return_arrow
+                            ),
+                            f: fn(return_arrow) {
+                              bind_outcome(
+                                o: projection_bundle_symbol_field(
+                                  bundle: bundle,
+                                  field: ^produced_decl_signature_field_block_open
+                                ),
+                                f: fn(block_open) {
+                                  outcome_accepted(
+                                    TargetProducedDeclSignatureProjection {
+                                      fn_token: fn_token,
+                                      name_ident_token: name_ident_token,
+                                      params_open: params_open,
+                                      param_label_separator: param_label_separator,
+                                      param_separator: param_separator,
+                                      params_close: params_close,
+                                      return_arrow: return_arrow,
+                                      block_open: block_open
+                                    }
+                                  )
+                                }
+                              )
+                            }
+                          )
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn decode_produced_decl_emission_bundle(bundle: Node) -> Outcome<TargetProducedDeclEmission> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(
+      bundle: bundle,
+      field: ^produced_decl_emission_field_identity
+    ),
+    f: fn(identity) {
+      bind_outcome(
+        o: projection_bundle_child(
+          bundle: bundle,
+          name: ^produced_decl_emission_field_signature
+        ),
+        f: fn(signature_bundle) {
+          bind_outcome(
+            o: decode_produced_decl_signature_projection_bundle(bundle: signature_bundle),
+            f: fn(signature) {
+              bind_outcome(
+                o: projection_bundle_symbol_field(
+                  bundle: bundle,
+                  field: ^produced_decl_emission_field_block_close_token
+                ),
+                f: fn(block_close_token) {
+                  bind_outcome(
+                    o: projection_bundle_symbol_field(
+                      bundle: bundle,
+                      field: ^produced_decl_emission_field_scaffold_relation_rule_name
+                    ),
+                    f: fn(scaffold_relation_rule_name) {
+                      bind_outcome(
+                        o: projection_bundle_child(
+                          bundle: bundle,
+                          name: ^produced_decl_emission_field_scaffold_base_row
+                        ),
+                        f: fn(scaffold_base_row) {
+                          bind_outcome(
+                            o: projection_bundle_child(
+                              bundle: bundle,
+                              name: ^produced_decl_emission_field_block_evaluation_mode
+                            ),
+                            f: fn(mode_bundle) {
+                              bind_outcome(
+                                o: decode_block_evaluation_mode(bundle: mode_bundle),
+                                f: fn(mode) {
+                                  outcome_accepted(
+                                    TargetProducedDeclEmission {
+                                      identity: identity,
+                                      signature: signature,
+                                      block_close_token: block_close_token,
+                                      scaffold_relation_rule_name: scaffold_relation_rule_name,
+                                      scaffold_base_row: scaffold_base_row,
+                                      block_evaluation_mode: mode
+                                    }
+                                  )
+                                }
+                              )
+                            }
+                          )
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+// A target that has not registered produced-declaration support refuses with a
+// typed, located produced_decl_target_unwired -- never a silent widen and never a
+// fabricated default (DESIGN section 5).
+fn produced_decl_emission_from_target(target: TargetModel) -> Outcome<TargetProducedDeclEmission> {
+  match projection_bundle_child(
+    bundle: target.bundle,
+    name: ^target_model_edge_produced_decl_emission
+  ) {
+    Accepted { value: bundle, diagnostics: _ } =>
+      decode_produced_decl_emission_bundle(bundle: bundle)
+    Rejected { diagnostics: _ } =>
+      outcome_rejected(d: produced_decl_target_unwired_diagnostic(bundle: target.bundle))
+  }
+}
+
+fn produced_decl_type_ref_tokens(
+  projection: TargetProducedDeclSignatureProjection,
+  type_node: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  match type_node.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      outcome_accepted(
+        value: [BoundToken { token_class: projection.name_ident_token, binding: id }]
+      )
+    _ =>
+      outcome_rejected(
+        d: produced_decl_emission_diagnostic(
+          reason: ^produced_decl_signature_type_shape_unsupported,
+          node: type_node
+        )
+      )
+  }
+}
+
+fn produced_decl_one_param_tokens(
+  projection: TargetProducedDeclSignatureProjection,
+  edge: Edge
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  match edge.label {
+    Named { name: pname } =>
+      bind_outcome(
+        o: produced_decl_type_ref_tokens(projection: projection, type_node: edge.target),
+        f: fn(type_toks) {
+          outcome_accepted(
+            value: list_append(
+              left: [
+                BoundToken { token_class: projection.name_ident_token, binding: pname },
+                FixedToken { token_class: projection.param_label_separator }
+              ],
+              right: type_toks
+            )
+          )
+        }
+      )
+    Positional =>
+      outcome_rejected(
+        d: produced_decl_emission_diagnostic(
+          reason: ^produced_decl_signature_param_unnamed,
+          node: edge.target
+        )
+      )
+  }
+}
+
+fn produced_decl_params_tail_tokens(
+  projection: TargetProducedDeclSignatureProjection,
+  params: List<Edge>
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  match params {
+    Empty => outcome_accepted(value: Empty)
+    Cons { head: e, tail: rest } =>
+      bind_outcome(
+        o: produced_decl_one_param_tokens(projection: projection, edge: e),
+        f: fn(first_toks) {
+          bind_outcome(
+            o: produced_decl_params_tail_tokens(projection: projection, params: rest),
+            f: fn(rest_toks) {
+              outcome_accepted(
+                value: list_append(
+                  left: [FixedToken { token_class: projection.param_separator }],
+                  right: list_append(left: first_toks, right: rest_toks)
+                )
+              )
+            }
+          )
+        }
+      )
+  }
+}
+
+fn produced_decl_params_tokens(
+  projection: TargetProducedDeclSignatureProjection,
+  params: List<Edge>
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  match params {
+    Empty => outcome_accepted(value: Empty)
+    Cons { head: e, tail: rest } =>
+      bind_outcome(
+        o: produced_decl_one_param_tokens(projection: projection, edge: e),
+        f: fn(first_toks) {
+          bind_outcome(
+            o: produced_decl_params_tail_tokens(projection: projection, params: rest),
+            f: fn(rest_toks) {
+              outcome_accepted(value: list_append(left: first_toks, right: rest_toks))
+            }
+          )
+        }
+      )
+  }
+}
+
+fn produced_decl_signature_head_tokens(
+  projection: TargetProducedDeclSignatureProjection,
+  fn_name: Symbol
+) -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: projection.fn_token },
+    BoundToken { token_class: projection.name_ident_token, binding: fn_name },
+    FixedToken { token_class: projection.params_open }
+  ]
+}
+
+fn produced_decl_signature_from_name_and_arrow(
+  projection: TargetProducedDeclSignatureProjection,
+  fn_name: Symbol,
+  arrow: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
+    Present { value: domain } =>
+      match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 1) {
+        Present { value: codomain } =>
+          bind_outcome(
+            o: produced_decl_params_tokens(projection: projection, params: domain.children),
+            f: fn(param_toks) {
+              bind_outcome(
+                o: produced_decl_type_ref_tokens(projection: projection, type_node: codomain),
+                f: fn(ret_toks) {
+                  outcome_accepted(
+                    value: list_append(
+                      left: produced_decl_signature_head_tokens(
+                        projection: projection,
+                        fn_name: fn_name
+                      ),
+                      right: list_append(
+                        left: param_toks,
+                        right: list_append(
+                          left: [
+                            FixedToken { token_class: projection.params_close },
+                            FixedToken { token_class: projection.return_arrow }
+                          ],
+                          right: list_append(
+                            left: ret_toks,
+                            right: [FixedToken { token_class: projection.block_open }]
+                          )
+                        )
+                      )
+                    )
+                  )
+                }
+              )
+            }
+          )
+        Absent =>
+          outcome_rejected(
+            d: produced_decl_emission_diagnostic(
+              reason: ^produced_decl_signature_codomain_missing,
+              node: arrow
+            )
+          )
+      }
+    Absent =>
+      outcome_rejected(
+        d: produced_decl_emission_diagnostic(
+          reason: ^produced_decl_signature_domain_missing,
+          node: arrow
+        )
+      )
+  }
+}
+
+fn target_produced_signature_with_open_from_decl(
+  projection: TargetProducedDeclSignatureProjection,
+  decl: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  match decl.kind {
+    TypeNode { connective: Conj } =>
+      match list_at_optional(xs: decl.children, index: 0) {
+        Present { value: decl_edge } =>
+          match decl_edge.label {
+            Named { name: fn_name } =>
+              produced_decl_signature_from_name_and_arrow(
+                projection: projection,
+                fn_name: fn_name,
+                arrow: decl_edge.target
+              )
+            Positional =>
+              outcome_rejected(
+                d: produced_decl_emission_diagnostic(
+                  reason: ^produced_decl_signature_decl_unnamed,
+                  node: decl
+                )
+              )
+          }
+        Absent =>
+          outcome_rejected(
+            d: produced_decl_emission_diagnostic(
+              reason: ^produced_decl_signature_decl_empty,
+              node: decl
+            )
+          )
+      }
+    _ =>
+      outcome_rejected(
+        d: produced_decl_emission_diagnostic(
+          reason: ^produced_decl_signature_decl_not_conj,
+          node: decl
+        )
+      )
+  }
+}
+
+fn target_produced_decl_bodied_scaffold(
+  emission: TargetProducedDeclEmission,
+  signature_with_open: List<ConcreteSyntaxToken>
+) -> TargetBodiedArrowStatementScaffold {
+  derive_bodied_arrow_scaffold(
+    signature_with_open: signature_with_open,
+    block_close: [FixedToken { token_class: emission.block_close_token }],
+    mode: emission.block_evaluation_mode
+  )
+}
+
+fn node_edge_with_name_replaced(edge: Edge, name: Symbol, replacement: Node) -> Edge {
+  match edge.label {
+    Named { name: existing } =>
+      if existing == name {
+        Edge { label: Named { name: existing }, target: replacement }
+      } else {
+        edge
+      }
+    Positional => edge
+  }
+}
+
+fn node_with_named_edge_replaced(node: Node, name: Symbol, replacement: Node) -> Node {
+  Node {
+    kind: node.kind,
+    children: list_map(
+      xs: node.children,
+      f: fn(edge) {
+        node_edge_with_name_replaced(edge: edge, name: name, replacement: replacement)
+      }
+    ),
+    occurrence_id: node.occurrence_id
+  }
+}
+
+// The per-declaration body scaffold depends on THAT declaration's signature, so the
+// target the serializer runs against is the caller's target with one grammar row
+// re-attached. The base row is read from the target's own translation rules -- the
+// compiler never constructs a language's row, it only re-attaches the scaffold.
+fn target_with_produced_decl_scaffold(
+  target: TargetModel,
+  emission: TargetProducedDeclEmission,
+  signature_with_open: List<ConcreteSyntaxToken>
+) -> TargetModel {
+  TargetModel {
+    bundle: node_with_named_edge_replaced(
+      node: target.bundle,
+      name: ^target_model_edge_translation_rules,
+      replacement: target_model_type_conj_node(
+        children: [
+          target_model_named_edge(
+            name: emission.scaffold_relation_rule_name,
+            target: grammar_relation_row_attach_bodied_scaffold(
+              row: emission.scaffold_base_row,
+              scaffold: target_produced_decl_bodied_scaffold(
+                emission: emission,
+                signature_with_open: signature_with_open
+              )
+            )
+          )
+        ]
+      )
+    ),
+    lex: target.lex,
+    binding_spellings: target.binding_spellings,
+    token_class_emit_transforms: target.token_class_emit_transforms,
+    authority_source_text: target.authority_source_text,
+    runtime_row: target.runtime_row
+  }
+}
