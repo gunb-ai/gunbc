@@ -1,0 +1,139 @@
+module test.claim.compute_board_verilog_projection_witness
+
+import std.types { String, NonEmptyStr, List }
+import product.compute_board.digital_control {
+  Conjunction,
+  DigitalControlIntent,
+  DigitalEquation,
+  DigitalInput,
+  DigitalOutput,
+  DigitalSignal,
+  Negation,
+  SignalName,
+  SignalRef,
+  board_power_interlock_intent,
+  conditioned_good_signal,
+  fault_signal,
+  power_permit_signal,
+}
+import product.compute_board.verilog_projection {
+  DrivenSignalIsNotAnOutput,
+  ReferencedSignalUndeclared,
+  VerilogConstructUnsupported,
+  VerilogModuleEmitted,
+  VerilogProjectionRefused,
+  project_intent_to_verilog,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn emitted_source(intent: DigitalControlIntent) -> String {
+  match project_intent_to_verilog(intent: intent) {
+    VerilogModuleEmitted { source: s } => s
+    VerilogProjectionRefused { cause: _ } => ""
+  }
+}
+
+// BYTE-EXACT EMISSION FROM THE ARTICLE. The whole module is pinned as one contiguous string
+// rather than by substring probes: a contains-check passes on a module whose ports are in the
+// wrong order, whose assigns are duplicated, or which never closes with endmodule. Nothing in
+// this expected text exists anywhere upstream — the intent has no constructor for a target
+// string, so every byte below was derived by the projection.
+data expected_interlock_verilog: String = "module board_power_interlock (\n  input  wire conditioned_good,\n  input  wire fault,\n  output wire power_permit,\n  output wire reset_release\n);\n  assign power_permit = (conditioned_good & ~fault);\n  assign reset_release = (conditioned_good & power_permit);\nendmodule\n"
+
+test fn w_interlock_emits_exact_verilog_bytes() -> Bool {
+  emitted_source(intent: board_power_interlock_intent) == expected_interlock_verilog
+}
+
+// THE DIFFERENTIAL CONTROL the direction asks for: change the fault sense in the ARTICLE and
+// the emitted Verilog must change. Same signals, same ports, same module name — one negation
+// removed. If this passed while the bytes stayed identical, the emission would be decorative.
+data active_low_fault_intent: DigitalControlIntent = DigitalControlIntent {
+  block_name: "board_power_interlock" as SignalName,
+  signals: board_power_interlock_intent.signals,
+  equations: [
+    DigitalEquation {
+      driven: power_permit_signal,
+      expression: Conjunction {
+        left: SignalRef { signal: conditioned_good_signal },
+        right: SignalRef { signal: fault_signal },
+      },
+    },
+  ]
+}
+
+test fn w_fault_polarity_change_changes_emitted_bytes() -> Bool {
+  let flipped = emitted_source(intent: active_low_fault_intent)
+  flipped != expected_interlock_verilog
+    && string_contains(s: flipped, pattern: "assign power_permit = (conditioned_good & fault);")
+    && !string_contains(s: flipped, pattern: "~fault")
+    && string_contains(s: emitted_source(intent: board_power_interlock_intent), pattern: "~fault")
+}
+
+// Driving a signal the intent declares as an INPUT is a condition the intent can express and
+// Verilog cannot honour. It refuses before rendering rather than emitting a module that would
+// fail at synthesis.
+data drives_an_input_intent: DigitalControlIntent = DigitalControlIntent {
+  block_name: "bad_interlock" as SignalName,
+  signals: [
+    DigitalSignal { name: conditioned_good_signal, direction: DigitalInput },
+    DigitalSignal { name: fault_signal, direction: DigitalInput },
+  ],
+  equations: [
+    DigitalEquation {
+      driven: fault_signal,
+      expression: SignalRef { signal: conditioned_good_signal },
+    },
+  ]
+}
+
+test fn w_driving_an_input_refuses() -> Bool {
+  match project_intent_to_verilog(intent: drives_an_input_intent) {
+    VerilogProjectionRefused { cause: c } =>
+      match c {
+        DrivenSignalIsNotAnOutput { signal: s } => (s as String) == "fault"
+        _ => false
+      }
+    VerilogModuleEmitted { source: _ } => false
+  }
+}
+
+// Referencing a signal the intent never declared refuses too. Verilog would happily accept an
+// undeclared identifier as an implicit wire, which is exactly why this must be caught here: the
+// target's leniency is not the model's licence.
+data undeclared_reference_intent: DigitalControlIntent = DigitalControlIntent {
+  block_name: "bad_interlock" as SignalName,
+  signals: [
+    DigitalSignal { name: conditioned_good_signal, direction: DigitalInput },
+    DigitalSignal { name: power_permit_signal, direction: DigitalOutput },
+  ],
+  equations: [
+    DigitalEquation {
+      driven: power_permit_signal,
+      expression: Conjunction {
+        left: SignalRef { signal: conditioned_good_signal },
+        right: SignalRef { signal: "never_declared" as SignalName },
+      },
+    },
+  ]
+}
+
+test fn w_undeclared_signal_reference_refuses() -> Bool {
+  match project_intent_to_verilog(intent: undeclared_reference_intent) {
+    VerilogProjectionRefused { cause: c } =>
+      match c {
+        ReferencedSignalUndeclared { equation_driven: d } => (d as String) == "power_permit"
+        _ => false
+      }
+    VerilogModuleEmitted { source: _ } => false
+  }
+}
+
+// CROSS-PROJECTION INDEPENDENCE, the property the shared-article design exists to buy: changing
+// the digital control changes the Verilog and must not touch the analog side. Asserted here as
+// the half this module owns — the emitted Verilog differs while both intents describe the same
+// board — with the SPICE half asserted in its own witness against its own article.
+test fn w_digital_change_is_confined_to_the_digital_projection() -> Bool {
+  emitted_source(intent: active_low_fault_intent) != emitted_source(intent: board_power_interlock_intent)
+}

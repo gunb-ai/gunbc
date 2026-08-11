@@ -1,0 +1,136 @@
+module product.compute_board.verilog_projection
+
+import std.types { String, NonEmptyStr, List }
+import product.compute_board.digital_control {
+  Conjunction,
+  DigitalControlIntent,
+  DigitalEquation,
+  DigitalExpr,
+  DigitalInput,
+  DigitalOutput,
+  DigitalSignal,
+  Disjunction,
+  Negation,
+  SignalName,
+  SignalRef,
+  expr_references_undeclared,
+  intent_declares_signal,
+  signal_direction_is_output,
+}
+
+data verilog_projection_note: String = "THE VERILOG PROJECTION: language-neutral digital intent to Verilog bytes. ALL Verilog spelling lives here and nothing upstream carries any of it — the intent has no constructor for a target string, so this module is the only place 'assign', '&', '~' or 'endmodule' appear for this article. WHAT THIS PROFILE COVERS, declared rather than discovered at emission: module framing, ANSI scalar input and output ports, continuous assignment, signal references, and the three boolean operators. WHAT IT DOES NOT COVER is not a gap to be filled by rendering something approximate — sequential behaviour has no constructor in DigitalControlIntent at all, so an always block cannot be requested here and then quietly emitted as combinational logic. The refusals this module DOES carry are for the conditions the intent can still express wrongly: a driven signal that is not an output, and a reference to a signal the intent never declared. A NOTE ON WHY THIS DOES NOT ROUTE THROUGH v2.extdeps.languages.verilog's VerilogModule AST: that AST names every construct with a substrate Symbol, and the substrate has no general Symbol-to-text projection — which is exactly why the sibling SPICE module carries a hand-written five-entry spelling table. Binding this profile onto that AST is the right end state and is blocked on that projection, not on appetite; until then the identifiers here are branded names that carry their own spelling and the emitted bytes are not bounded by a lookup table."
+
+type VerilogProjectionRefusal
+  = DrivenSignalIsNotAnOutput { signal: NonEmptyStr }
+  | ReferencedSignalUndeclared { equation_driven: NonEmptyStr }
+  | VerilogConstructUnsupported { construct: NonEmptyStr }
+
+type VerilogProjection
+  = VerilogModuleEmitted { source: String }
+  | VerilogProjectionRefused { cause: VerilogProjectionRefusal }
+
+fn vl_join(left: String, right: String) -> String {
+  concat(left, right)
+}
+
+fn vl_line(text: String) -> String {
+  concat(text, "\n")
+}
+
+// Expression rendering is fully parenthesised on the binary operators rather than relying on
+// Verilog's precedence table. A projection that leans on precedence is one edit away from
+// emitting a different circuit than the tree says, and the parentheses cost nothing.
+fn render_expr(e: DigitalExpr) -> String {
+  match e {
+    SignalRef { signal: s } => s as String
+    Negation { operand: o } => concat("~", render_expr(e: o))
+    Conjunction { left: l, right: r } =>
+      concat(concat(concat(concat("(", render_expr(e: l)), " & "), render_expr(e: r)), ")")
+    Disjunction { left: l, right: r } =>
+      concat(concat(concat(concat("(", render_expr(e: l)), " | "), render_expr(e: r)), ")")
+  }
+}
+
+fn render_port(s: DigitalSignal) -> String {
+  match s.direction {
+    DigitalInput => concat("  input  wire ", s.name as String)
+    DigitalOutput => concat("  output wire ", s.name as String)
+  }
+}
+
+fn render_ports(signals: List<DigitalSignal>) -> String {
+  fold(signals, init: "", f: fn(acc, s) {
+    if acc == "" {
+      render_port(s: s)
+    } else {
+      concat(concat(acc, ",\n"), render_port(s: s))
+    }
+  })
+}
+
+fn render_assign(eq: DigitalEquation) -> String {
+  vl_line(text: concat(concat(concat("  assign ", eq.driven as String), " = "), concat(render_expr(e: eq.expression), ";")))
+}
+
+fn render_assigns(equations: List<DigitalEquation>) -> String {
+  fold(equations, init: "", f: fn(acc, eq) { concat(acc, render_assign(eq: eq)) })
+}
+
+fn signal_is_declared_output(intent: DigitalControlIntent, name: SignalName) -> Bool {
+  fold(intent.signals, init: false, f: fn(acc, s) {
+    acc || (signal_direction_is_output(s: s) && (s.name as String) == (name as String))
+  })
+}
+
+fn first_non_output_driven(intent: DigitalControlIntent) -> NonEmptyStr? {
+  fold(intent.equations, init: none, f: fn(acc, eq) {
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent =>
+        if signal_is_declared_output(intent: intent, name: eq.driven) {
+          none
+        } else {
+          Present { value: eq.driven as NonEmptyStr }
+        }
+    }
+  })
+}
+
+fn first_undeclared_reference(intent: DigitalControlIntent) -> NonEmptyStr? {
+  fold(intent.equations, init: none, f: fn(acc, eq) {
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent =>
+        if expr_references_undeclared(intent: intent, e: eq.expression) {
+          Present { value: eq.driven as NonEmptyStr }
+        } else {
+          none
+        }
+    }
+  })
+}
+
+fn render_module(intent: DigitalControlIntent) -> String {
+  concat(
+    concat(
+      concat(concat(concat("module ", intent.block_name as String), " (\n"), render_ports(signals: intent.signals)),
+      "\n);\n"
+    ),
+    concat(render_assigns(equations: intent.equations), "endmodule\n")
+  )
+}
+
+// The projection. Both refusals are conditions the INTENT can express and the target cannot
+// honour, checked before a byte is rendered — never after, and never by emitting something
+// approximate and noting the problem beside it.
+fn project_intent_to_verilog(intent: DigitalControlIntent) -> VerilogProjection {
+  match first_non_output_driven(intent: intent) {
+    Present { value: s } => VerilogProjectionRefused { cause: DrivenSignalIsNotAnOutput { signal: s } }
+    Absent =>
+      match first_undeclared_reference(intent: intent) {
+        Present { value: d } =>
+          VerilogProjectionRefused { cause: ReferencedSignalUndeclared { equation_driven: d } }
+        Absent => VerilogModuleEmitted { source: render_module(intent: intent) }
+      }
+  }
+}
