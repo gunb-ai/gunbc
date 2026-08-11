@@ -8,7 +8,8 @@ import test.claim.climbing_hold_catalog_witness {
   witness_search_summary_envelope_refuses_clearance,
   witness_evidence_spendability_discriminates,
   witness_absent_shape_refuses_silhouette,
-  witness_lift_role_refuses_without_proof_load,
+  witness_proof_load_receipt_is_load_bearing,
+  witness_real_row_refuses_lift_role_on_axis,
   witness_naming_is_alias_with_sku_unread,
   witness_source_reading_survives_conversion,
 }
@@ -67,8 +68,12 @@ data climbing_hold_witness_outcomes: List<WitnessOutcome> = [
     passed: witness_absent_shape_refuses_silhouette(),
   },
   WitnessOutcome {
-    name: "witness_lift_role_refuses_without_proof_load",
-    passed: witness_lift_role_refuses_without_proof_load(),
+    name: "witness_proof_load_receipt_is_load_bearing",
+    passed: witness_proof_load_receipt_is_load_bearing(),
+  },
+  WitnessOutcome {
+    name: "witness_real_row_refuses_lift_role_on_axis",
+    passed: witness_real_row_refuses_lift_role_on_axis(),
   },
   WitnessOutcome {
     name: "witness_naming_is_alias_with_sku_unread",
@@ -80,7 +85,7 @@ data climbing_hold_witness_outcomes: List<WitnessOutcome> = [
   },
 ]
 
-data climbing_hold_witness_expected_count: Int = 9
+data climbing_hold_witness_expected_count: Int = 10
 
 fn roster_all_green() -> Bool {
   all(climbing_hold_witness_outcomes, o => o.passed)
@@ -100,9 +105,6 @@ fn roster_names_are_unique() -> Bool {
   )
 }
 
-fn roster_failing_names() -> List<NonEmptyStr> {
-  climbing_hold_witness_outcomes |> filter(o => !o.passed) |> map(o => o.name)
-}
 
 // THE RECEIPT. One invocation proves: the expected number of witnesses ran, each exactly once,
 // under its own name, and every body returned true. A green here is a stronger statement than

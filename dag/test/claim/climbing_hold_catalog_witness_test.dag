@@ -107,13 +107,42 @@ test fn witness_absent_shape_refuses_silhouette() -> Bool {
   !hold_may_render_silhouette(row: atomik_xl_arrow_down_climb_jug)
 }
 
-// LIFT ROLE. The strictest gate, and the one no catalog can ever satisfy. Even granting a locatable
-// axis and admissible clearance, the lift role refuses without a proof-load receipt against the
-// exact assembly - because a vendor's climbing-wall standing is evidence about a different load
-// path, cycle count, panel stock and failure consequence.
-test fn witness_lift_role_refuses_without_proof_load() -> Bool {
+data vacuous_proof_load_witness_retraction: NonEmptyStr = "RETRACTED AND REPLACED. The previous witness called hold_lift_role_is_admissible on the REAL row with proof_load_receipt_held true and then false, and asserted both refused. Both did refuse - and neither refusal had anything to do with the proof load. The predicate short-circuits on hold_mounting_axis_is_locatable, which is false for the real row because its thread and mounting face are unread, so the proof_load_receipt_held parameter was never evaluated in either call. The witness was green, it was named for the proof load, and it exercised the proof load zero times. It would have stayed green if the parameter were deleted entirely. This is the same silent-green class documented all day on this branch, committed while documenting it, and reported inside a 9/9 pass."
+
+// The replacement holds every preceding condition TRUE so the proof-load input is the only thing
+// that varies. That is the whole point of a discriminating control: the flag must flip the answer,
+// and it can only be shown to flip the answer once nothing else is refusing first.
+test fn witness_proof_load_receipt_is_load_bearing() -> Bool {
+  let ready_fixation: HoldFixationInterface = HoldFixationInterface {
+    primary_bolt_thread: ImperialUncThread { designation: "3/8-16 UNC" },
+    primary_bolt_count: 1,
+    anti_rotation_fixing_count: 1,
+    anti_rotation_fixing_note: "hypothetical, for discrimination only",
+    mounting_face: SingleFlatMountingFace,
+    frame: atomik_bolt_on_frame,
+  }
+  let ready_except_receipt: ClimbingHoldCatalogRow = ClimbingHoldCatalogRow {
+    naming: atomik_xl_arrow_down_climb_jug.naming,
+    material: atomik_xl_arrow_down_climb_jug.material,
+    fixation: ready_fixation,
+    source_width: atomik_xl_arrow_down_climb_jug.source_width,
+    source_height: atomik_xl_arrow_down_climb_jug.source_height,
+    source_projection: atomik_xl_arrow_down_climb_jug.source_projection,
+    clearance_envelope: atomik_xl_arrow_down_climb_jug.clearance_envelope,
+    grasp: atomik_xl_arrow_down_climb_jug.grasp,
+    shape: atomik_xl_arrow_down_climb_jug.shape,
+  }
+  hold_mounting_axis_is_locatable(row: ready_except_receipt)
+    && hold_clearance_is_admissible(row: ready_except_receipt)
+    && hold_lift_role_is_admissible(row: ready_except_receipt, proof_load_receipt_held: true)
+    && !hold_lift_role_is_admissible(row: ready_except_receipt, proof_load_receipt_held: false)
+}
+
+// And the real row still refuses, which remains true and is now stated as its own narrow claim
+// rather than smuggled in as evidence about the proof load.
+test fn witness_real_row_refuses_lift_role_on_axis() -> Bool {
   !hold_lift_role_is_admissible(row: atomik_xl_arrow_down_climb_jug, proof_load_receipt_held: true)
-    && !hold_lift_role_is_admissible(row: atomik_xl_arrow_down_climb_jug, proof_load_receipt_held: false)
+    && !hold_mounting_axis_is_locatable(row: atomik_xl_arrow_down_climb_jug)
 }
 
 // NAMING. Two spellings from one page are an alias, not two orderable products. The earlier row
