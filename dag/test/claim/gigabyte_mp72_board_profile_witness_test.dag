@@ -6,21 +6,34 @@ import extdeps.boards.gigabyte {
   gigabyte_mp72_hb0_catalog, gigabyte_mp72_hb0_physical_profile,
   asrock_altrad8ud_1l2t_physical_profile,
   gigabyte_mp72_hb0_procurement_standing, gigabyte_mp72_hb0_purchase_gate,
+  PowerInputPopulationStanding, PowerInputPopulationSpecified, PowerInputPopulationUnresolved,
+  asrock_altrad8ud_required_input_population,
   board_profile_power_headers_match, board_profile_area_mm2,
   board_profile_max_socket_power_w,
 }
 
 data mp72_witness_note: String = "Three witnesses over a CANDIDATE board row that no fleet asset cites. They exist to keep a reading honest, not to admit hardware: the profile must agree with the vendor page on the fields the physical design actually consumes, the procurement standing must not silently advance past what a stock photograph can establish, and the architectural claim that motivated the candidate must be the true claim rather than the flattering one."
 
-data header_witness_note: String = "The single fact that makes the dual-socket board a drop-in for the existing tile power design: its power-header inventory is IDENTICAL to the single-socket board already modelled - one 24-pin and two 8-pin EPS. So the cable population changes count, not kind, and no new connector class enters the design. If a future revision of either row breaks that, the tile's internal harness stops being reusable and this reds first."
+data header_witness_retraction_note: String = "RETRACTED AND REPLACED 2026-08-11. The previous witness asserted that the two boards have an IDENTICAL power-header inventory - one 24-pin and two 8-pin EPS each - and used that equality as the headline reason a dual-socket board would drop into the existing tile harness. It was green, and it was false: the ALTRAD8UD has no 24-pin socket at all. It carries three 8-pin ATX12V inputs plus a 4-pin Micro-Fit signal connector, and an ATX supply reaches it through a bundled 24-pin-to-4-pin converter. The error originated in this session, was carried as a SEED DEBT marked pending pin-verification, and then had a witness built on it before the verification happened - a witness cannot launder an unverified reading into a fact, and this one did. The replacement asserts the DIFFERENCE, which is the true and more useful statement: both boards can be fed by an ATX supply, but their board-side interfaces and connection rituals are not the same."
 
-test fn witness_power_header_inventory_is_unchanged_across_boards() -> Bool {
-  board_profile_power_headers_match(
-    a: gigabyte_mp72_hb0_physical_profile,
-    b: asrock_altrad8ud_1l2t_physical_profile,
-  )
+test fn witness_board_power_interfaces_differ() -> Bool {
+  asrock_altrad8ud_1l2t_physical_profile.atx_24pin_count == 0
+    && asrock_altrad8ud_1l2t_physical_profile.eps_8pin_count == 3
     && gigabyte_mp72_hb0_physical_profile.atx_24pin_count == 1
     && gigabyte_mp72_hb0_physical_profile.eps_8pin_count == 2
+    && !board_profile_power_headers_match(
+         a: gigabyte_mp72_hb0_physical_profile,
+         b: asrock_altrad8ud_1l2t_physical_profile,
+       )
+}
+
+data required_population_witness_note: String = "How many of the three 8-pin inputs must be populated is UNRESOLVED, and the model must keep saying so. A cable diagram that draws a specific number of connected inputs before a vendor statement or fixture measurement closes this would repeat the exact mistake above: a plausible number rendered as a fact."
+
+test fn witness_required_input_population_stays_unresolved() -> Bool {
+  match asrock_altrad8ud_required_input_population {
+    PowerInputPopulationSpecified { required_inputs } => false,
+    PowerInputPopulationUnresolved { available_inputs } => available_inputs == 3,
+  }
 }
 
 data standing_witness_note: String = "A stock photograph cannot advance procurement standing. This holds the row at ListingObserved and requires the gate to be non-empty, so a later edit cannot quietly promote the board to UnitReceiptHeld without the receipts that word implies."

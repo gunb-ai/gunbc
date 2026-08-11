@@ -78,6 +78,13 @@ data gigabyte_mp72_hb0_physical_profile: BaseboardPhysicalProfile = BaseboardPhy
   pcie_slots: 4,
 }
 
+// CORRECTED 2026-08-11 against the vendor manual after a review challenged it. The previous row
+// said atx_24pin_count 1 / eps_8pin_count 2 for the ALTRAD8UD. That was FALSE and it was asserted
+// by this session with confidence, carried as SEED DEBT 3 "pending pin-verification", and never
+// closed before a witness was built on top of it. The board actually exposes THREE 8-pin ATX12V
+// inputs (ATX12V1/2/3) plus a 4-pin Micro-Fit signal connector (ATX4PIN1); there is NO 24-pin
+// socket on the board, and ATX-supply operation uses a BUNDLED 24-pin-to-4-pin converter cable.
+// The board also accepts direct +12 V DC input, in which mode the 4-pin signal path is not used.
 data asrock_altrad8ud_1l2t_physical_profile: BaseboardPhysicalProfile = BaseboardPhysicalProfile {
   model_label: "ASRock Rack ALTRAD8UD-1L2T",
   socket_count: 1,
@@ -87,12 +94,32 @@ data asrock_altrad8ud_1l2t_physical_profile: BaseboardPhysicalProfile = Baseboar
   depth_mm: 267,
   dimm_slots: 8,
   max_data_rate_mt_s: 3200,
-  atx_24pin_count: 1,
-  eps_8pin_count: 2,
+  atx_24pin_count: 0,
+  eps_8pin_count: 3,
   onboard_10gbe_ports: 2,
   dedicated_management_ports: 1,
   pcie_slots: 3,
 }
+
+data asrock_altrad8ud_power_interface_note: NonEmptyStr = "Three 8-pin ATX12V inputs plus one 4-pin Micro-Fit signal connector; no 24-pin socket. ATX mode uses the bundled 24-pin-to-4-pin converter. Direct +12 V DC input is also supported and does not use the 4-pin signal path."
+
+data asrock_altrad8ud_manual_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "download.asrock.com/Manual/ALTRAD8UD-1L2T.pdf"
+  }
+}
+
+type PowerInputPopulationStanding
+  = PowerInputPopulationSpecified { required_inputs: Nat }
+  | PowerInputPopulationUnresolved { available_inputs: Nat }
+
+// UNRESOLVED and load-bearing. The board offers three 8-pin inputs; how many must be POPULATED for
+// a given processor and workload is not established by anything read so far. A cable diagram must
+// not draw one, two or three connected inputs until a vendor statement or a fixture measurement
+// closes this. Drawing a plausible number here is exactly how the previous false inventory reached
+// a witness.
+data asrock_altrad8ud_required_input_population: PowerInputPopulationStanding = PowerInputPopulationUnresolved { available_inputs: 3 }
 
 // The ASRock profile above is authored in THIS module rather than beside the ASRock catalog row on
 // purpose and against the usual placement rule: it exists only so the two boards can be compared by
