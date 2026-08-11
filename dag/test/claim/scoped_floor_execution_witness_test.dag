@@ -32,6 +32,8 @@ import gunbc.scoped_floor_execution {
   ScopedSubjectStanding,
   ScopedSubjectMatched,
   ScopedSubjectMismatched,
+  scoped_admission_detail,
+  scoped_admission_state,
   scoped_execution_policy_for_event,
   scoped_witness_run_disposition
 }
@@ -314,4 +316,54 @@ test fn red_backstop_event_still_refuses_a_contradicted_disposition() -> Bool {
     RunWitness { reason: _ } => false
     SkipAssumedGreen => false
   }
+}
+
+// The host reads these two strings and acts on them: "run" writes the batch id
+// into the manifest, "skip" writes an empty one, "refuse" exits 1. A wrong tag
+// here is therefore not a cosmetic defect - a RunWitness projected as "skip" is
+// a silent false skip, the exact failure the whole module exists to prevent -
+// so each tag is pinned against the arm that produces it.
+test fn w_run_projects_the_run_state() -> Bool {
+  scoped_admission_state(disposition: decide(
+    subject: ScopedSubjectMatched,
+    disposition: ScopedDispositionAgrees,
+    diff: touching_diff,
+    departed_paths: [],
+    affected: ScopedEntriesAffected
+  )) == "run"
+}
+
+test fn w_skip_projects_the_skip_state() -> Bool {
+  scoped_admission_state(disposition: decide(
+    subject: ScopedSubjectMatched,
+    disposition: ScopedDispositionAgrees,
+    diff: unrelated_diff,
+    departed_paths: [],
+    affected: ScopedEntriesUnaffected
+  )) == "skip"
+}
+
+test fn w_refusal_projects_the_refuse_state() -> Bool {
+  scoped_admission_state(disposition: decide(
+    subject: ScopedSubjectMatched,
+    disposition: ScopedDispositionAgrees,
+    diff: DiffObservationFailClosed { reason: "git diff unavailable" },
+    departed_paths: [],
+    affected: ScopedEntriesUnaffected
+  )) == "refuse"
+}
+
+// The detail must NAME the cause family. A refusal whose class the operator
+// cannot read from the journal row sends them round the loop to find it, which
+// is the located half of "typed, located, counted".
+test fn w_refusal_detail_names_the_cause_family_and_carries_its_reason() -> Bool {
+  let detail = scoped_admission_detail(disposition: decide(
+    subject: ScopedSubjectMatched,
+    disposition: ScopedDispositionContradicted { reason: "derived closure reaches a host-effect sink" },
+    diff: unrelated_diff,
+    departed_paths: [],
+    affected: ScopedEntriesUnaffected
+  ))
+  string_contains(detail, "DispositionAuthorityRefusal")
+    && string_contains(detail, "derived closure reaches a host-effect sink")
 }

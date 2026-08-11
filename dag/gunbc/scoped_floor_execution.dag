@@ -9,16 +9,18 @@ import v2.lens.module_graph {
   module_declaration_facts_live
 }
 import v2.workflow.affected_set_floor_runner {
-  DiffObservationRefusal,
-  DiffObservationFailClosed,
-  DiffPathsProduced,
   DependencyObservationRefusal,
+  DiffObservationFailClosed,
+  DiffObservationRefusal,
+  DiffPathsProduced,
   DispositionAuthorityRefusal,
   FloorDiffObservation,
+  FrontierQueryRefusal,
   Refused,
   RunWitness,
   SkipAssumedGreen,
   SubjectObservationRefusal,
+  WitnessRefusalCause,
   WitnessRunDisposition
 }
 
@@ -263,5 +265,52 @@ fn scoped_witness_run_disposition(
               }
           }
       }
+  }
+}
+
+// HOST PROJECTIONS. The seed must not re-derive what the fold already decided.
+// A host arm matching over WitnessRunDisposition or WitnessRefusalCause can only
+// compare interned symbol names against names it carries itself, which is a
+// second copy of this vocabulary written in a language that cannot be told when
+// the vocabulary grows: add a cause here and the Rust arm goes silently
+// unmatched. These two projections keep the match where the coproduct is
+// declared, so a new variant is a compile error in the model and the seed reads
+// two strings it never interprets structurally.
+//
+// The state tag is a WIRE encoding at the same seam as the flattened arguments
+// above, and it is exhaustive by construction: there is no fall-through arm, so
+// a fourth disposition cannot acquire a default.
+fn scoped_admission_state(disposition: WitnessRunDisposition) -> String {
+  match disposition {
+    RunWitness { reason: _ } => "run"
+    SkipAssumedGreen => "skip"
+    Refused { cause: _ } => "refuse"
+  }
+}
+
+fn scoped_admission_detail(disposition: WitnessRunDisposition) -> String {
+  match disposition {
+    RunWitness { reason: reason } => "reason={reason}"
+    SkipAssumedGreen => "no scoped entry closure intersects a changed path, and no path departed"
+    Refused { cause: cause } => scoped_refusal_detail(cause: cause)
+  }
+}
+
+fn scoped_refusal_detail(cause: WitnessRefusalCause) -> String {
+  match cause {
+    DiffObservationRefusal { reason: reason } => "DiffObservationRefusal detail={reason}"
+    FrontierQueryRefusal { reason: reason } => "FrontierQueryRefusal detail={reason}"
+    SubjectObservationRefusal { reason: reason } => "SubjectObservationRefusal detail={reason}"
+    DependencyObservationRefusal { reason: reason } => "DependencyObservationRefusal detail={reason}"
+    DispositionAuthorityRefusal { reason: reason } => "DispositionAuthorityRefusal detail={reason}"
+  }
+}
+
+// The backstop, projected to the one Bool the child needs. Same reason: the
+// child was matching ScopedExecutionPolicy variant names in Rust.
+fn scoped_event_requires_full_execution(event: String) -> Bool {
+  match scoped_execution_policy_for_event(event: event) {
+    ScopedPolicyRequiresFullExecution { reason: _ } => true
+    ScopedPolicyPredictsFromDiff => false
   }
 }

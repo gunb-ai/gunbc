@@ -9614,79 +9614,29 @@ fn write_floor_worker_terminal(outcome: &str, detail: &str) -> Result<(), String
 
 const SCOPED_ADMISSION_ENTRY: &str = "dag/gunbc/scoped_floor_execution.dag";
 
-/// Render the `.dag` verdict into (journal state, detail). A `Refused` arm is an
-/// `Err`: "I could not decide" and "nothing is affected" project onto the same
-/// zero manifest ids, so they must not share a success arm — an empty manifest is
-/// evidence of a skip only when a `SkipAssumedGreen` was actually observed.
-fn scoped_admission_projection(
+/// Read one `String`-returning projection of the already-computed verdict.
+///
+/// The verdict `Value` is passed straight back into the model rather than
+/// destructured here: the seed carries no copy of `WitnessRunDisposition` or
+/// `WitnessRefusalCause`, so a variant added to either is a compile error where
+/// the coproduct is declared instead of an arm this file silently fails to match.
+fn scoped_admission_projection_str(
     ctx: &InterpContext,
+    projection: &str,
     verdict: &Value,
-    batch_id: &str,
-) -> Result<(&'static str, String), String> {
-    let reason_of = |fields: &_| -> String {
-        match ctx.field(fields, "reason") {
-            Some(Value::Str(s)) => s.clone(),
-            _ => String::new(),
-        }
-    };
-    match verdict {
-        Value::Variant {
-            variant_name,
-            fields,
-            ..
-        } if ctx.sym_eq(*variant_name, "RunWitness") => {
-            Ok(("run", format!("reason={}", reason_of(fields))))
-        }
-        Value::Variant { variant_name, .. } if ctx.sym_eq(*variant_name, "SkipAssumedGreen") => Ok((
-            "skip",
-            "reason=scoped entry dependency closure unaffected by the observed diff".to_string(),
+) -> Result<String, String> {
+    match run_in_context_with_args(
+        ctx,
+        projection,
+        &[(Some("disposition".to_string()), verdict.clone())],
+        false,
+    ) {
+        Ok(Value::Str(s)) => Ok(s),
+        Ok(other) => Err(format!(
+            "{projection} returned `{}`, expected String",
+            ctx.format_value(&other)
         )),
-        Value::Variant {
-            variant_name,
-            fields,
-            ..
-        } if ctx.sym_eq(*variant_name, "Refused") => {
-            // Named exhaustively rather than rendered: only `sym_eq` is public, and an
-            // unrecognised cause must be an error, not an unlabelled refusal. A refusal
-            // whose class the operator cannot read sends them round the loop to find it.
-            let cause = match ctx.field(fields, "cause") {
-                Some(Value::Variant {
-                    variant_name: cause_name,
-                    fields: cause_fields,
-                    ..
-                }) => {
-                    let label = [
-                        "DiffObservationRefusal",
-                        "FrontierQueryRefusal",
-                        "SubjectObservationRefusal",
-                        "DependencyObservationRefusal",
-                        "DispositionAuthorityRefusal",
-                    ]
-                    .into_iter()
-                    .find(|name| ctx.sym_eq(*cause_name, name))
-                    .ok_or_else(|| {
-                        format!(
-                            "scoped admission refusal carries an unmodelled WitnessRefusalCause \
-                             for batch {batch_id}"
-                        )
-                    })?;
-                    format!("{label} detail={}", reason_of(cause_fields))
-                }
-                _ => {
-                    return Err(format!(
-                        "scoped admission Refused for batch {batch_id} carries no `cause` field"
-                    ))
-                }
-            };
-            Err(format!(
-                "SCOPED-ADMISSION-REFUSED batch={batch_id} cause={cause} — the scoped batch \
-                 is neither run nor skipped on unobserved evidence"
-            ))
-        }
-        other => Err(format!(
-            "scoped_witness_run_disposition_from_host returned `{}`, expected WitnessRunDisposition",
-            ctx.format_value(other)
-        )),
+        Err(msg) => Err(format!("{projection}: {msg}")),
     }
 }
 
@@ -9711,28 +9661,17 @@ fn scoped_backstop_requires_full_execution(walk_source_roots: &[String]) -> Resu
     let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
     match run_in_context_with_args(
         &ctx,
-        "scoped_execution_policy_for_event",
+        "scoped_event_requires_full_execution",
         &[(Some("event".to_string()), Value::Str(event.clone()))],
         false,
     ) {
-        Ok(Value::Variant { variant_name, .. }) => {
-            if ctx.sym_eq(variant_name, "ScopedPolicyPredictsFromDiff") {
-                Ok(false)
-            } else if ctx.sym_eq(variant_name, "ScopedPolicyRequiresFullExecution") {
-                Ok(true)
-            } else {
-                Err(format!(
-                    "scoped_execution_policy_for_event returned an unmodelled \
-                     ScopedExecutionPolicy variant for event `{event}`"
-                ))
-            }
-        }
+        Ok(Value::Bool(b)) => Ok(b),
         Ok(other) => Err(format!(
-            "scoped_execution_policy_for_event returned `{}`, expected ScopedExecutionPolicy",
+            "scoped_event_requires_full_execution returned `{}` for event `{event}`, expected Bool",
             ctx.format_value(&other)
         )),
         Err(msg) => Err(format!(
-            "scoped_execution_policy_for_event unavailable for event `{event}`: {msg}"
+            "scoped_event_requires_full_execution unavailable for event `{event}`: {msg}"
         )),
     }
 }
@@ -9826,15 +9765,32 @@ fn scoped_batch_admitted_ids(
             false,
         )
         .map_err(|e| format!("scoped_witness_run_disposition_from_host ({batch_id}): {e}"))?;
-        let (state, detail) = scoped_admission_projection(&ctx, &verdict, batch_id)?;
+        let state = scoped_admission_projection_str(&ctx, "scoped_admission_state", &verdict)?;
+        let detail = scoped_admission_projection_str(&ctx, "scoped_admission_detail", &verdict)?;
         append_floor_phase_journal(
             "scoped-admission",
-            state,
+            &state,
             &format!("batch={batch_id} {detail}"),
         );
         eprintln!("[scoped-admission] batch={batch_id} disposition={state} {detail}");
-        if state == "run" {
-            admitted.push(batch_id.clone());
+        // "Could not decide" and "nothing is affected" project onto the same zero
+        // manifest ids, so they must not share a success arm — an empty manifest is
+        // evidence of a skip only when a skip was actually observed.
+        match state.as_str() {
+            "run" => admitted.push(batch_id.clone()),
+            "skip" => {}
+            "refuse" => {
+                return Err(format!(
+                    "SCOPED-ADMISSION-REFUSED batch={batch_id} {detail} — the scoped batch \
+                     is neither run nor skipped on unobserved evidence"
+                ))
+            }
+            other => {
+                return Err(format!(
+                    "scoped_admission_state returned unmodelled state `{other}` for batch \
+                     {batch_id}"
+                ))
+            }
         }
     }
     Ok(admitted)
