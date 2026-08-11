@@ -637,6 +637,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
+            "data_decl_type_facts".to_string(),
+            list_of_type_variable("data_decl_type_fact_elem".to_string()),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
             "fact_cardinality_decl_facts".to_string(),
             list_of_type_variable("fact_cardinality_decl_fact_elem".to_string()),
         );

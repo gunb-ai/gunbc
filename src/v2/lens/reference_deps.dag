@@ -1,5 +1,7 @@
 module v2.lens.reference_deps
 
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
 import v2.extdeps.languages.dag { qualified_name_from_module_node }
 import v2.lens.module_graph { no_paths, module_graph_exclude_substrings }
 
@@ -917,3 +919,5 @@ fn reference_closure_ingest_refusal_witness(
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
+
+data reference_deps_dissolve_on: DissolutionCondition = unbound_dissolution(description: "the namespace terminal step lands and reference edges come from the containment authority rather than this segment-prefix match over parsed-tree qualified-name use sites (namespace-resolution-design section 8)")

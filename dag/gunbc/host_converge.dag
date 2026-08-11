@@ -136,6 +136,21 @@ fn converge_verdict_label(v: ConvergeVerdict) -> String {
   }
 }
 
+// The convergence verdict lattice, meet: Absent < Drifted < VerdictConverged. A host's
+// verdict cannot outrank the WEAKEST evidence that grounds it — so a knob verdict is met
+// with the revision standing before it is reported, and any not-converged evidence pulls
+// the joint below converged. This is the construction that makes an empty-observation
+// narrow unwritable: verdict=converged is only reachable when BOTH inputs are converged
+// (fleet_converge_cli converge_cli_receipt_join_revision), never from applied=0/drifted=0
+// alone when the desired revision was never observed.
+fn converge_verdict_meet(a: ConvergeVerdict, b: ConvergeVerdict) -> ConvergeVerdict {
+  match a {
+    Absent => Absent
+    Drifted => match b { Absent => Absent  _ => Drifted }
+    VerdictConverged => b
+  }
+}
+
 type ConvergeSlice
   = GunbcSlice
   | RunnerSlice

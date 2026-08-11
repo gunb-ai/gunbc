@@ -41,6 +41,7 @@ type LensIdV0
   | InterfaceSummary
   | LanguagesConsumerCensus
   | LeafModelVerification
+  | LifecycleCarrier
   | LiveReadClassification
   | MachineShape
   | MockTotality
@@ -341,6 +342,11 @@ data lens_registry_v0_test_migration_debt: LensRegistryEntryV0 = {
   module_path: Bound { path: "v2.lens.test_migration_debt" }
 }
 
+data lens_registry_v0_lifecycle_carrier: LensRegistryEntryV0 = {
+  lens_id: LifecycleCarrier
+  module_path: Bound { path: "v2.lens.lifecycle_carrier" }
+}
+
 data lens_registry_v0_unit_modeling: LensRegistryEntryV0 = {
   lens_id: UnitModeling
   module_path: Bound { path: "v2.lens.unit_modeling" }
@@ -425,6 +431,7 @@ data lens_registry_v0: List<LensRegistryEntryV0> = [
   lens_registry_v0_subsumption,
   lens_registry_v0_synthesis,
   lens_registry_v0_test_migration_debt,
+  lens_registry_v0_lifecycle_carrier,
   lens_registry_v0_unit_modeling,
   lens_registry_v0_vacuity,
   lens_registry_v0_visibility,
@@ -588,6 +595,10 @@ fn lens_id_v0_eq(left: LensIdV0, right: LensIdV0) -> Bool {
     }
     LeafModelVerification => match right {
       LeafModelVerification => true
+      _ => false
+    }
+    LifecycleCarrier => match right {
+      LifecycleCarrier => true
       _ => false
     }
     LiveReadClassification => match right {

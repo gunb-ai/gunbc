@@ -1,5 +1,7 @@
 module v2.extdeps.languages.c
 
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
+
 import extdeps.languages.c.emit {
   c_header_extension,
   c_include_directive_for_header_path,
@@ -701,7 +703,7 @@ data c_emit_host_main_suffix: String = "\n\nextern long write(int, const void *,
 
 data c_emit_host_inject_fault_main_suffix: String = "\n\nextern long write(int, const void *, unsigned long);\nint main(void) { int value = add(2, 2); unsigned char b[5] = {0, (unsigned char)(value & 0xff), (unsigned char)((value >> 8) & 0xff), (unsigned char)((value >> 16) & 0xff), (unsigned char)((value >> 24) & 0xff)}; write(1, b, 5); return 0; }\n"
 
-data c_emit_host_main_suffix_dissolution_trigger: String = "🟡 dissolve-on: c_emit_host_main_suffix + c_emit_host_inject_fault_main_suffix — smoke-driver main harness fragments spliced after emitted add via EmittedWithSuffix (parallel to rust_emit_host_main_suffix / slb_driver_main_source). DISSOLVES WHEN a modeled C main producer emits the harness from grammar rows — retire these string carriers then."
+data c_emit_host_main_suffix_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: c_emit_host_main_suffix + c_emit_host_inject_fault_main_suffix — smoke-driver main harness fragments spliced after emitted add via EmittedWithSuffix (parallel to rust_emit_host_main_suffix / slb_driver_main_source). DISSOLVES WHEN a modeled C main producer emits the harness from grammar rows — retire these string carriers then.")
 
 fn c_atom(id: Symbol) -> Node {
   Node {
@@ -991,7 +993,7 @@ data c_emit_host_type_decl_main_suffix: String = "\n\nint main(void) {\n  Point 
 
 data c_emit_host_type_decl_inject_fault_main_suffix: String = "\n\nint main(void) {\n  Point p = { 2, 3 };\n  unsigned char out[5] = {0, 4, 0, 0, 0};\n  extern long write(int, const void *, unsigned long);\n  write(1, out, 5);\n  return 0;\n}\n"
 
-data c_emit_host_type_decl_main_suffix_dissolution_trigger: String = "🟡 dissolve-on: c_emit_host_type_decl_main_suffix + c_emit_host_type_decl_inject_fault_main_suffix — type-decl smoke-driver main harness fragments spliced after emitted Point/Bool/Answer typedefs via EmittedWithSuffix (parallel to c_emit_host_main_suffix_dissolution_trigger). DISSOLVES WHEN a modeled C main producer emits the harness from grammar rows — retire these string carriers then."
+data c_emit_host_type_decl_main_suffix_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: c_emit_host_type_decl_main_suffix + c_emit_host_type_decl_inject_fault_main_suffix — type-decl smoke-driver main harness fragments spliced after emitted Point/Bool/Answer typedefs via EmittedWithSuffix (parallel to c_emit_host_main_suffix_dissolution_trigger). DISSOLVES WHEN a modeled C main producer emits the harness from grammar rows — retire these string carriers then.")
 
 fn c_type_decl_host_transport_descriptor(main_suffix: String) -> HostTransportDescriptor {
   HostTransportDescriptor {

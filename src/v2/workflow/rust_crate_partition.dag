@@ -1,5 +1,7 @@
 module v2.workflow.rust_crate_partition
 
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
 import std.algebra { Empty }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.graph {
@@ -90,8 +92,6 @@ type Stage0PartitionCrateRow {
 
 data rust_crate_partition_note: String = "Rust R3 workflow realization of the shared CompilationUnit home (emitted-crate-partition-design.md §2/§13). resolve_partition_outcome is the sole entry for the assignment Map; partition_fold_outcome is the sole producer of interface + deps. Phase 0: HandExplicit provenance + ExplicitPartition interim ~8-crate layered grouping (dissolves to PolicyPartition when balanced crates≈cores policy lands)."
 
-data rust_crate_partition_dissolve_on: String = "dissolve-on: rust_crate_partition_interim_explicit — replace ExplicitPartition assignment with PolicyPartition { target_crate_count: declared_core_target } when balanced partition policy lands; provenance flips HandExplicit → PolicyDerived."
-
 data rust_crate_partition_declared_core_target: Int = 7
 
 data rust_crate_partition_module_bearing_unit_target: Int = 6
@@ -126,8 +126,6 @@ type ExportsMapNotFrontierGrounded {
 type TypeDefinitionsMapNotFrontierGrounded {
   dissolve_target: DeclarationRef
 }
-
-data stage0_module_dag_interface_grounding_debt_dissolve_on: String = "dissolve-on: stage0_module_dag_interface_grounding — populate ModuleDag.exports with frontier-derived cross-module export Nodes and type_definitions with by-value ModuleTypeDefinitionRow rows when stage0 module ingest provides them; until then R3 render uses Stage0PartitionCrateRow.modules + reexport_packages wildcard pub-use chain (not CompilationUnit.interface Nodes)."
 
 data rust_crate_partition_interface_deferred_note: String = "Interim: ModuleDag.exports + type_definitions carry per-module keys with empty lists (structural scaffold for partition_fold only). R3 render uses Stage0PartitionCrateRow.modules + reexport_packages wildcard pub-use chain — not CompilationUnit.interface Nodes. Full Node-carrier exports blocked on stage0 module ingest (frontier-grounding dependency)."
 
@@ -190,6 +188,7 @@ fn stage0_std_primitive_modules() -> List<String> {
     "std_keyed_row",
     "std_keyed_roster",
     "std_roster_frontier",
+    "std_dissolution",
     "std_disposition",
     "std_error_primitives",
     "std_http_path",
@@ -389,6 +388,9 @@ fn stage0_cross_unit_import_edges() -> List<ModuleDagEdge> {
     stage0_module_dag_edge(from: "std_keyed_row", to: "std_types"),
     stage0_module_dag_edge(from: "std_keyed_roster", to: "std_keyed_row"),
     stage0_module_dag_edge(from: "std_roster_frontier", to: "std_decl_ref"),
+    stage0_module_dag_edge(from: "std_roster_frontier", to: "std_dissolution"),
+    stage0_module_dag_edge(from: "std_dissolution", to: "std_decl_ref"),
+    stage0_module_dag_edge(from: "std_dissolution", to: "std_types"),
     stage0_module_dag_edge(from: "std_roster_frontier", to: "std_keyed_roster"),
     stage0_module_dag_edge(from: "std_roster_frontier", to: "std_keyed_row"),
     stage0_module_dag_edge(from: "extdeps_languages_dag_syntax", to: "std_syntax"),
@@ -536,8 +538,6 @@ fn validate_partition_r4(
     PartitionR4Valid
   }
 }
-
-data stage0_compilation_units_list_wrapper_dissolve_on: String = "dissolve-on: stage0_compilation_units — removed; receipt paths must call stage0_partition_receipt_outcome (§5 List wrapper collapses resolve/fold refusal to [], indistinguishable from empty partition). Witnesses read units from Stage0PartitionReceiptOk only."
 
 fn stage0_single_crate_assignment() -> Map<ModuleId, CompilationUnitId> {
   stage0_assign_modules_to_unit(
@@ -736,3 +736,9 @@ fn stage0_partition_fold_ok() -> Bool {
     Stage0PartitionReceiptFoldRefused { cause: _ } => false
   }
 }
+
+data rust_crate_partition_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: rust_crate_partition_interim_explicit — replace ExplicitPartition assignment with PolicyPartition \{ target_crate_count: declared_core_target } when balanced partition policy lands; provenance flips HandExplicit → PolicyDerived.")
+
+data stage0_compilation_units_list_wrapper_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: stage0_compilation_units — removed; receipt paths must call stage0_partition_receipt_outcome (§5 List wrapper collapses resolve/fold refusal to [], indistinguishable from empty partition). Witnesses read units from Stage0PartitionReceiptOk only.")
+
+data stage0_module_dag_interface_grounding_debt_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: stage0_module_dag_interface_grounding — populate ModuleDag.exports with frontier-derived cross-module export Nodes and type_definitions with by-value ModuleTypeDefinitionRow rows when stage0 module ingest provides them; until then R3 render uses Stage0PartitionCrateRow.modules + reexport_packages wildcard pub-use chain (not CompilationUnit.interface Nodes).")

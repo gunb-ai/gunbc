@@ -42,6 +42,9 @@ pub mod std_keyed_roster;
 #[path = "../../stage0/src/std_roster_frontier.rs"]
 pub mod std_roster_frontier;
 #[rustfmt::skip]
+#[path = "../../stage0/src/std_dissolution.rs"]
+pub mod std_dissolution;
+#[rustfmt::skip]
 #[path = "../../stage0/src/std_disposition.rs"]
 pub mod std_disposition;
 #[rustfmt::skip]
@@ -113,12 +116,12 @@ pub mod extdeps_units_dimensionless;
 #[rustfmt::skip]
 #[path = "../../stage0/src/extdeps_units_iec_80000_13.rs"]
 pub mod extdeps_units_iec_80000_13;
-
-#[path = "../../stage0/src/extdeps_units_iso_80000_3.rs"]
-pub mod extdeps_units_iso_80000_3;
 #[rustfmt::skip]
 #[path = "../../stage0/src/extdeps_units_iso8601.rs"]
 pub mod extdeps_units_iso8601;
+#[rustfmt::skip]
+#[path = "../../stage0/src/extdeps_units_iso_80000_3.rs"]
+pub mod extdeps_units_iso_80000_3;
 #[rustfmt::skip]
 #[path = "../../stage0/src/std_occurrence_identity.rs"]
 pub mod std_occurrence_identity;

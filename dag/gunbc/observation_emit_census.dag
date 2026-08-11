@@ -1,6 +1,7 @@
 module gunbc.observation_emit_census
 
 import std.types { String, NonEmptyStr, Bool, List }
+import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
 import std.nat { Nat }
 import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -11,7 +12,7 @@ data observation_emit_census_sequencing_note: String = "Sequencing, per the oper
 
 type EmitSiteDisposition
   = MigratedToObservation { via: NonEmptyStr }
-  | CountedFrontierSite { reason: NonEmptyStr, dissolve_on: NonEmptyStr }
+  | CountedFrontierSite { reason: NonEmptyStr, dissolution: DissolutionCondition }
 
 data emit_site_disposition_note: String = "A closed sum, so a site is exactly one of two things and never silently neither. MigratedToObservation names the projection that replaced the raw emit — the evidence the site now speaks the event vocabulary. CountedFrontierSite carries a reason it has not migrated yet and the trigger that will dissolve it, so the debt is countable and prioritizable rather than an open-ended intention. There is no third arm, which is the point: an emit site the census has not looked at cannot be represented here, so the roster's completeness is what the witness checks against the seed."
 
@@ -74,7 +75,7 @@ data floor_drain_site: CensusedEmitSite = CensusedEmitSite {
   source_file: "src/v1/stage0/src/cli_run.rs" as NonEmptyStr,
   disposition: CountedFrontierSite {
     reason: "schedule-retention / typed-cache drain diagnostics born after the initial census snapshot — retention kit instrumentation, not yet an observation projection" as NonEmptyStr,
-    dissolve_on: "re-census into MigratedToObservation once drain events speak the observation vocabulary (or retire the tag into a named group summary)" as NonEmptyStr
+    dissolution: unbound_dissolution(description: "re-census into MigratedToObservation once drain events speak the observation vocabulary (or retire the tag into a named group summary)")
   }
 }
 
@@ -83,7 +84,7 @@ data gate_warm_cost_site: CensusedEmitSite = CensusedEmitSite {
   source_file: "src/v1/stage0/src/bin/claim_executor.rs" as NonEmptyStr,
   disposition: CountedFrontierSite {
     reason: "falsifier-cadence per-gate warm-cost TSV probe lines — the instrument producing the fleet receipt basis; per-PR keeps the complete TSV file and summary line without the byte-identical stderr dump, still a raw tag family" as NonEmptyStr,
-    dissolve_on: "fold the TSV emit into an observation MeasurementSegment / receipt projection and retire the bracket tag" as NonEmptyStr
+    dissolution: unbound_dissolution(description: "fold the TSV emit into an observation MeasurementSegment / receipt projection and retire the bracket tag")
   }
 }
 
@@ -92,7 +93,7 @@ data receipt_site: CensusedEmitSite = CensusedEmitSite {
   source_file: "src/v1/stage0/src/bin/claim_executor.rs" as NonEmptyStr,
   disposition: CountedFrontierSite {
     reason: "floor resolve / batch-wall / materialization receipt lines — data, not outcomes; still bracket-tagged" as NonEmptyStr,
-    dissolve_on: "collapse into the floor-receipts observation group as Ambient MeasurementSegment / StatusPulse lines" as NonEmptyStr
+    dissolution: unbound_dissolution(description: "collapse into the floor-receipts observation group as Ambient MeasurementSegment / StatusPulse lines")
   }
 }
 
@@ -101,7 +102,7 @@ data file_trace_site: CensusedEmitSite = CensusedEmitSite {
   source_file: "src/v1/stage0/src/v1_interpreter.rs" as NonEmptyStr,
   disposition: CountedFrontierSite {
     reason: "Filesystem transport host-effect traces — sibling of the shell-echo class, still raw-tagged" as NonEmptyStr,
-    dissolve_on: "same named-intent ObservationEvent path as shell (Filesystem.Read/Write/…) once shell grain is proven" as NonEmptyStr
+    dissolution: unbound_dissolution(description: "same named-intent ObservationEvent path as shell (Filesystem.Read/Write/…) once shell grain is proven")
   }
 }
 
@@ -110,7 +111,7 @@ data resolve_split_site: CensusedEmitSite = CensusedEmitSite {
   source_file: "src/v1/stage0/src/bin/claim_executor.rs" as NonEmptyStr,
   disposition: CountedFrontierSite {
     reason: "per-entry resolve-stage timing split (#7205 / #6848 cost instrumentation) — load/parse/resolve/normalize/typecheck/parent_envs/assembly/ownership" as NonEmptyStr,
-    dissolve_on: "fold into a MeasurementSegment / StatusPulse receipt projection under the floor-receipts group" as NonEmptyStr
+    dissolution: unbound_dissolution(description: "fold into a MeasurementSegment / StatusPulse receipt projection under the floor-receipts group")
   }
 }
 
@@ -119,7 +120,7 @@ data assembly_split_site: CensusedEmitSite = CensusedEmitSite {
   source_file: "src/v1/stage0/src/bin/claim_executor.rs" as NonEmptyStr,
   disposition: CountedFrontierSite {
     reason: "reconcile-assembly sub-split (#7205) — schedule/probe/registry/services/rewire/emit_info/residue timings that priced the type-export-set memo" as NonEmptyStr,
-    dissolve_on: "fold into the same MeasurementSegment receipt projection as resolve-split" as NonEmptyStr
+    dissolution: unbound_dissolution(description: "fold into the same MeasurementSegment receipt projection as resolve-split")
   }
 }
 
@@ -128,7 +129,7 @@ data witness_row_cost_site: CensusedEmitSite = CensusedEmitSite {
   source_file: "src/v1/stage0/src/bin/claim_executor.rs" as NonEmptyStr,
   disposition: CountedFrontierSite {
     reason: "falsifier-cadence per-witness cost TSV probe lines (#7284 / placement #5 spine) — complete join projection of the ObservationEvent N+1 stream mirrored to the cadence log for task #20 reproduction; per-PR keeps the complete TSV file and summary line, still a raw tag family" as NonEmptyStr,
-    dissolve_on: "fold the TSV emit into ObservationEvent-native emission (N+1 stream) and retire the bracket tag; TSV remains a complete join projection of the same events" as NonEmptyStr
+    dissolution: unbound_dissolution(description: "fold the TSV emit into ObservationEvent-native emission (N+1 stream) and retire the bracket tag; TSV remains a complete join projection of the same events")
   }
 }
 
@@ -137,7 +138,7 @@ data witness_row_cost_drift_site: CensusedEmitSite = CensusedEmitSite {
   source_file: "src/v1/stage0/src/bin/claim_executor.rs" as NonEmptyStr,
   disposition: CountedFrontierSite {
     reason: "falsifier-cadence per-row drift comparison lines (#7284) — BasisAbsent / DriftExceeded / WithinBasis against dated basis; the full stderr TSV projection is cadence-scoped alongside the witness-cost reproduction protocol, still a raw tag family" as NonEmptyStr,
-    dissolve_on: "fold into ObservationEvent-native drift emission once drift is an observation event rather than a bracket TSV mirror of the complete projection" as NonEmptyStr
+    dissolution: unbound_dissolution(description: "fold into ObservationEvent-native drift emission once drift is an observation event rather than a bracket TSV mirror of the complete projection")
   }
 }
 
@@ -146,7 +147,7 @@ data witness_row_cost_migration_disclosure_site: CensusedEmitSite = CensusedEmit
   source_file: "src/v1/stage0/src/bin/claim_executor.rs" as NonEmptyStr,
   disposition: CountedFrontierSite {
     reason: "per-floor-pass mandatory-migration disclosure lines (gunbc.witness_row_cost's migration threshold gate) — per-row verdict plus a worst-5 summary, mirroring witness_row_cost_drift_site's shape; still a raw tag family" as NonEmptyStr,
-    dissolve_on: "fold into ObservationEvent-native emission once the disclosure speaks the observation vocabulary, same trigger as witness_row_cost_site/witness_row_cost_drift_site" as NonEmptyStr
+    dissolution: unbound_dissolution(description: "fold into ObservationEvent-native emission once the disclosure speaks the observation vocabulary, same trigger as witness_row_cost_site/witness_row_cost_drift_site")
   }
 }
 
@@ -155,7 +156,7 @@ data selection_degradation_site: CensusedEmitSite = CensusedEmitSite {
   source_file: "src/v1/stage0/src/cli_run.rs" as NonEmptyStr,
   disposition: CountedFrontierSite {
     reason: "floor prep-tax P2 selection honesty receipt — selection_state, selected/total entry groups, ratio, fallback_reason on every discovery completion" as NonEmptyStr,
-    dissolve_on: "fold into observation receipt projection once selection degradation speaks the observation vocabulary" as NonEmptyStr
+    dissolution: unbound_dissolution(description: "fold into observation receipt projection once selection degradation speaks the observation vocabulary")
   }
 }
 
@@ -192,14 +193,14 @@ data observation_emit_roster_completeness_note: String = "Roster is bidirectiona
 fn emit_site_is_frontier(site: CensusedEmitSite) -> Bool {
   match site.disposition {
     MigratedToObservation { via: _ } => false
-    CountedFrontierSite { reason: _, dissolve_on: _ } => true
+    CountedFrontierSite { reason: _, dissolution: _ } => true
   }
 }
 
 fn emit_site_dissolve_on(site: CensusedEmitSite) -> String {
   match site.disposition {
     MigratedToObservation { via: v } => v
-    CountedFrontierSite { reason: _, dissolve_on: d } => d
+    CountedFrontierSite { reason: _, dissolution: d } => dissolution_description(condition: d)
   }
 }
 

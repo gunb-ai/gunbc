@@ -38,6 +38,9 @@ use crate::v1_std_core::{
     StringPart, UnaryOpKind, VarBindingKind,
 };
 
+#[path = "bounded_shell_host_drain.rs"]
+pub mod bounded_shell_host_drain;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Symbol(u32);
 
@@ -865,6 +868,13 @@ pub enum InterpError {
     HostToolRelativePathAmbiguous {
         name: String,
     },
+    /// Shell child stdout exceeded the seed complete-within bound — never surfaced as a prefix.
+    ShellOutputLimitExceeded {
+        stream: &'static str,
+        total_bytes: u64,
+        limit_bytes: u64,
+        argv0: String,
+    },
     /// Application-site contract mismatch: the caller's argument list does not match the
     /// callee's declared parameter list. Typed and located (callee + the offending label)
     /// so the line stops at the application site instead of surfacing later as a
@@ -969,6 +979,16 @@ impl fmt::Display for InterpError {
                 f,
                 "host tool relative path ambiguous at cwd-dependent boundary: {:?}",
                 name
+            ),
+            InterpError::ShellOutputLimitExceeded {
+                stream,
+                total_bytes,
+                limit_bytes,
+                argv0,
+            } => write!(
+                f,
+                "shell {} exceeded {} byte limit (total={} bytes) for '{}'",
+                stream, limit_bytes, total_bytes, argv0
             ),
         }
     }
@@ -1502,6 +1522,27 @@ pub struct InterpContext {
     // call node — keyed by node pointer, kept alive via call_func_name_cache_keepalive as above.
     call_func_name_cache: std::cell::RefCell<HashMap<usize, String>>,
     call_func_name_cache_keepalive: std::cell::RefCell<Vec<Rc<Node>>>,
+    // Same chokepoint, ExprCast arm — the one the three caches above missed. A cast resolved
+    // its target type per EVALUATION: cast_target_seed_name re-sliced authored source text
+    // (authored_name_at), and for any target whose name is not already "String" the alias-chain
+    // walk called lookup_type_item_across_modules, which SCANS every item of every module and
+    // extracts authored source text for each item it compares — once per hop, up to 32 hops.
+    // Both names are pure functions of the target node and the module set, and both are fixed
+    // for a ctx, so they are memoized per target node — keyed by node pointer, kept alive via
+    // cast_kernel_cache_keepalive exactly as call_func_name_cache above.
+    cast_kernel_cache: std::cell::RefCell<HashMap<usize, Rc<CastTargetNames>>>,
+    cast_kernel_cache_keepalive: std::cell::RefCell<Vec<Rc<Node>>>,
+    // The alias walk's per-hop `lookup_type_item_across_modules` was a LINEAR SCAN over every
+    // item of every module, extracting authored source text per item compared. Measured on one
+    // daily-page render: 700 lookups scanned 1,967,155 items (~2,810 each), which accounted for
+    // essentially all of ExprCast's 2,027ms — and the term grows with the closure, not the
+    // request. A name->item map is the same fact indexed instead of searched, built once per
+    // ctx. `or_insert` preserves the scan's first-match-wins order.
+    type_item_index: std::cell::RefCell<Option<Rc<HashMap<String, Rc<Node>>>>>,
+    // The cast's SOURCE-side name, same class as cast_kernel_cache above (see
+    // cast_expr_inferred_type_name).
+    cast_source_name_cache: std::cell::RefCell<HashMap<usize, String>>,
+    cast_source_name_cache_keepalive: std::cell::RefCell<Vec<Rc<Node>>>,
     pure_call_memo: std::cell::RefCell<PureCallMemo>,
     parse_table_memo: std::cell::RefCell<ParseTableMemo>,
     eval_recompute_trace: std::cell::RefCell<EvalRecomputeTrace>,
@@ -1731,6 +1772,11 @@ impl InterpContext {
             var_sym_cache_keepalive: std::cell::RefCell::new(Vec::new()),
             call_func_name_cache: std::cell::RefCell::new(HashMap::new()),
             call_func_name_cache_keepalive: std::cell::RefCell::new(Vec::new()),
+            cast_kernel_cache: std::cell::RefCell::new(HashMap::new()),
+            cast_kernel_cache_keepalive: std::cell::RefCell::new(Vec::new()),
+            type_item_index: std::cell::RefCell::new(None),
+            cast_source_name_cache: std::cell::RefCell::new(HashMap::new()),
+            cast_source_name_cache_keepalive: std::cell::RefCell::new(Vec::new()),
             pure_call_memo: std::cell::RefCell::new(PureCallMemo::default()),
             parse_table_memo: std::cell::RefCell::new(ParseTableMemo::default()),
             eval_recompute_trace: std::cell::RefCell::new(EvalRecomputeTrace::default()),
@@ -5311,14 +5357,33 @@ fn eval_string_interp(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> In
 }
 
 fn lookup_type_item_across_modules(ctx: &InterpContext, type_name: &str) -> Option<Rc<Node>> {
-    for module in ctx.modules.iter() {
-        for item in module.items.iter() {
-            if authored_name_at(ctx.si(), item.clone()) == type_name {
-                return Some(item.clone());
-            }
-        }
+    if eval_profile_enabled() {
+        TYPE_LOOKUP_CALLS.with(|c| c.set(c.get() + 1));
     }
-    None
+    let existing = ctx.type_item_index.borrow().clone();
+    let index = match existing {
+        Some(index) => index,
+        None => {
+            let mut built: HashMap<String, Rc<Node>> = HashMap::new();
+            for module in ctx.modules.iter() {
+                for item in module.items.iter() {
+                    if eval_profile_enabled() {
+                        TYPE_LOOKUP_ITEMS.with(|c| c.set(c.get() + 1));
+                    }
+                    let name = authored_name_at(ctx.si(), item.clone());
+                    if name.is_empty() {
+                        continue;
+                    }
+                    // First declaration wins, matching the scan's early return.
+                    built.entry(name).or_insert_with(|| item.clone());
+                }
+            }
+            let built = Rc::new(built);
+            *ctx.type_item_index.borrow_mut() = Some(built.clone());
+            built
+        }
+    };
+    index.get(type_name).cloned()
 }
 
 fn alias_rhs_next_name(ctx: &InterpContext, rhs: Rc<Node>) -> Option<String> {
@@ -5355,7 +5420,71 @@ fn type_item_alias_rhs_name(ctx: &InterpContext, item: &Rc<Node>) -> Option<Stri
     alias_rhs_next_name(ctx, rhs)
 }
 
+/// Both authored names a cast needs for its target, resolved once per target node.
+struct CastTargetNames {
+    seed: String,
+    kernel: String,
+}
+
+/// Resolve-and-memoize the cast target's authored names. Sound because both are functions of
+/// the target node and `ctx.modules` / `ctx.source_indices`, all fixed for the ctx's lifetime.
+fn cast_target_names(ctx: &InterpContext, target: Rc<Node>) -> Rc<CastTargetNames> {
+    let key = Rc::as_ptr(&target) as usize;
+    let existing = ctx.cast_kernel_cache.borrow().get(&key).cloned();
+    if let Some(hit) = existing {
+        // A pointer-keyed memo's one silent-wrongness class is address reuse: if a cached node
+        // were freed and a new node landed at the same address, this would answer a cast with
+        // ANOTHER type's name — no crash, just a wrong type. On the normal path that is
+        // unreachable (cast_target returns an AST-owned child, alive for the ctx's lifetime),
+        // but expr_child_at SYNTHESIZES an error node when a child is missing, and that node is
+        // temporary. Rather than inherit the keepalive discipline by imitation, GUNBC_MEMO_VERIFY=1
+        // recomputes the uncached answer on every hit and REFUSES on divergence, so the class is
+        // checked by execution over the real corpus instead of assumed.
+        if memo_verify_enabled() {
+            let recomputed_seed = cast_target_seed_name_uncached(ctx, target.clone());
+            if recomputed_seed != hit.seed {
+                panic!(
+                    "cast memo divergence at key {key:#x}: cached seed {:?} != recomputed {:?} \
+                     — pointer-keyed cache collision (keepalive failed to retain the node)",
+                    hit.seed, recomputed_seed
+                );
+            }
+        }
+        return hit;
+    }
+    let seed = cast_target_seed_name_uncached(ctx, target.clone());
+    let kernel = cast_target_underlying_kernel_uncached(ctx, seed.clone());
+    let fresh = Rc::new(CastTargetNames { seed, kernel });
+    // DEGENERATE RESOLUTIONS ARE NEVER CACHED, and this bound is load-bearing rather than
+    // tidiness. expr_child_at falls back to make_expr_error_node for a malformed cast, which
+    // Rc::new's a FRESH node per call (name "", ident_span None, inferred CompilerError). That
+    // resolves to an empty seed, and eval_cast's identity arm then returns a Value::Str
+    // unchanged on an empty kernel — so the run does NOT terminate, and a malformed cast inside
+    // a loop would allocate a new address every iteration: permanent cache miss, unbounded
+    // keepalive growth. Skipping the insert bounds the cache by the AST's real cast nodes.
+    // It costs only recomputation on a path that short-circuits before any module scan, and an
+    // empty seed is exactly the signature of a target carrying no resolvable authored name.
+    if fresh.seed.is_empty() {
+        return fresh;
+    }
+    ctx.cast_kernel_cache_keepalive
+        .borrow_mut()
+        .push(target.clone());
+    ctx.cast_kernel_cache
+        .borrow_mut()
+        .insert(key, fresh.clone());
+    fresh
+}
+
 fn cast_target_seed_name(ctx: &InterpContext, target: Rc<Node>) -> String {
+    cast_target_names(ctx, target).seed.clone()
+}
+
+fn cast_target_underlying_kernel(ctx: &InterpContext, target: Rc<Node>) -> String {
+    cast_target_names(ctx, target).kernel.clone()
+}
+
+fn cast_target_seed_name_uncached(ctx: &InterpContext, target: Rc<Node>) -> String {
     let from_span = authored_name_at(ctx.si(), target.clone());
     if !from_span.is_empty() {
         return from_span;
@@ -5381,8 +5510,11 @@ fn cast_target_seed_name(ctx: &InterpContext, target: Rc<Node>) -> String {
     String::new()
 }
 
-fn cast_target_underlying_kernel(ctx: &InterpContext, target: Rc<Node>) -> String {
-    let mut current = cast_target_seed_name(ctx, target);
+fn cast_target_underlying_kernel_uncached(ctx: &InterpContext, seed: String) -> String {
+    if eval_profile_enabled() {
+        CAST_KERNEL_CALLS.with(|c| c.set(c.get() + 1));
+    }
+    let mut current = seed;
     let mut seen = BTreeSet::new();
 
     for _ in 0..32 {
@@ -5413,40 +5545,112 @@ fn cast_target_underlying_kernel(ctx: &InterpContext, target: Rc<Node>) -> Strin
     current
 }
 
-fn str_identity_cast_if_string_family(
-    val: &Value,
-    ctx: &InterpContext,
-    target: Rc<Node>,
-) -> Option<Value> {
-    let Value::Str(s) = val else {
-        return None;
-    };
-    let kernel = cast_target_underlying_kernel(ctx, target);
-    if kernel.is_empty() || kernel == "String" {
-        Some(Value::Str(s.clone()))
-    } else {
-        None
+/// The cast's SOURCE type name. Same defect as the target side and the same repair: this is a
+/// pure function of the expression node, but was re-extracting authored source text on every
+/// evaluation. Measured on one daily-page render: +27.1ms across 59,858 casts (~452ns each,
+/// ExprCast 42.8ms -> 69.9ms) once #8098 added this second `authored_name_at` beside the
+/// target-side one. Memoized per expression node under the same pointer-key + keepalive
+/// discipline as `cast_kernel_cache`.
+fn cast_expr_inferred_type_name(ctx: &InterpContext, expr: Rc<Node>) -> String {
+    let key = Rc::as_ptr(&expr) as usize;
+    let existing = ctx.cast_source_name_cache.borrow().get(&key).cloned();
+    if let Some(hit) = existing {
+        if memo_verify_enabled() {
+            let recomputed = cast_expr_inferred_type_name_uncached(ctx, expr.clone());
+            if recomputed != hit {
+                panic!(
+                    "cast source-name memo divergence at key {key:#x}: cached {:?} != recomputed {:?} \
+                     — pointer-keyed cache collision (keepalive failed to retain the node)",
+                    hit, recomputed
+                );
+            }
+        }
+        return hit;
+    }
+    let fresh = cast_expr_inferred_type_name_uncached(ctx, expr.clone());
+    // Same unbounded-growth bound as cast_target_names: an error node's inferred is
+    // CompilerError rather than Resolved, so it yields "" — never cache it, or a malformed
+    // cast in a loop grows this keepalive without bound on freshly allocated nodes.
+    if fresh.is_empty() {
+        return fresh;
+    }
+    ctx.cast_source_name_cache_keepalive
+        .borrow_mut()
+        .push(expr.clone());
+    ctx.cast_source_name_cache
+        .borrow_mut()
+        .insert(key, fresh.clone());
+    fresh
+}
+
+fn cast_expr_inferred_type_name_uncached(ctx: &InterpContext, expr: Rc<Node>) -> String {
+    match expr.inferred.as_deref() {
+        Some(InferredNode::Resolved { node }) => authored_name_at(ctx.si(), node.clone()),
+        _ => String::new(),
     }
 }
 
+/// Runtime identity casts mirror `validate_cast`'s `source_name == target_name` arm,
+/// plus String-valued casts to types whose alias chain grounds on `String`.
+fn cast_identity_result(
+    val: &Value,
+    ctx: &InterpContext,
+    source_name: &str,
+    target_node: Rc<Node>,
+    target_name: &str,
+) -> Option<Value> {
+    if !source_name.is_empty() && source_name == target_name {
+        return Some(val.clone());
+    }
+    if let Value::Str(s) = val {
+        let kernel = cast_target_underlying_kernel(ctx, target_node);
+        if kernel.is_empty() || kernel == "String" {
+            return Some(Value::Str(s.clone()));
+        }
+    }
+    None
+}
+
 fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
-    let val = eval_expr(&cast_expr(node.clone()), env, ctx)?;
+    let inner = cast_expr(node.clone());
+    let source_name = cast_expr_inferred_type_name(ctx, inner.clone());
+    let val = eval_expr(&inner, env, ctx)?;
     let target_node = cast_target(node.clone());
     let target_name = cast_target_seed_name(ctx, target_node.clone());
 
-    if let Some(v) = str_identity_cast_if_string_family(&val, ctx, target_node) {
+    if let Some(v) =
+        cast_identity_result(&val, ctx, &source_name, target_node.clone(), &target_name)
+    {
         return Ok(v);
     }
 
-    match (val, target_name.as_str()) {
-        (Value::Int(n), "Float") => Ok(Value::Float(n as f64)),
-        (Value::Float(n), "Int") => Ok(Value::Int(n as i64)),
-        (Value::Int(n), "String") => Ok(Value::Str(n.to_string())),
-        (Value::Float(n), "String") => Ok(Value::Str(n.to_string())),
-        (Value::Bool(b), "String") => Ok(Value::Str(b.to_string())),
-        (v, "String") => Ok(Value::Str(format!("{}", v))),
-        (v, t) => Err(InterpError::TypeError {
-            msg: format!("cannot cast {} to {}", v.type_label(), t),
+    match target_name.as_str() {
+        "Float" => match val {
+            Value::Int(n) => Ok(Value::Float(n as f64)),
+            v => Err(InterpError::TypeError {
+                msg: format!("cannot cast {} to Float", v.type_label()),
+            }),
+        },
+        "Int" => match val {
+            Value::Float(n) => Ok(Value::Int(n as i64)),
+            v => Err(InterpError::TypeError {
+                msg: format!("cannot cast {} to Int", v.type_label()),
+            }),
+        },
+        "String" => match val {
+            Value::Int(n) => Ok(Value::Str(n.to_string())),
+            Value::Float(n) => Ok(Value::Str(n.to_string())),
+            Value::Bool(b) => Ok(Value::Str(b.to_string())),
+            Value::Str(s) => Ok(Value::Str(s)),
+            // Corpus wire/debug casts for structured values — not the blanket Display
+            // fallback that silently stringified List/Map (§5 fabricated plausible output).
+            Value::Variant { .. } | Value::Record { .. } => Ok(Value::Str(format!("{}", val))),
+            v => Err(InterpError::TypeError {
+                msg: format!("cannot cast {} to String", v.type_label()),
+            }),
+        },
+        t => Err(InterpError::TypeError {
+            msg: format!("cannot cast {} to {}", val.type_label(), t),
         }),
     }
 }
@@ -6576,10 +6780,11 @@ fn build_service_param_env(
     Ok(Env::extend(env, bindings))
 }
 
-struct ShellResult {
-    exit_code: i32,
-    stdout: String,
-    stderr: String,
+#[derive(Debug)]
+pub(crate) struct ShellResult {
+    pub(crate) exit_code: i32,
+    pub(crate) stdout: bounded_shell_host_drain::CapturedStreamEvidence,
+    pub(crate) stderr: bounded_shell_host_drain::CapturedStreamEvidence,
 }
 
 fn push_shell_argv_tokens(argv: &mut Vec<String>, val: Value) -> InterpResult<()> {
@@ -7748,16 +7953,17 @@ fn kill_shell_process_group(pid: u32) {
 }
 
 /// Wait for a shell child, killing the process group when the whole-receipt wall
-/// deadline elapses. No-deadline path is a direct `wait_with_output` (zero poll
-/// overhead for the hermetic corpus).
+/// deadline elapses. Streams are drained concurrently with bounded capture policies
+/// while the child runs — never `wait_with_output` (srv1 jq stderr wedge, 2026-08-09).
 fn wait_child_honoring_wall_deadline(
     child: std::process::Child,
     ctx: &InterpContext,
     argv0: &str,
-) -> InterpResult<std::process::Output> {
+    stdout_policy: bounded_shell_host_drain::StreamCapturePolicy,
+    stderr_policy: bounded_shell_host_drain::StreamCapturePolicy,
+) -> InterpResult<bounded_shell_host_drain::ShellCaptureResult> {
     if ctx.witness_wall_deadline.get().is_none() {
-        return child
-            .wait_with_output()
+        return bounded_shell_host_drain::capture_child_output(child, stdout_policy, stderr_policy)
             .map_err(|e| InterpError::TypeError {
                 msg: format!("failed to wait on '{}': {}", argv0, e),
             });
@@ -7766,15 +7972,14 @@ fn wait_child_honoring_wall_deadline(
     let pid = child.id();
     let (tx, rx) = std::sync::mpsc::channel();
     let worker = std::thread::spawn(move || {
-        let result = child.wait_with_output();
+        let result =
+            bounded_shell_host_drain::capture_child_output(child, stdout_policy, stderr_policy);
         let _ = tx.send(result);
     });
 
     loop {
         if let Some(err) = ctx.wall_deadline_exceeded_error() {
             kill_shell_process_group(pid);
-            // Drain the waiter so we don't leak a join handle; ignore its I/O
-            // error (SIGKILL often surfaces as a wait failure).
             let _ = rx.recv_timeout(std::time::Duration::from_secs(2));
             let _ = worker.join();
             return Err(err);
@@ -7843,7 +8048,10 @@ fn dispatch_shell(
         return Err(err);
     }
 
-    let output = if let Some(stdin_node) = transport_stdin(transport.clone(), ctx.si()) {
+    let stdout_policy = bounded_shell_host_drain::default_shell_stdout_capture_policy();
+    let stderr_policy = bounded_shell_host_drain::default_shell_stderr_capture_policy();
+
+    let capture = if let Some(stdin_node) = transport_stdin(transport.clone(), ctx.si()) {
         use std::io::Write;
         use std::process::Stdio;
 
@@ -7866,7 +8074,8 @@ fn dispatch_shell(
             .take()
             .map(|mut stdin| std::thread::spawn(move || stdin.write_all(&stdin_bytes)));
 
-        let output = wait_child_honoring_wall_deadline(child, ctx, &argv[0])?;
+        let capture =
+            wait_child_honoring_wall_deadline(child, ctx, &argv[0], stdout_policy, stderr_policy)?;
 
         if let Some(writer) = stdin_writer {
             // A stdin-write error (e.g. broken pipe) here is not itself the
@@ -7881,14 +8090,14 @@ fn dispatch_shell(
         }
         render_shell_completion_trace(
             expected,
-            output.status.code().unwrap_or(-1),
-            output.stdout.len(),
-            &output.stderr,
+            capture.exit_status.code().unwrap_or(-1),
+            capture.stdout.retained_bytes(),
+            &capture.stderr.retained,
             wall_start.elapsed(),
             &argv,
             intent,
         );
-        output
+        capture
     } else {
         use std::process::Stdio;
         let wall_start = std::time::Instant::now();
@@ -7901,30 +8110,62 @@ fn dispatch_shell(
         let child = cmd.spawn().map_err(|e| InterpError::TypeError {
             msg: format!("failed to execute '{}': {}", argv[0], e),
         })?;
-        let output = wait_child_honoring_wall_deadline(child, ctx, &argv[0])?;
+        let capture =
+            wait_child_honoring_wall_deadline(child, ctx, &argv[0], stdout_policy, stderr_policy)?;
         render_shell_completion_trace(
             expected,
-            output.status.code().unwrap_or(-1),
-            output.stdout.len(),
-            &output.stderr,
+            capture.exit_status.code().unwrap_or(-1),
+            capture.stdout.retained_bytes(),
+            &capture.stderr.retained,
             wall_start.elapsed(),
             &argv,
             intent,
         );
-        output
+        capture
     };
 
-    let exit_code = output.status.code().unwrap_or(-1);
+    shell_result_from_capture(&capture, &argv[0])
+}
 
+pub(crate) fn shell_result_from_capture(
+    capture: &bounded_shell_host_drain::ShellCaptureResult,
+    argv0: &str,
+) -> InterpResult<ShellResult> {
+    if capture.stdout.truncated {
+        return Err(InterpError::ShellOutputLimitExceeded {
+            stream: "stdout",
+            total_bytes: capture.stdout.total_bytes,
+            limit_bytes: bounded_shell_host_drain::DEFAULT_SHELL_STDOUT_MAX_BYTES as u64,
+            argv0: argv0.to_string(),
+        });
+    }
     Ok(ShellResult {
-        exit_code,
-        stdout: String::from_utf8_lossy(&output.stdout)
-            .trim_end()
-            .to_string(),
-        stderr: String::from_utf8_lossy(&output.stderr)
-            .trim_end()
-            .to_string(),
+        exit_code: capture.exit_status.code().unwrap_or(-1),
+        stdout: bounded_shell_host_drain::CapturedStreamEvidence::from_observation(&capture.stdout),
+        stderr: bounded_shell_host_drain::CapturedStreamEvidence::from_observation(&capture.stderr),
     })
+}
+
+fn shell_evidence_value(result: &ShellResult, from_key: &str) -> Option<Value> {
+    match from_key {
+        "stdout" => Some(Value::Str(result.stdout.retained_text.clone())),
+        "stderr" => Some(Value::Str(result.stderr.retained_text.clone())),
+        "stdout_total_bytes" => Some(Value::Int(result.stdout.total_bytes as i64)),
+        "stderr_total_bytes" => Some(Value::Int(result.stderr.total_bytes as i64)),
+        "stdout_retained_bytes" => Some(Value::Int(result.stdout.retained_bytes as i64)),
+        "stderr_retained_bytes" => Some(Value::Int(result.stderr.retained_bytes as i64)),
+        "stdout_truncated" => Some(Value::Bool(result.stdout.truncated)),
+        "stderr_truncated" => Some(Value::Bool(result.stderr.truncated)),
+        "stdout_digest_hex" => Some(match &result.stdout.digest_hex {
+            Some(digest) => Value::Str(digest.clone()),
+            None => Value::Null,
+        }),
+        "stderr_digest_hex" => Some(match &result.stderr.digest_hex {
+            Some(digest) => Value::Str(digest.clone()),
+            None => Value::Null,
+        }),
+        _ => None,
+    }
 }
 
 fn map_shell_outputs(
@@ -7935,7 +8176,7 @@ fn map_shell_outputs(
     let return_type = match op_node.inferred.as_deref() {
         Some(crate::v1_std_core::InferredNode::Resolved { node }) => node.clone(),
         _ => {
-            return Ok(Value::Str(result.stdout.clone()));
+            return Ok(Value::Str(result.stdout.retained_text.clone()));
         }
     };
 
@@ -7949,30 +8190,43 @@ fn map_shell_outputs(
         let field_name = authored_name_at(ctx.si(), child.clone());
         let from_key = extract_from_key(child, ctx);
         let is_optional_field = child.return_cardinality == Cardinality::CardOptional;
+        if is_optional_field
+            && result.exit_code != 0
+            && matches!(from_key.as_deref(), Some("stdout" | "stderr"))
+        {
+            fields.push((ctx.sym(&field_name), Value::Null));
+            continue;
+        }
         let value = match from_key.as_deref() {
-            Some("stdout") if is_optional_field && result.exit_code != 0 => Value::Null,
-            Some("stderr") if is_optional_field && result.exit_code != 0 => Value::Null,
-            Some("stdout") => Value::Str(result.stdout.clone()),
-            Some("stderr") => Value::Str(result.stderr.clone()),
-            Some("exit_success") => Value::Bool(result.exit_code == 0),
-            Some("exit_code") => Value::Int(result.exit_code as i64),
-            Some("stdout_lines") => {
-                let lines: Vec<Value> = result
-                    .stdout
-                    .lines()
-                    .map(|l| Value::Str(l.to_string()))
-                    .collect();
-                list_value((lines))
-            }
-            _ => match field_name.as_str() {
-                "success" => Value::Bool(result.exit_code == 0),
+            Some(key) => shell_evidence_value(result, key).unwrap_or_else(|| match key {
+                "exit_success" => Value::Bool(result.exit_code == 0),
                 "exit_code" => Value::Int(result.exit_code as i64),
-                "stdout" => Value::Str(result.stdout.clone()),
-                "stderr" => Value::Str(result.stderr.clone()),
-                "exists" => Value::Bool(result.exit_code == 0),
+                "stdout_lines" => {
+                    let lines: Vec<Value> = result
+                        .stdout
+                        .retained_text
+                        .lines()
+                        .map(|l| Value::Str(l.to_string()))
+                        .collect();
+                    list_value((lines))
+                }
                 _ => Value::Null,
-            },
+            }),
+            None => Value::Null,
         };
+        if matches!(value, Value::Null) {
+            if let Some(v) = match field_name.as_str() {
+                "success" => Some(Value::Bool(result.exit_code == 0)),
+                "exit_code" => Some(Value::Int(result.exit_code as i64)),
+                "stdout" => Some(Value::Str(result.stdout.retained_text.clone())),
+                "stderr" => Some(Value::Str(result.stderr.retained_text.clone())),
+                "exists" => Some(Value::Bool(result.exit_code == 0)),
+                _ => None,
+            } {
+                fields.push((ctx.sym(&field_name), v));
+                continue;
+            }
+        }
         fields.push((ctx.sym(&field_name), value));
     }
     fields.sort_unstable_by_key(|(k, _)| k.0);
@@ -11543,6 +11797,15 @@ macro_rules! v1_builtin_arms {
                 )?))
             },
 
+            arm "free_call.data_decl_type_facts" { "data_decl_type_facts" } => {
+                let pool_roots =
+                    expect_str_list($positional.first().copied(), "data_decl_type_facts")?;
+                Ok(Some(crate::coproduct_reflection::eval_data_decl_type_facts(
+                    $ctx,
+                    &pool_roots,
+                )?))
+            },
+
             arm "free_call.export_signature_facts" { "export_signature_facts" } => {
                 let pool_roots =
                     expect_str_list($positional.first().copied(), "export_signature_facts")?;
@@ -12710,6 +12973,40 @@ thread_local! {
     static SUBJECT_SELF_NANOS: RefCell<HashMap<String, u128>> = RefCell::new(HashMap::new());
     static CHILD_NANOS: Cell<u128> = const { Cell::new(0) };
     static PROFILE_FLAG: Cell<Option<bool>> = const { Cell::new(None) };
+    static MEMO_VERIFY_FLAG: Cell<Option<bool>> = const { Cell::new(None) };
+    /// DIAGNOSTIC (2026-08-10 wedge RCA, behind GUNBC_INTERP_PROFILE=1 only).
+    /// `ExprCast` measured at 72.9% of daily-page render self-time at ~38.5us/cast. The
+    /// suspected shape is that a cast resolves its target type by SCANNING every item of
+    /// every module and extracting authored source text per item, once per alias-chain hop.
+    /// These three counters make the multiplier observable instead of argued: calls to the
+    /// kernel walk, lookups it drives, and items those lookups actually touch.
+    static CAST_KERNEL_CALLS: Cell<u64> = const { Cell::new(0) };
+    static TYPE_LOOKUP_CALLS: Cell<u64> = const { Cell::new(0) };
+    static TYPE_LOOKUP_ITEMS: Cell<u64> = const { Cell::new(0) };
+}
+
+/// Diagnostic counters for the cast cost center. Zero-cost when profiling is off.
+pub fn cast_lookup_counters() -> (u64, u64, u64) {
+    (
+        CAST_KERNEL_CALLS.with(|c| c.get()),
+        TYPE_LOOKUP_CALLS.with(|c| c.get()),
+        TYPE_LOOKUP_ITEMS.with(|c| c.get()),
+    )
+}
+
+/// Verification mode for the pointer-keyed cast memo (see cast_target_names). Off by default;
+/// when on, every cache hit is checked against a fresh uncached resolution.
+fn memo_verify_enabled() -> bool {
+    MEMO_VERIFY_FLAG.with(|c| match c.get() {
+        Some(b) => b,
+        None => {
+            let b = std::env::var("GUNBC_MEMO_VERIFY")
+                .map(|v| v == "1")
+                .unwrap_or(false);
+            c.set(Some(b));
+            b
+        }
+    })
 }
 
 fn eval_profile_enabled() -> bool {
@@ -13627,6 +13924,281 @@ mod shell_completion_trace_tests {
 }
 
 #[cfg(test)]
+mod shell_stdout_overflow_refusal_tests {
+    use super::bounded_shell_host_drain::{
+        ShellCaptureResult, StreamCaptureObservation, DEFAULT_SHELL_STDOUT_MAX_BYTES,
+    };
+    use super::{shell_result_from_capture, InterpError};
+    use std::process::{Command, Stdio};
+
+    #[test]
+    fn shell_result_from_capture_refuses_truncated_stdout_observation() {
+        let capture = ShellCaptureResult {
+            exit_status: Command::new("true").status().expect("true status"),
+            stdout: StreamCaptureObservation {
+                total_bytes: (DEFAULT_SHELL_STDOUT_MAX_BYTES as u64) + 1,
+                retained: Vec::new(),
+                truncated: true,
+                digest_hex: None,
+            },
+            stderr: StreamCaptureObservation {
+                total_bytes: 0,
+                retained: Vec::new(),
+                truncated: false,
+                digest_hex: None,
+            },
+        };
+        let err = shell_result_from_capture(&capture, "fixture")
+            .expect_err("truncated stdout must refuse");
+        match err {
+            InterpError::ShellOutputLimitExceeded {
+                stream,
+                total_bytes,
+                limit_bytes,
+                argv0,
+            } => {
+                assert_eq!(stream, "stdout");
+                assert_eq!(total_bytes, (DEFAULT_SHELL_STDOUT_MAX_BYTES as u64) + 1);
+                assert_eq!(limit_bytes, DEFAULT_SHELL_STDOUT_MAX_BYTES as u64);
+                assert_eq!(argv0, "fixture");
+            }
+            other => panic!("expected ShellOutputLimitExceeded, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn capture_then_shell_result_refuses_oversized_stdout_child() {
+        let child = Command::new("sh")
+            .arg("-c")
+            .arg("dd if=/dev/zero bs=1048576 count=9 2>/dev/null | tr '\\0' 'a'")
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn stdout overflow child");
+        let capture = super::bounded_shell_host_drain::capture_child_output(
+            child,
+            super::bounded_shell_host_drain::default_shell_stdout_capture_policy(),
+            super::bounded_shell_host_drain::default_shell_stderr_capture_policy(),
+        )
+        .expect("bounded capture");
+        assert!(
+            capture.stdout.truncated,
+            "stdout child must report overflow"
+        );
+        assert!(
+            capture.stdout.retained.is_empty(),
+            "overflow must not retain a prefix"
+        );
+        let err = shell_result_from_capture(&capture, "sh").expect_err("overflow must refuse");
+        match err {
+            InterpError::ShellOutputLimitExceeded { stream, .. } => {
+                assert_eq!(stream, "stdout");
+            }
+            other => panic!("expected ShellOutputLimitExceeded, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn shell_result_preserves_capture_evidence_on_success() {
+        let child = Command::new("sh")
+            .arg("-c")
+            .arg("printf small; printf x >&2")
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn small child");
+        let capture = super::bounded_shell_host_drain::capture_child_output(
+            child,
+            super::bounded_shell_host_drain::default_shell_stdout_capture_policy(),
+            super::bounded_shell_host_drain::default_shell_stderr_capture_policy(),
+        )
+        .expect("bounded capture");
+        let result = shell_result_from_capture(&capture, "sh").expect("small stdout fits");
+        assert_eq!(result.stdout.total_bytes, 5);
+        assert_eq!(result.stdout.retained_bytes, 5);
+        assert!(!result.stdout.truncated);
+        assert_eq!(result.stderr.total_bytes, 1);
+        assert_eq!(result.stderr.retained_bytes, 1);
+        assert!(result.stderr.digest_hex.is_some());
+    }
+}
+
+#[cfg(test)]
+mod map_shell_outputs_optional_stream_tests {
+    use std::rc::Rc;
+
+    use im::{vector as im_vec, HashMap};
+
+    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+    use crate::v1_std_core::{
+        make_field_init_node, make_field_node, make_span, make_text_part_node, Cardinality,
+        Connective, ExprData, InferredNode, Node,
+    };
+
+    use super::bounded_shell_host_drain::CapturedStreamEvidence;
+    use super::{map_shell_outputs, ExecutionMode, InterpContext, ShellResult, Value};
+
+    fn map_shell_outputs_test_context() -> InterpContext {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+            emit_graph_info: empty_emit_graph_info(),
+        };
+        InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
+    }
+
+    fn bare_type_node(name: &str, span: Rc<crate::v1_std_core::SourceSpan>) -> Rc<Node> {
+        Rc::new(Node {
+            name: name.to_string(),
+            span: span.clone(),
+            ident_span: None,
+            children: Rc::new(im_vec![]),
+            connective: Connective::NoConnective,
+            params: Rc::new(im_vec![]),
+            inferred: None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(im_vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(im_vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        })
+    }
+
+    fn shell_result_fixture(exit_code: i32, stdout_text: &str, stderr_text: &str) -> ShellResult {
+        ShellResult {
+            exit_code,
+            stdout: CapturedStreamEvidence {
+                total_bytes: stdout_text.len() as u64,
+                retained_bytes: stdout_text.len() as u64,
+                truncated: false,
+                digest_hex: None,
+                retained_text: stdout_text.to_string(),
+            },
+            stderr: CapturedStreamEvidence {
+                total_bytes: stderr_text.len() as u64,
+                retained_bytes: stderr_text.len() as u64,
+                truncated: false,
+                digest_hex: None,
+                retained_text: stderr_text.to_string(),
+            },
+        }
+    }
+
+    fn map_optional_stream_field(exit_code: i32, from_key: &str) -> Value {
+        let ctx = map_shell_outputs_test_context();
+        let span = make_span(0, 0);
+        let str_type = bare_type_node("String", span.clone());
+        let mut field = make_field_node(
+            from_key.to_string(),
+            str_type,
+            Cardinality::CardOptional,
+            None,
+            Some(from_key.to_string()),
+            span.clone(),
+            span.clone(),
+        );
+        // make_field_node's from_key stub is not a LitStr; extract_from_key needs one.
+        let from_key_prop = make_field_init_node(
+            "from_key".to_string(),
+            make_text_part_node(from_key.to_string(), span.clone()),
+            span.clone(),
+            span.clone(),
+        );
+        Rc::make_mut(&mut field).properties = Rc::new(im_vec![from_key_prop]);
+        let return_type = Rc::new(Node {
+            name: "FixtureShellRecord".to_string(),
+            span: span.clone(),
+            ident_span: None,
+            children: Rc::new(im_vec![field]),
+            connective: Connective::NoConnective,
+            params: Rc::new(im_vec![]),
+            inferred: None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(im_vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(im_vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        });
+        let op_node = Rc::new(Node {
+            name: "fixture_shell_op".to_string(),
+            span: span.clone(),
+            ident_span: None,
+            children: Rc::new(im_vec![]),
+            connective: Connective::NoConnective,
+            params: Rc::new(im_vec![]),
+            inferred: Some(Rc::new(InferredNode::Resolved { node: return_type })),
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(im_vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(im_vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        });
+        let mapped = map_shell_outputs(
+            &shell_result_fixture(exit_code, "captured-stdout", "captured-stderr"),
+            &op_node,
+            &ctx,
+        )
+        .expect("map_shell_outputs");
+        match mapped {
+            Value::Record { fields, .. } => fields
+                .iter()
+                .find(|(sym, _)| ctx.sym(from_key) == *sym)
+                .map(|(_, v)| v.clone())
+                .unwrap_or(Value::Null),
+            other => panic!("expected record, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn optional_stdout_is_null_on_failed_shell_not_captured_text() {
+        assert_eq!(
+            map_optional_stream_field(1, "stdout"),
+            Value::Null,
+            "optional stdout must stay absent when the shell failed"
+        );
+    }
+
+    #[test]
+    fn optional_stderr_is_null_on_failed_shell_not_captured_text() {
+        assert_eq!(
+            map_optional_stream_field(1, "stderr"),
+            Value::Null,
+            "optional stderr must stay absent when the shell failed"
+        );
+    }
+
+    #[test]
+    fn optional_stdout_surfaces_text_on_success() {
+        assert_eq!(
+            map_optional_stream_field(0, "stdout"),
+            Value::Str("captured-stdout".to_string())
+        );
+    }
+}
+
+#[cfg(test)]
 mod wall_deadline_kill_tests {
     use std::process::{Command, Stdio};
     use std::rc::Rc;
@@ -13813,8 +14385,14 @@ mod wall_deadline_kill_tests {
             .stderr(Stdio::null())
             .spawn()
             .expect("spawn sleep");
-        let err = wait_child_honoring_wall_deadline(child, &ctx, "sleep")
-            .expect_err("over-budget sleep must refuse");
+        let err = wait_child_honoring_wall_deadline(
+            child,
+            &ctx,
+            "sleep",
+            super::bounded_shell_host_drain::default_shell_stdout_capture_policy(),
+            super::bounded_shell_host_drain::default_shell_stderr_capture_policy(),
+        )
+        .expect_err("over-budget sleep must refuse");
         let elapsed_ms = started.elapsed().as_millis() as u64;
         // The KERNEL result is caller-agnostic: this helper is generic shell-wait machinery, and
         // the wall budget being armed only by the witness lane today is a fact about its callers,
@@ -13851,9 +14429,15 @@ mod wall_deadline_kill_tests {
             .stderr(Stdio::null())
             .spawn()
             .expect("spawn true");
-        let output = wait_child_honoring_wall_deadline(child, &ctx, "true")
-            .expect("no-deadline wait must succeed");
-        assert!(output.status.success());
+        let output = wait_child_honoring_wall_deadline(
+            child,
+            &ctx,
+            "true",
+            super::bounded_shell_host_drain::default_shell_stdout_capture_policy(),
+            super::bounded_shell_host_drain::default_shell_stderr_capture_policy(),
+        )
+        .expect("no-deadline wait must succeed");
+        assert!(output.exit_status.success());
     }
 }
 

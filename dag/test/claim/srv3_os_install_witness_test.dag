@@ -4,9 +4,13 @@ module test.claim.srv3_os_install
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn srv3_bootloader_artifact_is_arch_grounded() -> Bool {
-  match network_uefi_bootloader_artifact(arch: srv3_os_install_plan.host_architecture) {
-    Present { value: a } => a == "grubnetaa64.efi"
-    Absent => false
+  match srv3_os_install_plan_standing {
+    OsInstallPlanRefused { cause: _ } => false
+    OsInstallPlanReady { plan: p } =>
+      match network_uefi_bootloader_artifact(arch: p.host_architecture) {
+        Present { value: a } => a == "grubnetaa64.efi"
+        Absent => false
+      }
   }
     && match network_uefi_bootloader_artifact(arch: X86_64) {
       Present { value: x } => x == "grubnetx64.efi"
@@ -42,33 +46,46 @@ test fn srv3_survey_forces_proxy_dhcp() -> Bool {
     }
 }
 
+// Now asserted through the standing, so a refusal cannot read as a satisfied plan: the plan
+// arm must be Ready AND its delivery virtual-media, both derived from srv3's firmware evidence.
 test fn srv3_plan_is_solver_derived_nbd_proxy_virtual_media() -> Bool {
-  match srv3_install_mechanism {
-    NbdProxyVirtualMediaInstall => true
-    _ => false
+  match srv3_os_install_plan_standing {
+    OsInstallPlanRefused { cause: _ } => false
+    OsInstallPlanReady { plan: p } =>
+      match p.delivery {
+        VirtualMediaIso { autoinstall: _ } => true
+        NetworkBoot { delivery: _ } => false
+      }
   }
-    && match srv3_os_install_plan.delivery {
-      VirtualMediaIso { autoinstall: _ } => true
-      NetworkBoot { delivery: _ } => false
+    && match srv3_install_mechanism_solution {
+      OsInstallMechanismSelected { mechanism: NbdProxyVirtualMediaInstall } => true
+      OsInstallMechanismSelected { mechanism: VirtualMediaInstall } => false
+      OsInstallMechanismSelected { mechanism: PxeHttpInstall } => false
+      OsInstallMechanismSelected { mechanism: FirmwareUpdateThenVirtualMedia } => false
+      OsInstallMechanismRefused { cause: _ } => false
     }
     && fleet_install_server_specs.length() == 0
 }
 
 test fn srv3_plan_targets_ubuntu_2404_aarch64_nbd_proxy_boot_once() -> Bool {
-  match srv3_os_install_plan.os_target {
-    UbuntuOs { distro: d } =>
-      match d {
-        NobleNumbat2404Lts => true
+  match srv3_os_install_plan_standing {
+    OsInstallPlanRefused { cause: _ } => false
+    OsInstallPlanReady { plan: p } =>
+      match p.os_target {
+        UbuntuOs { distro: d } =>
+          match d {
+            NobleNumbat2404Lts => true
+          }
+        WindowsOs { distro: _ } => false
+        MacosOs { distro: _ } => false
       }
-    WindowsOs { distro: _ } => false
-    MacosOs { distro: _ } => false
+        && redfish_boot_target_wire(t: p.bmc_boot_target) == "Cd"
+        && redfish_boot_override_enabled_wire(e: p.bmc_boot_enabled) == "Once"
+        && srv3_os_install_plan_autoinstall(plan: p).fully_automated
+        && srv3_os_install_plan_autoinstall(plan: p).autoinstall_version == 1
+        && match srv3_os_install_plan_autoinstall(plan: p).delivery {
+             NoCloudNet { seed_url: _ } => true
+             NoCloudLocal => false
+           }
   }
-    && redfish_boot_target_wire(t: srv3_os_install_plan.bmc_boot_target) == "Cd"
-    && redfish_boot_override_enabled_wire(e: srv3_os_install_plan.bmc_boot_enabled) == "Once"
-    && srv3_os_install_plan_autoinstall(plan: srv3_os_install_plan).fully_automated
-    && srv3_os_install_plan_autoinstall(plan: srv3_os_install_plan).autoinstall_version == 1
-    && match srv3_os_install_plan_autoinstall(plan: srv3_os_install_plan).delivery {
-      NoCloudNet { seed_url: _ } => true
-      NoCloudLocal => false
-    }
 }

@@ -1,9 +1,12 @@
 module gunbc.ci_spec
 
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
+
 import std.realization_schedule { RunnableBatchClamp }
 import std.decl_ref { decl_ref }
 import std.measure { second, millisecond, Minute, minute, minute_count }
 
+import gunbc.fleet_ssh_access { fleet_automation_ssh_key_fingerprint, fleet_automation_privkey_sm_access_url, fleet_automation_privkey_version_segment }
 import gunbc.ci_release_bins {
   ci_floor_required_artifact_names
 }
@@ -352,7 +355,7 @@ data ci_release_bins_pack_shell_emit_scaffold: Disposition = Scaffold {
   }
 }
 
-data ci_release_bins_pack_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_release_bins_pack_script — concat-built foreign-executor (GitHub Actions run:) release-bins tar pack runner; membership of archived bin names is derived from gunbc.ci_release_bins, but the pack transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the pack runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold"
+data ci_release_bins_pack_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_release_bins_pack_script — concat-built foreign-executor (GitHub Actions run:) release-bins tar pack runner; membership of archived bin names is derived from gunbc.ci_release_bins, but the pack transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the pack runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold")
 
 fn ci_release_bins_pack_script() -> String {
   let names = fold(
@@ -361,7 +364,7 @@ fn ci_release_bins_pack_script() -> String {
     f: (acc, name) => concat(acc, concat(" ", concat("\"", concat(name, "\""))))
   )
   concat(
-    concat("# ", concat(ci_release_bins_pack_shell_emit_dissolution_trigger, "\n")),
+    concat("# ", concat(dissolution_description(condition: ci_release_bins_pack_shell_emit_dissolution_trigger), "\n")),
     concat(
       concat("ROOT=", ci_repo_root_shell(), "\n"),
       concat(
@@ -381,11 +384,11 @@ data ci_release_bins_unpack_verify_shell_emit_scaffold: Disposition = Scaffold {
   }
 }
 
-data ci_release_bins_unpack_verify_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold"
+data ci_release_bins_unpack_verify_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold")
 
 fn ci_release_bins_unpack_verify_script() -> String {
   concat(
-    concat("# ", concat(ci_release_bins_unpack_verify_shell_emit_dissolution_trigger, "\n")),
+    concat("# ", concat(dissolution_description(condition: ci_release_bins_unpack_verify_shell_emit_dissolution_trigger), "\n")),
     concat(
       concat("ROOT=", ci_repo_root_shell(), "\n"),
       concat(
@@ -528,11 +531,11 @@ data gunbc_ci_fleet_reach_probe_shell_emit_scaffold: Disposition = Scaffold {
   }
 }
 
-data gunbc_ci_fleet_reach_probe_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: gunbc_ci_fleet_reach_probe_invoke — concat-built foreign-executor (GitHub Actions run:) shell invoking gunbc run on gunbc.host_reach_identity_probe probe_fleet_reach_wet plus a cat of the typed receipt file; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the probe step to orchestration emit over the typed gunbc.WitnessBin.Run route"
+data gunbc_ci_fleet_reach_probe_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_fleet_reach_probe_invoke — concat-built foreign-executor (GitHub Actions run:) shell invoking gunbc run on gunbc.host_reach_identity_probe probe_fleet_reach_wet plus a cat of the typed receipt file; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the probe step to orchestration emit over the typed gunbc.WitnessBin.Run route")
 
 fn gunbc_ci_fleet_reach_probe_invoke() -> String {
   concat(
-    concat("# ", concat(gunbc_ci_fleet_reach_probe_shell_emit_dissolution_trigger, "\n")),
+    concat("# ", concat(dissolution_description(condition: gunbc_ci_fleet_reach_probe_shell_emit_dissolution_trigger), "\n")),
     concat(
       concat(
         concat("ROOT=", ci_repo_root_shell(), "\n"),
@@ -547,6 +550,95 @@ fn gunbc_ci_fleet_reach_probe_invoke() -> String {
       "\ncat \"$ROOT/target/fleet-reach-probe-receipt.txt\""
     )
   )
+}
+
+// Read-only multi-principal fleet-key probe (parent msg_e767a783): measures whether the
+// in-run fleet key authenticates as any PRE-EXISTING account on srv3/srv4 (ubuntu,
+// briansrls, ghrunner, root) — hostname + sudo -n -l, no writes. Rides the same probe
+// job so it reuses the one WIF/agent materialization; its receipt is a separate file.
+data gunbc_ci_multi_principal_probe_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_multi_principal_probe_invoke — concat-built foreign-executor (GitHub Actions run:) shell invoking gunbc run on gunbc.fleet_multi_principal_probe fleet_multi_principal_probe_wet plus a cat of the typed receipt; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the step to orchestration emit over the typed gunbc.WitnessBin.Run route")
+
+fn gunbc_ci_multi_principal_probe_invoke() -> String {
+  concat(
+    concat("# ", concat(dissolution_description(condition: gunbc_ci_multi_principal_probe_shell_emit_dissolution_trigger), "\n")),
+    concat(
+      concat(
+        concat("ROOT=", ci_repo_root_shell(), "\n"),
+        gunbc_run_shell(
+          source_roots: witness_layer_roots,
+          entry: "dag/gunbc/fleet_multi_principal_probe.dag",
+          function: "fleet_multi_principal_probe_wet",
+          rooted: true,
+          claim_run: false
+        )
+      ),
+      "\ncat \"$ROOT/target/fleet-multi-principal-probe-receipt.txt\""
+    )
+  )
+}
+
+// A2 in-run key materialization (parent msg_72e2dcee): foreign-executor shell that
+// exchanges nothing itself — the WIF access token arrives from the google_auth_action
+// step via env — and turns Secret Manager versions/1 (PINNED, never `latest`) into a
+// loaded ssh-agent identity. SECRET HYGIENE, load-bearing: the payload flows
+// curl -> python3 decode -> file mode 0600 -> ssh-add -> rm; it is never echoed, never
+// written under a durable HOME, and no digest of it is printed. The only stdout is the
+// identity NAME line. The agent socket/pid go to GITHUB_ENV so the probe step's ssh
+// children inherit them; the job's always() cleanup step kills the agent.
+data gunbc_ci_fleet_key_agent_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "gunbc_ci_fleet_key_agent_script",
+    field: WholeDeclaration
+  }
+}
+
+data gunbc_ci_fleet_key_agent_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_fleet_key_agent_script — concat-built foreign-executor (GitHub Actions run:) shell materializing the fleet automation key from Secret Manager versions/1 into an in-run ssh-agent; DISSOLVES WHEN the typed secret-materialization effect (SecretRef -> in-run agent, SECRET-VERSION-LIFECYCLE-0 machinery) lands on host_effect_apply and the step becomes an emitted typed effect")
+
+// Repairs #3 and #4 (operator scan of #8083, 2026-08-09):
+// #3 FAILURE-SAFE CLEANUP — a `trap cleanup EXIT` is armed BEFORE the key touches disk,
+//    so any failure in curl/base64/chmod/keygen/agent/add removes the key file and kills
+//    the agent regardless of where set -e aborts. The outer always() step stays as
+//    defense in depth. The old ordering (rm only on the happy path, PID exported last)
+//    could leave the key on disk with no exported PID for the outer cleanup to find.
+// #4 SECRET-IDENTITY VERIFICATION — before ssh-add, derive the public key from the fetched
+//    private material (ssh-keygen -y) and its fingerprint (ssh-keygen -lf) and compare to
+//    the modeled fleet_automation_ssh_key_fingerprint. A wrong secret VERSION is then a
+//    located ProbeCredentialIdentityMismatch that CONTACTS NO HOST, never a downstream
+//    host-auth failure. The comparison is against the repo's single fingerprint authority.
+fn gunbc_ci_fleet_key_agent_script() -> String {
+  join([
+    "# ", dissolution_description(condition: gunbc_ci_fleet_key_agent_shell_emit_dissolution_trigger), "\n",
+    "set -euo pipefail\n",
+    "umask 077\n",
+    "KEY_FILE=\"$RUNNER_TEMP/fleet-automation-key\"\n",
+    "AGENT_STARTED=0\n",
+    "cleanup() { rm -f \"$KEY_FILE\"; if [ \"$AGENT_STARTED\" = 1 ] && [ -n \"$\{SSH_AGENT_PID:-}\" ]; then ssh-agent -k >/dev/null 2>&1 || true; fi; }\n",
+    "trap cleanup EXIT\n",
+    "curl -sSf -H \"Authorization: Bearer $WIF_ACCESS_TOKEN\" \"", fleet_automation_privkey_sm_access_url(), "\" | python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(sys.stdin)[\"payload\"][\"data\"]))' > \"$KEY_FILE\"\n",
+    "chmod 600 \"$KEY_FILE\"\n",
+    "EXPECTED_FP=\"", fleet_automation_ssh_key_fingerprint, "\"\n",
+    "OBSERVED_FP=\"$(ssh-keygen -y -f \"$KEY_FILE\" | ssh-keygen -lf - | awk '\{print $2}')\"\n",
+    "if [ \"$OBSERVED_FP\" != \"$EXPECTED_FP\" ]; then echo \"ProbeCredentialIdentityMismatch: fetched secret ", fleet_automation_privkey_version_segment(), " fingerprint $OBSERVED_FP != modeled $EXPECTED_FP; contacting NO host\" >&2; exit 1; fi\n",
+    "eval \"$(ssh-agent -s)\" >/dev/null\n",
+    "AGENT_STARTED=1\n",
+    "ssh-add \"$KEY_FILE\" 2>/dev/null\n",
+    "rm -f \"$KEY_FILE\"\n",
+    "trap - EXIT\n",
+    "echo \"SSH_AUTH_SOCK=$SSH_AUTH_SOCK\" >> \"$GITHUB_ENV\"\n",
+    "echo \"SSH_AGENT_PID=$SSH_AGENT_PID\" >> \"$GITHUB_ENV\"\n",
+    "echo \"fleet-key: agent loaded (identity fleet-automation@gunbc; secret versions/1 pinned; fingerprint verified against modeled authority; key file wiped)\"\n",
+  ], "")
+}
+
+// The in-run ssh-agent teardown — a FRESH per-job effect (each isolated job starts and
+// must kill its own agent; nothing is memoizable across jobs), named so both the workflow
+// step and the materialization gate's fresh-effect list reference ONE authority (§3),
+// rather than an inline literal duplicated per job that the ladder would read as authored
+// cross-job duplication.
+fn gunbc_ci_fleet_key_agent_cleanup_script() -> String {
+  "if [ -n \"$\{SSH_AGENT_PID:-}\" ]; then ssh-agent -k || true; fi\n"
 }
 
 // Fleet timer self-install bootstrap (operator verdict join 2, parent verification
@@ -564,11 +656,11 @@ data gunbc_ci_fleet_timer_install_shell_emit_scaffold: Disposition = Scaffold {
   }
 }
 
-data gunbc_ci_fleet_timer_install_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: gunbc_ci_fleet_timer_install_invoke — concat-built foreign-executor (GitHub Actions run:) shell invoking gunbc run on gunbc.fleet_converge_timer_install fleet_timer_self_install_wet; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the step to orchestration emit over the typed gunbc.WitnessBin.Run route"
+data gunbc_ci_fleet_timer_install_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_fleet_timer_install_invoke — concat-built foreign-executor (GitHub Actions run:) shell invoking gunbc run on gunbc.fleet_converge_timer_install fleet_timer_self_install_wet; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the step to orchestration emit over the typed gunbc.WitnessBin.Run route")
 
 fn gunbc_ci_fleet_timer_install_invoke() -> String {
   concat(
-    concat("# ", concat(gunbc_ci_fleet_timer_install_shell_emit_dissolution_trigger, "\n")),
+    concat("# ", concat(dissolution_description(condition: gunbc_ci_fleet_timer_install_shell_emit_dissolution_trigger), "\n")),
     concat(
       concat("ROOT=", ci_repo_root_shell(), "\n"),
       gunbc_run_shell(
@@ -596,11 +688,11 @@ data gunbc_ci_collect_fleet_convergence_shell_emit_scaffold: Disposition = Scaff
   }
 }
 
-data gunbc_ci_collect_fleet_convergence_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: gunbc_ci_collect_fleet_convergence_invoke — concat-built foreign-executor (GitHub Actions run:) shell invoking gunbc run on gunbc.fleet_receipt_collector collect_fleet_convergence_wet plus a cat of the typed collect receipt; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the step to orchestration emit over the typed gunbc.WitnessBin.Run route"
+data gunbc_ci_collect_fleet_convergence_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_collect_fleet_convergence_invoke — concat-built foreign-executor (GitHub Actions run:) shell invoking gunbc run on gunbc.fleet_receipt_collector collect_fleet_convergence_wet plus a cat of the typed collect receipt; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the step to orchestration emit over the typed gunbc.WitnessBin.Run route")
 
 fn gunbc_ci_collect_fleet_convergence_invoke() -> String {
   concat(
-    concat("# ", concat(gunbc_ci_collect_fleet_convergence_shell_emit_dissolution_trigger, "\n")),
+    concat("# ", concat(dissolution_description(condition: gunbc_ci_collect_fleet_convergence_shell_emit_dissolution_trigger), "\n")),
     concat(
       concat(
         concat("ROOT=", ci_repo_root_shell(), "\n"),
@@ -617,6 +709,128 @@ fn gunbc_ci_collect_fleet_convergence_invoke() -> String {
   )
 }
 
+// Host-key scan + enroll dispatch wires (CONVERGE acceptance item 4): scan observes,
+// enroll applies the committed registry; both srv1-dispatched, receipts catted.
+data gunbc_ci_fleet_host_key_scan_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "gunbc_ci_fleet_host_key_scan_invoke",
+    field: WholeDeclaration
+  }
+}
+
+data gunbc_ci_fleet_host_key_scan_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_fleet_host_key_scan_invoke — concat-built foreign-executor (GitHub Actions run:) shell invoking gunbc run on gunbc.fleet_host_key_enrollment fleet_host_key_scan_wet plus a cat of the typed scan receipt; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the step to orchestration emit over the typed gunbc.WitnessBin.Run route")
+
+fn gunbc_ci_fleet_host_key_scan_invoke() -> String {
+  concat(
+    concat("# ", concat(dissolution_description(condition: gunbc_ci_fleet_host_key_scan_shell_emit_dissolution_trigger), "\n")),
+    concat(
+      concat(
+        concat("ROOT=", ci_repo_root_shell(), "\n"),
+        gunbc_run_shell(
+          source_roots: witness_layer_roots,
+          entry: "dag/gunbc/fleet_host_key_enrollment.dag",
+          function: "fleet_host_key_scan_wet",
+          rooted: true,
+          claim_run: false
+        )
+      ),
+      "\ncat \"$ROOT/target/fleet-host-key-scan-receipt.txt\""
+    )
+  )
+}
+
+data gunbc_ci_fleet_host_key_enroll_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "gunbc_ci_fleet_host_key_enroll_invoke",
+    field: WholeDeclaration
+  }
+}
+
+data gunbc_ci_fleet_host_key_enroll_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_fleet_host_key_enroll_invoke — concat-built foreign-executor (GitHub Actions run:) shell invoking gunbc run on gunbc.fleet_host_key_enrollment fleet_host_key_enroll_wet plus a cat of the typed enroll receipt; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the step to orchestration emit over the typed gunbc.WitnessBin.Run route")
+
+fn gunbc_ci_fleet_host_key_enroll_invoke() -> String {
+  concat(
+    concat("# ", concat(dissolution_description(condition: gunbc_ci_fleet_host_key_enroll_shell_emit_dissolution_trigger), "\n")),
+    concat(
+      concat(
+        concat("ROOT=", ci_repo_root_shell(), "\n"),
+        gunbc_run_shell(
+          source_roots: witness_layer_roots,
+          entry: "dag/gunbc/fleet_host_key_enrollment.dag",
+          function: "fleet_host_key_enroll_wet",
+          rooted: true,
+          claim_run: false
+        )
+      ),
+      "\ncat \"$ROOT/target/fleet-host-key-enroll-receipt.txt\""
+    )
+  )
+}
+
+data gunbc_ci_probe_identity_observe_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "gunbc_ci_probe_identity_observe_invoke",
+    field: WholeDeclaration
+  }
+}
+
+data gunbc_ci_probe_identity_observe_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_probe_identity_observe_invoke — concat-built foreign-executor (GitHub Actions run:) shell invoking gunbc run on gunbc.fleet_probe_identity_observe fleet_probe_identity_observe_wet plus a cat of the typed receipt (READ-ONLY observation; no secret payloads); DISSOLVES WHEN bash-emit (#5828) binds the step to orchestration emit over the typed gunbc.WitnessBin.Run route")
+
+fn gunbc_ci_probe_identity_observe_invoke() -> String {
+  concat(
+    concat("# ", concat(dissolution_description(condition: gunbc_ci_probe_identity_observe_shell_emit_dissolution_trigger), "\n")),
+    concat(
+      concat(
+        concat("ROOT=", ci_repo_root_shell(), "\n"),
+        gunbc_run_shell(
+          source_roots: witness_layer_roots,
+          entry: "dag/gunbc/fleet_probe_identity_observe.dag",
+          function: "fleet_probe_identity_observe_wet",
+          rooted: true,
+          claim_run: false
+        )
+      ),
+      "\ncat \"$ROOT/target/fleet-probe-identity-observe-receipt.txt\""
+    )
+  )
+}
+
+data gunbc_ci_authorized_key_enroll_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "gunbc_ci_authorized_key_enroll_invoke",
+    field: WholeDeclaration
+  }
+}
+
+data gunbc_ci_authorized_key_enroll_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_authorized_key_enroll_invoke — concat-built foreign-executor (GitHub Actions run:) shell invoking gunbc run on gunbc.fleet_host_key_enrollment fleet_authorized_key_self_enroll_wet plus a cat of the typed receipt (PUBLIC key only; idempotent exact-line enrollment); DISSOLVES WHEN bash-emit (#5828) binds the step to orchestration emit over the typed gunbc.WitnessBin.Run route")
+
+fn gunbc_ci_authorized_key_enroll_invoke() -> String {
+  concat(
+    concat("# ", concat(dissolution_description(condition: gunbc_ci_authorized_key_enroll_shell_emit_dissolution_trigger), "\n")),
+    concat(
+      concat(
+        concat("ROOT=", ci_repo_root_shell(), "\n"),
+        gunbc_run_shell(
+          source_roots: witness_layer_roots,
+          entry: "dag/gunbc/fleet_host_key_enrollment.dag",
+          function: "fleet_authorized_key_self_enroll_wet",
+          rooted: true,
+          claim_run: false
+        )
+      ),
+      "\ncat \"$ROOT/target/fleet-authorized-key-enroll-receipt.txt\""
+    )
+  )
+}
+
 data gunbc_ci_advance_fleet_desired_shell_emit_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
@@ -626,11 +840,11 @@ data gunbc_ci_advance_fleet_desired_shell_emit_scaffold: Disposition = Scaffold 
   }
 }
 
-data gunbc_ci_advance_fleet_desired_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: gunbc_ci_advance_fleet_desired_script — concat-built foreign-executor (GitHub Actions run:) CAS ref advance (git ls-remote + push --force-with-lease onto gunbc.fleet_main_revision fleet_desired_ref_name); DISSOLVES WHEN the SCM ref-update realization lands as the typed git.Core CAS service op (membership-diff spine classify_change SCM-ref arm) invoked via host_effect_apply"
+data gunbc_ci_advance_fleet_desired_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_advance_fleet_desired_script — concat-built foreign-executor (GitHub Actions run:) CAS ref advance (git ls-remote + push --force-with-lease onto gunbc.fleet_main_revision fleet_desired_ref_name); DISSOLVES WHEN the SCM ref-update realization lands as the typed git.Core CAS service op (membership-diff spine classify_change SCM-ref arm) invoked via host_effect_apply")
 
 fn gunbc_ci_advance_fleet_desired_script() -> String {
   join([
-    "# ", gunbc_ci_advance_fleet_desired_shell_emit_dissolution_trigger, "\n",
+    "# ", dissolution_description(condition: gunbc_ci_advance_fleet_desired_shell_emit_dissolution_trigger), "\n",
     "set -eu\n",
     "DESIRED_REF=", fleet_desired_ref_name, "\n",
     "CURRENT=$(git ls-remote origin \"$DESIRED_REF\" | cut -f1)\n",
@@ -653,11 +867,11 @@ data gunbc_ci_srv1_tasks_observation_shell_emit_scaffold: Disposition = Scaffold
   }
 }
 
-data gunbc_ci_srv1_tasks_observation_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: gunbc_ci_srv1_tasks_observation_invoke — feature:task-count-measure-carrier sibling transport; concat-built foreign-executor (GitHub Actions run:) shell invoking gunbc run on gunbc.srv1_tasks_preapply_observation observe_srv1_tasks_preapply_wet plus a cat of the typed receipt file; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the observation step to orchestration emit over the typed gunbc.WitnessBin.Run route without a medium-as-string concat scaffold"
+data gunbc_ci_srv1_tasks_observation_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_srv1_tasks_observation_invoke — feature:task-count-measure-carrier sibling transport; concat-built foreign-executor (GitHub Actions run:) shell invoking gunbc run on gunbc.srv1_tasks_preapply_observation observe_srv1_tasks_preapply_wet plus a cat of the typed receipt file; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the observation step to orchestration emit over the typed gunbc.WitnessBin.Run route without a medium-as-string concat scaffold")
 
 fn gunbc_ci_srv1_tasks_observation_invoke() -> String {
   concat(
-    concat("# ", concat(gunbc_ci_srv1_tasks_observation_shell_emit_dissolution_trigger, "\n")),
+    concat("# ", concat(dissolution_description(condition: gunbc_ci_srv1_tasks_observation_shell_emit_dissolution_trigger), "\n")),
     concat(
     concat(
       concat("ROOT=", ci_repo_root_shell(), "\n"),
@@ -720,11 +934,11 @@ data ci_heal_repo_local_git_config_shell_emit_scaffold: Disposition = Scaffold {
   }
 }
 
-data ci_heal_repo_local_git_config_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: gunbc_ci_heal_repo_local_git_config_invoke — foreign-executor (GitHub Actions run:) shell transport invoking gunbc run on dag/gunbc/repo_local_git_config converge; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the heal step to orchestration emit over the typed gunbc.WitnessBin.Run route without a medium-as-string concat scaffold"
+data ci_heal_repo_local_git_config_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_heal_repo_local_git_config_invoke — foreign-executor (GitHub Actions run:) shell transport invoking gunbc run on dag/gunbc/repo_local_git_config converge; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the heal step to orchestration emit over the typed gunbc.WitnessBin.Run route without a medium-as-string concat scaffold")
 
 fn gunbc_ci_heal_repo_local_git_config_invoke() -> String {
   concat(
-    concat("# ", concat(ci_heal_repo_local_git_config_shell_emit_dissolution_trigger, "\n")),
+    concat("# ", concat(dissolution_description(condition: ci_heal_repo_local_git_config_shell_emit_dissolution_trigger), "\n")),
     concat(
       concat("ROOT=", ci_repo_root_shell(), "\n"),
       gunbc_run_shell(
@@ -789,7 +1003,7 @@ data ci_heal_commit_push_shell_emit_scaffold: Disposition = Scaffold {
   }
 }
 
-data ci_heal_commit_push_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: gunbc_ci_heal_commit_push_script — the entire foreign-executor heal commit RunStep, including git config/add/commit/push, workflow author-commit drift detection (git diff over author_commit_required_committed_artifact_paths), repair-artifact packaging (mkdir/cp into heal-author-commit-required/), and HealAuthorCommitRequired diagnostic emission. All of this is today concat-built bash under the single Scaffold disposition beside ci_heal_commit_push_shell_emit_scaffold (ci_heal_git_add_lines was already the prior git-staging half; #7659 extends the same surface for AuthorCommitRequired, not a second unmarked shell). The former merge-admission emitter peer stays deleted: its runtime-present work executes as typed git/filesystem operations inside WalkPlan success stages. DISSOLVES WHEN the shell→intent lane models the full heal repair disposition on host_effect_apply — git transport, filesystem packaging, typed diagnostic — via orchestration bash-emit or typed Do-effects (host-effect-orchestration, ROADMAP shell→intent Phase 2), at which point this RunStep is a realization handler, not emitted bash. The regen half (main_wet) is already modeled separately."
+data ci_heal_commit_push_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_heal_commit_push_script — the entire foreign-executor heal commit RunStep, including git config/add/commit/push, workflow author-commit drift detection (git diff over author_commit_required_committed_artifact_paths), repair-artifact packaging (mkdir/cp into heal-author-commit-required/), and HealAuthorCommitRequired diagnostic emission. All of this is today concat-built bash under the single Scaffold disposition beside ci_heal_commit_push_shell_emit_scaffold (ci_heal_git_add_lines was already the prior git-staging half; #7659 extends the same surface for AuthorCommitRequired, not a second unmarked shell). The former merge-admission emitter peer stays deleted: its runtime-present work executes as typed git/filesystem operations inside WalkPlan success stages. DISSOLVES WHEN the shell→intent lane models the full heal repair disposition on host_effect_apply — git transport, filesystem packaging, typed diagnostic — via orchestration bash-emit or typed Do-effects (host-effect-orchestration, ROADMAP shell→intent Phase 2), at which point this RunStep is a realization handler, not emitted bash. The regen half (main_wet) is already modeled separately.")
 
 fn ci_heal_git_add_lines() -> List<String> {
   map(auto_push_eligible_committed_artifact_paths(), p =>

@@ -1,6 +1,7 @@
 module gunbc.plans.wave2_prep_design
 
-import gunbc.plan { Plan, HasTrigger }
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, quote, cell, row }
 
@@ -57,7 +58,7 @@ fn section_2() -> List<MarkdownBlock> {
     p(text: "Within the sweep-order prefix, flips group into three bands (not a flat serial list). Band A Wave-1-pre-flip readiness (`FlippableNow | BodyProducerGated | OtherGate`) lives on `v2.compiler.self_host.frontier_band_a_emit_readiness` (`compiler_frontier_band_a_emit_readiness_roster`, witness `compiler_frontier_band_a_emit_readiness_holds`; wired into `compiler_frontier_census_holds` on `frontier`) — cite the carrier, do not transcribe counts here."),
     ul(items: [
       li(text: "**Band A — leaf emit modules** (`parse_engine_hooks`, `use_site_verdict`, `discovery_enumeration`, `self_host`, `materialization_carriers`, `07_target_carriers`): parallelizable after Wave 1 gate 4; receipt = cargo-green + behavioral-equivalence vs seed (NOT byte-identity). Classification on `compiler_frontier_band_a_emit_readiness_roster`."),
-      li(text: "**Band B — body-lowering seam** (`fold_lowering` → `03_normalize`, serial): FLAG E row-fold **remains** (Slice 0 production-identity forward fold; `body_lowering_fold.dag` still interim until Slice 4 deletion); Stage A fn_decl → Arrow rows land (SymbolIndex-gated per general-body-producer Stage A note)."),
+      li(text: "**Band B — body-lowering seam** (`fold_lowering` → `03_normalize`, serial): FLAG E row-fold **remains** (Slice 0 production-identity forward fold; `body_lowering_fold.dag` still interim until Slice 4 deletion); Stage A fn_decl → Arrow rows land."),
       li(text: "**Band C — resolution-dependent pipeline** (`03_name_resolve` → `03_resolve` → `04_infer`, serial): hard-gated on Wave 1 SymbolIndex / namespace; fill before lookup before inference."),
     ]),
     h3(text: "2.3 Census ratchet discipline"),
@@ -122,7 +123,7 @@ fn section_3() -> List<MarkdownBlock> {
     },
     h3(text: "3.7 Dependencies blocking Slice 1"),
     ul(items: [
-      li(text: "**SymbolIndex / namespace (Wave 1 gate 2):** fn_decl binding via module-root edges — Stage A gated in general-body-producer-design §6."),
+      li(text: "**SymbolIndex / namespace (Wave 1 gate 2):** fn_decl binding via module-root edges."),
       li(text: "**FLAG D:** occurrence-normalized param refs until binding-key re-grounding; witness `bind_eval_occurrence_identity_defect_note` documents flip trigger."),
     ]),
   ]
@@ -198,7 +199,6 @@ data wave2_prep_design_plan: Plan = Plan {
   slug: "wave2-prep-design",
   title: "Wave 2 prep — module-flip census, FLAG E row-fold, SymbolIndex dependency map",
   body: wave2_prep_design_body(),
-  dissolution: HasTrigger {
-    text: "Delete when Wave 2 Band A–C flips are underway and either (a) body_lowering_fold.dag is deleted per §3 slice 4, or (b) the frontier carrier holds execution-measured per-module probes replacing knowledge-attributed census. Surviving checklist rows migrate into gunbc.plans.v2_self_hosting or the frontier carrier; enroll generated docs/plans md at checkpoint 1 only then — never hand-author the projection."
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete when Wave 2 Band A–C flips are underway and either (a) body_lowering_fold.dag is deleted per §3 slice 4, or (b) the frontier carrier holds execution-measured per-module probes replacing knowledge-attributed census. Surviving checklist rows migrate into gunbc.plans.v2_self_hosting or the frontier carrier; enroll generated docs/plans md at checkpoint 1 only then — never hand-author the projection.")
   }
 }

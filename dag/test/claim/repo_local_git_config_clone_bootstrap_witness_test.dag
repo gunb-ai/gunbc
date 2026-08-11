@@ -2,7 +2,6 @@ module test.claim.repo_local_git_config_clone_bootstrap
 
 import gunbc.repo_local_git_config_clone_bootstrap {
   repo_local_git_config_clone_bootstrap_population,
-  repo_local_git_config_clone_bootstrap_dissolve_on,
   repo_local_git_config_clone_bootstrap_converge_invoke_entry,
   repo_local_git_config_clone_bootstrap_converge_invoke_function,
   repo_local_git_config_clone_bootstrap_enrolled_path_count,
@@ -22,9 +21,3 @@ test fn clone_bootstrap_has_enrolled_paths() -> Bool {
   repo_local_git_config_clone_bootstrap_enrolled_path_count() >= 4
 }
 
-test fn clone_bootstrap_carrier_names_dissolve_on() -> Bool {
-  string_contains(
-    s: repo_local_git_config_clone_bootstrap_dissolve_on,
-    pattern: "observed_missing_count",
-  )
-}

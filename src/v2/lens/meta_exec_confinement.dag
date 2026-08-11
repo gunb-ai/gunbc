@@ -16,7 +16,7 @@ import v2.std.algebra {
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { Char, String }
-import std.roster_frontier { FrontierRow, frontier_row, frontier_units }
+import std.roster_frontier { FrontierRow, frontier_row_path, frontier_units }
 
 data meta_exec_confinement_law: String = "Meta-exec confinement (shell→intent Wave A1): shell.Exec.Run/.Check is the honest bottom bash transport — kept, not deleted — but sequestered to realization. extdeps.shell.exec is module-isolated from extdeps.shell; only realization-edge paths may import it without a shrinking roster entry. Intent-layer shell.Exec import is a typed leak; bare String at the Run script position is separately banned by host_language_transport_script once TransportScript brands the input. Dissolves when every roster row migrates off direct shell.Exec and typed host_effect_apply / emit(intent,Bash) is the only path from intent."
 

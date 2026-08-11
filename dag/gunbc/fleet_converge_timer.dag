@@ -50,6 +50,15 @@ data fleet_converge_unit_text_scaffold: Disposition = Scaffold {
 // srv1 (a silent byte churn of a live unit is the wrong side of the trade mid-arc).
 // DISSOLVES WHEN one render authority (these content fns, Doc-wrapped) feeds both
 // routes and the emit goldens re-pin from it.
+// b1 UPGRADE (CONVERGE close): the fork is no longer only a byte-drift risk — it is now a
+// CORRECTNESS fork. The emit side (srv1) was moved off User=root to User=/Group=service_user
+// with an owned receipts dir, because a root run cannot observe refs/fleet/desired inside a
+// service-user-owned repo with no root-side credential. This body still renders "User=root\n"
+// AND omits WorkingDirectory=, so the srv2–srv4 self-install route inherits the exact b1
+// defect srv1 just shed (root ls-remote in a foreign-owned tree, and no workdir to run git in
+// at all). Dissolving this to the single emit authority is therefore a b1 correctness
+// requirement for srv2–srv4, not merely DRY; patching "User=root" here in isolation is
+// declined because the missing WorkingDirectory makes this body wrong regardless of principal.
 data fleet_converge_unit_body_fork_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {

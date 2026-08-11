@@ -1,6 +1,7 @@
 module gunbc.plans.resolver_type_name_collision_wall
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownBlock, CodeBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, cell, row, hr }
 
@@ -119,7 +120,6 @@ data resolver_type_name_collision_wall_plan: Plan = Plan {
   slug: "resolver-type-name-collision-wall",
   title: "Resolver type-name-collision wall (§5 construction wall) — model-before-implement",
   body: resolver_type_name_collision_wall_body(),
-  dissolution: HasTrigger {
-    text: "Delete this model-only DESIGN doc once the resolver type-name-collision wall is implemented and merged — the flag-ANY guard fires fail-closed on any same-name cross-authority type pair (TypeNameCollision diagnostic), the floor closure lands already-green after the de-fork, and the discriminating RED witness (synthetic divergent + byte-identical-mirror pairs both fire) is proven by execution — so this model is realized in the resolver."
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this model-only DESIGN doc once the resolver type-name-collision wall is implemented and merged — the flag-ANY guard fires fail-closed on any same-name cross-authority type pair (TypeNameCollision diagnostic), the floor closure lands already-green after the de-fork, and the discriminating RED witness (synthetic divergent + byte-identical-mirror pairs both fire) is proven by execution — so this model is realized in the resolver.")
   }
 }

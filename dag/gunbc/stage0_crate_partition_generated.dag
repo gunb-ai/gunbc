@@ -43,6 +43,7 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
         "std_keyed_row",
         "std_keyed_roster",
         "std_roster_frontier",
+        "std_dissolution",
         "std_disposition",
         "std_error_primitives",
         "std_http_path",

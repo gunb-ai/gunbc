@@ -19,6 +19,9 @@ pub use crate::extdeps_units_iso_80000_3::{
 };
 pub use crate::std_currency::CurrencyCode;
 use crate::std_currency::CurrencyCode::*;
+pub use crate::std_dissolution::unbound_dissolution;
+pub use crate::std_dissolution::DissolutionCondition;
+use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_nat::Nat;
 use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, NonEmptyStr};
@@ -1041,15 +1044,6 @@ pub fn basis_point_unit_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn basis_point_dissolve_on() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "dissolve-on: Ratio<Scale> carrier unifying Percent and BasisPoint as two scales of one Dimensionless authority, with bp_to_percent/percent_to_bp derive relations enforced at call sites — else a third dimensionless-ratio use-case mints a third nickname.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub type AmortizationMonths = Rc<Measure<(), (), i64>>;
 
 pub fn amortization_months(count: Nat) -> AmortizationMonths {
@@ -1067,15 +1061,6 @@ pub fn amortization_months_unit_note() -> String {
     thread_local! {
         static CACHED: String = {
             "Count of calendar billing months for setup-fee amortization — a named Count carrier, not SI duration (cf. billing_month_as_hour_count for the hourly divisor convention only).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn amortization_months_dissolve_on() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "dissolve-on: ground as calendar-month Duration sibling to billing_month_as_hour_count (one month-count authority for billing amortization + hourly divisor), or fold into extdeps.forex/pricing month facts when a second consumer appears — do not mint a third month wrapper.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -1185,6 +1170,24 @@ pub fn signed_square_millimeter(count: i64) -> SignedSquareMillimeter {
 
 pub fn signed_square_millimeter_count(m: SignedSquareMillimeter) -> i64 {
     measure_count(m.clone())
+}
+
+pub fn amortization_months_dissolve_on() -> Rc<DissolutionCondition> {
+    thread_local! {
+        static CACHED: Rc<DissolutionCondition> = {
+            unbound_dissolution("dissolve-on: ground as calendar-month Duration sibling to billing_month_as_hour_count (one month-count authority for billing amortization + hourly divisor), or fold into extdeps.forex/pricing month facts when a second consumer appears — do not mint a third month wrapper.".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
+}
+
+pub fn basis_point_dissolve_on() -> Rc<DissolutionCondition> {
+    thread_local! {
+        static CACHED: Rc<DissolutionCondition> = {
+            unbound_dissolution("dissolve-on: Ratio<Scale> carrier unifying Percent and BasisPoint as two scales of one Dimensionless authority, with bp_to_percent/percent_to_bp derive relations enforced at call sites — else a third dimensionless-ratio use-case mints a third nickname.".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

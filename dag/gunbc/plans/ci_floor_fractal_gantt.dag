@@ -1,6 +1,7 @@
 module gunbc.plans.ci_floor_fractal_gantt
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownBlock, CodeBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, cell, row, hr }
 
@@ -102,7 +103,6 @@ data ci_floor_fractal_gantt_plan: Plan = Plan {
   slug: "ci-floor-fractal-gantt",
   title: "CI floor fractal Gantt — profiling receipt on #5757 baseline",
   body: ci_floor_fractal_gantt_body(),
-  dissolution: HasTrigger {
-    text: "Delete this doc when the realization_measurement_loop Phase-0 `.dag`-native Gantt carrier lands and supersedes this prose receipt — i.e., when `CostAccount.time = Measured` is live and the Gantt tree is derived from the carrier rather than captured in a plan doc."
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the realization_measurement_loop Phase-0 `.dag`-native Gantt carrier lands and supersedes this prose receipt — i.e., when `CostAccount.time = Measured` is live and the Gantt tree is derived from the carrier rather than captured in a plan doc.")
   }
 }

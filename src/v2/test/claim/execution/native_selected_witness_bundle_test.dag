@@ -108,6 +108,7 @@ import v2.test.execution.emit_on_demand_family_crate_witness {
   family_crate_meet_tree,
   family_crate_members,
 }
+import std.dissolution { unbound_dissolution }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -1200,7 +1201,7 @@ test fn native_selected_witness_bundle_unavailable_is_counted_holds() -> Bool {
       }
       cause: NativeRealizationAbsent
       reason: "The emitter has no native realization for this selected member."
-      dissolve_on: "feature:selected-witness-native-realization"
+      dissolution: unbound_dissolution(description: "feature:selected-witness-native-realization")
     }])
   }
   selected_witness_plan_interpreter_frontier_count(plan: unavailable) == 1

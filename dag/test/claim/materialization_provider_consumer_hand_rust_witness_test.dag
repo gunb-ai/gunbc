@@ -1,5 +1,7 @@
 module test.claim.materialization_provider_consumer_hand_rust_witness
 
+import std.dissolution { dissolution_description }
+
 import gunbc.materialization_provider_consumer_scaffold {
   materialization_provider_consumer_hand_rust_scaffold,
   materialization_provider_consumer_dissolve_trigger,
@@ -26,7 +28,7 @@ test fn materialization_provider_consumer_hand_rust_scaffold_is_seed_retained() 
 }
 
 test fn materialization_provider_consumer_scaffold_names_dissolve_trigger() -> Bool {
-  !(materialization_provider_consumer_dissolve_trigger == "")
+  !(dissolution_description(condition: materialization_provider_consumer_dissolve_trigger) == "")
     && !(materialization_provider_consumer_receipt_plan_anchor == "")
     && !(materialization_provider_consumer_roadmap_lane_anchor == "")
     && materialization_provider_consumer_witness_entry ==

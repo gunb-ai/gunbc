@@ -1,5 +1,7 @@
 module gunbc.command_runner
 
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
+
 import std.types { List, String, NonEmptyStr }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
@@ -24,7 +26,7 @@ data command_runner_scaffold: Disposition = Scaffold {
   }
 }
 
-data command_runner_dissolution_trigger: String = "🟡 dissolve-on: run_shell_command — generic ArgvCommand runner routes the typed extdeps.exec.command shape through shell.Exec.Run via the shell_bash_runner heredoc transport; DISSOLVES WHEN host_effect_apply binds ArgvCommand execution as a typed transport handler and dag/gunbc/command_runner.dag retires its shell_exec_via_bash glue"
+data command_runner_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: run_shell_command — generic ArgvCommand runner routes the typed extdeps.exec.command shape through shell.Exec.Run via the shell_bash_runner heredoc transport; DISSOLVES WHEN host_effect_apply binds ArgvCommand execution as a typed transport handler and dag/gunbc/command_runner.dag retires its shell_exec_via_bash glue")
 
 func run_shell_command(command: ArgvCommand, transport: CommandTransport) -> ProcessExit
   uses net: Network
@@ -41,6 +43,29 @@ func run_shell_command(command: ArgvCommand, transport: CommandTransport) -> Pro
   } else {
     exit_failure(reason: concat("command failed: ", run.stderr))
   }
+}
+
+// Capture variant (CONVERGE acceptance, host-key enrollment): same admitted transport,
+// but the caller receives the process observation instead of a collapsed ProcessExit —
+// for wet observations whose PRODUCT is the stdout (ssh-keyscan, ssh-keygen -lf).
+// Success/stdout/stderr travel together so a refusal cannot be read as empty output.
+type ShellCaptureResult {
+  success: Bool
+  stdout: String
+  stderr: String
+}
+
+func run_shell_command_capture(command: ArgvCommand, transport: CommandTransport) -> ShellCaptureResult
+  uses net: Network
+{
+  let rendered = shell_command_render(command: command_over_transport(command: command, transport: transport))
+  let run = shell.Exec.Run(
+    script: retained_runtime(
+      body: shell_exec_via_bash(body: rendered),
+      reason: "generic ArgvCommand capture runner heredoc transport, pending the typed host_effect_apply argv handler" as NonEmptyStr,
+    )
+  )
+  ShellCaptureResult { success: run.success, stdout: run.stdout, stderr: run.stderr }
 }
 
 func run_shell_commands(commands: List<ArgvCommand>, transport: CommandTransport) -> ProcessExit

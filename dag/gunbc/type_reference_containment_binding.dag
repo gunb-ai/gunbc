@@ -1,5 +1,7 @@
 module gunbc.type_reference_containment_binding
 
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
 import std.types { String, NonEmptyStr }
 import std.disposition { Disposition, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -8,8 +10,6 @@ data type_reference_containment_binding_authority_note: String = "N2 slice 1 (qu
 
 data type_reference_containment_binding_slice1_scope_note: String = "Slice 1 scope: substrate authority + executing fixture witnesses for TypeOccurrence through the structural kernel. IN: hand-built OccurrenceTransport fixtures proving cross-module bare containment bind, module-sibling visibility, unbound when not exposed, and category inadmissibility. OUT OF SLICE: v1 production lookup_type_by_name changeover (slice 2+), qualified namespace-segment projection (std.types.ContentHash terminal path), N1a measure-arm removal, resolution_divergence_census type-site generalization — each carries its own dissolution trigger and must not be smuggled in here."
 
-data type_reference_containment_binding_dissolve_on: String = "DISSOLVE-ON: v1 type positions consume std.occurrence_binding_candidates.resolve_type_reference_containment_binding by execution (not a parallel lookup), N1a measure predicate deletes per gunbc.type_ref_hit_ne_bind_measure type_ref_hit_ne_bind_measure_dissolve_trigger, and flat lookup-as-binding paths retain only migration-oracle status until census parity. This authority module deletes when the dissolve trigger fires; the std entry point may remain as the permanent typed API."
-
 data type_reference_containment_binding_scaffold: Disposition = SingleAuthority {
   bind: DeclarationRef {
     module_path: "std.occurrence_binding_candidates" as NonEmptyStr,
@@ -17,3 +17,5 @@ data type_reference_containment_binding_scaffold: Disposition = SingleAuthority 
     field: WholeDeclaration
   }
 }
+
+data type_reference_containment_binding_dissolve_on: DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: v1 type positions consume std.occurrence_binding_candidates.resolve_type_reference_containment_binding by execution (not a parallel lookup), N1a measure predicate deletes per gunbc.type_ref_hit_ne_bind_measure type_ref_hit_ne_bind_measure_dissolve_trigger, and flat lookup-as-binding paths retain only migration-oracle status until census parity. This authority module deletes when the d")

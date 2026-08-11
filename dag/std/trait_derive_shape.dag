@@ -1,5 +1,7 @@
 module std.trait_derive_shape
 
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
 import std.algebra { Cons, Empty }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -7,8 +9,6 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 data trait_derive_shape_note: String = "Target-agnostic authority for ReprGroundingDeriveTrait × ReprGroundingDeriveElemShape capability table and derive-trait list builders. Rust spellings: extdeps.languages.rust.emit. Consumed by v2.compiler.trait_derive_completeness and v1.compiler.trait_derive_emit. #7174 (operator 2026-07-25): v1 emit wires (a) clone bounds on generic params for fn signatures and derive-only generic struct items and (c) serde/Debug/Ord #[derive] on named structs/enums. Root-4 arm (b): predicate-gated supplemental impl { … } blocks for coproduct-native arithmetic carriers — see trait_derive_shape_grounding_lane_handoff; ReprDeriveAdd/Sub/… rows on KernelInt are capability-table authority for repr_grounding_derive_completeness_predicate, not spellings."
 
 data trait_derive_shape_grounding_lane_handoff: String = "Root-4 arm (b): coproduct-native arithmetic + PartialOrd/PartialEq impl blocks for algebra carriers (GroupCompletion<Nat>, Vector). Capability table + repr_grounding_derive_completeness_predicate remain the shared authority; v1.compiler.trait_derive_emit emits impl { … } from shape rows (not #[derive]) through the seed emitter. GroupCompletion<M> pos/neg pair Add/Sub/Mul/Div landed in #7197 (dissolves interim CommutativeSemiring<Magnitude> stubs)."
-
-data trait_derive_shape_dissolve_on: String = "ReprGroundingDeriveTrait members that name Rust-specific authorities (ReprDeriveSerialize, ReprDeriveAdd, …) migrate beside each target's spelling table when a second consumer exists; until then capability roles stay in std/ with spellings in extdeps.languages.rust.emit."
 
 type ReprGroundingDeriveTrait
   = ReprDeriveDebug
@@ -278,8 +278,6 @@ fn kernel_int_arithmetic_traits() -> List<ReprGroundingDeriveTrait> {
 
 data pair_completion_shape_note: String = "Target-agnostic authority for the Grothendieck pair-completion operator BODIES on GroupCompletion<M> (std.algebra). Each output component is a polynomial over the four operand components self.pos, self.neg, rhs.pos, rhs.neg: an arm is a sum of terms, a term is a product of factors, a factor names one operand component. Selection (which traits apply) stays in the capability table above; SPELLING (trait paths, where-clauses, field syntax) lives per target in extdeps.languages.rust.emit. Reuses ReprGroundingDeriveTrait as the op key rather than minting a parallel operator enum."
 
-data pair_completion_shape_dissolve_on: String = "Dissolves when v2 derives these rows from the std.algebra Ring/AbelianGroup inhabitance witnesses directly, so the Grothendieck construction is read off the algebra rather than tabulated here; tracked by the numeric-tower grounding lane."
-
 type PairCompletionOperand
   = PairCompletionSelf
   | PairCompletionRhs
@@ -406,8 +404,6 @@ fn pair_completion_op_rows() -> List<PairCompletionOpRow> {
   ]
 }
 
-data pair_completion_uses_rhs_dissolve_on: String = "dissolve-on: std.trait_derive_shape.pair_completion_arm_uses_rhs / pair_completion_body_uses_rhs — variant-discriminating Bool predicates over PairCompletionOperand / PairCompletionBody, retained only because operand arity is DERIVED from the formula rather than stored (storing an arity field would be a second representation of what the arms already say). They dissolve into an arity projection carried on PairCompletionOpRow at construction the moment a second consumer needs arity, or the moment refinement predicates become construction-enforced so the projection can be made total by construction; until then the derivation is the single authority and these are its only readers."
-
 fn pair_completion_arm_uses_rhs(arm: PairCompletionArm) -> Bool {
   arm.terms |> any(term => term.factors |> any(f => match f.operand { PairCompletionRhs => true  PairCompletionSelf => false }))
 }
@@ -432,14 +428,20 @@ data repr_grounding_group_completion_carrier_trigger: Disposition = Scaffold {
   }
 }
 
-data repr_grounding_group_completion_carrier_dissolve_on: String = "dissolve-on: repr_grounding_group_completion_carrier — name-match module_path/name selection. Dissolves when capability selection for GroupCompletion pair-completion is derived from std.algebra Ring/AbelianGroup inhabitance witnesses (same terminal as pair_completion_shape_dissolve_on / numeric-tower grounding), so the carrier is identified by inhabitance rather than string equality. Terminal trigger binds Ring as that inhabitance authority (repr_grounding_group_completion_carrier_trigger)."
-
 fn repr_grounding_group_completion_carrier(module_path: String, name: String) -> Bool {
   module_path == "std.algebra" && name == "GroupCompletion"
 }
 
-data repr_grounding_bool_host_bridge_dissolve_on: String = "dissolve-on: repr_grounding_supplemental_bool_host_bridge_target / v1_emit_enum_supplemental_impls — Bool↔host-bool bridge door. Dissolves with the Value::Null-split / Bool True|False ↔ Value::Bool grounding lane (DESIGN open thread; gunbc.plans.value_null_split). Kept as the remaining half of the old supplemental door; do not ground the bridge in an emitter cleanup (§3)."
-
 fn repr_grounding_supplemental_bool_host_bridge_target(module_path: String, name: String) -> Bool {
   module_path == "std.types" && name == "Bool"
 }
+
+data pair_completion_shape_dissolve_on: DissolutionCondition = unbound_dissolution(description: "Dissolves when v2 derives these rows from the std.algebra Ring/AbelianGroup inhabitance witnesses directly, so the Grothendieck construction is read off the algebra rather than tabulated here; tracked by the numeric-tower grounding lane.")
+
+data pair_completion_uses_rhs_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: std.trait_derive_shape.pair_completion_arm_uses_rhs / pair_completion_body_uses_rhs — variant-discriminating Bool predicates over PairCompletionOperand / PairCompletionBody, retained only because operand arity is DERIVED from the formula rather than stored (storing an arity field would be a second representation of what the arms already say). They dissolve into an arity projection car")
+
+data repr_grounding_bool_host_bridge_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: repr_grounding_supplemental_bool_host_bridge_target / v1_emit_enum_supplemental_impls — Bool↔host-bool bridge door. Dissolves with the Value::Null-split / Bool True|False ↔ Value::Bool grounding lane (DESIGN open thread; gunbc.plans.value_null_split). Kept as the remaining half of the old supplemental door; do not ground the bridge in an emitter cleanup (§3).")
+
+data repr_grounding_group_completion_carrier_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: repr_grounding_group_completion_carrier — name-match module_path/name selection. Dissolves when capability selection for GroupCompletion pair-completion is derived from std.algebra Ring/AbelianGroup inhabitance witnesses (same terminal as pair_completion_shape_dissolve_on / numeric-tower grounding), so the carrier is identified by inhabitance rather than string equality. Terminal trig")
+
+data trait_derive_shape_dissolve_on: DissolutionCondition = unbound_dissolution(description: "ReprGroundingDeriveTrait members that name Rust-specific authorities (ReprDeriveSerialize, ReprDeriveAdd, …) migrate beside each target's spelling table when a second consumer exists; until then capability roles stay in std/ with spellings in extdeps.languages.rust.emit.")

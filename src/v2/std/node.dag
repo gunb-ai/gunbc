@@ -1,5 +1,7 @@
 module v2.std.node
 
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
 import std.content_hash {
   ContentHash,
   Fnv1a64Structural,
@@ -14,8 +16,6 @@ type Hash = Fnv1a64Structural
 type OccurrenceId = std.occurrence_identity.OccurrenceId
 
 data node_occurrence_id_v2_facade_note: String = "TEMPORARY COMPATIBILITY: v2 callers still construct and match this source-compatible coproduct while std.occurrence_identity.NodeOccurrenceId is the sole shared semantic authority. The total conversions below are the only bridge; new consumers use the shared carrier directly."
-
-data node_occurrence_id_v2_facade_dissolve_on: String = "DISSOLVE-ON: the counted v2.std.node imports of NodeOccurrenceId, SyntheticOccurrence, and MintedOccurrence reach zero after the bounded v2 import migration; then delete this compatibility coproduct and its two conversions."
 
 type NodeOccurrenceId
   = SyntheticOccurrence
@@ -1574,3 +1574,5 @@ type Edit {
 type Diff {
   edits: List<Edit>
 }
+
+data node_occurrence_id_v2_facade_dissolve_on: DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: the counted v2.std.node imports of NodeOccurrenceId, SyntheticOccurrence, and MintedOccurrence reach zero after the bounded v2 import migration; then delete this compatibility coproduct and its two conversions.")

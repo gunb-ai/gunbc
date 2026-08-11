@@ -24,7 +24,7 @@ fn bmc_secret_iam_bindings() -> List<GcpBinding> {
   ]
 }
 
-data bmc_bootstrap_provision_eager_auth_print_access_token_fork: String = "🟡 dissolve-on: node auth calls shell.GCloud.AuthPrintAccessToken() directly instead of gunbc.auth.access_token_source.ensure_access_token(source: GcloudPrintToken). DISSOLVES WHEN this pattern routes token acquisition through ensure_access_token and deletes the shell.GCloud node. Authority cross-ref: ensure_access_token_eager_bootstrap_fork_dissolve_on in gunbc.auth.access_token_source."
+data bmc_bootstrap_provision_eager_auth_print_access_token_fork: String = "🟡 dissolve-on: node auth calls shell.GCloud.AuthPrintAccessToken() directly instead of gunbc.auth.access_token_source.ensure_access_token(source: GcloudPrintToken). DISSOLVES WHEN this pattern routes token acquisition through ensure_access_token and deletes the shell.GCloud node. Authority: gunbc.auth.access_token_source ensure_access_token."
 
 pattern bmc_bootstrap_provision_srv3() -> {
   sa_email: ServiceAccountEmail,

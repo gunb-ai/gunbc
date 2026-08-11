@@ -27,6 +27,7 @@ import v2.std.execution_surface {
   shell_emission_authorization_is_authorized
 }
 import v2.std.logic { Bool }
+import std.dissolution { unbound_dissolution }
 
 fn empty_roster() -> List<ShellEmissionRosterEntry> {
   []
@@ -106,7 +107,7 @@ test fn steady_state_with_matching_roster_entry_authorizes() -> Bool {
     ShellEmissionRosterEntry {
       site: ^live_deploy_apply,
       roster_key: "live_deploy_apply",
-      dissolve_trigger: "dissolve-on: live_deploy typed-effect reshape (slice 3)"
+      dissolution: unbound_dissolution(description: "dissolve-on: live_deploy typed-effect reshape (slice 3)")
     }
   ]
   let auth = authorize_shell_emission(
@@ -116,7 +117,7 @@ test fn steady_state_with_matching_roster_entry_authorizes() -> Bool {
     roster: roster
   )
   match auth {
-    Authorized { justification: RosterException { roster_key: k, dissolve_trigger: _ } } =>
+    Authorized { justification: RosterException { roster_key: k, dissolution: _ } } =>
       k == "live_deploy_apply"
     Authorized { justification: _ } => false
     Refused { cause: _ } => false
@@ -128,7 +129,7 @@ test fn steady_state_roster_entry_for_other_site_still_refuses() -> Bool {
     ShellEmissionRosterEntry {
       site: ^live_deploy_apply,
       roster_key: "live_deploy_apply",
-      dissolve_trigger: "dissolve-on: live_deploy typed-effect reshape (slice 3)"
+      dissolution: unbound_dissolution(description: "dissolve-on: live_deploy typed-effect reshape (slice 3)")
     }
   ]
   let auth = authorize_shell_emission(

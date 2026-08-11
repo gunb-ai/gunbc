@@ -115,6 +115,7 @@ src/v1/stage0/src/std_content_hash.rs merge=generated-artifact
 src/v1/stage0/src/std_currency.rs merge=generated-artifact
 src/v1/stage0/src/std_decl_ref.rs merge=generated-artifact
 src/v1/stage0/src/std_disposition.rs merge=generated-artifact
+src/v1/stage0/src/std_dissolution.rs merge=generated-artifact
 src/v1/stage0/src/std_effects.rs merge=generated-artifact
 src/v1/stage0/src/std_emit_model.rs merge=generated-artifact
 src/v1/stage0/src/std_error_primitives.rs merge=generated-artifact

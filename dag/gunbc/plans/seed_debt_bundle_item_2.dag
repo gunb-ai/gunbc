@@ -1,6 +1,7 @@
 module gunbc.plans.seed_debt_bundle_item_2
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, p, li, ol, ul, cell, row }
 
@@ -50,7 +51,6 @@ data seed_debt_bundle_item_2_plan: Plan = Plan {
   slug: "seed-debt-bundle-item-2",
   title: "Seed-only debt bundle item 2 — CLI dep-pool authority model (#5894)",
   body: seed_debt_bundle_item_2_body(),
-  dissolution: HasTrigger {
-    text: "`main.rs` exemption retired by construction: `05_emit_rust` emits from `gunbc.compile_source_model`, file moves to `GENERATED_STAGE0_FILES`, and `regen --verify` is byte-identical. Parse cursor / drift 4 is a separate emit-migration track."
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "`main.rs` exemption retired by construction: `05_emit_rust` emits from `gunbc.compile_source_model`, file moves to `GENERATED_STAGE0_FILES`, and `regen --verify` is byte-identical. Parse cursor / drift 4 is a separate emit-migration track.")
   }
 }

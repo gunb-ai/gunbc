@@ -1,5 +1,7 @@
 module test.claim.walk_plan_stage_fixture_hand_rust_witness
 
+import std.dissolution { dissolution_description }
+
 import gunbc.walk_plan_stage_fixture_scaffold {
   walk_plan_stage_fixture_hand_rust_scaffold,
   walk_plan_stage_fixture_hand_rust_dissolve_trigger,
@@ -26,7 +28,7 @@ test fn walk_plan_stage_fixture_hand_rust_scaffold_is_seed_retained() -> Bool {
 }
 
 test fn walk_plan_stage_fixture_hand_rust_receipt_is_checkable() -> Bool {
-  !(walk_plan_stage_fixture_hand_rust_dissolve_trigger == "")
+  !(dissolution_description(condition: walk_plan_stage_fixture_hand_rust_dissolve_trigger) == "")
     && !(walk_plan_stage_fixture_hand_rust_receipt_plan_anchor == "")
     && !(walk_plan_stage_fixture_hand_rust_roadmap_lane_anchor == "")
     && walk_plan_stage_fixture_hand_rust_receipt_witness_entry == "dag/test/claim/walk_plan_stage_fixture_hand_rust_witness_test.dag"
@@ -43,7 +45,7 @@ test fn walk_plan_stage_fixture_hand_rust_roadmap_anchor_names_row() -> Bool {
       pattern: "v1-materialization-kernel"
     )
     && string_contains(
-      s: walk_plan_stage_fixture_hand_rust_dissolve_trigger,
+      s: dissolution_description(condition: walk_plan_stage_fixture_hand_rust_dissolve_trigger),
       pattern: "v1-materialization-kernel"
     )
 }

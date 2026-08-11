@@ -651,6 +651,7 @@ fn builtin_registry_surface_names() -> List<String> {
     "concept_decl_facts",
     "decl_facts",
     "export_signature_facts",
+    "data_decl_type_facts",
     "fact_cardinality_decl_facts",
     "languages_consumer_census_data_decl_count",
     "languages_consumer_census_per_language_row_count",

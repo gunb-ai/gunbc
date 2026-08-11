@@ -14,6 +14,26 @@ import gunbc.fleet_desired_observe {
   fleet_revision_standing,
 }
 import extdeps.git.object_store { git_object_id_wire_hex }
+import gunbc.host_converge_slice1 {
+  host_converge_slice1_converge_loop,
+  host_converge_slice1_receipt_is_valid,
+  host_converge_slice1_tasks_receipt_is_valid,
+  host_converge_slice1_converge_srv3,
+  host_converge_slice1_host_result_all_valid,
+  host_converge_slice1_host_result_applied_count,
+  host_converge_slice1_host_result_refusal_reason,
+}
+import gunbc.host_runner_memory_provision { runner_memory_host_converge }
+import gunbc.host_runner_memory_cap_verify { runner_memory_cap_verify_run }
+import gunbc.host_converge { fleet_converge_policy, find_by_identity, converge_verdict, converge_verdict_label, converge_verdict_meet }
+import gunbc.fleet_intent_network {
+  operator_host_srv1,
+  operator_host_srv2,
+  operator_host_srv3,
+  operator_host_srv4,
+  operator_host_srv5,
+  operator_host_srv6,
+}
 
 
 data gunbc_converge_cli_stage0_receiver_disposition: Disposition = Terminal {
@@ -199,10 +219,6 @@ fn converge_cli_slice1_srv1_receipt() -> ConvergeCliReceipt {
           },
         }
       }
-    // Unreachable today by construction: host_converge_slice1_converge_loop folds the
-    // tasks outcome into the combined Converged arm (or Refused) and never returns
-    // TasksConverged at top level. Handled exhaustively anyway — do not wire new callers
-    // through this arm.
     HostConvergeSlice1TasksConverged { applied_knobs: n, receipt: r } =>
       if host_converge_slice1_tasks_receipt_is_valid(receipt: r) {
         ConvergeCliReceipt {
@@ -354,66 +370,115 @@ fn converge_cli_publish(out: ConvergeCliOutput, resolved: String, revision_line:
   }
 }
 
-// Operator verdict join 1 (2026-08-09): the self route is where a host READS the
-// desired ref. The knob receipt alone cannot claim convergence while the deployed tree
-// is not at the admitted revision — revision drift or an unobserved ref demotes the
-// output to not-converged with the typed cause, and the published receipt carries the
-// revision cell as its own line so the collector (join 5) sees BOTH cells. Drifted
-// names both sides (desired AND local): tree-sync is the catch-up realization, and its
-// safe form is a compare-and-swap needing the prior. The repo path is the ONE
-// host_layout convention row (byte-identical across enrolled hosts per its note).
-fn converge_cli_revision_gate(out: ConvergeCliOutput, standing: FleetRevisionStanding) -> ConvergeCliOutput {
+// Operator verdict join 1 (2026-08-09; construction rework 2026-08-10, the empty-observation
+// narrow §5): the self route is where a host READS the desired ref, and the knob receipt
+// alone cannot claim convergence while the deployed tree is not at the admitted revision.
+// converge_cli_receipt_join_revision MEETS the knob verdict with the revision standing on
+// the ConvergeVerdict lattice (converge_verdict_meet, Absent < Drifted < VerdictConverged)
+// BEFORE the receipt line is rendered, so verdict=converged on the published converge-receipt
+// line is only constructable when the revision was observed AND matched. RevisionUnobserved
+// pulls the joint to Absent — an applied=0/drifted=0 knob run that never observed the desired
+// revision can no longer render "converged" (bottom-as-ignorance is no longer written as
+// bottom-as-answer). The collector (join 5, fleet_receipt_collector parse_converge_receipt_line)
+// reads THIS one joint verdict off the converge-receipt line; converge_cli_revision_line
+// carries the revision OBSERVATION as evidence (observed=/drift/unobserved) and no longer a
+// second verdict= token, so the receipt holds exactly one verdict and the two cells cannot
+// disagree. This REPLACES the former bool-only converge_cli_revision_gate, which demoted the
+// converged flag while leaving the rendered line saying verdict=converged — the dual
+// representation the collector inherited. Drifted names both sides (desired AND local):
+// tree-sync is the catch-up realization, its safe form a compare-and-swap needing the prior.
+// The repo path is the ONE host_layout convention row.
+// DECLARED IMPRECISION, next-rung item (review, 2026-08-10). RevisionUnobserved maps to
+// Absent, but converge_verdict (host_converge) already mints Absent for "subject not present
+// on the host". So the isolated verdict=absent TOKEN conflates two states with OPPOSITE
+// remedies — install/converge the subject, vs fix the desired-ref observation (the srv1 b1
+// git-credential defect — different lane). This is the sentinel review 50817 warned about on
+// parse_converge_verdict_label, one level down in the value rather than the decode. It is
+// fail-closed, not fail-open (both fold not-converged, so acceptance correctly fails and the
+// collector is never misled), and the receipt as a WHOLE disambiguates: the self path always
+// emits the converge-revision evidence line beside this one, so verdict=absent + "unobserved
+// cause=" is the revision case and verdict=absent + "observed=<hex>" is the subject-absent
+// case. Only the isolated line-1 token is ambiguous, and only to a human remedy-router who
+// ignores line 2. A precise fix is a distinct Unobserved verdict, DEFERRED with the same
+// reasoning as the GitObjectId-in-VerdictConverged trigger below: it widens the shared
+// ConvergeVerdict enum that knob-only convergence uses and would never emit. That the enum
+// cannot carry this without burdening an unrelated consumer is itself the dual-representation
+// smell one rung up (the enum doing two jobs) — named here, not fixed here.
+fn converge_cli_revision_verdict(standing: FleetRevisionStanding) -> ConvergeVerdict {
   match standing {
-    RevisionConverged { revision: _ } => out
+    RevisionConverged { revision: _ } => VerdictConverged
+    RevisionDrifted { desired: _, local: _ } => Drifted
+    RevisionUnobserved { cause: _ } => Absent
+  }
+}
+
+fn converge_cli_receipt_join_revision(r: ConvergeCliReceipt, standing: FleetRevisionStanding) -> ConvergeCliReceipt {
+  ConvergeCliReceipt {
+    host: r.host,
+    applied: r.applied,
+    drifted: r.drifted,
+    verdict: converge_verdict_meet(a: r.verdict, b: converge_cli_revision_verdict(standing: standing)),
+    reason: r.reason,
+  }
+}
+
+fn converge_cli_revision_reason(standing: FleetRevisionStanding) -> String? {
+  match standing {
+    RevisionConverged { revision: _ } => none
     RevisionDrifted { desired: d, local: l } =>
-      ConvergeCliOutput {
-        line: out.line,
-        converged: false,
-        reason: Present {
-          value: join([
-            "gunbc converge: revision drift — desired ",
-            git_object_id_wire_hex(oid: d) as String,
-            ", local tree at ",
-            git_object_id_wire_hex(oid: l) as String,
-            "; tree-sync is the catch-up realization",
-          ], ""),
-        },
+      Present {
+        value: join([
+          "gunbc converge: revision drift — desired ",
+          git_object_id_wire_hex(oid: d) as String,
+          ", local tree at ",
+          git_object_id_wire_hex(oid: l) as String,
+          "; tree-sync is the catch-up realization",
+        ], ""),
       }
     RevisionUnobserved { cause: c } =>
-      ConvergeCliOutput {
-        line: out.line,
-        converged: false,
-        reason: Present { value: concat("gunbc converge: desired revision unobserved — ", c) },
-      }
+      Present { value: concat("gunbc converge: desired revision unobserved — ", c) }
   }
 }
 
 fn converge_cli_revision_line(standing: FleetRevisionStanding) -> String {
   match standing {
     RevisionConverged { revision: r } =>
-      concat("converge-revision verdict=converged revision=", git_object_id_wire_hex(oid: r) as String)
+      concat("converge-revision observed=", git_object_id_wire_hex(oid: r) as String)
     RevisionDrifted { desired: d, local: l } =>
       join([
-        "converge-revision verdict=drifted desired=",
+        "converge-revision drift desired=",
         git_object_id_wire_hex(oid: d) as String,
         " local=",
         git_object_id_wire_hex(oid: l) as String,
       ], "")
-    RevisionUnobserved { cause: c } => concat("converge-revision verdict=unobserved cause=", c)
+    RevisionUnobserved { cause: c } => concat("converge-revision unobserved cause=", c)
   }
 }
 
 fn converge_cli_output(host: String) -> ConvergeCliOutput {
-  let out = converge_cli_output_with_verify(host: host, verify_only: false)
   if host == "self" {
+    let resolved = converge_cli_resolve_self(host: host)
+    let r = converge_cli_run(host: resolved)
     let standing = fleet_revision_standing(repo: srv1_gunbc_repo_root)
+    let joint = converge_cli_receipt_join_revision(r: r, standing: standing)
+    let base_reason = match r.reason {
+      Present { value: cause } => Present { value: converge_cli_refusal_message(cause: cause) }
+      Absent => none
+    }
     converge_cli_publish(
-      out: converge_cli_revision_gate(out: out, standing: standing),
-      resolved: converge_cli_resolve_self(host: host),
+      out: ConvergeCliOutput {
+        line: converge_cli_receipt_line(r: joint),
+        converged: converge_cli_receipt_converged(r: joint),
+        reason: match converge_cli_revision_reason(standing: standing) {
+          Present { value: why } => Present { value: why }
+          Absent => base_reason
+        },
+      },
+      resolved: resolved,
       revision_line: converge_cli_revision_line(standing: standing),
     )
   } else {
-    out
+    converge_cli_output_with_verify(host: host, verify_only: false)
   }
 }
 

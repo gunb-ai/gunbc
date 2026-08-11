@@ -1,0 +1,42 @@
+diff --git a/src/v1/stage0/src/cli_run.rs b/src/v1/stage0/src/cli_run.rs
+--- a/src/v1/stage0/src/cli_run.rs
++++ b/src/v1/stage0/src/cli_run.rs
+@@ -3778,6 +3778,38 @@ pub const SELECTION_CONTROL_DECLARED_ENTRIES: &[&str] = &[
+     SELECTION_CONTROL_CI_FLOOR_PLAN_REL,
+ ];
+ 
++/// The two-entry incident subject for live-read selection controls and P3 A/B parity.
++pub fn selection_control_incident_subject_roster() -> Vec<(String, String)> {
++    let ws = workspace_root();
++    vec![
++        (
++            ws.join(SELECTION_CONTROL_NODE_PRECISE_REL)
++                .to_string_lossy()
++                .into_owned(),
++            "floor_disc_witness_a_only_holds".to_string(),
++        ),
++        (
++            ws.join(SELECTION_CONTROL_FLOOR_RUNNER_TEST_REL)
++                .to_string_lossy()
++                .into_owned(),
++            "floor_test_untouched_skips_assumed_green_holds".to_string(),
++        ),
++    ]
++}
++
++static LIVE_READ_CLASSIFICATION_PRODUCTION_MS: std::sync::atomic::AtomicU64 =
++    std::sync::atomic::AtomicU64::new(0);
++
++pub fn live_read_classification_production_ms() -> u128 {
++    use std::sync::atomic::Ordering;
++    LIVE_READ_CLASSIFICATION_PRODUCTION_MS.load(Ordering::SeqCst) as u128
++}
++
++pub fn reset_live_read_classification_production_ms() {
++    use std::sync::atomic::Ordering;
++    LIVE_READ_CLASSIFICATION_PRODUCTION_MS.store(0, Ordering::SeqCst);
++}
++
+ /// The suite's source roots — `[src/v2, dag]`, the roots its rosters resolve against.
+ /// Single authority for the same reason as the entry consts above.
+ pub fn selection_control_source_roots(workspace: &Path) -> Vec<PathBuf> {

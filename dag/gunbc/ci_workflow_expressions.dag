@@ -22,7 +22,7 @@ fn ci_cache_hash_files() -> Expression {
 fn ci_concurrency_discriminator() -> Expression {
   LogicalOr {
     left: ContextAccess { context: Github, path: ["event", "pull_request", "number"] },
-    right: ContextAccess { context: Github, path: ["run_id"] }
+    right: ContextAccess { context: Github, path: ["ref"] }
   }
 }
 
@@ -80,22 +80,29 @@ data ci_workflow_expression_templates: List<ExpressionTemplate> = [
   ci_cache_restore_keys_template
 ]
 
-// MEASURED REPAIR (2026-08-09, CONVERGE acceptance): every job gated by this expression
-// had been SKIPPED on every main push for at least 30 pushes — deploy_dashboard_srv1
-// included, long before the advance/collect jobs joined the family. Root cause is a
-// workflow-graph cascade, not the two clauses: heal_generated_artifacts SKIPS on
-// ordinary pushes, `ci` survives it via its own `!cancelled()`, but a needs:[ci] job
-// whose `if` carries NO status function gets GitHub's implicit success() ANDed in, and
-// success() is false downstream of any transitively skipped job — so the whole
-// push-to-main family silently skipped while every clause it names was true (an
-// empty-observation narrow: 'dependency skipped' rendered as 'condition false'). The
-// expression now carries its own status guard: run unless cancelled, require the ci
-// job's own result to be success explicitly, then the two event clauses. The RED
-// control for this class lives in test.claim.ci_workflow_witness
-// push_to_main_family_carries_explicit_status_guard.
-data ci_deploy_push_to_main_if: String = "!cancelled() && needs.ci.result == 'success' && github.ref == 'refs/heads/main' && github.event_name == 'push'"
-
-data ci_workflow_dispatch_only_if: String = "github.event_name == 'workflow_dispatch'"
+// UNIFIED FLEET JOB condition (operator request 2026-08-10: "a single fleet convergence
+// job — it's overwhelming to see so many"). The ten former deploy/convergence/toolbox
+// jobs collapse into one `fleet` job whose STEPS carry the per-event guard; this is the
+// job-level gate that decides whether the job runs AT ALL, so on ordinary PRs the whole
+// fleet job is skipped as ONE row instead of ~nine. Two arms:
+//   - main-push convergence (deploy + collect + advance): !cancelled() +
+//     needs.ci.result == 'success' + main + push;
+//   - workflow_dispatch toolbox (scan/enroll/probe/observe/timer/authorized-key): the
+//     manual fleet ops.
+//
+// THE !cancelled() + needs.ci.result GUARD ON THE PUSH ARM IS A WALL, NOT DECORATION
+// (MEASURED REPAIR 2026-08-09, CONVERGE acceptance — carried forward from the former
+// ci_deploy_push_to_main_if, which this expression replaced when the family collapsed
+// into one job). Every job in the former push-to-main family had been SKIPPED on every
+// main push for 30+ pushes: heal_generated_artifacts SKIPS on ordinary pushes, `ci`
+// survives it via its own `!cancelled()`, but a needs:[ci] job whose `if` carries NO
+// status function gets GitHub's implicit success() ANDed in, and success() is false
+// downstream of any transitively skipped job — so the whole family silently skipped while
+// every clause it named was true (an empty-observation narrow: 'dependency skipped'
+// rendered as 'condition false'). The push arm therefore carries its own status guard
+// explicitly. The RED control for this class lives in test.claim.ci_workflow_witness
+// push_to_main_family_carries_explicit_status_guard, which now reads this expression.
+data ci_fleet_job_if: String = "!cancelled() && ((github.ref == 'refs/heads/main' && github.event_name == 'push' && needs.ci.result == 'success') || github.event_name == 'workflow_dispatch')"
 
 data ci_floor_runs_unless_cancelled_if: String = "!cancelled()"
 
@@ -105,7 +112,7 @@ data ci_floor_upstream_red_refusal_note: String = "THE FLOOR REFUSES ON AN ALREA
 
 data ci_concurrency_cancel_in_progress_if: String = "${{ github.event_name != 'merge_group' }}"
 
-data ci_concurrency_event_scoped_stop_policy_note: String = "Event-scoped stop policy (operator ruling 2026-07-22, fail-fast lane): cancel-in-progress is true for pull_request / push / workflow_dispatch (supersede stale runs on new commits) and false for merge_group (the queue must not kill an in-flight check when another PR enters the queue — gunbc.ci_workflow ci_merge_group_trigger_note). The expression is the single authority; dissolve-on: a typed EventStopPolicy row per trigger replaces the hand-spelled string when the workflow model carries event-grain policy by construction."
+data ci_concurrency_event_scoped_stop_policy_note: String = "Event-scoped stop policy (operator ruling 2026-07-22; CI RESET lane 2026-08-10): cancel-in-progress is true for pull_request / push / workflow_dispatch and false for merge_group (the queue must not kill an in-flight check when another PR enters the queue — gunbc.ci_workflow ci_merge_group_trigger_note). Supersession requires BOTH arms: cancel-in-progress plus a shared group key. ci_concurrency_discriminator groups PR events by pull_request.number and everything else by github.ref — never run_id, which is unique per run and would give every push its own group, making cancellation unreachable while the note above still read as if it worked. The expression pair is the single authority; dissolve-on: typed EventStopPolicy + group-key rows per trigger replace the hand-spelled strings when the workflow model carries event-grain policy by construction."
 
 data ci_concurrency_event_scoped_stop_policy_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
