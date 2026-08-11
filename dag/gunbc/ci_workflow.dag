@@ -439,6 +439,30 @@ fn ci_release_bins_upload_step() -> Step {
   }
 }
 
+data ci_floor_receipts_artifact_name: String = "floor-receipts"
+
+data ci_floor_receipts_artifact_note: String = "The floor's cost/drift receipts are TSV+txt files under target/, and until this step existed the ONLY way they left a run was for the writer to mirror every row into the step log — which is why one floor step carried ~12,000 receipt rows (measured: run 31453445496, 17,757 lines total, 8,614 of them one disclosure receipt). That mirroring was never an observability design; it was the absence of a transport, and gunbc.ci_spec gunbc_ci_compile_clean_clamp_note depends on it by naming the log lines as the seeding source for compile_clean_cost_basis.tsv. Uploading the files makes the console dump redundant so the writers can stop, and makes the basis seeding read a FILE rather than scrape a log. always() because a red run is exactly when the receipts are wanted (same reasoning as ci_floor_peak_post_step), and if-no-files-found: warn rather than error because a floor that refuses before any receipt writes is already redding on its own diagnostic — turning the absence of a receipt into a SECOND failure would report the transport as the defect. Glob rather than an enumerated roster: the receipt paths are hardcoded at each Rust writer with no single authority to consume, so listing them here would mint the second one (DESIGN section 3); the glob dissolves into that roster when a receipt-path authority lands."
+
+fn ci_floor_receipts_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload floor receipts (TSV authority for cost/drift rows)" },
+    id: none,
+    uses: upload_artifact_action,
+    with: Present {
+      value: [
+        kv(key: "name", value: yaml_string(s: ci_floor_receipts_artifact_name)),
+        kv(key: "path", value: yaml_string(s: "target/floor-*")),
+        kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
+        kv(key: "retention-days", value: yaml_int(n: 14))
+      ]
+    },
+    env: none,
+    if_condition: Present { value: "always()" },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
 fn ci_release_bins_download_step() -> Step {
   UsesStep {
     name: Present { value: "Download release-bins artifact" },
@@ -575,7 +599,7 @@ fn gunbc_ci_build_job_backstop_timeout_minutes() -> Int {
 data gunbc_ci_receipt_gate_steps_moved_in_executor_note: String = "The resolve-receipt and materialization-receipt gate STEPS are deleted (ruling 2026-07-30): their laws — resolves_total equals the declared count, and the materialization receipt exists/parses/keyed nonzero — now run INSIDE claim_executor as ordinary-floor finalization (run_walk, FloorFinalization), so a receipt-law violation blocks every on-success stage instead of redding a step AFTER admission had already stamped. The two aux terms leave the backstop sum in the same motion, keeping it the exact step-sum + prelude the witness pins. The receipt FILES keep writing — they are observability the falsifier and operators read — only the shell re-validation of them is gone, because keeping it would be a second representation of the floor-completion rule."
 
 fn gunbc_ci_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_workflow_wrapper_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+  gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_workflow_wrapper_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
 }
 
 fn gunbc_ci_regen_job_backstop_timeout_minutes() -> Int {
@@ -1066,7 +1090,7 @@ fn ci_job() -> Job {
     id: "ci",
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
-    steps: concat([ci_floor_upstream_red_refusal_step()], concat(ci_floor_job_prelude_steps(), [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_floor_peak_pre_step(), ci_floor_step(), ci_floor_peak_post_step()])),
+    steps: concat([ci_floor_upstream_red_refusal_step()], concat(ci_floor_job_prelude_steps(), [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_floor_peak_pre_step(), ci_floor_step(), ci_floor_peak_post_step(), ci_floor_receipts_upload_step()])),
     needs: ["build", "regen", "heal_generated_artifacts"],
     env: none,
     outputs: none,

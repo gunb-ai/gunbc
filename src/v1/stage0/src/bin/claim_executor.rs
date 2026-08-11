@@ -449,6 +449,7 @@ fn write_compile_clean_cost_drift_receipt_at(
     base: &std::path::Path,
     basis_path: &std::path::Path,
     source_roots: &[String],
+    emit_full_tsv_log: bool,
 ) -> bool {
     let Some((wall_ms, _units, module_rows, subject)) =
         v1_compiler::cli_run::floor_compile_clean_cost_snapshot()
@@ -527,11 +528,13 @@ fn write_compile_clean_cost_drift_receipt_at(
             }
         }
     }
-    eprintln!(
-        "[compile-clean-cost-drift] basis_absent={basis_absent_count} clock_mismatch={clock_mismatch_count} drift_exceeded={drift_count}"
-    );
-    for line in body.lines() {
-        eprintln!("[compile-clean-cost-drift] {line}");
+    // Falsifier cadence only — the per-PR floor keeps the `[receipt]` summary below, which
+    // already carries these same three counts, plus the TSV path. The pre-dump line that
+    // used to restate those counts here is gone: it duplicated the summary verbatim.
+    if emit_full_tsv_log {
+        for line in body.lines() {
+            eprintln!("[compile-clean-cost-drift] {line}");
+        }
     }
     let path = base.join("floor-compile-clean-cost-drift-receipt.tsv");
     if let Err(e) = std::fs::create_dir_all(base).and_then(|_| std::fs::write(&path, &body)) {
@@ -6471,6 +6474,7 @@ fn write_witness_row_cost_migration_disclosure_receipt_at(
     base: &std::path::Path,
     batch_records: &[BatchRecord],
     source_roots: &[String],
+    emit_full_tsv_log: bool,
 ) -> bool {
     let entry = "dag/gunbc/witness_row_cost.dag";
     let (graph, indices) = match resolve_entry_graph(source_roots, entry) {
@@ -6539,8 +6543,14 @@ fn write_witness_row_cost_migration_disclosure_receipt_at(
     }
     worst.sort_by(|a, b| b.0.cmp(&a.0));
     worst.truncate(5);
-    for line in body.lines() {
-        eprintln!("[witness-row-cost-migration-disclosure] {line}");
+    // Same posture as the gate warm-cost and witness row-cost receipts: the falsifier
+    // cadence mirrors the full TSV into the log so the placement probe can lift it from
+    // get_job_logs without an artifact-upload step. Per-PR runs keep only the `worst:`
+    // rows and the `[receipt]` summary below; the complete file lands either way.
+    if emit_full_tsv_log {
+        for line in body.lines() {
+            eprintln!("[witness-row-cost-migration-disclosure] {line}");
+        }
     }
     for (ms, entry, function) in &worst {
         eprintln!(
@@ -8695,6 +8705,7 @@ fn run_walk(
             std::path::Path::new("target"),
             &batch_records,
             source_roots,
+            falsifier_cadence,
         );
     trace_floor_phase(
         "witness-row-cost-migration-disclosure-receipt",
@@ -10934,6 +10945,7 @@ fn run() -> Result<ExitCode, ExitCode> {
         std::path::Path::new("target"),
         std::path::Path::new("dag/gunbc/compile_clean_cost_basis.tsv"),
         &source_roots,
+        plan_function == "gunbc_falsifier_plan",
     );
     v1_compiler::v1_interpreter::group_end();
     let mut terminal_failure_details = outcome.failure_details.clone();
