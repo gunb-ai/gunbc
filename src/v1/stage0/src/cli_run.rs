@@ -21067,13 +21067,6 @@ fn repo_relative_dag_path(path: &str) -> String {
     stripped.trim_start_matches("./").to_string()
 }
 
-fn is_top_level_lens_module(module: &str) -> bool {
-    match module.strip_prefix("v2.lens.") {
-        Some(rest) => !rest.is_empty() && !rest.contains('.'),
-        None => false,
-    }
-}
-
 /// Fail-closed arm for every consumer of the module-graph facts (operator review
 /// 2026-07-28, PR #7384): the fact producers skip unreadable files at scan time, so an
 /// unreadable module would otherwise VANISH from the facts entirely — an absorbing
